@@ -638,7 +638,7 @@ describe("tax document decoders", () => {
     expect(checks(successful())).toEqual([undefined, undefined]);
   });
 
-  it("checks raw digests without reading accessors or hiding unrelated bindings", () => {
+  it("checks raw digests and refuses documents with accessors at snapshot", () => {
     const input = { ...request.input, unknownField: "held by digest" };
     expectRefusal(verifyTaxQuoteRequest({ ...request, input }), "tax_reference_conflict", "/inputDigest");
     expectRefusal(verifyTaxQuoteRequest({ ...request, input, inputDigest: taggedDigest("input", input) }), "tax_invalid_input", "/input");
@@ -646,8 +646,8 @@ describe("tax document decoders", () => {
     const address = { ...input.destination.address, get line1() { reads++; return "unreadable"; } };
     const inaccessible = { ...request, input: { ...request.input, destination: { ...input.destination, address } } };
     const foreign = successful({ ...receipt, requestKey: "other-key" });
-    expectRefusal(verifyTaxQuoteResult(inaccessible, foreign), "tax_reference_conflict", "/evidence/requestKey");
-    expectRefusal(verifyTaxQuoteResult(inaccessible, successful()), "tax_invalid_input", "/input/destination/address/line1");
+    expectRefusal(verifyTaxQuoteResult(inaccessible, foreign), "tax_reference_conflict", "");
+    expectRefusal(verifyTaxQuoteResult(inaccessible, successful()), "tax_reference_conflict", "");
     expect(reads).toBe(0);
   });
 
@@ -660,13 +660,64 @@ describe("tax document decoders", () => {
     expect(checks(successful(changed))).toEqual(Array(2).fill(conflict("/evidence/providerLines")));
   });
 
+  const wrapped = <T extends object>(value: T): T => new Proxy(value, {});
+  const foreignAccount = { ...request.input, coverage: { ...request.input.coverage, accountRef: "other-account" } };
+  const foreignEvidence = successful({ ...receipt, requestKey: "other-key" });
+  const foreignCurrent = { ...fiscal.current, scope: { ...scope, mode: "live" as const } };
+  it.each([
+    ["quote request with a stale digest", () => verifyTaxQuoteRequest(wrapped({ ...request, inputDigest: digest })), "/inputDigest"],
+    ["quote request for a foreign account", () => verifyTaxQuoteRequest(wrapped({ ...request,
+      input: foreignAccount, inputDigest: taggedDigest("input", foreignAccount),
+    })), "/input/coverage/accountRef"],
+    ["quote result with a stale digest", () => verifyTaxQuoteResult(request, wrapped({ ...successful(), evidenceDigest: digest })), "/evidenceDigest"],
+    ["quote result from a foreign key", () => verifyTaxQuoteResult(request, wrapped(foreignEvidence)), "/evidence/requestKey"],
+    ["fiscal original with a stale digest", () => verifyTaxQuoteRequest({ ...fiscal,
+      original: wrapped({ ...request, inputDigest: digest }),
+    }), "/original/inputDigest"],
+    ["fiscal original under a foreign key", () => verifyTaxQuoteRequest({ ...fiscal,
+      original: wrapped({ ...request, key: "other-key" }),
+    }), "/evidence/requestKey"],
+    ["fiscal current in a foreign mode", () => verifyTaxQuoteRequest({ ...fiscal, current: wrapped(foreignCurrent) }), "/current/scope"],
+  ] as const)("checks integrity on a wrapped %s", (_name, verify, pointer) => {
+    expectRefusal(verify(), "tax_reference_conflict", pointer);
+  });
+
+  it("verifies valid wrapper objects as their plain snapshots", () => {
+    expect(verifyTaxQuoteRequest(wrapped(request))).toBeUndefined();
+    const required = [...request.input.required];
+    Object.setPrototypeOf(required, Object.create(Array.prototype));
+    expect(verifyTaxQuoteRequest({ ...request, input: { ...request.input, required } })).toBeUndefined();
+    expect(verifyTaxQuoteResult(wrapped(request), wrapped(successful()))).toBeUndefined();
+    expect(verifyTaxQuoteRequest(wrapped({ ...fiscal, original: wrapped(request), current: wrapped(fiscal.current) }))).toBeUndefined();
+  });
+
+  it("shares the coverage-account refusal between preparation and verification", () => {
+    expect(() => makeTaxQuoteRequest(request.key, foreignAccount)).toThrow(expect.objectContaining({
+      code: "tax_reference_conflict", field: "/coverage/accountRef", message: remedies.tax_reference_conflict,
+    }));
+    expectRefusal(verifyTaxQuoteRequest({ ...request, input: foreignAccount, inputDigest: taggedDigest("input", foreignAccount) }),
+      "tax_reference_conflict", "/input/coverage/accountRef");
+  });
+
+  it("checks the evidence digest anchor when evidence is missing", () => {
+    const { evidence: _evidence, ...withoutEvidence } = fiscal;
+    expectRefusal(verifyTaxQuoteRequest(withoutEvidence as typeof fiscal), "tax_reference_conflict", "/evidenceDigest");
+  });
+
+  it("compares a successful kind to the request purpose without evidence", () => {
+    const { evidence: _evidence, evidenceDigest: _digest, ...result } = successful();
+    expectRefusal(verifyTaxQuoteResult(request, { ...result, kind: "estimate" } as TaxQuoteResultV1), "tax_reference_conflict", "/kind");
+  });
+
   it("partial_documents_preserve_integrity_checks", () => {
     const required = [{ ...request.input.required[0], taxKind: 1 as unknown as string }, ...request.input.required.slice(1)];
     const incomplete = { ...request, input: { ...request.input, required } };
     expect(verifyTaxQuoteRequest({ ...incomplete, input: { ...incomplete.input,
       coverage: { ...request.input.coverage, accountRef: "another-account" },
     } })).toEqual(conflict("/input/coverage/accountRef"));
-    expect(verifyTaxQuoteRequest(incomplete)).toMatchObject({ code: "tax_invalid_input", field: "/input/required/0/taxKind" });
+    expectRefusal(verifyTaxQuoteRequest(incomplete), "tax_reference_conflict", "/inputDigest");
+    expectRefusal(verifyTaxQuoteRequest({ ...incomplete, inputDigest: taggedDigest("input", incomplete.input) }),
+      "tax_invalid_input", "/input/required/0/taxKind");
 
     const malformed = { ...successful({ ...receipt, requestKey: "another-key" }), kind: 1 };
     expect(verifyTaxQuoteResult(request, malformed as unknown as TaxQuoteResultV1)).toEqual(conflict("/evidence/requestKey"));
@@ -1032,12 +1083,13 @@ describe("tax document decoders", () => {
       [{ ...result, money: { ...money, components: null } }, "/money/components"],
       [{ ...result, money: { ...money, components: [{ ...first, allocations: [missingAfter] }, ...remaining] } },
         "/money/components/0/allocations/0/after"],
-      [{ ...result, money: { ...money, get payableMinor() { throw new Error("Accessor must not run."); } } }, "/money/payableMinor"],
     ] as const) {
       expect(verifyTaxQuoteResult(request, bad as unknown as TaxQuoteResultV1)).toMatchObject({
         kind: "refused", code: field === "/kind" ? "tax_reference_conflict" : "tax_invalid_input", field,
       });
     }
+    const accessor = { ...result, money: { ...money, get payableMinor() { throw new Error("Accessor must not run."); } } };
+    expectRefusal(verifyTaxQuoteResult(request, accessor), "tax_reference_conflict", "");
   });
 
   it("validates close, commit and reversal envelopes", () => {

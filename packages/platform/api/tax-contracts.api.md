@@ -20,6 +20,7 @@ declare class ParseError extends Error {
     readonly code: TaxRefusalCode;
     constructor(message: string, field: string, code: TaxRefusalCode);
 }
+export declare const taxReferenceRemedy = "Replay the intended original request under its original key with its original digest and, where applicable, its matching calculation evidence and original digests. For fiscal validity, obtain fresh charge-time input from the original scope without copying or relabelling scope members.";
 export declare const exclusiveTaxRemedy = "Use the existing inclusive quote path for inclusive-tax quotes. This port version calculates exclusive tax.";
 export declare function invalid(field: string, remedy?: string, code?: TaxRefusalCode): never;
 export declare function object<R extends Fields, O extends Fields = Record<never, never>>(required: R, optional?: O): Decode<Decoded<R> & Partial<Decoded<O>>>;
@@ -85,7 +86,7 @@ import type { Decode, Schema } from "./decode.js";
 import type { TaxCalculationEvidenceV1, TaxCalculationRefV1, TaxCloseReasonV1, TaxCommitRequestV1, TaxCoverageInputV1, TaxCoverageV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxReverseRequestV1, TaxScopeV1 } from "./types.js";
 export declare const ref: Decode<string>;
 export declare const moneyRef: Decode<string>;
-export declare const digest: Decode<string>;
+export declare const isTaxDigest: (v: unknown) => v is string;
 export declare const instant: Decode<string>;
 export declare const unsigned: Decode<number>;
 export declare const rate: Decode<string>;
@@ -95,40 +96,15 @@ declare const intervalFields: Decode<{
     until: string;
 }>>;
 export declare const interval: Decode<ReturnType<typeof intervalFields>>;
-export declare const scopeMode: Decode<"live" | "test">;
 export declare const scope: Decode<TaxScopeV1>;
-type Cell = TaxCoverageInputV1["required"][number];
-export declare const targetKind: Decode<"line" | "delivery" | "fee">;
-export declare const cell: Decode<Cell>;
-type TaxDeclaration = TaxCoverageV1["declarations"][number];
-export declare const declaration: Decode<TaxDeclaration>;
 export declare const taxCoverageV1Schema: Schema<TaxCoverageV1>;
 export declare const coverageInputSchema: Schema<TaxCoverageInputV1>;
-type QuoteDocument = Omit<TaxQuoteInputV1, "money"> & {
-    money: Omit<TaxQuoteInputV1["money"], "amountBasis"> & {
-        amountBasis: "exclusive" | "inclusive";
-    };
-};
-export declare function checkQuoteMoney(parsed: TaxQuoteInputV1["money"], field: string): void;
-export declare const quotePurpose: Decode<"final" | "estimate">;
-export declare function checkQuoteInput(parsed: QuoteDocument, field: string): asserts parsed is TaxQuoteInputV1;
-type QuoteRequestDocument = Omit<TaxQuoteRequestV1, "input"> & {
-    input: QuoteDocument;
-};
-export declare const quoteRequestFields: Decode<QuoteRequestDocument>;
+export declare function checkCoverageAccount(input: Pick<TaxQuoteInputV1, "scope" | "coverage">, field: string): void;
 export declare const taxQuoteRequestV1Schema: Schema<TaxQuoteRequestV1>;
 export declare const quoteInputSchema: Schema<TaxQuoteInputV1>;
 export declare const parseQuoteKey: (key: unknown) => string;
-export declare const evidenceFields: Decode<TaxCalculationEvidenceV1>;
-export declare function checkEvidence(parsed: TaxCalculationEvidenceV1, field: string): void;
-export declare function reconcileEvidence(parsed: TaxCalculationEvidenceV1, field: string, join: "browser" | "fiscal" | "money"): void;
 export declare const taxCalculationEvidenceV1Schema: Schema<TaxCalculationEvidenceV1>;
-type FiscalValidityDocument = Omit<TaxFiscalValidityRequestV1, "original" | "current"> & {
-    original: QuoteRequestDocument;
-    current: QuoteDocument;
-};
-export declare const fiscalValidityFields: Decode<FiscalValidityDocument>;
-export declare function checkChargeDate(parsed: TaxFiscalValidityRequestV1): void;
+export declare const quoteEvidenceSchema: Schema<TaxCalculationEvidenceV1>;
 export declare const taxFiscalValidityRequestV1Schema: Schema<TaxFiscalValidityRequestV1>;
 export declare const taxCloseInputV1Schema: Schema<{
     ref: TaxCalculationRefV1;

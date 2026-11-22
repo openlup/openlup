@@ -116,6 +116,15 @@ export declare function checkedQuoteRequest(request: TaxQuoteRequestV1): TaxQuot
 export declare function checkedFiscalValidity(request: TaxFiscalValidityRequestV1): TaxFiscalValidityRequestV1 | TaxRefusal;
 /** Verify quote or fiscal-validity integrity before input validation and reconciliation. */
 export declare function verifyTaxQuoteRequest(request: TaxQuoteRequestV1 | TaxFiscalValidityRequestV1): TaxRefusal | undefined;
+type CheckedQuoteResult = {
+    original: TaxQuoteRequestV1;
+    result?: Omit<Extract<TaxQuoteResultV1, {
+        kind: "final" | "estimate";
+    }>, "evidence"> & {
+        evidence: TaxCalculationEvidenceV1;
+    };
+};
+export declare function checkedQuoteResult(request: TaxQuoteRequestV1, result: TaxQuoteResultV1): CheckedQuoteResult | TaxRefusal;
 /** Verify quote and evidence integrity before validating and reconciling a successful result. */
 export declare function verifyTaxQuoteResult(request: TaxQuoteRequestV1, result: TaxQuoteResultV1): TaxRefusal | undefined;
 export {};

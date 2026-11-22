@@ -1,5 +1,5 @@
 import { CatalogueMoneyV2Error, isCatalogueMoneyV2RateDecimal, planCatalogueMoneyV2 } from "@openlup/core/pricing";
-import { array, checked, exclusiveTaxRemedy, invalid, object, oneOf, schema, unique, variant } from "./decode.js";
+import { array, checked, exclusiveTaxRemedy, invalid, object, oneOf, schema, taxReferenceRemedy, unique, variant } from "./decode.js";
 import type { Decode, Schema } from "./decode.js";
 import { cellKey, compareCells, compareDeclarations, decisionIsPossible, declarationKey, includesInstant, permitsAssessment, sameCell } from "./identity.js";
 import type {
@@ -15,8 +15,8 @@ function text(max: number): Decode<string> {
 export const ref = text(256);
 export const moneyRef = text(128);
 const addressText = text(512);
-export const digest = checked((v): v is string => typeof v === "string" && v.length === 64 && /^[0-9a-f]+$/.test(v),
-  "Supply a lowercase SHA-256 hex digest.");
+export const isTaxDigest = (v: unknown): v is string => typeof v === "string" && v.length === 64 && /^[0-9a-f]+$/.test(v);
+const digest = checked(isTaxDigest, "Supply a lowercase SHA-256 hex digest.");
 export const instant = checked((v): v is string => typeof v === "string" && v.length === 24 && Number.isFinite(Date.parse(v))
   && new Date(v).toISOString() === v, "Supply a UTC instant with millisecond precision.");
 const signed = checked((v): v is number => typeof v === "number" && Number.isSafeInteger(v) && !Object.is(v, -0),
@@ -31,44 +31,33 @@ export const rate = checked(isCatalogueMoneyV2RateDecimal,
   "Supply a decimal percent from 0 to 9007199254.740991 with up to six fractional digits and no extra leading zeros.");
 
 const intervalFields = object({ from: instant }, { until: instant });
-function checkInterval({ from, until }: Readonly<{ from: string; until?: string }>, field: string): void {
-  if (until !== undefined && from >= until) invalid(field + "/until", "Supply an end after the start.");
-}
 export const interval: Decode<ReturnType<typeof intervalFields>> = (value, field) => {
   const parsed = intervalFields(value, field);
-  checkInterval(parsed, field);
+  if (parsed.until !== undefined && parsed.from >= parsed.until) invalid(field + "/until", "Supply an end after the start.");
   return parsed;
 };
 
-export const scopeMode = oneOf("test", "live");
-export const scope: Decode<TaxScopeV1> = object({ adapter: ref, adapterVersion: ref, accountRef: ref, mode: scopeMode });
+export const scope: Decode<TaxScopeV1> = object({ adapter: ref, adapterVersion: ref, accountRef: ref, mode: oneOf("test", "live") });
 const assignment = { taxClass: ref, assignmentRef: ref };
 type Cell = TaxCoverageInputV1["required"][number];
-export const targetKind = oneOf("line", "delivery", "fee");
 const target = variant<Cell["target"]>("kind", {
   line: object({ kind: oneOf("line"), key: ref }),
   delivery: object({ kind: oneOf("delivery"), key: ref }),
   fee: object({ kind: oneOf("fee"), key: ref, ...assignment }, { deliveryKey: ref }),
 });
-export const cell: Decode<Cell> = object({ target, jurisdiction: ref, level: ref, taxKind: ref, sourcing: oneOf("destination", "ship_from") });
-const declarationFields = { jurisdiction: ref, taxKind: ref, effective: intervalFields, actorRef: ref, recordedAt: instant };
-type TaxDeclaration = TaxCoverageV1["declarations"][number];
-export const declaration: Decode<TaxDeclaration> = variant<TaxDeclaration>("status", {
+const cell = object({ target, jurisdiction: ref, level: ref, taxKind: ref, sourcing: oneOf("destination", "ship_from") });
+const declarationFields = { jurisdiction: ref, taxKind: ref, effective: interval, actorRef: ref, recordedAt: instant };
+const declaration = variant<TaxCoverageV1["declarations"][number]>("status", {
   registered: object({ ...declarationFields, status: oneOf("registered") }),
   not_registered_acknowledged: object({ ...declarationFields, status: oneOf("not_registered_acknowledged"), acknowledgementRef: ref }),
 });
-const registration = object({ state: oneOf("active", "inactive"), effective: intervalFields, evidenceRef: ref });
+const registration = object({ state: oneOf("active", "inactive"), effective: interval, evidenceRef: ref });
 const treatment = object({ kind: oneOf("taxable", "exempt", "not_applicable"), reason: ref, ruleRef: ref });
-const observationFields = object({ cell }, { registration, treatment, assessedMinor: unsigned });
-const observation: typeof observationFields = (value, field) => {
-  const parsed = observationFields(value, field);
-  if (parsed.registration) checkInterval(parsed.registration.effective, field + "/registration/effective");
-  return parsed;
-};
+const observation = object({ cell }, { registration, treatment, assessedMinor: unsigned });
 
 const coverageFields = object({ schemaVersion: oneOf(1), accountRef: ref, revision: ref, declarations: array(declaration) });
-function checkCoverage(parsed: TaxCoverageV1, field: string): void {
-  parsed.declarations.forEach((entry, index) => checkInterval(entry.effective, field + "/declarations/" + index + "/effective"));
+function coverage(value: unknown, field: string): TaxCoverageV1 {
+  const parsed = coverageFields(value, field);
   const sorted = parsed.declarations.map((entry, index) => ({ entry, index }))
     .sort((a, b) => compareDeclarations(a.entry, b.entry));
   for (let i = 1; i < sorted.length; i++) {
@@ -78,17 +67,11 @@ function checkCoverage(parsed: TaxCoverageV1, field: string): void {
       invalid(field + "/declarations/" + sorted[i].index + "/effective", "Use nonoverlapping declarations for this jurisdiction and tax kind.");
     }
   }
-}
-
-function coverage(value: unknown, field: string): TaxCoverageV1 {
-  const parsed = coverageFields(value, field);
-  checkCoverage(parsed, field);
   return parsed;
 }
 
-const cells = array(cell);
 function requiredCells(value: unknown, field: string): readonly Cell[] {
-  const rows = cells(value, field);
+  const rows = array(cell)(value, field);
   unique(rows, cellKey, field);
   return rows;
 }
@@ -102,17 +85,18 @@ const adjustmentTarget = (value: unknown, field: string): { lineKeys: string[] }
   typeof value === "object" && value !== null && Object.hasOwn(value, "lineKeys")
     ? object({ lineKeys: array(moneyRef, 256) })(value, field) : object({ bucketKey: moneyRef })(value, field);
 const moneyFields = object({
-  amountBasis: oneOf("exclusive", "inclusive"),
+  amountBasis(value: unknown, field: string) {
+    if (value === "inclusive") invalid(field, exclusiveTaxRemedy, "tax_scope_mismatch");
+    return oneOf("exclusive")(value, field);
+  },
   sources: array(object({ lineKey: moneyRef, sourceOrdinal: unsigned, quantity: unsigned, unitBasisMinor: unsigned }), 256),
   delivery: array(object({ bucketKey: moneyRef, deliveryKind: oneOf("shipping", "handling"), amountMinor: unsigned }), 256),
   adjustments: array(object({ adjustmentRef: moneyRef, sequence: unsigned, amountMinor: unsigned, target: adjustmentTarget }), 256),
   fees: array(checked((_v): _v is never => false, "Supply an empty list. The tax adapter determines fees."), 0),
 });
 
-type QuoteDocument = Omit<TaxQuoteInputV1, "money"> & {
-  money: Omit<TaxQuoteInputV1["money"], "amountBasis"> & { amountBasis: "exclusive" | "inclusive" };
-};
-export function checkQuoteMoney(parsed: TaxQuoteInputV1["money"], field: string): void {
+function money(value: unknown, field: string): TaxQuoteInputV1["money"] {
+  const parsed = moneyFields(value, field);
   try {
     const { components } = planCatalogueMoneyV2(parsed);
     const basis = components.reduce((sum, item) => sum + BigInt(item.effectiveMinor), 0n);
@@ -124,6 +108,7 @@ export function checkQuoteMoney(parsed: TaxQuoteInputV1["money"], field: string)
     const pointer = error.field.replace(/\.preDiscountMinor$/, "").replace(/\[(\d+)\]/g, ".$1").replaceAll(".", "/");
     invalid(field + "/" + pointer, error.remedy, error.code === "money_amount_out_of_range" ? "tax_amount_out_of_range" : "tax_invalid_input");
   }
+  return parsed;
 }
 
 const line = object({ ...assignment, lineKey: moneyRef, sku: ref, mode: oneOf("one_time", "subscription") });
@@ -134,11 +119,10 @@ const delivery = object({
 const address = object({ line1: addressText, city: addressText, postalCode: addressText, countryCode: addressText },
   { line2: addressText, subdivisionCode: addressText });
 const destination = object({ snapshotRef: ref, digest, policyRevision: ref, address });
-export const quotePurpose = oneOf("final", "estimate");
-const quoteDocument = object({
-  scope, market: ref, currency: ref, money: moneyFields, purpose: quotePurpose, taxDate: instant, destination,
+const quoteFields = object({
+  scope, market: ref, currency: ref, money, purpose: oneOf("final", "estimate"), taxDate: instant, destination,
   shipFromRef: ref, policyRevision: ref, classMapRevision: ref, lines: array(line, 256), delivery: array(delivery, 256),
-  required: cells, coverage: coverageFields,
+  required: requiredCells, coverage,
 });
 
 function bindComponents<T>(
@@ -153,13 +137,16 @@ function bindComponents<T>(
   return expected;
 }
 
-export function checkQuoteInput(parsed: QuoteDocument, field: string): asserts parsed is TaxQuoteInputV1 {
-  if (parsed.money.amountBasis === "inclusive") invalid(field + "/money/amountBasis", exclusiveTaxRemedy, "tax_scope_mismatch");
-  unique(parsed.required, cellKey, field + "/required");
-  checkCoverage(parsed.coverage, field + "/coverage");
-  if (parsed.coverage.accountRef !== parsed.scope.accountRef) {
-    invalid(field + "/coverage/accountRef", "Supply coverage for the selected account.");
+export function checkCoverageAccount(input: Pick<TaxQuoteInputV1, "scope" | "coverage">, field: string): void {
+  const account = input.coverage?.accountRef;
+  if (typeof account !== "string" || account !== input.scope?.accountRef) {
+    invalid(field + "/coverage/accountRef", taxReferenceRemedy, "tax_reference_conflict");
   }
+}
+
+function quote(value: unknown, field: string): TaxQuoteInputV1 {
+  const parsed = quoteFields(value, field);
+  checkCoverageAccount(parsed, field);
   const lines = bindComponents(parsed.lines, parsed.money.sources.map(item => item.lineKey), item => item.lineKey, field + "/lines");
   const buckets = bindComponents(parsed.delivery, parsed.money.delivery.map(item => item.bucketKey), item => item.bucketKey, field + "/delivery");
   parsed.required.forEach(({ target }, index) => {
@@ -175,19 +162,11 @@ export function checkQuoteInput(parsed: QuoteDocument, field: string): asserts p
     || [...buckets].some(key => !requiredTargets.has(JSON.stringify(["delivery", key])))) {
     invalid(field + "/required", "Supply a tax cell for every merchandise source and delivery bucket.");
   }
-}
-
-function quote(value: unknown, field: string): TaxQuoteInputV1 {
-  const parsed = quoteDocument(value, field);
-  checkQuoteInput(parsed, field);
-  checkQuoteMoney(parsed.money, field + "/money");
   return parsed;
 }
 
 const quoteEnvelope = { key: ref, inputDigest: digest };
 const quoteRequest = object({ ...quoteEnvelope, input: quote });
-type QuoteRequestDocument = Omit<TaxQuoteRequestV1, "input"> & { input: QuoteDocument };
-export const quoteRequestFields: Decode<QuoteRequestDocument> = object({ ...quoteEnvelope, input: quoteDocument });
 export const taxQuoteRequestV1Schema: Schema<TaxQuoteRequestV1> = schema(quoteRequest);
 export const quoteInputSchema: Schema<TaxQuoteInputV1> = schema(quote);
 export const parseQuoteKey = (key: unknown): string => ref(key, "/key");
@@ -196,7 +175,7 @@ const coverageRow = object({
   cell, decision: oneOf("undeclared", "in_scope_taxed", "in_scope_exempt", "out_of_scope", "inconsistent", "unavailable_evidence"),
 }, { declaration, registration, treatment });
 const coverageEvidence = object({ vector: array(coverageRow), digest });
-const resolution = object({ assignmentRef: ref, policyRevision: ref, sourceRef: ref, effective: intervalFields }, { sourceDigest: digest });
+const resolution = object({ assignmentRef: ref, policyRevision: ref, sourceRef: ref, effective: interval }, { sourceDigest: digest });
 const position = object({
   positionRef: moneyRef, cell, taxabilityReason: ref, ruleRef: ref, resolution, resolutionDigest: digest,
 }, { ratePercent: rate, providerLineRef: ref });
@@ -207,86 +186,64 @@ const feeScope = variant<Fee["scope"]>("kind", {
 });
 const fee = object({ feeKey: moneyRef, jurisdiction: ref, feeKind: ref, scope: feeScope,
   refundRule: object({ ref, revision: ref }) }, { providerPositionRef: ref });
-export const evidenceFields: Decode<TaxCalculationEvidenceV1> = object({
-  requestKey: ref, scope, calculationRef: ref, status: quotePurpose, calculatedAt: instant, expiresAt: instant, taxDate: instant,
+const evidenceFields = object({
+  requestKey: ref, scope, calculationRef: ref, status: oneOf("final", "estimate"), calculatedAt: instant, expiresAt: instant, taxDate: instant,
   destinationDigest: digest, shipFromRef: ref, inputDigest: digest, policyRevision: ref, classMapRevision: ref,
   coverage: coverageEvidence, fiscalDigest: digest, positions: object({ tax: array(position), fees: array(fee) }),
 }, { providerLines: array(object({ lineKey: ref, providerLineRef: ref })) });
 
-export function checkEvidence(parsed: TaxCalculationEvidenceV1, field: string): void {
+function evidence(value: unknown, field: string, bindCells = true): TaxCalculationEvidenceV1 {
+  const parsed = evidenceFields(value, field);
   if (parsed.calculatedAt >= parsed.expiresAt) invalid(field + "/expiresAt", "Supply an expiry after calculation.");
   const { vector } = parsed.coverage;
   vector.forEach((row, index) => {
     const path = field + "/coverage/vector/" + index;
     if (index > 0 && compareCells(vector[index - 1].cell, row.cell) >= 0) invalid(path, "Supply uniquely ordered coverage cells.");
-    if (row.declaration) checkInterval(row.declaration.effective, path + "/declaration/effective");
-    if (row.registration) checkInterval(row.registration.effective, path + "/registration/effective");
-  });
-  parsed.positions.tax.forEach((row, index) => checkInterval(row.resolution.effective, field + "/positions/tax/" + index + "/resolution/effective"));
-  if (parsed.providerLines) {
-    unique(parsed.providerLines, item => item.lineKey, field + "/providerLines", "tax_breakdown_incomplete");
-    unique(parsed.providerLines, item => item.providerLineRef, field + "/providerLines", "tax_breakdown_incomplete");
-  }
-  unique(parsed.positions.tax, item => item.positionRef, field + "/positions/tax", "tax_breakdown_incomplete");
-  unique(parsed.positions.fees, item => item.feeKey, field + "/positions/fees", "tax_breakdown_incomplete");
-}
-
-export function reconcileEvidence(parsed: TaxCalculationEvidenceV1, field: string, join: "browser" | "fiscal" | "money"): void {
-  const { vector } = parsed.coverage;
-  vector.forEach((row, index) => {
-    const path = field + "/coverage/vector/" + index;
     if (row.declaration && (declarationKey(row.declaration) !== declarationKey(row.cell)
       || !includesInstant(row.declaration.effective, parsed.taxDate))) invalid(path + "/declaration", "Supply the effective declaration for this cell.");
     if (row.registration && !includesInstant(row.registration.effective, parsed.taxDate)) {
       invalid(path + "/registration", "Supply the registration effective on the tax date.");
     }
     if ((parsed.status === "final" && !permitsAssessment("tax", row.decision, 0))
-      || ((join !== "browser" || permitsAssessment("tax", row.decision, 0)) && !decisionIsPossible(row))) {
+      || (permitsAssessment("tax", row.decision, 0) && !decisionIsPossible(row))) {
       invalid(path + "/decision", "Reconcile the named cell from effective observations.", "tax_calculation_unusable");
     }
   });
+  if (parsed.providerLines) {
+    unique(parsed.providerLines, item => item.lineKey, field + "/providerLines", "tax_breakdown_incomplete");
+    unique(parsed.providerLines, item => item.providerLineRef, field + "/providerLines", "tax_breakdown_incomplete");
+  }
+  unique(parsed.positions.tax, item => item.positionRef, field + "/positions/tax", "tax_breakdown_incomplete");
+  unique(parsed.positions.fees, item => item.feeKey, field + "/positions/fees", "tax_breakdown_incomplete");
   const cells = new Map(vector.map(row => [cellKey(row.cell), row]));
-  const code = join === "fiscal" ? "tax_breakdown_incomplete" : "tax_invalid_input";
   parsed.positions.tax.forEach((item, index) => {
     const bound = cells.get(cellKey(item.cell));
     const path = field + "/positions/tax/" + index;
-    if (join !== "money" && (!bound || item.cell.target.kind === "fee" || !sameCell(bound.cell, item.cell)
-      || !permitsAssessment("tax", bound.decision, 0))) invalid(path + "/cell", "Bind the position to a resolved tax cell.", code);
+    if (bindCells && (!bound || item.cell.target.kind === "fee" || !sameCell(bound.cell, item.cell)
+      || !permitsAssessment("tax", bound.decision, 0))) invalid(path + "/cell", "Bind the position to a resolved tax cell.");
     if (!includesInstant(item.resolution.effective, parsed.taxDate)) {
       invalid(path + "/resolution/effective", "Supply a rule resolution effective on the tax date.");
     }
   });
-  if (join !== "money") parsed.positions.fees.forEach((item, index) => {
+  if (bindCells) parsed.positions.fees.forEach((item, index) => {
     const key = JSON.stringify(["fee", item.feeKey, item.jurisdiction, item.feeKind]);
     const bound = cells.get(key);
     if (bound?.cell.target.kind !== "fee" || !permitsAssessment("fee", bound.decision, 0)
       || bound.cell.target.deliveryKey !== (item.scope.kind === "delivery" ? item.scope.key : undefined)) {
-      invalid(field + "/positions/fees/" + index, "Bind the fee to the matching in-scope fee cell.", code);
+      invalid(field + "/positions/fees/" + index, "Bind the fee to the matching in-scope fee cell.");
     }
   });
-}
-
-function evidence(value: unknown, field: string): TaxCalculationEvidenceV1 {
-  const parsed = evidenceFields(value, field);
-  checkEvidence(parsed, field);
-  reconcileEvidence(parsed, field, "browser");
   return parsed;
 }
 export const taxCalculationEvidenceV1Schema: Schema<TaxCalculationEvidenceV1> = schema(evidence);
+// The Node quote verifier joins these rows with money before checking their cell bindings.
+export const quoteEvidenceSchema: Schema<TaxCalculationEvidenceV1> = schema((value, field) => evidence(value, field, false));
 
 const validityEnvelope = { evidenceDigest: digest, chargeAt: instant };
-type FiscalValidityDocument = Omit<TaxFiscalValidityRequestV1, "original" | "current"> & {
-  original: QuoteRequestDocument; current: QuoteDocument;
-};
-export const fiscalValidityFields: Decode<FiscalValidityDocument> =
-  object({ original: quoteRequestFields, evidence: evidenceFields, ...validityEnvelope, current: quoteDocument });
 const validityFields = object({ original: quoteRequest, evidence, ...validityEnvelope, current: quote });
-export function checkChargeDate(parsed: TaxFiscalValidityRequestV1): void {
-  if (parsed.current.taxDate !== parsed.chargeAt) invalid("/current/taxDate", "Use the charge instant as the current fiscal date.");
-}
 export const taxFiscalValidityRequestV1Schema: Schema<TaxFiscalValidityRequestV1> = schema((value, field) => {
   const parsed = validityFields(value, field);
-  checkChargeDate(parsed);
+  if (parsed.current.taxDate !== parsed.chargeAt) invalid("/current/taxDate", "Use the charge instant as the current fiscal date.");
   return parsed;
 });
 

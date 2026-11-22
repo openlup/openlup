@@ -3270,8 +3270,8 @@ later tax instant and compare the verified results with
 `compareTaxRecalculationProbe`.
 
 Call `verifyTaxQuoteRequest` for quotes and fiscal-validity requests and
-`verifyTaxQuoteResult` before using successful results. They check integrity
-first and give one remedy per refusal code. Replay matching originals with their
+`verifyTaxQuoteResult` before using successful results. They take a canonical
+snapshot and check its integrity first, with one remedy per refusal code. Replay matching originals with their
 key and digests. Obtain fresh charge-time input under the original scope for
 validity. The port maps a verifier refusal to effect-free
 `tax_fiscal_validity_unavailable`.
