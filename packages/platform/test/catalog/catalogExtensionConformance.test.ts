@@ -66,21 +66,17 @@ describe("subscription profile pack conformance", () => {
   });
 
   it.each([
-    ["25000", "catalog_profile_install_requires_read_committed", undefined, "", "Retry in a READ COMMITTED transaction."],
-    ["23505", "catalog_profile_install_refuses_redefinition", ref, "/subscriptionProfileDefinitions/0", replayFix],
-    ["22023", "catalog_profile_install_manifest_mismatch", ref, "/subscriptionProfileDefinitions/0", replayFix],
-    ["22023", "catalog_profile_install_manifest_mismatch", undefined, "", replayFix],
-    ["23505", "catalog_type_install_refuses_redefinition", { key: "stationery:item", version: 1 }, "/types/0", replayFix],
-    ["23505", "catalog_definition_install_conflict", undefined, "", replayFix],
-    ["23505", "catalog_profile_install_refuses_redefinition", { ...ref, version: 2 }, "", replayFix],
-  ] as const)("adds an installer fix to SQLSTATE %s %s with detail %j", async (code, message, detail, path, fix) => {
-    const input = withCatalogPublicationRules({ ...optedIn, types: pack().types,
-      subscriptionProfileDefinitions: message === "catalog_type_install_refuses_redefinition" ? [] : optedIn.subscriptionProfileDefinitions } as CatalogPackInput, () => Buffer.from(artifact));
-    const error = Object.assign(new Error(message), { code, detail: JSON.stringify(detail) });
+    ["25000", "catalog_profile_install_requires_read_committed", "Retry in a READ COMMITTED transaction."],
+    ["23505", "catalog_profile_install_refuses_redefinition", replayFix],
+    ["22023", "catalog_profile_install_manifest_mismatch", replayFix],
+    ["23505", "catalog_type_install_refuses_redefinition", replayFix],
+    ["23505", "catalog_definition_install_conflict", replayFix],
+  ] as const)("adds a root installer fix to SQLSTATE %s %s", async (code, message, fix) => {
+    const error = Object.assign(new Error(message), { code });
     const query = vi.fn().mockRejectedValue(error);
-    await expect(installCatalogDefinitions({ query }, input)).rejects.toBe(error);
+    await expect(installCatalogDefinitions({ query }, optedIn as CatalogPackInput)).rejects.toBe(error);
     expect(error).toMatchObject({ code, message });
-    expect(error).toHaveProperty("issue", { code: message, path, fix });
+    expect(error).toHaveProperty("issue", { code: message, path: "", fix });
   });
 
   async function checkRefusal(input: unknown, issue: { code: string; path: string; fix: string }) {

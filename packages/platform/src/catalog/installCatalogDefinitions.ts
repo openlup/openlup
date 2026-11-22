@@ -1,32 +1,19 @@
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
 import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
-import type { CatalogProductTypeRef } from "./contracts/productTypes.js";
 import { catalogDefinitionJson } from "./catalogDefinitionDigest.js";
 import { prepareCatalogPackManifest } from "./catalogPackManifest.js";
 import { inspectCatalogPack, invalidCatalogPack } from "./productTypeIssues.js";
 import { verifyCatalogRulesAtInstall } from "./publicationRules.js";
 
 const replayFix = "Replay the original declaration bytes, digest and identity together. Issue a new version for an intentional change.";
-type DeclarationField = "subscriptionProfileDefinitions" | "types";
-const sqlInstallFixes = new Map<string, { fix: string; field?: DeclarationField }>([
-  ["25000:catalog_profile_install_requires_read_committed", { fix: "Retry in a READ COMMITTED transaction." }],
-  ["23505:catalog_profile_install_refuses_redefinition", { fix: replayFix, field: "subscriptionProfileDefinitions" }],
-  ["22023:catalog_profile_install_manifest_mismatch", { fix: replayFix, field: "subscriptionProfileDefinitions" }],
-  ["23505:catalog_type_install_refuses_redefinition", { fix: replayFix, field: "types" }],
-  ["23505:catalog_definition_install_conflict", { fix: replayFix }],
+const sqlInstallFixes = new Map([
+  ["25000:catalog_profile_install_requires_read_committed", "Retry in a READ COMMITTED transaction."],
+  ["23505:catalog_profile_install_refuses_redefinition", replayFix],
+  ["22023:catalog_profile_install_manifest_mismatch", replayFix],
+  ["23505:catalog_type_install_refuses_redefinition", replayFix],
+  ["23505:catalog_definition_install_conflict", replayFix],
 ]);
-
-function declarationPath(pack: CatalogPackInput, field: DeclarationField | undefined, detail: unknown): string {
-  if (!field || typeof detail !== "string") return "";
-  let ref: CatalogProductTypeRef | null;
-  try { ref = JSON.parse(detail) as CatalogProductTypeRef | null; }
-  catch { return ""; }
-  const entries = pack[field] ?? [];
-  const matches = ({ key, version }: CatalogProductTypeRef) => key === ref?.key && version === ref?.version;
-  const index = entries.findIndex(matches);
-  return index >= 0 && !entries.slice(index + 1).some(matches) ? `/${field}/${index}` : "";
-}
 
 /** Supply the native migration-owner executor explicitly. No runtime binding or hook is created.
  * @experimental
@@ -56,16 +43,14 @@ export async function installCatalogDefinitions(installExecutor: PgQueryExecutor
     if (error instanceof Error && "code" in error && error.code === "22023"
       && error.message === "definition_unknown_profile_ref" && "detail" in error && typeof error.detail === "string") {
       const ref = JSON.parse(error.detail) as { key: string; version: number };
-      const index = pack.subscriptionProfiles?.findIndex(({ key, version }) => key === ref.key && version === ref.version) ?? -1;
+      const index = manifest.subscriptionProfiles.findIndex(({ key, version }) => key === ref.key && version === ref.version);
       if (index >= 0) Object.assign(error, { issue: {
         code: "definition_unknown_profile_ref", path: `/subscriptionProfiles/${index}`, ref,
         fix: `Install or declare ${ref.key}@${ref.version}.`,
       } });
     } else if (error instanceof Error && "code" in error && typeof error.code === "string") {
-      const remedy = sqlInstallFixes.get(`${error.code}:${error.message}`);
-      if (remedy) Object.assign(error, { issue: {
-        code: error.message, path: declarationPath(pack, remedy.field, "detail" in error ? error.detail : undefined), fix: remedy.fix,
-      } });
+      const fix = sqlInstallFixes.get(`${error.code}:${error.message}`);
+      if (fix) Object.assign(error, { issue: { code: error.message, path: "", fix } });
     }
     throw error;
   });

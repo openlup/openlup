@@ -74,6 +74,18 @@ async function install(db: Pool | PoolClient, input: ReturnType<typeof request>)
   return rows[0].receipt;
 }
 
+async function expectLegacyInstallRefusals() {
+  const conflict = { ...legacyPack, capabilities: { publish: false } };
+  const redefinition = { ...legacyPack, id: "example:legacy-redefinition",
+    types: [{ ...legacyPack.types[0], dimensions: [{ key: "flag", kind: "boolean" as const }] }] };
+  for (const [input, message] of [[conflict, "catalog_definition_install_conflict"],
+    [redefinition, "catalog_type_install_refuses_redefinition"]] as const) {
+    const error = await installCatalogDefinitions(owner, input).catch((error: unknown) => error);
+    expect(error).toMatchObject({ code: "23505", message, detail: undefined });
+    expect(error).not.toHaveProperty("issue");
+  }
+}
+
 beforeAll(async () => {
   container = await runPostgresContainer({ name: `catalog-profiles-${process.pid}`, password: "synthetic-profiles" });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Catalogue profile PostgreSQL unavailable");
@@ -101,9 +113,12 @@ beforeAll(async () => {
   upgradeReceipt = await installCatalogDefinitions(owner, upgradePack);
   savedUpgradeRow = await packRow(upgradePack.id);
   await bootstrap.query("ALTER ROLE profile_owner NOSUPERUSER NOBYPASSRLS");
+  await expectLegacyInstallRefusals();
   await owner.query(readFileSync(forward, "utf8"));
 }, postgresSetupTimeoutMs);
 afterAll(() => closePostgres(container, pools), postgresTeardownTimeoutMs);
+
+it("preserves both pre-forward legacy 23505 refusals", expectLegacyInstallRefusals);
 
 it("C-2 preserves a pre-forward reference-only replay with duplicate refs and an installed type", async () => {
   expect(catalogPackManifest(legacyPack).subscriptionProfiles).toEqual([ref, ref]);
@@ -197,10 +212,10 @@ it.each(["both", "new-only"])("AM-1 installs and replays P@2 with %s declaration
   const changed = await installCatalogDefinitions(owner, {
     ...second, subscriptionProfileDefinitions: [v2, declaration(p1, 29)],
   }).catch((error: unknown) => error);
-  expect(changed).toMatchObject({ code: "23505", message: "catalog_profile_install_refuses_redefinition" });
+  expect(changed).toMatchObject({ code: "23505", message: "catalog_profile_install_refuses_redefinition", detail: undefined });
   expect((changed as { issue: unknown }).issue).toStrictEqual({
     code: "catalog_profile_install_refuses_redefinition",
-    path: "/subscriptionProfileDefinitions/1",
+    path: "",
     fix: "Replay the original declaration bytes, digest and identity together. Issue a new version for an intentional change.",
   });
   expect(changed).not.toHaveProperty("value");
@@ -262,7 +277,15 @@ it("C-3 installs first declarations after a legacy pack and resolves empty decla
   expect(await installCatalogDefinitions(owner, reuse)).toEqual(replayable);
   const p3 = { ...p2, version: 3 };
   const counts = await installCounts();
-  await expect(installCatalogDefinitions(owner, { ...reuse, version: 4, subscriptionProfiles: [upgradeRef, p2, p3] }))
+  const subscriptionProfiles = [upgradeRef, p2, p3];
+  const executor = {
+    query(text: string, values?: unknown[]) {
+      const pending = owner.query(text, values);
+      subscriptionProfiles.reverse();
+      return pending;
+    },
+  };
+  await expect(installCatalogDefinitions(executor, { ...reuse, version: 4, subscriptionProfiles }))
     .rejects.toMatchObject({ code: "22023", issue: { code: "definition_unknown_profile_ref", path: "/subscriptionProfiles/2", ref: p3 } });
   expect(await installCounts()).toEqual(counts);
 });
