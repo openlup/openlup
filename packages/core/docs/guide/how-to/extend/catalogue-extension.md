@@ -218,6 +218,7 @@ does this for each declaration. The profile and policy digests pin different
 inputs. If the canonical pack manifest exceeds 1,048,576 UTF-8 bytes, split
 the profile declarations across pack versions or packs.
 
+Capture a connected store before opting in; after a profile receipt exists, capture refuses until RS-1.
 After applying the complete native catalogue, roll forward from a legacy
 reference-only pack by issuing a new pack version. If the old pack listed
 `p@1` without declaring it, keep `p@1` on its original type, list the versions
@@ -227,9 +228,7 @@ An identical re-declaration reuses that receipt. Use a new profile version
 to change the declaration. The legacy pack can still replay its original
 receipt.
 
-Connected-store capture refuses a store with installed profile receipts.
-Wait for connected-store restore support for subscription profile receipts
-(RS-1). Native cadence guards still decide whether a cadence can be written.
+Native cadence guards still decide whether a cadence can be written.
 
 ## Upgrade a definition
 

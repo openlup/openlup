@@ -1,6 +1,7 @@
 import { z } from "./validation.js";
 import { validateCatalogSubscriptionProfile, validateCatalogUnitFactor, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogConformanceCode, CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
+import type { CatalogProductTypeRef } from "./contracts/productTypes.js";
 export const catalogNamespacedKeySchema = z.string().max(120).regex(/^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$/u);
 export const catalogDimensionKeySchema = z.string().max(64).regex(/^[a-z][a-z0-9_-]*$/u)
   .refine((key) => !["__proto__", "constructor", "prototype"].includes(key));
@@ -89,12 +90,19 @@ export function catalogProductTypeRefIssues(input: unknown): CatalogDefinitionIs
  * @experimental
  */
 export function catalogProductTypeIssues(definitions: readonly unknown[]): CatalogDefinitionIssue[] {
-  return inspectProductTypes(definitions, false);
+  return inspectProductTypes(definitions);
 }
 
-function inspectProductTypes(definitions: readonly unknown[], optedIn: boolean): CatalogDefinitionIssue[] {
+function inspectProductTypes(definitions: readonly unknown[], profileRefs?: Map<number, CatalogProductTypeRef>): CatalogDefinitionIssue[] {
   const issues: CatalogDefinitionIssue[] = [];
   const identities = new Set<string>();
+  let typeIndex = 0;
+  // Keep a successful ref parse even when a sibling field fails validation.
+  const schema = profileRefs === undefined ? catalogDefinitionMetadataSchema : catalogDefinitionMetadataSchema.extend({
+    subscriptionProfileRef: catalogProductTypeRefSchema.check(({ value, issues }) => {
+      if (issues.length === 0) profileRefs.set(typeIndex, value);
+    }).optional(),
+  });
   const add = (code: CatalogConformanceCode, path: PropertyKey[], fix?: string): void => {
     issues.push({ code, path: pointer(path), ...(fix === undefined ? {} : { fix }) });
   };
@@ -102,11 +110,12 @@ function inspectProductTypes(definitions: readonly unknown[], optedIn: boolean):
     const base: PropertyKey[] = [index];
     if (!input || typeof input !== "object" || Array.isArray(input)) { add("definition_invalid_shape", base); return; }
     const { validateContent, ...metadata } = input as Record<string, unknown>;
-    const result = catalogDefinitionMetadataSchema.safeParse(metadata);
+    typeIndex = index;
+    const result = schema.safeParse(metadata);
     if (typeof validateContent !== "function") add("definition_callback_missing", [...base, "validateContent"]);
     if (!result.success) {
       for (const issue of result.error.issues) {
-        const profileRef = optedIn && issue.path[0] === "subscriptionProfileRef";
+        const profileRef = profileRefs !== undefined && issue.path[0] === "subscriptionProfileRef";
         if (issue.code === "unrecognized_keys") {
           for (const key of issue.keys) add(profileRef ? "definition_profile_ref_invalid" : "definition_unknown_field",
             [...base, ...issue.path, key], profileRef ? `Remove the unexpected property ${JSON.stringify(key)}.` : undefined);
@@ -236,23 +245,24 @@ export function inspectCatalogPack(input: unknown): {
     listed.add(key);
   });
   const profiles = optedIn ? inspectProfileDefinitions(pack.subscriptionProfileDefinitions) : undefined;
-  for (const issue of inspectProductTypes(pack.types, optedIn)) issues.push({ ...issue, path: `/types${issue.path}` });
+  const profileRefs = optedIn ? new Map<number, CatalogProductTypeRef>() : undefined;
+  for (const issue of inspectProductTypes(pack.types, profileRefs)) issues.push({ ...issue, path: `/types${issue.path}` });
   pack.types.forEach((input, index) => {
     if (!input || typeof input !== "object") return;
     const definition = input as Record<string, unknown>;
     if (typeof definition.key === "string" && !definition.key.startsWith(`${pack.namespace}:`)) issues.push({ code: "pack_type_namespace_mismatch", path: `/types/${index}/key` });
     if (typeof definition.taxClass === "string" && !pack.taxClasses.some(({ key }) => key === definition.taxClass)) issues.push({ code: "definition_unknown_tax_class", path: `/types/${index}/taxClass` });
-    const candidate = definition.subscriptionProfileRef;
     if (!optedIn) {
+      const candidate = definition.subscriptionProfileRef;
       if (candidate && typeof candidate === "object") {
         const ref = candidate as Record<string, unknown>;
         if (!refs.some(({ key, version }) => key === ref.key && version === ref.version)) issues.push({
           code: "definition_unknown_profile_ref", path: `/types/${index}/subscriptionProfileRef`,
         });
       }
-    } else if (candidate !== undefined) {
-      const ref = catalogProductTypeRefSchema.safeParse(candidate);
-      if (ref.success && !listed.has(identity(ref.data))) issues.push({
+    } else {
+      const ref = profileRefs?.get(index);
+      if (ref && !listed.has(identity(ref))) issues.push({
         code: "definition_unknown_profile_ref", path: `/types/${index}/subscriptionProfileRef`,
         fix: "List the intended exact profile reference or select an identity already listed in subscriptionProfiles.",
       });

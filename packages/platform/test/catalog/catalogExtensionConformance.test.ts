@@ -57,6 +57,21 @@ describe("subscription profile pack conformance", () => {
     expect(remedies.join(" ")).not.toMatch(/recalculate/i);
   });
 
+  const replayFix = "Replay the original declaration bytes, digest and identity together. Issue a new version for an intentional change.";
+  it.each([
+    ["25000", "catalog_profile_install_requires_read_committed", "Retry in a READ COMMITTED transaction."],
+    ["23505", "catalog_profile_install_refuses_redefinition", replayFix],
+    ["22023", "catalog_profile_install_manifest_mismatch", replayFix],
+    ["23505", "catalog_type_install_refuses_redefinition", replayFix],
+    ["23505", "catalog_definition_install_conflict", replayFix],
+  ])("adds an installer fix to SQLSTATE %s %s", async (code, message, fix) => {
+    const error = Object.assign(new Error(message), { code });
+    const query = vi.fn().mockRejectedValue(error);
+    await expect(installCatalogDefinitions({ query }, optedIn as CatalogPackInput)).rejects.toBe(error);
+    expect(error).toMatchObject({ code, message });
+    expect(error).toHaveProperty("issue", { code: message, path: "", fix });
+  });
+
   async function checkRefusal(input: unknown, issue: { code: string; path: string; fix: string }) {
     const pack = input as CatalogPackInput;
     const query = vi.fn();
@@ -107,6 +122,16 @@ describe("subscription profile pack conformance", () => {
     [{ types: [{ ...pack().types[0], subscriptionProfileRef: { ...ref, "extra~/field": true } }] }, "definition_profile_ref_invalid", "/types/0/subscriptionProfileRef/extra~0~1field", 'Remove the unexpected property "extra~/field".'],
   ] as const)("rejects opted-in pack issue %j before SQL", async (overrides, code, path, fix) => {
     await checkRefusal({ ...optedIn, ...overrides }, { code, path, fix });
+  });
+
+  it("preserves membership issue order when other metadata fails", () => {
+    const type = { ...pack().types[0], version: 0, subscriptionProfileRef: { ...ref, version: 2 } };
+    const invalidRef = { ...pack().types[0], subscriptionProfileRef: { ...ref, version: 2, extra: true } };
+    expect(catalogPackIssues({ ...optedIn, types: [type, invalidRef] }).map(({ code, path }) => [code, path])).toEqual([
+      ["definition_version_invalid", "/types/0/version"],
+      ["definition_profile_ref_invalid", "/types/1/subscriptionProfileRef/extra"],
+      ["definition_unknown_profile_ref", "/types/0/subscriptionProfileRef"],
+    ]);
   });
 
   it("C-1 refuses an oversized canonical opted-in pack with one split remedy", async () => {

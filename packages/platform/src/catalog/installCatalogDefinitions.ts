@@ -6,6 +6,15 @@ import { prepareCatalogPackManifest } from "./catalogPackManifest.js";
 import { inspectCatalogPack, invalidCatalogPack } from "./productTypeIssues.js";
 import { verifyCatalogRulesAtInstall } from "./publicationRules.js";
 
+const replayFix = "Replay the original declaration bytes, digest and identity together. Issue a new version for an intentional change.";
+const sqlInstallFixes = new Map([
+  ["25000:catalog_profile_install_requires_read_committed", "Retry in a READ COMMITTED transaction."],
+  ["23505:catalog_profile_install_refuses_redefinition", replayFix],
+  ["22023:catalog_profile_install_manifest_mismatch", replayFix],
+  ["23505:catalog_type_install_refuses_redefinition", replayFix],
+  ["23505:catalog_definition_install_conflict", replayFix],
+]);
+
 /** Supply the native migration-owner executor explicitly. No runtime binding or hook is created.
  * @experimental
  */
@@ -38,6 +47,9 @@ export async function installCatalogDefinitions(installExecutor: PgQueryExecutor
         code: "definition_unknown_profile_ref", path: `/subscriptionProfiles/${index}`, ref,
         fix: `Install or declare ${ref.key}@${ref.version}.`,
       } });
+    } else if (error instanceof Error && "code" in error && typeof error.code === "string") {
+      const fix = sqlInstallFixes.get(`${error.code}:${error.message}`);
+      if (fix) Object.assign(error, { issue: { code: error.message, path: "", fix } });
     }
     throw error;
   });
