@@ -1024,6 +1024,8 @@ export {};
 import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts/catalogConformance.js";
 /** @experimental */
 export declare const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>>;
+/** Shared installation and offline guidance for profile field refusals. */
+export declare function catalogProfileDeclarationFix(path: string): string;
 ```
 ## dist/catalog/catalogDefinitionDigest.d.ts
 

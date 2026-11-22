@@ -168,30 +168,35 @@ export async function captureConnectedNativeStore(input: {
     return await source.withSnapshot(async db => {
       const facts = (await db.query<{
         readonly: string; isolation: string; cluster: string; database: string; login: string; snapshot: string;
+        profile_receipts_installed: boolean;
       }>(`SELECT pg_catalog.current_setting('transaction_read_only') AS readonly,
         pg_catalog.current_setting('transaction_isolation') AS isolation,
         ${connectedStoreClusterIdentitySql} AS cluster,
         pg_catalog.current_database() AS database, session_user::pg_catalog.text AS login,
-        pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot`)).rows[0];
+        pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot,
+        pg_catalog.to_regclass('public.catalog_subscription_profile_receipts') IS NOT NULL AS profile_receipts_installed`)).rows[0];
       if (facts?.readonly !== "on" || facts.isolation !== "repeatable read") throw new PostgresTransferError("invalid_input");
       // A login that row security would filter must fail here, not read an empty source.
       await db.query("SET LOCAL row_security = off");
       await db.query("SET LOCAL TimeZone = 'UTC'");
-      // Existing utility validates source IDs, limits, schema and lossless rows;
-      // its callback reuses this held client without another BEGIN/COMMIT.
+      // The compatible-row utility validates the request before entering its
+      // snapshot callback. Reuse the held client and probe before collecting rows.
       const packet = await captureCompatiblePostgresRows({
-        source: { withSnapshot: work => work(db) }, sourceId, catalogueId,
+        source: { async withSnapshot(work) {
+          const profileReceipts = await db.query(`SELECT 1 FROM public.catalog_definition_installs
+            WHERE manifest_digest LIKE 'profiles-v1:%'
+              OR receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']
+            LIMIT 1`);
+          if (profileReceipts.rows.length || (facts.profile_receipts_installed
+            && (await db.query("SELECT 1 FROM public.catalog_subscription_profile_receipts LIMIT 1")).rows.length)) {
+            throw Object.assign(new PostgresTransferError("subscription_profile_receipts_unsupported", "catalog_definition_installs"), {
+              remedy: "Subscription profile install receipts are outside the current connected-store transfer profile. Wait for the later connected-store restore change that supports these receipts before capturing this store.",
+            });
+          }
+          return work(db);
+        } }, sourceId, catalogueId,
         tables: compatible, maximumRows, maximumBytes,
       });
-      const profileReceipts = await db.query(`SELECT 1 FROM public.catalog_definition_installs
-        WHERE manifest_digest LIKE 'profiles-v1:%'
-          OR receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']
-        LIMIT 1`);
-      if (profileReceipts.rows.length) {
-        throw Object.assign(new PostgresTransferError("subscription_profile_receipts_unsupported", "catalog_definition_installs"), {
-          remedy: "Subscription profile install receipts are outside the current connected-store transfer profile. Wait for the later connected-store restore change that supports these receipts before capturing this store.",
-        });
-      }
       const relations = (await db.query<{ schema: string; table: string; owner: string }>(`SELECT n.nspname AS schema,c.relname AS table,
         pg_catalog.pg_get_userbyid(c.relowner) AS owner
         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace

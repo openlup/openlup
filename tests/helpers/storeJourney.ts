@@ -224,8 +224,9 @@ export async function captureAndActivateJourney(store: JourneyInstallation, draf
 }
 export type StoreJourney = Awaited<ReturnType<typeof captureAndActivateJourney>>;
 
-export async function captureStoreJourney(owner: Pool, sourceId: string, catalogueId = manifest.objectInventorySha256) {
-  return captureConnectedNativeStore({ sourceId, catalogueId, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
+export async function captureStoreJourney(owner: Pool, sourceId: string, catalogueId = manifest.objectInventorySha256,
+  limits = { maximumRows: 10000, maximumBytes: 64 * 1024 * 1024 }) {
+  return captureConnectedNativeStore({ sourceId, catalogueId, ...limits,
     source: { async withSnapshot(work) {
       const client = await owner.connect();
       try {

@@ -6460,7 +6460,7 @@
             "searchPath": "pg_catalog, pg_temp"
           },
           {
-            "signature": "public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb)",
+            "signature": "public.catalog_subscription_profile_receipt_guard()",
             "searchPath": "pg_catalog, pg_temp"
           },
           {
@@ -6471,6 +6471,11 @@
         "grantOnlyFunctions": [],
         "dataStatements": [],
         "createdTriggers": [
+          {
+            "name": "catalog_subscription_profile_receipt_guard",
+            "table": "public.catalog_subscription_profile_receipts",
+            "sha256": "80658e664ad0da7a08803efd91168f5e12380c2b06fcf93c9e06f064a19e7b63"
+          },
           {
             "name": "catalog_definition_install_profile_immutable",
             "table": "public.catalog_definition_installs",
@@ -9394,22 +9399,22 @@
     },
     {
       "path": "db/platform/migrations/20261124230000_subscription_profiles.sql",
-      "sha256": "ff51b8cf06004553177a4076ba3378a1794fbdbc76d55c47967caf70eba17f92",
+      "sha256": "542477ca727d4efce9365b115128ada58ebfadd7ab4a56f5c5b73199fa2137fe",
       "functions": [
         {
           "signature": "public.catalog_definition_install(text,integer,jsonb)",
           "beforeSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2",
-          "afterSha256": "f0e015a4abe3e08a676c78f1bdee6bba24c612a9df7af3eb194936f7596cb70b"
+          "afterSha256": "a7be2f73dddc5e5aba4502ebe5e37f88fe55ead8dfc03529c82dc0161432ad88"
         },
         {
           "signature": "public.catalog_subscription_profile_identity(text,integer)",
           "beforeSha256": null,
-          "afterSha256": "9496a9184ff471bd97ae1fc04f4b7d87c6af66735b07afc15afb6934f70846b0"
+          "afterSha256": "515686c6c2275480ef7cb9e317deabbd21c7f9ef81e5be5cce8582eaa790d6ce"
         },
         {
-          "signature": "public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb)",
+          "signature": "public.catalog_subscription_profile_receipt_guard()",
           "beforeSha256": null,
-          "afterSha256": "6d8eb1d2cc63ec85ee5b0f65742048723fd1ee6c823e8dd4f5f131ef2bc7261f"
+          "afterSha256": "2440e6f9b76b9d302d5b4ddc85443350bc19fa38f592b2980c84ca691bb72bfd"
         },
         {
           "signature": "public.catalog_definition_install_profile_immutable()",

@@ -187,6 +187,19 @@ describe("offline catalogue conformance", () => {
     p.types[0].attributes = [{ ...attribute, valueType: correction }];
     expect((await check(p)).exitCode).toBe(0);
   });
+  it("points an invalid profile digest at the digest format in the offline report", async () => {
+    const ref = { key: "stationery:monthly", version: 1 };
+    const input = { ...pack(), subscriptionProfiles: [ref], subscriptionProfileDefinitions: [{
+      ...ref, allowedCadences: [{ schemaVersion: 1, kind: "fixed_days", days: 28 }],
+      policyRef: { key: "stationery:policy", version: 1 }, policyDigest: "bad",
+    }] };
+    const report = await checkSubject({ packs: [{ pack: input }] });
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      code: "definition_profile_invalid", path: "/packs/0/pack/subscriptionProfileDefinitions/0/policyDigest",
+      fix: expect.stringContaining("a 64-character lowercase SHA-256 hex digest"),
+    }));
+  });
+
   it("conformance_reuses_row_validators", async () => {
     const cases: [string, (p: CatalogPackInput) => void][] = [
       ["definition_duplicate_identity", p => { p.types = [...p.types, p.types[0]]; }],

@@ -1,3 +1,4 @@
+import { catalogProfileDeclarationFix } from "../catalogConformance.js";
 import { canonicalizeCatalogQuantity, convertCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
 import {
   CATALOG_CONFORMANCE_RULES, catalogPackIssues, catalogProductTypeIssues, catalogProductTypeRefIssues,
@@ -95,7 +96,8 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     const adopterIssue = typeof issue !== "string" && issue.kind === "adopterRule" ? issue : undefined;
     const rule = !adopterIssue && Object.hasOwn(CATALOG_CONFORMANCE_RULES, code)
       ? CATALOG_CONFORMANCE_RULES[code as CatalogConformanceCode] : CATALOG_CONFORMANCE_RULES.draft_payload_invalid;
-    const fix = adopterIssue ? renderPublicationIssue({ ...adopterIssue, path }).message : rule.fix;
+    const fix = adopterIssue ? renderPublicationIssue({ ...adopterIssue, path }).message
+      : code === "definition_profile_invalid" ? catalogProfileDeclarationFix(path) : rule.fix;
     if (requiredEvidence) unavailable = true; else violated = true;
     findings.push({ code, severity: rule.severity, path, fixture, observed: `Owner check reported ${code}.`,
       cause: rule.rule, fix, recipe: rule.recipe, recheck,

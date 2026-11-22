@@ -9,3 +9,6 @@ range. The installed native guards enforce their limits at write time.
 
 Connected-store capture refuses stores that hold profile-bearing install
 receipts until connected restore supports those receipts.
+
+Each profile key and version has one owning pack. The native receipt binds
+the identity and digest to the declaration bytes.

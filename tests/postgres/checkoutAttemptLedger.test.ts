@@ -275,12 +275,16 @@ it("restores and replays a real capture from before the subscription profiles fo
   expect(await restore()).toMatchObject({ replayed: true, captureSha256: packet.sha256 });
 }, 105_000);
 
-it("refuses connected capture after installing a subscription profile receipt", async () => {
+it("refuses profile receipts before connected capture reaches row or byte limits", async () => {
   const pack = {
     id: "example:profile-capture", namespace: "example", version: 1, openlupRange: "1.x",
     capabilities: {}, types: [], taxClasses: [], subscriptionProfiles: [{ key: "example:monthly", version: 1 }],
   };
-  const capture = () => captureStoreJourney(native.owner, "profile-receipt-source");
+  const capture = (limits?: { maximumRows: number; maximumBytes: number }) =>
+    captureStoreJourney(native.owner, "profile-receipt-source", undefined, limits);
+  await native.owner.query(`INSERT INTO public.clients(email) VALUES ('profile-limit-a@example.invalid'), ('profile-limit-b@example.invalid')`);
+  const limits = [{ maximumRows: 1, maximumBytes: 64 * 1024 * 1024 }, { maximumRows: 10000, maximumBytes: 1 }];
+  for (const bound of limits) await expect(capture(bound)).rejects.toMatchObject({ code: "limit_exceeded" });
   const reference = await installCatalogDefinitions(native.owner, pack);
   expect(reference).not.toHaveProperty("subscriptionProfileDefinitions");
   const before = await capture();
@@ -293,7 +297,8 @@ it("refuses connected capture after installing a subscription profile receipt", 
     }],
   });
   expect(profile.subscriptionProfileDefinitions).toHaveLength(1);
-  await expect(capture()).rejects.toMatchObject({
+  await expect(capture({ maximumRows: 0, maximumBytes: 1 })).rejects.toMatchObject({ code: "invalid_input" });
+  for (const bound of limits) await expect(capture(bound)).rejects.toMatchObject({
     name: "PostgresTransferError",
     code: "subscription_profile_receipts_unsupported",
     table: "catalog_definition_installs",

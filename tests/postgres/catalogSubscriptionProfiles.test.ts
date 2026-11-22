@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
-import { canonicalCatalogDraftJson, catalogDefinitionDigest, catalogPackManifest, createCatalogDefinitionWriteGuard, createCatalogProductTypeRegistry,
+import { canonicalCatalogSubscriptionProfileJson, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
+import { catalogDefinitionDigest, createCatalogDefinitionWriteGuard, createCatalogProductTypeRegistry,
   installCatalogDefinitions, observeCatalogDefinitionReadiness, readInstalledCatalogSubscriptionProfile, withCatalogPublicationRules } from "@openlup/platform/catalog";
 import type { CatalogPackInput } from "@openlup/platform/catalog/contracts";
 import { verifyApp } from "@openlup/platform/lifecycle";
@@ -78,9 +78,8 @@ it("SP1-D-022 permits a single immutable identity under contending installs", as
     expect(await installCatalogDefinitions(owner, pack("first", reordered))).toEqual(receipt);
     expect(await installCatalogDefinitions(owner, pack("reference-only"))).toEqual(legacyReceipt);
     expect(legacyReceipt).not.toHaveProperty("subscriptionProfileDefinitions");
-    expect(await installCatalogDefinitions(owner, pack("same-profile-other-pack", reordered))).toMatchObject({
-      subscriptionProfileDefinitions: receipt.subscriptionProfileDefinitions,
-    });
+    await expect(installCatalogDefinitions(owner, pack("same-profile-other-pack", reordered)))
+      .rejects.toMatchObject({ code: "23505", message: "catalog_profile_install_refuses_redefinition" });
     await expect(owner.query("UPDATE public.catalog_definition_installs SET receipt = receipt WHERE pack_id='example:first'")).rejects.toMatchObject({ code: "55000" });
     await expect(owner.query("DELETE FROM public.catalog_definition_installs WHERE pack_id='example:first'")).rejects.toMatchObject({ code: "55000" });
     await expect(owner.query("UPDATE public.catalog_definition_installs SET receipt = receipt || '{\"subscriptionProfileDefinitions\":[]}' WHERE pack_id='example:reference-only'")).rejects.toMatchObject({ code: "55000" });
@@ -88,6 +87,68 @@ it("SP1-D-022 permits a single immutable identity under contending installs", as
   } finally {
     try { await first.query("ROLLBACK"); } finally { first.release(); second.release(); }
   }
+});
+
+it("enforces profile receipt identity uniqueness and byte binding on direct inserts", async () => {
+  const profile = { ...declaration, key: "example:direct" };
+  const ownerPack = pack("direct-owner", profile);
+  const receipt = await installCatalogDefinitions(owner, ownerPack);
+  const anchor = pack("direct-anchor");
+  await installCatalogDefinitions(owner, anchor);
+
+  const bytes = canonicalCatalogSubscriptionProfileJson(profile);
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  const insert = (key: string, version: number, storedDigest: string) => owner.query(
+    `INSERT INTO public.catalog_subscription_profile_receipts
+      (profile_key,profile_version,profile_digest,declaration_bytes,pack_id,pack_version,declaration_position)
+      VALUES ($1,$2,$3,$4,$5,1,0)`,
+    [key, version, storedDigest, bytes, anchor.id],
+  );
+  await expect(insert(profile.key, profile.version, digest)).rejects.toMatchObject({
+    code: "23505", constraint: "catalog_subscription_profile_receipts_identity",
+  });
+  await expect(insert(profile.key, profile.version, "f".repeat(64))).rejects.toMatchObject({
+    code: "23514", message: "catalog_profile_receipt_digest_mismatch",
+  });
+  for (const [key, version] of [["example:different", profile.version], [profile.key, 2]] as const) {
+    await expect(insert(key, version, digest)).rejects.toMatchObject({
+      code: "23514", message: "catalog_profile_receipt_identity_mismatch",
+    });
+  }
+
+  await expect(owner.query(`UPDATE public.catalog_subscription_profile_receipts
+    SET profile_digest=profile_digest WHERE profile_key=$1`, [profile.key])).rejects.toMatchObject({ code: "55000" });
+  await expect(owner.query("DELETE FROM public.catalog_subscription_profile_receipts WHERE profile_key=$1", [profile.key]))
+    .rejects.toMatchObject({ code: "55000" });
+  await expect(runtime.query("SELECT 1 FROM public.catalog_subscription_profile_receipts"))
+    .rejects.toMatchObject({ code: "42501" });
+  expect(await readInstalledCatalogSubscriptionProfile(owner, profile)).toMatchObject({ profileDigest: digest });
+  expect(await installCatalogDefinitions(owner, ownerPack)).toEqual(receipt);
+  await expect(installCatalogDefinitions(owner, pack("direct-changed", { ...profile, maxFixedDays: 120 })))
+    .rejects.toMatchObject({ code: "23505", message: "catalog_profile_install_refuses_redefinition" });
+});
+
+it("replays the original order of multiple declarations in a pack receipt", async () => {
+  const profiles = ["example:ordered-z", "example:ordered-a"].map(key => ({ ...declaration, key }));
+  const input = { ...pack("ordered"), subscriptionProfiles: profiles.map(({ key, version }) => ({ key, version })),
+    subscriptionProfileDefinitions: profiles };
+  const receipt = await installCatalogDefinitions(owner, input);
+  expect(receipt.subscriptionProfileDefinitions?.map(({ key }) => key)).toEqual(profiles.map(({ key }) => key));
+  expect(await installCatalogDefinitions(owner, input)).toEqual(receipt);
+});
+
+it.each([
+  ["policyDigest", { ...declaration, policyDigest: "bad" }, "a 64-character lowercase SHA-256 hex digest"],
+  ["key", { ...declaration, key: "bad" }, "a namespaced profile key"],
+  ["version", { ...declaration, version: 0 }, "a whole-number profile version"],
+  ["policyRef/key", { ...declaration, policyRef: { ...declaration.policyRef, key: "bad" } }, "a namespaced policy key"],
+  ["policyRef/version", { ...declaration, policyRef: { ...declaration.policyRef, version: 0 } }, "a whole-number policy version"],
+] as const)("points invalid profile metadata at the %s field remedy", async (path, profile, fix) => {
+  const input = { ...pack("invalid-field"), subscriptionProfileDefinitions: [profile] };
+  await expect(installCatalogDefinitions(owner, input)).rejects.toMatchObject({
+    issue: { code: "definition_profile_invalid", path: `/subscriptionProfileDefinitions/0/${path}` },
+    fix: expect.stringContaining(fix),
+  });
 });
 
 it("requires the matching installed declaration in an opted-in metadata readiness guard", async () => {
@@ -150,19 +211,6 @@ it("SP1-D-026 refuses reserved months and out-of-range declarations at install",
       fix: expect.stringContaining("1 to 3660"),
     });
   }
-  const { digest: _digest, ...projection } = catalogPackManifest(input);
-  const sqlInstall = (definition: CatalogSubscriptionProfileV1, profileDigest: string) => owner.query(
-    "SELECT public.catalog_definition_install($1,$2,$3) AS receipt", [input.id, input.version, {
-      manifest: canonicalCatalogDraftJson({ ...projection, subscriptionProfileDefinitions: [{ ...definition, profileDigest }] }),
-      types: [], taxClasses: [],
-    }]);
-  for (const { definition } of excessive) {
-    const digest = createHash("sha256").update(canonicalCatalogDraftJson(definition)).digest("hex");
-    await expect(sqlInstall(definition, digest)).rejects.toMatchObject({ message: "definition_profile_invalid", code: "22023" });
-  }
-  const monthDigest = createHash("sha256").update(canonicalCatalogDraftJson(unsupported)).digest("hex");
-  await expect(sqlInstall(unsupported, monthDigest)).rejects.toMatchObject({ message: "cadence_kind_unsupported", code: "22023" });
-  await expect(sqlInstall(profile, "f".repeat(64))).rejects.toMatchObject({ message: "definition_profile_invalid", code: "22023" });
   expect(await readInstalledCatalogSubscriptionProfile(owner, profile)).toBeNull();
   await installCatalogDefinitions(owner, input);
   const installed = (await readInstalledCatalogSubscriptionProfile(owner, profile))!;

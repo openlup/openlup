@@ -1,109 +1,56 @@
--- Native-only profile definitions extend the existing installation receipt.
+-- Native profile declarations belong to one immutable, versioned receipt.
+CREATE TABLE public.catalog_subscription_profile_receipts (
+  profile_key text NOT NULL,
+  profile_version integer NOT NULL CHECK (profile_version BETWEEN 1 AND 2147483647),
+  profile_digest text NOT NULL,
+  declaration_bytes text NOT NULL,
+  pack_id text NOT NULL,
+  pack_version integer NOT NULL,
+  declaration_position integer NOT NULL,
+  PRIMARY KEY (pack_id, pack_version, declaration_position),
+  FOREIGN KEY (pack_id, pack_version) REFERENCES public.catalog_definition_installs(pack_id, pack_version)
+);
+CREATE UNIQUE INDEX catalog_subscription_profile_receipts_identity
+  ON public.catalog_subscription_profile_receipts(profile_key, profile_version);
+
+ALTER TABLE public.catalog_subscription_profile_receipts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.catalog_subscription_profile_receipts FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON TABLE public.catalog_subscription_profile_receipts FROM anon'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON TABLE public.catalog_subscription_profile_receipts FROM authenticated'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON TABLE public.catalog_subscription_profile_receipts FROM service_role'; END IF; END; $$;
+
+-- The shared pack record retains the manifest and replay identity. Only the
+-- profile receipt table carries individual installed declarations.
+ALTER TABLE public.catalog_definition_installs
+  ADD CONSTRAINT catalog_definition_install_profile_storage
+  CHECK (receipt - 'subscriptionProfileDefinitions' = receipt);
+
 CREATE FUNCTION public.catalog_subscription_profile_identity(p_key text, p_version integer)
 RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
-  SELECT jsonb_build_object('profileKey', p->'key', 'profileVersion', p->'version',
-    'profileDigest', p->'profileDigest', 'policyRef', p->'policyRef', 'policyDigest', p->'policyDigest')
-  FROM public.catalog_definition_installs i
-  CROSS JOIN LATERAL jsonb_array_elements(i.receipt->'subscriptionProfileDefinitions') p
-  WHERE p->>'key' = p_key AND p->'version' = to_jsonb(p_version)
-  LIMIT 1
+  SELECT jsonb_build_object('profileKey', r.profile_key, 'profileVersion', r.profile_version,
+    'profileDigest', r.profile_digest, 'policyRef', r.declaration_bytes::jsonb->'policyRef',
+    'policyDigest', r.declaration_bytes::jsonb->'policyDigest')
+  FROM public.catalog_subscription_profile_receipts r
+  WHERE r.profile_key = p_key AND r.profile_version = p_version
 $$;
 
--- The original pack bytes and digest bind the profile list at installation.
-CREATE FUNCTION public.catalog_definition_install_profile_manifest_matches(
-  p_pack_id text, p_pack_version integer, p_digest text, p_receipt jsonb
-) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+CREATE FUNCTION public.catalog_subscription_profile_receipt_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
-  canonical text := p_receipt->>'canonicalManifest';
-  manifest jsonb;
-  profiles jsonb := p_receipt->'subscriptionProfileDefinitions';
-  refs jsonb;
-  declared_refs jsonb;
-  profile jsonb;
-  ref jsonb;
-  choice jsonb;
-  days integer;
-  prior_days integer;
-  profile_key_pattern CONSTANT text := '^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$';
-  digest_pattern CONSTANT text := '^[0-9a-f]{64}$';
+  declaration jsonb;
 BEGIN
-  IF jsonb_typeof(p_receipt->'canonicalManifest') IS DISTINCT FROM 'string'
-    OR jsonb_typeof(p_receipt->'subscriptionProfileDefinitions') IS DISTINCT FROM 'array'
-    OR p_receipt->>'manifestDigest' IS DISTINCT FROM p_digest
-    OR ('profiles-v1:' || encode(sha256(convert_to(canonical, 'UTF8')), 'hex')) IS DISTINCT FROM p_digest
-    OR NOT pg_input_is_valid(canonical, 'jsonb') THEN
-    RETURN false;
+  IF TG_OP <> 'INSERT' THEN
+    RAISE EXCEPTION 'catalog_definition_install_profile_immutable' USING ERRCODE = '55000';
   END IF;
-  manifest := canonical::jsonb;
-  refs := manifest->'subscriptionProfiles';
-  BEGIN
-    IF public.catalog_publication_canonical(manifest, 0) IS DISTINCT FROM canonical THEN RETURN false; END IF;
-  EXCEPTION WHEN invalid_parameter_value OR check_violation THEN
-    RETURN false;
-  END;
-  IF manifest->'id' IS DISTINCT FROM to_jsonb(p_pack_id)
-    OR manifest->'version' IS DISTINCT FROM to_jsonb(p_pack_version)
-    OR p_receipt->'packId' IS DISTINCT FROM manifest->'id'
-    OR p_receipt->'packVersion' IS DISTINCT FROM manifest->'version'
-    OR jsonb_typeof(manifest->'types') IS DISTINCT FROM 'array'
-    OR jsonb_typeof(manifest->'taxClasses') IS DISTINCT FROM 'array'
-    OR jsonb_typeof(refs) IS DISTINCT FROM 'array'
-    OR p_receipt->'types' IS DISTINCT FROM manifest->'types'
-    OR profiles IS DISTINCT FROM manifest->'subscriptionProfileDefinitions' THEN
-    RETURN false;
+  IF NEW.profile_digest IS DISTINCT FROM encode(sha256(convert_to(NEW.declaration_bytes, 'UTF8')), 'hex') THEN
+    RAISE EXCEPTION 'catalog_profile_receipt_digest_mismatch' USING ERRCODE = '23514';
   END IF;
-
-  IF jsonb_array_length(profiles) NOT BETWEEN 1 AND 100
-    OR EXISTS (SELECT 1 FROM jsonb_array_elements(profiles) p GROUP BY p->'key', p->'version' HAVING count(*) > 1) THEN
-    RAISE EXCEPTION 'definition_profile_invalid' USING ERRCODE = '22023';
+  declaration := NEW.declaration_bytes::jsonb;
+  IF declaration->'key' IS DISTINCT FROM to_jsonb(NEW.profile_key)
+    OR declaration->'version' IS DISTINCT FROM to_jsonb(NEW.profile_version) THEN
+    RAISE EXCEPTION 'catalog_profile_receipt_identity_mismatch' USING ERRCODE = '23514';
   END IF;
-
-  FOR profile IN SELECT value FROM jsonb_array_elements(profiles) LOOP
-    ref := profile->'policyRef';
-    IF jsonb_typeof(profile) IS DISTINCT FROM 'object'
-      OR profile - ARRAY['key', 'version', 'allowedCadences', 'maxFixedDays', 'policyRef', 'policyDigest', 'profileDigest'] <> '{}'::jsonb
-      OR jsonb_typeof(profile->'policyDigest') IS DISTINCT FROM 'string'
-      OR jsonb_typeof(profile->'profileDigest') IS DISTINCT FROM 'string'
-      OR NOT coalesce(profile->>'policyDigest' ~ digest_pattern, false)
-      OR NOT coalesce(profile->>'profileDigest' ~ digest_pattern, false)
-      OR jsonb_typeof(ref) IS DISTINCT FROM 'object' OR ref - ARRAY['key', 'version'] <> '{}'::jsonb
-      OR jsonb_typeof(profile->'allowedCadences') IS DISTINCT FROM 'array'
-      OR (profile ? 'maxFixedDays' AND NOT (jsonb_typeof(profile->'maxFixedDays') = 'number'
-        AND profile->>'maxFixedDays' ~ '^[1-9][0-9]*$' AND profile->'maxFixedDays' <= '3660'::jsonb)) THEN
-      RAISE EXCEPTION 'definition_profile_invalid' USING ERRCODE = '22023';
-    END IF;
-    FOREACH ref IN ARRAY ARRAY[profile, ref] LOOP
-      IF NOT coalesce(ref->>'key' ~ profile_key_pattern AND char_length(ref->>'key') <= 120
-        AND jsonb_typeof(ref->'version') = 'number' AND ref->>'version' ~ '^[1-9][0-9]*$'
-        AND ref->'version' <= '2147483647'::jsonb, false) THEN
-        RAISE EXCEPTION 'definition_profile_invalid' USING ERRCODE = '22023';
-      END IF;
-    END LOOP;
-
-    prior_days := 0;
-    FOR choice IN SELECT value FROM jsonb_array_elements(profile->'allowedCadences') LOOP
-      IF choice->>'kind' = 'calendar_months' THEN
-        RAISE EXCEPTION 'cadence_kind_unsupported' USING ERRCODE = '22023';
-      END IF;
-      IF jsonb_typeof(choice) IS DISTINCT FROM 'object' OR choice->'schemaVersion' IS DISTINCT FROM '1'::jsonb
-        OR choice->>'schemaVersion' IS DISTINCT FROM '1'
-        OR choice->>'kind' IS DISTINCT FROM 'fixed_days' OR choice - ARRAY['schemaVersion', 'kind', 'days'] <> '{}'::jsonb
-        OR NOT coalesce(jsonb_typeof(choice->'days') = 'number' AND choice->>'days' ~ '^[1-9][0-9]*$'
-          AND choice->'days' <= '3660'::jsonb, false) THEN
-        RAISE EXCEPTION 'definition_profile_invalid' USING ERRCODE = '22023';
-      END IF;
-      days := (choice->>'days')::integer;
-      IF days <= prior_days THEN RAISE EXCEPTION 'definition_profile_invalid' USING ERRCODE = '22023'; END IF;
-      prior_days := days;
-    END LOOP;
-    IF prior_days = 0 OR profile->>'profileDigest' IS DISTINCT FROM
-      encode(sha256(convert_to(public.catalog_publication_canonical(profile - 'profileDigest', 0), 'UTF8')), 'hex') THEN
-      RAISE EXCEPTION 'definition_profile_invalid' USING ERRCODE = '22023';
-    END IF;
-  END LOOP;
-  SELECT jsonb_agg(jsonb_build_object('key', p->'key', 'version', p->'version')) INTO declared_refs
-  FROM jsonb_array_elements(profiles) p;
-  RETURN refs @> declared_refs AND declared_refs @> refs;
+  RETURN NEW;
 END;
 $$;
 
@@ -121,8 +68,11 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.catalog_subscription_profile_identity(text,integer) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_subscription_profile_receipt_guard() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.catalog_definition_install_profile_immutable() FROM PUBLIC;
+CREATE TRIGGER catalog_subscription_profile_receipt_guard
+  BEFORE INSERT OR UPDATE OR DELETE ON public.catalog_subscription_profile_receipts
+  FOR EACH ROW EXECUTE FUNCTION public.catalog_subscription_profile_receipt_guard();
 CREATE TRIGGER catalog_definition_install_profile_immutable
   BEFORE UPDATE OR DELETE ON public.catalog_definition_installs
   FOR EACH ROW EXECUTE FUNCTION public.catalog_definition_install_profile_immutable();
@@ -141,7 +91,8 @@ DECLARE
   v_receipt jsonb;
   v_profiles jsonb := v_manifest->'subscriptionProfileDefinitions';
   v_profile jsonb;
-  v_installed_profile jsonb;
+  v_declaration_bytes text;
+  v_position integer;
 BEGIN
   IF v_manifest->>'id' IS DISTINCT FROM p_pack_id
     OR (v_manifest->>'version')::integer IS DISTINCT FROM p_pack_version
@@ -158,28 +109,47 @@ BEGIN
     IF v_install.manifest_digest IS DISTINCT FROM v_digest THEN
       RAISE EXCEPTION 'catalog_definition_install_conflict' USING ERRCODE = '23505';
     END IF;
+    IF v_profiles IS NOT NULL THEN
+      RETURN v_install.receipt || jsonb_build_object('subscriptionProfileDefinitions', (
+        SELECT jsonb_agg(r.declaration_bytes::jsonb || jsonb_build_object('profileDigest', r.profile_digest)
+          ORDER BY r.declaration_position)
+        FROM public.catalog_subscription_profile_receipts r
+        WHERE r.pack_id = p_pack_id AND r.pack_version = p_pack_version
+      ));
+    END IF;
     RETURN v_install.receipt;
   END IF;
   IF v_profiles IS NOT NULL THEN
     v_receipt := jsonb_build_object('packId', p_pack_id, 'packVersion', p_pack_version,
       'manifestDigest', v_digest, 'installedAt', clock_timestamp(), 'types', v_manifest->'types',
       'canonicalManifest', p_manifest->>'manifest', 'subscriptionProfileDefinitions', v_profiles);
-    IF NOT public.catalog_definition_install_profile_manifest_matches(p_pack_id, p_pack_version, v_digest, v_receipt) THEN
-      RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023';
-    END IF;
-    -- The catalogue lock is already held. Observe any committed predecessor
-    -- before allowing this install to record a new profile identity.
     IF current_setting('transaction_isolation') <> 'read committed' THEN
       RAISE EXCEPTION 'catalog_profile_install_requires_read_committed' USING ERRCODE = '25000';
     END IF;
-    FOR v_profile IN SELECT value FROM jsonb_array_elements(v_profiles) LOOP
-      v_installed_profile := public.catalog_subscription_profile_identity(v_profile->>'key', (v_profile->>'version')::integer);
-      IF v_installed_profile IS NOT NULL AND v_installed_profile->'profileDigest' IS DISTINCT FROM v_profile->'profileDigest' THEN
-        RAISE EXCEPTION 'catalog_profile_install_refuses_redefinition' USING ERRCODE = '23505';
-      END IF;
-    END LOOP;
+    IF jsonb_typeof(p_manifest->'profileDeclarationBytes') IS DISTINCT FROM 'array'
+      OR jsonb_array_length(p_manifest->'profileDeclarationBytes') IS DISTINCT FROM jsonb_array_length(v_profiles) THEN
+      RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023';
+    END IF;
     INSERT INTO public.catalog_definition_installs(pack_id, pack_version, manifest_digest, receipt)
-      VALUES (p_pack_id, p_pack_version, v_digest, v_receipt);
+      VALUES (p_pack_id, p_pack_version, v_digest, v_receipt - 'subscriptionProfileDefinitions');
+    FOR v_profile, v_position IN
+      SELECT value, ordinality::integer - 1 FROM jsonb_array_elements(v_profiles) WITH ORDINALITY
+    LOOP
+      v_declaration_bytes := p_manifest->'profileDeclarationBytes'->>v_position;
+      IF v_declaration_bytes::jsonb IS DISTINCT FROM v_profile - 'profileDigest' THEN
+        RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023';
+      END IF;
+      BEGIN
+        INSERT INTO public.catalog_subscription_profile_receipts(
+          profile_key, profile_version, profile_digest, declaration_bytes, pack_id, pack_version, declaration_position
+        ) VALUES (
+          v_profile->>'key', (v_profile->>'version')::integer, v_profile->>'profileDigest',
+          v_declaration_bytes, p_pack_id, p_pack_version, v_position
+        );
+      EXCEPTION WHEN unique_violation THEN
+        RAISE EXCEPTION 'catalog_profile_install_refuses_redefinition' USING ERRCODE = '23505';
+      END;
+    END LOOP;
   END IF;
   FOR v_type IN SELECT value FROM jsonb_array_elements(p_manifest->'types')
     ORDER BY (value->>'canonicalDefinition')::jsonb->>'key', ((value->>'canonicalDefinition')::jsonb->>'version')::integer

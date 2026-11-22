@@ -1323,8 +1323,11 @@ compiles installed declarations without optional provider peers.
 Apply the complete native catalogue through
 `20261124230000_subscription_profiles.sql`. Pass the migration-owner executor
 and a pack with `subscriptionProfileDefinitions` to `installCatalogDefinitions`.
-Include each declaration's key and version in `subscriptionProfiles`. Reinstall
-the same pack version to recover the original receipt. Supply the declarations
+Include each declaration's key and version in `subscriptionProfiles`. Each
+profile key and version has one owning pack. Reinstall the same pack version
+to recover the original receipt. PostgreSQL binds the profile identity and
+digest to the stored declaration bytes. The TypeScript installer validates
+and serializes the canonical declaration. Supply the declarations
 to `createCatalogDefinitionWriteGuard` to require a matching installed identity
 for every referenced profile. The existing reference-only pack form remains
 available.

@@ -1018,14 +1018,17 @@ transactions and exact-prefix/replay behavior remain.
 ### Native subscription profile receipts
 
 The [subscription profile forward](../../db/platform/migrations/20261124230000_subscription_profiles.sql)
-adds canonical declarations and digests to native definition-install receipts.
-Installation uses the existing definition lock. Profile-bearing installs
-require `READ COMMITTED` so contenders observe the first committed declaration.
-Each profile-bearing receipt retains the canonical pack manifest and marks its
-SHA-256 with `profiles-v1:`. Before any writes, the installer verifies the
-manifest bytes, digest and matching profile definitions and references. A
-trigger refuses updates or deletes of profile-bearing receipts. Reference-only
-receipts retain their original digest format and contents.
+stores one immutable declaration receipt per profile key and version. A unique
+index gives each identity one owning pack. The insert trigger checks that the
+declaration bytes hash to the stored SHA-256 and that the key and version match
+the receipt columns. TypeScript owns canonical serialization and declaration
+validation. The owner-only receipt table stays outside the connected-store
+transfer profile.
+
+The install command uses the existing definition lock. Its pack record retains
+the canonical manifest and marks its SHA-256 with `profiles-v1:`. Exact
+reinstall returns the original receipt with the stored declarations in pack
+order. Reference-only receipts keep their prior format and contents.
 
 The exact-key lookup uses the existing migration owner and returns the profile
 and policy identities. There is no data backfill. See
