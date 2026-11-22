@@ -1,3 +1,7 @@
+import { z } from "zod";
+import { createCheckoutCommandSchemas } from "../../checkoutCommandSchemas.js";
+import type { CheckoutCommandV2 } from "../../contracts/index.js";
+
 /** Private native destination authority; the host authenticates actors and owns connection lifetime. */
 export interface DestinationAddress {
   recipientName: string; line1: string; line2?: string | null; city: string; postalCode: string; country: string;
@@ -58,5 +62,54 @@ export function createPostgresDestinationPort(db: DestinationQueryExecutor) {
       return invoke<DestinationChangeResult>("subscription_change_shipping_destination", [input.actorId, input.clientId, input.idempotencyKey,
         input.subscriptionId, JSON.stringify({ newAddress: input.newAddress, ...(input.reason === undefined ? {} : { reason: input.reason }) }), input.expectedVersion, input.now]);
     },
+  };
+}
+const version = "commerce.checkout_command.v2";
+
+/** @experimental Parse the strict v2 checkout envelope before applying the host address policy. */
+export function createCheckoutCommandV2Schema(schemas: { sku: z.ZodType<string, string> }): z.ZodType<CheckoutCommandV2> {
+  const { checkoutCommandV1Schema } = createCheckoutCommandSchemas({
+    sku: schemas.sku, paymentIntentStatus: z.string(), paymentAttemptStatus: z.string(),
+  });
+  // Reuse the common envelope and its cadence refinement across both versions.
+  const envelope: z.ZodObject<Omit<typeof checkoutCommandV1Schema.shape, "version" | "shippingAddress">> = checkoutCommandV1Schema;
+  const ingress = envelope.safeExtend({
+    version: z.literal(version),
+    shippingAddress: z.strictObject({
+      line1: z.string(), line2: z.string().optional(), city: z.string(), subdivisionCode: z.string().optional(),
+      postalCode: z.string(), countryCode: z.string(),
+    }),
+  });
+  return ingress
+    .transform((command): { command: CheckoutCommandV2 } | { issue: z.ZodIssue } => ({ command }))
+    .catch(({ error }) => ({ issue: error.issues[0]! }))
+    .transform((result, context) => {
+      if ("command" in result) return result.command;
+      const { issue } = result;
+      const wrongDialect = issue.path[0] === "version";
+      context.addIssue({
+        code: "custom",
+        path: issue.code === "unrecognized_keys" ? [...issue.path, issue.keys[0]!] : issue.path,
+        params: { refusalCode: wrongDialect ? "destination_dialect_invalid" : "address_invalid_input" },
+        message: wrongDialect ? `Unsupported checkout version. Submit version ${version}.`
+          : `${issue.message}. Correct the indicated checkout input and resubmit.`,
+      });
+      return z.NEVER;
+    });
+}
+
+type CapabilityStatus = { supported: boolean; available: boolean; refusalCode?:
+  "destination_v2_unsupported_rail" | "destination_v2_unavailable" };
+
+/** @experimental Discover v2 destination issuance and saved-address support. Keep installed readers and replay when disabling issuance. */
+export function destinationV2Capabilities(input: {
+  rail: "native" | "managed"; installed?: boolean; issuanceEnabled?: boolean;
+}): { [K in "destinationAddressV2" | "savedAddressV2"]: CapabilityStatus & { capability: K } } {
+  const supported = input.rail === "native";
+  const available = supported && input.installed === true && input.issuanceEnabled === true;
+  const refusalCode = supported ? "destination_v2_unavailable" : "destination_v2_unsupported_rail";
+  return {
+    destinationAddressV2: { capability: "destinationAddressV2", supported, available, ...(available ? {} : { refusalCode }) },
+    savedAddressV2: { capability: "savedAddressV2", supported: false, available: false, refusalCode: "destination_v2_unsupported_rail" },
   };
 }

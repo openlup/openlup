@@ -50,6 +50,24 @@
     "rules": []
   },
   {
+    "key": "shipping.addressPolicy",
+    "domain": "shipping",
+    "kind": "code",
+    "goal": "Define v2 checkout destination address rules for each market and country, including required subdivision, postal format and delivery classifications.",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "absentMeans": {"description": "Versioned destination validation requires a matching host policy. Managed hosts support v1 checkout and saved addresses. Fresh v2 destination issuance requires a native writer. Use the v1 address book for saved addresses.", "source": "Application composition", "value": null},
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The application owns the destination rules for its markets and delivery services.",
+    "effect": {"appliesTo": "New versioned destination submissions use the selected policy revision.", "frozenOn": ["Previously captured destinations keep their recorded address and policy revision."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "Version and bind AddressPolicyV1 data in server composition. Discover v2 destination issuance with destinationV2Capabilities."},
+    "change": {"reference": "docs/guide/how-to/build/customize-the-starter.md#validate-a-checkout-destination"},
+    "rules": []
+  },
+  {
     "key": "shipping.addressRegions",
     "domain": "shipping",
     "goal": "Support optional postal codes and address regions.",
