@@ -12786,6 +12786,14 @@
       "class": "public-output"
     },
     {
+      "path": "recipes/scripts/generate-index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/scripts/tests/generate-index.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "recipes/tax/avalara/LIVE_QUALIFICATION.md",
       "class": "public-output"
     },

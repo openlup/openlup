@@ -27,7 +27,10 @@ npx --no -- tsc -p recipes/tsconfig.json --noEmit
 # 2. Offline Stages 1–3 tests (conformance + canaries + negative controls + mount proof)
 npx vitest run recipes/payments/adyen/tests/ recipes/payments/mollie/tests/ recipes/fulfillment/amazon-mcf/tests/ recipes/fulfillment/shipbob/tests/ recipes/tax/avalara/tests/
 
-# 3. Static ADR-001 guardrails (zero ambient env reads, zero ambient fetch, import isolation)
+# 3. Deterministic index & manifest verification
+node --experimental-strip-types recipes/scripts/generate-index.ts --check   # drop --check to regenerate recipes/index.json from manifests
+
+# 4. Static ADR-001 guardrails (zero ambient env reads, zero ambient fetch, import isolation)
 npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression
 npx --no -- eslint recipes/
 ```
