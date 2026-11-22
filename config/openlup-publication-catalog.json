@@ -13546,6 +13546,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/installation-inventory-refresh.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/installation-inventory-refresh.ts",
       "class": "public-output"
     },
