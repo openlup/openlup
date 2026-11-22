@@ -1,4 +1,4 @@
-import type { TaxCoverageInputV1, TaxCoverageV1 } from "./types.js";
+import type { TaxCoverageInputV1, TaxCoverageResultV1, TaxCoverageV1 } from "./types.js";
 
 type Cell = TaxCoverageInputV1["required"][number];
 type Declaration = TaxCoverageV1["declarations"][number];
@@ -29,4 +29,34 @@ export const compareDeclarations = (left: Declaration, right: Declaration): numb
 
 export function includesInstant(interval: Declaration["effective"], date: string): boolean {
   return interval.from <= date && (interval.until === undefined || date < interval.until);
+}
+
+type Row = TaxCoverageResultV1["vector"][number];
+
+export function decide(
+  declaration: Row["declaration"], registration: Row["registration"], treatment: Row["treatment"], amount?: number,
+): Row["decision"] {
+  if ((amount ?? 0) > 0 && (declaration?.status === "not_registered_acknowledged"
+    || registration?.state === "inactive" || (treatment && treatment.kind !== "taxable"))) {
+    return "inconsistent";
+  }
+  if (!declaration) return "undeclared";
+  if (!registration) return "unavailable_evidence";
+  if (declaration.status === "not_registered_acknowledged") {
+    return registration.state === "inactive" && treatment?.kind !== "taxable" ? "out_of_scope" : "inconsistent";
+  }
+  if (registration.state !== "active" || treatment?.kind === "not_applicable") return "inconsistent";
+  if (!treatment || amount === undefined) return "unavailable_evidence";
+  return treatment.kind === "taxable" ? "in_scope_taxed" : "in_scope_exempt";
+}
+
+export function decisionIsPossible(row: Row): boolean {
+  // Duplicate or mismatched observations leave only the cell and declaration.
+  return (row.decision === "inconsistent" && !row.registration && !row.treatment)
+    || [undefined, 0, 1].some(amount => decide(row.declaration, row.registration, row.treatment, amount) === row.decision);
+}
+
+export function permitsAssessment(kind: "tax" | "fee", decision: Row["decision"], minor: number): boolean {
+  return decision === "in_scope_taxed" || (minor === 0 && (decision === "in_scope_exempt"
+    || (kind === "tax" && decision === "out_of_scope")));
 }

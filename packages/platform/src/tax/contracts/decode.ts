@@ -83,11 +83,11 @@ export function oneOf<const T extends readonly (string | number)[]>(...allowed: 
     "Supply one of " + allowed.join(", ") + ".");
 }
 
-export function unique<T>(items: readonly T[], key: (item: T) => string, field: string): void {
+export function unique<T>(items: readonly T[], key: (item: T) => string, field: string, code?: TaxRefusalCode): void {
   const seen = new Set<string>();
   items.forEach((item, index) => {
     const id = key(item);
-    if (seen.has(id)) invalid(field + "/" + index, "Remove the duplicate identity.");
+    if (seen.has(id)) invalid(field + "/" + index, "Remove the duplicate identity.", code);
     seen.add(id);
   });
 }

@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { calculateCatalogueMoneyV2, CatalogueMoneyV2Error } from "@openlup/core/pricing";
-import type { CatalogueMoneyV2Result, CatalogueMoneyV2State } from "@openlup/core/pricing";
+import type { CatalogueMoneyV2ComponentRef, CatalogueMoneyV2Result, CatalogueMoneyV2State } from "@openlup/core/pricing";
 import { canonicalCatalogDraftJson } from "../catalog/contracts/index.js";
-import { bounded, exclusiveTaxRemedy, invalid } from "./contracts/decode.js";
-import { cellKey, compareCells, compareDeclarations, declarationKey, includesInstant, sameCell } from "./contracts/identity.js";
+import { array, bounded, checked, exclusiveTaxRemedy, invalid, object, oneOf, variant } from "./contracts/decode.js";
+import { cellKey, compareCells, compareDeclarations, decisionIsPossible, declarationKey, includesInstant, permitsAssessment, sameCell } from "./contracts/identity.js";
 import {
-  parseQuoteKey, quoteInputSchema, taxCalculationEvidenceV1Schema, taxFiscalValidityRequestV1Schema, taxQuoteRequestV1Schema,
+  parseQuoteKey, quoteEvidenceSchema, quoteInputSchema, taxFiscalValidityRequestV1Schema, taxQuoteRequestV1Schema,
 } from "./contracts/schemas.js";
 import type {
   TaxCalculationEvidenceV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal,
@@ -53,7 +53,7 @@ function verifyInputDigest(request: TaxQuoteRequestV1, path = ""): TaxRefusal | 
 }
 
 function verifyEvidence(
-  request: TaxQuoteRequestV1, evidence: TaxCalculationEvidenceV1, digest: string,
+  request: TaxQuoteRequestV1, evidence: TaxCalculationEvidenceV1, digest: string, assessments?: readonly Located[],
 ): TaxRefusal | undefined {
   if (!matchesDigest("evidence", evidence, digest)) {
     return refuse("tax_reference_conflict", "/evidenceDigest", "Supply the original evidence and its digest.");
@@ -84,6 +84,10 @@ function verifyEvidence(
   const declarations = new Map(input.coverage.declarations.filter(entry => includesInstant(entry.effective, input.taxDate))
     .map(entry => [declarationKey(entry), canonicalCatalogDraftJson(entry)]));
   for (const [index, row] of vector.entries()) {
+    if (!decisionIsPossible(row)) {
+      return refuse("tax_calculation_unusable", "/evidence/coverage/vector/" + index + "/decision",
+        "Reconcile the named cell from effective observations.");
+    }
     const actual = row.declaration && canonicalCatalogDraftJson(row.declaration);
     if (actual !== declarations.get(declarationKey(row.cell))) {
       return refuse("tax_reference_conflict", "/evidence/coverage/vector/" + index + "/declaration",
@@ -91,13 +95,25 @@ function verifyEvidence(
     }
   }
 
+  const coverage = new Map(vector.map(row => [cellKey(row.cell), row]));
+  const mismatch = assessments && verifyAssessments(assessments, evidence, coverage);
+  if (mismatch) return mismatch;
+
   const lines = new Map(input.lines.map(item => [item.lineKey, item.assignmentRef]));
   const buckets = new Map(input.delivery.map(item => [item.bucketKey, item.assignmentRef]));
-  for (const [index, { cell: { target }, resolution, resolutionDigest }] of evidence.positions.tax.entries()) {
+  for (const [index, row] of evidence.positions.tax.entries()) {
+    const { cell: { target }, resolution, resolutionDigest, ruleRef } = row;
     const path = "/evidence/positions/tax/" + index;
     const assignment = (target.kind === "line" ? lines : buckets).get(target.key);
     if (assignment !== resolution.assignmentRef) {
       return refuse("tax_reference_conflict", path + "/resolution/assignmentRef", "Use the original component's tax assignment.");
+    }
+    if (resolution.policyRevision !== evidence.policyRevision) {
+      return refuse("tax_reference_conflict", path + "/resolution/policyRevision", "Use the original quote's policy revision.");
+    }
+    const treatment = coverage.get(cellKey(row.cell))?.treatment;
+    if (treatment && ruleRef !== treatment.ruleRef) {
+      return refuse("tax_reference_conflict", path + "/ruleRef", "Use the matched coverage treatment's rule reference.");
     }
     if (!matchesDigest("resolution", resolution, resolutionDigest)) {
       return refuse("tax_reference_conflict", path + "/resolutionDigest", "Recompute the digest from this rule resolution.");
@@ -175,74 +191,158 @@ function verifyMoney(input: TaxQuoteInputV1["money"], money: CatalogueMoneyV2Res
   }
 }
 
-function verifyMetadata(evidence: TaxCalculationEvidenceV1, money: CatalogueMoneyV2Result): TaxRefusal | undefined {
-  const metadata = new Map(evidence.positions.tax.map((row, index) => [row.positionRef, { row, index }]));
-  const coverage = new Map(evidence.coverage.vector.map(row => [cellKey(row.cell), row.decision]));
-  const seen = new Set<string>();
-  for (const [componentIndex, { ref, initial, allocations }] of money.components.entries()) {
-    const kind = ref.kind === "merchandise" ? "line" : "delivery";
-    const key = ref.kind === "merchandise" ? ref.lineKey : ref.bucketKey;
+type Cell = TaxQuoteInputV1["required"][number];
+type Row = TaxCalculationEvidenceV1["coverage"]["vector"][number];
+type Assessment = { id: string; minor: number; path: string } & (
+  { kind: "tax"; target: "line" | "delivery"; key: string; jurisdiction: string; rate?: string } | { kind: "fee" }
+);
+type Located = { assessment: Assessment; candidates: readonly Cell[] };
+
+const assessmentRef = (item: Assessment) => item.path + (item.kind === "tax" ? "/positionRef" : "/feeKey");
+const cellCoordinates = ({ target, jurisdiction }: Cell) =>
+  JSON.stringify(target.kind === "fee" ? [target.kind, target.key] : [target.kind, target.key, jurisdiction]);
+
+function collectAssessments(input: TaxQuoteInputV1, money: CatalogueMoneyV2Result): readonly Located[] | TaxRefusal {
+  const required = new Map<string, Cell[]>();
+  for (const cell of input.required) {
+    const key = cellCoordinates(cell);
+    const list = required.get(key);
+    if (list) list.push(cell);
+    else required.set(key, [cell]);
+  }
+  const rows: Located[] = [];
+  const identities = new Map<string, string>();
+  for (const [index, { ref, initial, allocations }] of money.components.entries()) {
+    const [target, key] = ref.kind === "merchandise" ? ["line", ref.lineKey] as const : ["delivery", ref.bucketKey] as const;
     // Recomputed equality also binds the mirrored before and final states.
-    const states = [initial, ...allocations.map(row => row.after)];
-    for (const [stateIndex, state] of states.entries()) {
+    for (const [stateIndex, state] of [initial, ...allocations.map(row => row.after)].entries()) {
       for (const [positionIndex, position] of state.taxPositions.entries()) {
-        const positionPath = "/money/components/" + componentIndex + "/" + statePath(stateIndex) + "/taxPositions/" + positionIndex;
-        const match = metadata.get(position.positionRef);
-        if (!match) {
-          return refuse("tax_breakdown_incomplete", positionPath + "/positionRef", "Supply one metadata row for this money tax position.");
+        const path = "/money/components/" + index + "/" + statePath(stateIndex) + "/taxPositions/" + positionIndex;
+        const { positionRef: id, jurisdictionRef: jurisdiction, rateDecimal: rate, taxMinor: minor } = position;
+        const coordinates = JSON.stringify([target, key, jurisdiction]);
+        const fingerprint = JSON.stringify([coordinates, rate]);
+        if (identities.has(id) && identities.get(id) !== fingerprint) {
+          return refuse("tax_breakdown_incomplete", path + "/positionRef",
+            "Re-obtain consistent position identities across states. Supply distinct refs for distinct positions.");
         }
-        const { row, index } = match;
-        const path = "/evidence/positions/tax/" + index;
-        if (row.cell.target.kind !== kind || row.cell.target.key !== key) {
-          return refuse("tax_breakdown_incomplete", path + "/cell/target", "Bind this metadata to the money position's component.");
-        }
-        if (row.cell.jurisdiction !== position.jurisdictionRef) {
-          return refuse("tax_breakdown_incomplete", path + "/cell/jurisdiction", "Use the money position's jurisdiction.");
-        }
-        if (row.ratePercent !== position.rateDecimal) {
-          return refuse("tax_breakdown_incomplete", path + "/ratePercent", "Use the money position's rate, or omit it when the position has no rate.");
-        }
-        if (position.taxMinor > 0 && coverage.get(cellKey(row.cell)) !== "in_scope_taxed") {
-          return refuse("tax_breakdown_incomplete", positionPath + "/taxMinor", "Supply zero tax for a cell outside taxable coverage.");
-        }
-        seen.add(position.positionRef);
+        const candidates = required.get(coordinates);
+        if (!candidates) return refuse("tax_breakdown_incomplete", path + "/jurisdictionRef",
+          "Re-obtain the position or fee for a required cell of the original request.");
+        identities.set(id, fingerprint);
+        rows.push({ assessment: { kind: "tax", id, minor, path, target, key, jurisdiction, rate }, candidates });
       }
     }
   }
-  const orphan = evidence.positions.tax.findIndex(row => !seen.has(row.positionRef));
-  if (orphan !== -1) {
-    return refuse("tax_breakdown_incomplete", "/evidence/positions/tax/" + orphan + "/positionRef", "Remove metadata without a matching money tax position.");
+  for (const [index, { feeKey: id, amountMinor: minor }] of money.fees.entries()) {
+    const path = "/money/fees/" + index;
+    const candidates = required.get(JSON.stringify(["fee", id]));
+    if (!candidates) return refuse("tax_breakdown_incomplete", path + "/feeKey",
+      "Re-obtain the position or fee for a required cell of the original request.");
+    rows.push({ assessment: { kind: "fee", id, minor, path }, candidates });
+  }
+  return rows;
+}
+
+function verifyAssessments(rows: readonly Located[], evidence: TaxCalculationEvidenceV1, coverage: ReadonlyMap<string, Row>): TaxRefusal | undefined {
+  type Positions = TaxCalculationEvidenceV1["positions"];
+  type Entry = { path: string } & ({ kind: "tax"; row: Positions["tax"][number] } | { kind: "fee"; row: Positions["fees"][number] });
+  const metadata = new Map<string, Entry>([
+    ...evidence.positions.tax.map((row, index) => ["tax:" + row.positionRef, { kind: "tax", row, path: "/evidence/positions/tax/" + index }] as const),
+    ...evidence.positions.fees.map((row, index) => ["fee:" + row.feeKey, { kind: "fee", row, path: "/evidence/positions/fees/" + index }] as const),
+  ]);
+  const used = new Set<string>();
+  for (const { assessment, candidates } of rows) {
+    const { kind, id, minor, path } = assessment;
+    const tag = kind + ":" + id;
+    const entry = metadata.get(tag);
+    const decision = (candidate: Cell) => coverage.get(cellKey(candidate))!.decision;
+    const admissible = candidates.filter(candidate => permitsAssessment(kind, decision(candidate), minor));
+    let cell: Cell | undefined, field = "";
+    if (entry?.kind === "tax" && assessment.kind === "tax") {
+      const { row } = entry;
+      cell = candidates.find(candidate => sameCell(candidate, row.cell));
+      if (!cell) field = row.cell.target.kind === assessment.target && row.cell.target.key === assessment.key
+        && row.cell.jurisdiction !== assessment.jurisdiction ? "/cell/jurisdiction" : "/cell/target";
+      else if (row.ratePercent !== assessment.rate) field = "/ratePercent";
+    } else if (entry?.kind === "fee") {
+      const { row } = entry;
+      const scope = row.scope.kind === "delivery" ? row.scope.key : undefined;
+      cell = candidates.find(candidate => candidate.jurisdiction === row.jurisdiction && candidate.taxKind === row.feeKind
+        && candidate.target.kind === "fee" && candidate.target.deliveryKey === scope);
+      if (!cell) {
+        const jurisdictions = admissible.filter(candidate => candidate.jurisdiction === row.jurisdiction);
+        field = !jurisdictions.length ? "/jurisdiction" : jurisdictions.some(candidate => candidate.taxKind === row.feeKind) ? "/scope" : "/feeKind";
+      }
+    }
+
+    // A matched cell governs its amount. Otherwise, choose a repair from admissible candidates without picking a cell.
+    if (cell ? !permitsAssessment(kind, decision(cell), minor) : !admissible.length) {
+      const decisions = (cell ? [cell] : candidates).map(decision);
+      if (minor > 0 && decisions.some(decision => permitsAssessment(kind, decision, 0))) {
+        return refuse("tax_breakdown_incomplete", path + (kind === "tax" ? "/taxMinor" : "/amountMinor"),
+          "Re-obtain the calculation with zero assessment for the covered exemption or exclusion and reconcile payable.");
+      }
+      return refuse("tax_breakdown_incomplete", assessmentRef(assessment),
+        decisions.every(decision => decision === "out_of_scope")
+          ? "Omit the out-of-scope fee." : "Obtain the missing proof before emitting an assessment.");
+    }
+    if (!entry) return refuse("tax_breakdown_incomplete", assessmentRef(assessment), "Supply one matching row.");
+    if (field) return refuse("tax_breakdown_incomplete", entry.path + field,
+      "Bind metadata to the original breakdown for that required cell." + (field === "/ratePercent" ? " Match the optional rate exactly." : ""));
+    used.add(tag);
   }
 
-  const fees = new Set(money.fees.map(row => row.feeKey));
-  for (const [index, row] of evidence.positions.fees.entries()) {
-    if (!fees.delete(row.feeKey)) {
-      return refuse("tax_breakdown_incomplete", "/evidence/positions/fees/" + index + "/feeKey", "Remove metadata without a matching money fee.");
-    }
-  }
-  const missing = money.fees.findIndex(row => fees.has(row.feeKey));
-  if (missing !== -1) {
-    return refuse("tax_breakdown_incomplete", "/money/fees/" + missing + "/feeKey", "Supply one metadata row for this calculated fee.");
+  for (const [key, { kind, path }] of metadata) {
+    if (!used.has(key)) return refuse("tax_breakdown_incomplete", path + (kind === "tax" ? "/positionRef" : "/feeKey"),
+      "Remove the specific orphan.");
   }
 }
+
+const integer = checked((value): value is number => Number.isSafeInteger(value), "Supply a safe integer.");
+const text = checked((value): value is string => typeof value === "string", "Supply a string.");
+const componentRef = variant<CatalogueMoneyV2ComponentRef>("kind", {
+  merchandise: object({ kind: oneOf("merchandise"), lineKey: text, sourceOrdinal: integer }),
+  delivery: object({ kind: oneOf("delivery"), bucketKey: text }, { sourceOrdinal: integer }),
+});
+const state = object({
+  amountMinor: integer, netMinor: integer, taxMinor: integer, totalMinor: integer,
+  taxPositions: array(object({ positionRef: text, jurisdictionRef: text, taxableMinor: integer, taxMinor: integer }, { rateDecimal: text }), 32),
+});
+const allocation = object({
+  adjustmentRef: text, sequence: integer, basisReductionMinor: integer, beforeMinor: integer, afterMinor: integer,
+  before: state, after: state, netReductionMinor: integer, taxReductionMinor: integer,
+});
+const moneyResult = object({
+  amountBasis: oneOf("exclusive", "inclusive"), fees: array(object({ feeKey: text, amountMinor: integer }), 256),
+  components: array(object({ ref: componentRef, initial: state, allocations: array(allocation, 256), final: state }), 512),
+  netTotal: integer, taxTotal: integer, feeTotal: integer, payableMinor: integer,
+});
+const success = object({ kind: oneOf("final", "estimate"), money: moneyResult, evidence: value => value, evidenceDigest: text });
+const readResult = variant<ReturnType<typeof success> | undefined>("kind", {
+  final: success, estimate: success, refused: () => undefined, unavailable: () => undefined,
+});
 
 /** Recompute a successful quote's money and verify every evidence binding. Returns a refusal on failure. */
 export function verifyTaxQuoteResult(request: TaxQuoteRequestV1, result: TaxQuoteResultV1): TaxRefusal | undefined {
   const checked = checkedQuoteRequest(request);
   if ("kind" in checked) return checked;
-  if (result.kind === "refused" || result.kind === "unavailable") return;
+  let parsed: ReturnType<typeof readResult>;
+  try { parsed = readResult(result, ""); }
+  catch (error) {
+    return error instanceof Error && "field" in error && typeof error.field === "string"
+      ? refuse("tax_invalid_input", error.field, error.message)
+      : refuse("tax_invalid_input", "", "Supply an ordinary quote result document.");
+  }
+  if (!parsed) return;
 
-  const decoded = taxCalculationEvidenceV1Schema.safeParse(result.evidence);
-  if (!decoded.success) {
-    const { field, message } = decoded.error;
-    return refuse(field.startsWith("/positions") ? "tax_breakdown_incomplete" : "tax_calculation_unusable",
-      "/evidence" + field, message);
+  const wrongMoney = verifyMoney(checked.input.money, parsed.money);
+  if (wrongMoney) return wrongMoney;
+  const assessments = collectAssessments(checked.input, parsed.money);
+  if ("kind" in assessments) return assessments;
+  const decoded = quoteEvidenceSchema.safeParse(parsed.evidence);
+  if (!decoded.success) return refuse(decoded.error.code, "/evidence" + decoded.error.field, decoded.error.message);
+  if (parsed.kind !== decoded.data.status) {
+    return refuse("tax_calculation_unusable", "/evidence/status", "Return evidence with the correct result status.");
   }
-  const evidence = decoded.data;
-  if (result.kind !== evidence.status) {
-    return refuse("tax_calculation_unusable", "/evidence/status", "Supply evidence with the same status as the quote result.");
-  }
-  return verifyMoney(checked.input.money, result.money)
-    ?? verifyEvidence(checked, evidence, result.evidenceDigest)
-    ?? verifyMetadata(evidence, result.money);
+  return verifyEvidence(checked, decoded.data, parsed.evidenceDigest, assessments);
 }

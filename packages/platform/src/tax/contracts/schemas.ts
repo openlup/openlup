@@ -1,7 +1,7 @@
 import { CatalogueMoneyV2Error, isCatalogueMoneyV2RateDecimal, planCatalogueMoneyV2 } from "@openlup/core/pricing";
 import { array, checked, exclusiveTaxRemedy, invalid, object, oneOf, schema, unique, variant } from "./decode.js";
 import type { Decode, Schema } from "./decode.js";
-import { cellKey, compareCells, compareDeclarations, declarationKey, includesInstant, sameCell } from "./identity.js";
+import { cellKey, compareCells, compareDeclarations, decisionIsPossible, declarationKey, includesInstant, permitsAssessment, sameCell } from "./identity.js";
 import type {
   TaxCalculationEvidenceV1, TaxCalculationRefV1, TaxCloseReasonV1, TaxCommitRequestV1,
   TaxCoverageInputV1, TaxCoverageV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxReverseRequestV1,
@@ -186,11 +186,9 @@ const evidenceFields = object({
   coverage: coverageEvidence, fiscalDigest: digest, positions: object({ tax: array(position), fees: array(fee) }),
 });
 
-function evidence(value: unknown, field: string): TaxCalculationEvidenceV1 {
+function evidence(value: unknown, field: string, bindCells = true): TaxCalculationEvidenceV1 {
   const parsed = evidenceFields(value, field);
   if (parsed.calculatedAt >= parsed.expiresAt) invalid(field + "/expiresAt", "Supply an expiry after calculation.");
-  const cells = new Map<string, Cell>();
-  const feeCells = new Map<string, Cell>();
   const { vector } = parsed.coverage;
   vector.forEach((row, index) => {
     const path = field + "/coverage/vector/" + index;
@@ -200,42 +198,36 @@ function evidence(value: unknown, field: string): TaxCalculationEvidenceV1 {
     if (row.registration && !includesInstant(row.registration.effective, parsed.taxDate)) {
       invalid(path + "/registration", "Supply the registration effective on the tax date.");
     }
-    if (parsed.status === "final" && !["in_scope_taxed", "in_scope_exempt", "out_of_scope"].includes(row.decision)) {
-      invalid(path + "/decision", "Resolve coverage before supplying final evidence.");
+    if ((parsed.status === "final" && !permitsAssessment("tax", row.decision, 0))
+      || (permitsAssessment("tax", row.decision, 0) && !decisionIsPossible(row))) {
+      invalid(path + "/decision", "Reconcile the named cell from effective observations.", "tax_calculation_unusable");
     }
-    if (row.decision === "out_of_scope" && (row.declaration?.status !== "not_registered_acknowledged"
-      || row.registration?.state !== "inactive" || row.treatment?.kind === "taxable")) {
-      invalid(path + "/decision", "Supply an acknowledgement and inactive registration for an out-of-scope cell.");
-    }
-    if (row.decision === "out_of_scope" && row.cell.target.kind !== "fee") cells.set(cellKey(row.cell), row.cell);
-    if (row.decision !== "in_scope_taxed" && row.decision !== "in_scope_exempt") return;
-    const treatmentKind = row.decision === "in_scope_taxed" ? "taxable" : "exempt";
-    if (row.declaration?.status !== "registered" || row.registration?.state !== "active" || row.treatment?.kind !== treatmentKind) {
-      invalid(path + "/decision", "Supply a declaration, active registration and matching treatment for this in-scope cell.");
-    }
-    if (row.cell.target.kind === "fee") feeCells.set(cellKey(row.cell), row.cell);
-    else cells.set(cellKey(row.cell), row.cell);
   });
-  unique(parsed.positions.tax, item => item.positionRef, field + "/positions/tax");
-  unique(parsed.positions.fees, item => item.feeKey, field + "/positions/fees");
+  unique(parsed.positions.tax, item => item.positionRef, field + "/positions/tax", "tax_breakdown_incomplete");
+  unique(parsed.positions.fees, item => item.feeKey, field + "/positions/fees", "tax_breakdown_incomplete");
+  const cells = new Map(vector.map(row => [cellKey(row.cell), row]));
   parsed.positions.tax.forEach((item, index) => {
     const bound = cells.get(cellKey(item.cell));
     const path = field + "/positions/tax/" + index;
-    if (!bound || !sameCell(bound, item.cell)) invalid(path + "/cell", "Bind the position to a resolved tax cell.");
+    if (bindCells && (!bound || item.cell.target.kind === "fee" || !sameCell(bound.cell, item.cell)
+      || !permitsAssessment("tax", bound.decision, 0))) invalid(path + "/cell", "Bind the position to a resolved tax cell.");
     if (!includesInstant(item.resolution.effective, parsed.taxDate)) {
       invalid(path + "/resolution/effective", "Supply a rule resolution effective on the tax date.");
     }
   });
-  parsed.positions.fees.forEach((item, index) => {
+  if (bindCells) parsed.positions.fees.forEach((item, index) => {
     const key = JSON.stringify(["fee", item.feeKey, item.jurisdiction, item.feeKind]);
-    const bound = feeCells.get(key)?.target;
-    if (bound?.kind !== "fee" || bound.deliveryKey !== (item.scope.kind === "delivery" ? item.scope.key : undefined)) {
+    const bound = cells.get(key);
+    if (bound?.cell.target.kind !== "fee" || !permitsAssessment("fee", bound.decision, 0)
+      || bound.cell.target.deliveryKey !== (item.scope.kind === "delivery" ? item.scope.key : undefined)) {
       invalid(field + "/positions/fees/" + index, "Bind the fee to the matching in-scope fee cell.");
     }
   });
   return parsed;
 }
 export const taxCalculationEvidenceV1Schema: Schema<TaxCalculationEvidenceV1> = schema(evidence);
+// The Node quote verifier joins these rows with money before checking their cell bindings.
+export const quoteEvidenceSchema: Schema<TaxCalculationEvidenceV1> = schema((value, field) => evidence(value, field, false));
 
 const validityFields = object({ original: quoteRequest, evidence, evidenceDigest: digest, chargeAt: instant, current: quote });
 export const taxFiscalValidityRequestV1Schema: Schema<TaxFiscalValidityRequestV1> = schema((value, field) => {

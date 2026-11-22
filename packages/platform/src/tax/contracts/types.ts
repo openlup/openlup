@@ -56,6 +56,9 @@ export type TaxQuoteRequestV1 = Readonly<{ key: string; inputDigest: string; inp
  *   `providerLineRef` omitted for `tax`, and the fee rows for `fees`.
  *   This payload excludes the calculation ref, times and expiry.
  * - `platform.tax.evidence.v1` binds this whole evidence object.
+ *
+ * Supply one metadata row per emitted assessment, including zero amounts.
+ * A taxed coverage cell may have no emitted position.
  */
 export type TaxCalculationEvidenceV1 = Readonly<{
   scope: TaxScopeV1; calculationRef: string; status: "final" | "estimate"; calculatedAt: string;

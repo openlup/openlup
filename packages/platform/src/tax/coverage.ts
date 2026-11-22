@@ -1,5 +1,5 @@
 import type { TaxCoverageInputV1, TaxCoverageResultV1, TaxRefusal } from "./contracts/index.js";
-import { cellKey, compareCells, declarationKey, includesInstant, sameCell } from "./contracts/identity.js";
+import { cellKey, compareCells, decide, declarationKey, includesInstant, sameCell } from "./contracts/identity.js";
 import { coverageInputSchema } from "./contracts/schemas.js";
 import { taxDigest } from "./digest.js";
 
@@ -14,23 +14,6 @@ function evidence(vector: TaxCoverageResultV1["vector"]) {
 function refuse(code: TaxRefusal["code"], field: string, remedy: string, cell?: Cell): TaxRefusal {
   return { kind: "refused", code, field, remedy,
     ...(cell && { jurisdiction: cell.jurisdiction, taxKind: cell.taxKind }) };
-}
-
-function decide(
-  declaration: Row["declaration"], registration: Row["registration"], treatment: Row["treatment"], amount?: number,
-): Row["decision"] {
-  if ((amount ?? 0) > 0 && (declaration?.status === "not_registered_acknowledged"
-    || registration?.state === "inactive" || (treatment && treatment.kind !== "taxable"))) {
-    return "inconsistent";
-  }
-  if (!declaration) return "undeclared";
-  if (!registration) return "unavailable_evidence";
-  if (declaration.status === "not_registered_acknowledged") {
-    return registration.state === "inactive" && treatment?.kind !== "taxable" ? "out_of_scope" : "inconsistent";
-  }
-  if (registration.state !== "active" || treatment?.kind === "not_applicable") return "inconsistent";
-  if (!treatment || amount === undefined) return "unavailable_evidence";
-  return treatment.kind === "taxable" ? "in_scope_taxed" : "in_scope_exempt";
 }
 
 export function reconcileTaxCoverage(input: TaxCoverageInputV1): TaxCoverageResultV1 {

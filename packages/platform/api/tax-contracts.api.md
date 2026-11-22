@@ -27,7 +27,7 @@ export declare function variant<T>(key: string, cases: Record<string, Decode<T>>
 export declare function array<T>(item: Decode<T>, max?: number): Decode<T[]>;
 export declare function checked<T>(predicate: (value: unknown) => value is T, remedy: string): Decode<T>;
 export declare function oneOf<const T extends readonly (string | number)[]>(...allowed: T): Decode<T[number]>;
-export declare function unique<T>(items: readonly T[], key: (item: T) => string, field: string): void;
+export declare function unique<T>(items: readonly T[], key: (item: T) => string, field: string, code?: TaxRefusalCode): void;
 export interface Schema<T> {
     parse(value: unknown): T;
     safeParse(value: unknown): {
@@ -86,6 +86,7 @@ export declare const taxQuoteRequestV1Schema: Schema<TaxQuoteRequestV1>;
 export declare const quoteInputSchema: Schema<TaxQuoteInputV1>;
 export declare const parseQuoteKey: (key: unknown) => string;
 export declare const taxCalculationEvidenceV1Schema: Schema<TaxCalculationEvidenceV1>;
+export declare const quoteEvidenceSchema: Schema<TaxCalculationEvidenceV1>;
 export declare const taxFiscalValidityRequestV1Schema: Schema<TaxFiscalValidityRequestV1>;
 export declare const taxCloseInputV1Schema: Schema<{
     ref: TaxCalculationRefV1;
@@ -289,6 +290,9 @@ export type TaxQuoteRequestV1 = Readonly<{
  *   `providerLineRef` omitted for `tax`, and the fee rows for `fees`.
  *   This payload excludes the calculation ref, times and expiry.
  * - `platform.tax.evidence.v1` binds this whole evidence object.
+ *
+ * Supply one metadata row per emitted assessment, including zero amounts.
+ * A taxed coverage cell may have no emitted position.
  */
 export type TaxCalculationEvidenceV1 = Readonly<{
     scope: TaxScopeV1;
