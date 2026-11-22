@@ -8,6 +8,22 @@ vi.mock("node:child_process", async importOriginal => {
   return { ...original, execFileSync: vi.fn(original.execFileSync) };
 });
 
+function expectManifestRegistration(vendor: string, category: "ui-13" | "ui-14") {
+  const path = "packages/platform/package.json";
+  const subpath = `payments/${vendor}`;
+  const contents = JSON.stringify({
+    exports: { [`./${subpath}`]: { import: `./dist/${subpath}/index.js` } },
+    description: subpath,
+  });
+  // The manifest allowance applies only to the exact export key and its canonical targets.
+  expect(allowedPaymentAdapterWords(path, contents, category)).toBe(2);
+  expect(allowedPaymentAdapterWords(path, subpath, category)).toBe(0);
+  expect(allowedPaymentAdapterWords(path, vendor, category)).toBe(0);
+  expect(allowedPaymentAdapterWords(path, `${subpath}-other`, category)).toBe(0);
+  const key = createHash("sha256").update(path).digest("hex");
+  expect(scanSnapshots(new Map([[path, Buffer.from(contents)]])).rows).toEqual({ [key]: { [category]: 1 } });
+}
+
 it("refuses excess market and zone allowances without masking remaining counts", () => {
   const vendor = ["tp", "ay"].join("");
   const path = `packages/platform/src/payments/${vendor}/${vendor}PaymentReconciliationProvider.ts`;
@@ -86,7 +102,8 @@ it("keeps the payment vocabulary allowance within exact source/report/ledger pat
   expect(witnessCount).toBe(2);
   expect(words(witnessPath, witnessContents)).toBe(2);
   expect(neutralityIncreases({}, { [witnessPath]: { "ui-13": witnessCount - words(witnessPath, witnessContents) } })).toHaveLength(0);
-  for (const path of ["packages/platform/package.json", "packages/platform/README.md", "scripts/packages/platform-cold-consumer.ts",
+  expectManifestRegistration(vendor, "ui-13");
+  for (const path of ["packages/platform/README.md", "scripts/packages/platform-cold-consumer.ts",
     "packages/platform/changes/a-two.md", "packages/platform/AGENTS.md"]) {
     expect(words(path, `payments/${vendor}`)).toBe(1);
     expect(words(path, vendor)).toBe(0);
@@ -162,7 +179,8 @@ it("keeps the second payment adapter and its market token within the approved al
       { path, category, before: 0, after: 1 }, { path, category: "ui-5", before: 0, after: 1 },
     ]));
   }
-  for (const path of ["packages/platform/package.json", "packages/platform/README.md", "scripts/packages/platform-cold-consumer.ts",
+  expectManifestRegistration(vendor, category);
+  for (const path of ["packages/platform/README.md", "scripts/packages/platform-cold-consumer.ts",
     "packages/platform/changes/a-two.md", "packages/platform/AGENTS.md"]) {
     expect(allowedPaymentAdapterWords(path, `payments/${vendor}`, category)).toBe(1);
     expect(allowedPaymentAdapterWords(path, vendor, category)).toBe(0);
