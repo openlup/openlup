@@ -471,7 +471,9 @@ no raw email, IP address, idempotency key, headers or request payload, and has n
 client foreign key or absorption mapping.
 
 Restore the ledger before enabling checkout under the same limit and identity
-policy. Restored attempts age on their original timestamps. Admission prunes
+policy. Restore treats the ledger as empty for pinned predecessor installations
+that predate it. Current packets must include the ledger. Restored attempts
+age on their original timestamps. Admission prunes
 rows at the retention cutoff on each call. Idle databases keep bounded rows
 until the next call or an owner cleanup. For managed same-schema transfer use
 the bounded `@openlup/platform/portability` utility. The managed-to-native

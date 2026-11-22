@@ -11,6 +11,9 @@ const resources = storeJourneyResources();
 const table = "public.commerce_checkout_attempt_ledger";
 const record = `SELECT public.commerce_record_checkout_attempt($1,$2,$3,$4,$5,$6,$7,$8) AS outcome`;
 const digest = (label: string) => createHash("sha256").update(label).digest("hex");
+const ledgerWaiters = async (db: PoolClient) => (await db.query(`SELECT count(*)::int AS n FROM pg_locks
+  WHERE relation=$1::regclass AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+  AND mode='ShareRowExclusiveLock' AND NOT granted`, [table])).rows[0].n;
 const request = digest("requester"), email = digest("email"), exact = digest("attempt");
 const windowMs = 600_000, retentionMs = 1_200_000;
 const allowed = { allowed: true }, emailQuota = { allowed: false, reason: "email_quota" }, requesterQuota = { allowed: false, reason: "ip_quota" };
@@ -80,9 +83,7 @@ describe.each(["native", "managed"] as const)("%s checkout attempt ledger", rail
       await blocker.query("BEGIN");
       await blocker.query(`LOCK TABLE ${table} IN SHARE ROW EXCLUSIVE MODE`);
       writers = Promise.allSettled(keys.map(key => attempt(store.runtime, key, key, key, [windowMs, retentionMs, 4, 4, 1])));
-      await expect.poll(async () => (await blocker.query(`SELECT count(*)::int AS n FROM pg_locks
-        WHERE relation=$1::regclass AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
-        AND mode='ShareRowExclusiveLock' AND NOT granted`, [table])).rows[0].n).toBe(keys.length);
+      await expect.poll(() => ledgerWaiters(blocker)).toBe(keys.length);
     } finally {
       await blocker.query("ROLLBACK");
       blocker.release();
@@ -123,6 +124,37 @@ describe.each(["native", "managed"] as const)("%s checkout attempt ledger", rail
     expect(await attempt(store.runtime, "a".repeat(64))).toEqual(allowed);
     expect(await attempt(store.runtime, "b".repeat(64))).toEqual(allowed);
     expect(await ledgerRows(store.owner)).toHaveLength(3);
+  });
+
+  it("samples time after waiting for the table lock across the retention cutoff", async () => {
+    const blocker = await store.owner.connect();
+    const runtime = await store.runtime.connect();
+    const next = digest("after lock");
+    let waiting: Promise<PromiseSettledResult<unknown>[]> | undefined;
+    let cutoff: string;
+    try {
+      // Commit a row that fills the ledger and falls out of retention shortly
+      // after the rival starts. Distinct quota digests isolate retained capacity.
+      ({ cutoff } = (await blocker.query(`INSERT INTO ${table}
+        SELECT $1,$1,$1,floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint - $2::bigint + 2000
+        RETURNING recorded_at_ms + $2::bigint AS cutoff`, [exact, retentionMs])).rows[0]);
+      await blocker.query("BEGIN");
+      await blocker.query(`LOCK TABLE ${table} IN SHARE ROW EXCLUSIVE MODE`);
+      waiting = Promise.allSettled([attempt(runtime, next, request, email, [windowMs, retentionMs, 1, 1, 1])]);
+      await expect.poll(() => ledgerWaiters(blocker)).toBe(1);
+      expect((await blocker.query(`SELECT clock_timestamp() < to_timestamp($1::bigint / 1000.0) AS retained`, [cutoff])).rows[0].retained).toBe(true);
+      await blocker.query("SELECT pg_sleep_until(to_timestamp(($1::bigint + 1) / 1000.0))", [cutoff]);
+    } finally {
+      await blocker.query("ROLLBACK");
+      blocker.release();
+      await waiting;
+      runtime.release();
+    }
+    expect(await waiting).toEqual([{ status: "fulfilled", value: allowed }]);
+    const rows = await ledgerRows(store.owner);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].attempt_digest).toBe(next);
+    expect(BigInt(rows[0].recorded_at_ms)).toBeGreaterThanOrEqual(BigInt(cutoff));
   });
 
   it("allows restricted EXECUTE while denying table access and browser execution", async () => {
@@ -172,3 +204,33 @@ it("carries nonempty admission state through native transfer and replays it thro
     expect(await ledgerRows(target.owner)).toEqual(rows);
   } finally { await fresh.end(); }
 }, 150_000);
+
+
+it("restores the pre-ledger packet shape with an empty ledger and requires it in current packets", async () => {
+  await native.owner.query(`TRUNCATE ${table}`);
+  const product = randomUUID();
+  await native.owner.query("INSERT INTO public.catalog_products (id,slug,name) VALUES ($1,$1::uuid::text,'Predecessor product')", [product]);
+  const capture = await captureStoreJourney(native.owner, "pre-ledger-source");
+  const { sha256: _outer, ...body } = capture;
+  const { sha256: _inner, ...compatible } = capture.compatible;
+  const tables = compatible.tables.filter(entry => entry.table !== "commerce_checkout_attempt_ledger");
+  const withoutLedger = (catalogueId: string) => {
+    const projected = { ...compatible, catalogueId, tables };
+    const packet = { ...body, compatible: { ...projected, sha256: digest(JSON.stringify(projected)) } };
+    return { ...packet, sha256: digest(JSON.stringify(packet)) };
+  };
+  const targets = await resources.targetTemplate("pre-ledger-target");
+  const target = await targets.nextTarget();
+  const freshTarget = await captureStoreJourney(target.owner, "pre-ledger-target");
+  const restore = (packet: ReturnType<typeof withoutLedger>) => restoreConnectedNativeStore({
+    owner: target.owner, installation: journeySelection, packet, freshTarget,
+  });
+  await expect(restore(withoutLedger(compatible.catalogueId))).rejects.toMatchObject({ code: "invalid_input" });
+  // Complete separate-migrator inventory immediately before HS-L.
+  const old = withoutLedger("0fca9c01fd08e76700cd55eaafb81ff1dd9f265ed9a672d3c9936812c8df1153");
+  expect(await restore(old)).toMatchObject({ captureSha256: old.sha256, replayed: false });
+  expect((await target.owner.query("SELECT name FROM public.catalog_products WHERE id=$1", [product])).rows)
+    .toEqual([{ name: "Predecessor product" }]);
+  expect(await ledgerRows(target.owner)).toEqual([]);
+  expect(await restore(old)).toMatchObject({ captureSha256: old.sha256, replayed: true });
+}, 105_000);

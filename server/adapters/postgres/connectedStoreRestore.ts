@@ -24,6 +24,14 @@ const beforePublicationCommands = {
   "installer-managed": "10be382792deaf1cb8f7c1620984d3c47a5c7e8b1cb1634aa7e44374370d2c00",
   "operator-provisioned": "9979a84636b80febb605161e2df5fe14b59ad975781b697bd42fee0dcd9dc71c",
 } as const;
+// Sealed installation inventories immediately before the checkout attempt ledger.
+const beforeCheckoutAttemptLedger = {
+  bootstrap: "df04bdf1590aae92df0fe1885a90a6f7d8c25075a38b3e57a5a66f9bb358eadb",
+  separate: "0fca9c01fd08e76700cd55eaafb81ff1dd9f265ed9a672d3c9936812c8df1153",
+  "installer-managed": "955596b9524fa304df1240b3e170d920c1ba27aefc366fb436c78bf7abb326b5",
+  "operator-provisioned": "443cb07abc88ad43dd3c712310b31204f242b50793fc40d0a5e5ba8765995017",
+} satisfies Record<keyof typeof beforePublicationCommands, string>;
+const checkoutAttemptLedger = "commerce_checkout_attempt_ledger";
 const settings = ["fulfillment_provider_archetypes", "sales_channels", "commerce_settings", "client_absorption_policy",
   "platform_job_controls", "subscriber_retention_activation_watermarks", "subscription_delivery_alignment_control",
   "commerce_offer_policy_cohort_marking"] as const;
@@ -305,12 +313,19 @@ export async function restoreConnectedNativeStore(input: {
   packet: ConnectedNativeStoreCapture;
   freshTarget: ConnectedNativeStoreCapture;
 }): Promise<{ captureSha256: string; replayed: boolean; neutralizedHistoricalHoldNotifications: number }> {
-  const packet = copyCapture(input.packet), fresh = copyCapture(input.freshTarget);
   const installation = structuredClone(input.installation);
   if (installation.generation === "qualified-admin") assertQualifiedAdminPostgresSelection(installation);
+  const profile = installation.generation === "qualified-admin" ? installation.roleMode
+    : installation.migrationLogin === installation.bootstrapLogin ? "bootstrap" : "separate";
+  const packet = copyCapture(input.packet, profile), fresh = copyCapture(input.freshTarget);
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
   const source = tables(packet), baseline = tables(fresh);
+  // Only the pinned predecessor shapes may omit the ledger. Include its empty
+  // expectation in the target column check and census without rewriting the packet.
+  if (!source.has(checkoutAttemptLedger)) {
+    source.set(checkoutAttemptLedger, { ...baseline.get(checkoutAttemptLedger)!, rows: [] });
+  }
   try {
     requireDecodedPublication(decodePublicationPacket({
       publications: source.get("catalog_publications")!.rows, skuRevisions: source.get("catalog_sku_revisions")!.rows,
@@ -336,11 +351,10 @@ export async function restoreConnectedNativeStore(input: {
       || facts.login !== fresh.observation.login || facts.login !== installation.migrationLogin) fail("invalid_input");
     const manifest = expectedManifest(installation);
     const expectedLedger = [manifest.baseline, ...manifest.forward];
-    const profile = installation.generation === "qualified-admin" ? installation.roleMode
-      : installation.migrationLogin === installation.bootstrapLogin ? "bootstrap" : "separate";
     const older = packet.compatible.catalogueId === beforePublicationCommands[profile];
     if (fresh.compatible.catalogueId !== manifest.objectInventorySha256
-      || !older && packet.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
+      || !older && packet.compatible.catalogueId !== beforeCheckoutAttemptLedger[profile]
+        && packet.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
     const ledger = await client.query<{ catalog_path: string; sha256: string; position: number }>(
       "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position");
     if (ledger.rows.length !== expectedLedger.length
@@ -542,7 +556,7 @@ export async function restoreConnectedNativeStore(input: {
   return result;
 }
 
-function copyCapture(input: ConnectedNativeStoreCapture): ConnectedNativeStoreCapture {
+function copyCapture(input: ConnectedNativeStoreCapture, sourceProfile?: keyof typeof beforePublicationCommands): ConnectedNativeStoreCapture {
   try {
     const copy = JSON.parse(JSON.stringify(input)) as ConnectedNativeStoreCapture;
     const { sha256, ...body } = copy;
@@ -563,7 +577,11 @@ function copyCapture(input: ConnectedNativeStoreCapture): ConnectedNativeStoreCa
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }
     const all = tables(copy);
-    if (all.size !== connectedNativeStoreTables.length || connectedNativeStoreTables.some(table => !all.has(table))) fail("invalid_input");
+    const catalogueId = copy.compatible.catalogueId;
+    const predatesLedger = sourceProfile !== undefined && (catalogueId === beforePublicationCommands[sourceProfile]
+      || catalogueId === beforeCheckoutAttemptLedger[sourceProfile]);
+    const expected = predatesLedger ? connectedNativeStoreTables.filter(table => table !== checkoutAttemptLedger) : connectedNativeStoreTables;
+    if (all.size !== expected.length || expected.some(table => !all.has(table))) fail("invalid_input");
     let count = 0, bytes = 0;
     for (const table of all.values()) {
       for (const column of table.columns) quoted(column.name);
