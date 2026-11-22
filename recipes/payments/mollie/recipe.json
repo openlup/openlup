@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "id": "payments/mollie",
+  "domain": "payments",
+  "providerKind": "mollie",
+  "displayName": "Mollie Payments (API v2)",
+  "summary": "Zero-SDK Mollie Payments API v2 recipe supporting hosted checkout redirects, unattended recurring mandates, synchronous readback and cancellation, refund/chargeback observation, and readback-authenticated webhooks.",
+  "regions": [
+    "EU",
+    "global"
+  ],
+  "status": "verified",
+  "openlupPlatformRange": "^1.3.0",
+  "testedAgainstPlatformVersion": "1.3.0",
+  "contractImports": [
+    "@openlup/core/payment",
+    "@openlup/platform/http",
+    "@openlup/platform/payments",
+    "@openlup/platform/payments/contracts",
+    "@openlup/platform/payments/testing"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/payments/testing",
+    "exportName": "runPaymentAdapterConformance",
+    "mode": "safety"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://api.mollie.com"
+  ],
+  "webhookAuth": "none",
+  "browserSurface": {
+    "kind": "none"
+  },
+  "supportedCurrenciesPolicy": "host-configured",
+  "staticCapabilities": {
+    "providerKind": "mollie",
+    "captureFlows": [
+      {
+        "kind": "hosted_checkout",
+        "handoff": "redirect",
+        "methodFamilies": [
+          "card",
+          "wallet",
+          "bank-redirect"
+        ]
+      }
+    ],
+    "requiresStoredMandateEvidence": false,
+    "unattendedChargeFlow": "recurring_mandate",
+    "payerContext": {
+      "requiresPayerBlock": false,
+      "customerRefFallsBackToContactEmail": false
+    },
+    "methodHealth": {
+      "requiresCustomerRef": true,
+      "requiredMethodKind": null,
+      "requiresPayerContact": false
+    },
+    "terminalOutcomeReporting": {
+      "kind": "status_field",
+      "silenceBecomesSuspectAfterMinutes": 360
+    },
+    "mandateUpsertIsSubscriptionScoped": false,
+    "supportedCurrencies": [],
+    "unattended": "supported",
+    "readback": "supported",
+    "close": "supported",
+    "exactAbsence": "unsupported",
+    "refundObservation": "supported",
+    "refundCreate": "unsupported",
+    "authorizationCaptureSplit": "unsupported"
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "LIVE_QUALIFICATION.md",
+      "recipe.json",
+      "server/adapter.ts",
+      "server/client-contract.ts",
+      "server/index.ts",
+      "server/webhook.ts",
+      "tests/conformance.test.ts",
+      "tests/fixtures.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/payments/mollie/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/payments/mollie/tests/mount-proof.test.ts"
+  }
+}

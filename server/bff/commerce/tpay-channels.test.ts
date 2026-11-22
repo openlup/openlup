@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTpaySimulatorClient, TPAY_SIMULATOR_MANDATE_REFUSED_TOKEN } from "../../infra/tpay/tpaySimulatorClient.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 
 const { mockCreateTpayHttpClient } = vi.hoisted(() => ({
@@ -23,7 +24,7 @@ const ENV_KEYS = [
 
 type EnvKey = (typeof ENV_KEYS)[number];
 
-describe("commerce Tpay channels BFF route", () => {
+describe("commerce payment-rail channels BFF route", () => {
   const originalEnv = new Map<EnvKey, string | undefined>();
 
   beforeEach(() => {
@@ -47,7 +48,7 @@ describe("commerce Tpay channels BFF route", () => {
     originalEnv.clear();
   });
 
-  it("fails closed before creating a Tpay client when provider flags are disabled", async () => {
+  it("fails closed before creating a client when provider flags are disabled", async () => {
     process.env.TPAY_API_BASE_URL = "https://openapi.sandbox.tpay.com";
     process.env.TPAY_CLIENT_ID = "client";
     process.env.TPAY_CLIENT_SECRET = "secret";
@@ -99,7 +100,7 @@ describe("commerce Tpay channels BFF route", () => {
     });
   });
 
-  it("returns simulator channels without Tpay credentials", async () => {
+  it("returns simulator channels without provider credentials", async () => {
     process.env.COMMERCE_PROVIDER_PAYMENTS_ENABLED = "true";
     process.env.PAYMENTS_TPAY_ENABLED = "true";
     process.env.PAYMENTS_TPAY_SIMULATOR_ENABLED = "true";
@@ -120,6 +121,19 @@ describe("commerce Tpay channels BFF route", () => {
         ],
       },
     });
+  });
+
+  it("supports simulatorPath injection and neutral mandate refusal messaging", async () => {
+    const defaultClient = createTpaySimulatorClient();
+    const customClient = createTpaySimulatorClient({ simulatorPath: "/custom/sim" });
+    const baseTx = { amount: 14.9, description: "order_abc", hiddenDescription: "intent_1", payer: { email: "fixture@example.test", name: "Customer" }, successUrl: "https://example.test/ok", errorUrl: "https://example.test/err", notificationUrl: "https://example.test/hook" } as Parameters<typeof defaultClient.createTransaction>[0];
+    const defaultPbl = await defaultClient.createTransaction({ ...baseTx, channelId: "sim-pbl-1" });
+    const customPbl = await customClient.createTransaction({ ...baseTx, channelId: "sim-pbl-1" });
+    expect(new URL(defaultPbl.transactionPaymentUrl!).pathname).toBe("/tpay-simulator");
+    expect(new URL(customPbl.transactionPaymentUrl!).pathname).toBe("/custom/sim");
+    const refused = await defaultClient.createTransaction({ ...baseTx, blikToken: TPAY_SIMULATOR_MANDATE_REFUSED_TOKEN, alias: { value: "alias-key", type: "PAYID" } });
+    expect(refused.payIdEligible).toBeNull();
+    expect(refused.errors).toEqual([{ errorCode: "payment_failed", errorMessage: "Bank does not support recurring alias registration", fieldName: null }]);
   });
 });
 

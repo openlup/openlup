@@ -9,7 +9,7 @@ import { qualifiedPostgresCatalogPayload, qualifiedAdminPostgresCatalogPayload, 
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 export type AccountProfile = "legacy" | "bootstrap" | "separate" | "admin-managed" | "admin-operator";
-export const acquisitionSearchPathPredecessor = {
+export const subscriptionProfilesPredecessor = {
   legacy: "37eaad4927661af8b5edc939ce9c8132af7892ed1bb1473c2fc5707c3f3b4e13",
   bootstrap: "c6fea6b7fe85a7963f952994c34e1dfbca87045952e3dadbbf947c4b89aab5f6",
   separate: "d0a803fd96d5fe048179cff18181c437ede56daa3a8dc14b2ee0a62381753619",
@@ -17,10 +17,20 @@ export const acquisitionSearchPathPredecessor = {
   "admin-operator": "d413c04713b9fb5f5f9d8f01dc66c68c67d131f6cc94bcbf12becef47abd4f42",
 } satisfies Record<AccountProfile, string>;
 
-export async function installBeforeAcquisitionSearchPathPin(profile: AccountProfile, label: string) {
+export const acquisitionSearchPathPredecessor = {
+  legacy: "82568ad14720d9c74a8368924eaba4f4eaa0de4d7831c7b68518a3c12cc86509",
+  bootstrap: "cffdddea783d1cdbc1460c6a9d6caf5bad4a94096eacd38938bdb6b6b28bc256",
+  separate: "d7a7452c78bc5d1b3fc3920d483a2465f8a64caf2198238d9e8e494f52e168c5",
+  "admin-managed": "beaa7e249a4a9966f48a6fe9a99c48900a7b228cc22e2178bdd42df5a56fc474",
+  "admin-operator": "5c43ca0f133bffc0d3e2eebf826c1932272a0309b45add51d21cfa97d430d673",
+} satisfies Record<AccountProfile, string>;
+
+export async function installBeforeAcquisitionSearchPathPin(profile: AccountProfile, label: string,
+  predecessor: "subscription-profiles" | "search-path-pin" = "search-path-pin") {
   const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
   if (manifest?.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
-  const pins = acquisitionSearchPathPredecessor;
+  const pins = predecessor === "subscription-profiles" ? subscriptionProfilesPredecessor : acquisitionSearchPathPredecessor;
+  const suffix = predecessor === "subscription-profiles" ? "_subscription_profiles.sql" : "_acquisition_definer_search_path_pin.sql";
   manifest.objectInventorySha256 = pins.legacy;
   manifest.qualified.objectInventorySha256 = {
     bootstrapMigrator: { withRestore: pins.bootstrap },
@@ -33,8 +43,8 @@ export async function installBeforeAcquisitionSearchPathPin(profile: AccountProf
   const root = mkdtempSync(join(tmpdir(), "acquisition-search-path-prefix-"));
   try {
     for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
-      const position = plan.forward.findIndex(unit => unit.file.endsWith("_acquisition_definer_search_path_pin.sql"));
-      if (position < 0) throw new Error("Acquisition search path migration is missing");
+      const position = plan.forward.findIndex(unit => unit.file.endsWith(suffix));
+      if (position < 0) throw new Error(`Missing predecessor boundary ${suffix}`);
       plan.forward = plan.forward.slice(0, position);
       for (const unit of [plan.baseline, ...plan.forward]) {
         const target = join(root, unit.file);

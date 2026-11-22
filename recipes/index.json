@@ -34,6 +34,20 @@
       "openlupPlatformRange": "^1.3.0",
       "testedAgainstPlatformVersion": "1.3.0",
       "manifestPath": "fulfillment/amazon-mcf/recipe.json"
+    },
+    {
+      "id": "payments/mollie",
+      "domain": "payments",
+      "providerKind": "mollie",
+      "displayName": "Mollie Payments (API v2)",
+      "status": "verified",
+      "regions": [
+        "EU",
+        "global"
+      ],
+      "openlupPlatformRange": "^1.3.0",
+      "testedAgainstPlatformVersion": "1.3.0",
+      "manifestPath": "payments/mollie/recipe.json"
     }
   ]
 }

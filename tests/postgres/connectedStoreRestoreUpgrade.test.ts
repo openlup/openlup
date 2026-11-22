@@ -11,7 +11,7 @@ import { restoreConnectedNativeStore } from "../../server/adapters/postgres/conn
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
 import { sealConnectedCapture } from "./connectedStoreHistoricalPacket.fixture.js";
-import { acquisitionSearchPathPredecessor, installAccountMutations, installBeforeAcquisitionSearchPathPin } from "./customerAccountMutations.fixture.js";
+import { acquisitionSearchPathPredecessor, installAccountMutations, installBeforeAcquisitionSearchPathPin, subscriptionProfilesPredecessor } from "./customerAccountMutations.fixture.js";
 import { prepareOriginal, sandboxRenewal } from "./subscriptionNativeFixture.js";
 
 const profiles = ["bootstrap", "separate", "admin-managed", "admin-operator"] as const;
@@ -191,12 +191,20 @@ it.each(histories.map((history, index) => ({ history, profile: profiles[index], 
   }, postgresSetupTimeoutMs,
 );
 
+async function restoreAcquisitionCapture(target: Store, packet: ConnectedNativeStoreCapture, label: string) {
+  if (target.installation.generation === "legacy") throw new Error("Qualified restore target required");
+  const input = { owner: target.migrator, installation: target.installation, packet, freshTarget: await capture(target, label, true) };
+  expect(await restoreConnectedNativeStore(input)).toMatchObject({ captureSha256: packet.sha256, replayed: false });
+  expect(await restoreConnectedNativeStore(input)).toMatchObject({ captureSha256: packet.sha256, replayed: true });
+  return carriedRows(await capture(target, label));
+}
+
 it.each(profiles)("pins pg_temp last on the acquisition functions through %s capture and restore", async profile => {
   const stores: Store[] = [];
   try {
-    const source = await installBeforeAcquisitionSearchPathPin(profile, "capture-before-pin");
+    const source = await installBeforeAcquisitionSearchPathPin(profile, "capture-before-pin", "subscription-profiles");
     stores.push(source);
-    expect(source.inventory).toBe(acquisitionSearchPathPredecessor[profile]);
+    expect(source.inventory).toBe(subscriptionProfilesPredecessor[profile]);
     await seedQuote(source, await seed(source, { predatesLedger: false, predatesScheme: false }));
     const predecessor = await capture(source, "before-pin");
     expect(carriedRows(predecessor).find(entry => entry.table === quotes)?.rows).toHaveLength(1);
@@ -204,11 +212,7 @@ it.each(profiles)("pins pg_temp last on the acquisition functions through %s cap
     async function restore(packet: ConnectedNativeStoreCapture, label: string) {
       const target = await installAccountMutations(profile, false, label);
       stores.push(target);
-      if (target.installation.generation === "legacy") throw new Error("Qualified restore target required");
-      const input = { owner: target.migrator, installation: target.installation, packet, freshTarget: await capture(target, label, true) };
-      expect(await restoreConnectedNativeStore(input)).toMatchObject({ captureSha256: packet.sha256, replayed: false });
-      expect(await restoreConnectedNativeStore(input)).toMatchObject({ captureSha256: packet.sha256, replayed: true });
-      return carriedRows(await capture(target, label));
+      return restoreAcquisitionCapture(target, packet, label);
     }
 
     const retained = await restore(predecessor, "restore-before-pin");
@@ -219,5 +223,28 @@ it.each(profiles)("pins pg_temp last on the acquisition functions through %s cap
     expect(await restore(upgraded, "restore-after-pin")).toEqual(retained);
   } finally {
     await Promise.all(stores.map(store => store.close()));
+  }
+}, postgresSetupTimeoutMs);
+
+it("pins pg_temp last on the acquisition functions through capture and restore from the preceding installation", async () => {
+  const source = await installBeforeAcquisitionSearchPathPin("bootstrap", "capture-pin-predecessor");
+  try {
+    expect(source.inventory).toBe(acquisitionSearchPathPredecessor.bootstrap);
+    await seedQuote(source, await seed(source, { predatesLedger: false, predatesScheme: false }));
+    const predecessor = await capture(source, "pin-predecessor");
+    expect(carriedRows(predecessor).find(entry => entry.table === quotes)?.rows).toHaveLength(1);
+
+    const target = await installAccountMutations("bootstrap", false, "restore-pin-predecessor");
+    try {
+      const retained = await restoreAcquisitionCapture(target, predecessor, "restore-pin-predecessor");
+      expect((await source.runner.apply()).applied).toEqual([expect.stringMatching(/_acquisition_definer_search_path_pin\.sql$/u)]);
+      const upgraded = await capture(source, "upgraded-pin-predecessor");
+      expect(upgraded.compatible.catalogueId).toBe(target.inventory);
+      expect(retained).toEqual(carriedRows(upgraded));
+    } finally {
+      await target.close();
+    }
+  } finally {
+    await source.close();
   }
 }, postgresSetupTimeoutMs);
