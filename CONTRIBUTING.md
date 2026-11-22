@@ -1686,8 +1686,8 @@ authority. Review evidence grants no merge, release, settings or credential righ
    refusals and any explicit installed-policy step. Release preparation consumes
    the fragment into the next reader upgrade guide. Leave released sections intact.
 4. **Describe the task in the PR description.** Include the specification as
-   the task record, along with the risk, actual delivery authority and evidence.
-   Keep the record current through fixes and handoffs.
+   the task record, with its acceptance criteria, the risk, actual delivery
+   authority and evidence. Keep the record current through fixes and handoffs.
 
    Before adding a mechanism (table, trigger, lock, version or dialect, scanner,
    wrapper, setting, test harness or process step), record the current requirement
