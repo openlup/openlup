@@ -198,7 +198,11 @@ it.each(["both", "new-only"])("AM-1 installs and replays P@2 with %s declaration
     ...second, subscriptionProfileDefinitions: [v2, declaration(p1, 29)],
   }).catch((error: unknown) => error);
   expect(changed).toMatchObject({ code: "23505", message: "catalog_profile_install_refuses_redefinition" });
-  expect(changed).not.toHaveProperty("issue");
+  expect((changed as { issue: unknown }).issue).toStrictEqual({
+    code: "catalog_profile_install_refuses_redefinition",
+    path: "",
+    fix: "Replay the original declaration bytes, digest and identity together. Issue a new version for an intentional change.",
+  });
   expect(changed).not.toHaveProperty("value");
   expect(await installCounts()).toEqual(priorCounts);
   const missing = await installCatalogDefinitions(owner, { ...second, subscriptionProfileDefinitions: [v1] }).catch((error: unknown) => error);
