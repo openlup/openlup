@@ -522,14 +522,14 @@ client foreign key or absorption mapping.
 Restore the ledger before enabling checkout under the same limit and identity
 policy. Connected-store restore accepts the current qualified inventory and the
 admitted predecessor inventories from before publication commands, the checkout
-attempt ledger, governed catalogue lifecycle, catalogue accepted references
-and tax coverage revisions.
-Conversion reproduces the retained rows an in-place upgrade would produce.
+attempt ledger, governed catalogue lifecycle, catalogue accepted references,
+subscription profile receipts and tax coverage revisions. Conversion reproduces
+the retained rows an in-place upgrade would produce. The last two predecessor
+inventories share a carried-row shape and restore with an empty coverage history.
 Captures from before catalogue accepted references report the edit quote table
 as empty because capture refused when it contained rows. Later captures carry
-those quotes. A source schema change
-that cannot be reproduced by additive conversion, such as a dropped or retyped
-column, refuses with `schema_conflict`. Upgrade the source, then capture.
+those quotes. A dropped or retyped column cannot be reproduced by additive
+conversion and refuses with `schema_conflict`. Upgrade the source, then capture.
 Restored attempts age on their
 original timestamps. Admission prunes rows at the retention cutoff on each
 call. Idle databases keep bounded rows
@@ -555,6 +555,19 @@ inserts immutable versions on a pristine target; normal UPDATE and DELETE remain
 refused by the definition trigger. See the
 [package catalogue owner](../../packages/platform/README.md#catalog) for explicit
 install executors, readiness observations and the unbound write guard.
+
+The native [subscription profile forward](../../db/platform/migrations/20261124230000_subscription_profiles.sql)
+adds owner-only receipts. Each key and version belongs to the first pack that
+installed its declaration. An identical declaration can be reused by a later
+pack. PostgreSQL binds the identity and SHA-256 digest to the stored bytes.
+The installer owns canonical form and the existing native cadence guards
+still govern subscription writes.
+
+Connected-store capture refuses a store that has subscription profile receipts
+with `subscription_profile_receipts_unsupported`. This check runs in the
+validated read-only snapshot before row collection or size checks. A store with
+reference-only catalogue receipts can still transfer. Wait for connected-store
+restore support for subscription profile receipts (RS-1).
 
 Managed-to-native retained transfer initializes only absent product `type_key`
 and `type_version` fields to NULL. Supplied values, including explicit NULLs,

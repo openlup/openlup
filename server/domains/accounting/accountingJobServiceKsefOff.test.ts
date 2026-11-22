@@ -31,7 +31,7 @@ const b2bClaim: ClaimedAccountingInvoiceIssue = {
     buyerSnapshot: {
       name: "openlup B2B Sp. z o.o.",
       email: "b2b@example.test",
-      taxId: "1181590588",
+      taxId: "1234563218",
       companyName: "openlup B2B Sp. z o.o.",
     },
     orderSnapshot: {},

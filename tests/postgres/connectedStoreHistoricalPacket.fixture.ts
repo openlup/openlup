@@ -1,9 +1,14 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { Pool } from "pg";
-import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import type { captureConnectedNativeStore, ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 
 const editQuotes = "subscription_edit_quotes";
 const coverageRevisions = "tax_coverage_revisions";
+const profileReceipts = "public.catalog_subscription_profile_receipts";
 const removed: Record<string, readonly string[]> = {
   subscription_lines: ["catalog_sku_revision_id"],
   commerce_orders: ["catalog_acceptance", "catalog_basket", "catalog_receipt_key"],
@@ -20,15 +25,34 @@ export function sealConnectedCapture(capture: ConnectedNativeStoreCapture) {
   return capture;
 }
 
+export async function loadPreCoverageCapture(): Promise<typeof captureConnectedNativeStore> {
+  const scratch = join(process.cwd(), ".context", "scratch");
+  mkdirSync(scratch, { recursive: true });
+  const root = mkdtempSync(join(scratch, "historical-capture-"));
+  try {
+    const source = "b6ab1c5b41c959c67da8d51d44ab57e1bf71dbda:server/adapters/postgres/connectedStoreCapture.ts";
+    const path = join(root, "capture.ts");
+    writeFileSync(path, execFileSync("git", ["--no-replace-objects", "show", source]));
+    const historical = await import(/* @vite-ignore */ pathToFileURL(path).href);
+    return historical.captureConnectedNativeStore;
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}
+
 // The feature fixtures seed the current schema. Project their captures to the
 // predecessor format; the upgrade witness separately captures actual old schemas.
-export async function projectHistoricalCapture(db: Pool, current: ConnectedNativeStoreCapture, catalogueId: string, predatesLedger = false) {
+export async function projectHistoricalCapture(db: Pool, current: ConnectedNativeStoreCapture, catalogueId: string,
+  { predatesLedger = false, predatesAcceptedReferences = true } = {}) {
   const packet = structuredClone(current);
   const coverage = packet.owned.find(entry => entry.table === coverageRevisions);
   if (!coverage || coverage.rows.length) throw new Error("Historical captures require an empty tax coverage history");
+  packet.owned = packet.owned.filter(entry => entry.table !== coverageRevisions);
+  packet.compatible.catalogueId = catalogueId;
+  packet.outsideProfileCensus = packet.outsideProfileCensus.filter(entry => entry.relation !== profileReceipts);
+  packet.emptyOutsideProfile = packet.emptyOutsideProfile.filter(relation => relation !== profileReceipts);
+  if (!predatesAcceptedReferences) return sealConnectedCapture(packet);
   const quotes = packet.owned.find(entry => entry.table === editQuotes);
   if (!quotes || quotes.rows.length) throw new Error("Historical captures require an empty edit quote table");
-  packet.owned = packet.owned.filter(entry => entry.table !== coverageRevisions && entry.table !== editQuotes);
+  packet.owned = packet.owned.filter(entry => entry.table !== editQuotes);
   const relation = `public.${editQuotes}`;
   const { rows: [{ owner }] } = await db.query<{ owner: string }>(
     "SELECT pg_catalog.pg_get_userbyid(relowner) AS owner FROM pg_catalog.pg_class WHERE oid=$1::regclass", [relation]);
@@ -45,6 +69,5 @@ export async function projectHistoricalCapture(db: Pool, current: ConnectedNativ
       table.rows = rows.map(({ row }) => row);
     }
   }
-  packet.compatible.catalogueId = catalogueId;
   return sealConnectedCapture(packet);
 }

@@ -105,9 +105,10 @@ The convenience factory also retains `poolFactory`, `root` and
 compatibility. Supplying a pool factory retains responsibility for startup
 options and pool lifetime. These are trusted host seams, not sandbox boundaries.
 
-The selection/validator in `src/migrations/catalog.ts` is an exact generated
-copy of the source tooling owner, checked by the same gate: source policy tools
-run before workspace build output exists. Do not edit the copy.
+The selection/validator in `src/migrations/catalog.ts` is a generated copy with
+one generated-from header line followed by the source tooling owner's exact
+bytes, checked by the same gate: source policy tools run before workspace build
+output exists. Do not edit the copy.
 `sql/manifest.json` is generated from the canonical source manifest and its
 issued SQL, following the outbox asset pattern. Do not edit it or its SQL copies.
 The required installed-consumer gate refuses drift. In a source checkout, run
@@ -1572,6 +1573,14 @@ receipt replays for the same pack version and manifest digest. Reusing a pack
 version with different bytes or redefining an installed type version refuses.
 Retired tax-class keys stay retired; custom units remain definition JSONB.
 Installation never publishes or binds a runtime capability.
+
+Include `subscriptionProfileDefinitions` to opt into exact profile-version
+checks. Supply an empty array to reuse installed profiles. The first successful
+declaration owns its receipt, and an identical declaration in a later pack
+reuses it. A fresh opted-in install requires READ COMMITTED. Use
+`readInstalledCatalogSubscriptionProfile(executor, { key, version })` with the
+native migration-owner executor to read the exact profile and policy pins or
+receive `null`. Follow the [subscription profile upgrade path](../core/docs/guide/how-to/extend/catalogue-extension.md#subscription-profile).
 
 Products have nullable `type_key` and `type_version`: NULL means legacy and not
 mapped. Existing products, SKU codes, prices, documents and subscription references

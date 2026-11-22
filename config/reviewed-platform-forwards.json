@@ -6685,6 +6685,45 @@
         ]
       },
       {
+        "row": "subscription-profiles",
+        "path": "db/platform/migrations/20261124230000_subscription_profiles.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_definition_install(text,integer,jsonb)",
+            "beforeSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_subscription_profile_identity(text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_subscription_profile_receipt_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_definition_install_profile_immutable()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "catalog_subscription_profile_receipt_guard",
+            "table": "public.catalog_subscription_profile_receipts",
+            "sha256": "80658e664ad0da7a08803efd91168f5e12380c2b06fcf93c9e06f064a19e7b63"
+          },
+          {
+            "name": "catalog_definition_install_profile_immutable",
+            "table": "public.catalog_definition_installs",
+            "sha256": "0f8d2edfecb524541918b56bfa9b50dbf8b48cf92d671409a4a72b3a9aba9fc8"
+          }
+        ]
+      },
+      {
         "row": "tax-coverage-revisions",
         "path": "db/platform/migrations/20261124235000_tax_coverage_revisions.sql",
         "replacedFunctions": [],
@@ -9818,6 +9857,32 @@
           "signature": "public.catalog_attach_edit_quote_acceptance(uuid,jsonb)",
           "beforeSha256": null,
           "afterSha256": "00ce4bc43210b0b1d89064afe185ae74816dab7281e34f43734d9024c1bc9bd6"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261124230000_subscription_profiles.sql",
+      "sha256": "6b0fc5f3f7dea92641261b93ab648d9429b20fa7344a71cfb3cf79727e6b9fc0",
+      "functions": [
+        {
+          "signature": "public.catalog_definition_install(text,integer,jsonb)",
+          "beforeSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2",
+          "afterSha256": "edc8c989df4383b019c9b4f44caa4ed040497275a20715d857745520bdd62679"
+        },
+        {
+          "signature": "public.catalog_subscription_profile_identity(text,integer)",
+          "beforeSha256": null,
+          "afterSha256": "fa4521326219e8dba9a4b762d22ec1fe976c31a9f16149a10f4ae23809ed18bb"
+        },
+        {
+          "signature": "public.catalog_subscription_profile_receipt_guard()",
+          "beforeSha256": null,
+          "afterSha256": "6e104201c3121f76c76d6f91df5a63cda432525371309e02597a36660dc27c52"
+        },
+        {
+          "signature": "public.catalog_definition_install_profile_immutable()",
+          "beforeSha256": null,
+          "afterSha256": "befab75f0c60beaa4ee533a377fc81a8191c4fbe9b03ba59b8c2c0e0f540208f"
         }
       ]
     },

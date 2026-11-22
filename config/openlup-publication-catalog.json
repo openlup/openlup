@@ -1578,6 +1578,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124230000_subscription_profiles.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261124235000_tax_coverage_revisions.sql",
       "class": "public-output"
     },
@@ -5158,6 +5162,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261124230000_subscription_profiles.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261124235000_tax_coverage_revisions.sql",
       "class": "public-output"
     },
@@ -5739,6 +5747,10 @@
     },
     {
       "path": "packages/platform/src/catalog/installCatalogDefinitions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/installedSubscriptionProfiles.ts",
       "class": "public-output"
     },
     {
@@ -10306,6 +10318,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/catalog/fixtures/legacyPackIssues.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/catalog/fixtures/publicationInput.ts",
       "class": "public-output"
     },
@@ -12691,6 +12707,42 @@
     },
     {
       "path": "recipes/payments/adyen/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/server/webhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/tests/mount-proof.test.ts",
       "class": "public-output"
     },
     {
@@ -21914,14 +21966,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/vendorRegistry.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/vendorRegistry.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/ops/cronAudit.test.ts",
       "class": "public-output"
     },
@@ -30691,6 +30735,10 @@
     },
     {
       "path": "tests/postgres/catalogQuantities.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogSubscriptionProfiles.test.ts",
       "class": "public-output"
     },
     {

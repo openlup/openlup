@@ -182,7 +182,21 @@ export async function captureConnectedNativeStore(input: {
       // Existing utility validates source IDs, limits, schema and lossless rows;
       // its callback reuses this held client without another BEGIN/COMMIT.
       const packet = await captureCompatiblePostgresRows({
-        source: { withSnapshot: work => work(db) }, sourceId, catalogueId,
+        source: { async withSnapshot(work) {
+          const { rows: [relation] } = await db.query<{ present: boolean }>(
+            "SELECT pg_catalog.to_regclass('public.catalog_subscription_profile_receipts') IS NOT NULL AS present");
+          if (relation?.present) {
+            const { rows: [receipts] } = await db.query<{ present: boolean }>(
+              "SELECT EXISTS (SELECT 1 FROM public.catalog_subscription_profile_receipts) AS present");
+            if (receipts?.present) {
+              throw Object.assign(new PostgresTransferError(
+                "subscription_profile_receipts_unsupported", "catalog_subscription_profile_receipts"), {
+                remedy: "Wait for connected-store restore support for subscription profile receipts (RS-1).",
+              });
+            }
+          }
+          return work(db);
+        } }, sourceId, catalogueId,
         tables: compatible, maximumRows, maximumBytes,
       });
       const relations = (await db.query<{ schema: string; table: string; owner: string }>(`SELECT n.nspname AS schema,c.relname AS table,

@@ -104,7 +104,16 @@ describe("paymentAdapterRegistry", () => {
       const simulator = buildTpayAdapterIfEnabled({ PAYMENTS_TPAY_ENABLED: "true", PAYMENTS_TPAY_SIMULATOR_ENABLED: "true", APP_BASE_URL: "https://example.test" })!;
       const simulated = await simulator.adapter.execute({ ...executionInput, returnContext: "account", subjectId: "subject-id", customerRef: "fixture@example.test",
         transientProviderInput: { provider: codeKind, flow: "pbl_one_time", channelId: "sim-pbl-1" } });
+      expect(new URL(simulated.redirectUrl!).pathname).toMatch(/^\/skomponuj-pakiet\/.+-simulator$/);
       expect(new URL(simulated.redirectUrl!).searchParams.get("return")).toBe("/account/order/status");
+      const blikSimulator = buildTpayAdapterIfEnabled({
+        PAYMENTS_TPAY_ENABLED: "true", PAYMENTS_TPAY_SIMULATOR_ENABLED: "true", APP_BASE_URL: "https://example.test",
+        PAYMENTS_TPAY_BLIK_ONE_CLICK_ENABLED: "true", PAYMENTS_TPAY_BLIK_ALIAS_REGISTRATION_ON_CODE_ENABLED: "true",
+        VITE_PAYMENTS_TPAY_BLIK_MODEL_O_ENABLED: "true",
+      })!;
+      const refused = await blikSimulator.adapter.execute({ ...executionInput, mode: "subscription_cycle", saveForFutureUse: true, customerRef: "fixture@example.test",
+        transientProviderInput: { provider: codeKind, flow: "blik_recurring_activation", blikToken: "000000", recurringModel: "O" } });
+      expect(refused.providerDecline).toEqual({ code: "payment_failed", mandateUnsupported: true });
       expect(fetch).not.toHaveBeenCalled();
       expect(certificateConstruction).not.toHaveBeenCalled();
     } finally { fetch.mockRestore(); }

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { validateCatalogSubscriptionProfile } from "@openlup/core/catalog";
 import { readFileSync, readdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import crypto from "node:crypto";
 import { syncBuiltinESMExports } from "node:module";
 import { runCatalogExtensionConformance } from "../../src/catalog/testing/index.js";
 import { projectCatalogExtensionConformance } from "../../src/catalog/testing/catalogExtensionConformance.js";
-import { catalogPackIssues, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry,
+import { catalogPackIssues, catalogPackManifest, installCatalogDefinitions, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry,
   validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, canonicalizeCatalogCombinationV2, CatalogCombinationError,
   catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema, validateCatalogDraftV2, createCatalogDraftHandler, withCatalogPublicationRules } from "../../src/catalog/index.js";
 import { artifact } from "./fixtures/publicationInput.js";
@@ -29,6 +30,130 @@ const project = (source: unknown) => {
   const projection = projectCatalogExtensionConformance(source);
   return projection.check(projection.subject);
 };
+
+describe("subscription profile pack conformance", () => {
+  const ref = { key: "stationery:repeat", version: 1 };
+  const profile = {
+    ...ref, allowedCadences: [{ schemaVersion: 1, kind: "fixed_days", days: 28 }],
+    policyRef: { key: "stationery:policy", version: 1 }, policyDigest: "a".repeat(64),
+  };
+  const optedIn = { ...pack(), types: [], subscriptionProfiles: [ref], subscriptionProfileDefinitions: [profile] };
+
+  it("matches the legacy issue JSON generated at f8f436454", () => {
+    const inputs = [
+      { ...pack(), subscriptionProfiles: null },
+      { ...pack(), types: [{ ...pack().types[0], subscriptionProfileRef: { ...ref, version: 0 } }] },
+      { ...pack(), types: [{ ...pack().types[0], subscriptionProfileRef: { ...ref, extra: true } }], subscriptionProfiles: [ref] },
+      pack(),
+    ];
+    const golden = readFileSync(new URL("./fixtures/legacyPackIssues.json", import.meta.url), "utf8");
+    expect(JSON.stringify(inputs.map(catalogPackIssues)) + "\n").toBe(golden);
+  });
+
+  it("requires original evidence for profile integrity refusals", () => {
+    const docs = readFileSync(new URL("../../../core/docs/guide/reference/refusal-codes.md", import.meta.url), "utf8");
+    const remedies = Array.from(docs.matchAll(/^\| `catalog_profile_(?:install_(?:refuses_redefinition|manifest_mismatch)|receipt_(?:digest|identity)_mismatch)` \| (.+) \|$/gm), match => match[1]);
+    expect(remedies).toEqual(Array(4).fill("Replay the original declaration bytes, digest and identity together."));
+    expect(remedies.join(" ")).not.toMatch(/recalculate/i);
+  });
+
+  const replayFix = "Replay the original declaration bytes, digest and identity together. Issue a new version for an intentional change.";
+  it.each(["catalog_definition_install_conflict", "catalog_type_install_refuses_redefinition"])("passes legacy %s through unchanged", async message => {
+    const error = Object.assign(new Error(message), { code: "23505" });
+    await expect(installCatalogDefinitions({ query: vi.fn().mockRejectedValue(error) }, { ...pack(), types: [] })).rejects.toBe(error);
+    expect(error).toMatchObject({ code: "23505", message });
+    expect(error).not.toHaveProperty("issue");
+  });
+
+  it.each([
+    ["25000", "catalog_profile_install_requires_read_committed", "Retry in a READ COMMITTED transaction."],
+    ["23505", "catalog_profile_install_refuses_redefinition", replayFix],
+    ["22023", "catalog_profile_install_manifest_mismatch", replayFix],
+    ["23505", "catalog_type_install_refuses_redefinition", replayFix],
+    ["23505", "catalog_definition_install_conflict", replayFix],
+  ] as const)("adds a root installer fix to SQLSTATE %s %s", async (code, message, fix) => {
+    const error = Object.assign(new Error(message), { code });
+    const query = vi.fn().mockRejectedValue(error);
+    await expect(installCatalogDefinitions({ query }, optedIn as CatalogPackInput)).rejects.toBe(error);
+    expect(error).toMatchObject({ code, message });
+    expect(error).toHaveProperty("issue", { code: message, path: "", fix });
+  });
+
+  async function checkRefusal(input: unknown, issue: { code: string; path: string; fix: string }) {
+    const pack = input as CatalogPackInput;
+    const query = vi.fn();
+    const refusal = { message: "invalid_catalog_pack", issue };
+    expect(() => catalogPackManifest(pack)).toThrow(expect.objectContaining(refusal));
+    await expect(installCatalogDefinitions({ query }, pack)).rejects.toMatchObject(refusal);
+    expect(query).not.toHaveBeenCalled();
+    const report = await check(pack);
+    expect(report.exitCode).toBe(1);
+    expect(report.findings).toContainEqual(expect.objectContaining({ ...issue, path: `/packs/0/pack${issue.path}` }));
+    return report;
+  }
+
+  it.each([
+    ["AL-2", { ...profile, policyDigest: "invalid" }, "/policyDigest", "Supply policyDigest as a 64-character lowercase SHA-256 hex digest."],
+    ["AN-1", { ...profile, policyRef: { ...profile.policyRef, "extra~/field": 1 } }, "/policyRef/extra~0~1field", 'Remove the unexpected property "extra~/field".'],
+    ["AN-2", { ...profile, allowedCadences: [{ ...profile.allowedCadences[0], schemaVersion: 2 }] }, "/allowedCadences/0/schemaVersion", "Use schemaVersion 1 for this cadence choice."],
+  ] as const)("%s carries the exact Core issue through all three surfaces", async (_name, invalid, path, fix) => {
+    const issue = { code: "definition_profile_invalid", path, fix };
+    expect(validateCatalogSubscriptionProfile(invalid)).toEqual({ issue });
+    await checkRefusal({ ...optedIn, subscriptionProfileDefinitions: [invalid] }, { ...issue, path: `/subscriptionProfileDefinitions/0${path}` });
+  });
+
+  it("reports malformed digest and another malformed field without supplying repair evidence", async () => {
+    const invalid = { ...profile, policyDigest: "foreign evidence" };
+    const issue = { code: "definition_profile_invalid", path: "/subscriptionProfileDefinitions/0/policyDigest",
+      fix: "Supply policyDigest as a 64-character lowercase SHA-256 hex digest." };
+    const input = { ...optedIn, subscriptionProfileDefinitions: [invalid, { ...profile, maxFixedDays: 0 }] };
+    const report = await checkRefusal(input, issue);
+    expect(report.findings.map(finding => finding.path)).toEqual([
+      "/packs/0/pack/subscriptionProfileDefinitions/0/policyDigest",
+      "/packs/0/pack/subscriptionProfileDefinitions/1/maxFixedDays",
+    ]);
+    expect(catalogPackIssues(input)[0]).toEqual(issue);
+    expect(report.findings[0]).not.toHaveProperty("value");
+    expect(report.findings[0].fix).not.toContain(invalid.policyDigest);
+  });
+
+  it.each([
+    [{ subscriptionProfileDefinitions: null }, "definition_invalid_shape", "/subscriptionProfileDefinitions", "Supply subscriptionProfileDefinitions as an array."],
+    [{ subscriptionProfiles: null }, "definition_invalid_shape", "/subscriptionProfiles", "Supply subscriptionProfiles as an array of key/version references."],
+    [{ subscriptionProfiles: [] }, "definition_invalid_shape", "/subscriptionProfiles", "List at least one exact subscription profile key and version."],
+    [{ subscriptionProfiles: [{ ...ref, version: 0 }] }, "definition_profile_ref_invalid", "/subscriptionProfiles/0/version", "Supply a lowercase namespaced key of at most 120 characters and a whole-number version from 1 to 2147483647."],
+    [{ subscriptionProfiles: [ref, ref] }, "definition_duplicate_identity", "/subscriptionProfiles/1", "Remove this duplicate reference and keep one entry for the exact profile version."],
+    [{ subscriptionProfileDefinitions: [profile, profile] }, "definition_duplicate_identity", "/subscriptionProfileDefinitions/1", "Remove this duplicate declaration and keep one declaration for the exact profile version."],
+    [{ subscriptionProfiles: [{ ...ref, version: 2 }] }, "definition_unknown_profile_ref", "/subscriptionProfileDefinitions/0", "List this declaration's exact key and version in subscriptionProfiles."],
+    [{ types: [{ ...pack().types[0], subscriptionProfileRef: { ...ref, version: 2 } }] }, "definition_unknown_profile_ref", "/types/0/subscriptionProfileRef", "List the intended exact profile reference or select an identity already listed in subscriptionProfiles."],
+    [{ types: [{ ...pack().types[0], subscriptionProfileRef: { ...ref, "extra~/field": true } }] }, "definition_profile_ref_invalid", "/types/0/subscriptionProfileRef/extra~0~1field", 'Remove the unexpected property "extra~/field".'],
+  ] as const)("rejects opted-in pack issue %j before SQL", async (overrides, code, path, fix) => {
+    await checkRefusal({ ...optedIn, ...overrides }, { code, path, fix });
+  });
+
+  it("preserves membership issue order when other metadata fails", () => {
+    const type = { ...pack().types[0], version: 0, subscriptionProfileRef: { ...ref, version: 2 } };
+    const invalidRef = { ...pack().types[0], subscriptionProfileRef: { ...ref, version: 2, extra: true } };
+    expect(catalogPackIssues({ ...optedIn, types: [type, invalidRef] }).map(({ code, path }) => [code, path])).toEqual([
+      ["definition_version_invalid", "/types/0/version"],
+      ["definition_profile_ref_invalid", "/types/1/subscriptionProfileRef/extra"],
+      ["definition_unknown_profile_ref", "/types/0/subscriptionProfileRef"],
+    ]);
+  });
+
+  it("C-1 refuses an oversized canonical opted-in pack with one split remedy", async () => {
+    const days = Array.from({ length: 3660 }, (_, i) => ({ schemaVersion: 1, kind: "fixed_days", days: i + 1 } as const));
+    const definitions = Array.from({ length: 8 }, (_, i) => ({ ...profile, version: i + 1, allowedCadences: days }));
+    const { subscriptionProfileDefinitions: _definitions, ...legacy } = {
+      ...optedIn, subscriptionProfiles: definitions.map(({ key, version }) => ({ key, version })),
+    };
+    expect(await check(legacy)).toMatchObject({ exitCode: 0 });
+    expect(await check({ ...legacy, subscriptionProfileDefinitions: [] })).toMatchObject({ exitCode: 0 });
+    await checkRefusal({ ...legacy, subscriptionProfileDefinitions: definitions }, {
+      code: "draft_payload_too_large", path: "", fix: "Split the profile declarations across pack versions or packs.",
+    });
+  });
+});
 
 describe("trusted catalogue projection", () => {
   it("compares v2 and v3 draft admission and validation to their owners", async () => {
@@ -202,7 +327,7 @@ describe("offline catalogue conformance", () => {
     for (const [code, mutate] of cases) {
       const p = pack(); mutate(p);
       expect(catalogPackIssues(p).some(issue => issue.code === code)).toBe(true);
-      expect((await check(p)).findings.map(({ code, path }) => ({ code, path }))).toEqual(catalogPackIssues(p).map(issue => ({ ...issue, path: `/packs/0/pack${issue.path}` })).sort((a, b) => a.path.localeCompare(b.path) || a.code.localeCompare(b.code)));
+      expect((await check(p)).findings.map(({ code, path }) => ({ code, path }))).toEqual(catalogPackIssues(p).map(({ code, path }) => ({ code, path: `/packs/0/pack${path}` })).sort((a, b) => a.path.localeCompare(b.path) || a.code.localeCompare(b.code)));
     }
     const p = pack();
     const d = draft(); d.product.type.key = "stationery:absent";

@@ -44,12 +44,17 @@ const beforeAcceptedReferences = {
   "installer-managed": "02c68db9202830bd08f574130d3a3de19345a4050b8879d3338824b379474195",
   "operator-provisioned": "a05e24a7dcdc6cb4394907be818520a33fa89e9a269a7c01853cd656ecfcf91b",
 } satisfies Record<keyof typeof beforePublicationCommands, string>;
-// Sealed installation inventories immediately before tax coverage history.
-const beforeTaxCoverageRevisions = {
+const beforeSubscriptionProfiles = {
   bootstrap: "c6fea6b7fe85a7963f952994c34e1dfbca87045952e3dadbbf947c4b89aab5f6",
   separate: "d0a803fd96d5fe048179cff18181c437ede56daa3a8dc14b2ee0a62381753619",
   "installer-managed": "412caa25526d6ba70bb5bb761d5bed2336e7307811a879658295819ad5ab15f5",
   "operator-provisioned": "d413c04713b9fb5f5f9d8f01dc66c68c67d131f6cc94bcbf12becef47abd4f42",
+} satisfies Record<keyof typeof beforePublicationCommands, string>;
+const beforeTaxCoverageRevisions = {
+  bootstrap: "cffdddea783d1cdbc1460c6a9d6caf5bad4a94096eacd38938bdb6b6b28bc256",
+  separate: "d7a7452c78bc5d1b3fc3920d483a2465f8a64caf2198238d9e8e494f52e168c5",
+  "installer-managed": "beaa7e249a4a9966f48a6fe9a99c48900a7b228cc22e2178bdd42df5a56fc474",
+  "operator-provisioned": "5c43ca0f133bffc0d3e2eebf826c1932272a0309b45add51d21cfa97d430d673",
 } satisfies Record<keyof typeof beforePublicationCommands, string>;
 const taxCoverageRevisions = "tax_coverage_revisions";
 type SourceShape = "current" | "beforePublicationCommands" | "beforeCheckoutAttemptLedger" | "beforeAcceptedReferences"
@@ -62,7 +67,7 @@ export function connectedStoreSourceShape(
   if (catalogueId === beforePublicationCommands[profile]) return "beforePublicationCommands";
   if (catalogueId === beforeCheckoutAttemptLedger[profile]) return "beforeCheckoutAttemptLedger";
   if (catalogueId === beforeGovernedLifecycle[profile] || catalogueId === beforeAcceptedReferences[profile]) return "beforeAcceptedReferences";
-  if (catalogueId === beforeTaxCoverageRevisions[profile]) return "beforeTaxCoverageRevisions";
+  if (catalogueId === beforeSubscriptionProfiles[profile] || catalogueId === beforeTaxCoverageRevisions[profile]) return "beforeTaxCoverageRevisions";
   return "unsupported";
 }
 
