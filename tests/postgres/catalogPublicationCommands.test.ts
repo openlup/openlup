@@ -1162,9 +1162,9 @@ it("requires explicit adoption before a legacy issued head can carry v4 effects"
   payload.publication.operations = [{ op: "set_product_lifecycle", productSlug: data.slug, expectedState: "draft", state: "active", children: [] }];
   await save(data, 2, payload);
   const preview = await api.prepareCandidate({ draftId: data.draftId, draftRevision: 2, expectedHead: issued.receipt.head }, who);
-  expect(preview).toMatchObject({ issues: expect.arrayContaining([expect.objectContaining({
+  expect(preview).toMatchObject({ preparation: { structural: { issues: expect.arrayContaining([expect.objectContaining({
     code: "catalog_lifecycle_evidence_unavailable", message: expect.stringContaining("Keep revising it with schema-3 drafts"),
-  })]) });
+  })]) } } });
   expect(preview).not.toHaveProperty("preparation.postStateDigest");
   expect(await api.execute(initial.publish, who)).toEqual({ ...issued, outcome: "replayed" });
 });
