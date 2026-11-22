@@ -24,6 +24,32 @@ position, so preserve the original order. Tax and currency selection stay with
 the caller. Existing quote paths retain their arithmetic until a caller
 explicitly composes these helpers.
 
+Opt in to experimental money v2 with resolved prices, adjustments and tax inputs in one minor unit.
+
+```ts
+import { calculateCatalogueMoneyV2 } from "@openlup/core/pricing";
+
+const ref = { kind: "merchandise", lineKey: "item", sourceOrdinal: 1 } as const;
+const { payableMinor } = calculateCatalogueMoneyV2({
+  amountBasis: "exclusive",
+  sources: [{ lineKey: ref.lineKey, sourceOrdinal: ref.sourceOrdinal, quantity: 2, unitBasisMinor: 500 }],
+  delivery: [], adjustments: [], fees: [],
+}, { kind: "local", components: [{ ref, rates: [
+  { positionRef: "tax", jurisdictionRef: "district-a", rateDecimal: "8.125" },
+] }] });
+// payableMinor === 1081
+```
+
+Local tax rounds the sum of exact position quotas half up per component state.
+Floor each quota and assign leftover minor units by largest fractional remainder,
+with ties by ascending `positionRef` in UTF-16 code-unit order.
+
+For provider tax on exclusive amounts, call `planCatalogueMoneyV2` first. Supply
+the initial state and each nonzero adjustment state in order for each component,
+plus the provider payable including fees. See `CatalogueMoneyV2Tax` for the state
+fields and an example. For inclusive amounts, supply rates for merchandise and
+handling. Shipping inherits rates from its merchandise shares.
+
 For promotion candidates, `evaluatePromos` from `@openlup/core/promo` checks
 active time windows, region and cart eligibility, including coupon codes and
 stacking rules. Order discounts and free shipping use separate lanes.

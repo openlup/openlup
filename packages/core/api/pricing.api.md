@@ -29,6 +29,182 @@ export declare function cataloguePositionNetFromGross(gross: number, vatRateBps:
  */
 export declare function allocateCatalogueDiscountedGrossTotals(lineTotals: number[], chargedTotal: number): number[];
 ```
+## dist/pricing/catalogueMoneyV2.d.ts
+
+```ts
+/** @beta @experimental */
+export type CatalogueMoneyV2Basis = "inclusive" | "exclusive";
+/** @beta @experimental */
+export type CatalogueMoneyV2ComponentRef = Readonly<{
+    kind: "merchandise";
+    lineKey: string;
+    sourceOrdinal: number;
+}> | Readonly<{
+    kind: "delivery";
+    bucketKey: string;
+    sourceOrdinal?: number;
+}>;
+/** @beta @experimental */
+export type CatalogueMoneyV2Input = Readonly<{
+    amountBasis: CatalogueMoneyV2Basis;
+    sources: readonly Readonly<{
+        lineKey: string;
+        sourceOrdinal: number;
+        quantity: number;
+        unitBasisMinor: number;
+    }>[];
+    delivery: readonly Readonly<{
+        bucketKey: string;
+        deliveryKind: "shipping" | "handling";
+        amountMinor: number;
+    }>[];
+    adjustments: readonly Readonly<{
+        adjustmentRef: string;
+        sequence: number;
+        amountMinor: number;
+        target: Readonly<{
+            lineKeys: readonly string[];
+        }> | Readonly<{
+            bucketKey: string;
+        }>;
+    }>[];
+    fees: readonly Readonly<{
+        feeKey: string;
+        amountMinor: number;
+    }>[];
+}>;
+/** @beta @experimental */
+export type CatalogueMoneyV2Allocation = Readonly<{
+    adjustmentRef: string;
+    sequence: number;
+    basisReductionMinor: number;
+    beforeMinor: number;
+    afterMinor: number;
+}>;
+/** @beta @experimental */
+export type CatalogueMoneyV2Plan = Readonly<{
+    amountBasis: CatalogueMoneyV2Basis;
+    components: readonly Readonly<{
+        ref: CatalogueMoneyV2ComponentRef;
+        preDiscountMinor: number;
+        effectiveMinor: number;
+        allocations: readonly CatalogueMoneyV2Allocation[];
+    }>[];
+    fees: CatalogueMoneyV2Input["fees"];
+}>;
+/** @beta @experimental */
+export type CatalogueMoneyV2Position = Readonly<{
+    positionRef: string;
+    jurisdictionRef: string;
+    rateDecimal?: string;
+    taxableMinor: number;
+    taxMinor: number;
+}>;
+/**
+ * Tax inputs for a catalogue money calculation.
+ *
+ * @remarks
+ * In local mode, compute each position's exact tax quota as the component state
+ * amount times the position's rate divided by 100. Sum the quotas and round the
+ * combined tax half up once to a minor unit. Floor each position's exact quota,
+ * then assign the remaining minor units by descending fractional remainder,
+ * breaking ties by ascending `positionRef` in UTF-16 code-unit order.
+ *
+ * In provider mode, use one row per component ref from {@link planCatalogueMoneyV2}.
+ * Start each row with `afterSequence: 0` and `amountMinor` equal to the component's
+ * `preDiscountMinor`. Then add one state per nonzero allocation in plan order,
+ * using its `sequence` as `afterSequence` and its `afterMinor` as `amountMinor`.
+ * Sequence gaps are normal. The provider's `payableMinor` includes fees.
+ *
+ * @example
+ * A component starts at 100 and has one allocation at sequence 3 that leaves 80.
+ * Its states use `afterSequence` and `amountMinor` pairs `(0, 100)` and `(3, 80)`
+ * with the provider's tax positions for each amount. For a plan with just this
+ * component, final tax of 8 and a fee of 5, the provider payable is 93.
+ *
+ * @beta
+ * @experimental
+ */
+export type CatalogueMoneyV2Tax = Readonly<{
+    kind: "inclusive";
+    components: readonly Readonly<{
+        ref: CatalogueMoneyV2ComponentRef;
+        rateBps: number;
+    }>[];
+}> | Readonly<{
+    kind: "local";
+    components: readonly Readonly<{
+        ref: CatalogueMoneyV2ComponentRef;
+        rates: readonly Readonly<{
+            positionRef: string;
+            jurisdictionRef: string;
+            rateDecimal: string;
+        }>[];
+    }>[];
+}> | Readonly<{
+    kind: "provider";
+    payableMinor: number;
+    components: readonly Readonly<{
+        ref: CatalogueMoneyV2ComponentRef;
+        states: readonly Readonly<{
+            afterSequence: number;
+            amountMinor: number;
+            taxPositions: readonly CatalogueMoneyV2Position[];
+        }>[];
+    }>[];
+}>;
+/** @beta @experimental */
+export type CatalogueMoneyV2State = Readonly<{
+    amountMinor: number;
+    netMinor: number;
+    taxMinor: number;
+    totalMinor: number;
+    taxPositions: readonly CatalogueMoneyV2Position[];
+}>;
+/** @beta @experimental */
+export type CatalogueMoneyV2Result = Readonly<{
+    amountBasis: CatalogueMoneyV2Basis;
+    components: readonly Readonly<{
+        ref: CatalogueMoneyV2ComponentRef;
+        initial: CatalogueMoneyV2State;
+        allocations: readonly Readonly<CatalogueMoneyV2Allocation & {
+            before: CatalogueMoneyV2State;
+            after: CatalogueMoneyV2State;
+            netReductionMinor: number;
+            taxReductionMinor: number;
+        }>[];
+        final: CatalogueMoneyV2State;
+    }>[];
+    fees: CatalogueMoneyV2Input["fees"];
+    netTotal: number;
+    taxTotal: number;
+    feeTotal: number;
+    payableMinor: number;
+}>;
+/** @beta @experimental */
+export type CatalogueMoneyV2ErrorCode = "money_input_invalid" | "money_amount_out_of_range" | "money_amount_basis_mixed" | "money_source_ordinal_duplicate" | "money_discount_exceeds_balance" | "shipping_tax_basis_empty" | "money_rate_invalid" | "money_tax_evidence_mismatch" | "money_payable_mismatch";
+/** @beta @experimental */
+export declare class CatalogueMoneyV2Error extends Error {
+    readonly code: CatalogueMoneyV2ErrorCode;
+    readonly field: string;
+    readonly remedy: string;
+    constructor(code: CatalogueMoneyV2ErrorCode, field: string, remedy: string);
+}
+/**
+ * Plan the exact bases and nonzero adjustments for each component. Use the plan
+ * to request provider states as described in {@link CatalogueMoneyV2Tax}.
+ * @beta
+ * @experimental
+ */
+export declare function planCatalogueMoneyV2(input: CatalogueMoneyV2Input): CatalogueMoneyV2Plan;
+/**
+ * Calculate rounded states and reconcile the payable. See {@link CatalogueMoneyV2Tax}
+ * for local rounding and the required provider states.
+ * @beta
+ * @experimental
+ */
+export declare function calculateCatalogueMoneyV2(input: CatalogueMoneyV2Input, tax: CatalogueMoneyV2Tax): CatalogueMoneyV2Result;
+```
 ## dist/pricing/index.d.ts
 
 ```ts
@@ -42,6 +218,8 @@ export * from "./pricingBreakdown.js";
 export * from "./targetPriceAllocation.js";
 /** @beta */
 export * from "./catalogueMoney.js";
+/** @beta @experimental */
+export * from "./catalogueMoneyV2.js";
 ```
 ## dist/pricing/ports.d.ts
 

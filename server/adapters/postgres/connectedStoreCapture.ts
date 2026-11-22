@@ -32,7 +32,9 @@ export async function assertConnectedCatalogPublications(db: PgQueryExecutor) {
 const compatible = [
   "clients", "subscriptions", "subscription_events", "subscription_pause_windows",
   "subscription_renewal_terms", "subscription_renewal_term_lines", "subscription_renewal_operations",
-  "subscription_cycles", "commerce_orders", "commerce_order_items", "commerce_settlement_intents",
+  "subscription_cycles", "commerce_orders", "commerce_order_items",
+  // Authoritative short-lived admission state. Digests and original epoch times stay private.
+  "commerce_checkout_attempt_ledger", "commerce_settlement_intents",
   "commerce_settlement_transitions", "payment_truth_events", "payment_truth_reconciliation_evidence",
   "subscription_renewal_outcomes", "outbox_events", "invoicing_duties", "invoicing_fact_revisions",
   "invoicing_effect_receipts", "invoicing_capture_faults",
