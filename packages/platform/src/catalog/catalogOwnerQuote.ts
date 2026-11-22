@@ -27,7 +27,7 @@ function omitPrivateFacts(key: string, value: unknown): unknown {
   return value;
 }
 
-export function ownerQuoteProjection(snapshot: CreateQuoteResponse): unknown {
+function ownerQuoteProjection(snapshot: CreateQuoteResponse): unknown {
   return JSON.parse(JSON.stringify(projectPublicQuoteSnapshot(snapshot), omitPrivateFacts));
 }
 

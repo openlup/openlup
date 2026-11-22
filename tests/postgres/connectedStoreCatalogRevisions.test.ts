@@ -580,11 +580,11 @@ it("transfers same-SKU governed bindings and preserves legacy NULL facts", async
     skuRevisionId: first.skuRevisionId, publicationHead: first.head, typeRef: product.type,
     netContent: facts.netContent, optionDigest: facts.optionDigest, definitionDigest: product.definitionDigest }] };
   const scopedOrder = randomUUID(), scopedKey = `receipt:${scopedOrder}`;
-  const quoteSnapshot = { quote: { lines: [{ sku: facts.code, quantity: 1 }] } };
+  const quoteSnapshot = { quote: { lines: [{ sku: facts.code, quantity: 2 }] } };
   const orderDraftSnapshot = { lines: quoteSnapshot.quote.lines };
   const document = { reviewedProjection: quoteSnapshot, consultedHeads: [{ productId: data.productId, ...first.head }],
     lineBindings: [{ sourceOrdinal: 1, skuId: data.skuId, skuCode: facts.code, skuRevisionId: first.skuRevisionId,
-      mode: "one_time", quantity: 1, role: "core", source: "fresh" }],
+      mode: "one_time", quantity: 2, role: "core", source: "fresh" }],
     priceEvidenceRef: `price.v1:${"b".repeat(64)}`, policyEvidenceRef: `policy.v1:${"c".repeat(64)}` };
   const { reviewedProjection: _projection, ...retained } = document;
   const scopedAcceptance = { ...acceptance, admission: { ...retained, moneyVersion: "v0", quoteDigest: quoteDigest("catalog.owner-quote.v0", document) } };
@@ -604,16 +604,20 @@ it("transfers same-SKU governed bindings and preserves legacy NULL facts", async
       VALUES($1,$2,$3,$4)`, [key, "a".repeat(32), order, json({ orderDraft: { orderId: `order_${order}`,
       quoteSnapshot: { quote: { lines: [{ sku: facts.code, quantity: 1 }] } } } })]);
     await db.query(`INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor,metadata)
-      VALUES($1,$2,'cancelled','XXX',100,$3)`,
+      VALUES($1,$2,'cancelled','XXX',200,$3)`,
     [scopedOrder,client,{ quoteSnapshot,orderDraftSnapshot,catalogAdmissionSubmit:submit }]);
-    await db.query(`INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
-      VALUES($1,$2,1,1,100,100)`, [scopedOrder,data.skuId]);
-    await db.query("SELECT public.catalog_attach_order_acceptance($1,$2,$3,$4)", [scopedOrder,json(scopedAcceptance),scopedKey,json({ [facts.code]:1 })]);
+    await db.query(`INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor,
+      source_line_ordinal,catalog_unit_amount_minor,catalog_line_amount_minor,promotion_discount_allocated_minor,promotion_allocation_fingerprint)
+      VALUES($1,$2,1,1,100,100,1,100,100,0,repeat('e',64)),($1,$2,2,1,100,100,1,100,100,0,repeat('e',64))`,
+    [scopedOrder,data.skuId]);
+    await db.query("SELECT public.catalog_attach_order_acceptance($1,$2,$3,$4)", [scopedOrder,json(scopedAcceptance),scopedKey,json({ [facts.code]:2 })]);
     await db.query(`INSERT INTO public.commerce_order_draft_receipts(idempotency_key,request_fingerprint,order_id,response_payload)
       VALUES($1,md5($2::jsonb::text||'|'||$3::jsonb::text||'|'||$4::uuid::text),$5,$6)`,
     [scopedKey,quoteSnapshot,orderDraftSnapshot,client,scopedOrder,{ orderDraft: { orderId: `order_${scopedOrder}`,
       idempotencyKey: scopedKey, quoteSnapshot, replayed: false } }]);
   });
+  await expect(source.owner.query("UPDATE public.commerce_order_items SET source_line_ordinal=2 WHERE order_id=$1 AND line_ordinal=2", [scopedOrder]))
+    .rejects.toMatchObject({ message: "catalog_acceptance_line_mismatch" });
   const captured = await captureStoreJourney(source.owner, "governed-lifecycle-source");
   await expect(restore(target.owner, captured)).resolves.toMatchObject({ replayed: false });
   const rows = await target.owner.query(`SELECT id,revision,sku_id,full_facts FROM public.catalog_sku_revisions

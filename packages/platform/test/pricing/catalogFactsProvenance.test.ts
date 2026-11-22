@@ -38,6 +38,10 @@ it("binds the full reviewed projection, distinct source lines and unselected own
   quote.quote.totalGross.amountMinor = 2980;
   quote.quote.netTotal.amountMinor = 2422;
   quote.quote.taxTotal.amountMinor = 558;
+  const terms = { linePricing: [{ quoteLine: structuredClone(first) }],
+    starterPack: { graduation: { lines: [{ quoteLine: structuredClone(second) }] } } };
+  const context = { mode: "one_time" as const, promoCodes: [], starterRenewalTerms: terms };
+  quote.quote.context = context;
   // The owner inputs are independent of the displayed projection.
   const input: Parameters<typeof buildCatalogOwnerQuote>[0] = {
     quote, consultedHeads: [{ productId: "44444444-4444-4444-8444-444444444444",
@@ -56,12 +60,21 @@ it("binds the full reviewed projection, distinct source lines and unselected own
   expect(firstProof.evidence.quoteDigest).toBe(quoteDigest("catalog.owner-quote.v0", firstProof.document));
   const readAgain = structuredClone(input);
   readAgain.quote.quote.lines[0]!.catalogFacts!.atTime = "2026-06-05T11:00:00.000Z";
+  const retained = (readAgain.quote.quote.context as typeof context).starterRenewalTerms;
+  retained.linePricing[0]!.quoteLine.catalogFacts!.atTime = "2026-06-05T12:00:00.000Z";
+  retained.starterPack.graduation.lines[0]!.quoteLine.catalogFacts!.atTime = "2026-06-05T13:00:00.000Z";
   readAgain.priceSelectors.reverse();
   expect(buildCatalogOwnerQuote(readAgain)).toEqual(firstProof);
   for (const change of [
+    (value: typeof input) => { value.quote.quote.lines[0]!.productSlug = "reviewed-article"; },
+    (value: typeof input) => {
+      const reviewed = (value.quote.quote.context as typeof context).starterRenewalTerms;
+      reviewed.starterPack.graduation.lines[0]!.quoteLine.productSlug = "reviewed-renewal";
+    },
     (value: typeof input) => { value.consultedHeads[0]!.revision++; },
     (value: typeof input) => { value.lineBindings[0]!.role = "addon"; },
     (value: typeof input) => { value.priceSelectors[0]!.evidence = { ref: "opaque:changed-comparison" }; },
+    (value: typeof input) => { value.priceSelectors[1]!.evidence = { ref: "opaque:changed-actual" }; },
     (value: typeof input) => { value.policy = { applicability: "applies", context: {}, revisionRef: "opaque:policy", revisionDigest: "d".repeat(64) }; },
     (value: typeof input) => { value.offer = { ref: "opaque:offer", version: "2" }; },
   ]) {

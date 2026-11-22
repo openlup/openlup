@@ -33,7 +33,6 @@ type PriceSelector = {
     selectorKey: string;
     evidence: unknown;
 };
-export declare function ownerQuoteProjection(snapshot: CreateQuoteResponse): unknown;
 export declare function buildCatalogOwnerQuote(input: {
     quote: CreateQuoteResponse;
     consultedHeads: CatalogAdmissionEvidence["consultedHeads"];

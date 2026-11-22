@@ -113,7 +113,8 @@ BEGIN
       ) ORDER BY p.id FOR NO KEY UPDATE;
     END IF;
   END IF;
-  IF public.catalog_admission_requires_quote_authority(v_skus,p_draft#>>'{context,offerVersion,version}')
+  IF public.catalog_admission_requires_quote_authority(v_skus,
+      coalesce(p_draft#>>'{context,offerVersion,version}',p_draft#>>'{context,offerVersion}'))
     OR EXISTS (
       SELECT 1 FROM public.commerce_orders source_order
       WHERE source_order.id = CASE WHEN p_key ~ '^checkout-recovery-recreate:[a-f0-9-]{36}$'
@@ -558,7 +559,7 @@ BEGIN
     AND (NOT p_admission ? 'acceptanceTokenDigest' OR p_admission->>'acceptanceTokenDigest' ~ '^[0-9a-f]{64}$')
     AND jsonb_typeof(p_admission->'consultedHeads') = 'array'
     AND (NOT p_admission ? 'offer' OR (jsonb_typeof(p_admission->'offer') = 'object'
-      AND p_admission->'offer' - ARRAY['ref','version'] = '{}'::jsonb
+      AND (p_admission->'offer') - ARRAY['ref','version'] = '{}'::jsonb
       AND public.catalog_publication_text_valid(p_admission#>'{offer,ref}',240,true)
       AND public.catalog_publication_text_valid(p_admission#>'{offer,version}',240,true)))
     AND public.catalog_admission_line_bindings_valid(p_admission->'lineBindings')
@@ -567,7 +568,7 @@ BEGIN
       OR public.catalog_publication_text_valid(p_admission->'destinationRef',240,true)
       AND p_admission->>'destinationDigest' ~ '^[0-9a-f]{64}$')
     AND (NOT p_admission ? 'graduation' OR (jsonb_typeof(p_admission->'graduation') = 'object'
-      AND p_admission->'graduation' - ARRAY['phaseDigest','lineBindings'] = '{}'::jsonb
+      AND (p_admission->'graduation') - ARRAY['phaseDigest','lineBindings'] = '{}'::jsonb
       AND p_admission#>>'{graduation,phaseDigest}' ~ '^[0-9a-f]{64}$'
       AND public.catalog_admission_line_bindings_valid(p_admission#>'{graduation,lineBindings}')))
     END) IS DISTINCT FROM true THEN RETURN false; END IF;

@@ -46,6 +46,12 @@ it("routes qualified source inventories and refuses unknown inventories before c
       "installer-managed": "412caa25526d6ba70bb5bb761d5bed2336e7307811a879658295819ad5ab15f5",
       "operator-provisioned": "d413c04713b9fb5f5f9d8f01dc66c68c67d131f6cc94bcbf12becef47abd4f42",
     } },
+    { shape: "current", inventories: {
+      bootstrap: "cffdddea783d1cdbc1460c6a9d6caf5bad4a94096eacd38938bdb6b6b28bc256",
+      separate: "d7a7452c78bc5d1b3fc3920d483a2465f8a64caf2198238d9e8e494f52e168c5",
+      "installer-managed": "beaa7e249a4a9966f48a6fe9a99c48900a7b228cc22e2178bdd42df5a56fc474",
+      "operator-provisioned": "5c43ca0f133bffc0d3e2eebf826c1932272a0309b45add51d21cfa97d430d673",
+    } },
   ];
   const unknownId = "0".repeat(64);
   for (const profile of ["bootstrap", "separate", "installer-managed", "operator-provisioned"] as const) {

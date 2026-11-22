@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresNativeCheckoutPersistence } from "@openlup/platform/commerce/server/native-checkout";
 import { createPostgresCommercePriceAuthorityReadPort } from "@openlup/platform/commerce/server/postgres";
 import { createPostgresCatalogAdmission } from "@openlup/platform/catalog";
 import * as pricing from "@openlup/platform/pricing";
 import { buildCatalogOwnerQuote, withCatalogAdmissionFence } from "@openlup/platform/catalog/testing";
-import { actorId, fixture, graph, insertGraph, installPublicationActors, transaction, type Graph } from "./catalogPublicationFixture.js";
+import { actorId, fixture, graph, hash, insertGraph, installPublicationActors, transaction, type Graph } from "./catalogPublicationFixture.js";
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { checkoutOwnerRoutines } from "../../scripts/platform-migration-manifest.js";
@@ -31,6 +32,7 @@ beforeAll(async () => {
   await env.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,$2,'Legacy article')", [legacyId, legacySku]);
   priceListId = (await env.owner.query("INSERT INTO public.price_lists(name,region_code,currency) VALUES('Example','ZZ','XXX') RETURNING id")).rows[0]!.id;
   await env.owner.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX') ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text");
+  await env.owner.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
   await env.owner.query(`INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,mode)
     SELECT $1,id,125,'one_time' FROM public.catalog_skus WHERE id=ANY($2::uuid[])`, [priceListId, [legacyId, issued.skuId]]);
 }, postgresSetupTimeoutMs);
@@ -137,19 +139,118 @@ it("takes the actual products and price fences before bound evidence reads", asy
     await createPostgresCatalogAdmission().assertCurrent(db, {
       mode: "one_time", context, reviewedProjection: document.reviewedProjection, ownerDocument: document, evidence,
     });
+    const { rows } = await db.query("SELECT public.catalog_admission_accept($1,$2,$3,$4,$5) AS evidence",
+      [document.reviewedProjection, document, "one_time", context, evidence.quoteDigest]);
+    expect(rows).toEqual([{ evidence }]);
+    const controls = [
+      { reason: "catalog_admission_quote_projection_moved", projection: {} },
+      { reason: "catalog_publication_head_moved", owner: { ...document, consultedHeads: [
+        { ...document.consultedHeads[0]!, revision: issued.head.revision + 1 },
+      ] } },
+      { reason: "catalog_admission_membership_authority_unavailable", owner: { ...document, offer: { ref: "example:offer", version: "1" } } },
+      { reason: "catalog_admission_line_ineligible", owner: { ...document, lineBindings: [
+        { ...document.lineBindings[0]!, role: "addon" },
+      ] } },
+      { reason: "catalog_admission_price_context_required", priceContext: { ...context, channel: "B2B" } },
+      { reason: "catalog_admission_roster_archived", archive: true },
+    ];
+    for (const { reason, projection, owner = document, priceContext = context, archive } of controls) {
+      await db.query("SAVEPOINT component_refusal");
+      if (archive) await db.query("UPDATE public.catalog_skus SET status='archived',sellable_standalone=false WHERE id=$1", [issued.skuId]);
+      await expect(db.query("SELECT public.catalog_admission_accept($1,$2,$3,$4,$5)",
+        [projection ?? document.reviewedProjection, owner, "one_time", priceContext, pricing.quoteDigest("catalog.owner-quote.v0", owner)]))
+        .rejects.toMatchObject({ message: reason });
+      await db.query("ROLLBACK TO SAVEPOINT component_refusal");
+      await db.query("RELEASE SAVEPOINT component_refusal");
+    }
+    await expect(env.owner.query("SELECT public.catalog_admission_accept($1,$2,$3,$4,$5)",
+      [document.reviewedProjection, document, "one_time", context, evidence.quoteDigest]))
+      .rejects.toMatchObject({ message: "catalog_admission_fence_unavailable" });
     await expect(transaction(env.owner, async other => {
       await other.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actorId, role: "authenticated" })]);
       return other.query("SELECT public.catalog_publication_lock_projection()");
     }))
       .rejects.toMatchObject({ code: "55P03" });
-    await expect(transaction(env.owner, other => other.query("LOCK TABLE public.price_lists IN ROW EXCLUSIVE MODE NOWAIT")))
-      .rejects.toMatchObject({ code: "55P03" });
-    await expect(transaction(env.owner, async other => {
+    const writePrices = (sql: string, values: unknown[] = []) => transaction(env.owner, async other => {
+      await other.query("SET LOCAL lock_timeout='250ms'");
+      return other.query(sql, values);
+    });
+    await Promise.all([
+      writePrices("INSERT INTO public.price_lists(name,region_code,currency) VALUES('New match','ZZ','XXX')"),
+      writePrices("UPDATE public.price_lists SET status='active',valid_from=now() WHERE id=$1", [priceListId]),
+      writePrices("INSERT INTO public.price_entries(price_list_id,variant_id,min_qty,unit_price_minor,mode) VALUES($1,$2,2,125,'one_time')",
+        [priceListId, issued.skuId]),
+    ].map(writer => expect(writer).rejects.toMatchObject({ code: "55P03" })));
+    expect((await env.runtime.query(`SELECT
+      has_table_privilege(current_user,'public.price_lists','INSERT') AS lists,
+      has_table_privilege(current_user,'public.price_entries','INSERT') AS entries`)).rows)
+      .toEqual([{ lists: false, entries: false }]);
+    const asPriceAdmin = (work: (db: PoolClient) => Promise<unknown>) => transaction(env.owner, async other => {
       await other.query("SET LOCAL ROLE authenticated");
       await other.query("SET LOCAL lock_timeout='250ms'");
       await other.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actorId, role: "authenticated" })]);
-      return other.query("SELECT public.catalog_price_setup_preview($1,$2,130)", [issued.skuId,priceListId]);
-    })).rejects.toMatchObject({ code: "55P03" });
+      return work(other);
+    });
+    await expect(asPriceAdmin(other => other.query("SELECT public.catalog_price_setup_preview($1,$2,130)", [issued.skuId, priceListId])))
+      .rejects.toMatchObject({ code: "55P03", where: expect.stringContaining("UPDATE public.price_entries") });
+    const command = pricing.canonicalCatalogPriceSetupCommand({
+      schemaVersion: 1, commandKey: randomUUID(), variantId: issued.skuId, priceListId, mode: "one_time",
+      minQty: 1, amountKind: "gross", unitPriceMinor: 130, expected: { entryId: resolved.base.priceEntryId, unitPriceMinor: 125 },
+    });
+    await expect(asPriceAdmin(other => other.query("SELECT public.catalog_price_setup_apply($1,$2)", [command, hash(command)])))
+      .rejects.toMatchObject({ code: "55P03", where: expect.stringContaining("catalog_price_setup_lock_context") });
   });
   expect(await counts()).toEqual(before);
+});
+
+it.each(["publication", "unrelated commit"] as const)("rejects an early purchase snapshot after %s", async change => {
+  const before = await counts();
+  const publisher = await env.owner.connect();
+  let buyerReachedFence!: () => void;
+  let continueBuyer!: () => void;
+  const atFence = new Promise<void>(resolve => { buyerReachedFence = resolve; });
+  const publisherFinished = new Promise<void>(resolve => { continueBuyer = resolve; });
+  let acquired = 0;
+  const pair = { async connect() {
+    const index = acquired++;
+    const db = await env.owner.connect();
+    if (index !== 0) return db;
+    return {
+      async query(text: string, values?: unknown[]) {
+        if (text === "SELECT public.catalog_admission_lock_shared()") {
+          buyerReachedFence();
+          await publisherFinished;
+        }
+        return db.query(text, values);
+      },
+      release: (error?: boolean | Error) => db.release(error),
+    } as PoolClient;
+  } };
+  let purchase: Promise<unknown> | undefined;
+  try {
+    await publisher.query("BEGIN");
+    if (change === "publication") {
+      await publisher.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actorId, role: "authenticated" })]);
+      await publisher.query("SELECT public.catalog_publication_lock_projection()");
+      const { productId, skuId, draftId, documentId } = issued;
+      const next = await graph(publisher, { productId, skuId, draftId, documentId }, issued.head, false, { lifecycle: "withdrawn" });
+      await insertGraph(publisher, next);
+    } else {
+      const contact = randomUUID();
+      await publisher.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [contact, `${contact}@example.invalid`]);
+    }
+    purchase = withCatalogAdmissionFence(pair as Pick<import("pg").Pool, "connect">, {
+      key: randomUUID(), clientId, skuIds: [issued.skuId], revisionIds: [issued.skuRevisionId], priceListId, timeoutMs: 2000,
+    }, () => Promise.reject(new Error("An old visibility snapshot must stay outside the reader")));
+    await Promise.race([atFence, purchase]);
+    await publisher.query("COMMIT");
+    continueBuyer();
+    await expect(purchase).rejects.toMatchObject({ code: "40001" });
+    expect(await counts()).toEqual(before);
+  } finally {
+    continueBuyer();
+    await publisher.query("ROLLBACK");
+    publisher.release();
+    await purchase?.catch(() => undefined);
+  }
 });
