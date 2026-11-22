@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { accessSync, constants, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { accessSync, constants, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { delimiter, join, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { fileURLToPath } from "node:url";
@@ -71,7 +71,7 @@ export async function mapWithConcurrency<T, R>(
 export type ResourceGateInvocation = { command: string; args: string[] };
 
 const isExecutableFile = (candidate: string): boolean => {
-  try { accessSync(candidate, constants.X_OK); return true; }
+  try { accessSync(candidate, constants.X_OK); return statSync(candidate).isFile(); }
   catch { return false; }
 };
 
@@ -205,7 +205,13 @@ async function main(): Promise<number> {
   return 0;
 }
 
-if (process.argv[1] && realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url))) {
+function isDirectEntrypoint(argv1: string | undefined): boolean {
+  if (!argv1) return false;
+  try { return realpathSync(resolve(argv1)) === realpathSync(fileURLToPath(import.meta.url)); }
+  catch { return false; }
+}
+
+if (isDirectEntrypoint(process.argv[1])) {
   main().then(code => { process.exitCode = code; }).catch(error => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

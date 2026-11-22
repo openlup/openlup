@@ -457,24 +457,25 @@ describe("PostgreSQL owned Docker volume cleanup", () => {
       name: `openlup-fast-settings-${randomUUID()}`,
       password: "disposable",
       image,
-      command: ["postgres", "-c", "timezone=Etc/GMT-9"],
+      command: ["postgres", "-c", "timezone=Etc/GMT-9", "-c", "work_mem=8MB"],
     });
     const pool = new pgActual.Pool({ connectionString: container.connectionString });
     try {
       expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
       const settings = (await pool.query(
         "SELECT name, setting FROM pg_settings WHERE name = ANY($1::text[]) ORDER BY name",
-        [["autovacuum", "fsync", "full_page_writes", "max_connections", "shared_buffers", "synchronous_commit", "TimeZone", "wal_level"]],
+        [["autovacuum", "fsync", "full_page_writes", "max_connections", "shared_buffers", "synchronous_commit", "TimeZone", "wal_level", "work_mem"]],
       )).rows as Array<{ name: string; setting: string }>;
       expect(Object.fromEntries(settings.map(row => [row.name, row.setting]))).toEqual({
         TimeZone: "Etc/GMT-9",
         autovacuum: "off",
         fsync: "off",
         full_page_writes: "off",
-        max_connections: "40",
+        max_connections: "100",
         shared_buffers: "4096",
         synchronous_commit: "off",
         wal_level: "minimal",
+        work_mem: "8192",
       });
     } finally {
       await closePostgres(container, pool);

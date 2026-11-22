@@ -178,7 +178,6 @@ export const DEFAULT_FAST_TMPFS_SIZE_MB = 512;
 
 export const FAST_POSTGRES_SERVER_FLAGS: readonly string[] = [
   "-c", "shared_buffers=32MB",
-  "-c", "max_connections=40",
   "-c", "work_mem=4MB",
   "-c", "maintenance_work_mem=32MB",
   "-c", "autovacuum=off",
