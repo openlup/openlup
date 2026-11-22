@@ -57,6 +57,9 @@ for package policy definitions and release boundaries.
 | `./account-support/contracts` | capability | experimental |
 | `./account-support/postgres` | capability | stable |
 | `./account-support/read-contracts` | capability | experimental |
+| `./accounting` | capability | experimental |
+| `./accounting/contracts` | capability | experimental |
+| `./accounting/testing` | capability | testing |
 | `./adapter-kit` | rail | experimental |
 | `./bff` | rail | stable |
 | `./blob` | rail | stable |
@@ -66,6 +69,7 @@ for package policy definitions and release boundaries.
 | `./channels` | capability | stable |
 | `./channels/contracts` | capability | stable |
 | `./channels/server` | capability | stable |
+| `./channels/testing` | capability | testing |
 | `./commerce` | capability | stable |
 | `./commerce/contracts` | capability | stable |
 | `./commerce/server` | capability | stable |
@@ -102,6 +106,9 @@ for package policy definitions and release boundaries.
 | `./marketing/server` | capability | stable |
 | `./marketing/server/postgres` | capability | stable |
 | `./migrations` | rail | stable |
+| `./observability` | rail | experimental |
+| `./observability/contracts` | rail | experimental |
+| `./observability/testing` | rail | testing |
 | `./operations` | capability | stable |
 | `./operations/contracts` | capability | stable |
 | `./operations/server` | capability | stable |

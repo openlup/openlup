@@ -91,6 +91,41 @@
       "import": "./dist/adapter-kit/index.js",
       "default": "./dist/adapter-kit/index.js"
     },
+    "./accounting": {
+      "types": "./dist/accounting/index.d.ts",
+      "import": "./dist/accounting/index.js",
+      "default": "./dist/accounting/index.js"
+    },
+    "./accounting/contracts": {
+      "types": "./dist/accounting/contracts/index.d.ts",
+      "import": "./dist/accounting/contracts/index.js",
+      "default": "./dist/accounting/contracts/index.js"
+    },
+    "./accounting/testing": {
+      "types": "./dist/accounting/testing/index.d.ts",
+      "import": "./dist/accounting/testing/index.js",
+      "default": "./dist/accounting/testing/index.js"
+    },
+    "./observability": {
+      "types": "./dist/observability/index.d.ts",
+      "import": "./dist/observability/index.js",
+      "default": "./dist/observability/index.js"
+    },
+    "./observability/contracts": {
+      "types": "./dist/observability/contracts/index.d.ts",
+      "import": "./dist/observability/contracts/index.js",
+      "default": "./dist/observability/contracts/index.js"
+    },
+    "./observability/testing": {
+      "types": "./dist/observability/testing/index.d.ts",
+      "import": "./dist/observability/testing/index.js",
+      "default": "./dist/observability/testing/index.js"
+    },
+    "./channels/testing": {
+      "types": "./dist/channels/testing/index.d.ts",
+      "import": "./dist/channels/testing/index.js",
+      "default": "./dist/channels/testing/index.js"
+    },
     "./bff": {
       "types": "./dist/bff/index.d.ts",
       "import": "./dist/bff/index.js",

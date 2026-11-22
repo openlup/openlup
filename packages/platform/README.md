@@ -3776,3 +3776,16 @@ cancellation), `createOAuth2TokenManager` (`client_credentials` and
 `invalidate`), `parseRetryAfter` / `createRetryAfterCooldown`, and webhook
 verifiers (`verifyHmacSha256`, `verifyHardenedStandardWebhook`,
 `verifyEd25519Signature`).
+
+### Accounting, Observability, and Channel Conformance Kits
+
+- `@openlup/platform/accounting` (`/contracts`, `/testing`): provider-neutral
+  `AccountingLedgerExportPort`, zero-I/O balanced journal validator
+  (`validateAccountingExportRecord`), and offline `runAccountingAdapterConformance`
+  with authenticated fault handles (`AccountingQualification`).
+- `@openlup/platform/observability` (`/contracts`, `/testing`): passive
+  fail-open `TelemetryPort`, `createSafeTelemetryPort`, PII/secret attribute
+  scrubbing, and offline `runTelemetryAdapterConformance` (`TelemetryQualification`).
+- `@openlup/platform/channels/testing`: offline `runChannelAdapterConformance`
+  and `createScriptedChannelFake` certifying `ChannelOrderSourcePort` webhook
+  auth, `normalizedChannelOrderSchema` fidelity, and cursor pulls.

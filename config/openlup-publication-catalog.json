@@ -4142,6 +4142,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/accounting-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/accounting-testing.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/accounting.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/adapter-kit.api.md",
       "class": "public-output"
     },
@@ -4171,6 +4183,10 @@
     },
     {
       "path": "packages/platform/api/channels-server.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/channels-testing.api.md",
       "class": "public-output"
     },
     {
@@ -4327,6 +4343,18 @@
     },
     {
       "path": "packages/platform/api/migrations.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/observability-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/observability-testing.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/observability.api.md",
       "class": "public-output"
     },
     {
@@ -5414,6 +5442,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/accounting/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/accounting/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/accounting/testing/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/adapter-kit/hardenedFetch.ts",
       "class": "public-output"
     },
@@ -6039,6 +6079,10 @@
     },
     {
       "path": "packages/platform/src/channels/server/quarantineClassifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/testing/index.ts",
       "class": "public-output"
     },
     {
@@ -8666,6 +8710,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/observability/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/observability/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/observability/testing/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/operations/adminAlertsSchemas.ts",
       "class": "public-output"
     },
@@ -10198,6 +10254,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/accounting/accountingConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/adapter-kit/adapterKit.test.ts",
       "class": "public-output"
     },
@@ -10407,6 +10467,10 @@
     },
     {
       "path": "packages/platform/test/catalog/variantCombination.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/channels/channelConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -11795,6 +11859,10 @@
     },
     {
       "path": "packages/platform/test/migrations/postgresRunner.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/observability/telemetryConformance.test.ts",
       "class": "public-output"
     },
     {

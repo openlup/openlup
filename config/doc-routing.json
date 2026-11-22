@@ -1066,6 +1066,28 @@
       "anchor": "#assign-connections-by-work"
     },
     {
+      "id": "platform-accounting",
+      "when": "Neutral accounting ledger export port, balanced journal validation, and conformance testing",
+      "paths": [
+        "packages/platform/src/accounting/**",
+        "packages/platform/test/accounting/**",
+        "packages/platform/api/accounting*.api.md"
+      ],
+      "doc": "docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md",
+      "anchor": "#7-shared-tier-1-platform-enablers-keeping-recipes-under-250450-loc"
+    },
+    {
+      "id": "platform-observability",
+      "when": "Passive fail-open telemetry port, PII/secret scrubbing, and conformance testing",
+      "paths": [
+        "packages/platform/src/observability/**",
+        "packages/platform/test/observability/**",
+        "packages/platform/api/observability*.api.md"
+      ],
+      "doc": "docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md",
+      "anchor": "#7-shared-tier-1-platform-enablers-keeping-recipes-under-250450-loc"
+    },
+    {
       "id": "platform-adapter-kit",
       "when": "Shared zero-dependency provider adapter protocol primitives (hardened fetch, OAuth2, cooldown, webhook crypto)",
       "paths": [
