@@ -1,7 +1,7 @@
 import { resolveThresholdShipping } from '@openlup/platform/shipping';
 import type { RenewalRetainedTerms } from '@openlup/platform/subscriptions/contracts';
 import { evaluatePromotionAdjustmentsV2 } from '@openlup/core/promo';
-import type { Pool } from 'pg';
+import type { NativeCheckoutQuery } from '@openlup/platform/commerce/server/native-checkout';
 import { createHash } from 'node:crypto';
 import { createPostgresCommerceQuoteCatalogReadPort, canonicalCatalogDraftJson, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
 import { createPostgresCommercePriceAuthorityReadPort } from '@openlup/platform/commerce/server/postgres';
@@ -43,7 +43,7 @@ export function quoteFailure(error: unknown): string {
   return 'starter_quote_unavailable';
 }
 
-export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPredecessors, keyring?: PromotionAcceptanceKeyring) {
+export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: AcquisitionPredecessors, keyring?: PromotionAcceptanceKeyring) {
   async function quote(payload: Record<string, unknown>, context: ActionContext, replay?: CreateQuoteResponse, atTime = new Date().toISOString()) {
     const config = context.config;
     const selected = parseCart(config.id, payload.cart);
@@ -52,9 +52,12 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
       throw new AcquisitionTermsError('acquisition_terms_capability_required');
     }
     if (payload.promoCodes !== undefined && (!Array.isArray(payload.promoCodes) || payload.promoCodes.length)) throw new Error('starter_promotion_codes_unsupported');
-    const email = context.actor.customerRef
+    const contactEmail = context.actor.customerRef
       ? (await db.query('SELECT email FROM public.clients WHERE id=$1 AND principal_id=$2', [context.actor.customerRef,context.actor.principalRef])).rows[0]?.email
-      : typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : null;
+      : payload.email;
+    const email = typeof contactEmail === 'string'
+      ? context.actor.customerRef ? contactEmail : contactEmail.trim().toLowerCase()
+      : null;
     const request: Request = { mode: selected.cart.mode, cadenceDays: selected.cart.cadenceDays,
       lines: selected.cart.lines, promoCodes: [], pricingPolicy,
       ...(payload.acquisitionCapability === ACQUISITION_TERMS_CAPABILITY ? { acquisitionCapability: ACQUISITION_TERMS_CAPABILITY } : {}),

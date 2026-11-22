@@ -38,6 +38,22 @@ describe("commerce order draft BFF handler", () => {
     });
   });
 
+  it("returns an authenticated replay without asking the snapshot verifier or writer again", async () => {
+    const res = createResponse();
+    const port = createPort();
+    const verifier = createVerifier();
+    const saved = orderDraftResponse();
+    saved.orderDraft.replayed = true;
+    const preflightDraft = vi.fn().mockResolvedValue(saved);
+    await createCommerceOrderDraftHandler({
+      orderDraftPort: port, quoteSnapshotVerifier: verifier, preflightDraft,
+    })(request("POST", orderDraftRequest()), res);
+    expect(preflightDraft).toHaveBeenCalledWith(orderDraftRequest());
+    expect(verifier.verifyQuoteSnapshot).not.toHaveBeenCalled();
+    expect(port.createOrderDraft).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
   it("does not let a request-body clientId reach the order draft (anonymous route stays NULL)", async () => {
     const res = createResponse();
     const port = createPort();

@@ -7,7 +7,7 @@ import { createPostgresCatalogDraftStoreV4,
   catalogDefinitionDigest, type CatalogDraftPayloadV4, type CatalogPublicationCommand, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogHeadRef, type CatalogPublishCommand } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
-import { publicationWireVectors } from "@openlup/platform/catalog/testing";
+import { publicationWireVectors, withCatalogAdmissionFence } from "@openlup/platform/catalog/testing";
 import type { CatalogPublishedSku } from "@openlup/platform/catalog";
 import * as pricing from "@openlup/platform/pricing";
 import { createPostgresCommercePriceAuthorityReadPort } from "@openlup/platform/commerce/server/postgres";
@@ -838,6 +838,22 @@ describe("publication activation prices", () => {
     } finally {
       await db.query("ROLLBACK").finally(() => db.release());
     }
+  });
+
+  it("returns publication busy when activation reaches the purchase fence and commits on retry", async () => {
+    const { api, who, command, head, productId, skuId } =
+      await approvedActivation(186, false, undefined, { governed: true, db: quotePool });
+    await seedBasePrice(skuId, quotePool, quoteListId);
+    const { rows: [client] } = await quotePool.query<{ id: string }>(
+      "INSERT INTO public.clients(email) VALUES('fence-buyer@example.invalid') RETURNING id");
+    await withCatalogAdmissionFence(quotePool, {
+      key: randomUUID(), clientId: client!.id, skuIds: [skuId], revisionIds: [], priceListId: quoteListId, timeoutMs: 2000,
+    }, async () => {
+      await expect(api.execute(command, who)).resolves.toMatchObject({ outcome: "conflict", reason: "publication_busy" });
+      expect((await quotePool.query("SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1", [productId])).rows)
+        .toEqual([{ publication_id: head.publicationId }]);
+    });
+    await expect(api.execute(command, who)).resolves.toMatchObject({ outcome: "committed" });
   });
 
   it("holds the reused LC3 context after readiness and through issuance", async () => {

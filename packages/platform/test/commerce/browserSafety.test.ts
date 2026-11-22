@@ -38,6 +38,7 @@ const serverExports = [
   "ORDER_DRAFT_SUPERSEDE_RPC_NAME",
   "cancelAbandonedCheckout",
   "cancelUnstartedPromotionCheckout",
+  "catalogAdmissionRefusal",
   "classifyCheckoutRecoveryTokenState",
   "createExpiredCheckoutRecoveryPolicy",
   "createManagedCommerceRuntimeOrderPort",

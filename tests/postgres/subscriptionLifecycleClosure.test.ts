@@ -56,10 +56,19 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
   it("preserves the installed order money guard byte for byte around catalogue checks", () => {
     const [mainGuard] = env.guardBefore.function;
     const [catalogueGuard] = env.guardAfter.function;
-    // Strip only the three acceptance call sites. This compares the entire
+    // Strip only the catalogue checks. This compares the entire
     // remaining body, including the declared total, line sum and refusal.
     const moneyBody = catalogueGuard!.body
       .replace("    PERFORM public.catalog_order_line_sum_acceptance(v_order_id, p_old_header => OLD, p_new_header => NEW);\n", "")
+      .replace(`    -- Transfer runs under the owning migration login. Ordinary table writers
+    -- may not add governed purchase lines outside the native draft owner.
+    IF NOT pg_has_role(current_user, (SELECT relowner FROM pg_class WHERE oid=TG_RELID),'USAGE') THEN
+      IF TG_OP='INSERT' THEN PERFORM public.catalog_admission_guard_purchase_item(NEW);
+      ELSIF (OLD.order_id,OLD.sku_id,OLD.quantity) IS DISTINCT FROM (NEW.order_id,NEW.sku_id,NEW.quantity) THEN
+        PERFORM public.catalog_admission_guard_purchase_item(NEW);
+      END IF;
+    END IF;
+`, "")
       .replace("    IF TG_OP = 'UPDATE' THEN\n      PERFORM public.catalog_order_line_sum_acceptance(v_order_id, OLD.order_id);\n    END IF;\n", "")
       .replace("  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);\n", "");
     expect(moneyBody).toBe(mainGuard!.body);

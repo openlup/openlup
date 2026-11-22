@@ -1,3 +1,4 @@
+import { catalogAdmissionRefusal } from "@openlup/platform/commerce/server";
 import {
   createOrderDraftResponseSchema,
   type CreateOrderDraftRequest,
@@ -32,11 +33,27 @@ export function createPostgresCommerceOrderJourneyPorts(
 ): {
   orderDraftPort: CommerceOrderDraftWritePort;
   resumePort: CommerceCheckoutResumeDraftPort;
+  preflightDraft(request: CreateOrderDraftRequest): Promise<CreateOrderDraftResponse | null>;
 } {
   const gateway = new PgGatewayClient(executor);
   return {
     orderDraftPort: createOrderDraftPort(gateway),
     resumePort: createResumePort(gateway),
+    async preflightDraft(request) {
+      const args = createOrderDraftRpcArgs(request, null);
+      try {
+        const { rows } = await executor.query(`SELECT public.catalog_admission_replay_order_draft($1::text,NULL,'native-draft',
+          md5($2::jsonb::text || '|' || $3::jsonb::text || '|')) AS replay`,
+        [args.p_idempotency_key, JSON.stringify(args.p_quote_snapshot), JSON.stringify(args.p_order_draft_snapshot)]);
+        if (rows[0]?.replay != null) return createOrderDraftResponseSchema.parse(rows[0].replay);
+        const codes = request.quoteSnapshot.quote.lines.map(line => line.sku);
+        const result = await executor.query("SELECT public.catalog_admission_requires_quote_authority($1::text[],NULL) AS governed", [codes]);
+        if (result.rows[0]?.governed === true) throw new Error("catalog_admission_quote_authority_required");
+        return null;
+      } catch (error) {
+        throw mapOrderDraftError(error as RpcError);
+      }
+    },
   };
 }
 
@@ -96,6 +113,12 @@ function parseResume(value: unknown): CheckoutResumeDraft {
 }
 
 function mapOrderDraftError(error: RpcError): Error {
+  const admission = catalogAdmissionRefusal(error);
+  if (admission) return new CommerceOrderDraftConflictError(
+    admission === "catalog_admission_quote_authority_required"
+      ? "Governed catalogue purchases are unavailable. Use a legacy offer or replay the original request."
+      : admission, { reason: admission, boundary: ORDER_DRAFT_RPC },
+  );
   const message = searchable(error);
   if (error.code === "23505" || message.includes("commerce_order_draft_idempotency_conflict")) {
     return new CommerceOrderDraftConflictError(undefined, {

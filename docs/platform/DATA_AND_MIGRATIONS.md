@@ -458,6 +458,22 @@ The managed rail does not supply this feature. Its twin needs separate SQL
 admission and equivalent administrator/RLS, input-provenance and receipt controls
 over incumbent managed tables; it must not infer historical evidence from a
 current catalogue head. Industry-specific managed catalogue columns are unaffected.
+
+## Native catalogue purchase admission
+
+The base and promoted draft routines share scoped receipt verification and
+classify fresh demand using installed catalogue facts. Fresh governed demand
+returns `catalog_admission_quote_authority_required`. The component assertion
+checks current owner evidence and provides no purchase authority. The three
+checkout-owner definitions are owned by the migration principal, pin
+`pg_catalog, pg_temp` and grant no application role execution. The private
+draft entry keeps fresh governed purchase unavailable.
+The managed rail does not supply governed purchase admission, and its drafts remain legacy-only.
+
+The private submit member binds the original authenticated request to the native
+draft receipt. The existing deferred order and receipt checks protect committed
+evidence and preserve nullable historical acceptance. A restore preserves both
+the original proof and historical absence.
 Unbind callers to roll back use; retain committed receipts/history and correct a
 price with a subsequent expected-base command.
 

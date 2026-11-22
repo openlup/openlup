@@ -1,4 +1,4 @@
-import type { NativeCheckoutDraftRequest, NativeCheckoutDraftResponse } from '@openlup/platform/commerce/server/native-checkout';
+import type { NativeAcquisitionCheckoutPool, NativeCheckoutDraftRequest, NativeCheckoutDraftResponse, NativeCheckoutQuery } from '@openlup/platform/commerce/server/native-checkout';
 import * as promotions from '@openlup/platform/promotions';
 import * as checkout from '@openlup/platform/commerce/server/native-checkout';
 import type { Pool } from 'pg';
@@ -11,8 +11,8 @@ import { canonicalCatalogDraftJson } from '@openlup/platform/catalog';
 
 /** Local integration seam until the installed predecessor's API is frozen. */
 export interface AcquisitionPredecessors {
-  eligibility(db: Pool): { resolve(email: string | null): Promise<{ clientId: string | null }> };
-  checkout(db: Pool, options: { regionCode: string; financialPolicy: AcquisitionFinancialPolicy<PromotionRow>;
+  eligibility(db: NativeCheckoutQuery): { resolve(email: string | null): Promise<{ clientId: string | null }> };
+  checkout(db: NativeAcquisitionCheckoutPool, options: { regionCode: string; financialPolicy: AcquisitionFinancialPolicy<PromotionRow>;
     isAcquisitionDiscount(discount: CommerceQuoteDiscount): boolean }): {
     createOrderDraft(request: NativeCheckoutDraftRequest, identity: { clientId: string }): Promise<NativeCheckoutDraftResponse>;
   };

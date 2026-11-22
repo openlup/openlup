@@ -7,6 +7,8 @@ import {
 import {
   createOrderDraftRequestSchema,
   createOrderDraftResponseSchema,
+  type CreateOrderDraftRequest,
+  type CreateOrderDraftResponse,
   type CreateQuoteResponse,
 } from "../../../src/domains/commerce/contracts.js";
 import { COMMERCE_CONTRACT_VERSION } from "../../../src/domains/commerce/types.js";
@@ -26,11 +28,13 @@ import { projectPublicQuoteSnapshot } from "./catalogFactsProvenance.js";
 export interface CommerceOrderDraftHandlerDeps {
   orderDraftPort: CommerceOrderDraftWritePort;
   quoteSnapshotVerifier: CommerceQuoteSnapshotVerifierPort;
+  preflightDraft?(request: CreateOrderDraftRequest): Promise<CreateOrderDraftResponse | null>;
 }
 
 export function createCommerceOrderDraftHandler({
   orderDraftPort,
   quoteSnapshotVerifier,
+  preflightDraft,
 }: CommerceOrderDraftHandlerDeps) {
   return async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     if (req.method !== "POST") {
@@ -47,9 +51,12 @@ export function createCommerceOrderDraftHandler({
     }
 
     try {
-      const verified = await quoteSnapshotVerifier.verifyQuoteSnapshot(request.data.quoteSnapshot);
-      const quoteSnapshot = isVerifiedQuoteSnapshot(verified) ? verified : request.data.quoteSnapshot;
-      const orderDraft = await orderDraftPort.createOrderDraft({ ...request.data, quoteSnapshot });
+      let orderDraft = await preflightDraft?.(request.data);
+      if (!orderDraft) {
+        const verified = await quoteSnapshotVerifier.verifyQuoteSnapshot(request.data.quoteSnapshot);
+        const quoteSnapshot = isVerifiedQuoteSnapshot(verified) ? verified : request.data.quoteSnapshot;
+        orderDraft = await orderDraftPort.createOrderDraft({ ...request.data, quoteSnapshot });
+      }
       const response = createOrderDraftResponseSchema.safeParse(orderDraft);
       if (!response.success) {
         sendInvalidResponse(res);

@@ -134,7 +134,22 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     ...composeE4Capabilities(pool, async context => {
       const authorization = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });
       return authorization.ok && authorization.principalId.toLowerCase() === context.actor.operatorRef?.toLowerCase();
-    }), ...composePurchaseCapabilities(pool, contacts, undefined, recovery, { ...(quoteAcceptanceKeyring ? { keyring: quoteAcceptanceKeyring } : {}) }),
+    }), ...composePurchaseCapabilities(pool, contacts, undefined, recovery, {
+      ...(quoteAcceptanceKeyring ? { keyring: quoteAcceptanceKeyring } : {}),
+      bindContact(session) {
+        // The contact registrar owns a nested unit of the native draft transaction.
+        const borrowed = { async connect() {
+          return { async query(statement: string, values?: unknown[]) {
+            if (statement === 'BEGIN') return session.query('SAVEPOINT checkout_contact');
+            if (statement === 'COMMIT') return session.query('RELEASE SAVEPOINT checkout_contact');
+            if (statement === 'ROLLBACK') return session.query('ROLLBACK TO SAVEPOINT checkout_contact');
+            if (statement === 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED') return { rows: [] };
+            return session.query(statement, values);
+          }, release() {} };
+        } } as unknown as pg.Pool;
+        return createPostgresContactClientRegistrar({ connectionString }, { pool: borrowed });
+      },
+    }),
     ...composeAuthenticatedRecovery(pool), ...composeOperatorRecovery(pool), ...composeSubscriptionEditors(pool) };
   Object.assign(actions, composePortalCapabilities(pool, async context => {
     const auth = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });

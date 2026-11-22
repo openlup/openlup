@@ -4,6 +4,7 @@ import { CommerceOrderDraftPriceChangedError } from "../orderDraftErrors.js";
 import type { CommerceOrderDraftWritePort, CreateOrderDraftOptions } from "../contracts/ports.js";
 import type { RpcError as CommerceOrderDraftRpcError } from "../contracts/omsTypes.js";
 import { ORDER_DRAFT_RPC_NAME } from "./orderDraftRpcPayload.js";
+import { catalogAdmissionRefusal } from "./catalogAdmissionRefusal.js";
 
 /** Companion RPC that supersedes a stale pre-payment draft for a stable journey key. */
 export const ORDER_DRAFT_SUPERSEDE_RPC_NAME =
@@ -39,7 +40,7 @@ export function createCommerceOrderDraftRpcPort<Request extends { idempotencyKey
       // (cancel the unpaid draft, drop the key) and retry create ONCE via the
       // order-draft supersede RPC. If nothing was superseded (funds already moved),
       // the conflict stands and the caller's resume path owns the in-flight order.
-      if (response.error && isIdempotencyConflict(response.error)) {
+      if (response.error && !catalogAdmissionRefusal(response.error) && isIdempotencyConflict(response.error)) {
         const superseded = await supersedeStalePrePaymentDraft(
           client,
           request.idempotencyKey,
@@ -82,6 +83,8 @@ async function supersedeStalePrePaymentDraft<Args extends Record<string, unknown
 }
 
 function mapRpcError(error: CommerceOrderDraftRpcError): Error {
+  const admission = catalogAdmissionRefusal(error);
+  if (admission) return new CommerceOrderDraftConflictError(admission, { reason: admission, boundary: ORDER_DRAFT_RPC_NAME });
   const catalogReason = ["commerce_order_draft_catalog_head_moved", "commerce_order_draft_catalog_anchor_missing", "commerce_order_draft_offer_membership_refused"]
     .find((reason) => [error.message, error.details, error.hint].some((value) => value?.includes(reason)));
   if (catalogReason) return new CommerceOrderDraftConflictError("Commerce catalog admission changed", {

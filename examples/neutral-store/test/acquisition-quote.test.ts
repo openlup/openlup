@@ -157,10 +157,11 @@ test('configured native shipping reaches the installed graph rather than an inte
 
 test('forged fresh cadence/SKU/quantity refuse quote and checkout with zero writes', async () => {
   let writes = 0;
-  const db = { query: async (sql: string) => {
+  const query = async (sql: string) => {
     if (!sql.trimStart().startsWith('SELECT')) writes++;
     return { rows: [] };
-  } } as unknown as Pool;
+  };
+  const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
   const quotes = createNativeQuoteService(db,unavailable);
   const actions = composePurchaseCapabilities(db,{} as never,undefined,{} as never,{ predecessors: unavailable });
   const bindings = { ...pendingBindings(),actions };
@@ -175,6 +176,22 @@ test('forged fresh cadence/SKU/quantity refuse quote and checkout with zero writ
     assert.deepEqual(result,{ ok: false,code });
   }
   assert.equal(writes,0);
+});
+
+test('fresh governed selection refuses before the quote, contact or draft owner', async () => {
+  const calls: string[] = [];
+  const query = async (sql: string) => {
+    calls.push(sql);
+    if (sql.includes('catalog_admission_requires_quote_authority')) return { rows: [{ governed: true }] };
+    if (sql.includes('pg_advisory') || sql.includes('commerce_order_draft_receipts')) return { rows: [] };
+    throw new Error('A fresh quote cannot be read on this path');
+  };
+  const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
+  const contacts = { async ensureContactClient() { throw new Error('Contact must not be provisioned'); } };
+  const actions = composePurchaseCapabilities(db,contacts as never,undefined,{} as never,{ predecessors: unavailable });
+  const result = await actions['checkout.create']!({ ...payload, quoteAcceptance: 'opaque', acquisitionCapability: ACQUISITION_TERMS_CAPABILITY },context);
+  assert.deepEqual(result,{ ok: false,code: 'catalog_admission_quote_authority_required' });
+  assert.equal(calls.length,4);
 });
 
 for (const narrowing of ['withdrawn offers', 'lowered quantity and line limits']) {
@@ -205,18 +222,19 @@ test(`authenticated completed order read and receipt replay survive ${narrowing}
   const money = { amountMinor: 1000,currency: 'XTS' };
   const snapshot = { quote: { lines: [],subtotalGross: money,totalGross: money,discountTotalGross: { ...money,amountMinor: 0 },currency: 'XTS',
     context: { mode: 'subscription',cadenceDays: acceptedCart.cadenceDays,starterRequest: identity } } };
-  const storedOrder = { snapshot,completed: true,id: '00000000-0000-4000-8000-000000000003',client_id: actor.customerRef,
+  const storedOrder = { snapshot,completed: true,owned: true,submit: null,fingerprint:'a'.repeat(32),id: '00000000-0000-4000-8000-000000000003',client_id: actor.customerRef,
     status: 'paid',total_amount_minor: 1000,currency_code: 'XTS' };
   let writes = 0;
   let receiptAvailable = true;
-  const db = { query: async (sql: string) => {
+  const query = async (sql: string) => {
     if (!sql.trimStart().startsWith('SELECT')) writes++;
     if (sql.includes('SELECT email')) return { rows: [{ email: payload.email }] };
     if (sql.includes('commerce_order_draft_receipts')) return { rows: receiptAvailable ? [storedOrder] : [] };
     if (sql.includes('FROM public.commerce_orders WHERE id=$1')) return { rows: [storedOrder] };
     // isInitialCheckoutOrder's canonical kind fence.
     return { rows: [{ initial_checkout: true }] };
-  } } as unknown as Pool;
+  };
+  const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
   const actions = composePurchaseCapabilities(db,{} as never,undefined,{} as never,{ predecessors: unavailable });
   const bindings = { ...pendingBindings(),actions };
   const result = await dispatchAction(bindings,'checkout.create',input,{ ...context,config: changed,actor });
