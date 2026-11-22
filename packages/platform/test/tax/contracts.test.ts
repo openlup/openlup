@@ -23,12 +23,13 @@ const remedies = {
   tax_breakdown_incomplete: "Recover and replay the complete original calculation breakdown for the intended request and key.",
 } as const;
 type Code = keyof typeof remedies;
-const verifierRefusal = (code: Code, field: string) => ({ kind: "refused", code, field, remedy: remedies[code] });
+const sizeRemedy = "Reduce the document below 1,048,576 bytes of canonical JSON.";
+const verifierRefusal = (code: Code, field: string, remedy: string = remedies[code]) => ({ kind: "refused", code, field, remedy });
 const conflict = (field: string) => verifierRefusal("tax_reference_conflict", field);
 const breakdown = (field: string) => verifierRefusal("tax_breakdown_incomplete", field);
 
-function expectRefusal(refusal: TaxRefusal | undefined, code: Code, field: string) {
-  expect(refusal, field).toEqual(verifierRefusal(code, field));
+function expectRefusal(refusal: TaxRefusal | undefined, code: Code, field: string, remedy?: string) {
+  expect(refusal, field).toEqual(verifierRefusal(code, field, remedy));
   expect(Reflect.ownKeys(refusal!).sort()).toEqual(["code", "field", "kind", "remedy"]);
   expect(Object.hasOwn(refusal!, "expected")).toBe(false);
 }
@@ -648,7 +649,9 @@ describe("tax document decoders", () => {
     const foreign = successful({ ...receipt, requestKey: "other-key" });
     expectRefusal(verifyTaxQuoteResult(inaccessible, foreign), "tax_reference_conflict", "");
     expectRefusal(verifyTaxQuoteResult(inaccessible, successful()), "tax_reference_conflict", "");
-    expect(reads).toBe(0);
+    expect(reads).toBe(2); // Each failed canonical snapshot measures the JSON size.
+    expectRefusal(verifyTaxQuoteResult(request, { ...successful(), evidence: new Date() } as unknown as TaxQuoteResultV1),
+      "tax_reference_conflict", "/evidence");
   });
 
   it("binds the optional provider lines on both verification paths", () => {
@@ -704,22 +707,47 @@ describe("tax document decoders", () => {
     expectRefusal(verifyTaxQuoteRequest(foreign), "tax_reference_conflict", "/input/coverage/accountRef");
   });
 
-  it("refuses a request, evidence or fiscal document one byte above its own cap", () => {
-    function overLimit<T extends object>(value: T): T {
-      const document = { ...value, padding: "" };
-      document.padding = "x".repeat(CATALOG_DRAFT_MAX_BYTES + 1 - Buffer.byteLength(JSON.stringify(document)));
-      expect(Buffer.byteLength(JSON.stringify(document))).toBe(CATALOG_DRAFT_MAX_BYTES + 1);
-      return document;
+  it("verifies a fiscal envelope at its canonical byte limit", () => {
+    const declarations = [...fiscal.current.coverage.declarations];
+    const current = { ...fiscal.current, coverage: { ...fiscal.current.coverage, declarations } };
+    const envelope = { ...fiscal, current };
+    const sample = { ...registered("x".repeat(256)), actorRef: "x" };
+    const rowBytes = Buffer.byteLength(JSON.stringify(sample)) + 1;
+    const available = CATALOG_DRAFT_MAX_BYTES - Buffer.byteLength(JSON.stringify(envelope));
+    const count = Math.floor(available / rowBytes);
+    let remaining = available % rowBytes;
+    for (let index = 0; index < count; index++) {
+      const extra = Math.min(remaining, 255);
+      declarations.push({ ...sample, jurisdiction: String(index).padEnd(256, "x"), actorRef: "x".repeat(1 + extra) });
+      remaining -= extra;
     }
-    expectRefusal(verifyTaxQuoteRequest(overLimit(request)), "tax_reference_conflict", "");
-    expectRefusal(verifyTaxQuoteResult(request, { ...successful(), evidence: overLimit(receipt) } as TaxQuoteResultV1),
-      "tax_reference_conflict", "/evidence");
-    expectRefusal(verifyTaxQuoteRequest(overLimit(fiscal)), "tax_reference_conflict", "");
+    expect(Buffer.byteLength(canonicalCatalogDraftJson(envelope))).toBe(CATALOG_DRAFT_MAX_BYTES);
+    expect(verifyTaxQuoteRequest(envelope)).toBeUndefined();
   });
 
-  it("checks the evidence digest anchor when evidence is missing", () => {
+  it("checks the evidence digest anchor when evidence is absent or undefined", () => {
     const { evidence: _evidence, ...withoutEvidence } = fiscal;
-    expectRefusal(verifyTaxQuoteRequest(withoutEvidence as typeof fiscal), "tax_reference_conflict", "/evidenceDigest");
+    const { evidence: _quoteEvidence, ...withoutQuoteEvidence } = successful();
+    for (const envelope of [withoutEvidence, { ...withoutEvidence, evidence: undefined }]) {
+      expectRefusal(verifyTaxQuoteRequest(envelope as typeof fiscal), "tax_reference_conflict", "/evidenceDigest");
+      expectRefusal(verifyTaxQuoteRequest({ ...envelope, original: { ...request, inputDigest: digest } } as typeof fiscal),
+        "tax_reference_conflict", "/original/inputDigest");
+    }
+    for (const result of [withoutQuoteEvidence, { ...withoutQuoteEvidence, evidence: undefined }]) {
+      expectRefusal(verifyTaxQuoteResult(request, result as TaxQuoteResultV1), "tax_reference_conflict", "/evidenceDigest");
+    }
+  });
+
+  it("measures failed snapshots without relying on the thrown message", () => {
+    const wrapped = new Proxy(request, {
+      getPrototypeOf() { throw new Error("draft_payload_too_large"); },
+    });
+    expect(Buffer.byteLength(JSON.stringify(wrapped))).toBeLessThan(CATALOG_DRAFT_MAX_BYTES);
+    expectRefusal(verifyTaxQuoteRequest(wrapped), "tax_reference_conflict", "");
+
+    const cycle = { ...request, self: {} };
+    cycle.self = cycle;
+    expectRefusal(verifyTaxQuoteRequest(cycle), "tax_reference_conflict", "");
   });
 
   it("compares a successful kind to the request purpose without evidence", () => {
@@ -931,6 +959,22 @@ describe("tax document decoders", () => {
         "tax_breakdown_incomplete", "/money/" + field);
     }
     expectRefusal(verifyTaxQuoteResult(request, null as unknown as TaxQuoteResultV1), "tax_invalid_input", "");
+
+    function overLimit<T extends object>(value: T): T {
+      const document = { ...value, padding: "" };
+      document.padding = "x".repeat(CATALOG_DRAFT_MAX_BYTES + 1 - Buffer.byteLength(JSON.stringify(document)));
+      expect(Buffer.byteLength(JSON.stringify(document))).toBe(CATALOG_DRAFT_MAX_BYTES + 1);
+      return document;
+    }
+    expectRefusal(verifyTaxQuoteRequest(overLimit(request)), "tax_invalid_input", "", sizeRemedy);
+    expectRefusal(verifyTaxQuoteResult(request, { ...successful(), evidence: overLimit(receipt) } as TaxQuoteResultV1),
+      "tax_invalid_input", "/evidence", sizeRemedy);
+    expectRefusal(verifyTaxQuoteRequest(overLimit(fiscal)), "tax_invalid_input", "", sizeRemedy);
+    const { evidence: _evidence, ...withoutEvidence } = fiscal;
+    const oversizedFiscal = overLimit(withoutEvidence);
+    for (const envelope of [oversizedFiscal, { ...oversizedFiscal, evidence: undefined }]) {
+      expectRefusal(verifyTaxQuoteRequest(envelope as typeof fiscal), "tax_invalid_input", "", sizeRemedy);
+    }
   });
 
   it.each(["order", "delivery"] as const)("uses the same coverage amount rule for %s fees in final and estimate results", kind => {

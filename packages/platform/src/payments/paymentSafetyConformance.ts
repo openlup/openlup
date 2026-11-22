@@ -189,7 +189,7 @@ export async function runPaymentSafetyConformance(subject: PaymentAdapterTestSub
       const kind = name === "provider-5xx-before-dispatch" ? "provider-5xx" : name;
       requireFact(fixture.calls.length > before && fixture.calls.at(-1)?.kind === kind, `${name} scripted fault exercised`);
       if (!result) return;
-      requireFact(result.outcome.kind === "decline" || ["pending", "processing", "requires_action", "failed"]
+      requireFact(result.outcome.kind === "decline" || ["sent_to_provider", "pending", "processing", "requires_action", "failed"]
         .includes(result.outcome.status), `${name} never success`);
       if (name === "timeout-after-dispatch" || name === "redelivery-409") {
         requireFact(result.dispatch.kind !== "notDispatched", `${name} preserves dispatch uncertainty`);
