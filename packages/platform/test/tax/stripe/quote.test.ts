@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TaxQuoteRequestV1, TaxQuoteResultV1 } from "../../../src/tax/contracts/index.js";
-import { makeTaxQuoteRequest, verifyTaxQuoteResult } from "../../../src/tax/digest.js";
+import { makeTaxQuoteRequest, taxDigest, verifyTaxQuoteResult } from "../../../src/tax/digest.js";
 import { StripeQuoteReferenceConflict } from "../../../src/tax/stripe/client.js";
 import { quoteStripeTax } from "../../../src/tax/stripe/quote.js";
 import { date, later } from "../fixtures.js";
@@ -49,6 +49,20 @@ describe("private tax calculation quote", () => {
     }, { idempotencyKey: expect.stringMatching(/^tax-quote-[0-9a-f]{64}$/) });
     expect(client.registrations.list).toHaveBeenCalledExactlyOnceWith({ status: "all", limit: 100 });
     expect(client.calculations.listLineItems).not.toHaveBeenCalled();
+  });
+
+  it("sends the tax classes from the verified request snapshot", async () => {
+    const f = setup();
+    f.marketPack.taxCodes.alternate = "txcd_999";
+    const original = f.request();
+    const lines = original.input.lines.map(line => ({ ...line, taxClass: "alternate" }));
+    Object.setPrototypeOf(lines, Object.create(Array.prototype, {
+      [Symbol.iterator]: { value: () => original.input.lines[Symbol.iterator]() },
+    }));
+    const result = await f.run({ ...original, input: { ...original.input, lines } });
+    assertSuccess(original, result);
+    expect(f.client.calculations.create.mock.calls[0][0].line_items.map(row => row.tax_code))
+      .toEqual(["txcd_101", "txcd_101"]);
   });
 
   it("uses one snapshot per distinct nonzero sequence and preserves component-local states", async () => {
@@ -296,7 +310,9 @@ describe("private tax calculation quote", () => {
     const original = f.request();
     expect(await f.run({ ...original, inputDigest: "b".repeat(64) })).toMatchObject({ code: "tax_reference_conflict" });
     const inclusive = { ...original.input, money: { ...original.input.money, amountBasis: "inclusive" } };
-    expect(await f.run({ ...original, input: inclusive } as unknown as TaxQuoteRequestV1))
+    const changed = { ...original, input: inclusive } as unknown as TaxQuoteRequestV1;
+    expect(await f.run(changed)).toMatchObject({ code: "tax_reference_conflict", field: "/inputDigest" });
+    expect(await f.run({ ...changed, inputDigest: taxDigest("input", inclusive) }))
       .toMatchObject({ code: "tax_scope_mismatch", field: "/input/money/amountBasis" });
     expect(await f.run(makeTaxQuoteRequest(original.key, { ...original.input, scope: { ...original.input.scope, accountRef: "another" },
       coverage: { ...original.input.coverage, accountRef: "another" } }))).toMatchObject({ code: "tax_scope_mismatch" });
@@ -323,14 +339,16 @@ describe("private tax calculation quote", () => {
     expect(client.calculations.listLineItems).not.toHaveBeenCalled();
   });
 
-  it("pins the request during provider I/O and refuses a changed caller binding", async () => {
+  it("keeps the result bound to the verified request during provider I/O", async () => {
     const f = setup();
-    const original = { ...f.request() };
+    const original = f.request();
+    const caller = { ...original };
     f.client.calculations.create.mockImplementation(async params => {
-      original.key = "changed-evaluation";
+      caller.key = "changed-evaluation";
       return snapshot(params);
     });
-    expect(await f.run(original)).toMatchObject({ code: "tax_reference_conflict", field: "/evidence/requestKey" });
+    const result = assertSuccess(original, await f.run(caller));
+    expect(verifyTaxQuoteResult(caller, result)).toMatchObject({ code: "tax_reference_conflict", field: "/evidence/requestKey" });
   });
 
   it.each(["zero", "zero after discount", "handling", "ten discounts", "class", "origin", "partial second", "delivery facts"] as const)(

@@ -5,6 +5,8 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { qualifiedCatalogueStorageSelectSql, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, previewNoopAcceptanceSql, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { definitionPath, definitionSql, grantPath, grantSql } from "../helpers/issuedPlatformCatalog.js";
+import { readSelectedCatalogProjection } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
@@ -1630,6 +1632,39 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     await expect(checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, BASELINE_SQL + grant))).rejects.toThrow(/invalid privilege type .* for column/u);
   });
   it("replays every unbound native chain unit", () => { expect(replay.applied).toBe(chain.length); });
+  it("records the legacy grant fixture with zero grants and preserves inventory with the login absent", async () => {
+    const db = await pool.connect();
+    try {
+      const before = await readSelectedCatalogProjection(db);
+      expect(before.roles.some(role => role.identity.name === "openlup_checkout_owner")).toBe(false);
+      await db.query("BEGIN");
+      await db.query(`CREATE TABLE public.platform_schema_migrations (catalog_path text, sha256 text, position integer);
+        CREATE ROLE openlup_checkout_owner LOGIN NOINHERIT`);
+      const bind = (path: string, bytes: string, position: number) => db.query("INSERT INTO public.platform_schema_migrations VALUES($1,$2,$3)", [path, sqlSha256(bytes), position]);
+      await bind(PLATFORM_BASELINE_FILE, readFileSync(PLATFORM_BASELINE_FILE, "utf8"), 0);
+      await db.query(definitionSql);
+      await db.query("SAVEPOINT legacy_grant");
+      await db.query(grantSql);
+      await bind(grantPath, grantSql, 1);
+      expect((await db.query("SELECT catalog_path FROM public.platform_schema_migrations WHERE position=1")).rows).toEqual([{ catalog_path: grantPath }]);
+      const access = async () => (await db.query(`SELECT count(*)::int AS grants FROM pg_catalog.pg_proc
+        WHERE proname LIKE 'catalog_admission_%' AND pg_catalog.has_function_privilege('openlup_checkout_owner',oid,'EXECUTE')`)).rows;
+      expect(await access()).toEqual([{ grants: 0 }]);
+      await db.query("ROLLBACK TO SAVEPOINT legacy_grant");
+      if (manifest.schemaVersion === 1) throw new Error("Qualified fixture requires a qualified baseline");
+      const qualified = manifest.qualified.baseline;
+      await db.query("UPDATE public.platform_schema_migrations SET catalog_path=$1,sha256=$2 WHERE position=0", [qualified.file, qualified.sha256]);
+      await bind(definitionPath, definitionSql, 1);
+      await db.query("ALTER ROLE openlup_checkout_owner NOLOGIN");
+      await db.query("SAVEPOINT unready_grant");
+      await expect(db.query(grantSql)).rejects.toThrow("checkout_owner_login_unready");
+      await db.query("ROLLBACK TO SAVEPOINT unready_grant");
+      expect(await access()).toEqual([{ grants: 0 }]);
+      expect((await db.query("SELECT count(*)::int AS count FROM public.platform_schema_migrations")).rows).toEqual([{ count: 2 }]);
+      await db.query("ROLLBACK");
+      expect((await readSelectedCatalogProjection(db)).digest).toBe(before.digest);
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  });
   it("proves every receipt-backed preview acceptance combination on the installed chain", () => {
     if (replay.previewAcceptanceError) throw replay.previewAcceptanceError;
     expect(replay.previewAcceptanceError).toBeNull();

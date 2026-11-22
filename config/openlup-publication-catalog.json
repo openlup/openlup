@@ -1574,6 +1574,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124220001_catalog_accepted_references.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261124235000_tax_coverage_revisions.sql",
       "class": "public-output"
     },
@@ -1706,6 +1710,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/README.md",
       "class": "platform-documentation"
     },
@@ -1743,6 +1751,10 @@
     },
     {
       "path": "docs/platform/adopter-kit/dependabot.template.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/adr/ADR-001-provider-recipes-architecture.md",
       "class": "public-output"
     },
     {
@@ -3470,6 +3482,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/catalog/acceptedReferences.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/catalog/identifiers.ts",
       "class": "public-output"
     },
@@ -5130,6 +5146,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261124220001_catalog_accepted_references.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261124235000_tax_coverage_revisions.sql",
       "class": "public-output"
     },
@@ -5419,6 +5439,10 @@
     },
     {
       "path": "packages/platform/src/blob/vercel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/acceptedReferenceStore.ts",
       "class": "public-output"
     },
     {
@@ -12554,6 +12578,114 @@
       "class": "public-output"
     },
     {
+      "path": "recipes/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/lwa.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/sigv4.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/webhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/index.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/adyen/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/adyen/browser/csp.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/adyen/browser/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/adyen/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/adyen/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/adyen/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/adyen/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/adyen/server/webhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/adyen/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/adyen/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/adyen/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/schema/csp.schema.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/schema/recipe.schema.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/tsconfig.json",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/acquisition-case-schema.test.ts",
       "class": "public-output"
     },
@@ -12670,6 +12802,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ast-grep/rule-tests/recipes-no-ambient-fetch-test.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rule-tests/recipes-no-ambient-fetch-tsx-test.yml",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ast-grep/rules/bff-database-through-ports.yml",
       "class": "public-output"
     },
@@ -12683,6 +12823,10 @@
     },
     {
       "path": "scripts/ast-grep/rules/portable-no-industry-contracts.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rules/recipes-no-ambient-fetch.yml",
       "class": "public-output"
     },
     {
@@ -14959,6 +15103,10 @@
     },
     {
       "path": "server/adapters/postgres/connectedStoreCapture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreRestore.test.ts",
       "class": "public-output"
     },
     {
@@ -30490,6 +30638,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogPublication.test.ts",
       "class": "public-output"
     },
@@ -30654,11 +30806,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStoreHistoricalPacket.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStorePaymentMethods.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/connectedStorePromotionClaims.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreRestoreUpgrade.test.ts",
       "class": "public-output"
     },
     {
@@ -31627,10 +31787,6 @@
     },
     {
       "path": "tests/postgres/taxCoveragePgtap.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/postgres/taxCoveragePredecessor.test.ts",
       "class": "public-output"
     },
     {

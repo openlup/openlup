@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
+import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath, checkoutOwnerDefinitionPath, checkoutOwnerGrantPath, checkoutOwnerLogin, checkoutOwnerRoutines, renderCheckoutOwnerGrant } from "./platform-migration-manifest.ts";
 import { documentationGit, readDocumentationObjects } from "./documentation-git.ts";
 import { DuplicateJsonKeyError, parseStrictJson } from "./oss-strict-json.mts";
+
+export { checkoutOwnerLogin, checkoutOwnerRoutines, renderCheckoutOwnerGrant };
 
 export const REVIEWED_FORWARD_PATH = "config/reviewed-platform-forwards.json";
 export const MANAGED_BASELINE = "supabase/migrations/00000000000000_platform_schema_baseline.sql";
@@ -1508,7 +1510,10 @@ export function assertForwardApproval(root: string, base: string, head: string):
   const previous = readReviewedForwardRegistry(before);
   assertNativeStoreClassTransition(previous, current);
   nativeStoreNewSlotTimes(root, base, previous, current);
-  for (const path of introducedNative) if (!current.nativeStoreForwardClass?.slots.some(slot => slot.path === path) || !current.nativeStoreForwards?.some(pin => pin.path === path)) throw new Error(`reviewed native store requires an exact slot and feature binding: ${path}`);
+  for (const path of introducedNative) if (!current.nativeStoreForwardClass?.slots.some(slot => slot.path === path) || !current.nativeStoreForwards?.some(pin => pin.path === path)) {
+    if (checkoutOwnerGrantPath.test(path)) throw checkoutSlotRefusal(path);
+    throw new Error(`reviewed native store requires an exact slot and feature binding: ${path}`);
+  }
   for (const { path } of introducedChannel) if (!current.channelIngestForwards?.some(pin => pin.path === path)) throw new Error(`reviewed M17 channel requires a binding: ${path}`);
   if (before.equals(after)) return;
   for (const path of changedForwardApprovals(before, after)) {
@@ -1678,11 +1683,13 @@ export function hasExactManagedForward(root: string, revision: string, path: str
 
 /** Both required CI and release preparation use this exact path/byte/signature check. */
 export function assertReviewedPlatformForward(root: string, base: string, head: string, path: string, bytes: Buffer, release = false): void {
+  const checkout = checkoutOwnerGrantPath.test(path);
   const controlByte = (byte: number) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f;
-  if (bytes.some(controlByte)) throw new Error(`reviewed replacement refuses control characters in a forward: ${path}`);
+  if (bytes.some(controlByte)) throw checkout ? checkoutForwardRefusal(path) : new Error(`reviewed replacement refuses control characters in a forward: ${path}`);
   const targetRegistry = blob(root, head, REVIEWED_FORWARD_PATH);
-  if (!targetRegistry) throw new Error(`non-expand-only forward has no reviewed replacement approval: ${path}`);
+  if (!targetRegistry) throw checkout ? checkoutSlotRefusal(path) : new Error(`non-expand-only forward has no reviewed replacement approval: ${path}`);
   const registry = readReviewedForwardRegistry(targetRegistry);
+  if (checkout && !registry.nativeStoreForwards?.some(pin => pin.path === path)) throw checkoutSlotRefusal(path);
   const exact = registry.managedExactForwards?.find(pin => pin.path === path);
   if (exact) {
     let approval = base;
@@ -1729,7 +1736,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   } else {
     assertForwardApproval(root, base, head);
   }
-  if (sqlSha256(bytes) !== forward.sha256) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
+  if (sqlSha256(bytes) !== forward.sha256) throw checkout ? checkoutForwardRefusal(path) : new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   if (isQualifiedPlatformMigrationPath(path)) {
     const priorRegistry = blob(root, approval, REVIEWED_FORWARD_PATH);
     if (priorRegistry && approvalBinding(readForwardRegistry(priorRegistry, true), path)) assertUnchangedForwardApproval(root, approval, head, path);
@@ -1748,7 +1755,22 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   if (registry.supportAuthorityForwards?.includes(forward as SupportAuthorityForwardBinding) || registry.channelIngestForwards?.includes(forward as BatchedForwardBinding) || registry.nativeStoreForwards?.includes(forward as ForwardBinding)) {
     const prefix = readPrecedingBlobs(root, head, portable ? "db/platform/migrations/" : "supabase/migrations/", path, true);
     if (registry.nativeStoreForwards?.includes(forward as ForwardBinding)) {
-      const { slot, priceListBasisPredecessor, priceSetupPredecessors } = assertNativeStoreForward(registry, path, bytes, prefix);
+      const { slot, priceListBasisPredecessor, priceSetupPredecessors, checkoutPredecessor } = assertNativeStoreForward(registry, path, bytes, prefix);
+      if (checkoutPredecessor) {
+        const controlChanges = git(root, ["diff", "--name-only", approval, introduction, "--", ...checkoutOwnerControls]);
+        if (controlChanges.length) throw checkoutForwardRefusal(path);
+        const sourcePath = checkoutPredecessor.slot.path;
+        const approved = blob(root, approval, REVIEWED_FORWARD_PATH);
+        const registryAtApproval = approved && readForwardRegistry(approved, true);
+        if (!registryAtApproval
+          || canonical(registryAtApproval.nativeStoreForwardClass?.slots.find(entry => entry.path === sourcePath)) !== canonical(checkoutPredecessor.slot)
+          || canonical(registryAtApproval.nativeStoreForwards?.find(entry => entry.path === sourcePath)) !== canonical(checkoutPredecessor.pin)
+          || !blob(root, approval, sourcePath)?.equals(prefix.find(source => source.path === sourcePath)!.bytes)) {
+          throw checkoutPredecessorRefusal(sourcePath);
+        }
+        if (release && (!blob(root, introduction, path)?.equals(bytes)
+          || !blob(root, introduction, sourcePath)?.equals(prefix.find(source => source.path === sourcePath)!.bytes))) throw checkoutForwardRefusal(path);
+      }
       if (slot.settingsOnlyFunctions) assertNativeStoreSettingsTargets(slot.settingsOnlyFunctions, readPrecedingBlobs(root, approval, "db/platform/migrations/", path, true));
       if (isQualifiedCatalogueReadGrant(slot)) {
         for (const [sourcePath] of qualifiedCatalogueReadTargets) {
@@ -2697,6 +2719,19 @@ const qualifiedPriceSetupExecuteTargets = [
   "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)",
 ] as const;
 
+const checkoutOwnerRow = "catalog-checkout-owner-execute";
+const checkoutOwnerControls = [
+  "scripts/reviewed-platform-forward.ts",
+  "packages/platform/src/migrations/catalog.ts",
+  "packages/platform/src/migrations/qualifiedInstall.ts",
+];
+const isCheckoutOwnerSlot = (slot: NativeStoreSlot) => slot.row === checkoutOwnerRow || checkoutOwnerGrantPath.test(slot.path)
+  || Array.isArray(slot.grantOnlyFunctions) && slot.grantOnlyFunctions.some(entry =>
+    [entry?.grantTo, entry?.revokeFrom].some(roles => Array.isArray(roles) && roles.includes(checkoutOwnerLogin)));
+const checkoutSlotRefusal = (path: string) => new Error(`checkout_owner_slot_invalid: ${path}. Use the single reviewed checkout-owner grant-only slot and pin.`);
+const checkoutForwardRefusal = (path: string) => new Error(`checkout_owner_forward_unverified: ${path}. Replay the reviewed grant bytes after landing the rule and its definitions.`);
+const checkoutPredecessorRefusal = (subject: string) => new Error(`checkout_owner_predecessor_unverified: ${subject}. Recover the original issued definition and its approval binding.`);
+
 const isQualifiedCatalogueReadGrant = (slot: NativeStoreSlot) => slot.grantOnlyFunctions.some(fn => Array.isArray(fn?.grantTo) && fn.grantTo.includes(cataloguePublicationRole));
 
 const previewAcceptanceSource = "db/platform/migrations/20261109120000_subscription_package_editor.sql";
@@ -3027,6 +3062,7 @@ const keysAre = (value: object, keys: string) => Object.keys(value).sort().join(
 const firstNativeStoreTime = "20261101222000";
 const nativeStoreTime = (path: string): string => /^db\/platform\/migrations\/(\d{14})_[a-z][a-z0-9_]*\.sql$/u.exec(path)?.[1] ?? "";
 export const isNativeStoreMigrationPath = (path: string, slots?: readonly Pick<NativeStoreSlot, "path">[]): boolean => {
+  if (checkoutOwnerGrantPath.test(path)) return true;
   if (slots) return slots.some(slot => Boolean(nativeStoreTime(slot.path)) && path.startsWith(`db/platform/migrations/${nativeStoreTime(slot.path)}_`));
   const time = /^db\/platform\/migrations\/(\d{14})_[^/]*\.sql$/u.exec(path)?.[1];
   return time !== undefined && time >= firstNativeStoreTime;
@@ -3209,6 +3245,18 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
   const rows = new Set<string>();
   for (const slot of control.slots) {
     const time = nativeStoreTime(slot.path);
+    if (isCheckoutOwnerSlot(slot)) {
+      const expected = {
+        path: slot.path, row: checkoutOwnerRow, createdFunctions: [], replacedFunctions: [], dataStatements: [],
+        grantOnlyFunctions: checkoutOwnerRoutines.map(signature => ({ signature, grantTo: [checkoutOwnerLogin], revokeFrom: [] })),
+      };
+      if (!checkoutOwnerGrantPath.test(slot.path) || time <= previous || rows.has(slot.row) || paths.has(slot.path)
+        || canonical(slot) !== canonical(expected)) throw checkoutSlotRefusal(slot.path);
+      previous = time;
+      rows.add(slot.row);
+      paths.add(slot.path);
+      continue;
+    }
     const settingsOnly = Object.hasOwn(slot, "settingsOnlyFunctions");
     const fields = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...nativeStoreOwnerWindowFields(slot, settingsOnly)];
     if (settingsOnly) fields.push("settingsOnlyFunctions");
@@ -3344,7 +3392,10 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
   for (const forward of forwards) {
     const index = control.slots.findIndex(slot => slot.path === forward.path), slot = control.slots[index];
     const functions = slot ? nativeStoreFunctions(slot) : [];
-    if (!slot || index <= priorIndex || !keysAre(forward, "functions,path,sha256") || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== functions.length) throw new Error("reviewed native store feature path, order or inventory drifted");
+    if (!slot || index <= priorIndex || !keysAre(forward, "functions,path,sha256") || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== functions.length) {
+      if (checkoutOwnerGrantPath.test(forward.path)) throw checkoutSlotRefusal(forward.path);
+      throw new Error("reviewed native store feature path, order or inventory drifted");
+    }
     priorIndex = index;
     for (const [position, fn] of forward.functions.entries()) {
       const fixed = functions[position]!;
@@ -3739,9 +3790,11 @@ function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earl
   return pin;
 }
 
-function assertPriceSetupPredecessors(registry: ReviewedForwardRegistry, earlierSlots: NativeStoreSlot[], preceding: { path: string; bytes: Buffer }[]): ForwardBinding[] {
-  const allowed = new Set<string>(qualifiedPriceSetupExecuteTargets);
-  const targets = qualifiedPriceSetupExecuteTargets.map(signature => {
+function assertExecutePredecessors(registry: ReviewedForwardRegistry, earlierSlots: NativeStoreSlot[],
+  preceding: { path: string; bytes: Buffer }[], checkout = false): ForwardBinding[] {
+  const signatures = checkout ? checkoutOwnerRoutines : qualifiedPriceSetupExecuteTargets;
+  const allowed = new Set<string>(signatures);
+  const targets = signatures.map(signature => {
     const slot = earlierSlots.find(entry => entry.createdFunctions.some(fn => fn.signature === signature));
     const file = registry.nativeStoreForwards!.find(pin => pin.path === slot?.path);
     const definition = file?.functions.find(fn => fn.signature === signature);
@@ -3765,12 +3818,14 @@ function assertPriceSetupPredecessors(registry: ReviewedForwardRegistry, earlier
       if (!complete) throw drift("Cannot completely tokenize the preceding file.");
       const word = (index: number, value: string) => nativeWord(tokens, index, value);
       const create = word(0, "CREATE"), alter = word(0, "ALTER"), drop = word(0, "DROP");
-      if (!create && !alter && !drop) continue;
+      const reassign = checkout && word(0, "REASSIGN") && word(1, "OWNED");
+      if (!create && !alter && !drop && !reassign) continue;
       const hasWord = (value: string) => tokens.some((_, index) => word(index, value));
       const escapedIdentifier = tokens.some((token, index) => token.kind === "quoted" && word(index - 2, "U")
         && nativeSymbol(tokens, index - 1, "&") && tokens[index - 2]!.end === tokens[index - 1]!.start && tokens[index - 1]!.end === token.start);
       // Refuse indirect static removals and changes to the target schema as well as routine DDL.
-      if (afterIntroduction && ((drop && (word(1, "OWNED") || word(1, "EXTENSION"))) || (alter && word(1, "EXTENSION"))
+    if (afterIntroduction && ((drop && (word(1, "OWNED") || word(1, "EXTENSION"))) || (alter && word(1, "EXTENSION"))
+        || reassign
         || ((drop || (alter && hasWord("DROP"))) && hasWord("CASCADE"))
         || ((alter || drop) && word(1, "SCHEMA") && (escapedIdentifier || tokens.some(token => nativeIdentifier(token) === "public"))))) {
         throw drift("Remove DDL that can change or remove the issued functions indirectly.");
@@ -3785,6 +3840,17 @@ function assertPriceSetupPredecessors(registry: ReviewedForwardRegistry, earlier
       if (!definition || !target || seen.has(target.signature) || target.file.path !== source.path || target.definition.afterSha256 !== definition[1]) {
         throw drift("Only the pinned CREATE of each target is allowed before the grant.");
       }
+      if (checkout) {
+        const header = headerAttributes(statement);
+        const parsed = platformSqlTokens(header, false, true);
+        const security = parsed.tokens.flatMap((_, index) => nativeWord(parsed.tokens, index, "SECURITY")
+          && (nativeWord(parsed.tokens, index + 1, "DEFINER") || nativeWord(parsed.tokens, index + 1, "INVOKER"))
+          ? [nativeWord(parsed.tokens, index + 1, "DEFINER")] : []);
+        if (!parsed.complete || canonical(security) !== "[true]"
+          || nativeStoreSearchPathClause(nativeStoreTrim(header))?.schemas.join(", ") !== "pg_catalog, pg_temp") {
+          throw drift("The issued checkout routine must be a definer with the fixed search path.");
+        }
+      }
       seen.add(target.signature);
     }
   }
@@ -3796,11 +3862,24 @@ function assertPriceSetupPredecessors(registry: ReviewedForwardRegistry, earlier
   return files;
 }
 
+function checkoutDefinition(earlierSlots: readonly NativeStoreSlot[], path: string): NativeStoreSlot {
+  const definitions = earlierSlots.filter(slot => checkoutOwnerDefinitionPath.test(slot.path));
+  const [definition] = definitions;
+  if (definitions.length !== 1 || !definition || !checkoutOwnerRoutines.every(signature =>
+    definition.createdFunctions.some(fn => fn.signature === signature && fn.searchPath === "pg_catalog, pg_temp"))) {
+    throw checkoutPredecessorRefusal(path);
+  }
+  return definition;
+}
+
 /** Exact inventory with lexical shape checks; feature SQL still owns behavior proof. */
 export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]) {
   validateNativeStoreClass(registry, new Set());
   const control = registry.nativeStoreForwardClass, slot = control?.slots.find(slot => slot.path === path);
   const forward = registry.nativeStoreForwards?.find(pin => pin.path === path);
+  const checkout = checkoutOwnerGrantPath.test(path);
+  if (checkout && (!slot || !forward)) throw checkoutSlotRefusal(path);
+  if (checkout && forward?.sha256 !== sqlSha256(bytes)) throw checkoutForwardRefusal(path);
   if (slot?.ownerWindowRole !== undefined) assertNativeStoreSettingsOwnerWindow(slot.settingsOnlyFunctions!, slot.ownerWindowRole, bytes);
   if (!slot || !forward || sqlSha256(bytes) !== forward.sha256) throw new Error("reviewed native store path or file hash drifted");
   if (bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) throw new Error("reviewed native store refuses control characters");
@@ -3815,10 +3894,18 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (!bytes.equals(Buffer.from(sql))) throw new Error("reviewed native store qualified price setup EXECUTE forward must contain only the exact guarded grant with final LF");
   }
   const earlierSlots = control!.slots.slice(0, control!.slots.indexOf(slot));
+  const checkoutPredecessor = checkout ? checkoutDefinition(earlierSlots, path) : undefined;
+  if (checkoutPredecessor) {
+    const pin = registry.nativeStoreForwards!.find(entry => entry.path === checkoutPredecessor.path);
+    const source = preceding.find(entry => entry.path === checkoutPredecessor.path);
+    if (!pin || !source || sqlSha256(source.bytes) !== pin.sha256) throw checkoutPredecessorRefusal(checkoutPredecessor.path);
+    if (!bytes.equals(Buffer.from(renderCheckoutOwnerGrant(pin.path, pin.sha256)))) throw checkoutForwardRefusal(path);
+  }
   const landedSettings = new Map<string, Set<string>>();
   for (const earlier of earlierSlots) {
     const pin = registry.nativeStoreForwards!.find(pin => pin.path === earlier?.path), source = preceding.find(source => source.path === earlier?.path);
     if (!pin || !source || sqlSha256(source.bytes) !== pin.sha256) {
+      if (checkout) throw checkoutPredecessorRefusal(earlier.path);
       if (slot.qualifiedPriceListBasisSelect) throw new Error(`reviewed native store qualified price list basis SELECT earlier slot is unbound, missing or drifted: ${earlier.path}`);
       throw new Error("reviewed native store requires every earlier slot landed first");
     }
@@ -3838,11 +3925,20 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     return new Error(deferredTriggerMessages.pinned(pin, name, creation));
   };
   const ordinaryProof = new Map<string, { definition: NonNullable<ReturnType<typeof nativeStoreTriggerDefinition>>; localTable: boolean }>();
+  if (checkoutPredecessor) {
+    try {
+      const [predecessor, ...other] = assertExecutePredecessors(registry, earlierSlots, preceding, true);
+      if (!predecessor || other.length || predecessor.path !== checkoutPredecessor.path) throw checkoutPredecessorRefusal(checkoutPredecessor.path);
+      return { slot, ordinaryProof, checkoutPredecessor: { slot: checkoutPredecessor, pin: predecessor } };
+    } catch {
+      throw checkoutPredecessorRefusal(checkoutPredecessor.path);
+    }
+  }
   if (slot.qualifiedPriceListBasisSelect) {
     return { slot, ordinaryProof, priceListBasisPredecessor: assertPriceListBasisPredecessor(registry, earlierSlots, preceding) };
   }
   if (slot.qualifiedPriceSetupExecute) {
-    return { slot, ordinaryProof, priceSetupPredecessors: assertPriceSetupPredecessors(registry, earlierSlots, preceding) };
+    return { slot, ordinaryProof, priceSetupPredecessors: assertExecutePredecessors(registry, earlierSlots, preceding) };
   }
   if (slot.previewNoopAcceptance) {
     assertPreviewNoopAcceptance(bytes, preceding);

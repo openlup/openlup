@@ -51,7 +51,10 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
           CROSS JOIN LATERAL jsonb_array_elements(o.metadata#>'{orderDraftSnapshot,lines}') WITH ORDINALITY item(line,ordinal)
           JOIN public.catalog_skus sku ON sku.sku=item.line->>'sku'
           WHERE s.id=$1::uuid AND s.template_version=1
-            AND NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id)
+            AND (NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id)
+              OR (s.price_list_id IS NULL AND s.currency_code IS NULL AND EXISTS(
+                SELECT 1 FROM public.subscription_lines l WHERE l.subscription_id=s.id
+                  AND to_jsonb(l)->>'catalog_sku_revision_id' IS NOT NULL)))
           GROUP BY s.id,sku.id,sku.sku,o.currency_code`, [id, orderId])).rows;
         if (!lines.length) return;
         if (lines.some(line => line.price_count !== 1)) {
@@ -61,18 +64,23 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
         const context = await resolveNativePurchasePriceList(executor, orderId);
         const contextUpdate = context.priceListId ? `, context AS (
           UPDATE public.subscriptions s SET price_list_id=$3::uuid,currency_code=$4
-          FROM eligible e WHERE s.id=e.id AND s.price_list_id IS NULL AND s.currency_code IS NULL RETURNING s.id
+          FROM eligible e WHERE s.id=e.id AND s.price_list_id IS NULL AND s.currency_code IS NULL
+            AND (e.empty_template OR EXISTS(SELECT 1 FROM public.subscription_lines l
+              WHERE l.subscription_id=e.id AND to_jsonb(l)->>'catalog_sku_revision_id' IS NOT NULL)) RETURNING s.id
         )` : "";
-        // Lines and context are atomic with each other, after the durable completion.
+        // Accepted lines are already durable. Keep the optional price-list
+        // lookup for them and materialize legacy lines only while still empty.
         await executor.query(`WITH locked AS MATERIALIZED (
           SELECT id FROM public.subscriptions WHERE id=$1::uuid AND template_version=1 FOR UPDATE
         ), eligible AS MATERIALIZED (
-          SELECT id FROM locked WHERE NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=locked.id)
+          SELECT id,NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=locked.id) AS empty_template
+          FROM locked
         ), template AS (
           INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
           SELECT e.id,l.variant_id,l.quantity,l.sort_order,l.is_addon,l.unit_price_minor,l.currency_code
           FROM eligible e CROSS JOIN jsonb_to_recordset($2::jsonb) AS l(variant_id uuid,quantity integer,sort_order integer,
             is_addon boolean,unit_price_minor bigint,currency_code text)
+          WHERE e.empty_template
           ON CONFLICT(subscription_id,variant_id) DO NOTHING RETURNING id
         )${contextUpdate} SELECT id FROM eligible`, context.priceListId
           ? [id, JSON.stringify(lines), context.priceListId, context.currency] : [id, JSON.stringify(lines)]);

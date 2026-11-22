@@ -14,7 +14,10 @@ export interface TaxCalculationPortV1 {
    * Verify successful outputs with `verifyTaxQuoteResult`. Adapter conformance will check this binding.
    */
   quote(request: TaxQuoteRequestV1): Promise<TaxQuoteResultV1>;
-  /** Decode the request and call `verifyTaxQuoteRequest` to check the original quote, evidence and current scope binding. */
+  /**
+   * Call `verifyTaxQuoteRequest` for typed diagnostics before evaluating validity.
+   * A verifier refusal maps to effect-free `tax_fiscal_validity_unavailable`.
+   */
   readFiscalValidity(request: TaxFiscalValidityRequestV1): Promise<TaxFiscalValidityResultV1>;
   /**
    * The caller records a local, idempotent close for affirmatively unused or verified-unpaid evidence.

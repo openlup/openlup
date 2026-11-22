@@ -1,6 +1,6 @@
 import type { TaxCoverageInputV1, TaxCoverageResultV1, TaxRefusal } from "./contracts/index.js";
-import { cellKey, compareCells, decide, declarationKey, includesInstant, sameCell } from "./contracts/identity.js";
-import { coverageInputSchema } from "./contracts/schemas.js";
+import { cellKey, compareCells, decide, declarationKey, effectiveDeclarations, includesInstant, sameCell } from "./contracts/identity.js";
+import { coverageAccountMatches, coverageAccountRemedy, coverageInputSchema } from "./contracts/schemas.js";
 import { taxDigest } from "./digest.js";
 
 type Cell = TaxCoverageInputV1["required"][number];
@@ -21,13 +21,12 @@ export function reconcileTaxCoverage(input: TaxCoverageInputV1): TaxCoverageResu
   if (!parsed.success) {
     return { ...evidence([]), ...refuse("tax_invalid_input", parsed.error.field, parsed.error.message) };
   }
-  const { scope, coverage, taxDate, required, observations } = parsed.data;
-  if (scope.accountRef !== coverage.accountRef) {
-    return { ...evidence([]), ...refuse("tax_scope_mismatch", "/coverage/accountRef", "Supply coverage for the selected tax account.") };
+  const { coverage, taxDate, required, observations } = parsed.data;
+  if (!coverageAccountMatches(parsed.data)) {
+    return { ...evidence([]), ...refuse("tax_scope_mismatch", "/coverage/accountRef", coverageAccountRemedy) };
   }
 
-  const declarations = new Map(coverage.declarations.filter(entry => includesInstant(entry.effective, taxDate))
-    .map(entry => [declarationKey(entry), entry]));
+  const declarations = effectiveDeclarations(coverage.declarations, taxDate);
   const expected = new Map(required.map(cell => [cellKey(cell), cell]));
   const observed = new Map<string, Observation>();
   const inconsistent: { cell: Cell; field: string; remedy: string }[] = [];

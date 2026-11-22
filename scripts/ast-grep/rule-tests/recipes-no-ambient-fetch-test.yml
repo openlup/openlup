@@ -1,0 +1,10 @@
+id: recipes-no-ambient-fetch
+valid:
+  - 'export function createAdapter(config: { apiKey: string; fetchImpl: typeof fetch }) { return config.fetchImpl("https://api.example.test", { redirect: "error" }); }'
+  - 'const res = await http.fetchImpl("https://checkout-test.adyen.com/v71/sessions", { method: "POST", redirect: "error" });'
+  - 'export const mode = config.mode;'
+invalid:
+  - 'const res = await fetch("https://checkout-test.adyen.com/v71/sessions");'
+  - 'const res = await globalThis.fetch("https://checkout-test.adyen.com/v71/sessions");'
+  - 'const res = await window.fetch("https://checkout-test.adyen.com/v71/sessions");'
+  - 'const res = await self.fetch("https://checkout-test.adyen.com/v71/sessions");'

@@ -1,0 +1,49 @@
+id: recipes-no-ambient-fetch
+language: TypeScript
+severity: error
+message: Provider recipe server and browser code must not call ambient fetch; inject fetchImpl or a narrow client instead (ADR-001).
+note: |
+  Architecture rule (ADR-001 §3.3 & AGENTS.md): provider recipes must stay
+  inert on import and make no ambient network calls. Inject `fetchImpl` or a
+  narrow structural client through explicit factory configuration so offline
+  conformance and zero-I/O refusals remain guaranteed.
+files:
+  - recipes/**/server/**/*.ts
+  - recipes/**/core/**/*.ts
+  - recipes/**/browser/**/*.ts
+ignores:
+  - "**/*.test.ts"
+rule:
+  kind: call_expression
+  has:
+    field: function
+    any:
+      - { kind: identifier, regex: "^fetch$" }
+      - kind: member_expression
+        all:
+          - has: { field: object, regex: "^(globalThis|window|self)$" }
+          - has: { field: property, regex: "^fetch$" }
+---
+id: recipes-no-ambient-fetch-tsx
+language: Tsx
+severity: error
+message: Provider recipe browser components must not call ambient fetch; inject fetchImpl or a narrow client instead (ADR-001).
+note: |
+  Architecture rule (ADR-001 §3.3 & AGENTS.md): provider recipes must stay
+  inert on import and make no ambient network calls. Inject `fetchImpl` or a
+  narrow structural client through explicit factory configuration so offline
+  conformance and zero-I/O refusals remain guaranteed.
+files:
+  - recipes/**/browser/**/*.tsx
+ignores:
+  - "**/*.test.tsx"
+rule:
+  kind: call_expression
+  has:
+    field: function
+    any:
+      - { kind: identifier, regex: "^fetch$" }
+      - kind: member_expression
+        all:
+          - has: { field: object, regex: "^(globalThis|window|self)$" }
+          - has: { field: property, regex: "^fetch$" }

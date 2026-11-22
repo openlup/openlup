@@ -79,6 +79,41 @@ const providerIsolation = {
   ],
 };
 
+const RECIPE_MAX_DEPTH = 6;
+const recipeEscapeBoundary = (depth) => ({
+  message: "Provider recipes must remain repo-splittable (ADR-001): never import outside recipes/.",
+  regexes: [
+    depth === null || depth === 0
+      ? "^(?:\\./)?\\.\\.(?:/|$)"
+      : `^(?:\\./)?(?:\\.\\./){${depth}}\\.\\.(?:/|$)`,
+    "^/",
+    "^@/",
+    "^#",
+  ],
+});
+
+const recipeServerAllowlist = {
+  message: "Provider recipe server/core modules may import only public @openlup/* exports, node:* built-ins, or recipe-local files (ADR-001).",
+  regexes: [
+    "^(?!\\.|@openlup/(?:core|platform|outbox)(?:/|$)|node:).*$",
+  ],
+};
+
+const recipeTestAllowlist = {
+  message: "Provider recipe tests may import only public @openlup/* exports, node:* built-ins, vitest, or recipe-local files (ADR-001).",
+  regexes: [
+    "^(?!\\.|@openlup/(?:core|platform|outbox)(?:/|$)|node:|vitest$).*$",
+  ],
+};
+
+const recipeBrowserAllowlist = {
+  message: "Recipe browser surfaces must stay Node-free, SDK-free, and separate from server/ modules (ADR-001).",
+  regexes: [
+    "^(?!\\.|@openlup/(?:core|platform|outbox)(?:/|$)).*$",
+    "^(?:\\./)?(?:\\.\\./)+server(?:/|$)",
+  ],
+};
+
 const domainIsolation = {
   message: "Domain code must not import provider SDKs or adapter, infra, runtime or route code; inject a port instead.",
   regexes: [
@@ -360,6 +395,27 @@ export default tseslint.config(
     ignores: DOMAIN_TEST_FILES,
     rules: boundaryRules([packageExports, domainIsolation]),
   },
+  ...[null, ...Array.from({ length: RECIPE_MAX_DEPTH + 1 }, (_, depth) => depth)].flatMap((depth) => {
+    const atDepth = depth === null
+      ? sourceFiles("recipes/")
+      : [`recipes/${"*/".repeat(depth)}*.${SOURCE_EXTENSIONS}`];
+    const escape = recipeEscapeBoundary(depth);
+    return [
+      {
+        files: atDepth,
+        ignores: ["recipes/**/browser/**", "recipes/**/tests/**"],
+        rules: boundaryRules([packageExports, escape, recipeServerAllowlist]),
+      },
+      {
+        files: atDepth.map((file) => [file, `recipes/**/tests/**/*.${SOURCE_EXTENSIONS}`]),
+        rules: boundaryRules([packageExports, escape, recipeTestAllowlist]),
+      },
+      {
+        files: atDepth.map((file) => [file, `recipes/**/browser/**/*.${SOURCE_EXTENSIONS}`]),
+        rules: boundaryRules([packageExports, escape, recipeBrowserAllowlist]),
+      },
+    ];
+  }),
   ...workspacePackages.flatMap((pkg) => [null, ...Array.from({ length: MAX_PACKAGE_DEPTH + 1 }, (_, depth) => depth)]
     .flatMap((depth) => {
       const files = depth === null

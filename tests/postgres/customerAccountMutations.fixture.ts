@@ -6,7 +6,7 @@ import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from 
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 export type AccountProfile = "legacy" | "bootstrap" | "separate" | "admin-managed" | "admin-operator";
 /** The existing account-consent installation matrix, also used to measure complete-inventory pins. */
-export async function installAccountMutations(profile: AccountProfile, measure = false, label = "source") {
+export async function installAccountMutations(profile: AccountProfile, measure = false, label = "source", root?: string) {
   const container = await runPostgresContainer({ name: `account-mutations-${profile}-${label}-${process.pid}`, password: "synthetic-conformance" });
   const pools: Pool[] = [];
   const pool = (url: string, options?: string) => { const value = new Pool({ connectionString: url, options }); pools.push(value); return value; };
@@ -38,13 +38,14 @@ export async function installAccountMutations(profile: AccountProfile, measure =
     const migrationUrl = login(installation.generation === "legacy" ? "postgres" : installation.migrationLogin);
     const migrator = pool(migrationUrl, installation.generation === "qualified-v2" ? qualifiedPostgresStartupOptions(installation) : installation.generation === "qualified-admin" ? qualifiedAdminPostgresStartupOptions(installation) : undefined);
     let inventory = "";
-    const runner = createPostgresMigrationRunner({ connectionString: migrationUrl }, { installation, poolFactory: () => migrator, catalogProjectionPayload: async client => {
+    const runnerAt = (sourceRoot?: string) => createPostgresMigrationRunner({ connectionString: migrationUrl }, { root: sourceRoot, installation, poolFactory: () => migrator, catalogProjectionPayload: async client => {
       const payload = installation.generation === "qualified-v2" ? await qualifiedPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
         : installation.generation === "qualified-admin" ? await qualifiedAdminPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1") : selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client));
       inventory = createHash("sha256").update(payload).digest("hex"); return payload;
     } });
-    try { await runner.apply(); }
+    try { await runnerAt(root).apply(); }
     catch (error) { if (!measure || !inventory || !(error instanceof Error) || !error.message.includes("object inventory SHA-256 mismatch")) throw error; }
-    return { owner, migrator, installation, runtime: profile === "legacy" ? owner : pool(login(r)), runner, inventory, close: () => closePostgres(container, pools) };
+    return { owner, migrator, installation, runtime: profile === "legacy" ? owner : pool(login(r)), runner: runnerAt(),
+      get inventory() { return inventory; }, close: () => closePostgres(container, pools) };
   } catch (error) { await closePostgres(container, pools); throw error; }
 }

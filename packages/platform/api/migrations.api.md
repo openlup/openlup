@@ -104,6 +104,12 @@ export declare function evaluatePlatformMigrationManifestHistory(previous: Platf
 export declare function readPlatformMigrationManifest(root: string): unknown | null;
 export declare function readPlatformMigrations(root: string): PlatformMigrationCatalog;
 export declare function runPlatformMigrationManifestCheck(root?: string, objectInventoryPayload?: string): string[];
+export declare const checkoutOwnerLogin = "openlup_checkout_owner";
+export declare const checkoutOwnerGrantPath: RegExp;
+export declare const checkoutOwnerDefinitionPath: RegExp;
+export declare const checkoutOwnerRoutines: readonly ["public.catalog_admission_lock_shared()", "public.catalog_admission_lock_checkout_price(uuid,uuid[])", "public.catalog_admission_create_order_draft(text,jsonb,jsonb,uuid,jsonb)"];
+export declare function renderCheckoutOwnerGrant(path: string, sha256: string): string;
+export declare function checkoutOwnerGrantDigest(path: string, sha256: string): string;
 export {};
 ```
 ## dist/migrations/index.d.ts

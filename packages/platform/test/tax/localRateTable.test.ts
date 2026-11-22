@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { CATALOG_DRAFT_MAX_BYTES } from "../../src/catalog/contracts/index.js";
 import { localRateTable, makeTaxQuoteRequest, verifyTaxQuoteRequest, verifyTaxQuoteResult } from "../../src/tax/index.js";
 import type { LocalRateTableOptionsV1 } from "../../src/tax/index.js";
-import type { TaxQuoteRequestV1, TaxQuoteResultV1 } from "../../src/tax/contracts/index.js";
+import type { TaxQuoteResultV1 } from "../../src/tax/contracts/index.js";
 import {
-  active, date, feeInput, feeRule, exemptRule, localCutover, localInput, localOptions, localRegistration, localTime, rateRule,
+  active, cell, date, feeInput, feeRule, exemptRule, localCutover, localInput, localOptions, localRegistration, localTime, rateRule, withoutTaxClass,
 } from "./fixtures.js";
 
 const feeOptions = {
@@ -17,6 +18,51 @@ function success(result: TaxQuoteResultV1) {
 }
 
 describe("local rate table", () => {
+  it.each([
+    { lines: 100, steps: 12, keyWidth: 56, longRefs: false },
+    { lines: 150, steps: 10, keyWidth: 8, longRefs: false },
+    { lines: 256, steps: 256, keyWidth: 8, longRefs: true },
+  ])("verifies $lines lines with $steps order-wide adjustments", async ({ lines, steps, keyWidth, longRefs }) => {
+    const input = localInput();
+    const lineKeys = Array.from({ length: lines }, (_, index) => index.toString().padStart(keyWidth, "x"));
+    const request = makeTaxQuoteRequest("wide-order", {
+      ...input, lines: lineKeys.map(lineKey => ({ ...input.lines[0], lineKey, sku: lineKey })), required: lineKeys.map(key => cell(key)),
+      money: { ...input.money,
+        sources: lineKeys.map((lineKey, index) => ({ lineKey, sourceOrdinal: index + 1, quantity: 1, unitBasisMinor: 10_000 })),
+        adjustments: Array.from({ length: steps }, (_, index) => ({
+          adjustmentRef: String(index).padStart(longRefs ? 128 : 3, "a"),
+          sequence: index + 1, amountMinor: lines, target: { lineKeys },
+        })),
+      },
+    });
+    const result = success(await localRateTable(localOptions()).quote(request));
+    const { evidence, ...envelope } = result;
+    const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
+    expect(bytes(request)).toBeLessThan(CATALOG_DRAFT_MAX_BYTES);
+    expect(bytes(evidence)).toBeLessThan(CATALOG_DRAFT_MAX_BYTES);
+    if (lines === 100) {
+      expect(bytes(result)).toBeLessThan(CATALOG_DRAFT_MAX_BYTES);
+      expect(bytes({ request, result })).toBeGreaterThan(CATALOG_DRAFT_MAX_BYTES);
+    } else {
+      expect(bytes(envelope)).toBeGreaterThan((longRefs ? 8 : 1) * CATALOG_DRAFT_MAX_BYTES);
+    }
+    expect(result.money.components).toHaveLength(lines);
+    expect(result.money.components.every(component => component.allocations.length === steps)).toBe(true);
+    expect(verifyTaxQuoteResult(request, result)).toBeUndefined();
+  }, 60_000);
+
+  it("uses the verified request snapshot when checking the local quote result", async () => {
+    const original = makeTaxQuoteRequest("snapshot-order", localInput());
+    const lines = [...original.input.lines];
+    const port = localRateTable({ ...localOptions(), now: () => {
+      lines[0] = { ...lines[0], taxClass: "changed-after-verification" };
+      return localTime;
+    } });
+    const result = await port.quote({ ...original, input: { ...original.input, lines } });
+    expect(result.kind).toBe("final");
+    expect(verifyTaxQuoteResult(original, result)).toBeUndefined();
+  });
+
   it.each([
     [{ rules: [rateRule, { ...rateRule, effective: { from: localCutover } }] }, "/rules/1/effective"],
     [{ registrations: [localRegistration, { ...localRegistration, effective: { from: localCutover } }] }, "/registrations/1/effective"],
@@ -90,6 +136,43 @@ describe("local rate table", () => {
     expect(await port.readFiscalValidity({ ...validity, current: {
       ...validity.current, destination: { ...validity.current.destination, snapshotRef: "replacement" },
     } })).toMatchObject({ kind: "changed" });
+  });
+
+  it("same_account_foreign_mode_requires_fresh_current", async () => {
+    const original = makeTaxQuoteRequest("timed", localInput());
+    const result = success(await localRateTable(localOptions()).quote(original));
+    const chargeAt = "2030-01-02T00:00:11.000Z";
+    const port = localRateTable({ ...localOptions(), now: () => chargeAt });
+    const live = original.input.scope.mode === "test" ? "live" : "test";
+    const changes = { adapter: "another-adapter", adapterVersion: "2", accountRef: "another-account", mode: live } as const;
+    const validity = { original, evidence: result.evidence, evidenceDigest: result.evidenceDigest, chargeAt };
+    const submit = vi.fn(port.readFiscalValidity);
+    const unavailable = { kind: "unavailable", code: "tax_fiscal_validity_unavailable", effect: "none" };
+    for (const [key, value] of Object.entries(changes)) {
+      const scope = { ...original.input.scope, [key]: value };
+      const foreign = { ...original.input, scope, taxDate: chargeAt, coverage: { ...original.input.coverage, accountRef: scope.accountRef } };
+      expect(verifyTaxQuoteRequest({ ...validity, current: foreign })).toEqual({
+        kind: "refused", code: "tax_reference_conflict", field: "/current/scope",
+        remedy: "Replay the intended original request under its original key with its original digest and, where applicable, its matching calculation evidence and original digests. For fiscal validity, obtain fresh charge-time input from the original scope without copying or relabelling scope members.",
+      });
+      expect(await submit({ ...validity, current: foreign })).toEqual(unavailable);
+      if (key !== "mode") continue;
+      const saved = structuredClone(foreign);
+      const fresh = { ...localInput(), taxDate: chargeAt };
+      const obtainCurrent = vi.fn<(scope: typeof original.input.scope) => typeof fresh | undefined>()
+        .mockReturnValueOnce(fresh).mockReturnValueOnce(undefined);
+      const recover = async () => {
+        const current = obtainCurrent(original.input.scope);
+        return current === undefined ? undefined : submit({ ...validity, current });
+      };
+      expect(await recover()).toMatchObject({ kind: "unchanged", proof: { fiscalDigest: result.evidence.fiscalDigest } });
+      expect(obtainCurrent).toHaveBeenLastCalledWith(original.input.scope);
+      expect(submit.mock.lastCall?.[0].current).toBe(fresh);
+      expect(foreign).toEqual(saved);
+      const attempts = submit.mock.calls.length;
+      expect(await recover()).toBeUndefined();
+      expect(submit).toHaveBeenCalledTimes(attempts);
+    }
   });
 
   it("ends dispatch at the first applicable interval bound and verifies a changed fee with the same refund revision", async () => {
@@ -170,8 +253,7 @@ describe("local rate table", () => {
 
   it("maps unassigned classes and unsafe money to separate refusals", async () => {
     const input = localInput();
-    const request = makeTaxQuoteRequest("class", input);
-    const missing: TaxQuoteRequestV1 = { ...request, input: { ...request.input, lines: [{ ...request.input.lines[0], taxClass: "" }] } };
+    const missing = withoutTaxClass(makeTaxQuoteRequest("class", input));
     expect(await localRateTable(localOptions()).quote(missing)).toMatchObject({ code: "tax_class_missing", field: "/input/lines/0/taxClass" });
     const large = makeTaxQuoteRequest("large", { ...input, money: { ...input.money,
       sources: [{ ...input.money.sources[0], unitBasisMinor: Number.MAX_SAFE_INTEGER }],

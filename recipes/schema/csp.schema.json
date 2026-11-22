@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openlup.org/schemas/recipe-csp.v1.schema.json",
+  "title": "OpenLup Provider Recipe CSP Delta (v1)",
+  "description": "Minimal Content-Security-Policy directive additions required by a provider recipe's browser surface. Hosts merge these explicitly into their Content-Security-Policy header inside NodeSecurityHeaderPolicy.globalHeaders.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "providerKind",
+    "environments"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "providerKind": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{1,47}$"
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "environments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "test",
+        "live"
+      ],
+      "properties": {
+        "test": {
+          "$ref": "#/$defs/cspDirectives"
+        },
+        "live": {
+          "$ref": "#/$defs/cspDirectives"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "cspDirectives": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "script-src": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "style-src": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "frame-src": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "connect-src": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "img-src": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "child-src": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

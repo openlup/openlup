@@ -12,7 +12,7 @@ import { qualifiedAdminPostgresCatalogPayload, qualifiedAdminPostgresStartupOpti
 import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { runReleasedSchemaUpgradeProof } from "./m14ReleasedSchemaUpgrade.proof.js";
-import { readIssuedPlatformManifest, withIssuedPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
+import { proveCheckoutOwnerGrant, provisionCheckoutOwner, readIssuedPlatformManifest, withIssuedPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 
 const lockName = "openlup:public-platform-migrations:v1";
 const hash = (s: string): string => createHash("sha256").update(s).digest("hex");
@@ -35,12 +35,14 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   const bootstrap = pool(container.connectionString);
   const prefix = input.rolePrefix ?? (input.roleMode === "installer-managed" ? "qb_proof_managed" : "qb_proof_operator");
   const m = `${prefix}_m`, r = `${prefix}_r`, s = `${prefix}_s`, o = `${prefix}_o`;
+  let operatorPool: Pool | undefined;
   await bootstrap.query(`CREATE ROLE ${identifier(m)} LOGIN NOINHERIT ${input.roleMode === "installer-managed" ? "CREATEROLE" : "NOCREATEROLE"} NOCREATEDB NOSUPERUSER NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
   await bootstrap.query(`ALTER DATABASE ${identifier(databaseName)} OWNER TO ${identifier(m)}`);
   for (const role of [r, s]) await bootstrap.query(`CREATE ROLE ${identifier(role)} LOGIN NOINHERIT NOCREATEROLE NOCREATEDB NOSUPERUSER NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
   if (input.roleMode === "operator-provisioned") {
     await bootstrap.query(`CREATE ROLE ${identifier(o)} LOGIN NOINHERIT CREATEROLE NOCREATEDB NOSUPERUSER NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
     const operator = pool(loginUrl(o));
+    operatorPool = operator;
     for (const group of ["anon", "authenticated", "service_role", "platform_acquisition_owner", "platform_acquisition_runtime", "openlup_retained_import_owner"]) {
       await bootstrap.query(`CREATE ROLE ${identifier(group)} NOLOGIN NOINHERIT NOCREATEROLE NOCREATEDB NOSUPERUSER NOREPLICATION NOBYPASSRLS`);
       await bootstrap.query(`GRANT ${identifier(group)} TO ${identifier(o)} WITH ADMIN TRUE, INHERIT FALSE, SET FALSE`);
@@ -73,6 +75,7 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   if (input.schemaProof) return await runReleasedSchemaUpgradeProof({ database: { ...input.database,
     connectionString: loginUrl(m), options: qualifiedAdminPostgresStartupOptions(selection) }, installation: selection,
     previousApplicationPath: input.schemaProof.previousApplicationPath, requirePreviousApplication: true, rolePrefix: prefix });
+  if (!input.database) await provisionCheckoutOwner(bootstrap, selection, databaseName, password, operatorPool);
   const before = await runner.status();
   assert.deepEqual(before, { applied: [], pending: expected.map(entry => entry.file) });
   assert.deepEqual((await migrationPool.query("SELECT current_user,session_user")).rows, [{ current_user: m, session_user: m }]);
@@ -124,6 +127,10 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   try { await assert.rejects(makeRunner(() => switchedSession).status(), /actual_login_or_owner_mismatch/u); }
   finally { await switchedSession.query("RESET ROLE"); }
   const inventory = await observeInventory(manifest.objectInventorySha256);
+  if (!input.database) {
+    await proveCheckoutOwnerGrant(loginUrl(m), loginUrl(r), selection, password);
+    await bootstrap.query("DROP ROLE openlup_checkout_owner");
+  }
 
   // The trusted migrator retains fixed ADMIN edges; runtime and restore cannot create objects.
   const edges = (await bootstrap.query(`SELECT role.rolname AS granted, member.rolname AS member, a.admin_option

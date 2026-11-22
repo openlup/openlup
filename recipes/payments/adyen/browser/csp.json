@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "providerKind": "adyen",
+  "notes": "Merge the active environment's directives explicitly into your host Content-Security-Policy header inside NodeSecurityHeaderPolicy.globalHeaders. Narrow live origins to your regional Adyen live environment (US/EU/AU/APSE) when possible.",
+  "environments": {
+    "test": {
+      "script-src": [
+        "https://checkoutshopper-test.adyen.com"
+      ],
+      "style-src": [
+        "https://checkoutshopper-test.adyen.com"
+      ],
+      "frame-src": [
+        "https://checkoutshopper-test.adyen.com"
+      ],
+      "connect-src": [
+        "https://checkoutshopper-test.adyen.com",
+        "https://checkoutanalytics-test.adyen.com"
+      ],
+      "img-src": [
+        "https://checkoutshopper-test.adyen.com"
+      ]
+    },
+    "live": {
+      "script-src": [
+        "https://checkoutshopper-live.adyen.com",
+        "https://checkoutshopper-live-us.adyen.com"
+      ],
+      "style-src": [
+        "https://checkoutshopper-live.adyen.com",
+        "https://checkoutshopper-live-us.adyen.com"
+      ],
+      "frame-src": [
+        "https://checkoutshopper-live.adyen.com",
+        "https://checkoutshopper-live-us.adyen.com"
+      ],
+      "connect-src": [
+        "https://checkoutshopper-live.adyen.com",
+        "https://checkoutshopper-live-us.adyen.com",
+        "https://checkoutanalytics-live.adyen.com"
+      ],
+      "img-src": [
+        "https://checkoutshopper-live.adyen.com",
+        "https://checkoutshopper-live-us.adyen.com"
+      ]
+    }
+  }
+}

@@ -27,15 +27,21 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 
 // Exactly two production reference checks and two fresh other-mode targets.
-// Run in order: no parallel installations or additional role-mode cross product.
+// The separate operator target also witnesses a fresh replay on its own cluster.
 for (const profile of profiles) for (const shape of shapes) {
   it(`qualifies production E2+F+completion ${profile.name} ${shape.name} issued prefix and current suffix`, async () => {
     let container: PostgresContainer | undefined;
+    let freshContainer: PostgresContainer | undefined;
     try {
       container = await runPostgresContainer({
         name: `m14-q2-${profile.name}-${shape.name}-${process.pid}`, password: "synthetic-conformance",
       });
       if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Qualified composition PostgreSQL unavailable");
+      const discriminators = profile.name === "target" && shape.name === "separate-restore";
+      if (discriminators) {
+        freshContainer = await runPostgresContainer({ name: `m14-q2-checkout-fresh-${process.pid}`, password: "synthetic-conformance" });
+        if (!await waitForPostgresTcpReady(freshContainer.connectionString)) throw new Error("Fresh checkout fixture PostgreSQL unavailable");
+      }
       const bootstrapLogin = `${profile.prefix}_bootstrap`;
       const selection = {
         generation: "qualified-v2", roleMode: profile.roleMode, bootstrapLogin,
@@ -48,8 +54,8 @@ for (const profile of profiles) for (const shape of shapes) {
       // on exit. It uses real package exports, with no Vitest aliases or overrides.
       const { stdout } = await exec(process.execPath, [
         "--import", "tsx", fileURLToPath(new URL("./m14QualifiedComposition.proof.ts", import.meta.url)),
-        JSON.stringify({ connectionString: container.connectionString, selection, expectedInventory: shape.sha256,
-          discriminators: profile.name === "target" && shape.name === "separate-restore" }),
+        JSON.stringify({ connectionString: container.connectionString, freshConnectionString: freshContainer?.connectionString,
+          selection, expectedInventory: shape.sha256, discriminators }),
       ], { timeout: 240_000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 });
       const result = JSON.parse(stdout);
       const current = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2", {
@@ -70,7 +76,7 @@ for (const profile of profiles) for (const shape of shapes) {
       console.info(`qualified-production ${profile.name}/${shape.name} ${stdout.trim()}`);
     } finally {
       // Also runs after partial startup, a failed assertion or killed child.
-      await closePostgres(container);
+      await Promise.all([closePostgres(container), closePostgres(freshContainer)]);
     }
   // About 4x the slowest hosted run (61,139 ms), rounded up to 5 s.
   }, 245_000);

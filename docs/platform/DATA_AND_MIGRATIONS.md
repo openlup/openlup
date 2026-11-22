@@ -461,6 +461,55 @@ current catalogue head. Industry-specific managed catalogue columns are unaffect
 Unbind callers to roll back use; retain committed receipts/history and correct a
 price with a subsequent expected-base command.
 
+### Accepted catalogue references and archive
+
+The purchase and edit owners may save an accepted SKU revision alongside their
+receipts. The reference resolves against the revision's issuing publication,
+including its document, type definition, options and net content. A nullable
+same-SKU foreign key protects the template binding. Unbound rows retain NULL.
+Deferred checks reconcile staged order and edit records with their companions
+at commit. Transfer carries both the accepted references and their companions.
+
+Register renewal purchase facts using the accepted draft's SKU codes and
+quantities. Native completion uses those stored lines to create an empty
+subscription's first template and bind its accepted revisions before completing
+the attachment. A worker recovering a pending attachment uses the same
+completion with the original order ID.
+
+The freeze owner saves acceptance beside the snapshot and binds it to the
+operation fingerprint. Renewals keep the existing v1 and v2 pricing formats.
+The renewal owner still uses subtotal less discount plus shipping, with no
+tax term. The quote owner still carries gross prices and one VAT rate where
+required by the sized-plan quote. Destination references remain opaque.
+Catalogue checks use the stored owner evidence and compare SKU identity and
+quantities. Governed SKU facts carry physical quantities and base prices stay
+with the pricing owner.
+
+An edit or full starter graduation that rewrites template or retained lines
+without a new acceptance clears the template revision bindings and retained
+acceptance in the owner's transaction. An operation already frozen retains
+its original acceptance on replay.
+
+| Refusal | Remedy |
+| --- | --- |
+| `catalog_accepted_reference_invalid` | Supply a schema-2 accepted reference with exactly the supported fields. |
+| `catalog_accepted_reference_mismatch` | Capture the reference from the SKU revision's issuing publication. |
+| `catalog_retained_revision_unavailable` | Recover the issuing publication and SKU revision from the retained catalogue. |
+| `catalog_acceptance_invalid` | Supply a schema-2 acceptance with 1 to 100 distinct SKU identities and codes. |
+| `catalog_acceptance_line_mismatch` | Register matching purchase lines from the persisted draft, preview and apply a fresh edit quote, or rebuild the snapshot from the current due subscription. Follow the SQL hint for the operation that refused. |
+| `catalog_acceptance_receipt_mismatch` | Use this order's persisted draft receipt and its original key. |
+| `catalog_acceptance_snapshot_mismatch` | Use the stored renewal operation, its original acceptance and its frozen snapshot. |
+| `catalog_acceptance_snapshot_immutable` | Replay the renewal operation with its original acceptance and frozen snapshot. |
+| `catalog_acceptance_immutable` | Replay the owner command with its original acceptance and evidence. |
+| `catalog_acceptance_order_missing` | Persist the order and its draft receipt before attaching the acceptance. |
+
+The archive census reads active and paused templates and retained terms,
+pending activation and attachment, frozen and recoverable renewals, outstanding
+orders, undelivered leaf replacements, stock waits and unconsumed graduation.
+Outstanding or ambiguous evidence refuses archive. A complete empty census
+still returns `catalog_archive_barrier_unavailable` until the admission barrier
+is qualified.
+
 ## Compatible data transfer
 
 Checkout attempt ledger rows are authoritative, short-lived admission state.
@@ -471,10 +520,17 @@ no raw email, IP address, idempotency key, headers or request payload, and has n
 client foreign key or absorption mapping.
 
 Restore the ledger before enabling checkout under the same limit and identity
-policy. Restore treats the ledger as empty for pinned predecessor installations
-that predate it. Restore also accepts packets from the pinned installation
-profiles immediately before governed catalogue lifecycle. Those packets and
-current packets must include the ledger. Restored attempts age on their
+policy. Connected-store restore accepts the current qualified inventory and the
+admitted predecessor inventories from before publication commands, the checkout
+attempt ledger, governed catalogue lifecycle, catalogue accepted references
+and tax coverage revisions.
+Conversion reproduces the retained rows an in-place upgrade would produce.
+Captures from before catalogue accepted references report the edit quote table
+as empty because capture refused when it contained rows. Later captures carry
+those quotes. A source schema change
+that cannot be reproduced by additive conversion, such as a dropped or retyped
+column, refuses with `schema_conflict`. Upgrade the source, then capture.
+Restored attempts age on their
 original timestamps. Admission prunes rows at the retention cutoff on each
 call. Idle databases keep bounded rows
 until the next call or an owner cleanup. For managed same-schema transfer use
@@ -621,6 +677,9 @@ managed internals, source roles/grants or `platform_schema_migrations`. Source
 and target transaction capabilities remain host-owned; an opaque catalogue label
 does not prove that an installation is compatible. Identical typed rows replay,
 and changed retained rows refuse rather than becoming business status updates.
+The copier admits the pinned validation-only INSERT triggers on renewal terms
+and operations. They run during replay. Other enabled user INSERT triggers
+require the table's restore owner.
 
 The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
 takes its final finite connected-table graph and application's complete private
@@ -2883,6 +2942,40 @@ Admission refuses a later static change to either definition. PB-1's PostgreSQL
 witness covers changes reached through dynamic SQL in earlier admitted routines
 and verifies the effective owner, function attributes and privileges under the
 installed profiles.
+
+The checkout-owner grant-only forward has one reserved
+`*_catalog_checkout_owner_execute.sql` slot. Its ordered routine inventory is
+`public.catalog_admission_lock_shared()`,
+`public.catalog_admission_lock_checkout_price(uuid,uuid[])` and
+`public.catalog_admission_create_order_draft(text,jsonb,jsonb,uuid,jsonb)`.
+The pin binds the full forward bytes and has an empty definition list. All
+three definitions must come from one earlier, issued catalogue purchase
+admission slot. Admission checks the approval base, definition hashes, definer
+attributes and intervening routine or schema changes before admitting the
+grant. The guarded unit returns on the exact legacy baseline ledger entry.
+On either qualified generation, the exact baseline and definition ledger
+entries and a ready login are required for the unit to commit.
+
+For either qualified generation and role mode, the host provisions
+`openlup_checkout_owner` outside the migration session. Use a dedicated login
+with `NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`,
+no owned objects, memberships, or role defaults. Give it effective database
+CONNECT and public schema USAGE. TEMP usually comes from the database owner's
+grant to PUBLIC. Inspect `pg_database` with `aclexplode(datacl)` (use the
+database default ACL if `datacl` is null) to identify the grantor. On PostgreSQL 16,
+a non-superuser who creates the login with `CREATEROLE` receives membership in
+it from the bootstrap authority. Use `pg_auth_members` to find the membership
+and its grantor, then have the grantor clear it. With the database owner's
+approval, grant TEMP directly to each supported role that needs it, then revoke
+TEMP from PUBLIC. Before the migration window, use `has_database_privilege` to
+verify each supported role's intended TEMP access and the checkout login's lack
+of TEMP. If the host or provider cannot provision this exact login or clear
+these edges, the installer refuses the grant with `checkout_owner_login_unready`.
+
+Either qualified projector omits the dormant login. After the guarded unit is
+recorded, readback requires the three non-grantable EXECUTE grants from the
+migration owner and projects the login and those grants. Keep checkout
+credentials unbound until qualification passes.
 
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON

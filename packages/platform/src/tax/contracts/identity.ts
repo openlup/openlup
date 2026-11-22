@@ -31,6 +31,11 @@ export function includesInstant(interval: Declaration["effective"], date: string
   return interval.from <= date && (interval.until === undefined || date < interval.until);
 }
 
+export function effectiveDeclarations(declarations: TaxCoverageV1["declarations"], taxDate: string) {
+  return new Map(declarations.filter(entry => includesInstant(entry.effective, taxDate))
+    .map(entry => [declarationKey(entry), entry]));
+}
+
 type Row = TaxCoverageResultV1["vector"][number];
 
 export function decide(

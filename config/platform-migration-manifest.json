@@ -710,11 +710,15 @@
       "sha256": "4ec416d9edbf838a6843d12763345df965eebf29851b0543a3ffc294bc9e1c83"
     },
     {
+      "file": "db/platform/migrations/20261124220001_catalog_accepted_references.sql",
+      "sha256": "d444c954c2f503a81f50e8de639a3f1ba963a89824fbd07252a37bd6a00d1f02"
+    },
+    {
       "file": "db/platform/migrations/20261124235000_tax_coverage_revisions.sql",
       "sha256": "21e7ad4274ca933cf4f78510ea20d87c59dfc16dceba2a29fc4d51b613bc87bf"
     }
   ],
-  "objectInventorySha256": "269cb8a1a2c97cb648136a67bea60b5a41f7f2c713ad5895972b8eb3d035a9ea",
+  "objectInventorySha256": "e8b9f6b139b40ad49574bbfc75af6697495536564842d74e878c09e9464aff66",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1450,16 +1454,20 @@
         "sha256": "4ec416d9edbf838a6843d12763345df965eebf29851b0543a3ffc294bc9e1c83"
       },
       {
+        "file": "db/platform/migrations/20261124220001_catalog_accepted_references.sql",
+        "sha256": "d444c954c2f503a81f50e8de639a3f1ba963a89824fbd07252a37bd6a00d1f02"
+      },
+      {
         "file": "db/platform/migrations/20261124235000_tax_coverage_revisions.sql",
         "sha256": "21e7ad4274ca933cf4f78510ea20d87c59dfc16dceba2a29fc4d51b613bc87bf"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "164999ab95974797cd1eb8d427d93c08720cb67d97325fbef83f83b145cc80d5"
+        "withRestore": "5c666f391364d611349e802a4cb7ffc0b95bf71be0efdfc44e3bae4a75bbf2e5"
       },
       "separateMigrator": {
-        "withRestore": "658d64d26d9a3909a6b367cdd961b95a76e538dd72a60d9e5406e9f8e692baf7"
+        "withRestore": "536a991e6e84dceaa61740f948e18746afcc856689d8645b0cb23d9fdd43d7df"
       }
     }
   },
@@ -2190,13 +2198,17 @@
         "sha256": "4ec416d9edbf838a6843d12763345df965eebf29851b0543a3ffc294bc9e1c83"
       },
       {
+        "file": "db/platform/migrations/20261124220001_catalog_accepted_references.sql",
+        "sha256": "d444c954c2f503a81f50e8de639a3f1ba963a89824fbd07252a37bd6a00d1f02"
+      },
+      {
         "file": "db/platform/migrations/20261124235000_tax_coverage_revisions.sql",
         "sha256": "21e7ad4274ca933cf4f78510ea20d87c59dfc16dceba2a29fc4d51b613bc87bf"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "7d2bae292d36b7bd0fcf4488ebf16ee378d7810f79bba372ddae8ff8a1ca1ec6",
-      "operatorProvisioned": "cd35e7520c0f3e8b00c71013d1ac73ac0dfa791f2ea63beec77190b5612727ee"
+      "installerManaged": "1a2cdcd2bb7f467c44314be0b9b446af968e0591d82f1d6c0b8d1045f0fb1ab9",
+      "operatorProvisioned": "6b0f34c46faf4401ca21f391f8748d13974c782a646eeea8e4f772bd173b499c"
     }
   }
 }
