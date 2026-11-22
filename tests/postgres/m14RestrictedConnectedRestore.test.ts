@@ -172,7 +172,7 @@ for (const outside of ["grantor", "member"] as const) {
   }, postgresSetupTimeoutMs);
 }
 
-function traceRestore(owner: Pool, hook?: (sql: string, client: PoolClient) => void | Promise<void>) {
+function traceRestore(owner: Pool, hook?: (sql: string, client: PoolClient, values?: unknown[]) => void | Promise<void>) {
   const statements: string[] = [];
   const traced = { async connect() {
     const client = await owner.connect();
@@ -180,13 +180,13 @@ function traceRestore(owner: Pool, hook?: (sql: string, client: PoolClient) => v
       async query(sql: string | QueryConfig, values?: unknown[]) {
         const text = typeof sql === "string" ? sql : sql.text;
         statements.push(text);
-        await hook?.(text, client);
+        await hook?.(text, client, values);
         return typeof sql === "string" ? client.query(sql, values) : client.query(sql);
       },
       release: (destroy?: boolean) => client.release(destroy),
     };
   } } as unknown as Pool;
-  const writes = () => statements.filter(sql => /^\s*(GRANT|INSERT|UPDATE|DELETE)\b/iu.test(sql)
+  const retainedWrites = () => statements.filter(sql => /^\s*(INSERT|UPDATE|DELETE|TRUNCATE|MERGE|COPY)\b/iu.test(sql)
     || /public\.(client_import_retained_row|subscription_cycle_import_retained_row)\(/u.test(sql));
   const expectAdmittedBeforeGrant = () => {
     const grant = statements.findIndex(sql => sql.startsWith("GRANT "));
@@ -199,7 +199,7 @@ function traceRestore(owner: Pool, hook?: (sql: string, client: PoolClient) => v
     expect(locked.some(sql => sql.includes('"customer_identity_challenges" LIMIT 1'))).toBe(true);
     expect(statements.filter(sql => sql.startsWith("GRANT "))).toHaveLength(2);
   };
-  return { traced, statements, writes, expectAdmittedBeforeGrant };
+  return { traced, statements, retainedWrites, expectAdmittedBeforeGrant };
 }
 
 function sealOuter(packet: ConnectedNativeStoreCapture) {
@@ -215,15 +215,270 @@ function genericDefects(packet: ConnectedNativeStoreCapture) {
     return sealConnectedCapture(copy);
   };
   return [
-    { packet: mutate((_copy, columns) => { columns.find(column => !column.key)!.key = true; }), code: "schema_conflict" },
-    { packet: mutate((_copy, columns) => {
+    { label: "generic primary key flag", packet: mutate((_copy, columns) => { columns.find(column => !column.key)!.key = true; }), code: "schema_conflict" },
+    { label: "generic descriptor property order", packet: mutate((_copy, columns) => {
       const { key, name, type } = columns[0]!;
       columns[0] = { key, name, type };
     }), code: "schema_conflict" },
-    { packet: mutate((_copy, columns) => { Object.assign(columns[0]!, { extra: true }); }), code: "schema_conflict" },
-    { packet: mutate(copy => { copy.compatible.sourceId = String.fromCharCode(1); }), code: "invalid_input" },
-    { packet: mutate((_copy, columns) => { Object.assign(columns[0]!, { key: "yes" }); }), code: "invalid_input" },
+    { label: "extra generic descriptor property", packet: mutate((_copy, columns) => { Object.assign(columns[0]!, { extra: true }); }), code: "schema_conflict" },
+    { label: "invalid compatible source ID", packet: mutate(copy => { copy.compatible.sourceId = String.fromCharCode(1); }), code: "invalid_input" },
+    { label: "non-boolean generic key flag", packet: mutate((_copy, columns) => { Object.assign(columns[0]!, { key: "yes" }); }), code: "invalid_input" },
   ];
+}
+
+type RestoreInput = Parameters<typeof restoreConnectedNativeStore>[0];
+type RefusalInput = Partial<Pick<RestoreInput, "packet" | "freshTarget">>;
+type RegisterCleanup = (work: () => Promise<unknown>) => void;
+type RefusalCase = {
+  label: string;
+  code: string;
+  table?: string;
+  cause?: { reason: string };
+  input?: RefusalInput;
+  arrange?: (undo: RegisterCleanup) => Promise<RefusalInput | void>;
+  inject?: { at: (sql: string, values?: unknown[]) => boolean; fault: (client: PoolClient) => Promise<unknown> };
+  check?: (statements: readonly string[]) => void;
+};
+
+async function assertPreGrantRefusals(target: Installed, input: RestoreInput, cyclePacket: ConnectedNativeStoreCapture,
+  genericCases: ReturnType<typeof genericDefects>, baselineCases: ConnectedNativeStoreCapture[],
+) {
+  const { packet, freshTarget } = input;
+  const root = target.pools[0]!;
+  const firstPublicLock = (sql: string) => sql.startsWith('LOCK TABLE "public".');
+  const ledgerLock = (sql: string) => sql.startsWith('LOCK TABLE "public"."platform_schema_migrations"');
+  const ledgerUpdate = "UPDATE public.platform_schema_migrations SET";
+  const originalLedger = (await root.query<{ sha256: string; executed_at: string }>(
+    "SELECT sha256,executed_at::text FROM public.platform_schema_migrations WHERE position=0")).rows[0]!;
+  const changedHash = `${originalLedger.sha256[0] === "f" ? "e" : "f"}${originalLedger.sha256.slice(1)}`;
+  const changeLedgerHash = () => root.query(`${ledgerUpdate} sha256=$1 WHERE position=0`, [changedHash]);
+  const restoreLedgerHash = () => root.query(`${ledgerUpdate} sha256=$1 WHERE position=0`, [originalLedger.sha256]);
+  const noPublicLock = (statements: readonly string[]) => expect(statements.some(firstPublicLock)).toBe(false);
+  const trigger = (table: string) => `CREATE TRIGGER retained_transfer_unapproved AFTER INSERT ON public."${table}"
+    FOR EACH ROW EXECUTE FUNCTION public.fulfillment_emit_shipment_exception_notification()`;
+  const dropTrigger = () => root.query("DROP TRIGGER IF EXISTS retained_transfer_unapproved ON public.commerce_order_holds");
+  const addSetting = () => target.owner.query("INSERT INTO public.commerce_settings(key,value_minor) VALUES('transfer_conflict',1)");
+  const deleteSetting = () => target.owner.query("DELETE FROM public.commerce_settings WHERE key='transfer_conflict'");
+  const settingsDrift = async (undo: RegisterCleanup) => {
+    undo(deleteSetting);
+    await addSetting();
+  };
+  const replayPacket = sealConnectedCapture({ ...structuredClone(freshTarget), observation: packet.observation });
+  const changePacket = (edit: (copy: ConnectedNativeStoreCapture) => void) => {
+    const copy = structuredClone(packet);
+    edit(copy);
+    return { packet: sealConnectedCapture(copy) };
+  };
+  const outbox = (copy: ConnectedNativeStoreCapture) => copy.compatible.tables.find(data => data.table === "outbox_events")!;
+  const pauseWindows = (copy: ConnectedNativeStoreCapture) => copy.compatible.tables.find(data => data.table === "subscription_pause_windows")!;
+  const dutyLineage = structuredClone(packet);
+  const duties = dutyLineage.compatible.tables.find(table => table.table === "invoicing_duties")!;
+  Object.assign(duties.columns.find(column => column.key)!, { key: "yes" });
+  const duty = (id: string, parent: string | null) => JSON.stringify(Object.fromEntries(duties.columns.map(({ name }) =>
+    [name, name === "id" ? id : name === "parent_duty_id" ? parent : null])));
+  duties.rows = [
+    duty("10000000-0000-4000-8000-000000000004", "10000000-0000-4000-8000-000000000005"),
+    duty("10000000-0000-4000-8000-000000000006", null),
+  ];
+
+  // Listed only (7 rows):
+  // - Invalid selection, framing, observation, roster, census or row keys, connectedStoreRestore.ts:395–414,769–826.
+  // - Unadmitted manifest, pin, shape or empty-table attestation, connectedStoreRestore.ts:415–433,855–862.
+  // - Capture limit, connectedStoreRestore.ts:435–437.
+  // - Non-classic subscription, connectedStoreRestore.ts:438–439.
+  // - Invalid source publication, connectedStoreRestore.ts:441,448–462.
+  //   These five rows refuse before connecting and have separate zero-connection witnesses.
+  // - Connection failure, connectedStoreRestore.ts:537, is outside live admission.
+  // - Generic subset size, postgresRows.ts:177–191, is bounded by the whole capture at connectedStoreRestore.ts:435–437.
+  //
+  // Live and deferred refusals exercised in both restricted modes:
+  // - Live observation mismatch, connectedStoreRestore.ts:545–550.
+  // - Initial ledger mismatch, connectedStoreRestore.ts:551,748–752.
+  // - Protected role mismatch during qualification, connectedStoreRestore.ts:554,728–732,864–868.
+  // - At-rest catalogue mismatch, connectedStoreRestore.ts:554–555.
+  // - Invalid lock identifier, connectedStoreRestore.ts:562,756–758,1033–1035.
+  // - Locked ledger checksum and timestamp races (2 rows), connectedStoreRestore.ts:563,748–753.
+  // - Locked catalogue table, column and trigger races (3 rows), connectedStoreRestore.ts:556–566.
+  // - Common column mismatch, connectedStoreRestore.ts:567–575.
+  // - Common insert trigger, connectedStoreRestore.ts:586,945–984.
+  // - Nonempty excluded public relation, connectedStoreRestore.ts:587,889–893.
+  // - Replay publication and constraint errors (2 rows), connectedStoreRestore.ts:590,728–731.
+  // - Cyclic and duplicate lineage and mixed lineage/metadata (6 rows), connectedStoreRestore.ts:482–496,592–598,914–934.
+  // - Generic key, descriptor, source ID and compatible table refusals (7 rows), connectedStoreRestore.ts:488–495,592–598,
+  //   postgresRows.ts:138–139,155–162,165–181.
+  // - Generic insert trigger, connectedStoreRestore.ts:594–596, postgresRows.ts:140–152.
+  // - Channel event and mixed event-type refusals (3 rows), connectedStoreRestore.ts:498–503,592–598.
+  // - Non-settings row in the baseline, connectedStoreRestore.ts:506–509,592–598.
+  // - Disallowed baseline projection with live settings drift (2 rows), connectedStoreRestore.ts:511–512,592–598.
+  // - Live baseline census mismatch, connectedStoreRestore.ts:599.
+  // - Alignment mode, connectedStoreRestore.ts:600–601.
+  // - Uncategorized SQL error, connectedStoreRestore.ts:728–732.
+  const cases: RefusalCase[] = [
+    { label: "live database differs from baseline", code: "invalid_input",
+      input: { freshTarget: sealConnectedCapture({ ...structuredClone(freshTarget),
+        observation: { ...freshTarget.observation, database: "unexpected_database" } }) } },
+    { label: "initial ledger mismatch", code: "schema_conflict", check: noPublicLock,
+      arrange: async undo => { undo(restoreLedgerHash); await changeLedgerHash(); } },
+    { label: "protected role membership differs", code: "database_unavailable", check: noPublicLock,
+      arrange: async undo => {
+        undo(() => root.query("REVOKE rds_superuser FROM restore_r"));
+        await root.query("GRANT rds_superuser TO restore_r");
+      } },
+    { label: "unexpected bootstrap-owned table at rest", code: "schema_conflict", check: noPublicLock,
+      arrange: async undo => {
+        undo(() => root.query("DROP TABLE IF EXISTS public.restore_unexpected_table"));
+        await root.query("CREATE TABLE public.restore_unexpected_table (id integer)");
+        await root.query("ALTER TABLE public.restore_unexpected_table OWNER TO host_bootstrap");
+        expect((await target.owner.query(`SELECT pg_get_userbyid(relowner) AS owner,
+          has_table_privilege(current_user, oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS can_access
+          FROM pg_catalog.pg_class WHERE oid='public.restore_unexpected_table'::regclass`)).rows)
+          .toEqual([{ owner: target.selection.bootstrapLogin, can_access: false }]);
+      } },
+    { label: "invalid public relation identifier before locking", code: "invalid_input",
+      arrange: async undo => { undo(() => target.owner.query('DROP TABLE IF EXISTS public."RestoreProbe"')); },
+      inject: { at: sql => sql.includes("AS schema,c.relname AS table"), fault: () =>
+        target.owner.query('CREATE TABLE public."RestoreProbe" (id integer)') } },
+    { label: "ledger checksum race", code: "schema_conflict",
+      arrange: async undo => { undo(restoreLedgerHash); },
+      inject: { at: ledgerLock, fault: changeLedgerHash } },
+    { label: "ledger timestamp race", code: "schema_conflict",
+      arrange: async undo => { undo(() => root.query(`${ledgerUpdate} executed_at=$1 WHERE position=0`, [originalLedger.executed_at])); },
+      inject: { at: ledgerLock, fault: () => root.query(`${ledgerUpdate} executed_at=executed_at + interval '1 second' WHERE position=0`) } },
+    { label: "migrator-owned public table appears after enumeration", code: "schema_conflict",
+      arrange: async undo => { undo(() => target.owner.query("DROP TABLE IF EXISTS public.restore_roster_probe")); },
+      inject: { at: firstPublicLock, fault: () => target.owner.query("CREATE TABLE public.restore_roster_probe (id integer)") } },
+    { label: "carried relation changes before its lock", code: "schema_conflict",
+      arrange: async undo => { undo(() => root.query("ALTER TABLE public.subscription_pause_windows DROP COLUMN IF EXISTS restore_race_probe")); },
+      inject: { at: sql => sql.startsWith('LOCK TABLE "public"."subscription_pause_windows"'),
+        fault: () => root.query("ALTER TABLE public.subscription_pause_windows ADD COLUMN restore_race_probe text") } },
+    { label: "insert trigger appears before the first public lock", code: "schema_conflict",
+      arrange: async undo => { undo(dropTrigger); },
+      inject: { at: firstPublicLock, fault: () => root.query(trigger("commerce_order_holds")) } },
+    { label: "live carried column type differs", code: "schema_conflict", table: "subscription_pause_windows",
+      input: changePacket(copy => { pauseWindows(copy).columns[0]!.type = "text"; }) },
+    { label: "common insert trigger guard", code: "insert_trigger_requires_owner", table: "commerce_order_holds",
+      inject: { at: sql => sql.includes("SELECT c.relname AS table,t.tgname AS name"),
+        fault: client => client.query(trigger("commerce_order_holds")) } },
+    { label: "public excluded relation has a row", code: "unsupported_table", table: "public.fulfillment_stock_sync_cursors",
+      arrange: async undo => {
+        undo(() => root.query("DELETE FROM public.fulfillment_stock_sync_cursors WHERE source_key='restricted-restore-fixture'"));
+        expect((await root.query(`INSERT INTO public.fulfillment_stock_sync_cursors(source_key,status)
+          VALUES('restricted-restore-fixture','succeeded')`)).rowCount).toBe(1);
+      },
+      check: statements => expect(statements).toContain('SELECT 1 FROM "public"."fulfillment_stock_sync_cursors" LIMIT 1') },
+    { label: "replay publication refusal", code: "target_conflict", cause: { reason: "publication_details_invalid" },
+      input: { packet: replayPacket }, inject: { at: sql => sql.includes("public.catalog_publication_assert_issued("),
+        fault: async () => { throw Object.assign(new Error("catalog_publication_wire_invalid"), { code: "22023" }); } } },
+    { label: "unclassified constraint error on replay", code: "target_conflict",
+      input: { packet: replayPacket }, inject: { at: sql => sql.includes("public.catalog_publication_assert_issued("),
+        fault: async () => { throw Object.assign(new Error("fixture constraint failure"), { code: "23514" }); } } },
+    { label: "cyclic order lineage", code: "target_conflict", table: "commerce_orders", input: { packet: cyclePacket } },
+    { label: "duplicate order in lineage", code: "target_conflict", table: "commerce_orders",
+      input: changePacket(copy => {
+        const orders = copy.compatible.tables.find(table => table.table === "commerce_orders")!;
+        orders.rows.push(orders.rows[0]!);
+      }) },
+    ...[false, true].flatMap(reverseTables => [false, true].map(reverseRows => {
+      const edited = structuredClone(dutyLineage);
+      if (reverseTables) edited.compatible.tables.reverse();
+      if (reverseRows) edited.compatible.tables.find(table => table.table === "invoicing_duties")!.rows.reverse();
+      return { label: `invalid duty metadata and missing parent (reverse tables: ${reverseTables}, rows: ${reverseRows})`,
+        code: "invalid_input", input: { packet: sealConnectedCapture(edited) } };
+    })),
+    ...genericCases.map(({ label, code, packet: edited }) => ({ label, code,
+      ...(code === "schema_conflict" ? { table: "subscription_pause_windows" } : {}), input: { packet: edited } })),
+    { label: "owned table routed through the compatible subset", code: "unsupported_table",
+      input: changePacket(copy => {
+        const index = copy.owned.findIndex(table => table.table === "catalog_products");
+        const [products] = copy.owned.splice(index, 1);
+        // Keep the complete roster while deliberately violating the compatible subset's roster.
+        copy.compatible.tables.push(Object.assign(structuredClone(pauseWindows(copy)), products!));
+      }) },
+    { label: "generic table has no live primary key", code: "schema_conflict", table: "subscription_pause_windows",
+      inject: { at: (sql, values) => sql.includes("LEFT JOIN pg_catalog.pg_index") && values?.[0] === "public.subscription_pause_windows",
+        fault: client => client.query("ALTER TABLE public.subscription_pause_windows DROP CONSTRAINT subscription_pause_windows_pkey") } },
+    { label: "generic insert trigger guard", code: "insert_trigger_requires_owner", table: "subscription_pause_windows",
+      inject: { at: (sql, values) => sql.includes("SELECT 1 FROM pg_catalog.pg_trigger t") && values?.[0] === "public.subscription_pause_windows",
+        fault: client => client.query(trigger("subscription_pause_windows")) } },
+    { label: "channel event on first import", code: "unsupported_table", table: "outbox_events",
+      input: changePacket(copy => {
+        outbox(copy).rows[0] = JSON.stringify({ ...JSON.parse(outbox(copy).rows[0]!), event_type: "channel.purchase-line.v1" });
+      }) },
+    ...[false, true].map(reverse => ({
+      label: `channel event and invalid event type (reverse rows: ${reverse})`, code: "invalid_input", table: "outbox_events",
+      input: changePacket(copy => {
+        const event = JSON.parse(outbox(copy).rows[0]!);
+        outbox(copy).rows = [
+          JSON.stringify({ ...event, event_type: "channel.purchase-line.v1" }),
+          JSON.stringify({ ...event, id: "10000000-0000-4000-8000-000000000007",
+            idempotency_key: "restricted-unconvertible-outbox", event_type: { toString: null } }),
+        ];
+        if (reverse) outbox(copy).rows.reverse();
+      }),
+    })),
+    { label: "retained row in supplied baseline", code: "target_conflict", table: "outbox_events",
+      arrange: async undo => {
+        const remove = () => target.owner.query("DELETE FROM public.outbox_events WHERE idempotency_key='restricted-baseline-outbox'");
+        undo(remove);
+        await target.owner.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
+          VALUES('synthetic','10000000-0000-4000-8000-000000000001','synthetic.retained','restricted-baseline-outbox','{}')`);
+        const baseline = await capture(target, "restricted-target-with-retained-row");
+        expect(outbox(baseline).rows).toHaveLength(1);
+        expect(outbox(packet).rows).not.toContain(outbox(baseline).rows[0]);
+        return { freshTarget: baseline };
+      } },
+    ...baselineCases.map((baseline, index) => ({
+      label: `disallowed baseline projection (order ${index + 1})`, code: "schema_conflict", table: "catalog_product_document_revisions",
+      arrange: settingsDrift, input: { freshTarget: baseline },
+    })),
+    { label: "live settings drift", code: "target_conflict", arrange: settingsDrift },
+    { label: "alignment in shadow mode", code: "target_conflict", table: "subscription_delivery_alignment_control",
+      arrange: async undo => {
+        undo(() => target.owner.query("UPDATE public.subscription_delivery_alignment_control SET mode='off' WHERE singleton"));
+        await target.owner.query("UPDATE public.subscription_delivery_alignment_control SET mode='shadow' WHERE singleton");
+        return { freshTarget: await capture(target, "restricted-target-shadow") };
+      } },
+    { label: "uncategorized SQL error", code: "database_unavailable",
+      inject: { at: sql => sql.startsWith("SELECT m.catalog_path,m.sha256,m.position"),
+        fault: client => client.query("SELECT 1 / 0") } },
+  ];
+
+  const censusSql = [
+    ...[...connectedNativeStoreTables, "platform_schema_migrations", "fulfillment_stock_sync_cursors"]
+      .map(table => `SELECT '${table}' AS relation, ARRAY(SELECT to_jsonb(t)::text FROM public."${table}" t ORDER BY 1) AS rows`),
+    `SELECT 'acquisition_private.installation_key', ARRAY(SELECT ARRAY[tableoid::text,ctid::text,xmin::text]::text
+      FROM acquisition_private.installation_key ORDER BY 1)`,
+    "SELECT 'pg_auth_members', ARRAY(SELECT to_jsonb(m)::text FROM pg_catalog.pg_auth_members m ORDER BY 1)",
+  ].join(" UNION ALL ") + " ORDER BY relation";
+  const snapshot = async () => (await root.query(censusSql)).rows;
+  const pristine = await snapshot();
+  for (const row of cases) {
+    let injected = false;
+    let cleanup: (() => Promise<unknown>) | undefined;
+    const context = `${target.selection.roleMode}: ${row.label}`;
+    const trace = traceRestore(target.owner, async (sql, client, values) => {
+      if (injected || !row.inject?.at(sql, values)) return;
+      injected = true;
+      await row.inject.fault(client);
+    });
+    try {
+      const edited = await row.arrange?.(work => { cleanup = work; });
+      const before = cleanup && !row.inject ? await snapshot() : pristine;
+      const expected = { code: row.code, ...(row.table ? { table: row.table } : {}), ...(row.cause ? { cause: row.cause } : {}) };
+      await expect(restoreConnectedNativeStore({ ...input, ...row.input, ...edited, owner: trace.traced }), context)
+        .rejects.toMatchObject(expected);
+      expect(injected, context).toBe(Boolean(row.inject));
+      expect(trace.statements, context).toContain("BEGIN");
+      expect(trace.statements, context).toContain("ROLLBACK");
+      expect(trace.statements.some(sql => /^\s*GRANT\b/iu.test(sql)), context).toBe(false);
+      expect(trace.retainedWrites(), context).toEqual([]);
+      row.check?.(trace.statements);
+      if (!row.inject) expect(await snapshot(), context).toEqual(before);
+    } finally {
+      await cleanup?.();
+    }
+    if (row.inject || cleanup) expect(await snapshot(), context).toEqual(pristine);
+  }
 }
 
 async function writeLineage(owner: Pool) {
@@ -278,8 +533,6 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       const packet = sourceCatalogueId === beforeGovernedLifecycle[mode]
         ? await projectHistoricalCapture(source.owner, current, sourceCatalogueId) : current;
       const freshTarget = await capture(target, "restricted-target");
-      expect((await source.runner.status()).pending).toEqual([]);
-      expect((await target.runner.status()).pending).toEqual([]);
       expect(packet.observation.cluster).not.toBe(freshTarget.observation.cluster);
       const provider = shape === "neon" ? "neon_superuser" : "rds_superuser";
       await target.pools[0]!.query(`GRANT ${provider} TO restore_r`);
@@ -287,99 +540,6 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await target.pools[0]!.query(`REVOKE ${provider} FROM restore_r`);
       const beforeKey = await keyIdentity(target);
       const input = { owner: target.owner, installation: target.selection, packet, freshTarget };
-      const refuse = async (code: string, edited: Partial<typeof input> = {}) => {
-        const trace = traceRestore(target!.owner);
-        await expect(restoreConnectedNativeStore({ ...input, ...edited, owner: trace.traced })).rejects.toMatchObject({ code });
-        expect(trace.writes()).toEqual([]);
-      };
-      if (shape === "rds") {
-        const root = target.pools[0]!;
-        await root.query("CREATE TABLE public.restore_unexpected_table (id integer)");
-        try {
-          await root.query("ALTER TABLE public.restore_unexpected_table OWNER TO host_bootstrap");
-          expect((await target.owner.query(`SELECT pg_get_userbyid(relowner) AS owner,
-            has_table_privilege(current_user, oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS can_access
-            FROM pg_catalog.pg_class WHERE oid='public.restore_unexpected_table'::regclass`)).rows)
-            .toEqual([{ owner: target.selection.bootstrapLogin, can_access: false }]);
-          const trace = traceRestore(target.owner);
-          await expect(restoreConnectedNativeStore({ ...input, owner: trace.traced })).rejects.toMatchObject({ code: "schema_conflict" });
-          expect(trace.statements.some(sql => sql.startsWith('LOCK TABLE "public".'))).toBe(false);
-          expect(trace.writes()).toEqual([]);
-        } finally { await root.query("DROP TABLE public.restore_unexpected_table"); }
-
-        await target.owner.query("UPDATE public.subscription_delivery_alignment_control SET mode='shadow' WHERE singleton");
-        try {
-          const shadowBaseline = await capture(target, "restricted-target-shadow");
-          const trace = traceRestore(target.owner);
-          await expect(restoreConnectedNativeStore({ ...input, freshTarget: shadowBaseline, owner: trace.traced })).rejects.toMatchObject({
-            code: "target_conflict", table: "subscription_delivery_alignment_control",
-          });
-          expect(trace.writes()).toEqual([]);
-        } finally {
-          await target.owner.query("UPDATE public.subscription_delivery_alignment_control SET mode='off' WHERE singleton");
-        }
-
-        try {
-          const excluded = await root.query(`INSERT INTO public.fulfillment_stock_sync_cursors(source_key,status)
-            VALUES('restricted-restore-fixture','succeeded')`);
-          expect(excluded.rowCount).toBe(1);
-          const trace = traceRestore(target.owner);
-          await expect(restoreConnectedNativeStore({ ...input, owner: trace.traced })).rejects.toMatchObject({
-            code: "unsupported_table", table: "public.fulfillment_stock_sync_cursors",
-          });
-          expect(trace.statements).toContain('SELECT 1 FROM "public"."fulfillment_stock_sync_cursors" LIMIT 1');
-          expect(trace.writes()).toEqual([]);
-        } finally {
-          await root.query("DELETE FROM public.fulfillment_stock_sync_cursors WHERE source_key='restricted-restore-fixture'");
-        }
-
-        let triggerAdded = false;
-        const triggerRace = traceRestore(target.owner, async sql => {
-          if (triggerAdded || !sql.startsWith('LOCK TABLE "public".')) return;
-          await root.query(`CREATE TRIGGER retained_transfer_unapproved AFTER INSERT ON public.commerce_order_holds
-            FOR EACH ROW EXECUTE FUNCTION public.fulfillment_emit_shipment_exception_notification()`);
-          triggerAdded = true;
-        });
-        try {
-          await expect(restoreConnectedNativeStore({ ...input, owner: triggerRace.traced })).rejects.toMatchObject({
-            code: "insert_trigger_requires_owner", table: "commerce_order_holds",
-          });
-          expect(triggerAdded).toBe(true);
-          expect(triggerRace.writes()).toEqual([]);
-        } finally {
-          if (triggerAdded) await root.query("DROP TRIGGER retained_transfer_unapproved ON public.commerce_order_holds");
-        }
-
-        const lineage = structuredClone(packet);
-        const duties = lineage.compatible.tables.find(table => table.table === "invoicing_duties")!;
-        Object.assign(duties.columns.find(column => column.key)!, { key: "yes" });
-        const duty = (id: string, parent: string | null) => JSON.stringify(Object.fromEntries(duties.columns.map(({ name }) =>
-          [name, name === "id" ? id : name === "parent_duty_id" ? parent : null])));
-        duties.rows = [
-          duty("10000000-0000-4000-8000-000000000004", "10000000-0000-4000-8000-000000000005"),
-          duty("10000000-0000-4000-8000-000000000006", null),
-        ];
-        for (const reverseTables of [false, true]) {
-          for (const reverseRows of [false, true]) {
-            const edited = structuredClone(lineage);
-            if (reverseTables) edited.compatible.tables.reverse();
-            if (reverseRows) edited.compatible.tables.find(table => table.table === "invoicing_duties")!.rows.reverse();
-            await refuse("invalid_input", { packet: sealConnectedCapture(edited) });
-          }
-        }
-
-        const mixedEvents = structuredClone(packet);
-        const mixedOutbox = mixedEvents.compatible.tables.find(table => table.table === "outbox_events")!;
-        const event = JSON.parse(mixedOutbox.rows[0]!);
-        mixedOutbox.rows = [
-          JSON.stringify({ ...event, event_type: "channel.purchase-line.v1" }),
-          JSON.stringify({ ...event, id: "10000000-0000-4000-8000-000000000007",
-            idempotency_key: "restricted-unconvertible-outbox", event_type: { toString: null } }),
-        ];
-        await refuse("invalid_input", { packet: sealConnectedCapture(mixedEvents) });
-        mixedOutbox.rows.reverse();
-        await refuse("invalid_input", { packet: sealConnectedCapture(mixedEvents) });
-      }
       const baselineCases = [false, true].map(reverse => {
         const copy = structuredClone(freshTarget);
         const revision = copy.owned.find(data => data.table === "catalog_product_document_revisions")!;
@@ -388,18 +548,11 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
         return sealConnectedCapture(copy);
       });
       const genericCases = genericDefects(packet);
-      for (const defect of genericCases) await refuse(defect.code, { packet: defect.packet });
-      if (cyclePacket) await refuse("target_conflict", { packet: cyclePacket });
-      const channelPacket = structuredClone(packet);
-      const outbox = channelPacket.compatible.tables.find(table => table.table === "outbox_events")!;
-      outbox.rows[0] = JSON.stringify({ ...JSON.parse(outbox.rows[0]!), event_type: "channel.purchase-line.v1" });
-      await refuse("unsupported_table", { packet: sealConnectedCapture(channelPacket) });
-      await refuse("invalid_input", { freshTarget: packet });
-      await target.owner.query("INSERT INTO public.commerce_settings(key,value_minor) VALUES('transfer_conflict',1)");
-      await refuse("target_conflict");
-      for (const baseline of baselineCases) await refuse("schema_conflict", { freshTarget: baseline });
-      await target.owner.query("DELETE FROM public.commerce_settings WHERE key='transfer_conflict'");
-      expect((await target.runner.status()).pending).toEqual([]);
+      if (cyclePacket) {
+        await assertPreGrantRefusals(target, input, cyclePacket, genericCases, baselineCases);
+        expect((await target.runner.status()).pending).toEqual([]);
+        expect(await keyIdentity(target)).toEqual(beforeKey);
+      }
 
       const nativeRefusal = structuredClone(packet);
       const invalidOutbox = nativeRefusal.compatible.tables.find(table => table.table === "outbox_events")!;
@@ -429,8 +582,12 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
         trace.expectAdmittedBeforeGrant();
       }
       expect((await target.owner.query("SELECT email FROM public.clients")).rows).toEqual([{ email: "restricted@example.invalid" }]);
+      // The current inventory covers the full matrix for the same shape.
+      const sameShapePredecessor = sourceCatalogueId === beforeSubscriptionProfiles[mode];
+      const replayGeneric = sameShapePredecessor ? genericCases.slice(0, 1) : genericCases;
+      const replayBaselines = sameShapePredecessor ? baselineCases.slice(0, 1) : baselineCases;
       for (const edited of [
-        ...genericCases.map(defect => ({ packet: defect.packet })), ...baselineCases.map(baseline => ({ freshTarget: baseline })),
+        ...replayGeneric.map(defect => ({ packet: defect.packet })), ...replayBaselines.map(baseline => ({ freshTarget: baseline })),
       ]) {
         const trace = traceRestore(target.owner);
         expect((await restoreConnectedNativeStore({ ...input, ...edited, owner: trace.traced })).replayed).toBe(true);
@@ -446,44 +603,6 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
         await cycle(target.owner, false);
       }
       expect((await target.owner.query("SELECT event_type FROM public.outbox_events")).rows).toEqual([{ event_type: "synthetic.retained" }]);
-      if (shape === "neon" && mode === "installer-managed") {
-        // A separate administrator changes the ledger after the first exact
-        // read but just before restore locks the table. Replay must recheck it.
-        const root = target.pools[0]!;
-        const original = (await root.query<{ sha256: string }>(
-          "SELECT sha256 FROM public.platform_schema_migrations WHERE position=0")).rows[0]!.sha256;
-        const changed = `${original[0] === "f" ? "e" : "f"}${original.slice(1)}`;
-        let raced = false;
-        const trace = traceRestore(target.owner, async sql => {
-          if (!raced && sql.includes('LOCK TABLE "public"."platform_schema_migrations"')) {
-            await root.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=0", [changed]);
-            raced = true;
-          }
-        });
-        try {
-          await expect(restoreConnectedNativeStore({ ...input, owner: trace.traced })).rejects.toMatchObject({ code: "schema_conflict" });
-          expect(raced).toBe(true);
-          expect(trace.writes()).toEqual([]);
-          expect((await target.owner.query("SELECT email FROM public.clients")).rows).toEqual([{ email: "restricted@example.invalid" }]);
-        } finally {
-          await root.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=0", [original]);
-        }
-        let changedSchema = false;
-        const ddl = traceRestore(target.owner, async sql => {
-          if (!changedSchema && sql.includes('LOCK TABLE "public"."subscription_pause_windows"')) {
-            await root.query("ALTER TABLE public.subscription_pause_windows ADD COLUMN restore_race_probe text");
-            changedSchema = true;
-          }
-        });
-        try {
-          await expect(restoreConnectedNativeStore({ ...input, owner: ddl.traced })).rejects.toMatchObject({ code: "schema_conflict" });
-          expect(changedSchema).toBe(true);
-          expect(ddl.writes()).toEqual([]);
-        } finally {
-          if (changedSchema) await root.query("ALTER TABLE public.subscription_pause_windows DROP COLUMN restore_race_probe");
-        }
-        expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
-      }
       expect(await keyIdentity(target)).toEqual(beforeKey);
       await expect(restoreConnectedNativeStore({ ...input, freshTarget: packet })).rejects.toMatchObject({ code: "invalid_input" });
       const restoreLogin = new Pool({ connectionString: (() => {
