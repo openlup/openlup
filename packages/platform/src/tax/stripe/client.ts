@@ -136,7 +136,13 @@ export async function readPages<T extends { id: string }>(
   return incomplete(path, "The list exceeded the ten-page limit.");
 }
 
-const rate = checked(isCatalogueMoneyV2RateDecimal, "Obtain a supported decimal percent string.");
+const rate: Decode<string> = (value, path) => {
+  if (!isCatalogueMoneyV2RateDecimal(value)) incomplete(path, "The provider rate is outside the supported decimal-percent format.");
+  const [whole, fraction = ""] = value.split(".");
+  const scaled = BigInt(whole + fraction.padEnd(6, "0"));
+  const decimal = (scaled % 1_000_000n).toString().padStart(6, "0").replace(/0+$/u, "");
+  return (scaled / 1_000_000n).toString() + (decimal ? "." + decimal : "");
+};
 const breakdown = { amount: minor, taxable_amount: minor, taxability_reason: text };
 const jurisdiction = fields({ country: text, state: nullable(text), level: text, display_name: text });
 export const detail = fields({

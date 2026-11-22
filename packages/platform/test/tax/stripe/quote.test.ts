@@ -92,6 +92,66 @@ describe("private tax calculation quote", () => {
     expect(result.evidence.positions.tax).toHaveLength(4);
   });
 
+  it.each(["matching", "different state and basis", "missing header", "extra header"] as const)(
+    "checks a %s header for tax that rounds to zero", async shape => {
+      const f = setup();
+      f.client.calculations.create.mockImplementation(async params => {
+        const wire = snapshot(params, 0, { lineDetails: line => line.reference === "ol-m-1"
+          ? [{ ...detail(0, line.amount), tax_rate_details: { tax_type: "sales_tax", percentage_decimal: "0.010000" } }]
+          : [detail(10, line.amount, "district-b")] });
+        const zero = wire.tax_breakdown[0];
+        if (shape === "different state and basis") {
+          zero.taxable_amount = 1;
+          zero.tax_rate_details.state = "RB";
+        }
+        if (shape === "missing header") wire.tax_breakdown.shift();
+        if (shape === "extra header") wire.tax_breakdown.push({
+          ...zero, taxable_amount: 0, tax_rate_details: { ...zero.tax_rate_details, state: "RB" },
+        });
+        return wire;
+      });
+      const request = f.request();
+      const result = await f.run(request);
+      if (shape === "matching") {
+        const verified = assertSuccess(request, result);
+        expect(verified.money.components[0].final.taxPositions).toEqual([
+          expect.objectContaining({ taxMinor: 0, taxableMinor: 100, rateDecimal: "0.01" }),
+        ]);
+        expect(verified.evidence.positions.tax).toContainEqual(expect.objectContaining({ ratePercent: "0.01" }));
+      } else {
+        const field = {
+          "different state and basis": "/calculation/tax_breakdown/0/tax_rate_details",
+          "missing header": "/calculation/tax_breakdown",
+          "extra header": "/calculation/tax_breakdown/3/tax_rate_details",
+        }[shape];
+        expect(result).toMatchObject({ kind: "refused", code: "tax_breakdown_incomplete", field });
+      }
+    },
+  );
+
+  it("keeps the same shipping position when its rate spelling changes after a one-unit merchandise discount", async () => {
+    const f = setup();
+    f.input.money.adjustments = [{ adjustmentRef: "discount-a", sequence: 1, amountMinor: 1, target: { lineKeys: ["item-z"] } }];
+    f.client.calculations.create.mockImplementation(async params => {
+      const index = f.client.calculations.create.mock.calls.length - 1;
+      const wire = snapshot(params, index);
+      if (index === 1) {
+        wire.shipping_cost!.tax_breakdown[0].tax_rate_details!.percentage_decimal = "10";
+        wire.tax_breakdown.at(-1)!.tax_rate_details.percentage_decimal = "10";
+      }
+      return wire;
+    });
+    const request = f.request();
+    const verified = assertSuccess(request, await f.run(request));
+    expect(f.client.calculations.create).toHaveBeenCalledTimes(2);
+    const shipping = verified.money.components.find(component => component.ref.kind === "delivery")!;
+    expect(shipping.allocations).toEqual([]);
+    expect(shipping.final.taxPositions).toEqual([expect.objectContaining({ rateDecimal: "10", taxableMinor: 20, taxMinor: 2 })]);
+    expect(verified.evidence.positions.tax.filter(row => row.cell.target.kind === "delivery")).toEqual([
+      expect.objectContaining({ positionRef: shipping.final.taxPositions[0].positionRef, ratePercent: "10" }),
+    ]);
+  });
+
   it("supports origin sourcing and carries a future estimate as an estimate", async () => {
     const f = setup(fixture("estimate"));
     f.input.taxDate = new Date(Date.parse(date) + 86400000).toISOString();
@@ -137,7 +197,7 @@ describe("private tax calculation quote", () => {
     ["missing breakdown", (wire: ReturnType<typeof snapshot>) => { Reflect.deleteProperty(wire.line_items.data[0], "tax_breakdown"); }, "tax_breakdown_incomplete", "/line_items/0/data/0/tax_breakdown"],
     ["unsafe money", (wire: ReturnType<typeof snapshot>) => { wire.amount_total = Number.MAX_SAFE_INTEGER + 1; }, "tax_amount_out_of_range", "/calculation/amount_total"],
     ["bad total", (wire: ReturnType<typeof snapshot>) => { wire.amount_total++; }, "tax_breakdown_incomplete", "/calculation/amount_total"],
-    ["bad header group", (wire: ReturnType<typeof snapshot>) => { wire.tax_breakdown[0].tax_rate_details.state = "RB"; }, "tax_breakdown_incomplete", "/calculation/tax_breakdown"],
+    ["bad header group", (wire: ReturnType<typeof snapshot>) => { wire.tax_breakdown[0].tax_rate_details.state = "RB"; }, "tax_breakdown_incomplete", "/calculation/tax_breakdown/0/tax_rate_details"],
     ["wrong tax date", (wire: ReturnType<typeof snapshot>) => { wire.tax_date++; }, "tax_breakdown_incomplete", "/calculation/tax_date"],
     ["wrong address", (wire: ReturnType<typeof snapshot>) => { wire.customer_details.address.city = "Other"; }, "tax_breakdown_incomplete", "/calculation/customer_details/address/city"],
     ["wrong digest echo", (wire: ReturnType<typeof snapshot>) => { wire.line_items.data[0].metadata.input_digest = "other"; }, "tax_breakdown_incomplete", "/line_items/0/data/0/metadata/input_digest"],

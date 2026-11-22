@@ -64,10 +64,8 @@ function treatmentFor(reason: string, hasRate: boolean, amount: number, cell: Ce
   return { kind, reason, ruleRef };
 }
 
-function groupKey(country: string | null, state: string | null, type: string | null, rate: string | null | undefined, reason: string) {
-  const decimal = rate?.includes(".") ? rate.replace(/0+$/u, "").replace(/\.$/u, "") : rate;
-  return JSON.stringify([country, state, type, decimal, reason]);
-}
+const groupKey = (country: string | null, state: string | null, type: string | null, rate: string | null | undefined, reason: string) =>
+  JSON.stringify([country, state, type, rate, reason]);
 
 function grouped(rows: readonly { key: string; amount: number; taxable_amount: number }[]) {
   const totals = new Map<string, { tax: bigint; basis: bigint }>();
@@ -198,16 +196,14 @@ export function normalizeSnapshot(
   const headerGroups = grouped(headerRows);
   const detailGroups = grouped(ordinary.map(row => ({ ...row, key: groupKey(row.jurisdiction.country, row.jurisdiction.state,
     row.tax_rate_details?.tax_type ?? null, row.tax_rate_details?.percentage_decimal, row.taxability_reason) })));
-  for (const key of new Set([...headerGroups.keys(), ...detailGroups.keys()])) {
-    const summary = headerGroups.get(key), detail = detailGroups.get(key);
-    if ((summary?.tax ?? 0n) !== (detail?.tax ?? 0n)) {
-      incomplete(path + "/tax_breakdown", "The grouped header and component assessments differ.");
-    }
-    if (summary && detail && summary.basis !== detail.basis) {
-      const index = headerRows.find(row => row.key === key)!.index;
-      incomplete(path + "/tax_breakdown/" + index + "/taxable_amount", "The grouped header and component taxable bases differ.");
-    }
+  for (const { key, index } of headerRows) {
+    const summary = headerGroups.get(key)!, detail = detailGroups.get(key);
+    const field = path + "/tax_breakdown/" + index;
+    if (!detail) incomplete(field + "/tax_rate_details", "The header group has no matching component breakdown.");
+    if (summary.tax !== detail.tax) incomplete(field + "/amount", "The grouped header and component assessments differ.");
+    if (summary.basis !== detail.basis) incomplete(field + "/taxable_amount", "The grouped header and component taxable bases differ.");
   }
+  if (headerGroups.size !== detailGroups.size) incomplete(path + "/tax_breakdown", "The header omits a component group. This response shape requires a header group even at zero tax and basis.");
   reconcileAmount(path + "/amount_total", calculation.amount_total, sum(components.map(item => item.amount)) + tax);
 
   const acknowledged = new Set(input.coverage.declarations.filter(row => row.status === "not_registered_acknowledged"
