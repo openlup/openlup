@@ -217,6 +217,7 @@ CREATE CONSTRAINT TRIGGER subscription_quote_previews_catalog_final AFTER INSERT
   it.each([
     ["a deferred constraint trigger and its preview-reading function", triggerForward.bytes],
     ["a replacement trigger", "CREATE OR REPLACE TRIGGER preview_final AFTER UPDATE ON public.subscription_quote_previews FOR EACH ROW EXECUTE FUNCTION public.preview_catalog_final();"],
+    ["a trigger procedure call with arguments", "CREATE TRIGGER preview_final AFTER UPDATE ON public.subscription_quote_previews FOR EACH ROW WHEN (NEW.id IS NOT NULL) EXECUTE PROCEDURE public.preview_catalog_final(');', 2);"],
     ["a trigger drop", 'DROP TRIGGER IF EXISTS "preview_final" ON "subscription_quote_previews";'],
     ["a trigger comment", `COMMENT ON TRIGGER preview_final ON "public"."subscription_quote_previews" IS 'Finalizes the preview';`],
     ["a grant", "GRANT SELECT ON TABLE public.subscription_quote_previews TO authenticated;"],
@@ -229,6 +230,15 @@ CREATE CONSTRAINT TRIGGER subscription_quote_previews_catalog_final AFTER INSERT
   const trailingBackslash = String.raw`COMMENT ON TABLE public.other IS 'ends in \';`;
   it("ignores an unrelated file with the review's trailing-backslash comment", () => {
     expect(admit(sql, [...prefix(), { ...triggerForward, bytes: Buffer.from(trailingBackslash) }]).slot).toEqual(entry());
+  });
+  const triggerCall = "CREATE TRIGGER preview_final AFTER UPDATE ON public.subscription_quote_previews FOR EACH ROW EXECUTE FUNCTION public.preview_catalog_final";
+  it.each([
+    ["an unclosed argument list", "(;", "cannot split SQL: close all parentheses before the statement terminator"],
+    ["trailing tokens after the call", "() trailing;", "preview reference outside the trigger, table privilege and routine-body allowlist"],
+  ])("refuses a preview trigger with %s", (_label, tail, reason) => {
+    const bytes = Buffer.from(triggerCall + tail);
+    expect(() => admit(sql, [...prefix(), { ...triggerForward, bytes }]))
+      .toThrow(`preview acceptance CHECK refuses other preview history: ${triggerForward.path}: ${reason}`);
   });
   it.each([
     ["schema-qualified ALTER TABLE", "ALTER TABLE public.subscription_quote_previews ADD COLUMN other uuid;"],

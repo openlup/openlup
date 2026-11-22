@@ -1118,12 +1118,16 @@ function readSingleQuotedLiteral(
  * `parenDepth === 0` is always either immediately at `beginIndex + 2` (empty `BEGIN ATOMIC END`)
  * or immediately preceded by `;`. Nested routine DDL inside `BEGIN ATOMIC` is refused.
  */
-function findAtomicBodyEnd(tokens: readonly SecurityDefinerToken[], beginIndex: number, ctx: string): number {
+function findAtomicBodyEnd(tokens: readonly SecurityDefinerToken[], beginIndex: number, ctx: string, requireComplete = false): number {
   let parenDepth = 0;
   let atInnerStmtStart = true;
   for (let i = beginIndex + 2; i < tokens.length; i++) {
     if (secSymbol(tokens, i, "(")) { parenDepth++; atInnerStmtStart = false; continue; }
-    if (secSymbol(tokens, i, ")")) { if (parenDepth > 0) parenDepth--; continue; }
+    if (secSymbol(tokens, i, ")")) {
+      if (parenDepth > 0) parenDepth--;
+      else if (requireComplete) throw new Error(`remove the unmatched closing parenthesis${ctx}`);
+      continue;
+    }
     if (parenDepth !== 0) continue;
     if (secWord(tokens, i, "END") && (i === beginIndex + 2 || secSymbol(tokens, i - 1, ";"))) {
       return i;
@@ -1145,7 +1149,7 @@ function findAtomicBodyEnd(tokens: readonly SecurityDefinerToken[], beginIndex: 
   return -1;
 }
 
-function tokenizeSecurityDefinerStatements(source: string, path?: string): SecurityDefinerToken[][] {
+function tokenizeSecurityDefinerStatements(source: string, path?: string, { requireComplete = false } = {}): SecurityDefinerToken[][] {
   const ctx = path ? ` in ${path}` : "";
   const tokens: SecurityDefinerToken[] = [];
   const dollarTagPattern = /\$(?:[A-Za-z_\u{80}-\u{10ffff}][A-Za-z0-9_\u{80}-\u{10ffff}]*)?\$/uy;
@@ -1275,10 +1279,15 @@ function tokenizeSecurityDefinerStatements(source: string, path?: string): Secur
     const token = tokens[i]!;
     current.push(token);
     if (token.kind === "symbol" && token.value === "(") { parenDepth++; continue; }
-    if (token.kind === "symbol" && token.value === ")") { if (parenDepth > 0) parenDepth--; continue; }
+    if (token.kind === "symbol" && token.value === ")") {
+      if (parenDepth > 0) parenDepth--;
+      else if (requireComplete) throw new Error(`remove the unmatched closing parenthesis${ctx}`);
+      continue;
+    }
     if (parenDepth === 0) {
       if (inCreateRoutine() && secWord(tokens, i, "BEGIN") && secWord(tokens, i + 1, "ATOMIC")) {
-        const end = findAtomicBodyEnd(tokens, i, ctx);
+        const end = findAtomicBodyEnd(tokens, i, ctx, requireComplete);
+        if (end < 0 && requireComplete) throw new Error(`finish the BEGIN ATOMIC body with END and balance its parentheses${ctx}`);
         const stop = end >= 0 ? end : tokens.length - 1;
         for (let j = i + 1; j <= stop; j++) current.push(tokens[j]!);
         i = stop;
@@ -1290,7 +1299,13 @@ function tokenizeSecurityDefinerStatements(source: string, path?: string): Secur
       }
     }
   }
-  if (current.length > 0) statements.push(current);
+  if (current.length > 0) {
+    if (requireComplete) {
+      if (parenDepth > 0) throw new Error(`close all parentheses before the statement terminator${ctx}`);
+      throw new Error(`end the statement with a semicolon at depth zero${ctx}`);
+    }
+    statements.push(current);
+  }
   return statements;
 }
 
@@ -2692,8 +2707,19 @@ function allowsPreviewHistoryStatement(statement: string, tokens: readonly Platf
       || !["BEFORE", "AFTER", "INSTEAD"].some(timing => word(name + 1, timing))) return false;
     const on = tokens.findIndex((_, at) => at > name + 1 && word(at, "ON"));
     const afterTarget = on < 0 ? -1 : targetEnd(on + 1);
-    return afterTarget >= 0 && ["FROM", "NOT", "DEFERRABLE", "INITIALLY", "REFERENCING", "FOR", "WHEN", "EXECUTE"]
-      .some(clause => word(afterTarget, clause));
+    if (afterTarget < 0 || !["FROM", "NOT", "DEFERRABLE", "INITIALLY", "REFERENCING", "FOR", "WHEN", "EXECUTE"]
+      .some(clause => word(afterTarget, clause))) return false;
+    let execute = afterTarget, depth = 0;
+    for (; execute < end; execute++) {
+      if (symbol(execute, "(")) depth++;
+      else if (symbol(execute, ")")) depth--;
+      else if (depth === 0 && word(execute, "EXECUTE")) break;
+    }
+    if (!word(execute + 1, "FUNCTION") && !word(execute + 1, "PROCEDURE")) return false;
+    const routine = nativeQualified(tokens, execute + 2);
+    if (!routine || !symbol(routine.next, "(") || !symbol(end - 1, ")")) return false;
+    return !tokens.slice(routine.next + 1, end - 1)
+      .some(token => token.kind === "symbol" && ["(", ")", ";"].includes(token.value));
   }
   if (word(0, "DROP") && word(1, "TRIGGER")) {
     const name = word(2, "IF") && word(3, "EXISTS") ? 4 : 2;
@@ -2722,13 +2748,12 @@ function previewHistoryRefusal(sql: string, bytes: Buffer): string | undefined {
   // Use the existing lexer that groups parenthesized clauses and BEGIN ATOMIC bodies.
   let statements: SecurityDefinerToken[][];
   try {
-    statements = tokenizeSecurityDefinerStatements(sql);
+    statements = tokenizeSecurityDefinerStatements(sql, undefined, { requireComplete: true });
   } catch (error) {
     return `cannot split SQL: ${(error as Error).message}`;
   }
   let offset = 0;
   for (const statementTokens of statements) {
-    if (!secSymbol(statementTokens, statementTokens.length - 1, ";")) return "cannot split SQL: statement lacks a terminator";
     const start = statementTokens[0]!.start, end = statementTokens.at(-1)!.end;
     if (previewHistoryMention.test(sql.slice(offset, start))) return "preview name outside a SQL statement";
     const statement = sql.slice(start, end);
@@ -2749,6 +2774,7 @@ function assertPreviewNoopAcceptance(bytes: Buffer, preceding: { path: string; b
   // Earlier files that mention previews must split and tokenize completely. Only
   // trigger creation, removal and comments, table grants and revokes, and
   // dollar-quoted routine bodies without DDL keywords may mention the table.
+  // A mentioning file with a standard string ending in a literal backslash is refused conservatively.
   // The PostgreSQL preimage proof compares the table's
   // full pg_depend closure, including triggers, with its expected snapshot
   // before the forward. Database-wide state is out of scope.
