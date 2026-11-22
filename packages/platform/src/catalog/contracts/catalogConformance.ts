@@ -1,4 +1,4 @@
-import type { CatalogQuantityCode } from "@openlup/core/catalog";
+import type { CatalogQuantityCode, CatalogSubscriptionProfileIssue } from "@openlup/core/catalog";
 import type { CatalogCombinationCode } from "./variantAxes.js";
 /** Stable meanings shared by runtime admission and offline conformance.
  * @experimental
@@ -21,9 +21,9 @@ export type CatalogConformanceCode =
   | "attribute_reference_unresolved" | "attribute_publication_revision_invalid"
   | "conformance_subject_invalid" | "conformance_owner_unavailable"
   | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch"
-  | "draft_input_invalid" | "draft_payload_invalid"
-  | CatalogQuantityCode | CatalogCombinationCode;
+  | "draft_input_invalid" | "draft_payload_invalid" | "draft_payload_too_large"
+  | CatalogQuantityCode | CatalogCombinationCode | CatalogSubscriptionProfileIssue["code"];
 /** @experimental */
 export interface CatalogConformanceRule { severity: "error" | "warning"; rule: string; fix: string; recipe: string }
 /** @experimental */
-export interface CatalogDefinitionIssue { code: CatalogConformanceCode; path: string }
+export interface CatalogDefinitionIssue { code: CatalogConformanceCode; path: string; fix?: string }

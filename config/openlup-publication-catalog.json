@@ -5706,6 +5706,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/installedSubscriptionProfiles.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/lifecycleDraftSchemas.ts",
       "class": "public-output"
     },

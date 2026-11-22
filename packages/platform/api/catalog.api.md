@@ -1078,7 +1078,9 @@ export declare function createPostgresCatalogDraftStoreV4(client: PgQueryExecuto
 ## dist/catalog/catalogPackManifest.d.ts
 
 ```ts
+import { type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
+import type { CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
 /** @experimental */
 export interface CatalogPackManifest {
     readonly id: string;
@@ -1096,12 +1098,23 @@ export interface CatalogPackManifest {
         readonly key: string;
         readonly version: number;
     }[];
+    readonly subscriptionProfileDefinitions?: readonly (CatalogSubscriptionProfileV1 & {
+        readonly profileDigest: string;
+    })[];
     readonly digest: string;
 }
 /** A derived in-memory projection; no manifest or digest is accepted from a client.
  * @experimental
  */
 export declare function catalogPackManifest(pack: CatalogPackInput): CatalogPackManifest;
+/** @internal */
+export declare function prepareCatalogPackManifest(pack: CatalogPackInput, profiles: readonly CatalogSubscriptionProfileV1[] | undefined): {
+    manifest: CatalogPackManifest;
+    canonicalManifest: string;
+    profileDeclarationBytes?: string[];
+} | {
+    issue: CatalogDefinitionIssue;
+};
 ```
 ## dist/catalog/catalogPublicationCommands.d.ts
 
@@ -1983,12 +1996,12 @@ export interface CatalogCandidateComparison {
 ## dist/catalog/contracts/catalogConformance.d.ts
 
 ```ts
-import type { CatalogQuantityCode } from "@openlup/core/catalog";
+import type { CatalogQuantityCode, CatalogSubscriptionProfileIssue } from "@openlup/core/catalog";
 import type { CatalogCombinationCode } from "./variantAxes.js";
 /** Stable meanings shared by runtime admission and offline conformance.
  * @experimental
  */
-export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | "attribute_projection_text_too_large" | "attribute_storage_too_large" | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict" | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing" | "attribute_reference_unresolved" | "attribute_publication_revision_invalid" | "conformance_subject_invalid" | "conformance_owner_unavailable" | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch" | "draft_input_invalid" | "draft_payload_invalid" | CatalogQuantityCode | CatalogCombinationCode;
+export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | "attribute_projection_text_too_large" | "attribute_storage_too_large" | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict" | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing" | "attribute_reference_unresolved" | "attribute_publication_revision_invalid" | "conformance_subject_invalid" | "conformance_owner_unavailable" | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch" | "draft_input_invalid" | "draft_payload_invalid" | "draft_payload_too_large" | CatalogQuantityCode | CatalogCombinationCode | CatalogSubscriptionProfileIssue["code"];
 /** @experimental */
 export interface CatalogConformanceRule {
     severity: "error" | "warning";
@@ -2000,11 +2013,13 @@ export interface CatalogConformanceRule {
 export interface CatalogDefinitionIssue {
     code: CatalogConformanceCode;
     path: string;
+    fix?: string;
 }
 ```
 ## dist/catalog/contracts/catalogPack.d.ts
 
 ```ts
+import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogDraftPayload } from "./draft.js";
 import type { CatalogDraftPayloadV2 } from "./draftV2.js";
 import type { CatalogAttributeValueType, CatalogAttributeScalarType } from "./attributes.js";
@@ -2025,6 +2040,7 @@ export interface CatalogPackInput {
         key: string;
         version: number;
     }[];
+    subscriptionProfileDefinitions?: readonly CatalogSubscriptionProfileV1[];
 }
 /** @experimental */
 type Profile<P extends CatalogPackInput> = P extends {
@@ -2285,6 +2301,7 @@ export {};
 ## dist/catalog/contracts/definitionInstall.d.ts
 
 ```ts
+import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogProductTypeRef } from "./productTypes.js";
 /** Durable install evidence; installation does not publish catalogue data.
  * @experimental
@@ -2296,6 +2313,10 @@ export interface CatalogDefinitionInstallReceipt {
     readonly installedAt: string;
     readonly types: readonly (CatalogProductTypeRef & {
         readonly definitionDigest: string;
+    })[];
+    readonly canonicalManifest?: string;
+    readonly subscriptionProfileDefinitions?: readonly (CatalogSubscriptionProfileV1 & {
+        readonly profileDigest: string;
     })[];
 }
 ```
@@ -4149,6 +4170,7 @@ export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
 export { installCatalogDefinitions } from "./installCatalogDefinitions.js";
+export { readInstalledCatalogSubscriptionProfile } from "./installedSubscriptionProfiles.js";
 export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } from "./catalogDefinitionReadiness.js";
 export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
 export { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
@@ -4195,6 +4217,16 @@ import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInst
  * @experimental
  */
 export declare function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt>;
+```
+## dist/catalog/installedSubscriptionProfiles.d.ts
+
+```ts
+import type { CatalogSubscriptionProfileRef, InstalledCatalogSubscriptionProfile } from "@openlup/core/catalog";
+import type { PgQueryExecutor } from "../data/index.js";
+/** Read the exact installed profile and policy pins using the native migration-owner executor.
+ * @experimental
+ */
+export declare function readInstalledCatalogSubscriptionProfile(readExecutor: PgQueryExecutor, ref: CatalogSubscriptionProfileRef): Promise<InstalledCatalogSubscriptionProfile | null>;
 ```
 ## dist/catalog/lifecycleDraftSchemas.d.ts
 
@@ -4480,6 +4512,7 @@ export declare function readPostgresCatalogActivationReadiness(transactions: Pic
 
 ```ts
 import { z } from "./validation.js";
+import { type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
 export declare const catalogNamespacedKeySchema: z.ZodString;
 export declare const catalogDimensionKeySchema: z.ZodString;
@@ -4677,10 +4710,17 @@ export declare function catalogProductTypeRefIssues(input: unknown): CatalogDefi
  * @experimental
  */
 export declare function catalogProductTypeIssues(definitions: readonly unknown[]): CatalogDefinitionIssue[];
+/** @internal */
+export declare function invalidCatalogPack(issue: CatalogDefinitionIssue): Error;
 /** Shared pack shape, definitions and references; installation also requires pinned validators and unique tax-class keys.
  * @experimental
  */
 export declare function catalogPackIssues(input: unknown): CatalogDefinitionIssue[];
+/** @internal */
+export declare function inspectCatalogPack(input: unknown): {
+    issues: CatalogDefinitionIssue[];
+    profiles?: readonly CatalogSubscriptionProfileV1[];
+};
 ```
 ## dist/catalog/productTypeSchemas.d.ts
 
