@@ -1345,21 +1345,27 @@ refusals.
 Pinned SQL vocabulary exceptions and their compatibility limits are owned by
 [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
 
-The opt-in payment examples have vendor allowances under
-`packages/platform/src/payments/<provider>/` and
-`packages/platform/test/payments/<provider>/`. The allowance also admits
-complete case-sensitive path tokens for the first payment provider under
-`packages/platform/src/tax/<provider>/` and `packages/platform/test/tax/<provider>/`,
-including test imports and the matching publication catalogue rows. The platform
-package manifest admits the `./tax/<provider>` export key and its target paths.
-The release gates admit the exact subpath key and its entrypoint, snapshot and
-smoke-evidence paths. The `api/tax-<provider>.api.md` declaration snapshot admits
-the subpath in its generated heading and other exact subpath tokens. Its
-publication catalogue row admits the report path. Platform change fragments
-admit the subpath token, and the platform and core changelogs and Core versioned
-upgrade pages admit the subpath and report filename tokens. Bare vendor prose,
-lookalikes outside the payment token boundaries, casing changes, outside paths and
-every other category remain checked.
+One module/provider table defines the opt-in allowances for both payment
+examples and the tax adapter for the first payment provider. Every entry admits
+whole provider words in its own `packages/platform/src/<module>/<provider>/` and
+`packages/platform/test/<module>/<provider>/` trees and its declaration snapshot
+under `packages/platform/api/<module>-<provider>.api.md`.
+
+The same table derives the case-sensitive tokens and registration positions
+for every entry. The platform manifest admits the exact
+`./<module>/<provider>` export key and its build targets. The release gates admit
+that key, its entrypoint and snapshot, and smoke-evidence paths under the
+adapter's test tree, including reuse by other gate entries. The publication
+catalogue admits only matching paths in its `publicPaths` rows. Registration
+paths use canonical relative segments under their approved roots. Traversal,
+dot-segment re-entry, backslashes and absolute paths stay counted.
+
+The platform agent guide, package README, package boundary test, cold-consumer
+script and test, architecture and contract docs, and platform change fragments
+admit complete subpath tokens. The platform and Core changelogs and versioned
+Core upgrade pages also admit the report filename token. Bare vendor prose in
+shared carriers, subpath lookalikes, casing changes in carrier tokens and
+unrelated categories remain checked.
 
 The opt-in fulfillment example lane subtracts only ui-15 at its exact source,
 test, API-report and [A3 ledger](docs/platform/plans/oss-a3-fulfillment-adapter.md)

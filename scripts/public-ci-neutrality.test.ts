@@ -951,17 +951,23 @@ it("admits only the exact published adapter import in each native money witness"
   expect(allowedPaymentAdapterWords("tests/postgres/another.test.ts", readback, "ui-14")).toBe(0);
 });
 
-describe("tax adapter neutrality allowance", () => {
-  const vendor = ["str", "ipe"].join("");
-  const subpath = `tax/${vendor}`;
-  const report = `api/tax-${vendor}.api.md`;
+const firstPaymentVendor = ["str", "ipe"].join("");
+const secondPaymentVendor = ["tp", "ay"].join("");
+describe.each([
+  ["payments", firstPaymentVendor, "ui-13"],
+  ["payments", secondPaymentVendor, "ui-14"],
+  ["tax", firstPaymentVendor, "ui-13"],
+])("%s adapter neutrality allowance (%s)", (module, vendor, category) => {
+  const subpath = `${module}/${vendor}`;
+  const report = `api/${module}-${vendor}.api.md`;
   const snapshot = `packages/platform/${report}`;
   const source = `packages/platform/src/${subpath}/index.ts`;
   const test = `packages/platform/test/${subpath}/factory.test.ts`;
   const catalogue = "config/openlup-publication-catalog.json";
   const manifest = "packages/platform/package.json";
   const gates = "packages/platform/release-gates.json";
-  const fragment = "packages/platform/changes/tax-adapter.md";
+  const fragment = "packages/platform/changes/adapter.md";
+  const agentGuide = "packages/platform/AGENTS.md";
   const fragmentText = `- Adds the experimental \`@openlup/platform/${subpath}\` adapter.\n`;
   const snapshotText = `# ./${subpath} API declaration snapshot\n\n## dist/${subpath}/index.d.ts\n`;
   const exportTargets = { types: `./dist/${subpath}/index.d.ts`, import: `./dist/${subpath}/index.js`, default: `./dist/${subpath}/index.js` };
@@ -976,9 +982,18 @@ describe("tax adapter neutrality allowance", () => {
     [test, `import { quoteTax } from "../../../src/${subpath}/index.js";`],
     [catalogue, catalogueRows(source, test, snapshot)],
     [manifest, JSON.stringify({ exports: { [`./${subpath}`]: exportTargets } })],
-    [gates, JSON.stringify({ packageSurface: { [`./${subpath}`]: gate } })],
+    [gates, JSON.stringify({ packageSurface: {
+      [`./${subpath}`]: gate,
+      "./neutral": { packageSmokeEvidence: gate.packageSmokeEvidence },
+    } })],
     [snapshot, snapshotText],
     [fragment, fragmentText],
+    [agentGuide, `| \`./${subpath}\` | capability | experimental |\n`],
+    ["packages/platform/test/packageBoundary.test.ts", `["${subpath}/index.ts", "${subpath}"]`],
+    ...[
+      "packages/platform/README.md", "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md", "docs/platform/CANONICAL_CONTRACTS.md",
+      "scripts/packages/platform-cold-consumer.ts", "scripts/packages/platform-cold-consumer.test.ts",
+    ].map((file): [string, string] => [file, `"@openlup/platform/${subpath}"`]),
   ];
   const scan = (files: [string, string][]) => scanSnapshots(new Map(
     files.map(([path, contents]) => [path, Buffer.from(contents)]),
@@ -988,14 +1003,14 @@ describe("tax adapter neutrality allowance", () => {
     expect(scan(approved)).toEqual({});
   });
 
-  it("keeps bare prose and other categories counted in the approved files", () => {
-    const otherVendor = ["tp", "ay"].join("");
-    const description = `Uses ${vendor} and tax/${otherVendor}.`;
+  it("allows provider words in its own files and keeps bare prose counted in shared carriers", () => {
+    const [otherVendor, otherCategory] = category === "ui-13" ? [secondPaymentVendor, "ui-14"] : [firstPaymentVendor, "ui-13"];
+    const description = `Uses ${vendor} and ${otherVendor}.`;
     const files: [string, string][] = approved.map(([path, contents]) => [
       path, path.endsWith(".json") ? JSON.stringify({ ...JSON.parse(contents), description }) : `${contents}\n${description}\n`,
     ]);
     expect(scan(files)).toEqual(Object.fromEntries(approved.map(([path]) => [
-      hash(path), { "ui-13": 1, "ui-14": 1 },
+      hash(path), [source, test, snapshot].includes(path) ? { [otherCategory]: 1 } : { [category]: 1, [otherCategory]: 1 },
     ])));
   });
 
@@ -1016,13 +1031,13 @@ describe("tax adapter neutrality allowance", () => {
         straySnapshot: report,
       }, null, 2)],
     ])).toEqual({
-      [hash(manifest)]: { "ui-13": 3 },
-      [hash(gates)]: { "ui-13": 3 },
+      [hash(manifest)]: { [category]: 3 },
+      [hash(gates)]: { [category]: 3 },
     });
   });
 
   it("keeps literal prose counted when a registration uses JSON escapes", () => {
-    const escaped = `\\u0073${vendor.slice(1)}`;
+    const escaped = `\\u${vendor.charCodeAt(0).toString(16).padStart(4, "0")}${vendor.slice(1)}`;
     expect(scan([
       [manifest, JSON.stringify({
         description: "Provider prose",
@@ -1031,10 +1046,10 @@ describe("tax adapter neutrality allowance", () => {
       [gates, JSON.stringify({
         packageSurface: { [`./${subpath}`]: { ...gate, snapshot: "Report path" } },
         description: vendor,
-      }).replace("Report path", `api/tax-${escaped}.api.md`)],
+      }).replace("Report path", report.replace(vendor, escaped))],
     ])).toEqual({
-      [hash(manifest)]: { "ui-13": 1 },
-      [hash(gates)]: { "ui-13": 1 },
+      [hash(manifest)]: { [category]: 1 },
+      [hash(gates)]: { [category]: 1 },
     });
   });
 
@@ -1051,24 +1066,58 @@ describe("tax adapter neutrality allowance", () => {
     expect(assembled).toContain(fragmentText);
     expect(scan(files)).toEqual({});
     expect(scan(files.map(([path, contents]) => [path, `${contents}\nUses ${vendor}.\n`])))
-      .toEqual(Object.fromEntries(files.map(([path]) => [hash(path), { "ui-13": 1 }])));
+      .toEqual(Object.fromEntries(files.map(([path]) => [hash(path), { [category]: 1 }])));
   });
 
   it("uses the payment subpath boundaries", () => {
-    expect(scan([[source, `.${subpath}\n${subpath}.js\n`]])).toEqual({});
+    expect(scan([[agentGuide, `.${subpath}\n${subpath}.js\n`]])).toEqual({});
+  });
+
+  it("admits catalogue paths only from publicPaths", () => {
+    expect(scan([[catalogue, JSON.stringify({
+      publicPaths: [{ path: snapshot, class: "public-output" }],
+      metadata: { path: snapshot },
+    })]])).toEqual({ [hash(catalogue)]: { [category]: 1 } });
+  });
+
+  it.each([
+    ["traversal", (root: string, leaf: string) => `${root}../../${leaf}`],
+    ["relative re-entry", (root: string, leaf: string) => `${root}./${leaf}`],
+    ["backslash", (root: string, leaf: string) => `${root}nested\\${leaf}`],
+    ["absolute path", (root: string, leaf: string) => `/${root}${leaf}`],
+  ])("keeps %s in registration paths counted", (_name, alter) => {
+    const target = alter(`./dist/${subpath}/`, "index.d.ts");
+    const contents: [string, string][] = [
+      [manifest, JSON.stringify({ exports: { [`./${subpath}`]: { ...exportTargets, types: target } } })],
+      [gates, JSON.stringify({ packageSurface: { [`./${subpath}`]: {
+        entrypoint: alter(`dist/${subpath}/`, "index.d.ts"),
+        snapshot: alter("api/", report.slice("api/".length)),
+        packageSmokeEvidence: [alter(`test/${subpath}/`, "packageBoundary.test.ts")],
+      } } })],
+      [catalogue, catalogueRows(
+        alter(`packages/platform/src/${subpath}/`, "index.ts"),
+        alter(`packages/platform/test/${subpath}/`, "factory.test.ts"),
+        alter("packages/platform/api/", report.slice("api/".length)),
+      )],
+    ];
+    expect(scan(contents)).toEqual({
+      [hash(manifest)]: { [category]: 1 },
+      [hash(gates)]: { [category]: 3 },
+      [hash(catalogue)]: { [category]: 3 },
+    });
   });
 
   it("keeps lookalikes, other casing, and tokens outside their approved paths counted", () => {
-    const lookalikes = [`pre-${subpath}`, `${subpath}-extra`, `tax/${vendor.toUpperCase()}`];
-    const wrongReports = [`api/pre-tax-${vendor}.api.md`, `${report}.bak`, `api/tax-${vendor.toUpperCase()}.api.md`];
+    const lookalikes = [`pre-${subpath}`, `${subpath}-extra`, `${module}/${vendor.toUpperCase()}`];
+    const wrongReports = [`api/pre-${module}-${vendor}.api.md`, `${report}.bak`, `api/${module}-${vendor.toUpperCase()}.api.md`];
     const outside = [
-      "packages/platform/src/tax/index.ts", "packages/platform/test/tax/factory.test.ts",
+      `packages/platform/src/${module}/index.ts`, `packages/platform/test/${module}/factory.test.ts`,
       source.replace(vendor, `${vendor}-extra`), test.replace(vendor, vendor.toUpperCase()),
-      "packages/platform/test/packageBoundary.test.ts", "packages/core/docs/guide/upgrade/README.md",
+      "packages/core/docs/guide/upgrade/README.md",
       "packages/platform/changes/nested/tax-adapter.md", "packages/core/changes/tax-adapter.md",
     ];
     expect(scan([
-      [source, lookalikes.join("\n")],
+      [agentGuide, lookalikes.join("\n")],
       [gates, JSON.stringify({ packageSurface: { [`./${subpath}`]: {
         snapshot: wrongReports[0],
         entrypoint: wrongReports[1],
@@ -1079,15 +1128,15 @@ describe("tax adapter neutrality allowance", () => {
       [fragment, report],
       ...outside.map((path): [string, string] => [path, subpath]),
     ])).toEqual({
-      [hash(source)]: { "ui-13": lookalikes.length },
-      [hash(gates)]: { "ui-13": wrongReports.length },
-      [hash(catalogue)]: { "ui-13": 3 },
-      [hash(manifest)]: { "ui-13": 1 },
-      [hash(fragment)]: { "ui-13": 1 },
-      ...Object.fromEntries(outside.map(path => [hash(path), { "ui-13": 1 }])),
+      [hash(agentGuide)]: { [category]: lookalikes.length },
+      [hash(gates)]: { [category]: wrongReports.length },
+      [hash(catalogue)]: { [category]: 3 },
+      [hash(manifest)]: { [category]: 1 },
+      [hash(fragment)]: { [category]: 1 },
+      ...Object.fromEntries(outside.map(path => [hash(path), { [category]: 1 }])),
     });
     // The pinned scanner already excludes words with adjacent word characters.
-    expect(allowedPaymentAdapterWords(gates, `${subpath}x api/tax-${vendor}s.api.md`)).toBe(0);
+    expect(allowedPaymentAdapterWords(agentGuide, `${subpath}x api/${module}-${vendor}s.api.md`, category)).toBe(0);
   });
 });
 
