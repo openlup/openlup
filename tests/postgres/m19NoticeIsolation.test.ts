@@ -309,9 +309,9 @@ it("checks the complete existing-routine dispatch path after all eight approved 
 });
 
 it.each([
-  ["current", undefined],
-  ["before governed lifecycle", "25bc3a527c27eb205c60b26e388d475bc8532638e66537438e60659a77214f20"],
-  ["before accepted references", "ec9028a590334948606d160362e9363c50793284548c2b9c092a71632234724c"],
+  ["current", undefined, undefined],
+  ["before governed lifecycle", "25bc3a527c27eb205c60b26e388d475bc8532638e66537438e60659a77214f20", true],
+  ["before accepted references", "ec9028a590334948606d160362e9363c50793284548c2b9c092a71632234724c", true],
   ["before subscription profiles", "c6fea6b7fe85a7963f952994c34e1dfbca87045952e3dadbbf947c4b89aab5f6", false],
 ] as const)("retains native notice sources and accepted receipts from the %s bootstrap inventory", async (_inventory, sourceCatalogueId, predatesAcceptedReferences) => {
   const target = await runPostgresContainer({ name: `m19-g8-transfer-${process.pid}`, password: "synthetic-conformance" });

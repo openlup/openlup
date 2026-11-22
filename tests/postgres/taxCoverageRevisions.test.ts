@@ -3,10 +3,11 @@ import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { Pool } from "pg";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { Pool, type PoolClient } from "pg";
+import { afterAll, beforeAll, expect, expectTypeOf, it, vi } from "vitest";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog/contracts";
-import { applyTaxCoverageRevision, bindTaxCoverageReader, describeTaxCoverageSetting, reconcileTaxCoverage } from "@openlup/platform/tax";
+import type { PgQueryExecutor } from "@openlup/platform/data";
+import { applyTaxCoverageRevision, bindTaxCoverageReader, describeTaxCoverageSetting, reconcileTaxCoverage, type TaxCoverageExecutor } from "@openlup/platform/tax";
 import { taxCoverageV1Schema, type TaxCoverageV1 } from "@openlup/platform/tax/contracts";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
@@ -104,6 +105,8 @@ async function race(left: ReturnType<typeof proposal>, right: ReturnType<typeof 
 }
 
 it("coverage_revision_append_and_restore", async () => {
+  expectTypeOf<PgQueryExecutor>().toExtend<TaxCoverageExecutor>();
+  expectTypeOf<Pick<PoolClient, "query">>().toExtend<TaxCoverageExecutor>();
   const read = bindTaxCoverageReader(source.runtime, scope);
   const show = async () => (await showCoverageSetting(source.runtimeUrl, read)).body;
   const base = proposal("absence-control", null).document.coverage;

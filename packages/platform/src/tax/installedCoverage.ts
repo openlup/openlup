@@ -1,8 +1,12 @@
-import type { PgQueryExecutor } from "../kernel/index.js";
 import { taxCoverageV1Schema } from "./contracts/index.js";
 import type { TaxCoverageV1 } from "./contracts/index.js";
 import { object, schema } from "./contracts/decode.js";
 import { ref } from "./contracts/schemas.js";
+
+/** @experimental Query surface for a host-owned tax coverage connection. */
+export interface TaxCoverageExecutor {
+  query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+}
 
 type Scope = Readonly<{ installationRef: string; accountRef: string }>;
 
@@ -42,7 +46,7 @@ const invalidAppend = (field: string): ApplyRefusal =>
   ({ kind: "refused", code: "tax_invalid_input", field, remedy: invalidRemedy });
 
 /** @experimental Append or replay one revision using a migration-owner executor in READ COMMITTED. */
-export async function applyTaxCoverageRevision(ownerExecutor: PgQueryExecutor, input: ApplyInput): Promise<TaxCoverageRevision | ApplyRefusal> {
+export async function applyTaxCoverageRevision(ownerExecutor: TaxCoverageExecutor, input: ApplyInput): Promise<TaxCoverageRevision | ApplyRefusal> {
   const { coverage, ...references } = input.document;
   const parsedReferences = appendReferences.safeParse({ ...references, expectedRevision: input.expectedHead });
   if (!parsedReferences.success) return invalidAppend(parsedReferences.error.field);
@@ -70,7 +74,7 @@ export async function applyTaxCoverageRevision(ownerExecutor: PgQueryExecutor, i
 }
 
 /** @experimental Bind the connected settings reader to a host-selected native installation and account. */
-export function bindTaxCoverageReader(db: PgQueryExecutor, scope: Scope) {
+export function bindTaxCoverageReader(db: TaxCoverageExecutor, scope: Scope) {
   const installationRef = ref(scope.installationRef, "/installationRef");
   const accountRef = ref(scope.accountRef, "/accountRef");
   return async () => {

@@ -3336,11 +3336,10 @@ migration-owner executor in READ COMMITTED and pass the selected installation
 and account plus the authenticated operator's opaque reference.
 
 ```ts
-import type { PgQueryExecutor } from "@openlup/platform/kernel";
-import { applyTaxCoverageRevision } from "@openlup/platform/tax";
+import { applyTaxCoverageRevision, type TaxCoverageExecutor } from "@openlup/platform/tax";
 import type { TaxCoverageV1 } from "@openlup/platform/tax/contracts";
 
-declare const ownerExecutor: PgQueryExecutor;
+declare const ownerExecutor: TaxCoverageExecutor;
 declare const installationRef: string, accountRef: string, actorRef: string;
 declare const declarations: TaxCoverageV1["declarations"];
 

@@ -188,7 +188,7 @@ it("gives a bound native coverage reader connection guidance", async () => {
   };
   for (const sqlstate of ["42883", "42P01"]) {
     query.mockRejectedValueOnce(Object.assign(new Error("Missing database object in the installed reader"), {
-      code: sqlstate, where: "PL/pgSQL function tax_coverage_read_v1(text,text)",
+      code: sqlstate, where: "synthetic reader routine",
     }));
     expect(await showSetting({ key }, { [key]: reader })).toMatchObject(missingCapability);
   }

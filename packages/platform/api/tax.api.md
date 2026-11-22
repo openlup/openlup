@@ -141,13 +141,18 @@ export { runTaxAdapterConformance } from "./adapterConformance.js";
 export type { TaxConformanceCaseV1, TaxConformanceSubjectV1 } from "./adapterConformance.js";
 export { compareTaxRecalculationProbe } from "./compareProbe.js";
 export { applyTaxCoverageRevision, bindTaxCoverageReader, describeTaxCoverageSetting } from "./installedCoverage.js";
-export type { TaxCoverageRevision } from "./installedCoverage.js";
+export type { TaxCoverageExecutor, TaxCoverageRevision } from "./installedCoverage.js";
 ```
 ## dist/tax/installedCoverage.d.ts
 
 ```ts
-import type { PgQueryExecutor } from "../kernel/index.js";
 import type { TaxCoverageV1 } from "./contracts/index.js";
+/** @experimental Query surface for a host-owned tax coverage connection. */
+export interface TaxCoverageExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
 type Scope = Readonly<{
     installationRef: string;
     accountRef: string;
@@ -178,9 +183,9 @@ type ApplyRefusal = Readonly<{
     remedy: string;
 }>;
 /** @experimental Append or replay one revision using a migration-owner executor in READ COMMITTED. */
-export declare function applyTaxCoverageRevision(ownerExecutor: PgQueryExecutor, input: ApplyInput): Promise<TaxCoverageRevision | ApplyRefusal>;
+export declare function applyTaxCoverageRevision(ownerExecutor: TaxCoverageExecutor, input: ApplyInput): Promise<TaxCoverageRevision | ApplyRefusal>;
 /** @experimental Bind the connected settings reader to a host-selected native installation and account. */
-export declare function bindTaxCoverageReader(db: PgQueryExecutor, scope: Scope): () => Promise<{
+export declare function bindTaxCoverageReader(db: TaxCoverageExecutor, scope: Scope): () => Promise<{
     readonly present: false;
     value?: undefined;
     revision?: undefined;
