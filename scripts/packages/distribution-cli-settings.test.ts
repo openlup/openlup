@@ -849,17 +849,20 @@ it.each(baseline.checks)("reports exactly the baseline and new starter check row
 });
 
 let packedSettingsDirectory: string;
+// CI combined test: 9.36 s (run 44975261168). Local broker split: pack 3.27 s,
+// extraction 1.04 s, other setup ~0 s, MCP exchange 2.26 s, cleanup 0.53 s (total 7.10 s).
+// CI/local = 9.361 / 7.10 ≈ 1.318. Bounds round up from 4x each CI-scaled share.
 beforeAll(() => {
   packedSettingsDirectory = mkdtempSync(join(tmpdir(), "settings-mcp-packed-"));
   const { directory, write } = fixture(packedSettingsDirectory);
   const platform = join(directory, "node_modules/@openlup/platform");
   mkdirSync(platform, { recursive: true });
   mkdirSync(join(directory, "node_modules/.bin"), { recursive: true });
-  // CI: combined test 9.36 s (run 44975261168); pack share ~4.7 s; bound 4x.
+  // CI-scaled pack share: ~4.31 s.
   const packed = JSON.parse(execFileSync("npm", ["pack", resolve("packages/platform"), "--ignore-scripts",
-    "--offline", "--json", "--pack-destination", directory], { encoding: "utf8", timeout: 19_000 }));
-  // CI: combined test 9.36 s (run 44975261168); extraction share ~1.5 s; bound 4x.
-  execFileSync("tar", ["-xzf", join(directory, packed[0].filename), "-C", platform, "--strip-components=1"], { timeout: 6_000 });
+    "--offline", "--json", "--pack-destination", directory], { encoding: "utf8", timeout: 17_250 }));
+  // CI-scaled extraction share: ~1.37 s.
+  execFileSync("tar", ["-xzf", join(directory, packed[0].filename), "-C", platform, "--strip-components=1"], { timeout: 5_500 });
   for (const dependency of ["zod", "@openlup/core", "@openlup/outbox"]) {
     const target = join(directory, "node_modules", dependency);
     rmSync(target, { recursive: true, force: true });
@@ -873,14 +876,15 @@ beforeAll(() => {
           effect: { appliesTo: "New orders.", impact: "customer-promise", frozenOn: [] } } },
     } } };
   }`);
-}, 38_000); // CI: combined test 9.36 s (run 44975261168); setup carries most of that work; bound 4x.
+}, 23_000); // Includes both subprocess bounds and fixture setup.
 
 afterAll(async () => {
   if (packedSettingsDirectory) await rm(packedSettingsDirectory, { recursive: true, force: true });
-}, 3_000); // CI: combined test 9.36 s (run 44975261168); scaled cleanup ~0.75 s; bound 4x.
+}, 2_800); // CI-scaled cleanup share: ~0.70 s.
 
 it("exchanges all five MCP tools and recovers from bad frames with the packed binary", () => {
-  const { listing, results } = proveSettingsMcp(packedSettingsDirectory);
+  // Leave 1 s to report a stalled child and clean up before Vitest's bound.
+  const { listing, results } = proveSettingsMcp(packedSettingsDirectory, undefined, { timeoutMs: 11_000 });
   const { tools } = ListToolsResultSchema.parse(listing);
   expect(tools).toHaveLength(5);
   const clientValidator = new AjvJsonSchemaValidator();
@@ -894,7 +898,7 @@ it("exchanges all five MCP tools and recovers from bad frames with the packed bi
     expect(validateOutput({ ...document, extra: true }).valid, tool.name).toBe(false);
     expect(validateOutput({ ...document, schemaVersion: undefined }).valid, tool.name).toBe(false);
   }
-}, 13_000); // CI: combined test 9.36 s (run 44975261168); MCP exchange share ~3.2 s; bound 4x.
+}, 12_000); // CI-scaled MCP exchange share: ~2.98 s.
 
 it("observes live app edits and load failures in a single MCP session without restart", async () => {
   const { directory, write } = fixture();
