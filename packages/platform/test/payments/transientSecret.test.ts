@@ -18,6 +18,8 @@ describe("payments public DX exports", () => {
 
     expect(() => brandTransientSecret("")).toThrow(TypeError);
     expect(() => brandTransientSecret("" as string)).toThrow("transient_secret_nonempty_string_required");
+    expect(() => brandTransientSecret("   ")).toThrow("transient_secret_nonempty_string_required");
+    expect(() => brandTransientSecret("\t\n")).toThrow("transient_secret_nonempty_string_required");
     expect(() => brandTransientSecret(null as unknown as string)).toThrow(TypeError);
     expect(() => brandTransientSecret(123 as unknown as string)).toThrow(TypeError);
   });

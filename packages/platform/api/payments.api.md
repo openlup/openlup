@@ -1386,8 +1386,8 @@ export declare function createScriptedPaymentFake<Calls extends Record<string, u
 ```ts
 import type { TransientSecret } from "./contracts/adapter.js";
 /**
- * Brand a validated, non-empty browser-handoff credential as a `TransientSecret`.
- * Keeps adapter code free of raw type assertions while failing closed on empty values.
+ * Brand a validated, non-blank browser-handoff credential as a `TransientSecret`.
+ * Keeps adapter code free of raw type assertions while failing closed on empty or whitespace-only values.
  */
 export declare function brandTransientSecret(value: string): TransientSecret;
 ```

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { PaymentAdapter } from '@openlup/platform/payments/contracts';
-import { createOwnedPaymentRail } from '../owned/payment-rail.ts';
+import { createOwnedPaymentRail } from './payment-rail.ts';
 
 function buildStubAdapter(): PaymentAdapter {
   return {

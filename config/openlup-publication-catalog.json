@@ -2706,6 +2706,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/payment-rail.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/payment-rail.ts",
       "class": "public-output"
     },
@@ -2955,10 +2959,6 @@
     },
     {
       "path": "examples/neutral-store/test/origin-policy.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "examples/neutral-store/test/payment-rail.test.ts",
       "class": "public-output"
     },
     {
