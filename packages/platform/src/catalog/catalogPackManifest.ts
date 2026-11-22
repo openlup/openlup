@@ -13,6 +13,7 @@ export interface CatalogPackManifest {
   readonly taxClasses: readonly string[];
   readonly subscriptionProfiles: readonly { readonly key: string; readonly version: number }[];
   readonly subscriptionProfileDefinitions?: CatalogDefinitionInstallReceipt["subscriptionProfileDefinitions"];
+  /** SHA-256 of canonical pack bytes, with a profiles-v1: tag for full profile declarations. */
   readonly digest: string;
 }
 /** A derived in-memory projection; no manifest or digest is accepted from a client.
@@ -32,5 +33,6 @@ export function catalogPackManifest(pack: CatalogPackInput): CatalogPackManifest
     subscriptionProfiles: Object.freeze((pack.subscriptionProfiles ?? []).map((ref) => Object.freeze({ key: ref.key, version: ref.version }))),
     ...(profiles?.length && { subscriptionProfileDefinitions: Object.freeze(profiles) }),
   };
-  return Object.freeze({ ...projection, digest: createHash("sha256").update(canonicalCatalogDraftJson(projection)).digest("hex") });
+  const hash = createHash("sha256").update(canonicalCatalogDraftJson(projection)).digest("hex");
+  return Object.freeze({ ...projection, digest: profiles?.length ? `profiles-v1:${hash}` : hash });
 }

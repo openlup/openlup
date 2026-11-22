@@ -346,21 +346,25 @@ export async function restoreConnectedNativeStore(input: {
     if (ledger.rows.length !== expectedLedger.length
       || JSON.stringify(ledger.rows) !== JSON.stringify(expectedLedger.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })))) fail("schema_conflict");
     const ledgerBefore = (await client.query<{ value: string }>("SELECT pg_catalog.to_jsonb(m)::pg_catalog.text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows;
-    const { rows: unboundProfiles } = await client.query(`SELECT 1
-      FROM pg_catalog.unnest($1::text[]) AS incoming(receipt_row)
-      CROSS JOIN LATERAL pg_catalog.jsonb_populate_record(NULL::public.catalog_definition_installs, incoming.receipt_row::jsonb) AS installed
-      WHERE NOT public.catalog_definition_install_profile_manifest_matches(
-        installed.pack_id, installed.pack_version, installed.manifest_digest, installed.receipt)
-      LIMIT 1`, [source.get("catalog_definition_installs")!.rows]);
-    if (unboundProfiles.length) {
-      throw Object.assign(new PostgresTransferError("target_conflict", "catalog_definition_installs"),
-        { cause: "catalog_profile_install_manifest_mismatch" });
-    }
+    const verifyInventoryAndProfileReceipts = async () => {
+      const live = await catalogPayload(client, installation);
+      if (digest(live) !== manifest.objectInventorySha256) fail("schema_conflict");
+      const { rows: unboundProfiles } = await client.query(`SELECT 1
+        FROM pg_catalog.unnest($1::text[]) AS incoming(receipt_row)
+        CROSS JOIN LATERAL pg_catalog.jsonb_populate_record(NULL::public.catalog_definition_installs, incoming.receipt_row::jsonb) AS installed
+        WHERE NOT public.catalog_definition_install_profile_manifest_matches(
+          installed.pack_id, installed.pack_version, installed.manifest_digest, installed.receipt)
+        LIMIT 1`, [source.get("catalog_definition_installs")!.rows]);
+      if (unboundProfiles.length) {
+        throw Object.assign(new PostgresTransferError("target_conflict", "catalog_definition_installs"),
+          { cause: "catalog_profile_install_manifest_mismatch" });
+      }
+      return live;
+    };
     // The restricted migrator has ADMIN but no inherited owner access at rest.
     // Observe its sealed graph first, then open only the already-admitted
     // acquisition owner privilege inside this transaction for census/locks.
-    const inventory = installation.generation === "qualified-admin" ? await catalogPayload(client, installation) : undefined;
-    if (inventory !== undefined && digest(inventory) !== manifest.objectInventorySha256) fail("schema_conflict");
+    const inventory = installation.generation === "qualified-admin" ? await verifyInventoryAndProfileReceipts() : undefined;
     if (installation.generation === "qualified-admin") await openRestrictedOwnerWindow(client, installation);
     // Use the install lock before taking receipt-table locks used by replay.
     await client.query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('openlup:catalog-definitions', 0))");
@@ -373,8 +377,7 @@ export async function restoreConnectedNativeStore(input: {
       AND c.relkind IN ('r','p') ORDER BY n.nspname,c.relname`)).rows;
     for (const relation of relations) await client.query(`LOCK TABLE ${quoted(relation.schema)}.${quoted(relation.table)} IN SHARE ROW EXCLUSIVE MODE`);
     // Inspect definitions after table locks, before any retained-data mutation.
-    const lockedInventory = inventory ?? await catalogPayload(client, installation);
-    if (digest(lockedInventory) !== manifest.objectInventorySha256) fail("schema_conflict");
+    const lockedInventory = inventory ?? await verifyInventoryAndProfileReceipts();
     for (const table of connectedNativeStoreTables) {
       const actual = (await client.query<{ name: string; type: string }>(`SELECT a.attname AS name,
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
@@ -606,9 +609,15 @@ function expectedManifest(installation: QualifiedPostgresInstallation | Qualifie
     });
 }
 function catalogPayload(client: PoolClient, installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation): Promise<string> {
-  return installation.generation === "qualified-admin"
+  const payload = installation.generation === "qualified-admin"
     ? qualifiedAdminPostgresCatalogPayload(client, installation, migrationLock)
     : qualifiedPostgresCatalogPayload(client, installation, migrationLock);
+  return payload.catch((error: unknown) => {
+    if (error instanceof Error && /^(qualified PostgreSQL installation refused|qualified-admin PostgreSQL refused): /u.test(error.message)) {
+      fail("schema_conflict");
+    }
+    throw error;
+  });
 }
 async function openRestrictedOwnerWindow(client: PoolClient, installation: QualifiedAdminPostgresInstallation): Promise<void> {
   const migrator = JSON.stringify(installation.migrationLogin);

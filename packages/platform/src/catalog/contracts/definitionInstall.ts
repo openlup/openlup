@@ -6,6 +6,7 @@ import type { CatalogProductTypeRef } from "./productTypes.js";
 export interface CatalogDefinitionInstallReceipt {
   readonly packId: string;
   readonly packVersion: number;
+  /** Profile-bearing receipts carry the profiles-v1: tag on the manifest SHA-256. */
   readonly manifestDigest: string;
   readonly installedAt: string;
   /** Original canonical pack manifest, retained for installs with full profile declarations. */

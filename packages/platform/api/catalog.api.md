@@ -1095,6 +1095,7 @@ export interface CatalogPackManifest {
         readonly version: number;
     }[];
     readonly subscriptionProfileDefinitions?: CatalogDefinitionInstallReceipt["subscriptionProfileDefinitions"];
+    /** SHA-256 of canonical pack bytes, with a profiles-v1: tag for full profile declarations. */
     readonly digest: string;
 }
 /** A derived in-memory projection; no manifest or digest is accepted from a client.
@@ -2294,6 +2295,7 @@ import type { CatalogProductTypeRef } from "./productTypes.js";
 export interface CatalogDefinitionInstallReceipt {
     readonly packId: string;
     readonly packVersion: number;
+    /** Profile-bearing receipts carry the profiles-v1: tag on the manifest SHA-256. */
     readonly manifestDigest: string;
     readonly installedAt: string;
     /** Original canonical pack manifest, retained for installs with full profile declarations. */

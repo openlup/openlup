@@ -17,11 +17,16 @@ DECLARE
   canonical text := p_receipt->>'canonicalManifest';
   manifest jsonb;
 BEGIN
-  IF NOT (p_receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']) THEN RETURN true; END IF;
+  -- The digest spelling distinguishes issued legacy receipts even if both
+  -- profile fields have been removed from a retained receipt.
+  IF p_digest ~ '^[0-9a-f]{64}$' THEN
+    RETURN p_receipt->>'manifestDigest' IS NOT DISTINCT FROM p_digest
+      AND NOT (p_receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']);
+  END IF;
   IF jsonb_typeof(p_receipt->'canonicalManifest') IS DISTINCT FROM 'string'
     OR jsonb_typeof(p_receipt->'subscriptionProfileDefinitions') IS DISTINCT FROM 'array'
     OR p_receipt->>'manifestDigest' IS DISTINCT FROM p_digest
-    OR encode(sha256(convert_to(canonical, 'UTF8')), 'hex') IS DISTINCT FROM p_digest
+    OR ('profiles-v1:' || encode(sha256(convert_to(canonical, 'UTF8')), 'hex')) IS DISTINCT FROM p_digest
     OR NOT pg_input_is_valid(canonical, 'jsonb') THEN
     RETURN false;
   END IF;
@@ -48,14 +53,18 @@ DECLARE
   digest_pattern CONSTANT text := '^[0-9a-f]{64}$';
 BEGIN
   IF TG_OP <> 'INSERT' THEN
-    IF OLD.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']
+    IF OLD.manifest_digest LIKE 'profiles-v1:%' OR NEW.manifest_digest LIKE 'profiles-v1:%'
+      OR OLD.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']
       OR NEW.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest'] THEN
       RAISE EXCEPTION 'catalog_definition_install_profile_immutable' USING ERRCODE = '55000';
     END IF;
     IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
     RETURN NEW;
   END IF;
-  IF profiles IS NULL AND NOT (NEW.receipt ? 'canonicalManifest') THEN RETURN NEW; END IF;
+  IF NOT public.catalog_definition_install_profile_manifest_matches(NEW.pack_id, NEW.pack_version, NEW.manifest_digest, NEW.receipt) THEN
+    RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023';
+  END IF;
+  IF profiles IS NULL THEN RETURN NEW; END IF;
 
   -- Every profile receipt writer, including connected restore, shares the
   -- install lock and observes its predecessor in a fresh statement snapshot.
@@ -63,9 +72,6 @@ BEGIN
     RAISE EXCEPTION 'catalog_profile_install_requires_read_committed' USING ERRCODE = '25000';
   END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('openlup:catalog-definitions', 0));
-  IF NOT public.catalog_definition_install_profile_manifest_matches(NEW.pack_id, NEW.pack_version, NEW.manifest_digest, NEW.receipt) THEN
-    RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023';
-  END IF;
   IF jsonb_array_length(profiles) NOT BETWEEN 1 AND 100
     OR EXISTS (SELECT 1 FROM jsonb_array_elements(profiles) p GROUP BY p->'key', p->'version' HAVING count(*) > 1) THEN
     RAISE EXCEPTION 'definition_profile_invalid' USING ERRCODE = '22023';
@@ -134,7 +140,8 @@ CREATE OR REPLACE FUNCTION public.catalog_definition_install(p_pack_id text, p_p
 RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$
 DECLARE
   v_manifest jsonb := (p_manifest->>'manifest')::jsonb;
-  v_digest text := encode(sha256(convert_to(p_manifest->>'manifest', 'UTF8')), 'hex');
+  v_digest text := (CASE WHEN v_manifest ? 'subscriptionProfileDefinitions' THEN 'profiles-v1:' ELSE '' END)
+    || encode(sha256(convert_to(p_manifest->>'manifest', 'UTF8')), 'hex');
   v_install public.catalog_definition_installs%ROWTYPE;
   v_type jsonb;
   v_definition jsonb;

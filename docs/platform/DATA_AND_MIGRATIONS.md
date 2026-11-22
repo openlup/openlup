@@ -990,13 +990,17 @@ adds canonical declarations and digests to native definition-install receipts.
 Installation and connected restore share the existing definition lock.
 Profile-bearing inserts require `READ COMMITTED` so contenders observe the
 first committed declaration. Each profile-bearing receipt retains the canonical
-pack manifest. The receipt trigger checks its digest and matching profile list,
-verifies each profile identity, and refuses updates and deletes of profile-bearing receipts. A legacy receipt cannot gain profile metadata through an update.
+pack manifest and marks its SHA-256 with `profiles-v1:`. That digest requires
+both the manifest bytes and the matching declaration list. The receipt trigger
+verifies this binding and each profile identity, and refuses updates or deletes
+of profile-bearing receipts. Reference-only receipts retain their original
+digest format and contents.
 
 The exact-key lookup uses the existing migration owner. Its result contains
-the profile and policy identities. Connected restore verifies the retained
-manifest binding before writing and runs the insert guards in an explicit
-`READ COMMITTED` transaction.
+the profile and policy identities. Connected restore verifies the live target
+inventory before calling the receipt validator. The validator checks all
+retained manifest bindings before restore writes, and insert guards run in an
+explicit `READ COMMITTED` transaction.
 There is no data backfill. See [Install subscription profiles](../../packages/platform/README.md#install-subscription-profiles).
 
 ### Sealed native catalog publication history

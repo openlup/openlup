@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { canonicalCatalogSubscriptionProfileJson } from "@openlup/core/catalog";
-import type { PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { canonicalCatalogDraftJson, installCatalogDefinitions, readInstalledCatalogSubscriptionProfile, withCatalogPublicationRules, type CatalogDraftPublicationStoredApplyResult as CatalogDraftApplyResult,
   type CatalogDraftPublicationStoredCommand as CatalogDraftCommand, type CatalogDraftPayloadV2, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog";
@@ -25,8 +25,43 @@ const packs = [1, 2].map(version => withCatalogPublicationRules({ id: "example:t
 const resources = storeJourneyResources();
 let source: JourneyInstallation, target: JourneyInstallation;
 let before: Awaited<ReturnType<typeof journeyCensus>>, restored: typeof before;
-let packet: Awaited<ReturnType<typeof captureStoreJourney>>;
+let packet: Awaited<ReturnType<typeof captureStoreJourney>>, pristine: typeof packet;
 let commands: { canonicalCommand: string; fingerprint: string; actorId: string; result: CatalogDraftApplyResult }[];
+
+async function traceRestore(owner: Pool, check: () => Promise<void>): Promise<string[]> {
+  let statements: string[] = [];
+  let stopTracing = () => {};
+  const trace = (client: PoolClient) => {
+    const query = vi.spyOn(client, "query");
+    stopTracing = () => {
+      statements = query.mock.calls.flatMap(([sql]) => typeof sql === "string" ? [sql] : []);
+      query.mockRestore();
+    };
+  };
+  owner.once("acquire", trace);
+  try { await check(); }
+  finally {
+    owner.removeListener("acquire", trace);
+    stopTracing();
+  }
+  return statements;
+}
+
+function expectNoWrites(statements: string[]): void {
+  expect(statements.filter(sql => /^(INSERT|UPDATE|DELETE|GRANT|REVOKE|ALTER)\b/iu.test(sql.trim()))).toEqual([]);
+}
+
+async function withChangedInstallReceipts(change: (row: string) => string): Promise<typeof packet> {
+  const corrupted = structuredClone(packet);
+  const installs = corrupted.owned.find(entry => entry.table === "catalog_definition_installs")!;
+  // Match capture's exact PostgreSQL row encoding after changing the proof fields.
+  const { rows } = await source.owner.query<{ value: string }>(
+    "SELECT payload::jsonb::text AS value FROM unnest($1::text[]) AS input(payload)", [installs.rows.map(change)]);
+  installs.rows = rows.map(row => row.value);
+  const { sha256: _old, ...body } = corrupted;
+  corrupted.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+  return corrupted;
+}
 
 beforeAll(async () => {
   source = await resources.installation("catalog-draft-source");
@@ -123,7 +158,7 @@ beforeAll(async () => {
     (sku_id,publication_revision,attribute_key,definition_version,value_ordinal,value_kind,text_value)
     VALUES($1,17,'example:stale',1,0,'text','stale-projection-must-not-travel')`, [liveId]);
   target = await resources.installation("catalog-draft-target");
-  const pristine = await captureStoreJourney(target.owner, "pristine:catalog-drafts");
+  pristine = await captureStoreJourney(target.owner, "pristine:catalog-drafts");
   expect(await observeCatalogSubscriptionCadenceBound(target.runtime)).toBe(3660);
   before = await journeyCensus(source.owner);
   expect(before.catalog_attribute_projection).toHaveLength(1);
@@ -153,9 +188,7 @@ beforeAll(async () => {
   expect((await target.owner.query("SHOW transaction_isolation")).rows).toEqual([{ transaction_isolation: "repeatable read" }]);
   const pristineCensus = await journeyCensus(target.owner);
   for (const rewriteManifest of [false, true]) {
-    const corrupted = structuredClone(packet);
-    const installs = corrupted.owned.find(entry => entry.table === "catalog_definition_installs")!;
-    installs.rows = installs.rows.map(row => {
+    const corrupted = await withChangedInstallReceipts(row => {
       const value = JSON.parse(row);
       if (!value.receipt.subscriptionProfileDefinitions) return row;
       const changed = { ...profile, policyDigest: "b".repeat(64) };
@@ -168,28 +201,12 @@ beforeAll(async () => {
       });
       return JSON.stringify(value);
     });
-    const { sha256: _old, ...corruptedBody } = corrupted;
-    corrupted.sha256 = createHash("sha256").update(JSON.stringify(corruptedBody)).digest("hex");
-    let statements: unknown[] = [];
-    let stopTracing = () => {};
-    const traceWrites = (client: PoolClient) => {
-      const query = vi.spyOn(client, "query");
-      stopTracing = () => {
-        statements = query.mock.calls.map(([statement]) => statement);
-        query.mockRestore();
-      };
-    };
-    target.owner.once("acquire", traceWrites);
-    try {
+    const statements = await traceRestore(target.owner, async () => {
       await expect(restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet: corrupted, freshTarget: pristine }))
         .rejects.toMatchObject({ code: "target_conflict", table: "catalog_definition_installs", cause: "catalog_profile_install_manifest_mismatch" });
-    } finally {
-      target.owner.removeListener("acquire", traceWrites);
-      stopTracing();
-    }
+    });
     expect(statements).toContainEqual(expect.stringContaining("catalog_definition_install_profile_manifest_matches"));
-    expect(statements.filter(statement => typeof statement === "string" && /^(INSERT|UPDATE|DELETE|GRANT|REVOKE|ALTER)\b/iu.test(statement.trim())))
-      .toEqual([]);
+    expectNoWrites(statements);
     expect(await journeyCensus(target.owner)).toEqual(pristineCensus);
   }
   const reinstall = await target.owner.connect();
@@ -223,6 +240,69 @@ afterAll(async () => {
     if (restored) expect(await journeyCensus(target.owner)).toEqual(before);
   } finally { await resources.close(); }
 }, postgresTeardownTimeoutMs);
+
+it("U-1 refuses stripped profile evidence under the original digest before writes and preserves legacy receipts", async () => {
+  const destination = await resources.installation("catalog-receipt-presence-target");
+  const freshTarget = await captureStoreJourney(destination.owner, "pristine:catalog-receipt-presence");
+  const original = await journeyCensus(destination.owner);
+  for (const removeManifest of [true, false]) {
+    const corrupted = await withChangedInstallReceipts(row => {
+      const value = JSON.parse(row);
+      if (!value.receipt.subscriptionProfileDefinitions) return row;
+      expect(value.receipt.canonicalManifest).toEqual(expect.any(String));
+      if (removeManifest) delete value.receipt.canonicalManifest;
+      delete value.receipt.subscriptionProfileDefinitions;
+      return JSON.stringify(value);
+    });
+    const statements = await traceRestore(destination.owner, async () => {
+      await expect(restoreConnectedNativeStore({ owner: destination.owner, installation: journeySelection, packet: corrupted, freshTarget }))
+        .rejects.toMatchObject({ code: "target_conflict", table: "catalog_definition_installs", cause: "catalog_profile_install_manifest_mismatch" });
+    });
+    expectNoWrites(statements);
+    const profileRow = corrupted.owned.find(entry => entry.table === "catalog_definition_installs")!.rows.find(row => JSON.parse(row).pack_version === 2);
+    expect(profileRow).toBeDefined();
+    await expect(destination.owner.query(`INSERT INTO public.catalog_definition_installs
+      SELECT * FROM jsonb_populate_record(NULL::public.catalog_definition_installs, $1::jsonb)`, [profileRow]))
+      .rejects.toMatchObject({ code: "22023", message: "catalog_profile_install_manifest_mismatch" });
+    expect(await journeyCensus(destination.owner)).toEqual(original);
+  }
+  await expect(restoreConnectedNativeStore({ owner: destination.owner, installation: journeySelection, packet, freshTarget }))
+    .resolves.toMatchObject({ replayed: false });
+  expect((await journeyCensus(destination.owner)).catalog_definition_installs).toEqual(before.catalog_definition_installs);
+  for (const pack of packs) {
+    expect(await installCatalogDefinitions(destination.owner, pack)).toEqual(await installCatalogDefinitions(source.owner, pack));
+  }
+}, postgresSetupTimeoutMs);
+
+const validator = "public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb)";
+
+it("U-2 reports schema_conflict before invoking a changed or missing receipt validator", async () => {
+  const { rows } = await target.owner.query<{ definition: string }>("SELECT pg_get_functiondef($1::regprocedure) AS definition", [validator]);
+  const expectSchemaConflictWithoutValidation = async () => {
+    const statements = await traceRestore(target.owner, async () => {
+      await expect(restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine }))
+        .rejects.toMatchObject({ code: "schema_conflict" });
+    });
+    expect(statements).not.toContainEqual(expect.stringContaining("WHERE NOT public.catalog_definition_install_profile_manifest_matches"));
+    expectNoWrites(statements);
+  };
+  await target.owner.query(`CREATE OR REPLACE FUNCTION public.catalog_definition_install_profile_manifest_matches(
+    p_pack_id text, p_pack_version integer, p_digest text, p_receipt jsonb
+  ) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+    BEGIN RAISE EXCEPTION 'unexpected_receipt_validator_execution'; END;
+  $$`);
+  try {
+    await expectSchemaConflictWithoutValidation();
+  } finally { await target.owner.query(rows[0].definition); }
+
+  await target.owner.query(`ALTER FUNCTION ${validator} RENAME TO synthetic_hidden_receipt_validator`);
+  try {
+    await expectSchemaConflictWithoutValidation();
+  } finally {
+    await target.owner.query(`ALTER FUNCTION public.synthetic_hidden_receipt_validator(text,integer,text,jsonb)
+      RENAME TO catalog_definition_install_profile_manifest_matches`);
+  }
+}, postgresSetupTimeoutMs);
 
 describe.each(relations)("%s", relation => {
   // 52 s rounds up 4x the 12,998 ms hosted case in Published Tree CI 43695486286:
