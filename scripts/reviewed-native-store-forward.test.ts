@@ -807,6 +807,159 @@ COMMENT ON COLUMN public.unrelated.";" IS 'metadata';`;
   });
 });
 
+describe("qualified price setup EXECUTE", () => {
+  const apply = "public.catalog_price_setup_apply_v2(text,text,uuid)";
+  const lock = "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)";
+  const create = (signature: string) => `CREATE FUNCTION ${signature} RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT 'pinned'; $$;`;
+  const guarded = `DO $$ BEGIN
+${roleGuard}${ledgerGuard}  THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION ${apply},
+      ${lock} TO openlup_catalog_publication;';
+  END IF;
+END; $$;
+`;
+  const exactGrant = "qualified price setup EXECUTE forward must contain only the exact guarded grant with final LF";
+  const drift = "qualified price setup EXECUTE predecessor definition drifted";
+  const noDo = "refuses DO outside the single constant role privilege shape";
+
+  function setup(text = guarded) {
+    const value = registry();
+    const slots: NativeStoreSlot[] = ["apply", "lock", "grant"].map((row, i) => ({ row,
+      path: `db/platform/migrations/2099010${i + 1}000000_price_setup_${row}.sql`,
+      replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [],
+    }));
+    value.nativeStoreForwardClass!.slots = slots;
+    const grant = slots[2]!;
+    grant.qualifiedPriceSetupExecute = true;
+    const preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: before }];
+    const pins = [apply, lock].map((signature, i) => {
+      const predecessor = slots[i]!;
+      predecessor.createdFunctions.push({ signature, searchPath: "pg_catalog, pg_temp" });
+      const sql = `${create(signature)}\nREVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;\n`;
+      preceding.push({ path: predecessor.path, bytes: Buffer.from(sql) });
+      return bind(value, i, sql);
+    });
+    bind(value, 2, text);
+    return { value, slots, grant, preceding, pins, admit: () => assertNativeStoreForward(value, grant.path, Buffer.from(text), preceding) };
+  }
+
+  it("admits only the frozen file after two pinned CREATEs", () => {
+    const { admit, pins } = setup();
+    expect(admit().priceSetupPredecessors).toEqual(pins);
+  });
+  it("admits an intervening routine that only references a wrapper", () => {
+    const { preceding, admit, pins } = setup();
+    const sql = `CREATE FUNCTION public.fixture_caller() RETURNS text LANGUAGE sql AS $$ SELECT ${apply.replace("(text,text,uuid)", "('a','b',NULL::uuid)")}; $$;`;
+    preceding.push({ path: "db/platform/migrations/20990102100000_price_setup_caller.sql", bytes: Buffer.from(sql) });
+    expect(admit().priceSetupPredecessors).toEqual(pins);
+  });
+  it("refuses a missing flag", () => {
+    const { grant, admit, pins } = setup();
+    delete grant.qualifiedPriceSetupExecute;
+    expect(admit).toThrow(noDo);
+    grant.qualifiedPriceSetupExecute = true;
+    expect(admit().priceSetupPredecessors).toEqual(pins);
+  });
+  it("refuses two flagged slots", () => {
+    const { slots, grant, admit } = setup();
+    slots.push({ ...grant, row: "second-grant", path: "db/platform/migrations/20990104000000_price_setup_grant_again.sql" });
+    expect(admit).toThrow("allows one qualifiedPriceSetupExecute slot");
+  });
+  it.each([
+    ["one changed byte", guarded.replace("THEN", "tHEN")],
+    ["a missing final LF", guarded.slice(0, -1)],
+    ["an extra final LF", `${guarded}\n`],
+    ["an altered authority path", guarded.replace(authorityPath, PLATFORM_BASELINE_FILE)],
+    ["an altered authority hash", guarded.replace(authoritySha256, "0".repeat(64))],
+    ["the missing authority guard", guarded.replace(ledgerGuard, "")],
+    ["an altered role guard", guarded.replace(roleGuard, roleGuard.replace("rolname=", "rolname<>"))],
+    ["only the apply signature", guarded.replace(`,\n      ${lock}`, "")],
+    ["only the lock signature", guarded.replace(`${apply},\n      `, "")],
+    ["reordered signatures", guarded.replace(`${apply},\n      ${lock}`, `${lock},\n      ${apply}`)],
+    ["an extra signature", guarded.replace(lock, `${lock}, public.fixture_third()`)],
+    ["an overloaded signature", guarded.replace(apply, apply.replace("(text,text,uuid)", "(text,text)"))],
+    ["a helper in place of a wrapper", guarded.replace(lock, "public.fixture_price_setup_helper()")],
+    ["another grantee", guarded.replace(`TO ${catalogueReadRole};`, "TO service_role;")],
+    ["WITH GRANT OPTION", guarded.replace(`TO ${catalogueReadRole};`, `TO ${catalogueReadRole} WITH GRANT OPTION;`)],
+    ["an extra statement", `${guarded}SELECT 1;\n`],
+    ["co-located function creation", `${create(apply)}\n${guarded}`],
+    ["the #987 basis SELECT", guarded.replace(/GRANT EXECUTE ON FUNCTION [^;]+;/u, `GRANT SELECT (amount_basis) ON TABLE public.price_lists TO ${catalogueReadRole};`)],
+    ["the #984 storage SELECT", `${qualifiedCatalogueStorageSelectSql}\n`],
+  ])("refuses frozen EXECUTE with %s", (_label, text) => {
+    expect(setup(text).admit).toThrow(exactGrant);
+  });
+  it("refuses a flagged slot that declares a function creation", () => {
+    const { grant, admit } = setup();
+    grant.createdFunctions.push({ signature: apply, searchPath: "pg_catalog, pg_temp" });
+    expect(admit).toThrow("qualified price setup EXECUTE slot must be grant-only");
+  });
+  it("refuses an absent predecessor file", () => {
+    const { preceding, admit } = setup();
+    preceding.splice(1, 1);
+    expect(admit).toThrow("requires every earlier slot landed first");
+  });
+  it("refuses a definition not declared in an earlier native slot", () => {
+    const { slots, value, admit } = setup();
+    slots.splice(1, 1);
+    value.nativeStoreForwards!.splice(1, 1);
+    expect(admit).toThrow(`requires an earlier native slot creating ${lock}`);
+  });
+  it("refuses a predecessor file whose bytes drift from its pin", () => {
+    const { preceding, admit } = setup();
+    preceding[1]!.bytes = Buffer.concat([preceding[1]!.bytes, Buffer.from("\n")]);
+    expect(admit).toThrow("requires every earlier slot landed first");
+  });
+  it("refuses a predecessor CREATE whose effective after-hash differs", () => {
+    const { pins, admit } = setup();
+    pins[0]!.functions[0]!.afterSha256 = "0".repeat(64);
+    expect(admit).toThrow(drift);
+  });
+  it("refuses an issued predecessor without the PUBLIC revoke", () => {
+    const { value, preceding, admit } = setup();
+    const sql = `${create(apply)}\n`;
+    preceding[1]!.bytes = Buffer.from(sql);
+    bind(value, 0, sql);
+    expect(admit).toThrow("created function missing PUBLIC revoke");
+  });
+  it.each([
+    ["the apply wrapper", create(apply).replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")],
+    ["the lock wrapper", create(lock).replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")],
+    ["a DROP ROUTINE list that includes the lock wrapper", `DROP ROUTINE public.fixture_unrelated(), ${lock};`],
+    ["a quoted ALTER FUNCTION of the apply wrapper", `ALTER FUNCTION ${apply.replace("catalog_price_setup_apply_v2", '"catalog_price_setup_apply_v2"')} SECURITY INVOKER;`],
+    ["a Unicode-escaped wrapper identifier", `ALTER FUNCTION ${apply.replace("catalog_price_setup_apply_v2", `U&"catalog_price_setup_apply_v!0032" UESCAPE '!'`)} SECURITY INVOKER;`],
+    ["a rename of the wrapper schema", "ALTER SCHEMA public RENAME TO old_public;"],
+  ])("refuses intervening DDL for %s", (_label, sql) => {
+    const { preceding, admit } = setup();
+    preceding.push({ path: "db/platform/migrations/20990102100000_price_setup_mutation.sql", bytes: Buffer.from(sql) });
+    expect(admit).toThrow(drift);
+  });
+  const incomplete = 'COMMENT ON COLUMN public.fixture_unrelated.";" IS \'metadata\';';
+  it("refuses incomplete tokenization elsewhere in a predecessor", () => {
+    const { value, preceding, admit } = setup();
+    const sql = `${preceding[1]!.bytes.toString("utf8")}${incomplete}\n`;
+    preceding[1]!.bytes = Buffer.from(sql);
+    bind(value, 0, sql);
+    expect(admit).toThrow("Cannot completely tokenize the preceding file");
+  });
+  it("refuses incomplete tokenization in an intervening file", () => {
+    const { preceding, admit } = setup();
+    preceding.push({ path: "db/platform/migrations/20990102100000_price_setup_incomplete.sql", bytes: Buffer.from(incomplete) });
+    expect(admit).toThrow("Cannot completely tokenize the preceding file");
+  });
+  it.each([
+    ["qualifiedPriceListBasisSelect", exactGrant.replace("price setup EXECUTE", "price list basis SELECT")],
+    ["qualifiedCatalogueStorageSelect", noDo],
+  ] as const)("refuses EXECUTE under the %s column flag", (flag, expected) => {
+    const { grant, admit, pins } = setup();
+    delete grant.qualifiedPriceSetupExecute;
+    grant[flag] = true;
+    expect(admit).toThrow(expected);
+    delete grant[flag];
+    grant.qualifiedPriceSetupExecute = true;
+    expect(admit().priceSetupPredecessors).toEqual(pins);
+  });
+});
+
 describe("the sole conditional role rule", () => {
   it.each([
     ["old function lookup", "    AND pg_catalog.to_regprocedure('public.catalog_publication_bind_live_write()') IS NOT NULL\n"],
