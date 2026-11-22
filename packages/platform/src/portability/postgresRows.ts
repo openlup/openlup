@@ -87,8 +87,9 @@ export async function restoreCompatiblePostgresRows(input: {
 }): Promise<{ inserted: number; replayed: number; sha256: string }> {
   // Own immutable input bytes throughout async validation and writes.
   let packet: CompatiblePostgresPacket;
-  try { packet = JSON.parse(JSON.stringify(input.packet)) as CompatiblePostgresPacket; validatePacket(packet); }
-  catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
+  try { packet = JSON.parse(JSON.stringify(input.packet)) as CompatiblePostgresPacket; }
+  catch { fail("invalid_input"); }
+  assertCompatiblePostgresPacket(packet);
   if (packet.catalogueId !== input.catalogueId) fail("schema_conflict");
   try {
     return await input.target.withTransaction(async db => {
@@ -100,22 +101,7 @@ export async function restoreCompatiblePostgresRows(input: {
       for (const table of [...packet.tables].sort((a, b) => a.table.localeCompare(b.table))) {
         await db.query(`LOCK TABLE public.${quoted(table.table)} IN SHARE ROW EXCLUSIVE MODE`);
       }
-      for (const table of packet.tables) {
-        if (JSON.stringify(await inspect(db, table.table)) !== JSON.stringify(table.columns)) fail("schema_conflict", table.table);
-        const triggers = (await db.query(`SELECT 1 FROM pg_catalog.pg_trigger t
-          JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
-          WHERE t.tgrelid=$1::pg_catalog.regclass AND NOT t.tgisinternal AND (t.tgtype & 4) <> 0 AND t.tgenabled IN ('O','A')
-          AND NOT COALESCE(
-            $2::text IN ('subscription_renewal_terms','subscription_renewal_operations')
-            AND t.tgname=$2::text || '_catalog_acceptance_admit'
-            AND t.tgtype=23 AND t.tgnargs=0 AND t.tgqual IS NULL
-            AND p.oid=pg_catalog.to_regprocedure('public.catalog_acceptance_record_admit_v2()')
-            AND p.prolang=(SELECT oid FROM pg_catalog.pg_language WHERE lanname='plpgsql')
-            AND NOT p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog, public']
-            AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex')=$3,
-            false)`, [`public.${table.table}`, table.table, RENEWAL_ACCEPTANCE_TRIGGER_SHA256])).rows;
-        if (triggers.length) fail("insert_trigger_requires_owner", table.table);
-      }
+      for (const table of packet.tables) await assertCompatiblePostgresTarget(db, table);
       let inserted = 0, replayed = 0;
       for (const table of packet.tables) {
         const name = `public.${quoted(table.table)}`;
@@ -133,6 +119,36 @@ export async function restoreCompatiblePostgresRows(input: {
       return { inserted, replayed, sha256: packet.sha256 };
     });
   } catch (error) { throw redacted(error); }
+}
+
+/**
+ * Validate a compatible rows packet without I/O. Callers own the snapshot.
+ * @experimental
+ */
+export function assertCompatiblePostgresPacket(packet: CompatiblePostgresPacket): void {
+  try { validatePacket(packet); }
+  catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
+}
+
+/**
+ * Verify the columns and insert triggers of a validated table in the caller's locked transaction.
+ * @experimental
+ */
+export async function assertCompatiblePostgresTarget(db: TransferPostgresQuery, table: CompatiblePostgresPacket["tables"][number]): Promise<void> {
+  if (JSON.stringify(await inspect(db, table.table)) !== JSON.stringify(table.columns)) fail("schema_conflict", table.table);
+  const triggers = (await db.query(`SELECT 1 FROM pg_catalog.pg_trigger t
+    JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
+    WHERE t.tgrelid=$1::pg_catalog.regclass AND NOT t.tgisinternal AND (t.tgtype & 4) <> 0 AND t.tgenabled IN ('O','A')
+    AND NOT COALESCE(
+      $2::text IN ('subscription_renewal_terms','subscription_renewal_operations')
+      AND t.tgname=$2::text || '_catalog_acceptance_admit'
+      AND t.tgtype=23 AND t.tgnargs=0 AND t.tgqual IS NULL
+      AND p.oid=pg_catalog.to_regprocedure('public.catalog_acceptance_record_admit_v2()')
+      AND p.prolang=(SELECT oid FROM pg_catalog.pg_language WHERE lanname='plpgsql')
+      AND NOT p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog, public']
+      AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex')=$3,
+      false)`, [`public.${table.table}`, table.table, RENEWAL_ACCEPTANCE_TRIGGER_SHA256])).rows;
+  if (triggers.length) fail("insert_trigger_requires_owner", table.table);
 }
 
 async function inspect(db: TransferPostgresQuery, table: CompatiblePostgresTable): Promise<Column[]> {

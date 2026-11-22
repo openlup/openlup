@@ -28,7 +28,7 @@ export declare function createFilesystemTransferObjects(options: {
 export { copyTransferObjects, ObjectTransferError } from "./objects.js";
 export type { ObjectTransferFailure, TransferObject, TransferObjectRead, TransferObjectReader, TransferObjectStore, TransferObjectInventory, } from "./objects.js";
 export { createFilesystemTransferObjects } from "./filesystemObjects.js";
-export { captureCompatiblePostgresRows, restoreCompatiblePostgresRows, PostgresTransferError } from "./postgresRows.js";
+export { assertCompatiblePostgresPacket, assertCompatiblePostgresTarget, captureCompatiblePostgresRows, restoreCompatiblePostgresRows, PostgresTransferError, } from "./postgresRows.js";
 export type { CompatiblePostgresTable, TransferPostgresQuery, CompatiblePostgresSnapshot, CompatiblePostgresTarget, CompatiblePostgresPacket, PostgresTransferFailure, } from "./postgresRows.js";
 ```
 ## dist/portability/objects.d.ts
@@ -164,5 +164,15 @@ export declare function restoreCompatiblePostgresRows(input: {
     replayed: number;
     sha256: string;
 }>;
+/**
+ * Validate a compatible rows packet without I/O. Callers own the snapshot.
+ * @experimental
+ */
+export declare function assertCompatiblePostgresPacket(packet: CompatiblePostgresPacket): void;
+/**
+ * Verify the columns and insert triggers of a validated table in the caller's locked transaction.
+ * @experimental
+ */
+export declare function assertCompatiblePostgresTarget(db: TransferPostgresQuery, table: CompatiblePostgresPacket["tables"][number]): Promise<void>;
 export {};
 ```

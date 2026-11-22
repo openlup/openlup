@@ -180,6 +180,15 @@ Before connecting, restore rejects extra census fields, invalid counts and
 dispositions that do not match the relation; unsupported relations must have a zero count.
 Acquisition cases, history and all other nonempty private relations still refuse.
 
+- **Upgrade the source, then capture.** If restore reports `schema_conflict`
+  with this remedy, upgrade the source through the supported migration path,
+  then take a new capture. The selected target profile admits the current
+  inventory and specific earlier shapes with byte-preserving conversions.
+- **Recover from target drift.** For a target ledger, schema or pristine-data
+  mismatch, provision a matching qualified target and capture its pristine
+  baseline again. For exact replay, use the already-restored target with the
+  original source packet and pristine-target capture.
+
 `public.customer_identity_challenges` is intentionally not carried: its single-use,
 short-lived token hashes are live authorization state; customers sign in again after restore.
 Census reports only relation, owner, row count and `intentionally-not-carried`, even when empty.
