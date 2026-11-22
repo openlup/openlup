@@ -12650,6 +12650,42 @@
       "class": "public-output"
     },
     {
+      "path": "recipes/fulfillment/shipbob/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/server/webhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "recipes/index.json",
       "class": "public-output"
     },
@@ -12739,6 +12775,42 @@
     },
     {
       "path": "recipes/schema/recipe.schema.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/tax/avalara/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/tax/avalara/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/tax/avalara/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/tax/avalara/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/tax/avalara/server/digests.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/tax/avalara/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/tax/avalara/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/tax/avalara/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/tax/avalara/tests/mount-proof.test.ts",
       "class": "public-output"
     },
     {
