@@ -39,6 +39,24 @@ describe("subscription profile pack conformance", () => {
   };
   const optedIn = { ...pack(), types: [], subscriptionProfiles: [ref], subscriptionProfileDefinitions: [profile] };
 
+  it("matches the legacy issue JSON generated at f8f436454", () => {
+    const inputs = [
+      { ...pack(), subscriptionProfiles: null },
+      { ...pack(), types: [{ ...pack().types[0], subscriptionProfileRef: { ...ref, version: 0 } }] },
+      { ...pack(), types: [{ ...pack().types[0], subscriptionProfileRef: { ...ref, extra: true } }], subscriptionProfiles: [ref] },
+      pack(),
+    ];
+    const golden = readFileSync(new URL("./fixtures/legacyPackIssues.json", import.meta.url), "utf8");
+    expect(JSON.stringify(inputs.map(catalogPackIssues)) + "\n").toBe(golden);
+  });
+
+  it("requires original evidence for profile integrity refusals", () => {
+    const docs = readFileSync(new URL("../../../core/docs/guide/reference/refusal-codes.md", import.meta.url), "utf8");
+    const remedies = Array.from(docs.matchAll(/^\| `catalog_profile_(?:install_(?:refuses_redefinition|manifest_mismatch)|receipt_(?:digest|identity)_mismatch)` \| (.+) \|$/gm), match => match[1]);
+    expect(remedies).toEqual(Array(4).fill("Replay the original declaration bytes, digest and identity together."));
+    expect(remedies.join(" ")).not.toMatch(/recalculate/i);
+  });
+
   async function checkRefusal(input: unknown, issue: { code: string; path: string; fix: string }) {
     const pack = input as CatalogPackInput;
     const query = vi.fn();
@@ -86,6 +104,7 @@ describe("subscription profile pack conformance", () => {
     [{ subscriptionProfileDefinitions: [profile, profile] }, "definition_duplicate_identity", "/subscriptionProfileDefinitions/1", "Remove this duplicate declaration and keep one declaration for the exact profile version."],
     [{ subscriptionProfiles: [{ ...ref, version: 2 }] }, "definition_unknown_profile_ref", "/subscriptionProfileDefinitions/0", "List this declaration's exact key and version in subscriptionProfiles."],
     [{ types: [{ ...pack().types[0], subscriptionProfileRef: { ...ref, version: 2 } }] }, "definition_unknown_profile_ref", "/types/0/subscriptionProfileRef", "List the intended exact profile reference or select an identity already listed in subscriptionProfiles."],
+    [{ types: [{ ...pack().types[0], subscriptionProfileRef: { ...ref, "extra~/field": true } }] }, "definition_profile_ref_invalid", "/types/0/subscriptionProfileRef/extra~0~1field", 'Remove the unexpected property "extra~/field".'],
   ] as const)("rejects opted-in pack issue %j before SQL", async (overrides, code, path, fix) => {
     await checkRefusal({ ...optedIn, ...overrides }, { code, path, fix });
   });

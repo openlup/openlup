@@ -10246,6 +10246,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/catalog/fixtures/legacyPackIssues.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/catalog/fixtures/publicationInput.ts",
       "class": "public-output"
     },

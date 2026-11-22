@@ -89,9 +89,15 @@ export function catalogProductTypeRefIssues(input: unknown): CatalogDefinitionIs
  * @experimental
  */
 export function catalogProductTypeIssues(definitions: readonly unknown[]): CatalogDefinitionIssue[] {
+  return inspectProductTypes(definitions, false);
+}
+
+function inspectProductTypes(definitions: readonly unknown[], optedIn: boolean): CatalogDefinitionIssue[] {
   const issues: CatalogDefinitionIssue[] = [];
   const identities = new Set<string>();
-  const add = (code: CatalogConformanceCode, path: PropertyKey[]): void => { issues.push({ code, path: pointer(path) }); };
+  const add = (code: CatalogConformanceCode, path: PropertyKey[], fix?: string): void => {
+    issues.push({ code, path: pointer(path), ...(fix === undefined ? {} : { fix }) });
+  };
   definitions.forEach((input, index) => {
     const base: PropertyKey[] = [index];
     if (!input || typeof input !== "object" || Array.isArray(input)) { add("definition_invalid_shape", base); return; }
@@ -100,8 +106,11 @@ export function catalogProductTypeIssues(definitions: readonly unknown[]): Catal
     if (typeof validateContent !== "function") add("definition_callback_missing", [...base, "validateContent"]);
     if (!result.success) {
       for (const issue of result.error.issues) {
-        if (issue.code === "unrecognized_keys") for (const key of issue.keys) add("definition_unknown_field", [...base, ...issue.path, key]);
-        else add(parseCode(issue.path, issue.code), [...base, ...issue.path]);
+        const profileRef = optedIn && issue.path[0] === "subscriptionProfileRef";
+        if (issue.code === "unrecognized_keys") {
+          for (const key of issue.keys) add(profileRef ? "definition_profile_ref_invalid" : "definition_unknown_field",
+            [...base, ...issue.path, key], profileRef ? `Remove the unexpected property ${JSON.stringify(key)}.` : undefined);
+        } else add(parseCode(issue.path, issue.code), [...base, ...issue.path], profileRef ? profileRefFix : undefined);
       }
       return;
     }
@@ -170,8 +179,10 @@ const packSchema = z.object({
   capabilities: z.record(z.string(), z.boolean()), types: z.array(z.unknown()),
   taxClasses: z.array(z.object({ key: z.string(), labels: labels.optional() }).strict()),
   subscriptionProfiles: z.array(catalogProductTypeRefSchema).optional(),
-  subscriptionProfileDefinitions: z.array(z.unknown()).optional(),
 }).strict();
+const optedInPackSchema = packSchema.extend({
+  subscriptionProfileDefinitions: z.array(z.unknown()).optional(),
+});
 const profileRefFix = "Supply a lowercase namespaced key of at most 120 characters and a whole-number version from 1 to 2147483647.";
 
 /** @internal */
@@ -191,10 +202,10 @@ export function inspectCatalogPack(input: unknown): {
   issues: CatalogDefinitionIssue[]; profiles?: readonly CatalogSubscriptionProfileV1[];
 } {
   const optedIn = input !== null && typeof input === "object" && Object.hasOwn(input, "subscriptionProfileDefinitions");
-  const parsed = packSchema.safeParse(input);
+  const parsed = (optedIn ? optedInPackSchema : packSchema).safeParse(input);
   if (!parsed.success) return { issues: parsed.error.issues.flatMap<CatalogDefinitionIssue>((issue) => {
     const [field, index] = issue.path;
-    if (field === "subscriptionProfiles" && (optedIn || index === undefined)) {
+    if (optedIn && field === "subscriptionProfiles") {
       if (issue.code === "unrecognized_keys") return issue.keys.map(key => ({
         code: "definition_profile_ref_invalid", path: pointer([...issue.path, key]),
         fix: `Remove the unexpected property ${JSON.stringify(key)}.`,
@@ -203,7 +214,7 @@ export function inspectCatalogPack(input: unknown): {
         ? { code: "definition_invalid_shape", path: "/subscriptionProfiles", fix: "Supply subscriptionProfiles as an array of key/version references." }
         : { code: "definition_profile_ref_invalid", path: pointer(issue.path), fix: profileRefFix }];
     }
-    if (field === "subscriptionProfileDefinitions") return [{
+    if (optedIn && field === "subscriptionProfileDefinitions") return [{
       code: "definition_invalid_shape", path: "/subscriptionProfileDefinitions", fix: "Supply subscriptionProfileDefinitions as an array.",
     }];
     if (issue.code === "unrecognized_keys") return issue.keys.map(key => ({
@@ -211,7 +222,7 @@ export function inspectCatalogPack(input: unknown): {
     }));
     return [{ code: field === "version" ? "definition_version_invalid" : "definition_invalid_shape", path: pointer(issue.path) }];
   }) };
-  const pack = parsed.data;
+  const pack: z.infer<typeof optedInPackSchema> = parsed.data;
   const refs = pack.subscriptionProfiles ?? [];
   const identity = ({ key, version }: { key: string; version: number }) => `${key}@${version}`;
   const listed = new Set<string>();
@@ -225,17 +236,22 @@ export function inspectCatalogPack(input: unknown): {
     listed.add(key);
   });
   const profiles = optedIn ? inspectProfileDefinitions(pack.subscriptionProfileDefinitions) : undefined;
-  for (const issue of catalogProductTypeIssues(pack.types)) issues.push({
-    ...issue, path: `/types${issue.path}`,
-    ...(issue.code === "definition_profile_ref_invalid" ? { fix: profileRefFix } : {}),
-  });
+  for (const issue of inspectProductTypes(pack.types, optedIn)) issues.push({ ...issue, path: `/types${issue.path}` });
   pack.types.forEach((input, index) => {
     if (!input || typeof input !== "object") return;
     const definition = input as Record<string, unknown>;
     if (typeof definition.key === "string" && !definition.key.startsWith(`${pack.namespace}:`)) issues.push({ code: "pack_type_namespace_mismatch", path: `/types/${index}/key` });
     if (typeof definition.taxClass === "string" && !pack.taxClasses.some(({ key }) => key === definition.taxClass)) issues.push({ code: "definition_unknown_tax_class", path: `/types/${index}/taxClass` });
-    if (definition.subscriptionProfileRef !== undefined) {
-      const ref = catalogProductTypeRefSchema.safeParse(definition.subscriptionProfileRef);
+    const candidate = definition.subscriptionProfileRef;
+    if (!optedIn) {
+      if (candidate && typeof candidate === "object") {
+        const ref = candidate as Record<string, unknown>;
+        if (!refs.some(({ key, version }) => key === ref.key && version === ref.version)) issues.push({
+          code: "definition_unknown_profile_ref", path: `/types/${index}/subscriptionProfileRef`,
+        });
+      }
+    } else if (candidate !== undefined) {
+      const ref = catalogProductTypeRefSchema.safeParse(candidate);
       if (ref.success && !listed.has(identity(ref.data))) issues.push({
         code: "definition_unknown_profile_ref", path: `/types/${index}/subscriptionProfileRef`,
         fix: "List the intended exact profile reference or select an identity already listed in subscriptionProfiles.",

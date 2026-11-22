@@ -78,11 +78,11 @@ Find the machine-readable code identifying why an operation was refused; see the
 
 | Code | What to do |
 | --- | --- |
-| `catalog_profile_install_refuses_redefinition` | Use a new profile version for changed declaration bytes. |
+| `catalog_profile_install_refuses_redefinition` | Replay the original declaration bytes, digest and identity together. |
 | `catalog_profile_install_requires_read_committed` | Install the new pack in a READ COMMITTED transaction. |
-| `catalog_profile_install_manifest_mismatch` | Rebuild the manifest and declaration bytes from the same pack. |
-| `catalog_profile_receipt_digest_mismatch` | Supply the SHA-256 hex digest of the declaration bytes. |
-| `catalog_profile_receipt_identity_mismatch` | Use the key and version encoded in the declaration. |
+| `catalog_profile_install_manifest_mismatch` | Replay the original declaration bytes, digest and identity together. |
+| `catalog_profile_receipt_digest_mismatch` | Replay the original declaration bytes, digest and identity together. |
+| `catalog_profile_receipt_identity_mismatch` | Replay the original declaration bytes, digest and identity together. |
 | `catalog_definition_install_profile_immutable` | Install a new version to record changes. |
 | `definition_unknown_profile_ref` | Install or declare the exact key and version given in the SQL error detail. |
 | `subscription_profile_receipts_unsupported` | Wait for connected-store restore support for subscription profile receipts (RS-1). |
