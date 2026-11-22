@@ -63,6 +63,13 @@ export interface ChannelPullHarness {
     readIoCount(): number;
     readFaultLog?(): object;
 }
+export interface ChannelPullFaultCertificationScenarios {
+    readonly http5xx: () => ChannelPullHarness;
+    readonly httpAuthFailure: () => ChannelPullHarness;
+    readonly rateLimited429: () => ChannelPullHarness;
+    readonly timeout: () => ChannelPullHarness;
+    readonly transportError: () => ChannelPullHarness;
+}
 export interface ChannelAdapterTestSubject {
     readonly id: string;
     readonly createWebhookAdapter: () => {
@@ -74,7 +81,9 @@ export interface ChannelAdapterTestSubject {
     readonly badSignatureWebhook: ChannelWebhookFixture;
     readonly unmappedVocabularyWebhook: ChannelWebhookFixture;
     readonly ignoredTopicWebhook: ChannelWebhookFixture;
+    readonly malformedWebhook?: ChannelWebhookFixture;
     readonly happyPullOrders?: () => ChannelPullHarness;
+    readonly pullCertification?: ChannelPullFaultCertificationScenarios;
     readonly sensitiveValues?: readonly string[];
 }
 export interface ChannelQualification {
@@ -84,8 +93,9 @@ export interface ChannelQualification {
     readonly capabilityDigest: string;
     readonly ledger: readonly {
         readonly scenario: string;
-        readonly role: "webhook" | "pull";
+        readonly role: "webhook" | "pull" | "pull-fault";
         readonly ioDelta: number;
+        readonly faultLogDelta: number | null;
     }[];
 }
 export interface ChannelConformanceEvidence {

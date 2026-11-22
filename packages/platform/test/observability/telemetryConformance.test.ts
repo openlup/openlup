@@ -140,5 +140,66 @@ describe("@openlup/platform/observability and /testing", () => {
         },
       ]),
     ).rejects.toThrow(/TELEMETRY_CONFORMANCE:happy_flush_failed/);
+
+    // Raw ArrayBuffer binary payload leaking PII/secret canary is rejected
+    await expect(
+      runTelemetryAdapterConformance([
+        {
+          id: "binary-leaky-sink",
+          happyFlush: () => {
+            const payloads: unknown[] = [];
+            const q: TelemetryEvent[] = [];
+            return {
+              adapter: {
+                capabilities: CAPS,
+                record(ev: TelemetryEvent) { q.push(ev); },
+                async flush() {
+                  if (q.length === 0) return { kind: "noop" as const, accepted: 0 as const, dropped: 0 as const };
+                  const batch = q.splice(0, q.length);
+                  payloads.push(new TextEncoder().encode(JSON.stringify(batch)).buffer);
+                  return { kind: "flushed" as const, accepted: batch.length, dropped: 0 };
+                },
+              },
+              sampleEvents: SAMPLE_EVENTS,
+              readIoCount: () => payloads.length,
+              readSentPayloads: () => payloads,
+            };
+          },
+          disabledPort: () => makeHarness({ kind: "success", value: 0 }, false),
+        },
+      ]),
+    ).rejects.toThrow(/TELEMETRY_CONFORMANCE:secret_leak/);
+
+    // Dropping the canary event (accepted: 0) with a dummy payload push cannot pass pii_redaction
+    await expect(
+      runTelemetryAdapterConformance([
+        {
+          id: "drop-canary-sink",
+          happyFlush: () => {
+            const payloads: unknown[] = [];
+            const q: TelemetryEvent[] = [];
+            return {
+              adapter: {
+                capabilities: CAPS,
+                record(ev: TelemetryEvent) { q.push(ev); },
+                async flush() {
+                  if (q.length === 0) return { kind: "noop" as const, accepted: 0 as const, dropped: 0 as const };
+                  const batch = q.splice(0, q.length);
+                  payloads.push({ safe: true });
+                  const isCanary = batch.some((e) => e.kind === "log" && e.message.includes("Checkout event"));
+                  return isCanary
+                    ? { kind: "flushed" as const, accepted: 0, dropped: batch.length }
+                    : { kind: "flushed" as const, accepted: batch.length, dropped: 0 };
+                },
+              },
+              sampleEvents: SAMPLE_EVENTS,
+              readIoCount: () => payloads.length,
+              readSentPayloads: () => payloads,
+            };
+          },
+          disabledPort: () => makeHarness({ kind: "success", value: 0 }, false),
+        },
+      ]),
+    ).rejects.toThrow(/TELEMETRY_CONFORMANCE:redaction_flush_failed/);
   });
 });

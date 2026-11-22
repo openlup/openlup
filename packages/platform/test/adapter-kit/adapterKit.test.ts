@@ -280,13 +280,38 @@ describe("@openlup/platform/adapter-kit", () => {
     releaseCache();
     await Promise.resolve();
     await Promise.resolve();
-    // Meanwhile, Caller A aborts while Caller B awaits the same single-flight fetch
-    const acA = new AbortController();
-    const pA = manager.getAccessToken(acA.signal);
-    acA.abort();
-    await expect(pA).rejects.toMatchObject({ kind: "timeout" });
     releaseFetch();
     expect(await pendingToken).toBe("fresh-1");
     expect(fetchCalls).toBe(1);
+
+    // Initiating Caller A aborts mid-flight while Caller B awaits the same single-flight fetch
+    let releaseSharedFetch!: () => void;
+    const sharedFetchGate = new Promise<void>((r) => { releaseSharedFetch = r; });
+    let sharedFetchStarted!: () => void;
+    const sharedFetchStartedPromise = new Promise<void>((r) => { sharedFetchStarted = r; });
+    let sharedFetchCalls = 0;
+    const sharedManager = createOAuth2TokenManager({
+      tokenUrl: "https://auth.example.test/oauth2/token",
+      grant: { type: "client_credentials", clientId: "cid", clientSecret: "sec-marker" },
+      clock: () => 1_700_000_000_000,
+      fetchImpl: async () => {
+        sharedFetchCalls += 1;
+        sharedFetchStarted();
+        await sharedFetchGate;
+        return new Response(JSON.stringify({ access_token: "shared-fresh", expires_in: 3600 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    const acA = new AbortController();
+    const pA = sharedManager.getAccessToken(acA.signal);
+    await sharedFetchStartedPromise;
+    const pB = sharedManager.getAccessToken();
+    acA.abort();
+    await expect(pA).rejects.toMatchObject({ kind: "timeout" });
+    releaseSharedFetch();
+    expect(await pB).toBe("shared-fresh");
+    expect(sharedFetchCalls).toBe(1);
   });
 });

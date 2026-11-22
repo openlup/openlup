@@ -141,7 +141,7 @@ export function createOAuth2TokenManager(options: OAuth2TokenManagerOptions): OA
     });
   }
 
-  async function requestToken(requestEpoch: number, signal?: AbortSignal): Promise<OAuth2CachedToken> {
+  async function requestToken(requestEpoch: number): Promise<OAuth2CachedToken> {
     const params: Record<string, string> = {
       grant_type: options.grant.type,
       ...(options.grant.type === "refresh_token"
@@ -181,7 +181,6 @@ export function createOAuth2TokenManager(options: OAuth2TokenManagerOptions): OA
         method: "POST",
         headers,
         body,
-        ...(signal !== undefined ? { signal } : {}),
       });
       data = res.data;
     } catch (error) {

@@ -175,6 +175,10 @@ function assertNoLeak(payload: unknown, sensitive: readonly string[] | undefined
     }
     if (typeof v !== "object" || seen.has(v)) return;
     seen.add(v);
+    if (v instanceof ArrayBuffer || (typeof SharedArrayBuffer === "function" && v instanceof SharedArrayBuffer)) {
+      walk(new TextDecoder().decode(new Uint8Array(v)));
+      return;
+    }
     if (ArrayBuffer.isView(v)) {
       const bytes = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
       walk(new TextDecoder().decode(bytes));
@@ -226,7 +230,12 @@ async function flushChecked(
   if (!Number.isSafeInteger(ioBefore) || ioBefore < 0) {
     fail("invalid_io_count", "readIoCount() must return a non-negative safe integer.", location);
   }
-  const payloadsBefore = harness.readSentPayloads().length;
+  const payloadsBeforeRaw = harness.readSentPayloads();
+  rejectProxy(payloadsBeforeRaw, location);
+  if (!Array.isArray(payloadsBeforeRaw)) {
+    fail("invalid_sent_payloads", "readSentPayloads() must return an array.", location);
+  }
+  const payloadsBefore = payloadsBeforeRaw.length;
   const faultHandle = harness.readFaultLog ? harness.readFaultLog() : null;
   const faultBefore = faultHandle ? readFaultLog(faultHandle).length : null;
   for (const ev of events) {
@@ -245,6 +254,9 @@ async function flushChecked(
   rejectProxy(raw, location);
   const sentPayloads = harness.readSentPayloads();
   rejectProxy(sentPayloads, location);
+  if (!Array.isArray(sentPayloads)) {
+    fail("invalid_sent_payloads", "readSentPayloads() must return an array.", location);
+  }
   assertNoLeak(raw, sensitive, location);
   assertNoLeak(sentPayloads, sensitive, location);
   const parsed = telemetryFlushResultSchema.safeParse(raw);
@@ -255,6 +267,9 @@ async function flushChecked(
   }
   const ioDelta = ioAfter - ioBefore;
   const payloadDelta = sentPayloads.length - payloadsBefore;
+  if (!Number.isSafeInteger(payloadDelta) || payloadDelta < 0) {
+    fail("invalid_sent_payloads", "readSentPayloads() length must be non-decreasing.", location);
+  }
   const addedFaults = faultHandle && faultBefore !== null ? readFaultLog(faultHandle).slice(faultBefore) : [];
   return {
     result: parsed.data,
@@ -327,8 +342,8 @@ export async function runTelemetryAdapterConformance(
       [...(subject.sensitiveValues ?? []), piiCanary, "telemetry-canary-token-999"],
       loc("pii_redaction"),
     );
-    if (redactionOut.result.kind !== "flushed" || redactionOut.ioDelta !== 1 || redactionOut.payloadDelta < 1) {
-      fail("redaction_flush_failed", "Redaction probe expected flushed with ioDelta=1 and at least 1 captured outbound payload.", loc("pii_redaction"));
+    if (redactionOut.result.kind !== "flushed" || redactionOut.result.accepted < 1 || redactionOut.ioDelta !== 1 || redactionOut.payloadDelta < 1) {
+      fail("redaction_flush_failed", "Redaction probe expected flushed(accepted>=1) with ioDelta=1 and at least 1 captured outbound payload.", loc("pii_redaction"));
     }
     ledger.push({ scenario: "pii_redaction", role: "redaction", ioDelta: redactionOut.ioDelta, faultLogDelta: redactionOut.faultLogDelta });
 

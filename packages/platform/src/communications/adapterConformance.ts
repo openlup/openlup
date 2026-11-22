@@ -470,6 +470,11 @@ export async function runCommunicationsAdapterConformance(
           }
         }
       } else {
+        requireFact(
+          mode !== "full",
+          "marketing_full_mode_unsupported",
+          "Full-mode transport-fault certification is only defined for kind: 'email' subjects; run marketing-sync subjects in baseline mode",
+        );
         const supported = new Set<SyncRequest["operation"]>();
         for (const operation of ["profile.sync", "consent.read", "erasure.request", "erasure.read"] as const) {
           requireFact(subject.fixtures.some((row) => row.input.operation === operation), "sync_fixtures", "Supply fixtures for all four marketing-sync operations, including unsupported ones");

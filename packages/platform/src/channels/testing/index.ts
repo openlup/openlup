@@ -44,6 +44,25 @@ const outcomeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("transport-error") }),
 ]);
 
+const channelCapabilitiesSchema = z.strictObject({
+  connectorKind: z.string().trim().min(1),
+  connectorShape: z.enum(["direct", "aggregator"]),
+  supportsChannelDiscovery: z.boolean(),
+  supportsOrderPull: z.boolean(),
+  supportsOrderWebhook: z.boolean(),
+  supportsOrderAck: z.boolean(),
+  supportsListingLink: z.boolean(),
+  supportsStockPush: z.boolean(),
+  supportsPricePush: z.boolean(),
+  supportsShipmentPush: z.boolean(),
+  correlation: z.strictObject({
+    orderRefField: z.string().trim().min(1),
+    customerRefField: z.string().trim().min(1).nullable(),
+    customerRefNullMeans: z.enum(["per_order_identity", "unsupported"]),
+    emailIsAlwaysMasked: z.boolean(),
+  }),
+});
+
 const faultLogs = new WeakMap<object, readonly RecordedChannelFault[]>();
 
 function readFaultLog(handle: object): readonly RecordedChannelFault[] {
@@ -122,6 +141,14 @@ export interface ChannelPullHarness {
   readFaultLog?(): object;
 }
 
+export interface ChannelPullFaultCertificationScenarios {
+  readonly http5xx: () => ChannelPullHarness;
+  readonly httpAuthFailure: () => ChannelPullHarness;
+  readonly rateLimited429: () => ChannelPullHarness;
+  readonly timeout: () => ChannelPullHarness;
+  readonly transportError: () => ChannelPullHarness;
+}
+
 export interface ChannelAdapterTestSubject {
   readonly id: string;
   readonly createWebhookAdapter: () => {
@@ -133,7 +160,9 @@ export interface ChannelAdapterTestSubject {
   readonly badSignatureWebhook: ChannelWebhookFixture;
   readonly unmappedVocabularyWebhook: ChannelWebhookFixture;
   readonly ignoredTopicWebhook: ChannelWebhookFixture;
+  readonly malformedWebhook?: ChannelWebhookFixture;
   readonly happyPullOrders?: () => ChannelPullHarness;
+  readonly pullCertification?: ChannelPullFaultCertificationScenarios;
   readonly sensitiveValues?: readonly string[];
 }
 
@@ -144,8 +173,9 @@ export interface ChannelQualification {
   readonly capabilityDigest: string;
   readonly ledger: readonly {
     readonly scenario: string;
-    readonly role: "webhook" | "pull";
+    readonly role: "webhook" | "pull" | "pull-fault";
     readonly ioDelta: number;
+    readonly faultLogDelta: number | null;
   }[];
 }
 
@@ -163,6 +193,32 @@ function rejectProxy(v: unknown, location: string): void {
   if (((typeof v === "object" && v !== null) || typeof v === "function") && types.isProxy(v)) {
     fail("proxy_rejected", "Proxy subjects, adapters, harnesses, or results are forbidden.", location);
   }
+}
+
+function rejectDeepProxy(root: unknown, location: string): void {
+  const seen = new WeakSet<object>();
+  const walk = (v: unknown): void => {
+    rejectProxy(v, location);
+    if (typeof v !== "object" || v === null || seen.has(v)) return;
+    seen.add(v);
+    if (Array.isArray(v)) {
+      for (const item of v) walk(item);
+      return;
+    }
+    for (const k of Reflect.ownKeys(v)) {
+      let prop: unknown;
+      try { prop = Reflect.get(v, k); } catch { continue; }
+      walk(prop);
+    }
+  };
+  walk(root);
+}
+
+function assertNonEmptyString(v: unknown, code: string, message: string, location: string): string {
+  if (typeof v !== "string" || v.trim().length === 0) {
+    fail(code, message, location);
+  }
+  return v;
 }
 
 function assertNoLeak(payload: unknown, sensitive: readonly string[] | undefined, location: string): void {
@@ -183,6 +239,14 @@ function assertNoLeak(payload: unknown, sensitive: readonly string[] | undefined
     }
     if (typeof v !== "object" || seen.has(v)) return;
     seen.add(v);
+    if (v instanceof ArrayBuffer || (typeof SharedArrayBuffer === "function" && v instanceof SharedArrayBuffer)) {
+      walk(new TextDecoder().decode(new Uint8Array(v)));
+      return;
+    }
+    if (ArrayBuffer.isView(v)) {
+      walk(new TextDecoder().decode(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)));
+      return;
+    }
     if (Array.isArray(v)) { for (const i of v) walk(i); return; }
     for (const k of Reflect.ownKeys(v)) {
       if (typeof k === "string") walk(k);
@@ -192,6 +256,16 @@ function assertNoLeak(payload: unknown, sensitive: readonly string[] | undefined
     }
   };
   walk(payload);
+}
+
+function parseCapabilities(raw: unknown, location: string): { caps: ChannelConnectorCapabilities; digest: string } {
+  rejectDeepProxy(raw, location);
+  const parsed = channelCapabilitiesSchema.safeParse(raw);
+  if (!parsed.success) {
+    fail("invalid_capabilities", parsed.error.issues[0]?.message ?? "invalid capabilities", location);
+  }
+  const digest = createHash("sha256").update(JSON.stringify(parsed.data)).digest("hex");
+  return { caps: parsed.data, digest };
 }
 
 export async function runChannelAdapterConformance(
@@ -205,7 +279,7 @@ export async function runChannelAdapterConformance(
 
   for (const subject of subjects) {
     rejectProxy(subject, `subject:${subject?.id ?? "unknown"}`);
-    if (!subject.id || !subject.id.trim()) fail("invalid_subject_id", "Provide non-empty subject.id.", "subject");
+    assertNonEmptyString(subject?.id, "invalid_subject_id", "Provide non-empty subject.id.", "subject");
     const loc = (s: string) => `${subject.id}:${s}`;
     const ledger: ChannelQualification["ledger"][number][] = [];
 
@@ -213,11 +287,7 @@ export async function runChannelAdapterConformance(
     rejectProxy(wh, loc("webhook"));
     rejectProxy(wh.adapter, loc("webhook"));
     rejectProxy(wh.adapter.normalizeWebhook, loc("webhook"));
-    rejectProxy(wh.capabilities, loc("webhook"));
-    if (!wh.capabilities.connectorKind || !wh.capabilities.connectorKind.trim()) {
-      fail("invalid_capabilities", "connectorKind must be non-empty.", loc("capabilities"));
-    }
-    const capabilityDigest = createHash("sha256").update(JSON.stringify(wh.capabilities)).digest("hex");
+    const { caps: whCaps, digest: capabilityDigest } = parseCapabilities(wh.capabilities, loc("capabilities"));
     const signal = new AbortController().signal;
 
     const readValidIo = (fn: () => number, location: string): number => {
@@ -246,7 +316,7 @@ export async function runChannelAdapterConformance(
         assertNoLeak(err, subject.sensitiveValues, loc(name));
         fail("webhook_threw", `normalizeWebhook() threw on ${name}; must return structured NormalizedWebhookResult.`, loc(name));
       }
-      rejectProxy(res, loc(name));
+      rejectDeepProxy(res, loc(name));
       assertNoLeak(res, subject.sensitiveValues, loc(name));
       const ioAfter = readValidIo(wh.readIoCount, loc(name));
       const ioDelta = ioAfter - ioBefore;
@@ -255,30 +325,52 @@ export async function runChannelAdapterConformance(
         fail("zero_io_violation", `Expected 0 I/O on ${name}, observed ${ioDelta}.`, loc(name));
       }
       if (res.kind !== expectedKind) {
-        fail("webhook_kind_mismatch", `Expected kind "${expectedKind}" on ${name}, observed "${res.kind}".`, loc(name));
+        fail("webhook_kind_mismatch", `Expected kind "${expectedKind}" on ${name}, observed "${String(res?.kind)}".`, loc(name));
       }
       if (res.kind === "order") {
-        if (!res.providerEventId || !res.providerEventId.trim()) {
-          fail("missing_provider_event_id", "order webhook result must include non-empty providerEventId.", loc(name));
-        }
+        const eventId = assertNonEmptyString(
+          res.providerEventId,
+          "missing_provider_event_id",
+          "order webhook result must include non-empty providerEventId.",
+          loc(name),
+        );
         const parsedOrder = normalizedChannelOrderSchema.safeParse(res.order);
         if (!parsedOrder.success) {
           fail("invalid_normalized_order", parsedOrder.error.issues[0]?.message ?? "invalid order", loc(name));
         }
-      } else if (res.kind === "unmapped") {
-        if (!res.providerEventId || !res.providerEventId.trim()) {
-          fail("missing_provider_event_id", "unmapped webhook result must include non-empty providerEventId.", loc(name));
+        if (eventId !== parsedOrder.data.providerEventId) {
+          fail(
+            "provider_event_id_mismatch",
+            "order webhook result.providerEventId must match order.providerEventId.",
+            loc(name),
+          );
         }
+      } else if (res.kind === "unmapped") {
+        assertNonEmptyString(
+          res.providerEventId,
+          "missing_provider_event_id",
+          "unmapped webhook result must include non-empty providerEventId.",
+          loc(name),
+        );
         const parsedSignal = unmappedChannelSignalSchema.safeParse(res.signal);
         if (!parsedSignal.success) {
           fail("invalid_unmapped_signal", parsedSignal.error.issues[0]?.message ?? "invalid unmapped signal", loc(name));
         }
       } else if (res.kind === "ignored") {
-        if (!res.providerEventId || !res.providerEventId.trim() || !res.reason || !res.reason.trim()) {
-          fail("invalid_ignored_webhook", "ignored webhook result must include non-empty providerEventId and reason.", loc(name));
-        }
+        assertNonEmptyString(
+          res.providerEventId,
+          "invalid_ignored_webhook",
+          "ignored webhook result must include non-empty providerEventId.",
+          loc(name),
+        );
+        assertNonEmptyString(
+          res.reason,
+          "invalid_ignored_webhook",
+          "ignored webhook result must include non-empty reason.",
+          loc(name),
+        );
       }
-      ledger.push({ scenario: name, role: "webhook", ioDelta });
+      ledger.push({ scenario: name, role: "webhook", ioDelta, faultLogDelta: null });
       return res;
     };
 
@@ -290,7 +382,34 @@ export async function runChannelAdapterConformance(
     await runWebhook("unmappedVocabularyWebhook", subject.unmappedVocabularyWebhook, "unmapped", true);
     await runWebhook("ignoredTopicWebhook", subject.ignoredTopicWebhook, "ignored", true);
 
-    if (wh.capabilities.supportsOrderPull) {
+    if (mode === "full") {
+      // Full-mode webhook integrity: mutating the signed body must fail signature verification at 0 I/O
+      const tamperedFixture: ChannelWebhookFixture = {
+        headers: subject.validOrderWebhook.headers,
+        rawBody: `${subject.validOrderWebhook.rawBody} `,
+      };
+      const tamperRes = await runWebhook("tamperedBodyWebhook", tamperedFixture, "rejected", true);
+      if (tamperRes.kind !== "rejected" || tamperRes.reason !== "signature") {
+        fail(
+          "body_tamper_accepted",
+          "Mutating validOrderWebhook.rawBody must return { kind: 'rejected', reason: 'signature' }.",
+          loc("tamperedBodyWebhook"),
+        );
+      }
+      if (!subject.malformedWebhook) {
+        fail("missing_malformed_webhook", "mode: 'full' requires subject.malformedWebhook fixture.", loc("malformedWebhook"));
+      }
+      const malformedRes = await runWebhook("malformedWebhook", subject.malformedWebhook, "rejected", true);
+      if (malformedRes.kind !== "rejected" || malformedRes.reason !== "malformed") {
+        fail(
+          "malformed_webhook_reason",
+          "malformedWebhook must return { kind: 'rejected', reason: 'malformed' }.",
+          loc("malformedWebhook"),
+        );
+      }
+    }
+
+    if (whCaps.supportsOrderPull) {
       if (!subject.happyPullOrders) {
         fail("missing_pull_harness", "supportsOrderPull: true requires happyPullOrders harness.", loc("happyPullOrders"));
       }
@@ -298,9 +417,8 @@ export async function runChannelAdapterConformance(
       rejectProxy(pullH, loc("happyPullOrders"));
       rejectProxy(pullH.adapter, loc("happyPullOrders"));
       rejectProxy(pullH.adapter.pullOrders, loc("happyPullOrders"));
-      rejectProxy(pullH.capabilities, loc("happyPullOrders"));
-      const pullDigest = createHash("sha256").update(JSON.stringify(pullH.capabilities)).digest("hex");
-      if (pullDigest !== capabilityDigest) {
+      const pullParsedCaps = parseCapabilities(pullH.capabilities, loc("happyPullOrders"));
+      if (pullParsedCaps.digest !== capabilityDigest) {
         fail("capability_drift", "happyPullOrders capabilities differ from webhook adapter capabilities.", loc("happyPullOrders"));
       }
       if (mode === "full" && !pullH.readFaultLog) {
@@ -316,7 +434,7 @@ export async function runChannelAdapterConformance(
         assertNoLeak(err, subject.sensitiveValues, loc("happyPullOrders"));
         fail("pull_threw", "happyPullOrders threw an unexpected exception.", loc("happyPullOrders"));
       }
-      rejectProxy(pulled, loc("happyPullOrders"));
+      rejectDeepProxy(pulled, loc("happyPullOrders"));
       assertNoLeak(pulled, subject.sensitiveValues, loc("happyPullOrders"));
       if (!Array.isArray(pulled.orders) || pulled.orders.length === 0) {
         fail("empty_pulled_orders", "happyPullOrders must return at least 1 normalized order.", loc("happyPullOrders"));
@@ -325,18 +443,115 @@ export async function runChannelAdapterConformance(
         const parsed = normalizedChannelOrderSchema.safeParse(order);
         if (!parsed.success) fail("invalid_pulled_order", parsed.error.issues[0]?.message ?? "invalid order", loc("happyPullOrders"));
       }
+      if (!Array.isArray(pulled.unmapped)) {
+        fail("invalid_pulled_unmapped", "pullOrders().unmapped must be an array (B3 unmapped preservation).", loc("happyPullOrders"));
+      }
+      for (const item of pulled.unmapped) {
+        const parsedSignal = unmappedChannelSignalSchema.safeParse(item);
+        if (!parsedSignal.success) {
+          fail("invalid_pulled_unmapped", parsedSignal.error.issues[0]?.message ?? "invalid unmapped signal", loc("happyPullOrders"));
+        }
+      }
+      if (pulled.nextCursor !== null && (typeof pulled.nextCursor !== "string" || pulled.nextCursor.trim().length === 0)) {
+        fail("invalid_pull_cursor", "pullOrders().nextCursor must be null or a non-empty string.", loc("happyPullOrders"));
+      }
+      if (
+        pulled.watermarkAt !== null &&
+        (typeof pulled.watermarkAt !== "string" || Number.isNaN(Date.parse(pulled.watermarkAt)))
+      ) {
+        fail("invalid_pull_watermark", "pullOrders().watermarkAt must be null or an ISO-8601 timestamp string.", loc("happyPullOrders"));
+      }
       const ioAfter = readValidIo(pullH.readIoCount, loc("happyPullOrders"));
       const ioDelta = ioAfter - ioBefore;
       if (ioDelta < 1) fail("pull_io_missing", "happyPullOrders must execute at least 1 provider I/O call.", loc("happyPullOrders"));
-      if (faultHandle && faultBefore !== null && readFaultLog(faultHandle).length - faultBefore < 1) {
-        fail("pull_fault_log_missing", "Authenticated fake log did not record pullOrders call.", loc("happyPullOrders"));
+      let faultLogDelta: number | null = null;
+      if (faultHandle && faultBefore !== null) {
+        const added = readFaultLog(faultHandle).slice(faultBefore);
+        if (added.length < 1 || !added.every((entry) => entry.kind === "success")) {
+          fail("pull_fault_log_missing", "Authenticated fake log must record >=1 success entry on happyPullOrders.", loc("happyPullOrders"));
+        }
+        faultLogDelta = added.length;
       }
-      ledger.push({ scenario: "happyPullOrders", role: "pull", ioDelta });
+      ledger.push({ scenario: "happyPullOrders", role: "pull", ioDelta, faultLogDelta });
+
+      if (mode === "full") {
+        if (!subject.pullCertification) {
+          fail(
+            "missing_pull_certification",
+            "mode: 'full' with supportsOrderPull: true requires subject.pullCertification scenarios.",
+            loc("pullCertification"),
+          );
+        }
+        rejectProxy(subject.pullCertification, loc("pullCertification"));
+        const faultSpecs = [
+          {
+            name: "pull-http-5xx",
+            factory: subject.pullCertification.http5xx,
+            check: (f: RecordedChannelFault) => f.kind === "http-failure" && (f.status ?? 0) >= 500,
+          },
+          {
+            name: "pull-http-auth-failure",
+            factory: subject.pullCertification.httpAuthFailure,
+            check: (f: RecordedChannelFault) => f.kind === "http-failure" && (f.status === 401 || f.status === 403),
+          },
+          {
+            name: "pull-rate-limited-429",
+            factory: subject.pullCertification.rateLimited429,
+            check: (f: RecordedChannelFault) => f.kind === "rate-limited-429",
+          },
+          {
+            name: "pull-timeout",
+            factory: subject.pullCertification.timeout,
+            check: (f: RecordedChannelFault) => f.kind === "timeout",
+          },
+          {
+            name: "pull-transport-error",
+            factory: subject.pullCertification.transportError,
+            check: (f: RecordedChannelFault) => f.kind === "transport-error",
+          },
+        ] as const;
+
+        for (const spec of faultSpecs) {
+          const fh = spec.factory();
+          rejectProxy(fh, loc(spec.name));
+          rejectProxy(fh.adapter, loc(spec.name));
+          rejectProxy(fh.adapter.pullOrders, loc(spec.name));
+          const fhCaps = parseCapabilities(fh.capabilities, loc(spec.name));
+          if (fhCaps.digest !== capabilityDigest) {
+            fail("capability_drift", `${spec.name} capabilities differ from webhook adapter capabilities.`, loc(spec.name));
+          }
+          if (!fh.readFaultLog) {
+            fail("missing_fault_log_handle", `mode: 'full' requires readFaultLog() on ${spec.name}.`, loc(spec.name));
+          }
+          const fIoBefore = readValidIo(fh.readIoCount, loc(spec.name));
+          const fHandle = fh.readFaultLog();
+          const fBefore = readFaultLog(fHandle).length;
+          let threw = false;
+          try {
+            const out = await fh.adapter.pullOrders({ ...fh.input, signal });
+            rejectDeepProxy(out, loc(spec.name));
+            assertNoLeak(out, subject.sensitiveValues, loc(spec.name));
+          } catch (err) {
+            threw = true;
+            assertNoLeak(err, subject.sensitiveValues, loc(spec.name));
+          }
+          if (!threw) {
+            fail("pull_fault_swallowed", `pullOrders() must reject on ${spec.name} instead of swallowing the transport fault.`, loc(spec.name));
+          }
+          const fIoAfter = readValidIo(fh.readIoCount, loc(spec.name));
+          const fIoDelta = fIoAfter - fIoBefore;
+          const addedFaults = readFaultLog(fHandle).slice(fBefore);
+          if (fIoDelta !== 1 || addedFaults.length !== 1 || !spec.check(addedFaults[0]!)) {
+            fail("pull_fault_mismatch", `Expected 1 authenticated ${spec.name} fault with ioDelta=1.`, loc(spec.name));
+          }
+          ledger.push({ scenario: spec.name, role: "pull-fault", ioDelta: fIoDelta, faultLogDelta: addedFaults.length });
+        }
+      }
     }
 
     qualifications.push({
       subjectId: subject.id,
-      connectorKind: wh.capabilities.connectorKind,
+      connectorKind: whCaps.connectorKind,
       mode,
       capabilityDigest,
       ledger,

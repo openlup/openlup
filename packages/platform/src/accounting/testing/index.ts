@@ -11,7 +11,6 @@ import {
   type AccountingExportRecord,
   type AccountingExportResult,
   type AccountingLedgerExportPort,
-  type AccountingReadbackResult,
 } from "../index.js";
 
 /** @experimental Offline accounting ledger-export conformance runner and scripted transport fake. */
@@ -350,7 +349,8 @@ export async function runAccountingAdapterConformance(
         assertNoLeak(rbRaw, subject.sensitiveValues, loc("readbackFound"));
         const rbParsed = accountingReadbackResultSchema.safeParse(rbRaw);
         const ioAfter = rbH.readIoCount();
-        const rbFaultDelta = readFaultLog(rbFaultHandle).length - rbFaultBefore;
+        const rbAddedFaults = readFaultLog(rbFaultHandle).slice(rbFaultBefore);
+        const rbFaultDelta = rbAddedFaults.length;
         if (
           !rbParsed.success ||
           rbParsed.data.kind !== "found" ||
@@ -358,9 +358,10 @@ export async function runAccountingAdapterConformance(
           rbParsed.data.exportKey !== rbH.record.exportKey ||
           !Number.isSafeInteger(ioAfter) ||
           ioAfter - ioBefore !== 1 ||
-          rbFaultDelta !== 1
+          rbFaultDelta !== 1 ||
+          rbAddedFaults[0]?.kind !== "success"
         ) {
-          fail("readback_failed", "readEntryByKey must return valid found result matching providerKind/exportKey with ioDelta=1 and faultLogDelta=1.", loc("readbackFound"));
+          fail("readback_failed", "readEntryByKey must return valid found result matching providerKind/exportKey with ioDelta=1 and 1 authenticated success fault-log entry.", loc("readbackFound"));
         }
         ledger.push({ scenario: "readbackFound", role: "readback", ioDelta: 1, faultLogDelta: rbFaultDelta });
       }
