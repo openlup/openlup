@@ -74,7 +74,7 @@ const en = {
     reasonCode: 'Reason code', note: 'Note', refundMode: 'Refund intent',
     refundFull: 'Full refund intent', refundPartial: 'Partial refund intent', refundNone: 'No refund intent',
 
-    attemptLimitsInterim: "Attempt limits live in one process's memory and reset on restart.",
+    attemptLimitsInterim: "Default checkout attempt limits survive restarts on the same PostgreSQL database.",
     acquisitionInterim: "The first-subscription offer is not offered yet and comes in a later part of this release.",
     modePriceBenefit: "Subscription unit-price benefit already included",
 
@@ -525,7 +525,7 @@ export const copy = {
     reasonCode: 'Kod powodu', note: 'Notatka', refundMode: 'Zamiar zwrotu środków',
     refundFull: 'Zamiar pełnego zwrotu', refundPartial: 'Zamiar częściowego zwrotu', refundNone: 'Bez zamiaru zwrotu',
 
-    attemptLimitsInterim: "Limity prób działają w pamięci jednego procesu i resetują się po ponownym uruchomieniu.",
+    attemptLimitsInterim: "Domyślne limity prób złożenia zamówienia obowiązują po ponownym uruchomieniu na tej samej bazie PostgreSQL.",
     acquisitionInterim: "Oferta na pierwszą subskrypcję nie jest jeszcze dostępna i pojawi się w późniejszej części tego wydania.",
     modePriceBenefit: "Korzyść w cenach jednostkowych subskrypcji jest już uwzględniona",
 

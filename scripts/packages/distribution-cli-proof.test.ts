@@ -12,7 +12,7 @@ import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, mig
   reminderInstallationTest, starterLifecycle, starterOptionalOwnedFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization, starterEditorPorts, starterDocumentFiles,
-  reconcileDocumentCustomization } from "./distribution-cli-proof.ts";
+  reconcileDocumentCustomization, proveDistributionCliConsumer, starterCheckoutFiles } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -322,6 +322,52 @@ it("upgrades the starter document readers together and preserves reconciled cust
     expect(readFileSync(join(app, "owned/upgrade-notes", path.split("/").at(-1)!), "utf8")).toContain("Adopter document verification policy");
 });
 
+it("upgrades pristine checkout hosts and preserves customized checkout files", () => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  const released = (path: string) => execFileSync("git",
+    ["show", `openlup-core-v1.3.0:examples/neutral-store/${path}`], { encoding: "utf8", timeout: 5_000 });
+  const next = (path: string) => readFileSync(resolve("examples/neutral-store", path), "utf8");
+  const ownership = { managed: ["package.json", ...starterCheckoutFiles],
+    owned: ["AGENTS.md", "owned/store.config.ts", "owned/fragments.ts", starterSettingsHost], generated: [] };
+  for (const save of [write, candidate]) {
+    save("ownership.json", ownership);
+    save("AGENTS.md", "# Application\n\n## Change a business setting\n");
+    save("owned/store.config.ts", "#3d6657");
+    save("owned/fragments.ts", "offer-intro");
+  }
+  const effect = (source: string) => source.split("'purchase.attemptLimits': {")[1]!.split("\n")
+    .find(line => line.trimStart().startsWith("appliesTo:"))!;
+  const releasedSettings = released(starterSettingsHost);
+  const localSettings = releasedSettings.replace("const config = selectConfiguration(configuration);",
+    "const config = selectConfiguration(configuration); // Keep the adopter's configuration binding.");
+  expect(localSettings).not.toBe(releasedSettings);
+  write(starterSettingsHost, localSettings);
+  const targetSettings = next(starterSettingsHost);
+  candidate(starterSettingsHost, targetSettings);
+  expect(effect(targetSettings)).toContain("PostgreSQL");
+
+  for (const path of starterCheckoutFiles) {
+    const before = released(path), after = next(path);
+    expect(after, path).not.toBe(before);
+    write(path, before);
+    candidate(path, after);
+  }
+  mkdirSync(join(target, "node_modules/.bin"));
+  symlinkSync(resolve("packages/platform/src/lifecycle/openlup.mjs"), join(target, "node_modules/.bin/openlup"));
+  const evidence = { phases: [] };
+  const finish = proveDistributionCliConsumer(target, { from: app, to: target, fromVersion: "1.3.0", toVersion: "999999.0.0", evidence });
+  expect(typeof finish).toBe("function");
+  if (finish) finish();
+  expect(evidence.phases).toEqual([
+    "migrate-owned-contracts", "customize-owned", "plan", "managed-conflict", "checkout-host-reconciliation",
+    "interrupt-and-refuse", "resume", "replay", "checkout-attempt-effect-reconciliation", "installed-application-and-owned-bytes",
+  ].map(name => ({ name, result: "PASS" })));
+  expect(readFileSync(join(app, "owned/upgrade-notes/checkout.ts"), "utf8")).toContain("// Adopter checkout policy.");
+  expect(readFileSync(join(app, starterSettingsHost), "utf8"))
+    .toBe(localSettings.replace(effect(releasedSettings), effect(targetSettings)));
+  for (const path of starterCheckoutFiles) expect(readFileSync(join(app, path), "utf8"), path).toBe(next(path));
+});
+
 it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, customized=%s", customized => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "starter-next-set-"))); directories.push(directory);
   const source = join(directory, "source"), app = join(directory, "app"), target = join(directory, "target");
@@ -576,6 +622,9 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
   expect(evidence.upgrade.phases).toContainEqual({ name: "reminder-test-reconciliation", result: "PASS" });
   expect(evidence.upgrade.phases).toContainEqual({ name: "lifecycle-reconciliation", result: "PASS" });
   expect(evidence.upgrade.phases).toContainEqual({ name: "settings-host-reconciliation", result: "PASS" });
+  const phases = evidence.upgrade.phases.map(({ name }: { name: string }) => name);
+  expect(phases).not.toContain("checkout-host-reconciliation");
+  expect(phases).not.toContain("checkout-attempt-effect-reconciliation");
   for (const path of starterDisplayFiles)
     expect(evidence.upgrade.phases).toContainEqual({ name: `display-reconciliation:${path}`, result: "PASS" });
   expect(evidence.upgrade.phases.filter((phase: { result: string }) => phase.result !== "PASS")).toEqual([]);

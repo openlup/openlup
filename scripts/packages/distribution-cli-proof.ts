@@ -260,6 +260,13 @@ export function reconcileDisplayCustomization(
     `owned/upgrade-notes/${path.split("/").at(-1)}`, "\n// Adopter display customization.\n");
 }
 
+export const starterCheckoutFiles = [
+  "host/checkout-attempts.ts", "host/native-composition.ts", "host/purchase-composition.ts",
+  "test/checkout-attempts.test.ts", "test/locales.test.ts", "browser/journey.spec.ts",
+] as const;
+
+const attemptLimitEffect = /(^ {4}'purchase\.attemptLimits': \{\n(?:(?!^ {4}\},).)*?^ {10}appliesTo: )([^\n]+)/msu;
+
 export const starterSubscriptionOffer = "shared/subscription-offer.ts";
 
 export function reconcileSubscriptionOfferCustomization(app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0]) {
@@ -314,6 +321,9 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const owned: Record<string, Buffer> = {};
   const settingsHost = join(app, starterSettingsHost);
   if (existsSync(settingsHost)) owned[starterSettingsHost] = readFileSync(settingsHost);
+  const targetSettings = join(pair.to, starterSettingsHost);
+  const previousEffect = attemptLimitEffect.exec(owned[starterSettingsHost]?.toString("utf8") ?? "")?.[2];
+  const nextEffect = existsSync(targetSettings) ? attemptLimitEffect.exec(readFileSync(targetSettings, "utf8"))?.[2] : undefined;
   phase("migrate-owned-contracts", () => { migrateStarterOwned(app, pair.to, from, to); });
   phase("customize-owned", () => {
     for (const [path, before, after] of [
@@ -361,6 +371,9 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     changed.some((file: { path: string; action: string }) => file.path === path && file.action === "replace"));
   const documentReplacements = starterDocumentFiles.filter(path =>
     changed.some((file: { path: string; action: string }) => file.path === path && file.action === "replace"));
+  const checkoutChanges = starterCheckoutFiles.filter(path =>
+    changed.some((file: { path: string }) => file.path === path));
+  const checkoutHostReplacement = checkoutChanges.find(path => path.startsWith("host/") && Object.hasOwn(from.files, path));
   const offerReplaced = changed.some((file: { path: string; action: string }) =>
     file.path === starterSubscriptionOffer && file.action === "replace");
   const { path: conflict, action } = editorReplacement ?? changed.findLast((file: { action: string }) => file.action === "create") ?? changed.at(-1);
@@ -399,6 +412,13 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   });
   for (const path of documentReplacements) phase(`document-reconciliation:${path}`, () => {
     const local = reconcileDocumentCustomization(app, from.files[path]!, applyRefused, path);
+    owned[local.path] = local.bytes;
+    pair.evidence.customizations![local.path] = hash(local.bytes);
+    assert.deepEqual(run("plan"), plan);
+  });
+  if (checkoutHostReplacement) phase("checkout-host-reconciliation", () => {
+    const local = reconcileManagedCustomization(app, from.files[checkoutHostReplacement]!, applyRefused,
+      checkoutHostReplacement, "owned/upgrade-notes/checkout.ts", "\n// Adopter checkout policy.\n");
     owned[local.path] = local.bytes;
     pair.evidence.customizations![local.path] = hash(local.bytes);
     assert.deepEqual(run("plan"), plan);
@@ -462,6 +482,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert.equal(readFileSync(join(app, starterSubscriptionOffer), "utf8"), to.files[starterSubscriptionOffer]);
     for (const path of displayReplacements)
       assert.equal(readFileSync(join(app, path), "utf8"), to.files[path]);
+    for (const path of checkoutChanges)
+      assert.equal(readFileSync(join(app, path), "utf8"), to.files[path]);
     for (const path of documentReplacements)
       assert.equal(readFileSync(join(app, path), "utf8"), to.files[path]);
   };
@@ -471,6 +493,16 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     checkUpgradeFiles();
   });
   phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
+  if (previousEffect && nextEffect && previousEffect !== nextEffect) phase("checkout-attempt-effect-reconciliation", () => {
+    const current = readFileSync(settingsHost, "utf8");
+    assert.equal(attemptLimitEffect.exec(current)?.[2], previousEffect);
+    const reconciled = Buffer.from(current.replace(attemptLimitEffect, (_, prefix) => prefix + nextEffect));
+    writeFileSync(settingsHost, reconciled);
+    owned[starterSettingsHost] = reconciled;
+    pair.evidence.customizations![starterSettingsHost] = hash(reconciled);
+    assert.deepEqual(run("apply").applied, []);
+    checkUpgradeFiles();
+  });
   rmSync(workspace, { recursive: true, force: true });
   return () => phase("installed-application-and-owned-bytes", () => {
     assertCompleteStarter(app, to); checkUpgradeFiles();
