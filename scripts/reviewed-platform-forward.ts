@@ -1,10 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
+import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath, checkoutOwnerDefinitionPath, checkoutOwnerGrantPath, checkoutOwnerLogin, checkoutOwnerRoutines, renderCheckoutOwnerGrant } from "./platform-migration-manifest.ts";
 import { documentationGit, readDocumentationObjects } from "./documentation-git.ts";
 import { DuplicateJsonKeyError, parseStrictJson } from "./oss-strict-json.mts";
-// eslint-disable-next-line no-restricted-imports -- trusted admission runs before workspace install and shares the package owner's exact ledger renderer
-import { checkoutOwnerDefinitionPath, checkoutOwnerGrantPath, checkoutOwnerLogin, checkoutOwnerRoutines, renderCheckoutOwnerGrant } from "../packages/platform/src/migrations/catalog.ts";
 
 export { checkoutOwnerLogin, checkoutOwnerRoutines, renderCheckoutOwnerGrant };
 
