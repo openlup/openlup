@@ -729,9 +729,10 @@ ambiguous matches receive the uniform refusal without changing historical rows. 
 requires an amount. Approved/rejected decisions each emit one intent event;
 requests emit none. These commands do not receive goods, restock or execute refunds.
 
-Use `./commerce/server/destinations` and the complete native SQL installation for
-v1. Authorize parent reads, use opaque references and bind checkout and dispatch
-explicitly. Share a transaction between the shipment reader and dispatch enqueue.
+For native v1 destinations, use `./commerce/server/destinations` with the complete
+native SQL installation. Authorize parent reads, use opaque references and bind
+checkout and dispatch explicitly. Share a transaction between the shipment reader
+and dispatch enqueue.
 Addresses, phone numbers and identifying references persist. Address-change
 events retain optional reasons in their top-level and nested payloads. The port
 provides no destination-row export or erasure. Use the separate
@@ -740,7 +741,9 @@ confirmation outbox is durable and native mail dispatch needs a host binding.
 
 For experimental v2 ingress, discover native readiness with
 `destinationV2Capabilities`, then parse and apply the host address policy. Managed
-issuance and v2 saved addresses are unsupported. Follow the
+hosts support v1 checkout and saved addresses. Fresh v2 destination issuance
+requires an installed native writer. Use the v1 address book for saved addresses.
+Follow the
 [destination validation guide](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#validate-a-checkout-destination).
 
 `./composition` exports the inert `createCommerceContribution` for the installed

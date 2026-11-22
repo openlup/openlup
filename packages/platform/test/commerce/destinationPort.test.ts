@@ -86,10 +86,28 @@ it("accepts a strict v2 destination with the incumbent checkout envelope", () =>
   }
 });
 
+it.each([["item", true], ["other", false]] as const)("matches v1 async SKU admission for %s", async (item, accepted) => {
+  const sku = z.string().refine(async value => value === "item", "SKU is unavailable");
+  const { checkoutCommandV1Schema } = createCheckoutCommandSchemas({ sku, paymentIntentStatus: z.string(), paymentAttemptStatus: z.string() });
+  const lines = [{ sku: item, quantity: 1 }];
+  const v1 = await checkoutCommandV1Schema.safeParseAsync({ ...commandV1, lines });
+  expect(v1.success).toBe(accepted);
+  const v2 = await createCheckoutCommandV2Schema({ sku }).safeParseAsync({
+    ...commandV1, lines, version: "commerce.checkout_command.v2",
+    shippingAddress: { line1: "Sample 1", city: "Sample", postalCode: "12345", countryCode: "XX" },
+  });
+  expect(v2.success).toBe(v1.success);
+  if (v1.success) expect(v2.data?.lines).toEqual(v1.data.lines);
+  else expect(v2.error?.issues).toEqual([expect.objectContaining({
+    path: v1.error.issues[0]?.path, params: { refusalCode: "address_invalid_input" },
+    message: expect.stringContaining("SKU is unavailable. Correct the indicated checkout input and resubmit."),
+  })]);
+});
+
 it("discovers fresh destination issuance and saved address support independently", () => {
   expect(destinationV2Capabilities({ rail: "native", installed: true, issuanceEnabled: true })).toEqual({
     destinationAddressV2: { capability: "destinationAddressV2", supported: true, available: true },
-    savedAddressV2: { capability: "savedAddressV2", supported: false, available: false, refusalCode: "destination_v2_unavailable" },
+    savedAddressV2: { capability: "savedAddressV2", supported: false, available: false, refusalCode: "destination_v2_unsupported_rail" },
   });
   for (const state of [{}, { installed: true }, { installed: true, issuanceEnabled: false }, { issuanceEnabled: true }]) {
     expect(destinationV2Capabilities({ rail: "native", ...state }).destinationAddressV2).toEqual({

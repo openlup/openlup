@@ -256,7 +256,10 @@ describe("settings goal search", () => {
     const { entries } = catalogue.listResult.parse(listSettings({ goal: "subdivision postal format" }));
     expect(entries).toContainEqual(expect.objectContaining({ key: "shipping.addressPolicy", kind: "code" }));
     expect(await showSetting({ key: "shipping.addressPolicy" })).toMatchObject({
-      setting: { runtime: { level: "read-only" }, fallback: null, absentMeans: { source: "Application composition", value: null } },
+      setting: { runtime: { level: "read-only" }, fallback: null, absentMeans: {
+        source: "Application composition", value: null,
+        description: expect.stringContaining("Managed hosts support v1 checkout and saved addresses. Fresh v2 destination issuance requires a native writer."),
+      } },
       observation: { state: "offline" },
     });
   });

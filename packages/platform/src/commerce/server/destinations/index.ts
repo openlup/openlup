@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createCheckoutCommandSchemas } from "../../index.js";
+import { createCheckoutCommandSchemas } from "../../checkoutCommandSchemas.js";
 import type { CheckoutCommandV2 } from "../../contracts/index.js";
 
 /** Private native destination authority; the host authenticates actors and owns connection lifetime. */
@@ -80,26 +80,28 @@ export function createCheckoutCommandV2Schema(schemas: { sku: z.ZodType<string, 
       postalCode: z.string(), countryCode: z.string(),
     }),
   });
-  return z.unknown().transform((input, context) => {
-    const parsed = ingress.safeParse(input);
-    if (parsed.success) return parsed.data;
-    const issue = parsed.error.issues[0]!;
-    const wrongDialect = issue.path[0] === "version";
-    context.addIssue({
-      code: "custom",
-      path: issue.code === "unrecognized_keys" ? [...issue.path, issue.keys[0]!] : issue.path,
-      params: { refusalCode: wrongDialect ? "destination_dialect_invalid" : "address_invalid_input" },
-      message: wrongDialect ? `Unsupported checkout version. Submit version ${version}.`
-        : `${issue.message}. Correct the indicated checkout input and resubmit.`,
+  return ingress
+    .transform((command): { command: CheckoutCommandV2 } | { issue: z.ZodIssue } => ({ command }))
+    .catch(({ error }) => ({ issue: error.issues[0]! }))
+    .transform((result, context) => {
+      if ("command" in result) return result.command;
+      const { issue } = result;
+      const wrongDialect = issue.path[0] === "version";
+      context.addIssue({
+        code: "custom",
+        path: issue.code === "unrecognized_keys" ? [...issue.path, issue.keys[0]!] : issue.path,
+        params: { refusalCode: wrongDialect ? "destination_dialect_invalid" : "address_invalid_input" },
+        message: wrongDialect ? `Unsupported checkout version. Submit version ${version}.`
+          : `${issue.message}. Correct the indicated checkout input and resubmit.`,
+      });
+      return z.NEVER;
     });
-    return z.NEVER;
-  });
 }
 
 type CapabilityStatus = { supported: boolean; available: boolean; refusalCode?:
   "destination_v2_unsupported_rail" | "destination_v2_unavailable" };
 
-/** @experimental Discover fresh issuance. Keep installed readers and replay when disabling issuance. */
+/** @experimental Discover v2 destination issuance and saved-address support. Keep installed readers and replay when disabling issuance. */
 export function destinationV2Capabilities(input: {
   rail: "native" | "managed"; installed?: boolean; issuanceEnabled?: boolean;
 }): { [K in "destinationAddressV2" | "savedAddressV2"]: CapabilityStatus & { capability: K } } {
@@ -108,6 +110,6 @@ export function destinationV2Capabilities(input: {
   const refusalCode = supported ? "destination_v2_unavailable" : "destination_v2_unsupported_rail";
   return {
     destinationAddressV2: { capability: "destinationAddressV2", supported, available, ...(available ? {} : { refusalCode }) },
-    savedAddressV2: { capability: "savedAddressV2", supported: false, available: false, refusalCode },
+    savedAddressV2: { capability: "savedAddressV2", supported: false, available: false, refusalCode: "destination_v2_unsupported_rail" },
   };
 }

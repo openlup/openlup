@@ -86,6 +86,14 @@ type Refusal = { outcome: "refused"; code: RefusalCode; field: string; remedy: s
 const refuse = (code: RefusalCode, field: string, remedy: string): Refusal => ({ outcome: "refused", code, field, remedy });
 const invalidPolicy = () => refuse("address_policy_invalid", "policyRef", "The host address policy is malformed. Correct the selected policy definition and reload the host binding.");
 const invalidInput = (field: string, reason: string) => refuse("address_invalid_input", field, `${reason} Correct ${field} and resubmit the destination address.`);
+const blankSubdivision = () => refuse("address_invalid_input", "subdivisionCode", "Omit an empty subdivision, or supply one of the policy's subdivision codes.");
+
+function hasReachablePostalMask({ upperAscii, stripAsciiSpaces, alternatives }: AddressPolicyV1["postalRule"]): boolean {
+  return alternatives.some(mask => mask.every((part, index) => typeof part !== "object" || (
+    (!upperAscii || asciiUpper(part.literal) === part.literal)
+    && (part.literal !== " " || (!stripAsciiSpaces && index > 0 && index < mask.length - 1))
+  )));
+}
 
 function matchesPostalMask(postal: string, alternatives: AddressPolicyV1["postalRule"]["alternatives"]): boolean {
   return alternatives.some(mask => mask.length === postal.length && mask.every((part, index) => {
@@ -109,12 +117,16 @@ export function validateDestinationAddressV2(input: unknown, policy?: AddressPol
   for (const value of addressFields.options) {
     const raw = address[value];
     if (raw === undefined) continue;
-    if (unsafeText.test(raw)) return invalidInput(value, "The address contains a control character or invalid Unicode.");
+    if (unsafeText.test(raw)) {
+      if (value === "subdivisionCode" && raw.trim() === "") return blankSubdivision();
+      return invalidInput(value, "The address contains a control character or invalid Unicode.");
+    }
     address[value] = normalize(raw);
   }
   if (!country.test(address.countryCode)) return invalidInput("countryCode", "Enter a two-letter ASCII country code.");
   address.countryCode = asciiUpper(address.countryCode);
   if (address.subdivisionCode !== undefined && !subdivision.test(address.subdivisionCode)) {
+    if (address.subdivisionCode.trim() === "") return blankSubdivision();
     return invalidInput("subdivisionCode", "Enter 1 to 16 ASCII letters, digits or hyphens, or omit an optional subdivision.");
   }
 
@@ -126,7 +138,9 @@ export function validateDestinationAddressV2(input: unknown, policy?: AddressPol
   const aliases = new Map(Object.entries(subdivisionAliases).map(([from, to]) => [asciiUpper(from), asciiUpper(to)]));
   if (new Set(requiredFields).size !== requiredFields.length || allowed.size !== allowedSubdivisionCodes.length
     || aliases.size !== Object.keys(subdivisionAliases).length || [...aliases.values()].some(to => !allowed.has(to))
-    || new Set(classificationRules.map(rule => rule.key)).size !== classificationRules.length) return invalidPolicy();
+    || new Set(classificationRules.map(rule => rule.key)).size !== classificationRules.length
+    || classificationRules.some(rule => "subdivisionCode" in rule && !allowed.has(asciiUpper(rule.subdivisionCode)))
+    || !hasReachablePostalMask(postalRule)) return invalidPolicy();
   if (address.countryCode !== asciiUpper(configured.data.countryCode)) {
     return refuse("address_policy_unavailable", "countryCode", "The selected policy covers a different country. Bind the policy for this market and destination country.");
   }

@@ -362,22 +362,27 @@ does not establish zero database reads for the whole checkout request.
 
 Use `destinationV2Capabilities` from `@openlup/platform/commerce/server/destinations`
 with the host rail and actual installation and issuance state. The experimental
-schema and policy validator run offline. Native issuance needs a separate
-installed writer. A native host without an enabled writer reports
-`destination_v2_unavailable`. Managed hosts report `destination_v2_unsupported_rail`.
-Use a native host with the writer installed and fresh issuance enabled before
-offering v2 checkout. Keep installed readers and exact replay available when
-disabling fresh issuance. Continue using the v1 address book for saved addresses.
+schema and policy validator run offline. Fresh v2 destination issuance requires
+an installed native writer. A native host reports `destination_v2_unavailable`
+for `destinationAddressV2` until the writer is installed and issuance is enabled.
+Managed hosts continue to support v1 checkout and saved addresses. They report
+`destination_v2_unsupported_rail` for `destinationAddressV2`. Keep installed
+readers and exact replay available when disabling fresh issuance.
+
+`savedAddressV2` reports `destination_v2_unsupported_rail` on every rail. Use the
+v1 address book. Versioned saved addresses are not available in this release.
 
 1. Parse `commerce.checkout_command.v2` with `createCheckoutCommandV2Schema` and
    the host's SKU schema. The command uses `line1`, optional `line2`, `city`,
    optional `subdivisionCode`, `postalCode` and `countryCode` under `shippingAddress`.
+   `line1`, `city` and `postalCode` are always required.
 2. Select one immutable `AddressPolicyV1` by market and destination country in
    server composition. Run `npm run settings -- show shipping.addressPolicy` to
    find the binding instructions.
    Set the revision on the policy data. Postal alternatives are full-length
-   sequences of `"digit"`, `"letter"` or `{ literal: "-" }` tokens. Classification
-   rules use a `key` with either `subdivisionCode` or a literal `line1Prefix`.
+   sequences of `"digit"`, `"letter"` or `{ literal: "-" }` tokens. At least one
+   alternative must match normalized input. A classification rule uses a `key`
+   with either an allowed `subdivisionCode` or a literal `line1Prefix`.
 3. Call `validateDestinationAddressV2` from `@openlup/platform/shipping` with the
    submitted address and selected policy. Use the normalized address, policy
    reference and revision, and sorted classification keys on success.

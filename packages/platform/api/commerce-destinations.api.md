@@ -122,7 +122,7 @@ type CapabilityStatus = {
     available: boolean;
     refusalCode?: "destination_v2_unsupported_rail" | "destination_v2_unavailable";
 };
-/** @experimental Discover fresh issuance. Keep installed readers and replay when disabling issuance. */
+/** @experimental Discover v2 destination issuance and saved-address support. Keep installed readers and replay when disabling issuance. */
 export declare function destinationV2Capabilities(input: {
     rail: "native" | "managed";
     installed?: boolean;

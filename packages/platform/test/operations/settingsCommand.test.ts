@@ -885,7 +885,7 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
   // Stage 4 Wave 4C packaged code (D1-D3, A16, E12) and multi-row installed entries (B3, B5),
   // the market fiscal profile, tax adapter choices and tax class map, and the checkout address policy.
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("cbfd222617a5a4082969a83d0644f415b6691898fdb5eb9ed6f77632726405ba");
+    .toBe("3ac9935d1eda74c1bcff0ae5219b6a3cd22d18e2c0db5a170f4a3525e3718a02");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {

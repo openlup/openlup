@@ -67,6 +67,47 @@ it("military_code_admitted_by_policy_only", () => {
   }
 });
 
+it("refuses a classification rule keyed by a subdivision alias", () => {
+  const policy: AddressPolicyV1 = {
+    ...destinationPolicy, subdivisionAliases: { region: "XX-T" },
+    classificationRules: [{ key: "restricted", subdivisionCode: "region" }],
+  };
+  expect(validateV2({ ...destination, subdivisionCode: "region" }, policy))
+    .toMatchObject({ outcome: "refused", code: "address_policy_invalid", field: "policyRef" });
+});
+
+it.each([
+  { upperAscii: true, stripAsciiSpaces: false, alternatives: [[{ literal: "a" }, "digit"]] },
+  { upperAscii: false, stripAsciiSpaces: true, alternatives: [["digit", { literal: " " }, "digit"]] },
+  { upperAscii: false, stripAsciiSpaces: false, alternatives: [[{ literal: " " }, "digit"], ["digit", { literal: " " }]] },
+] satisfies AddressPolicyV1["postalRule"][])("refuses a postal policy with no reachable mask $alternatives", postalRule => {
+  expect(validateV2(destination, { ...destinationPolicy, postalRule }))
+    .toMatchObject({ outcome: "refused", code: "address_policy_invalid", field: "policyRef" });
+});
+
+it("keeps postal policies with a reachable alternative", () => {
+  const postalRule: AddressPolicyV1["postalRule"] = {
+    upperAscii: true, stripAsciiSpaces: false, alternatives: [[{ literal: "a" }, "digit"], ["digit", { literal: " " }, "digit"]],
+  };
+  expect(validateV2({ ...destination, postalCode: " 0 1 " }, { ...destinationPolicy, postalRule }))
+    .toMatchObject({ outcome: "valid", address: { postalCode: "0 1" } });
+});
+
+it.each([{ requiredFields: [] }, { requiredFields: ["subdivisionCode"] }] as const)("gives the same blank subdivision remedy with required fields $requiredFields", ({ requiredFields }) => {
+  const policy: AddressPolicyV1 = { ...destinationPolicy, requiredFields };
+  for (const subdivisionCode of ["", " ", "\t", "\u00a0"]) {
+    expect(validateV2({ ...destination, subdivisionCode }, policy)).toEqual({
+      outcome: "refused", code: "address_invalid_input", field: "subdivisionCode",
+      remedy: "Omit an empty subdivision, or supply one of the policy's subdivision codes.",
+    });
+  }
+  expect(validateV2({ ...destination, subdivisionCode: null }, policy))
+    .toMatchObject({ outcome: "refused", code: "address_invalid_input", field: "subdivisionCode" });
+  expect(validateV2({ ...destination, subdivisionCode: "XX-M" }, policy)).toMatchObject({ outcome: "valid" });
+  expect(validateV2(destination, policy)).toMatchObject(requiredFields.length === 0 ? { outcome: "valid" }
+    : { outcome: "refused", code: "address_subdivision_required", field: "subdivisionCode", remedy: expect.stringContaining("Enter a subdivision") });
+});
+
 it("refuses invalid destinations and diagnoses their cause without committing a policy result", () => {
   expect(validateV2(destination)).toMatchObject({ code: "address_policy_unavailable", field: "countryCode" });
   expect(validateV2(destination, { ...destinationPolicy, countryCode: "XB" })).toMatchObject({ code: "address_policy_unavailable", field: "countryCode" });

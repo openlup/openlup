@@ -493,14 +493,14 @@ Show offline: `show savedAddressValidation --json`.
 
 ## shipping.addressPolicy
 
-Define checkout destination address rules for each market and country, including required subdivision, postal format and delivery classifications.
+Define v2 checkout destination address rules for each market and country, including required subdivision, postal format and delivery classifications.
 Search terms include delivery destination, address details.
 
 - Owner **shipping** · kind **code** · runtime **read-only**
 - Default uses the documented behavior below.
 - Basis `neutral`.
 - The application owns the destination rules for its markets and delivery services.
-- When absent, versioned destination validation refuses without a matching host policy. Managed checkout and versioned saved addresses are unsupported.
+- When absent, versioned destination validation requires a matching host policy. Managed hosts support v1 checkout and saved addresses. Fresh v2 destination issuance requires a native writer. Use the v1 address book for saved addresses.
 
 Show offline: `show shipping.addressPolicy --json`.
 
