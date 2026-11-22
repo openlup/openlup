@@ -5,7 +5,7 @@ import type { CatalogHeadRef } from "./contracts/lifecycle.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
 import { catalogDocumentRevisionRefSchema } from "./foundationSchemas.js";
-import { GOVERNED_PRODUCT_FACTS_VERSION, type CatalogSkuRevisionRef } from "./publicationContracts.js";
+import { GOVERNED_PUBLICATION_VERSION, type CatalogSkuRevisionRef } from "./publicationContracts.js";
 import { canonicalCatalogPublicationJson, catalogPublishedProductSchema, catalogPublishedSkuSchema, publicationReadinessVerdict } from "./publicationCodec.js";
 import { CatalogPublicationError } from "./publicationError.js";
 import { assertCatalogPublicationGrossMass } from "./publicationValidation.js";
@@ -190,7 +190,8 @@ export async function readPostgresCatalogActivationReadiness(transactions: Pick<
       if (!primaryPresent) reasons.push("primary_sku_missing");
       if (!sku.logisticsRef) reasons.push("logistics_reference_missing");
       if (sku.status === "archived") reasons.push("sku_archived");
-      if (product.schemaVersion === GOVERNED_PRODUCT_FACTS_VERSION && (product.lifecycleState !== "active" || sku.lifecycleState !== "active"
+      // Defence in depth over the SQL rule that a non-active SKU has both sellable flags false.
+      if (product.schemaVersion === GOVERNED_PUBLICATION_VERSION && (product.lifecycleState !== "active" || sku.lifecycleState !== "active"
         || (!sku.sellableStandalone && !sku.sellableInSubscription))) reasons.push("catalog_lifecycle_fresh_sale_refused");
       if (!sku.identifiers.some(i => i.scheme === "gs1:gtin" && i.isPrimary && i.packagingLevel === "unit")) reasons.push("unit_gtin_missing");
       try { assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, definition); }

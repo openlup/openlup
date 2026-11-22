@@ -80,7 +80,7 @@ export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, cata
   catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
 export { catalogDraftPayloadV4Schema, catalogDraftCommandV4Schema, type CatalogDraftCommandV4,
   type CatalogLifecycleDraftPage } from "./lifecycleDraftSchemas.js";
-export type { CatalogDraftPayloadV4 } from "./publicationIntent.js";
+export type { CatalogDraftPayloadV4, PublicationDraftRecord } from "./publicationIntent.js";
 export type { CatalogLifecycleDraftStorePort } from "./draftPorts.js";
 export { createCatalogDraftHandlerV3, createCatalogDraftHandlerV4 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3, createPostgresCatalogDraftStoreV4 } from "./catalogDraftStore.js";

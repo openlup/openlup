@@ -597,15 +597,23 @@ BEGIN
  END IF;
  -- Core-S already runs this live variant at the deferred SKU event. Compare
  -- the final SKU, since a creation snapshot can precede the transaction's final facts.
+ -- Issue admission preserves the preceding roster and advances changed SKU
+ -- revisions by one. Under the writer fence, the latest revision issued at
+ -- or before the head is therefore its roster reference (or no row).
  IF p_live AND body->'schemaVersion'='3'::jsonb THEN
   IF NOT EXISTS (
     SELECT 1 FROM public.catalog_publication_heads h
     JOIN public.catalog_publications p ON (p.product_id,p.id)=(h.product_id,h.publication_id)
-    CROSS JOIN LATERAL jsonb_array_elements(p.canonical_state::jsonb->'skus') ref
-    JOIN public.catalog_sku_revisions r ON (r.product_id,r.sku_id,r.id)=(h.product_id,p_sku,(ref->>'revisionId')::uuid)
-    JOIN public.catalog_skus current_sku ON (current_sku.product_id,current_sku.id)=(r.product_id,r.sku_id)
-    WHERE h.product_id=p_product AND ref->'skuId'=to_jsonb(p_sku)
-      AND p.canonical_state::jsonb->'schemaVersion'='3'::jsonb
+    JOIN public.catalog_products current_product ON current_product.id=h.product_id
+    JOIN public.catalog_skus current_sku ON (current_sku.product_id,current_sku.id)=(h.product_id,p_sku)
+    CROSS JOIN LATERAL (
+      SELECT retained.full_facts FROM public.catalog_sku_revisions retained
+      JOIN public.catalog_publications issued ON (issued.product_id,issued.id)=(retained.product_id,retained.publication_id)
+      WHERE retained.sku_id=p_sku AND retained.product_id=h.product_id AND issued.revision<=p.revision
+      ORDER BY retained.revision DESC LIMIT 1
+    ) r
+    WHERE h.product_id=p_product
+      AND current_product.publication_facts->'schemaVersion'='3'::jsonb
       AND r.full_facts::jsonb=current_sku.publication_facts
       AND encode(current_sku.combination_digest,'hex')=current_sku.publication_facts->>'optionDigest'
       AND current_sku.status=current_sku.publication_facts->>'status'
@@ -1271,6 +1279,7 @@ BEGIN
   SELECT s.id,s.product_id,s.net_weight_g FROM public.catalog_skus s JOIN public.catalog_products p ON p.id=s.product_id
   JOIN public.catalog_publication_heads h ON h.product_id=p.id
   WHERE s.publication_facts->'memberships' @> admitted AND s.status='active' AND p.status='active'
+   -- Defence in depth over the SQL rule that a non-active SKU has both sellable flags false.
    AND (p.publication_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb OR p.publication_facts->>'lifecycleState'='active')
    AND (s.publication_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb OR s.publication_facts->>'lifecycleState'='active')
    AND ((p_mode IS DISTINCT FROM 'subscription' AND s.sellable_standalone) OR (p_mode IS DISTINCT FROM 'one_time' AND s.sellable_in_subscription))

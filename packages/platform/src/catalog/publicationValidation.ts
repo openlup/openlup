@@ -9,7 +9,7 @@ import type { CatalogDraftIssue, CatalogProductTypeDefinition, CatalogQuantity }
 import type { CatalogDraftPayloadV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
 import type { CatalogDraftClaimV3, CatalogDraftMediaClaimV3 } from "./contracts/draftV3.js";
 import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publicationContracts.js";
-import { CATALOG_PUBLICATION_LIMITS, GOVERNED_PRODUCT_FACTS_VERSION, GOVERNED_SKU_FACTS_VERSION } from "./publicationContracts.js";
+import { CATALOG_PUBLICATION_LIMITS, GOVERNED_PUBLICATION_VERSION } from "./publicationContracts.js";
 import { adopterIssue, CatalogPublicationError, publicationDiagnostic, publicationIssue, publicationRefuse,
   type EvaluationIssue, type Issue, type PlatformCode } from "./publicationError.js";
 import { assertNativeProductDocument, assertNativeProductReferences, assertNativeSkuNetWeight, assertPublicationRegistration, assertPublishedFacts, assertPublishedPresentation, assertPublishedSkuDocumentExclusion, catalogPublishedProductSchema, catalogPublishedSkuSchema, comparePublicationText, decodePublishedProduct, decodePublishedSku, publicationContent,
@@ -478,6 +478,10 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
   const issuesByPhase = { structural, activation: activationIssues };
   const position = { phase: "structural" as PublicationPhase, path: "product", subject: input.definition.key };
   const missing = (code: PlatformCode, path: string) => unavailable(publicationIssue(code, position.phase, path, position.subject));
+  const missingLifecycle = (path: string) => unavailable({
+    ...publicationIssue("catalog_lifecycle_evidence_unavailable", position.phase, path, position.subject),
+    detail: "Load the current publication evidence, including the product and SKU lifecycle states, and prepare the draft again.",
+  });
   const completed = { structural: false, activation: false };
   let knownHead: CatalogHeadRef | null | undefined;
   let activating = false;
@@ -662,8 +666,11 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     const states = governedState && lifecycleEvidenceSchema.safeParse(governedState).data;
     const governed = governedIntent || governedState !== undefined;
     const lifecycleAvailable = !requestedHead || Boolean(states && retainedState.skus.every(sku => states.skus[sku.code]));
-    if (governed && !lifecycleAvailable)
-      structural.push(missing("catalog_lifecycle_evidence_unavailable", "publication"));
+    if (governed && !lifecycleAvailable) {
+      const legacyHead = governedState === undefined && head?.success && head.data
+        && recordedProduct?.success && recordedProduct.data && recordedProduct.data.schemaVersion === undefined;
+      structural.push(legacyHead ? missing("catalog_lifecycle_evidence_unavailable", "publication") : missingLifecycle("publication"));
+    }
     if (!governedIntent && states && lifecycleAvailable) publicationRefuse("catalog_lifecycle_raw_status_fenced");
     const priceOperations = payload.skus.flatMap(sku => sku.priceOperations ?? []);
     async function checkPrices(draft: CatalogDraftPayloadV2 | undefined) {
@@ -972,7 +979,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       const row = "skuCode" in operation ? knownSku(operation.skuCode) : knownProduct();
       const before = "skuCode" in operation ? skuStates.get(operation.skuCode)?.state : productState;
       if (!before) {
-        structural.push(missing("catalog_lifecycle_evidence_unavailable", "publication.operations"));
+        structural.push(missingLifecycle("publication.operations"));
         return;
       }
       need(before === operation.expectedState, "catalog_lifecycle_state_conflict");
@@ -1114,7 +1121,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           if (on && governed) {
             const state = skuStates.get(sku.code)?.state;
             if (productState === undefined || state === undefined) {
-              structural.push(missing("catalog_lifecycle_evidence_unavailable", position.path));
+              structural.push(missingLifecycle(position.path));
               continue;
             }
             if (productState !== "active" || state !== "active") {
@@ -1234,7 +1241,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           "catalog_publication_v3_compile_derived_facts_mismatch");
         if (result && governed && (sku.sellableStandalone || sku.sellableInSubscription)) {
           const state = skuStates.get(sku.code)?.state;
-          if (productState === undefined || state === undefined) structural.push(missing("catalog_lifecycle_evidence_unavailable", position.path));
+          if (productState === undefined || state === undefined) structural.push(missingLifecycle(position.path));
           else need(productState === "active" && state === "active", "catalog_lifecycle_fresh_sale_refused");
         }
         const key = combination(sku);
@@ -1254,7 +1261,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       need((!promotions.product || result.status === "active") && promotions.skus.every(code => skus.get(code)?.status === "active"),
         "catalog_publication_activation_effect_missing");
       if (governed && productState) Object.assign(result, {
-        schemaVersion: GOVERNED_PRODUCT_FACTS_VERSION, lifecycleState: productState, definitionDigest: input.installedDefinitionDigest,
+        schemaVersion: GOVERNED_PUBLICATION_VERSION, lifecycleState: productState, definitionDigest: input.installedDefinitionDigest,
       });
       const sorted = [...skus.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
       for (const sku of sorted) {
@@ -1265,7 +1272,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         if (governed && state) {
           const optionDigest = combination(sku);
           need(before?.optionDigest === undefined || before.optionDigest === optionDigest, "sku_identity_change_requires_new_sku");
-          Object.assign(sku, { schemaVersion: GOVERNED_SKU_FACTS_VERSION, lifecycleState: state.state, optionDigest });
+          Object.assign(sku, { schemaVersion: GOVERNED_PUBLICATION_VERSION, lifecycleState: state.state, optionDigest });
         }
         sku.source = before && equal({ ...sku, source: before.source }, before) ? before.source : claim;
         const finalSku = decodePublishedSku(sku, "skus", sku.code);

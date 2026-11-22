@@ -521,6 +521,7 @@ const cases: Case[] = [
   { id: "an incomplete authoritative roster is unavailable", fixture: "revision", arrange: data => {
     withdrawnDraft(data); data.evidence.lifecycle!.skus = {};
   }, governed: governedDraft, expected: reason("catalog_lifecycle_evidence_unavailable"), outcome: "unknown",
+  message: "Load the current publication evidence",
   diagnostic: { phase: "structural", path: "publication", subject: "example:article" }, routeCalls: [1, 1, 1] },
   { id: "a governed withdrawal preserves retained content and issues changed lifecycle facts", fixture: "revision", governed: withdraw,
     rulesAsset: productRefusal, preserve: true, routeCalls: [0, 0, 0] },

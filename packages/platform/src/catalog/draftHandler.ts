@@ -135,20 +135,20 @@ function draftHandler<Context, Record extends PublicationDraftRecord, Page exten
 
 /** Existing v1 composition and wire admission stay unchanged. */
 export function createCatalogDraftHandler<Context>(deps: CatalogDraftHandlerDeps<Context>) {
-  return draftHandler(deps, { page: catalogDraftPageSchema, command: catalogDraftCommandSchema, record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema });
+  return draftHandler<Context, CatalogDraftRecord, CatalogDraftPage>(deps, { page: catalogDraftPageSchema, command: catalogDraftCommandSchema, record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema });
 }
 /** Explicit opt-in v1/v2 reader and versioned command admission; no binding is installed.
  * @experimental
  */
 export function createCatalogDraftHandlerV2<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogDraftStoredRecord>) {
-  return draftHandler(deps, { page: catalogDraftPageSchema, command: catalogDraftStoredCommandSchema, record: catalogDraftStoredRecordSchema, result: catalogDraftStoredApplyResultSchema });
+  return draftHandler<Context, CatalogDraftStoredRecord, CatalogDraftPage>(deps, { page: catalogDraftPageSchema, command: catalogDraftStoredCommandSchema, record: catalogDraftStoredRecordSchema, result: catalogDraftStoredApplyResultSchema });
 }
 
 /** Opt-in publication inputs, with the same draft authorization and receipt-first replay.
  * @experimental
  */
 export function createCatalogDraftHandlerV3<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogDraftPublicationStoredRecord>) {
-  return draftHandler(deps, { page: catalogDraftPageSchema, command: catalogDraftPublicationStoredCommandSchema, record: catalogDraftPublicationStoredRecordSchema, result: catalogDraftPublicationStoredApplyResultSchema });
+  return draftHandler<Context, CatalogDraftPublicationStoredRecord, CatalogDraftPage>(deps, { page: catalogDraftPageSchema, command: catalogDraftPublicationStoredCommandSchema, record: catalogDraftPublicationStoredRecordSchema, result: catalogDraftPublicationStoredApplyResultSchema });
 }
 
 /** Opt in to governed drafts.

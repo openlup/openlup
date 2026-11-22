@@ -3168,19 +3168,7 @@ export declare function createCatalogDraftHandler<Context>(deps: CatalogDraftHan
     }>;
     list(input: unknown, context: Context): Promise<CatalogDraftRefusal | {
         outcome: "listed";
-        page: {
-            items: {
-                draftId: string;
-                productId: string;
-                revision: number;
-                status: "open" | "abandoned";
-                commandKey: string;
-                fingerprint: string;
-                actorId: string;
-                createdAt: string;
-            }[];
-            nextCursor: string | null;
-        };
+        page: CatalogDraftPage;
     }>;
 };
 /** Explicit opt-in v1/v2 reader and versioned command admission; no binding is installed.
@@ -3200,19 +3188,7 @@ export declare function createCatalogDraftHandlerV2<Context>(deps: CatalogDraftH
     }>;
     list(input: unknown, context: Context): Promise<CatalogDraftRefusal | {
         outcome: "listed";
-        page: {
-            items: {
-                draftId: string;
-                productId: string;
-                revision: number;
-                status: "open" | "abandoned";
-                commandKey: string;
-                fingerprint: string;
-                actorId: string;
-                createdAt: string;
-            }[];
-            nextCursor: string | null;
-        };
+        page: CatalogDraftPage;
     }>;
 };
 /** Opt-in publication inputs, with the same draft authorization and receipt-first replay.
@@ -3232,19 +3208,7 @@ export declare function createCatalogDraftHandlerV3<Context>(deps: CatalogDraftH
     }>;
     list(input: unknown, context: Context): Promise<CatalogDraftRefusal | {
         outcome: "listed";
-        page: {
-            items: {
-                draftId: string;
-                productId: string;
-                revision: number;
-                status: "open" | "abandoned";
-                commandKey: string;
-                fingerprint: string;
-                actorId: string;
-                createdAt: string;
-            }[];
-            nextCursor: string | null;
-        };
+        page: CatalogDraftPage;
     }>;
 };
 /** Opt in to governed drafts.
@@ -4206,7 +4170,7 @@ export { createCatalogDraftHandlerV2 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
 export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, catalogDraftPublicationOperationV3Schema, catalogDraftPublicationInputsV3Schema, catalogDraftPayloadV3Schema, catalogDraftCommandV3Schema, catalogDraftPublicationStoredPayloadSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema, catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
 export { catalogDraftPayloadV4Schema, catalogDraftCommandV4Schema, type CatalogDraftCommandV4, type CatalogLifecycleDraftPage } from "./lifecycleDraftSchemas.js";
-export type { CatalogDraftPayloadV4 } from "./publicationIntent.js";
+export type { CatalogDraftPayloadV4, PublicationDraftRecord } from "./publicationIntent.js";
 export type { CatalogLifecycleDraftStorePort } from "./draftPorts.js";
 export { createCatalogDraftHandlerV3, createCatalogDraftHandlerV4 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3, createPostgresCatalogDraftStoreV4 } from "./catalogDraftStore.js";
@@ -4828,8 +4792,7 @@ import type { CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./contrac
 import type { RulesIdentifier, RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
 import type { CatalogHeadRef, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
-export declare const GOVERNED_PRODUCT_FACTS_VERSION = 3;
-export declare const GOVERNED_SKU_FACTS_VERSION = 3;
+export declare const GOVERNED_PUBLICATION_VERSION = 3;
 /** @experimental */
 export declare const CATALOG_PUBLICATION_LIMITS: {
     readonly skuBytes: 2097152;
@@ -4848,14 +4811,14 @@ export interface CatalogPublishedProduct extends RulesProduct {
     document: CatalogDocumentRevisionRef | null;
     source: CatalogDraftClaimV3;
     content: CatalogPublishedContent;
-    schemaVersion?: typeof GOVERNED_PRODUCT_FACTS_VERSION;
+    schemaVersion?: typeof GOVERNED_PUBLICATION_VERSION;
     lifecycleState?: PublicationLifecycleState;
     definitionDigest?: string;
 }
 /** @internal */
 export interface CatalogPublishedSku extends RulesSku {
     source: CatalogDraftClaimV3;
-    schemaVersion?: typeof GOVERNED_SKU_FACTS_VERSION;
+    schemaVersion?: typeof GOVERNED_PUBLICATION_VERSION;
     lifecycleState?: PublicationLifecycleState;
     optionDigest?: string;
 }
@@ -4912,25 +4875,25 @@ export interface CatalogPublicationFailure {
 }
 /** @experimental */
 export interface CatalogPublishedProductV3 extends CatalogPublishedProduct {
-    schemaVersion: typeof GOVERNED_PRODUCT_FACTS_VERSION;
+    schemaVersion: typeof GOVERNED_PUBLICATION_VERSION;
     lifecycleState: PublicationLifecycleState;
     definitionDigest: string;
 }
 /** @experimental */
 export interface CatalogPublishedSkuV3 extends CatalogPublishedSku {
-    schemaVersion: typeof GOVERNED_SKU_FACTS_VERSION;
+    schemaVersion: typeof GOVERNED_PUBLICATION_VERSION;
     lifecycleState: PublicationLifecycleState;
     optionDigest: string;
 }
 /** @experimental */
 export interface CatalogPublicationManifestV3 {
-    schemaVersion: 3;
+    schemaVersion: typeof GOVERNED_PUBLICATION_VERSION;
     product: CatalogPublishedProductV3;
     skus: CatalogSkuRevisionRef[];
 }
 /** @experimental */
 export interface CatalogFullPublicationV3 extends Omit<CatalogFullPublicationV2, "schemaVersion" | "product" | "items"> {
-    schemaVersion: 3;
+    schemaVersion: typeof GOVERNED_PUBLICATION_VERSION;
     product: CatalogPublishedProductV3;
     items: {
         reference: CatalogSkuRevisionRef;
@@ -4939,7 +4902,7 @@ export interface CatalogFullPublicationV3 extends Omit<CatalogFullPublicationV2,
 }
 /** @experimental */
 export interface CatalogPublicationReceiptV3 extends Omit<CatalogPublicationReceiptV2, "schemaVersion" | "changes"> {
-    schemaVersion: 3;
+    schemaVersion: typeof GOVERNED_PUBLICATION_VERSION;
     changes: readonly (Omit<CatalogPublicationReceiptV2["changes"][number], "state"> & {
         state: PublicationLifecycleState;
     })[];
@@ -4957,7 +4920,7 @@ declare const priceRefusalCodes: readonly ["command_fingerprint_invalid", "comma
 export declare const publicationPriceRefusalReason: z.ZodEnum<{
     [Code in typeof priceRefusalCodes[number]]: Code;
 }>;
-declare const publicationCodes: readonly ["activation_not_assessed", "activation_unknown", "catalog_action_conflict", "catalog_archive_barrier_unavailable", "catalog_lifecycle_child_effects_mismatch", "catalog_lifecycle_evidence_unavailable", "catalog_lifecycle_fresh_sale_refused", "catalog_lifecycle_last_active_child", "catalog_lifecycle_raw_status_fenced", "catalog_lifecycle_state_conflict", "catalog_lifecycle_transition_refused", "catalog_lifecycle_withdrawal_overlay_refused", "catalog_publication_absent", "catalog_publication_use_readback_v3", "catalog_publication_activation_effect_missing", "catalog_publication_approval_missing", "catalog_publication_approval_state_valid", "catalog_publication_approval_wrong", "catalog_publication_attributes_invalid", "catalog_publication_authored_amounts_invalid", "catalog_publication_axes_invalid", "catalog_publication_busy", "catalog_publication_candidate_already_issued", "catalog_publication_candidate_invalid", "catalog_publication_command_key_reused", "catalog_publication_committed_at_valid", "catalog_publication_content_invalid", "catalog_publication_cursor_invalid", "catalog_publication_decided_at_valid", "catalog_publication_derived_source_mismatch", "catalog_publication_document_bytes_unavailable", "catalog_publication_document_invalid", "catalog_publication_document_required", "catalog_publication_document_revision_sequence", "catalog_publication_document_source_mismatch", "catalog_publication_document_source_missing", "catalog_publication_document_text_copied", "catalog_publication_draft_advanced", "catalog_publication_eligibility_source_mismatch", "catalog_publication_envelope_too_large", "catalog_publication_facts_invalid", "catalog_publication_gross_below_net", "catalog_publication_gross_mass_invalid", "catalog_publication_gross_mass_required", "catalog_publication_gtin_conflict", "catalog_publication_gtin_invalid", "catalog_publication_head_invalid", "catalog_publication_history_item_too_large", "catalog_publication_identifier_blank", "catalog_publication_identifier_conflict", "catalog_publication_identifier_effect_missing", "catalog_publication_identifier_key_reused", "catalog_publication_identifier_primary_invalid", "catalog_publication_identifier_requires_created_sku", "catalog_publication_identifier_source_mismatch", "catalog_publication_identity_conflict", "catalog_publication_integral_grams_required", "catalog_publication_issue_sealed", "catalog_publication_lifecycle_assertion_changed", "catalog_publication_lineage_invalid", "catalog_publication_lineage_unknown", "catalog_publication_live_drift", "catalog_publication_activation_membership_required", "catalog_publication_logistics_source_mismatch", "catalog_publication_manifest_invalid", "catalog_publication_mass_required_until_mc5", "catalog_publication_media_evidence_mismatch", "catalog_publication_media_readiness_unproven", "catalog_publication_media_validation_unavailable", "catalog_publication_membership_change_not_allowed", "catalog_publication_membership_effect_missing", "catalog_publication_membership_source_mismatch", "catalog_publication_metadata_effect_missing", "catalog_publication_net_weight_unsupported", "catalog_publication_operation_invalid", "catalog_publication_operation_source_ambiguous", "catalog_publication_operation_source_mismatch", "catalog_publication_operation_source_missing", "catalog_publication_page_invalid", "catalog_publication_pointer_capability_unconsumed", "catalog_publication_post_state_changed", "catalog_publication_presentation_effect_missing", "catalog_publication_presentation_invalid", "catalog_publication_presentation_source_mismatch", "catalog_publication_presentation_unavailable", "catalog_publication_price_changed", "catalog_publication_price_key_reused", "catalog_publication_price_readiness", "catalog_publication_price_unavailable", "catalog_publication_primary_sku_required", "catalog_publication_product_identity_conflict", "catalog_publication_product_name_source_mismatch", "catalog_publication_query_invalid", "catalog_publication_read_invalid", "catalog_publication_readback_item_too_large", "catalog_publication_receipt_input_invalid", "catalog_publication_receipt_invalid", "catalog_publication_receipt_unsupported", "catalog_publication_record_immutable", "catalog_publication_reserved_carrier", "catalog_publication_roster_limit", "catalog_publication_route_conflict", "catalog_publication_rule_failed", "catalog_publication_rules_binding_mismatch", "catalog_publication_rules_digest_mismatch", "catalog_publication_rules_module_invalid", "catalog_publication_scope_expansion", "catalog_publication_sku_effect_missing", "catalog_publication_sku_identity_changed", "catalog_publication_sku_price_not_ready", "catalog_publication_sku_price_shape_invalid", "catalog_publication_sku_revision_invalid", "catalog_publication_sku_title_invalid", "catalog_publication_sku_too_large", "catalog_publication_source_invalid", "catalog_publication_source_mismatch", "catalog_publication_tax_class_unavailable", "catalog_publication_v3_activation_readiness_failed", "catalog_publication_v3_active_primary_required", "catalog_publication_v3_compile_archive_refused", "catalog_publication_v3_compile_change_noop", "catalog_publication_v3_compile_derived_facts_mismatch", "catalog_publication_v3_compile_document_absent", "catalog_publication_v3_compile_document_conflict", "catalog_publication_v3_compile_document_stale", "catalog_publication_v3_compile_identifier_conflict", "catalog_publication_v3_compile_primary_foreign", "catalog_publication_v3_compile_primary_immutable", "catalog_publication_v3_compile_product_absent", "catalog_publication_v3_compile_product_conflict", "catalog_publication_v3_compile_product_incomplete", "catalog_publication_v3_compile_sku_absent", "catalog_publication_v3_compile_sku_archived", "catalog_publication_v3_compile_sku_conflict", "catalog_publication_v3_document_digest_mismatch", "catalog_publication_v3_document_invalid", "catalog_publication_v3_document_not_canonical", "catalog_publication_v3_document_reference_stale", "catalog_publication_v3_presentation_required", "catalog_publication_v3_structural_readiness_failed", "catalog_publication_wire_invalid", "catalog_publications_canonical_state_check", "catalog_sku_revisions_full_facts_check", "channel_identity_not_assessed", "commerce_product_slug_unsupported", "commercial_activation_not_assessed", "content_missing", "dimension_not_declared", "dimension_not_installed", "current_primary_mismatch", "document_reference_missing", "duplicate_dimension", "duplicate_option_combination", "duplicate_sku_code", "duplicate_sku_id", "duplicate_trade_identifier", "foreign_product_reference", "gross_mass_invalid", "gross_mass_missing", "intent_sku_absent", "logistics_reference_missing", "media_readiness_mismatch", "media_readiness_unknown", "media_reference_missing", "net_content_invalid", "net_content_missing", "net_content_option_mismatch", "option_quantity_invalid", "option_type_invalid", "option_value_invalid", "price_reference_missing", "price_validation_unavailable", "primary_sku_missing", "primary_sku_not_in_product", "publication_evidence_unavailable", "publication_head_unavailable", "publication_preparation_unavailable", "publisher_not_authorized", "retained_read_not_authorized", "retained_revision_unavailable", "retained_source_mismatch", "sku_code_missing", "sku_missing", "slug_missing", "trade_identifier_invalid", "trade_identifier_quantity_invalid", "trade_identifier_scheme_unsupported", "type_not_installed", "unit_trade_identifier_missing"];
+declare const publicationCodes: readonly ["activation_not_assessed", "activation_unknown", "catalog_action_conflict", "catalog_archive_barrier_unavailable", "catalog_lifecycle_child_effects_mismatch", "catalog_lifecycle_evidence_unavailable", "catalog_lifecycle_fresh_sale_refused", "catalog_lifecycle_last_active_child", "catalog_lifecycle_raw_status_fenced", "catalog_lifecycle_state_conflict", "catalog_lifecycle_transition_refused", "catalog_lifecycle_withdrawal_overlay_refused", "catalog_publication_absent", "catalog_publication_use_readback_v2", "catalog_publication_use_readback_v3", "catalog_publication_activation_effect_missing", "catalog_publication_approval_missing", "catalog_publication_approval_state_valid", "catalog_publication_approval_wrong", "catalog_publication_attributes_invalid", "catalog_publication_authored_amounts_invalid", "catalog_publication_axes_invalid", "catalog_publication_busy", "catalog_publication_candidate_already_issued", "catalog_publication_candidate_invalid", "catalog_publication_command_key_reused", "catalog_publication_committed_at_valid", "catalog_publication_content_invalid", "catalog_publication_cursor_invalid", "catalog_publication_decided_at_valid", "catalog_publication_derived_source_mismatch", "catalog_publication_document_bytes_unavailable", "catalog_publication_document_invalid", "catalog_publication_document_required", "catalog_publication_document_revision_sequence", "catalog_publication_document_source_mismatch", "catalog_publication_document_source_missing", "catalog_publication_document_text_copied", "catalog_publication_draft_advanced", "catalog_publication_eligibility_source_mismatch", "catalog_publication_envelope_too_large", "catalog_publication_facts_invalid", "catalog_publication_gross_below_net", "catalog_publication_gross_mass_invalid", "catalog_publication_gross_mass_required", "catalog_publication_gtin_conflict", "catalog_publication_gtin_invalid", "catalog_publication_head_invalid", "catalog_publication_history_item_too_large", "catalog_publication_identifier_blank", "catalog_publication_identifier_conflict", "catalog_publication_identifier_effect_missing", "catalog_publication_identifier_key_reused", "catalog_publication_identifier_primary_invalid", "catalog_publication_identifier_requires_created_sku", "catalog_publication_identifier_source_mismatch", "catalog_publication_identity_conflict", "catalog_publication_integral_grams_required", "catalog_publication_issue_sealed", "catalog_publication_lifecycle_assertion_changed", "catalog_publication_lineage_invalid", "catalog_publication_lineage_unknown", "catalog_publication_live_drift", "catalog_publication_activation_membership_required", "catalog_publication_logistics_source_mismatch", "catalog_publication_manifest_invalid", "catalog_publication_mass_required_until_mc5", "catalog_publication_media_evidence_mismatch", "catalog_publication_media_readiness_unproven", "catalog_publication_media_validation_unavailable", "catalog_publication_membership_change_not_allowed", "catalog_publication_membership_effect_missing", "catalog_publication_membership_source_mismatch", "catalog_publication_metadata_effect_missing", "catalog_publication_net_weight_unsupported", "catalog_publication_operation_invalid", "catalog_publication_operation_source_ambiguous", "catalog_publication_operation_source_mismatch", "catalog_publication_operation_source_missing", "catalog_publication_page_invalid", "catalog_publication_pointer_capability_unconsumed", "catalog_publication_post_state_changed", "catalog_publication_presentation_effect_missing", "catalog_publication_presentation_invalid", "catalog_publication_presentation_source_mismatch", "catalog_publication_presentation_unavailable", "catalog_publication_price_changed", "catalog_publication_price_key_reused", "catalog_publication_price_readiness", "catalog_publication_price_unavailable", "catalog_publication_primary_sku_required", "catalog_publication_product_identity_conflict", "catalog_publication_product_name_source_mismatch", "catalog_publication_query_invalid", "catalog_publication_read_invalid", "catalog_publication_readback_item_too_large", "catalog_publication_receipt_input_invalid", "catalog_publication_receipt_invalid", "catalog_publication_receipt_unsupported", "catalog_publication_record_immutable", "catalog_publication_reserved_carrier", "catalog_publication_roster_limit", "catalog_publication_route_conflict", "catalog_publication_rule_failed", "catalog_publication_rules_binding_mismatch", "catalog_publication_rules_digest_mismatch", "catalog_publication_rules_module_invalid", "catalog_publication_scope_expansion", "catalog_publication_sku_effect_missing", "catalog_publication_sku_identity_changed", "catalog_publication_sku_price_not_ready", "catalog_publication_sku_price_shape_invalid", "catalog_publication_sku_revision_invalid", "catalog_publication_sku_title_invalid", "catalog_publication_sku_too_large", "catalog_publication_source_invalid", "catalog_publication_source_mismatch", "catalog_publication_tax_class_unavailable", "catalog_publication_v3_activation_readiness_failed", "catalog_publication_v3_active_primary_required", "catalog_publication_v3_compile_archive_refused", "catalog_publication_v3_compile_change_noop", "catalog_publication_v3_compile_derived_facts_mismatch", "catalog_publication_v3_compile_document_absent", "catalog_publication_v3_compile_document_conflict", "catalog_publication_v3_compile_document_stale", "catalog_publication_v3_compile_identifier_conflict", "catalog_publication_v3_compile_primary_foreign", "catalog_publication_v3_compile_primary_immutable", "catalog_publication_v3_compile_product_absent", "catalog_publication_v3_compile_product_conflict", "catalog_publication_v3_compile_product_incomplete", "catalog_publication_v3_compile_sku_absent", "catalog_publication_v3_compile_sku_archived", "catalog_publication_v3_compile_sku_conflict", "catalog_publication_v3_document_digest_mismatch", "catalog_publication_v3_document_invalid", "catalog_publication_v3_document_not_canonical", "catalog_publication_v3_document_reference_stale", "catalog_publication_v3_presentation_required", "catalog_publication_v3_structural_readiness_failed", "catalog_publication_wire_invalid", "catalog_publications_canonical_state_check", "catalog_sku_revisions_full_facts_check", "channel_identity_not_assessed", "commerce_product_slug_unsupported", "commercial_activation_not_assessed", "content_missing", "dimension_not_declared", "dimension_not_installed", "current_primary_mismatch", "document_reference_missing", "duplicate_dimension", "duplicate_option_combination", "duplicate_sku_code", "duplicate_sku_id", "duplicate_trade_identifier", "foreign_product_reference", "gross_mass_invalid", "gross_mass_missing", "intent_sku_absent", "logistics_reference_missing", "media_readiness_mismatch", "media_readiness_unknown", "media_reference_missing", "net_content_invalid", "net_content_missing", "net_content_option_mismatch", "option_quantity_invalid", "option_type_invalid", "option_value_invalid", "price_reference_missing", "price_validation_unavailable", "primary_sku_missing", "primary_sku_not_in_product", "publication_evidence_unavailable", "publication_head_unavailable", "publication_preparation_unavailable", "publisher_not_authorized", "retained_read_not_authorized", "retained_revision_unavailable", "retained_source_mismatch", "sku_code_missing", "sku_missing", "slug_missing", "trade_identifier_invalid", "trade_identifier_quantity_invalid", "trade_identifier_scheme_unsupported", "type_not_installed", "unit_trade_identifier_missing"];
 /** @internal The platform-owned refusal vocabulary. */
 type PlatformCode = typeof publicationCodes[number] | CatalogConformanceCode | CatalogCandidateError["code"] | z.infer<typeof publicationPriceRefusalReason>;
 export type { PlatformCode };

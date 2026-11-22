@@ -657,6 +657,8 @@ describe("publication activation prices", () => {
       return { publish, result, head: result.receipt.head };
     };
     const initial = await issue(1, null);
+    expect(await reads.readbackV2(initial.head)).toMatchObject({ outcome: "unsupported",
+      reason: "catalog_publication_use_readback_v3", message: "Read this governed issue with readbackV3." });
     const entry = await seedBasePrice(data.skuId);
     const membership = { skuCode: data.code, admitted: true, offerVersion: "example:governed" };
     const enable = { op: "set_eligibility", skuCode: data.code, sellableStandalone: true, sellableInSubscription: true } as const;
@@ -1151,12 +1153,18 @@ it("requires explicit adoption before a legacy issued head can carry v4 effects"
   expect(await api.execute(initial.approve, who)).toMatchObject({ outcome: "committed" });
   const issued = await api.execute(initial.publish, who);
   if (issued.outcome !== "committed" || !("head" in issued.receipt)) throw Error(JSON.stringify(issued));
+  const reads = createPostgresCatalogPublicationReads({ transactions: { run: work => transaction(pool, work) },
+    authorizeHuman: async () => ({ ok: true, userId: actor, role: "admin", isMachineActor: false }) });
+  expect(await reads.readbackV3(issued.receipt.head)).toMatchObject({ outcome: "unsupported",
+    reason: "catalog_publication_use_readback_v2", message: "Read this legacy issue with readbackV2." });
   const payload: CatalogDraftPayloadV4 = { ...structuredClone(data.payload), schemaVersion: 4 };
   payload.product.sharedContent.catalogAction = "revise";
   payload.publication.operations = [{ op: "set_product_lifecycle", productSlug: data.slug, expectedState: "draft", state: "active", children: [] }];
   await save(data, 2, payload);
   const preview = await api.prepareCandidate({ draftId: data.draftId, draftRevision: 2, expectedHead: issued.receipt.head }, who);
-  expect(preview).toMatchObject({ issues: expect.arrayContaining([expect.objectContaining({ code: "catalog_lifecycle_evidence_unavailable" })]) });
+  expect(preview).toMatchObject({ issues: expect.arrayContaining([expect.objectContaining({
+    code: "catalog_lifecycle_evidence_unavailable", message: expect.stringContaining("Keep revising it with schema-3 drafts"),
+  })]) });
   expect(preview).not.toHaveProperty("preparation.postStateDigest");
   expect(await api.execute(initial.publish, who)).toEqual({ ...issued, outcome: "replayed" });
 });

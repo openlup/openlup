@@ -1,7 +1,7 @@
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogHeadRef, CatalogPublishCommand } from "./contracts/lifecycle.js";
 import type { CatalogProductTypeDefinition } from "./contracts/productTypes.js";
-import { GOVERNED_PRODUCT_FACTS_VERSION, GOVERNED_SKU_FACTS_VERSION, type CatalogPublishedSku } from "./publicationContracts.js";
+import { GOVERNED_PUBLICATION_VERSION, type CatalogPublishedSku } from "./publicationContracts.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import { validateCatalogAttributes } from "./attributeValidation.js";
 import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
@@ -147,7 +147,7 @@ export async function readPreviousPublication(db: PgQueryExecutor, productId: st
     ) origin ON true WHERE d.product_id=$1 ORDER BY d.revision_no`, [productId]);
   const evidence: Omit<CatalogPublicationEvidence, "drafts"> = {
     head, product: manifest?.product ?? null, skus,
-    ...(manifest?.schemaVersion === 3 ? { lifecycle: {
+    ...(manifest?.schemaVersion === GOVERNED_PUBLICATION_VERSION ? { lifecycle: {
       product: manifest.product.lifecycleState,
       skus: Object.fromEntries(skus.map(sku => [sku.code, { state: sku.lifecycleState! }])),
     } } : {}),
@@ -437,9 +437,9 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     } else if (operation.op === "create_sku") {
       const sku = plan.creations.get(index);
       requireProjection(sku, "catalog_publication_sku_revision_invalid");
-      if (product.schemaVersion === GOVERNED_PRODUCT_FACTS_VERSION) {
+      if (product.schemaVersion === GOVERNED_PUBLICATION_VERSION) {
         const final = skus.find(row => row.id === sku.id)!;
-        Object.assign(sku, { schemaVersion: GOVERNED_SKU_FACTS_VERSION, lifecycleState: "draft", optionDigest: final.optionDigest });
+        Object.assign(sku, { schemaVersion: GOVERNED_PUBLICATION_VERSION, lifecycleState: "draft", optionDigest: final.optionDigest });
       }
       await storeSku(db, sku, definition, product.axes, true);
     }

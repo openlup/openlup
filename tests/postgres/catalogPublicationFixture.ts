@@ -285,7 +285,12 @@ export async function insertGraph(db: PoolClient, value: Graph, options: {
   const { productId, skuId, issueId, revision, before, head } = value;
   const extras = Array.from({ length: options.extraSkuCount ?? 0 }, () => {
     const skuId = randomUUID();
-    return { ...value, skuId, skuRevisionId: randomUUID(), revision: 1, facts: { ...value.facts, id: skuId, code: options.maxCodes ? skuId.padEnd(160, "x") : `sku-${skuId}` } };
+    const facts = { ...value.facts, id: skuId, code: options.maxCodes ? skuId.padEnd(160, "x") : `sku-${skuId}` };
+    if (facts.lifecycleState !== undefined) {
+      facts.options = { finish: { kind: "choice", value: skuId } };
+      facts.optionDigest = hash(json(facts.options));
+    }
+    return { ...value, skuId, skuRevisionId: randomUUID(), revision: 1, facts };
   });
   const issued = (options.inherit ? [] : options.onlyNew ? extras : [{ ...value, revision: options.skuRevision ?? revision }, ...extras]).sort((left, right) => left.skuId.localeCompare(right.skuId));
   const factBytes = issued.map(sku => {

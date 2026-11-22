@@ -9225,7 +9225,7 @@
     },
     {
       "path": "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql",
-      "sha256": "2e2db165a85644815632a917401b5b264d76ac24a764ea9f6e8be368f39be0da",
+      "sha256": "4ec416d9edbf838a6843d12763345df965eebf29851b0543a3ffc294bc9e1c83",
       "functions": [
         {
           "signature": "public.catalog_draft_apply(text,text,text)",
@@ -9245,7 +9245,7 @@
         {
           "signature": "public.catalog_publication_sku_projection(uuid,uuid,text,jsonb,boolean)",
           "beforeSha256": "b73afa7b2aaed3fe2f615f0276c5c653e519ad798225be6c37d1df9b135cd9d5",
-          "afterSha256": "35daf7b9664fd51181d6ce98d06af06bc6bc7eba587ec3a76c06db2a6dbbc79a"
+          "afterSha256": "553c621835cc9c8b52f651cbc575aa3607defbaff7b3d115bfe20ac8e03959b6"
         },
         {
           "signature": "public.catalog_publication_sku_facts(public.catalog_sku_revisions)",
@@ -9285,7 +9285,7 @@
         {
           "signature": "public.catalog_offer_memberships_page(text,jsonb,integer,text)",
           "beforeSha256": "4a43e9a8e2bca28d0d619a24aefcce70c89ecee49b0d0e4db5e3c4f7b89836a3",
-          "afterSha256": "7fc7241dff9ffb898ca7dc18aae8657e3c2986d259688bcc5a9e38d078b7955c"
+          "afterSha256": "e7748ddf876c326549ff255120f7fda765a6fdb4a95cae938a3f7e42f2135ed9"
         },
         {
           "signature": "public.catalog_publication_readiness_snapshot(text[],text,timestamptz)",

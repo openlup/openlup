@@ -5,3 +5,4 @@ Migration: Install the complete native migration catalogue before composing the
 v4 draft handler and store. Keep existing v3 compositions for previously
 issued lineages. Consumers of the experimental publication result can branch on
 `schemaVersion` to recover original v2 or governed v3 receipts.
+Hosts should stop sending the removed experimental `CatalogPublicationEvidence.lifecycle.skus[].demandPolicyRef` field.

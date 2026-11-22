@@ -8,7 +8,7 @@ import { isValidGtin, catalogDocumentRevisionRefSchema } from "./foundationSchem
 import { catalogProductTypeRefSchema, catalogQuantitySchema, catalogOptionValueSchema, catalogDimensionKeySchema } from "./productTypeSchemas.js";
 import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2, CatalogPublicationReceiptV2, CatalogPublicationReceiptV3, CatalogPublicationManifestV3 } from "./publicationContracts.js";
 import type { CatalogDraftSharedContentV3 } from "./contracts/draftV3.js";
-import { CATALOG_PUBLICATION_LIMITS, GOVERNED_PRODUCT_FACTS_VERSION, GOVERNED_SKU_FACTS_VERSION } from "./publicationContracts.js";
+import { CATALOG_PUBLICATION_LIMITS, GOVERNED_PUBLICATION_VERSION } from "./publicationContracts.js";
 import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationIssue, publicationReadFailure, publicationRefuse, publicationRemedy, type Issue, type PlatformCode, type PlatformIssue } from "./publicationError.js";
 import { assertPublishedSkuIdentity } from "./publicationSkuIdentity.js";
 
@@ -153,7 +153,7 @@ const skuShape = z.object({
   memberships: z.array(z.object({ offerVersion: ref, admitted: z.boolean() }).strict()), source: claimSchema,
 }).strict();
 const governedSkuShape = skuShape.extend({
-  schemaVersion: z.literal(GOVERNED_SKU_FACTS_VERSION), lifecycleState, optionDigest: digest,
+  schemaVersion: z.literal(GOVERNED_PUBLICATION_VERSION), lifecycleState, optionDigest: digest,
 }).strict();
 export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.discriminatedUnion("schemaVersion", [skuShape.extend({ schemaVersion: z.undefined().optional() }), governedSkuShape]).superRefine((sku, context) => {
   if ("lifecycleState" in sku && (sku.status !== lifecycleProjection(sku.lifecycleState)
@@ -184,7 +184,7 @@ const productShape = z.object({
   content: contentSchema,
 }).strict();
 const governedProductShape = productShape.extend({
-  schemaVersion: z.literal(GOVERNED_PRODUCT_FACTS_VERSION), lifecycleState, definitionDigest: digest,
+  schemaVersion: z.literal(GOVERNED_PUBLICATION_VERSION), lifecycleState, definitionDigest: digest,
 }).strict().refine(product => product.status === lifecycleProjection(product.lifecycleState));
 export const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct> = z.discriminatedUnion("schemaVersion", [productShape.extend({ schemaVersion: z.undefined().optional() }), governedProductShape]);
 export function assertNativeProductDocument(product: CatalogPublishedProduct): void {
@@ -240,7 +240,7 @@ const manifestV2Shape = z.object({
   skus: z.array(z.object({ skuId: id, revisionId: id, revision, digest }).strict()).max(10_000),
 }).strict();
 const manifestShape = z.discriminatedUnion("schemaVersion", [manifestV2Shape, manifestV2Shape.extend({
-  schemaVersion: z.literal(3), product: governedProductShape,
+  schemaVersion: z.literal(GOVERNED_PUBLICATION_VERSION), product: governedProductShape,
 }).strict()]).superRefine((manifest, context) => {
   const misplaced = manifest.skus.findIndex((sku, index) => index > 0 && manifest.skus[index - 1]!.skuId >= sku.skuId);
   if (misplaced >= 0) context.addIssue({ code: "custom", path: ["skus", misplaced, "skuId"], message: "SKU roster must be sorted and unique" });
@@ -282,7 +282,7 @@ const publicationReceipt = z.object({
 }).strict();
 
 const publicationReceiptV3 = publicationReceipt.extend({
-  schemaVersion: z.literal(3), changes: z.array(receiptChange.extend({ state: lifecycleState }).strict()).max(10_000),
+  schemaVersion: z.literal(GOVERNED_PUBLICATION_VERSION), changes: z.array(receiptChange.extend({ state: lifecycleState }).strict()).max(10_000),
 }).strict();
 
 function boundedJson(text: unknown, bytes: number): unknown {
@@ -357,10 +357,10 @@ export function decodePublicationPacket(input: { manifest: unknown } | PacketRow
       if (!revision || revision.product_id !== decoded.value.product.id || revision.sku_id !== ref.skuId
         || revision.revision !== ref.revision || revision.digest !== ref.digest)
         return storedField(revisionCode, `skus.${index}.revisionId`);
-      if (decoded.value.schemaVersion === 3 && !governedRevisions.has(ref.revisionId)) {
+      if (decoded.value.schemaVersion === GOVERNED_PUBLICATION_VERSION && !governedRevisions.has(ref.revisionId)) {
         try {
           const facts = decodeStoredPublicationSku(revision.full_facts);
-          if (facts.schemaVersion !== GOVERNED_SKU_FACTS_VERSION || facts.id !== ref.skuId || facts.productId !== decoded.value.product.id
+          if (facts.schemaVersion !== GOVERNED_PUBLICATION_VERSION || facts.id !== ref.skuId || facts.productId !== decoded.value.product.id
             || facts.code !== revision.sku_code || publicationDigest(facts, CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH) !== ref.digest)
             return storedField(revisionCode, `skus.${index}.facts`);
         } catch {

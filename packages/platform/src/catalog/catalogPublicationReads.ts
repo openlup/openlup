@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { VerifiedCatalogPublisher } from "./publicationPorts.js";
-import { CATALOG_PUBLICATION_LIMITS as limits } from "./publicationContracts.js";
+import { CATALOG_PUBLICATION_LIMITS as limits, GOVERNED_PUBLICATION_VERSION } from "./publicationContracts.js";
 import type { CatalogFullPublicationV2, CatalogFullPublicationV3, CatalogPublishedSkuV3, CatalogPublicationReceiptV2, CatalogPublicationReceiptV3, CatalogSkuRevisionRef,
   CatalogPublicationFailure } from "./publicationContracts.js";
 import type { CatalogHeadRef, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
@@ -264,13 +264,13 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
     },
   };
   function readback(version: 2, head: CatalogHeadRef, cursor: string | null): Promise<CatalogFullPublicationV2 | CatalogPublicationFailure>;
-  function readback(version: 3, head: CatalogHeadRef, cursor: string | null): Promise<CatalogFullPublicationV3 | CatalogPublicationFailure>;
-  async function readback(version: 2 | 3, head: CatalogHeadRef, cursor: string | null): Promise<CatalogFullPublicationV2 | CatalogFullPublicationV3 | CatalogPublicationFailure> {
+  function readback(version: typeof GOVERNED_PUBLICATION_VERSION, head: CatalogHeadRef, cursor: string | null): Promise<CatalogFullPublicationV3 | CatalogPublicationFailure>;
+  async function readback(version: 2 | typeof GOVERNED_PUBLICATION_VERSION, head: CatalogHeadRef, cursor: string | null): Promise<CatalogFullPublicationV2 | CatalogFullPublicationV3 | CatalogPublicationFailure> {
     try {
       return await read(async db => {
         const issue = await exact(db, head);
         requireCondition(issue.manifest.schemaVersion === version,
-          version === 3 ? "catalog_lifecycle_evidence_unavailable" : "catalog_publication_use_readback_v3", "unsupported");
+          version === GOVERNED_PUBLICATION_VERSION ? "catalog_publication_use_readback_v2" : "catalog_publication_use_readback_v3", "unsupported");
         const { product, skus } = issue.manifest;
         const pointer = decodeCursor(cursor, product.id, "facts");
         const offset = pointer?.before ?? 0;
@@ -300,8 +300,8 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
           nextCursor = continuation;
         }
         const items = await issueFacts(db, issue, selected);
-        const result = issue.manifest.schemaVersion === 3
-          ? { outcome: "page" as const, schemaVersion: 3 as const, head: issue.head, product: issue.manifest.product,
+        const result: CatalogFullPublicationV2 | CatalogFullPublicationV3 = issue.manifest.schemaVersion === GOVERNED_PUBLICATION_VERSION
+          ? { outcome: "page" as const, schemaVersion: GOVERNED_PUBLICATION_VERSION, head: issue.head, product: issue.manifest.product,
             items: items as { reference: CatalogSkuRevisionRef; facts: CatalogPublishedSkuV3 }[], nextCursor }
           : { outcome: "page" as const, schemaVersion: 2 as const, head: issue.head, product: issue.manifest.product, items, nextCursor };
         publicationJson(result, limits.pageBytes);
@@ -312,6 +312,6 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
 
   return { reads, authorize, receipt,
     readbackV2: (head: CatalogHeadRef, cursor: string | null = null) => readback(2, head, cursor),
-    readbackV3: (head: CatalogHeadRef, cursor: string | null = null) => readback(3, head, cursor),
+    readbackV3: (head: CatalogHeadRef, cursor: string | null = null) => readback(GOVERNED_PUBLICATION_VERSION, head, cursor),
   };
 }

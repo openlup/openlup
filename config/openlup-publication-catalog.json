@@ -30286,6 +30286,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogPublicationGovernedRoster.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogPublicationReadiness.test.ts",
       "class": "public-output"
     },
