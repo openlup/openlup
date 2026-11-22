@@ -811,6 +811,7 @@ const newStarterCheckKeys = [
 const newPackagedInstalledKeys = [
   "communications.nativeDeliveryControls", "pricing.subscriptionPricePolicy",
   "shipping_flat_minor", "subscription_minimum_base_units", "subscription_sized_intro_phase",
+  "tax.coverage",
 ];
 const newPackagedCodeKeys = [
   "catalog.bundleAvailabilityPolicy", "checkout.resumeWindowMinutes",
