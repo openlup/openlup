@@ -1661,7 +1661,17 @@ authority. Review evidence grants no merge, release, settings or credential righ
    `prepare`/`record`/`verify`. The pin must lie between the fork point and HEAD.
    Admission waits until that exact predecessor reaches `main`; its landing
    preserves the unchanged upper candidate's review. An independent PR needs no pin.
-2. **Implement, test and document in the same PR.** Implement the change, add
+2. **Specify before implementing.** For any change beyond a trivial fix, write
+   the specification first. State the outcome, scope and exclusions. Name the
+   affected contracts and the invariants the change must preserve. Describe
+   refusals and how to resolve them. Identify the witnesses you will use and
+   what each can establish. List the affected files, migrations and carriers.
+   Use those specification sections as the PR task record. For SQL,
+   control-path and money changes, get the specification reviewed before
+   implementation starts. If implementation contradicts the specification,
+   amend the specification before continuing. For a trivial fix, a few lines
+   in the task record can serve as the specification.
+3. **Implement, test and document in the same PR.** Implement the change, add
    tests, and update the documentation it makes stale; this is implementation
    work, and the reviewer checks it. Locally run only the tests being written,
    root test files with `npm run test:hosted -- <files>`, `npm run lint`, and
@@ -1675,9 +1685,9 @@ authority. Review evidence grants no merge, release, settings or credential righ
    its test. Describe pristine replacement, customized reconciliation, startup
    refusals and any explicit installed-policy step. Release preparation consumes
    the fragment into the next reader upgrade guide. Leave released sections intact.
-3. **Describe the task in the PR description.** Record the finite outcome, scope
-   and exclusions, acceptance criteria, risk, actual delivery authority and
-   evidence. Keep this record current through fixes and handoffs.
+4. **Describe the task in the PR description.** Include the specification as
+   the task record, with its acceptance criteria, the risk, actual delivery
+   authority and evidence. Keep the record current through fixes and handoffs.
 
    Before adding a mechanism (table, trigger, lock, version or dialect, scanner,
    wrapper, setting, test harness or process step), record the current requirement
@@ -1693,12 +1703,12 @@ authority. Review evidence grants no merge, release, settings or credential righ
    agent must handle. Minimize adopter-visible concepts, keep internal mechanisms
    private, name the cause and fix in errors, and write adopter docs around tasks.
    Keep the adopter's local edit-and-test loop fast.
-4. **Sign, push and open ready for review.** Commit with DCO sign-off, push and
+5. **Sign, push and open ready for review.** Commit with DCO sign-off, push and
    open the ready pull request within submission authority. End its description
    with the author's `Signed-off-by:` line: the queue uses it as the merge-commit
    message, and DCO checks merge commits too. Hosted CI on the integration merge
    ref is the required verification.
-5. **Prepare native review.** Give fresh-context reviewers the approved criteria,
+6. **Prepare native review.** Give fresh-context reviewers the approved criteria,
    exact diff, sufficient source context and open finding cards, without author
    conversation or other reviewers' verdicts. The floors are:
 
@@ -1731,11 +1741,11 @@ authority. Review evidence grants no merge, release, settings or credential righ
    reviewer (for example Codex) through the qualified route below; the lead
    coordinates, checks results and decides. The lead chooses reasoning effort by
    task complexity. This assignment is a default, not a fixed rule.
-6. **PASS: receipt, auto-merge, queue.** Once `verify` reports `reviewed`, post the
+7. **PASS: receipt, auto-merge, queue.** Once `verify` reports `reviewed`, post the
    receipt as a PR comment, then request auto-merge once within merge authority.
    Pending checks may finish afterwards; required source and group checks must
    pass before the queue merges. Confirm the merge on `main`.
-7. **FAIL: one fix commit.** Commit the fix, then review the cumulative delta
+8. **FAIL: one fix commit.** Commit the fix, then review the cumulative delta
    since the last candidate with its full floor of complete reviews, with the
    open finding cards, at the delta floor, or take a full review if no such
    candidate exists, the base, intent, or author changed, or the repair history
@@ -1752,7 +1762,7 @@ authority. Review evidence grants no merge, release, settings or credential righ
    for review and the DX impact. Take any change in scope, design or contract to
    the accountable human before implementing the regrouped approach once. If it
    still fails on a material finding, stop and give the accountable human options.
-8. **When main moves.** With no conflict, do nothing: the review carries over and
+9. **When main moves.** With no conflict, do nothing: the review carries over and
    does not expire. On a conflict, merge `origin/main`, resolve it and review only
    the resolution; verified derived carriers retain coverage as described below. Post a receipt for the resulting head. Never force-push or
    rebase a reviewed candidate.
