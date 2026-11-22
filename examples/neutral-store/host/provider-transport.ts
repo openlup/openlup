@@ -37,11 +37,13 @@ export class CardRejection extends Error {
 function oneRequest(...[host, port, path, method, headers, data, protocol, timeout]: Parameters<Http['makeRequest']>) {
   const url = new URL(path, origin);
   if (url.origin !== origin || host !== url.hostname || port !== '443' || protocol !== 'https'
-    || !path.startsWith('/v1/') || Object.keys(headers).some(name => /^stripe-(?:account|context)$/iu.test(name) && headers[name])) {
+    || !path.startsWith('/v1/') || Object.entries(headers).some(([name, value]) =>
+      /^stripe-(?:account|context)$/iu.test(name) && value !== null && value !== undefined)) {
     throw new Error(integrityRefusal);
   }
   return new Promise<Awaited<ReturnType<Http['makeRequest']>>>((resolve, reject) => {
-    const outgoing = request(url, { method, headers: Object.fromEntries(Object.entries(headers).filter(([, value]) => value != null)),
+    const outgoing = request(url, { method,
+      headers: Object.fromEntries(Object.entries(headers).filter(([, value]) => value !== null && value !== undefined)),
       agent: false, signal: AbortSignal.timeout(Math.min(timeout, deadline)) }, async incoming => {
       try {
         const bytes: Buffer[] = [];
@@ -51,8 +53,9 @@ function oneRequest(...[host, port, path, method, headers, data, protocol, timeo
           bytes.push(chunk as Buffer);
         }
         const body: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(bytes)));
-        if (!body || typeof body !== 'object' || Array.isArray(body) || !incoming.statusCode) throw new ProviderUnavailable();
         const status = incoming.statusCode;
+        if (body === null || typeof body !== 'object' || Array.isArray(body) || typeof status !== 'number'
+          || !Number.isInteger(status) || status < 100 || status > 599) throw new ProviderUnavailable();
         const headers = Object.fromEntries(
           Object.entries(incoming.headers).flatMap(([name, value]) => typeof value === 'string' ? [[name, value]] : []));
         resolve({ getStatusCode: () => status, getHeaders: () => headers, getRawResponse: () => ({}),
@@ -135,8 +138,8 @@ export async function openTestProvider(
   { secretKey, accountRef }: { secretKey: string; accountRef: string },
   { http = oneRequest, record = () => {}, now = Date.now }: { http?: Http['makeRequest']; record?: (entry: Evidence) => void; now?: () => number } = {},
 ) {
-  if (!/^sk_test_[A-Za-z0-9]+$/u.test(secretKey)) throw new Error(credentialRefusal);
-  if (!accountId.test(accountRef)) throw new Error(integrityRefusal);
+  if (typeof secretKey !== 'string' || !/^sk_test_[A-Za-z0-9]+$/u.test(secretKey)) throw new Error(credentialRefusal);
+  if (typeof accountRef !== 'string' || !accountId.test(accountRef)) throw new Error(integrityRefusal);
   const { default: Sdk } = await import('stripe');
   if (Sdk.PACKAGE_VERSION !== sdkVersion) throw new Error(integrityRefusal);
   const sdk = new Sdk(secretKey, { apiVersion, maxNetworkRetries: 0, timeout: deadline, telemetry: false,
@@ -166,7 +169,7 @@ export async function openTestProvider(
       if (before !== undefined && !Number.isFinite(before)) throw new Error(integrityRefusal);
       const cutoff = before ?? Infinity;
       if (binding) {
-        if (!isDeepStrictEqual(binding.request, fingerprint) || !binding.succeeded || cutoff > binding.before
+        if (!isDeepStrictEqual(binding.request, fingerprint) || binding.succeeded !== true || cutoff > binding.before
           || time >= Math.min(cutoff, binding.before, binding.sentAt + replayLimit)) throw new Error(integrityRefusal);
         record({ operation, key: hash(key), reference: hash(reference), replayAgeMs: time - binding.sentAt });
       } else {
@@ -193,10 +196,13 @@ export async function openTestProvider(
     }
   }
 
-  const write = <T>(kind: 'card' | 'tax', operation: string, reference: string | undefined, parameters: unknown,
-    { idempotencyKey }: WriteOptions, invoke: (options: WriteOptions) => Promise<T>, before?: number) =>
-    call(kind, operation, () => invoke({ idempotencyKey }),
+  const write = async <T>(kind: 'card' | 'tax', operation: string, reference: string | undefined, parameters: unknown,
+    options: WriteOptions, invoke: (options: WriteOptions) => Promise<T>, before?: number) => {
+    const idempotencyKey = options?.idempotencyKey;
+    if (typeof idempotencyKey !== 'string' || idempotencyKey.trim().length === 0) throw new Error(integrityRefusal);
+    return call(kind, operation, () => invoke({ idempotencyKey }),
       { key: idempotencyKey, reference: reference ?? idempotencyKey, parameters, ...(before === undefined ? {} : { before }) });
+  };
   const card = Object.freeze({
     customer: (parameters: ProviderSdk.CustomerCreateParams, options: WriteOptions) =>
       write('card', 'customer', undefined, parameters, options, bound => sdk.customers.create(parameters, bound)),

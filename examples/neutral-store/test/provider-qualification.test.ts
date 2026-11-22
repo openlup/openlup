@@ -120,6 +120,30 @@ test('mutations use the verified SDK scope and key even with extra caller option
   assert.equal(actual.get('idempotency-key'), 'fixture-key');
 });
 
+test('every mutation refuses blank, missing or non-string idempotency keys before any send', async () => {
+  const sends: string[] = [];
+  const provider = await open(async (...request) => {
+    if (request[3] === 'GET') return health(...request);
+    sends.push(request[2]);
+    return reply({});
+  });
+  type Options = Parameters<typeof provider.card.customer>[1];
+  const mutations = [
+    (options: Options) => provider.card.customer({}, options),
+    (options: Options) => provider.card.create({ amount: 1000, currency: 'usd' }, options),
+    (options: Options) => provider.card.confirm('pi_Sample', {}, options),
+    (options: Options) => provider.card.capture('pi_Sample', options, Date.now() + 10_000),
+    (options: Options) => provider.card.cancel('pi_Sample', options),
+    (options: Options) => provider.tax.calculations.create({ currency: 'usd', line_items: [{ amount: 1000, reference: 'item' }] }, options),
+    (options: Options) => provider.tax.transactions.createFromCalculation({ calculation: 'taxcalc_sample', reference: 'sale' }, options),
+    (options: Options) => provider.tax.transactions.createReversal({ original_transaction: 'tax_sample', reference: 'reverse', mode: 'full' }, options),
+  ];
+  for (const options of [{ idempotencyKey: '' }, { idempotencyKey: ' \t' }, {}, undefined, { idempotencyKey: 123 }]) {
+    for (const mutate of mutations) await assert.rejects(mutate(options as Options), new Error(integrityRefusal));
+  }
+  assert.deepEqual(sends, []);
+});
+
 test('known replay retains the exact request and respects both deadlines', async () => {
   let now = 1_000;
   const sent: unknown[][] = [], ages: number[] = [];
@@ -209,7 +233,8 @@ test('a missing secret-manager executable gives a fixed setup remedy', () => {
     new Error('Install the 1Password CLI and make it available on your PATH, then retry.'));
 });
 
-function cardFixture(fault?: 'uncertain-cancel' | 'invalid-receipt' | 'invalid-charge' | 'no-return') {
+function cardFixture(fault?: 'uncertain-cancel' | 'invalid-receipt' | 'invalid-charge' | 'no-return'
+  | 'invalid-first-captured-type' | 'invalid-replay-captured-type' | 'missing-early-zero' | 'missing-recovery-zero') {
   type Card = VerifiedTestProvider['card'];
   type Row = Record<string, unknown> & { id: string; status: string; charge?: Record<string, unknown> };
   const unrelated = { id: 'pi_previous', status: 'requires_capture' };
@@ -239,6 +264,10 @@ function cardFixture(fault?: 'uncertain-cancel' | 'invalid-receipt' | 'invalid-c
       if (values.payment_method.startsWith('pm_card_authentication') || values.error_on_requires_action === false) {
         row.status = 'requires_action';
         row.next_action = { redirect_to_url: { url: 'https://example.invalid/challenge' } };
+        if ((fault === 'missing-early-zero' && confirms === 1)
+          || (fault === 'missing-recovery-zero' && values.error_on_requires_action === false)) {
+          row.charge = { id: 'ch_' + id, livemode: false, payment_intent: id, captured: false };
+        }
         browserIntent = row;
       } else hold(row);
       return row;
@@ -260,7 +289,12 @@ function cardFixture(fault?: 'uncertain-cancel' | 'invalid-receipt' | 'invalid-c
       row.status = 'canceled'; row.amount_capturable = 0;
       return row;
     },
-    async charges(id: string) { return { has_more: false, data: [rows.get(id)!.charge] }; },
+    async charges(id: string) {
+      const charge = rows.get(id)!.charge;
+      const replay = sends.some(send => send.id === id && send.operation === 'capture' && send.state === 'succeeded');
+      const wrongType = replay ? fault === 'invalid-replay-captured-type' : fault === 'invalid-first-captured-type';
+      return { has_more: false, data: [wrongType ? { ...charge, captured: 'false' } : charge] };
+    },
   } as unknown as Card;
   const hash = (raw: string) => createHash('sha256').update(raw).digest('hex');
   const run = (realLoopback = false) => {
@@ -332,6 +366,32 @@ test('a bad first capture receipt or charge prevents replay and cleanup cancels 
   }
 });
 
+test('a string captured flag fails the first capture proof or the final replay proof', async () => {
+  for (const fault of ['invalid-first-captured-type', 'invalid-replay-captured-type'] as const) {
+    const fixture = cardFixture(fault);
+    await assert.rejects(fixture.run(), /original test intent/);
+    const captures = fixture.sends.filter(send => send.operation === 'capture');
+    const beforeReplay = ['requires_action', 'requires_capture'];
+    assert.deepEqual(captures.map(send => send.state),
+      fault === 'invalid-first-captured-type' ? beforeReplay : [...beforeReplay, 'succeeded']);
+    assert.ok(!fixture.notes.some(note => note.operation === 'capture' && note.verdict === 'pass'));
+  }
+});
+
+test('a present charge with no captured amount cannot prove a capture refusal or recovery', async () => {
+  for (const fault of ['missing-early-zero', 'missing-recovery-zero'] as const) {
+    const fixture = cardFixture(fault);
+    await assert.rejects(fixture.run(), /original test intent/);
+    if (fault === 'missing-early-zero') {
+      assert.deepEqual(fixture.sends.map(({ operation, state }) => [operation, state]), [['capture', 'requires_action']]);
+      assert.ok(!fixture.notes.some(note => note.operation === 'capture_refused'));
+    } else {
+      assert.equal(fixture.notes.filter(note => note.operation === 'capture').length, 2);
+      assert.ok(!fixture.notes.some(note => note.operation === 'recovery_link'));
+    }
+  }
+});
+
 test('a provider hold without the current browser return fails and is cleaned up', async () => {
   const fixture = cardFixture('no-return');
   await assert.rejects(fixture.run(), /original test intent/);
@@ -347,7 +407,8 @@ test('tax evidence distinguishes shipping layouts, preserves remedies and recove
   const scope = { accountRef: account, mode: 'test' } as const;
   for (const evidence of ['replay', 'scoped', 'foreign', 'missing', 'quote-recovery', 'reverse-recovery', 'absent-shipping',
     'missing-shipping', 'wrong-shipping', 'missing-shipping-breakdown', 'missing-line-breakdown', 'missing-header', 'missing-rate-type',
-    'no-effect', 'port-refusal', 'posting-refusal']) {
+    'missing-not-imposed', 'empty-header', 'empty-line-breakdown', 'wrong-rate-type', 'wrong-detail-rate',
+    'invalid-breakdown-amount', 'invalid-header-inclusive', 'invalid-sourcing', 'no-effect', 'port-refusal', 'posting-refusal']) {
     const calculations = new Map<string, { currency: string; tax_date: number; lines: object[]; shipping: object | null }>();
     const reports = new Map<string, { currency: string; tax_date: number; lines: object[]; shipping: object | null }>();
     const originals = new Map<string, object>();
@@ -390,6 +451,7 @@ test('tax evidence distinguishes shipping layouts, preserves remedies and recove
           const lines = params.line_items.map(line => {
             const component = summarize(line);
             return ca ? { ...component, amount_tax: 0, tax_breakdown: [{ ...assessed(line), amount: 0,
+              jurisdiction: { ...jurisdiction, state: 'CA', display_name: 'California' },
               taxability_reason: 'not_subject_to_tax', tax_rate_details: null }], id: 'item_' + id, livemode: false }
               : { ...component, id: 'item_' + id, livemode: false, object: 'tax.calculation_line_item' };
           });
@@ -413,13 +475,19 @@ test('tax evidence distinguishes shipping layouts, preserves remedies and recove
             if (evidence === 'missing-line-breakdown') Reflect.deleteProperty(lines[0]!, 'tax_breakdown');
             if (evidence === 'missing-header') Reflect.deleteProperty(result, 'tax_breakdown');
             if (evidence === 'missing-rate-type') Reflect.deleteProperty(headers[0]!.tax_rate_details, 'rate_type');
+            if (evidence === 'missing-not-imposed' || evidence === 'empty-header') result.tax_breakdown = [];
+            if (evidence === 'missing-not-imposed' || evidence === 'empty-line-breakdown') lines[0]!.tax_breakdown = [];
+            if (evidence === 'wrong-rate-type') headers[0]!.tax_rate_details.rate_type = 'percentage';
+            if (evidence === 'wrong-detail-rate') Object.assign(lines[0]!.tax_breakdown[0]!, { tax_rate_details: rate });
+            if (evidence === 'invalid-breakdown-amount') Object.assign(lines[0]!.tax_breakdown[0]!, { amount: '0' });
+            if (evidence === 'invalid-header-inclusive') Object.assign(headers[0]!, { inclusive: 'false' });
             if (evidence === 'quote-recovery') {
               quoteReference = params.line_items[0]!.reference;
               quoteId = id;
               quoteReceipts.set(id, result);
               throw new ProviderUnavailable();
             }
-          }
+          } else if (evidence === 'invalid-sourcing') Object.assign(lines[0]!.tax_breakdown[0]!, { sourcing: '' });
           return result;
         },
         async listLineItems(id: string) { return list('/v1/tax/calculations/' + id + '/line_items', calculations.get(id)!.lines); },
@@ -488,8 +556,9 @@ test('tax evidence distinguishes shipping layouts, preserves remedies and recove
         assert.equal(qualificationMessage(error), remedy, evidence);
         return true;
       });
-      assert.equal(sends.length, ['foreign', 'missing', 'posting-refusal'].includes(evidence) ? 1 : 0);
-      assert.equal(prompts.length, ['foreign', 'missing'].includes(evidence) ? 1 : 0);
+      assert.equal(sends.length, ['foreign', 'missing', 'posting-refusal'].includes(evidence) ? 1 : 0, evidence);
+      assert.equal(prompts.length, ['foreign', 'missing'].includes(evidence) ? 1 : 0, evidence);
+      assert.ok(!notes.some(row => row.operation === 'tax_reporting'), evidence);
     }
   }
 });

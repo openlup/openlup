@@ -46,7 +46,7 @@ export function preflight(args: string[], interactive: boolean, environment: Env
 export function launch(args: string[], { interactive = stdin.isTTY === true, environment = env, spawn = spawnSync } = {}) {
   const { keyEnv } = preflight(args, interactive, environment);
   const reference = environment[keyEnv];
-  if (!reference || !/^op:\/\/[^\s/]+\/[^\s/]+\/(?:[^\s/]+\/)?[^\s/]+$/u.test(reference)) throw new Error(credentialRefusal);
+  if (typeof reference !== 'string' || !/^op:\/\/[^\s/]+\/[^\s/]+\/(?:[^\s/]+\/)?[^\s/]+$/u.test(reference)) throw new Error(credentialRefusal);
   const options = Object.fromEntries(['PATH', 'HOME', 'TERM', 'COLORTERM', 'USER', 'LANG', 'LOGNAME'].map(name => [name, environment[name]]));
   let missing = false;
   try {
@@ -60,10 +60,16 @@ export function launch(args: string[], { interactive = stdin.isTTY === true, env
   throw new Error('Provider qualification did not complete. Check the test-account reference and qualification transcript.');
 }
 
-function requireCard(condition: unknown): asserts condition {
-  if (!condition) throw new Error(cardRefusal);
+function requireCard(condition: boolean): asserts condition {
+  if (condition !== true) throw new Error(cardRefusal);
 }
 const observedCharge = (intent: Intent) => typeof intent.latest_charge === 'object' ? intent.latest_charge : null;
+function hasNoCapture(intent: Intent) {
+  const charge = observedCharge(intent);
+  return intent.amount_received === 0 && intent.amount_capturable === 0
+    && (intent.latest_charge === null || (charge?.livemode === false && charge.payment_intent === intent.id
+      && charge.captured === false && charge.amount_captured === 0));
+}
 function hold(intent: Intent) {
   const charge = observedCharge(intent);
   const before = charge?.payment_method_details?.card?.capture_before;
@@ -94,13 +100,13 @@ async function loopback() {
   });
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const address = server.address();
-  requireCard(address && typeof address !== 'string');
+  requireCard(address !== null && typeof address !== 'string');
   const base = 'http://127.0.0.1:' + address.port;
   return {
     returnUrl: base + callback, startUrl: base + start, returnedAt: () => returnAt,
     approve(value: string | null | undefined) {
-      const url = value && URL.parse(value);
-      requireCard(url && url.protocol === 'https:' && !url.username && !url.password);
+      const url = typeof value === 'string' ? URL.parse(value) : null;
+      requireCard(url !== null && url.protocol === 'https:' && url.username === '' && url.password === '');
       redirect = url.href;
     },
     close: () => new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); }),
@@ -119,10 +125,13 @@ export async function qualifyCard(card: Card, witness: Witness, prompt: (url: st
     const intent = await card.retrieve(ref, budget);
     requireCard(intent.id === ref && intent.livemode === false && intent.metadata?.qualification === tag && intent.currency === 'usd'
       && intent.amount === 1000 && intent.capture_method === 'manual');
+    const statusKnown = statuses.includes(intent.status);
+    const received = minor(intent.amount_received), capturable = minor(intent.amount_capturable);
     witness.note({ operation: 'intent_read', intent: witness.hash(ref),
-      status: statuses.includes(intent.status) ? intent.status : 'unknown', at: new Date().toISOString(),
-      currency: intent.currency, receivedMinor: minor(intent.amount_received), capturableMinor: minor(intent.amount_capturable),
+      status: statusKnown ? intent.status : 'unknown', at: new Date().toISOString(),
+      currency: intent.currency, receivedMinor: received, capturableMinor: capturable,
       decline: declineCode(intent.last_payment_error?.code) });
+    requireCard(statusKnown && received !== undefined && received >= 0 && capturable !== undefined && capturable >= 0);
     return intent;
   };
   const create = async (customer: string, setup = false) => {
@@ -142,13 +151,13 @@ export async function qualifyCard(card: Card, witness: Witness, prompt: (url: st
     }
     return read(ref);
   };
-  const captureRefused = async (ref: string, before: number) => {
+  const captureRefused = async (ref: string, status: 'requires_action' | 'canceled') => {
     signal.throwIfAborted();
-    try { await card.capture(ref, key(), before); }
+    try { await card.capture(ref, key(), Date.now() + 10_000); }
     catch (error) {
       requireCard(error instanceof CardRejection && error.code === 'payment_intent_unexpected_state');
       const observed = await read(ref);
-      requireCard(observed.amount_received === 0 && !observedCharge(observed)?.amount_captured);
+      requireCard(observed.status === status && hasNoCapture(observed));
       witness.note({ operation: 'capture_refused', verdict: 'pass', intent: witness.hash(ref) });
       return;
     }
@@ -181,7 +190,7 @@ export async function qualifyCard(card: Card, witness: Witness, prompt: (url: st
     try {
       let intent = await confirm(ref, { payment_method: method, return_url: browser.returnUrl, use_stripe_sdk: false });
       requireCard(intent.status === 'requires_action' && intent.amount_received === 0);
-      await captureRefused(ref, Date.now() + 10_000);
+      await captureRefused(ref, 'requires_action');
       const started = monotonic(), end = started + 300_000;
       browser.approve(intent.next_action?.redirect_to_url?.url);
       prompt(browser.startUrl);
@@ -206,16 +215,20 @@ export async function qualifyCard(card: Card, witness: Witness, prompt: (url: st
     signal.throwIfAborted();
     const { before, charge } = verifyHold(intent);
     const options = key();
+    const capturedCharge = (row: ReturnType<typeof observedCharge> | undefined) =>
+      row?.id === charge.id && row.livemode === false && row.payment_intent === intent.id && row.currency === 'usd'
+      && row.captured === true && row.amount_captured === intent.amount;
+    const capturedIntent = (row: Intent) => row.status === 'succeeded' && row.amount === intent.amount
+      && row.amount_received === intent.amount && row.amount_capturable === 0;
     const verifyCapture = async (receipt: Intent) => {
-      const chargeId = typeof receipt.latest_charge === 'string' ? receipt.latest_charge : observedCharge(receipt)?.id;
-      requireCard(receipt.id === intent.id && receipt.livemode === false && receipt.status === 'succeeded'
-        && chargeId === charge.id && receipt.amount_received === intent.amount);
+      requireCard(receipt.id === intent.id && receipt.livemode === false && capturedIntent(receipt)
+        && (receipt.latest_charge === charge.id || capturedCharge(observedCharge(receipt))));
       const actual = await read(intent.id);
-      const charges = await card.charges(intent.id), [posted] = charges.data;
-      requireCard(actual.status === 'succeeded' && actual.amount_received === intent.amount
-        && observedCharge(actual)?.id === charge.id && charges.has_more === false && charges.data.length === 1
-        && posted?.id === charge.id && posted.livemode === false && posted.payment_intent === intent.id
-        && posted.currency === 'usd' && posted.captured && posted.amount_captured === intent.amount);
+      requireCard(capturedIntent(actual) && capturedCharge(observedCharge(actual)));
+      const charges = await card.charges(intent.id);
+      requireCard(charges.has_more === false && Array.isArray(charges.data) && charges.data.length === 1);
+      const [posted] = charges.data;
+      requireCard(posted !== undefined && capturedCharge(posted));
       return posted;
     };
     const first = await verifyCapture(await card.capture(intent.id, options, before));
@@ -232,7 +245,7 @@ export async function qualifyCard(card: Card, witness: Witness, prompt: (url: st
     await capture(setup.intent, true);
     const ordinary = await create(customer.id);
     await cancel(await confirm(ordinary, { payment_method: 'pm_card_visa' }));
-    await captureRefused(ordinary, Date.now() + 10_000);
+    await captureRefused(ordinary, 'canceled');
     const reuse = await create(customer.id);
     const reused = await confirm(reuse, { payment_method: setup.method, off_session: true });
     requireCard(reused.customer === customer.id && reused.payment_method === setup.method);
@@ -241,8 +254,7 @@ export async function qualifyCard(card: Card, witness: Witness, prompt: (url: st
     await capture(required.intent, false);
     const recovery = await create(customer.id);
     const result = await confirm(recovery, { payment_method: required.method, off_session: true, error_on_requires_action: false });
-    requireCard(result.status === 'requires_action' && result.amount_received === 0 && result.amount_capturable === 0
-      && result.payment_method === required.method && !observedCharge(result)?.amount_captured);
+    requireCard(result.status === 'requires_action' && result.payment_method === required.method && hasNoCapture(result));
     witness.note({ operation: 'recovery_link', verdict: 'pass', intent: witness.hash(recovery) });
   } finally {
     for (const ref of pending) {
@@ -265,7 +277,7 @@ const noReportingEffect = 'No reporting effect was observed. Check tax configura
 class TaxQualificationRefusal extends Error {
   constructor(result: TaxRefusal | TaxUnavailable) {
     if (result.kind === 'unavailable') {
-      super(result.effect === 'unknown' ? integrityRefusal : noReportingEffect);
+      super(result.effect === 'none' ? noReportingEffect : integrityRefusal);
     } else {
       const fixed = fixedTaxRemedy(result.code, result.field);
       super(fixed !== undefined && fixed === result.remedy ? fixed
@@ -290,8 +302,8 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
   const ref = 'qualification-' + randomUUID();
   const now = () => new Date();
   const second = () => new Date(Math.floor(Date.now() / 1000) * 1000).toISOString();
-  function verify(condition: unknown): asserts condition {
-    if (!condition) throw new Error(integrityRefusal);
+  function verify(condition: boolean): asserts condition {
+    if (condition !== true) throw new Error(integrityRefusal);
   }
   const [ny, ca] = fixtures;
   const calc = async (fixture: typeof fixtures[number]) => {
@@ -316,27 +328,39 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
       calculated = await provider.tax.calculations.retrieve(original);
       verify(calculated.id === original);
     }
-    verify(id(calculated.id, 'taxcalc') && calculated.livemode === false && calculated.currency === 'usd');
+    const payable = minor(calculated.amount_total);
+    verify(id(calculated.id, 'taxcalc') && calculated.livemode === false && calculated.currency === 'usd' && payable !== undefined);
     const list = await provider.tax.calculations.listLineItems(calculated.id, { limit: 100, expand: ['data.tax_breakdown'] });
     verify(list.has_more === false && list.url === '/v1/tax/calculations/' + calculated.id + '/line_items'
-      && list.data.length === 1 && list.data[0]?.livemode === false && list.data[0].reference === quoteRef
+      && Array.isArray(list.data) && list.data.length === 1 && list.data[0]?.livemode === false && list.data[0].reference === quoteRef
       && list.data[0].amount === params.line_items[0]?.amount);
     const cost = calculated.shipping_cost;
     verify(Array.isArray(calculated.tax_breakdown) && Array.isArray(list.data[0].tax_breakdown)
       && (cost === null ? shipping === 0 : cost?.amount === shipping && Array.isArray(cost.tax_breakdown)));
     const shippingDetails = cost === null ? [] : cost.tax_breakdown!;
     const lineDetails = list.data[0].tax_breakdown;
+    const headers = calculated.tax_breakdown;
+    if (fixture.state === 'CA') {
+      verify(headers.some(row => row?.taxability_reason === 'not_subject_to_tax' && row.amount === 0 && row.inclusive === false
+        && row.tax_rate_details?.rate_type === null && row.tax_rate_details.percentage_decimal === '0'
+        && row.tax_rate_details.flat_amount === null && row.tax_rate_details.country === 'US' && row.tax_rate_details.state === 'CA')
+        && lineDetails.some(row => row?.taxability_reason === 'not_subject_to_tax' && row.amount === 0
+          && row.tax_rate_details === null && row.jurisdiction?.country === 'US' && row.jurisdiction.state === 'CA'));
+    }
     witness.note({ operation: 'tax_quote', region: fixture.state, calculation: witness.hash(calculated.id), currency: 'usd',
-      payableMinor: minor(calculated.amount_total), shippingMinor: minor(calculated.shipping_cost?.amount),
-      shippingShape: calculated.shipping_cost === null ? 'absent' : shippingDetails.length ? 'detail' : 'empty' });
-    for (const [shape, rows] of [['header', calculated.tax_breakdown], ['shipping', shippingDetails], ['line', lineDetails]] as const) {
+      payableMinor: payable, shippingMinor: cost === null ? undefined : cost.amount,
+      shippingShape: cost === null ? 'absent' : shippingDetails.length > 0 ? 'detail' : 'empty' });
+    for (const [shape, rows] of [['header', headers], ['shipping', shippingDetails], ['line', lineDetails]] as const) {
       for (const row of rows) {
+        const amount = minor(row?.amount), basis = minor(row?.taxable_amount);
+        verify(amount !== undefined && basis !== undefined);
         const rate = row.tax_rate_details;
-        const rawRateType = shape === 'header' && rate && 'rate_type' in rate ? rate.rate_type : undefined;
+        verify(rate === null || (typeof rate === 'object' && !Array.isArray(rate)));
+        const rawRateType = shape === 'header' && rate !== null && 'rate_type' in rate ? rate.rate_type : undefined;
         const rateType = rawRateType === null || rawRateType === 'percentage' || rawRateType === 'flat_amount' ? rawRateType : undefined;
-        verify(shape !== 'header' || rateType !== undefined);
+        verify(shape !== 'header' || (rateType !== undefined && 'inclusive' in row && row.inclusive === false));
         witness.note({ operation: 'tax_breakdown', region: fixture.state, shape, taxability: reason(row.taxability_reason),
-          amountMinor: minor(row.amount), basisMinor: minor(row.taxable_amount), rateType,
+          amountMinor: amount, basisMinor: basis, rateType,
           fee: rate?.tax_type === 'retail_delivery_fee', hasRate: rate !== null });
       }
     }
@@ -348,12 +372,13 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
 
   // Use the scoped quote to identify the fixture's reported jurisdictions. Registration evidence is read independently by the adapter.
   const jurisdictions = [...new Map(observed.map(({ jurisdiction, sourcing, tax_rate_details }) => {
+    verify(sourcing === 'origin' || sourcing === 'destination');
     const name = [jurisdiction.level, jurisdiction.display_name].join('-');
     return [name, { jurisdiction: witness.hash(name), taxKind: 'sales', level: jurisdiction.level,
       sourcing: sourcing === 'origin' ? 'ship_from' as const : 'destination' as const,
-      provider: jurisdiction, taxType: tax_rate_details?.tax_type ?? null }];
+      provider: jurisdiction, taxType: tax_rate_details === null ? null : tax_rate_details.tax_type }];
   })).values()];
-  verify(jurisdictions.length && jurisdictions.every(row => !row.taxType || row.taxType === 'sales_tax'));
+  verify(jurisdictions.length > 0 && jurisdictions.every(row => row.taxType === null || row.taxType === 'sales_tax'));
   const taxDate = second(), scope = { adapter: 'stripeTax', adapterVersion: '1', ...provider.scope };
   const address = { countryCode: 'US', subdivisionCode: 'US-NY', line1: ny!.line1, city: ny!.city, postalCode: ny!.postal_code };
   const delivery = { bucketKey: 'shipping', carrierRef: 'fixture', serviceRef: 'fixture', separatelyStated: true,
@@ -378,10 +403,10 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
   };
 
   const effects: Partial<{ [Key in 'accepted' | 'commit' | 'reverse']: ReturnType<TaxOptions['effects'][Key]> }> = {};
-  let lookup: string | undefined, observedId: string | undefined;
+  let observation: { reference?: string; id?: string } = {};
   const port = composeProviderTax(provider, { installationRef: ref, marketPack, now, effects: {
     accepted: () => effects.accepted, commit: () => effects.commit, reverse: () => effects.reverse,
-    findTransactionIdByReference: reference => { lookup = reference; return observedId; },
+    findTransactionIdByReference: reference => { observation.reference = reference; return observation.id; },
   } });
   const request = makeTaxQuoteRequest(ref, input);
   const result = await port.quote(request);
@@ -409,21 +434,22 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
   async function post<R extends TaxCommitResultV1 | TaxReverseResultV1>(name: 'post' | 'reverse',
     run: (intent: 'apply' | 'recover') => Promise<R>, resultId: (value: R) => string | undefined) {
     signal.throwIfAborted();
-    lookup = undefined;
-    observedId = undefined;
+    observation = {};
     const first = await run('apply');
     const firstId = resultId(first);
-    if (firstId) {
+    if (firstId !== undefined) {
+      verify(id(firstId, 'tax'));
       const replay = await run('apply');
       if (replay.kind === 'unavailable' || replay.kind === 'refused') throw new TaxQualificationRefusal(replay);
       verify(resultId(replay) === firstId && JSON.stringify(replay) === JSON.stringify(first));
       return first;
     }
-    if (first.kind === 'unavailable' && first.effect === 'unknown' && lookup) {
-      witness.note({ operation: name, effect: 'unknown', key: witness.hash(lookup), reference: witness.hash(lookup) });
-      const original = await observeOriginal(name, lookup);
+    const { reference } = observation;
+    if (first.kind === 'unavailable' && first.effect === 'unknown' && typeof reference === 'string' && reference.length > 0) {
+      witness.note({ operation: name, effect: 'unknown', key: witness.hash(reference), reference: witness.hash(reference) });
+      const original = await observeOriginal(name, reference);
       if (id(original, 'tax')) {
-        observedId = original;
+        observation.id = original;
         const recovered = await run('recover');
         if (resultId(recovered) === original) return recovered;
       }
@@ -439,7 +465,7 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
   for (const component of result.money.components) {
     const lineRef = component.ref.kind === 'merchandise' ? evidence.providerLines?.[0]?.providerLineRef : 'shipping:' + evidence.calculationRef;
     const position = posted.positions.find(row => row.originalPositionRef === lineRef);
-    verify(position);
+    verify(position !== undefined);
     const merchandise = component.ref.kind === 'merchandise';
     units.push({ kind: merchandise ? 'line' : 'shipping', ...position, taxCode: merchandise ? 'txcd_99999999' : 'txcd_92010001',
       remainingNetMinor: component.final.amountMinor, remainingTaxMinor: component.final.taxMinor });
@@ -447,7 +473,8 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
   const reverse: TaxReverseRequestV1 = { scope, originalRef: posted.providerTransactionRef, reversalRef: ref,
     refundEvidenceRef: ref, currency: 'USD', fromMinor: 0, toMinor: result.money.payableMinor, intent: 'apply', mode: 'full',
     positions: units.map(unit => ({ originalPositionRef: unit.originalPositionRef,
-      netDeltaMinor: -unit.remainingNetMinor || 0, taxDeltaMinor: -unit.remainingTaxMinor || 0, feeDeltaMinor: 0 })) };
+      netDeltaMinor: unit.remainingNetMinor === 0 ? 0 : -unit.remainingNetMinor,
+      taxDeltaMinor: unit.remainingTaxMinor === 0 ? 0 : -unit.remainingTaxMinor, feeDeltaMinor: 0 })) };
   const original = { id: posted.providerTransactionRef, scope, currency: 'USD', taxDate, payableMinor: result.money.payableMinor, refundedMinor: 0, units };
   effects.reverse = { original, refundEvidenceRef: ref, send, requestDigest: makeReportingDigest({ operation: 'reverse', request: reverse, refundEvidenceRef: ref, original }) };
   const reversed = await post('reverse', intent => port.reverse({ ...reverse, intent }),
@@ -469,7 +496,7 @@ export async function runChild(args: string[], { interactive = stdin.isTTY === t
   const { accountRef, keyEnv } = preflight(args, interactive, environment);
   const secretKey = environment[keyEnv];
   delete environment[keyEnv];
-  if (!secretKey) throw new Error(credentialRefusal);
+  if (typeof secretKey !== 'string' || secretKey.length === 0) throw new Error(credentialRefusal);
   const records: RecordEntry[] = [];
   const salt = randomBytes(32);
   const witness: Witness = { hash: value => createHmac('sha256', salt).update(value).digest('hex'), note: entry => records.push(entry) };
