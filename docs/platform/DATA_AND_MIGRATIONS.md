@@ -530,6 +530,13 @@ Earlier captures report the edit quote table as empty because capture refused
 when it contained rows. New captures carry those quotes. A source schema change
 that cannot be reproduced by additive conversion, such as a dropped or retyped
 column, refuses with `schema_conflict`. Upgrade the source, then capture.
+Earlier inventories are admitted per release: each release cut adds the previous
+release's inventories with one conversion witness, or documents their refusal.
+A migration adds no restore pin of its own, so a capture from an unreleased
+state that a later migration changed refuses with `schema_conflict`. Upgrade
+the source to the target's version, then capture. A migration that adds a
+captured table or a nullable column to one registers it in the capture roster
+and restore order, or in that table's additive columns, in the same change.
 Restored attempts age on their
 original timestamps. Admission prunes rows at the retention cutoff on each
 call. Idle databases keep bounded rows
