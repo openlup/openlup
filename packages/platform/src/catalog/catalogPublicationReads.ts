@@ -311,7 +311,9 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
   }
 
   return { reads, authorize, receipt,
-    readbackV2: (head: CatalogHeadRef, cursor: string | null = null) => readback(2, head, cursor),
-    readbackV3: (head: CatalogHeadRef, cursor: string | null = null) => readback(GOVERNED_PUBLICATION_VERSION, head, cursor),
+    readbackV2: (head: CatalogHeadRef, cursor: string | null = null): Promise<CatalogFullPublicationV2 | CatalogPublicationFailure> =>
+      readback(2, head, cursor),
+    readbackV3: (head: CatalogHeadRef, cursor: string | null = null): Promise<CatalogPublicationFailure | CatalogFullPublicationV3> =>
+      readback(GOVERNED_PUBLICATION_VERSION, head, cursor),
   };
 }
