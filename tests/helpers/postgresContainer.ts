@@ -172,6 +172,25 @@ export async function dockerAvailable(): Promise<boolean> {
   }
 }
 
+export type PostgresContainerDurability = "fast" | "default";
+
+export const DEFAULT_FAST_TMPFS_SIZE_MB = 512;
+
+export const FAST_POSTGRES_SERVER_FLAGS: readonly string[] = [
+  "-c", "shared_buffers=32MB",
+  "-c", "max_connections=40",
+  "-c", "work_mem=4MB",
+  "-c", "maintenance_work_mem=32MB",
+  "-c", "autovacuum=off",
+  "-c", "fsync=off",
+  "-c", "synchronous_commit=off",
+  "-c", "full_page_writes=off",
+  "-c", "wal_level=minimal",
+  "-c", "max_wal_senders=0",
+  "-c", "max_wal_size=64MB",
+  "-c", "min_wal_size=32MB",
+];
+
 export type PostgresContainerSpec = {
   /** Container name. Callers scope it to the process so siblings cannot collide. */
   name: string;
@@ -185,7 +204,48 @@ export type PostgresContainerSpec = {
   runOptions?: string[];
   /** Arguments after the image, passed to its entrypoint. */
   command?: string[];
+  /**
+   * Durability and memory profile for the disposable container.
+   * Defaults to `"fast"`, which bounds the tmpfs data mount and passes
+   * low-memory, non-durable PostgreSQL settings for disposable test workloads.
+   * Pass `"default"` for benchmarks or tests that require stock server defaults.
+   */
+  durability?: PostgresContainerDurability;
+  /** Bounded size in MiB for `/var/lib/postgresql/data` tmpfs (64–16384; defaults to 512 in `"fast"` mode). */
+  tmpfsSizeMb?: number;
 };
+
+export function resolvePostgresTmpfsSpec(spec: Pick<PostgresContainerSpec, "durability" | "tmpfsSizeMb">): string {
+  const durability = spec.durability ?? "fast";
+  if (durability !== "fast" && durability !== "default") {
+    throw new Error("PostgreSQL durability must be 'fast' or 'default'.");
+  }
+  if (spec.tmpfsSizeMb !== undefined) {
+    if (!Number.isSafeInteger(spec.tmpfsSizeMb) || spec.tmpfsSizeMb < 64 || spec.tmpfsSizeMb > 16384) {
+      throw new Error("PostgreSQL tmpfsSizeMb must be an integer between 64 and 16384.");
+    }
+    return `/var/lib/postgresql/data:rw,noexec,nosuid,size=${spec.tmpfsSizeMb}m`;
+  }
+  return durability === "fast"
+    ? `/var/lib/postgresql/data:rw,noexec,nosuid,size=${DEFAULT_FAST_TMPFS_SIZE_MB}m`
+    : "/var/lib/postgresql/data";
+}
+
+export function resolvePostgresCommand(spec: Pick<PostgresContainerSpec, "durability" | "runOptions" | "command">): string[] {
+  const durability = spec.durability ?? "fast";
+  if (durability !== "fast" && durability !== "default") {
+    throw new Error("PostgreSQL durability must be 'fast' or 'default'.");
+  }
+  const command = spec.command ?? [];
+  const overridesEntrypoint = (spec.runOptions ?? []).some(
+    option => option === "--entrypoint" || option.startsWith("--entrypoint="),
+  );
+  if (durability === "default" || overridesEntrypoint) return [...command];
+  if (command.length === 0) return ["postgres", ...FAST_POSTGRES_SERVER_FLAGS];
+  if (command[0] === "postgres") return ["postgres", ...FAST_POSTGRES_SERVER_FLAGS, ...command.slice(1)];
+  if (command[0].startsWith("-")) return ["postgres", ...FAST_POSTGRES_SERVER_FLAGS, ...command];
+  return [...command];
+}
 
 export type PostgresContainer = {
   port: number;
@@ -204,6 +264,8 @@ export type PostgresContainer = {
  * image, a full disk or a dead daemon still fails the suite immediately.
  */
 export async function runPostgresContainer(spec: PostgresContainerSpec): Promise<PostgresContainer> {
+  const tmpfsSpec = resolvePostgresTmpfsSpec(spec);
+  const command = resolvePostgresCommand(spec);
   const requested = spec.image ?? defaultPostgresImage;
   const pulled = await pinnedImage(requested, spec.image !== undefined);
   const image = pulled ?? requested;
@@ -228,14 +290,14 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
       // Cover the image's VOLUME before create: even a SIGKILL between create
       // and start cannot allocate an anonymous PostgreSQL data volume. This is
       // disposable test data, like the existing installed-consumer fixtures.
-      "--tmpfs", "/var/lib/postgresql/data",
+      "--tmpfs", tmpfsSpec,
       ...(pulled ? ["--pull=never"] : []),
       "-e", `POSTGRES_PASSWORD=${spec.password}`,
       ...(spec.database ? ["-e", `POSTGRES_DB=${spec.database}`] : []),
       ...(spec.runOptions ?? []),
       "-p", `127.0.0.1:${port}:5432`,
       image,
-      ...(spec.command ?? []),
+      ...command,
     ];
     try {
       await docker(args, `start ${spec.name}`, remaining());
