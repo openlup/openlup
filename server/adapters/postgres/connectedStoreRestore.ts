@@ -602,7 +602,7 @@ export async function restoreConnectedNativeStore(input: {
 
     if (restricted) {
       await openRestrictedOwnerWindow(client, installation);
-      await lockRestoreRelations(client, privateRelations, true);
+      await lockRestoreRelations(client, privateRelations);
       await assertOutsideEmpty(client, privateRelations);
     }
     const keyIdentity = await client.query(keyIdentitySql);
@@ -752,14 +752,9 @@ async function readRestoreLedger(client: PoolClient, expected: readonly LedgerEn
   return JSON.stringify(ledger.map(({ value }) => value));
 }
 
-async function lockRestoreRelations(client: PoolClient, relations: readonly Relation[], nowait = false): Promise<void> {
+async function lockRestoreRelations(client: PoolClient, relations: readonly Relation[]): Promise<void> {
   for (const relation of relations) {
-    try {
-      await client.query(`LOCK TABLE ${quoted(relation.schema)}.${quoted(relation.table)} IN SHARE ROW EXCLUSIVE MODE${nowait ? " NOWAIT" : ""}`);
-    } catch (error) {
-      if (nowait && (error as { code?: unknown })?.code === "55P03") fail("target_conflict", `${relation.schema}.${relation.table}`);
-      throw error;
-    }
+    await client.query(`LOCK TABLE ${quoted(relation.schema)}.${quoted(relation.table)} IN SHARE ROW EXCLUSIVE MODE`);
   }
 }
 

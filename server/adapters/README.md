@@ -149,8 +149,10 @@ Native destination transfer includes commerce_destinations (full immutable posta
 subscription_command_receipts and the support command/audit ledgers. Restore
 parents precede documents/bindings and ledger actors. Owner snapshot authority,
 writer exclusion, unknown-table refusal, PostgreSQL row encoding and cumulative
-row/byte limits remain required. Both address relations have table-specific
-limit and filtered-login witnesses. Reference strings may identify people; use
+row/byte limits remain required. A target writer running during restore violates
+the writer-exclusion prerequisite and can make the restore wait, deadlock or refuse,
+so exclude every target writer and dispatcher before retrying. Both address relations
+have table-specific limit and filtered-login witnesses. Reference strings may identify people; use
 opaque values. This retained transfer is not address privacy export or erasure;
 no such path exists yet for those address relations. Sensitive streams include
 both the address and private parcel contact tables.
@@ -188,8 +190,6 @@ Acquisition cases, history and all other nonempty private relations still refuse
   mismatch, provision a matching qualified target and capture its pristine
   baseline again. For exact replay, use the already-restored target with the
   original source packet and pristine-target capture.
-  If `target_conflict` names a private relation locked by a target writer,
-  exclude every target writer, then retry.
 
 `public.customer_identity_challenges` is intentionally not carried: its single-use,
 short-lived token hashes are live authorization state; customers sign in again after restore.

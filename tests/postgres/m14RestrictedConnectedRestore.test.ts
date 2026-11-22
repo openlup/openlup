@@ -202,47 +202,6 @@ function traceRestore(owner: Pool, hook?: (sql: string, client: PoolClient) => v
   return { traced, statements, writes, expectAdmittedBeforeGrant };
 }
 
-async function expectPrivateLockRefusal(target: Installed, input: Parameters<typeof restoreConnectedNativeStore>[0]) {
-  const root = target.pools[0]!;
-  const memberships = async () => (await root.query(
-    "SELECT roleid,member,grantor,admin_option,inherit_option,set_option FROM pg_catalog.pg_auth_members ORDER BY 1,2,3")).rows;
-  const before = await memberships();
-  const relation = "acquisition_private.newsletter_consent_events";
-  const lock = 'LOCK TABLE "acquisition_private"."newsletter_consent_events"';
-  const trace = traceRestore(target.owner, async (sql, client) => {
-    // A blocking regression fails with query_canceled while the writer still holds its lock.
-    if (sql.startsWith(lock)) await client.query("SET LOCAL statement_timeout = '5s'");
-  });
-  const writer = await root.connect();
-  const fingerprint = "a".repeat(64);
-  try {
-    await writer.query("BEGIN");
-    await writer.query("SET LOCAL statement_timeout = '5s'");
-    await writer.query("SET LOCAL ROLE platform_acquisition_owner");
-    await writer.query(`LOCK TABLE ${relation} IN ROW EXCLUSIVE MODE`);
-    await expect(restoreConnectedNativeStore({ ...input, owner: trace.traced })).rejects.toMatchObject({
-      code: "target_conflict", table: relation,
-    });
-    trace.expectAdmittedBeforeGrant();
-    expect(trace.statements).toContain(`${lock} IN SHARE ROW EXCLUSIVE MODE NOWAIT`);
-    expect(trace.statements).toContain("ROLLBACK");
-    expect(trace.writes()).toEqual(trace.statements.filter(sql => sql.startsWith("GRANT ")));
-    expect(await memberships()).toEqual(before);
-    const after = await capture(target, input.freshTarget.compatible.sourceId);
-    expect(after.compatible).toEqual(input.freshTarget.compatible);
-    expect(after.owned).toEqual(input.freshTarget.owned);
-    expect(after.outsideProfileCensus).toEqual(input.freshTarget.outsideProfileCensus);
-    await writer.query(`INSERT INTO public.communication_recipient_consents(recipient_fingerprint,purpose,state)
-      VALUES ($1,'marketing_newsletter','granted')`, [fingerprint]);
-    await writer.query("COMMIT");
-  } catch (error) {
-    await writer.query("ROLLBACK");
-    throw error;
-  } finally { writer.release(); }
-  const committed = await root.query("DELETE FROM public.communication_recipient_consents WHERE recipient_fingerprint=$1 RETURNING state", [fingerprint]);
-  expect(committed.rows).toEqual([{ state: "granted" }]);
-}
-
 function sealOuter(packet: ConnectedNativeStoreCapture) {
   const { sha256: _hash, ...body } = packet;
   packet.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
@@ -359,7 +318,6 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
         } finally {
           await target.owner.query("UPDATE public.subscription_delivery_alignment_control SET mode='off' WHERE singleton");
         }
-        await expectPrivateLockRefusal(target, input);
 
         const lineage = structuredClone(packet);
         const duties = lineage.compatible.tables.find(table => table.table === "invoicing_duties")!;
