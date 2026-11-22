@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, expectTypeOf, it, vi } from "vitest";
@@ -238,8 +238,7 @@ export function createSettingsBindings({ db, configuration }) {
     expect(command.includes(source.runtimeUrl)).toBe(false);
     await rm(reset);
 
-    const path = join(process.cwd(), "node_modules", ".bin");
-    const retry = exec("sh", ["-c", command], { env: { ...process.env, PATH: path + delimiter + process.env.PATH } });
+    const retry = exec("sh", ["-c", command]);
     retry.child.stdin?.end(source.runtimeUrl + "\n");
     expect(JSON.parse((await retry).stdout)).toMatchObject({ observation: { state: "override", revision: "cli-first" } });
   } finally { await rm(directory, { recursive: true, force: true }); }
