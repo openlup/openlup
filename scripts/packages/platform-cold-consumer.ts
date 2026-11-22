@@ -66,6 +66,7 @@ export const NON_ADAPTER_ENTRIES = [
   "payments",
   "payments/contracts",
   "payments/testing",
+  "shipping/testing",
   "bff",
   "catalog/contracts",
   "communications/contracts",

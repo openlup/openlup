@@ -118,6 +118,7 @@ for package policy definitions and release boundaries.
 | `./scheduler` | rail | stable |
 | `./shipping` | capability | stable |
 | `./shipping/contracts` | capability | stable |
+| `./shipping/testing` | capability | testing |
 | `./subscriptions` | capability | stable |
 | `./subscriptions/contracts` | capability | stable |
 | `./tax` | capability | experimental |

@@ -4398,6 +4398,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/shipping-testing.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/shipping.api.md",
       "class": "public-output"
     },
@@ -9630,7 +9634,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/carrierRate.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/contracts/address.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/contracts/carrierRate.ts",
       "class": "public-output"
     },
     {
@@ -9719,6 +9731,18 @@
     },
     {
       "path": "packages/platform/src/shipping/shippingRatePorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/testing/adapterConformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/testing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/testing/scriptedFake.ts",
       "class": "public-output"
     },
     {
@@ -12367,6 +12391,10 @@
     },
     {
       "path": "packages/platform/test/shipping/addressConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/shipping/carrierRateConformance.test.ts",
       "class": "public-output"
     },
     {

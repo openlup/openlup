@@ -106,6 +106,7 @@ or external-write authority. The application's own instructions govern.
 | `./scheduler` | rail | stable |
 | `./shipping` | capability | stable |
 | `./shipping/contracts` | capability | stable |
+| `./shipping/testing` | capability | testing |
 | `./subscriptions` | capability | stable |
 | `./subscriptions/contracts` | capability | stable |
 | `./tax` | capability | experimental |
