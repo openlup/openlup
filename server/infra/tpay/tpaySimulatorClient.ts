@@ -36,14 +36,17 @@ export const TPAY_SIMULATOR_CHANNELS: TpayPaymentChannel[] = [
  * (reason propagation, the card fallback, reservation release) would be
  * exercisable only against production Tpay with real money.
  *
- * Mirrors what production returned for an mBank code on 2026-07-20.
+ * Mirrors what production returns when a bank rejects recurring mandate registration.
  */
 export const TPAY_SIMULATOR_MANDATE_REFUSED_TOKEN = "000000";
 
-export function createTpaySimulatorClient(): TpayHttpClient {
+export function createTpaySimulatorClient(
+  options: { simulatorPath?: string } = {},
+): TpayHttpClient {
+  const simulatorPath = options.simulatorPath ?? "/tpay-simulator";
   return {
     async createTransaction(input) {
-      return simulateCreatedTransaction(input);
+      return simulateCreatedTransaction(input, simulatorPath);
     },
     async getTransaction(transactionId) {
       // Same field set as `createTransaction`: a caller that polls must not see a
@@ -65,7 +68,10 @@ export function createTpaySimulatorClient(): TpayHttpClient {
   };
 }
 
-function simulateCreatedTransaction(input: TpayTransactionCreateInput): TpayTransactionCreated {
+function simulateCreatedTransaction(
+  input: TpayTransactionCreateInput,
+  simulatorPath: string,
+): TpayTransactionCreated {
   const providerAttemptId = simulatorProviderAttemptId(input);
   const isPbl = Boolean(input.channelId);
   const mandateRequested = input.alias?.type === "PAYID";
@@ -75,7 +81,7 @@ function simulateCreatedTransaction(input: TpayTransactionCreateInput): TpayTran
     transactionId: providerAttemptId,
     title: providerAttemptId,
     status: "pending",
-    transactionPaymentUrl: isPbl ? simulatorPanelUrl(input, providerAttemptId) : null,
+    transactionPaymentUrl: isPbl ? simulatorPanelUrl(input, providerAttemptId, simulatorPath) : null,
     requestId: "tpay-simulator",
     // Absent on a refusal, exactly as production behaves — the field is how a
     // capable bank is distinguished, not how a decline is announced.
@@ -83,7 +89,7 @@ function simulateCreatedTransaction(input: TpayTransactionCreateInput): TpayTran
     errors: refusesMandate
       ? [{
           errorCode: "payment_failed",
-          errorMessage: "Bank nie umożliwia rejestracji aliasu dla płatności powtarzalnych",
+          errorMessage: "Bank does not support recurring alias registration",
           fieldName: null,
         }]
       : [],
@@ -97,8 +103,12 @@ function simulatorProviderAttemptId(input: TpayTransactionCreateInput): string {
   return `tpay_sim_${input.hiddenDescription}_${suffix}`;
 }
 
-function simulatorPanelUrl(input: TpayTransactionCreateInput, providerAttemptId: string): string {
-  const url = new URL("/skomponuj-pakiet/tpay-simulator", input.successUrl);
+function simulatorPanelUrl(
+  input: TpayTransactionCreateInput,
+  providerAttemptId: string,
+  simulatorPath: string,
+): string {
+  const url = new URL(simulatorPath, input.successUrl);
   url.searchParams.set("providerPaymentId", providerAttemptId);
   url.searchParams.set("order", input.description);
   if (input.simulatorContext?.orderId) url.searchParams.set("orderId", input.simulatorContext.orderId);
@@ -106,7 +116,7 @@ function simulatorPanelUrl(input: TpayTransactionCreateInput, providerAttemptId:
   if (input.simulatorContext?.clientId) url.searchParams.set("clientId", input.simulatorContext.clientId);
   // Account `returnContext`: tell the (public) simulator page to return the buyer
   // to the in-account terminal after settling. Absent for the public flow → the
-  // simulator page keeps its own localized `/skomponuj-pakiet/platnosc` return.
+  // simulator page keeps its own configured public checkout return path.
   if (input.simulatorContext?.returnPath) url.searchParams.set("return", input.simulatorContext.returnPath);
   return url.toString();
 }

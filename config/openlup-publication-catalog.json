@@ -21902,14 +21902,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/vendorRegistry.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/vendorRegistry.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/ops/cronAudit.test.ts",
       "class": "public-output"
     },
