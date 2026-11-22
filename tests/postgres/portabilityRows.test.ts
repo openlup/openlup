@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
-import { captureCompatiblePostgresRows, restoreCompatiblePostgresRows, type TransferPostgresQuery, type CompatiblePostgresTable } from "@openlup/platform/portability";
+import { captureCompatiblePostgresRows, PostgresTransferError, restoreCompatiblePostgresRows, type TransferPostgresQuery, type CompatiblePostgresTable } from "@openlup/platform/portability";
 
 let source: Pool, target: Pool;
 const containers: PostgresContainer[] = [];
@@ -40,6 +40,16 @@ const snapshot = { withSnapshot: <T>(work: (db: TransferPostgresQuery) => Promis
 const destination = { withTransaction: <T>(work: (db: TransferPostgresQuery) => Promise<T>) => transaction(target, false, work) };
 const catalogueId = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")).objectInventorySha256 as string;
 const capture = (tables: CompatiblePostgresTable[]) => captureCompatiblePostgresRows({ source: snapshot, sourceId: "owned-native-source", catalogueId, tables, maximumRows: 1000, maximumBytes: 1024 * 1024 });
+
+it("preserves a transfer refusal raised while snapshotting the packet", async () => {
+  const refusal = new PostgresTransferError("schema_conflict", "invoicing_duties");
+  const withTransaction = vi.fn();
+  await expect(restoreCompatiblePostgresRows({
+    target: { withTransaction }, catalogueId: "fixture",
+    get packet(): never { throw refusal; },
+  })).rejects.toBe(refusal);
+  expect(withTransaction).not.toHaveBeenCalled();
+});
 
 it("moves compatible canonical rows atomically, preserves clocks/money/duties and resumes exact replay without touching the target catalogue", async () => {
   const client = randomUUID(), subscription = randomUUID(), event = randomUUID(), outbox = randomUUID();

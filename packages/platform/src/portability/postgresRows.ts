@@ -89,7 +89,7 @@ export async function restoreCompatiblePostgresRows(input: {
   // Own immutable input bytes throughout async validation and writes.
   let packet: CompatiblePostgresPacket;
   try { packet = JSON.parse(JSON.stringify(input.packet)) as CompatiblePostgresPacket; }
-  catch { fail("invalid_input"); }
+  catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
   assertCompatiblePostgresPacket(packet);
   if (packet.catalogueId !== input.catalogueId) fail("schema_conflict");
   try {
