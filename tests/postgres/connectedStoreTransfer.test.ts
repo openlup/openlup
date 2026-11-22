@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Pool } from "pg";
+import { Client, Pool } from "pg";
 import * as jose from "jose";
 import * as renewal from "@openlup/platform/subscriptions";
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
@@ -139,13 +139,14 @@ async function capture(db: Pool, sourceId: string, limits = { maximumRows: 10000
     } },
   });
 }
-function paymentPort(db: Pool) { return createPostgresSandboxPaymentSimulator(db, paymentOptions); }
-function paymentReceive(db: Pool, attempt: SandboxPaymentAttempt, observationId: string) {
+type PaymentExecutor = Parameters<typeof createPostgresSandboxPaymentSimulator>[0];
+function paymentPort(db: PaymentExecutor) { return createPostgresSandboxPaymentSimulator(db, paymentOptions); }
+function paymentReceive(db: PaymentExecutor, attempt: SandboxPaymentAttempt, observationId: string) {
   return paymentPort(db).ingress.receive({ rawBody: new TextEncoder().encode(JSON.stringify({
     settlementIntentId: attempt.settlementIntentId, attemptId: attempt.id, observationId,
   })), headers: {}, receivedAt: paymentAt });
 }
-async function paymentObservation(db: Pool, attempt: SandboxPaymentAttempt, outcome: SandboxPaymentOutcome) {
+async function paymentObservation(db: PaymentExecutor, attempt: SandboxPaymentAttempt, outcome: SandboxPaymentOutcome) {
   const input = { attemptId: attempt.id, idempotencyKey: `observation:${randomUUID()}`, outcome, occurredAt: paymentAt,
     payerEmail: "dispatch-only@example.invalid", rawPayload: { contact: "dispatch-only@example.invalid" } };
   const observation = await paymentPort(db).recordObservation(input);
@@ -497,8 +498,13 @@ it("restores writer-created sandbox attempts, cyclic observations and terminal r
   expect((await restore()).replayed).toBe(false);
   expect(await census(target.owner)).toEqual(before);
   expect((await restore()).replayed).toBe(true);
-  const restarted = new Pool({ connectionString: target.runtimeUrl }), port = paymentPort(restarted), truth = createPostgresPaymentTruthPort(restarted, paymentOptions);
+  // Client.end() waits for the socket to close before nextTarget() force-drops this database.
+  const restarted = new Client({ connectionString: target.runtimeUrl });
+  const disconnected = vi.fn();
+  restarted.once("end", disconnected);
   try {
+    await restarted.connect();
+    const port = paymentPort(restarted), truth = createPostgresPaymentTruthPort(restarted, paymentOptions);
     const p = payments;
     expect(await port.readAttempt({ settlementIntentId: p.open.intentId })).toMatchObject({ id: p.open.attempt.id, state: "dispatched", latestObservation: null });
     expect((await port.beginAttempt(p.open.input)).replayed).toBe(true);
@@ -544,6 +550,7 @@ it("restores writer-created sandbox attempts, cyclic observations and terminal r
       expect(rows.join()).not.toContain("rawPayload"); expect(rows.join()).not.toContain("payerEmail");
     }
   } finally { await restarted.end(); }
+  expect(disconnected).toHaveBeenCalledOnce();
 }, 100_000);
 
 // About 4x the slowest hosted run (16,613 ms), rounded up to 5 s.
