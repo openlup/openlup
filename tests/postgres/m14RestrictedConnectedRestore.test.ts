@@ -5,6 +5,7 @@ import { expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { projectHistoricalCapture } from "./connectedStoreHistoricalPacket.fixture.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedAdminPostgresStartupOptions, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer,
@@ -20,8 +21,8 @@ const beforeGovernedLifecycle: Record<Mode, string> = {
   "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
 };
 const beforeSubscriptionProfiles: Record<Mode, string> = {
-  "installer-managed": "02c68db9202830bd08f574130d3a3de19345a4050b8879d3338824b379474195",
-  "operator-provisioned": "a05e24a7dcdc6cb4394907be818520a33fa89e9a269a7c01853cd656ecfcf91b",
+  "installer-managed": "412caa25526d6ba70bb5bb761d5bed2336e7307811a879658295819ad5ab15f5",
+  "operator-provisioned": "d413c04713b9fb5f5f9d8f01dc66c68c67d131f6cc94bcbf12becef47abd4f42",
 };
 const groups = ["anon", "authenticated", "service_role", "platform_acquisition_owner",
   "platform_acquisition_runtime", "openlup_retained_import_owner"];
@@ -194,7 +195,9 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await source.owner.query("INSERT INTO public.clients(email,lifecycle_stage) VALUES('restricted@example.invalid','lead')");
       await source.owner.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
         VALUES('synthetic','10000000-0000-4000-8000-000000000001','synthetic.retained','restricted-ordinary-outbox','{}')`);
-      const packet = await capture(source, "restricted-source", sourceCatalogueId);
+      const current = await capture(source, "restricted-source", sourceCatalogueId);
+      const packet = sourceCatalogueId === beforeGovernedLifecycle[mode]
+        ? await projectHistoricalCapture(source.owner, current, sourceCatalogueId) : current;
       const freshTarget = await capture(target, "restricted-target");
       expect((await source.runner.status()).pending).toEqual([]);
       expect((await target.runner.status()).pending).toEqual([]);

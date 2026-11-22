@@ -508,11 +508,11 @@ function rehash(value: ConnectedNativeStoreCapture) {
   value.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
 }
 
-function repin(input: ConnectedNativeStoreCapture, catalogueId: string, tables = input.compatible.tables) {
+function repin(input: ConnectedNativeStoreCapture, catalogueId: string) {
   const { sha256: _captureDigest, ...body } = input;
   const { sha256: _compatDigest, ...fields } = body.compatible;
   const encoded = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-  const projected = { ...fields, catalogueId, tables };
+  const projected = { ...fields, catalogueId };
   const result = { ...body, compatible: { ...projected, sha256: encoded(projected) } };
   return { ...result, sha256: encoded(result) };
 }
@@ -541,30 +541,27 @@ it("restores marked GTINs, and removes the marker only when the target explicitl
     .toEqual([{ normalized_value: "05901234123457", scheme: null }]);
 }, 105_000);
 
-it("accepts the pinned predecessor packet shape and refuses a packet with an unknown inventory", async () => {
-  const { capture, identifier } = await captureTradeIdentifier("historic", null);
+it("refuses a retyped retained column and an unknown inventory with a recapture remedy", async () => {
+  const { capture } = await captureTradeIdentifier("historic", null);
   const table = capture.owned.find(entry => entry.table === "catalog_sku_identifiers")!;
-  const historic = "c19175002e39e2b4100841e7138759a4dd07fe3158ebd3ce5f7283a5e8d538a9";
-  table.columns = table.columns.filter(column => column.name !== "scheme");
-  table.rows = (await source.owner.query(`SELECT (value::jsonb-'scheme')::text AS row
-    FROM unnest($1::text[]) AS rows(value)`, [table.rows])).rows.map(row => row.row);
-  await expect(restore(target.owner, repin(packet, "a".repeat(64)))).rejects.toMatchObject({ code: "schema_conflict" });
-  const historicalTables = capture.compatible.tables.filter(entry => entry.table !== "commerce_checkout_attempt_ledger");
-  expect(await restore(target.owner, repin(capture, historic, historicalTables))).toMatchObject({ replayed: false });
-  expect((await target.owner.query("SELECT 1 FROM public.commerce_checkout_attempt_ledger")).rows).toEqual([]);
-  expect((await target.owner.query("SELECT scheme FROM public.catalog_sku_identifiers WHERE id=$1", [identifier])).rows)
-    .toEqual([{ scheme: null }]);
+  table.columns.find(column => column.name === "normalized_value")!.type = "character varying";
+  rehash(capture);
+  await expect(restore(target.owner, capture)).rejects.toMatchObject({
+    code: "schema_conflict", table: "catalog_sku_identifiers", remedy: "upgrade the source, then capture",
+  });
+  await expect(restore(target.owner, repin(packet, "a".repeat(64)))).rejects.toMatchObject({
+    code: "schema_conflict", remedy: "upgrade the source, then capture",
+  });
 }, 105_000);
 
-it("restores and replays the separate-migrator inventory from before governed lifecycle", async () => {
+it("does not treat an inventory label as evidence of a predecessor packet", async () => {
   const predecessor = repin(packet, "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385");
-  expect(await restore(target.owner, predecessor)).toMatchObject({ captureSha256: predecessor.sha256, replayed: false });
-  expect((await target.owner.query("SELECT current_document_revision_id FROM public.catalog_products WHERE id=$1", [products[0]])).rows)
-    .toEqual([{ current_document_revision_id: latest[0] }]);
-  expect(await restore(target.owner, predecessor)).toMatchObject({ captureSha256: predecessor.sha256, replayed: true });
+  await expect(restore(target.owner, predecessor)).rejects.toMatchObject({
+    code: "schema_conflict", table: "subscription_edit_quotes", remedy: "upgrade the source, then capture",
+  });
 }, 105_000);
 
-it("transfers same-SKU governed revisions and preserves legacy NULL facts", async () => {
+it("transfers same-SKU governed bindings and preserves legacy NULL facts", async () => {
   if (!(await source.owner.query("SELECT 1 FROM public.platform_human_principals WHERE principal_id=$1", [actorId])).rowCount)
     await installPublicationActors(source.owner);
   const data = fixture();
@@ -575,6 +572,26 @@ it("transfers same-SKU governed revisions and preserves legacy NULL facts", asyn
     await insertGraph(db, second);
     return { first, second };
   });
+  const subscription = randomUUID(), client = randomUUID(), order = randomUUID();
+  const facts = first.facts as typeof first.facts & { optionDigest: string };
+  const product = first.product as typeof first.product & { definitionDigest: string };
+  const acceptance = { schemaVersion: 2, lines: [{ schemaVersion: 2, skuId: data.skuId, skuCode: facts.code,
+    skuRevisionId: first.skuRevisionId, publicationHead: first.head, typeRef: product.type,
+    netContent: facts.netContent, optionDigest: facts.optionDigest, definitionDigest: product.definitionDigest }] };
+  await transaction(source.owner, async db => {
+    await db.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
+    await db.query("INSERT INTO public.subscriptions(id,client_id,cadence_days) VALUES($1,$2,28)", [subscription, client]);
+    await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,currency_code,unit_price_minor,catalog_sku_revision_id)
+      SELECT $1,id,1,0,'XXX',100,CASE WHEN id=$2 THEN $3::uuid END FROM public.catalog_skus
+      WHERE id=$2 OR id=(SELECT primary_sku_id FROM public.catalog_products WHERE id=$4)`,
+    [subscription, data.skuId, first.skuRevisionId, products[0]]);
+    await db.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,'cancelled','XXX',0)", [order, client]);
+    const key = `receipt:${order}`;
+    await db.query("SELECT public.catalog_attach_order_acceptance($1,$2,$3,$4)", [order, json(acceptance), key, json({ [facts.code]: 1 })]);
+    await db.query(`INSERT INTO public.commerce_order_draft_receipts(idempotency_key,request_fingerprint,order_id,response_payload)
+      VALUES($1,$2,$3,$4)`, [key, "a".repeat(32), order, json({ orderDraft: { orderId: `order_${order}`,
+      quoteSnapshot: { quote: { lines: [{ sku: facts.code, quantity: 1 }] } } } })]);
+  });
   const captured = await captureStoreJourney(source.owner, "governed-lifecycle-source");
   await expect(restore(target.owner, captured)).resolves.toMatchObject({ replayed: false });
   const rows = await target.owner.query(`SELECT id,revision,sku_id,full_facts FROM public.catalog_sku_revisions
@@ -584,4 +601,10 @@ it("transfers same-SKU governed revisions and preserves legacy NULL facts", asyn
   })));
   expect((await target.owner.query("SELECT publication_facts FROM public.catalog_products WHERE id=$1", [products[0]])).rows)
     .toEqual([{ publication_facts: null }]);
+  expect((await target.owner.query(`SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1
+    ORDER BY catalog_sku_revision_id NULLS LAST`, [subscription])).rows).toEqual([
+    { catalog_sku_revision_id: first.skuRevisionId }, { catalog_sku_revision_id: null },
+  ]);
+  expect((await target.owner.query("SELECT catalog_acceptance FROM public.commerce_orders WHERE id=$1", [order])).rows)
+    .toEqual([{ catalog_acceptance: acceptance }]);
 });

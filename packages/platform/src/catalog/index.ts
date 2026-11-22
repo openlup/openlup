@@ -91,6 +91,8 @@ export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, Catalo
 export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
 
 export { nativeCatalogPublication } from "./publicationCodec.js";
+export { catalogAcceptedReferenceV2Schema, catalogAcceptanceV2Schema,
+  assertCatalogAcceptedReferenceV2, assertCatalogAcceptanceV2 } from "./acceptedReferenceStore.js";
 export type { CatalogFullPublicationV2, CatalogFullPublicationV3, CatalogPublicationManifestV3, CatalogPublicationReceiptV3,
   CatalogPublishedProductV3, CatalogPublishedSkuV3, CatalogPublicationFailure, CatalogPublicationManifestV2, CatalogPublicationReceiptV2,
   CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding, CatalogSkuRevisionRef } from "./publicationContracts.js";

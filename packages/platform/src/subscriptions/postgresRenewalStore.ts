@@ -62,6 +62,14 @@ export function subscriptionRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("subscription_renewal_response_invalid");
   return value as Record<string, unknown>;
 }
+/** @experimental */
+export function readPostgresRenewal(codec: NativeRenewalCodec, value: unknown): RenewalReadback {
+  const row = subscriptionRecord(value);
+  const result = codec.readback(row);
+  // The PostgreSQL owner emits this alongside the immutable, validated wire.
+  const catalogAcceptance = row.catalogAcceptance as RenewalReadback["catalogAcceptance"] | null;
+  return catalogAcceptance == null ? result : { ...result, catalogAcceptance };
+}
 /** Native claim/prepare remain their original SQL transaction units. G23 is composed by the host. */
 export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec,
   withTransaction?: <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => Promise<T>): RenewalStorePort {
@@ -71,11 +79,11 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
     return result.rows[0];
   }
   async function response(sql: string, values: unknown[]) {
-    return codec.readback(subscriptionRecord((await executor.query(sql, values)).rows[0]?.response));
+    return readPostgresRenewal(codec, (await executor.query(sql, values)).rows[0]?.response);
   }
   async function readRenewal(identityKey: string) {
     const value = (await executor.query("SELECT public.subscription_read_renewal($1::text) AS response", [identityKey])).rows[0]?.response;
-    return value == null ? null : codec.readback(subscriptionRecord(value));
+    return value == null ? null : readPostgresRenewal(codec, value);
   }
   const store: RenewalStorePort = {
     transactions: { graph: "native", prepare: "cycle_order_items_settlement_reservation_attempt",

@@ -32,7 +32,6 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     expect(env.after).toEqual(expectedCatalog);
     expect(env.bodiesBefore).toHaveLength(3);
     expect(env.bodiesAfter).toHaveLength(7);
-    expect(env.guardAfter).toEqual(env.guardBefore);
     expect(await env.runner.apply()).toEqual({ applied: [] });
     const acl = (await env.owner.query(`SELECT p.oid::regprocedure::text AS signature,p.proacl::text AS acl,p.proowner::regrole::text AS owner,p.prosecdef,p.proconfig,
       has_function_privilege('anon',p.oid,'EXECUTE') AS anon,has_function_privilege('authenticated',p.oid,'EXECUTE') AS authenticated,
@@ -53,6 +52,20 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     mkdirSync(".context/scratch/c21", { recursive: true });
     writeFileSync(`.context/scratch/c21/catalog-${profile}.json`, JSON.stringify({ before: env.before, after: env.after, guardBefore: env.guardBefore, guardAfter: env.guardAfter, bodiesBefore: env.bodiesBefore, bodiesAfter: env.bodiesAfter, deferred, acl, view }, null, 2));
   }, 30_000);
+
+  it("preserves the installed order money guard byte for byte around catalogue checks", () => {
+    const [mainGuard] = env.guardBefore.function;
+    const [catalogueGuard] = env.guardAfter.function;
+    // Strip only the three acceptance call sites. This compares the entire
+    // remaining body, including the declared total, line sum and refusal.
+    const moneyBody = catalogueGuard!.body
+      .replace("    PERFORM public.catalog_order_line_sum_acceptance(v_order_id, p_old_header => OLD, p_new_header => NEW);\n", "")
+      .replace("    IF TG_OP = 'UPDATE' THEN\n      PERFORM public.catalog_order_line_sum_acceptance(v_order_id, OLD.order_id);\n    END IF;\n", "")
+      .replace("  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);\n", "");
+    expect(moneyBody).toBe(mainGuard!.body);
+    expect(catalogueGuard!.definition.replace(catalogueGuard!.body, "")).toBe(mainGuard!.definition.replace(mainGuard!.body, ""));
+    expect(env.guardAfter.triggers).toEqual(env.guardBefore.triggers);
+  });
 
   it.each(["UTC", "Etc/GMT-9", "Etc/GMT+5"])("closes pause recovery once and preserves exact replay in %s", async zone => {
     const f = await lifecycleDeclined(env.owner);

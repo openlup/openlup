@@ -461,6 +461,55 @@ current catalogue head. Industry-specific managed catalogue columns are unaffect
 Unbind callers to roll back use; retain committed receipts/history and correct a
 price with a subsequent expected-base command.
 
+### Accepted catalogue references and archive
+
+The purchase and edit owners may save an accepted SKU revision alongside their
+receipts. The reference resolves against the revision's issuing publication,
+including its document, type definition, options and net content. A nullable
+same-SKU foreign key protects the template binding. Unbound rows retain NULL.
+Deferred checks reconcile staged order and edit records with their companions
+at commit. Transfer carries both the accepted references and their companions.
+
+Register renewal purchase facts using the accepted draft's SKU codes and
+quantities. Native completion uses those stored lines to create an empty
+subscription's first template and bind its accepted revisions before completing
+the attachment. A worker recovering a pending attachment uses the same
+completion with the original order ID.
+
+The freeze owner saves acceptance beside the snapshot and binds it to the
+operation fingerprint. Renewals keep the existing v1 and v2 pricing formats.
+The renewal owner still uses subtotal less discount plus shipping, with no
+tax term. The quote owner still carries gross prices and one VAT rate where
+required by the sized-plan quote. Destination references remain opaque.
+Catalogue checks use the stored owner evidence and compare SKU identity and
+quantities. Governed SKU facts carry physical quantities and base prices stay
+with the pricing owner.
+
+An edit or full starter graduation that rewrites template or retained lines
+without a new acceptance clears the template revision bindings and retained
+acceptance in the owner's transaction. An operation already frozen retains
+its original acceptance on replay.
+
+| Refusal | Remedy |
+| --- | --- |
+| `catalog_accepted_reference_invalid` | Supply a schema-2 accepted reference with exactly the supported fields. |
+| `catalog_accepted_reference_mismatch` | Capture the reference from the SKU revision's issuing publication. |
+| `catalog_retained_revision_unavailable` | Recover the issuing publication and SKU revision from the retained catalogue. |
+| `catalog_acceptance_invalid` | Supply a schema-2 acceptance with 1 to 100 distinct SKU identities and codes. |
+| `catalog_acceptance_line_mismatch` | Register matching purchase lines from the persisted draft, preview and apply a fresh edit quote, or rebuild the snapshot from the current due subscription. Follow the SQL hint for the operation that refused. |
+| `catalog_acceptance_receipt_mismatch` | Use this order's persisted draft receipt and its original key. |
+| `catalog_acceptance_snapshot_mismatch` | Use the stored renewal operation, its original acceptance and its frozen snapshot. |
+| `catalog_acceptance_snapshot_immutable` | Replay the renewal operation with its original acceptance and frozen snapshot. |
+| `catalog_acceptance_immutable` | Replay the owner command with its original acceptance and evidence. |
+| `catalog_acceptance_order_missing` | Persist the order and its draft receipt before attaching the acceptance. |
+
+The archive census reads active and paused templates and retained terms,
+pending activation and attachment, frozen and recoverable renewals, outstanding
+orders, undelivered leaf replacements, stock waits and unconsumed graduation.
+Outstanding or ambiguous evidence refuses archive. A complete empty census
+still returns `catalog_archive_barrier_unavailable` until the admission barrier
+is qualified.
+
 ## Compatible data transfer
 
 Checkout attempt ledger rows are authoritative, short-lived admission state.
@@ -471,16 +520,22 @@ no raw email, IP address, idempotency key, headers or request payload, and has n
 client foreign key or absorption mapping.
 
 Restore the ledger before enabling checkout under the same limit and identity
-policy. Restore treats the ledger as empty for pinned predecessor installations
-that predate it. Restore also accepts packets from the pinned installation
-profiles immediately before governed catalogue lifecycle. Those packets and
-current packets must include the ledger. Restore also accepts profile-free
-packets from the pinned inventories immediately before subscription profile
-receipts. Restored attempts age on their original timestamps. Admission prunes
-rows at the retention cutoff on each call. Idle databases keep bounded rows until
-the next call or an owner cleanup. For managed same-schema transfer use the
-bounded `@openlup/platform/portability` utility. The managed-to-native legacy
-projection refuses populated limiter relations outside its finite profile.
+policy. Connected-store restore accepts the current qualified inventory and the
+admitted predecessor inventories from before publication commands, the checkout
+attempt ledger, governed catalogue lifecycle and catalogue accepted references.
+Conversion reproduces the retained rows an in-place upgrade would produce.
+It also accepts profile-free packets from the pinned inventories immediately
+before subscription profile receipts. Those packets use the current shape.
+Earlier captures report the edit quote table as empty because capture refused
+when it contained rows. New captures carry those quotes. A source schema change
+that cannot be reproduced by additive conversion, such as a dropped or retyped
+column, refuses with `schema_conflict`. Upgrade the source, then capture.
+Restored attempts age on their
+original timestamps. Admission prunes rows at the retention cutoff on each
+call. Idle databases keep bounded rows
+until the next call or an owner cleanup. For managed same-schema transfer use
+the bounded `@openlup/platform/portability` utility. The managed-to-native
+legacy projection refuses populated limiter relations outside its finite profile.
 
 The forward starts with an empty ledger. The table owner can inspect or clean
 it up. The routine runs with owner rights and grants only routine EXECUTE to
@@ -635,6 +690,9 @@ managed internals, source roles/grants or `platform_schema_migrations`. Source
 and target transaction capabilities remain host-owned; an opaque catalogue label
 does not prove that an installation is compatible. Identical typed rows replay,
 and changed retained rows refuse rather than becoming business status updates.
+The copier admits the pinned validation-only INSERT triggers on renewal terms
+and operations. They run during replay. Other enabled user INSERT triggers
+require the table's restore owner.
 
 The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
 takes its final finite connected-table graph and application's complete private

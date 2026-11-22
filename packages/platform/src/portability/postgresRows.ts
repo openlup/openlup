@@ -10,6 +10,9 @@ const TABLES = [
   "subscription_renewal_outcomes", "outbox_events", "invoicing_duties", "invoicing_fact_revisions",
   "invoicing_effect_receipts", "invoicing_capture_faults",
 ] as const;
+// Pin the validation-only trigger body. A catalogue label supplied by the
+// caller cannot attest the target schema or a trigger with the same name.
+const RENEWAL_ACCEPTANCE_TRIGGER_SHA256 = "63504e9cab0d8dcaee9ad72e6fdac9812ea5d0be06b08c5de71734281939193b";
 export type CompatiblePostgresTable = typeof TABLES[number];
 export interface TransferPostgresQuery {
   query<Row extends Record<string, unknown> = Record<string, unknown>>(sql: string, values?: readonly unknown[]): Promise<{ rows: Row[] }>;
@@ -100,8 +103,18 @@ export async function restoreCompatiblePostgresRows(input: {
       }
       for (const table of packet.tables) {
         if (JSON.stringify(await inspect(db, table.table)) !== JSON.stringify(table.columns)) fail("schema_conflict", table.table);
-        const triggers = (await db.query(`SELECT 1 FROM pg_catalog.pg_trigger
-          WHERE tgrelid=$1::regclass AND NOT tgisinternal AND (tgtype & 4) <> 0 AND tgenabled IN ('O','A')`, [`public.${table.table}`])).rows;
+        const triggers = (await db.query(`SELECT 1 FROM pg_catalog.pg_trigger t
+          JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
+          WHERE t.tgrelid=$1::pg_catalog.regclass AND NOT t.tgisinternal AND (t.tgtype & 4) <> 0 AND t.tgenabled IN ('O','A')
+          AND NOT COALESCE(
+            $2::text IN ('subscription_renewal_terms','subscription_renewal_operations')
+            AND t.tgname=$2::text || '_catalog_acceptance_admit'
+            AND t.tgtype=23 AND t.tgnargs=0 AND t.tgqual IS NULL
+            AND p.oid=pg_catalog.to_regprocedure('public.catalog_acceptance_record_admit_v2()')
+            AND p.prolang=(SELECT oid FROM pg_catalog.pg_language WHERE lanname='plpgsql')
+            AND NOT p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog, public']
+            AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex')=$3,
+            false)`, [`public.${table.table}`, table.table, RENEWAL_ACCEPTANCE_TRIGGER_SHA256])).rows;
         if (triggers.length) fail("insert_trigger_requires_owner", table.table);
       }
       let inserted = 0, replayed = 0;

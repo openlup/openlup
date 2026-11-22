@@ -1574,6 +1574,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124220001_catalog_accepted_references.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261124230000_subscription_profiles.sql",
       "class": "public-output"
     },
@@ -3478,6 +3482,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/catalog/acceptedReferences.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/catalog/identifiers.ts",
       "class": "public-output"
     },
@@ -5138,6 +5146,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261124220001_catalog_accepted_references.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261124230000_subscription_profiles.sql",
       "class": "public-output"
     },
@@ -5427,6 +5439,10 @@
     },
     {
       "path": "packages/platform/src/blob/vercel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/acceptedReferenceStore.ts",
       "class": "public-output"
     },
     {
@@ -12570,6 +12586,50 @@
       "class": "public-output"
     },
     {
+      "path": "recipes/fulfillment/amazon-mcf/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/lwa.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/sigv4.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/webhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "recipes/index.json",
       "class": "public-output"
     },
@@ -15047,6 +15107,10 @@
     },
     {
       "path": "server/adapters/postgres/connectedStoreCapture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreRestore.test.ts",
       "class": "public-output"
     },
     {
@@ -30578,6 +30642,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogPublication.test.ts",
       "class": "public-output"
     },
@@ -30746,11 +30814,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStoreHistoricalPacket.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStorePaymentMethods.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/connectedStorePromotionClaims.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreRestoreUpgrade.test.ts",
       "class": "public-output"
     },
     {

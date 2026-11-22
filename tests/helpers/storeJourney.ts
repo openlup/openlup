@@ -28,13 +28,13 @@ export const journeySelection: QualifiedPostgresInstallation = {
 };
 const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")),
   "qualified-v2", { migrationIsBootstrap: false, hasRestore: true });
-export const beforeSubscriptionProfilesInventory = "1feea98acf1cd7cdf1de399cdf8ab8c9ff6a30cec67168a274428f05f4722638";
+export const beforeSubscriptionProfilesInventory = "d0a803fd96d5fe048179cff18181c437ede56daa3a8dc14b2ee0a62381753619";
 
 export function beforeSubscriptionProfilesCatalog(): PlatformPostgresMigrationRunnerOptions["catalog"] {
   const root = process.cwd();
   const predecessor = readPlatformMigrationManifest(root) as PlatformMigrationManifest;
   if (predecessor.schemaVersion !== 3) throw new Error("Expected all three installation histories");
-  const tail = "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql";
+  const tail = "db/platform/migrations/20261124220001_catalog_accepted_references.sql";
   const excluded = new Set<string>();
   for (const plan of [predecessor, predecessor.qualified, predecessor.qualifiedAdmin]) {
     const index = plan.forward.findIndex(({ file }) => file === tail);

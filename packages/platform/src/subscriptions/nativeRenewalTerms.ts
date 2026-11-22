@@ -171,6 +171,18 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
         VALUES($1::uuid,$2::uuid,$3,$4,true,$5,$6)`, [id, ids.get(line.sku), line.quantity, sortOrder(line.sku), line.unitAmountMinor, row.currency_code]);
     }
     await db.query("DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=$1::uuid", [id]);
+    // Older catalogues have no revision bindings. Keep carried add-on rows
+    // while rewriting their bindings with the same collection-write privileges.
+    const acceptanceOwner = await db.query("SELECT to_regprocedure('public.catalog_clear_template_acceptance(uuid)') IS NOT NULL AS installed");
+    if (acceptanceOwner.rows[0]?.installed === true) {
+      await db.query("UPDATE public.subscription_renewal_terms SET catalog_acceptance=NULL WHERE subscription_id=$1::uuid AND catalog_acceptance IS NOT NULL", [id]);
+      await db.query(`WITH carried AS (
+        DELETE FROM public.subscription_lines WHERE subscription_id=$1::uuid AND is_addon AND catalog_sku_revision_id IS NOT NULL
+        RETURNING id,subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code,created_at,updated_at
+      )
+      INSERT INTO public.subscription_lines(id,subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code,created_at,updated_at)
+      SELECT id,subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code,created_at,updated_at FROM carried`, [id]);
+    }
     for (const line of finalLines) await db.query(`INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor)
       VALUES($1::uuid,$2,$3,$4,$5)`, [id, line.lineOrdinal, line.sku, line.quantity, line.unitAmountMinor]);
   }

@@ -1,6 +1,8 @@
 # SQL catalogue
 
-Find the SQL files each package ships, listed by file name. This is an inventory, not an installation sequence: which files your installation applies, and in which order, depends on the catalogue it selects. Apply SQL through your application's migration chain as described in [Upgrade the database](../upgrade/database-migrations.md).
+Each package lists its SQL files by name. Your selected catalogue determines
+which files apply and in what order. Follow your application's migration chain
+in [Upgrade the database](../upgrade/database-migrations.md).
 
 ## `@openlup/outbox`
 
@@ -194,6 +196,7 @@ Find the SQL files each package ships, listed by file name. This is an inventory
 | [`20261124180000_catalogue_read_grant.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124180000_catalogue_read_grant.sql) |
 | [`20261124200000_checkout_attempt_ledger.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124200000_checkout_attempt_ledger.sql) |
 | [`20261124220000_catalog_governed_lifecycle.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124220000_catalog_governed_lifecycle.sql) |
+| [`20261124220001_catalog_accepted_references.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124220001_catalog_accepted_references.sql) |
 | [`20261124230000_subscription_profiles.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124230000_subscription_profiles.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |

@@ -18,6 +18,7 @@ import { createPostgresDestinationPort } from "@openlup/platform/commerce/server
 import { createPostgresOperatorAuthority } from "@openlup/platform/account-support";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { projectHistoricalCapture } from "./connectedStoreHistoricalPacket.fixture.js";
 import { readPlatformMigrationManifest, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
@@ -327,8 +328,8 @@ it.each([
     });
     await runner.apply();
     const manifest = selectPlatformMigrationManifest(readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest, "qualified-v2", { migrationIsBootstrap: true, hasRestore: true });
-    const capture = (db: Pool, sourceId: string, catalogueId = manifest.objectInventorySha256) => captureConnectedNativeStore({ sourceId,
-      catalogueId, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
+    const capture = (db: Pool, sourceId: string) => captureConnectedNativeStore({ sourceId,
+      catalogueId: manifest.objectInventorySha256, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
       source: { async withSnapshot(work) {
         const client = await db.connect();
         try {
@@ -339,7 +340,9 @@ it.each([
         finally { client.release(); }
       } },
     });
-    const packet = await capture(admin, "native-notices", sourceCatalogueId), freshTarget = await capture(owner, "new-target");
+    const current = await capture(admin, "native-notices");
+    const packet = sourceCatalogueId ? await projectHistoricalCapture(admin, current, sourceCatalogueId) : current;
+    const freshTarget = await capture(owner, "new-target");
     const tables = ["subscription_dunning_cases", "subscription_dunning_notifications", "subscription_reminder_ledger", "transactional_delivery_receipts"];
     for (const table of tables) expect(packet.owned.find(rows => rows.table === table)!.rows.length).toBeGreaterThan(0);
     const input = { owner, installation: selection, packet, freshTarget };
