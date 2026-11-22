@@ -669,6 +669,9 @@ managed internals, source roles/grants or `platform_schema_migrations`. Source
 and target transaction capabilities remain host-owned; an opaque catalogue label
 does not prove that an installation is compatible. Identical typed rows replay,
 and changed retained rows refuse rather than becoming business status updates.
+The copier admits the pinned validation-only INSERT triggers on renewal terms
+and operations. They run during replay. Other enabled user INSERT triggers
+require the table's restore owner.
 
 The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
 takes its final finite connected-table graph and application's complete private

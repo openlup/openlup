@@ -320,6 +320,8 @@ export async function restoreConnectedNativeStore(input: {
   freshTarget: ConnectedNativeStoreCapture;
 }): Promise<{ captureSha256: string; replayed: boolean; neutralizedHistoricalHoldNotifications: number }> {
   const installation = structuredClone(input.installation);
+  if (installation?.generation !== "qualified-admin"
+    && (installation?.generation !== "qualified-v2" || !installation.restoreLogin)) fail("invalid_input");
   if (installation.generation === "qualified-admin") assertQualifiedAdminPostgresSelection(installation);
   const profile = installation.generation === "qualified-admin" ? installation.roleMode
     : installation.migrationLogin === installation.bootstrapLogin ? "bootstrap" : "separate";
@@ -420,8 +422,8 @@ export async function restoreConnectedNativeStore(input: {
           await client.query("INSERT INTO public.subscription_price_policy_restore_capabilities VALUES (pg_catalog.pg_current_xact_id())");
         }
         const b = packet.compatible.tables.find(value => value.table === table);
-        // The generic importer refuses binding triggers. The locked owner
-        // path runs them, including acceptance checks on renewal terms and operations.
+        // Keep guarded rows on the locked owner path, including both renewal
+        // acceptance triggers admitted by the qualified inventory below.
         if (b && !["clients", "subscriptions", "subscription_events", "subscription_cycles", "subscription_renewal_terms",
           "subscription_renewal_operations", "commerce_orders", "commerce_order_items", "outbox_events"].includes(table)) {
           const { sha256: _old, ...payload } = { ...packet.compatible, catalogueId: manifest.objectInventorySha256,
