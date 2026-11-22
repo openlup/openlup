@@ -12,6 +12,12 @@ it.each([
   expect(parseStrictJson(source, "fixture.json")).toStrictEqual(JSON.parse(source));
 });
 
+it("matches JSON.parse for a multi-MiB key and string value with escapes", () => {
+  const text = 'ordinary 雪 " \\ \n [,{]} '.repeat(512 * 1024);
+  const source = JSON.stringify({ [text]: text });
+  expect(parseStrictJson(source, "fixture.json")).toStrictEqual(JSON.parse(source));
+});
+
 it("reports native syntax errors before checking for duplicates", () => {
   expect(() => parseStrictJson('{"a": 1, "a": 2,}', "fixture.json")).toThrow(SyntaxError);
 });

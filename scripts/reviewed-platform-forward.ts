@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
 import { documentationGit, readDocumentationObjects } from "./documentation-git.ts";
-import { parseStrictJson } from "./oss-strict-json.mts";
+import { DuplicateJsonKeyError, parseStrictJson } from "./oss-strict-json.mts";
 
 export const REVIEWED_FORWARD_PATH = "config/reviewed-platform-forwards.json";
 export const MANAGED_BASELINE = "supabase/migrations/00000000000000_platform_schema_baseline.sql";
@@ -1546,7 +1546,10 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
         && keepsApprovalOrder(prior[binding.list]!, current[binding.list] ?? [], issued, path)
         && (!native || keepsApprovalOrder(slots(prior), slots(current), issued, path))) return;
     }
-  } catch { /* Invalid historical approvals cannot authorize a release. */ }
+  } catch (error) {
+    if (error instanceof DuplicateJsonKeyError) throw error;
+    // Other invalid historical approvals cannot authorize a release.
+  }
   throw new Error("reviewed replacement allowlist must be approved separately before a feature PR adds SQL");
 }
 
@@ -1718,7 +1721,10 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
     approval = git(root, ["rev-parse", `${commits[0]}^`]).toString("utf8").trim();
     git(root, ["merge-base", "--is-ancestor", approval, head]);
     try { assertUnchangedForwardApproval(root, approval, commits[0]!, path); }
-    catch { assertForwardApproval(root, approval, commits[0]!); }
+    catch (error) {
+      if (error instanceof DuplicateJsonKeyError) throw error;
+      assertForwardApproval(root, approval, commits[0]!);
+    }
     assertUnchangedForwardApproval(root, commits[0]!, head, path);
   } else {
     assertForwardApproval(root, base, head);

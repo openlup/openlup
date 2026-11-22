@@ -657,6 +657,22 @@ describe("upstream exact managed migration approval", () => {
     expect(() => assertAdmittedPlatformForward(f.root, f.base, head, path, Buffer.from(sql), true)).not.toThrow();
   });
 
+  it("reports a duplicate key in the original registry when preparing a release", () => {
+    const f = fixture();
+    approve(f);
+    f.commit();
+    const approved = readFileSync(join(f.root, REVIEWED_FORWARD_PATH), "utf8");
+    f.put(REVIEWED_FORWARD_PATH, approved.replace('"schemaVersion": 1', String.raw`"\u0073chemaVersion": 0, "schemaVersion": 1`));
+    f.put(path, sql);
+    f.commit();
+    f.put(REVIEWED_FORWARD_PATH, approved);
+    const head = f.commit();
+
+    expect(() => assertAdmittedPlatformForward(f.root, f.base, head, path, Buffer.from(sql), true)).toThrow(
+      `${REVIEWED_FORWARD_PATH}: duplicate JSON key "schemaVersion" at $["schemaVersion"]. Remove the duplicate member.`,
+    );
+  });
+
   it("refuses exact approval retroactively for an already committed managed migration", () => {
     const f = fixture();
     f.put(path, "CREATE TABLE public.example (id uuid);\n");
