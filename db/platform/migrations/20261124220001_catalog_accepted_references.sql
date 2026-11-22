@@ -820,11 +820,6 @@ BEGIN
    PERFORM public.catalog_acceptance_assert_v2(NEW.catalog_acceptance);
   END IF;
   current_event:=NEW.id;
- ELSIF TG_TABLE_NAME='subscription_edit_quotes' AND current_user='authenticated' THEN
-  -- The customer owner derives event acceptance from this quote. Legacy
-  -- quotes carry no acceptance, so they need no re-entry into the bundle RPC.
-  IF TG_OP<>'INSERT' AND OLD.catalog_acceptance IS NOT NULL THEN previous:=OLD.accepted_event_id; END IF;
-  IF TG_OP<>'DELETE' AND NEW.catalog_acceptance IS NOT NULL THEN current_event:=NEW.accepted_event_id; END IF;
  ELSE
   IF TG_OP<>'INSERT' THEN previous:=OLD.accepted_event_id; END IF;
   IF TG_OP<>'DELETE' THEN current_event:=NEW.accepted_event_id; END IF;
