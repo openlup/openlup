@@ -31,6 +31,8 @@ it("represents every domain data key and executable descriptor in the catalogue"
     "inventory.offerLowStockThreshold",
     "market.fiscalProfile",
     "market.settlementProfile",
+    "tax.adapter",
+    "tax.localRateTable",
   ]);
   expect(entries.find(({ key }) => key === "savedAddressValidation")).toMatchObject({
     kind: "callback", change: { reference: "docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences" },
