@@ -57,14 +57,16 @@ function readMetadataString(
 }
 
 export function deriveMollieFailureHints(
-  status: MolliePaymentStatus | string,
+  _status: MolliePaymentStatus | string,
   details?: Readonly<Record<string, unknown>> | null,
 ): readonly PaymentFailureHint[] {
   const failureReason =
     details && typeof details.failureReason === "string" ? details.failureReason : "";
   const failureMessage =
     details && typeof details.failureMessage === "string" ? details.failureMessage : "";
-  const combined = `${status} ${failureReason} ${failureMessage}`.toLowerCase();
+  // Inspect provider failure details only: Mollie `status: "expired"` means checkout session timeout,
+  // not a dead card or revoked mandate (expired cards carry `details.failureReason: "card_expired"`).
+  const combined = `${failureReason} ${failureMessage}`.toLowerCase();
 
   if (/(expired|stolen|lost|revoked|closed|fraud|inactive_card|possible_fraud|restricted)/u.test(combined)) {
     return ["credentialDead"];

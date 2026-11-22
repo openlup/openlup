@@ -745,6 +745,40 @@ describe("recipes/payments/mollie — Stage 1 & Stage 2 conformance + security i
       if (ev.kind !== "money") throw new Error("expected money");
       expect(ev.reusableMethod).toBeUndefined();
     }
+
+    // Regression (mollie-a-1): Mollie session timeout (status:"expired" without card failureReason)
+    // MUST classify as indeterminate (NOT credentialDead / hard_do_not_retry), while
+    // details.failureReason:"card_expired" MUST classify as hard_do_not_retry.
+    nextPaymentResponse = {
+      id: "tr_expiredSession01",
+      mode: "test",
+      status: "expired",
+      amount: { value: "25.00", currency: "EUR" },
+      expiredAt: MOLLIE_TEST_OCCURRED_AT,
+    };
+    const expiredSession = await adapter.verifyPort.verifyAndNormalize(
+      buildMollieWebhookInput("tr_expiredSession01"),
+    );
+    expect(expiredSession.kind).toBe("money");
+    if (expiredSession.kind !== "money") throw new Error("expected money");
+    expect(expiredSession.outcome).toBe("failed");
+    expect(expiredSession.refusal?.code).toBe("indeterminate");
+
+    nextPaymentResponse = {
+      id: "tr_expiredCard01",
+      mode: "test",
+      status: "failed",
+      amount: { value: "25.00", currency: "EUR" },
+      failedAt: MOLLIE_TEST_OCCURRED_AT,
+      details: { failureReason: "card_expired", failureMessage: "The card has expired" },
+    };
+    const expiredCard = await adapter.verifyPort.verifyAndNormalize(
+      buildMollieWebhookInput("tr_expiredCard01"),
+    );
+    expect(expiredCard.kind).toBe("money");
+    if (expiredCard.kind !== "money") throw new Error("expected money");
+    expect(expiredCard.outcome).toBe("failed");
+    expect(expiredCard.refusal?.code).toBe("hard_do_not_retry");
   });
 
   it("rejects planted-defect negative controls in runPaymentAdapterConformance", async () => {
