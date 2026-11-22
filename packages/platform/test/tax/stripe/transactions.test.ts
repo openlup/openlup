@@ -1,15 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { compareTaxRecalculationProbe } from "../../../src/tax/index.js";
+import { compareTaxRecalculationProbe, makeTaxQuoteRequest, verifyTaxQuoteResult } from "../../../src/tax/index.js";
+import { taxDigest } from "../../../src/tax/digest.js";
 import type { TaxReverseRequestV1 } from "../../../src/tax/contracts/index.js";
 import { date, later } from "../fixtures.js";
 import { detail, snapshot, withFee, page, registration, registrationUrl } from "./fixtures.js";
 import { lifecycleFixture } from "./lifecycleFixtures.js";
 
+function expectIntegrityRefusal(result: unknown, code: "tax_reference_conflict" | "tax_scope_mismatch" | "tax_invalid_input" = "tax_reference_conflict") {
+  expect(result).toMatchObject({ kind: "refused", code });
+  expect(result).not.toHaveProperty("expected");
+}
+
+async function postedLine() {
+  const f = lifecycleFixture({ single: true });
+  const port = f.open();
+  const { commit } = await f.quoteAndReserve(port);
+  expect(await port.commit(commit)).toMatchObject({ kind: "committed" });
+  const input: TaxReverseRequestV1 = { intent: "apply", mode: "lines", scope: f.input.scope, originalRef: "tax_sale",
+    reversalRef: "refund-a", refundEvidenceRef: "refund", currency: f.input.currency, fromMinor: 0, toMinor: 40,
+    positions: [{ originalPositionRef: "item_0_0", netDeltaMinor: -40, taxDeltaMinor: 0, feeDeltaMinor: 0 }] };
+  const units = [{ kind: "line" as const, originalPositionRef: "item_0_0", postedPositionRef: "tax_line_0", taxCode: "txcd_101",
+    remainingNetMinor: 100, remainingTaxMinor: 0 }];
+  return { f, port, commit, input, units };
+}
+
 describe("reporting lifecycle", () => {
   it("posts the final calculation once and maps out-of-order lines and shipping before replaying after expiry", async () => {
     const f = lifecycleFixture();
     const port = f.open();
-    const { commit, result } = await f.quoteAndReserve(port);
+    const { commit, result, reservation } = await f.quoteAndReserve(port);
     const posted = await port.commit(commit);
     expect(posted).toEqual({ kind: "committed", providerTransactionRef: "tax_sale", positions: [
       { originalPositionRef: "item_0_0", postedPositionRef: "tax_line_0" },
@@ -19,6 +38,7 @@ describe("reporting lifecycle", () => {
     const [[wire, write]] = f.client.transactions.createFromCalculation.mock.calls;
     expect(wire).toMatchObject({ calculation: result.evidence.calculationRef, posted_at: Date.parse(date) / 1000,
       reference: expect.stringMatching(/^ol-tax-[a-f0-9]{64}$/), metadata: { openlup_request_digest: expect.stringMatching(/^[a-f0-9]{64}$/) } });
+    expect(wire.metadata.openlup_request_digest).toBe(taxDigest("commit", [reservation.requestDigest, reservation.wireDigest]));
     expect(write.idempotencyKey).toEqual("ol-tax-commit-" + wire.reference.slice(7));
     f.setTime(later);
     expect(await port.commit(commit)).toEqual(posted);
@@ -46,7 +66,9 @@ describe("reporting lifecycle", () => {
     const input = scenario === "conflict" ? { ...commit, captureEvidenceRef: "other" } : commit;
     const code = { closed: "tax_calculation_closed", expired: "tax_calculation_expired", capture: "tax_reference_conflict",
       deadline: "tax_operation_unsupported", fee: "tax_operation_unsupported", conflict: "tax_reference_conflict" }[scenario];
-    expect(await port.commit(input)).toMatchObject({ kind: "refused", code });
+    const result = await port.commit(input);
+    expect(result).toMatchObject({ kind: "refused", code });
+    if (code === "tax_reference_conflict") expectIntegrityRefusal(result);
     expect(f.effects().commits).toBe(0);
   });
 
@@ -68,17 +90,9 @@ describe("reporting lifecycle", () => {
   });
 
   it("checks reversal line deltas, receipt scope and unsupported modes", async () => {
-    const f = lifecycleFixture({ single: true });
-    const port = f.open();
-    const { commit } = await f.quoteAndReserve(port);
-    expect(await port.commit(commit)).toMatchObject({ kind: "committed" });
-    const input: TaxReverseRequestV1 = { intent: "apply", mode: "lines", scope: f.input.scope, originalRef: "tax_sale",
-      reversalRef: "refund-a", refundEvidenceRef: "refund", currency: f.input.currency, fromMinor: 0, toMinor: 40,
-      positions: [{ originalPositionRef: "item_0_0", netDeltaMinor: -40, taxDeltaMinor: 0, feeDeltaMinor: 0 }] };
+    const { f, port, input, units } = await postedLine();
     expect(await port.reverse({ ...input, mode: "amount", amountMinor: 40 })).toMatchObject({ code: "tax_operation_unsupported" });
     const fee = { ...input, feeEvidenceRef: "fee-evidence", positions: [{ ...input.positions[0], netDeltaMinor: -39, feeDeltaMinor: -1 }] };
-    const units = [{ kind: "line" as const, originalPositionRef: "item_0_0", postedPositionRef: "tax_line_0", taxCode: "txcd_101",
-      remainingNetMinor: 100, remainingTaxMinor: 0 }];
     f.reserveReverse(fee, units, 100);
     expect(await port.reverse(fee)).toMatchObject({ code: "tax_reversal_unsubstantiated" });
     expect(f.effects().reversals).toBe(0);
@@ -93,6 +107,64 @@ describe("reporting lifecycle", () => {
     expect(f.effects().reversals).toBe(1);
   });
 
+  it("checks reservation integrity before timestamp, delta or amount-mode advice", async () => {
+    const { f, port, commit, input, units } = await postedLine();
+    expectIntegrityRefusal(await port.commit({ ...commit, postedAt: "invalid-instant" }));
+    f.reserveReverse(input, units, 100);
+    expectIntegrityRefusal(await port.reverse({ ...input, positions: [{ ...input.positions[0], netDeltaMinor: 1 }] }));
+    expectIntegrityRefusal(await port.reverse({ ...input, mode: "amount", amountMinor: 40 }));
+    expect(f.effects()).toEqual({ commits: 1, reversals: 0, providerCloses: 0 });
+  });
+
+  it("refuses a changed posted-line mapping under the original refund reservation", async () => {
+    const { f, port, input, units } = await postedLine();
+    f.reserveReverse(input, units, 100);
+    units[0].postedPositionRef = "tax_other_line";
+    expectIntegrityRefusal(await port.reverse(input));
+    expect(f.effects().reversals).toBe(0);
+  });
+
+  it("checks the reserved wire digest before dispatch and recovery lookup", async () => {
+    const { f, port, commit, input, units } = await postedLine();
+    const refund = f.reserveReverse(input, units, 100);
+    const sale = f.reservations.get(commit.transactionRef)!;
+    sale.wireDigest = refund.wireDigest = "0".repeat(64);
+    f.lookup.mockClear();
+    for (const intent of ["apply", "recover"] as const) {
+      expectIntegrityRefusal(await port.commit({ ...commit, intent }));
+      expectIntegrityRefusal(await port.reverse({ ...input, intent }));
+    }
+    expect(f.lookup).not.toHaveBeenCalled();
+    expect(f.effects()).toEqual({ commits: 1, reversals: 0, providerCloses: 0 });
+  });
+
+  it("returns typed unknown effects when the reference index fails", async () => {
+    const { f, port, commit, input, units } = await postedLine();
+    f.reserveReverse(input, units, 100);
+    f.lookup.mockImplementation(() => { throw new Error("Index unavailable"); });
+    const unknown = { kind: "unavailable", code: "tax_adapter_unavailable", effect: "unknown" };
+    expect(await port.commit({ ...commit, intent: "recover" })).toEqual(unknown);
+    expect(await port.reverse(input)).toEqual(unknown);
+    expect(f.effects()).toEqual({ commits: 1, reversals: 0, providerCloses: 0 });
+  });
+
+  it("recovers a lost reversal response only after verifying the indexed receipt", async () => {
+    const { f, port, input, units } = await postedLine();
+    const reservation = f.reserveReverse(input, units, 100);
+    f.loseResponse();
+    expect(await port.reverse(input)).toEqual({ kind: "unavailable", code: "tax_adapter_unavailable", effect: "unknown" });
+    reservation.send = { kind: "unknown" };
+    const recover = { ...input, intent: "recover" as const };
+    expect(await port.reverse(recover)).toMatchObject({ kind: "unavailable", effect: "unknown" });
+    const [{ reference, metadata }] = f.client.transactions.createReversal.mock.calls[0];
+    expect(metadata.openlup_request_digest).toBe(taxDigest("reverse", [reservation.requestDigest, reservation.wireDigest]));
+    f.references.set(reference, "tax_sale");
+    expect(await port.reverse(recover)).toMatchObject({ kind: "unavailable", effect: "unknown" });
+    f.references.set(reference, "tax_refund_1");
+    expect(await port.reverse(recover)).toEqual({ kind: "reversed", providerReversalRef: "tax_refund_1", positions: input.positions });
+    expect(f.effects().reversals).toBe(1);
+  });
+
   it("maps a deterministic quote rejection with its field and remedy", async () => {
     const f = lifecycleFixture();
     f.client.calculations.create.mockRejectedValueOnce(Object.assign(new Error("Supply a valid tax address."), {
@@ -104,6 +176,48 @@ describe("reporting lifecycle", () => {
 });
 
 describe("retry validity probe", () => {
+  it("refuses corrupted original evidence before scope and refuses a verified foreign scope without provider calls", async () => {
+    const f = lifecycleFixture({ single: true });
+    const port = f.open();
+    const original = f.request();
+    const result = await port.quote(original);
+    if (result.kind !== "final") throw new Error("Expected final quote");
+    const chargeAt = "2030-01-02T00:00:00.000Z";
+    const scope = { ...original.input.scope, accountRef: "other-account" };
+    const current = { ...original.input, taxDate: chargeAt, scope, coverage: { ...original.input.coverage, accountRef: scope.accountRef } };
+    const request = { original, evidence: result.evidence, evidenceDigest: result.evidenceDigest, chargeAt, current };
+    const forged = await port.readFiscalValidity({ ...request, evidenceDigest: "0".repeat(64) });
+    expectIntegrityRefusal(forged);
+    expect(forged).toMatchObject({ field: "/evidenceDigest" });
+    expectIntegrityRefusal(await port.readFiscalValidity({ ...request, evidence: { ...result.evidence, requestKey: "" } }), "tax_invalid_input");
+    const foreign = await port.readFiscalValidity({ ...request, chargeAt: later });
+    expectIntegrityRefusal(foreign, "tax_scope_mismatch");
+    expect(foreign).toMatchObject({ field: "/current/scope/accountRef" });
+    expect(f.client.calculations.create).toHaveBeenCalledTimes(1);
+    expect(f.client.registrations.list).toHaveBeenCalledTimes(1);
+    expect(f.client.calculations.retrieve).not.toHaveBeenCalled();
+    expect(f.client.calculations.listLineItems).not.toHaveBeenCalled();
+    expect(f.client.transactions.retrieve).not.toHaveBeenCalled();
+    expect(f.client.transactions.listLineItems).not.toHaveBeenCalled();
+    expect(f.effects()).toEqual({ commits: 0, reversals: 0, providerCloses: 0 });
+  });
+
+  it("refuses a verified probe that changes the frozen currency", async () => {
+    const f = lifecycleFixture({ single: true });
+    const boundRequest = f.request();
+    const bound = await f.open().quote(boundRequest);
+    const other = lifecycleFixture({ single: true });
+    const taxDate = "2030-01-02T00:00:00.000Z";
+    other.marketPack.currency = "XTS";
+    other.setTime(taxDate);
+    const probeRequest = makeTaxQuoteRequest(boundRequest.key, { ...boundRequest.input, taxDate, currency: "XTS" });
+    const probe = await other.open().quote(probeRequest);
+    expect(bound.kind).toBe("final");
+    expect(probe.kind).toBe("final");
+    expect(verifyTaxQuoteResult(probeRequest, probe)).toBeUndefined();
+    expectIntegrityRefusal(compareTaxRecalculationProbe(boundRequest, bound, probeRequest, probe));
+  });
+
   it.each([["10", "equal"], ["9", "different"]] as const)("compares rate %s at the retry instant", async (rate, kind) => {
     const f = lifecycleFixture({ single: true });
     const port = f.open();
@@ -126,8 +240,7 @@ describe("retry validity probe", () => {
     expect(new Set(keys).size).toBe(2);
     expect(compareTaxRecalculationProbe(boundRequest, bound, request, result))
       .toEqual(kind === "equal" ? { kind } : { kind, field: "positions" });
-    expect(compareTaxRecalculationProbe(boundRequest, bound, { ...request, key: "different-key" }, result))
-      .toMatchObject({ kind: "refused", code: "tax_reference_conflict" });
+    expectIntegrityRefusal(compareTaxRecalculationProbe(boundRequest, bound, { ...request, key: "different-key" }, result));
     expect(compareTaxRecalculationProbe(boundRequest, bound, boundRequest, bound)).toMatchObject({ kind: "refused" });
   });
 });

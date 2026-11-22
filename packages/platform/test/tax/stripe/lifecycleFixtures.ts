@@ -85,26 +85,39 @@ export function lifecycleFixture(options: { single?: boolean } = {}) {
     listLineItems: vi.fn<Client["transactions"]["listLineItems"]>().mockRejectedValue(new Error("Unexpected transaction page")),
   };
   const client = { ...quoteClient, calculations: { ...quoteClient.calculations, retrieve: vi.fn(async id => calculations.get(id)) }, transactions };
+  const lookup = vi.fn((ref: string) => references.get(ref));
   const open = () => createStripeTaxAdapter({ installationRef: "installation", client, marketPack, now: () => new Date(time),
     effects: {
       accepted: () => accepted, commit: ref => reservations.get(ref), reverse: ref => refunds.get(ref),
-      findTransactionIdByReference: ref => references.get(ref),
+      findTransactionIdByReference: lookup,
     },
   });
   const effects = () => ({ commits: transactions.createFromCalculation.mock.calls.length,
     reversals: transactions.createReversal.mock.calls.length, providerCloses: 0 });
+  const providerReference = (ref: string) => "ol-tax-" + taxDigest("commit", ["installation", marketPack.scope, ref]);
   function reserveCommit(request: TaxCommitRequestV1, payableMinor: number) {
     const { intent: _intent, ...body } = request;
-    const value: SaleReservation = { requestDigest: taxDigest("commit", body), send: { kind: "ready", before: later },
-      capture: { ref: request.captureEvidenceRef, capturedAt: request.capturedAt, currency: input.currency, payableMinor } };
+    const capture = { ref: request.captureEvidenceRef, capturedAt: request.capturedAt, currency: input.currency, payableMinor };
+    const wire = { calculation: request.calculationRef.ref, reference: providerReference(request.transactionRef),
+      posted_at: seconds(request.postedAt) };
+    const value: SaleReservation = { requestDigest: taxDigest("commit", [body, capture]),
+      wireDigest: taxDigest("commit", wire), send: { kind: "ready", before: later }, capture };
     reservations.set(request.transactionRef, value);
     return value;
   }
   function reserveReverse(request: TaxReverseRequestV1, units: Unit[], payableMinor: number) {
     const { intent: _intent, ...body } = request;
-    const value: RefundReservation = { requestDigest: taxDigest("reverse", body), send: { kind: "ready", before: later },
-      refundEvidenceRef: request.refundEvidenceRef, original: { id: request.originalRef, scope: input.scope, currency: input.currency,
-        taxDate: input.taxDate, payableMinor, refundedMinor: request.fromMinor, units } };
+    const { refundEvidenceRef } = request;
+    const original = { id: request.originalRef, scope: input.scope, currency: input.currency,
+      taxDate: input.taxDate, payableMinor, refundedMinor: request.fromMinor, units };
+    // Reversal fixtures use a single merchandise unit.
+    const [delta] = request.positions;
+    const full = request.mode === "full" && request.fromMinor === 0;
+    const wire = { reference: providerReference(request.reversalRef), original_transaction: original.id,
+      mode: full ? "full" : "partial", ...(!full && { line_items: [{ reference: "ol-r-0",
+        original_line_item: units[0].postedPositionRef, amount: delta.netDeltaMinor, amount_tax: delta.taxDeltaMinor }] }) };
+    const value: RefundReservation = { requestDigest: taxDigest("reverse", [body, { refundEvidenceRef, original }]),
+      wireDigest: taxDigest("reverse", wire), send: { kind: "ready", before: later }, refundEvidenceRef, original };
     refunds.set(request.reversalRef, value);
     return value;
   }
@@ -119,7 +132,7 @@ export function lifecycleFixture(options: { single?: boolean } = {}) {
     const reservation = reserveCommit(commit, result.money.payableMinor);
     return { result, commit, reservation };
   }
-  return { ...f, client, open, effects, receipts, references, reservations, refunds,
+  return { ...f, client, open, effects, receipts, references, reservations, refunds, lookup,
     setTime: (next: string) => { time = next; },
     setResult: (next: typeof make) => { make = next; },
     loseResponse: () => { lost = true; indexed = false; },

@@ -2,7 +2,7 @@ import { taxCloseInputV1Schema, TAX_CALCULATION_CONTRACT_VERSION } from "../cont
 import type { TaxCalculationPortV1 } from "../contracts/index.js";
 import { invalid } from "../contracts/decode.js";
 import { ref, scope } from "../contracts/schemas.js";
-import { verifyTaxQuoteRequest } from "../digest.js";
+import { verifyTaxFiscalValidityRequest } from "../digest.js";
 import type { Client, Effects, StripeQuoteMarketPack } from "./effects.js";
 import { quoteStripeTax } from "./quote.js";
 import { assertClientScope, assertScope, commit, refuseError, reverse } from "./transactions.js";
@@ -52,8 +52,8 @@ export function createStripeTaxAdapter(options: StripeTaxAdapterOptions): TaxCal
     }),
     quote: request => quoteStripeTax(pinned, request),
     async readFiscalValidity(request) {
-      verifyTaxQuoteRequest(request);
-      return { kind: "unavailable", code: "tax_fiscal_validity_unavailable", effect: "none" };
+      return verifyTaxFiscalValidityRequest(request, pack.scope)
+        ?? { kind: "unavailable", code: "tax_fiscal_validity_unavailable", effect: "none" };
     },
     async closeCalculation(ref, reason, key) {
       try {

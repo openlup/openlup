@@ -10,7 +10,7 @@ import {
   quoteRequestDocumentSchema, taxFiscalValidityRequestV1Schema, taxQuoteRequestV1Schema,
 } from "./contracts/schemas.js";
 import type {
-  TaxCalculationEvidenceV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal,
+  TaxCalculationEvidenceV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal, TaxScopeV1,
 } from "./contracts/index.js";
 
 type DigestTag = "input" | "coverage" | "fiscal" | "resolution" | "evidence" | "rate-table" | "close" | "commit" | "reverse";
@@ -42,7 +42,7 @@ function refuse(code: TaxRefusal["code"], field: string, remedy: string): TaxRef
   return { kind: "refused", code, field, remedy };
 }
 
-function matchesDigest(tag: DigestTag, document: unknown, digest: string): boolean {
+export function matchesDigest(tag: DigestTag, document: unknown, digest: string): boolean {
   try { return taxDigest(tag, document) === digest; }
   catch { return false; }
 }
@@ -167,18 +167,28 @@ function verifyQuoteBindings(request: TaxQuoteRequestV1): TaxRefusal | undefined
   if (!parsed.success) return refuse(parsed.error.code, parsed.error.field, parsed.error.message);
 }
 
+export function verifyTaxFiscalValidityRequest(request: unknown, pinnedScope?: TaxScopeV1): TaxRefusal | undefined {
+  const document = fiscalValidityDocumentSchema.safeParse(request);
+  if (!document.success) return refuse(document.error.code, document.error.field, document.error.message);
+  const { original, evidence, evidenceDigest, current } = document.data;
+  const mismatch = verifyInputDigest(original, "/original") ?? verifyEvidenceDigests(original, evidence, evidenceDigest);
+  if (mismatch) return mismatch;
+  for (const key of ["adapter", "adapterVersion", "accountRef", "mode"] as const) {
+    if (current.scope[key] !== original.input.scope[key]) {
+      return refuse("tax_scope_mismatch", "/current/scope/" + key, "Use the original quote's scope for the charge-time input.");
+    }
+    if (pinnedScope && original.input.scope[key] !== pinnedScope[key]) {
+      return refuse("tax_scope_mismatch", "/original/input/scope/" + key, "Use the adapter bound to the original quote's scope.");
+    }
+  }
+  const parsed = taxFiscalValidityRequestV1Schema.safeParse(document.data);
+  if (!parsed.success) return refuse(parsed.error.code, parsed.error.field, parsed.error.message);
+  return verifyEvidenceBindings(original, evidence);
+}
+
 /** Verify the quote or fiscal-validity digests before returning binding repair advice. */
 export function verifyTaxQuoteRequest(request: TaxQuoteRequestV1 | TaxFiscalValidityRequestV1): TaxRefusal | undefined {
-  if ("original" in request) {
-    const document = fiscalValidityDocumentSchema.safeParse(request);
-    if (!document.success) return refuse(document.error.code, document.error.field, document.error.message);
-    const { original, evidence, evidenceDigest } = document.data;
-    const mismatch = verifyInputDigest(original, "/original") ?? verifyEvidenceDigests(original, evidence, evidenceDigest);
-    if (mismatch) return mismatch;
-    const parsed = taxFiscalValidityRequestV1Schema.safeParse(document.data);
-    if (!parsed.success) return refuse(parsed.error.code, parsed.error.field, parsed.error.message);
-    return verifyEvidenceBindings(original, evidence);
-  }
+  if (request && typeof request === "object" && "original" in request) return verifyTaxFiscalValidityRequest(request);
   const checked = checkedQuoteRequest(request);
   return "kind" in checked ? checked : verifyQuoteBindings(checked);
 }

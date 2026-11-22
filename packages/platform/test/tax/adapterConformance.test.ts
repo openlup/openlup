@@ -154,7 +154,7 @@ function subject(modes?: readonly TaxReverseRequestV1["mode"][], defect?: Defect
       } else if (caseId === "expiry" && (defect === "invalid_proof_times" || defect === "invalid_effective_from")) {
         fixture.port = { ...base, async readFiscalValidity(request) {
           const result = await base.readFiscalValidity(request);
-          if (result.kind === "unavailable") throw new Error("Expected available validity proof");
+          if (!("proof" in result)) throw new Error("Expected available validity proof");
           return { ...result, proof: {
             ...result.proof,
             observedAt: defect === "invalid_proof_times" ? "0" : result.proof.observedAt,

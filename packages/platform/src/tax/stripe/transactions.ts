@@ -2,13 +2,13 @@ import { isDeepStrictEqual } from "node:util";
 import { checked, invalid, oneOf } from "../contracts/decode.js";
 import { taxCommitRequestV1Schema, taxReverseRequestV1Schema } from "../contracts/index.js";
 import type { TaxCommitRequestV1, TaxRefusal, TaxRefusalCode, TaxReverseRequestV1, TaxScopeV1, TaxUnavailable } from "../contracts/index.js";
-import { instant } from "../contracts/schemas.js";
-import { taxDigest, verifyTaxQuoteResult } from "../digest.js";
+import { instant, ref } from "../contracts/schemas.js";
+import { matchesDigest, taxDigest, verifyTaxQuoteResult } from "../digest.js";
 import {
   checkScope, epoch, fields, id, incomplete, isProviderRejection, matchesEcho, member, nullable, readPages, record,
   StripeQuoteUnavailable, text,
 } from "./client.js";
-import type { RefundReservation, ReversalParams, SaleParams } from "./effects.js";
+import type { RefundReservation, ReversalParams, SaleParams, SaleReservation } from "./effects.js";
 import type { StripeTaxAdapterOptions } from "./index.js";
 import { planQuote } from "./plan.js";
 
@@ -109,15 +109,35 @@ async function verifyReceipt(options: StripeTaxAdapterOptions, response: unknown
   })).sort((a, b) => a.originalPositionRef < b.originalPositionRef ? -1 : 1) };
 }
 
-function binding(options: StripeTaxAdapterOptions, operation: "commit" | "reverse", ref: string,
-  request: TaxCommitRequestV1 | TaxReverseRequestV1, digest: string) {
-  const { intent: _intent, ...body } = request;
-  if (taxDigest(operation, body) !== digest) {
-    invalid("/" + (operation === "commit" ? "transactionRef" : "reversalRef"),
-      "The reference is reserved for a different request. Replay the original request and digest.", "tax_reference_conflict");
-  }
+function integrityConflict(field: string): never {
+  return invalid(field, "The reservation binding differs. Replay the original document and digest.", "tax_reference_conflict");
+}
+
+function effectRef(input: unknown, field: string): string | undefined {
+  if (!input || typeof input !== "object") return;
+  try { return ref(Object.getOwnPropertyDescriptor(input, field)?.value, "/" + field); }
+  catch { return undefined; }
+}
+
+function verifyReservedRequest(operation: "commit" | "reverse", input: object, field: string,
+  reservation: SaleReservation | RefundReservation): void {
+  // Preserve descriptors so a malformed binding cannot read through accessors or drop unexpected fields.
+  const descriptors = Object.getOwnPropertyDescriptors(input);
+  delete descriptors.intent;
+  const body: unknown = Object.create(Object.getPrototypeOf(input), descriptors);
+  const facts = "capture" in reservation ? reservation.capture
+    : { refundEvidenceRef: reservation.refundEvidenceRef, original: reservation.original };
+  if (!matchesDigest(operation, [body, facts], reservation.requestDigest)) integrityConflict(field);
+}
+
+function binding(options: StripeTaxAdapterOptions, operation: "commit" | "reverse", ref: string) {
   const reference = "ol-tax-" + taxDigest("commit", [options.installationRef, options.marketPack.scope, ref]);
   return { reference, idempotencyKey: "ol-tax-" + operation + "-" + reference.slice(7) };
+}
+
+function bindWire<T>(operation: "commit" | "reverse", body: T, reservation: SaleReservation | RefundReservation) {
+  if (!matchesDigest(operation, body, reservation.wireDigest)) integrityConflict("/reservation/wireDigest");
+  return { ...body, metadata: { openlup_request_digest: taxDigest(operation, [reservation.requestDigest, reservation.wireDigest]) } };
 }
 
 type Send = NonNullable<ReturnType<StripeTaxAdapterOptions["effects"]["commit"]>>["send"];
@@ -130,7 +150,9 @@ async function execute(
   idempotencyKey: string, send: Send, intent: TaxCommitRequestV1["intent"],
   apply: (key: string) => Promise<unknown>, beforeSend?: (now: string) => void,
 ): Promise<ProviderReceipt | TaxRefusal | TaxUnavailable> {
-  const candidate = options.effects.findTransactionIdByReference(wire.reference);
+  let candidate: string | undefined;
+  try { candidate = options.effects.findTransactionIdByReference(wire.reference); }
+  catch { return uncertain(true); }
   if (candidate !== undefined || intent === "recover" || send.kind === "unknown") {
     if (!candidate) return uncertain();
     try {
@@ -159,11 +181,13 @@ async function execute(
 
 export async function commit(options: StripeTaxAdapterOptions, input: TaxCommitRequestV1) {
   try {
+    const key = effectRef(input, "transactionRef");
+    const reservation = key === undefined ? undefined : options.effects.commit(key);
+    if (reservation) verifyReservedRequest("commit", input, "/transactionRef", reservation);
     const request = taxCommitRequestV1Schema.parse(input);
     const { calculationRef, transactionRef, postedAt, capturedAt, captureEvidenceRef, intent } = request;
-    const reservation = options.effects.commit(transactionRef);
     if (!reservation) invalid("/transactionRef", "No effect is reserved. Reserve the verified capture before posting.", "tax_calculation_unusable");
-    const { reference, idempotencyKey } = binding(options, "commit", transactionRef, request, reservation.requestDigest);
+    const { reference, idempotencyKey } = binding(options, "commit", transactionRef);
     assertScope(calculationRef.scope, options.marketPack.scope, "/calculationRef/scope");
     assertClientScope(options);
     const accepted = options.effects.accepted(calculationRef);
@@ -223,7 +247,7 @@ export async function commit(options: StripeTaxAdapterOptions, input: TaxCommitR
       incomplete("/calculationRef", "The calculation reused a reporting line identity.");
     }
     const body = { calculation: calculationRef.ref, reference, posted_at: postedSeconds };
-    const wire = { ...body, metadata: { openlup_request_digest: taxDigest("commit", [reservation.requestDigest, body]) } };
+    const wire = bindWire("commit", body, reservation);
     const receipt = await execute(options, wire, { currency, taxDate, postedAt, lines, shipping }, idempotencyKey, reservation.send, intent,
       key => options.client.transactions.createFromCalculation(wire, { idempotencyKey: key }), now => {
         if (accepted.closed) invalid("/calculationRef", "The calculation was closed locally. Reconcile it with the original capture.", "tax_calculation_closed");
@@ -273,13 +297,15 @@ function reversalUnits(request: TaxReverseRequestV1, original: RefundReservation
 
 export async function reverse(options: StripeTaxAdapterOptions, input: TaxReverseRequestV1) {
   try {
+    const key = effectRef(input, "reversalRef");
+    const reservation = key === undefined ? undefined : options.effects.reverse(key);
+    if (reservation) verifyReservedRequest("reverse", input, "/reversalRef", reservation);
     const request = taxReverseRequestV1Schema.parse(input);
     if (request.mode === "amount") {
       invalid("/mode", "Flat amounts have no verified allocation. Reserve an exact line or full reversal.", "tax_operation_unsupported");
     }
-    const reservation = options.effects.reverse(request.reversalRef);
     if (!reservation) invalid("/reversalRef", "No effect is reserved. Reserve the verified refund before reversing.", "tax_reversal_unsubstantiated");
-    const { reference, idempotencyKey } = binding(options, "reverse", request.reversalRef, request, reservation.requestDigest);
+    const { reference, idempotencyKey } = binding(options, "reverse", request.reversalRef);
     assertScope(request.scope, options.marketPack.scope, "/scope");
     assertClientScope(options);
     const { original, refundEvidenceRef } = reservation;
@@ -293,7 +319,7 @@ export async function reverse(options: StripeTaxAdapterOptions, input: TaxRevers
       ...(!full && lines.length && { line_items: lines.map(({ amount, amount_tax, reference, postedPositionRef }) =>
         ({ amount, amount_tax, reference, original_line_item: postedPositionRef! })) }),
       ...(!full && shipping && { shipping_cost: { amount: shipping.amount, amount_tax: shipping.amount_tax } }) };
-    const wire = { ...body, metadata: { openlup_request_digest: taxDigest("reverse", [reservation.requestDigest, body]) } };
+    const wire = bindWire("reverse", body, reservation);
     const expected = { currency: original.currency, taxDate: original.taxDate, original: original.id, lines, shipping, full };
     const receipt = await execute(options, wire, expected, idempotencyKey, reservation.send, request.intent,
       key => options.client.transactions.createReversal(wire, { idempotencyKey: key }));

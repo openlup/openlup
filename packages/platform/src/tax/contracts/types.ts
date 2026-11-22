@@ -78,7 +78,7 @@ export type TaxFiscalValidityRequestV1 = Readonly<{ original: TaxQuoteRequestV1;
   evidenceDigest: string; chargeAt: string; current: TaxQuoteInputV1 }>;
 type FiscalProof = Readonly<{ calculationRef: string; evidenceDigest: string; observedAt: string;
   effective: Interval; fiscalDigest: string; dispatchBefore: string }>;
-export type TaxFiscalValidityResultV1 = Readonly<{ kind: "unchanged" | "changed"; proof: FiscalProof }> | TaxUnavailable;
+export type TaxFiscalValidityResultV1 = Readonly<{ kind: "unchanged" | "changed"; proof: FiscalProof }> | TaxRefusal | TaxUnavailable;
 
 export type TaxCalculationRefV1 = Readonly<{ scope: TaxScopeV1; ref: string; evidenceDigest: string }>;
 export type TaxCloseReasonV1 = Readonly<{ kind: "affirmatively_unused" | "verified_unpaid"; evidenceRef: string }>;

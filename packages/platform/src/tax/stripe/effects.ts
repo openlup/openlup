@@ -77,8 +77,16 @@ type Unit = {
 // A ready reservation authorizes its original body and key only until the host's proven send deadline.
 type Send = { kind: "ready"; before: string } | { kind: "unknown" };
 type Reservation = {
-  /** Hash canonical JSON [platform.tax.<operation>.v1, request without intent] using the matching commit or reverse tag. */
+  /**
+   * Hash canonical JSON tagged with platform.tax.<operation>.v1 over
+   * [request without intent, capture] for a sale or [request without intent, { refundEvidenceRef, original }] for a refund.
+   */
   requestDigest: string;
+  /**
+   * Persist the same tagged hash of the exact provider body before dispatch, with metadata omitted.
+   * The provider metadata carries the tagged hash of [requestDigest, wireDigest].
+   */
+  wireDigest: string;
   send: Send;
 };
 export type SaleReservation = Reservation & {

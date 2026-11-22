@@ -1,6 +1,4 @@
-import type Stripe from "stripe";
-import { expect, expectTypeOf, it } from "vitest";
-import type { StripeTaxAdapterOptions } from "../../../src/tax/stripe/index.js";
+import { expect, it } from "vitest";
 import { runTaxAdapterConformance } from "../../../src/tax/index.js";
 import type { TaxConformanceCaseV1 } from "../../../src/tax/index.js";
 import type { TaxCalculationPortV1, TaxReverseRequestV1 } from "../../../src/tax/contracts/index.js";
@@ -74,13 +72,6 @@ function open(caseId: TaxConformanceCaseV1) {
   };
   return { ...f, request, advance, port };
 }
-
-it("accepts the installed SDK tax resources with an account and mode binding", () => {
-  type BoundResources = Pick<Stripe["tax"], "calculations" | "registrations" | "transactions"> & {
-    readonly scope: { readonly accountRef: string; readonly mode: "test" | "live" };
-  };
-  expectTypeOf<BoundResources>().toExtend<StripeTaxAdapterOptions["client"]>();
-});
 
 it("passes every offline conformance case through the provider factory", async () => {
   const scenarios = new Map<TaxConformanceCaseV1, ReturnType<typeof open>>();

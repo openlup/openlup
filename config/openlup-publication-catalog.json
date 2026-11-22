@@ -12426,6 +12426,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/tax/stripe/clientTypes.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/tax/stripe/conformance.test.ts",
       "class": "public-output"
     },

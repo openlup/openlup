@@ -72,7 +72,7 @@ export interface TaxCalculationPortV1 {
      * Verify successful outputs with `verifyTaxQuoteResult`. Adapter conformance will check this binding.
      */
     quote(request: TaxQuoteRequestV1): Promise<TaxQuoteResultV1>;
-    /** Decode the request and call `verifyTaxQuoteRequest` to check the original quote and evidence binding. */
+    /** Decode the request and call `verifyTaxQuoteRequest` to check the original quote, evidence and current scope binding. */
     readFiscalValidity(request: TaxFiscalValidityRequestV1): Promise<TaxFiscalValidityResultV1>;
     /**
      * The caller records a local, idempotent close for affirmatively unused or verified-unpaid evidence.
@@ -93,12 +93,14 @@ export declare function reconcileTaxCoverage(input: TaxCoverageInputV1): TaxCove
 ## dist/tax/digest.d.ts
 
 ```ts
-import type { TaxCalculationEvidenceV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal } from "./contracts/index.js";
+import type { TaxCalculationEvidenceV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal, TaxScopeV1 } from "./contracts/index.js";
 type DigestTag = "input" | "coverage" | "fiscal" | "resolution" | "evidence" | "rate-table" | "close" | "commit" | "reverse";
 export declare function taxDigest(tag: DigestTag, payload: unknown): string;
 export declare function makeTaxQuoteRequest(key: string, input: TaxQuoteInputV1): TaxQuoteRequestV1;
+export declare function matchesDigest(tag: DigestTag, document: unknown, digest: string): boolean;
 type FiscalEvidence = Pick<TaxCalculationEvidenceV1, "scope" | "destinationDigest" | "shipFromRef" | "policyRevision" | "classMapRevision" | "coverage" | "positions">;
 export declare const taxFiscalDigest: (evidence: FiscalEvidence) => string;
+export declare function verifyTaxFiscalValidityRequest(request: unknown, pinnedScope?: TaxScopeV1): TaxRefusal | undefined;
 /** Verify the quote or fiscal-validity digests before returning binding repair advice. */
 export declare function verifyTaxQuoteRequest(request: TaxQuoteRequestV1 | TaxFiscalValidityRequestV1): TaxRefusal | undefined;
 /** Verify a successful quote's digests before checking its money and evidence bindings. */

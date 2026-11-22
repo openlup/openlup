@@ -43,10 +43,10 @@ export function compareTaxRecalculationProbe(
   if (bound.kind !== "final" || probe.kind !== "final") {
     return { kind: "refused", code: "tax_calculation_unusable", field: "/kind", remedy: "Supply two verified final quotes." };
   }
-  const rebasedInput = { ...boundRequest.input, taxDate: probeRequest.input.taxDate, currency: probeRequest.input.currency };
+  const rebasedInput = { ...boundRequest.input, taxDate: probeRequest.input.taxDate };
   if (probeRequest.key !== boundRequest.key || probeRequest.inputDigest !== makeTaxQuoteRequest(boundRequest.key, rebasedInput).inputDigest) {
     return { kind: "refused", code: "tax_reference_conflict", field: "/input",
-      remedy: "Quote the original frozen input under its original scope and logical key at the retry instant." };
+      remedy: "Replay the original request and digest for the bound quote. Build the probe under the same key with only the tax instant changed." };
   }
   if (probeRequest.input.taxDate <= boundRequest.input.taxDate) {
     return { kind: "refused", code: "tax_calculation_unusable", field: "/input/taxDate",
