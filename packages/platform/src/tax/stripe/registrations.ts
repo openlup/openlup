@@ -1,8 +1,8 @@
-import { checked, invalid } from "../contracts/decode.js";
+import { checked } from "../contracts/decode.js";
 import { cellKey, declarationKey, includesInstant } from "../contracts/identity.js";
 import type { TaxCoverageInputV1, TaxQuoteInputV1 } from "../contracts/index.js";
 import { taxDigest } from "../digest.js";
-import { checkScope, member, readPages, record, registration, text } from "./client.js";
+import { checkScope, incomplete, member, providerDecode, readPages, record, registration, text } from "./client.js";
 import type { StripeQuoteClient } from "./client.js";
 import type { StripeQuoteMarketPack } from "./plan.js";
 
@@ -11,8 +11,8 @@ const knownTypes = new Set([
   "state_sales_tax", "state_retail_delivery_fee", "state_communications_tax", "local_amusement_tax",
   "local_lease_tax", "mass_transit_parking_tax", "parking_tax",
 ]);
-const regionCode = checked((value): value is string => typeof value === "string" && /^[A-Z]{2}$/u.test(value),
-  "Obtain the two-letter uppercase provider region code.");
+const regionCode = providerDecode(checked((value): value is string => typeof value === "string" && /^[A-Z]{2}$/u.test(value),
+  "Obtain the two-letter uppercase provider region code."));
 
 // Point evidence bounds an observation without projecting the current inventory or rate into the future.
 export const witnessedInstant = (date: string) => ({ from: date, until: new Date(Date.parse(date) + 1).toISOString() });
@@ -26,7 +26,7 @@ export async function readRegistrations(client: StripeQuoteClient, input: TaxQuo
       regionCode(row.country, path + "/country");
       const effective = { from: row.active_from, ...(row.expires_at !== null && { until: row.expires_at }) };
       if (effective.until !== undefined && effective.until <= effective.from) {
-        invalid(path + "/expires_at", "The registration interval is reversed. Obtain the original effective interval.");
+        incomplete(path + "/expires_at", "The provider registration interval is reversed.");
       }
       if (!countries.has(row.country)) return { id: row.id, country: row.country, effective };
       const key = row.country.toLowerCase();

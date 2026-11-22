@@ -90,26 +90,45 @@ export async function quoteStripeTax(
     const original = structuredClone(request);
     const { input, inputDigest, key } = original;
     const { client, now } = options;
+    for (const field of ["accountRef", "mode"] as const) {
+      if (client.scope?.[field] !== input.scope[field]) {
+        invalid("/input/scope/" + field,
+          "The provider client scope differs from the quote. Use a client bound to the requested account and mode.", "tax_scope_mismatch");
+      }
+    }
     const pack = structuredClone(options.marketPack);
     const plan = planQuote(input, pack);
+    const shipping = plan.components.find(component => !component.source);
+    const omitShipping = !plan.zeroShipping && shipping?.effectiveMinor === 0;
+    if (omitShipping && shipping.preDiscountMinor > 0) {
+      invalid("/input/money/adjustments",
+        "A discount makes shipping free in only some snapshots. Qualify zero-amount shipping in the market pack or keep shipping positive in every snapshot.",
+        "tax_operation_unsupported");
+    }
     const registrations = await readRegistrations(client, input, pack);
-    for (const component of plan.components) {
-      if (!component.source && !plan.zeroShipping && component.effectiveMinor === 0
-        && component.cells.some(cell => registrations.get(cellKey(cell))?.state !== "inactive")) {
-        invalid("/input/money/delivery/0",
-          "Zero shipping lacks a qualified provider shape or independent inactivity evidence. Supply either before quoting.", "tax_operation_unsupported");
-      }
+    if (omitShipping && shipping.cells.some(cell => registrations.get(cellKey(cell))?.state !== "inactive")) {
+      invalid("/input/money/delivery/0",
+        "Zero shipping lacks a qualified provider shape or independent inactivity evidence. Supply either before quoting.", "tax_operation_unsupported");
     }
     const states: ProviderTax["components"][number]["states"][number][][] = plan.components.map(() => []);
     const amounts = plan.components.map(item => item.preDiscountMinor);
     const tax = new Map<string, Position>();
     const calculationIds = new Set<string>();
+    const feeAmounts = new Map<string, number>();
     let final: Awaited<ReturnType<typeof calculateSnapshot>> | undefined;
     for (const sequence of plan.sequences) {
       const allocations = plan.components.map(item => item.allocations.find(row => row.sequence === sequence));
       allocations.forEach((row, index) => { if (row) amounts[index] = row.afterMinor; });
       const snapshot = await calculateSnapshot(client, now, original, plan, pack, amounts, sequence, registrations);
-      const { coverage, calculation } = snapshot;
+      const { coverage, calculation, fee } = snapshot;
+      if (fee) {
+        const identity = cellKey(fee.cell);
+        const previous = feeAmounts.get(identity);
+        if (previous !== undefined && previous !== fee.amount) {
+          incomplete(fee.amountPath, "The flat fee assessment changed between discount snapshots.");
+        }
+        feeAmounts.set(identity, fee.amount);
+      }
       const { vector, digest } = coverage;
       if (coverage.kind !== "resolved") {
         const { vector: _vector, digest: _digest, ...failure } = coverage;
@@ -117,14 +136,19 @@ export async function quoteStripeTax(
       }
       if (calculationIds.has(calculation.id)) incomplete("/calculation/id", "The provider reused a calculation across different snapshots.");
       calculationIds.add(calculation.id);
-      if (final && final.coverage.digest !== digest) incomplete("/coverage", "Coverage treatment changed between discount states.");
+      if (final && final.coverage.digest !== digest) {
+        invalid("/input/money/adjustments",
+          "Coverage treatment changed between discount states. Use discounts that preserve the same coverage treatment.", "tax_operation_unsupported");
+      }
       snapshot.positions.forEach((taxPositions, index) => {
         const component = states[index];
         const amountMinor = amounts[index];
         if (sequence === 0 || allocations[index]) {
           component.push({ afterSequence: sequence, amountMinor, taxPositions });
         } else if (!isDeepStrictEqual(component.at(-1)?.taxPositions, taxPositions)) {
-          incomplete(snapshot.normalized[index].path, "An unallocated component changed between discount states.");
+          invalid("/input/money/adjustments",
+            "An unallocated component changed between discount states. Use discounts that keep tax stable on unallocated components.",
+            "tax_operation_unsupported");
         }
       });
       for (const [ref, row] of snapshot.metadata) tax.set(ref, row);

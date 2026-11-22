@@ -14,7 +14,7 @@ function assertSuccess(request: TaxQuoteRequestV1, result: TaxQuoteResultV1) {
 }
 
 function setup(f = fixture()) {
-  const client = fakeClient();
+  const client = fakeClient(f.input.scope);
   return { ...f, client, run: (request = f.request()) => quoteStripeTax({ client, marketPack: f.marketPack, now }, request) };
 }
 
@@ -131,6 +131,7 @@ describe("private tax calculation quote", () => {
 
   it.each([
     ["foreign calculation mode", (wire: ReturnType<typeof snapshot>) => { wire.livemode = true; }, "tax_scope_mismatch", "/calculation/livemode"],
+    ["foreign calculation account", (wire: ReturnType<typeof snapshot>) => { Object.assign(wire, { account: "other-account" }); }, "tax_scope_mismatch", "/calculation/account"],
     ["foreign line mode", (wire: ReturnType<typeof snapshot>) => { wire.line_items.data[0].livemode = true; }, "tax_scope_mismatch", "/line_items/0/data/0/livemode"],
     ["wrong parent", (wire: ReturnType<typeof snapshot>) => { wire.line_items.data[0].calculation = "calc_foreign"; }, "tax_breakdown_incomplete", "/line_items/0/data/0/calculation"],
     ["missing breakdown", (wire: ReturnType<typeof snapshot>) => { Reflect.deleteProperty(wire.line_items.data[0], "tax_breakdown"); }, "tax_breakdown_incomplete", "/line_items/0/data/0/tax_breakdown"],
@@ -149,6 +150,50 @@ describe("private tax calculation quote", () => {
       return wire;
     });
     expect(await f.run()).toMatchObject({ kind: "refused", code, field, remedy: expect.any(String) });
+  });
+
+  it.each([
+    ["malformed line breakdown", (wire: ReturnType<typeof snapshot>) => {
+      Object.assign(wire.line_items.data[0], { tax_breakdown: {} });
+    }, "/line_items/0/data/0/tax_breakdown"],
+    ["missing calculation marker", (wire: ReturnType<typeof snapshot>) => {
+      Reflect.deleteProperty(wire, "object");
+    }, "/calculation/object"],
+    ["non-number amount", (wire: ReturnType<typeof snapshot>) => {
+      Object.assign(wire, { amount_total: "242" });
+    }, "/calculation/amount_total"],
+    ["wrong mode-echo type", (wire: ReturnType<typeof snapshot>) => {
+      Object.assign(wire, { livemode: "false" });
+    }, "/calculation/livemode"],
+    ["taxable basis reduced from 100 to 0", (wire: ReturnType<typeof snapshot>) => {
+      wire.tax_breakdown[0].taxable_amount = 0;
+    }, "/calculation/tax_breakdown/0/taxable_amount"],
+  ] as const)("refuses %s as provider evidence at its field", async (_case, mutate, field) => {
+    const f = setup();
+    f.client.calculations.create.mockImplementation(async params => {
+      const wire = snapshot(params);
+      mutate(wire);
+      return wire;
+    });
+    expect(await f.run()).toMatchObject({
+      kind: "refused", code: "tax_breakdown_incomplete", field,
+      remedy: expect.stringContaining("Obtain the complete provider breakdown for the original calculation request"),
+    });
+  });
+
+  it.each(["unmapped special district", "duplicate binding"] as const)("identifies the market-pack gap for a %s", async scenario => {
+    const f = setup();
+    if (scenario === "duplicate binding") f.marketPack.jurisdictions = [...f.marketPack.jurisdictions, f.marketPack.jurisdictions[0]];
+    f.client.calculations.create.mockImplementation(async params => snapshot(params, 0, {
+      lineDetails: line => line.reference === "ol-m-1"
+        ? [detail(10, line.amount), ...(scenario === "unmapped special district" ? [detail(1, line.amount, "district-special")] : [])]
+        : [detail(10, line.amount, "district-b")],
+    }));
+    expect(await f.run()).toMatchObject({
+      kind: "refused", code: "tax_rule_missing",
+      field: "/line_items/0/data/0/tax_breakdown/" + (scenario === "unmapped special district" ? 1 : 0) + "/jurisdiction",
+      remedy: expect.stringContaining("market pack"),
+    });
   });
 
   it.each(["duplicate", "empty", "foreign page", "outage"] as const)("fails a %s line continuation", async failure => {
@@ -181,7 +226,8 @@ describe("private tax calculation quote", () => {
     for (const { code, options } of changes) {
       f.client.calculations.create.mockImplementationOnce(async params => snapshot(params))
         .mockImplementationOnce(async params => snapshot(params, 1, options));
-      expect(await f.run()).toMatchObject({ kind: "refused", code: "tax_breakdown_incomplete", remedy: expect.stringContaining(code) });
+      expect(await f.run()).toMatchObject({ kind: "refused",
+        code: code === "tax increased" ? "tax_breakdown_incomplete" : "tax_operation_unsupported", remedy: expect.stringContaining(code) });
     }
   });
 
@@ -201,6 +247,20 @@ describe("private tax calculation quote", () => {
     expect(await f.run()).toMatchObject({ code: "tax_reference_conflict", field: "/key", remedy: expect.stringContaining("Replay the original") });
     f.client.calculations.create.mockRejectedValueOnce(new Error("transport outage"));
     expect(await f.run()).toMatchObject({ kind: "unavailable", code: "tax_adapter_unavailable", effect: "none" });
+  });
+
+  it.each([
+    [{ accountRef: "other-account", mode: "test" }, "/input/scope/accountRef"],
+    [{ accountRef: "account-a", mode: "live" }, "/input/scope/mode"],
+  ] as const)("refuses a mismatched client scope before transport (%j)", async (scope, field) => {
+    const f = fixture();
+    const client = fakeClient(scope);
+    expect(await quoteStripeTax({ client, marketPack: f.marketPack, now }, f.request())).toMatchObject({
+      kind: "refused", code: "tax_scope_mismatch", field,
+    });
+    expect(client.registrations.list).not.toHaveBeenCalled();
+    expect(client.calculations.create).not.toHaveBeenCalled();
+    expect(client.calculations.listLineItems).not.toHaveBeenCalled();
   });
 
   it("pins the request during provider I/O and refuses a changed caller binding", async () => {
@@ -226,7 +286,7 @@ describe("private tax calculation quote", () => {
       if (shape === "origin") f.marketPack.origins = {};
       if (shape === "partial second") f.input.taxDate = date.replace(".000", ".001");
       if (shape === "delivery facts") f.marketPack.delivery = f.marketPack.delivery.map(rule => ({ ...rule, costIndependent: false }));
-      const code = { class: "tax_class_missing", origin: "tax_rule_missing", "partial second": "tax_invalid_input" } as const;
+      const code = { class: "tax_class_missing", origin: "tax_rule_missing" } as const;
       expect(await f.run()).toMatchObject({ kind: "refused", code: shape in code ? code[shape as keyof typeof code] : "tax_operation_unsupported" });
       expect(f.client.registrations.list).not.toHaveBeenCalled();
       expect(f.client.calculations.create).not.toHaveBeenCalled();

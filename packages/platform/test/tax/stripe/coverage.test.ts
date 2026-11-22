@@ -6,7 +6,7 @@ import { detail, fakeClient, fixture, now, page, registration, registrationUrl, 
 
 function setup() {
   const fixtureData = fixture();
-  const client = fakeClient();
+  const client = fakeClient(fixtureData.input.scope);
   const { input, marketPack, request } = fixtureData;
   const run = () => quoteStripeTax({ client, marketPack, now }, request());
   const zeroShipping = () => {
@@ -54,6 +54,21 @@ describe("registration inventory and tax treatments", () => {
     expect(result.evidence.coverage.vector.map(row => row.decision)).toEqual(["out_of_scope", "out_of_scope", "out_of_scope"]);
     expect(result.money.payableMinor).toBe(200);
     expect(f.client.calculations.create.mock.calls[0][0]).not.toHaveProperty("shipping_cost");
+  });
+
+  it("refuses an unqualified discount to free shipping before transport even with acknowledged inactivity", async () => {
+    const f = setup();
+    f.input.coverage = { ...f.input.coverage, declarations: f.input.coverage.declarations.map(row =>
+      ({ ...row, status: "not_registered_acknowledged", acknowledgementRef: "acknowledgement-a" })) };
+    f.client.registrations.list.mockResolvedValue(page(registrationUrl, []));
+    f.marketPack.delivery = f.marketPack.delivery.map(rule => ({ ...rule, zeroAmount: false }));
+    f.input.money.adjustments = [{ adjustmentRef: "free-shipping", sequence: 1, amountMinor: 20, target: { bucketKey: "shipping-a" } }];
+    expect(await f.run()).toMatchObject({
+      kind: "refused", code: "tax_operation_unsupported", field: "/input/money/adjustments",
+      remedy: expect.stringContaining("Qualify zero-amount shipping in the market pack"),
+    });
+    expect(f.client.registrations.list).not.toHaveBeenCalled();
+    expect(f.client.calculations.create).not.toHaveBeenCalled();
   });
 
   it("reconciles zero exemption and taxable coverage in the same response", async () => {
@@ -136,12 +151,29 @@ describe("flat retail delivery fee", () => {
     expect(result.evidence.coverage.vector.find(row => row.cell.target.kind === "fee")?.registration?.evidenceRef).toBe("reg_fee");
   });
 
-  it.each(["duplicate", "unbound", "currency", "mismatched mirror", "missing mirror", "no fee registration"] as const)(
+  it.each([10, 6, 7])("reconciles a flat fee of 7 followed by %i across a discount", async amount => {
+    const f = setup();
+    const fee = withFee(f, "top_only");
+    f.input.money.adjustments = [{ adjustmentRef: "discount-a", sequence: 4, amountMinor: 1, target: { lineKeys: ["item-z"] } }];
+    f.client.registrations.list.mockResolvedValue(page(registrationUrl, [registration(), registration("reg_fee", "state_retail_delivery_fee")]));
+    f.client.calculations.create.mockImplementation(async params => {
+      const index = f.client.calculations.create.mock.calls.length - 1;
+      return snapshot(params, index, { fee: index === 0 ? fee : { ...fee, amount } });
+    });
+    expect(await f.run()).toMatchObject(amount === 7 ? { kind: "final", money: { feeTotal: 7 } } : {
+      kind: "refused", code: "tax_breakdown_incomplete", field: "/calculation/tax_breakdown/3/amount",
+      remedy: expect.stringContaining("flat fee assessment changed between discount snapshots"),
+    });
+    expect(f.client.calculations.create).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["duplicate", "unbound", "no fee cell", "currency", "mismatched mirror", "missing mirror", "no fee registration"] as const)(
     "refuses %s fee evidence", async scenario => {
       const f = setup();
       const layout = scenario.endsWith("mirror") ? "shipping_mirror" : "top_only";
       const fee = withFee(f, layout);
       if (scenario === "unbound") f.marketPack.fees = [];
+      if (scenario === "no fee cell") f.input.required = f.input.required.filter(cell => cell.target.kind !== "fee");
       if (scenario !== "no fee registration") {
         f.client.registrations.list.mockResolvedValue(page(registrationUrl, [registration(), registration("reg_fee", "state_retail_delivery_fee")]));
       }
@@ -152,8 +184,10 @@ describe("flat retail delivery fee", () => {
         if (scenario === "currency") wire.tax_breakdown.at(-1)!.tax_rate_details.flat_amount!.currency = "yyy";
         return wire;
       });
-      expect(await f.run()).toMatchObject({ kind: "refused", code: scenario === "no fee registration"
-        ? "tax_coverage_inconsistent" : "tax_breakdown_incomplete" });
+      const expectation = scenario === "unbound" || scenario === "no fee cell"
+        ? { code: "tax_rule_missing", remedy: expect.stringContaining("Qualify the fee in the market pack") }
+        : { code: scenario === "no fee registration" ? "tax_coverage_inconsistent" : "tax_breakdown_incomplete" };
+      expect(await f.run()).toMatchObject({ kind: "refused", ...expectation });
     },
   );
 });

@@ -60,7 +60,9 @@ export function planQuote(input: TaxQuoteInputV1, pack: StripeQuoteMarketPack) {
   const origin = own(pack.origins, input.shipFromRef);
   if (!origin) invalid("/input/shipFromRef", "The origin snapshot is missing. Supply the pinned origin in the market pack.", "tax_rule_missing");
   const tax_date = Date.parse(input.taxDate) / 1000;
-  if (!Number.isInteger(tax_date) || tax_date < 0) invalid("/input/taxDate", "Use a whole-second UTC tax instant on or after the Unix epoch.");
+  if (!Number.isInteger(tax_date) || tax_date < 0) {
+    invalid("/input/taxDate", "The provider requires a whole-second UTC tax instant on or after the Unix epoch. Supply a supported tax instant.", "tax_operation_unsupported");
+  }
   const params = {
     currency: input.currency.toLowerCase(), tax_date,
     customer_details: { address: project(input.destination.address, pack, "/input/destination/address"), address_source: "shipping" },

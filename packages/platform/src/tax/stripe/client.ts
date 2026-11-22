@@ -14,6 +14,7 @@ export type CalculationParams = {
 };
 type PageParams = { limit: 100; starting_after?: string };
 export interface StripeQuoteClient {
+  readonly scope: Readonly<Pick<TaxScopeV1, "accountRef" | "mode">>;
   calculations: {
     create(params: CalculationParams, options: { idempotencyKey: string }): Promise<unknown>;
     listLineItems(id: string, params: PageParams & { expand: string[] }): Promise<unknown>;
@@ -21,7 +22,9 @@ export interface StripeQuoteClient {
   registrations: { list(params: PageParams & { status: "all" }): Promise<unknown> };
 }
 
-// The host translates a confirmed idempotency conflict at its transport boundary.
+/** The SDK bridge translates confirmed idempotency conflicts at the transport boundary.
+ *  The SDK bridge must also map deterministic provider rejections to refusals when it is added.
+ */
 export class StripeQuoteReferenceConflict extends Error {}
 export class StripeQuoteUnavailable extends Error {}
 export async function providerCall(read: () => Promise<unknown>): Promise<unknown> {
@@ -40,37 +43,51 @@ export function incomplete(field: string, cause: string): never {
 }
 
 export function record(value: unknown, field: string): object {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) invalid(field, "Obtain a provider object for this field.");
+  if (typeof value !== "object" || value === null || Array.isArray(value)) incomplete(field, "The provider field must be an object.");
   return value;
 }
 
 export function member(value: object, key: string, field: string): unknown {
   const property = Object.getOwnPropertyDescriptor(value, key);
-  if (property && !("value" in property)) invalid(field, "Obtain a provider response with ordinary data fields.");
+  if (property && !("value" in property)) incomplete(field, "The provider response contains an accessor.");
   return property?.value;
+}
+
+export function providerDecode<T>(decode: Decode<T>): Decode<T> {
+  return (value, field) => {
+    try {
+      return decode(value, field);
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "tax_invalid_input"
+        && "field" in error && typeof error.field === "string") {
+        incomplete(error.field, "The provider field is missing or malformed.");
+      }
+      throw error;
+    }
+  };
 }
 
 // Project documented fields and tolerate unrelated provider additions.
 function fields<F extends Record<string, Decode<unknown>>>(shape: F): Decode<{ [K in keyof F]: ReturnType<F[K]> }> {
-  return (value, field) => {
+  return providerDecode((value, field) => {
     const source = record(value, field);
     return Object.fromEntries(Object.entries(shape).map(([key, decode]) => {
       const path = field + "/" + key;
       return [key, decode(member(source, key, path), path)];
     })) as { [K in keyof F]: ReturnType<F[K]> };
-  };
+  });
 }
 
 const raw: Decode<unknown> = value => value;
-export const text = checked((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 512
-  && !v.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(v), "Obtain nonempty provider text within the supported length.");
+export const text = providerDecode(checked((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 512
+  && !v.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(v), "Obtain nonempty provider text within the supported length."));
 const id = checked((v): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/u.test(v),
   "Obtain the provider object's identifier.");
-const boolean = checked((v): v is boolean => typeof v === "boolean", "Obtain the provider's boolean value.");
+const boolean = providerDecode(checked((v): v is boolean => typeof v === "boolean", "Obtain the provider's boolean value."));
 const nullable = <T>(decode: Decode<T>): Decode<T | null> => (value, path) => value === null ? null : decode(value, path);
 const optional = <T>(decode: Decode<T>): Decode<T | undefined> => (value, path) => value === undefined ? undefined : decode(value, path);
 const minor: Decode<number> = (value, path) => {
-  if (typeof value !== "number") invalid(path, "Obtain the amount in integer minor units.");
+  if (typeof value !== "number") incomplete(path, "The provider field must be a number.");
   if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
     invalid(path, "Obtain a nonnegative, safe integer in minor units.", "tax_amount_out_of_range");
   }
@@ -78,7 +95,7 @@ const minor: Decode<number> = (value, path) => {
 };
 export const epoch: Decode<string> = (value, path) => {
   const seconds = minor(value, path);
-  if (seconds > 253402300799) invalid(path, "Obtain a Unix timestamp within the supported UTC calendar range.");
+  if (seconds > 253402300799) incomplete(path, "The provider timestamp is outside the supported UTC calendar range.");
   return new Date(seconds * 1000).toISOString();
 };
 

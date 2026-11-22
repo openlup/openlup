@@ -44,15 +44,16 @@ function matchDetail(row: Detail, path: string, cells: readonly Cell[], pack: St
     incomplete(path + "/tax_rate_details", "A nonzero assessment lacks its rate identity.");
   }
   const sourcing = row.sourcing === "origin" ? "ship_from" : "destination";
-  const candidates = cells.filter(cell => bindingsFor(cell, pack).some(binding =>
-    binding.taxType === (row.tax_rate_details?.tax_type ?? null) && isDeepStrictEqual(binding.provider, row.jurisdiction)));
+  const candidates = cells.flatMap(cell => bindingsFor(cell, pack).filter(binding =>
+    binding.taxType === (row.tax_rate_details?.tax_type ?? null) && isDeepStrictEqual(binding.provider, row.jurisdiction)).map(() => cell));
   const matches = candidates.filter(cell => cell.sourcing === sourcing);
   if (!matches.length && candidates.length) {
     invalid(path + "/sourcing", "The detail uses different sourcing. Obtain evidence for the required sourcing.", "tax_scope_mismatch");
   }
   if (matches.length === 1) return { row, path, cell: matches[0] };
   if (row.tax_rate_details === null) return;
-  return incomplete(path + "/jurisdiction", "The detail does not identify one required jurisdiction and tax kind.");
+  return invalid(path + "/jurisdiction",
+    "The detail has no unique required jurisdiction and tax-kind binding. Qualify its jurisdiction and tax type in the market pack and supply its required cell.", "tax_rule_missing");
 }
 
 function treatmentFor(reason: string, hasRate: boolean, amount: number, cell: Cell, code: string): Observation["treatment"] {
@@ -68,33 +69,35 @@ function groupKey(country: string | null, state: string | null, type: string | n
   return JSON.stringify([country, state, type, decimal, reason]);
 }
 
-function grouped(rows: readonly { key: string; amount: number }[]): Map<string, bigint> {
-  const totals = new Map<string, bigint>();
-  for (const { key, amount } of rows) {
-    if (amount !== 0) totals.set(key, (totals.get(key) ?? 0n) + BigInt(amount));
+function grouped(rows: readonly { key: string; amount: number; taxable_amount: number }[]) {
+  const totals = new Map<string, { tax: bigint; basis: bigint }>();
+  for (const { key, amount, taxable_amount } of rows) {
+    const prior = totals.get(key);
+    totals.set(key, { tax: (prior?.tax ?? 0n) + BigInt(amount), basis: (prior?.basis ?? 0n) + BigInt(taxable_amount) });
   }
   return totals;
 }
 
-function normalizeFee(row: Header | undefined, mirrors: readonly Matched[], input: TaxQuoteInputV1, pack: StripeQuoteMarketPack) {
-  const path = "/calculation/tax_breakdown";
-  if (!row) {
+function normalizeFee(fee: { row: Header; index: number } | undefined, mirrors: readonly Matched[], input: TaxQuoteInputV1, pack: StripeQuoteMarketPack) {
+  if (!fee) {
     if (mirrors.length) incomplete(mirrors[0].path, "The shipping fee mirror is missing its header assessment.");
     return;
   }
+  const { row, index } = fee;
+  const path = "/calculation/tax_breakdown/" + index;
   const rate = row.tax_rate_details;
+  if (rate.rate_type !== "flat_amount" || !rate.flat_amount?.amount || rate.flat_amount.currency !== input.currency.toLowerCase()
+    || rate.country === null) incomplete(path + "/tax_rate_details", "The fee lacks a flat rate in the quote currency and jurisdiction.");
   const candidates = input.required.flatMap(cell => {
     const { target } = cell;
     const jurisdictions = bindingsFor(cell, pack).filter(binding =>
       binding.taxType === feeType && binding.provider.country === rate.country && binding.provider.state === rate.state);
-    if (target.kind !== "fee" || jurisdictions.length !== 1) return [];
-    return pack.fees.filter(binding => declarationKey(binding) === declarationKey(cell) && binding.feeKey === target.key)
-      .map(binding => ({ cell, target, binding }));
+    if (target.kind !== "fee") return [];
+    return jurisdictions.flatMap(() => pack.fees.filter(binding => declarationKey(binding) === declarationKey(cell)
+      && binding.feeKey === target.key).map(binding => ({ cell, target, binding })));
   });
-  if (rate.rate_type !== "flat_amount" || !rate.flat_amount?.amount || rate.flat_amount.currency !== input.currency.toLowerCase()
-    || rate.country === null || candidates.length !== 1) {
-    incomplete(path, "The flat fee does not match one qualified fee cell and currency.");
-  }
+  if (candidates.length !== 1) invalid(path + "/tax_rate_details",
+    "The flat fee has no unique required cell and binding. Qualify the fee in the market pack and supply its required cell.", "tax_rule_missing");
   const [{ cell, target, binding }] = candidates;
   if (binding.layout === "shipping_mirror") {
     const mirror = mirrors[0];
@@ -107,7 +110,7 @@ function normalizeFee(row: Header | undefined, mirrors: readonly Matched[], inpu
     scope: target.deliveryKey === undefined ? { kind: "order" } : { kind: "delivery", key: target.deliveryKey },
     refundRule: binding.refundRule };
   const treatment = treatmentFor(row.taxability_reason, true, row.amount, cell, target.taxClass);
-  return { cell, metadata, treatment, amount: row.amount };
+  return { cell, metadata, treatment, amount: row.amount, amountPath: path + "/amount" };
 }
 
 export function normalizeSnapshot(
@@ -175,7 +178,7 @@ export function normalizeSnapshot(
 
   const header = calculation.tax_breakdown;
   if (header.some(row => row.inclusive)) incomplete("/calculation/tax_breakdown", "The header includes an inclusive assessment.");
-  const fees = header.filter(row => row.tax_rate_details.tax_type === feeType);
+  const fees = header.flatMap((row, index) => row.tax_rate_details.tax_type === feeType ? [{ row, index }] : []);
   if (fees.length > 1) incomplete("/calculation/tax_breakdown", "The header has multiple fee assessments.");
   const fee = normalizeFee(fees[0], mirrors, input, pack);
   if (fee) observe(fee.cell, fee.amount, fee.treatment, "/calculation/tax_breakdown");
@@ -184,16 +187,27 @@ export function normalizeSnapshot(
   const tax = sum(ordinary.map(row => row.amount)) + BigInt(fee?.amount ?? 0);
   reconcileAmount(path + "/tax_amount_exclusive", calculation.tax_amount_exclusive, sum(header.map(row => row.amount)));
   reconcileAmount(path + "/tax_amount_exclusive", calculation.tax_amount_exclusive, tax);
-  const headerGroups = grouped(header.filter(row => row.tax_rate_details.tax_type !== feeType).map(row => {
+  const headerRows = header.flatMap((row, index) => {
     const { country, state, tax_type, percentage_decimal, rate_type, flat_amount } = row.tax_rate_details;
+    if (tax_type === feeType) return [];
     if (row.amount > 0 && (rate_type !== "percentage" || flat_amount !== null || percentage_decimal == null)) {
       incomplete(path + "/tax_breakdown", "An ordinary header assessment is missing its percentage identity.");
     }
-    return { key: groupKey(country, state, tax_type, percentage_decimal, row.taxability_reason), amount: row.amount };
-  }));
-  const detailGroups = grouped(ordinary.map(row => ({ key: groupKey(row.jurisdiction.country, row.jurisdiction.state,
-    row.tax_rate_details?.tax_type ?? null, row.tax_rate_details?.percentage_decimal, row.taxability_reason), amount: row.amount })));
-  if (!isDeepStrictEqual(headerGroups, detailGroups)) incomplete(path + "/tax_breakdown", "The grouped header and component assessments differ.");
+    return [{ ...row, key: groupKey(country, state, tax_type, percentage_decimal, row.taxability_reason), index }];
+  });
+  const headerGroups = grouped(headerRows);
+  const detailGroups = grouped(ordinary.map(row => ({ ...row, key: groupKey(row.jurisdiction.country, row.jurisdiction.state,
+    row.tax_rate_details?.tax_type ?? null, row.tax_rate_details?.percentage_decimal, row.taxability_reason) })));
+  for (const key of new Set([...headerGroups.keys(), ...detailGroups.keys()])) {
+    const summary = headerGroups.get(key), detail = detailGroups.get(key);
+    if ((summary?.tax ?? 0n) !== (detail?.tax ?? 0n)) {
+      incomplete(path + "/tax_breakdown", "The grouped header and component assessments differ.");
+    }
+    if (summary && detail && summary.basis !== detail.basis) {
+      const index = headerRows.find(row => row.key === key)!.index;
+      incomplete(path + "/tax_breakdown/" + index + "/taxable_amount", "The grouped header and component taxable bases differ.");
+    }
+  }
   reconcileAmount(path + "/amount_total", calculation.amount_total, sum(components.map(item => item.amount)) + tax);
 
   const acknowledged = new Set(input.coverage.declarations.filter(row => row.status === "not_registered_acknowledged"

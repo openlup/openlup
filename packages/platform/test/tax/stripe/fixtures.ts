@@ -110,11 +110,11 @@ export function snapshot(params: CalculationParams, index = 0, options: {
 }
 
 export const now = () => new Date(date);
-export function fakeClient() {
+export function fakeClient(scope: StripeQuoteClient["scope"]) {
   const create = vi.fn<StripeQuoteClient["calculations"]["create"]>()
     .mockImplementation(async params => snapshot(params, create.mock.calls.length - 1));
   const listLineItems = vi.fn<StripeQuoteClient["calculations"]["listLineItems"]>()
     .mockRejectedValue(new Error("Unexpected line page"));
   const list = vi.fn<StripeQuoteClient["registrations"]["list"]>().mockResolvedValue(page(registrationUrl, [registration()]));
-  return { calculations: { create, listLineItems }, registrations: { list } } satisfies StripeQuoteClient;
+  return { scope, calculations: { create, listLineItems }, registrations: { list } } satisfies StripeQuoteClient;
 }
