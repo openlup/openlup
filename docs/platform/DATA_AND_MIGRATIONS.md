@@ -2806,12 +2806,21 @@ the grant in those databases even when the cluster role exists. The slot
 carries only those two grant capabilities, and its pin lists no function definitions.
 
 At most one native-store slot per registry may declare
-`qualifiedPriceListBasisSelect: true`. Its forward must contain exactly one
-`GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication`
-inside the exact `DO` block with the same role-existence and qualified-v2 authority
-ledger checks. The statement grants access to that column alone, without grant
-option. The later net-price publication forward creates the column and supplies
-the slot and SQL after this admission change lands.
+`qualifiedPriceListBasisSelect: true`. Its function and data lists are empty
+and it declares no other capabilities. Its entire file matches the exact
+authority-ledger and role-guarded `DO` block, including the final LF. The
+block executes only
+`GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication`,
+without grant option.
+
+An earlier native-store slot must list the nullable `text` column with no default
+in `existingTableStatements`. If that slot declares a CHECK for the column,
+it must allow only `tax_inclusive`, `tax_exclusive` and NULL. Admission resolves
+the column from the earlier slot's approved statement inventory, checks the
+whole-file SHA-256 against the registry, and requires that file and binding in
+the grant's approval base. The grant refuses intervening changes to the relation,
+column or CHECK. The feature lands the column forward first and introduces the
+dedicated grant-only forward after the column is issued.
 
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON

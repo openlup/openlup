@@ -578,41 +578,75 @@ describe("qualified price list basis SELECT", () => {
 ${roleGuard}${ledgerGuard}  THEN
     EXECUTE '${grant}';
   END IF;
-END; $$;`;
+END; $$;
+`;
   const addColumn = "ALTER TABLE public.price_lists ADD COLUMN amount_basis text;";
-  const slot: NativeStoreSlot = {
-    row: "price-list-basis", path: "db/platform/migrations/20990101000000_price_list_basis.sql",
+  const addCheck = "ALTER TABLE public.price_lists ADD CONSTRAINT price_lists_basis_check CHECK (amount_basis IN ('tax_inclusive', 'tax_exclusive'));";
+  const grantSlot: NativeStoreSlot = {
+    row: "price-list-basis-read", path: "db/platform/migrations/20990103000000_price_list_basis_read.sql",
+    replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [],
+    qualifiedPriceListBasisSelect: true,
+  };
+  const columnSlot: NativeStoreSlot = {
+    row: "price-list-basis-column", path: "db/platform/migrations/20990101000000_price_list_basis_column.sql",
     replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [],
   };
-  const flaggedSlot: NativeStoreSlot = { ...slot, qualifiedPriceListBasisSelect: true };
-  function admit(text: string, slots = [flaggedSlot]) {
+  const baseline = { path: PLATFORM_BASELINE_FILE, bytes: Buffer.concat([before, Buffer.from("\nCREATE TABLE public.price_lists (id uuid);\n")]) };
+  const exactGrant = "qualified price list basis SELECT forward must contain only the exact guarded grant with final LF";
+  function setup(text = guarded, existingTableStatements = [addColumn, addCheck]) {
     const value = registry();
-    value.nativeStoreForwardClass!.slots = slots;
-    bind(value, 0, text);
-    assertNativeStoreForward(value, slot.path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: before }]);
+    const slot = { ...grantSlot };
+    const column = { ...columnSlot, existingTableStatements };
+    value.nativeStoreForwardClass!.slots = [column, slot];
+    const sql = existingTableStatements.join("\n") + "\n";
+    const pin = bind(value, 0, sql);
+    bind(value, 1, text);
+    const preceding = [baseline, { path: column.path, bytes: Buffer.from(sql) }];
+    return { value, slot, pin, preceding, admit: () => assertNativeStoreForward(value, slot.path, Buffer.from(text), preceding) };
   }
 
-  it("admits the exact guarded grant in the flagged slot", () => {
-    expect(() => admit(`${addColumn}\n${guarded}`)).not.toThrow();
+  it.each([
+    ["with a CHECK", [addColumn, addCheck]],
+    ["without a CHECK", [addColumn]],
+    ["with the column and CHECK in one ALTER", [`${addColumn.slice(0, -1)}, ${addCheck.replace("ALTER TABLE public.price_lists ", "")}`]],
+  ])("admits the exact grant after the pinned column %s", (_label, statements) => {
+    const { admit, pin } = setup(guarded, statements);
+    expect(admit().priceListBasisPredecessor).toEqual(pin);
   });
-  it("refuses the grant when the slot lacks the flag", () => {
-    expect(() => admit(guarded, [slot])).toThrow("requires one qualified price list basis SELECT in its declared slot");
+  it("refuses the grant when its slot lacks the flag", () => {
+    const { slot, admit } = setup();
+    delete slot.qualifiedPriceListBasisSelect;
+    expect(admit).toThrow("refuses DO outside the single constant role privilege shape");
   });
-  it("refuses the flagged slot without the grant", () => {
-    expect(() => admit(addColumn)).toThrow("missing exact qualified price list basis SELECT");
+  it("refuses a grant slot that declares column DDL", () => {
+    const { slot, admit } = setup();
+    slot.existingTableStatements = [addColumn];
+    expect(admit).toThrow("qualified price list basis SELECT slot must be grant-only");
+  });
+  it("refuses a grant slot that declares a function definition", () => {
+    const { slot, admit } = setup();
+    slot.createdFunctions = [{ signature: "public.fixture_basis()", searchPath: null }];
+    expect(admit).toThrow("qualified price list basis SELECT slot must be grant-only");
+  });
+  it("refuses a grant slot that declares DML", () => {
+    const { slot, admit } = setup();
+    slot.dataStatements = ["UPDATE public.price_lists SET amount_basis = 'tax_exclusive';"];
+    expect(admit).toThrow("qualified price list basis SELECT slot must be grant-only");
   });
   it("refuses two flagged slots in the registry", () => {
-    const second = { ...flaggedSlot, row: "price-list-basis-again", path: "db/platform/migrations/20990102000000_price_list_basis_again.sql" };
-    expect(() => admit(guarded, [flaggedSlot, second])).toThrow("allows one qualifiedPriceListBasisSelect slot with the value true");
-  });
-  it("refuses a second grant in the same slot", () => {
-    expect(() => admit(`${guarded}\n${guarded}`)).toThrow("requires one qualified price list basis SELECT in its declared slot");
-  });
-  it("refuses an unguarded grant in the flagged slot", () => {
-    expect(() => admit(grant)).toThrow("reviewed native store refuses statement outside its closed shapes");
+    const { value, admit } = setup();
+    value.nativeStoreForwardClass!.slots.push({ ...grantSlot, row: "price-list-basis-again", path: "db/platform/migrations/20990104000000_price_list_basis_again.sql" });
+    expect(admit).toThrow("allows one qualifiedPriceListBasisSelect slot");
   });
   it.each([
+    ["a missing grant", ""],
+    ["the ADD COLUMN in the same file", `${addColumn}\n${guarded}`],
+    ["a second grant", guarded + guarded],
+    ["a missing final LF", guarded.trimEnd()],
+    ["an extra final LF", guarded + "\n"],
+    ["an unguarded grant", grant],
     ["an altered ledger guard", guarded.replace(authoritySha256, "0".repeat(64))],
+    ["an altered role guard", guarded.replace("IF EXISTS", "IF NOT EXISTS")],
     ["a table-level SELECT", guarded.replace(" (amount_basis)", "")],
     ["another column", guarded.replace("amount_basis", "id")],
     ["another table", guarded.replace("public.price_lists", "public.catalog_sku_revisions")],
@@ -620,8 +654,52 @@ END; $$;`;
     ["WITH GRANT OPTION", guarded.replace("TO openlup_catalog_publication;", "TO openlup_catalog_publication WITH GRANT OPTION;")],
     ["INSERT privilege", guarded.replace("GRANT SELECT", "GRANT INSERT")],
     ["UPDATE privilege", guarded.replace("GRANT SELECT", "GRANT UPDATE")],
-  ])("refuses %s in the flagged slot", (_label, text) => {
-    expect(() => admit(text)).toThrow("reviewed native store refuses DO outside the single constant role privilege shape");
+  ])("refuses a grant-only file with %s", (_label, text) => {
+    expect(setup(text).admit).toThrow(exactGrant);
+  });
+  it("refuses the grant without a predecessor slot", () => {
+    const { value, preceding, admit } = setup();
+    value.nativeStoreForwardClass!.slots.shift();
+    value.nativeStoreForwards!.shift();
+    preceding.pop();
+    expect(admit).toThrow("requires an earlier slot introducing public.price_lists.amount_basis");
+  });
+  it("refuses an earlier column slot without a binding", () => {
+    const { value, admit } = setup();
+    value.nativeStoreForwards!.shift();
+    expect(admit).toThrow("earlier slot is unbound, missing or drifted");
+  });
+  it("refuses a pinned predecessor missing from the SQL prefix", () => {
+    const { preceding, admit } = setup();
+    preceding.pop();
+    expect(admit).toThrow("earlier slot is unbound, missing or drifted");
+  });
+  it("refuses drifted predecessor bytes with the original pin", () => {
+    const { preceding, admit } = setup();
+    preceding[1]!.bytes = Buffer.concat([preceding[1]!.bytes, Buffer.from("\n")]);
+    expect(admit).toThrow("earlier slot is unbound, missing or drifted");
+  });
+  it("refuses a pinned column definition outside the existing-table inventory", () => {
+    const { value, admit } = setup(guarded, [addColumn]);
+    delete value.nativeStoreForwardClass!.slots[0]!.existingTableStatements;
+    expect(admit).toThrow("predecessor definition drifted");
+  });
+  it.each([
+    ["a different column type", [addColumn.replace("text", "integer")]],
+    ["a column default", [addColumn.replace("text", "text DEFAULT 'tax_exclusive'")]],
+    ["a non-null column", [addColumn.replace("text", "text NOT NULL")]],
+    ["an altered CHECK", [addColumn, addCheck.replace("tax_exclusive", "other")]],
+  ])("refuses a coherently repinned predecessor with %s", (_label, statements) => {
+    expect(setup(guarded, statements).admit).toThrow("predecessor definition drifted");
+  });
+  it.each([
+    ["the column type", "ALTER TABLE ONLY public.price_lists ALTER COLUMN amount_basis TYPE integer;"],
+    ["the CHECK", "ALTER TABLE public.price_lists DROP CONSTRAINT price_lists_basis_check;"],
+    ["the relation", "ALTER TABLE public.price_lists RENAME TO old_price_lists;"],
+  ])("refuses an intervening change to %s", (_label, text) => {
+    const { preceding, admit } = setup();
+    preceding.push({ path: "db/platform/migrations/20990102000000_changed_basis.sql", bytes: Buffer.from(text) });
+    expect(admit).toThrow("predecessor definition drifted");
   });
 });
 

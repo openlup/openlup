@@ -150,7 +150,9 @@ END; $$;
 });
 
 describe("qualified price list basis SELECT in sql:admit and hosted checks", () => {
-  const path = "db/platform/migrations/20990102000000_price_list_basis.sql";
+  const column = "db/platform/migrations/20990101000000_price_list_basis_column.sql";
+  const outside = "db/platform/migrations/20990102000000_price_list_basis_outside_slot.sql";
+  const path = "db/platform/migrations/20990103000000_price_list_basis_read.sql";
   const guarded = `DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')
 ${ledgerGuard}  THEN
@@ -158,36 +160,46 @@ ${ledgerGuard}  THEN
   END IF;
 END; $$;
 `;
-  const entry: NativeStoreSlot = { ...slot(path, "price-list-basis"), qualifiedPriceListBasisSelect: true };
+  const addColumn = "ALTER TABLE public.price_lists ADD COLUMN amount_basis text;";
+  const addCheck = "ALTER TABLE public.price_lists ADD CONSTRAINT price_lists_basis_check CHECK (amount_basis IN ('tax_inclusive', 'tax_exclusive'));";
+  const columnSql = `${addColumn}\n${addCheck}\n`;
+  const pass = ["PASS"];
+  const ruleChange = ["REFUSED", "reviewed replacement admission machinery must be approved separately before co-located SQL/pins"];
+  const unissued = ["REFUSED", `reviewed native store qualified price list basis SELECT predecessor must already be issued: ${column}`];
+  const unregistered = ["REFUSED", `non-expand-only forward differs from reviewed replacement path or bytes: ${outside}`];
 
-  it("admits the flagged forward and refuses the same grant outside a declared slot", () => {
-    const f = fixture();
-    stageNativeForward(f, guarded, entry);
-    const outside = "db/platform/migrations/20990101000000_price_list_basis_outside_slot.sql";
-    f.put(outside, guarded);
-    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([outside, path].map(file => ({ file, sha256: sha256(guarded) }))));
+  it.each([
+    ["an issued predecessor", 0, [pass, pass, pass, pass]],
+    ["a co-introduced predecessor", 1, [pass, unissued, unissued, unissued, unissued]],
+    ["the grant outside a declared slot", 1, [unregistered, pass, unregistered, pass, pass]],
+    ["a co-located rule change", 1, [pass, pass, ruleChange, ruleChange]],
+  ] as const)("checks %s for the qualified price list basis SELECT", (scenario, exit, expected) => {
+    const f = fixture(`${baseline}\nCREATE TABLE public.price_lists (id uuid);\n`);
+    const value = registry(), slots = value.nativeStoreForwardClass!.slots, pins = value.nativeStoreForwards!;
+    slots.push({ ...slot(column, "price-list-basis-column"), existingTableStatements: [addColumn, addCheck] });
+    pins.push({ path: column, sha256: sha256(columnSql), functions: [] });
+    f.put(column, columnSql);
+    f.put(REVIEWED_FORWARD_PATH, encode(value));
+    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([{ file: column, sha256: sha256(columnSql) }], f.baselineSql));
+    const base = scenario === "a co-introduced predecessor" ? f.base : f.commit();
+    slots.push({ ...slot(path, "price-list-basis-read"), qualifiedPriceListBasisSelect: true });
+    pins.push({ path, sha256: sha256(guarded), functions: [] });
+    const rows = pins.map(pin => ({ file: pin.path, sha256: pin.sha256 }));
+    if (scenario === "the grant outside a declared slot") {
+      f.put(outside, guarded);
+      rows.splice(1, 0, { file: outside, sha256: sha256(guarded) });
+    }
+    f.put(path, guarded);
+    f.put(REVIEWED_FORWARD_PATH, encode(value));
+    f.put(PLATFORM_MIGRATION_MANIFEST, manifest(rows, f.baselineSql));
+    if (scenario === "a co-located rule change") f.put("scripts/reviewed-platform-forward.ts", "// Changed admission rule.\n");
     const head = f.commit();
-    const result = cli(f.root, ["--base", f.base, "--head", head, STALE]);
+    const result = cli(f.root, ["--base", base, "--head", head, STALE]);
     expect(result.stderr).toBe("");
-    expect(result.status).toBe(1);
+    expect(result.status).toBe(exit);
     const reported = verdictLines(result.stdout);
-    expect(reported).toEqual(directVerdicts(f, f.base, head).verdicts);
-    const refusal = ["REFUSED", `non-expand-only forward differs from reviewed replacement path or bytes: ${outside}`];
-    expect(reported).toEqual([refusal, ["PASS"], refusal, ["PASS"], ["PASS"]]);
-  }, 20_000);
-
-  it("refuses the declared forward when it co-locates an admission rule change", () => {
-    const f = fixture();
-    stageNativeForward(f, guarded, entry);
-    f.put("scripts/reviewed-platform-forward.ts", "// Changed admission rule.\n");
-    const head = f.commit();
-    const result = cli(f.root, ["--base", f.base, "--head", head, STALE]);
-    expect(result.stderr).toBe("");
-    expect(result.status).toBe(1);
-    const reported = verdictLines(result.stdout);
-    expect(reported).toEqual(directVerdicts(f, f.base, head).verdicts);
-    const refusal = ["REFUSED", "reviewed replacement admission machinery must be approved separately before co-located SQL/pins"];
-    expect(reported).toEqual([["PASS"], ["PASS"], refusal, refusal]);
+    expect(reported).toEqual(directVerdicts(f, base, head).verdicts);
+    expect(reported).toEqual(expected);
   }, 20_000);
 });
 

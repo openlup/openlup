@@ -1731,12 +1731,20 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   if (registry.supportAuthorityForwards?.includes(forward as SupportAuthorityForwardBinding) || registry.channelIngestForwards?.includes(forward as BatchedForwardBinding) || registry.nativeStoreForwards?.includes(forward as ForwardBinding)) {
     const prefix = readPrecedingBlobs(root, head, portable ? "db/platform/migrations/" : "supabase/migrations/", path, true);
     if (registry.nativeStoreForwards?.includes(forward as ForwardBinding)) {
-      const { slot } = assertNativeStoreForward(registry, path, bytes, prefix);
+      const { slot, priceListBasisPredecessor } = assertNativeStoreForward(registry, path, bytes, prefix);
       if (slot.settingsOnlyFunctions) assertNativeStoreSettingsTargets(slot.settingsOnlyFunctions, readPrecedingBlobs(root, approval, "db/platform/migrations/", path, true));
       if (isQualifiedCatalogueReadGrant(slot)) {
         for (const [sourcePath] of qualifiedCatalogueReadTargets) {
           const issued = blob(root, approval, sourcePath);
           if (!issued?.equals(prefix.find(source => source.path === sourcePath)!.bytes)) throw new Error(`reviewed native store qualified catalogue read predecessor must already be issued: ${sourcePath}`);
+        }
+      }
+      if (priceListBasisPredecessor) {
+        const { path: sourcePath, sha256 } = priceListBasisPredecessor;
+        const issued = blob(root, approval, sourcePath), approved = blob(root, approval, REVIEWED_FORWARD_PATH);
+        const pin = approved && readForwardRegistry(approved, true).nativeStoreForwards?.find(entry => entry.path === sourcePath);
+        if (!issued || sqlSha256(issued) !== sha256 || pin?.sha256 !== sha256) {
+          throw new Error(`reviewed native store qualified price list basis SELECT predecessor must already be issued: ${sourcePath}`);
         }
       }
       if (slot.previewNoopAcceptance) {
@@ -2643,11 +2651,12 @@ END; $$;
 `;
 // The shape admits exactly one statement: the authority-ledger-guarded GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication, at most once per registry, inside one declared native-store slot.
 // No table-level SELECT, no other column or table, no write privilege, no grant option, no other role.
-// The column itself is created by the later feature forward; this PR adds no SQL.
+// The grant-only file is exact through its final LF. The column must already be issued in an earlier native-store slot.
+// This admission change adds no SQL.
 const qualifiedPriceListBasisSelectSql = qualifiedCatalogueReadSql.replace(
   /GRANT EXECUTE ON FUNCTION [^;]+;/u,
   "GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication;",
-).trimEnd();
+);
 
 const isQualifiedCatalogueReadGrant = (slot: NativeStoreSlot) => slot.grantOnlyFunctions.some(fn => Array.isArray(fn?.grantTo) && fn.grantTo.includes(cataloguePublicationRole));
 
@@ -3073,9 +3082,16 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       if (new Set(settings.map(fn => fn.signature)).size !== settings.length) throw new Error("reviewed native store settings-only slot has duplicate signatures");
       continue;
     }
-    if (Object.hasOwn(slot, "qualifiedPriceListBasisSelect")
-      && (slot.qualifiedPriceListBasisSelect !== true || control.slots.some(other => other !== slot && other.qualifiedPriceListBasisSelect))) {
-      throw new Error("reviewed native store allows one qualifiedPriceListBasisSelect slot with the value true");
+    if (Object.hasOwn(slot, "qualifiedPriceListBasisSelect")) {
+      const expected = {
+        path: slot.path, row: slot.row, createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [], dataStatements: [],
+        qualifiedPriceListBasisSelect: true,
+      };
+      if (control.slots.some(other => other !== slot && other.qualifiedPriceListBasisSelect)) {
+        throw new Error("reviewed native store allows one qualifiedPriceListBasisSelect slot");
+      }
+      if (canonical(slot) !== canonical(expected)) throw new Error("reviewed native store qualified price list basis SELECT slot must be grant-only");
+      continue;
     }
     if (isQualifiedCatalogueReadGrant(slot)) {
       const expected = {
@@ -3451,6 +3467,56 @@ export function expectedReplacedFunctionAttrs(oldAttrs: Record<string, unknown>,
   return { ...oldAttrs, proconfig: oldConfig.map(item => item === oldEntry ? target : item) };
 }
 
+// Only the approved nullable text column and its optional two-value CHECK can be the grant preimage.
+const priceListBasisCheck = /^add constraint ([a-z_][a-z_0-9]{0,62}) check \( (?:amount_basis is null or )?amount_basis in \( (?:"tax_inclusive" , "tax_exclusive"|"tax_exclusive" , "tax_inclusive") \) \)(?: not valid)?$/u;
+function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earlierSlots: NativeStoreSlot[], preceding: { path: string; bytes: Buffer }[]): ForwardBinding {
+  const slots = new Map(earlierSlots.map(slot => [slot.path, slot]));
+  let predecessor: { path: string; bytes: Buffer } | undefined, checkName: string | undefined;
+  for (const source of preceding) for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
+    if (!nativeWord(tokens, 1, "TABLE")) continue;
+    const publicPriceLists = (index: number) => nativeQualified(tokens, index)?.name === "public.price_lists"
+      || (nativeIdentifier(tokens[index]) === "price_lists" && !nativeSymbol(tokens, index + 1, ".") && !nativeSymbol(tokens, index - 1, "."));
+    const drift = () => new Error(`reviewed native store qualified price list basis SELECT predecessor definition drifted: ${source.path}`);
+    if (nativeWord(tokens, 0, "DROP") && tokens.some((_token, index) => index >= 2 && publicPriceLists(index))) throw drift();
+    if (!nativeWord(tokens, 0, "ALTER")) continue;
+    const targetStart = nativeWord(tokens, 2, "IF") && nativeWord(tokens, 3, "EXISTS") ? 4 : 2;
+    const target = targetStart + Number(nativeWord(tokens, targetStart, "ONLY"));
+    if (!publicPriceLists(target)) continue;
+    const actionStart = nativeQualified(tokens, target)?.next ?? target + 1;
+    if (!complete || (nativeWord(tokens, actionStart, "SET") && nativeWord(tokens, actionStart + 1, "SCHEMA"))
+      || (nativeWord(tokens, actionStart, "RENAME") && nativeWord(tokens, actionStart + 1, "TO"))) throw drift();
+    // The native-store inventory only accepts plain qualified ALTER TABLE statements.
+    const listed = slots.get(source.path)?.existingTableStatements?.includes(statement);
+    const alter = nativeStoreAlter(statement);
+    const actions = alter?.actions ?? [statement.slice(tokens[actionStart]?.start, tokens.at(-1)?.start)];
+    for (const action of actions) {
+      const parsed = platformSqlTokens(action, false, true);
+      const identifiers = parsed.tokens.map(nativeIdentifier);
+      if (!identifiers.includes("amount_basis") && (!checkName || !identifiers.includes(checkName))) continue;
+      if (!listed || !parsed.complete) throw drift();
+      const shape = parsed.tokens.map(token => {
+        if (token.kind === "string") return JSON.stringify(token.value);
+        if (token.kind === "word") return token.value.toLowerCase();
+        return token.kind === "symbol" ? token.value : "";
+      }).join(" ");
+      if (!predecessor && /^add column amount_basis (?:pg_catalog \. )?text(?: null)?$/u.test(shape)) {
+        predecessor = source;
+        continue;
+      }
+      if (source === predecessor) {
+        const check = priceListBasisCheck.exec(shape);
+        if (!checkName && check) { checkName = check[1]!; continue; }
+        if (checkName && shape === `validate constraint ${checkName}`) continue;
+      }
+      throw drift();
+    }
+  }
+  if (!predecessor) throw new Error("reviewed native store qualified price list basis SELECT requires an earlier slot introducing public.price_lists.amount_basis");
+  const pin = registry.nativeStoreForwards!.find(entry => entry.path === predecessor.path)!;
+  assertNativeStoreForward(registry, pin.path, predecessor.bytes, preceding.filter(source => source.path < pin.path));
+  return pin;
+}
+
 /** Exact inventory with lexical shape checks; feature SQL still owns behavior proof. */
 export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]) {
   validateNativeStoreClass(registry, new Set());
@@ -3460,11 +3526,17 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   if (!slot || !forward || sqlSha256(bytes) !== forward.sha256) throw new Error("reviewed native store path or file hash drifted");
   if (bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) throw new Error("reviewed native store refuses control characters");
   if (preceding[0]?.path !== PLATFORM_BASELINE_FILE || preceding.some((source, index) => !/^db\/platform\/migrations\/\d{14}_[a-zA-Z0-9_-]+\.sql$/u.test(source.path) || source.path >= path || (index > 0 && source.path <= preceding[index - 1]!.path))) throw new Error("reviewed native store requires an ordered same-rail prefix and baseline");
+  if (slot.qualifiedPriceListBasisSelect && !bytes.equals(Buffer.from(qualifiedPriceListBasisSelectSql))) {
+    throw new Error("reviewed native store qualified price list basis SELECT forward must contain only the exact guarded grant with final LF");
+  }
   const earlierSlots = control!.slots.slice(0, control!.slots.indexOf(slot));
   const landedSettings = new Map<string, Set<string>>();
   for (const earlier of earlierSlots) {
     const pin = registry.nativeStoreForwards!.find(pin => pin.path === earlier?.path), source = preceding.find(source => source.path === earlier?.path);
-    if (!pin || !source || sqlSha256(source.bytes) !== pin.sha256) throw new Error("reviewed native store requires every earlier slot landed first");
+    if (!pin || !source || sqlSha256(source.bytes) !== pin.sha256) {
+      if (slot.qualifiedPriceListBasisSelect) throw new Error(`reviewed native store qualified price list basis SELECT earlier slot is unbound, missing or drifted: ${earlier.path}`);
+      throw new Error("reviewed native store requires every earlier slot landed first");
+    }
     if (earlier.settingsOnlyFunctions) landedSettings.set(earlier.path, new Set(earlier.settingsOnlyFunctions.map(renderNativeStoreSetting)));
   }
   for (const pin of [...registry.batchedForwards ?? [], ...registry.portableReplacementForwards ?? [], ...registry.portableCreationForwards ?? [], ...registry.channelIngestForwards ?? []].filter(pin => pin.path.startsWith("db/") && pin.path < path)) {
@@ -3481,6 +3553,9 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     return new Error(deferredTriggerMessages.pinned(pin, name, creation));
   };
   const ordinaryProof = new Map<string, { definition: NonNullable<ReturnType<typeof nativeStoreTriggerDefinition>>; localTable: boolean }>();
+  if (slot.qualifiedPriceListBasisSelect) {
+    return { slot, ordinaryProof, priceListBasisPredecessor: assertPriceListBasisPredecessor(registry, earlierSlots, preceding) };
+  }
   if (slot.previewNoopAcceptance) {
     assertPreviewNoopAcceptance(bytes, preceding);
     return { slot, ordinaryProof };
@@ -3561,7 +3636,6 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const censusTables = slot.absorptionCensusTables ?? [], censusGrants = new Set<string>(), censusPolicies = new Set<string>();
   let pending: string | undefined;
   const baselineActions = new Set<number>();
-  let priceListBasisSelect = false;
   let droppedCheck = false, addedCheck = false, existingTablePosition = 0, insertSelectPolicy = false;
   for (let index = 0; index < statements.length; index++) {
     const statement = statements[index]!;
@@ -3694,11 +3768,6 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (expected) throw new Error(`reviewed native store ${signature}: put this exact statement only immediately after its CREATE OR REPLACE FUNCTION:\n${expected}`);
       throw new Error(`reviewed native store ${signature ?? "<unknown function>"}: remove this statement. It is allowed only immediately after a replacement marked qualifiedSecurityDefiner:\n${statement}`);
     }
-    if (statement === qualifiedPriceListBasisSelectSql) {
-      if (!slot.qualifiedPriceListBasisSelect || priceListBasisSelect) throw new Error("reviewed native store requires one qualified price list basis SELECT in its declared slot");
-      priceListBasisSelect = true;
-      continue;
-    }
     const privilege = nativeStorePrivilege(statement, tables, slot.insertSelectTables ?? [], views, triggerFunctions, censusTables, block);
     if (privilege) {
       if (privilege.kind === "BASELINE") {
@@ -3763,7 +3832,6 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     }
     throw new Error("reviewed native store refuses statement outside its closed shapes");
   }
-  if (Boolean(slot.qualifiedPriceListBasisSelect) !== priceListBasisSelect) throw new Error("reviewed native store missing exact qualified price list basis SELECT");
   if (defined.size !== functions.length) throw new Error("reviewed native store unlisted, missing or drifted function definition");
   if ([...created].some(signature => !revoked.has(signature))) throw new Error("reviewed native store created function missing PUBLIC revoke");
   if (droppedCheck !== addedCheck || Boolean(slot.purposeCheck) !== addedCheck) throw new Error("reviewed native store requires the complete named CHECK replacement");
