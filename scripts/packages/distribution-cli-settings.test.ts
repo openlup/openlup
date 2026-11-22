@@ -1,9 +1,10 @@
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
-import { afterEach, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,9 +19,9 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-function fixture() {
-  const directory = mkdtempSync(join(tmpdir(), "settings-upgrade-"));
-  directories.push(directory);
+function fixture(existingDirectory?: string) {
+  const directory = existingDirectory ?? mkdtempSync(join(tmpdir(), "settings-upgrade-"));
+  if (existingDirectory === undefined) directories.push(directory);
   const write = (path: string, content: unknown) => {
     mkdirSync(dirname(join(directory, path)), { recursive: true });
     writeFileSync(join(directory, path), typeof content === "string" ? content : JSON.stringify(content));
@@ -847,14 +848,18 @@ it.each(baseline.checks)("reports exactly the baseline and new starter check row
   expect({ ...actual, stdout: existing }).toEqual({ exit: captured.exit, stdout: expectedStdout, stderr: "" });
 });
 
-it("exchanges all five MCP tools and recovers from bad frames with the packed binary", () => {
-  const { directory, write } = fixture();
+let packedSettingsDirectory: string;
+beforeAll(() => {
+  packedSettingsDirectory = mkdtempSync(join(tmpdir(), "settings-mcp-packed-"));
+  const { directory, write } = fixture(packedSettingsDirectory);
   const platform = join(directory, "node_modules/@openlup/platform");
   mkdirSync(platform, { recursive: true });
   mkdirSync(join(directory, "node_modules/.bin"), { recursive: true });
+  // Slowest local broker run for npm pack: 3.27 s.
   const packed = JSON.parse(execFileSync("npm", ["pack", resolve("packages/platform"), "--ignore-scripts",
-    "--offline", "--json", "--pack-destination", directory], { encoding: "utf8" }));
-  execFileSync("tar", ["-xzf", join(directory, packed[0].filename), "-C", platform, "--strip-components=1"]);
+    "--offline", "--json", "--pack-destination", directory], { encoding: "utf8", timeout: 14_000 }));
+  // Slowest local broker run for tar extraction: 1.04 s.
+  execFileSync("tar", ["-xzf", join(directory, packed[0].filename), "-C", platform, "--strip-components=1"], { timeout: 4_500 });
   for (const dependency of ["zod", "@openlup/core", "@openlup/outbox"]) {
     const target = join(directory, "node_modules", dependency);
     rmSync(target, { recursive: true, force: true });
@@ -868,7 +873,14 @@ it("exchanges all five MCP tools and recovers from bad frames with the packed bi
           effect: { appliesTo: "New orders.", impact: "customer-promise", frozenOn: [] } } },
     } } };
   }`);
-  const { listing, results } = proveSettingsMcp(directory);
+}, 19_000); // Slowest local broker run for fixture setup: 4.31 s.
+
+afterAll(async () => {
+  if (packedSettingsDirectory) await rm(packedSettingsDirectory, { recursive: true, force: true });
+}, 2_250); // Slowest local broker run for cleanup: 0.53 s.
+
+it("exchanges all five MCP tools and recovers from bad frames with the packed binary", () => {
+  const { listing, results } = proveSettingsMcp(packedSettingsDirectory);
   const { tools } = ListToolsResultSchema.parse(listing);
   expect(tools).toHaveLength(5);
   const clientValidator = new AjvJsonSchemaValidator();
@@ -882,7 +894,7 @@ it("exchanges all five MCP tools and recovers from bad frames with the packed bi
     expect(validateOutput({ ...document, extra: true }).valid, tool.name).toBe(false);
     expect(validateOutput({ ...document, schemaVersion: undefined }).valid, tool.name).toBe(false);
   }
-});
+}, 10_000); // Slowest local broker run for the MCP exchange and assertions: 2.26 s.
 
 it("observes live app edits and load failures in a single MCP session without restart", async () => {
   const { directory, write } = fixture();
