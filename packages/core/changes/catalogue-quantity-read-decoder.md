@@ -1,1 +1,0 @@
-- Add experimental `decodeCatalogReadQuantity` to `@openlup/core/catalog`. It checks the read payload's fields before applying Core's exact quantity conversion and refusal rules.

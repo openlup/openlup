@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { CATALOG_QUANTITY_UNITS, canonicalizeCatalogQuantity, decodeCatalogReadQuantity, type CatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
+import { CATALOG_QUANTITY_UNITS, canonicalizeCatalogQuantity, type CatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
 
 type Dimension = CatalogQuantity["dimension"];
 const quantity = (dimension: Dimension, unit: string, unscaled = "1", scale = 0) => ({ dimension, unit, unscaled, scale });
@@ -40,12 +40,7 @@ const cases: Array<[CatalogQuantity, CatalogQuantity | string, (readonly Catalog
 it("covers every Core count and volume built-in and dimension refusal", () => {
   expect(CATALOG_QUANTITY_UNITS.filter(unit => unit.dimension !== "mass").map(unit => unit.code)).toEqual(Object.keys(expectedBuiltIns));
 });
-it.each(cases)("keeps Core and strict read quantity parity for %j", (input, expected, units) => {
-  for (const decode of [canonicalizeCatalogQuantity, decodeCatalogReadQuantity]) {
-    if (typeof expected === "string") expect(() => decode(input, units)).toThrow(expected);
-    else expect(decode(input, units)).toEqual(expected);
-  }
-});
-it("refuses extra typed wire fields before conversion", () => {
-  expect(() => decodeCatalogReadQuantity({ ...ml(), extra: 1 })).toThrow("quantity_invalid");
+it.each(cases)("canonicalizes or refuses %j with Core quantity rules", (input, expected, units) => {
+  if (typeof expected === "string") expect(() => canonicalizeCatalogQuantity(input, units)).toThrow(expected);
+  else expect(canonicalizeCatalogQuantity(input, units)).toEqual(expected);
 });

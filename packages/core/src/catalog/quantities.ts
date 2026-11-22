@@ -106,12 +106,3 @@ export function convertCatalogQuantity(input: CatalogQuantity, target: string, u
   // Preserve exact canonical decimal strings at the Core boundary.
   return parseCatalogQuantity(result, units);
 }
-
-/** Decode the exact fields carried on the quantity read wire.
- * @experimental
- */
-export function decodeCatalogReadQuantity(input: unknown, units?: readonly CatalogQuantityUnit[]): CatalogQuantity {
-  if (!input || typeof input !== "object" || Array.isArray(input)
-    || Object.keys(input).some(key => !["dimension", "unscaled", "scale", "unit"].includes(key))) fail("quantity_invalid");
-  return canonicalizeCatalogQuantity(input as CatalogQuantity, units);
-}
