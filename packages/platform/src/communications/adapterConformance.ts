@@ -239,6 +239,7 @@ function syncResult(input: SyncRequest, result: SyncResult): void {
 function validateEmailResultShape(result: EmailSendResult): void {
   rejectProxy(result);
   const outcome = result.outcome;
+  rejectProxy(outcome);
   requireFact(
     typeof outcome.ok === "boolean" &&
       typeof outcome.aborted === "boolean" &&
@@ -474,16 +475,27 @@ export async function runCommunicationsAdapterConformance(
           requireFact(subject.fixtures.some((row) => row.input.operation === operation), "sync_fixtures", "Supply fixtures for all four marketing-sync operations, including unsupported ones");
         }
         requireFact(subject.fixtures.some((row) => row.expected.kind === "refused"), "refusal_fixture", "Supply a refused marketing-sync request with zero external effects");
+        let certifiedSyncCapabilities: unknown = null;
         for (const [fixtureIndex, row] of subject.fixtures.entries()) {
           location = `subject ${subjectIndex + 1}, fixture ${fixtureIndex + 1}`;
           const created = await subject.create(row.input);
           rejectProxy(created);
           const { adapter, readEffectCount } = created;
           rejectProxy(adapter);
+          rejectProxy(adapter.capabilities);
           const before = count(readEffectCount);
+          if (certifiedSyncCapabilities === null) {
+            certifiedSyncCapabilities = adapter.capabilities;
+            digestSource = { kind: "marketing-sync", capabilities: certifiedSyncCapabilities };
+          } else {
+            requireFact(
+              same(adapter.capabilities, certifiedSyncCapabilities),
+              "capability_drift",
+              "Keep consistent marketing-sync capabilities across all fixtures for the same subject",
+            );
+          }
           const capability = adapter.capabilities.operations[row.input.operation];
           if (capability.state === "supported") supported.add(row.input.operation);
-          digestSource = { kind: "marketing-sync", capabilities: adapter.capabilities };
           let result: SyncResult;
           try {
             result = await dispatch(adapter, row.input);
@@ -491,6 +503,7 @@ export async function runCommunicationsAdapterConformance(
             assertNoSensitiveLeak(err, subject.sensitiveValues);
             throw err;
           }
+          rejectProxy(result);
           assertNoSensitiveLeak(result, subject.sensitiveValues);
           syncResult(row.input, result);
           requireFact(
@@ -523,7 +536,15 @@ export async function runCommunicationsAdapterConformance(
               "replay_fixture",
               "Replay an accepted or acknowledged mutation fixture",
             );
-            const replayBefore = count(readEffectCount), replay = await dispatch(adapter, row.input);
+            const replayBefore = count(readEffectCount);
+            let replay: SyncResult;
+            try {
+              replay = await dispatch(adapter, row.input);
+            } catch (err) {
+              assertNoSensitiveLeak(err, subject.sensitiveValues);
+              throw err;
+            }
+            rejectProxy(replay);
             assertNoSensitiveLeak(replay, subject.sensitiveValues);
             requireFact(same(replay, result), "replay_result", "Return the original receipt and result for the same request");
             effects(readEffectCount, replayBefore, 0);

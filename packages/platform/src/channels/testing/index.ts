@@ -6,7 +6,7 @@ import type {
   ChannelOrderSourcePort,
   NormalizedWebhookResult,
 } from "../contracts/index.js";
-import { normalizedChannelOrderSchema } from "../orderContracts.js";
+import { normalizedChannelOrderSchema, unmappedChannelSignalSchema } from "../orderContracts.js";
 
 /** @experimental Offline sales-channel connector conformance runner and scripted transport fake. */
 
@@ -212,6 +212,7 @@ export async function runChannelAdapterConformance(
     const wh = subject.createWebhookAdapter();
     rejectProxy(wh, loc("webhook"));
     rejectProxy(wh.adapter, loc("webhook"));
+    rejectProxy(wh.adapter.normalizeWebhook, loc("webhook"));
     rejectProxy(wh.capabilities, loc("webhook"));
     if (!wh.capabilities.connectorKind || !wh.capabilities.connectorKind.trim()) {
       fail("invalid_capabilities", "connectorKind must be non-empty.", loc("capabilities"));
@@ -219,13 +220,21 @@ export async function runChannelAdapterConformance(
     const capabilityDigest = createHash("sha256").update(JSON.stringify(wh.capabilities)).digest("hex");
     const signal = new AbortController().signal;
 
+    const readValidIo = (fn: () => number, location: string): number => {
+      const n = fn();
+      if (typeof n !== "number" || !Number.isSafeInteger(n) || n < 0) {
+        fail("invalid_io_count", "readIoCount() must return a non-negative safe integer.", location);
+      }
+      return n;
+    };
+
     const runWebhook = async (
       name: string,
       fixture: ChannelWebhookFixture,
       expectedKind: NormalizedWebhookResult["kind"],
       expectZeroIo: boolean,
     ): Promise<NormalizedWebhookResult> => {
-      const ioBefore = wh.readIoCount();
+      const ioBefore = readValidIo(wh.readIoCount, loc(name));
       let res: NormalizedWebhookResult;
       try {
         res = await wh.adapter.normalizeWebhook({
@@ -239,7 +248,9 @@ export async function runChannelAdapterConformance(
       }
       rejectProxy(res, loc(name));
       assertNoLeak(res, subject.sensitiveValues, loc(name));
-      const ioDelta = wh.readIoCount() - ioBefore;
+      const ioAfter = readValidIo(wh.readIoCount, loc(name));
+      const ioDelta = ioAfter - ioBefore;
+      if (ioDelta < 0) fail("invalid_io_count", "readIoCount() decreased.", loc(name));
       if (expectZeroIo && ioDelta !== 0) {
         fail("zero_io_violation", `Expected 0 I/O on ${name}, observed ${ioDelta}.`, loc(name));
       }
@@ -247,9 +258,24 @@ export async function runChannelAdapterConformance(
         fail("webhook_kind_mismatch", `Expected kind "${expectedKind}" on ${name}, observed "${res.kind}".`, loc(name));
       }
       if (res.kind === "order") {
+        if (!res.providerEventId || !res.providerEventId.trim()) {
+          fail("missing_provider_event_id", "order webhook result must include non-empty providerEventId.", loc(name));
+        }
         const parsedOrder = normalizedChannelOrderSchema.safeParse(res.order);
         if (!parsedOrder.success) {
           fail("invalid_normalized_order", parsedOrder.error.issues[0]?.message ?? "invalid order", loc(name));
+        }
+      } else if (res.kind === "unmapped") {
+        if (!res.providerEventId || !res.providerEventId.trim()) {
+          fail("missing_provider_event_id", "unmapped webhook result must include non-empty providerEventId.", loc(name));
+        }
+        const parsedSignal = unmappedChannelSignalSchema.safeParse(res.signal);
+        if (!parsedSignal.success) {
+          fail("invalid_unmapped_signal", parsedSignal.error.issues[0]?.message ?? "invalid unmapped signal", loc(name));
+        }
+      } else if (res.kind === "ignored") {
+        if (!res.providerEventId || !res.providerEventId.trim() || !res.reason || !res.reason.trim()) {
+          fail("invalid_ignored_webhook", "ignored webhook result must include non-empty providerEventId and reason.", loc(name));
         }
       }
       ledger.push({ scenario: name, role: "webhook", ioDelta });
@@ -271,16 +297,36 @@ export async function runChannelAdapterConformance(
       const pullH = subject.happyPullOrders();
       rejectProxy(pullH, loc("happyPullOrders"));
       rejectProxy(pullH.adapter, loc("happyPullOrders"));
-      const ioBefore = pullH.readIoCount();
+      rejectProxy(pullH.adapter.pullOrders, loc("happyPullOrders"));
+      rejectProxy(pullH.capabilities, loc("happyPullOrders"));
+      const pullDigest = createHash("sha256").update(JSON.stringify(pullH.capabilities)).digest("hex");
+      if (pullDigest !== capabilityDigest) {
+        fail("capability_drift", "happyPullOrders capabilities differ from webhook adapter capabilities.", loc("happyPullOrders"));
+      }
+      if (mode === "full" && !pullH.readFaultLog) {
+        fail("missing_fault_log_handle", "mode: 'full' requires pullH.readFaultLog() backed by createScriptedChannelFake.", loc("happyPullOrders"));
+      }
+      const ioBefore = readValidIo(pullH.readIoCount, loc("happyPullOrders"));
       const faultHandle = pullH.readFaultLog ? pullH.readFaultLog() : null;
       const faultBefore = faultHandle ? readFaultLog(faultHandle).length : null;
-      const pulled = await pullH.adapter.pullOrders({ ...pullH.input, signal });
+      let pulled: Awaited<ReturnType<ChannelOrderSourcePort["pullOrders"]>>;
+      try {
+        pulled = await pullH.adapter.pullOrders({ ...pullH.input, signal });
+      } catch (err) {
+        assertNoLeak(err, subject.sensitiveValues, loc("happyPullOrders"));
+        fail("pull_threw", "happyPullOrders threw an unexpected exception.", loc("happyPullOrders"));
+      }
+      rejectProxy(pulled, loc("happyPullOrders"));
       assertNoLeak(pulled, subject.sensitiveValues, loc("happyPullOrders"));
+      if (!Array.isArray(pulled.orders) || pulled.orders.length === 0) {
+        fail("empty_pulled_orders", "happyPullOrders must return at least 1 normalized order.", loc("happyPullOrders"));
+      }
       for (const order of pulled.orders) {
         const parsed = normalizedChannelOrderSchema.safeParse(order);
         if (!parsed.success) fail("invalid_pulled_order", parsed.error.issues[0]?.message ?? "invalid order", loc("happyPullOrders"));
       }
-      const ioDelta = pullH.readIoCount() - ioBefore;
+      const ioAfter = readValidIo(pullH.readIoCount, loc("happyPullOrders"));
+      const ioDelta = ioAfter - ioBefore;
       if (ioDelta < 1) fail("pull_io_missing", "happyPullOrders must execute at least 1 provider I/O call.", loc("happyPullOrders"));
       if (faultHandle && faultBefore !== null && readFaultLog(faultHandle).length - faultBefore < 1) {
         fail("pull_fault_log_missing", "Authenticated fake log did not record pullOrders call.", loc("happyPullOrders"));

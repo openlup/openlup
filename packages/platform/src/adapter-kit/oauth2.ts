@@ -106,18 +106,39 @@ export function createOAuth2TokenManager(options: OAuth2TokenManagerOptions): OA
   let inFlight: { readonly epoch: number; readonly promise: Promise<OAuth2CachedToken> } | null = null;
 
   async function readValidCached(): Promise<string | null> {
+    const readEpoch = epoch;
     const now = clock();
     if (memoryToken && memoryToken.expiresAtMs - refreshSkewMs > now) {
       return memoryToken.accessToken;
     }
     if (options.cache) {
       const fromCache = await options.cache.get();
-      if (fromCache && fromCache.expiresAtMs - refreshSkewMs > now) {
+      if (readEpoch !== epoch) return null;
+      if (fromCache && fromCache.expiresAtMs - refreshSkewMs > clock()) {
         memoryToken = fromCache;
         return fromCache.accessToken;
       }
     }
     return null;
+  }
+
+  function raceWithCallerSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return promise;
+    if (signal.aborted) return Promise.reject(new OAuth2TokenError("timeout"));
+    return new Promise<T>((resolve, reject) => {
+      const onAbort = () => reject(new OAuth2TokenError("timeout"));
+      signal.addEventListener("abort", onAbort, { once: true });
+      promise.then(
+        (val) => {
+          signal.removeEventListener("abort", onAbort);
+          resolve(val);
+        },
+        (err) => {
+          signal.removeEventListener("abort", onAbort);
+          reject(err);
+        },
+      );
+    });
   }
 
   async function requestToken(requestEpoch: number, signal?: AbortSignal): Promise<OAuth2CachedToken> {
@@ -233,22 +254,25 @@ export function createOAuth2TokenManager(options: OAuth2TokenManagerOptions): OA
 
   return {
     async getAccessToken(signal?: AbortSignal): Promise<string> {
-      const cached = await readValidCached();
+      if (signal?.aborted) throw new OAuth2TokenError("timeout");
+      const cached = await raceWithCallerSignal(readValidCached(), signal);
+      if (signal?.aborted) throw new OAuth2TokenError("timeout");
       if (cached !== null) return cached;
 
       if (inFlight && inFlight.epoch === epoch) {
-        const token = await inFlight.promise;
+        const token = await raceWithCallerSignal(inFlight.promise, signal);
         return token.accessToken;
       }
 
       const currentEpoch = epoch;
-      const promise = requestToken(currentEpoch, signal).finally(() => {
+      // Decouple shared single-flight fetch from any single caller's AbortSignal so one caller aborting does not poison others.
+      const promise = requestToken(currentEpoch).finally(() => {
         if (inFlight?.promise === promise) {
           inFlight = null;
         }
       });
       inFlight = { epoch: currentEpoch, promise };
-      const token = await promise;
+      const token = await raceWithCallerSignal(promise, signal);
       return token.accessToken;
     },
     async invalidate(): Promise<void> {

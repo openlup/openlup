@@ -264,8 +264,8 @@ export async function runAccountingAdapterConformance(
     const happyH = subject.happyExport();
     const { caps, digest } = snapCaps(happyH.adapter, loc("capabilities"));
     const happy = await runExport(happyH, happyH.record, caps, digest, subject.sensitiveValues, loc("happyExport"));
-    if (happy.result.kind !== "exported" || happy.ioDelta !== 1) {
-      fail("happy_export_failed", `Expected exported with ioDelta=1, got ${happy.result.kind} (io=${happy.ioDelta}).`, loc("happyExport"));
+    if (happy.result.kind !== "exported" || happy.ioDelta !== 1 || happy.result.exportKey !== happyH.record.exportKey) {
+      fail("happy_export_failed", `Expected exported with matching exportKey and ioDelta=1, got ${happy.result.kind} (io=${happy.ioDelta}).`, loc("happyExport"));
     }
     ledger.push({ scenario: "happyExport", role: "happy", ioDelta: happy.ioDelta, faultLogDelta: happy.faultLogDelta });
 
@@ -327,15 +327,42 @@ export async function runAccountingAdapterConformance(
           fail("missing_readback_harness", "supportsReadback: true requires certification.readbackFound.", loc("readbackFound"));
         }
         const rbH = subject.certification.readbackFound();
+        rejectProxy(rbH, loc("readbackFound"));
+        const rbCaps = snapCaps(rbH.adapter, loc("readbackFound"));
+        if (rbCaps.caps.providerKind !== caps.providerKind || rbCaps.digest !== digest) {
+          fail("capability_drift", "readbackFound harness capabilities differ from certified capabilities.", loc("readbackFound"));
+        }
         if (!rbH.adapter.readEntryByKey) fail("missing_readback_method", "Adapter declares supportsReadback: true without readEntryByKey().", loc("readbackFound"));
+        rejectProxy(rbH.adapter.readEntryByKey, loc("readbackFound"));
+        if (!rbH.readFaultLog) fail("missing_fault_log_handle", "mode: 'full' requires readFaultLog() on readbackFound.", loc("readbackFound"));
         const ioBefore = rbH.readIoCount();
-        const rbRaw: AccountingReadbackResult = await rbH.adapter.readEntryByKey(rbH.record.exportKey);
+        if (!Number.isSafeInteger(ioBefore) || ioBefore < 0) fail("invalid_io_count", "readIoCount must be non-negative safe integer.", loc("readbackFound"));
+        const rbFaultHandle = rbH.readFaultLog();
+        const rbFaultBefore = readFaultLog(rbFaultHandle).length;
+        let rbRaw: unknown;
+        try {
+          rbRaw = await rbH.adapter.readEntryByKey(rbH.record.exportKey);
+        } catch (err) {
+          assertNoLeak(err, subject.sensitiveValues, loc("readbackFound"));
+          fail("uncaught_throw", "readEntryByKey() must return a structured AccountingReadbackResult instead of throwing.", loc("readbackFound"));
+        }
+        rejectProxy(rbRaw, loc("readbackFound"));
         assertNoLeak(rbRaw, subject.sensitiveValues, loc("readbackFound"));
         const rbParsed = accountingReadbackResultSchema.safeParse(rbRaw);
-        if (!rbParsed.success || rbParsed.data.kind !== "found" || rbH.readIoCount() - ioBefore !== 1) {
-          fail("readback_failed", "readEntryByKey must return valid found result with ioDelta=1.", loc("readbackFound"));
+        const ioAfter = rbH.readIoCount();
+        const rbFaultDelta = readFaultLog(rbFaultHandle).length - rbFaultBefore;
+        if (
+          !rbParsed.success ||
+          rbParsed.data.kind !== "found" ||
+          rbParsed.data.providerKind !== caps.providerKind ||
+          rbParsed.data.exportKey !== rbH.record.exportKey ||
+          !Number.isSafeInteger(ioAfter) ||
+          ioAfter - ioBefore !== 1 ||
+          rbFaultDelta !== 1
+        ) {
+          fail("readback_failed", "readEntryByKey must return valid found result matching providerKind/exportKey with ioDelta=1 and faultLogDelta=1.", loc("readbackFound"));
         }
-        ledger.push({ scenario: "readbackFound", role: "readback", ioDelta: 1, faultLogDelta: null });
+        ledger.push({ scenario: "readbackFound", role: "readback", ioDelta: 1, faultLogDelta: rbFaultDelta });
       }
     }
 

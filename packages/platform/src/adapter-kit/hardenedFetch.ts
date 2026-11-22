@@ -246,11 +246,20 @@ export function createHardenedFetch(options: HardenedFetchOptions): HardenedFetc
 
     const timeoutMs = init?.timeoutMs ?? defaultTimeoutMs;
     const maxBytes = init?.maxResponseBytes ?? defaultMaxBytes;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+      throw new HardenedFetchError("origin_rejected", "INVALID_TIMEOUT_MS");
+    }
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+      throw new HardenedFetchError("origin_rejected", "INVALID_MAX_RESPONSE_BYTES");
+    }
     const signal = composeSignal(timeoutMs, init?.signal);
-    const mergedHeaders: Record<string, string> = {
-      ...(options.defaultHeaders ?? {}),
-      ...(init?.headers ?? {}),
-    };
+    const mergedHeaders = new Headers();
+    for (const [k, v] of Object.entries(options.defaultHeaders ?? {})) {
+      mergedHeaders.set(k, v);
+    }
+    for (const [k, v] of Object.entries(init?.headers ?? {})) {
+      mergedHeaders.set(k, v);
+    }
 
     let response: Response;
     try {

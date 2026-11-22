@@ -211,5 +211,82 @@ describe("@openlup/platform/adapter-kit", () => {
     expect(verifyEd25519Signature({ payload: body, signature: edSig, publicKeyPem: pubPem })).toBe(true);
     expect(verifyEd25519Signature({ payload: `${body} `, signature: edSig, publicKeyPem: pubPem })).toBe(false);
     expect(verifyEd25519Signature({ payload: body, signature: "not-valid!", publicKeyPem: pubPem })).toBe(false);
+    expect(
+      verifyHardenedStandardWebhook({
+        rawBody: body,
+        webhookId: id,
+        timestamp: ts,
+        signature: `v1,${expectedB64}`,
+        secrets: [whsec],
+        now: () => Number.NaN,
+      }),
+    ).toBe(false);
+  });
+
+  it("prevents OAuth2 invalidate() cache races, isolates caller aborts, and validates per-request fetch bounds", async () => {
+    const client = createHardenedFetch({
+      allowedOrigins: ["https://api.example.test"],
+      defaultHeaders: { Authorization: "Bearer default" },
+      fetchImpl: async (_url, init) => {
+        const hdrs = new Headers(init?.headers);
+        return new Response(JSON.stringify({ auth: hdrs.get("authorization") }), { status: 200 });
+      },
+    });
+    await expect(
+      client.fetchBytes("https://api.example.test/ok", { maxResponseBytes: Number.NaN }),
+    ).rejects.toMatchObject({ diagnosticCode: "INVALID_MAX_RESPONSE_BYTES" });
+    await expect(
+      client.fetchBytes("https://api.example.test/ok", { timeoutMs: 0 }),
+    ).rejects.toMatchObject({ diagnosticCode: "INVALID_TIMEOUT_MS" });
+    const overridden = await client.fetchJson<{ auth: string }>("https://api.example.test/ok", {
+      headers: { authorization: "Bearer override" },
+    });
+    expect(overridden.data.auth).toBe("Bearer override");
+
+    let releaseCache!: () => void;
+    const cacheGate = new Promise<void>((r) => { releaseCache = r; });
+    let releaseFetch!: () => void;
+    const fetchGate = new Promise<void>((r) => { releaseFetch = r; });
+    let cacheCleared = false;
+    let fetchCalls = 0;
+    const manager = createOAuth2TokenManager({
+      tokenUrl: "https://auth.example.test/oauth2/token",
+      grant: { type: "client_credentials", clientId: "cid", clientSecret: "sec-marker" },
+      clock: () => 1_700_000_000_000,
+      cache: {
+        async get() {
+          if (cacheCleared) return null;
+          await cacheGate;
+          return { accessToken: "stale-from-cache", expiresAtMs: 1_700_009_000_000 };
+        },
+        set() {},
+        clear() {
+          cacheCleared = true;
+        },
+      },
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        if (fetchCalls === 1) await fetchGate;
+        return new Response(JSON.stringify({ access_token: `fresh-${fetchCalls}`, expires_in: 3600 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+
+    // invalidate() while cache.get() is pending must discard stale-from-cache
+    const pendingToken = manager.getAccessToken();
+    await manager.invalidate();
+    releaseCache();
+    await Promise.resolve();
+    await Promise.resolve();
+    // Meanwhile, Caller A aborts while Caller B awaits the same single-flight fetch
+    const acA = new AbortController();
+    const pA = manager.getAccessToken(acA.signal);
+    acA.abort();
+    await expect(pA).rejects.toMatchObject({ kind: "timeout" });
+    releaseFetch();
+    expect(await pendingToken).toBe("fresh-1");
+    expect(fetchCalls).toBe(1);
   });
 });

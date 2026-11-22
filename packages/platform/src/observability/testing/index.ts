@@ -175,6 +175,11 @@ function assertNoLeak(payload: unknown, sensitive: readonly string[] | undefined
     }
     if (typeof v !== "object" || seen.has(v)) return;
     seen.add(v);
+    if (ArrayBuffer.isView(v)) {
+      const bytes = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+      walk(new TextDecoder().decode(bytes));
+      return;
+    }
     if (Array.isArray(v)) { for (const i of v) walk(i); return; }
     for (const k of Reflect.ownKeys(v)) {
       if (typeof k === "string") walk(k);
@@ -202,13 +207,26 @@ async function flushChecked(
   digest: string,
   sensitive: readonly string[] | undefined,
   location: string,
-): Promise<{ result: TelemetryFlushResult; ioDelta: number; addedFaults: readonly RecordedTelemetryFault[]; faultLogDelta: number | null }> {
+): Promise<{
+  result: TelemetryFlushResult;
+  ioDelta: number;
+  payloadDelta: number;
+  addedFaults: readonly RecordedTelemetryFault[];
+  faultLogDelta: number | null;
+}> {
   rejectProxy(harness, location);
+  rejectProxy(harness.adapter.record, location);
+  rejectProxy(harness.adapter.flush, location);
+  rejectProxy(harness.readSentPayloads, location);
   const h = snapCaps(harness.adapter, location);
   if (h.caps.providerKind !== caps.providerKind || h.digest !== digest) {
     fail("capability_drift", "Harness capabilities drifted from certified capabilities.", location);
   }
   const ioBefore = harness.readIoCount();
+  if (!Number.isSafeInteger(ioBefore) || ioBefore < 0) {
+    fail("invalid_io_count", "readIoCount() must return a non-negative safe integer.", location);
+  }
+  const payloadsBefore = harness.readSentPayloads().length;
   const faultHandle = harness.readFaultLog ? harness.readFaultLog() : null;
   const faultBefore = faultHandle ? readFaultLog(faultHandle).length : null;
   for (const ev of events) {
@@ -225,13 +243,26 @@ async function flushChecked(
     fail("flush_threw", "flush() must be fail-open and never throw.", location);
   }
   rejectProxy(raw, location);
+  const sentPayloads = harness.readSentPayloads();
+  rejectProxy(sentPayloads, location);
   assertNoLeak(raw, sensitive, location);
-  assertNoLeak(harness.readSentPayloads(), sensitive, location);
+  assertNoLeak(sentPayloads, sensitive, location);
   const parsed = telemetryFlushResultSchema.safeParse(raw);
   if (!parsed.success) fail("invalid_result_shape", parsed.error.issues[0]?.message ?? "invalid", location);
-  const ioDelta = harness.readIoCount() - ioBefore;
+  const ioAfter = harness.readIoCount();
+  if (!Number.isSafeInteger(ioAfter) || ioAfter < ioBefore) {
+    fail("invalid_io_count", "readIoCount() must be non-decreasing safe integer.", location);
+  }
+  const ioDelta = ioAfter - ioBefore;
+  const payloadDelta = sentPayloads.length - payloadsBefore;
   const addedFaults = faultHandle && faultBefore !== null ? readFaultLog(faultHandle).slice(faultBefore) : [];
-  return { result: parsed.data, ioDelta, addedFaults, faultLogDelta: faultHandle && faultBefore !== null ? addedFaults.length : null };
+  return {
+    result: parsed.data,
+    ioDelta,
+    payloadDelta,
+    addedFaults,
+    faultLogDelta: faultHandle && faultBefore !== null ? addedFaults.length : null,
+  };
 }
 
 export async function runTelemetryAdapterConformance(
@@ -253,8 +284,8 @@ export async function runTelemetryAdapterConformance(
     const happyH = subject.happyFlush();
     const { caps, digest } = snapCaps(happyH.adapter, loc("capabilities"));
     const happy = await flushChecked(happyH, happyH.sampleEvents, caps, digest, subject.sensitiveValues, loc("happyFlush"));
-    if (happy.result.kind !== "flushed" || happy.result.accepted < 1 || happy.ioDelta !== 1) {
-      fail("happy_flush_failed", `Expected flushed(accepted>=1) with ioDelta=1, got ${happy.result.kind} (io=${happy.ioDelta}).`, loc("happyFlush"));
+    if (happy.result.kind !== "flushed" || happy.result.accepted < 1 || happy.ioDelta !== 1 || happy.payloadDelta < 1) {
+      fail("happy_flush_failed", `Expected flushed(accepted>=1) with ioDelta=1 and captured sent payload, got ${happy.result.kind} (io=${happy.ioDelta}, payloads=${happy.payloadDelta}).`, loc("happyFlush"));
     }
     ledger.push({ scenario: "happyFlush", role: "happy", ioDelta: happy.ioDelta, faultLogDelta: happy.faultLogDelta });
 
@@ -296,8 +327,8 @@ export async function runTelemetryAdapterConformance(
       [...(subject.sensitiveValues ?? []), piiCanary, "telemetry-canary-token-999"],
       loc("pii_redaction"),
     );
-    if (redactionOut.result.kind !== "flushed" || redactionOut.ioDelta !== 1) {
-      fail("redaction_flush_failed", "Redaction probe expected flushed with ioDelta=1.", loc("pii_redaction"));
+    if (redactionOut.result.kind !== "flushed" || redactionOut.ioDelta !== 1 || redactionOut.payloadDelta < 1) {
+      fail("redaction_flush_failed", "Redaction probe expected flushed with ioDelta=1 and at least 1 captured outbound payload.", loc("pii_redaction"));
     }
     ledger.push({ scenario: "pii_redaction", role: "redaction", ioDelta: redactionOut.ioDelta, faultLogDelta: redactionOut.faultLogDelta });
 

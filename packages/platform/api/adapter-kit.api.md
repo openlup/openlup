@@ -149,6 +149,7 @@ export interface VerifyHardenedStandardWebhookInput {
     readonly signature: string | undefined;
     readonly secrets: readonly string[];
     readonly toleranceSeconds?: number;
+    /** Optional UTC epoch clock returning seconds (not milliseconds). */
     readonly now?: () => number;
 }
 /**

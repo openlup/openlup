@@ -129,5 +129,16 @@ describe("@openlup/platform/observability and /testing", () => {
         },
       ]),
     ).rejects.toThrow(/TELEMETRY_CONFORMANCE:secret_leak/);
+
+    // Empty readSentPayloads() cannot vacuously pass happyFlush or pii_redaction
+    await expect(
+      runTelemetryAdapterConformance([
+        {
+          id: "empty-payload-sink",
+          happyFlush: () => ({ ...makeHarness({ kind: "success", value: 2 }), readSentPayloads: () => [] }),
+          disabledPort: () => makeHarness({ kind: "success", value: 0 }, false),
+        },
+      ]),
+    ).rejects.toThrow(/TELEMETRY_CONFORMANCE:happy_flush_failed/);
   });
 });

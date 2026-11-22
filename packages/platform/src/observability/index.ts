@@ -156,9 +156,41 @@ export function createSafeTelemetryPort(input: {
   ) => Promise<TelemetryFlushResult>;
 }): TelemetryPort {
   const enabled = input.enabled ?? true;
-  const maxBatch = Math.max(1, input.capabilities.maxBatchSize);
+  const rawMax = input.capabilities.maxBatchSize;
+  const maxBatch =
+    typeof rawMax === "number" && Number.isFinite(rawMax) && rawMax >= 1
+      ? Math.min(Math.floor(rawMax), 10_000)
+      : 100;
   const queue: TelemetryEvent[] = [];
   let droppedSinceFlush = 0;
+
+  async function flush(signal?: AbortSignal): Promise<TelemetryFlushResult> {
+    if (!enabled || queue.length === 0) {
+      droppedSinceFlush = 0;
+      return { kind: "noop", accepted: 0, dropped: 0 };
+    }
+    const batch = queue.splice(0, queue.length);
+    const preDropped = droppedSinceFlush;
+    droppedSinceFlush = 0;
+    try {
+      const res = await input.exportBatch(batch, signal);
+      if (res.kind === "flushed") {
+        return { kind: "flushed", accepted: res.accepted, dropped: res.dropped + preDropped };
+      }
+      if (res.kind === "failed") {
+        return { ...res, dropped: res.dropped + preDropped };
+      }
+      return res;
+    } catch {
+      return {
+        kind: "failed",
+        accepted: 0,
+        dropped: batch.length + preDropped,
+        retryable: true,
+        diagnosticCode: "TELEMETRY_EXPORT_THREW",
+      };
+    }
+  }
 
   return {
     capabilities: input.capabilities,
@@ -175,36 +207,10 @@ export function createSafeTelemetryPort(input: {
         droppedSinceFlush += 1;
       }
     },
-    async flush(signal?: AbortSignal): Promise<TelemetryFlushResult> {
-      if (!enabled || queue.length === 0) {
-        droppedSinceFlush = 0;
-        return { kind: "noop", accepted: 0, dropped: 0 };
-      }
-      const batch = queue.splice(0, queue.length);
-      const preDropped = droppedSinceFlush;
-      droppedSinceFlush = 0;
-      try {
-        const res = await input.exportBatch(batch, signal);
-        if (res.kind === "flushed") {
-          return { kind: "flushed", accepted: res.accepted, dropped: res.dropped + preDropped };
-        }
-        if (res.kind === "failed") {
-          return { ...res, dropped: res.dropped + preDropped };
-        }
-        return res;
-      } catch {
-        return {
-          kind: "failed",
-          accepted: 0,
-          dropped: batch.length + preDropped,
-          retryable: true,
-          diagnosticCode: "TELEMETRY_EXPORT_THREW",
-        };
-      }
-    },
+    flush,
     async shutdown(signal?: AbortSignal): Promise<void> {
       try {
-        await this.flush(signal);
+        await flush(signal);
       } catch {
         // Passive fail-open shutdown.
       }

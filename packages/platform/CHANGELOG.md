@@ -10,10 +10,6 @@ in the source repository.
 
 ## [Unreleased]
 
-- Published `@openlup/platform/communications/testing` exporting `runCommunicationsAdapterConformance` (with additive `mode: "full"` egress-admission and fault-handle certification), `createScriptedCommunicationsFake`, `ScriptedCommunicationsTransportError`, and `createInMemoryEmailTransport`.
-
-  Migration: No adopter action is required. `@openlup/platform/communications` continues to export `runCommunicationsAdapterConformance` with identical runtime and type signatures; only the internal declaration file moved from `dist/communications/testing/adapterConformance.d.ts` to `dist/communications/adapterConformance.d.ts`.
-
 ## [1.3.0]
 
 - Publishable on the npm `latest` dist-tag as `1.3.0`, from tag

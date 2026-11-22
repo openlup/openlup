@@ -58,6 +58,7 @@ export interface VerifyHardenedStandardWebhookInput {
   readonly signature: string | undefined;
   readonly secrets: readonly string[];
   readonly toleranceSeconds?: number;
+  /** Optional UTC epoch clock returning seconds (not milliseconds). */
   readonly now?: () => number;
 }
 
@@ -76,7 +77,12 @@ export function verifyHardenedStandardWebhook(input: VerifyHardenedStandardWebho
 
   const nowSeconds = input.now ? input.now() : Math.floor(Date.now() / 1000);
   const tolerance = input.toleranceSeconds ?? 300;
-  if (!Number.isFinite(tolerance) || tolerance < 0 || Math.abs(nowSeconds - tsSeconds) > tolerance) {
+  if (
+    !Number.isFinite(nowSeconds) ||
+    !Number.isFinite(tolerance) ||
+    tolerance < 0 ||
+    Math.abs(nowSeconds - tsSeconds) > tolerance
+  ) {
     return false;
   }
 
@@ -121,6 +127,7 @@ export function verifyEd25519Signature(input: VerifyEd25519SignatureInput): bool
     }
     if (sigBytes.byteLength !== 64) return false;
     const keyObj = createPublicKey(publicKeyPem);
+    if (keyObj.asymmetricKeyType !== "ed25519") return false;
     const data = typeof payload === "string" ? Buffer.from(payload, "utf8") : payload;
     return cryptoVerify(null, data, keyObj, sigBytes);
   } catch {
