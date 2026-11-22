@@ -520,23 +520,18 @@ no raw email, IP address, idempotency key, headers or request payload, and has n
 client foreign key or absorption mapping.
 
 Restore the ledger before enabling checkout under the same limit and identity
-policy. Connected-store restore accepts the current qualified inventory and the
-admitted predecessor inventories from before publication commands, the checkout
-attempt ledger, governed catalogue lifecycle and catalogue accepted references.
-Conversion reproduces the retained rows an in-place upgrade would produce.
-It also accepts profile-free packets from the pinned inventories immediately
-before subscription profile receipts. Those packets use the current shape.
-Earlier captures report the edit quote table as empty because capture refused
-when it contained rows. New captures carry those quotes. A source schema change
-that cannot be reproduced by additive conversion, such as a dropped or retyped
-column, refuses with `schema_conflict`. Upgrade the source, then capture.
-Earlier inventories are admitted per release: each release cut adds the previous
-release's inventories with one conversion witness, or documents their refusal.
-A migration adds no restore pin of its own, so a capture from an unreleased
-state that a later migration changed refuses with `schema_conflict`. Upgrade
-the source to the target's version, then capture. A migration that adds a
-captured table or a nullable column to one registers it in the capture roster
-and restore order, or in that table's additive columns, in the same change.
+policy.
+
+Connected-store restore admits only a packet captured on the target's exact
+current qualified inventory. Any other inventory, including earlier releases
+and unreleased states, refuses with `schema_conflict`: upgrade the source to the
+target's version, then capture. Each release cut decides whether the previous
+release is admitted, with one general additive conversion keyed on that
+release's tables and columns, or documents its refusal. A migration adds no
+restore pin of its own. A migration that adds a captured table or a nullable
+column to one registers it in the capture roster and restore order, or in that
+table's additive columns, in the same change.
+
 Restored attempts age on their
 original timestamps. Admission prunes rows at the retention cutoff on each
 call. Idle databases keep bounded rows
@@ -1184,8 +1179,6 @@ reserves option combinations across all statuses for published SKUs. The
 identifier marker is nullable. Existing rows retain their issuer-scoped
 keys. New publication checks existing identifiers under the catalogue relation
 fence. A later unmarked legacy write may share a GTIN with another issuer.
-Connected restore preserves markers and recognizes the exact predecessor
-installation profile with its original identifier columns.
 
 A managed implementation can use the same relations, composite keys and
 deferred checks, with owner-only writes under row-level security and

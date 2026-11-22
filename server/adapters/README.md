@@ -203,8 +203,7 @@ context is carried with the same privacy boundary as the order's quote/draft
 metadata, not scrubbed into nonpersonal telemetry. The existing owner-only
 capture/restore path and row/byte limits apply; no runtime or browser grant is
 added. A fresh-process checkout replay after restore returns the same order.
-The unchanged exact-set guard expects the receipt table even when empty; this
-change does not convert packets from an earlier finite profile.
+The exact-set guard expects the receipt table even when empty.
 
 The purchase-hold draft adds observed current stock, reservation headers/lines
 and purchase command receipts, plus aggregate compensation history and provisional
@@ -370,10 +369,12 @@ and the retained-import owner transactionally after checking the sealed
 catalogue, then seals both edges before final catalogue comparison. Pristine-row
 equality is a precondition inside the target transaction, not independent
 freshness evidence.
-The target rechecks the selected canonical catalogue and ledger. The complete
-ledger path, checksum and position sequence follows the selected manifest rather
-than a fixed unit count or tail pin. It locks tables,
-uses the existing retained client/cycle routines and compatible-row admission,
+Restore requires the target's exact current qualified inventory. An inventory
+mismatch refuses with `schema_conflict`. Upgrade the source to the target's
+version, then capture. The target rechecks the selected canonical catalogue and
+ledger. Its paths, checksums and positions follow the selected manifest.
+Restore locks tables, uses the existing retained client/cycle routines and
+compatible-row admission,
 and restores exactly seven factory settings tables. It preserves deferred
 constraints and source alignment policy last. A named historical hold-trigger
 correction removes only the fully checked notification inserted in that
