@@ -294,3 +294,55 @@ export function runPlatformMigrationManifestCheck(root = process.cwd(), objectIn
     return [`platform migration manifest check failed: ${message}`];
   }
 }
+
+export const checkoutOwnerLogin = "openlup_checkout_owner";
+export const checkoutOwnerGrantPath = /^db\/platform\/migrations\/\d{14}_catalog_checkout_owner_execute\.sql$/u;
+export const checkoutOwnerDefinitionPath = /^db\/platform\/migrations\/\d{14}_catalog_purchase_admission\.sql$/u;
+export const checkoutOwnerRoutines = [
+  "public.catalog_admission_lock_shared()",
+  "public.catalog_admission_lock_checkout_price(uuid,uuid[])",
+  "public.catalog_admission_create_order_draft(text,jsonb,jsonb,uuid,jsonb)",
+] as const;
+
+const baseline = "00000000000000_platform_baseline.sql";
+const legacyDigest = "0cd9444498f6386bd39b214440a75fa7f272ab1b65c3b62807717ee28b4c7933";
+const qualifiedDigest = "679f46e8eee66b70ff7664b300174b4c105a4f43de9449c26391da01cc1f9863";
+const adminDigest = "a19f78b5e948f96d5bdca6cc14159230cf5197c5ff7fe94f7fc10f26e585a710";
+
+export function renderCheckoutOwnerGrant(path: string, sha256: string): string {
+  if (!checkoutOwnerDefinitionPath.test(path) || !/^[0-9a-f]{64}$/u.test(sha256)) {
+    throw new Error("checkout_owner_predecessor_unverified. Recover the issued checkout routine definition binding.");
+  }
+  return `DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
+    WHERE position OPERATOR(pg_catalog.=) 0
+      AND catalog_path OPERATOR(pg_catalog.=) 'db/platform/migrations/${baseline}'
+      AND sha256 OPERATOR(pg_catalog.=) '${legacyDigest}') THEN
+    RETURN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
+    WHERE position OPERATOR(pg_catalog.=) 0 AND (
+      (catalog_path OPERATOR(pg_catalog.=) 'db/platform/migrations/q2_${baseline}' AND sha256 OPERATOR(pg_catalog.=) '${qualifiedDigest}')
+      OR (catalog_path OPERATOR(pg_catalog.=) 'db/platform/migrations/qa_${baseline}' AND sha256 OPERATOR(pg_catalog.=) '${adminDigest}'))) THEN
+    RAISE EXCEPTION 'checkout_owner_rail_unverified';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
+    WHERE position OPERATOR(pg_catalog.>) 0
+      AND catalog_path OPERATOR(pg_catalog.=) '${path}'
+      AND sha256 OPERATOR(pg_catalog.=) '${sha256}') THEN
+    RAISE EXCEPTION 'checkout_owner_predecessor_unverified';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+    WHERE rolname OPERATOR(pg_catalog.=) '${checkoutOwnerLogin}'
+      AND rolcanlogin AND NOT (rolinherit OR rolsuper OR rolcreatedb
+        OR rolcreaterole OR rolreplication OR rolbypassrls)) THEN
+    RAISE EXCEPTION 'checkout_owner_login_unready';
+  END IF;
+  EXECUTE 'GRANT EXECUTE ON FUNCTION ${checkoutOwnerRoutines.join(",\n    ")} TO ${checkoutOwnerLogin};';
+END; $$;
+`;
+}
+
+export function checkoutOwnerGrantDigest(path: string, sha256: string): string {
+  return createHash("sha256").update(renderCheckoutOwnerGrant(path, sha256)).digest("hex");
+}

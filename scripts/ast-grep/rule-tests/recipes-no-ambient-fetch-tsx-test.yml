@@ -1,0 +1,8 @@
+id: recipes-no-ambient-fetch-tsx
+valid:
+  - 'export function DropinView({ load }: { load: () => Promise<void> }) { return <button onClick={() => void load()}>Pay</button>; }'
+  - 'export function Loader({ fetchImpl }: { fetchImpl: typeof fetch }) { void fetchImpl("https://api.example.test", { redirect: "error" }); return <div />; }'
+invalid:
+  - 'export function Bad() { void fetch("https://checkout-test.adyen.com/v71/sessions"); return <div />; }'
+  - 'export function BadGlobal() { void globalThis.fetch("https://checkout-test.adyen.com/v71/sessions"); return <div />; }'
+  - 'export function BadWindow() { void window.fetch("https://checkout-test.adyen.com/v71/sessions"); return <div />; }'

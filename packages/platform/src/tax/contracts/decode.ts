@@ -7,6 +7,7 @@ class ParseError extends Error {
   constructor(message: string, readonly field: string, readonly code: TaxRefusalCode) { super(message); }
 }
 
+export const taxReferenceRemedy = "Replay the intended original request under its original key with its original digest and, where applicable, its matching calculation evidence and original digests. For fiscal validity, obtain fresh charge-time input from the original scope without copying or relabelling scope members.";
 export const exclusiveTaxRemedy = "Use the existing inclusive quote path for inclusive-tax quotes. This port version calculates exclusive tax.";
 
 export function invalid(

@@ -3265,15 +3265,39 @@ The experimental `./tax/stripe` factory takes an account-bound client, a pinned
 market pack and host callbacks for verified capture, refund reservations and
 positive reference lookup. It supports exclusive quotes and qualified fee-free
 reporting. Persist the digest from `makeStripeTaxRequestDigest` with the verified
-capture or refund reservation before dispatch. The adapter derives the provider
-body and checks its digest binding on recovery. Index positive observations by
+capture or refund reservation before dispatch. The helper accepts
+`StripeTaxRequestBinding`, with `StripeTaxCaptureBinding` for commits.
+After a result with `effect: "unknown"`, call the same operation with
+`intent: "recover"` using the original request fields, reservation and digest.
+Keep `providerLines` with the final evidence. Commit requires those verified
+merchandise line IDs, including lines without assessments. Index positive observations by
 the exact provider reference, which includes the operation so sales and refunds
 can use the same local reference. Use `tax.classMap` to discover tax-code
 composition. Keep the logical quote key when recalculating frozen input at a
 later tax instant and compare the verified results with
-`compareTaxRecalculationProbe`. Call
-`verifyTaxQuoteRequest` for quotes and decoded fiscal-validity requests and
-`verifyTaxQuoteResult` before using successful results. For the evidence digest,
+`compareTaxRecalculationProbe`.
+
+Call `verifyTaxQuoteRequest` for quotes and fiscal-validity requests and
+`verifyTaxQuoteResult` before using successful results. They check the integrity
+of the snapshots first and give one remedy per refusal code. Replay matching
+originals with their key and digests. Obtain fresh charge-time input under the
+original scope for validity. The port maps a verifier refusal to effect-free
+`tax_fiscal_validity_unavailable`.
+
+Use the `./tax/contracts` schemas for the field named by the JSON Pointer. An
+empty pointer names the whole document. The request shape is
+`{ key, input, inputDigest }` and the fiscal-validity request shape is
+`{ original, evidence, evidenceDigest, chargeAt, current }`. A successful result
+carries `{ kind, money, evidence, evidenceDigest }` with a money-v2 breakdown.
+Reduce the combined merchandise and delivery basis if the aggregate overflows.
+
+The quote request and the calculation evidence each have a 1 MiB snapshot limit.
+The complete fiscal-validity request has a 1 MiB limit, including its original
+request, evidence and current input. Result money is bounded by the decoder's
+count caps. The result envelope without evidence uses a plain JSON snapshot
+with no separate byte cap.
+
+For the evidence digest,
 SHA-256 hash `canonicalCatalogDraftJson(["platform.tax.evidence.v1", evidence])`
 in UTF-8, using the canonicalizer from `./catalog/contracts`.
 Calculation expiry and charge-date fiscal validity are separate checks.

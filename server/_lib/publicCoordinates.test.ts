@@ -54,7 +54,7 @@ describe("configured public coordinates", () => {
       const bankCode = buildTpayAdapterIfEnabled(env)!;
       for (const returnContext of ["public", "account"] as const) {
         const observed = await bankCode.adapter.execute({ ...executionInput,
-          orderId: "order-id", clientId: "client-id", petId: "pet-id", returnContext, customerRef: "fixture@example.test",
+          orderId: "order-id", clientId: "client-id", subjectId: "subject-id", returnContext, customerRef: "fixture@example.test",
           transientProviderInput: { provider: "tpay", flow: "pbl_one_time", channelId: "1" } });
         expect(observed).toMatchObject({ provider: "tpay", providerAttemptId: "notification-id", providerSessionId: "api-id" });
         const body = posted.at(-1)!;
@@ -62,12 +62,11 @@ describe("configured public coordinates", () => {
         for (const [key, retained] of [["success", "1"], ["error", "2"]] as const) {
           const target = new URL(callbacks.payerUrls[key]);
           expect(target.origin).toBe(origin);
-          expect(target.pathname).toBe(returnContext === "account" ? "/konto/zamowienie/status" : key === "success" ? "/success" : "/error");
+          expect(target.pathname).toBe(returnContext === "account" ? "/account/order/status" : key === "success" ? "/success" : "/error");
           expect(Object.fromEntries(target.searchParams)).toEqual({ retained, orderId: "order-id", paymentIntentId: executionInput.paymentIntentId,
-            clientId: "client-id", ...(returnContext === "account" ? { pet: "pet-id" } : {}), order: "order_abc" });
-          expect(target.searchParams.has("subject")).toBe(false);
+            clientId: "client-id", ...(returnContext === "account" ? { subject: "subject-id" } : {}), order: "order_abc" });
         }
-        expect(body.payer).toMatchObject({ email: "fixture@example.test", name: "openlup customer" });
+        expect(body.payer).toMatchObject({ email: "fixture@example.test", name: "Customer" });
       }
       expect(fetch).toHaveBeenCalledTimes(3);
     } finally { fetch.mockRestore(); }

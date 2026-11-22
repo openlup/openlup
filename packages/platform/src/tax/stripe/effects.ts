@@ -82,17 +82,24 @@ type Reservation = {
   requestDigest: string;
   send: Send;
 };
-export type SaleReservation = Reservation & {
-  capture: { ref: string; currency: string; payableMinor: number; capturedAt: string };
-};
+/** Verified capture facts reserved for a tax sale.
+ * @beta
+ * @experimental
+ */
+export type StripeTaxCaptureBinding = { ref: string; currency: string; payableMinor: number; capturedAt: string };
+export type SaleReservation = Reservation & { capture: StripeTaxCaptureBinding };
 export type RefundReservation = Reservation & {
   /** Immutable verified refund and remaining balances captured when this reversal was reserved. */
   refundEvidenceRef: string;
   original: { id: string; scope: TaxScopeV1; currency: string; taxDate: string;
     payableMinor: number; refundedMinor: number; units: readonly Unit[] };
 };
-type RequestBinding =
-  | { operation: "commit"; request: TaxCommitRequestV1; capture: SaleReservation["capture"] }
+/** Original reporting request and verified facts used to reserve the effect.
+ * @beta
+ * @experimental
+ */
+export type StripeTaxRequestBinding =
+  | { operation: "commit"; request: TaxCommitRequestV1; capture: StripeTaxCaptureBinding }
   | { operation: "reverse"; request: TaxReverseRequestV1; refundEvidenceRef: string; original: RefundReservation["original"] };
 
 /**
@@ -102,7 +109,7 @@ type RequestBinding =
  * @beta
  * @experimental
  */
-export function makeStripeTaxRequestDigest(binding: RequestBinding): string {
+export function makeStripeTaxRequestDigest(binding: StripeTaxRequestBinding): string {
   const { operation, request } = binding;
   // Preserve descriptors so canonicalization rejects accessors and extra fields remain bound.
   const descriptors = Object.getOwnPropertyDescriptors<object>(request);

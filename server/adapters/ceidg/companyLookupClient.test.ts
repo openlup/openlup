@@ -6,21 +6,21 @@ import {
   readCeidgLookupConfig,
 } from "./companyLookupClient.js";
 
-const request = { taxId: "1181590588", country: "PL" as const, providerKind: "ceidg_v3" };
+const request = { taxId: "5260001246", country: "PL" as const, providerKind: "ceidg_v3" };
 
 // Trimmed shape mirroring the real CEIDG v3 /firmy?nip= payload.
 const CEIDG_FIRMA = {
   firmy: [
     {
       id: "00000000-0000-0000-0000-000000000000",
-      nazwa: "Zero to One Bartłomiej Roszkowski",
+      nazwa: "Example Studio Jan Kowalski",
       status: "AKTYWNY",
-      wlasciciel: { imie: "Bartłomiej", nazwisko: "Roszkowski", nip: "1181590588", regon: "147460466" },
+      wlasciciel: { imie: "Jan", nazwisko: "Kowalski", nip: "5260001246", regon: "000000000" },
       adresDzialalnosci: {
-        ulica: "Powstania Styczniowego",
-        budynek: "3",
-        kod: "05-074",
-        miasto: "Halinów",
+        ulica: "Example Street",
+        budynek: "1",
+        kod: "00-001",
+        miasto: "ExampleCity",
         kraj: "Polska",
       },
     },
@@ -32,20 +32,20 @@ describe("CEIDG company lookup adapter", () => {
     const result = mapCeidgLookupResponse(CEIDG_FIRMA, request);
     expect(result).toMatchObject({
       status: "found",
-      legalName: "Zero to One Bartłomiej Roszkowski",
-      regon: "147460466",
-      address: { line1: "Powstania Styczniowego 3", postalCode: "05-074", city: "Halinów", country: "PL" },
+      legalName: "Example Studio Jan Kowalski",
+      regon: "000000000",
+      address: { line1: "Example Street 1", postalCode: "00-001", city: "ExampleCity", country: "PL" },
     });
   });
 
   it("prefers the active entry when CEIDG returns historical duplicates", () => {
     const withWithdrawn = {
       firmy: [
-        { nazwa: "Old Name Bartłomiej Roszkowski", status: "WYKRESLONY", adresDzialalnosci: CEIDG_FIRMA.firmy[0].adresDzialalnosci, wlasciciel: { regon: "147460466" } },
+        { nazwa: "Old Name Jan Kowalski", status: "WYKRESLONY", adresDzialalnosci: CEIDG_FIRMA.firmy[0].adresDzialalnosci, wlasciciel: { regon: "000000000" } },
         CEIDG_FIRMA.firmy[0],
       ],
     };
-    expect(mapCeidgLookupResponse(withWithdrawn, request).legalName).toBe("Zero to One Bartłomiej Roszkowski");
+    expect(mapCeidgLookupResponse(withWithdrawn, request).legalName).toBe("Example Studio Jan Kowalski");
   });
 
   it("returns not_found for an empty result set", () => {
@@ -69,9 +69,9 @@ describe("CEIDG company lookup adapter", () => {
       fetchImpl as unknown as typeof fetch,
     );
     const result = await port.lookupInvoiceData(request);
-    expect(result.legalName).toBe("Zero to One Bartłomiej Roszkowski");
+    expect(result.legalName).toBe("Example Studio Jan Kowalski");
     const [calledUrl, calledInit] = fetchImpl.mock.calls[0] as unknown as [URL | string, RequestInit];
-    expect(String(calledUrl)).toContain("/firmy?nip=1181590588");
+    expect(String(calledUrl)).toContain("/firmy?nip=5260001246");
     expect(calledInit.headers).toMatchObject({ Authorization: "Bearer jwt-token" });
   });
 });

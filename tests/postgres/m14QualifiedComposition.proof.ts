@@ -21,13 +21,13 @@ import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions, type 
 import { createM08FulfillmentReferenceBinding } from "../../server/runtime/public-reference/m08FulfillmentBinding.js";
 import { createNativeFulfillmentBinding } from "@openlup/platform/fulfillment/native";
 import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { readIssuedPlatformManifest, withIssuedPlatformCatalog, withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
+import { proveCheckoutOwnerGrant, provisionCheckoutOwner, readIssuedPlatformManifest, withIssuedPlatformCatalog, withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { profile, request } from "../helpers/fulfillmentComposition.js";
 import { fixture, openCase } from "../helpers/fulfillmentNative.js";
 import { cataloguePublicationAuthority, catalogueReadGrant, fixture as catalogueFixture, graph, insertGraph,
   installPublicationActors, membershipSignature, readinessSignature, transaction } from "./catalogPublicationFixture.js";
 
-const input: { connectionString: string; selection: QualifiedPostgresInstallation; expectedInventory: string;
+const input: { connectionString: string; freshConnectionString?: string; selection: QualifiedPostgresInstallation; expectedInventory: string;
   discriminators: boolean } = JSON.parse(process.argv[2]!);
 const { selection } = input;
 const lockName = "openlup:public-platform-migrations:v1";
@@ -35,8 +35,8 @@ const password = "synthetic-proof-only";
 const pools: Pool[] = [];
 const ports: { close(): Promise<void> }[] = [];
 const pool = (url: string): Pool => { const value = new Pool({ connectionString: url }); pools.push(value); return value; };
-const loginUrl = (name: string, secret = password): string => {
-  const url = new URL(input.connectionString); url.username = name; url.password = secret; return url.toString();
+const loginUrl = (name: string, secret = password, base = input.connectionString): string => {
+  const url = new URL(base); url.username = name; url.password = secret; return url.toString();
 };
 // Every identifier below is from the fixed synthetic profiles, not database input.
 const identifier = (value: string): string => {
@@ -737,6 +737,43 @@ async function proveCatalogueReadGuard(bootstrap: Pool) {
   });
 }
 
+async function prepareFixtureCluster(base: string) {
+  // Rename OID 10 through a temporary setup login: both reference and target
+  // then use their actual declared names, including the aliased M/bootstrap shape.
+  const original = pool(base);
+  await original.query(`CREATE ROLE q2_fixture_setup LOGIN SUPERUSER PASSWORD '${password}'`);
+  const setup = pool(loginUrl("q2_fixture_setup", password, base));
+  await setup.query(`ALTER ROLE postgres RENAME TO ${identifier(selection.bootstrapLogin)}`);
+  await original.end();
+  await setup.end();
+  const bootstrap = pool(loginUrl(selection.bootstrapLogin, "synthetic-conformance", base));
+  await bootstrap.query("DROP ROLE q2_fixture_setup");
+  if (selection.migrationLogin !== selection.bootstrapLogin) {
+    await bootstrap.query(`CREATE ROLE ${identifier(selection.migrationLogin)} LOGIN INHERIT SUPERUSER
+      NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+    await bootstrap.query(`ALTER DATABASE postgres OWNER TO ${identifier(selection.migrationLogin)}`);
+  }
+  for (const name of [selection.runtimeLogin, ...(selection.restoreLogin === undefined ? [] : [selection.restoreLogin])]) {
+    await bootstrap.query(`CREATE ROLE ${identifier(name)} LOGIN NOINHERIT NOSUPERUSER
+      NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+  }
+  if (selection.roleMode === "operator-provisioned") {
+    await bootstrap.query("CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS");
+    for (const name of ["anon", "authenticated", "service_role", "platform_acquisition_owner", "platform_acquisition_runtime", "openlup_retained_import_owner"]) {
+      await bootstrap.query(`CREATE ROLE ${identifier(name)} NOLOGIN NOINHERIT NOSUPERUSER
+        NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`);
+    }
+    for (const name of ["anon", "authenticated", "service_role", "platform_acquisition_runtime"]) {
+      await bootstrap.query(`GRANT ${identifier(name)} TO ${identifier(selection.runtimeLogin)}
+        WITH ADMIN FALSE, INHERIT ${name === "service_role" ? "TRUE" : "FALSE"}, SET TRUE`);
+    }
+  }
+  const connectionString = loginUrl(selection.migrationLogin,
+    selection.migrationLogin === selection.bootstrapLogin ? "synthetic-conformance" : password, base);
+  await provisionCheckoutOwner(bootstrap, selection, "postgres", password);
+  return { bootstrap, connectionString };
+}
+
 async function prove() {
   const started = performance.now();
   const fixtureUrl = new URL(input.connectionString);
@@ -766,38 +803,7 @@ async function prove() {
   await assert.rejects(createPostgresMigrationRunner({ connectionString: input.connectionString }, { installation: withoutRestore }).status(),
     /qualified retained import requires an explicit restore login binding/u);
 
-  // Rename OID 10 through a temporary setup login: both reference and target
-  // then use their actual declared names, including the aliased M/bootstrap shape.
-  const original = pool(input.connectionString);
-  await original.query(`CREATE ROLE q2_fixture_setup LOGIN SUPERUSER PASSWORD '${password}'`);
-  const setup = pool(loginUrl("q2_fixture_setup"));
-  await setup.query(`ALTER ROLE postgres RENAME TO ${identifier(selection.bootstrapLogin)}`);
-  await original.end();
-  await setup.end();
-  const bootstrap = pool(loginUrl(selection.bootstrapLogin, "synthetic-conformance"));
-  await bootstrap.query("DROP ROLE q2_fixture_setup");
-  if (selection.migrationLogin !== selection.bootstrapLogin) {
-    await bootstrap.query(`CREATE ROLE ${identifier(selection.migrationLogin)} LOGIN INHERIT SUPERUSER
-      NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
-    await bootstrap.query(`ALTER DATABASE postgres OWNER TO ${identifier(selection.migrationLogin)}`);
-  }
-  for (const name of [selection.runtimeLogin, ...(selection.restoreLogin === undefined ? [] : [selection.restoreLogin])]) {
-    await bootstrap.query(`CREATE ROLE ${identifier(name)} LOGIN NOINHERIT NOSUPERUSER
-      NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
-  }
-  if (selection.roleMode === "operator-provisioned") {
-    await bootstrap.query("CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS");
-    for (const name of ["anon", "authenticated", "service_role", "platform_acquisition_owner", "platform_acquisition_runtime", "openlup_retained_import_owner"]) {
-      await bootstrap.query(`CREATE ROLE ${identifier(name)} NOLOGIN NOINHERIT NOSUPERUSER
-        NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`);
-    }
-    for (const name of ["anon", "authenticated", "service_role", "platform_acquisition_runtime"]) {
-      await bootstrap.query(`GRANT ${identifier(name)} TO ${identifier(selection.runtimeLogin)}
-        WITH ADMIN FALSE, INHERIT ${name === "service_role" ? "TRUE" : "FALSE"}, SET TRUE`);
-    }
-  }
-  const connectionString = loginUrl(selection.migrationLogin,
-    selection.migrationLogin === selection.bootstrapLogin ? "synthetic-conformance" : password);
+  const { bootstrap, connectionString } = await prepareFixtureCluster(input.connectionString);
   async function observeInventory(expectedInventory: string): Promise<string> {
     const observerUrl = new URL(connectionString);
     observerUrl.searchParams.set("options", qualifiedPostgresStartupOptions(selection));
@@ -868,6 +874,10 @@ async function prove() {
   assert.deepEqual(await publisherFunctionAcl(bootstrap), publisherAcl);
   assert.deepEqual(await ledger(), installed);
   const inventorySha256 = await observeInventory(manifest.objectInventorySha256);
+  const fresh = input.freshConnectionString && await prepareFixtureCluster(input.freshConnectionString);
+  await proveCheckoutOwnerGrant(connectionString, loginUrl(selection.runtimeLogin), selection, password,
+    fresh ? fresh.connectionString : undefined);
+  await bootstrap.query("DROP ROLE openlup_checkout_owner");
   await proveRetainedRuntime(bootstrap);
   await proveOwnerPathResolution(bootstrap);
   await proveRuntimeLockPrivileges(bootstrap);

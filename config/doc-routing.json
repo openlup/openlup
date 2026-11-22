@@ -1398,6 +1398,15 @@
       ],
       "doc": "docs/platform/DATA_AND_MIGRATIONS.md",
       "anchor": "#native-base-price-writes"
+    },
+    {
+      "id": "provider-recipes",
+      "when": "Self-contained, repo-splittable Provider Recipes, manifests, CSP deltas, and conformance/mount proofs",
+      "paths": [
+        "recipes/**"
+      ],
+      "doc": "docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md",
+      "anchor": "#4-three-tier-topology--splittable-registry-architecture"
     }
   ]
 }

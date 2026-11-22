@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compareTaxRecalculationProbe, makeTaxQuoteRequest, verifyTaxQuoteRequest, verifyTaxQuoteResult } from "../../../src/tax/index.js";
+import { taxDigest } from "../../../src/tax/digest.js";
 import { makeStripeTaxRequestDigest } from "../../../src/tax/stripe/index.js";
 import type { TaxRefusal, TaxReverseRequestV1 } from "../../../src/tax/contracts/index.js";
 import { date, later } from "../fixtures.js";
@@ -95,6 +96,35 @@ describe("reporting lifecycle", () => {
       { originalPositionRef: "item_0_0", postedPositionRef: "tax_line_0" },
       { originalPositionRef: "item_0_1", postedPositionRef: "tax_line_1" },
     ] });
+  });
+
+  it("requires the complete provider lines before any reporting lookup or dispatch", async () => {
+    const f = lifecycleFixture({ single: true });
+    const port = f.open();
+    const { commit, result } = await f.quoteAndReserve(port);
+    const original = f.request();
+    const { providerLines: _lines, ...evidence } = result.evidence;
+    const evidenceDigest = taxDigest("evidence", evidence);
+    const withoutLines = { ...result, evidence, evidenceDigest };
+    const request = { ...commit, calculationRef: { ...commit.calculationRef, evidenceDigest } };
+    expect(verifyTaxQuoteResult(original, withoutLines)).toBeUndefined();
+    f.accept({ request: original, result: withoutLines, closed: false });
+    f.reserveCommit(request, result.money.payableMinor);
+    const calls = [...Object.values(f.client.calculations), ...Object.values(f.client.registrations),
+      ...Object.values(f.client.transactions)];
+    calls.forEach(mock => mock.mockClear());
+
+    expect(await port.commit(request)).toEqual({ kind: "refused", code: "tax_breakdown_incomplete", field: "/evidence/providerLines",
+      remedy: "Recover and replay the complete original calculation breakdown for the intended request and key.",
+    });
+    calls.forEach(mock => expect(mock).not.toHaveBeenCalled());
+    expect(f.lookup).not.toHaveBeenCalled();
+    expect(f.effects()).toEqual({ commits: 0, reversals: 0, providerCloses: 0 });
+
+    f.accept({ request: original, result, closed: false });
+    f.reserveCommit(commit, result.money.payableMinor);
+    expect(await port.commit(commit)).toMatchObject({ kind: "committed" });
+    expect(f.effects().commits).toBe(1);
   });
 
   it("refuses calculation lines whose provider ID is missing", async () => {
@@ -317,16 +347,17 @@ describe("retry validity probe", () => {
     const current = { ...original.input, taxDate: chargeAt, scope, coverage: { ...original.input.coverage, accountRef: scope.accountRef } };
     const request = { original, evidence: result.evidence, evidenceDigest: result.evidenceDigest, chargeAt, current };
     const forged = { ...request, evidenceDigest: "0".repeat(64) };
-    const malformed = { ...request, evidence: { ...result.evidence, requestKey: "" } };
+    const malformedEvidence = { ...result.evidence, requestKey: "" };
+    const malformed = { ...request, evidence: malformedEvidence, evidenceDigest: taxDigest("evidence", malformedEvidence) };
     const foreign = { ...request, chargeAt: later };
     const cases = [
       [forged, "tax_reference_conflict", "/evidenceDigest"],
-      [malformed, "tax_invalid_input", "/evidence/requestKey"],
-      [foreign, "tax_scope_mismatch", "/current/scope/accountRef"],
+      [malformed, "tax_reference_conflict", "/evidence/requestKey"],
+      [foreign, "tax_reference_conflict", "/current/scope"],
     ] as const;
     for (const [input, code, field] of cases) {
       const diagnostic = verifyTaxQuoteRequest(input);
-      if (code !== "tax_invalid_input") expectIntegrityRefusal(diagnostic, code);
+      expectIntegrityRefusal(diagnostic, code);
       expect(diagnostic).toMatchObject({ kind: "refused", code, field });
       expect(await port.readFiscalValidity(input)).toEqual({
         kind: "unavailable", code: "tax_fiscal_validity_unavailable", effect: "none",
@@ -379,6 +410,14 @@ describe("retry validity probe", () => {
     expect(new Set(keys).size).toBe(2);
     expect(compareTaxRecalculationProbe(boundRequest, bound, request, result))
       .toEqual(kind === "equal" ? { kind } : { kind, field: "positions" });
+    if (kind === "equal") {
+      const lines = boundRequest.input.lines.map(line => ({ ...line, taxClass: "alternate" }));
+      Object.setPrototypeOf(lines, Object.create(Array.prototype, {
+        [Symbol.iterator]: { value: () => boundRequest.input.lines[Symbol.iterator]() },
+      }));
+      const wrappedBound = { ...boundRequest, input: { ...boundRequest.input, lines } };
+      expect(compareTaxRecalculationProbe(wrappedBound, bound, request, result)).toEqual({ kind: "equal" });
+    }
     expectIntegrityRefusal(compareTaxRecalculationProbe(boundRequest, bound, { ...request, key: "different-key" }, result));
     expect(compareTaxRecalculationProbe(boundRequest, bound, boundRequest, bound)).toMatchObject({ kind: "refused" });
   });

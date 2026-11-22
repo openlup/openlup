@@ -4,7 +4,7 @@ import type { CatalogueMoneyV2Tax } from "@openlup/core/pricing";
 import { invalid } from "../contracts/decode.js";
 import { cellKey } from "../contracts/identity.js";
 import type { TaxCalculationEvidenceV1, TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal } from "../contracts/index.js";
-import { taxDigest, verifyTaxQuoteRequest, verifyTaxQuoteResult } from "../digest.js";
+import { checkedQuoteRequest, taxDigest, verifyTaxQuoteResult } from "../digest.js";
 import { normalizeSnapshot } from "./breakdown.js";
 import type { ComponentEvidence } from "./breakdown.js";
 import {
@@ -85,9 +85,8 @@ export async function quoteStripeTax(
   request: TaxQuoteRequestV1,
 ): Promise<TaxQuoteResultV1> {
   try {
-    const refusal = verifyTaxQuoteRequest(request);
-    if (refusal) return refusal;
-    const original = structuredClone(request);
+    const original = checkedQuoteRequest(request);
+    if ("kind" in original) return original;
     const { input, inputDigest, key } = original;
     const { client, now } = options;
     for (const field of ["accountRef", "mode"] as const) {
@@ -184,7 +183,7 @@ export async function quoteStripeTax(
     const result: TaxQuoteResultV1 = input.purpose === "estimate"
       ? { kind: "estimate", money, evidence: { ...evidence, status: "estimate" }, evidenceDigest }
       : { kind: "final", money, evidence: { ...evidence, status: "final" }, evidenceDigest };
-    return verifyTaxQuoteResult(request, result) ?? result;
+    return verifyTaxQuoteResult(original, result) ?? result;
   } catch (error) {
     if (error instanceof StripeQuoteUnavailable) return { kind: "unavailable", code: "tax_adapter_unavailable", effect: "none" };
     if (error instanceof CatalogueMoneyV2Error) {

@@ -11,6 +11,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { PLATFORM_BASELINE_FILE, PLATFORM_MIGRATION_MANIFEST, sha256 } from "./platform-migration-manifest.ts";
 import { assertNativeStoreForward, isExpandOnlyPlatformForward, assertCoLocatedForwardApproval, hasExactManagedForward, managedForwardPrefixSha256, readReviewedForwardRegistry, renderQualifiedSecurityDefiner, REVIEWED_FORWARD_PATH, sqlSha256, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 import { admissionRuleFiles } from "./sql-admit.ts";
+import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql } from "../tests/helpers/issuedPlatformCatalog.ts";
 
 const CLI = resolve("scripts/sql-admit.ts");
 const MANAGED_BASELINE = "supabase/migrations/00000000000000_platform_schema_baseline.sql";
@@ -84,6 +85,47 @@ function stageNativeForward(f: Fixture, text = nativeText, entry = slot(nativePa
   value.nativeStoreForwardClass!.slots.push(entry); value.nativeStoreForwards!.push({ path: entry.path, sha256: sqlSha256(text), functions });
   f.put(REVIEWED_FORWARD_PATH, encode(value)); f.put(PLATFORM_MIGRATION_MANIFEST, manifest([{ file: entry.path, sha256: sha256(text) }], f.baselineSql)); f.put(entry.path, text);
 }
+
+describe("checkout owner execute on self-check, queue and release", () => {
+  it.each([
+    ["issued definitions", undefined],
+    ["co-introduced definitions", "checkout_owner_predecessor_unverified"],
+    ["missing reservation", "checkout_owner_slot_invalid"],
+    ["co-located control", "checkout_owner_forward_unverified"],
+    ["guard drift", "checkout_owner_forward_unverified"],
+  ])("applies the same grant verdict with %s", (scenario, refusal) => {
+    const f = fixture(), value = registry();
+    const bindDefinition = { file: definitionPath, sha256: sqlSha256(definitionSql) };
+    f.put(definitionPath, definitionSql);
+    value.nativeStoreForwardClass!.slots.push(definitionSlot);
+    value.nativeStoreForwards!.push(definitionPin());
+    f.put(REVIEWED_FORWARD_PATH, encode(value));
+    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([bindDefinition]));
+    const base = scenario === "co-introduced definitions" ? f.base : f.commit();
+    const text = scenario === "guard drift" ? grantSql.trimEnd() : scenario === "missing reservation" ? "-- Fixture\n" : grantSql;
+    if (scenario !== "missing reservation") {
+      value.nativeStoreForwardClass!.slots.push(grantSlot);
+      value.nativeStoreForwards!.push({ path: grantPath, sha256: sqlSha256(text), functions: [] });
+    }
+    if (scenario === "co-located control") f.put("packages/platform/src/migrations/catalog.ts", "// changed control\n");
+    f.put(grantPath, text);
+    f.put(REVIEWED_FORWARD_PATH, encode(value));
+    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([bindDefinition, { file: grantPath, sha256: sqlSha256(text) }]));
+    const head = f.commit();
+    const result = cli(f.root, ["--base", base, "--head", head, STALE]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(refusal ? 1 : 0);
+    expect(verdictLines(result.stdout)).toEqual(directVerdicts(f, base, head).verdicts);
+    const release = () => assertAdmittedPlatformForward(f.root, f.base, head, grantPath, Buffer.from(text), true);
+    if (refusal) {
+      expect(result.stdout).toContain(refusal);
+      expect(result.stdout).not.toMatch(/\b[0-9a-f]{64}\b/u);
+      expect(release).toThrow(refusal);
+    } else {
+      expect(release).not.toThrow();
+    }
+  }, 20_000);
+});
 
 const authorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
 const authoritySha256 = sha256(readFileSync(authorityPath));

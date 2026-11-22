@@ -2879,6 +2879,40 @@ witness covers changes reached through dynamic SQL in earlier admitted routines
 and verifies the effective owner, function attributes and privileges under the
 installed profiles.
 
+The checkout-owner grant-only forward has one reserved
+`*_catalog_checkout_owner_execute.sql` slot. Its ordered routine inventory is
+`public.catalog_admission_lock_shared()`,
+`public.catalog_admission_lock_checkout_price(uuid,uuid[])` and
+`public.catalog_admission_create_order_draft(text,jsonb,jsonb,uuid,jsonb)`.
+The pin binds the full forward bytes and has an empty definition list. All
+three definitions must come from one earlier, issued catalogue purchase
+admission slot. Admission checks the approval base, definition hashes, definer
+attributes and intervening routine or schema changes before admitting the
+grant. The guarded unit returns on the exact legacy baseline ledger entry.
+On either qualified generation, the exact baseline and definition ledger
+entries and a ready login are required for the unit to commit.
+
+For either qualified generation and role mode, the host provisions
+`openlup_checkout_owner` outside the migration session. Use a dedicated login
+with `NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`,
+no owned objects, memberships, or role defaults. Give it effective database
+CONNECT and public schema USAGE. TEMP usually comes from the database owner's
+grant to PUBLIC. Inspect `pg_database` with `aclexplode(datacl)` (use the
+database default ACL if `datacl` is null) to identify the grantor. On PostgreSQL 16,
+a non-superuser who creates the login with `CREATEROLE` receives membership in
+it from the bootstrap authority. Use `pg_auth_members` to find the membership
+and its grantor, then have the grantor clear it. With the database owner's
+approval, grant TEMP directly to each supported role that needs it, then revoke
+TEMP from PUBLIC. Before the migration window, use `has_database_privilege` to
+verify each supported role's intended TEMP access and the checkout login's lack
+of TEMP. If the host or provider cannot provision this exact login or clear
+these edges, the installer refuses the grant with `checkout_owner_login_unready`.
+
+Either qualified projector omits the dormant login. After the guarded unit is
+recorded, readback requires the three non-grantable EXECUTE grants from the
+migration owner and projects the login and those grants. Keep checkout
+credentials unbound until qualification passes.
+
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
 TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
