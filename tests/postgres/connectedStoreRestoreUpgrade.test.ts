@@ -227,17 +227,17 @@ it.each(profiles)("pins pg_temp last on the acquisition functions through %s cap
 }, postgresSetupTimeoutMs);
 
 it("pins pg_temp last on the acquisition functions through capture and restore from the preceding installation", async () => {
-  const source = await installAtAcquisitionSearchPathBoundary("bootstrap", "capture-pin-predecessor", "before-pin");
+  const source = await installAtAcquisitionSearchPathBoundary("bootstrap", "capture-pin-predecessor", "before-pin", "current");
   try {
     expect(source.inventory).toBe(acquisitionSearchPathPredecessor.bootstrap);
     await seedQuote(source, await seed(source, { predatesLedger: false, predatesScheme: false }));
     const predecessor = await capture(source, "pin-predecessor");
     expect(carriedRows(predecessor).find(entry => entry.table === quotes)?.rows).toHaveLength(1);
 
-    const target = await installAtAcquisitionSearchPathBoundary("bootstrap", "restore-pin-predecessor", "through-pin");
+    const target = await installAccountMutations("bootstrap", false, "restore-pin-predecessor");
     try {
       const retained = await restoreAcquisitionCapture(target, predecessor, "restore-pin-predecessor");
-      expect((await source.runner.apply()).applied).toEqual([expect.stringMatching(/_acquisition_definer_search_path_pin\.sql$/u)]);
+      expect((await source.runner.apply()).applied[0]).toMatch(/_acquisition_definer_search_path_pin\.sql$/u);
       const upgraded = await capture(source, "upgraded-pin-predecessor");
       expect(upgraded.compatible.catalogueId).toBe(target.inventory);
       expect(retained).toEqual(carriedRows(upgraded));

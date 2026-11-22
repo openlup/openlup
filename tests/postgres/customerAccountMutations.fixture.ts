@@ -71,7 +71,9 @@ function writeAcquisitionRoot(root: string, manifest: CompleteManifest) {
   writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(manifest));
 }
 
-export async function installAtAcquisitionSearchPathBoundary(profile: AccountProfile, label: string, boundary: AcquisitionBoundary) {
+export async function installAtAcquisitionSearchPathBoundary(
+  profile: AccountProfile, label: string, boundary: AcquisitionBoundary, upgradeCatalogue: "through-pin" | "current" = "through-pin",
+) {
   const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
   if (manifest?.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
   const scratch = mkdtempSync(join(tmpdir(), "acquisition-search-path-"));
@@ -80,7 +82,7 @@ export async function installAtAcquisitionSearchPathBoundary(profile: AccountPro
     const root = join(scratch, boundary);
     writeAcquisitionRoot(root, acquisitionSearchPathManifest(manifest, boundary));
     let upgradeRoot: string | undefined;
-    if (boundary !== "before-subscription-profiles") {
+    if (upgradeCatalogue === "through-pin" && boundary !== "before-subscription-profiles") {
       upgradeRoot = join(scratch, "through-pin");
       if (upgradeRoot !== root) writeAcquisitionRoot(upgradeRoot, acquisitionSearchPathManifest(manifest, "through-pin"));
     }
