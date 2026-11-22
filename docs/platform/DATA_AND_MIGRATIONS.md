@@ -2720,6 +2720,31 @@ column and unrelated-constraint catalog protections still apply. This capability
 changes no installed CHECK by itself; feature SQL and its declarations land in a
 later change.
 
+A single later native slot may set `previewNoopAcceptance: true` and list just
+the nullable `accepted_noop_receipt_id` UUID column with its foreign key to
+`public.subscription_command_receipts(id)` in `existingTableStatements`.
+Use the exact three statements in [the admission rule](../../scripts/reviewed-platform-forward.ts),
+in order. They add the column and then drop and re-add
+`subscription_quote_previews_acceptance_check` on
+`public.subscription_quote_previews` as an adjacent, validated replacement.
+Static admission checks the exact forward bytes and pins the issued
+package-editor migration by path and hash. In the native prefix it refuses
+files that literally name the preview table beyond the pinned package-editor
+and sized-editor migrations. Earlier SQL can also reach the table through
+computed identifiers. Immediately before the forward, the PostgreSQL proof
+compares the table and every object that depends on it with one expected
+catalogue snapshot, using stable names and omitting only the named deny-list
+of instance-specific fields in the [proof](../../tests/postgres/nativeStoreForwardCatalog.shared.ts).
+The [installation matrix](../../tests/postgres/subscriptionExactInstallation.test.ts)
+runs the same check on all five shipped profiles.
+
+Existing previewed rows and acceptances backed by native events keep a NULL
+receipt column. A receipt-backed no-op acceptance requires the acceptance
+timestamp and idempotency key, a receipt and a NULL native event. The PostgreSQL
+proof exercises every combination of status and NULL values before and after
+replacement. Keep any other SQL in separate slots. Land admission changes
+separately before introducing the slot and its SQL.
+
 `createdViews` entries declare a fresh qualified name and exact CREATE VIEW
 statement hash. Only plain unconditional creation is admitted, once per listed
 view. OR REPLACE and conditional existence forms refuse. PostgreSQL rejects a
@@ -2961,6 +2986,7 @@ refused when it also touches admission machinery, and the machinery includes the
 catalog test and these named files:
 `tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts`,
 `tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts`, `tests/postgres/nativeStoreForwardCatalog.shared.ts`,
+`tests/postgres/subscriptionExactInstallation.test.ts`,
 `tests/helpers/postgresContainer.ts`, `vitest.config.ts`, `scripts/run-vitest.mjs`,
 `scripts/ci-test-scope.mjs`, `scripts/ci-image-pull.mjs`, `scripts/ci-image-mirror.mjs`,
 `scripts/disposable-docker.mjs`, `scripts/ci-vitest-duration-keys.ts`,

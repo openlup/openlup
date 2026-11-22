@@ -333,13 +333,15 @@ export async function restoreConnectedNativeStore(input: {
   packet: ConnectedNativeStoreCapture;
   freshTarget: ConnectedNativeStoreCapture;
 }): Promise<{ captureSha256: string; replayed: boolean; neutralizedHistoricalHoldNotifications: number }> {
+  const { capture: packet, tables: source } = copyCapture(input.packet);
+  const { capture: fresh, tables: baseline } = copyCapture(input.freshTarget);
   const installation = structuredClone(input.installation);
+  if (!installation || (installation.generation !== "qualified-v2" && installation.generation !== "qualified-admin")) fail("invalid_input");
+  if (installation.generation === "qualified-v2" && !installation.restoreLogin) fail("invalid_input");
   if (installation.generation === "qualified-admin") assertQualifiedAdminPostgresSelection(installation);
   const profile = installation.generation === "qualified-admin" ? installation.roleMode
     : installation.migrationLogin === installation.bootstrapLogin ? "bootstrap" : "separate";
   const manifest = expectedManifest(installation);
-  const { capture: packet, tables: source } = copyCapture(input.packet);
-  const { capture: fresh, tables: baseline } = copyCapture(input.freshTarget);
   admitCaptureTables(packet.compatible.catalogueId, source, { profile, currentCatalogueId: manifest.objectInventorySha256 });
   admitCaptureTables(fresh.compatible.catalogueId, baseline);
   if (packet.observation.cluster === fresh.observation.cluster
