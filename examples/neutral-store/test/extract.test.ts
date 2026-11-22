@@ -384,7 +384,7 @@ test('extract creates an independent repository and refuses to overwrite an exis
     await mkdir(resolve(target, 'bin')); await mkdir(resolve(target, 'package'));
     await writeFile(resolve(target, 'bin/npm'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     for (const version of ['0.43.0', '0.43.0-rc.1', '1.0.0', '1.2.3', '1.0.0-rc.1', '1.0', '01.0.0']) {
-      const archives = [];
+      const archives: string[] = [];
       for (const name of ['core', 'outbox', 'platform']) {
         await writeFile(resolve(target, 'package/package.json'), JSON.stringify({ name: `@openlup/${name}`, version }));
         const archive = resolve(target, `${name}.tgz`); archives.push(archive);

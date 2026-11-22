@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Pool, PoolClient } from "pg";
+import type { CommerceQuoteCatalogReadPort, CommercePriceAuthorityPort } from "@openlup/platform/pricing";
 import type { CatalogPublishedSku, CatalogPublishedProduct, CatalogSkuRevisionRef, CatalogPublicationManifestV2, CatalogDraftPayloadV4 } from "@openlup/platform/catalog";
 
 export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -17,6 +18,34 @@ const platformForwards = (JSON.parse(readFileSync("config/platform-migration-man
   forward: { file: string }[];
 }).forward;
 export const membershipSignature = "public.catalog_offer_memberships_page(text,jsonb,integer,text)";
+export const catalogQuantityCharacterization = [
+  { grams: 1, tuple: null, quote: true },
+  { grams: 2147483647, tuple: null, quote: true },
+  { grams: 120, tuple: ["mass", "openlup:g", 100], quote: true },
+  { grams: 100, tuple: ["mass", "openlup:g", 120], quote: true },
+  { grams: 100, tuple: ["volume", "openlup:ml", 50], quote: true },
+  { grams: 100, tuple: ["count", "openlup:piece", 3], quote: true },
+  { grams: 0, tuple: ["volume", "openlup:ml", 50], quote: false },
+  { grams: -1, tuple: null, quote: false },
+] as const;
+export function createCharacterizationQuote(
+  pricing: typeof import("@openlup/platform/pricing"),
+  quoteCatalogReadPort: CommerceQuoteCatalogReadPort,
+  commercePriceAuthorityPort?: CommercePriceAuthorityPort,
+) {
+  const tax = { included: true as const, country: "ZZ", category: "standard", vatRateBps: 0, legalBasis: "Fixture" };
+  return pricing.createDbBackedCommerceQuotePort({
+    quoteCatalogReadPort, commercePriceAuthorityPort, isStrictD1Quote: Boolean(commercePriceAuthorityPort),
+    taxProfile: tax, supportedTaxProfiles: [tax], currency: "XXX", regionCode: "ZZ",
+    pricingResolverPort: { resolvePrice: async ({ variantId, mode }) => ({ variantId, mode, priceEntryId: "fixture-price",
+      priceListId: "fixture-list", amountKind: "gross", unitPriceMinor: 125, matchedMinQty: 1, resolvedAt: "2099-01-01T12:00:00Z" }) },
+    hasPromotionCodePort: false, lineContext: (_line, item) => ({ grams: item.netWeightG }),
+    quoteContext: (request, lines) => () => ({ mode: request.mode, promoCodes: request.promoCodes, grams: lines.map(line => line.grams) }),
+    resolveAutomaticQuotePromotions: async () => ({ discounts: [], codeRejections: [] }),
+    applyPromotionCodesV2: async input => ({ discounts: input.discounts, codeRejections: [], codeRejectionDetails: [] }),
+  });
+}
+
 export const readinessSignature = "public.catalog_publication_activation_readiness(text[],text)";
 
 // These isolated SQL suites install individual forwards without the production runner.

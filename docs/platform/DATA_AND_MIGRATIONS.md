@@ -2511,6 +2511,15 @@ The slot's pinned `searchPath` must match the tightened list. The PostgreSQL
 catalog preserves owner and ACL. Issued contents, positions and the sealed-prefix
 rule stay fixed.
 
+<a id="qualified-column-select"></a>
+
+One native slot may declare `qualifiedCatalogueStorageSelect: true` for the
+qualified live comparator. Its forward must contain exactly one guarded
+`GRANT SELECT (net_content_storage) ON TABLE public.catalog_sku_revisions TO openlup_catalog_publication`.
+The grant requires the publication role and the exact qualified authority
+ledger path and digest. The PostgreSQL catalogue witness permits only that
+column ACL delta, without grant option. This control adds no migration.
+
 A replacement keeps the native function header under the rules above.
 The `qualifiedSecurityDefiner: true` entry requires the rendered ledger-guarded
 `ALTER FUNCTION` block immediately after the replacement, so qualified
@@ -2710,10 +2719,13 @@ quotes are allowed. A routine body mentioning previews must contain none of
 the keywords ALTER, DROP, CREATE, TRUNCATE or RENAME. The scan refuses all other
 mentions.
 Immediately before the forward, the PostgreSQL proof compares the table and its
-full `pg_depend` closure, including triggers, with one expected catalogue
-snapshot. The [proof](../../tests/postgres/nativeStoreForwardCatalog.shared.ts)
-uses stable names and omits only the named deny-list of instance-specific
-fields. Database-wide state is out of scope.
+`pg_depend` closure with one expected catalogue snapshot, excluding only
+non-internal triggers on the preview table, their `pg_constraint` rows of type
+`t`, and the dependencies those bring. All columns, other constraints including
+the acceptance CHECK, and internal RI triggers remain in the comparison. The
+[proof](../../tests/postgres/nativeStoreForwardCatalog.shared.ts) uses stable names
+and omits only the named deny-list of instance-specific fields. Database-wide
+state is out of scope.
 The [installation matrix](../../tests/postgres/subscriptionExactInstallation.test.ts)
 runs the same check on all five shipped profiles.
 
@@ -2811,6 +2823,7 @@ runner records that row in the transaction that applies the authority migration.
 The legacy and qualified-admin plans omit that migration, so the block skips
 the grant in those databases even when the cluster role exists. The slot
 carries only those two grant capabilities, and its pin lists no function definitions.
+The live comparator has its own [qualified column SELECT exception](#qualified-column-select).
 
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
@@ -2915,7 +2928,8 @@ operator a forward creates for another operand type cannot hide what it adds:
   carries no `SET` at all. Its language and leakproof flag are not compared: like
   its body, they stay with the whole-file hash and the feature review.
 - Existing relations of every kind, indexes and TOAST tables included, keep their
-  owner, privileges, row security, options and column privileges. Only the index
+  owner, privileges, row security, options and column privileges, subject to the
+  [qualified column SELECT exception](#qualified-column-select). Only the index
   of an explicitly listed UNIQUE replacement may be replaced with its new key. A new relation of
   any kind is owned by the migration role. By default it carries only its owner's
   table privileges and no column privilege. The pinned notice table may carry
