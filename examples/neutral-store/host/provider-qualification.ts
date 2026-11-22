@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { spawnSync } from 'node:child_process';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -9,23 +10,22 @@ import { makeTaxQuoteRequest } from '@openlup/platform/tax';
 import type { TaxCommitRequestV1, TaxQuoteInputV1, TaxReverseRequestV1, TaxCommitResultV1, TaxReverseResultV1, TaxRefusal, TaxUnavailable } from '@openlup/platform/tax/contracts';
 import { pathToFileURL } from 'node:url';
 import {
-  accountId, CardRejection, composeProviderTax, credentialRefusal, declineCode, fixedTaxRemedy, integrityRefusal, makeReportingDigest, openTestProvider, ProviderUnavailable, sdkVersion, TaxProviderRejection,
+  accountId, CardRejection, composeProviderTax, credentialRefusal, fixedTaxRemedy, integrityRefusal, makeReportingDigest, openTestProvider, ProviderUnavailable, sdkVersion, TaxProviderRejection,
   type VerifiedTestProvider,
 } from './provider-transport.ts';
+import { declineCode, field, integer, literal, readCalculation, readCharge, readCustomer, readIntent, readPage, readTaxLine, reference, text,
+  type readDetail, type readHeader } from './provider-response.ts';
 
 const usage = 'Run npm run provider:qualify -- --run --test-mode --account <id> --key-env <name> in an interactive session outside CI.';
 const launcherSetup = 'Install the 1Password CLI and make it available on your PATH, then retry.';
 const cardRefusal = 'Re-obtain evidence for the original test intent in the bound account.';
-const statuses = ['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing', 'requires_capture', 'canceled', 'succeeded'];
-const id = (value: unknown, kind: string): value is string =>
-  typeof value === 'string' && value.startsWith(kind + '_') && /^[A-Za-z0-9_]{4,128}$/u.test(value);
 const reserved = /^(?:CI$|(?:NODE|NPM|OP|OPENSSL|LD|DYLD|UV|SSL|LC|BASH|GIT)_|PATH$|HOME$|TERM$|COLORTERM$|USER$|LANG$|LOGNAME$)/iu;
 type Environment = Record<string, string | undefined>;
 type RecordEntry = Record<string, string | number | boolean | null | undefined>;
-const minor = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) ? value : undefined;
 type Witness = { hash: (value: string) => string; note: (entry: RecordEntry) => void };
 type Card = VerifiedTestProvider['card'];
-type Intent = Awaited<ReturnType<Card['retrieve']>>;
+type Intent = ReturnType<typeof readIntent>;
+type ScopedIntent = Intent & { ref: string };
 
 export function preflight(args: string[], interactive: boolean, environment: Environment) {
   const flags = new Map<string, string>();
@@ -53,7 +53,8 @@ export function launch(args: string[], { interactive = stdin.isTTY === true, env
     const result = spawn('op', ['run', '--', execPath, '--input-type=module', '-e',
       'try { const { runChild } = await import(process.argv[1]); await runChild(process.argv.slice(2)); } catch { process.exitCode = 1; }',
       '--', import.meta.url, ...args], { env: { ...options, [keyEnv]: reference }, stdio: ['inherit', 'inherit', 'ignore'] });
-    if (result.status === 0) return;
+    const { status } = result;
+    if (status === 0) return;
     missing = (result.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
   } catch { /* Keep launcher failures out of diagnostics. */ }
   if (missing) throw new Error(launcherSetup);
@@ -63,22 +64,20 @@ export function launch(args: string[], { interactive = stdin.isTTY === true, env
 function requireCard(condition: boolean): asserts condition {
   if (condition !== true) throw new Error(cardRefusal);
 }
-const observedCharge = (intent: Intent) => typeof intent.latest_charge === 'object' ? intent.latest_charge : null;
-function hasNoCapture(intent: Intent) {
-  const charge = observedCharge(intent);
-  return intent.amount_received === 0 && intent.amount_capturable === 0
-    && (intent.latest_charge === null || (charge?.livemode === false && charge.payment_intent === intent.id
-      && charge.captured === false && charge.amount_captured === 0));
+function hasNoCapture(intent: ScopedIntent) {
+  const charge = intent.charge;
+  return intent.receivedMinor === 0 && intent.capturableMinor === 0
+    && (charge === null || (charge.live === false && charge.intentRef === intent.ref
+      && charge.didCapture === false && charge.capturedMinor === 0));
 }
-function hold(intent: Intent) {
-  const charge = observedCharge(intent);
-  const before = charge?.payment_method_details?.card?.capture_before;
-  requireCard(intent.livemode === false && intent.status === 'requires_capture' && intent.capture_method === 'manual'
-    && intent.amount === 1000 && intent.currency === 'usd' && intent.amount_received === 0 && intent.amount_capturable === 1000
-    && charge?.livemode === false && id(charge.id, 'ch') && charge.payment_intent === intent.id
-    && charge.captured === false && charge.amount_captured === 0 && Number.isSafeInteger(charge.created)
-    && Number.isSafeInteger(before) && before! > charge.created && before! * 1000 > Date.now());
-  return { charge, before: before! * 1000 };
+function hold(intent: ScopedIntent) {
+  const charge = intent.charge;
+  requireCard(intent.live === false && intent.state === 'requires_capture' && intent.captureMethod === 'manual'
+    && intent.authorizedMinor === 1000 && intent.currency === 'usd' && intent.receivedMinor === 0 && intent.capturableMinor === 1000
+    && charge?.live === false && charge.ref !== undefined && charge.intentRef === intent.ref
+    && charge.didCapture === false && charge.capturedMinor === 0 && charge.createdAt !== undefined
+    && charge.captureBefore !== undefined && charge.captureBefore > charge.createdAt && charge.captureBefore * 1000 > Date.now());
+  return { chargeRef: charge.ref, createdAt: charge.createdAt, before: charge.captureBefore * 1000 };
 }
 
 async function loopback() {
@@ -91,8 +90,8 @@ async function loopback() {
     response.setHeader('Referrer-Policy', 'no-referrer');
     const path = request.url?.split('?', 1)[0];
     if (request.method !== 'GET' || request.headers.host !== new URL(base).host) response.writeHead(404).end();
-    else if (path === start && redirect) response.writeHead(303, { Location: redirect }).end();
-    else if (path === callback && redirect) {
+    else if (path === start && redirect !== undefined) response.writeHead(303, { Location: redirect }).end();
+    else if (path === callback && redirect !== undefined) {
       returnAt ??= performance.now();
       response.writeHead(303, { Location: done }).end();
     } else if (path === done) response.end('Return to the terminal.');
@@ -121,33 +120,32 @@ export async function qualifyCard(card: Card, witness: Witness, prompt: (url: st
   const metadata = { qualification: tag };
   const pending = new Set<string>();
   const cancelAttempts = new Map<string, string>();
-  const read = async (ref: string, budget?: number) => {
-    const intent = await card.retrieve(ref, budget);
-    requireCard(intent.id === ref && intent.livemode === false && intent.metadata?.qualification === tag && intent.currency === 'usd'
-      && intent.amount === 1000 && intent.capture_method === 'manual');
-    const statusKnown = statuses.includes(intent.status);
-    const received = minor(intent.amount_received), capturable = minor(intent.amount_capturable);
+  const read = async (ref: string, budget?: number): Promise<ScopedIntent> => {
+    const intent = readIntent(await card.retrieve(ref, budget));
+    requireCard(intent.ref === ref && intent.live === false && intent.tag === tag && intent.currency === 'usd'
+      && intent.authorizedMinor === 1000 && intent.captureMethod === 'manual');
+    const { receivedMinor, capturableMinor } = intent;
     witness.note({ operation: 'intent_read', intent: witness.hash(ref),
-      status: statusKnown ? intent.status : 'unknown', at: new Date().toISOString(),
-      currency: intent.currency, receivedMinor: received, capturableMinor: capturable,
-      decline: declineCode(intent.last_payment_error?.code) });
-    requireCard(statusKnown && received !== undefined && received >= 0 && capturable !== undefined && capturable >= 0);
-    return intent;
+      status: intent.state ?? 'unknown', at: new Date().toISOString(),
+      currency: intent.currency, receivedMinor, capturableMinor, decline: intent.decline });
+    requireCard(intent.state !== undefined && receivedMinor !== undefined && receivedMinor >= 0
+      && capturableMinor !== undefined && capturableMinor >= 0);
+    return { ...intent, ref };
   };
   const create = async (customer: string, setup = false) => {
     signal.throwIfAborted();
-    const intent = await card.create({ amount: 1000, currency: 'usd', payment_method_types: ['card'], capture_method: 'manual',
-      customer, metadata, ...(setup ? { setup_future_usage: 'off_session' } : {}) }, key());
-    requireCard(id(intent.id, 'pi') && intent.livemode === false && intent.metadata?.qualification === tag && intent.customer === customer);
-    pending.add(intent.id);
-    return intent.id;
+    const intent = readIntent(await card.create({ amount: 1000, currency: 'usd', payment_method_types: ['card'], capture_method: 'manual',
+      customer, metadata, ...(setup ? { setup_future_usage: 'off_session' } : {}) }, key()));
+    requireCard(intent.ref !== undefined && intent.live === false && intent.tag === tag && intent.customerRef === customer);
+    pending.add(intent.ref);
+    return intent.ref;
   };
   const confirm = async (ref: string, values: Parameters<Card['confirm']>[1]) => {
     signal.throwIfAborted();
     try { await card.confirm(ref, values, key()); }
     catch (error) {
       if (!(error instanceof CardRejection)) throw error;
-      witness.note({ operation: 'confirmation_refused', intent: witness.hash(ref), decline: error.code });
+      witness.note({ operation: 'confirmation_refused', intent: witness.hash(ref), decline: field(error, 'code', declineCode) });
     }
     return read(ref);
   };
@@ -155,47 +153,44 @@ export async function qualifyCard(card: Card, witness: Witness, prompt: (url: st
     signal.throwIfAborted();
     try { await card.capture(ref, key(), Date.now() + 10_000); }
     catch (error) {
-      requireCard(error instanceof CardRejection && error.code === 'payment_intent_unexpected_state');
+      requireCard(error instanceof CardRejection && field(error, 'code', declineCode) === 'payment_intent_unexpected_state');
       const observed = await read(ref);
-      requireCard(observed.status === status && hasNoCapture(observed));
+      requireCard(observed.state === status && hasNoCapture(observed));
       witness.note({ operation: 'capture_refused', verdict: 'pass', intent: witness.hash(ref) });
       return;
     }
     throw new Error(cardRefusal);
   };
-  const verifyHold = (intent: Intent) => {
+  const verifyHold = (intent: ScopedIntent) => {
     const result = hold(intent);
-    witness.note({ operation: 'hold', intent: witness.hash(intent.id), charge: witness.hash(result.charge.id),
-      capture_before: new Date(result.before).toISOString(), holdWindowMs: result.before - result.charge.created * 1000, currency: 'usd', authorizedMinor: 1000 });
+    witness.note({ operation: 'hold', intent: witness.hash(intent.ref), charge: witness.hash(result.chargeRef),
+      capture_before: new Date(result.before).toISOString(), holdWindowMs: result.before - result.createdAt * 1000, currency: 'usd', authorizedMinor: 1000 });
     return result;
   };
-  const verifyCanceled = (intent: Intent, chargeId: string) => {
-    const charge = observedCharge(intent);
-    requireCard(intent.status === 'canceled' && intent.amount_received === 0 && intent.amount_capturable === 0
-      && charge?.id === chargeId && charge.livemode === false && charge.payment_intent === intent.id
-      && charge.captured === false && charge.amount_captured === 0);
-    pending.delete(intent.id);
+  const verifyCanceled = (intent: ScopedIntent, chargeRef: string) => {
+    requireCard(intent.state === 'canceled' && intent.charge?.ref === chargeRef && hasNoCapture(intent));
+    pending.delete(intent.ref);
   };
-  const cancel = async (intent: Intent) => {
-    const { charge } = verifyHold(intent);
-    requireCard(!cancelAttempts.has(intent.id));
-    cancelAttempts.set(intent.id, charge.id);
-    try { await card.cancel(intent.id, key()); }
+  const cancel = async (intent: ScopedIntent) => {
+    const { chargeRef } = verifyHold(intent);
+    requireCard(!cancelAttempts.has(intent.ref));
+    cancelAttempts.set(intent.ref, chargeRef);
+    try { await card.cancel(intent.ref, key()); }
     catch { /* Resolve the attempted cancellation by scoped readback. */ }
-    verifyCanceled(await read(intent.id), charge.id);
+    verifyCanceled(await read(intent.ref), chargeRef);
   };
   const authorize = async (customer: string, method: string) => {
     const ref = await create(customer, true);
     const browser = await openLoopback();
     try {
       let intent = await confirm(ref, { payment_method: method, return_url: browser.returnUrl, use_stripe_sdk: false });
-      requireCard(intent.status === 'requires_action' && intent.amount_received === 0);
+      requireCard(intent.state === 'requires_action' && intent.receivedMinor === 0);
       await captureRefused(ref, 'requires_action');
       const started = monotonic(), end = started + 300_000;
-      browser.approve(intent.next_action?.redirect_to_url?.url);
+      browser.approve(intent.challengeUrl);
       prompt(browser.startUrl);
-      while (intent.status !== 'requires_capture' || browser.returnedAt() === undefined) {
-        requireCard(intent.status === 'requires_action' || intent.status === 'processing' || intent.status === 'requires_capture');
+      while (intent.state !== 'requires_capture' || browser.returnedAt() === undefined) {
+        requireCard(intent.state === 'requires_action' || intent.state === 'processing' || intent.state === 'requires_capture');
         const remaining = end - monotonic();
         requireCard(remaining > 10);
         await pause(Math.min(2000, remaining - 10), undefined, { signal });
@@ -205,56 +200,54 @@ export async function qualifyCard(card: Card, witness: Witness, prompt: (url: st
       }
       const returned = browser.returnedAt();
       requireCard(returned !== undefined && returned >= started && returned <= end && monotonic() <= end
-        && intent.customer === customer && intent.setup_future_usage === 'off_session' && id(intent.payment_method, 'pm'));
+        && intent.customerRef === customer && intent.futureUsage === 'off_session' && intent.methodRef !== undefined);
       hold(intent);
       witness.note({ operation: 'challenge_return', intent: witness.hash(ref), verdict: 'pass' });
-      return { intent, method: intent.payment_method };
+      return { intent, method: intent.methodRef };
     } finally { await browser.close(); }
   };
-  const capture = async (intent: Intent, replay: boolean) => {
+  const capture = async (intent: ScopedIntent, replay: boolean) => {
     signal.throwIfAborted();
-    const { before, charge } = verifyHold(intent);
+    const { before, chargeRef } = verifyHold(intent);
     const options = key();
-    const capturedCharge = (row: ReturnType<typeof observedCharge> | undefined) =>
-      row?.id === charge.id && row.livemode === false && row.payment_intent === intent.id && row.currency === 'usd'
-      && row.captured === true && row.amount_captured === intent.amount;
-    const capturedIntent = (row: Intent) => row.status === 'succeeded' && row.amount === intent.amount
-      && row.amount_received === intent.amount && row.amount_capturable === 0;
-    const verifyCapture = async (receipt: Intent) => {
-      requireCard(receipt.id === intent.id && receipt.livemode === false && capturedIntent(receipt)
-        && (receipt.latest_charge === charge.id || capturedCharge(observedCharge(receipt))));
-      const actual = await read(intent.id);
-      requireCard(capturedIntent(actual) && capturedCharge(observedCharge(actual)));
-      const charges = await card.charges(intent.id);
-      requireCard(charges.has_more === false && Array.isArray(charges.data) && charges.data.length === 1);
-      const [posted] = charges.data;
-      requireCard(posted !== undefined && capturedCharge(posted));
-      return posted;
+    const capturedCharge = (row: Intent['charge'] | undefined) =>
+      row?.ref === chargeRef && row.live === false && row.intentRef === intent.ref && row.currency === 'usd'
+      && row.didCapture === true && row.capturedMinor === intent.authorizedMinor;
+    const capturedIntent = (row: Intent) => row.state === 'succeeded' && row.authorizedMinor === intent.authorizedMinor
+      && row.receivedMinor === intent.authorizedMinor && row.capturableMinor === 0;
+    const verifyCapture = async (raw: unknown) => {
+      const receipt = readIntent(raw);
+      requireCard(receipt.ref === intent.ref && receipt.live === false && capturedIntent(receipt)
+        && (receipt.unexpandedChargeRef === chargeRef || capturedCharge(receipt.charge)));
+      const actual = await read(intent.ref);
+      requireCard(capturedIntent(actual) && capturedCharge(actual.charge));
+      const charges = readPage(await card.charges(intent.ref), readCharge);
+      requireCard(charges.more === false && charges.rows?.length === 1 && capturedCharge(charges.rows[0]));
     };
-    const first = await verifyCapture(await card.capture(intent.id, options, before));
-    const posted = replay ? await verifyCapture(await card.capture(intent.id, options, before)) : first;
-    pending.delete(intent.id);
-    witness.note({ operation: 'capture', verdict: 'pass', intent: witness.hash(intent.id), charge: witness.hash(posted.id), currency: 'usd', receivedMinor: 1000 });
+    await verifyCapture(await card.capture(intent.ref, options, before));
+    if (replay) await verifyCapture(await card.capture(intent.ref, options, before));
+    pending.delete(intent.ref);
+    witness.note({ operation: 'capture', verdict: 'pass', intent: witness.hash(intent.ref), charge: witness.hash(chargeRef), currency: 'usd', receivedMinor: 1000 });
   };
   signal.throwIfAborted();
-  const customer = await card.customer({ metadata }, key());
-  requireCard(id(customer.id, 'cus') && customer.livemode === false && customer.metadata?.qualification === tag);
+  const customer = readCustomer(await card.customer({ metadata }, key()));
+  requireCard(customer.ref !== undefined && customer.live === false && customer.tag === tag);
   let unresolved = false;
   try {
-    const setup = await authorize(customer.id, 'pm_card_authenticationRequiredOnSetup');
+    const setup = await authorize(customer.ref, 'pm_card_authenticationRequiredOnSetup');
     await capture(setup.intent, true);
-    const ordinary = await create(customer.id);
+    const ordinary = await create(customer.ref);
     await cancel(await confirm(ordinary, { payment_method: 'pm_card_visa' }));
     await captureRefused(ordinary, 'canceled');
-    const reuse = await create(customer.id);
+    const reuse = await create(customer.ref);
     const reused = await confirm(reuse, { payment_method: setup.method, off_session: true });
-    requireCard(reused.customer === customer.id && reused.payment_method === setup.method);
+    requireCard(reused.customerRef === customer.ref && reused.methodRef === setup.method);
     await cancel(reused);
-    const required = await authorize(customer.id, 'pm_card_authenticationRequired');
+    const required = await authorize(customer.ref, 'pm_card_authenticationRequired');
     await capture(required.intent, false);
-    const recovery = await create(customer.id);
+    const recovery = await create(customer.ref);
     const result = await confirm(recovery, { payment_method: required.method, off_session: true, error_on_requires_action: false });
-    requireCard(result.status === 'requires_action' && result.payment_method === required.method && hasNoCapture(result));
+    requireCard(result.state === 'requires_action' && result.methodRef === required.method && hasNoCapture(result));
     witness.note({ operation: 'recovery_link', verdict: 'pass', intent: witness.hash(recovery) });
   } finally {
     for (const ref of pending) {
@@ -262,7 +255,7 @@ export async function qualifyCard(card: Card, witness: Witness, prompt: (url: st
         const intent = await read(ref);
         const attempted = cancelAttempts.get(ref);
         if (attempted !== undefined) verifyCanceled(intent, attempted);
-        else if (intent.status === 'requires_capture') await cancel(intent);
+        else if (intent.state === 'requires_capture') await cancel(intent);
       } catch {
         unresolved = true;
         witness.note({ operation: 'unresolved_hold', effect: 'unknown', intent: witness.hash(ref) });
@@ -277,7 +270,7 @@ const noReportingEffect = 'No reporting effect was observed. Check tax configura
 class TaxQualificationRefusal extends Error {
   constructor(result: TaxRefusal | TaxUnavailable) {
     if (result.kind === 'unavailable') {
-      super(result.effect === 'none' ? noReportingEffect : integrityRefusal);
+      super(field(result, 'effect', literal('none')) === 'none' ? noReportingEffect : integrityRefusal);
     } else {
       const fixed = fixedTaxRemedy(result.code, result.field);
       super(fixed !== undefined && fixed === result.remedy ? fixed
@@ -285,13 +278,42 @@ class TaxQualificationRefusal extends Error {
     }
   }
 }
-const reason = (value: unknown) => ['not_collecting', 'not_subject_to_tax', 'product_exempt', 'standard_rated', 'zero_rated',
-  'product_exempt_holiday', 'customer_exempt', 'not_supported'].find(allowed => allowed === value) ?? 'other';
 const fixtures = [
   { state: 'NY', city: 'New York', line1: '350 5th Ave', postal_code: '10118', shipping: 100 },
   { state: 'CA', city: 'San Francisco', line1: '1 Market St', postal_code: '94105', shipping: 0 },
-];
+] as const;
+
+type Header = ReturnType<typeof readHeader>;
+type Detail = ReturnType<typeof readDetail>;
+
+function verifyQuoteRows(region: 'NY' | 'CA', payable: number, headers: Header[], lines: Detail[], shipping: Detail[]) {
+  // The qualification fixtures expect one state header and one detail per taxable component.
+  const rated = region === 'NY';
+  const regionName = rated ? 'New York' : 'California';
+  const reason = rated ? 'standard_rated' : 'not_subject_to_tax';
+  const rateType = rated ? 'percentage' : null;
+  const taxType = rated ? 'sales_tax' : null;
+  const percentage = rated ? lines[0]?.rate?.percentage : '0';
+  if (percentage === undefined || (rated && percentage === '0')) throw new Error(integrityRefusal);
+  const [whole, fraction = ''] = percentage.split('.');
+  const rate = BigInt(whole + fraction.padEnd(6, '0'));
+  const taxFor = (basis: number) => Number((BigInt(basis) * rate + 50_000_000n) / 100_000_000n);
+  const lineTax = taxFor(1000), shippingTax = taxFor(rated ? 100 : 0);
+  const totalTax = lineTax + shippingTax;
+  const basis = rated ? 1100 : 1000;
+  const headerRate = { country: 'US', region, taxType, rateType, percentage, flatAmount: null };
+  const expectedHeaders = [{ taxMinor: totalTax, basisMinor: basis, reason, inclusive: false, rate: headerRate }];
+  const detail = (basisMinor: number, taxMinor: number) => ({
+    taxMinor, basisMinor, reason, jurisdiction: { country: 'US', region, level: 'state', name: regionName },
+    sourcing: 'destination', rate: rated ? { taxType, percentage } : null,
+  });
+  if (payable !== basis + totalTax || !isDeepStrictEqual(headers, expectedHeaders) || !isDeepStrictEqual(lines, [detail(1000, lineTax)])
+    || !isDeepStrictEqual(shipping, rated ? [detail(100, shippingTax)] : [])) {
+    throw new Error(integrityRefusal);
+  }
+}
 type TaxOptions = Parameters<typeof composeProviderTax>[1];
+const reportingRef = reference('tax');
 type RecoveryOperation = 'quote' | 'post' | 'reverse';
 type EvidenceByRef = (operation: RecoveryOperation, reference: string) => Promise<string | undefined>;
 
@@ -305,7 +327,6 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
   function verify(condition: boolean): asserts condition {
     if (condition !== true) throw new Error(integrityRefusal);
   }
-  const [ny, ca] = fixtures;
   const calc = async (fixture: typeof fixtures[number]) => {
     signal.throwIfAborted();
     const { shipping, ...address } = fixture;
@@ -319,70 +340,54 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
     } satisfies Parameters<typeof provider.tax.calculations.create>[0];
     const key = randomUUID();
     let calculated;
-    try { calculated = await provider.tax.calculations.create(params, { idempotencyKey: key }); }
+    try { calculated = readCalculation(await provider.tax.calculations.create(params, { idempotencyKey: key })); }
     catch (error) {
       if (!(error instanceof ProviderUnavailable)) throw error;
       witness.note({ operation: 'quote', effect: 'unknown', key: witness.hash(key), reference: witness.hash(quoteRef) });
-      const original = await observeOriginal('quote', quoteRef);
-      verify(id(original, 'taxcalc'));
-      calculated = await provider.tax.calculations.retrieve(original);
-      verify(calculated.id === original);
+      const original = reference('taxcalc')(await observeOriginal('quote', quoteRef));
+      verify(original !== undefined);
+      calculated = readCalculation(await provider.tax.calculations.retrieve(original));
+      verify(calculated.ref === original);
     }
-    const payable = minor(calculated.amount_total);
-    verify(id(calculated.id, 'taxcalc') && calculated.livemode === false && calculated.currency === 'usd' && payable !== undefined);
-    const list = await provider.tax.calculations.listLineItems(calculated.id, { limit: 100, expand: ['data.tax_breakdown'] });
-    verify(list.has_more === false && list.url === '/v1/tax/calculations/' + calculated.id + '/line_items'
-      && Array.isArray(list.data) && list.data.length === 1 && list.data[0]?.livemode === false && list.data[0].reference === quoteRef
-      && list.data[0].amount === params.line_items[0]?.amount);
-    const cost = calculated.shipping_cost;
-    verify(Array.isArray(calculated.tax_breakdown) && Array.isArray(list.data[0].tax_breakdown)
-      && (cost === null ? shipping === 0 : cost?.amount === shipping && Array.isArray(cost.tax_breakdown)));
-    const shippingDetails = cost === null ? [] : cost.tax_breakdown!;
-    const lineDetails = list.data[0].tax_breakdown;
-    const headers = calculated.tax_breakdown;
-    if (fixture.state === 'CA') {
-      verify(headers.some(row => row?.taxability_reason === 'not_subject_to_tax' && row.amount === 0 && row.inclusive === false
-        && row.tax_rate_details?.rate_type === null && row.tax_rate_details.percentage_decimal === '0'
-        && row.tax_rate_details.flat_amount === null && row.tax_rate_details.country === 'US' && row.tax_rate_details.state === 'CA')
-        && lineDetails.some(row => row?.taxability_reason === 'not_subject_to_tax' && row.amount === 0
-          && row.tax_rate_details === null && row.jurisdiction?.country === 'US' && row.jurisdiction.state === 'CA'));
+    const { ref: calculationRef, payableMinor, headers, shipping: cost } = calculated;
+    verify(calculationRef !== undefined && calculated.live === false && calculated.currency === 'usd' && payableMinor !== undefined);
+    const list = readPage(await provider.tax.calculations.listLineItems(calculationRef, { limit: 100, expand: ['data.tax_breakdown'] }), readTaxLine);
+    const item = list.rows?.[0];
+    verify(list.more === false && list.path === '/v1/tax/calculations/' + calculationRef + '/line_items'
+      && list.rows?.length === 1 && item?.live === false && item.ref === quoteRef && item.chargeMinor === 1000);
+    const lines = item.breakdown;
+    verify(headers !== undefined && lines !== undefined && cost !== undefined
+      && (cost === null ? shipping === 0 : cost.chargeMinor === shipping && cost.breakdown !== undefined));
+    const delivery = cost === null ? [] : cost.breakdown!;
+    witness.note({ operation: 'tax_quote', region: fixture.state, calculation: witness.hash(calculationRef), currency: 'usd',
+      payableMinor, shippingMinor: cost?.chargeMinor, shippingShape: cost === null ? 'absent' : delivery.length > 0 ? 'detail' : 'empty' });
+    for (const row of headers) {
+      witness.note({ operation: 'tax_breakdown', region: fixture.state, shape: 'header', taxability: row.reason,
+        amountMinor: row.taxMinor, basisMinor: row.basisMinor, rateType: row.rate.rateType,
+        fee: row.rate.taxType === 'retail_delivery_fee', hasRate: true });
     }
-    witness.note({ operation: 'tax_quote', region: fixture.state, calculation: witness.hash(calculated.id), currency: 'usd',
-      payableMinor: payable, shippingMinor: cost === null ? undefined : cost.amount,
-      shippingShape: cost === null ? 'absent' : shippingDetails.length > 0 ? 'detail' : 'empty' });
-    for (const [shape, rows] of [['header', headers], ['shipping', shippingDetails], ['line', lineDetails]] as const) {
+    for (const [shape, rows] of [['line', lines], ['shipping', delivery]] as const) {
       for (const row of rows) {
-        const amount = minor(row?.amount), basis = minor(row?.taxable_amount);
-        verify(amount !== undefined && basis !== undefined);
-        const rate = row.tax_rate_details;
-        verify(rate === null || (typeof rate === 'object' && !Array.isArray(rate)));
-        const rawRateType = shape === 'header' && rate !== null && 'rate_type' in rate ? rate.rate_type : undefined;
-        const rateType = rawRateType === null || rawRateType === 'percentage' || rawRateType === 'flat_amount' ? rawRateType : undefined;
-        verify(shape !== 'header' || (rateType !== undefined && 'inclusive' in row && row.inclusive === false));
-        witness.note({ operation: 'tax_breakdown', region: fixture.state, shape, taxability: reason(row.taxability_reason),
-          amountMinor: amount, basisMinor: basis, rateType,
-          fee: rate?.tax_type === 'retail_delivery_fee', hasRate: rate !== null });
+        witness.note({ operation: 'tax_breakdown', region: fixture.state, shape, taxability: row.reason,
+          amountMinor: row.taxMinor, basisMinor: row.basisMinor, fee: row.rate?.taxType === 'retail_delivery_fee', hasRate: row.rate !== null });
       }
     }
-    return [...lineDetails, ...shippingDetails];
+    verifyQuoteRows(fixture.state, payableMinor, headers, lines, delivery);
   };
-  const observed = await calc(ny!);
-  await calc(ca!);
+  const [ny, ca] = fixtures;
+  await calc(ny);
+  await calc(ca);
   signal.throwIfAborted();
 
-  // Use the scoped quote to identify the fixture's reported jurisdictions. Registration evidence is read independently by the adapter.
-  const jurisdictions = [...new Map(observed.map(({ jurisdiction, sourcing, tax_rate_details }) => {
-    verify(sourcing === 'origin' || sourcing === 'destination');
-    const name = [jurisdiction.level, jurisdiction.display_name].join('-');
-    return [name, { jurisdiction: witness.hash(name), taxKind: 'sales', level: jurisdiction.level,
-      sourcing: sourcing === 'origin' ? 'ship_from' as const : 'destination' as const,
-      provider: jurisdiction, taxType: tax_rate_details === null ? null : tax_rate_details.tax_type }];
-  })).values()];
-  verify(jurisdictions.length > 0 && jurisdictions.every(row => row.taxType === null || row.taxType === 'sales_tax'));
-  const taxDate = second(), scope = { adapter: 'stripeTax', adapterVersion: '1', ...provider.scope };
-  const address = { countryCode: 'US', subdivisionCode: 'US-NY', line1: ny!.line1, city: ny!.city, postalCode: ny!.postal_code };
+  const jurisdictions = [{ jurisdiction: witness.hash('state-New York'), taxKind: 'sales', level: 'state', sourcing: 'destination' as const,
+    provider: { country: 'US', state: 'NY', level: 'state', display_name: 'New York' }, taxType: 'sales_tax' }];
+  const accountRef = field(provider.scope, 'accountRef', reference('acct'));
+  const mode = field(provider.scope, 'mode', literal('test'));
+  verify(accountRef !== undefined && mode === 'test');
+  const taxDate = second(), scope = { adapter: 'stripeTax', adapterVersion: '1', accountRef, mode };
+  const address = { countryCode: 'US', subdivisionCode: 'US-NY', line1: ny.line1, city: ny.city, postalCode: ny.postal_code };
   const delivery = { bucketKey: 'shipping', carrierRef: 'fixture', serviceRef: 'fixture', separatelyStated: true,
-    taxClass: 'shipping', assignmentRef: 'shipping', cost: { ref: 'shipping', currency: 'USD', amountMinor: ny!.shipping } };
+    taxClass: 'shipping', assignmentRef: 'shipping', cost: { ref: 'shipping', currency: 'USD', amountMinor: ny.shipping } };
   const marketPack: TaxOptions['marketPack'] = { scope, market: 'qualification', currency: 'USD', policyRevision: 'test', classMapRevision: 'test',
     taxCodes: { merchandise: 'txcd_99999999', shipping: 'txcd_92010001' }, origins: { fixture: address },
     subdivisions: { US: { 'US-NY': 'NY' } }, delivery: [{ ...delivery, costIndependent: true, zeroAmount: false }],
@@ -393,7 +398,7 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
     shipFromRef: 'fixture', policyRevision: 'test', classMapRevision: 'test', delivery: [delivery],
     lines: [{ lineKey: 'item', sku: 'fixture', mode: 'one_time', taxClass: 'merchandise', assignmentRef: 'fixture' }],
     money: { amountBasis: 'exclusive', sources: [{ lineKey: 'item', sourceOrdinal: 1, quantity: 1, unitBasisMinor: 1000 }],
-      delivery: [{ bucketKey: 'shipping', deliveryKind: 'shipping', amountMinor: ny!.shipping }], adjustments: [], fees: [] },
+      delivery: [{ bucketKey: 'shipping', deliveryKind: 'shipping', amountMinor: ny.shipping }], adjustments: [], fees: [] },
     required: jurisdictions.flatMap(({ jurisdiction, taxKind, level, sourcing }) => [
       { target: { kind: 'line', key: 'item' }, jurisdiction, taxKind, level, sourcing },
       { target: { kind: 'delivery', key: 'shipping' }, jurisdiction, taxKind, level, sourcing },
@@ -403,18 +408,22 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
   };
 
   const effects: Partial<{ [Key in 'accepted' | 'commit' | 'reverse']: ReturnType<TaxOptions['effects'][Key]> }> = {};
-  let observation: { reference?: string; id?: string } = {};
+  let observation: { reference?: string; transactionRef?: string } = {};
   const port = composeProviderTax(provider, { installationRef: ref, marketPack, now, effects: {
     accepted: () => effects.accepted, commit: () => effects.commit, reverse: () => effects.reverse,
-    findTransactionIdByReference: reference => { observation.reference = reference; return observation.id; },
+    findTransactionIdByReference: reference => { observation.reference = reference; return observation.transactionRef; },
   } });
   const request = makeTaxQuoteRequest(ref, input);
   const result = await port.quote(request);
   if (result.kind === 'unavailable' || result.kind === 'refused') throw new TaxQualificationRefusal(result);
   if (result.kind !== 'final') throw new Error(taxRefusal);
   effects.accepted = { request, result, closed: false };
-  verify(result.money.feeTotal === 0);
+  const money = result.money;
+  const payable = field(money, 'payableMinor', integer), taxes = field(money, 'taxTotal', integer);
+  verify(field(money, 'feeTotal', integer) === 0 && payable !== undefined && taxes !== undefined);
   const { evidence, evidenceDigest } = result;
+  const calculationRef = field(evidence, 'calculationRef', reference('taxcalc'));
+  verify(calculationRef !== undefined);
   const capturedAt = now().toISOString();
   // Wait for the first whole-second posting instant at or after capture.
   const postingTime = Math.ceil(Date.parse(capturedAt) / 1000) * 1000;
@@ -425,10 +434,12 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
     await delay(remaining, undefined, { signal });
   }
   const postedAt = new Date(postingTime).toISOString();
-  const commit: TaxCommitRequestV1 = { calculationRef: { scope, ref: evidence.calculationRef, evidenceDigest },
+  const commit: TaxCommitRequestV1 = { calculationRef: { scope, ref: calculationRef, evidenceDigest },
     transactionRef: ref, postedAt, capturedAt, captureEvidenceRef: ref, intent: 'apply' };
-  const capture = { ref, capturedAt, currency: 'USD', payableMinor: result.money.payableMinor };
-  const send = { kind: 'ready' as const, before: evidence.expiresAt };
+  const capture = { ref, capturedAt, currency: 'USD', payableMinor: payable };
+  const expiry = field(evidence, 'expiresAt', text);
+  verify(expiry !== undefined);
+  const send = { kind: 'ready' as const, before: expiry };
   effects.commit = { capture, requestDigest: makeReportingDigest({ operation: 'commit', request: commit, capture }), send };
 
   async function post<R extends TaxCommitResultV1 | TaxReverseResultV1>(name: 'post' | 'reverse',
@@ -438,18 +449,17 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
     const first = await run('apply');
     const firstId = resultId(first);
     if (firstId !== undefined) {
-      verify(id(firstId, 'tax'));
       const replay = await run('apply');
       if (replay.kind === 'unavailable' || replay.kind === 'refused') throw new TaxQualificationRefusal(replay);
       verify(resultId(replay) === firstId && JSON.stringify(replay) === JSON.stringify(first));
       return first;
     }
     const { reference } = observation;
-    if (first.kind === 'unavailable' && first.effect === 'unknown' && typeof reference === 'string' && reference.length > 0) {
+    if (first.kind === 'unavailable' && field(first, 'effect', literal('unknown')) === 'unknown' && typeof reference === 'string' && reference.length > 0) {
       witness.note({ operation: name, effect: 'unknown', key: witness.hash(reference), reference: witness.hash(reference) });
       const original = await observeOriginal(name, reference);
-      if (id(original, 'tax')) {
-        observation.id = original;
+      if (original !== undefined && reportingRef(original) !== undefined) {
+        observation.transactionRef = original;
         const recovered = await run('recover');
         if (resultId(recovered) === original) return recovered;
       }
@@ -459,29 +469,35 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
     throw new Error(integrityRefusal);
   }
   const posted = await post('post', intent => port.commit({ ...commit, intent }),
-    row => row.kind === 'committed' ? row.providerTransactionRef : undefined);
+    row => row.kind === 'committed' ? field(row, 'providerTransactionRef', reportingRef) : undefined);
   verify(posted.kind === 'committed');
+  const saleRef = field(posted, 'providerTransactionRef', reportingRef);
+  verify(saleRef !== undefined);
   const units: NonNullable<typeof effects.reverse>['original']['units'][number][] = [];
   for (const component of result.money.components) {
-    const lineRef = component.ref.kind === 'merchandise' ? evidence.providerLines?.[0]?.providerLineRef : 'shipping:' + evidence.calculationRef;
-    const position = posted.positions.find(row => row.originalPositionRef === lineRef);
-    verify(position !== undefined);
     const merchandise = component.ref.kind === 'merchandise';
-    units.push({ kind: merchandise ? 'line' : 'shipping', ...position, taxCode: merchandise ? 'txcd_99999999' : 'txcd_92010001',
-      remainingNetMinor: component.final.amountMinor, remainingTaxMinor: component.final.taxMinor });
+    const lineRef = merchandise ? field(evidence.providerLines?.[0], 'providerLineRef', text) : 'shipping:' + calculationRef;
+    const position = posted.positions.find(row => field(row, 'originalPositionRef', text) === lineRef);
+    const postedRef = field(position, 'postedPositionRef', text);
+    const netMinor = field(component.final, 'amountMinor', integer), taxMinor = field(component.final, 'taxMinor', integer);
+    verify(lineRef !== undefined && postedRef !== undefined && netMinor !== undefined && taxMinor !== undefined);
+    units.push({ kind: merchandise ? 'line' : 'shipping', originalPositionRef: lineRef, postedPositionRef: postedRef,
+      taxCode: merchandise ? 'txcd_99999999' : 'txcd_92010001', remainingNetMinor: netMinor, remainingTaxMinor: taxMinor });
   }
-  const reverse: TaxReverseRequestV1 = { scope, originalRef: posted.providerTransactionRef, reversalRef: ref,
-    refundEvidenceRef: ref, currency: 'USD', fromMinor: 0, toMinor: result.money.payableMinor, intent: 'apply', mode: 'full',
+  const reverse: TaxReverseRequestV1 = { scope, originalRef: saleRef, reversalRef: ref,
+    refundEvidenceRef: ref, currency: 'USD', fromMinor: 0, toMinor: payable, intent: 'apply', mode: 'full',
     positions: units.map(unit => ({ originalPositionRef: unit.originalPositionRef,
       netDeltaMinor: unit.remainingNetMinor === 0 ? 0 : -unit.remainingNetMinor,
       taxDeltaMinor: unit.remainingTaxMinor === 0 ? 0 : -unit.remainingTaxMinor, feeDeltaMinor: 0 })) };
-  const original = { id: posted.providerTransactionRef, scope, currency: 'USD', taxDate, payableMinor: result.money.payableMinor, refundedMinor: 0, units };
+  const original = { id: saleRef, scope, currency: 'USD', taxDate, payableMinor: payable, refundedMinor: 0, units };
   effects.reverse = { original, refundEvidenceRef: ref, send, requestDigest: makeReportingDigest({ operation: 'reverse', request: reverse, refundEvidenceRef: ref, original }) };
   const reversed = await post('reverse', intent => port.reverse({ ...reverse, intent }),
-    row => row.kind === 'reversed' ? row.providerReversalRef : undefined);
+    row => row.kind === 'reversed' ? field(row, 'providerReversalRef', reportingRef) : undefined);
   verify(reversed.kind === 'reversed');
-  witness.note({ operation: 'tax_reporting', verdict: 'pass', currency: 'USD', payableMinor: result.money.payableMinor,
-    taxMinor: result.money.taxTotal, sale: witness.hash(posted.providerTransactionRef), reversal: witness.hash(reversed.providerReversalRef) });
+  const reversalRef = field(reversed, 'providerReversalRef', reportingRef);
+  verify(reversalRef !== undefined);
+  witness.note({ operation: 'tax_reporting', verdict: 'pass', currency: 'USD', payableMinor: payable,
+    taxMinor: taxes, sale: witness.hash(saleRef), reversal: witness.hash(reversalRef) });
 }
 
 export function qualificationMessage(error: unknown): string {
@@ -510,7 +526,7 @@ export async function runChild(args: string[], { interactive = stdin.isTTY === t
   process.once('SIGTERM', stop);
   try {
     const provider = await open({ secretKey, accountRef }, { record: entry => witness.note(entry) });
-    version = provider.apiVersion;
+    version = field(provider, 'apiVersion', text);
     const origin = JSON.parse(await readFile(new URL('../.starter-origin.json', import.meta.url), 'utf8'));
     requireCard(origin.mode === 'candidate' && /^\d+\.\d+\.\d+$/u.test(origin.setVersion));
     release = origin.setVersion;

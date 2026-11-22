@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isDeepStrictEqual } from 'node:util';
 import { launch, preflight, qualificationMessage, qualifyCard, qualifyTax, recoveryPrompt, runChild } from '../host/provider-qualification.ts';
-import { CardRejection, credentialRefusal, integrityRefusal, openTestProvider, ProviderUnavailable, sdkVersion, TaxProviderRejection, type VerifiedTestProvider } from '../host/provider-transport.ts';
+import { CardRejection, credentialRefusal, integrityRefusal, openTestProvider, ProviderUnavailable, sdkVersion, TaxProviderRejection, transportStringBytes, type VerifiedTestProvider } from '../host/provider-transport.ts';
 
 const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const pin = Object.entries(manifest.providerQualification?.dependencies ?? manifest.dependencies)
@@ -120,28 +120,58 @@ test('mutations use the verified SDK scope and key even with extra caller option
   assert.equal(actual.get('idempotency-key'), 'fixture-key');
 });
 
-test('every mutation refuses blank, missing or non-string idempotency keys before any send', async () => {
+test('all transport entries reject invalid string inputs before sending', async () => {
   const sends: string[] = [];
   const provider = await open(async (...request) => {
-    if (request[3] === 'GET') return health(...request);
+    if (request[2] === '/v1/account' || request[2] === '/v1/balance') return health(...request);
     sends.push(request[2]);
     return reply({});
   });
   type Options = Parameters<typeof provider.card.customer>[1];
+  const key = { idempotencyKey: 'fixture-key' };
   const mutations = [
     (options: Options) => provider.card.customer({}, options),
     (options: Options) => provider.card.create({ amount: 1000, currency: 'usd' }, options),
-    (options: Options) => provider.card.confirm('pi_Sample', {}, options),
+    (options: Options) => provider.card.confirm('pi_Sample', { payment_method: 'pm_Sample' }, options),
     (options: Options) => provider.card.capture('pi_Sample', options, Date.now() + 10_000),
     (options: Options) => provider.card.cancel('pi_Sample', options),
     (options: Options) => provider.tax.calculations.create({ currency: 'usd', line_items: [{ amount: 1000, reference: 'item' }] }, options),
     (options: Options) => provider.tax.transactions.createFromCalculation({ calculation: 'taxcalc_sample', reference: 'sale' }, options),
     (options: Options) => provider.tax.transactions.createReversal({ original_transaction: 'tax_sample', reference: 'reverse', mode: 'full' }, options),
   ];
-  for (const options of [{ idempotencyKey: '' }, { idempotencyKey: ' \t' }, {}, undefined, { idempotencyKey: 123 }]) {
-    for (const mutate of mutations) await assert.rejects(mutate(options as Options), new Error(integrityRefusal));
+  const bodyAndTarget = [
+    (value: string) => provider.card.customer({ metadata: { qualification: value } }, key),
+    (value: string) => provider.card.create({ amount: 1000, currency: value }, key),
+    (value: string) => provider.card.create({ amount: 1000, currency: 'usd', payment_method_types: [value] }, key),
+    (value: string) => provider.card.confirm('pi_Sample', { return_url: value }, key),
+    (value: string) => provider.card.retrieve(value),
+    (value: string) => provider.card.capture(value, key, Date.now() + 10_000),
+    (value: string) => provider.tax.calculations.create({ currency: 'usd', line_items: [{ amount: 1000, reference: value }] }, key),
+    (value: string) => provider.tax.calculations.create({ currency: 'usd', line_items: [{ amount: 1000, reference: 'item' }],
+      customer_details: { address_source: 'shipping', address: { line1: value, country: 'US' } } }, key),
+    (value: string) => provider.tax.calculations.listLineItems('taxcalc_sample', { expand: [value] }),
+    (value: string) => provider.tax.registrations.list({ starting_after: value }),
+    (value: string) => provider.tax.transactions.createFromCalculation({ calculation: 'taxcalc_sample', reference: value }, key),
+    (value: string) => provider.tax.transactions.createReversal({ original_transaction: value, reference: 'reverse', mode: 'full' }, key),
+    (value: string) => provider.tax.transactions.retrieve(value),
+  ];
+  const invalid = [
+    { name: 'empty', value: '' }, { name: 'whitespace', value: ' \t' }, { name: 'number', value: 123 },
+    { name: 'null', value: null }, { name: 'undefined', value: undefined }, { name: 'object', value: { text: 'sample' } },
+    { name: 'over bound', value: 'x'.repeat(transportStringBytes + 1) },
+    { name: 'over byte bound', value: 'é'.repeat(transportStringBytes) },
+  ];
+  for (const { name, value } of invalid) {
+    for (const mutate of mutations) await assert.rejects(mutate({ idempotencyKey: value } as Options), new Error(integrityRefusal), name);
+    for (const send of bodyAndTarget) await assert.rejects(send(value as string), new Error(integrityRefusal), name);
+    assert.deepEqual(sends, [], name);
   }
+  await assert.rejects(mutations[0]!({} as Options), new Error(integrityRefusal));
+  await assert.rejects(mutations[0]!(undefined as unknown as Options), new Error(integrityRefusal));
   assert.deepEqual(sends, []);
+  const atLimit = 'x'.repeat(transportStringBytes);
+  await provider.card.customer({ metadata: { qualification: atLimit } }, { idempotencyKey: atLimit });
+  assert.deepEqual(sends, ['/v1/customers']);
 });
 
 test('known replay retains the exact request and respects both deadlines', async () => {
@@ -408,6 +438,7 @@ test('tax evidence distinguishes shipping layouts, preserves remedies and recove
   for (const evidence of ['replay', 'scoped', 'foreign', 'missing', 'quote-recovery', 'reverse-recovery', 'absent-shipping',
     'missing-shipping', 'wrong-shipping', 'missing-shipping-breakdown', 'missing-line-breakdown', 'missing-header', 'missing-rate-type',
     'missing-not-imposed', 'empty-header', 'empty-line-breakdown', 'wrong-rate-type', 'wrong-detail-rate',
+    'missing-rated-shipping', 'extra-rated-header', 'extra-not-imposed-detail',
     'invalid-breakdown-amount', 'invalid-header-inclusive', 'invalid-sourcing', 'no-effect', 'port-refusal', 'posting-refusal']) {
     const calculations = new Map<string, { currency: string; tax_date: number; lines: object[]; shipping: object | null }>();
     const reports = new Map<string, { currency: string; tax_date: number; lines: object[]; shipping: object | null }>();
@@ -424,10 +455,12 @@ test('tax evidence distinguishes shipping layouts, preserves remedies and recove
       taxable_amount: line.amount ?? 0, taxability_reason: 'standard_rated',
       amount: Math.round((line.amount ?? 0) / 10), jurisdiction, sourcing: 'destination', tax_rate_details: rate,
     });
+    type Detail = Omit<ReturnType<typeof assessed>, 'tax_rate_details'> & { tax_rate_details: typeof rate | null };
     const list = (url: string, data: object[]) => ({ object: 'list', url, data, has_more: false });
-    const summarize = (line: { amount?: number }) => {
+    const summarize = <Line extends { amount?: number }>(line: Line) => {
       const detail = assessed(line);
-      return { ...line, amount_tax: detail.amount, tax_breakdown: [detail] };
+      const tax_breakdown: Detail[] = [detail];
+      return { ...line, amount_tax: detail.amount, tax_breakdown };
     };
     function report(id: string, wire: { reference: string; metadata?: object }, data: NonNullable<ReturnType<typeof reports.get>>,
       posted_at: number, original?: string) {
@@ -450,17 +483,24 @@ test('tax evidence distinguishes shipping layouts, preserves remedies and recove
           const ca = params.customer_details?.address?.state === 'CA';
           const lines = params.line_items.map(line => {
             const component = summarize(line);
-            return ca ? { ...component, amount_tax: 0, tax_breakdown: [{ ...assessed(line), amount: 0,
-              jurisdiction: { ...jurisdiction, state: 'CA', display_name: 'California' },
-              taxability_reason: 'not_subject_to_tax', tax_rate_details: null }], id: 'item_' + id, livemode: false }
-              : { ...component, id: 'item_' + id, livemode: false, object: 'tax.calculation_line_item' };
+            if (ca) {
+              component.amount_tax = 0;
+              component.tax_breakdown = [{ ...assessed(line), amount: 0,
+                jurisdiction: { ...jurisdiction, state: 'CA', display_name: 'California' },
+                taxability_reason: 'not_subject_to_tax', tax_rate_details: null }];
+            }
+            return { ...component, id: 'item_' + id, livemode: false, object: 'tax.calculation_line_item' };
           });
           const cost = params.shipping_cost ? summarize(params.shipping_cost) : null;
           const shipping = ca && evidence === 'absent-shipping' ? null : ca && cost ? { ...cost, tax_breakdown: [] } : cost;
-          const headers = [...lines, ...(shipping ? [shipping] : [])].flatMap(line => line.tax_breakdown.map(detail => ({
-            ...detail, inclusive: false, tax_rate_details: ca ? { tax_type: null, percentage_decimal: '0', country: 'US', state: 'CA',
+          const details = [...lines, ...(shipping ? [shipping] : [])].flatMap(item => item.tax_breakdown);
+          const headers = [{ inclusive: false,
+            amount: details.reduce((sum, row) => sum + row.amount, 0),
+            taxable_amount: details.reduce((sum, row) => sum + row.taxable_amount, 0),
+            taxability_reason: ca ? 'not_subject_to_tax' : 'standard_rated',
+            tax_rate_details: ca ? { tax_type: null, percentage_decimal: '0', country: 'US', state: 'CA',
               flat_amount: null, rate_type: null } : { ...rate, country: 'US', state: 'NY', flat_amount: null, rate_type: 'percentage' },
-          })));
+          }];
           const tax_date = params.tax_date ?? at();
           const totals = [...lines, ...(shipping ? [shipping] : [])];
           calculations.set(id, { currency: params.currency, tax_date, lines, shipping });
@@ -478,6 +518,7 @@ test('tax evidence distinguishes shipping layouts, preserves remedies and recove
             if (evidence === 'missing-not-imposed' || evidence === 'empty-header') result.tax_breakdown = [];
             if (evidence === 'missing-not-imposed' || evidence === 'empty-line-breakdown') lines[0]!.tax_breakdown = [];
             if (evidence === 'wrong-rate-type') headers[0]!.tax_rate_details.rate_type = 'percentage';
+            if (evidence === 'extra-not-imposed-detail') lines[0]!.tax_breakdown.push({ ...lines[0]!.tax_breakdown[0]! });
             if (evidence === 'wrong-detail-rate') Object.assign(lines[0]!.tax_breakdown[0]!, { tax_rate_details: rate });
             if (evidence === 'invalid-breakdown-amount') Object.assign(lines[0]!.tax_breakdown[0]!, { amount: '0' });
             if (evidence === 'invalid-header-inclusive') Object.assign(headers[0]!, { inclusive: 'false' });
@@ -487,7 +528,11 @@ test('tax evidence distinguishes shipping layouts, preserves remedies and recove
               quoteReceipts.set(id, result);
               throw new ProviderUnavailable();
             }
-          } else if (evidence === 'invalid-sourcing') Object.assign(lines[0]!.tax_breakdown[0]!, { sourcing: '' });
+          } else if (params.tax_date === undefined) {
+            if (evidence === 'invalid-sourcing') Object.assign(lines[0]!.tax_breakdown[0]!, { sourcing: '' });
+            if (evidence === 'missing-rated-shipping') shipping!.tax_breakdown.pop();
+            if (evidence === 'extra-rated-header') headers.push({ ...headers[0]! });
+          }
           return result;
         },
         async listLineItems(id: string) { return list('/v1/tax/calculations/' + id + '/line_items', calculations.get(id)!.lines); },
@@ -535,7 +580,7 @@ test('tax evidence distinguishes shipping layouts, preserves remedies and recove
         return evidence === 'scoped' ? 'tax_sale' : evidence === 'foreign' ? 'tax_other' : undefined;
       }, new AbortController().signal);
     if (['replay', 'scoped', 'quote-recovery', 'reverse-recovery', 'absent-shipping'].includes(evidence)) {
-      await run();
+      await assert.doesNotReject(run(), 'the exact quote row set must qualify: ' + evidence);
       const posts = sends.filter(send => 'calculation' in send.data);
       const reversals = sends.filter(send => 'original_transaction' in send.data);
       if (evidence === 'scoped') assert.equal(posts.length, 1);
@@ -545,9 +590,15 @@ test('tax evidence distinguishes shipping layouts, preserves remedies and recove
       assert.equal(prompts.length, ['quote-recovery', 'scoped', 'reverse-recovery'].includes(evidence) ? 1 : 0);
       assert.ok(notes.some(row => row.operation === 'tax_reporting'));
       assert.ok(notes.some(row => row.region === 'CA' && row.shippingShape === (evidence === 'absent-shipping' ? 'absent' : 'empty')));
-      assert.ok(notes.some(row => row.region === 'CA' && row.shape === 'header' && row.rateType === null && row.taxability === 'not_subject_to_tax'));
-      assert.ok(notes.some(row => row.region === 'CA' && row.shape === 'line' && row.hasRate === false));
-      assert.ok(notes.some(row => row.region === 'NY' && row.shape === 'header' && row.rateType === 'percentage'));
+      const rowSet = notes.filter(row => row.operation === 'tax_breakdown')
+        .map(row => [row.region, row.shape, row.taxability, row.rateType, row.hasRate, row.basisMinor, row.amountMinor]);
+      assert.deepEqual(rowSet, [
+        ['NY', 'header', 'standard_rated', 'percentage', true, 1100, 110],
+        ['NY', 'line', 'standard_rated', undefined, true, 1000, 100],
+        ['NY', 'shipping', 'standard_rated', undefined, true, 100, 10],
+        ['CA', 'header', 'not_subject_to_tax', null, true, 1000, 0],
+        ['CA', 'line', 'not_subject_to_tax', undefined, false, 1000, 0],
+      ]);
     } else {
       const remedy = evidence === 'no-effect' ? 'No reporting effect was observed. Check tax configuration in the bound test account.'
         : evidence === 'port-refusal' ? 'Supply a whole-second instant within the calculation window.'

@@ -182,6 +182,7 @@
   "providerQualification": {
     "managed": [
       "host/provider-portable.ts",
+      "host/provider-response.ts",
       "host/provider-transport.ts",
       "host/provider-qualification.ts",
       "test/provider-qualification.test.ts"

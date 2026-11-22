@@ -2618,6 +2618,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/provider-response.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/provider-transport.ts",
       "class": "public-output"
     },
