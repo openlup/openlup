@@ -102,6 +102,24 @@
     "change": {"reference": "docs/guide/concepts/orders.md#order-state-and-money"}
   },
   {
+    "key": "market.fiscalProfile",
+    "domain": "commerce",
+    "kind": "code",
+    "goal": "Set the fiscal country, tax category, VAT rate in basis points, and legal basis via COMMERCE_FISCAL_COUNTRY, COMMERCE_FISCAL_CATEGORY, COMMERCE_FISCAL_VAT_RATE_BPS, and COMMERCE_FISCAL_LEGAL_BASIS.",
+    "schemaVersion": 1,
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "description": "Fiscal overrides after trimming and parsing. Each field is optional.", "properties": {"country": {"type": "string", "pattern": "^[A-Z]{2}$"}, "category": {"type": "string", "minLength": 1}, "vatRateBps": {"type": "integer", "minimum": 0, "maximum": 10000}, "legalBasis": {"type": "string", "minLength": 1}}, "additionalProperties": false},
+    "previewSchema": null,
+    "examples": [{"value": {"country": "ZZ", "category": "Example supply", "vatRateBps": 800, "legalBasis": "Example VAT rule"}}],
+    "fallback": null,
+    "absentMeans": {"description": "readFiscalProfile uses the corresponding caller-supplied value for each unset or blank environment variable after trimming. The resolved country must be two uppercase ASCII letters. A configured VAT rate must be one to five ASCII digits from 0 through 10000. Invalid country or rate values throw InvalidFiscalProfileError. Category and legal basis are free text.", "source": "caller-supplied SettlementProfileFallbacks.fiscalProfile (application code)", "value": null},
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The market-packs reader leaves fallback fiscal facts to the caller. Each override can change independently, and the fiscal country is independent of the settlement region.",
+    "effect": {"appliesTo": "readFiscalProfile supplies the VAT-inclusive treatment in readSettlementProfile (@openlup/platform/market-packs). Quotes using that profile carry its fiscal facts and use the VAT rate to split gross amounts into net and VAT.", "frozenOn": ["Existing order lines keep their recorded VAT rate and net amounts. Issued invoices keep their recorded tax snapshot."], "impact": "money"},
+    "runtime": {"level": "read-only", "reason": "Supply the environment variables and fallback fiscal facts in the application that reads the profile. The settings tool provides discovery."},
+    "change": {"reference": "docs/guide/reference/configuration.md"},
+    "rules": []
+  },
+  {
     "key": "market.settlementProfile",
     "domain": "commerce",
     "kind": "code",

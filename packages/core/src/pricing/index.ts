@@ -8,3 +8,5 @@ export * from "./pricingBreakdown.js";
 export * from "./targetPriceAllocation.js";
 /** @beta */
 export * from "./catalogueMoney.js";
+/** @beta @experimental */
+export * from "./catalogueMoneyV2.js";

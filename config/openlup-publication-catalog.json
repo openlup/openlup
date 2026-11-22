@@ -3622,6 +3622,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/pricing/catalogueMoneyV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/pricing/index.ts",
       "class": "public-output"
     },
@@ -3778,6 +3782,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/test/catalogueMoneyV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/catalogueMoneyV2Golden.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/consumerTooling.test.ts",
       "class": "public-output"
     },
@@ -3791,6 +3803,10 @@
     },
     {
       "path": "packages/core/test/fixtures/catalogue-money.v1.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/fixtures/catalogue-money.v2.json",
       "class": "public-output"
     },
     {
