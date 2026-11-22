@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "id": "tax/avalara",
+  "domain": "tax",
+  "providerKind": "avalara",
+  "displayName": "Avalara AvaTax (REST v2)",
+  "summary": "Zero-SDK Avalara AvaTax REST v2 exclusive-tax calculation recipe (global + US-first) with Basic Auth over pinned HTTPS, SalesOrder quotes, SalesInvoice commits, ReturnInvoice partial/remainder reversals, and DocVoided full voids.",
+  "regions": [
+    "global",
+    "US",
+    "NA",
+    "EU",
+    "APAC"
+  ],
+  "status": "experimental",
+  "openlupPlatformRange": "^1.3.0",
+  "testedAgainstPlatformVersion": "1.3.0",
+  "contractImports": [
+    "@openlup/core/pricing",
+    "@openlup/platform/catalog/contracts",
+    "@openlup/platform/tax",
+    "@openlup/platform/tax/contracts"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/tax",
+    "exportName": "runTaxAdapterConformance"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://sandbox-rest.avatax.com",
+    "https://rest.avatax.com"
+  ],
+  "webhookAuth": "none",
+  "browserSurface": {
+    "kind": "none"
+  },
+  "supportedCurrenciesPolicy": "host-configured",
+  "staticCapabilities": {
+    "adapter": "avalara",
+    "adapterVersion": "1",
+    "markets": [],
+    "currencies": [],
+    "bases": [
+      "exclusive"
+    ],
+    "sourcing": [
+      "destination",
+      "ship_from"
+    ],
+    "evidence": {
+      "lines": true,
+      "delivery": true,
+      "fees": true
+    },
+    "registrations": "effective_intervals",
+    "validity": "probe_by_recalculation",
+    "calculationLifetimeMs": 86400000,
+    "posting": "provider",
+    "reversals": [
+      "full",
+      "lines"
+    ],
+    "recovery": [
+      "commit",
+      "reverse"
+    ]
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "recipe.json",
+      "LIVE_QUALIFICATION.md",
+      "server/index.ts",
+      "server/digests.ts",
+      "server/client-contract.ts",
+      "server/adapter.ts",
+      "tests/fixtures.ts",
+      "tests/conformance.test.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/tax/avalara/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/tax/avalara/tests/mount-proof.test.ts"
+  }
+}
