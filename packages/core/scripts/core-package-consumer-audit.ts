@@ -32,9 +32,11 @@ type AuditInput = {
   packFiles: string[];
 };
 
-// Use the owner-approved adapter names from scripts/public-ci-neutrality.mjs.
-const documentedAdapters = [
-  ["payments", ["str" + "ipe", "tp" + "ay"]],
+// Keep this package-local list in parity with the repository neutrality policy.
+const firstPaymentAdapter = "str" + "ipe";
+export const documentedAdapters = [
+  ["payments", [firstPaymentAdapter, "tp" + "ay"]],
+  ["tax", [firstPaymentAdapter]],
   ["fulfillment", ["omni" + "pack"]],
   ["communications", ["res" + "end", "kla" + "viyo"]],
 ] as const;

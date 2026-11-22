@@ -13766,10 +13766,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/stripe-tax-test-mode.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/subscriber-retention-authorization-fixture.ts",
       "class": "public-output"
     },
@@ -21695,10 +21691,6 @@
     },
     {
       "path": "server/infra/stripe/stripeApiClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/stripe/stripeTaxClient.ts",
       "class": "public-output"
     },
     {

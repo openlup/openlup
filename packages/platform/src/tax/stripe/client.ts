@@ -7,7 +7,7 @@ import type { TaxRefusalCode, TaxScopeV1 } from "../contracts/index.js";
 import type { Address, CalculationParams, PageParams } from "./effects.js";
 export type { Address, CalculationParams, StripeQuoteClient } from "./effects.js";
 
-/** The SDK bridge translates confirmed idempotency conflicts at the transport boundary. */
+/** The host can report a confirmed idempotency conflict at the transport boundary. */
 export class StripeQuoteReferenceConflict extends Error {}
 export class StripeQuoteUnavailable extends Error {}
 export async function providerCall(read: () => Promise<unknown>): Promise<unknown> {

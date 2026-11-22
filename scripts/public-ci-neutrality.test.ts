@@ -4,8 +4,9 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { assertSimulatedUpgradePage, documentedAdapters } from "./packages/release-docs-pass.ts";
 import { addReleaseSection } from "./packages/release-bump.ts";
-import { allowedPaymentAdapterWords, allowedFulfillmentAdapterWords, reviewedPinnedIntroductions, neutralityIncreases, scanSnapshots, seededIntroductions, storeTermCounts, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions } from "./public-ci-neutrality.mjs";
+import { allowedPaymentAdapterWords, allowedFulfillmentAdapterWords, documentedAdapterPairs, reviewedPinnedIntroductions, neutralityIncreases, scanSnapshots, seededIntroductions, storeTermCounts, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions } from "./public-ci-neutrality.mjs";
 
 vi.mock("node:child_process", async importOriginal => {
   const original = await importOriginal<typeof import("node:child_process")>();
@@ -1138,6 +1139,36 @@ describe.each([
     // The pinned scanner already excludes words with adjacent word characters.
     expect(allowedPaymentAdapterWords(agentGuide, `${subpath}x api/${module}-${vendor}s.api.md`, category)).toBe(0);
   });
+});
+
+it("keeps the packed release-note audit in parity with the neutrality adapter pairs", () => {
+  const auditPairs = documentedAdapters.flatMap(([module, providers]) => providers.map(provider => module + "/" + provider));
+  expect(auditPairs.sort()).toEqual(documentedAdapterPairs.map(pair => pair.join("/")).sort());
+});
+
+it("admits the generated tax adapter section and inline fragment reference", () => {
+  const { root } = fixture({
+    "config/openlup-packages.json": JSON.stringify({ schemaVersion: 2, packages: [
+      { name: "@openlup/core", directory: "packages/core", publish: true },
+    ], unreleased: [] }),
+    "packages/core/package.json": '{"name":"@openlup/core","version":"0.4.0"}',
+  });
+  git(root, ["tag", "openlup-core-v0.4.0"]);
+  const provider = ["str", "ipe"].join("");
+  const subpath = "tax/" + provider;
+  const report = "packages/platform/api/tax-" + provider + ".api.md";
+  const fragment = "packages/core/changes/tax-adapter.md";
+  const inline = "Use `@openlup/platform/" + subpath + "`.";
+  put(root, fragment, inline + "\n");
+  put(root, report, "## dist/" + subpath + "/index.d.ts\n\n```ts\nexport declare const factory: unknown;\n```\n");
+  commit(root);
+
+  const upgrade = assertSimulatedUpgradePage(root)?.text;
+  expect(upgrade).toContain("### `" + report + "`");
+  expect(upgrade).toContain(inline);
+  put(root, fragment, inline + " Bare " + provider + " prose.\n");
+  commit(root);
+  expect(() => assertSimulatedUpgradePage(root)).toThrow(/downstream provider dependency/u);
 });
 
 it("admits only approved adapter tokens for all three families in assembled release notes", () => {

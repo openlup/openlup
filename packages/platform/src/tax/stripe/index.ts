@@ -14,6 +14,10 @@ import { assertClientScope, assertScope, commit, refuseError, reverse } from "./
 export interface StripeTaxAdapterOptions {
   readonly installationRef: string;
   readonly marketPack: StripeQuoteMarketPack;
+  /**
+   * Matches the provider SDK's Tax resources. Pass its calculations, registrations
+   * and transactions resources directly with their verified account and mode in scope.
+   */
   readonly client: Client;
   readonly effects: Effects;
   readonly now: () => Date;

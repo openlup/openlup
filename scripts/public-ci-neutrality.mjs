@@ -172,10 +172,11 @@ const platformAdapterCarriers = new Set([
   // owner-approved via #526/#585 (2026-11-07)
   "packages/platform/AGENTS.md",
 ]);
-const platformAdapterEntries = [
+const platformAdapterPairs = [
   ...paymentAdapterNames.map((provider) => ["payments", provider]),
   ["tax", paymentAdapterNames[0]],
-].map(([module, provider]) => {
+];
+const platformAdapterEntries = platformAdapterPairs.map(([module, provider]) => {
   const subpath = `${module}/${provider}`;
   const reportName = `${module}-${provider}`;
   return {
@@ -281,6 +282,11 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
 
 // One vendor category, with exact paths and complete, case-sensitive carrier tokens.
 const fulfillmentAdapterName = "omni" + "pack";
+export const documentedAdapterPairs = [
+  ...platformAdapterPairs,
+  ...adapterNames.map(name => ["communications", name]),
+  ["fulfillment", fulfillmentAdapterName],
+];
 const fulfillmentAdapterWord = new RegExp(`\\b${fulfillmentAdapterName}\\b`, "gi");
 const fulfillmentAdapterPaths = new RegExp(`^packages/platform/(?:src|test)/fulfillment/${fulfillmentAdapterName}/`);
 const fulfillmentAdapterSubpath = new RegExp(`(?<![\\w-])fulfillment/${fulfillmentAdapterName}(?![\\w-])`, "g");
