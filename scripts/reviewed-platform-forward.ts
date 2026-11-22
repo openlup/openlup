@@ -3605,12 +3605,14 @@ function isPriceListRowMutation(tokens: readonly PlatformSqlToken[]): boolean {
   return nativeQualified(tokens, schema)?.name === "public.price_lists";
 }
 
-function assertNoInterveningPriceListChange(path: string, bytes: Buffer): void {
+function assertPriceListBasisFile(path: string, bytes: Buffer, predecessorStatements?: ReadonlySet<string>): void {
   const sql = bytes.toString("utf8");
-  if (!priceListMention.test(sql)) return;
+  if (!predecessorStatements && !priceListMention.test(sql)) return;
 
   const drift = (reason: string) => new Error(`reviewed native store qualified price list basis SELECT predecessor definition drifted: ${path}. ${reason}`);
-  const incomplete = "Cannot completely tokenize an intervening file that may reference public.price_lists.";
+  const incomplete = predecessorStatements
+    ? "Cannot completely tokenize the price list basis predecessor file."
+    : "Cannot completely tokenize an intervening file that may reference public.price_lists.";
   // Check raw control characters before splitting. For example, a CR can end
   // a PostgreSQL line comment earlier than the splitter would end it.
   if (!Buffer.from(sql, "utf8").equals(bytes) || bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) {
@@ -3629,6 +3631,10 @@ function assertNoInterveningPriceListChange(path: string, bytes: Buffer): void {
     // A raw mention catches qualified, quoted and opaque references without
     // resolving a relation name. An escaped identifier may hide the name.
     if (/u&"/iu.test(statement)) throw drift("An escaped identifier prevents checking the price-list reference.");
+    if (predecessorStatements) {
+      if (!predecessorStatements.has(statement)) throw drift("Only the pinned column and its optional CHECK may reference price_lists in the predecessor file.");
+      continue;
+    }
     const word = (index: number, value: string) => nativeWord(tokens, index, value);
     const privilegesOrComment = word(0, "GRANT") || word(0, "REVOKE") || (word(0, "COMMENT") && word(1, "ON"));
     if (!privilegesOrComment && !isPriceListRowMutation(tokens)) {
@@ -3641,10 +3647,11 @@ function assertNoInterveningPriceListChange(path: string, bytes: Buffer): void {
 const priceListBasisCheck = /^add constraint ([a-z_][a-z_0-9]{0,62}) check \( (?:amount_basis is null or )?amount_basis in \( (?:"tax_inclusive" , "tax_exclusive"|"tax_exclusive" , "tax_inclusive") \) \)(?: not valid)?$/u;
 function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earlierSlots: NativeStoreSlot[], preceding: { path: string; bytes: Buffer }[]): ForwardBinding {
   const slots = new Map(earlierSlots.map(slot => [slot.path, slot]));
+  const predecessorStatements = new Set<string>();
   let predecessor: { path: string; bytes: Buffer } | undefined, checkName: string | undefined;
   for (const source of preceding) {
     if (predecessor) {
-      assertNoInterveningPriceListChange(source.path, source.bytes);
+      assertPriceListBasisFile(source.path, source.bytes);
       continue;
     }
     for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
@@ -3664,10 +3671,14 @@ function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earl
       const listed = slots.get(source.path)?.existingTableStatements?.includes(statement);
       const alter = nativeStoreAlter(statement);
       const actions = alter?.actions ?? [statement.slice(tokens[actionStart]?.start, tokens.at(-1)?.start)];
+      let allActionsApproved = true;
       for (const action of actions) {
         const parsed = platformSqlTokens(action, false, true);
         const identifiers = parsed.tokens.map(nativeIdentifier);
-        if (!identifiers.includes("amount_basis") && (!checkName || !identifiers.includes(checkName))) continue;
+        if (!identifiers.includes("amount_basis") && (!checkName || !identifiers.includes(checkName))) {
+          allActionsApproved = false;
+          continue;
+        }
         if (!listed || !parsed.complete) throw drift();
         const shape = parsed.tokens.map(token => {
           if (token.kind === "string") return JSON.stringify(token.value);
@@ -3685,9 +3696,13 @@ function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earl
         }
         throw drift();
       }
+      // An exact ALTER pin can list several actions. Only a statement whose
+      // every action belongs to the approved column or CHECK may name the table.
+      if (source === predecessor && allActionsApproved) predecessorStatements.add(statement);
     }
   }
   if (!predecessor) throw new Error("reviewed native store qualified price list basis SELECT requires an earlier slot introducing public.price_lists.amount_basis");
+  assertPriceListBasisFile(predecessor.path, predecessor.bytes, predecessorStatements);
   const pin = registry.nativeStoreForwards!.find(entry => entry.path === predecessor.path)!;
   assertNativeStoreForward(registry, pin.path, predecessor.bytes, preceding.filter(source => source.path < pin.path));
   return pin;

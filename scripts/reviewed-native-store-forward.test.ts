@@ -625,12 +625,12 @@ END; $$;
   };
   const baseline = { path: PLATFORM_BASELINE_FILE, bytes: Buffer.concat([before, Buffer.from("\nCREATE TABLE public.price_lists (id uuid);\n")]) };
   const exactGrant = "qualified price list basis SELECT forward must contain only the exact guarded grant with final LF";
-  function setup(text = guarded, existingTableStatements = [addColumn, addCheck]) {
+  function setup(text = guarded, existingTableStatements = [addColumn, addCheck], additionalPredecessorSql: string[] = []) {
     const value = registry();
     const slot = { ...grantSlot };
     const column = { ...columnSlot, existingTableStatements };
     value.nativeStoreForwardClass!.slots = [column, slot];
-    const sql = existingTableStatements.join("\n") + "\n";
+    const sql = [...existingTableStatements, ...additionalPredecessorSql].join("\n") + "\n";
     const pin = bind(value, 0, sql);
     bind(value, 1, text);
     const preceding = [baseline, { path: column.path, bytes: Buffer.from(sql) }];
@@ -724,6 +724,40 @@ END; $$;
   ])("refuses a coherently repinned predecessor with %s", (_label, statements) => {
     expect(setup(guarded, statements).admit).toThrow("predecessor definition drifted");
   });
+  describe("price list basis file scan", () => {
+    const index = "CREATE UNIQUE INDEX price_lists_basis_idx ON public.price_lists (amount_basis);";
+    const attach = "ADD CONSTRAINT price_lists_fixture_unique UNIQUE USING INDEX price_lists_fixture_idx";
+    const predecessorRefusal = "Only the pinned column and its optional CHECK may reference price_lists in the predecessor file";
+    it("refuses CREATE UNIQUE INDEX in the predecessor", () => {
+      const { admit } = setup(guarded, [addColumn, addCheck], [index]);
+      expect(admit).toThrow(predecessorRefusal);
+    });
+    it("refuses a separate ADD CONSTRAINT UNIQUE USING INDEX in the predecessor", () => {
+      const { admit } = setup(guarded, [addColumn, addCheck, `ALTER TABLE public.price_lists ${attach};`]);
+      expect(admit).toThrow(predecessorRefusal);
+    });
+    it("refuses UNIQUE USING INDEX combined with the pinned ADD COLUMN", () => {
+      const { admit } = setup(guarded, [`${addColumn.slice(0, -1)}, ${attach};`, addCheck]);
+      expect(admit).toThrow(predecessorRefusal);
+    });
+    it("refuses incomplete tokenization of an unrelated predecessor statement", () => {
+      const update = `UPDATE public.fixture_metadata SET ";" = 'metadata';`;
+      const { admit, value } = setup(guarded, [addColumn, addCheck], [update]);
+      value.nativeStoreForwardClass!.slots[0]!.dataStatements = [update];
+      expect(admit).toThrow("Cannot completely tokenize the price list basis predecessor file");
+    });
+    it.each([
+      ["CREATE INDEX", "CREATE INDEX price_lists_basis_idx ON public.price_lists (amount_basis);"],
+      ["quoted three-part CREATE UNIQUE INDEX", 'CREATE UNIQUE INDEX price_lists_basis_idx ON ONLY "postgres"."public"."price_lists" (amount_basis);'],
+      ["Unicode-escaped CREATE INDEX", `CREATE INDEX price_lists_basis_idx ON U&"price_list!0073" UESCAPE '!' (amount_basis);`],
+      ["ADD CONSTRAINT UNIQUE USING INDEX", `ALTER TABLE ONLY public.price_lists ${attach};`],
+    ])("refuses later %s on price_lists", (_label, statement) => {
+      const { admit, preceding } = setup();
+      preceding.push({ path: "db/platform/migrations/20990102000000_index_price_list_basis.sql", bytes: Buffer.from(statement) });
+      expect(admit).toThrow("predecessor definition drifted");
+    });
+  });
+
   const restrictiveCheck = "ADD CHECK (amount_basis = 'tax_exclusive');";
   it.each([
     ["a three-part target", `ALTER TABLE postgres.public.price_lists ${restrictiveCheck}`],
