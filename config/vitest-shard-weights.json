@@ -192,7 +192,7 @@
     "tests/postgres/m14QualifiedSession.test.ts": 1756,
     "tests/postgres/m14RecipeConformance.test.ts": 6215,
     "tests/postgres/m14ReleasedSchemaUpgrade.test.ts": 9112,
-    "tests/postgres/m14RestrictedConnectedRestore.test.ts": 236535,
+    "tests/postgres/m14RestrictedConnectedRestore.test.ts": 311386,
     "tests/postgres/m17ChannelReference.test.ts": 9653,
     "tests/postgres/m19BundleWriteExport.test.ts": 38149,
     "tests/postgres/m19CheckoutShipping.test.ts": 20251,
