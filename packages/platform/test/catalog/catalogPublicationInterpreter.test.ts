@@ -9,7 +9,7 @@ import { catalogDefinitionDigest } from "../../src/catalog/catalogDefinitionDige
 import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/draft.js";
 import { CATALOG_PUBLICATION_LIMITS } from "../../src/catalog/publicationContracts.js";
 import { assertPublishedSkuDocumentExclusion, catalogPublicationManifestSchema, decodePublishedSku, decodeStoredPublicationSku, publicationDigest, publicationJson, SKU_PAGE_DEPTH } from "../../src/catalog/publicationCodec.js";
-import { loadCatalogPublicationRules } from "../../src/catalog/publicationRules.js";
+import { assertTypedSkuAmounts, loadCatalogPublicationRules, resolvePublicationRules } from "../../src/catalog/publicationRules.js";
 import { loadCatalogRules, withCatalogPublicationRules } from "../../src/catalog/catalogPublicationRules.js";
 import type { CatalogCandidateIssue } from "../../src/catalog/contracts/candidate.js";
 import { installCatalogDefinitions } from "../../src/catalog/installCatalogDefinitions.js";
@@ -1235,6 +1235,72 @@ it("local dispatch decodes every installed hook result before transport", () => 
     expect(() => rules(invalid!)[hook]!()).toThrow(expect.objectContaining({ code: "catalog_publication_rule_failed",
       diagnostic: expect.objectContaining({ hook, cause: "invalid_result" }) }));
   }
+});
+
+const typedTerm = { code: "ARTICLE", quantityVersion: 2, netContent: {
+  dimension: "volume" as const, unit: "example:bottle", unscaled: "125", scale: 1,
+} };
+const typedPath = "/operations/3/sku/netContent";
+const evaluation = { evaluatedAt: "2000-01-01T11:30:00Z", locale: "en" };
+const amountRules = (source: string, mode?: "typed") => {
+  const { definition } = setupRules(artifact + "\n" + source);
+  return resolvePublicationRules(definition, evaluation, true, mode)!;
+};
+const gramHook = `module.exports.validateSkuAmounts = (sku, context) =>
+  sku.code === "ARTICLE" && sku.netGrams === "1" && Object.keys(sku).length === 2 && context.locale === "en";`;
+
+it("preserves the whole-gram hook and sends only the authored term to the pinned typed hook", () => {
+  const source = gramHook + `
+module.exports.validateTypedSkuAmounts = (sku, context) => sku.code === "ARTICLE" && Object.keys(sku).length === 2
+  && sku.netContent.dimension === "volume" && sku.netContent.unit === "example:bottle"
+  && sku.netContent.unscaled === "125" && sku.netContent.scale === 1 && Object.keys(sku.netContent).length === 4
+  && context.evaluatedAt === "2000-01-01T11:30:00Z" && context.locale === "en";`;
+  const legacy = amountRules(source);
+  expect(legacy.validateSkuAmounts?.({ code: "ARTICLE", netGrams: "1" })).toBe(true);
+  expect(legacy.validateTypedSkuAmounts).toBeUndefined();
+  expect(() => assertTypedSkuAmounts(amountRules(source, "typed"), typedTerm, typedPath)).not.toThrow();
+  expect(() => assertTypedSkuAmounts(amountRules(source.slice(gramHook.length), "typed"), typedTerm, typedPath)).not.toThrow();
+  expect(() => assertTypedSkuAmounts(amountRules("", "typed"), typedTerm, typedPath)).not.toThrow();
+  expect(() => assertTypedSkuAmounts(amountRules(gramHook, "typed"), typedTerm, typedPath))
+    .toThrow(expect.objectContaining({ code: "catalog_publication_integral_grams_required", message: expect.stringContaining("validateTypedSkuAmounts"),
+      diagnostic: expect.objectContaining({ path: typedPath, subject: "ARTICLE" }) }));
+});
+
+it("does not probe the typed hook on the released loader path", () => {
+  const source = gramHook + `
+module.exports = new Proxy(module.exports, { getOwnPropertyDescriptor(target, key) {
+  if (key === "validateTypedSkuAmounts") throw new Error("typed descriptor queried");
+  return Reflect.getOwnPropertyDescriptor(target, key);
+} });`;
+  expect(amountRules(source).validateSkuAmounts?.({ code: "ARTICLE", netGrams: "1" })).toBe(true);
+  expect(() => amountRules(source, "typed")).toThrow(expect.objectContaining({
+    code: "catalog_publication_rule_failed", diagnostic: expect.objectContaining({ hook: "module", cause: "throw" }),
+  }));
+});
+
+it.each([
+  ["module.exports.validateTypedSkuAmounts = 4;", "validateTypedSkuAmounts"],
+  [`Object.defineProperty(module.exports, "validateTypedSkuAmounts", { get() { throw new Error("never evaluate"); } });`, "validateTypedSkuAmounts"],
+  ["module.exports.validateSkuAmounts = 4; module.exports.validateTypedSkuAmounts = 4;", "validateSkuAmounts"],
+])("refuses the first invalid own export by descriptor only", (source, hook) => {
+  if (hook === "validateTypedSkuAmounts") expect(amountRules(source).validateTypedSkuAmounts).toBeUndefined();
+  expect(() => amountRules(source, "typed")).toThrow(expect.objectContaining({
+    code: "catalog_publication_rules_module_invalid", diagnostic: expect.objectContaining({ hook, path: hook }),
+  }));
+});
+
+it.each([
+  ["return false", "catalog_publication_authored_amounts_invalid", undefined],
+  ["return undefined", "catalog_publication_rule_failed", "undefined_result"],
+  ["return 1", "catalog_publication_rule_failed", "invalid_result"],
+  ["throw new Error('bad rule')", "catalog_publication_rule_failed", "throw"],
+  ["return Date.now() > 0", "catalog_publication_rule_failed", "realm_limit"],
+])("uses the selected term and existing diagnostic for a typed hook that executes %s", (body, code, cause) => {
+  const rules = amountRules(gramHook + `\nmodule.exports.validateTypedSkuAmounts = () => { ${body}; };`, "typed");
+  expect(() => assertTypedSkuAmounts(rules, typedTerm, typedPath)).toThrow(expect.objectContaining({
+    code, diagnostic: expect.objectContaining({ path: typedPath, subject: "ARTICLE",
+      ...(cause === undefined ? {} : { cause, hook: "validateTypedSkuAmounts" }) }),
+  }));
 });
 
 it("cycle1 publication envelope exact UTF-8 boundary", () => {

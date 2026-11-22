@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { Script } from "node:vm";
+import type { CatalogQuantity } from "@openlup/core/catalog";
 import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publicationContracts.js";
 import type { CatalogProductTypeInput, CatalogProductTypeRef } from "./contracts/productTypes.js";
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
@@ -29,15 +30,18 @@ const results = {
   classifySkuChange: [z.enum(["compatible", "material", "inconclusive"]), "Return compatible, material or inconclusive."],
   validateMembershipChange: [z.boolean(), "Return true or false to accept or refuse the membership change."],
   validateSkuAmounts: [z.boolean(), "Return true or false to accept or refuse the SKU quantity."],
+  validateTypedSkuAmounts: [z.boolean(), "Return true or false to accept or refuse the authored SKU quantity."],
 } satisfies Record<Hook, readonly [z.ZodType, string]>;
 const localContext: CatalogRulesContext = Object.freeze({ evaluatedAt: null });
 
 const requiredHooks = ["validateContent", "validateProduct", "inspectDocument", "matchesDocument", "identifyDocument",
   "deriveSkuFacts", "classifySkuChange"] as const satisfies readonly (keyof CatalogPublicationRulesModule)[];
 const optionalHooks = ["validateMembershipChange", "validateSkuAmounts"] as const satisfies readonly (keyof CatalogPublicationRulesModule)[];
+const typedAmountHook = "validateTypedSkuAmounts";
+const legacyHooks = [...requiredHooks, ...optionalHooks];
 type Binding = {
   validatorRef: `sha256:${string}`; bytes: Buffer;
-  rules(evaluation: CatalogRulesContext): CatalogPublicationRulesModule;
+  rules(evaluation: CatalogRulesContext, mode?: "typed"): CatalogPublicationRulesModule;
 };
 const boundValidators = new WeakMap<CatalogProductTypeInput["validateContent"], Binding & CatalogProductTypeRef>();
 const referenceFor = (bytes: Uint8Array): `sha256:${string}` => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
@@ -88,6 +92,28 @@ export function ruleSku({ source: _source, ...sku }: CatalogPublishedSku): Rules
   return sku;
 }
 
+/** Check the selected authored term after physical validation on the typed path. */
+export function assertTypedSkuAmounts(rules: Pick<CatalogPublicationRulesModule, "validateTypedSkuAmounts" | "validateSkuAmounts"> | undefined,
+  { code, netContent }: { code: string; netContent: CatalogQuantity }, path: string): void {
+  const hook = rules?.validateTypedSkuAmounts;
+  if (!hook) {
+    if (rules?.validateSkuAmounts) throw new CatalogPublicationError({
+      ...publicationIssue("catalog_publication_integral_grams_required", "structural", path, code),
+      detail: "Install a product rule that exports validateTypedSkuAmounts to govern count or volume amounts.",
+    });
+    return;
+  }
+  const { dimension, unit, unscaled, scale } = netContent;
+  let accepted: boolean;
+  try { accepted = hook({ code, netContent: { dimension, unit, unscaled, scale } }); }
+  catch (error) {
+    if (!(error instanceof CatalogPublicationError)) throw error;
+    throw new CatalogPublicationError({ ...error.diagnostic, phase: "structural", path, subject: code }, error.outcome);
+  }
+  if (!accepted) throw new CatalogPublicationError(
+    publicationIssue("catalog_publication_authored_amounts_invalid", "structural", path, code));
+}
+
 export function bindCatalogPublicationRules(pack: CatalogPublicationRulesPack,
   rulesFor: (type: CatalogProductTypeRef) => Uint8Array | undefined): CatalogPackInput {
   const types = pack.types.map(type => {
@@ -109,13 +135,14 @@ export function readPublicationRulesAsset(artifact: Uint8Array, evaluation = loc
 }
 
 /** @internal Only the selected definition can resolve its installed executable. */
-export function resolvePublicationRules(definition: CatalogProductTypeInput, evaluation: CatalogRulesContext, recheck = false) {
+export function resolvePublicationRules(definition: CatalogProductTypeInput, evaluation: CatalogRulesContext, recheck = false,
+  mode?: "typed") {
   const binding = boundValidators.get(definition.validateContent);
   if (!binding && !definition.publicationRules) return undefined;
   if (!binding || binding.key !== definition.key || binding.version !== definition.version
     || binding.validatorRef !== definition.validatorRef || recheck && referenceFor(binding.bytes) !== definition.validatorRef)
     return publicationRefuse("catalog_publication_rules_binding_mismatch");
-  return binding.rules(evaluation);
+  return binding.rules(evaluation, mode);
 }
 
 export function verifyCatalogRulesAtInstall(pack: CatalogPackInput): void {
@@ -144,11 +171,18 @@ export function loadCatalogPublicationRules(expectedRef: string | undefined, art
 ${source}
       })(module, module.exports);
       const exported = Object.freeze(module.exports);
-      const hooks = Object.freeze(Object.fromEntries(${JSON.stringify([...requiredHooks, ...optionalHooks])}.map(key =>
+      const hooks = Object.freeze(Object.fromEntries(${JSON.stringify(legacyHooks)}.map(key =>
         [key, Object.getOwnPropertyDescriptor(exported, key)])));
+      const typedKey = ${JSON.stringify(typedAmountHook)};
+      const typedDescriptor = () => Object.getOwnPropertyDescriptor(exported, typedKey);
+      const hookValue = descriptor => descriptor && Object.hasOwn(descriptor, "value") ? descriptor.value : undefined;
       return Object.freeze({
-        status: key => typeof hooks[key]?.value === "function" ? "callable" : hooks[key] ? "invalid" : "absent",
-        invoke: (key, args) => Reflect.apply(hooks[key]?.value, exported, parse(args)),
+        status: key => {
+          if (key !== typedKey) return typeof hooks[key]?.value === "function" ? "callable" : hooks[key] ? "invalid" : "absent";
+          const descriptor = typedDescriptor();
+          return typeof hookValue(descriptor) === "function" ? "callable" : descriptor ? "invalid" : "absent";
+        },
+        invoke: (key, args) => Reflect.apply(key === typedKey ? hookValue(typedDescriptor()) : hooks[key]?.value, exported, parse(args)),
       });
     })()`);
     type Dispatch = {
@@ -159,21 +193,26 @@ ${source}
     const probe = instantiate();
     const invalidRequired = requiredHooks.find(key => probe.status(key) !== "callable");
     const invalidOptional = optionalHooks.find(key => probe.status(key) === "invalid");
-    const hook = invalidRequired ?? invalidOptional;
-    if (hook) {
+    function refuseInvalidHook(hook: Hook, required = false): never {
       const code = "catalog_publication_rules_module_invalid";
-      const remedy = invalidRequired ? "Export it as a function." : "Export it as a function or omit it.";
+      const remedy = required ? "Export it as a function." : "Export it as a function or omit it.";
       throw new CatalogPublicationError({ ...publicationIssue(code, undefined, hook), hook,
         detail: `Product rule ${hook} must be a function. ${remedy}` });
     }
-    const available = [...requiredHooks, ...optionalHooks].filter(key => probe.status(key) === "callable");
-    return { validatorRef, bytes, rules: evaluation => {
+    if (invalidRequired) refuseInvalidHook(invalidRequired, true);
+    if (invalidOptional) refuseInvalidHook(invalidOptional);
+    const available = legacyHooks.filter(key => probe.status(key) === "callable");
+    return { validatorRef, bytes, rules: (evaluation, mode) => {
+      const status = mode === "typed" ? runRule("module", () => probe.status(typedAmountHook)) : "absent";
+      if (status === "invalid") refuseInvalidHook(typedAmountHook);
+      const keys: readonly Hook[] = status === "callable" ? [...available, typedAmountHook] : available;
       const context = { ...evaluation };
-      return Object.freeze(Object.fromEntries(available.map(key => [key, (...args: unknown[]) =>
+      return Object.freeze(Object.fromEntries(keys.map(key => [key, (...args: unknown[]) =>
         runRule(key, () => {
           // Each method receives the same explicit final argument, including local use.
           const arity = { validateContent: 1, validateProduct: 3, validateMembershipChange: 2, inspectDocument: 1,
-            matchesDocument: 2, identifyDocument: 1, validateSkuAmounts: 1, deriveSkuFacts: 2, classifySkuChange: 3 }[key];
+            matchesDocument: 2, identifyDocument: 1, validateSkuAmounts: 1, validateTypedSkuAmounts: 1,
+            deriveSkuFacts: 2, classifySkuChange: 3 }[key];
           return instantiate().invoke(key, JSON.stringify([...args.slice(0, arity), args[arity] ?? context]));
         })]))) as unknown as CatalogPublicationRulesModule;
     } };
