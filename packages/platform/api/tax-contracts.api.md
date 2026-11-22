@@ -63,7 +63,7 @@ export interface TaxCalculationPortV1 {
      * Verify successful outputs with `verifyTaxQuoteResult`. Adapter conformance will check this binding.
      */
     quote(request: TaxQuoteRequestV1): Promise<TaxQuoteResultV1>;
-    /** Decode the request and call `verifyTaxQuoteRequest` to check the original quote and evidence binding. */
+    /** Decode the request and call `verifyTaxQuoteRequest` to check the original quote, evidence and current scope binding. */
     readFiscalValidity(request: TaxFiscalValidityRequestV1): Promise<TaxFiscalValidityResultV1>;
     /**
      * The caller records a local, idempotent close for affirmatively unused or verified-unpaid evidence.
@@ -79,7 +79,7 @@ export type TaxCalculationPort = TaxCalculationPortV1;
 
 ```ts
 import type { Decode, Schema } from "./decode.js";
-import type { TaxCalculationEvidenceV1, TaxCalculationRefV1, TaxCloseReasonV1, TaxCommitRequestV1, TaxCoverageInputV1, TaxCoverageV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxReverseRequestV1 } from "./types.js";
+import type { TaxCalculationEvidenceV1, TaxCalculationRefV1, TaxCloseReasonV1, TaxCommitRequestV1, TaxCoverageInputV1, TaxCoverageV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxReverseRequestV1, TaxScopeV1 } from "./types.js";
 export declare const ref: Decode<string>;
 export declare const moneyRef: Decode<string>;
 export declare const instant: Decode<string>;
@@ -91,12 +91,7 @@ declare const intervalFields: Decode<{
     until: string;
 }>>;
 export declare const interval: Decode<ReturnType<typeof intervalFields>>;
-export declare const scope: Decode<{
-    adapter: string;
-    adapterVersion: string;
-    accountRef: string;
-    mode: "live" | "test";
-} & Partial<{}>>;
+export declare const scope: Decode<TaxScopeV1>;
 export declare const taxCoverageV1Schema: Schema<TaxCoverageV1>;
 export declare const coverageInputSchema: Schema<TaxCoverageInputV1>;
 export declare const quoteRequestDocumentSchema: Schema<TaxQuoteRequestV1>;
@@ -309,7 +304,7 @@ export type TaxQuoteRequestV1 = Readonly<{
  *   policyRevision, classMapRevision, coverage, tax, fees }`. Use the coverage
  *   vector for `coverage`, the tax rows with `resolutionDigest` and
  *   `providerLineRef` omitted for `tax`, and the fee rows for `fees`.
- *   This payload excludes the request key, calculation ref, times and expiry.
+ *   This payload excludes the request key, calculation ref, provider line IDs, times and expiry.
  * - `platform.tax.evidence.v1` binds this whole evidence object.
  *
  * Supply one metadata row per emitted assessment, including zero amounts.
@@ -331,6 +326,11 @@ export type TaxCalculationEvidenceV1 = Readonly<{
     classMapRevision: string;
     coverage: CoverageEvidence;
     fiscalDigest: string;
+    /** Complete verified merchandise line IDs for reporting, including lines without assessments. */
+    providerLines?: List<Readonly<{
+        lineKey: string;
+        providerLineRef: string;
+    }>>;
     positions: Readonly<{
         tax: List<Assessed>;
         fees: List<Fee>;
@@ -439,7 +439,8 @@ export type TaxCapabilitiesV1 = Readonly<{
         fees: boolean;
     }>;
     registrations: "effective_intervals" | "unsupported";
-    validity: "read_only" | "unsupported";
+    /** Recalculation uses a fresh quote and leaves the validity read effect-free. */
+    validity: "read_only" | "unsupported" | "probe_by_recalculation";
     calculationLifetimeMs: number;
     posting: "provider" | "unsupported";
     reversals: List<"full" | "lines" | "amount">;

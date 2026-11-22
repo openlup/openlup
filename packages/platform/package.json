@@ -186,6 +186,11 @@
       "import": "./dist/tax/index.js",
       "default": "./dist/tax/index.js"
     },
+    "./tax/stripe": {
+      "types": "./dist/tax/stripe/index.d.ts",
+      "import": "./dist/tax/stripe/index.js",
+      "default": "./dist/tax/stripe/index.js"
+    },
     "./tax/contracts": {
       "types": "./dist/tax/contracts/index.d.ts",
       "import": "./dist/tax/contracts/index.js",

@@ -154,6 +154,7 @@ describe("packed consumer dependency roots", () => {
   it.each(["CHANGELOG.md", upgradePage])("accepts exact adapter references only in %s", path => {
     const adapters = [
       ["payments", paymentAdapter],
+      ["tax", paymentAdapter],
       ["payments", "tp" + "ay"],
       ["fulfillment", "omni" + "pack"],
       ["communications", "res" + "end"],

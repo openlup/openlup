@@ -110,6 +110,7 @@ or external-write authority. The application's own instructions govern.
 | `./subscriptions/contracts` | capability | stable |
 | `./tax` | capability | experimental |
 | `./tax/contracts` | capability | experimental |
+| `./tax/stripe` | capability | experimental |
 
 This table follows `release-gates.json`: stable exports use SemVer from 1.0.0; experimental and testing exports are excluded; read [the changelog](CHANGELOG.md) before upgrading.
 
