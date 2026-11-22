@@ -583,7 +583,8 @@ it("transfers same-SKU governed bindings and preserves legacy NULL facts", async
     await db.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
     await db.query("INSERT INTO public.subscriptions(id,client_id,cadence_days) VALUES($1,$2,28)", [subscription, client]);
     await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,currency_code,unit_price_minor,catalog_sku_revision_id)
-      SELECT $1,id,1,0,'XXX',100,CASE WHEN id=$2 THEN $3::uuid END FROM public.catalog_skus WHERE id=$2 OR product_id=$4`,
+      SELECT $1,id,1,0,'XXX',100,CASE WHEN id=$2 THEN $3::uuid END FROM public.catalog_skus
+      WHERE id=$2 OR id=(SELECT primary_sku_id FROM public.catalog_products WHERE id=$4)`,
     [subscription, data.skuId, first.skuRevisionId, products[0]]);
     await db.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,'cancelled','XXX',0)", [order, client]);
     const key = `receipt:${order}`;
