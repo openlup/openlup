@@ -240,6 +240,7 @@ describe("receipt-backed preview acceptance", () => {
   it.each([
     ["issued predecessor", 0, [ok, ok, ok, ok]],
     ["a co-located rule change", 1, [ok, ok, coLocated, coLocated]],
+    ["a co-located installation matrix change", 1, [ok, ok, coLocated, coLocated]],
     ["a co-introduced predecessor", 1, [unapproved, unissued, unapproved, unissued, unissued]],
   ] as const)("checks %s for receipt-backed preview acceptance", (scenario, exit, verdicts) => {
     const f = fixture(), source = readFileSync(preimage);
@@ -250,6 +251,7 @@ describe("receipt-backed preview acceptance", () => {
     stageNativeForward(f, sql, entry());
     f.put(PLATFORM_MIGRATION_MANIFEST, manifest([row, { file: path, sha256: sha256(sql) }]));
     if (scenario === "a co-located rule change") f.put("scripts/reviewed-platform-forward.ts", "// Changed admission rule.\n");
+    if (scenario === "a co-located installation matrix change") f.put("tests/postgres/subscriptionExactInstallation.test.ts", "// Changed installation proof.\n");
     const head = f.commit();
     const result = cli(f.root, ["--base", base, "--head", head, STALE]);
     expect(result.stderr).toBe("");

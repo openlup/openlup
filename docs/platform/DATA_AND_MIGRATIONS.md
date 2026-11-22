@@ -2679,9 +2679,9 @@ package-editor migration by path and hash. In the native prefix it refuses
 files that literally name the preview table beyond the pinned package-editor
 and sized-editor migrations. Earlier SQL can also reach the table through
 computed identifiers. Immediately before the forward, the PostgreSQL proof
-compares the complete catalogue definition with one expected snapshot. It
-resolves catalogue references to stable names and omits only the named
-deny-list of instance-specific fields in the [proof](../../tests/postgres/nativeStoreForwardCatalog.shared.ts).
+compares the table and every object that depends on it with one expected
+catalogue snapshot, using stable names and omitting only the named deny-list
+of instance-specific fields in the [proof](../../tests/postgres/nativeStoreForwardCatalog.shared.ts).
 The [installation matrix](../../tests/postgres/subscriptionExactInstallation.test.ts)
 runs the same check on all five shipped profiles.
 
@@ -2933,6 +2933,7 @@ refused when it also touches admission machinery, and the machinery includes the
 catalog test and these named files:
 `tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts`,
 `tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts`, `tests/postgres/nativeStoreForwardCatalog.shared.ts`,
+`tests/postgres/subscriptionExactInstallation.test.ts`,
 `tests/helpers/postgresContainer.ts`, `vitest.config.ts`, `scripts/run-vitest.mjs`,
 `scripts/ci-test-scope.mjs`, `scripts/ci-image-pull.mjs`, `scripts/ci-image-mirror.mjs`,
 `scripts/disposable-docker.mjs`, `scripts/ci-vitest-duration-keys.ts`,

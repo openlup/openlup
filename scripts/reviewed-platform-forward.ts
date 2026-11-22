@@ -1539,6 +1539,7 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
 // touches any of them, or anything under tests/setup/, is refused; code these files run is a review duty, not a control.
 export const NATIVE_CATALOG_CONTROLS = [
   "tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts", "tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts", "tests/postgres/nativeStoreForwardCatalog.shared.ts",
+  "tests/postgres/subscriptionExactInstallation.test.ts",
   "tests/helpers/postgresContainer.ts", "vitest.config.ts", "scripts/run-vitest.mjs", "scripts/ci-test-scope.mjs",
   "scripts/ci-image-pull.mjs", "scripts/ci-image-mirror.mjs", "scripts/disposable-docker.mjs", "scripts/ci-vitest-duration-keys.ts", "scripts/coverage-summary-protocol.ts",
   "src/test/setup.ts", "src/checkout/machine/commerceRequestCache.ts", "config/ci-images.json", ".npmrc",
