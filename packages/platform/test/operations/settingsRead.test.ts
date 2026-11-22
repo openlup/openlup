@@ -182,6 +182,7 @@ describe("settings goal search", () => {
     ["renewal retry policy", "subscriptions.retrySchedule"],
     ["skus", "catalog.optionalGtin"],
     ["VAT rate", "market.fiscalProfile"],
+    ["merchant tax registration coverage history", "tax.coverage"],
   ])("includes %s matches such as %s", (goal, key) => {
     const { entries } = catalogue.listResult.parse(listSettings({ goal }));
     expect(entries.map(entry => entry.key)).toContain(key);

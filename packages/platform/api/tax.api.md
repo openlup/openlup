@@ -117,6 +117,137 @@ export type { LocalRateTableOptionsV1 } from "./localRateTable.js";
 export { runTaxAdapterConformance } from "./adapterConformance.js";
 export type { TaxConformanceCaseV1, TaxConformanceSubjectV1 } from "./adapterConformance.js";
 export { compareTaxRecalculationProbe } from "./compareProbe.js";
+export { applyTaxCoverageRevision, bindTaxCoverageReader, describeTaxCoverageSetting } from "./installedCoverage.js";
+export type { TaxCoverageRevision } from "./installedCoverage.js";
+```
+## dist/tax/installedCoverage.d.ts
+
+```ts
+import type { TaxCoverageV1 } from "./contracts/index.js";
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+type Scope = Readonly<{
+    installationRef: string;
+    accountRef: string;
+}>;
+/** @experimental Stored coverage revision. The timestamp is UTC with microsecond precision. */
+export interface TaxCoverageRevision {
+    readonly installation_ref: string;
+    readonly account_ref: string;
+    readonly revision: string;
+    readonly sequence_no: number;
+    readonly previous_revision: string | null;
+    readonly coverage: TaxCoverageV1;
+    readonly coverage_digest: string;
+    readonly actor_ref: string;
+    readonly recorded_at: string;
+}
+type ApplyInput = Readonly<{
+    expectedHead: string | null;
+    document: Scope & Readonly<{
+        actorRef: string;
+        coverage: TaxCoverageV1;
+    }>;
+}>;
+type ApplyRefusal = Readonly<{
+    kind: "refused";
+    code: "tax_invalid_input" | "tax_coverage_revision_conflict";
+    field: string;
+    remedy: string;
+}>;
+/** @experimental Append or replay one revision using a migration-owner executor in READ COMMITTED. */
+export declare function applyTaxCoverageRevision(ownerExecutor: Executor, input: ApplyInput): Promise<TaxCoverageRevision | ApplyRefusal>;
+/** @experimental Bind the connected settings reader to a host-selected native installation and account. */
+export declare function bindTaxCoverageReader(db: Executor, scope: Scope): () => Promise<{
+    readonly present: false;
+    value?: undefined;
+    revision?: undefined;
+} | {
+    readonly present: true;
+    readonly value: {
+        declarations: (Readonly<{
+            jurisdiction: string;
+            taxKind: string;
+            effective: Readonly<{
+                from: string;
+                until?: string;
+            }>;
+            actorRef: string;
+            recordedAt: string;
+        }> & (Readonly<{
+            status: "registered";
+        }> | Readonly<{
+            status: "not_registered_acknowledged";
+            acknowledgementRef: string;
+        }>))[];
+        schemaVersion: 1;
+        accountRef: string;
+        revision: string;
+    };
+    readonly revision: string;
+}>;
+/** @experimental Discovery and validation for merchant tax coverage declarations. */
+export declare function describeTaxCoverageSetting(): {
+    readonly key: "tax.coverage";
+    readonly domain: "tax";
+    readonly kind: "installed";
+    readonly goal: "Record and inspect merchant tax coverage declarations by jurisdiction, tax kind and effective dates.";
+    readonly schemaVersion: 1;
+    readonly schema: {
+        type: string;
+        additionalProperties: boolean;
+        required: string[];
+        properties: Record<string, unknown>;
+    };
+    readonly rules: readonly [{
+        readonly code: "tax_invalid_input";
+        readonly path: readonly [];
+        readonly description: "Supply the documented declaration or request shape. Use nonoverlapping intervals for each jurisdiction and tax kind, and include an acknowledgement reference for declarations of non-registration.";
+        readonly check: (value: unknown) => boolean;
+    }];
+    readonly examples: readonly [{
+        readonly value: {
+            readonly schemaVersion: 1;
+            readonly accountRef: "account-a";
+            readonly revision: "coverage-1";
+            readonly declarations: readonly [];
+        };
+    }, {
+        readonly value: {
+            readonly revision: "";
+            readonly schemaVersion: 1;
+            readonly accountRef: "account-a";
+            readonly declarations: readonly [];
+        };
+        readonly code: "tax_invalid_input";
+    }];
+    readonly fallback: null;
+    readonly absentMeans: {
+        readonly description: "No coverage revisions have been installed for the selected account.";
+        readonly source: "Native tax coverage history";
+        readonly value: null;
+    };
+    readonly defaultBasis: {
+        readonly kind: "neutral";
+    };
+    readonly whyThisDefault: "The merchant declares its coverage explicitly.";
+    readonly effect: {
+        readonly appliesTo: "The installed history records the merchant's coverage for the selected account.";
+        readonly frozenOn: readonly ["Previous declarations retain their original revisions and operator references."];
+        readonly impact: "operations";
+    };
+    readonly runtime: {
+        readonly level: "read-only";
+        readonly reason: "Tax coverage history is available on qualified native PostgreSQL installations through a host-bound reader. Managed installations do not supply this capability. Applying the native forward makes history available for installation and inspection. Tax checkout consumption is qualified separately.";
+    };
+    readonly change: {
+        readonly reference: "@openlup/platform README, Install and inspect tax coverage";
+    };
+};
+export {};
 ```
 ## dist/tax/localRateTable.d.ts
 

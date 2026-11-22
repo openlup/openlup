@@ -787,6 +787,19 @@ Search terms include tax class map, provider tax code, market pack, class-map re
 
 Show offline: `show tax.classMap --json`.
 
+## tax.coverage
+
+Record and inspect merchant tax coverage declarations by jurisdiction, tax kind and effective dates.
+Search terms include tax coverage, merchant registration, jurisdiction, tax kind, effective dates, acknowledgement, coverage history.
+
+- Owner **tax** · kind **installed** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The merchant declares its coverage explicitly.
+- When absent, no coverage revisions have been installed for the selected account.
+
+Show offline: `show tax.coverage --json`.
+
 ## tax.localRateTable
 
 Supply effective rules for each jurisdiction, tax class and kind when binding the local rate table.

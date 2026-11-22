@@ -549,6 +549,7 @@ it("accepts the pinned predecessor packet shape and refuses a packet with an unk
   table.rows = (await source.owner.query(`SELECT (value::jsonb-'scheme')::text AS row
     FROM unnest($1::text[]) AS rows(value)`, [table.rows])).rows.map(row => row.row);
   await expect(restore(target.owner, repin(packet, "a".repeat(64)))).rejects.toMatchObject({ code: "schema_conflict" });
+  capture.owned = capture.owned.filter(entry => entry.table !== "tax_coverage_revisions");
   const historicalTables = capture.compatible.tables.filter(entry => entry.table !== "commerce_checkout_attempt_ledger");
   expect(await restore(target.owner, repin(capture, historic, historicalTables))).toMatchObject({ replayed: false });
   expect((await target.owner.query("SELECT 1 FROM public.commerce_checkout_attempt_ledger")).rows).toEqual([]);
@@ -557,7 +558,8 @@ it("accepts the pinned predecessor packet shape and refuses a packet with an unk
 }, 105_000);
 
 it("restores and replays the separate-migrator inventory from before governed lifecycle", async () => {
-  const predecessor = repin(packet, "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385");
+  const historical = { ...packet, owned: packet.owned.filter(entry => entry.table !== "tax_coverage_revisions") };
+  const predecessor = repin(historical, "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385");
   expect(await restore(target.owner, predecessor)).toMatchObject({ captureSha256: predecessor.sha256, replayed: false });
   expect((await target.owner.query("SELECT current_document_revision_id FROM public.catalog_products WHERE id=$1", [products[0]])).rows)
     .toEqual([{ current_document_revision_id: latest[0] }]);

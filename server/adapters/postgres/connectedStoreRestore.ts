@@ -38,6 +38,15 @@ const beforeGovernedLifecycle = {
   "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
   "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
 } satisfies Record<keyof typeof beforePublicationCommands, string>;
+// Qualified main installations immediately before tax coverage history.
+const beforeTaxCoverageRevisions = {
+  bootstrap: "ec9028a590334948606d160362e9363c50793284548c2b9c092a71632234724c",
+  separate: "1feea98acf1cd7cdf1de399cdf8ab8c9ff6a30cec67168a274428f05f4722638",
+  "installer-managed": "02c68db9202830bd08f574130d3a3de19345a4050b8879d3338824b379474195",
+  "operator-provisioned": "a05e24a7dcdc6cb4394907be818520a33fa89e9a269a7c01853cd656ecfcf91b",
+} satisfies Record<keyof typeof beforePublicationCommands, string>;
+const precedingCoverage = [beforePublicationCommands, beforeCheckoutAttemptLedger, beforeGovernedLifecycle, beforeTaxCoverageRevisions];
+const taxCoverageRevisions = "tax_coverage_revisions";
 const checkoutAttemptLedger = "commerce_checkout_attempt_ledger";
 const settings = ["fulfillment_provider_archetypes", "sales_channels", "commerce_settings", "client_absorption_policy",
   "platform_job_controls", "subscriber_retention_activation_watermarks", "subscription_delivery_alignment_control",
@@ -258,6 +267,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
 
 // Explicit owner order, not schema discovery or a general FK/translation engine.
 const order = [
+  taxCoverageRevisions,
   "platform_human_principals", "platform_control_operators", "commerce_operators", "clients",
   "platform_human_memberships", "platform_human_membership_audit_events", "platform_communication_operators",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
@@ -333,6 +343,9 @@ export async function restoreConnectedNativeStore(input: {
   if (!source.has(checkoutAttemptLedger)) {
     source.set(checkoutAttemptLedger, { ...baseline.get(checkoutAttemptLedger)!, rows: [] });
   }
+  if (precedingCoverage.some(inventories => packet.compatible.catalogueId === inventories[profile])) {
+    source.set(taxCoverageRevisions, { ...baseline.get(taxCoverageRevisions)!, rows: [] });
+  }
   try {
     requireDecodedPublication(decodePublicationPacket({
       publications: source.get("catalog_publications")!.rows, skuRevisions: source.get("catalog_sku_revisions")!.rows,
@@ -360,9 +373,8 @@ export async function restoreConnectedNativeStore(input: {
     const expectedLedger = [manifest.baseline, ...manifest.forward];
     const older = packet.compatible.catalogueId === beforePublicationCommands[profile];
     if (fresh.compatible.catalogueId !== manifest.objectInventorySha256
-      || !older && packet.compatible.catalogueId !== beforeCheckoutAttemptLedger[profile]
-        && packet.compatible.catalogueId !== beforeGovernedLifecycle[profile]
-        && packet.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
+      || packet.compatible.catalogueId !== manifest.objectInventorySha256
+        && !precedingCoverage.some(inventories => packet.compatible.catalogueId === inventories[profile])) fail("schema_conflict");
     const ledger = await client.query<{ catalog_path: string; sha256: string; position: number }>(
       "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position");
     if (ledger.rows.length !== expectedLedger.length
@@ -588,8 +600,11 @@ function copyCapture(input: ConnectedNativeStoreCapture, sourceProfile?: keyof t
     const catalogueId = copy.compatible.catalogueId;
     const predatesLedger = sourceProfile !== undefined && (catalogueId === beforePublicationCommands[sourceProfile]
       || catalogueId === beforeCheckoutAttemptLedger[sourceProfile]);
-    const expected = predatesLedger ? connectedNativeStoreTables.filter(table => table !== checkoutAttemptLedger) : connectedNativeStoreTables;
-    if (all.size !== expected.length || expected.some(table => !all.has(table))) fail("invalid_input");
+    const predatesCoverage = sourceProfile !== undefined && precedingCoverage.some(inventories => catalogueId === inventories[sourceProfile]);
+    const expected = connectedNativeStoreTables.filter(table =>
+      !(predatesLedger && table === checkoutAttemptLedger) && !(predatesCoverage && table === taxCoverageRevisions));
+    if (all.size !== expected.length || expected.some(table => !all.has(table))
+      || !predatesCoverage && !copy.owned.some(entry => entry.table === taxCoverageRevisions)) fail("invalid_input");
     let count = 0, bytes = 0;
     for (const table of all.values()) {
       for (const column of table.columns) quoted(column.name);

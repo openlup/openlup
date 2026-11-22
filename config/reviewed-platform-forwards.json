@@ -6443,6 +6443,38 @@
             "sha256": "82c7718b1d4ca0ead1fd43476912a652ea24894649f4a4204faeb9c2bdd86091"
           }
         ]
+      },
+      {
+        "row": "tax-coverage-revisions",
+        "path": "db/platform/migrations/20261124235000_tax_coverage_revisions.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.tax_coverage_validate(jsonb)",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.tax_coverage_append_v1(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_coverage_read_v1(text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_coverage_revision_immutable()",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "tax_coverage_revision_immutable",
+            "table": "public.tax_coverage_revisions",
+            "sha256": "8f4a1963fafd18f444fb2ddc31e023d0421b3afcd352792c79f87cbc52746f27"
+          }
+        ]
       }
     ]
   },
@@ -9355,6 +9387,32 @@
           "signature": "public.catalog_lifecycle_projection_final()",
           "beforeSha256": null,
           "afterSha256": "5c75b4362a69651a0685952a6505d697f9bf7e641c07812fb43064759e4cd3dd"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261124235000_tax_coverage_revisions.sql",
+      "sha256": "21e7ad4274ca933cf4f78510ea20d87c59dfc16dceba2a29fc4d51b613bc87bf",
+      "functions": [
+        {
+          "signature": "public.tax_coverage_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "f6bfa745f3f3a81133b5a871adb239ed41dc95b56b5ad6124e43470c4a9b2456"
+        },
+        {
+          "signature": "public.tax_coverage_append_v1(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "3a383435b3d76f823552aba1f69653c4577b4791040d5771c9fb87f14374684f"
+        },
+        {
+          "signature": "public.tax_coverage_read_v1(text,text)",
+          "beforeSha256": null,
+          "afterSha256": "ea0cb57bbc37846387b4f4c6175c04452f9c55f908fcf487808d3a89707f6c18"
+        },
+        {
+          "signature": "public.tax_coverage_revision_immutable()",
+          "beforeSha256": null,
+          "afterSha256": "8366de3d0bcd66159f18e0077f0eb4ee429425b5c2e05ad3c1e469e59399e379"
         }
       ]
     }

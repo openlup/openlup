@@ -216,7 +216,8 @@ it("restores the pre-ledger packet shape with an empty ledger and requires it in
   const tables = compatible.tables.filter(entry => entry.table !== "commerce_checkout_attempt_ledger");
   const withoutLedger = (catalogueId: string) => {
     const projected = { ...compatible, catalogueId, tables };
-    const packet = { ...body, compatible: { ...projected, sha256: digest(JSON.stringify(projected)) } };
+    const owned = catalogueId === compatible.catalogueId ? body.owned : body.owned.filter(table => table.table !== "tax_coverage_revisions");
+    const packet = { ...body, owned, compatible: { ...projected, sha256: digest(JSON.stringify(projected)) } };
     return { ...packet, sha256: digest(JSON.stringify(packet)) };
   };
   const targets = await resources.targetTemplate("pre-ledger-target");

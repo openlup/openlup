@@ -200,6 +200,17 @@
       }
     },
     {
+      "code": "tax_invalid_input",
+      "path": [],
+      "rule": "Supply the documented declaration or request shape. Use nonoverlapping intervals for each jurisdiction and tax kind, and include an acknowledgement reference for declarations of non-registration.",
+      "hint": "Check the value schema and examples for tax.coverage.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm --silent run settings -- show tax.coverage --json"
+      }
+    },
+    {
       "code": "checkout_recovery_policy_invalid",
       "path": [],
       "rule": "The host checkout recovery policy accepts only firstOffsetSeconds, finalOffsetSeconds, checkoutSeconds, recoverySeconds, activitySeconds and profile. Supply seconds as integers from 1 to 2147483647 and keep firstOffsetSeconds below finalOffsetSeconds, which must be below checkoutSeconds after defaults. A supplied profile starts with a lowercase letter and has up to 48 lowercase letters, digits, underscores or hyphens.",

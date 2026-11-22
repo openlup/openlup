@@ -1,4 +1,5 @@
 import installationInventory from "./current-installation-inventory.json" with { type: "json" };
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
 import { expect, it } from "vitest";
@@ -191,6 +192,11 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       // Cover current and predecessor inventories for each restricted role mode.
       const sourceCatalogueId = shape === "neon" ? beforeGovernedLifecycle[mode] : source.inventory;
       const packet = await capture(source, "restricted-source", sourceCatalogueId);
+      if (shape === "neon") {
+        packet.owned = packet.owned.filter(entry => entry.table !== "tax_coverage_revisions");
+        const { sha256: _digest, ...body } = packet;
+        packet.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+      }
       const freshTarget = await capture(target, "restricted-target");
       expect((await source.runner.status()).pending).toEqual([]);
       expect((await target.runner.status()).pending).toEqual([]);
