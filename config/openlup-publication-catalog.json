@@ -4146,6 +4146,22 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/accounting-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/accounting-testing.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/accounting.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/adapter-kit.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/bff.api.md",
       "class": "public-output"
     },
@@ -4171,6 +4187,10 @@
     },
     {
       "path": "packages/platform/api/channels-server.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/channels-testing.api.md",
       "class": "public-output"
     },
     {
@@ -4211,6 +4231,10 @@
     },
     {
       "path": "packages/platform/api/communications-resend.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/communications-testing.api.md",
       "class": "public-output"
     },
     {
@@ -4323,6 +4347,18 @@
     },
     {
       "path": "packages/platform/api/migrations.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/observability-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/observability-testing.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/observability.api.md",
       "class": "public-output"
     },
     {
@@ -5414,6 +5450,34 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/accounting/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/accounting/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/accounting/testing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/adapter-kit/hardenedFetch.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/adapter-kit/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/adapter-kit/oauth2.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/adapter-kit/webhookCrypto.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/bff/dispatch.ts",
       "class": "public-output"
     },
@@ -6047,6 +6111,10 @@
     },
     {
       "path": "packages/platform/src/channels/server/quarantineClassifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/testing/index.ts",
       "class": "public-output"
     },
     {
@@ -6818,6 +6886,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/adapterConformance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/authEmailError.ts",
       "class": "public-output"
     },
@@ -7198,6 +7270,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/scriptedCommunicationsFake.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/settings-data.json",
       "class": "public-output"
     },
@@ -7218,7 +7294,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/communications/testing/adapterConformance.ts",
+      "path": "packages/platform/src/communications/testing/index.ts",
       "class": "public-output"
     },
     {
@@ -8667,6 +8743,18 @@
     },
     {
       "path": "packages/platform/src/migrations/selectedCatalogProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/observability/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/observability/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/observability/testing/index.ts",
       "class": "public-output"
     },
     {
@@ -10206,6 +10294,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/accounting/accountingConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/adapter-kit/adapterKit.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/agentsWiringExample.ts",
       "class": "public-output"
     },
@@ -10411,6 +10507,10 @@
     },
     {
       "path": "packages/platform/test/catalog/variantCombination.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/channels/channelConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -10974,6 +11074,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/communicationsTestingConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/consentDefaults.test.ts",
       "class": "public-output"
     },
@@ -11063,6 +11167,10 @@
     },
     {
       "path": "packages/platform/test/communications/nativeSync.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/resend/conformance.test.ts",
       "class": "public-output"
     },
     {
@@ -11791,6 +11899,10 @@
     },
     {
       "path": "packages/platform/test/migrations/postgresRunner.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/observability/telemetryConformance.test.ts",
       "class": "public-output"
     },
     {

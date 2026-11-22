@@ -3753,3 +3753,39 @@ offline certification of `CarrierRateQuotePort` adapters (declared on
 Full mode requires authenticated `fake.calls` handles, validates integer
 minor-unit currency fidelity and zero-I/O refusals, scans optional sensitive
 canaries, and emits a deterministic `ShippingRateQualification` receipt.
+
+### Communications conformance (`@openlup/platform/communications/testing`)
+
+`@openlup/platform/communications/testing` exports
+`runCommunicationsAdapterConformance`, `createScriptedCommunicationsFake`,
+`ScriptedCommunicationsTransportError`, and `createInMemoryEmailTransport`.
+Existing 1-argument baseline callers remain unchanged on both
+`@openlup/platform/communications` and `@openlup/platform/communications/testing`.
+Full mode (`{ mode: "full" }`) additionally enforces `guardEmailTransport`
+egress admission, verifies authenticated transport fault handles (5xx, 401/403,
+429, timeout, transport error), scans optional sensitive canaries, and emits a
+deterministic `CommunicationsQualification` receipt.
+
+### Shared adapter protocol primitives (`@openlup/platform/adapter-kit`)
+
+`@openlup/platform/adapter-kit` exports zero-dependency protocol primitives for
+provider adapters and recipes: `createHardenedFetch` (HTTPS origin pinning,
+`redirect: "error"`, composed timeout signal, streaming byte cap, non-2xx body
+cancellation), `createOAuth2TokenManager` (`client_credentials` and
+`refresh_token` with single-flight deduplication and epoch-guarded
+`invalidate`), `parseRetryAfter` / `createRetryAfterCooldown`, and webhook
+verifiers (`verifyHmacSha256`, `verifyHardenedStandardWebhook`,
+`verifyEd25519Signature`).
+
+### Accounting, Observability, and Channel Conformance Kits
+
+- `@openlup/platform/accounting` (`/contracts`, `/testing`): provider-neutral
+  `AccountingLedgerExportPort`, zero-I/O balanced journal validator
+  (`validateAccountingExportRecord`), and offline `runAccountingAdapterConformance`
+  with authenticated fault handles (`AccountingQualification`).
+- `@openlup/platform/observability` (`/contracts`, `/testing`): passive
+  fail-open `TelemetryPort`, `createSafeTelemetryPort`, PII/secret attribute
+  scrubbing, and offline `runTelemetryAdapterConformance` (`TelemetryQualification`).
+- `@openlup/platform/channels/testing`: offline `runChannelAdapterConformance`
+  and `createScriptedChannelFake` certifying `ChannelOrderSourcePort` webhook
+  auth, `normalizedChannelOrderSchema` fidelity, and cursor pulls.

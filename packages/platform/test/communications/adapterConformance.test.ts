@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { runCommunicationsAdapterConformance, type CommunicationsAdapterConformanceSubject } from "../../src/communications/testing/adapterConformance.js";
+import { runCommunicationsAdapterConformance, type CommunicationsAdapterConformanceSubject } from "../../src/communications/testing/index.js";
 import type { SyncRequest, SyncResult } from "../../src/communications/contracts/marketingSync.js";
 import { request, synthetic } from "./helpers/marketingSyncConformance.js";
 
