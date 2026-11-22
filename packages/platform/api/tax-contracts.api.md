@@ -423,6 +423,9 @@ export type TaxCapabilitiesV1 = Readonly<{
     recovery: List<"commit" | "reverse">;
 }>;
 export type TaxRefusalCode = "tax_invalid_input" | "tax_scope_mismatch" | "tax_class_missing" | "tax_rule_missing" | "tax_coverage_undeclared" | "tax_coverage_inconsistent" | "tax_breakdown_incomplete" | "tax_amount_out_of_range" | "tax_reference_conflict" | "tax_calculation_unusable" | "tax_calculation_expired" | "tax_calculation_closed" | "tax_close_not_eligible" | "tax_operation_unsupported" | "tax_reversal_unsubstantiated";
+type JsonValue = null | boolean | number | string | readonly JsonValue[] | Readonly<{
+    [key: string]: JsonValue;
+}>;
 export interface TaxRefusal {
     readonly kind: "refused";
     readonly code: TaxRefusalCode;
@@ -430,6 +433,14 @@ export interface TaxRefusal {
     readonly remedy: string;
     readonly jurisdiction?: string;
     readonly taxKind?: string;
+    /**
+     * The exact JSON value to write at `field` to repair the refused document.
+     * Present when the verifier can determine it. Replace the value at that JSON Pointer.
+     * Uses request and evidence data or digests derived from them. Excludes credentials and raw provider payloads.
+     * Limited to one MiB (1,048,576 bytes) of canonical JSON.
+     * @experimental
+     */
+    readonly expected?: JsonValue;
 }
 export interface TaxUnavailable {
     readonly kind: "unavailable";
