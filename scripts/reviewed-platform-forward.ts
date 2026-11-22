@@ -2661,63 +2661,105 @@ ALTER TABLE public.subscription_quote_previews ADD CONSTRAINT subscription_quote
 `;
 const previewAcceptanceColumn = previewNoopAcceptanceSql.split("\n", 1)[0]!;
 
-function changesPreviewTableShape(statement: string): boolean {
-  if (!/subscription_quote_previews/iu.test(statement)) return false;
-  const { tokens } = platformSqlTokens(statement, false, true);
+const previewHistoryMention = /subscription_quote_previews/iu;
+
+function allowsPreviewHistoryStatement(statement: string, tokens: readonly PlatformSqlToken[]): boolean {
   const word = (at: number, value: string) => nativeWord(tokens, at, value);
   const symbol = (at: number, value: string) => nativeSymbol(tokens, at, value);
-  const preview = "subscription_quote_previews";
-  const tableAt = (at: number) => nativeQualified(tokens, at) ?? { name: `public.${nativeIdentifier(tokens[at])}`, next: at + 1 };
-  const isPreview = (at: number) => tableAt(at).name === `public.${preview}`;
-  const create = word(0, "CREATE"), alter = word(0, "ALTER"), drop = word(0, "DROP");
-  if (!create && !alter && !drop) return false;
+  const identifier = (at: number) => nativeIdentifier(tokens[at]);
+  const end = tokens.length - 1;
+  if (!symbol(end, ";")) return false;
+  const targetEnd = (at: number) => {
+    const qualified = nativeQualified(tokens, at);
+    if (qualified?.name === "public.subscription_quote_previews") return qualified.next;
+    return identifier(at) === "subscription_quote_previews" && !symbol(at + 1, ".") ? at + 1 : -1;
+  };
+  const triggerTargetEnd = (at: number) => identifier(at) !== null && word(at + 1, "ON") ? targetEnd(at + 2) : -1;
 
-  // A unique index can back a constraint. PostgreSQL requires dropping the
-  // owning constraint to remove its index, and DROP INDEX has no table target.
-  if (create && word(1, "UNIQUE") && word(2, "INDEX")) {
-    const on = tokens.findIndex((_, at) => at > 2 && word(at, "ON"));
-    return on >= 0 && isPreview(on + (word(on + 1, "ONLY") ? 2 : 1));
+  if (word(0, "CREATE")) {
+    const kind = word(1, "OR") && word(2, "REPLACE") ? 3 : 1;
+    if (word(kind, "FUNCTION") || word(kind, "PROCEDURE")) {
+      const bodies = tokens.filter(token => token.kind === "string" && statement[token.start] === "$");
+      const [body] = bodies;
+      return bodies.length === 1 && body !== undefined && word(tokens.indexOf(body) - 1, "AS")
+        && !previewHistoryMention.test(statement.slice(0, body.start))
+        && !previewHistoryMention.test(statement.slice(body.end))
+        && !/\b(?:ALTER|DROP|CREATE|TRUNCATE|RENAME)\b/iu.test(body.value);
+    }
+    const trigger = kind + (word(kind, "CONSTRAINT") ? 1 : 0);
+    const name = trigger + 1;
+    if (!word(trigger, "TRIGGER") || identifier(name) === null
+      || !["BEFORE", "AFTER", "INSTEAD"].some(timing => word(name + 1, timing))) return false;
+    const on = tokens.findIndex((_, at) => at > name + 1 && word(at, "ON"));
+    const afterTarget = on < 0 ? -1 : targetEnd(on + 1);
+    return afterTarget >= 0 && ["FROM", "NOT", "DEFERRABLE", "INITIALLY", "REFERENCING", "FOR", "WHEN", "EXECUTE"]
+      .some(clause => word(afterTarget, clause));
   }
+  if (word(0, "DROP") && word(1, "TRIGGER")) {
+    const name = word(2, "IF") && word(3, "EXISTS") ? 4 : 2;
+    return triggerTargetEnd(name) === end;
+  }
+  if (word(0, "COMMENT") && word(1, "ON") && word(2, "TRIGGER")) {
+    const is = triggerTargetEnd(3);
+    const literal = tokens[is + 1];
+    return is >= 0 && word(is, "IS") && is + 2 === end
+      && literal?.kind === "string" && statement[literal.start] === "'";
+  }
+  const grant = word(0, "GRANT");
+  if (grant || word(0, "REVOKE")) {
+    const on = tokens.findIndex((_, at) => word(at, "ON"));
+    if (on < 2) return false;
+    const roles = targetEnd(on + (word(on + 1, "TABLE") ? 2 : 1));
+    return roles >= 0 && word(roles, grant ? "TO" : "FROM") && identifier(roles + 1) !== null;
+  }
+  return false;
+}
 
-  let kind = 1;
-  if (create && (word(kind, "GLOBAL") || word(kind, "LOCAL"))) kind++;
-  if (create && ["TEMP", "TEMPORARY", "UNLOGGED"].some(modifier => word(kind, modifier))) kind++;
-  if (!word(kind, "TABLE")) return false;
-  let target = kind + 1;
-  if (create && word(target, "IF") && word(target + 1, "NOT") && word(target + 2, "EXISTS")) target += 3;
-  if (!create && word(target, "IF") && word(target + 1, "EXISTS")) target += 2;
-  if (alter && word(target, "ONLY")) target += symbol(target + 1, "(") ? 2 : 1;
-  if (drop) {
-    for (;;) {
-      if (isPreview(target)) return true;
-      const { next } = tableAt(target);
-      if (!symbol(next, ",")) return false;
-      target = next + 1;
+function previewHistoryRefusal(sql: string, bytes: Buffer): string | undefined {
+  if (bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) {
+    return "unsupported control characters; use LF line endings";
+  }
+  // Use the existing lexer that groups parenthesized clauses and BEGIN ATOMIC bodies.
+  let statements: SecurityDefinerToken[][];
+  try {
+    statements = tokenizeSecurityDefinerStatements(sql);
+  } catch (error) {
+    return `cannot split SQL: ${(error as Error).message}`;
+  }
+  let offset = 0;
+  for (const statementTokens of statements) {
+    if (!secSymbol(statementTokens, statementTokens.length - 1, ";")) return "cannot split SQL: statement lacks a terminator";
+    const start = statementTokens[0]!.start, end = statementTokens.at(-1)!.end;
+    if (previewHistoryMention.test(sql.slice(offset, start))) return "preview name outside a SQL statement";
+    const statement = sql.slice(start, end);
+    offset = end;
+    const { tokens, complete } = platformSqlTokens(statement, false, true);
+    if (!complete) return "cannot tokenize the full statement; use plain SQL identifiers and literals";
+    if (previewHistoryMention.test(statement) && !allowsPreviewHistoryStatement(statement, tokens)) {
+      return "preview reference outside the trigger, table privilege and routine-body allowlist";
     }
   }
-  if (isPreview(target)) return true;
-  const { next } = tableAt(target);
-  const action = next + (symbol(next, ")") || symbol(next, "*") ? 1 : 0);
-  const inPublic = next === target + 1 || nativeIdentifier(tokens[target]) === "public";
-  if (alter && inPublic && word(action, "RENAME") && word(action + 1, "TO") && nativeIdentifier(tokens[action + 2]) === preview) return true;
-  return tokens.some((_, at) => word(at, "REFERENCES") && isPreview(at + 1));
+  if (previewHistoryMention.test(sql.slice(offset))) return "preview name outside a SQL statement";
 }
 
 function assertPreviewNoopAcceptance(bytes: Buffer, preceding: { path: string; bytes: Buffer }[]): void {
   if (!bytes.equals(Buffer.from(previewNoopAcceptanceSql))) throw new Error("reviewed native store preview acceptance forward requires exactly the receipt column and adjacent validated CHECK replacement");
   const source = preceding.find(unit => unit.path === previewAcceptanceSource);
   if (!source || sqlSha256(source.bytes) !== previewAcceptanceSourceSha256) throw new Error("reviewed native store preview acceptance CHECK preimage file or hash drifted");
-  // The static scan refuses earlier migrations that can change the preview table's columns or constraints.
-  // Trigger DDL on the table and routine bodies that read it are allowed, because the PostgreSQL preimage proof
-  // compares the table's full pg_depend closure, including triggers, with its expected snapshot before the forward.
-  // Database-wide state is out of scope. The proof also covers the effects of ALTER TABLE executed inside a DO block or routine body.
+  // Earlier files that mention previews must split and tokenize completely. Only
+  // trigger creation, removal and comments, table grants and revokes, and
+  // dollar-quoted routine bodies without DDL keywords may mention the table.
+  // The PostgreSQL preimage proof compares the table's
+  // full pg_depend closure, including triggers, with its expected snapshot
+  // before the forward. Database-wide state is out of scope.
   for (const unit of preceding) {
     if (unit.path === previewAcceptanceSource) continue;
-    const changesShape = unit.path === previewAcceptanceReadSource
-      ? /subscription_quote_previews/iu.test(unit.bytes.toString("utf8")) && sqlSha256(unit.bytes) !== previewAcceptanceReadSha256
-      : cachedDumpSqlStatements(unit.bytes).some(changesPreviewTableShape);
-    if (changesShape) {
-      throw new Error(`reviewed native store preview acceptance CHECK refuses other preview history: ${unit.path}`);
+    const sql = unit.bytes.toString("utf8");
+    if (!previewHistoryMention.test(sql)) continue;
+    if (unit.path === previewAcceptanceReadSource && sqlSha256(unit.bytes) === previewAcceptanceReadSha256) continue;
+    const reason = unit.path === previewAcceptanceReadSource ? "pinned read-source hash drifted" : previewHistoryRefusal(sql, unit.bytes);
+    if (reason) {
+      throw new Error(`reviewed native store preview acceptance CHECK refuses other preview history: ${unit.path}: ${reason}`);
     }
   }
 }

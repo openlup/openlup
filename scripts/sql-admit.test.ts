@@ -217,16 +217,18 @@ CREATE CONSTRAINT TRIGGER subscription_quote_previews_catalog_final AFTER INSERT
   it.each([
     ["a deferred constraint trigger and its preview-reading function", triggerForward.bytes],
     ["a replacement trigger", "CREATE OR REPLACE TRIGGER preview_final AFTER UPDATE ON public.subscription_quote_previews FOR EACH ROW EXECUTE FUNCTION public.preview_catalog_final();"],
-    ["a trigger drop", "DROP TRIGGER IF EXISTS preview_final ON public.subscription_quote_previews;"],
-    ["a table comment", "COMMENT ON TABLE public.subscription_quote_previews IS 'Preview rows';"],
+    ["a trigger drop", 'DROP TRIGGER IF EXISTS "preview_final" ON "subscription_quote_previews";'],
+    ["a trigger comment", `COMMENT ON TRIGGER preview_final ON "public"."subscription_quote_previews" IS 'Finalizes the preview';`],
     ["a grant", "GRANT SELECT ON TABLE public.subscription_quote_previews TO authenticated;"],
-    ["a revoke", "REVOKE SELECT ON TABLE public.subscription_quote_previews FROM authenticated;"],
-    ["a non-unique index", "CREATE INDEX preview_status ON public.subscription_quote_previews(status);"],
-    ["an index drop", "DROP INDEX public.subscription_quote_previews_lookup;"],
-    ["a table in a different schema", "ALTER TABLE private.subscription_quote_previews ADD COLUMN other uuid;"],
+    ["a revoke", "REVOKE SELECT ON subscription_quote_previews FROM authenticated;"],
+    ["a preview-reading procedure", "CREATE PROCEDURE public.preview_read() LANGUAGE plpgsql AS $$ BEGIN PERFORM (SELECT count(*) FROM public.subscription_quote_previews); END; $$;"],
   ])("admits earlier preview history with %s", (_label, earlierSql) => {
     const bytes = typeof earlierSql === "string" ? Buffer.from(earlierSql) : earlierSql;
     expect(admit(sql, [...prefix(), { ...triggerForward, bytes }]).slot).toEqual(entry());
+  });
+  const trailingBackslash = String.raw`COMMENT ON TABLE public.other IS 'ends in \';`;
+  it("ignores an unrelated file with the review's trailing-backslash comment", () => {
+    expect(admit(sql, [...prefix(), { ...triggerForward, bytes: Buffer.from(trailingBackslash) }]).slot).toEqual(entry());
   });
   it.each([
     ["schema-qualified ALTER TABLE", "ALTER TABLE public.subscription_quote_previews ADD COLUMN other uuid;"],
@@ -241,6 +243,25 @@ CREATE CONSTRAINT TRIGGER subscription_quote_previews_catalog_final AFTER INSERT
     ["a rename from the preview name", "ALTER TABLE public.subscription_quote_previews RENAME TO retired_previews;"],
     ["a rename into the preview name", 'ALTER TABLE public.other RENAME TO "subscription_quote_previews";'],
     ["a unique index", "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS preview_unique ON ONLY public.subscription_quote_previews(id);"],
+    ["a non-unique index", "CREATE INDEX preview_status ON public.subscription_quote_previews(status);"],
+    ["an index drop", "DROP INDEX public.subscription_quote_previews_lookup;"],
+    ["a table in a different schema", "ALTER TABLE private.subscription_quote_previews ADD COLUMN other uuid;"],
+    ["a table comment", "COMMENT ON TABLE public.subscription_quote_previews IS 'Preview rows';"],
+    ["the review's CRLF before ADD COLUMN", "ALTER TABLE public.subscription_quote_previews\r\nADD COLUMN other uuid;"],
+    ["the review's Unicode schema", 'ALTER TABLE U&"public".subscription_quote_previews ADD COLUMN other uuid;'],
+    ["the review's quoted semicolon before a foreign key", 'CREATE TABLE public.other (";" uuid, preview_id uuid REFERENCES public.subscription_quote_previews(id));'],
+    ["the review's three-part table name", "ALTER TABLE postgres.public.subscription_quote_previews ADD COLUMN other uuid;"],
+    ["the review's dollar sign in the preceding drop target", "DROP TABLE public.other$archive, public.subscription_quote_previews;"],
+    ["the review's literal DDL in a DO block", "DO $$ BEGIN ALTER TABLE public.subscription_quote_previews ADD COLUMN other uuid; END; $$;"],
+    ["the review's foreign key in a CREATE SCHEMA subcommand", "CREATE SCHEMA review_fixture CREATE TABLE other (preview_id uuid REFERENCES public.subscription_quote_previews(id));"],
+    ["the review's primary-key index rename", "ALTER INDEX public.subscription_quote_previews_pkey RENAME TO renamed_preview_pkey;"],
+    ["the review's trailing-backslash split error in a mentioning file", trailingBackslash + "\nGRANT SELECT ON public.subscription_quote_previews TO authenticated;"],
+    ["a trigger targeting another schema", "CREATE TRIGGER subscription_quote_previews_trigger AFTER UPDATE ON private.subscription_quote_previews FOR EACH ROW EXECUTE FUNCTION public.preview_catalog_final();"],
+    ["a trigger targeting a dollar-suffixed table", "CREATE TRIGGER preview_trigger AFTER UPDATE ON public.subscription_quote_previews$archive FOR EACH ROW EXECUTE FUNCTION public.preview_catalog_final();"],
+    ["a reference in a routine header", "CREATE FUNCTION public.preview_read() RETURNS SETOF public.subscription_quote_previews LANGUAGE sql AS $$ SELECT 1 $$;"],
+    ["a routine body with dynamic DDL", "CREATE PROCEDURE public.preview_write() LANGUAGE plpgsql AS $$ BEGIN EXECUTE 'ALTER TABLE public.subscription_quote_previews ADD COLUMN other uuid'; END; $$;"],
+    ["a file with both allowed and unlisted statements", "GRANT SELECT ON public.subscription_quote_previews TO authenticated; COMMENT ON TABLE public.subscription_quote_previews IS 'Preview rows';"],
+    ["a preview mention outside any statement", "-- subscription_quote_previews\nSELECT 1;"],
   ])("refuses earlier preview history with %s", (_label, earlierSql) => {
     expect(() => admit(sql, [...prefix(), { ...triggerForward, bytes: Buffer.from(earlierSql) }]))
       .toThrow(`preview acceptance CHECK refuses other preview history: ${triggerForward.path}`);
