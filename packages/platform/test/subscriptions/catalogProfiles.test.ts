@@ -1,8 +1,7 @@
-import { validateCatalogSubscriptionProfile, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
+import { createHash } from "node:crypto";
+import { canonicalCatalogSubscriptionProfileJson, validateCatalogSubscriptionProfile, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import { parseCadenceChoiceV1, type CadenceChoiceV1 } from "@openlup/core/subscription";
 import { describe, expect, it, vi } from "vitest";
-import { catalogPackManifest } from "../../src/catalog/catalogPackManifest.js";
-import { catalogSubscriptionProfileIdentity } from "../../src/catalog/installedSubscriptionProfiles.js";
 import { createPostgresSubscriptionCommandStore, selectCatalogProfileCadence, type CatalogProfileCadenceInput } from "../../src/subscriptions/index.js";
 
 const fixed = (days: number) => ({ schemaVersion: 1, kind: "fixed_days", days } as const);
@@ -12,7 +11,15 @@ const declaration: CatalogSubscriptionProfileV1 = {
   ...ref, allowedCadences: [1, 30, 120, 121, 3660].map(fixed),
   policyRef: { key: "example:policy", version: 1 }, policyDigest: "a".repeat(64),
 };
-const installed = catalogSubscriptionProfileIdentity(declaration);
+function identity(input: CatalogSubscriptionProfileV1) {
+  const checked = validateCatalogSubscriptionProfile(input);
+  if ("issue" in checked) throw new Error("Invalid profile fixture");
+  return {
+    profileKey: input.key, profileVersion: input.version, policyRef: input.policyRef, policyDigest: input.policyDigest,
+    profileDigest: createHash("sha256").update(canonicalCatalogSubscriptionProfileJson(checked.profile)).digest("hex"),
+  };
+}
+const installed = identity(declaration);
 const request = (choice: CadenceChoiceV1): CatalogProfileCadenceInput => ({
   choice, mode: "recurring",
   storeChoices: declaration.allowedCadences, skuChoices: declaration.allowedCadences,
@@ -53,7 +60,7 @@ describe("SP1-D-022 profile cadence admission", () => {
       expect(selectCatalogProfileCadence({ ...input, [field]: [fixed(31)] })).toEqual({ code: "cadence_not_offered" });
     }
     const different = { ...declaration, allowedCadences: [fixed(31)] };
-    expect(selectCatalogProfileCadence({ ...input, profile: { declaration: different, installed: catalogSubscriptionProfileIdentity(different) } }))
+    expect(selectCatalogProfileCadence({ ...input, profile: { declaration: different, installed: identity(different) } }))
       .toEqual({ code: "cadence_not_offered" });
   });
 });
@@ -63,12 +70,12 @@ describe("SP1-D-026 fixed-day bounds", () => {
     for (const days of [1, 3660]) expect(selectCatalogProfileCadence(request(fixed(days)))).toEqual({ cadenceDays: days });
     expect(selectCatalogProfileCadence(request(fixed(3661)))).toEqual({ code: "cadence_not_offered" });
     const capped = { ...declaration, maxFixedDays: 120 };
-    const profile = { declaration: capped, installed: catalogSubscriptionProfileIdentity(capped) };
+    const profile = { declaration: capped, installed: identity(capped) };
     expect(selectCatalogProfileCadence({ ...request(fixed(120)), profile })).toEqual({ cadenceDays: 120 });
     expect(selectCatalogProfileCadence({ ...request(fixed(121)), profile })).toEqual({ code: "cadence_not_offered" });
   });
 
-  it("round-trips the reserved choice but refuses it at install and execution", () => {
+  it("round-trips the reserved choice but refuses it in declarations and selection", () => {
     expect(parseCadenceChoiceV1(JSON.parse(JSON.stringify(calendar)))).toEqual(calendar);
     expect(parseCadenceChoiceV1(JSON.parse(JSON.stringify(fixed(30))))).toEqual(fixed(30));
     expect(parseCadenceChoiceV1({ ...fixed(30), schemaVersion: 2 })).toBeNull();
@@ -84,13 +91,33 @@ describe("SP1-D-026 fixed-day bounds", () => {
   });
 });
 
-it("canonicalizes a profile cadence set into the same manifest and profile digest", () => {
-  const pack = { id: "example:pack", namespace: "example", version: 1, openlupRange: "1.x", capabilities: {},
-    types: [], taxClasses: [], subscriptionProfiles: [ref] };
-  const first = catalogPackManifest({ ...pack, subscriptionProfileDefinitions: [declaration] });
+it("canonicalizes declaration key order and the cadence set to one digest", () => {
   const reordered = { policyDigest: declaration.policyDigest, policyRef: declaration.policyRef, ...ref,
     allowedCadences: [...declaration.allowedCadences].reverse() };
-  expect(catalogPackManifest({ ...pack, subscriptionProfileDefinitions: [reordered] })).toEqual(first);
-  expect(first.subscriptionProfileDefinitions?.[0].profileDigest).toBe(installed.profileDigest);
-  expect(catalogPackManifest(pack)).not.toHaveProperty("subscriptionProfileDefinitions");
+  expect(identity(reordered)).toEqual(installed);
+  expect(selectCatalogProfileCadence({ ...request(fixed(30)), profile: { declaration: reordered, installed } }))
+    .toEqual({ cadenceDays: 30 });
+});
+
+it.each([
+  ["allowedCadences/0/days", { allowedCadences: [fixed(3661)] }],
+  ["maxFixedDays", { maxFixedDays: 3661 }],
+] as const)("refuses %s outside the whole-day bounds", (path, change) => {
+  expect(validateCatalogSubscriptionProfile({ ...declaration, ...change })).toMatchObject({
+    issue: { code: "definition_profile_invalid", path: `/${path}`, fix: expect.stringContaining("1 to 3660") },
+  });
+});
+
+it.each([
+  ["policyDigest", { policyDigest: "abc" }, "Supply policyDigest as a 64-character lowercase SHA-256 hex digest."],
+  ["policyRef/displayLabel", { policyRef: { ...declaration.policyRef, displayLabel: "example" } },
+    'Remove the unexpected property "displayLabel".'],
+  ["allowedCadences/0/schemaVersion", { allowedCadences: [{ ...fixed(30), schemaVersion: 2 }] },
+    "Use schemaVersion 1 for this cadence choice."],
+] as const)("preserves the remedy for an invalid %s from declaration to selector", (path, change, fix) => {
+  const badDeclaration = { ...declaration, ...change } as unknown as CatalogSubscriptionProfileV1;
+  const issue = { code: "definition_profile_invalid", path: `/${path}`, fix };
+  expect(validateCatalogSubscriptionProfile(badDeclaration)).toEqual({ issue });
+  expect(selectCatalogProfileCadence({ ...request(fixed(30)), profile: { declaration: badDeclaration, installed } }))
+    .toEqual({ code: "policy_binding_missing", issue });
 });

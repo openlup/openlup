@@ -1024,8 +1024,6 @@ export {};
 import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts/catalogConformance.js";
 /** @experimental */
 export declare const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>>;
-/** Shared installation and offline guidance for profile field refusals. */
-export declare function catalogProfileDeclarationFix(path: string): string;
 ```
 ## dist/catalog/catalogDefinitionDigest.d.ts
 
@@ -1042,19 +1040,17 @@ export declare function catalogDefinitionDigest(definition: CatalogProductTypeIn
 ## dist/catalog/catalogDefinitionReadiness.d.ts
 
 ```ts
-import { type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogRegistryObservation } from "@openlup/core/readiness";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
-/** Read-only, uncached live-binding probe. Profile declarations require the migration owner executor.
- * Reference-only checks require an owner or BYPASSRLS reader for both tables.
+/** Read-only, uncached live-binding probe. Requires an owner or BYPASSRLS reader for both tables.
  * @experimental
  */
-export declare function observeCatalogDefinitionReadiness(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, database: string, profiles?: readonly CatalogSubscriptionProfileV1[]): Promise<CatalogRegistryObservation>;
+export declare function observeCatalogDefinitionReadiness(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, database: string): Promise<CatalogRegistryObservation>;
 /** Opt-in catalogue write guard. Probe failures propagate and the supplied write is never called.
  * @experimental
  */
-export declare function createCatalogDefinitionWriteGuard(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, profiles?: readonly CatalogSubscriptionProfileV1[]): <T>(write: () => Promise<T>) => Promise<T>;
+export declare function createCatalogDefinitionWriteGuard(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry): <T>(write: () => Promise<T>) => Promise<T>;
 ```
 ## dist/catalog/catalogDraftStore.d.ts
 
@@ -1083,7 +1079,6 @@ export declare function createPostgresCatalogDraftStoreV4(client: PgQueryExecuto
 
 ```ts
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
-import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
 /** @experimental */
 export interface CatalogPackManifest {
     readonly id: string;
@@ -1101,8 +1096,6 @@ export interface CatalogPackManifest {
         readonly key: string;
         readonly version: number;
     }[];
-    readonly subscriptionProfileDefinitions?: CatalogDefinitionInstallReceipt["subscriptionProfileDefinitions"];
-    /** SHA-256 of canonical pack bytes, with a profiles-v1: tag for full profile declarations. */
     readonly digest: string;
 }
 /** A derived in-memory projection; no manifest or digest is accepted from a client.
@@ -1995,7 +1988,7 @@ import type { CatalogCombinationCode } from "./variantAxes.js";
 /** Stable meanings shared by runtime admission and offline conformance.
  * @experimental
  */
-export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | "definition_profile_invalid" | "cadence_kind_unsupported" | "attribute_projection_text_too_large" | "attribute_storage_too_large" | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict" | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing" | "attribute_reference_unresolved" | "attribute_publication_revision_invalid" | "conformance_subject_invalid" | "conformance_owner_unavailable" | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch" | "draft_input_invalid" | "draft_payload_invalid" | CatalogQuantityCode | CatalogCombinationCode;
+export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | "attribute_projection_text_too_large" | "attribute_storage_too_large" | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict" | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing" | "attribute_reference_unresolved" | "attribute_publication_revision_invalid" | "conformance_subject_invalid" | "conformance_owner_unavailable" | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch" | "draft_input_invalid" | "draft_payload_invalid" | CatalogQuantityCode | CatalogCombinationCode;
 /** @experimental */
 export interface CatalogConformanceRule {
     severity: "error" | "warning";
@@ -2012,7 +2005,6 @@ export interface CatalogDefinitionIssue {
 ## dist/catalog/contracts/catalogPack.d.ts
 
 ```ts
-import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogDraftPayload } from "./draft.js";
 import type { CatalogDraftPayloadV2 } from "./draftV2.js";
 import type { CatalogAttributeValueType, CatalogAttributeScalarType } from "./attributes.js";
@@ -2033,8 +2025,6 @@ export interface CatalogPackInput {
         key: string;
         version: number;
     }[];
-    /** Full definitions for profile versions listed in subscriptionProfiles. @experimental */
-    subscriptionProfileDefinitions?: readonly CatalogSubscriptionProfileV1[];
 }
 /** @experimental */
 type Profile<P extends CatalogPackInput> = P extends {
@@ -2295,7 +2285,6 @@ export {};
 ## dist/catalog/contracts/definitionInstall.d.ts
 
 ```ts
-import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogProductTypeRef } from "./productTypes.js";
 /** Durable install evidence; installation does not publish catalogue data.
  * @experimental
@@ -2303,14 +2292,8 @@ import type { CatalogProductTypeRef } from "./productTypes.js";
 export interface CatalogDefinitionInstallReceipt {
     readonly packId: string;
     readonly packVersion: number;
-    /** Profile-bearing receipts carry the profiles-v1: tag on the manifest SHA-256. */
     readonly manifestDigest: string;
     readonly installedAt: string;
-    /** Original canonical pack manifest, retained for installs with full profile declarations. */
-    readonly canonicalManifest?: string;
-    readonly subscriptionProfileDefinitions?: readonly (CatalogSubscriptionProfileV1 & {
-        readonly profileDigest: string;
-    })[];
     readonly types: readonly (CatalogProductTypeRef & {
         readonly definitionDigest: string;
     })[];
@@ -4164,7 +4147,6 @@ export type { PostgresCommerceQuoteCatalogReadOptions } from "./commerceQuoteCat
 export { catalogProductTypeIssues, catalogProductTypeRefIssues } from "./productTypeIssues.js";
 export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
-export { readInstalledCatalogSubscriptionProfile } from "./installedSubscriptionProfiles.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
 export { installCatalogDefinitions } from "./installCatalogDefinitions.js";
 export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } from "./catalogDefinitionReadiness.js";
@@ -4213,17 +4195,6 @@ import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInst
  * @experimental
  */
 export declare function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt>;
-```
-## dist/catalog/installedSubscriptionProfiles.d.ts
-
-```ts
-import { type CatalogSubscriptionProfileRef, type CatalogSubscriptionProfileV1, type InstalledCatalogSubscriptionProfile } from "@openlup/core/catalog";
-import type { PgQueryExecutor } from "../data/index.js";
-export declare function catalogSubscriptionProfileIdentity(profile: CatalogSubscriptionProfileV1): InstalledCatalogSubscriptionProfile;
-/** Read one exact installed identity using the migration owner executor.
- * @experimental
- */
-export declare function readInstalledCatalogSubscriptionProfile(db: PgQueryExecutor, ref: CatalogSubscriptionProfileRef): Promise<InstalledCatalogSubscriptionProfile | null>;
 ```
 ## dist/catalog/lifecycleDraftSchemas.d.ts
 

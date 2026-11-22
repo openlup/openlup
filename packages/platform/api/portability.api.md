@@ -135,7 +135,7 @@ export interface CompatiblePostgresPacket {
     tables: TableRows[];
     sha256: string;
 }
-export type PostgresTransferFailure = "invalid_input" | "unsupported_table" | "schema_conflict" | "insert_trigger_requires_owner" | "target_conflict" | "limit_exceeded" | "database_unavailable" | "subscription_profile_receipts_unsupported";
+export type PostgresTransferFailure = "invalid_input" | "unsupported_table" | "schema_conflict" | "insert_trigger_requires_owner" | "target_conflict" | "limit_exceeded" | "database_unavailable";
 export declare class PostgresTransferError extends Error {
     readonly code: PostgresTransferFailure;
     readonly table?: string | undefined;

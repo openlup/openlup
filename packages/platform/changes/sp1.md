@@ -1,14 +1,6 @@
-### Install versioned subscription profiles
+### Select a fixed-day subscription cadence
 
-Native catalogue installation records canonical profile digests and pinned
-policy identities. Apply the complete native catalogue before opting in.
-Exact reinstall recovers the original receipt. To change installed metadata,
-declare a new profile version. Use the subscription cadence selector with the
-choices from each offer owner. Installation checks the documented 1–3660
-range. The installed native guards enforce their limits at write time.
-
-Connected-store capture refuses stores that hold profile-bearing install
-receipts until connected restore supports those receipts.
-
-Each profile key and version has one owning pack. The native receipt binds
-the identity and digest to the declaration bytes.
+The pure selector intersects the declared choices from the store, SKU, offer,
+command and optional profile. Supply profile and policy identity pins from your
+binding. The selector reports declaration remedies and preserves the native
+prepaid refusal for unprofiled requests.

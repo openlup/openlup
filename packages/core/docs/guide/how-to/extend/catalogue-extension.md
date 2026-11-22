@@ -192,27 +192,21 @@ Check availability: `npx --no -- openlup catalogue project --trusted-packs ./own
 
 ## Subscription profile
 
-In `pack.ts`, list the key and version in `subscriptionProfiles`, use the same
-`subscriptionProfileRef` on the product type, and add its declaration to
-`subscriptionProfileDefinitions`.
+To check pack references, list the key and version in `subscriptionProfiles`
+and use the same `subscriptionProfileRef` on the product type.
 
-- `allowedCadences` lists distinct choices such as
-  `{ schemaVersion: 1, kind: "fixed_days", days: 28 }`. Use whole days from 1 to
-  3660. Version 1 refuses `calendar_months` with `cadence_kind_unsupported`.
-- `maxFixedDays` optionally caps the choices.
-- `policyRef` names the policy key and version. `policyDigest` pins its
-  artifact with a lowercase SHA-256 hex digest.
+Validate a complete declaration with `validateCatalogSubscriptionProfile`
+from `@openlup/core/catalog`. Supply a profile key and version, distinct
+`allowedCadences`, a versioned `policyRef`, and a lowercase SHA-256
+hex `policyDigest`. Each fixed-day choice uses
+`{ schemaVersion: 1, kind: "fixed_days", days: 28 }`. Use whole days from 1 to
+3660 for choices and the optional `maxFixedDays`. The declaration refuses
+`calendar_months` with `cadence_kind_unsupported`.
 
-Run `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`
-to check the declaration. The installer records its digest in the receipt.
-Install a higher version to change the declaration. Pass the installed identity
-and declaration to the selector, which intersects the declared choices from
-the profile, store, SKU, offer and command. The native guard enforces its limit
-at write time.
-
-Capture refuses stores with profile receipts using
-`subscription_profile_receipts_unsupported`. Wait for connected restore to
-support these receipts before transferring the store.
+On refusal, use the field path and remedy in `issue`. For a valid declaration,
+pass the returned profile to `canonicalCatalogSubscriptionProfileJson` and hash
+the UTF-8 bytes with SHA-256 to derive its declaration digest. The profile and
+policy digest pin different inputs.
 
 ## Upgrade a definition
 

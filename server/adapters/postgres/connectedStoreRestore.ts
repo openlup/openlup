@@ -38,13 +38,6 @@ const beforeGovernedLifecycle = {
   "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
   "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
 } satisfies Record<keyof typeof beforePublicationCommands, string>;
-// Sealed installation inventories immediately before subscription profiles.
-const beforeSubscriptionProfiles = {
-  bootstrap: "ec9028a590334948606d160362e9363c50793284548c2b9c092a71632234724c",
-  separate: "1feea98acf1cd7cdf1de399cdf8ab8c9ff6a30cec67168a274428f05f4722638",
-  "installer-managed": "02c68db9202830bd08f574130d3a3de19345a4050b8879d3338824b379474195",
-  "operator-provisioned": "a05e24a7dcdc6cb4394907be818520a33fa89e9a269a7c01853cd656ecfcf91b",
-} satisfies Record<keyof typeof beforePublicationCommands, string>;
 const checkoutAttemptLedger = "commerce_checkout_attempt_ledger";
 const settings = ["fulfillment_provider_archetypes", "sales_channels", "commerce_settings", "client_absorption_policy",
   "platform_job_controls", "subscriber_retention_activation_watermarks", "subscription_delivery_alignment_control",
@@ -369,7 +362,6 @@ export async function restoreConnectedNativeStore(input: {
     if (fresh.compatible.catalogueId !== manifest.objectInventorySha256
       || !older && packet.compatible.catalogueId !== beforeCheckoutAttemptLedger[profile]
         && packet.compatible.catalogueId !== beforeGovernedLifecycle[profile]
-        && packet.compatible.catalogueId !== beforeSubscriptionProfiles[profile]
         && packet.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
     const ledger = await client.query<{ catalog_path: string; sha256: string; position: number }>(
       "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position");

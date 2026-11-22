@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { canonicalCatalogSubscriptionProfileJson, validateCatalogSubscriptionProfile, type CatalogSubscriptionProfileRef,
-  type CatalogSubscriptionProfileV1, type InstalledCatalogSubscriptionProfile } from "@openlup/core/catalog";
+  type CatalogSubscriptionProfileIssue, type CatalogSubscriptionProfileV1, type InstalledCatalogSubscriptionProfile } from "@openlup/core/catalog";
 import { parseCadenceChoiceV1, type CadenceChoiceV1 } from "@openlup/core/subscription";
 import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
 
@@ -16,6 +16,7 @@ export interface CatalogProfileCadenceInput {
   readonly offerChoices: readonly CadenceChoiceV1[];
   readonly commandChoices: readonly CadenceChoiceV1[];
   readonly profileRef?: CatalogSubscriptionProfileRef;
+  /** Supply the declaration and identity pins from the caller’s binding. */
   readonly profile?: { readonly declaration: CatalogSubscriptionProfileV1; readonly installed: InstalledCatalogSubscriptionProfile };
 }
 
@@ -23,7 +24,8 @@ export interface CatalogProfileCadenceInput {
 export type CatalogProfileCadenceResult =
   | { readonly cadenceDays: number }
   | { readonly code: "cadence_kind_unsupported" | "cadence_not_offered" | "cadence_day_projection_mismatch"
-    | "profile_missing" | "policy_binding_missing" | "prepaid_unsupported" | "multi_cycle_prepaid_unsupported" };
+    | "profile_missing" | "prepaid_unsupported" | "multi_cycle_prepaid_unsupported" }
+  | { readonly code: "policy_binding_missing"; readonly issue?: CatalogSubscriptionProfileIssue };
 
 /** Verify a day choice before passing its projection to the owning day-based operation.
  * @experimental
@@ -45,8 +47,9 @@ export function selectCatalogProfileCadence(input: CatalogProfileCadenceInput): 
     }
     if (input.mode === "prepaid") return { code: "prepaid_unsupported" };
     const declared = validateCatalogSubscriptionProfile(profile.declaration);
+    if ("issue" in declared) return { code: "policy_binding_missing", issue: declared.issue };
     const { installed } = profile;
-    if ("issue" in declared || !installed || installed.profileKey !== profileRef.key || installed.profileVersion !== profileRef.version
+    if (!installed || installed.profileKey !== profileRef.key || installed.profileVersion !== profileRef.version
       || installed.policyDigest !== declared.profile.policyDigest || installed.policyRef?.key !== declared.profile.policyRef.key
       || installed.policyRef.version !== declared.profile.policyRef.version
       || installed.profileDigest !== createHash("sha256").update(canonicalCatalogSubscriptionProfileJson(declared.profile)).digest("hex")) {

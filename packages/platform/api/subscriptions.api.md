@@ -116,7 +116,7 @@ export declare function handoffRefusal(deps: AutomaticRenewalRunDeps, operation:
 ## dist/subscriptions/catalogProfileBinding.d.ts
 
 ```ts
-import { type CatalogSubscriptionProfileRef, type CatalogSubscriptionProfileV1, type InstalledCatalogSubscriptionProfile } from "@openlup/core/catalog";
+import { type CatalogSubscriptionProfileRef, type CatalogSubscriptionProfileIssue, type CatalogSubscriptionProfileV1, type InstalledCatalogSubscriptionProfile } from "@openlup/core/catalog";
 import { type CadenceChoiceV1 } from "@openlup/core/subscription";
 /** The caller supplies the offers admitted by each owning boundary.
  * @experimental
@@ -130,6 +130,7 @@ export interface CatalogProfileCadenceInput {
     readonly offerChoices: readonly CadenceChoiceV1[];
     readonly commandChoices: readonly CadenceChoiceV1[];
     readonly profileRef?: CatalogSubscriptionProfileRef;
+    /** Supply the declaration and identity pins from the caller’s binding. */
     readonly profile?: {
         readonly declaration: CatalogSubscriptionProfileV1;
         readonly installed: InstalledCatalogSubscriptionProfile;
@@ -139,7 +140,10 @@ export interface CatalogProfileCadenceInput {
 export type CatalogProfileCadenceResult = {
     readonly cadenceDays: number;
 } | {
-    readonly code: "cadence_kind_unsupported" | "cadence_not_offered" | "cadence_day_projection_mismatch" | "profile_missing" | "policy_binding_missing" | "prepaid_unsupported" | "multi_cycle_prepaid_unsupported";
+    readonly code: "cadence_kind_unsupported" | "cadence_not_offered" | "cadence_day_projection_mismatch" | "profile_missing" | "prepaid_unsupported" | "multi_cycle_prepaid_unsupported";
+} | {
+    readonly code: "policy_binding_missing";
+    readonly issue?: CatalogSubscriptionProfileIssue;
 };
 /** Verify a day choice before passing its projection to the owning day-based operation.
  * @experimental

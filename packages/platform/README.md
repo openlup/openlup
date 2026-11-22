@@ -1319,32 +1319,6 @@ compiles installed declarations without optional provider peers.
 
 ## Catalog
 
-### Install subscription profiles
-
-Apply the complete native catalogue through
-`20261124230000_subscription_profiles.sql`. Pass the migration-owner executor
-and a pack with `subscriptionProfileDefinitions` to `installCatalogDefinitions`.
-Include each declaration's key and version in `subscriptionProfiles`. Each
-profile key and version has one owning pack. Reinstall the same pack version
-to recover the original receipt. PostgreSQL binds the profile identity and
-digest to the stored declaration bytes. The TypeScript installer validates
-and serializes the canonical declaration. Supply the declarations
-to `createCatalogDefinitionWriteGuard` to require a matching installed identity
-for every referenced profile. The existing reference-only pack form remains
-available.
-
-`readInstalledCatalogSubscriptionProfile` reads one exact key and version
-with the migration-owner executor. Profile installation requires whole numbers
-from 1 to 3660 for fixed-day choices and for an optional `maxFixedDays`.
-At a day-based boundary, supply the installed identity and declaration to
-`selectCatalogProfileCadence` from `@openlup/platform/subscriptions`. The selector
-returns a whole-day projection when every supplied owner offers the choice.
-The native write guards enforce the limits of the installed database.
-
-Connected-store capture refuses stores with profile-bearing install receipts
-with `subscription_profile_receipts_unsupported`. Wait for the later
-connected-store restore change that supports these receipts before capturing.
-
 ### Read governed offer memberships
 
 Install the complete PostgreSQL catalogue through
@@ -1617,10 +1591,7 @@ and make the write guard refuse with `registry_missing_referenced_version`.
 Put the result in `ReadinessInput.catalogRegistry`
 in the application's `createVerificationInput()` for `openlup verify --app`.
 Missing versions or unequal digests report `registry_missing_referenced_version`.
-Keep every referenced version in the composed registry. Supply profile declarations
-to opt into profile checks. The report and write guard name the profile key and
-version in a `catalog_profile_binding_invalid` refusal. Bind the matching
-installed declaration in the catalogue profile binding.
+Keep every referenced version in the composed registry.
 `createCatalogDefinitionWriteGuard(readExecutor, registry)` returns a guard that
 re-probes before invoking each supplied catalogue-write callback. A mismatch or
 probe failure prevents the callback. Applications must explicitly wrap their
@@ -2714,6 +2685,18 @@ replay remain unchanged. `receiptKey` is an optional byte-equal `labelKey` alias
 neutral observation status/event aliases retain legacy fields and event keys.
 
 ## Subscription contracts and renewal port
+
+Use `selectCatalogProfileCadence` from `@openlup/platform/subscriptions` to
+intersect fixed-day choices from the store, SKU, offer and command. For a
+profiled request, pass the declared profile, its reference and the matching
+profile and policy identity pins from your binding. The selector also
+intersects the profile's choices and applies its optional fixed-day cap. An
+invalid declaration returns the Core field issue with `policy_binding_missing`.
+
+Pass a successful day projection to the owning operation. Native write
+guards still enforce their limits. Profiled prepaid requests return
+`prepaid_unsupported`. Unprofiled requests retain the existing
+`multi_cycle_prepaid_unsupported` response.
 
 `createPostgresSizedEditor` adds agreed-plan editing and explicit classic-to-sized
 opt-in on the selected sized SQL forward. Compose it with the classic binding

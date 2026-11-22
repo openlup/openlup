@@ -500,13 +500,6 @@ refused by the definition trigger. See the
 [package catalogue owner](../../packages/platform/README.md#catalog) for explicit
 install executors, readiness observations and the unbound write guard.
 
-Stores holding subscription profile install receipts remain outside the current
-connected-store transfer profile. Capture refuses with
-`subscription_profile_receipts_unsupported`. Wait for the later connected-store
-restore change that supports these receipts before capturing the store. Captures
-without profile receipts from the pinned installations immediately before the
-subscription profile forward can restore into the new qualified target.
-
 Managed-to-native retained transfer initializes only absent product `type_key`
 and `type_version` fields to NULL. Supplied values, including explicit NULLs,
 are preserved; the generic missing-column refusal still applies to every other
@@ -1014,26 +1007,6 @@ bootstrap ownership remains accepted; qualified session admission still
 requires its declared migration owner. Each applied unit is recorded after a
 fresh ledger check within that unit's transaction. Individual migration
 transactions and exact-prefix/replay behavior remain.
-
-### Native subscription profile receipts
-
-The [subscription profile forward](../../db/platform/migrations/20261124230000_subscription_profiles.sql)
-stores one immutable declaration receipt per profile key and version. A unique
-index gives each identity one owning pack. The insert trigger checks that the
-declaration bytes hash to the stored SHA-256 and that the key and version match
-the receipt columns. TypeScript owns canonical serialization and declaration
-validation. The owner-only receipt table stays outside the connected-store
-transfer profile.
-
-The install command uses the existing definition lock. Its pack record retains
-the canonical manifest and marks its SHA-256 with `profiles-v1:`. Exact
-reinstall returns the original receipt with the stored declarations in pack
-order. Reference-only receipts keep their prior format and contents.
-
-The exact-key lookup uses the existing migration owner and returns the profile
-and policy identities. There is no data backfill. See
-[Install subscription profiles](../../packages/platform/README.md#install-subscription-profiles).
-
 
 ### Sealed native catalog publication history
 

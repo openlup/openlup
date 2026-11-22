@@ -25,8 +25,6 @@ export const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, 
   draft_payload_invalid: rule("Supplied v1 draft facts satisfy the type registry and draft validator.", "Correct the fact named by the owner issue path and code.", "new-vertical"),
   definition_unknown_tax_class: rule("Default tax classes are declared by the pack.", "Declare the tax class or correct its reference.", "add-tax-class"),
   definition_unknown_profile_ref: rule("Profile keys and versions are declared by the pack.", "Declare the profile version or correct its reference.", "subscription-profile"),
-  definition_profile_invalid: rule("Profile declarations use closed metadata and unique fixed-day choices.", "Correct the profile field at the reported path.", "subscription-profile"),
-  cadence_kind_unsupported: rule("V1 installs require fixed-day cadence choices.", "Use a fixed_days choice with a whole number of days from 1 to 3660.", "subscription-profile"),
   pack_type_namespace_mismatch: rule("Type keys use the pack namespace.", "Use this pack's namespace for the type key.", "new-vertical"),
   quantity_invalid: rule("Quantities use positive decimal strings and scale 0–12.", "Correct the quantity shape or exact unit factor.", "add-unit"),
   quantity_cross_dimension: rule("Conversions stay within one dimension.", "Choose a unit of the same dimension; never infer density or item mass.", "add-unit"),
@@ -81,26 +79,3 @@ export const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, 
   product_capacity_exceeded: rule("Retained and incoming SKUs fit the configured product capacity.", "Keep the retained plus incoming set within the configured bound.", "add-axis"),
   product_capacity_invalid: rule("Configured product capacity is a positive safe integer.", "Supply a valid explicit capacity or use the default of 50,000.", "add-axis"),
 });
-
-/** Shared installation and offline guidance for profile field refusals. */
-export function catalogProfileDeclarationFix(path: string): string {
-  const field = /\/subscriptionProfileDefinitions\/\d+\/([^/]+)(?:\/([^/]+))?/u.exec(path);
-  switch (field?.[1]) {
-    case "policyDigest":
-      return "Supply policyDigest as a 64-character lowercase SHA-256 hex digest.";
-    case "allowedCadences":
-      return "Supply distinct fixed-day choices with whole days from 1 to 3660.";
-    case "maxFixedDays":
-      return "Supply a whole number from 1 to 3660 for maxFixedDays or omit it.";
-    case "policyRef":
-      if (!field[2]) return "Supply policyRef with a namespaced key and a version from 1 to 2147483647.";
-      if (field[2] === "version") return "Supply a whole-number policy version from 1 to 2147483647.";
-      return "Supply a namespaced policy key of at most 120 characters, such as example:monthly.";
-    case "key":
-      return "Supply a namespaced profile key of at most 120 characters, such as example:monthly.";
-    case "version":
-      return "Supply a whole-number profile version from 1 to 2147483647.";
-    default:
-      return "Use the documented profile fields and declare each profile key and version once.";
-  }
-}

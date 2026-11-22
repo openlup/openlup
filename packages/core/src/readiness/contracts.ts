@@ -5,11 +5,7 @@ export const READINESS_CODES: readonly ["OPENLUP_E_PORT_MISSING", "OPENLUP_E_EVE
   /** Reports the experimental catalogRegistry observation.
    * @experimental
    */
-  "registry_missing_referenced_version",
-  /** Reports the missing or mismatched subscription profile binding.
-   * @experimental
-   */
-  "catalog_profile_binding_invalid"] = ["OPENLUP_E_PORT_MISSING", "OPENLUP_E_EVENT_UNHANDLED", "OPENLUP_E_EVENT_DUPLICATE", "OPENLUP_E_SCHEDULE_UNBOUND", "OPENLUP_E_SCHEMA_BEHIND", "OPENLUP_E_SET_MISMATCH", "OPENLUP_E_ENV_MISSING", "registry_missing_referenced_version", "catalog_profile_binding_invalid"] as const;
+  "registry_missing_referenced_version"] = ["OPENLUP_E_PORT_MISSING", "OPENLUP_E_EVENT_UNHANDLED", "OPENLUP_E_EVENT_DUPLICATE", "OPENLUP_E_SCHEDULE_UNBOUND", "OPENLUP_E_SCHEMA_BEHIND", "OPENLUP_E_SET_MISMATCH", "OPENLUP_E_ENV_MISSING", "registry_missing_referenced_version"] as const;
 /** @beta */
 export type ReadinessCode = typeof READINESS_CODES[number];
 /** @beta */
@@ -81,8 +77,5 @@ export interface CatalogRegistryObservation {
   /** False means row visibility is incomplete; omission preserves existing observations. */
   complete?: boolean;
   /** A null installed digest means the referenced definition was unavailable. */
-  referencedVersions: readonly {
-    key: string; version: number; definitionDigest: string | null; registryDigest: string | null;
-    profileBindingIssue?: { key: string; version: number; reason: "profile_binding_missing" | "profile_binding_mismatch" };
-  }[];
+  referencedVersions: readonly { key: string; version: number; definitionDigest: string | null; registryDigest: string | null }[];
 }

@@ -122,7 +122,9 @@ export interface CatalogSubscriptionProfileV1 extends CatalogSubscriptionProfile
     readonly policyRef: CatalogSubscriptionProfileRef;
     readonly policyDigest: string;
 }
-/** @experimental */
+/** Profile and policy identity pins supplied to the cadence selector.
+ * @experimental
+ */
 export interface InstalledCatalogSubscriptionProfile {
     readonly profileKey: string;
     readonly profileVersion: number;
@@ -134,8 +136,9 @@ export interface InstalledCatalogSubscriptionProfile {
 export type CatalogSubscriptionProfileIssue = {
     readonly code: "definition_profile_invalid" | "cadence_kind_unsupported";
     readonly path: string;
+    readonly fix: string;
 };
-/** Validate v1 install metadata and normalize the order of the cadence set.
+/** Validate profile metadata and normalize the order of the cadence set.
  * @experimental
  */
 export declare function validateCatalogSubscriptionProfile(input: unknown): {

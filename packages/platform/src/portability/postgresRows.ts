@@ -33,8 +33,7 @@ export interface CompatiblePostgresPacket {
   sha256: string;
 }
 export type PostgresTransferFailure = "invalid_input" | "unsupported_table" | "schema_conflict"
-  | "insert_trigger_requires_owner" | "target_conflict" | "limit_exceeded" | "database_unavailable"
-  | "subscription_profile_receipts_unsupported";
+  | "insert_trigger_requires_owner" | "target_conflict" | "limit_exceeded" | "database_unavailable";
 export class PostgresTransferError extends Error {
   constructor(readonly code: PostgresTransferFailure, readonly table?: string) {
     super(`postgres_transfer_${code}${table ? `:${table}` : ""}`);

@@ -1,9 +1,7 @@
-import { canonicalCatalogSubscriptionProfileJson } from "@openlup/core/catalog";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
 import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
-import { catalogProfileDeclarationFix } from "./catalogConformance.js";
 import { catalogDefinitionJson } from "./catalogDefinitionDigest.js";
 import { catalogPackManifest } from "./catalogPackManifest.js";
 import { catalogPackIssues } from "./productTypeIssues.js";
@@ -14,10 +12,7 @@ import { verifyCatalogRulesAtInstall } from "./publicationRules.js";
  */
 export async function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt> {
   const issue = catalogPackIssues(pack)[0];
-  if (issue) {
-    throw Object.assign(new Error("invalid_catalog_pack"), { issue,
-      ...(issue.code === "definition_profile_invalid" && { fix: catalogProfileDeclarationFix(issue.path) }) });
-  }
+  if (issue) throw Object.assign(new Error("invalid_catalog_pack"), { issue });
   verifyCatalogRulesAtInstall(pack);
   const manifest = catalogPackManifest(pack);
   if (!Number.isSafeInteger(pack.version) || pack.version < 1 || pack.version > 2147483647
@@ -27,10 +22,6 @@ export async function installCatalogDefinitions(installExecutor: PgQueryExecutor
   const { digest: _digest, ...projection } = manifest;
   const payload = {
     manifest: canonicalCatalogDraftJson(projection),
-    ...(manifest.subscriptionProfileDefinitions && {
-      profileDeclarationBytes: manifest.subscriptionProfileDefinitions.map(({ profileDigest: _digest, ...declaration }) =>
-        canonicalCatalogSubscriptionProfileJson(declaration)),
-    }),
     types: pack.types.map(type => ({ canonicalDefinition: catalogDefinitionJson(type) })),
     taxClasses: pack.taxClasses.map(({ key }) => ({ key, label: key })),
   };
@@ -39,9 +30,6 @@ export async function installCatalogDefinitions(installExecutor: PgQueryExecutor
     [pack.id, pack.version, JSON.stringify(payload)],
   );
   const receipt = rows[0]?.receipt as CatalogDefinitionInstallReceipt | undefined;
-  if (rows.length !== 1 || receipt?.manifestDigest !== manifest.digest
-    || receipt.canonicalManifest !== (manifest.subscriptionProfileDefinitions ? payload.manifest : undefined)
-    || canonicalCatalogDraftJson(receipt.subscriptionProfileDefinitions ?? null)
-    !== canonicalCatalogDraftJson(manifest.subscriptionProfileDefinitions ?? null)) throw new Error("invalid_catalog_install_receipt");
+  if (rows.length !== 1 || receipt?.manifestDigest !== manifest.digest) throw new Error("invalid_catalog_install_receipt");
   return receipt;
 }
