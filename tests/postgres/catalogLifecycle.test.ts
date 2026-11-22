@@ -154,10 +154,10 @@ it.each(["service_role", "catalog_runtime"])("keeps acceptance mutation helpers 
   }
 });
 
-async function receipt(db: PoolClient, order: string, sku: string, qty = 1) {
+async function receipt(db: PoolClient, order: string, sku: string, qty = 1, otherLines: { sku: string; quantity: number }[] = []) {
   await db.query(`INSERT INTO public.commerce_order_draft_receipts(idempotency_key,request_fingerprint,order_id,response_payload)
     VALUES($1,$2,$3,$4)`, [`receipt:${order}`, "f".repeat(32), order, json({
-    orderDraft: { orderId: `order_${order}`, quoteSnapshot: { quote: { lines: [{ sku, quantity: qty }] } } },
+    orderDraft: { orderId: `order_${order}`, quoteSnapshot: { quote: { lines: [{ sku, quantity: qty }, ...otherLines] } } },
   })]);
 }
 async function bindOrder(db: PoolClient, order: string, value = acceptance) {
@@ -435,15 +435,17 @@ async function acceptedPurchase(options: { scheduledAt?: string; graduation?: bo
   const at = new Date(Date.now() - 1000).toISOString();
   const scheduledAt = options.scheduledAt ?? at;
   const scheduleAt = scheduledAt.replace("Z", "000Z");
-  const lines = [{ lineOrdinal: 1, sku: reference.skuCode, quantity: 1, unitAmountMinor: 100 }];
+  const lines = issued.lines.map((ref, index) => ({ lineOrdinal: index + 1, sku: ref.skuCode, quantity: 1, unitAmountMinor: 100 }));
   const originalTerms = { templateId: "fixture", shippingAmountMinor: 0, acquisitionRef: null };
   const starterPack = { schemaVersion: "1", basisTemplateVersion: 1, starterIntervalDays: 28,
-    delivery2: { discountBps: 0, discountMinor: 0, basisSubtotalMinor: 100 },
+    delivery2: { discountBps: 0, discountMinor: 0, basisSubtotalMinor: lines.length * 100 },
     graduation: { cadenceDays: 30, lines: [{ sku: reference.skuCode, qty: 3, sortOrder: 0, isAddon: false,
       quoteLine: { unitPriceGross: { amountMinor: 100 }, lineSubtotalGross: { amountMinor: 300 } } }] } };
   const retained = options.graduation ? { renewalTerms: { version: "native.renewal-terms.v1",
     shippingTerms: { version: "shipping-threshold.v1", currency: "XXX", flatMinor: 0, freeThresholdMinor: 0 },
-    minimumPayableMinor: 1, normalCadenceDays: [30], starterPack } } : {};
+    minimumPayableMinor: 1, normalCadenceDays: [30], starterPack,
+    linePricing: lines.map((line, index) => ({ sku: line.sku, quantity: line.quantity,
+      unitAmountMinor: line.unitAmountMinor, isAddon: index > 0, quoteLine: {} })) } } : {};
   const purchase = { ...originalTerms, ...retained, currency: "XXX", stockSourceKey: "fixture", settlementChannelKey: "sandbox", lines,
     unattendedChargeAuthorizedAt: at, authorizationRef: "fixture", payerAccountRef: null, methodRef: "fixture", methodEvidenceRef: "fixture" };
   const owner = await transaction(pool, async db => {
@@ -454,11 +456,16 @@ async function acceptedPurchase(options: { scheduledAt?: string; graduation?: bo
       [list, reference.skuId]);
     await db.query("UPDATE public.subscriptions SET status='active',next_cycle_at=$2,currency_code='XXX',price_list_id=$3 WHERE id=$1",
       [owner.id, scheduledAt, list]);
-    await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code)
-      VALUES($1,$2,1,0,100,'XXX')`, [owner.id, reference.skuId]);
     const order = await obligationOrder(db, owner.client, "paid", reference.skuId);
-    await receipt(db, order, reference.skuCode);
-    await call(db, "catalog_attach_order_acceptance", [order, issued, `receipt:${order}`, { [reference.skuCode]: 1 }]);
+    for (const [index, ref] of issued.lines.entries()) {
+      await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+        VALUES($1,$2,1,$3,$4,100,'XXX')`, [owner.id, ref.skuId, index, index > 0]);
+      if (index > 0) await db.query(`INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+        VALUES($1,$2,$3,1,100,100)`, [order, ref.skuId, index + 1]);
+    }
+    if (lines.length > 1) await db.query("UPDATE public.commerce_orders SET total_amount_minor=$2 WHERE id=$1", [order, lines.length * 100]);
+    await receipt(db, order, reference.skuCode, 1, lines.slice(1));
+    await call(db, "catalog_attach_order_acceptance", [order, issued, `receipt:${order}`, Object.fromEntries(lines.map(line => [line.sku, line.quantity]))]);
     const activationCycleId = randomUUID();
     await db.query(`INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status)
       VALUES($1,$2,$3::timestamptz-interval '28 days','paid')`, [activationCycleId, owner.id, scheduledAt]);
@@ -474,8 +481,8 @@ async function acceptedPurchase(options: { scheduledAt?: string; graduation?: bo
     expect((await attach()).rows).toEqual([{ result: { subscriptionId: owner.id, replayed: false } }]);
     expect((await attach()).rows).toEqual([{ result: { subscriptionId: owner.id, replayed: true } }]);
     if (options.graduation) await db.query("UPDATE public.subscription_renewal_terms SET next_cycle_number=2 WHERE subscription_id=$1", [owner.id]);
-    expect((await db.query("SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [owner.id])).rows)
-      .toEqual([{ catalog_sku_revision_id: reference.skuRevisionId }]);
+    expect((await db.query("SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1 ORDER BY sort_order", [owner.id])).rows)
+      .toEqual(issued.lines.map(ref => ({ catalog_sku_revision_id: ref.skuRevisionId })));
     expect((await db.query("SELECT public.subscription_renewal_purchase_terms($1) AS result", [owner.id])).rows)
       .toEqual([{ result: { ...originalTerms, ...retained } }]);
     return { ...owner, order, activationCycleId };
@@ -717,7 +724,10 @@ it("preserves authenticated writes to unaccepted orders outside the acting clien
     const owner = await subscription(db);
     const order = await obligationOrder(db, owner.client, "pending_payment");
     await receipt(db, order, first.facts.code);
-    return { ...owner, order };
+    const accepted = await obligationOrder(db, owner.client, "pending_payment");
+    await receipt(db, accepted, first.facts.code);
+    await bindOrder(db, accepted);
+    return { ...owner, order, accepted };
   });
   const db = await pool.connect();
   try {
@@ -731,7 +741,9 @@ it("preserves authenticated writes to unaccepted orders outside the acting clien
     expect((await db.query("UPDATE public.commerce_order_items SET quantity=quantity WHERE order_id=$1", [owner.order])).rowCount).toBe(1);
     expect((await db.query("UPDATE public.commerce_order_draft_receipts SET response_payload=response_payload WHERE order_id=$1", [owner.order])).rowCount).toBe(1);
     // Run every queued commit check with the actual write role, then discard fixture grants.
-    await expect(db.query("SET CONSTRAINTS ALL IMMEDIATE")).resolves.toMatchObject({ command: "SET CONSTRAINTS" });
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+    await expect(db.query("UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1", [owner.accepted]))
+      .rejects.toMatchObject(refusal("subscription_lifecycle_forbidden"));
   } finally {
     await db.query("ROLLBACK");
     db.release();
@@ -768,7 +780,7 @@ async function previewedEdit(db: Pool | PoolClient, owner: Awaited<ReturnType<ty
 
 async function retainedAcceptance(owner: string) {
   return (await pool.query(`SELECT t.catalog_acceptance,l.catalog_sku_revision_id FROM public.subscription_renewal_terms t
-    JOIN public.subscription_lines l USING (subscription_id) WHERE t.subscription_id=$1`, [owner])).rows;
+    JOIN public.subscription_lines l USING (subscription_id) WHERE t.subscription_id=$1 ORDER BY l.sort_order`, [owner])).rows;
 }
 
 const editableSchedule = () => new Date(Date.now() + 7 * 86_400_000).toISOString();
@@ -792,15 +804,22 @@ it.each(["classic", "exact", "package", "sized", "bundle"] as const)("clears ret
 });
 
 it("clears retained acceptance during full graduation before the next claim", async () => {
-  const owner = await acceptedPurchase({ graduation: true });
+  const addon = (await issueActiveAcceptance()).lines[0]!;
+  const issued = { ...acceptance, lines: [...acceptance.lines, addon] };
+  const owner = await acceptedPurchase({ graduation: true, issued });
+  const addonLine = (await runtime.query("SELECT id FROM public.subscription_lines WHERE subscription_id=$1 AND is_addon", [owner.id])).rows[0]!;
   await createPostgresDestinationPort(runtime).registerOrder({ idempotencyKey: `destination:${owner.order}`,
     orderId: owner.order, now: owner.at,
     address: { recipientName: "Synthetic recipient", line1: "Synthetic street 1", city: "Fixture", postalCode: "00000", country: "ZZ" } });
-  expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: acceptance, catalog_sku_revision_id: first.skuRevisionId }]);
+  expect(await retainedAcceptance(owner.id)).toEqual(issued.lines.map(ref => ({
+    catalog_acceptance: issued, catalog_sku_revision_id: ref.skuRevisionId })));
   const store = createPostgresRenewalStore(runtime, codec, work => transaction(runtime, work));
   const snapshot = await store.buildCycleSnapshots(owner.schedule);
-  expect(snapshot.templateSnapshot).toMatchObject({ version: 2, cadenceDays: 30, lines: [{ quantity: 3 }] });
-  expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: null, catalog_sku_revision_id: null }]);
+  expect(snapshot.templateSnapshot).toMatchObject({ version: 2, cadenceDays: 30, lines: [{ quantity: 3 }, { quantity: 1 }] });
+  expect(await retainedAcceptance(owner.id)).toEqual(issued.lines.map(() => ({
+    catalog_acceptance: null, catalog_sku_revision_id: null })));
+  expect((await runtime.query("SELECT id FROM public.subscription_lines WHERE subscription_id=$1 AND is_addon", [owner.id])).rows)
+    .toEqual([addonLine]);
   const claim = await store.claimDue({ snapshot, workerId: "graduation", now: new Date().toISOString() });
   expect(claim).toMatchObject({ acquired: true });
   expect(claim).not.toHaveProperty("catalogAcceptance");
