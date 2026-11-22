@@ -3252,7 +3252,18 @@ application retains its existing national rules and callers unchanged.
 
 Choose a tax adapter in application composition and supply one merchant coverage
 document. This version calculates exclusive tax. Use `./tax/contracts` for the browser-safe port and document decoders.
-Use `./tax` to prepare and verify requests and reconcile coverage. Call
+Use `./tax` to prepare and verify requests and reconcile coverage.
+The experimental `./tax/stripe` factory takes an account-bound client, a pinned
+market pack and host callbacks for verified capture, refund reservations and
+positive reference lookup. It supports exclusive quotes and qualified fee-free
+reporting. Persist the digest from `makeStripeTaxRequestDigest` with the verified
+capture or refund reservation before dispatch. The adapter derives the provider
+body and checks its digest binding on recovery. Index positive observations by
+the exact provider reference, which includes the operation so sales and refunds
+can use the same local reference. Use `tax.classMap` to discover tax-code
+composition. Keep the logical quote key when recalculating frozen input at a
+later tax instant and compare the verified results with
+`compareTaxRecalculationProbe`. Call
 `verifyTaxQuoteRequest` for quotes and decoded fiscal-validity requests and
 `verifyTaxQuoteResult` before using successful results. For the evidence digest,
 SHA-256 hash `canonicalCatalogDraftJson(["platform.tax.evidence.v1", evidence])`

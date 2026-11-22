@@ -17,7 +17,7 @@ export interface TaxConformanceSubjectV1 {
      * Open an isolated offline fixture. Clock cases supply the next charge instant and current input through advance.
      * The fee fixture uses a free delivery bucket and a 25-minor-unit fee with refund rule ref "refund-a", revision "1".
      * Posting fixtures use one taxable position on 100 minor units with zero tax and no fee, fully eligible for reversal.
-     * Positive reversal scenarios use declared modes. The partial-then-full scenario requires both amount and full.
+     * Positive reversal scenarios use declared modes. The partial-then-full scenario uses lines or amount together with full.
      * Report cumulative side effect counts, including unsuccessful calls that dispatched an effect.
      */
     open(caseId: TaxConformanceCaseV1): Promise<{
@@ -38,6 +38,27 @@ export interface TaxConformanceSubjectV1 {
 export declare function runTaxAdapterConformance(subject: TaxConformanceSubjectV1): Promise<readonly TaxConformanceCaseV1[]>;
 export {};
 ```
+## dist/tax/compareProbe.d.ts
+
+```ts
+import type { TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal } from "./contracts/index.js";
+type Field = "positions" | "fees" | "payableMinor" | "currency";
+/**
+ * Compare a bound final quote with a fresh quote for the same logical key and frozen input
+ * at a later tax instant. Both request/result pairs must pass the quote verifier.
+ * The caller owns the renewal dispatch fence, append-only rebind and operator case.
+ * Invoke the probe only after a definitive non-capturing outcome with no pending attempt.
+ * @beta
+ * @experimental
+ */
+export declare function compareTaxRecalculationProbe(boundRequest: TaxQuoteRequestV1, bound: TaxQuoteResultV1, probeRequest: TaxQuoteRequestV1, probe: TaxQuoteResultV1): {
+    kind: "equal";
+} | {
+    kind: "different";
+    field: Field;
+} | TaxRefusal;
+export {};
+```
 ## dist/tax/contracts/port.d.ts
 
 ```ts
@@ -51,7 +72,7 @@ export interface TaxCalculationPortV1 {
      * Verify successful outputs with `verifyTaxQuoteResult`. Adapter conformance will check this binding.
      */
     quote(request: TaxQuoteRequestV1): Promise<TaxQuoteResultV1>;
-    /** Decode the request and call `verifyTaxQuoteRequest` to check the original quote and evidence binding. */
+    /** Decode the request and call `verifyTaxQuoteRequest` to check the original quote, evidence and current scope binding. */
     readFiscalValidity(request: TaxFiscalValidityRequestV1): Promise<TaxFiscalValidityResultV1>;
     /**
      * The caller records a local, idempotent close for affirmatively unused or verified-unpaid evidence.
@@ -76,6 +97,7 @@ import type { TaxCalculationEvidenceV1, TaxFiscalValidityRequestV1, TaxQuoteInpu
 type DigestTag = "input" | "coverage" | "fiscal" | "resolution" | "evidence" | "rate-table" | "close" | "commit" | "reverse";
 export declare function taxDigest(tag: DigestTag, payload: unknown): string;
 export declare function makeTaxQuoteRequest(key: string, input: TaxQuoteInputV1): TaxQuoteRequestV1;
+export declare function matchesDigest(tag: DigestTag, document: unknown, digest: string): boolean;
 type FiscalEvidence = Pick<TaxCalculationEvidenceV1, "scope" | "destinationDigest" | "shipFromRef" | "policyRevision" | "classMapRevision" | "coverage" | "positions">;
 export declare const taxFiscalDigest: (evidence: FiscalEvidence) => string;
 /** Verify the quote or fiscal-validity digests before returning binding repair advice. */
@@ -94,6 +116,7 @@ export { localRateTable } from "./localRateTable.js";
 export type { LocalRateTableOptionsV1 } from "./localRateTable.js";
 export { runTaxAdapterConformance } from "./adapterConformance.js";
 export type { TaxConformanceCaseV1, TaxConformanceSubjectV1 } from "./adapterConformance.js";
+export { compareTaxRecalculationProbe } from "./compareProbe.js";
 ```
 ## dist/tax/localRateTable.d.ts
 

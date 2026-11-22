@@ -245,6 +245,13 @@ describe("settings goal search", () => {
     expect("partialMatch" in catalogue.listResult.parse(listSettings({}))).toBe(false);
   });
 
+  it("finds the read-only class map by provider tax code", () => {
+    const { entries } = catalogue.listResult.parse(listSettings({ goal: "provider tax code" }));
+    expect(entries).toContainEqual(expect.objectContaining({
+      key: "tax.classMap", kind: "code", runtime: expect.objectContaining({ level: "read-only" }),
+    }));
+  });
+
   it("includes checkout search terms for checkout settings", () => {
     expect(catalogue.searchTerms.checkout).toContain("cart");
     const { entries } = catalogue.listResult.parse(listSettings({ goal: "basket" }));

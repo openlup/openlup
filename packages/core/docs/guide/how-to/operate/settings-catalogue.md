@@ -763,7 +763,7 @@ Show offline: `show subscriptions.winbackEpisodeDeduplication --json`.
 
 ## tax.adapter
 
-Choose the tax calculation adapter bound to TaxCalculationPort in application composition.
+Choose localRateTable or the opt-in stripeTax adapter bound to TaxCalculationPort in application composition.
 Search terms include exclusive tax, tax calculation port, tax adapter binding, tax scope.
 
 - Owner **tax** · kind **code** · runtime **read-only**
@@ -773,6 +773,19 @@ Search terms include exclusive tax, tax calculation port, tax adapter binding, t
 - When absent, exclusive tax calculation requires an explicit binding for the selected scope, market and currency.
 
 Show offline: `show tax.adapter --json`.
+
+## tax.classMap
+
+Map application tax classes to provider tax codes in the versioned market pack.
+Search terms include tax class map, provider tax code, market pack, class-map revision.
+
+- Owner **tax** · kind **code** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- Each market pack owns the mapping for its catalogue and provider.
+- When absent, an unmapped class refuses the quote before provider I/O.
+
+Show offline: `show tax.classMap --json`.
 
 ## tax.localRateTable
 

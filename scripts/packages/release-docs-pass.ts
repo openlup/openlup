@@ -9,10 +9,10 @@ import { join, posix, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { documentationGit, documentationLinkTargets, parseDocumentationRouting, resolveDocumentationOwner, type DocumentationOwner } from "../documentation-routing.ts";
 // eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check runs before workspace install and reuses core's owning release-note audit
-import { assertReleaseNotePackagedContent, findReleaseNotePackagedContentViolations } from "../../packages/core/scripts/core-package-consumer-audit.ts";
+import { assertReleaseNotePackagedContent, documentedAdapters, findReleaseNotePackagedContentViolations } from "../../packages/core/scripts/core-package-consumer-audit.ts";
 import { isChangelogFragment, readChangelogFragments, validateChangelogFragment, type ChangelogFragment } from "./changelog-fragments.ts";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, parsePackagesConfig, releaseVersionAbove } from "./package-manifest-policy.ts";
-export { assertReleaseNotePackagedContent, findReleaseNotePackagedContentViolations };
+export { assertReleaseNotePackagedContent, documentedAdapters, findReleaseNotePackagedContentViolations };
 
 const GUIDE = "packages/core/docs/guide";
 const API_REPORT = /^packages\/[^/]+\/api\/[^/]+\.api\.md$/u;

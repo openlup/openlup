@@ -32,6 +32,7 @@ it("represents every domain data key and executable descriptor in the catalogue"
     "market.fiscalProfile",
     "market.settlementProfile",
     "tax.adapter",
+    "tax.classMap",
     "tax.localRateTable",
   ]);
   expect(entries.find(({ key }) => key === "savedAddressValidation")).toMatchObject({

@@ -4382,6 +4382,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/tax-stripe.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/tax.api.md",
       "class": "public-output"
     },
@@ -9914,6 +9918,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/tax/compareProbe.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/tax/contracts/decode.ts",
       "class": "public-output"
     },
@@ -9966,6 +9974,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/tax/stripe/effects.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/stripe/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/tax/stripe/plan.ts",
       "class": "public-output"
     },
@@ -9975,6 +9991,10 @@
     },
     {
       "path": "packages/platform/src/tax/stripe/registrations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/stripe/transactions.ts",
       "class": "public-output"
     },
     {
@@ -12422,6 +12442,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/tax/stripe/clientTypes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/tax/stripe/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/tax/stripe/coverage.test.ts",
       "class": "public-output"
     },
@@ -12430,7 +12458,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/tax/stripe/lifecycleFixtures.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/tax/stripe/quote.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/tax/stripe/transactions.test.ts",
       "class": "public-output"
     },
     {

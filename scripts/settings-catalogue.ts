@@ -73,6 +73,7 @@ const searchTerms: Record<string, string> = {
   "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
   "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",
   "tax.adapter": "exclusive tax, tax calculation port, tax adapter binding, tax scope",
+  "tax.classMap": "tax class map, provider tax code, market pack, class-map revision",
   "tax.localRateTable": "local tax rules, jurisdiction, tax class, effective interval, rate, exemption, fixed fee, legal basis, rounding, digest",
   "market.fiscalProfile": "fiscal jurisdiction, tax category, VAT rate, basis points, statutory citation, inclusive VAT",
   "market.settlementProfile": "settlement currency, settlement region, commerce settings mirror, market profile",

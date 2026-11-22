@@ -351,6 +351,18 @@
       "entrypoint": "dist/tax/index.d.ts",
       "snapshot": "api/tax.api.md"
     },
+    "./tax/stripe": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "experimental",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/tax/stripe/conformance.test.ts",
+        "test/tax/stripe/transactions.test.ts"
+      ],
+      "entrypoint": "dist/tax/stripe/index.d.ts",
+      "snapshot": "api/tax-stripe.api.md"
+    },
     "./tax/contracts": {
       "role": "capability",
       "maturity": "experimental",
