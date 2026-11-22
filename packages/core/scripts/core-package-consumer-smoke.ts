@@ -241,17 +241,22 @@ function writeConsumerSmoke(consumerDir: string, packageJson: CorePackageJson): 
   const dynamicImports = JSON.stringify(specifiers, null, 2);
   const staticImports = specifiers.map((specifier, index) => `import * as module${index} from ${JSON.stringify(specifier)};`);
   const staticModuleRefs = specifiers.map((_, index) => `module${index}`).join(", ");
+  const moneyInput = "{ amountBasis: 'exclusive', sources: [], delivery: [], adjustments: [], fees: [{ feeKey: 'fee', amountMinor: 25 }] }";
+  const moneyCheck = "if (calculateCatalogueMoneyV2(moneyInput, { kind: 'local', components: [] }).payableMinor !== 25) throw new Error('catalogue money v2 failed');";
   writeFileSync(
     join(consumerDir, "smoke.mjs"),
     [
       ...fixedCatalogRuntimeImports(),
       ...fixedBoxRuntimeImports(),
+      "import { calculateCatalogueMoneyV2 } from '@openlup/core/pricing';",
       "import { checkReadiness, buildGroupedPostgresSchemaProbe, decodeGroupedPostgresSchemaRows } from '@openlup/core/readiness';",
       `const specifiers = ${dynamicImports};`,
       "const imported = await Promise.all(specifiers.map((specifier) => import(specifier)));",
       "if (imported.length === 0) throw new Error('core package exported no public subpaths');",
       ...fixedCatalogScenarioLines(false),
       ...fixedBoxRuntimeScenarioLines(),
+      `const moneyInput = ${moneyInput};`,
+      moneyCheck,
       ...readinessModuleScenarioLines(packageJson.version, false),
       "if (buildGroupedPostgresSchemaProbe([]).values.length !== 3 || decodeGroupedPostgresSchemaRows([], []).length !== 0) throw new Error('grouped schema empty read failed');",
       "console.log(`core package tarball consumer ok (${imported.length} exports, total ${fixedCatalogBreakdown.orderTotalMinor})`);",
@@ -265,12 +270,15 @@ function writeConsumerSmoke(consumerDir: string, packageJson: CorePackageJson): 
       ...staticImports,
       ...fixedCatalogTypecheckImports(),
       ...fixedBoxTypecheckImports(),
+      "import { calculateCatalogueMoneyV2, type CatalogueMoneyV2Input } from '@openlup/core/pricing';",
       "import { checkReadiness, buildGroupedPostgresSchemaProbe, decodeGroupedPostgresSchemaRows, type PostgresSchemaCatalogEntry, type SchemaObject, type ReadinessInput, type ReadinessReport, type RequiredSchema } from '@openlup/core/readiness';",
       `const importedModules = [${staticModuleRefs}];`,
       "if (importedModules.length === 0) throw new Error('consumer typecheck imported no modules');",
       "(globalThis as Record<string, unknown>).__coreConsumerExportCounts = importedModules.map((module) => Object.keys(module).length);",
       ...fixedCatalogScenarioLines(true),
       ...fixedBoxTypecheckScenarioLines(),
+      `const moneyInput: CatalogueMoneyV2Input = ${moneyInput};`,
+      moneyCheck,
       ...readinessModuleScenarioLines(packageJson.version, true),
       "const groupedObjects: readonly SchemaObject[] = [{ kind: 'table', name: 'public.example' }];",
       "const groupedQuery: { text: string; values: readonly unknown[] } = buildGroupedPostgresSchemaProbe(groupedObjects);",

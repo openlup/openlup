@@ -6306,6 +6306,19 @@
         "dataStatements": []
       },
       {
+        "row": "checkout-attempt-ledger",
+        "path": "db/platform/migrations/20261124200000_checkout_attempt_ledger.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_record_checkout_attempt(text,text,text,bigint,bigint,bigint,bigint,bigint)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "catalog-governed-lifecycle",
         "path": "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql",
         "replacedFunctions": [
@@ -9224,6 +9237,17 @@
       "functions": []
     },
     {
+      "path": "db/platform/migrations/20261124200000_checkout_attempt_ledger.sql",
+      "sha256": "ca55e8affd94dfe5957da52b7b0594ad5a9d384df4c1061561906731e23d6c4f",
+      "functions": [
+        {
+          "signature": "public.commerce_record_checkout_attempt(text,text,text,bigint,bigint,bigint,bigint,bigint)",
+          "beforeSha256": null,
+          "afterSha256": "51c5d6c06b73ca09447ef2d7bf4ef31123578273f5afaffd3385b7684064762a"
+        }
+      ]
+    },
+    {
       "path": "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql",
       "sha256": "4ec416d9edbf838a6843d12763345df965eebf29851b0543a3ffc294bc9e1c83",
       "functions": [
@@ -9355,6 +9379,11 @@
       "path": "supabase/migrations/20261123153000_managed_reconciliation_replay_strip.sql",
       "sha256": "a2d50fb3bacb307897284d9ba08d1839e0057acbf69b1de57711ae09d4bde817",
       "prefixSha256": "e17c2f3b214f896664a0b1fd214be611094bb0eb75633a675d2d11df022bd89d"
+    },
+    {
+      "path": "supabase/migrations/20261124200000_checkout_attempt_ledger.sql",
+      "sha256": "8780f37eb06d02cff9d8250816eb8131440609738a623235c7947745847c2f57",
+      "prefixSha256": "2ca09123119170400600b3285d36b62bcfdbbf2418f7c405ded25c132570c456"
     }
   ]
 }
