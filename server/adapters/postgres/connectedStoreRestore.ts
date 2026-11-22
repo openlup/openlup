@@ -91,8 +91,6 @@ export async function mapManagedIdentityForConnectedRestore(input: {
   admitCaptureTables(packet.compatible.catalogueId, retained);
   validateCapturedRows(retained);
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const onlyKeys = (row: Record<string, unknown>, keys: readonly string[]) =>
-    Object.keys(row).sort().join("\0") === [...keys].sort().join("\0");
   const validIssuer = (value: unknown): value is string => {
     if (typeof value !== "string") return false;
     try {
@@ -132,7 +130,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
   const linkedPrincipals = new Set<string>();
   for (const row of source.clients) {
     if (!validRow(row) || typeof row.id !== "string" || !uuid.test(row.id) || clientIds.has(row.id.toLowerCase())
-      || !onlyKeys(row, ["id", "created_at", "updated_at", "email", "first_name", "last_name", "phone", "country",
+      || !hasExactKeys(row, ["id", "created_at", "updated_at", "email", "first_name", "last_name", "phone", "country",
         "lifecycle_stage", "acquisition_source", "external_ref", "metadata", "preferences", "auth_user_id", "identity_kind", "marketing_contact_id"])
       || row.identity_kind !== "customer" || row.marketing_contact_id !== null
       || !validRow(row.preferences) || Object.keys(row.preferences).length !== 0) fail("invalid_input");
@@ -153,7 +151,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
   const operatorIds = new Set<string>();
   for (const row of source.adminUsers) {
     if (!validRow(row) || typeof row.id !== "string" || !uuid.test(row.id) || operatorIds.has(row.id.toLowerCase())
-      || !onlyKeys(row, ["id", "email", "created_at", "role", "is_machine_actor", "membership_state", "membership_provenance",
+      || !hasExactKeys(row, ["id", "email", "created_at", "role", "is_machine_actor", "membership_state", "membership_provenance",
         "membership_accepted_at", "membership_revoked_at", "membership_revoked_by", "membership_revocation_reason"])
       || row.is_machine_actor !== false || typeof row.email !== "string" || !row.email) fail("invalid_input");
     operatorIds.add(row.id.toLowerCase());
@@ -170,7 +168,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
   for (const row of source.revokeAudit) {
     if (!validRow(row) || row.action !== "revoke" || typeof row.id !== "string" || !uuid.test(row.id)
       || typeof row.actor_admin_id !== "string"
-      || !onlyKeys(row, ["id", "actor_admin_id", "actor_email", "actor_kind", "action", "source", "entity_type",
+      || !hasExactKeys(row, ["id", "actor_admin_id", "actor_email", "actor_kind", "action", "source", "entity_type",
         "entity_id", "target_admin_id", "target_email", "old_value", "new_value", "occurred_at", "idempotency_key", "request_id"])
       || typeof row.target_admin_id !== "string" || !operatorIds.has(row.actor_admin_id.toLowerCase())
       || !operatorIds.has(row.target_admin_id.toLowerCase()) || !validRow(row.old_value) || !validRow(row.new_value)) fail("invalid_input");
@@ -179,8 +177,8 @@ export async function mapManagedIdentityForConnectedRestore(input: {
     const oldValue = row.old_value, newValue = row.new_value;
     if (auditedTargets.has(targetId) || row.actor_kind !== "human" || row.entity_type !== "admin_user_membership"
       || row.entity_id !== row.target_admin_id || target.membership_state !== "revoked"
-      || !onlyKeys(oldValue, ["membershipState", "role"])
-      || !onlyKeys(newValue, Object.hasOwn(newValue, "revocationReason")
+      || !hasExactKeys(oldValue, ["membershipState", "role"])
+      || !hasExactKeys(newValue, Object.hasOwn(newValue, "revocationReason")
         ? ["membershipState", "revokedAt", "revokedBy", "revocationReason"] : ["membershipState", "revokedAt", "revokedBy"])
       || oldValue.membershipState !== "active" || oldValue.role !== target.role
       || newValue.membershipState !== "revoked" || newValue.revokedAt !== target.membership_revoked_at
@@ -204,7 +202,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
   const erasedPrincipalIds = new Set<string>();
   for (const row of source.erasures) {
     if (!validRow(row) || row.contract_version !== "identity.erasure.v1"
-      || !onlyKeys(row, ["erasure_id", "idempotency_key", "client_id", "principal_id", "actor_principal_id",
+      || !hasExactKeys(row, ["erasure_id", "idempotency_key", "client_id", "principal_id", "actor_principal_id",
         "contract_version", "contributor_versions", "dispositions", "retained_obligations", "completed_at"])
       || row.client_id !== null && (typeof row.client_id !== "string" || !clientIds.has(row.client_id.toLowerCase()))
       || typeof row.actor_principal_id !== "string" || !operatorIds.has(row.actor_principal_id.toLowerCase())) fail("invalid_input");
@@ -247,7 +245,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
     const columns = held.columns.map(column => column.name);
     const rows: string[] = [];
     for (const value of values) {
-      if (Object.keys(value).sort().join("\0") !== [...columns].sort().join("\0")) fail("invalid_input");
+      if (!hasExactKeys(value, columns)) fail("invalid_input");
       let result: { rows: { value: string }[] };
       try {
         result = await input.targetOwner.query<{ value: string }>(
@@ -593,6 +591,13 @@ function validRow(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function hasExactKeys(value: object, expected: readonly string[]): boolean {
+  const keys = Object.keys(value).sort();
+  if (keys.length !== expected.length) return false;
+  const sortedExpected = [...expected].sort();
+  return keys.every((name, index) => name === sortedExpected[index]);
+}
+
 function copyCapture(input: ConnectedNativeStoreCapture): {
   capture: ConnectedNativeStoreCapture; tables: Map<TableName, Rows>;
 } {
@@ -602,13 +607,13 @@ function copyCapture(input: ConnectedNativeStoreCapture): {
     const { sha256, ...body } = copy;
     if (copy.format !== "openlup.native-retained-store.v1" || typeof sha256 !== "string"
       || digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
-    if (!validRow(copy.observation) || Object.keys(copy.observation).sort().join("\0") !== "cluster\0database\0login\0snapshot"
+    if (!validRow(copy.observation) || !hasExactKeys(copy.observation, ["cluster", "database", "login", "snapshot"])
       || Object.values(copy.observation).some(value => typeof value !== "string" || !value)) fail("invalid_input");
     if (!Array.isArray(copy.emptyOutsideProfile) || copy.emptyOutsideProfile.some(value => typeof value !== "string" || !value)
       || !Array.isArray(copy.outsideProfileCensus)) fail("invalid_input");
     for (const entry of copy.outsideProfileCensus) {
       if (!validRow(entry)
-        || Object.keys(entry).sort().join("\0") !== "disposition\0owner\0relation\0rows"
+        || !hasExactKeys(entry, ["disposition", "owner", "relation", "rows"])
         || typeof entry.relation !== "string" || !entry.relation || typeof entry.owner !== "string" || !entry.owner
         || typeof entry.rows !== "string" || !entry.rows || /[^0-9]/.test(entry.rows)) fail("invalid_input");
       const disposition = entry.relation === "acquisition_private.installation_key" ? "new-target-installation-key"
@@ -625,23 +630,21 @@ function copyCapture(input: ConnectedNativeStoreCapture): {
       || typeof compatible.sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(compatible.sha256)
       || !Array.isArray(compatible.tables) || !Array.isArray(copy.owned)) fail("invalid_input");
     const tables = new Map<TableName, Rows>();
-    for (const [entries, keyed] of [[compatible.tables, true], [copy.owned, false]] as const) {
-      for (const entry of entries) {
-        if (!validRow(entry) || typeof entry.table !== "string" || tables.has(entry.table)
-          || !Array.isArray(entry.columns) || !entry.columns.length
-          || !Array.isArray(entry.rows) || entry.rows.some(row => typeof row !== "string")) fail("invalid_input");
-        quoted(entry.table);
-        const names = new Set<string>();
-        for (const column of entry.columns) {
-          if (!validRow(column) || typeof column.name !== "string" || names.has(column.name)
-            || typeof column.type !== "string" || !column.type.trim()
-            || (keyed && typeof column.key !== "boolean")) fail("invalid_input");
-          quoted(column.name);
-          names.add(column.name);
-        }
-        tables.set(entry.table, entry);
+    for (const entry of [...compatible.tables, ...copy.owned]) {
+      if (!validRow(entry) || typeof entry.table !== "string" || tables.has(entry.table)
+        || !Array.isArray(entry.columns) || !entry.columns.length
+        || !Array.isArray(entry.rows) || entry.rows.some(row => typeof row !== "string")) fail("invalid_input");
+      quoted(entry.table);
+      const names = new Set<string>();
+      for (const column of entry.columns) {
+        if (!validRow(column) || typeof column.name !== "string" || names.has(column.name)
+          || typeof column.type !== "string" || !column.type.trim()) fail("invalid_input");
+        quoted(column.name);
+        names.add(column.name);
       }
+      tables.set(entry.table, entry);
     }
+    if (compatible.tables.some(entry => entry.columns.some(column => typeof column.key !== "boolean"))) fail("invalid_input");
     return { capture: copy, tables };
   } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
 }
@@ -673,9 +676,10 @@ function validateCapturedRows(tables: ReadonlyMap<TableName, Rows>): void {
   try {
     let count = 0, bytes = 0;
     for (const table of tables.values()) {
+      const columnNames = table.columns.map(column => column.name);
       for (const row of table.rows) {
-        const value = JSON.parse(row) as Record<string, unknown>;
-        if (!value || Array.isArray(value) || Object.keys(value).sort().join("\0") !== table.columns.map(column => column.name).sort().join("\0")) fail("invalid_input");
+        const value: unknown = JSON.parse(row);
+        if (!validRow(value) || !hasExactKeys(value, columnNames)) fail("invalid_input");
         count++; bytes += Buffer.byteLength(row);
       }
     }

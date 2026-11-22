@@ -394,6 +394,27 @@ it.each(["source", "target"] as const)("rejects malformed %s capture structure b
   }
 });
 
+it("AH-1 rejects a single NUL-separated observation key before shapes, row decoding or connection", async () => {
+  const connect = vi.fn();
+  const owner = { connect } as unknown as Pool;
+  const undecodable = "invalid retained row for observation validation";
+  const corrupted = structuredClone(packet);
+  Object.assign(corrupted, { observation: { ["cluster\0database\0login\0snapshot"]: "synthetic" } });
+  // The malformed observation must win over a well-formed shape mismatch.
+  const installs = corrupted.owned.find(entry => entry.table === "catalog_definition_installs")!;
+  installs.columns[0]!.name = "changed_column";
+  corrupted.compatible.tables[0]!.rows = [undecodable];
+  const input = { owner, installation: journeySelection, packet: rehashCapture(corrupted), freshTarget: pristine };
+  const decode = vi.spyOn(JSON, "parse");
+  try {
+    await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({ code: "invalid_input" });
+    expect(decode).not.toHaveBeenCalledWith(undecodable);
+    expect(connect).not.toHaveBeenCalled();
+  } finally {
+    decode.mockRestore();
+  }
+});
+
 const validator = "public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb)";
 
 it("U-2 reports schema_conflict before invoking a changed or missing receipt validator", async () => {
