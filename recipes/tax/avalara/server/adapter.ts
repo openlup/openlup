@@ -12,6 +12,9 @@ import {
 } from "@openlup/platform/tax";
 import {
   TAX_CALCULATION_CONTRACT_VERSION,
+  taxCloseInputV1Schema,
+  taxCommitRequestV1Schema,
+  taxReverseRequestV1Schema,
   type TaxCalculationEvidenceV1,
   type TaxCalculationPortV1,
   type TaxCalculationRefV1,
@@ -155,11 +158,13 @@ type CoverageObservation = TaxCoverageInputV1["observations"][number];
 interface StoredQuote {
   readonly request: TaxQuoteRequestV1;
   readonly result: FinalQuote;
+  readonly posting: "required" | "skip";
   readonly shipFrom: AvalaraAddress;
   readonly shipTo: AvalaraAddress;
   readonly customerCode: string;
   readonly finalLines: readonly AvalaraTransactionLineInput[];
   readonly originalPositionRefs: readonly string[];
+  readonly positionTaxCodes: ReadonlyMap<string, string>;
 }
 
 interface StoredCommit {
@@ -298,7 +303,8 @@ function isMissingTaxClassField(field: string): boolean {
  * Create a zero-SDK Avalara AvaTax REST v2 `TaxCalculationPortV1` adapter implementing
  * exclusive tax calculation, multi-step discount snapshots, retail delivery fees,
  * recalculation-based renewal probing, effect-free local close, idempotent `SalesInvoice`
- * commit, `ReturnInvoice` partial/remainder reversals, and `DocVoided` full voids.
+ * commit with readback recovery, `ReturnInvoice` partial/remainder reversals, and
+ * `DocVoided` full voids.
  */
 export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions): TaxCalculationPortV1 {
   const companyCode = assertSafeAvalaraPathSegment(options.companyCode, "company_code");
@@ -308,6 +314,12 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
   }
   if (options.scope.adapter !== AVALARA_ADAPTER_NAME || options.scope.adapterVersion !== AVALARA_ADAPTER_VERSION) {
     throw new Error("avalara_invalid_scope_adapter");
+  }
+
+  // Enforce strict mode <-> environment binding so test mode can never commit to production AvaTax.
+  const expectedEnv = options.scope.mode === "live" ? "production" : "sandbox";
+  if (options.client.environment !== expectedEnv) {
+    throw new Error("avalara_scope_environment_mismatch");
   }
 
   const markets = [...options.marketPack.markets];
@@ -485,7 +497,7 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
         throw error;
       }
 
-      // 6. Inspect coverage declarations & registrations to see if any cell needs live Avalara assessment.
+      // 6. Inspect coverage declarations & registrations to short-circuit conflicts / pure out-of-scope at 0 I/O.
       const declByCoord = new Map<string, TaxQuoteRequestV1["input"]["coverage"]["declarations"][number]>();
       for (const decl of input.coverage.declarations) {
         if (includesInstant(decl.effective, input.taxDate)) {
@@ -494,17 +506,21 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
       }
 
       let hasAnyRegisteredCell = false;
-      let hasUndeclaredOrInactiveConflict = false;
+      let hasPreflightCoverageConflict = false;
       for (const cell of input.required) {
         const decl = declByCoord.get(`${cell.jurisdiction}\0${cell.taxKind}`);
         const reg = findRegistration(cell.jurisdiction, cell.taxKind, input.taxDate);
         if (!decl) {
-          hasUndeclaredOrInactiveConflict = true;
+          hasPreflightCoverageConflict = true;
         } else if (decl.status === "registered") {
           if (reg?.state === "active") {
             hasAnyRegisteredCell = true;
           } else {
-            hasUndeclaredOrInactiveConflict = true;
+            hasPreflightCoverageConflict = true;
+          }
+        } else if (decl.status === "not_registered_acknowledged") {
+          if (!reg || reg.state !== "inactive") {
+            hasPreflightCoverageConflict = true;
           }
         }
       }
@@ -512,7 +528,6 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
       const shipTo = toAvalaraShipTo(input.destination.address);
       const customerCode = buildOpaqueCustomerCode(input.destination.snapshotRef);
 
-      // Build stage sequence list: [0, ...distinct positive allocation sequences across all components]
       const distinctSequences = [
         ...new Set(
           plan.components.flatMap((c) =>
@@ -522,7 +537,6 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
       ].sort((a, b) => a - b);
       const sequences = [0, ...distinctSequences];
 
-      // Pre-compute component identity and exact amountMinor at any discount sequence
       const componentKeys = plan.components.map((c) => ({
         planComp: c,
         ref: c.ref,
@@ -530,10 +544,7 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
         preDiscountMinor: c.preDiscountMinor,
       }));
 
-      const amountAtSequence = (
-        comp: (typeof componentKeys)[number],
-        seq: number,
-      ): number => {
+      const amountAtSequence = (comp: (typeof componentKeys)[number], seq: number): number => {
         if (seq === 0) return comp.preDiscountMinor;
         let current = comp.preDiscountMinor;
         for (const alloc of comp.planComp.allocations) {
@@ -574,7 +585,7 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
       };
 
       // 7. Short-circuit preflight coverage refusal or pure out-of-scope at 0 HTTP calls.
-      if (!hasAnyRegisteredCell || hasUndeclaredOrInactiveConflict) {
+      if (!hasAnyRegisteredCell || hasPreflightCoverageConflict) {
         const preObservations: CoverageObservation[] = input.required.map((cell) => {
           const decl = declByCoord.get(`${cell.jurisdiction}\0${cell.taxKind}`);
           const reg = findRegistration(cell.jurisdiction, cell.taxKind, input.taxDate);
@@ -582,7 +593,13 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
             cell,
             ...(reg ? { registration: { state: reg.state, effective: reg.effective, evidenceRef: reg.evidenceRef } } : {}),
             ...(decl?.status === "not_registered_acknowledged"
-              ? { treatment: { kind: "not_applicable" as const, reason: "not_registered", ruleRef: `avalara:not_reg:${cell.jurisdiction}:${cell.taxKind}` } }
+              ? {
+                  treatment: {
+                    kind: "not_applicable" as const,
+                    reason: "not_registered",
+                    ruleRef: `avalara:not_reg:${cell.jurisdiction}:${cell.taxKind}`,
+                  },
+                }
               : {}),
             assessedMinor: 0,
           };
@@ -614,7 +631,6 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
           };
         }
         if (preCoverage.posting === "skip") {
-          // Pure out-of-scope: zero assessments, zero fees, zero HTTP calls.
           const emptyComponents: ProviderComponent[] = componentKeys.map((c) => {
             const compStates: ProviderComponentState[] = [
               { afterSequence: 0, amountMinor: c.preDiscountMinor, taxPositions: [] },
@@ -684,11 +700,13 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
               {
                 request,
                 result: success,
+                posting: "skip",
                 shipFrom,
                 shipTo,
                 customerCode,
                 finalLines: buildStageLines(sequences[sequences.length - 1]!),
                 originalPositionRefs: [],
+                positionTaxCodes: new Map(),
               },
               MAX_RETAINED_RECORDS,
             );
@@ -698,7 +716,12 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
       }
 
       // 8. Execute SalesOrder quote calls against Avalara (one per discount sequence).
-      const stageResponses: { readonly sequence: number; readonly lines: readonly AvalaraTransactionLineInput[]; readonly response: AvalaraTransactionResponse }[] = [];
+      const stageResponses: {
+        readonly sequence: number;
+        readonly lines: readonly AvalaraTransactionLineInput[];
+        readonly response: AvalaraTransactionResponse;
+      }[] = [];
+
       for (const seq of sequences) {
         const stageLines = buildStageLines(seq);
         const payload: AvalaraCreateTransactionPayload = {
@@ -717,14 +740,7 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
         let response: AvalaraTransactionResponse;
         try {
           response = await options.client.createTransaction(payload);
-        } catch (error) {
-          if (error instanceof AvalaraTransportError) {
-            return {
-              kind: "unavailable",
-              code: "tax_adapter_unavailable",
-              effect: "none",
-            };
-          }
+        } catch {
           return {
             kind: "unavailable",
             code: "tax_adapter_unavailable",
@@ -732,7 +748,7 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
           };
         }
 
-        // Strict echo verification on Avalara SalesOrder response
+        // Strict echo & numeric sanity verification on every Avalara SalesOrder response.
         if (response.currencyCode !== input.currency) {
           return refuse(
             "tax_breakdown_incomplete",
@@ -740,7 +756,7 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
             "Avalara response currencyCode did not match requested currency.",
           );
         }
-        const sentLineNumbers = new Set(stageLines.map((l) => l.number));
+        const sentLineByNumber = new Map(stageLines.map((l) => [l.number, l]));
         const seenResponseLines = new Set<string>();
         for (const respLine of response.lines) {
           if (respLine.taxIncluded === true) {
@@ -750,16 +766,52 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
               "Avalara returned taxIncluded=true for an exclusive tax request.",
             );
           }
-          if (!sentLineNumbers.has(respLine.lineNumber) || seenResponseLines.has(respLine.lineNumber)) {
+          const sentLine = sentLineByNumber.get(respLine.lineNumber);
+          if (!sentLine || seenResponseLines.has(respLine.lineNumber)) {
             return refuse(
               "tax_breakdown_incomplete",
               "/input/lines",
               "Avalara response lines did not match sent transaction lines 1:1.",
             );
           }
+          if (!Number.isFinite(respLine.lineAmount) || !Number.isFinite(respLine.tax)) {
+            return refuse(
+              "tax_breakdown_incomplete",
+              "/input/lines",
+              "Avalara response contained non-finite line amounts or tax.",
+            );
+          }
+          let echoedLineMinor: number;
+          let sentLineMinor: number;
+          try {
+            echoedLineMinor = majorToMinorAmount(respLine.lineAmount, exponent);
+            sentLineMinor = majorToMinorAmount(sentLine.amount, exponent);
+          } catch {
+            return refuse(
+              "tax_breakdown_incomplete",
+              "/input/lines",
+              "Avalara response lineAmount could not be converted to safe minor units.",
+            );
+          }
+          if (echoedLineMinor !== sentLineMinor) {
+            return refuse(
+              "tax_breakdown_incomplete",
+              "/input/lines",
+              "Avalara response lineAmount did not echo sent amount.",
+            );
+          }
+          for (const d of respLine.details) {
+            if (!Number.isFinite(d.rate) || d.rate < 0 || !Number.isFinite(d.tax)) {
+              return refuse(
+                "tax_breakdown_incomplete",
+                "/input/lines",
+                "Avalara response tax detail contained invalid or negative rate/tax.",
+              );
+            }
+          }
           seenResponseLines.add(respLine.lineNumber);
         }
-        if (seenResponseLines.size !== sentLineNumbers.size) {
+        if (seenResponseLines.size !== sentLineByNumber.size) {
           return refuse(
             "tax_breakdown_incomplete",
             "/input/lines",
@@ -775,7 +827,6 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
       const finalRespLineByNumber = new Map(finalStage.response.lines.map((l) => [l.lineNumber, l]));
       const effectiveInterval = pointEffectiveInterval(input.taxDate);
 
-      // Build observations for reconcileTaxCoverage from final stage Avalara details
       const observations: CoverageObservation[] = [];
       const feeFinalEntries: {
         readonly cell: CoverageCell;
@@ -783,8 +834,12 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
         readonly amountMinor: number;
         readonly detail: AvalaraTaxDetail;
       }[] = [];
-
-      const taxCellBindings = new Map<string, { readonly cell: CoverageCell; readonly binding: AvalaraJurisdictionBinding }>();
+      const taxCellBindings = new Map<
+        string,
+        { readonly cell: CoverageCell; readonly binding: AvalaraJurisdictionBinding }
+      >();
+      // Track every Avalara detail object attributed to a required cell so unmapped non-zero taxes fail closed.
+      const attributedFinalDetails = new Set<AvalaraTaxDetail>();
 
       for (const cell of input.required) {
         const reg = findRegistration(cell.jurisdiction, cell.taxKind, input.taxDate);
@@ -807,13 +862,16 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
             for (const detail of respLine.details) {
               if (detailMatchesFeeBinding(detail, feeBinding)) {
                 matchedFeeDetails.push(detail);
+                attributedFinalDetails.add(detail);
               }
             }
           }
-          const feeMinor = matchedFeeDetails.reduce(
-            (sum, d) => sum + majorToMinorAmount(d.tax, exponent),
-            0,
-          );
+          let feeMinor: number;
+          try {
+            feeMinor = matchedFeeDetails.reduce((sum, d) => sum + majorToMinorAmount(d.tax, exponent), 0);
+          } catch {
+            return refuse("tax_breakdown_incomplete", "/input/required", "Invalid fee amount in Avalara response.");
+          }
           if (decl?.status === "not_registered_acknowledged") {
             observations.push({
               cell,
@@ -868,19 +926,26 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
             detailMatchesBinding(d, binding) &&
             !feeBindings.some((fb) => detailMatchesFeeBinding(d, fb)),
         );
+        for (const d of matchingDetails) {
+          attributedFinalDetails.add(d);
+        }
 
-        const assessedMinor = matchingDetails.reduce(
-          (sum, d) => sum + majorToMinorAmount(d.tax, exponent),
-          0,
-        );
-        const exemptMinor = matchingDetails.reduce(
-          (sum, d) => sum + majorToMinorAmount(d.exemptAmount ?? 0, exponent),
-          0,
-        );
-        const nonTaxableMinor = matchingDetails.reduce(
-          (sum, d) => sum + majorToMinorAmount(d.nonTaxableAmount ?? 0, exponent),
-          0,
-        );
+        let assessedMinor: number;
+        let exemptMinor: number;
+        let nonTaxableMinor: number;
+        try {
+          assessedMinor = matchingDetails.reduce((sum, d) => sum + majorToMinorAmount(d.tax, exponent), 0);
+          exemptMinor = matchingDetails.reduce(
+            (sum, d) => sum + majorToMinorAmount(d.exemptAmount ?? 0, exponent),
+            0,
+          );
+          nonTaxableMinor = matchingDetails.reduce(
+            (sum, d) => sum + majorToMinorAmount(d.nonTaxableAmount ?? 0, exponent),
+            0,
+          );
+        } catch {
+          return refuse("tax_breakdown_incomplete", "/input/lines", "Invalid numeric detail in Avalara response.");
+        }
 
         if (decl?.status === "not_registered_acknowledged") {
           observations.push({
@@ -892,6 +957,13 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
               ruleRef: `avalara:not_reg:${cell.jurisdiction}:${cell.taxKind}`,
             },
             assessedMinor,
+          });
+        } else if (matchingDetails.length === 0) {
+          // Never fabricate 0% taxable treatment when Avalara omitted details for a registered cell:
+          // leave `treatment` absent so reconcileTaxCoverage surfaces `unavailable_evidence`.
+          observations.push({
+            cell,
+            ...(registration ? { registration } : {}),
           });
         } else if (assessedMinor === 0 && (exemptMinor > 0 || nonTaxableMinor > 0)) {
           const ruleId = matchingDetails[0]?.nonTaxableRuleId ?? matchingDetails[0]?.rateRuleId ?? 0;
@@ -917,6 +989,27 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
             },
             assessedMinor,
           });
+        }
+      }
+
+      // Reject any unmapped non-zero Avalara tax detail (e.g. unconfigured county/city jurisdiction).
+      for (const respLine of finalStage.response.lines) {
+        for (const detail of respLine.details) {
+          if (!attributedFinalDetails.has(detail)) {
+            let unattributedMinor: number;
+            try {
+              unattributedMinor = majorToMinorAmount(detail.tax, exponent);
+            } catch {
+              return refuse("tax_breakdown_incomplete", "/input/lines", "Invalid tax detail in Avalara response.");
+            }
+            if (unattributedMinor !== 0) {
+              return refuse(
+                "tax_breakdown_incomplete",
+                "/input/required",
+                "Avalara returned a non-zero tax detail not mapped by marketPack.jurisdictions or feeBindings.",
+              );
+            }
+          }
         }
       }
 
@@ -951,9 +1044,9 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
         coverage.vector.map((row) => [cellIdentityKey(row.cell), row]),
       );
 
-      // Build per-component CatalogueMoneyV2 provider states and final evidence positions
       const evidenceTaxRows: TaxCalculationEvidenceV1["positions"]["tax"][number][] = [];
       const seenPositionRefs = new Set<string>();
+      const positionTaxCodes = new Map<string, string>();
       const stageBySequence = new Map(stageResponses.map((s) => [s.sequence, s]));
       let finalTaxTotal = 0;
 
@@ -995,12 +1088,22 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
                 !feeBindings.some((fb) => detailMatchesFeeBinding(d, fb)),
             );
 
-            const taxMinor = matchingDetails.reduce(
-              (sum, d) => sum + majorToMinorAmount(d.tax, exponent),
-              0,
-            );
-            const firstDetail = matchingDetails[0];
-            const rateDecimal = firstDetail ? fractionalRateToPercentString(firstDetail.rate) : "0";
+            let taxMinor: number;
+            let rateDecimal: string;
+            try {
+              taxMinor = matchingDetails.reduce((sum, d) => sum + majorToMinorAmount(d.tax, exponent), 0);
+              const distinctRates = new Set(matchingDetails.map((d) => fractionalRateToPercentString(d.rate)));
+              if (distinctRates.size > 1) {
+                return refuse(
+                  "tax_breakdown_incomplete",
+                  "/input/required",
+                  "Multiple distinct tax rates matched one jurisdiction cell; configure narrower jurisdiction bindings.",
+                );
+              }
+              rateDecimal = matchingDetails[0] ? fractionalRateToPercentString(matchingDetails[0].rate) : "0";
+            } catch {
+              return refuse("tax_breakdown_incomplete", "/input/lines", "Invalid tax rate or amount in Avalara response.");
+            }
             const positionRef = `${comp.lineNumber}:${cell.jurisdiction}:${cell.level}:${cell.taxKind}`;
 
             taxPositions.push({
@@ -1019,6 +1122,14 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
                   comp.ref.kind === "merchandise"
                     ? lineByKey.get(comp.ref.lineKey)!.assignmentRef
                     : deliveryByKey.get(comp.ref.bucketKey)!.assignmentRef;
+                const taxCode =
+                  comp.ref.kind === "merchandise"
+                    ? options.marketPack.taxCodes[lineByKey.get(comp.ref.lineKey)!.taxClass]!
+                    : options.marketPack.taxCodes[deliveryByKey.get(comp.ref.bucketKey)!.taxClass]!;
+                const originalPosRef = comp.ref.kind === "merchandise" ? comp.lineNumber : positionRef;
+                positionTaxCodes.set(originalPosRef, taxCode);
+                positionTaxCodes.set(positionRef, taxCode);
+
                 const resolution = {
                   assignmentRef,
                   policyRevision: input.policyRevision,
@@ -1080,6 +1191,21 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
           refundRule: { ...entry.binding.refundRule },
           ...(entry.detail.id !== undefined ? { providerPositionRef: `avalara-fee-${entry.detail.id}` } : {}),
         });
+      }
+
+      // Reconcile attributed tax + fees against Avalara's declared response.totalTax.
+      let declaredTotalTaxMinor: number;
+      try {
+        declaredTotalTaxMinor = majorToMinorAmount(finalStage.response.totalTax, exponent);
+      } catch {
+        return refuse("tax_breakdown_incomplete", "/input/lines", "Invalid totalTax in Avalara response.");
+      }
+      if (finalTaxTotal + totalFeeMinor !== declaredTotalTaxMinor) {
+        return refuse(
+          "tax_breakdown_incomplete",
+          "/input/required",
+          "Attributed tax and fee total did not reconcile with Avalara response totalTax.",
+        );
       }
 
       const finalNetTotal = componentKeys.reduce((sum, c) => sum + c.planComp.effectiveMinor, 0);
@@ -1160,17 +1286,23 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
       }
 
       if (quoteSuccess.kind === "final") {
+        // Deduplicate originalPositionRefs across multi-jurisdiction cells on the same merchandise line.
+        const uniqueOriginalPositionRefs = [
+          ...new Set(evidenceTaxRows.map((row) => row.providerLineRef ?? row.positionRef)),
+        ];
         boundedSet(
           quotesByRef,
           calcRef,
           {
             request,
             result: quoteSuccess,
+            posting: coverage.posting,
             shipFrom,
             shipTo,
             customerCode,
             finalLines: finalStage.lines,
-            originalPositionRefs: evidenceTaxRows.map((row) => row.providerLineRef ?? row.positionRef),
+            originalPositionRefs: uniqueOriginalPositionRefs,
+            positionTaxCodes,
           },
           MAX_RETAINED_RECORDS,
         );
@@ -1180,7 +1312,6 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
     },
 
     async readFiscalValidity(): Promise<TaxFiscalValidityResultV1> {
-      // validity: "probe_by_recalculation" leaves readFiscalValidity effect-free and zero-I/O.
       return {
         kind: "unavailable",
         code: "tax_fiscal_validity_unavailable",
@@ -1190,18 +1321,21 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
 
     async closeCalculation(
       ref: TaxCalculationRefV1,
-      _reason: TaxCloseReasonV1,
+      reason: TaxCloseReasonV1,
       key: string,
     ): Promise<TaxCloseResultV1> {
-      if (!sameScope(ref.scope, options.scope)) {
+      const parsed = taxCloseInputV1Schema.safeParse({ ref, reason, key });
+      if (!parsed.success) {
+        return refuse(parsed.error.code, parsed.error.field, parsed.error.message);
+      }
+      const { ref: validRef, key: validKey } = parsed.data;
+      if (!sameScope(validRef.scope, options.scope)) {
         return refuse("tax_scope_mismatch", "/ref/scope", "Match the configured Avalara tax scope.");
       }
-      if (!ref.ref.trim() || !key.trim()) {
-        return refuse("tax_invalid_input", "/key", "Provide non-empty calculation ref and idempotency key.");
-      }
-      const existing = closedByRef.get(ref.ref);
+
+      const existing = closedByRef.get(validRef.ref);
       if (existing) {
-        if (existing.key === key && existing.ref.evidenceDigest === ref.evidenceDigest) {
+        if (existing.key === validKey && existing.ref.evidenceDigest === validRef.evidenceDigest) {
           return { kind: "closed", ref: { ...existing.ref }, key: existing.key };
         }
         return refuse(
@@ -1210,20 +1344,29 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
           "Reuse the original close key and evidence digest for an already-closed calculation.",
         );
       }
-      const storedQuote = quotesByRef.get(ref.ref);
-      if (storedQuote && storedQuote.result.evidenceDigest !== ref.evidenceDigest) {
+      const storedQuote = quotesByRef.get(validRef.ref);
+      if (storedQuote && storedQuote.result.evidenceDigest !== validRef.evidenceDigest) {
         return refuse(
           "tax_reference_conflict",
           "/ref/evidenceDigest",
           "Supply the exact evidenceDigest returned for this calculationRef.",
         );
       }
-      const record = { ref: { scope: { ...ref.scope }, ref: ref.ref, evidenceDigest: ref.evidenceDigest }, key };
-      boundedSet(closedByRef, ref.ref, record, MAX_RETAINED_RECORDS);
-      return { kind: "closed", ref: { ...record.ref }, key };
+      const record = {
+        ref: { scope: { ...validRef.scope }, ref: validRef.ref, evidenceDigest: validRef.evidenceDigest },
+        key: validKey,
+      };
+      boundedSet(closedByRef, validRef.ref, record, MAX_RETAINED_RECORDS);
+      return { kind: "closed", ref: { ...record.ref }, key: validKey };
     },
 
-    async commit(request: TaxCommitRequestV1): Promise<TaxCommitResultV1> {
+    async commit(rawRequest: TaxCommitRequestV1): Promise<TaxCommitResultV1> {
+      const parsed = taxCommitRequestV1Schema.safeParse(rawRequest);
+      if (!parsed.success) {
+        return refuse(parsed.error.code, parsed.error.field, parsed.error.message);
+      }
+      const request = parsed.data;
+
       if (!sameScope(request.calculationRef.scope, options.scope)) {
         return refuse("tax_scope_mismatch", "/calculationRef/scope", "Match the configured Avalara tax scope.");
       }
@@ -1272,6 +1415,13 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
           "Commit only a verified final quote produced by this adapter.",
         );
       }
+      if (stored.posting === "skip") {
+        return refuse(
+          "tax_calculation_unusable",
+          "/calculationRef",
+          "Do not commit an out-of-scope calculation whose coverage posting is skip.",
+        );
+      }
 
       if (request.postedAt >= stored.result.evidence.expiresAt) {
         return refuse(
@@ -1281,31 +1431,77 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
         );
       }
 
-      const invoiceCode = buildAvalaraCommitCode(companyCode, options.scope, request.transactionRef);
-      const payload: AvalaraCreateTransactionPayload = {
-        companyCode,
-        type: "SalesInvoice",
-        code: invoiceCode,
-        commit: true,
-        date: stored.result.evidence.taxDate.slice(0, 10),
-        customerCode: stored.customerCode,
-        currencyCode: stored.request.input.currency,
-        addresses: {
-          shipFrom: stored.shipFrom,
-          shipTo: stored.shipTo,
-        },
-        lines: stored.finalLines,
-      };
+      const exponent = getCurrencyExponent(stored.request.input.currency);
+      if (exponent === null) {
+        return refuse("tax_scope_mismatch", "/calculationRef", "Unsupported currency exponent.");
+      }
 
-      let response: AvalaraTransactionResponse;
+      const invoiceCode = buildAvalaraCommitCode(companyCode, options.scope, request.transactionRef);
+      const expectedTaxAndFeesMinor = stored.result.money.taxTotal + stored.result.money.feeTotal;
+
+      let response: AvalaraTransactionResponse | null = null;
+
+      // Safe recovery: read back deterministic document code before attempting a new POST.
+      if (request.intent === "recover") {
+        try {
+          response = await options.client.getTransactionByCode(companyCode, invoiceCode);
+        } catch {
+          return {
+            kind: "unavailable",
+            code: "tax_adapter_unavailable",
+            effect: "unknown",
+          };
+        }
+      }
+
+      if (!response) {
+        const payload: AvalaraCreateTransactionPayload = {
+          companyCode,
+          type: "SalesInvoice",
+          code: invoiceCode,
+          commit: true,
+          date: stored.result.evidence.taxDate.slice(0, 10),
+          customerCode: stored.customerCode,
+          currencyCode: stored.request.input.currency,
+          addresses: {
+            shipFrom: stored.shipFrom,
+            shipTo: stored.shipTo,
+          },
+          lines: stored.finalLines,
+        };
+        try {
+          response = await options.client.createTransaction(payload);
+        } catch (error) {
+          const effect = error instanceof AvalaraTransportError ? error.effect : "unknown";
+          return {
+            kind: "unavailable",
+            code: "tax_adapter_unavailable",
+            effect,
+          };
+        }
+      }
+
+      // Verify committed Avalara SalesInvoice response integrity.
+      let committedTaxMinor: number;
       try {
-        response = await options.client.createTransaction(payload);
-      } catch (error) {
-        const effect = error instanceof AvalaraTransportError ? error.effect : "unknown";
+        committedTaxMinor = majorToMinorAmount(response.totalTax, exponent);
+      } catch {
         return {
           kind: "unavailable",
           code: "tax_adapter_unavailable",
-          effect,
+          effect: "unknown",
+        };
+      }
+      if (
+        response.code !== invoiceCode ||
+        response.status !== "Committed" ||
+        response.currencyCode !== stored.request.input.currency ||
+        committedTaxMinor !== expectedTaxAndFeesMinor
+      ) {
+        return {
+          kind: "unavailable",
+          code: "tax_adapter_unavailable",
+          effect: "unknown",
         };
       }
 
@@ -1334,7 +1530,13 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
       return JSON.parse(JSON.stringify(committed)) as Extract<TaxCommitResultV1, { kind: "committed" }>;
     },
 
-    async reverse(request: TaxReverseRequestV1): Promise<TaxReverseResultV1> {
+    async reverse(rawRequest: TaxReverseRequestV1): Promise<TaxReverseResultV1> {
+      const parsed = taxReverseRequestV1Schema.safeParse(rawRequest);
+      if (!parsed.success) {
+        return refuse(parsed.error.code, parsed.error.field, parsed.error.message);
+      }
+      const request = parsed.data;
+
       if (!sameScope(request.scope, options.scope)) {
         return refuse("tax_scope_mismatch", "/scope", "Match the configured Avalara tax scope.");
       }
@@ -1397,12 +1599,33 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
           "Reversal cumulative range must advance contiguously within the remaining committed balance.",
         );
       }
+      // Critical guard: mode:"full" MUST reverse the entire remaining balance up to payableMinor.
+      if (request.mode === "full" && request.toMinor !== committed.payableMinor) {
+        return refuse(
+          "tax_reversal_unsubstantiated",
+          "/toMinor",
+          "Full reversal mode requires toMinor to equal the committed payableMinor.",
+        );
+      }
+
+      const knownPositions = new Set(committed.quote.originalPositionRefs);
+      for (let i = 0; i < request.positions.length; i += 1) {
+        const pos = request.positions[i]!;
+        if (!knownPositions.has(pos.originalPositionRef)) {
+          return refuse(
+            "tax_reversal_unsubstantiated",
+            `/positions/${i}/originalPositionRef`,
+            "Reverse only position references committed on the original transaction.",
+          );
+        }
+      }
 
       const expectedDeltaTotal = request.fromMinor - request.toMinor; // negative integer
-      const actualDeltaTotal = request.positions.reduce(
-        (sum, p) => sum + p.netDeltaMinor + p.taxDeltaMinor + p.feeDeltaMinor,
-        0,
-      );
+      const totalNetDeltaMinor = request.positions.reduce((sum, p) => sum + p.netDeltaMinor, 0);
+      const totalTaxDeltaMinor = request.positions.reduce((sum, p) => sum + p.taxDeltaMinor, 0);
+      const totalFeeDeltaMinor = request.positions.reduce((sum, p) => sum + p.feeDeltaMinor, 0);
+      const totalTaxAndFeeDeltaMinor = totalTaxDeltaMinor + totalFeeDeltaMinor;
+      const actualDeltaTotal = totalNetDeltaMinor + totalTaxAndFeeDeltaMinor;
       if (actualDeltaTotal !== expectedDeltaTotal) {
         return refuse(
           "tax_reversal_unsubstantiated",
@@ -1417,68 +1640,145 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
       }
 
       let providerReversalRef: string;
-      if (request.mode === "full" && request.fromMinor === 0) {
-        // Clean full reversal -> DocVoided via POST /api/v2/transactions/{companyCode}/{transactionCode}/void
-        try {
-          const voided = await options.client.voidTransaction(companyCode, committed.providerCode, {
-            code: "DocVoided",
-          });
-          if (voided.code !== committed.providerCode || voided.status !== "Cancelled") {
+      if (request.mode === "full" && request.fromMinor === 0 && request.toMinor === committed.payableMinor) {
+        // Clean full reversal -> check recovery readback first, else DocVoided via official companies/.../void URL
+        let alreadyVoided = false;
+        if (request.intent === "recover") {
+          try {
+            const existingDoc = await options.client.getTransactionByCode(companyCode, committed.providerCode);
+            if (existingDoc && existingDoc.status === "Cancelled") {
+              alreadyVoided = true;
+            }
+          } catch {
             return {
               kind: "unavailable",
               code: "tax_adapter_unavailable",
               effect: "unknown",
             };
           }
-          providerReversalRef = `void:${voided.code}`;
-        } catch (error) {
-          const effect = error instanceof AvalaraTransportError ? error.effect : "unknown";
-          return {
-            kind: "unavailable",
-            code: "tax_adapter_unavailable",
-            effect,
-          };
+        }
+        if (alreadyVoided) {
+          providerReversalRef = `void:${committed.providerCode}`;
+        } else {
+          try {
+            const voided = await options.client.voidTransaction(companyCode, committed.providerCode, {
+              code: "DocVoided",
+            });
+            if (voided.code !== committed.providerCode || voided.status !== "Cancelled") {
+              return {
+                kind: "unavailable",
+                code: "tax_adapter_unavailable",
+                effect: "unknown",
+              };
+            }
+            providerReversalRef = `void:${voided.code}`;
+          } catch (error) {
+            const effect = error instanceof AvalaraTransportError ? error.effect : "unknown";
+            return {
+              kind: "unavailable",
+              code: "tax_adapter_unavailable",
+              effect,
+            };
+          }
         }
       } else {
         // Partial reversal ("lines") or remainder full reversal (fromMinor > 0) -> ReturnInvoice
         const reversalCode = buildAvalaraReversalCode(companyCode, options.scope, request.reversalRef);
-        const returnLines: AvalaraTransactionLineInput[] = request.positions.map((pos, idx) => ({
-          number: `ol-ret-${idx + 1}`,
-          quantity: 1,
-          amount: minorToMajorAmount(pos.netDeltaMinor, exponent),
-          taxIncluded: false,
-        }));
-        const returnPayload: AvalaraCreateTransactionPayload = {
-          companyCode,
-          type: "ReturnInvoice",
-          code: reversalCode,
-          commit: true,
-          date: toCanonicalUtcInstant(options.clock()).slice(0, 10),
-          customerCode: committed.quote.customerCode,
-          currencyCode: request.currency,
-          referenceCode: committed.providerCode,
-          taxOverride: {
-            type: "TaxDate",
-            taxDate: committed.quote.result.evidence.taxDate.slice(0, 10),
-            reason: "Customer return",
-          },
-          addresses: {
-            shipFrom: committed.quote.shipFrom,
-            shipTo: committed.quote.shipTo,
-          },
-          lines: returnLines,
-        };
+        let returned: AvalaraTransactionResponse | null = null;
+
+        if (request.intent === "recover") {
+          try {
+            returned = await options.client.getTransactionByCode(companyCode, reversalCode);
+          } catch {
+            return {
+              kind: "unavailable",
+              code: "tax_adapter_unavailable",
+              effect: "unknown",
+            };
+          }
+        }
+
+        if (!returned) {
+          const returnLines: AvalaraTransactionLineInput[] = request.positions.map((pos, idx) => {
+            const taxCode = committed.quote.positionTaxCodes.get(pos.originalPositionRef);
+            return {
+              number: `ol-ret-${idx + 1}`,
+              quantity: 1,
+              amount: minorToMajorAmount(pos.netDeltaMinor, exponent),
+              ...(taxCode ? { taxCode } : {}),
+              taxIncluded: false,
+            };
+          });
+          const originalTaxDate = committed.quote.result.evidence.taxDate.slice(0, 10);
+          const taxOverride: NonNullable<AvalaraCreateTransactionPayload["taxOverride"]> =
+            totalTaxAndFeeDeltaMinor !== 0
+              ? {
+                  type: "TaxAmount",
+                  taxAmount: minorToMajorAmount(totalTaxAndFeeDeltaMinor, exponent),
+                  taxDate: originalTaxDate,
+                  reason: "Customer return",
+                }
+              : {
+                  type: "TaxDate",
+                  taxDate: originalTaxDate,
+                  reason: "Customer return",
+                };
+          const returnPayload: AvalaraCreateTransactionPayload = {
+            companyCode,
+            type: "ReturnInvoice",
+            code: reversalCode,
+            commit: true,
+            date: toCanonicalUtcInstant(options.clock()).slice(0, 10),
+            customerCode: committed.quote.customerCode,
+            currencyCode: request.currency,
+            referenceCode: committed.providerCode,
+            taxOverride,
+            addresses: {
+              shipFrom: committed.quote.shipFrom,
+              shipTo: committed.quote.shipTo,
+            },
+            lines: returnLines,
+          };
+          try {
+            returned = await options.client.createTransaction(returnPayload);
+          } catch (error) {
+            const effect = error instanceof AvalaraTransportError ? error.effect : "unknown";
+            return {
+              kind: "unavailable",
+              code: "tax_adapter_unavailable",
+              effect,
+            };
+          }
+        }
+
+        // Verify returned ReturnInvoice matches reserved currency, status, and deltas.
+        let returnedNetMinor: number;
+        let returnedTaxMinor: number;
         try {
-          const returned = await options.client.createTransaction(returnPayload);
-          providerReversalRef = returned.code;
-        } catch (error) {
-          const effect = error instanceof AvalaraTransportError ? error.effect : "unknown";
+          returnedNetMinor = majorToMinorAmount(returned.totalAmount, exponent);
+          returnedTaxMinor = majorToMinorAmount(returned.totalTax, exponent);
+        } catch {
           return {
             kind: "unavailable",
             code: "tax_adapter_unavailable",
-            effect,
+            effect: "unknown",
           };
         }
+        if (
+          returned.code !== reversalCode ||
+          returned.status !== "Committed" ||
+          returned.currencyCode !== request.currency ||
+          returnedNetMinor !== totalNetDeltaMinor ||
+          returnedTaxMinor !== totalTaxAndFeeDeltaMinor
+        ) {
+          return {
+            kind: "unavailable",
+            code: "tax_adapter_unavailable",
+            effect: "unknown",
+          };
+        }
+
+        providerReversalRef = returned.code;
       }
 
       committed.refundedMinor = request.toMinor;

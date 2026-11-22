@@ -27,7 +27,8 @@ This recipe has passed the full 16-case offline `@openlup/platform/tax` conforma
 - [ ] Verify `readFiscalValidity` returns `tax_fiscal_validity_unavailable` (`effect: "none"`) with zero HTTP calls, and run a renewal recalculation probe via `compareTaxRecalculationProbe`.
 - [ ] Call `closeCalculation` on an unused quote and verify zero HTTP calls (`POST .../void` is never called for local close).
 - [ ] Commit a verified quote (`type: "SalesInvoice"`, `commit: true`) and confirm duplicate `commit` replays idempotently while conflicting `captureEvidenceRef` refuses `tax_reference_conflict`.
-- [ ] Execute a partial reversal (`mode: "lines"` -> `ReturnInvoice`), a remainder reversal (`mode: "full"`, `fromMinor > 0` -> `ReturnInvoice`), and a clean full reversal (`mode: "full"`, `fromMinor === 0` -> `POST /api/v2/transactions/{companyCode}/{transactionCode}/void` with `{ code: "DocVoided" }`).
+- [ ] Execute a partial reversal (`mode: "lines"` -> `ReturnInvoice`), a remainder reversal (`mode: "full"`, `fromMinor > 0` -> `ReturnInvoice`), and a clean full reversal (`mode: "full"`, `fromMinor === 0`, `toMinor === payableMinor` -> `POST /api/v2/companies/{companyCode}/transactions/{transactionCode}/void` with `{ code: "DocVoided" }`).
+- [ ] Execute `intent: "recover"` after a simulated 503/timeout on commit or reversal and verify readback via `GET /api/v2/companies/{companyCode}/transactions/{transactionCode}` resolves the existing committed document without duplicate posting.
 - [ ] Verify that `accountId`, `licenseKey`, `Basic` auth tokens, and customer destination addresses never appear in durable evidence, logs, or error diagnostics.
 
 ## 4. Promotion Evidence

@@ -99,7 +99,9 @@ export interface AvalaraVoidTransactionPayload {
 }
 
 export interface AvalaraClient {
+  readonly environment: AvalaraEnvironment;
   createTransaction(payload: AvalaraCreateTransactionPayload): Promise<AvalaraTransactionResponse>;
+  getTransactionByCode(companyCode: string, transactionCode: string): Promise<AvalaraTransactionResponse | null>;
   voidTransaction(
     companyCode: string,
     transactionCode: string,
@@ -146,8 +148,7 @@ const SAFE_CODE_REGEX = /^[A-Za-z0-9][A-Za-z0-9_]{0,63}$/u;
 const SAFE_HEADER_REGEX = /^[\x20-\x7E]{1,200}$/u;
 
 export function resolvePinnedAvalaraOrigin(environment: AvalaraEnvironment): string {
-  const origin = AVALARA_ORIGINS[environment];
-  if (!origin) {
+  if (!Object.hasOwn(AVALARA_ORIGINS, environment)) {
     throw new AvalaraTransportError({
       code: "avalara_unsupported_environment",
       status: null,
@@ -155,7 +156,7 @@ export function resolvePinnedAvalaraOrigin(environment: AvalaraEnvironment): str
       effect: "none",
     });
   }
-  return origin;
+  return AVALARA_ORIGINS[environment];
 }
 
 export function assertSafeAvalaraPathSegment(value: string, label: string): string {
@@ -289,13 +290,16 @@ function extractAvalaraErrorCode(bodyText: string, status: number): string {
   return `avalara_http_${status}`;
 }
 
-function normalizeTransactionResponse(raw: unknown): AvalaraTransactionResponse {
+function normalizeTransactionResponse(
+  raw: unknown,
+  effectOnError: "none" | "unknown",
+): AvalaraTransactionResponse {
   if (!raw || typeof raw !== "object") {
     throw new AvalaraTransportError({
       code: "avalara_invalid_response",
       status: 200,
       retryable: false,
-      effect: "unknown",
+      effect: effectOnError,
     });
   }
   const root = raw as Record<string, unknown>;
@@ -309,7 +313,7 @@ function normalizeTransactionResponse(raw: unknown): AvalaraTransactionResponse 
       code: "avalara_invalid_response",
       status: 200,
       retryable: false,
-      effect: "unknown",
+      effect: effectOnError,
     });
   }
 
@@ -330,9 +334,9 @@ function normalizeTransactionResponse(raw: unknown): AvalaraTransactionResponse 
           taxType: typeof d["taxType"] === "string" ? d["taxType"] : "",
           taxSubTypeId: typeof d["taxSubTypeId"] === "string" ? d["taxSubTypeId"] : undefined,
           rateType: typeof d["rateType"] === "string" ? d["rateType"] : undefined,
-          rate: typeof d["rate"] === "number" ? d["rate"] : 0,
-          taxableAmount: typeof d["taxableAmount"] === "number" ? d["taxableAmount"] : 0,
-          tax: typeof d["tax"] === "number" ? d["tax"] : 0,
+          rate: typeof d["rate"] === "number" ? d["rate"] : Number.NaN,
+          taxableAmount: typeof d["taxableAmount"] === "number" ? d["taxableAmount"] : Number.NaN,
+          tax: typeof d["tax"] === "number" ? d["tax"] : Number.NaN,
           exemptAmount: typeof d["exemptAmount"] === "number" ? d["exemptAmount"] : undefined,
           nonTaxableAmount: typeof d["nonTaxableAmount"] === "number" ? d["nonTaxableAmount"] : undefined,
           nonTaxableRuleId: typeof d["nonTaxableRuleId"] === "number" ? d["nonTaxableRuleId"] : undefined,
@@ -388,14 +392,19 @@ export function createAvalaraHttpClient(options: AvalaraHttpClientOptions): Aval
     });
   }
 
-  async function postJson(params: {
+  async function requestJson(params: {
+    readonly method: "GET" | "POST";
     readonly path: string;
-    readonly body: unknown;
+    readonly body?: unknown;
     readonly mutating: boolean;
-  }): Promise<unknown> {
-    let creds: AvalaraCredentials;
+    readonly allowNotFound?: boolean;
+  }): Promise<{ readonly status: number; readonly payload: unknown }> {
+    let accountId: string;
+    let licenseKey: string;
     try {
-      creds = await options.credentials();
+      const creds = await options.credentials();
+      accountId = typeof creds?.accountId === "string" ? creds.accountId.trim() : "";
+      licenseKey = typeof creds?.licenseKey === "string" ? creds.licenseKey.trim() : "";
     } catch {
       throw new AvalaraTransportError({
         code: "avalara_credentials_unavailable",
@@ -405,9 +414,7 @@ export function createAvalaraHttpClient(options: AvalaraHttpClientOptions): Aval
       });
     }
 
-    const accountId = creds.accountId.trim();
-    const licenseKey = creds.licenseKey.trim();
-    if (!accountId || !licenseKey) {
+    if (!accountId || !licenseKey || accountId.includes(":")) {
       throw new AvalaraTransportError({
         code: "avalara_credentials_missing",
         status: null,
@@ -420,23 +427,33 @@ export function createAvalaraHttpClient(options: AvalaraHttpClientOptions): Aval
     assertPinnedHttpsUrl(url, origin);
 
     const authToken = Buffer.from(`${accountId}:${licenseKey}`, "utf8").toString("base64");
-    const bodyText = JSON.stringify(params.body);
+    const hasBody = params.method === "POST" && params.body !== undefined;
+    const bodyText = hasBody ? JSON.stringify(params.body) : undefined;
+
+    const headers: Record<string, string> = {
+      authorization: `Basic ${authToken}`,
+      "x-avalara-client": clientHeader,
+      accept: "application/json",
+    };
+    if (hasBody) {
+      headers["content-type"] = "application/json";
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await options.fetchImpl(url.href, {
-        method: "POST",
-        headers: {
-          authorization: `Basic ${authToken}`,
-          "x-avalara-client": clientHeader,
-          accept: "application/json",
-          "content-type": "application/json",
-        },
+        method: params.method,
+        headers,
         body: bodyText,
         redirect: "error",
         signal: controller.signal,
       });
+
+      if (params.allowNotFound && response.status === 404) {
+        await response.body?.cancel().catch(() => undefined);
+        return { status: 404, payload: null };
+      }
 
       if (!response.ok) {
         const status = response.status;
@@ -465,17 +482,20 @@ export function createAvalaraHttpClient(options: AvalaraHttpClientOptions): Aval
         } catch {
           await response.body?.cancel().catch(() => undefined);
         }
+        const errCode = extractAvalaraErrorCode(errBody, status);
+        // Duplicate-code errors on mutating calls indicate an existing provider transaction -> unknown effect.
+        const isDuplicateConflict = params.mutating && /Duplicate|DocStatus/iu.test(errCode);
         throw new AvalaraTransportError({
-          code: extractAvalaraErrorCode(errBody, status),
+          code: errCode,
           status,
           retryable: false,
-          effect: "none",
+          effect: isDuplicateConflict ? "unknown" : "none",
         });
       }
 
       const rawText = await readBoundedText(response, maxBodyBytes, params.mutating ? "unknown" : "none");
       try {
-        return JSON.parse(rawText);
+        return { status: response.status, payload: JSON.parse(rawText) };
       } catch {
         throw new AvalaraTransportError({
           code: "avalara_invalid_json",
@@ -501,14 +521,47 @@ export function createAvalaraHttpClient(options: AvalaraHttpClientOptions): Aval
   }
 
   return {
+    environment: options.environment,
+
     async createTransaction(payload: AvalaraCreateTransactionPayload): Promise<AvalaraTransactionResponse> {
       assertSafeAvalaraPathSegment(payload.companyCode, "company_code");
-      const raw = await postJson({
+      const mutating = payload.commit === true || payload.type !== "SalesOrder";
+      const result = await requestJson({
+        method: "POST",
         path: "/api/v2/transactions/create",
         body: payload,
-        mutating: payload.commit === true || payload.type !== "SalesOrder",
+        mutating,
       });
-      return normalizeTransactionResponse(raw);
+      return normalizeTransactionResponse(result.payload, mutating ? "unknown" : "none");
+    },
+
+    async getTransactionByCode(
+      companyCode: string,
+      transactionCode: string,
+    ): Promise<AvalaraTransactionResponse | null> {
+      const safeCompany = assertSafeAvalaraPathSegment(companyCode, "company_code");
+      const safeCode = assertSafeAvalaraPathSegment(transactionCode, "transaction_code");
+      const path = `/api/v2/companies/${encodeURIComponent(safeCompany)}/transactions/${encodeURIComponent(safeCode)}`;
+      const verified = new URL(path, origin);
+      const expectedPath = `/api/v2/companies/${safeCompany}/transactions/${safeCode}`;
+      if (verified.pathname !== expectedPath) {
+        throw new AvalaraTransportError({
+          code: "avalara_invalid_transaction_path",
+          status: null,
+          retryable: false,
+          effect: "none",
+        });
+      }
+      const result = await requestJson({
+        method: "GET",
+        path,
+        mutating: false,
+        allowNotFound: true,
+      });
+      if (result.status === 404 || result.payload === null) {
+        return null;
+      }
+      return normalizeTransactionResponse(result.payload, "none");
     },
 
     async voidTransaction(
@@ -518,9 +571,9 @@ export function createAvalaraHttpClient(options: AvalaraHttpClientOptions): Aval
     ): Promise<{ readonly code: string; readonly status: string }> {
       const safeCompany = assertSafeAvalaraPathSegment(companyCode, "company_code");
       const safeCode = assertSafeAvalaraPathSegment(transactionCode, "transaction_code");
-      const path = `/api/v2/transactions/${encodeURIComponent(safeCompany)}/${encodeURIComponent(safeCode)}/void`;
+      const path = `/api/v2/companies/${encodeURIComponent(safeCompany)}/transactions/${encodeURIComponent(safeCode)}/void`;
       const verified = new URL(path, origin);
-      const expectedPath = `/api/v2/transactions/${safeCompany}/${safeCode}/void`;
+      const expectedPath = `/api/v2/companies/${safeCompany}/transactions/${safeCode}/void`;
       if (verified.pathname !== expectedPath) {
         throw new AvalaraTransportError({
           code: "avalara_invalid_transaction_path",
@@ -529,12 +582,13 @@ export function createAvalaraHttpClient(options: AvalaraHttpClientOptions): Aval
           effect: "none",
         });
       }
-      const raw = await postJson({
+      const result = await requestJson({
+        method: "POST",
         path,
         body: payload,
         mutating: true,
       });
-      if (!raw || typeof raw !== "object") {
+      if (!result.payload || typeof result.payload !== "object") {
         throw new AvalaraTransportError({
           code: "avalara_invalid_void_response",
           status: 200,
@@ -542,7 +596,7 @@ export function createAvalaraHttpClient(options: AvalaraHttpClientOptions): Aval
           effect: "unknown",
         });
       }
-      const record = raw as Record<string, unknown>;
+      const record = result.payload as Record<string, unknown>;
       const code = typeof record["code"] === "string" ? record["code"].trim() : "";
       const status = typeof record["status"] === "string" ? record["status"].trim() : "";
       if (!code || !status) {

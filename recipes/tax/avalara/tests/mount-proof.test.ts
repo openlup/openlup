@@ -6,11 +6,13 @@ import {
   verifyTaxQuoteRequest,
   verifyTaxQuoteResult,
 } from "@openlup/platform/tax";
-import { TAX_CALCULATION_CONTRACT_VERSION } from "@openlup/platform/tax/contracts";
+import { TAX_CALCULATION_CONTRACT_VERSION, type TaxQuoteRequestV1 } from "@openlup/platform/tax/contracts";
 import {
   createAvalaraHttpClient,
   createAvalaraTaxAdapter,
+  taxTaggedDigest,
   type AvalaraCreateTransactionPayload,
+  type AvalaraTransactionResponse,
   type FetchLike,
 } from "../server/index.js";
 import {
@@ -34,56 +36,120 @@ import {
  * standalone adopter store.
  */
 describe("recipes/tax/avalara — Stage 3 real-flow mount proof (+ negative controls)", () => {
-  it("runs quote + multi-step discount + localRateTable parity + renewal recalculation probe + local close + commit + partial/remainder ReturnInvoice + clean DocVoided void", async () => {
-    const httpLog: { readonly path: string; readonly type?: string; readonly code?: string }[] = [];
+  it("runs quote + multi-step discount + localRateTable parity + renewal recalculation probe + local close + positive-tax commit + taxed ReturnInvoice + clean DocVoided void", async () => {
+    const httpLog: {
+      readonly method: string;
+      readonly path: string;
+      readonly type?: string;
+      readonly code?: string;
+      readonly payload?: AvalaraCreateTransactionPayload;
+    }[] = [];
+    const docsByCode = new Map<string, AvalaraTransactionResponse>();
     let activeRate = 0.0825; // 8.25%
+
+    const voidPathRegex = new RegExp(
+      `^/api/v2/companies/${FIXTURE_COMPANY_CODE}/transactions/([^/]+)/void$`,
+      "u",
+    );
+    const getPathRegex = new RegExp(
+      `^/api/v2/companies/${FIXTURE_COMPANY_CODE}/transactions/([^/]+)$`,
+      "u",
+    );
 
     const fetchImpl: FetchLike = async (urlString, init) => {
       const url = new URL(urlString);
-      if (url.pathname.endsWith("/void")) {
-        const parts = url.pathname.split("/");
-        const txCode = decodeURIComponent(parts[parts.length - 2]!);
-        httpLog.push({ path: url.pathname, type: "DocVoided", code: txCode });
+      const method = init?.method ?? "GET";
+
+      const getMatch = method === "GET" ? getPathRegex.exec(url.pathname) : null;
+      if (getMatch) {
+        const txCode = decodeURIComponent(getMatch[1]!);
+        httpLog.push({ method, path: url.pathname, type: "GetTransaction", code: txCode });
+        const doc = docsByCode.get(txCode);
+        if (!doc) {
+          return new Response(JSON.stringify({ error: { code: "EntityNotFoundError" } }), { status: 404 });
+        }
+        return new Response(JSON.stringify(doc), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      const voidMatch = method === "POST" ? voidPathRegex.exec(url.pathname) : null;
+      if (voidMatch) {
+        const txCode = decodeURIComponent(voidMatch[1]!);
+        expect(JSON.parse(init!.body as string)).toEqual({ code: "DocVoided" });
+        httpLog.push({ method, path: url.pathname, type: "DocVoided", code: txCode });
+        const existing = docsByCode.get(txCode);
+        if (existing) {
+          docsByCode.set(txCode, { ...existing, status: "Cancelled" });
+        }
         return new Response(JSON.stringify({ code: txCode, status: "Cancelled" }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
       }
 
+      expect(method).toBe("POST");
+      expect(url.pathname).toBe("/api/v2/transactions/create");
       const payload = JSON.parse(init!.body as string) as AvalaraCreateTransactionPayload;
-      httpLog.push({ path: url.pathname, type: payload.type, code: payload.code });
+      httpLog.push({ method, path: url.pathname, type: payload.type, code: payload.code, payload });
 
-      return new Response(
-        JSON.stringify(
-          buildAvalaraResponse({
-            code: payload.code ?? `SO-${httpLog.length}`,
-            status: payload.commit ? "Committed" : "Temporary",
-            lines: payload.lines.map((line) => {
-              const tax = Number((line.amount * activeRate).toFixed(2));
-              return {
-                lineNumber: line.number,
-                lineAmount: line.amount,
+      if (payload.type === "ReturnInvoice") {
+        const overrideTax =
+          payload.taxOverride?.type === "TaxAmount" && typeof payload.taxOverride.taxAmount === "number"
+            ? payload.taxOverride.taxAmount
+            : 0;
+        const doc = buildAvalaraResponse({
+          code: payload.code!,
+          status: "Committed",
+          lines: payload.lines.map((line, idx) => ({
+            lineNumber: line.number,
+            lineAmount: line.amount,
+            taxableAmount: line.amount,
+            tax: idx === 0 ? overrideTax : 0,
+            details: [],
+          })),
+        });
+        docsByCode.set(doc.code, doc);
+        return new Response(JSON.stringify(doc), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      const doc = buildAvalaraResponse({
+        code: payload.code ?? `SO-${httpLog.length}`,
+        status: payload.commit ? "Committed" : "Temporary",
+        lines: payload.lines.map((line) => {
+          const tax = Number((line.amount * activeRate).toFixed(2));
+          return {
+            lineNumber: line.number,
+            lineAmount: line.amount,
+            taxableAmount: line.amount,
+            tax,
+            details: [
+              {
+                jurisType: "STA",
+                jurisCode: "08",
+                country: "US",
+                region: "CO",
+                taxType: "Sales",
+                rate: activeRate,
                 taxableAmount: line.amount,
                 tax,
-                details: [
-                  {
-                    jurisType: "STA",
-                    jurisCode: "08",
-                    country: "US",
-                    region: "CO",
-                    taxType: "Sales",
-                    rate: activeRate,
-                    taxableAmount: line.amount,
-                    tax,
-                    rateRuleId: 301,
-                  },
-                ],
-              };
-            }),
-          }),
-        ),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
+                rateRuleId: 301,
+              },
+            ],
+          };
+        }),
+      });
+      if (payload.commit && payload.code) {
+        docsByCode.set(doc.code, doc);
+      }
+      return new Response(JSON.stringify(doc), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
     };
 
     const client = createAvalaraHttpClient({
@@ -241,23 +307,31 @@ describe("recipes/tax/avalara — Stage 3 real-flow mount proof (+ negative cont
     expect(closed).toEqual({ kind: "closed", ref: calcRef, key: "close-mount-1" });
     expect(httpLog.length).toBe(callsBeforeClose);
 
-    // 5. Commit + partial ReturnInvoice + remainder ReturnInvoice + separate clean DocVoided full void
-    activeRate = 0; // clean 100-minor-unit 0-tax sale for partial/remainder + clean full void
-    const saleReq1 = makeTaxQuoteRequest("mount-sale-1", buildBaseQuoteInput());
-    const saleQuote1 = await port.quote(saleReq1);
-    expect(saleQuote1.kind).toBe("final");
-    if (saleQuote1.kind !== "final") return;
+    // 5. Positive-tax (8.25%) commit + taxed partial ReturnInvoice + remainder ReturnInvoice
+    activeRate = 0.0825;
+    const taxedSaleReq = makeTaxQuoteRequest(
+      "mount-taxed-sale-1",
+      buildBaseQuoteInput({
+        money: discountedReq.input.money,
+      }),
+    );
+    const taxedSaleQuote = await port.quote(taxedSaleReq);
+    expect(taxedSaleQuote.kind).toBe("final");
+    if (taxedSaleQuote.kind !== "final") return;
+    expect(taxedSaleQuote.money.netTotal).toBe(1800);
+    expect(taxedSaleQuote.money.taxTotal).toBe(149);
+    expect(taxedSaleQuote.money.payableMinor).toBe(1949);
 
     const commit1 = await port.commit({
       calculationRef: {
         scope: FIXTURE_SCOPE,
-        ref: saleQuote1.evidence.calculationRef,
-        evidenceDigest: saleQuote1.evidenceDigest,
+        ref: taxedSaleQuote.evidence.calculationRef,
+        evidenceDigest: taxedSaleQuote.evidenceDigest,
       },
-      transactionRef: "tx-mount-1",
+      transactionRef: "tx-mount-taxed-1",
       capturedAt: FIXTURE_NOW_ISO,
       postedAt: FIXTURE_NOW_ISO,
-      captureEvidenceRef: "cap-mount-1",
+      captureEvidenceRef: "cap-mount-taxed-1",
       intent: "apply",
     });
     expect(commit1.kind).toBe("committed");
@@ -267,33 +341,49 @@ describe("recipes/tax/avalara — Stage 3 real-flow mount proof (+ negative cont
     const revPartial = await port.reverse({
       scope: FIXTURE_SCOPE,
       originalRef: commit1.providerTransactionRef,
-      reversalRef: "rev-partial-1",
+      reversalRef: "rev-partial-taxed-1",
       refundEvidenceRef: "ref-ev-1",
       currency: "USD",
       fromMinor: 0,
-      toMinor: 40,
+      toMinor: 975,
       mode: "lines",
       intent: "apply",
-      positions: [{ originalPositionRef: posRef, netDeltaMinor: -40, taxDeltaMinor: 0, feeDeltaMinor: 0 }],
+      positions: [{ originalPositionRef: posRef, netDeltaMinor: -900, taxDeltaMinor: -75, feeDeltaMinor: 0 }],
     });
     expect(revPartial.kind).toBe("reversed");
 
     const revRemainder = await port.reverse({
       scope: FIXTURE_SCOPE,
       originalRef: commit1.providerTransactionRef,
-      reversalRef: "rev-remainder-1",
+      reversalRef: "rev-remainder-taxed-1",
       refundEvidenceRef: "ref-ev-2",
       currency: "USD",
-      fromMinor: 40,
-      toMinor: 100,
+      fromMinor: 975,
+      toMinor: 1949,
       mode: "full",
       intent: "apply",
-      positions: [{ originalPositionRef: posRef, netDeltaMinor: -60, taxDeltaMinor: 0, feeDeltaMinor: 0 }],
+      positions: [{ originalPositionRef: posRef, netDeltaMinor: -900, taxDeltaMinor: -74, feeDeltaMinor: 0 }],
     });
     expect(revRemainder.kind).toBe("reversed");
-    expect(httpLog.filter((e) => e.type === "ReturnInvoice")).toHaveLength(2);
 
-    // Clean full reversal (fromMinor === 0) invokes DocVoided /void endpoint
+    const returnLogs = httpLog.filter((e) => e.type === "ReturnInvoice");
+    expect(returnLogs).toHaveLength(2);
+    expect(returnLogs[0]?.payload?.taxOverride).toEqual({
+      type: "TaxAmount",
+      taxAmount: -0.75,
+      taxDate: "2030-06-15",
+      reason: "Customer return",
+    });
+    expect(returnLogs[0]?.payload?.lines[0]?.taxCode).toBe("P0000000");
+    expect(returnLogs[0]?.payload?.lines[0]?.amount).toBe(-9);
+    expect(returnLogs[1]?.payload?.taxOverride).toEqual({
+      type: "TaxAmount",
+      taxAmount: -0.74,
+      taxDate: "2030-06-15",
+      reason: "Customer return",
+    });
+
+    // 6. Clean full reversal (fromMinor === 0, toMinor === payableMinor) invokes official /companies/.../void endpoint
     const saleReq2 = makeTaxQuoteRequest("mount-sale-2", buildBaseQuoteInput());
     const saleQuote2 = await port.quote(saleReq2);
     expect(saleQuote2.kind).toBe("final");
@@ -320,14 +410,14 @@ describe("recipes/tax/avalara — Stage 3 real-flow mount proof (+ negative cont
       refundEvidenceRef: "ref-ev-void",
       currency: "USD",
       fromMinor: 0,
-      toMinor: 100,
+      toMinor: saleQuote2.money.payableMinor,
       mode: "full",
       intent: "apply",
       positions: [
         {
           originalPositionRef: commit2.positions[0]!.originalPositionRef,
-          netDeltaMinor: -100,
-          taxDeltaMinor: 0,
+          netDeltaMinor: -saleQuote2.money.netTotal,
+          taxDeltaMinor: -saleQuote2.money.taxTotal,
           feeDeltaMinor: 0,
         },
       ],
@@ -336,26 +426,42 @@ describe("recipes/tax/avalara — Stage 3 real-flow mount proof (+ negative cont
     if (revCleanVoid.kind === "reversed") {
       expect(revCleanVoid.providerReversalRef).toBe(`void:${commit2.providerTransactionRef}`);
     }
-    expect(httpLog.filter((e) => e.type === "DocVoided")).toHaveLength(1);
+    const voidLogs = httpLog.filter((e) => e.type === "DocVoided");
+    expect(voidLogs).toHaveLength(1);
+    expect(voidLogs[0]?.path).toBe(
+      `/api/v2/companies/${FIXTURE_COMPANY_CODE}/transactions/${commit2.providerTransactionRef}/void`,
+    );
 
-    // 6. Canary sweep across all outputs (raw, URL-encoded, Base64)
-    const serialized = JSON.stringify({ discountedQuote, commit1, revPartial, revRemainder, revCleanVoid });
-    const rawCanaries = [
+    // 7. Canary sweep across all outputs (raw, URL-encoded, Base64)
+    const serialized = JSON.stringify({
+      discountedQuote,
+      taxedSaleQuote,
+      commit1,
+      revPartial,
+      revRemainder,
+      commit2,
+      revCleanVoid,
+    });
+    const canaries = [
       FIXTURE_SENSITIVE_CANARIES.accountId,
       FIXTURE_SENSITIVE_CANARIES.licenseKey,
       FIXTURE_SENSITIVE_CANARIES.customerStreet,
+      FIXTURE_SENSITIVE_CANARIES.customerPostal,
       Buffer.from(
         `${FIXTURE_SENSITIVE_CANARIES.accountId}:${FIXTURE_SENSITIVE_CANARIES.licenseKey}`,
         "utf8",
       ).toString("base64"),
+      Buffer.from(FIXTURE_SENSITIVE_CANARIES.licenseKey, "utf8").toString("base64"),
+      Buffer.from(FIXTURE_SENSITIVE_CANARIES.customerStreet, "utf8").toString("base64"),
       encodeURIComponent(FIXTURE_SENSITIVE_CANARIES.licenseKey),
+      encodeURIComponent(FIXTURE_SENSITIVE_CANARIES.customerStreet),
     ];
-    for (const canary of rawCanaries) {
+    for (const canary of canaries) {
       expect(serialized).not.toContain(canary);
     }
   });
 
-  it("enforces negative controls: tampered evidence refusal, zero-I/O scope/inclusive refusal, and unreserved/closed/outage commit safety", async () => {
+  it("enforces negative controls: tampered evidence refusal, zero-I/O scope/currency/inclusive refusal, and unreserved/closed/outage commit safety", async () => {
     let networkCalls = 0;
     let shouldFailCommit = false;
 
@@ -408,7 +514,7 @@ describe("recipes/tax/avalara — Stage 3 real-flow mount proof (+ negative cont
       hasCommitReservation: () => allowReservation,
     });
 
-    // NC1: Scope mismatch and unsupported currency refuse at ZERO I/O
+    // NC1: Scope mismatch, unsupported currency, and inclusive amountBasis refuse at ZERO I/O
     const wrongScopeReq = makeTaxQuoteRequest(
       "nc-wrong-scope",
       buildBaseQuoteInput({
@@ -435,6 +541,26 @@ describe("recipes/tax/avalara — Stage 3 real-flow mount proof (+ negative cont
       buildBaseQuoteInput({ currency: "EUR" }),
     );
     expect(await port.quote(wrongCurrencyReq)).toMatchObject({ kind: "refused", code: "tax_scope_mismatch" });
+
+    const baseInclusiveReq = makeTaxQuoteRequest("nc-inclusive", buildBaseQuoteInput());
+    const inclusivePayload = {
+      ...baseInclusiveReq.input,
+      money: {
+        ...baseInclusiveReq.input.money,
+        amountBasis: "inclusive" as "exclusive",
+      },
+    };
+    const inclusiveReq: TaxQuoteRequestV1 = {
+      key: baseInclusiveReq.key,
+      input: inclusivePayload,
+      inputDigest: taxTaggedDigest("platform.tax.input.v1", inclusivePayload),
+    };
+    const inclusiveResult = await port.quote(inclusiveReq);
+    expect(inclusiveResult).toMatchObject({
+      kind: "refused",
+      code: "tax_scope_mismatch",
+      field: "/input/money/amountBasis",
+    });
     expect(networkCalls).toBe(0);
 
     // NC2: Tampered evidence & invalid probe rejected by platform verifiers

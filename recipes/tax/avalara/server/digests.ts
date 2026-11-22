@@ -4,12 +4,20 @@ import type { TaxCalculationEvidenceV1, TaxScopeV1 } from "@openlup/platform/tax
 
 const ISO_4217_REGEX = /^[A-Z]{3}$/u;
 
+const SUPPORTED_ISO_CURRENCIES: ReadonlySet<string> = new Set(
+  typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("currency") : [],
+);
+
 /**
- * Resolve ISO-4217 minor-unit exponent for a 3-letter uppercase currency code
- * using standard runtime `Intl.NumberFormat` currency metadata (zero hardcoded country tables).
+ * Resolve ISO-4217 minor-unit exponent for a recognized 3-letter uppercase currency code
+ * using standard runtime `Intl.supportedValuesOf("currency")` + `Intl.NumberFormat` metadata.
+ * Rejects unrecognized codes (such as `"ZZZ"`, `"XXX"`, `"ABC"`) with `null`.
  */
 export function getCurrencyExponent(currency: string): number | null {
   if (!ISO_4217_REGEX.test(currency)) return null;
+  if (SUPPORTED_ISO_CURRENCIES.size > 0 && !SUPPORTED_ISO_CURRENCIES.has(currency)) {
+    return null;
+  }
   try {
     const digits = new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -43,21 +51,74 @@ export function minorToMajorAmount(minor: number, exponent: number): number {
   return parsed;
 }
 
-/**
- * Exact major-unit number -> integer minor-unit conversion via decimal string parsing.
- * Rejects NaN, Infinity, or unsafe integer overflow. Rounds half-up at the currency minor unit
- * only when Avalara returns sub-cent intermediate tax precision; validates residual drift.
- */
-export function majorToMinorAmount(major: number, exponent: number): number {
+/** Expand a finite JS number's decimal string (including scientific notation) into `{ negative, intDigits, fracDigits }`. */
+function parseExactDecimalParts(major: number): {
+  readonly negative: boolean;
+  readonly intDigits: string;
+  readonly fracDigits: string;
+} {
+  const negative = major < 0;
+  const raw = Math.abs(major).toString().toLowerCase();
+  const [mantissa, expPart] = raw.split("e");
+  const shift = expPart ? Number.parseInt(expPart, 10) : 0;
+  const [wholeRaw = "0", fracRaw = ""] = (mantissa ?? "0").split(".");
+  const digits = `${wholeRaw}${fracRaw}`;
+  const decimalPos = wholeRaw.length + shift;
+
+  if (decimalPos <= 0) {
+    return {
+      negative,
+      intDigits: "0",
+      fracDigits: `${"0".repeat(-decimalPos)}${digits}`,
+    };
+  }
+  if (decimalPos >= digits.length) {
+    return {
+      negative,
+      intDigits: `${digits}${"0".repeat(decimalPos - digits.length)}`,
+      fracDigits: "",
+    };
+  }
+  return {
+    negative,
+    intDigits: digits.slice(0, decimalPos),
+    fracDigits: digits.slice(decimalPos),
+  };
+}
+
+function scaleDecimalHalfAwayFromZero(major: number, scale: number): number {
   if (typeof major !== "number" || !Number.isFinite(major)) {
     throw new Error("avalara_invalid_major_amount");
   }
-  const factor = 10 ** exponent;
-  const scaled = Math.round((major + Number.EPSILON * Math.sign(major)) * factor);
-  if (!Number.isSafeInteger(scaled)) {
+  if (major === 0) return 0;
+
+  const { negative, intDigits, fracDigits } = parseExactDecimalParts(major);
+  const paddedFrac = fracDigits.padEnd(scale + 1, "0");
+  const baseDigits = `${intDigits}${paddedFrac.slice(0, scale)}`;
+  const roundDigit = paddedFrac.charCodeAt(scale) - 48; // '0'..'9'
+
+  let magnitude = BigInt(baseDigits);
+  if (roundDigit >= 5) {
+    magnitude += 1n;
+  }
+  const signed = negative ? -magnitude : magnitude;
+  const result = Number(signed);
+  if (!Number.isSafeInteger(result)) {
     throw new Error("avalara_minor_amount_overflow");
   }
-  return scaled === 0 ? 0 : scaled;
+  return result === 0 ? 0 : result;
+}
+
+/**
+ * Exact major-unit number -> integer minor-unit conversion via decimal-string digit parsing
+ * and half-away-from-zero rounding (eliminating binary IEEE-754 half-cent drift such as
+ * `35.855 -> 3586`, `10.075 -> 1008`, `-100.005 -> -10001`).
+ */
+export function majorToMinorAmount(major: number, exponent: number): number {
+  if (!Number.isSafeInteger(exponent) || exponent < 0 || exponent > 6) {
+    throw new Error("avalara_invalid_currency_exponent");
+  }
+  return scaleDecimalHalfAwayFromZero(major, exponent);
 }
 
 /**
@@ -69,8 +130,8 @@ export function fractionalRateToPercentString(fractionalRate: number): string {
   if (typeof fractionalRate !== "number" || !Number.isFinite(fractionalRate) || fractionalRate < 0) {
     throw new Error("avalara_invalid_rate");
   }
-  // Format with 10 decimal places, shift decimal point right by 2 (x 100), truncate/round to 6 fractional digits.
-  const scaled = Math.round(fractionalRate * 1e8); // fractionalRate * 100 * 1e6
+  // Exact decimal shift right by 2 places (x 100), rounded half-away-from-zero to 6 fractional digits.
+  const scaled = scaleDecimalHalfAwayFromZero(fractionalRate, 8); // fractionalRate * 100 * 1e6
   if (!Number.isSafeInteger(scaled) || scaled < 0) {
     throw new Error("avalara_invalid_rate");
   }
