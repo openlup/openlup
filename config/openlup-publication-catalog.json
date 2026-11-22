@@ -12658,6 +12658,42 @@
       "class": "public-output"
     },
     {
+      "path": "recipes/fulfillment/shipbob/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/server/webhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/shipbob/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "recipes/index.json",
       "class": "public-output"
     },

@@ -69,6 +69,7 @@ export {};
 ## dist/shipping/addressSchemas.d.ts
 
 ```ts
+import type { DestinationAddressV2 } from "../commerce/contracts/index.js";
 import type { AddressCanonPostalCodeLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupRequest, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupRequest, AddressCanonStreetsLookupResponse, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./contracts/address.js";
 type Schema<T> = {
     safeParse(input: unknown): {
@@ -98,6 +99,45 @@ export interface CustomerAddressSchemas {
     customerAddressDeleteRequestSchema: Schema<CustomerAddressDeleteRequest>;
     isMutationConflict(error: unknown): error is Error;
 }
+/** @experimental Immutable host data selected for one market and country. */
+export interface AddressPolicyV1 {
+    readonly schemaVersion: 1;
+    readonly policyRef: string;
+    readonly policyRevision: string;
+    readonly countryCode: string;
+    readonly requiredFields: readonly (keyof DestinationAddressV2)[];
+    readonly allowedSubdivisionCodes: readonly string[];
+    readonly subdivisionAliases: Readonly<Record<string, string>>;
+    readonly postalRule: {
+        readonly upperAscii: boolean;
+        readonly stripAsciiSpaces: boolean;
+        readonly alternatives: readonly (readonly ("digit" | "letter" | {
+            readonly literal: string;
+        })[])[];
+    };
+    readonly classificationRules: readonly ({
+        readonly key: string;
+        readonly subdivisionCode: string;
+    } | {
+        readonly key: string;
+        readonly line1Prefix: string;
+    })[];
+}
+type RefusalCode = "address_invalid_input" | "address_policy_unavailable" | "address_policy_invalid" | "address_subdivision_required" | "address_subdivision_unrecognized" | "address_postal_invalid";
+type Refusal = {
+    outcome: "refused";
+    code: RefusalCode;
+    field: string;
+    remedy: string;
+};
+/** @experimental Validate an address using the host's selected policy and return normalized address facts. */
+export declare function validateDestinationAddressV2(input: unknown, policy?: AddressPolicyV1): Refusal | {
+    outcome: "valid";
+    address: DestinationAddressV2;
+    policyRef: string;
+    policyRevision: string;
+    classificationKeys: string[];
+};
 export {};
 ```
 ## dist/shipping/adminShippingRateHandler.d.ts
@@ -790,6 +830,7 @@ export type { AddressLookupSchemas, CustomerAddressSchemas } from "./addressSche
 export { createAddressCanonPostalCodeHandler, createAddressCanonLocalitiesHandler, createAddressCanonStreetsHandler } from "./addressCanonLookupHandler.js";
 export { createCustomerAddressesHandler } from "./customerAddressesHandler.js";
 export { canonicalAddressKey } from "./addressCanonical.js";
+export { validateDestinationAddressV2, type AddressPolicyV1 } from "./addressSchemas.js";
 export { readAddresses, readOrdererProfiles, addressUsedByActiveSubscription, addressRow, findCanonicalAddressId, clearDefaultAddress } from "./customerSelfServiceAddressModels.js";
 export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./contracts/shippingRate.js";
 export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
