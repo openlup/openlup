@@ -2661,15 +2661,62 @@ ALTER TABLE public.subscription_quote_previews ADD CONSTRAINT subscription_quote
 `;
 const previewAcceptanceColumn = previewNoopAcceptanceSql.split("\n", 1)[0]!;
 
+function changesPreviewTableShape(statement: string): boolean {
+  if (!/subscription_quote_previews/iu.test(statement)) return false;
+  const { tokens } = platformSqlTokens(statement, false, true);
+  const word = (at: number, value: string) => nativeWord(tokens, at, value);
+  const symbol = (at: number, value: string) => nativeSymbol(tokens, at, value);
+  const preview = "subscription_quote_previews";
+  const tableAt = (at: number) => nativeQualified(tokens, at) ?? { name: `public.${nativeIdentifier(tokens[at])}`, next: at + 1 };
+  const isPreview = (at: number) => tableAt(at).name === `public.${preview}`;
+  const create = word(0, "CREATE"), alter = word(0, "ALTER"), drop = word(0, "DROP");
+  if (!create && !alter && !drop) return false;
+
+  // A unique index can back a constraint. PostgreSQL requires dropping the
+  // owning constraint to remove its index, and DROP INDEX has no table target.
+  if (create && word(1, "UNIQUE") && word(2, "INDEX")) {
+    const on = tokens.findIndex((_, at) => at > 2 && word(at, "ON"));
+    return on >= 0 && isPreview(on + (word(on + 1, "ONLY") ? 2 : 1));
+  }
+
+  let kind = 1;
+  if (create && (word(kind, "GLOBAL") || word(kind, "LOCAL"))) kind++;
+  if (create && ["TEMP", "TEMPORARY", "UNLOGGED"].some(modifier => word(kind, modifier))) kind++;
+  if (!word(kind, "TABLE")) return false;
+  let target = kind + 1;
+  if (create && word(target, "IF") && word(target + 1, "NOT") && word(target + 2, "EXISTS")) target += 3;
+  if (!create && word(target, "IF") && word(target + 1, "EXISTS")) target += 2;
+  if (alter && word(target, "ONLY")) target += symbol(target + 1, "(") ? 2 : 1;
+  if (drop) {
+    for (;;) {
+      if (isPreview(target)) return true;
+      const { next } = tableAt(target);
+      if (!symbol(next, ",")) return false;
+      target = next + 1;
+    }
+  }
+  if (isPreview(target)) return true;
+  const { next } = tableAt(target);
+  const action = next + (symbol(next, ")") || symbol(next, "*") ? 1 : 0);
+  const inPublic = next === target + 1 || nativeIdentifier(tokens[target]) === "public";
+  if (alter && inPublic && word(action, "RENAME") && word(action + 1, "TO") && nativeIdentifier(tokens[action + 2]) === preview) return true;
+  return tokens.some((_, at) => word(at, "REFERENCES") && isPreview(at + 1));
+}
+
 function assertPreviewNoopAcceptance(bytes: Buffer, preceding: { path: string; bytes: Buffer }[]): void {
   if (!bytes.equals(Buffer.from(previewNoopAcceptanceSql))) throw new Error("reviewed native store preview acceptance forward requires exactly the receipt column and adjacent validated CHECK replacement");
   const source = preceding.find(unit => unit.path === previewAcceptanceSource);
   if (!source || sqlSha256(source.bytes) !== previewAcceptanceSourceSha256) throw new Error("reviewed native store preview acceptance CHECK preimage file or hash drifted");
-  // This scan checks literal mentions. The PostgreSQL proof checks the installed
-  // shape, including effects of earlier SQL that constructs the table name.
+  // The static scan refuses earlier migrations that can change the preview table's columns or constraints.
+  // Trigger DDL on the table and routine bodies that read it are allowed, because the PostgreSQL preimage proof
+  // compares the table's full pg_depend closure, including triggers, with its expected snapshot before the forward.
+  // Database-wide state is out of scope. The proof also covers the effects of ALTER TABLE executed inside a DO block or routine body.
   for (const unit of preceding) {
-    if (unit.path === previewAcceptanceSource || !/subscription_quote_previews/iu.test(unit.bytes.toString("utf8"))) continue;
-    if (unit.path !== previewAcceptanceReadSource || sqlSha256(unit.bytes) !== previewAcceptanceReadSha256) {
+    if (unit.path === previewAcceptanceSource) continue;
+    const changesShape = unit.path === previewAcceptanceReadSource
+      ? /subscription_quote_previews/iu.test(unit.bytes.toString("utf8")) && sqlSha256(unit.bytes) !== previewAcceptanceReadSha256
+      : cachedDumpSqlStatements(unit.bytes).some(changesPreviewTableShape);
+    if (changesShape) {
       throw new Error(`reviewed native store preview acceptance CHECK refuses other preview history: ${unit.path}`);
     }
   }

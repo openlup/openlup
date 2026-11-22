@@ -2700,13 +2700,15 @@ in order. They add the column and then drop and re-add
 `subscription_quote_previews_acceptance_check` on
 `public.subscription_quote_previews` as an adjacent, validated replacement.
 Static admission checks the exact forward bytes and pins the issued
-package-editor migration by path and hash. In the native prefix it refuses
-files that literally name the preview table beyond the pinned package-editor
-and sized-editor migrations. Earlier SQL can also reach the table through
-computed identifiers. Immediately before the forward, the PostgreSQL proof
-compares the table and every object that depends on it with one expected
-catalogue snapshot, using stable names and omitting only the named deny-list
-of instance-specific fields in the [proof](../../tests/postgres/nativeStoreForwardCatalog.shared.ts).
+package-editor migration by path and hash. Beyond the pinned package-editor and
+sized-editor migrations, the static scan refuses top-level table and constraint
+DDL targeting the preview table, including renames and unique index creation.
+Trigger DDL and routine references are allowed. Immediately before the forward,
+the PostgreSQL proof compares the table and its full `pg_depend` closure,
+including triggers, with one expected catalogue snapshot. The
+[proof](../../tests/postgres/nativeStoreForwardCatalog.shared.ts) uses stable
+names and omits only the named deny-list of instance-specific fields.
+Database-wide state is out of scope.
 The [installation matrix](../../tests/postgres/subscriptionExactInstallation.test.ts)
 runs the same check on all five shipped profiles.
 
