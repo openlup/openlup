@@ -6,7 +6,7 @@ import type {
   TaxCalculationPort, TaxCommitRequestV1, TaxCommitResultV1, TaxQuoteInputV1, TaxRefusal, TaxReverseRequestV1, TaxReverseResultV1,
 } from "../../src/tax/contracts/index.js";
 import {
-  date, feeInput, feeRule, exemptRule, localCutover, localInput, localOptions, localRegistration, localTime, rateRule,
+  date, feeInput, feeRule, exemptRule, localCutover, localInput, localOptions, localRegistration, localTime, rateRule, withoutTaxClass,
 } from "./fixtures.js";
 
 type Fixture = Awaited<ReturnType<TaxConformanceSubjectV1["open"]>>;
@@ -69,8 +69,7 @@ function localFixture(caseId: TaxConformanceCaseV1): Fixture {
   const request = makeTaxQuoteRequest(caseId, input);
   return {
     port: localRateTable(options), effects: cleanEffects,
-    request: caseId === "missing_class"
-      ? { ...request, input: { ...request.input, lines: [{ ...request.input.lines[0], taxClass: "" }] } } : request,
+    request: caseId === "missing_class" ? withoutTaxClass(request) : request,
     advance() {
       time = caseId === "rate_change" ? localCutover : "2030-01-02T00:00:11.000Z";
       const scope = caseId === "foreign_validity_scope" ? { ...input.scope, accountRef: "account-b" } : input.scope;
@@ -177,6 +176,21 @@ describe("offline tax conformance", () => {
     const posting = await runTaxAdapterConformance(subject(postingModes));
     expect(local).toHaveLength(16);
     expect(posting).toEqual(local);
+  });
+
+  it("foreign_validity_scope rejects a planted changed proof", async () => {
+    const reference = subject(undefined, "wrong_validity");
+    await expect(runTaxAdapterConformance({
+      async open(caseId) {
+        const fixture = await reference.open(caseId);
+        if (caseId !== "foreign_validity_scope") return fixture;
+        return { ...fixture, port: { ...fixture.port, async readFiscalValidity(request) {
+          const validity = await fixture.port.readFiscalValidity(request);
+          if (validity.kind !== "unchanged") throw new Error("Expected an offline control proof");
+          return { ...validity, kind: "changed" };
+        } } };
+      },
+    })).rejects.toThrow(/foreign_validity_scope:.*another scope/);
   });
 
   it.each<{ modes: readonly TaxReverseRequestV1["mode"][] }>([

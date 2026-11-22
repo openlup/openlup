@@ -72,7 +72,10 @@ export interface TaxCalculationPortV1 {
      * Verify successful outputs with `verifyTaxQuoteResult`. Adapter conformance will check this binding.
      */
     quote(request: TaxQuoteRequestV1): Promise<TaxQuoteResultV1>;
-    /** Decode the request and call `verifyTaxQuoteRequest` to check the original quote, evidence and current scope binding. */
+    /**
+     * Call `verifyTaxQuoteRequest` for typed diagnostics before evaluating validity.
+     * A verifier refusal maps to effect-free `tax_fiscal_validity_unavailable`.
+     */
     readFiscalValidity(request: TaxFiscalValidityRequestV1): Promise<TaxFiscalValidityResultV1>;
     /**
      * The caller records a local, idempotent close for affirmatively unused or verified-unpaid evidence.
@@ -97,12 +100,32 @@ import type { TaxCalculationEvidenceV1, TaxFiscalValidityRequestV1, TaxQuoteInpu
 type DigestTag = "input" | "coverage" | "fiscal" | "resolution" | "evidence" | "rate-table" | "close" | "commit" | "reverse";
 export declare function taxDigest(tag: DigestTag, payload: unknown): string;
 export declare function makeTaxQuoteRequest(key: string, input: TaxQuoteInputV1): TaxQuoteRequestV1;
-export declare function matchesDigest(tag: DigestTag, document: unknown, digest: string): boolean;
+declare const remedies: {
+    readonly tax_reference_conflict: "Replay the intended original request under its original key with its original digest and, where applicable, its matching calculation evidence and original digests. For fiscal validity, obtain fresh charge-time input from the original scope without copying or relabelling scope members.";
+    readonly tax_invalid_input: "Supply the documented value at the indicated field.";
+    readonly tax_amount_out_of_range: "Supply amounts within the supported safe-integer range, including the combined basis of all components.";
+    readonly tax_scope_mismatch: "Use the existing inclusive quote path for inclusive-tax quotes. This port version calculates exclusive tax.";
+    readonly tax_calculation_unusable: "Obtain calculation evidence for the original request with coverage supported by effective observations.";
+    readonly tax_breakdown_incomplete: "Recover and replay the complete original calculation breakdown for the intended request and key.";
+};
+type VerifierCode = keyof typeof remedies;
+export declare function refuseVerification(code: VerifierCode, field: string): TaxRefusal;
 type FiscalEvidence = Pick<TaxCalculationEvidenceV1, "scope" | "destinationDigest" | "shipFromRef" | "policyRevision" | "classMapRevision" | "coverage" | "positions">;
 export declare const taxFiscalDigest: (evidence: FiscalEvidence) => string;
-/** Verify the quote or fiscal-validity digests before returning binding repair advice. */
+export declare function checkedQuoteRequest(request: TaxQuoteRequestV1): TaxQuoteRequestV1 | TaxRefusal;
+export declare function checkedFiscalValidity(request: TaxFiscalValidityRequestV1): TaxFiscalValidityRequestV1 | TaxRefusal;
+/** Verify quote or fiscal-validity integrity before input validation and reconciliation. */
 export declare function verifyTaxQuoteRequest(request: TaxQuoteRequestV1 | TaxFiscalValidityRequestV1): TaxRefusal | undefined;
-/** Verify a successful quote's digests before checking its money and evidence bindings. */
+type CheckedQuoteResult = {
+    original: TaxQuoteRequestV1;
+    result?: Omit<Extract<TaxQuoteResultV1, {
+        kind: "final" | "estimate";
+    }>, "evidence"> & {
+        evidence: TaxCalculationEvidenceV1;
+    };
+};
+export declare function checkedQuoteResult(request: TaxQuoteRequestV1, result: TaxQuoteResultV1): CheckedQuoteResult | TaxRefusal;
+/** Verify quote and evidence integrity before validating and reconciling a successful result. */
 export declare function verifyTaxQuoteResult(request: TaxQuoteRequestV1, result: TaxQuoteResultV1): TaxRefusal | undefined;
 export {};
 ```

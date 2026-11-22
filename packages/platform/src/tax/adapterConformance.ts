@@ -90,8 +90,8 @@ async function checkValidity(assert: Assert, caseId: TaxConformanceCaseV1, fixtu
   }
   if (caseId === "foreign_validity_scope") {
     assert(!isDeepStrictEqual(current.current.scope, fixture.request.input.scope), "fixture uses another scope");
-    assert(proof.kind !== "unchanged", "another scope cannot establish unchanged validity");
-    if (proof.kind === "unavailable") assert(proof.effect === "none", "unavailable validity is read-only");
+    assert(proof.kind === "unavailable" && proof.code === "tax_fiscal_validity_unavailable" && proof.effect === "none",
+      "another scope returns fiscal validity unavailable without effects");
     return;
   }
   if (fixture.port.capabilities().validity !== "read_only") {

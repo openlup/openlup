@@ -8,6 +8,7 @@ import { quoteStripeTax } from "./quote.js";
 import { assertClientScope, assertScope, commit, refuseError, reverse } from "./transactions.js";
 
 export { makeStripeTaxRequestDigest } from "./effects.js";
+export type { StripeTaxCaptureBinding, StripeTaxRequestBinding } from "./effects.js";
 
 const fiscalValidityUnavailable = (): TaxUnavailable => ({
   kind: "unavailable", code: "tax_fiscal_validity_unavailable", effect: "none",

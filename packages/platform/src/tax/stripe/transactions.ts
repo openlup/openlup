@@ -3,13 +3,13 @@ import { checked, invalid, oneOf } from "../contracts/decode.js";
 import { taxCommitRequestV1Schema, taxReverseRequestV1Schema } from "../contracts/index.js";
 import type { TaxCommitRequestV1, TaxRefusal, TaxRefusalCode, TaxReverseRequestV1, TaxScopeV1, TaxUnavailable } from "../contracts/index.js";
 import { instant, ref } from "../contracts/schemas.js";
-import { taxDigest, verifyTaxQuoteResult } from "../digest.js";
+import { checkedQuoteResult, refuseVerification, taxDigest } from "../digest.js";
 import {
   checkScope, epoch, fields, id, incomplete, isProviderRejection, matchesEcho, member, nullable, readPages, record,
   StripeQuoteUnavailable, text,
 } from "./client.js";
 import { makeStripeTaxRequestDigest } from "./effects.js";
-import type { RefundReservation, ReversalParams, SaleParams } from "./effects.js";
+import type { RefundReservation, ReversalParams, SaleParams, StripeTaxRequestBinding } from "./effects.js";
 import type { StripeTaxAdapterOptions } from "./index.js";
 import { planQuote } from "./plan.js";
 
@@ -120,7 +120,7 @@ function effectRef(input: unknown, field: string): string | undefined {
   catch { return undefined; }
 }
 
-function verifyReservedRequest(binding: Parameters<typeof makeStripeTaxRequestDigest>[0], field: string, digest: string) {
+function verifyReservedRequest(binding: StripeTaxRequestBinding, field: string, digest: string) {
   let actual: string;
   try { actual = makeStripeTaxRequestDigest(binding); }
   catch { integrityConflict(field); }
@@ -204,17 +204,18 @@ export async function commit(options: StripeTaxAdapterOptions, input: TaxCommitR
     assertScope(calculationRef.scope, options.marketPack.scope, "/calculationRef/scope");
     assertClientScope(options);
     const accepted = readHost(() => options.effects.accepted(calculationRef));
-    if (!accepted || accepted.result.kind !== "final") {
+    const checked = accepted && checkedQuoteResult(accepted.request, accepted.result);
+    if (checked && "kind" in checked) return checked;
+    if (checked?.result?.kind !== "final") {
       invalid("/calculationRef", "The accepted final quote is missing. Supply the original quote and evidence.", "tax_calculation_unusable");
     }
-    const { result, request: original } = accepted;
-    const refusal = verifyTaxQuoteResult(original, result);
-    if (refusal) return refusal;
-    const { evidence, evidenceDigest, money } = result;
+    const { original, result: { evidence, evidenceDigest, money } } = checked;
     assertScope(evidence.scope, calculationRef.scope, "/calculationRef/scope");
     if (evidence.calculationRef !== calculationRef.ref || evidenceDigest !== calculationRef.evidenceDigest) {
       invalid("/calculationRef", "The accepted calculation differs. Replay the original calculation reference and digest.", "tax_reference_conflict");
     }
+    const { providerLines } = evidence;
+    if (providerLines === undefined) return refuseVerification("tax_breakdown_incomplete", "/evidence/providerLines");
     id(calculationRef.ref, "/calculationRef/ref");
     const { currency } = original.input;
     if (!isDeepStrictEqual(reservation.capture, { ref: captureEvidenceRef, currency, payableMinor: money.payableMinor, capturedAt })) {
@@ -233,25 +234,14 @@ export async function commit(options: StripeTaxAdapterOptions, input: TaxCommitR
     const plan = planQuote(original.input, options.marketPack);
     const lines: ExpectedUnit[] = [];
     let shipping: ExpectedUnit | undefined;
-    const refs = new Map<string, Set<string>>();
-    const providerLines = evidence.providerLines ?? evidence.positions.tax.flatMap(({ cell, providerLineRef }) =>
-      cell.target.kind === "line" && providerLineRef ? [{ lineKey: cell.target.key, providerLineRef }] : []);
-    for (const { lineKey, providerLineRef } of providerLines) {
-      const lineRefs = refs.get(lineKey) ?? new Set<string>();
-      lineRefs.add(providerLineRef);
-      refs.set(lineKey, lineRefs);
-    }
+    const refs = new Map(providerLines.map(({ lineKey, providerLineRef }) => [lineKey, providerLineRef]));
     for (const { source, code, effectiveMinor } of plan.components) {
       const component = money.components.find(({ ref }) => source
         ? ref.kind === "merchandise" && ref.lineKey === source.lineKey : ref.kind === "delivery");
       if (!component) incomplete("/money/components", "The accepted reporting component is missing.");
       const amounts = { amount: effectiveMinor, amount_tax: component.final.taxMinor, tax_code: code };
       if (source) {
-        const ids = refs.get(source.lineKey);
-        if (ids?.size !== 1) {
-          invalid("/calculationRef", "The merchandise line lacks a unique provider line identity. Obtain a calculation with line evidence.", "tax_operation_unsupported");
-        }
-        lines.push({ ...amounts, originalPositionRef: [...ids][0], reference: "ol-m-" + source.sourceOrdinal, quantity: source.quantity });
+        lines.push({ ...amounts, originalPositionRef: refs.get(source.lineKey)!, reference: "ol-m-" + source.sourceOrdinal, quantity: source.quantity });
       } else if (plan.zeroShipping || effectiveMinor > 0) {
         const alias = "shipping:" + calculationRef.ref;
         shipping = { ...amounts, originalPositionRef: alias, reference: alias };
@@ -264,7 +254,7 @@ export async function commit(options: StripeTaxAdapterOptions, input: TaxCommitR
     const wire = bindWire("commit", body, reservation.requestDigest);
     const receipt = await execute(options, wire, { currency, taxDate, postedAt, lines, shipping }, reservation.send, intent,
       key => options.client.transactions.createFromCalculation(wire, { idempotencyKey: key }), now => {
-        if (accepted.closed) invalid("/calculationRef", "The calculation was closed locally. Reconcile it with the original capture.", "tax_calculation_closed");
+        if (accepted?.closed) invalid("/calculationRef", "The calculation was closed locally. Reconcile it with the original capture.", "tax_calculation_closed");
         if (now >= evidence.expiresAt || capturedAt >= evidence.expiresAt || postedAt >= evidence.expiresAt) {
           invalid("/calculationRef", "The calculation expired before capture or posting. Reconcile the original obligation.", "tax_calculation_expired");
         }

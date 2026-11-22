@@ -20,6 +20,7 @@ declare class ParseError extends Error {
     readonly code: TaxRefusalCode;
     constructor(message: string, field: string, code: TaxRefusalCode);
 }
+export declare const taxReferenceRemedy = "Replay the intended original request under its original key with its original digest and, where applicable, its matching calculation evidence and original digests. For fiscal validity, obtain fresh charge-time input from the original scope without copying or relabelling scope members.";
 export declare const exclusiveTaxRemedy = "Use the existing inclusive quote path for inclusive-tax quotes. This port version calculates exclusive tax.";
 export declare function invalid(field: string, remedy?: string, code?: TaxRefusalCode): never;
 export declare function object<R extends Fields, O extends Fields = Record<never, never>>(required: R, optional?: O): Decode<Decoded<R> & Partial<Decoded<O>>>;
@@ -63,7 +64,10 @@ export interface TaxCalculationPortV1 {
      * Verify successful outputs with `verifyTaxQuoteResult`. Adapter conformance will check this binding.
      */
     quote(request: TaxQuoteRequestV1): Promise<TaxQuoteResultV1>;
-    /** Decode the request and call `verifyTaxQuoteRequest` to check the original quote, evidence and current scope binding. */
+    /**
+     * Call `verifyTaxQuoteRequest` for typed diagnostics before evaluating validity.
+     * A verifier refusal maps to effect-free `tax_fiscal_validity_unavailable`.
+     */
     readFiscalValidity(request: TaxFiscalValidityRequestV1): Promise<TaxFiscalValidityResultV1>;
     /**
      * The caller records a local, idempotent close for affirmatively unused or verified-unpaid evidence.
@@ -82,6 +86,7 @@ import type { Decode, Schema } from "./decode.js";
 import type { TaxCalculationEvidenceV1, TaxCalculationRefV1, TaxCloseReasonV1, TaxCommitRequestV1, TaxCoverageInputV1, TaxCoverageV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxReverseRequestV1, TaxScopeV1 } from "./types.js";
 export declare const ref: Decode<string>;
 export declare const moneyRef: Decode<string>;
+export declare const isTaxDigest: (v: unknown) => v is string;
 export declare const instant: Decode<string>;
 export declare const unsigned: Decode<number>;
 export declare const rate: Decode<string>;
@@ -94,14 +99,13 @@ export declare const interval: Decode<ReturnType<typeof intervalFields>>;
 export declare const scope: Decode<TaxScopeV1>;
 export declare const taxCoverageV1Schema: Schema<TaxCoverageV1>;
 export declare const coverageInputSchema: Schema<TaxCoverageInputV1>;
-export declare const quoteRequestDocumentSchema: Schema<TaxQuoteRequestV1>;
+export declare const coverageAccountRemedy = "Supply coverage evidence for the selected account";
+export declare function coverageAccountMatches(input: Pick<TaxQuoteInputV1, "scope" | "coverage">): boolean;
 export declare const taxQuoteRequestV1Schema: Schema<TaxQuoteRequestV1>;
 export declare const quoteInputSchema: Schema<TaxQuoteInputV1>;
 export declare const parseQuoteKey: (key: unknown) => string;
-export declare const evidenceDocumentSchema: Schema<TaxCalculationEvidenceV1>;
 export declare const taxCalculationEvidenceV1Schema: Schema<TaxCalculationEvidenceV1>;
 export declare const quoteEvidenceSchema: Schema<TaxCalculationEvidenceV1>;
-export declare const fiscalValidityDocumentSchema: Schema<TaxFiscalValidityRequestV1>;
 export declare const taxFiscalValidityRequestV1Schema: Schema<TaxFiscalValidityRequestV1>;
 export declare const taxCloseInputV1Schema: Schema<{
     ref: TaxCalculationRefV1;

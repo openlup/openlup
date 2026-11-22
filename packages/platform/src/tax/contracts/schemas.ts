@@ -15,8 +15,8 @@ function text(max: number): Decode<string> {
 export const ref = text(256);
 export const moneyRef = text(128);
 const addressText = text(512);
-const digest = checked((v): v is string => typeof v === "string" && v.length === 64 && /^[0-9a-f]+$/.test(v),
-  "Supply a lowercase SHA-256 hex digest.");
+export const isTaxDigest = (v: unknown): v is string => typeof v === "string" && v.length === 64 && /^[0-9a-f]+$/.test(v);
+const digest = checked(isTaxDigest, "Supply a lowercase SHA-256 hex digest.");
 export const instant = checked((v): v is string => typeof v === "string" && v.length === 24 && Number.isFinite(Date.parse(v))
   && new Date(v).toISOString() === v, "Supply a UTC instant with millisecond precision.");
 const signed = checked((v): v is number => typeof v === "number" && Number.isSafeInteger(v) && !Object.is(v, -0),
@@ -119,13 +119,11 @@ const delivery = object({
 const address = object({ line1: addressText, city: addressText, postalCode: addressText, countryCode: addressText },
   { line2: addressText, subdivisionCode: addressText });
 const destination = object({ snapshotRef: ref, digest, policyRevision: ref, address });
-const quoteShape = {
-  scope, market: ref, currency: ref, money: moneyFields, purpose: oneOf("final", "estimate"), taxDate: instant, destination,
+const quoteFields = object({
+  scope, market: ref, currency: ref, money, purpose: oneOf("final", "estimate"), taxDate: instant, destination,
   shipFromRef: ref, policyRevision: ref, classMapRevision: ref, lines: array(line, 256), delivery: array(delivery, 256),
-  required: array(cell), coverage: coverageFields,
-};
-const quoteFields = object({ ...quoteShape, money, required: requiredCells, coverage });
-const quoteDocument = object(quoteShape);
+  required: requiredCells, coverage,
+});
 
 function bindComponents<T>(
   facts: readonly T[], keys: readonly string[], keyOf: (item: T) => string, field: string,
@@ -139,11 +137,16 @@ function bindComponents<T>(
   return expected;
 }
 
+export const coverageAccountRemedy = "Supply coverage evidence for the selected account";
+
+export function coverageAccountMatches(input: Pick<TaxQuoteInputV1, "scope" | "coverage">): boolean {
+  const account = input.coverage?.accountRef;
+  return typeof account === "string" && account === input.scope?.accountRef;
+}
+
 function quote(value: unknown, field: string): TaxQuoteInputV1 {
   const parsed = quoteFields(value, field);
-  if (parsed.coverage.accountRef !== parsed.scope.accountRef) {
-    invalid(field + "/coverage/accountRef", "Supply coverage for the selected account.");
-  }
+  if (!coverageAccountMatches(parsed)) invalid(field + "/coverage/accountRef", coverageAccountRemedy, "tax_scope_mismatch");
   const lines = bindComponents(parsed.lines, parsed.money.sources.map(item => item.lineKey), item => item.lineKey, field + "/lines");
   const buckets = bindComponents(parsed.delivery, parsed.money.delivery.map(item => item.bucketKey), item => item.bucketKey, field + "/delivery");
   parsed.required.forEach(({ target }, index) => {
@@ -164,8 +167,6 @@ function quote(value: unknown, field: string): TaxQuoteInputV1 {
 
 const quoteEnvelope = { key: ref, inputDigest: digest };
 const quoteRequest = object({ ...quoteEnvelope, input: quote });
-const quoteRequestDocument = object({ ...quoteEnvelope, input: quoteDocument });
-export const quoteRequestDocumentSchema: Schema<TaxQuoteRequestV1> = schema(quoteRequestDocument);
 export const taxQuoteRequestV1Schema: Schema<TaxQuoteRequestV1> = schema(quoteRequest);
 export const quoteInputSchema: Schema<TaxQuoteInputV1> = schema(quote);
 export const parseQuoteKey = (key: unknown): string => ref(key, "/key");
@@ -234,16 +235,12 @@ function evidence(value: unknown, field: string, bindCells = true): TaxCalculati
   });
   return parsed;
 }
-export const evidenceDocumentSchema: Schema<TaxCalculationEvidenceV1> = schema(evidenceFields);
 export const taxCalculationEvidenceV1Schema: Schema<TaxCalculationEvidenceV1> = schema(evidence);
 // The Node quote verifier joins these rows with money before checking their cell bindings.
 export const quoteEvidenceSchema: Schema<TaxCalculationEvidenceV1> = schema((value, field) => evidence(value, field, false));
 
 const validityEnvelope = { evidenceDigest: digest, chargeAt: instant };
 const validityFields = object({ original: quoteRequest, evidence, ...validityEnvelope, current: quote });
-export const fiscalValidityDocumentSchema: Schema<TaxFiscalValidityRequestV1> = schema(object({
-  original: quoteRequestDocument, evidence: evidenceFields, ...validityEnvelope, current: quoteDocument,
-}));
 export const taxFiscalValidityRequestV1Schema: Schema<TaxFiscalValidityRequestV1> = schema((value, field) => {
   const parsed = validityFields(value, field);
   if (parsed.current.taxDate !== parsed.chargeAt) invalid("/current/taxDate", "Use the charge instant as the current fiscal date.");
