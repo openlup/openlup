@@ -508,11 +508,11 @@ function rehash(value: ConnectedNativeStoreCapture) {
   value.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
 }
 
-function repin(input: ConnectedNativeStoreCapture, catalogueId: string, tables = input.compatible.tables) {
+function repin(input: ConnectedNativeStoreCapture, catalogueId: string) {
   const { sha256: _captureDigest, ...body } = input;
   const { sha256: _compatDigest, ...fields } = body.compatible;
   const encoded = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-  const projected = { ...fields, catalogueId, tables };
+  const projected = { ...fields, catalogueId };
   const result = { ...body, compatible: { ...projected, sha256: encoded(projected) } };
   return { ...result, sha256: encoded(result) };
 }
@@ -541,32 +541,23 @@ it("restores marked GTINs, and removes the marker only when the target explicitl
     .toEqual([{ normalized_value: "05901234123457", scheme: null }]);
 }, 105_000);
 
-it("refuses a differently shaped predecessor and an unknown inventory", async () => {
+it("refuses a retyped retained column and an unknown inventory with a recapture remedy", async () => {
   const { capture } = await captureTradeIdentifier("historic", null);
   const table = capture.owned.find(entry => entry.table === "catalog_sku_identifiers")!;
-  const historic = "c19175002e39e2b4100841e7138759a4dd07fe3158ebd3ce5f7283a5e8d538a9";
-  table.columns = table.columns.filter(column => column.name !== "scheme");
-  table.rows = (await source.owner.query(`SELECT (value::jsonb-'scheme')::text AS row
-    FROM unnest($1::text[]) AS rows(value)`, [table.rows])).rows.map(row => row.row);
-  await expect(restore(target.owner, repin(packet, "a".repeat(64)))).rejects.toMatchObject({ code: "schema_conflict" });
-  const historicalTables = capture.compatible.tables.filter(entry => entry.table !== "commerce_checkout_attempt_ledger");
-  await expect(restore(target.owner, repin(capture, historic, historicalTables))).rejects.toMatchObject({
+  table.columns.find(column => column.name === "normalized_value")!.type = "character varying";
+  rehash(capture);
+  await expect(restore(target.owner, capture)).rejects.toMatchObject({
+    code: "schema_conflict", table: "catalog_sku_identifiers", remedy: "upgrade the source, then capture",
+  });
+  await expect(restore(target.owner, repin(packet, "a".repeat(64)))).rejects.toMatchObject({
     code: "schema_conflict", remedy: "upgrade the source, then capture",
   });
 }, 105_000);
 
-it("refuses a previously admitted separate-migrator inventory even if rows have the current shape", async () => {
+it("does not treat an inventory label as evidence of a predecessor packet", async () => {
   const predecessor = repin(packet, "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385");
   await expect(restore(target.owner, predecessor)).rejects.toMatchObject({
-    code: "schema_conflict", remedy: "upgrade the source, then capture",
-  });
-}, 105_000);
-
-it("refuses the immediate predecessor inventory even with current rows", async () => {
-  // Separate-migrator inventory before accepted-reference columns were added.
-  const predecessor = "1feea98acf1cd7cdf1de399cdf8ab8c9ff6a30cec67168a274428f05f4722638";
-  await expect(restore(target.owner, repin(packet, predecessor))).rejects.toMatchObject({
-    code: "schema_conflict", remedy: "upgrade the source, then capture",
+    code: "schema_conflict", table: "subscription_edit_quotes", remedy: "upgrade the source, then capture",
   });
 }, 105_000);
 

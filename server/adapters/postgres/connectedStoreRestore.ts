@@ -38,6 +38,25 @@ const beforeGovernedLifecycle = {
   "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
   "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
 } satisfies Record<keyof typeof beforePublicationCommands, string>;
+const beforeAcceptedReferences = {
+  bootstrap: "ec9028a590334948606d160362e9363c50793284548c2b9c092a71632234724c",
+  separate: "1feea98acf1cd7cdf1de399cdf8ab8c9ff6a30cec67168a274428f05f4722638",
+  "installer-managed": "02c68db9202830bd08f574130d3a3de19345a4050b8879d3338824b379474195",
+  "operator-provisioned": "a05e24a7dcdc6cb4394907be818520a33fa89e9a269a7c01853cd656ecfcf91b",
+} satisfies Record<keyof typeof beforePublicationCommands, string>;
+type SourceShape = "current" | "beforePublicationCommands" | "beforeCheckoutAttemptLedger" | "beforeAcceptedReferences" | "unsupported";
+const checkoutAttemptLedger = "commerce_checkout_attempt_ledger";
+const editQuotes = "subscription_edit_quotes";
+const acceptance = { name: "catalog_acceptance", type: "jsonb" };
+const basket = { name: "catalog_basket", type: "jsonb" };
+// Migration 20261124220001 appends these columns in this order without defaults or backfills.
+const acceptedReferenceColumns: Partial<Record<TableName, Rows["columns"]>> = {
+  subscription_lines: [{ name: "catalog_sku_revision_id", type: "uuid" }],
+  commerce_orders: [acceptance, basket, { name: "catalog_receipt_key", type: "text" }],
+  subscription_events: [acceptance, basket],
+  subscription_renewal_terms: [acceptance],
+  subscription_renewal_operations: [acceptance, { name: "catalog_acceptance_fingerprint", type: "text" }],
+};
 const settings = ["fulfillment_provider_archetypes", "sales_channels", "commerce_settings", "client_absorption_policy",
   "platform_job_controls", "subscriber_retention_activation_watermarks", "subscription_delivery_alignment_control",
   "commerce_offer_policy_cohort_marking"] as const;
@@ -326,8 +345,13 @@ export async function restoreConnectedNativeStore(input: {
   const profile = installation.generation === "qualified-admin" ? installation.roleMode
     : installation.migrationLogin === installation.bootstrapLogin ? "bootstrap" : "separate";
   const manifest = expectedManifest(installation);
-  const historical = [beforePublicationCommands[profile], beforeCheckoutAttemptLedger[profile], beforeGovernedLifecycle[profile]];
-  const packet = copyCapture(input.packet, manifest.objectInventorySha256, historical), fresh = copyCapture(input.freshTarget);
+  const catalogueId = input.packet?.compatible?.catalogueId;
+  const shape: SourceShape = catalogueId === manifest.objectInventorySha256 ? "current"
+    : catalogueId === beforePublicationCommands[profile] ? "beforePublicationCommands"
+      : catalogueId === beforeCheckoutAttemptLedger[profile] ? "beforeCheckoutAttemptLedger"
+        : catalogueId === beforeGovernedLifecycle[profile] || catalogueId === beforeAcceptedReferences[profile]
+          ? "beforeAcceptedReferences" : "unsupported";
+  const packet = copyCapture(input.packet, shape), fresh = copyCapture(input.freshTarget);
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
   const source = tables(packet), baseline = tables(fresh);
@@ -383,9 +407,22 @@ export async function restoreConnectedNativeStore(input: {
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
         WHERE a.attrelid=$1::pg_catalog.regclass AND a.attnum>0 AND NOT a.attisdropped
         AND a.attgenerated='' AND a.attidentity='' ORDER BY a.attnum`, [`public.${table}`])).rows;
-      const stored = source.get(table)!;
-      if (JSON.stringify(actual) !== JSON.stringify(stored.columns.map(({ name, type }) => ({ name, type }))))
-        fail("schema_conflict", table);
+      const stored = source.get(table) ?? { ...baseline.get(table)!, rows: [] };
+      // The pre-ledger migration creates an empty ledger. Historical captures
+      // also attest the already-installed edit quote table was empty.
+      const added = shape === "current" ? undefined
+        : shape === "beforePublicationCommands" && table === "catalog_sku_identifiers"
+          ? [{ name: "scheme", type: "text" }] : acceptedReferenceColumns[table];
+      const columns = stored.columns.map(({ name, type }) => ({ name, type }));
+      if (JSON.stringify(actual) !== JSON.stringify(added ? [...columns, ...added] : columns)) refuseSourceSchema(table);
+      if (added && stored.rows.length) {
+        const nulls = JSON.stringify(Object.fromEntries(added.map(({ name }) => [name, null])));
+        const converted = await client.query<{ row: string }>(`SELECT (value::pg_catalog.jsonb || $2::pg_catalog.jsonb)::pg_catalog.text AS row
+          FROM pg_catalog.unnest($1::pg_catalog.text[]) WITH ORDINALITY AS retained(value, ordinal) ORDER BY ordinal`, [stored.rows, nulls]);
+        source.set(table, { table, columns: actual, rows: converted.rows.map(({ row }) => row) });
+      } else if (added || !source.has(table)) {
+        source.set(table, { table, columns: actual, rows: stored.rows });
+      }
     }
     await assertInsertTriggers(client);
     await assertOutsideEmpty(client, relations);
@@ -550,7 +587,14 @@ export async function restoreConnectedNativeStore(input: {
   return result;
 }
 
-function copyCapture(input: ConnectedNativeStoreCapture, expectedInventory?: string, historical: readonly string[] = []): ConnectedNativeStoreCapture {
+function refuseSourceSchema(table?: TableName): never {
+  const error = new PostgresTransferError("schema_conflict", table);
+  const remedy = "upgrade the source, then capture";
+  error.message += ` (${remedy})`;
+  throw Object.assign(error, { remedy });
+}
+
+function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "current"): ConnectedNativeStoreCapture {
   try {
     const copy = JSON.parse(JSON.stringify(input)) as ConnectedNativeStoreCapture;
     const { sha256, ...body } = copy;
@@ -570,14 +614,21 @@ function copyCapture(input: ConnectedNativeStoreCapture, expectedInventory?: str
               : entry.relation === "public.catalog_attribute_projection" ? "rebuildable" : "unsupported-empty";
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }
-    if (expectedInventory !== undefined && (historical.includes(copy.compatible.catalogueId) || copy.compatible.catalogueId !== expectedInventory)) {
-      const error = new PostgresTransferError("schema_conflict");
-      const remedy = "upgrade the source, then capture";
-      error.message += ` (${remedy})`;
-      throw Object.assign(error, { remedy });
+    if (shape === "unsupported") refuseSourceSchema();
+    if (shape !== "current") {
+      const quotes = copy.outsideProfileCensus.filter(entry => entry.relation === "public.subscription_edit_quotes");
+      if (quotes.length !== 1 || quotes[0]?.disposition !== "unsupported-empty"
+        || !Array.isArray(copy.emptyOutsideProfile)
+        || !copy.emptyOutsideProfile.includes("public.subscription_edit_quotes")) refuseSourceSchema(editQuotes);
     }
     const all = tables(copy);
-    if (all.size !== connectedNativeStoreTables.length || connectedNativeStoreTables.some(table => !all.has(table))) fail("invalid_input");
+    const predatesLedger = shape === "beforePublicationCommands" || shape === "beforeCheckoutAttemptLedger";
+    const expected = connectedNativeStoreTables.filter(table =>
+      !(predatesLedger && table === checkoutAttemptLedger) && !(shape !== "current" && table === editQuotes));
+    if (all.size !== expected.length || expected.some(table => !all.has(table))) {
+      if (shape !== "current") refuseSourceSchema();
+      fail("invalid_input");
+    }
     let count = 0, bytes = 0;
     for (const table of all.values()) {
       for (const column of table.columns) quoted(column.name);

@@ -520,9 +520,15 @@ no raw email, IP address, idempotency key, headers or request payload, and has n
 client foreign key or absorption mapping.
 
 Restore the ledger before enabling checkout under the same limit and identity
-policy. Connected-store restore requires a capture from the current installed
-shape. Earlier captures refuse with `schema_conflict`. Upgrade the source,
-then capture. Restored attempts age on their
+policy. Connected-store restore accepts the current qualified inventory and the
+admitted predecessor inventories from before publication commands, the checkout
+attempt ledger, governed catalogue lifecycle and catalogue accepted references.
+Conversion reproduces the retained rows an in-place upgrade would produce.
+Earlier captures report the edit quote table as empty because capture refused
+when it contained rows. New captures carry those quotes. A source schema change
+that cannot be reproduced by additive conversion, such as a dropped or retyped
+column, refuses with `schema_conflict`. Upgrade the source, then capture.
+Restored attempts age on their
 original timestamps. Admission prunes rows at the retention cutoff on each
 call. Idle databases keep bounded rows
 until the next call or an owner cleanup. For managed same-schema transfer use

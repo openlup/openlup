@@ -5,6 +5,7 @@ import { expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { projectHistoricalCapture } from "./connectedStoreHistoricalPacket.fixture.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedAdminPostgresStartupOptions, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer,
@@ -103,9 +104,9 @@ async function withAcquisitionOwnerWindow<T>(installed: Installed, work: (client
     client.release();
   }
 }
-async function capture(installed: Installed, sourceId: string, catalogueId = installed.inventory) {
+async function capture(installed: Installed, sourceId: string) {
   return withAcquisitionOwnerWindow(installed, client =>
-    captureConnectedNativeStore({ sourceId, catalogueId, maximumRows: 10000,
+    captureConnectedNativeStore({ sourceId, catalogueId: installed.inventory, maximumRows: 10000,
       maximumBytes: 64 * 1024 * 1024, source: { async withSnapshot(work) {
         await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
         try {
@@ -189,8 +190,8 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await source.owner.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
         VALUES('synthetic','10000000-0000-4000-8000-000000000001','synthetic.retained','restricted-ordinary-outbox','{}')`);
       // Cover current and predecessor inventories for each restricted role mode.
-      const sourceCatalogueId = shape === "neon" ? beforeGovernedLifecycle[mode] : source.inventory;
-      const packet = await capture(source, "restricted-source", sourceCatalogueId);
+      const current = await capture(source, "restricted-source");
+      const packet = shape === "neon" ? await projectHistoricalCapture(source.owner, current, beforeGovernedLifecycle[mode]) : current;
       const freshTarget = await capture(target, "restricted-target");
       expect((await source.runner.status()).pending).toEqual([]);
       expect((await target.runner.status()).pending).toEqual([]);
