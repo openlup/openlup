@@ -1,3 +1,4 @@
+import type Stripe from "stripe";
 import { vi } from "vitest";
 import type { TaxQuoteInputV1 } from "../../../src/tax/contracts/index.js";
 import { makeTaxQuoteRequest } from "../../../src/tax/digest.js";
@@ -6,6 +7,7 @@ import type { Cell, StripeQuoteMarketPack } from "../../../src/tax/stripe/plan.j
 import { date, later, quote, registered } from "../fixtures.js";
 
 export const seconds = (instant: string) => Date.parse(instant) / 1000;
+type HeaderRow = Stripe.Tax.Calculation["tax_breakdown"][number];
 export const sale = "sales_tax";
 export const rdf = "retail_delivery_fee";
 
@@ -21,7 +23,7 @@ export function registration(id = "reg_sale", type = "state_sales_tax", from = d
 export const providerJurisdiction = (district = "district-a") => ({
   country: "XX", state: "RA", level: "district", display_name: district,
 });
-export function detail(amount: number, basis: number, district = "district-a", tax_type = sale) {
+export function detail(amount: number, basis: number, district = "district-a", tax_type: NonNullable<HeaderRow["tax_rate_details"]["tax_type"]> = sale) {
   return { amount, taxable_amount: basis, jurisdiction: providerJurisdiction(district), sourcing: "destination",
     tax_rate_details: { tax_type, percentage_decimal: "10.0000" }, taxability_reason: "standard_rated" };
 }
@@ -29,10 +31,10 @@ type Detail = Omit<ReturnType<typeof detail>, "tax_rate_details"> & {
   tax_rate_details: ReturnType<typeof detail>["tax_rate_details"] | null;
 };
 
-export function header(row: Detail, flat_amount: { amount: number; currency: string } | null = null) {
+export function header(row: Detail, flat_amount: HeaderRow["tax_rate_details"]["flat_amount"] = null): HeaderRow {
   return { amount: row.amount, taxable_amount: row.taxable_amount, taxability_reason: row.taxability_reason, inclusive: false,
     tax_rate_details: { country: row.jurisdiction.country, state: row.jurisdiction.state,
-      percentage_decimal: row.tax_rate_details?.percentage_decimal ?? null, flat_amount,
+      percentage_decimal: row.tax_rate_details?.percentage_decimal ?? "0.0", flat_amount,
       rate_type: flat_amount ? "flat_amount" : "percentage", tax_type: row.tax_rate_details?.tax_type ?? null } };
 }
 

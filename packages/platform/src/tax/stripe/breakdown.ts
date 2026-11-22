@@ -64,16 +64,64 @@ function treatmentFor(reason: string, hasRate: boolean, amount: number, cell: Ce
   return { kind, reason, ruleRef };
 }
 
-const groupKey = (country: string | null, state: string | null, type: string | null, rate: string | null | undefined, reason: string) =>
-  JSON.stringify([country, state, type, rate, reason]);
+const locationKey = (country: string | null, state: string | null, reason: string) => JSON.stringify([country, state, reason]);
+const NOT_IMPOSED = null; // Concrete rate kinds are strings.
+type Group = { path: string; kind: string | null; tax: bigint; basis: bigint };
+type OrdinaryDetail = Detail & { path: string };
+const unsupported = (path: string, cause: string): never =>
+  invalid(path, cause + " Use a supported calculation route or qualify that layout on the owner's test account before enabling it.", "tax_operation_unsupported");
 
-function grouped(rows: readonly { key: string; amount: number; taxable_amount: number }[]) {
-  const totals = new Map<string, { tax: bigint; basis: bigint }>();
-  for (const { key, amount, taxable_amount } of rows) {
-    const prior = totals.get(key);
-    totals.set(key, { tax: (prior?.tax ?? 0n) + BigInt(amount), basis: (prior?.basis ?? 0n) + BigInt(taxable_amount) });
+function addGroup(groups: Map<string, Group>, key: string, kind: Group["kind"], row: Header | Detail, path: string) {
+  const prior = groups.get(key);
+  if (prior && prior.kind !== kind) unsupported(path + "/tax_rate_details/tax_type", "The not-imposed header group mixes tax kinds.");
+  groups.set(key, { kind, path: prior?.path ?? path,
+    tax: (prior?.tax ?? 0n) + BigInt(row.amount), basis: (prior?.basis ?? 0n) + BigInt(row.taxable_amount) });
+}
+
+function reconcileGroups(header: readonly Header[], ordinary: readonly OrdinaryDetail[], resolved: boolean) {
+  const path = "/calculation/tax_breakdown";
+  const layouts = new Map<string, "rated" | "not_imposed" | "unclassified">();
+  const details = new Map<string, Group>(), summaries = new Map<string, Group>();
+  for (const row of ordinary) {
+    const { jurisdiction, tax_rate_details: rate, taxability_reason: reason } = row;
+    const location = locationKey(jurisdiction.country, jurisdiction.state, reason);
+    const layout = rate ? "rated" : exempt.has(reason) || reason === "not_collecting" ? "not_imposed" : "unclassified";
+    if (layouts.has(location) && layouts.get(location) !== layout)
+      unsupported(row.path + "/tax_rate_details", "The detail group mixes null and concrete rates at the same location and reason.");
+    layouts.set(location, layout);
+    if (layout === "unclassified" && resolved) unsupported(row.path + "/tax_rate_details", "The null-rate detail has no qualified treatment.");
+    if (layout === "unclassified") continue;
+    const kind = rate?.tax_type ?? NOT_IMPOSED;
+    addGroup(details, JSON.stringify([location, rate?.percentage_decimal ?? "0", kind]), kind, row, row.path);
   }
-  return totals;
+  for (const [index, row] of header.entries()) {
+    const { country, state, tax_type, percentage_decimal, rate_type, flat_amount } = row.tax_rate_details;
+    if (tax_type === feeType) continue;
+    const field = path + "/" + index;
+    if (country === null) unsupported(field + "/tax_rate_details/country", "The ordinary header group has no country.");
+    if (flat_amount !== null || (rate_type !== null && rate_type !== "percentage"))
+      unsupported(field + "/tax_rate_details", "The ordinary header group has a flat amount or an unqualified rate type.");
+    const location = locationKey(country, state, row.taxability_reason);
+    const layout = layouts.get(location);
+    if (layout === "unclassified") continue;
+    const projected = layout === "not_imposed";
+    if (projected && (percentage_decimal !== "0" || row.amount !== 0))
+      incomplete(field + "/tax_rate_details", "The header conflicts with the zero-rate, zero-tax treatment in the component evidence.");
+    if (rate_type !== "percentage" && !(projected && rate_type === null))
+      incomplete(field + "/tax_rate_details/rate_type", "The ordinary header group lacks its percentage identity.");
+    addGroup(summaries, JSON.stringify([location, percentage_decimal, projected ? NOT_IMPOSED : tax_type]), tax_type, row, field);
+  }
+  for (const key of new Set([...summaries.keys(), ...details.keys()])) {
+    const summary = summaries.get(key), detail = details.get(key);
+    if (!detail) incomplete(summary!.path + "/tax_rate_details", "The header group has no matching component breakdown.");
+    if (!summary) {
+      if (detail.kind === NOT_IMPOSED && detail.tax === 0n && detail.basis === 0n)
+        unsupported(path, "The header omits a complete zero-tax, zero-basis not-imposed group.");
+      incomplete(path, "The header omits a component group.");
+    }
+    if (summary.tax !== detail.tax) incomplete(summary.path + "/amount", "The grouped header and component assessments differ.");
+    if (summary.basis !== detail.basis) incomplete(summary.path + "/taxable_amount", "The grouped header and component taxable bases differ.");
+  }
 }
 
 function normalizeFee(fee: { row: Header; index: number } | undefined, mirrors: readonly Matched[], input: TaxQuoteInputV1, pack: StripeQuoteMarketPack) {
@@ -117,7 +165,7 @@ export function normalizeSnapshot(
 ) {
   const observations = new Map<string, Observation>();
   const unavailable = new Set<string>();
-  const ordinary: Detail[] = [];
+  const ordinary: OrdinaryDetail[] = [];
   const mirrors: Matched[] = [];
   const metadata = new Map<string, Position>();
   const feeCells = input.required.filter(cell => cell.target.kind === "fee");
@@ -150,7 +198,7 @@ export function normalizeSnapshot(
         mirrors.push(mirror);
         continue;
       }
-      ordinary.push(row);
+      ordinary.push({ ...row, path: field });
       const matched = matchDetail(row, field, plan.cells, pack);
       if (!matched) {
         for (const cell of plan.cells) unavailable.add(cellKey(cell));
@@ -185,25 +233,6 @@ export function normalizeSnapshot(
   const tax = sum(ordinary.map(row => row.amount)) + BigInt(fee?.amount ?? 0);
   reconcileAmount(path + "/tax_amount_exclusive", calculation.tax_amount_exclusive, sum(header.map(row => row.amount)));
   reconcileAmount(path + "/tax_amount_exclusive", calculation.tax_amount_exclusive, tax);
-  const headerRows = header.flatMap((row, index) => {
-    const { country, state, tax_type, percentage_decimal, rate_type, flat_amount } = row.tax_rate_details;
-    if (tax_type === feeType) return [];
-    if (row.amount > 0 && (rate_type !== "percentage" || flat_amount !== null || percentage_decimal == null)) {
-      incomplete(path + "/tax_breakdown", "An ordinary header assessment is missing its percentage identity.");
-    }
-    return [{ ...row, key: groupKey(country, state, tax_type, percentage_decimal, row.taxability_reason), index }];
-  });
-  const headerGroups = grouped(headerRows);
-  const detailGroups = grouped(ordinary.map(row => ({ ...row, key: groupKey(row.jurisdiction.country, row.jurisdiction.state,
-    row.tax_rate_details?.tax_type ?? null, row.tax_rate_details?.percentage_decimal, row.taxability_reason) })));
-  for (const { key, index } of headerRows) {
-    const summary = headerGroups.get(key)!, detail = detailGroups.get(key);
-    const field = path + "/tax_breakdown/" + index;
-    if (!detail) incomplete(field + "/tax_rate_details", "The header group has no matching component breakdown.");
-    if (summary.tax !== detail.tax) incomplete(field + "/amount", "The grouped header and component assessments differ.");
-    if (summary.basis !== detail.basis) incomplete(field + "/taxable_amount", "The grouped header and component taxable bases differ.");
-  }
-  if (headerGroups.size !== detailGroups.size) incomplete(path + "/tax_breakdown", "The header omits a component group. This response shape requires a header group even at zero tax and basis.");
   reconcileAmount(path + "/amount_total", calculation.amount_total, sum(components.map(item => item.amount)) + tax);
 
   const acknowledged = new Set(input.coverage.declarations.filter(row => row.status === "not_registered_acknowledged"
@@ -220,5 +249,6 @@ export function normalizeSnapshot(
         ...(!wouldInferInactivity && registration && { registration }) };
     }),
   });
+  reconcileGroups(header, ordinary, coverage.kind === "resolved");
   return { coverage, positions, metadata, fee };
 }

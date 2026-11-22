@@ -71,36 +71,124 @@ describe("registration inventory and tax treatments", () => {
     expect(f.client.calculations.create).not.toHaveBeenCalled();
   });
 
-  it("reconciles zero exemption and taxable coverage in the same response", async () => {
+  it.each([
+    ["line", null, null], ["line", "sales_tax", "percentage"],
+    ["shipping", null, "percentage"], ["shipping", "sales_tax", null],
+  ] as const)("verifies an exempt %s with header kind %s and rate type %s", async (target, kind, rateType) => {
     const f = setup();
+    const jurisdiction = target === "line" ? "district-b" : "district-a";
+    const basis = target === "line" ? 100 : 20;
+    const exemption = { ...detail(0, basis, jurisdiction), tax_rate_details: null, taxability_reason: "product_exempt" };
     f.marketPack.jurisdictions = [...f.marketPack.jurisdictions,
-      { ...f.marketPack.jurisdictions.find(row => row.jurisdiction === "district-b")!, taxType: null }];
-    f.client.calculations.create.mockImplementation(async params => snapshot(params, 0, {
-      lineDetails: line => line.reference === "ol-m-2"
-        ? [{ ...detail(0, 0, "district-b"), tax_rate_details: null, taxability_reason: "product_exempt" }]
-        : [detail(10, line.amount)],
-    }));
+      { ...f.marketPack.jurisdictions.find(row => row.jurisdiction === jurisdiction)!, taxType: null }];
+    let basisDelta = 0;
+    f.client.calculations.create.mockImplementation(async params => {
+      const wire = snapshot(params, 0, target === "line"
+        ? { lineDetails: line => line.reference === "ol-m-2" ? [exemption] : [detail(10, line.amount)] }
+        : { shippingDetails: [exemption] });
+      const exemptHeader = wire.tax_breakdown.find(row => row.taxability_reason === exemption.taxability_reason)!;
+      exemptHeader.tax_rate_details.tax_type = kind;
+      exemptHeader.tax_rate_details.rate_type = rateType;
+      exemptHeader.taxable_amount += basisDelta;
+      wire.tax_breakdown.reverse();
+      return wire;
+    });
     const result = await f.run();
     expect(result.kind).toBe("final");
     expect(verifyTaxQuoteResult(f.request(), result)).toBeUndefined();
     if (result.kind !== "final") throw new Error("Expected a final quote.");
-    expect(result.evidence.coverage.vector.map(row => row.decision)).toEqual(["in_scope_taxed", "in_scope_exempt", "in_scope_taxed"]);
-    expect(result.money.taxTotal).toBe(12);
-    expect(result.evidence.positions.tax.find(row => row.taxabilityReason === "product_exempt")).not.toHaveProperty("ratePercent");
+    expect(result.evidence.coverage.vector.map(row => row.decision)).toEqual(target === "line"
+      ? ["in_scope_taxed", "in_scope_exempt", "in_scope_taxed"] : ["in_scope_exempt", "in_scope_taxed", "in_scope_taxed"]);
+    expect(result.money.payableMinor).toBe(target === "line" ? 232 : 240);
+    const exemptPosition = result.evidence.positions.tax.find(row => row.taxabilityReason === "product_exempt")!;
+    const positions = result.money.components.flatMap(row => row.final.taxPositions);
+    expect(exemptPosition).not.toHaveProperty("ratePercent");
+    expect(positions.find(row => row.positionRef === exemptPosition.positionRef)).toEqual({
+      positionRef: exemptPosition.positionRef, jurisdictionRef: jurisdiction, taxableMinor: basis, taxMinor: 0,
+    });
+    expect(positions).toContainEqual(expect.objectContaining({ taxableMinor: 100, taxMinor: 10 }));
+    if (target === "shipping") {
+      basisDelta = 1;
+      expect(await f.run()).toMatchObject({
+        kind: "refused", code: "tax_breakdown_incomplete", field: "/calculation/tax_breakdown/0/taxable_amount",
+      });
+    }
   });
 
-  it.each(["undeclared", "inactive", "ambiguous", "unknown registration", "unknown treatment", "unattributed null"] as const)(
+  it.each(["inactive", "active"] as const)("reconciles typed not-collecting groups with %s registrations", async state => {
+    const f = setup();
+    f.input.coverage = { ...f.input.coverage, declarations: f.input.coverage.declarations.map(row =>
+      ({ ...row, status: "not_registered_acknowledged", acknowledgementRef: "acknowledgement-a" })) };
+    f.marketPack.jurisdictions = f.marketPack.jurisdictions.map(row => ({ ...row, taxType: null }));
+    f.client.registrations.list.mockResolvedValue(page(registrationUrl, state === "inactive" ? [] : [registration()]));
+    const notCollecting = (district: string) => ({
+      ...detail(0, 0, district), tax_rate_details: null, taxability_reason: "not_collecting",
+    });
+    f.client.calculations.create.mockImplementation(async params => snapshot(params, 0, {
+      lineDetails: line => [notCollecting(line.reference === "ol-m-1" ? "district-a" : "district-b")],
+      shippingDetails: [notCollecting("district-a")],
+    }));
+    const result = await f.run();
+    if (state === "active") {
+      expect(result).toMatchObject({ kind: "refused", code: "tax_coverage_inconsistent" });
+      return;
+    }
+    expect(result.kind).toBe("final");
+    expect(verifyTaxQuoteResult(f.request(), result)).toBeUndefined();
+    if (result.kind !== "final") throw new Error("Expected a final quote.");
+    expect(result.evidence.coverage.vector.map(row => row.decision)).toEqual(["out_of_scope", "out_of_scope", "out_of_scope"]);
+    expect(result.money.payableMinor).toBe(220);
+  });
+
+  it.each([
+    ["null percentage", "/calculation/tax_breakdown/2/tax_rate_details/percentage_decimal"],
+    ["missing percentage", "/calculation/tax_breakdown/2/tax_rate_details/percentage_decimal"],
+    ["ordinary flat rate", "/calculation/tax_breakdown/2/tax_rate_details"],
+    ["no header country", "/calculation/tax_breakdown/2/tax_rate_details/country"],
+    ["ambiguous header kinds", "/calculation/tax_breakdown/3/tax_rate_details/tax_type"],
+    ["mixed detail kinds", "/calculation/shipping_cost/tax_breakdown/1/tax_rate_details"],
+    ["omitted not-imposed group", "/calculation/tax_breakdown"],
+    ["omitted positive-basis exemption", "/calculation/tax_breakdown"],
+  ] as const)("refuses %s at its provider field", async (scenario, field) => {
+    const f = setup();
+    f.marketPack.jurisdictions = [...f.marketPack.jurisdictions, { ...f.marketPack.jurisdictions[0], taxType: null }];
+    f.client.calculations.create.mockImplementation(async params => {
+      const basis = scenario === "omitted positive-basis exemption" ? 20 : 0;
+      const exemption = { ...detail(0, basis), tax_rate_details: null, taxability_reason: "product_exempt" };
+      const rows = scenario === "ordinary flat rate" ? [detail(0, 20)]
+        : [exemption, ...(scenario === "mixed detail kinds" ? [{ ...detail(0, 0), taxability_reason: "product_exempt" }] : [])];
+      const wire = snapshot(params, 0, { shippingDetails: rows });
+      const shipping = wire.tax_breakdown[2];
+      if (scenario === "null percentage") Object.assign(shipping.tax_rate_details, { percentage_decimal: null });
+      if (scenario === "missing percentage") Reflect.deleteProperty(shipping.tax_rate_details, "percentage_decimal");
+      if (scenario === "ordinary flat rate") shipping.tax_rate_details.rate_type = "flat_amount";
+      if (scenario === "no header country") shipping.tax_rate_details.country = null;
+      if (scenario === "ambiguous header kinds") wire.tax_breakdown.push({
+        ...shipping, tax_rate_details: { ...shipping.tax_rate_details, tax_type: "sales_tax" },
+      });
+      if (scenario.startsWith("omitted")) wire.tax_breakdown.pop();
+      return wire;
+    });
+    const incomplete = scenario.endsWith("percentage") || scenario === "omitted positive-basis exemption";
+    expect(await f.run()).toMatchObject({
+      kind: "refused", field, code: incomplete ? "tax_breakdown_incomplete" : "tax_operation_unsupported",
+      remedy: expect.stringContaining(incomplete ? "Obtain the complete expanded evidence for the original calculation"
+        : "Use a supported calculation route or qualify that layout on the owner's test account before enabling it."),
+    });
+  });
+
+  it.each(["undeclared", "inactive", "ambiguous", "unknown registration", "unknown treatment", "unattributed null", "unknown null treatment"] as const)(
     "holds the quote for %s coverage evidence", async scenario => {
       const f = setup();
       if (scenario === "undeclared") f.input.coverage = { ...f.input.coverage, declarations: [] };
       if (scenario === "inactive") f.client.registrations.list.mockResolvedValue(page(registrationUrl, []));
       if (scenario === "ambiguous") f.client.registrations.list.mockResolvedValue(page(registrationUrl, [registration(), registration("reg_second")]));
       if (scenario === "unknown registration") f.client.registrations.list.mockResolvedValue(page(registrationUrl, [registration("reg_unknown", "unknown")]));
-      if (scenario === "unknown treatment" || scenario === "unattributed null") {
+      if (scenario === "unknown treatment" || scenario === "unattributed null" || scenario === "unknown null treatment") {
         f.client.calculations.create.mockImplementation(async params => snapshot(params, 0, {
           lineDetails: line => line.reference === "ol-m-1"
-            ? [{ ...detail(0, 0), ...(scenario === "unattributed null" && { tax_rate_details: null }),
-                taxability_reason: scenario === "unknown treatment" ? "unknown" : "product_exempt" }]
+            ? [{ ...detail(0, 0), ...(scenario !== "unknown treatment" && { tax_rate_details: null }),
+                taxability_reason: scenario === "unattributed null" ? "product_exempt" : "unknown" }]
             : [detail(10, line.amount, "district-b")],
         }));
       }

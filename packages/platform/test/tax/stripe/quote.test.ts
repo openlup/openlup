@@ -237,7 +237,7 @@ describe("private tax calculation quote", () => {
     });
     expect(await f.run()).toMatchObject({
       kind: "refused", code: "tax_breakdown_incomplete", field,
-      remedy: expect.stringContaining("Obtain the complete provider breakdown for the original calculation request"),
+      remedy: expect.stringContaining("Obtain the complete expanded evidence for the original calculation and reconcile the named field"),
     });
   });
 

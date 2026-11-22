@@ -39,7 +39,7 @@ export async function providerCall(read: () => Promise<unknown>): Promise<unknow
 }
 
 export function incomplete(field: string, cause: string): never {
-  return invalid(field, cause + " Obtain the complete provider breakdown for the original calculation request.", "tax_breakdown_incomplete");
+  return invalid(field, cause + " Obtain the complete expanded evidence for the original calculation and reconcile the named field.", "tax_breakdown_incomplete");
 }
 
 export function record(value: unknown, field: string): object {
@@ -151,7 +151,7 @@ export const detail = fields({
 });
 const header = fields({ ...breakdown, inclusive: boolean, tax_rate_details: fields({
   country: nullable(text), state: nullable(text), tax_type: nullable(text), rate_type: nullable(text),
-  percentage_decimal: nullable(optional(rate)), flat_amount: nullable(fields({ amount: minor, currency: text })),
+  percentage_decimal: rate, flat_amount: nullable(fields({ amount: minor, currency: text })),
 }) });
 const component = { amount: minor, amount_tax: minor, tax_behavior: text, tax_code: text,
   tax_breakdown(value: unknown, field: string) {
