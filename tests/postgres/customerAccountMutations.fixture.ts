@@ -65,6 +65,7 @@ function writeAcquisitionRoot(root: string, manifest: CompleteManifest) {
 
 export async function installAtAcquisitionSearchPathBoundary(
   profile: AccountProfile, label: string, boundary: AcquisitionBoundary,
+  upgradeCatalogue: "through-pin" | "current" = "through-pin",
 ) {
   const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
   if (manifest?.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
@@ -73,8 +74,11 @@ export async function installAtAcquisitionSearchPathBoundary(
   try {
     const root = join(scratch, boundary);
     writeAcquisitionRoot(root, acquisitionSearchPathManifest(manifest, boundary));
-    const upgradeRoot = join(scratch, "through-pin");
-    if (upgradeRoot !== root) writeAcquisitionRoot(upgradeRoot, acquisitionSearchPathManifest(manifest, "through-pin"));
+    let upgradeRoot: string | undefined;
+    if (upgradeCatalogue === "through-pin") {
+      upgradeRoot = join(scratch, "through-pin");
+      if (upgradeRoot !== root) writeAcquisitionRoot(upgradeRoot, acquisitionSearchPathManifest(manifest, "through-pin"));
+    }
     const store = await installAccountMutations(profile, false, label, root, upgradeRoot);
     const close = store.close;
     store.close = async () => {

@@ -30950,6 +30950,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStoreRestoreUpgrade.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStoreStarterRelations.test.ts",
       "class": "public-output"
     },
