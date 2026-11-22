@@ -4210,6 +4210,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/communications-testing.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/communications.api.md",
       "class": "public-output"
     },
@@ -6782,6 +6786,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/adapterConformance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/authEmailError.ts",
       "class": "public-output"
     },
@@ -7162,6 +7170,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/scriptedCommunicationsFake.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/settings-data.json",
       "class": "public-output"
     },
@@ -7182,7 +7194,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/communications/testing/adapterConformance.ts",
+      "path": "packages/platform/src/communications/testing/index.ts",
       "class": "public-output"
     },
     {
@@ -10934,6 +10946,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/communicationsTestingConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/consentDefaults.test.ts",
       "class": "public-output"
     },
@@ -11023,6 +11039,10 @@
     },
     {
       "path": "packages/platform/test/communications/nativeSync.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/resend/conformance.test.ts",
       "class": "public-output"
     },
     {

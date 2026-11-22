@@ -58,6 +58,7 @@ or external-write authority. The application's own instructions govern.
 | `./communications/contracts` | capability | stable |
 | `./communications/klaviyo` | capability | experimental |
 | `./communications/resend` | capability | experimental |
+| `./communications/testing` | capability | testing |
 | `./company-identity` | capability | stable |
 | `./company-identity/contracts` | capability | stable |
 | `./company-identity/server` | capability | stable |

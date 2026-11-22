@@ -171,6 +171,11 @@
       "import": "./dist/communications/contracts/index.js",
       "default": "./dist/communications/contracts/index.js"
     },
+    "./communications/testing": {
+      "types": "./dist/communications/testing/index.d.ts",
+      "import": "./dist/communications/testing/index.js",
+      "default": "./dist/communications/testing/index.js"
+    },
     "./catalog": {
       "types": "./dist/catalog/index.d.ts",
       "import": "./dist/catalog/index.js",

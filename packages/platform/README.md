@@ -3753,3 +3753,15 @@ offline certification of `CarrierRateQuotePort` adapters (declared on
 Full mode requires authenticated `fake.calls` handles, validates integer
 minor-unit currency fidelity and zero-I/O refusals, scans optional sensitive
 canaries, and emits a deterministic `ShippingRateQualification` receipt.
+
+### Communications conformance (`@openlup/platform/communications/testing`)
+
+`@openlup/platform/communications/testing` exports
+`runCommunicationsAdapterConformance`, `createScriptedCommunicationsFake`,
+`ScriptedCommunicationsTransportError`, and `createInMemoryEmailTransport`.
+Existing 1-argument baseline callers remain unchanged on both
+`@openlup/platform/communications` and `@openlup/platform/communications/testing`.
+Full mode (`{ mode: "full" }`) additionally enforces `guardEmailTransport`
+egress admission, verifies authenticated transport fault handles (5xx, 401/403,
+429, timeout, transport error), scans optional sensitive canaries, and emits a
+deterministic `CommunicationsQualification` receipt.

@@ -1066,6 +1066,16 @@
       ],
       "entrypoint": "dist/shipping/testing/index.d.ts",
       "snapshot": "api/shipping-testing.api.md"
+    },
+    "./communications/testing": {
+      "role": "capability",
+      "maturity": "testing",
+      "compatibilityPolicy": "testing",
+      "packageSmokeEvidence": [
+        "test/communications/communicationsTestingConformance.test.ts"
+      ],
+      "entrypoint": "dist/communications/testing/index.d.ts",
+      "snapshot": "api/communications-testing.api.md"
     }
   },
   "pack": {

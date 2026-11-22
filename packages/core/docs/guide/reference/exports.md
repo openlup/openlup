@@ -63,6 +63,7 @@ Find an import subpath and its API report. API reports list every exported symbo
 | `./communications` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/communications.api.md) |
 | `./communications/contracts` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/communications-contracts.api.md) |
 | `./communications/klaviyo` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/communications-klaviyo.api.md) |
+| `./communications/testing` | capability | testing | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/communications-testing.api.md) |
 | `./company-identity` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/company-identity.api.md) |
 | `./company-identity/contracts` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/company-identity-contracts.api.md) |
 | `./company-identity/server` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/company-identity-server.api.md) |

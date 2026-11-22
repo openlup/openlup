@@ -45,6 +45,90 @@ export declare const CAPTURED_DOCUMENT_DELIVERY_CHANNEL = "captured";
  */
 export declare function resolveCapturedDocumentDelivery(env: Record<string, string | undefined>): CapturedDocumentDeliveryResolution;
 ```
+## dist/communications/adapterConformance.d.ts
+
+```ts
+import type { EmailMessage, EmailSendResult, EmailTransport } from "./emailTransport.js";
+import type { MarketingSyncProvider, SyncRequest, SyncResult } from "./contracts/marketingSync.js";
+type Fixture<Input, Result> = {
+    readonly input: Input;
+    readonly expected: Result;
+    /** Total external mutations performed by this one invocation. */
+    readonly expectedEffects: number;
+};
+type OfflineAdapter<Adapter> = {
+    readonly adapter: Adapter;
+    readonly readEffectCount: () => number;
+    readonly readFaultLog?: () => object;
+};
+export interface EmailFaultCertificationHarness {
+    readonly input: EmailMessage;
+    readonly adapter: EmailTransport;
+    readonly readEffectCount: () => number;
+    readonly readFaultLog: () => object;
+}
+export interface EmailFullCertificationScenarios {
+    readonly http5xx: () => EmailFaultCertificationHarness | Promise<EmailFaultCertificationHarness>;
+    readonly httpAuthFailure: () => EmailFaultCertificationHarness | Promise<EmailFaultCertificationHarness>;
+    readonly rateLimited429: () => EmailFaultCertificationHarness | Promise<EmailFaultCertificationHarness>;
+    readonly timeout: () => EmailFaultCertificationHarness | Promise<EmailFaultCertificationHarness>;
+    readonly transportError: () => EmailFaultCertificationHarness | Promise<EmailFaultCertificationHarness>;
+}
+type EmailSubject = {
+    readonly kind: "email";
+    readonly subjectId: string;
+    /** Fresh offline adapter and counter for each fixture; never use live credentials. */
+    readonly create: (input: EmailMessage) => OfflineAdapter<EmailTransport> | Promise<OfflineAdapter<EmailTransport>>;
+    readonly fixtures: readonly Fixture<EmailMessage, EmailSendResult>[];
+    readonly sensitiveValues?: readonly string[];
+    readonly certification?: EmailFullCertificationScenarios;
+};
+type SyncFixture = {
+    [O in SyncRequest["operation"]]: Fixture<SyncRequest<O>, SyncResult<O>> & {
+        /** Reinvoke this exact mutation and prove no second external effect. */
+        readonly replay?: boolean;
+    };
+}[SyncRequest["operation"]];
+type MarketingSubject = {
+    readonly kind: "marketing-sync";
+    readonly subjectId: string;
+    readonly create: (input: SyncRequest) => OfflineAdapter<MarketingSyncProvider> | Promise<OfflineAdapter<MarketingSyncProvider>>;
+    readonly fixtures: readonly SyncFixture[];
+    readonly sensitiveValues?: readonly string[];
+};
+export type CommunicationsAdapterConformanceSubject = EmailSubject | MarketingSubject;
+export interface CommunicationsConformanceOptions {
+    readonly mode?: "baseline" | "full";
+}
+export interface CommunicationsQualificationLedgerEntry {
+    readonly scenario: string;
+    readonly role: "fixture" | "egress-admission" | "transport-fault";
+    readonly ioDelta: number;
+    readonly faultLogDelta: number | null;
+}
+export interface CommunicationsQualification {
+    readonly subjectId: string;
+    readonly kind: CommunicationsAdapterConformanceSubject["kind"];
+    readonly mode: "baseline" | "full";
+    readonly capabilityDigest: string;
+    readonly ledger: readonly CommunicationsQualificationLedgerEntry[];
+}
+export interface CommunicationsAdapterConformanceEvidence {
+    readonly subjects: readonly {
+        readonly subjectId: string;
+        readonly kind: CommunicationsAdapterConformanceSubject["kind"];
+        readonly cases: readonly string[];
+    }[];
+    readonly qualifications?: readonly CommunicationsQualification[];
+}
+/** Offline fixture proof, following the payment/invoice/fulfillment runners.
+ * No provider access, fixture discovery or test framework is supplied here.
+ * Only subject labels and passed case labels leave the runner; raw results and
+ * adapter exceptions are never included in findings.
+ */
+export declare function runCommunicationsAdapterConformance(subjects: readonly CommunicationsAdapterConformanceSubject[], options?: CommunicationsConformanceOptions): Promise<CommunicationsAdapterConformanceEvidence>;
+export {};
+```
 ## dist/communications/authEmailError.d.ts
 
 ```ts
@@ -1494,7 +1578,7 @@ export * from "./postgresCommunicationSync.js";
 export * from "./postgresNotificationRecipients.js";
 export * from "./postgresConsentEvaluator.js";
 export type * from "./contracts/marketingSync.js";
-export * from "./testing/adapterConformance.js";
+export * from "./adapterConformance.js";
 export type * from './contracts/ecommerceEvents.js';
 export * from './ecommerceEvents.js';
 export * from './postgresEcommerceEvents.js';
@@ -1641,17 +1725,17 @@ export declare const newsletterMarketingPurposeSchema: z.ZodEnum<{
 export declare const newsletterSyncEventTypeSchema: z.ZodEnum<{
     suppress: "suppress";
     update: "update";
-    subscribe: "subscribe";
     unsubscribe: "unsubscribe";
+    subscribe: "subscribe";
 }>;
 export declare const newsletterWebhookEventTypeSchema: z.ZodEnum<{
     ignored: "ignored";
     suppress: "suppress";
     update: "update";
-    email_change: "email_change";
-    subscribe: "subscribe";
     unsubscribe: "unsubscribe";
     complaint: "complaint";
+    email_change: "email_change";
+    subscribe: "subscribe";
     bounce: "bounce";
     profile_update: "profile_update";
 }>;
@@ -1673,10 +1757,10 @@ export declare const canonicalNewsletterWebhookEventSchema: z.ZodObject<{
         ignored: "ignored";
         suppress: "suppress";
         update: "update";
-        email_change: "email_change";
-        subscribe: "subscribe";
         unsubscribe: "unsubscribe";
         complaint: "complaint";
+        email_change: "email_change";
+        subscribe: "subscribe";
         bounce: "bounce";
         profile_update: "profile_update";
     }>;
@@ -1712,10 +1796,10 @@ export declare function createNewsletterIntegrationSchemas<Purpose extends strin
             ignored: "ignored";
             suppress: "suppress";
             update: "update";
-            email_change: "email_change";
-            subscribe: "subscribe";
             unsubscribe: "unsubscribe";
             complaint: "complaint";
+            email_change: "email_change";
+            subscribe: "subscribe";
             bounce: "bounce";
             profile_update: "profile_update";
         }>;
@@ -1740,8 +1824,8 @@ export declare function createNewsletterIntegrationSchemas<Purpose extends strin
         eventType: z.ZodEnum<{
             suppress: "suppress";
             update: "update";
-            subscribe: "subscribe";
             unsubscribe: "unsubscribe";
+            subscribe: "subscribe";
         }>;
         purpose: z.ZodCustom<Purpose, Purpose>;
         payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
@@ -2204,56 +2288,6 @@ export declare function decideEmailSend(input: {
     existingNonFailedMessageId: string | null;
     templateAvailable: boolean;
 }): EmailSendDecision;
-```
-## dist/communications/testing/adapterConformance.d.ts
-
-```ts
-import type { EmailMessage, EmailSendResult, EmailTransport } from "../emailTransport.js";
-import type { MarketingSyncProvider, SyncRequest, SyncResult } from "../contracts/marketingSync.js";
-type Fixture<Input, Result> = {
-    readonly input: Input;
-    readonly expected: Result;
-    /** Total external mutations performed by this one invocation. */
-    readonly expectedEffects: number;
-};
-type OfflineAdapter<Adapter> = {
-    readonly adapter: Adapter;
-    readonly readEffectCount: () => number;
-};
-type EmailSubject = {
-    readonly kind: "email";
-    readonly subjectId: string;
-    /** Fresh offline adapter and counter for each fixture; never use live credentials. */
-    readonly create: (input: EmailMessage) => OfflineAdapter<EmailTransport> | Promise<OfflineAdapter<EmailTransport>>;
-    readonly fixtures: readonly Fixture<EmailMessage, EmailSendResult>[];
-};
-type SyncFixture = {
-    [O in SyncRequest["operation"]]: Fixture<SyncRequest<O>, SyncResult<O>> & {
-        /** Reinvoke this exact mutation and prove no second external effect. */
-        readonly replay?: boolean;
-    };
-}[SyncRequest["operation"]];
-type MarketingSubject = {
-    readonly kind: "marketing-sync";
-    readonly subjectId: string;
-    readonly create: (input: SyncRequest) => OfflineAdapter<MarketingSyncProvider> | Promise<OfflineAdapter<MarketingSyncProvider>>;
-    readonly fixtures: readonly SyncFixture[];
-};
-export type CommunicationsAdapterConformanceSubject = EmailSubject | MarketingSubject;
-export interface CommunicationsAdapterConformanceEvidence {
-    readonly subjects: readonly {
-        readonly subjectId: string;
-        readonly kind: CommunicationsAdapterConformanceSubject["kind"];
-        readonly cases: readonly string[];
-    }[];
-}
-/** Offline fixture proof, following the payment/invoice/fulfillment runners.
- * No provider access, fixture discovery or test framework is supplied here.
- * Only subject labels and passed case labels leave the runner; raw results and
- * adapter exceptions are never included in findings. Not full provider qualification.
- */
-export declare function runCommunicationsAdapterConformance(subjects: readonly CommunicationsAdapterConformanceSubject[]): Promise<CommunicationsAdapterConformanceEvidence>;
-export {};
 ```
 ## dist/communications/transactionalDelivery.d.ts
 

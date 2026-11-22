@@ -70,6 +70,7 @@ export const NON_ADAPTER_ENTRIES = [
   "bff",
   "catalog/contracts",
   "communications/contracts",
+  "communications/testing",
   "composition",
   "http",
   "identity/contracts",

@@ -74,6 +74,7 @@ for package policy definitions and release boundaries.
 | `./communications` | capability | stable |
 | `./communications/contracts` | capability | stable |
 | `./communications/klaviyo` | capability | experimental |
+| `./communications/testing` | capability | testing |
 | `./company-identity` | capability | stable |
 | `./company-identity/contracts` | capability | stable |
 | `./company-identity/server` | capability | stable |
