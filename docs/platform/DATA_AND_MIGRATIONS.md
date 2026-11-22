@@ -2852,13 +2852,36 @@ the grant in those databases even when the cluster role exists. The slot
 carries only those two grant capabilities, and its pin lists no function definitions.
 The live comparator has its own [qualified column SELECT exception](#qualified-column-select).
 
+At most one native-store slot per registry may declare
+`qualifiedPriceListBasisSelect: true`. Its function and data lists are empty
+and it declares no other capabilities. Its entire file matches the exact
+authority-ledger and role-guarded `DO` block, including the final LF. The
+block executes only
+`GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication`,
+without grant option.
+
+An earlier native-store slot must list the nullable `text` column with no default
+in `existingTableStatements`. If that slot declares a CHECK for the column,
+it must allow only `tax_inclusive`, `tax_exclusive` and NULL. Admission resolves
+the column from the earlier slot's approved statement inventory, checks the
+whole-file SHA-256 against the registry, and requires that file and binding in
+the grant's approval base. The predecessor must tokenize completely. Only the
+pinned column and its optional CHECK may reference `price_lists` in that file.
+Every intervening file that mentions `price_lists` or uses Unicode-escaped
+identifier syntax must also tokenize completely. Only direct row DML on
+`price_lists`, GRANT, REVOKE and COMMENT may reference the table in those files.
+This excludes index creation and attaching a constraint using an index. The
+feature lands the column forward first and introduces the dedicated grant-only
+forward after the column is issued.
+
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
 TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
 `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
-another slot or an unqualified/IF NOT EXISTS creation refuses. Table grants refuse
-except for the fixed baseline and notice-table allowances below and the listed census tables'
-client-column SELECT allowance above. Census tables keep owner-only table ACLs
+another slot or an unqualified/IF NOT EXISTS creation refuses. The admitted
+table grants are limited to the fixed baseline and notice-table allowances below,
+the listed census tables' client-column SELECT and the qualified price-list
+basis SELECT above. Census tables keep owner-only table ACLs
 and receive only their exact column grant and derived SELECT policy.
 The native paid-notice slot may name `insertSelectTables` with the complete
 value `["public.subscription_notice_refusals"]`, pinned by the reader. A separate

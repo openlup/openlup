@@ -53,3 +53,46 @@ export function quote(): TaxQuoteInputV1 {
     coverage: coverage(registered(), registered("district-b")),
   };
 }
+
+export const localTime = "2030-01-02T00:00:00.000Z";
+export const localCutover = "2030-01-02T00:00:05.000Z";
+export const rateRule = {
+  kind: "rate", jurisdiction: "district-a", taxClass: "standard", taxKind: "sale",
+  ruleRef: "rule-a", legalBasisRef: "rulebook-a", effective: { from: date }, ratePercent: "0",
+} as const;
+export const localRegistration = { ...active, jurisdiction: "district-a", taxKind: "sale" };
+export const exemptRule = {
+  kind: "exempt", jurisdiction: "district-a", taxClass: "delivery-a", taxKind: "sale",
+  ruleRef: "rule-delivery", legalBasisRef: "rulebook-delivery", effective: { from: date }, reason: "delivery-exemption",
+} as const;
+export const feeRule = {
+  kind: "fee", jurisdiction: "district-a", taxClass: "fee-class", taxKind: "fee-a",
+  ruleRef: "rule-fee", legalBasisRef: "rulebook-fee", effective: { from: date },
+  amountMinor: 25, refundRule: { ref: "refund-a", revision: "1" },
+} as const;
+
+export function localInput(): TaxQuoteInputV1 {
+  const exemplar = quote();
+  return {
+    ...exemplar, taxDate: localTime, lines: exemplar.lines.slice(0, 1), coverage: coverage(registered()),
+    delivery: [], required: [cell()],
+    money: { ...exemplar.money, sources: exemplar.money.sources.slice(0, 1), delivery: [], adjustments: [] },
+  };
+}
+
+export function feeInput(): TaxQuoteInputV1 {
+  const input = localInput(), exemplar = quote();
+  return {
+    ...input, delivery: exemplar.delivery, required: [cell(), ...exemplar.required.slice(2)],
+    coverage: coverage(registered(), { ...registered(), taxKind: "fee-a" }),
+    money: { ...input.money, delivery: exemplar.money.delivery },
+  };
+}
+
+export function localOptions() {
+  return {
+    scope, market: "market-a", currency: "XXX", now: () => localTime,
+    rounding: "half_up_largest_remainder", calculationLifetimeMs: 10_000, validityWindowMs: 2_000,
+    rules: [rateRule], registrations: [localRegistration],
+  } as const;
+}
