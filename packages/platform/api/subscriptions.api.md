@@ -1496,6 +1496,7 @@ export interface NativeRenewalCodec {
 export declare const subscriptionCorrelationSql = "o.subscription_cycle_id AS activation_cycle_id,\n ac.status='paid' AS activation_cycle_paid,\n (SELECT count(*)::integer FROM public.subscription_cycles pc\n  WHERE pc.subscription_id=s.id AND pc.status='paid' AND pc.scheduled_at<s.next_cycle_at) AS paid_cycle_count";
 export declare const subscriptionCorrelationJoin = "LEFT JOIN public.subscription_activations a ON a.subscription_id=s.id\n LEFT JOIN public.commerce_orders o ON o.id=a.order_id\n LEFT JOIN public.subscription_cycles ac ON ac.id=o.subscription_cycle_id";
 export declare function subscriptionRecord(value: unknown): Record<string, unknown>;
+export declare function readPostgresRenewal(codec: NativeRenewalCodec, value: unknown): RenewalReadback;
 /** Native claim/prepare remain their original SQL transaction units. G23 is composed by the host. */
 export declare function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec, withTransaction?: <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => Promise<T>): RenewalStorePort;
 ```

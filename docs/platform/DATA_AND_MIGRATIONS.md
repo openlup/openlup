@@ -461,6 +461,31 @@ current catalogue head. Industry-specific managed catalogue columns are unaffect
 Unbind callers to roll back use; retain committed receipts/history and correct a
 price with a subsequent expected-base command.
 
+### Accepted catalogue references and archive
+
+The purchase and edit owners may save an accepted SKU revision alongside their
+receipts. The reference resolves against the revision's issuing publication,
+including its document, type definition, options and net content. A nullable
+same-SKU foreign key protects the template binding. Unbound rows retain NULL.
+Deferred checks reconcile staged order and edit records with their companions
+at commit. Transfer carries both the accepted references and their companions.
+
+The freeze owner saves acceptance beside the snapshot and binds it to the
+operation fingerprint. Renewals keep the existing v1 and v2 pricing formats.
+The renewal owner still uses subtotal less discount plus shipping, with no
+tax term. The quote owner still carries gross prices and one VAT rate where
+required by the sized-plan quote. Destination references remain opaque.
+Catalogue checks use the stored owner evidence and compare SKU identity and
+quantities. Governed SKU facts carry physical quantities and base prices stay
+with the pricing owner.
+
+The archive census reads active and paused templates and retained terms,
+pending activation and attachment, frozen and recoverable renewals, outstanding
+orders, undelivered leaf replacements, stock waits and unconsumed graduation.
+Outstanding or ambiguous evidence refuses archive. A complete empty census
+still returns `catalog_archive_barrier_unavailable` until the admission barrier
+is qualified.
+
 ## Compatible data transfer
 
 Checkout attempt ledger rows are authoritative, short-lived admission state.
@@ -471,10 +496,9 @@ no raw email, IP address, idempotency key, headers or request payload, and has n
 client foreign key or absorption mapping.
 
 Restore the ledger before enabling checkout under the same limit and identity
-policy. Restore treats the ledger as empty for pinned predecessor installations
-that predate it. Restore also accepts packets from the pinned installation
-profiles immediately before governed catalogue lifecycle. Those packets and
-current packets must include the ledger. Restored attempts age on their
+policy. Connected-store restore requires a capture from the current installed
+shape. Earlier captures refuse with `schema_conflict`. Upgrade the source,
+then capture. Restored attempts age on their
 original timestamps. Admission prunes rows at the retention cutoff on each
 call. Idle databases keep bounded rows
 until the next call or an owner cleanup. For managed same-schema transfer use

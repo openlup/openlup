@@ -2,6 +2,7 @@ import type {
   PaymentAttemptStatus, PaymentExecutionBaseInput, PaymentExecutionBaseResult,
   PaymentProviderCapabilityDescriptor, ProviderAttemptIdentity,
 } from "@openlup/core/payment";
+import type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
 
 /** Structural hosted-cycle contracts; native vocabulary is bound by the caller. */
 export type SubscriptionRenewalOutcome = "charged" | "requires_action" | "failed" | "skipped";
@@ -292,6 +293,8 @@ export interface RenewalReadback extends RenewalSchedule {
   cycle: RenewalCycleCorrelation; state: RenewalOperationState;
   claimToken: string; claimGeneration: number; leaseExpiresAt: string;
   cycleSnapshot: RenewalFrozenSnapshot;
+  /** Catalogue evidence stored beside the frozen pricing wire, when supplied. */
+  catalogAcceptance?: CatalogAcceptanceV2;
   externalAttemptRef: string | null; externalAttemptAcknowledgedAt: string | null;
   terminalOutcome: "succeeded" | "refused" | null; terminalReason: string | null; terminalAt: string | null;
   reservationId: string | null; cycleId: string | null; orderId: string | null; settlementIntentId: string | null;
