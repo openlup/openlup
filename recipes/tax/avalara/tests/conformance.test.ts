@@ -1932,4 +1932,145 @@ describe("recipes/tax/avalara — precision, protocol, schema validation, recove
     expect(recoveredVoid).toMatchObject({ kind: "reversed", providerReversalRef: `void:${expectedVoidCommitCode}` });
     expect(wireLog.filter((e) => e.method === "POST").length).toBe(postsBeforeVoidRecover);
   });
+
+  it("classifies mutating AvaTax conflict/timeout statuses (TransactionAlreadyExists, TransactionAlreadyCancelled, 408, 409) as effect:unknown and rejects mismatched SalesInvoice totalAmount", async () => {
+    // 1. Mutating client conflict & timeout statuses MUST report effect:"unknown"
+    const conflictCases: readonly {
+      readonly status: number;
+      readonly errorCode?: string;
+      readonly retryable: boolean;
+    }[] = [
+      { status: 400, errorCode: "TransactionAlreadyExists", retryable: false },
+      { status: 400, errorCode: "TransactionAlreadyCancelled", retryable: false },
+      { status: 400, errorCode: "EntityAlreadyExists", retryable: false },
+      { status: 400, errorCode: "TransactionLocked", retryable: false },
+      { status: 409, errorCode: "Conflict", retryable: false },
+      { status: 408, retryable: true },
+    ];
+    for (const tc of conflictCases) {
+      const conflictClient = createAvalaraHttpClient({
+        environment: "sandbox",
+        credentials: buildFixtureCredentials,
+        fetchImpl: async () =>
+          new Response(
+            tc.errorCode ? JSON.stringify({ error: { code: tc.errorCode } }) : "timeout",
+            { status: tc.status, headers: { "content-type": "application/json" } },
+          ),
+      });
+      await expect(
+        conflictClient.voidTransaction(FIXTURE_COMPANY_CODE, "ol-tx-conflict", { code: "DocVoided" }),
+      ).rejects.toMatchObject({
+        effect: "unknown",
+        retryable: tc.retryable,
+      });
+    }
+
+    // 2. Commit & intent:"recover" readback MUST reject a SalesInvoice with mismatched totalAmount even when totalTax matches (0)
+    const mismatchedCode = buildAvalaraCommitCode(FIXTURE_COMPANY_CODE, FIXTURE_SCOPE, "tx-net-mismatch");
+    const mismatchClient = createAvalaraHttpClient({
+      environment: "sandbox",
+      credentials: buildFixtureCredentials,
+      fetchImpl: async (urlString, init) => {
+        const method = init?.method ?? "GET";
+        if (method === "GET") {
+          return new Response(
+            JSON.stringify(
+              buildAvalaraResponse({
+                code: mismatchedCode,
+                status: "Committed",
+                lines: [{ lineNumber: "ol-m-line-1", lineAmount: 9.99, taxableAmount: 9.99, tax: 0, details: [] }],
+              }),
+            ),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        const payload = JSON.parse(init!.body as string) as AvalaraCreateTransactionPayload;
+        if (payload.type === "SalesInvoice") {
+          return new Response(
+            JSON.stringify(
+              buildAvalaraResponse({
+                code: payload.code!,
+                status: "Committed",
+                lines: [{ lineNumber: "ol-m-line-1", lineAmount: 9.99, taxableAmount: 9.99, tax: 0, details: [] }],
+              }),
+            ),
+            { status: 201, headers: { "content-type": "application/json" } },
+          );
+        }
+        expect(new URL(urlString).pathname).toBe("/api/v2/transactions/create");
+        return new Response(
+          JSON.stringify(
+            buildAvalaraResponse({
+              code: "SO-NET-CHECK",
+              lines: payload.lines.map((l) => ({
+                lineNumber: l.number,
+                lineAmount: l.amount,
+                taxableAmount: l.amount,
+                tax: 0,
+                details: [
+                  {
+                    jurisType: "STA",
+                    jurisCode: "08",
+                    country: "US",
+                    region: "CO",
+                    taxType: "Sales",
+                    rate: 0,
+                    taxableAmount: l.amount,
+                    tax: 0,
+                  },
+                ],
+              })),
+            }),
+          ),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    });
+    const mismatchPort = createAvalaraTaxAdapter({
+      client: mismatchClient,
+      companyCode: FIXTURE_COMPANY_CODE,
+      scope: FIXTURE_SCOPE,
+      marketPack: buildFixtureMarketPack(),
+      clock: () => FIXTURE_NOW_ISO,
+    });
+    const quote = await mismatchPort.quote(makeTaxQuoteRequest("req-net-mismatch", buildBaseQuoteInput()));
+    expect(quote.kind).toBe("final");
+    if (quote.kind !== "final") return;
+
+    const applyMismatch = await mismatchPort.commit({
+      calculationRef: {
+        scope: FIXTURE_SCOPE,
+        ref: quote.evidence.calculationRef,
+        evidenceDigest: quote.evidenceDigest,
+      },
+      transactionRef: "tx-net-mismatch",
+      capturedAt: FIXTURE_NOW_ISO,
+      postedAt: FIXTURE_NOW_ISO,
+      captureEvidenceRef: "cap-net-mismatch",
+      intent: "apply",
+    });
+    expect(applyMismatch).toEqual({
+      kind: "unavailable",
+      code: "tax_adapter_unavailable",
+      effect: "unknown",
+    });
+
+    const recoverMismatch = await mismatchPort.commit({
+      calculationRef: {
+        scope: FIXTURE_SCOPE,
+        ref: quote.evidence.calculationRef,
+        evidenceDigest: quote.evidenceDigest,
+      },
+      transactionRef: "tx-net-mismatch",
+      capturedAt: FIXTURE_NOW_ISO,
+      postedAt: FIXTURE_NOW_ISO,
+      captureEvidenceRef: "cap-net-mismatch",
+      intent: "recover",
+    });
+    expect(recoverMismatch).toEqual({
+      kind: "unavailable",
+      code: "tax_adapter_unavailable",
+      effect: "unknown",
+    });
+  });
 });

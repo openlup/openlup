@@ -1481,9 +1481,11 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
         }
       }
 
-      // Verify committed Avalara SalesInvoice response integrity.
+      // Verify committed Avalara SalesInvoice response integrity (including both net subtotal and tax/fees).
+      let committedNetMinor: number;
       let committedTaxMinor: number;
       try {
+        committedNetMinor = majorToMinorAmount(response.totalAmount, exponent);
         committedTaxMinor = majorToMinorAmount(response.totalTax, exponent);
       } catch {
         return {
@@ -1496,6 +1498,7 @@ export function createAvalaraTaxAdapter(options: CreateAvalaraTaxAdapterOptions)
         response.code !== invoiceCode ||
         response.status !== "Committed" ||
         response.currencyCode !== stored.request.input.currency ||
+        committedNetMinor !== stored.result.money.netTotal ||
         committedTaxMinor !== expectedTaxAndFeesMinor
       ) {
         return {

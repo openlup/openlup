@@ -466,7 +466,7 @@ export function createAvalaraHttpClient(options: AvalaraHttpClientOptions): Aval
             effect: "none",
           });
         }
-        if (status === 429 || status >= 500) {
+        if (status === 408 || status === 429 || status >= 500) {
           await response.body?.cancel().catch(() => undefined);
           throw new AvalaraTransportError({
             code: `avalara_http_${status}`,
@@ -483,13 +483,15 @@ export function createAvalaraHttpClient(options: AvalaraHttpClientOptions): Aval
           await response.body?.cancel().catch(() => undefined);
         }
         const errCode = extractAvalaraErrorCode(errBody, status);
-        // Duplicate-code errors on mutating calls indicate an existing provider transaction -> unknown effect.
-        const isDuplicateConflict = params.mutating && /Duplicate|DocStatus/iu.test(errCode);
+        // Existing/locked/already-cancelled/409 conflicts on mutating calls mean the provider state may already be applied.
+        const isExistingStateConflict =
+          params.mutating &&
+          (status === 409 || /AlreadyExists|AlreadyCancelled|Duplicate|DocStatus|Locked/iu.test(errCode));
         throw new AvalaraTransportError({
           code: errCode,
           status,
           retryable: false,
-          effect: isDuplicateConflict ? "unknown" : "none",
+          effect: isExistingStateConflict ? "unknown" : "none",
         });
       }
 
