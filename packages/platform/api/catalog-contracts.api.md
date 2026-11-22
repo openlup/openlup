@@ -905,6 +905,8 @@ export interface CatalogDefinitionInstallReceipt {
     readonly packVersion: number;
     readonly manifestDigest: string;
     readonly installedAt: string;
+    /** Original canonical pack manifest, retained for installs with full profile declarations. */
+    readonly canonicalManifest?: string;
     readonly subscriptionProfileDefinitions?: readonly (CatalogSubscriptionProfileV1 & {
         readonly profileDigest: string;
     })[];

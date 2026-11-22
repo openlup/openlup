@@ -989,13 +989,14 @@ The [subscription profile forward](../../db/platform/migrations/20261124210000_s
 adds canonical declarations and digests to native definition-install receipts.
 Installation and connected restore share the existing definition lock.
 Profile-bearing inserts require `READ COMMITTED` so contenders observe the
-first committed declaration. The receipt trigger verifies shape, canonical
-digest and identity, and refuses updates and deletes of profile-bearing
-receipts. A legacy receipt cannot gain profile metadata through an update.
+first committed declaration. Each profile-bearing receipt retains the canonical
+pack manifest. The receipt trigger checks its digest and matching profile list,
+verifies each profile identity, and refuses updates and deletes of profile-bearing receipts. A legacy receipt cannot gain profile metadata through an update.
 
 The exact-key lookup uses the existing migration owner. Its result contains
-the profile and policy identities. Connected restore validates receipts during
-insert and rolls back the transaction if retained evidence fails validation.
+the profile and policy identities. Connected restore verifies the retained
+manifest binding before writing and runs the insert guards in an explicit
+`READ COMMITTED` transaction.
 There is no data backfill. See [Install subscription profiles](../../packages/platform/README.md#install-subscription-profiles).
 
 ### Sealed native catalog publication history

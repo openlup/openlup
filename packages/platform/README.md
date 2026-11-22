@@ -1332,8 +1332,10 @@ available.
 `readInstalledCatalogSubscriptionProfile` reads one exact key and version
 with the migration-owner executor. At a day-based boundary, supply that identity,
 the declaration and the bound from `observeCatalogSubscriptionCadenceBound`
-to `selectCatalogProfileCadence`. The selector returns a whole-day projection
-when the choice is offered by every supplied owner. The selector is available
+to `selectCatalogProfileCadence`. The observer recognizes complete installed
+preview definitions and the validated quote check, and returns no bound for an
+unknown combination. The selector returns a whole-day projection when the choice
+is offered by every supplied owner. The selector is available
 for explicit composition in `@openlup/platform/subscriptions`.
 
 ### Read governed offer memberships

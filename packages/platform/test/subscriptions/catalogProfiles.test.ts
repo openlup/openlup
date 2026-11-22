@@ -1,9 +1,9 @@
 import { validateCatalogSubscriptionProfile, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import { parseCadenceChoiceV1, type CadenceChoiceV1 } from "@openlup/core/subscription";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { catalogPackManifest } from "../../src/catalog/catalogPackManifest.js";
 import { catalogSubscriptionProfileIdentity } from "../../src/catalog/installedSubscriptionProfiles.js";
-import { observeCatalogSubscriptionCadenceBound, selectCatalogProfileCadence, type CatalogProfileCadenceInput } from "../../src/subscriptions/index.js";
+import { createPostgresSubscriptionCommandStore, observeCatalogSubscriptionCadenceBound, selectCatalogProfileCadence, type CatalogProfileCadenceInput } from "../../src/subscriptions/index.js";
 
 const fixed = (days: number) => ({ schemaVersion: 1, kind: "fixed_days", days } as const);
 const calendar = { schemaVersion: 1, kind: "calendar_months", months: 1 } as const;
@@ -21,15 +21,30 @@ const request = (choice: CadenceChoiceV1): CatalogProfileCadenceInput => ({
 });
 
 describe("SP1-D-022 profile cadence admission", () => {
-  it("refuses an explicit missing profile, a mismatched pin and prepaid", () => {
+  it("refuses an explicit missing profile and a mismatched policy pin", () => {
     const input = request(fixed(30));
     expect(selectCatalogProfileCadence({ ...input, profile: undefined })).toEqual({ code: "profile_missing" });
     expect(selectCatalogProfileCadence({ ...input, profileRef: { ...ref, version: 99 } })).toEqual({ code: "profile_missing" });
     expect(selectCatalogProfileCadence({
       ...input, profile: { declaration, installed: { ...installed, policyDigest: "b".repeat(64) } },
     })).toEqual({ code: "policy_binding_missing" });
-    expect(selectCatalogProfileCadence({ ...input, mode: "prepaid" })).toEqual({ code: "prepaid_unsupported" });
     expect(selectCatalogProfileCadence({ ...input, profileRef: undefined, profile: undefined })).toEqual({ cadenceDays: 30 });
+  });
+
+  it("keeps the native prepaid refusal for unprofiled requests and the profile-specific refusal for profiled requests", async () => {
+    const withTransaction = vi.fn(async () => { throw new Error("prepaid must refuse before a database call"); });
+    const store = createPostgresSubscriptionCommandStore({ withTransaction });
+    const input = request(fixed(30));
+    const unprofiled = { ...input, mode: "prepaid", profileRef: undefined, profile: undefined } as const;
+    const legacy = { actorId: "actor", clientId: "client", subscriptionId: "subscription",
+      idempotencyKey: "prepaid-unsupported", action: "multi_cycle_prepaid", payload: { cadenceDays: 30 },
+      now: "2099-01-01T00:00:00Z" };
+    const refusal = { status: "refused", reason: "multi_cycle_prepaid_unsupported" };
+    expect(await store.preview(legacy)).toEqual(refusal);
+    expect(await store.apply(legacy)).toEqual(refusal);
+    expect(withTransaction).not.toHaveBeenCalled();
+    expect(selectCatalogProfileCadence(unprofiled)).toEqual({ code: refusal.reason });
+    expect(selectCatalogProfileCadence({ ...input, mode: "prepaid" })).toEqual({ code: "prepaid_unsupported" });
   });
 
   it("intersects the store, SKU, offer, command and profile choices", () => {

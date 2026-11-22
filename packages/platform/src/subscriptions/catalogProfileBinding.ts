@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { canonicalCatalogSubscriptionProfileJson, validateCatalogSubscriptionProfile, type CatalogSubscriptionProfileRef,
   type CatalogSubscriptionProfileV1, type InstalledCatalogSubscriptionProfile } from "@openlup/core/catalog";
 import { parseCadenceChoiceV1, type CadenceChoiceV1 } from "@openlup/core/subscription";
+import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
 
 /** The caller supplies the offers admitted by each owning boundary.
  * @experimental
@@ -23,18 +24,22 @@ export interface CatalogProfileCadenceInput {
 export type CatalogProfileCadenceResult =
   | { readonly cadenceDays: number }
   | { readonly code: "cadence_kind_unsupported" | "cadence_not_offered" | "cadence_day_projection_mismatch"
-    | "profile_missing" | "policy_binding_missing" | "prepaid_unsupported" | "profile_cadence_bound_unavailable" };
+    | "profile_missing" | "policy_binding_missing" | "prepaid_unsupported" | "multi_cycle_prepaid_unsupported"
+    | "profile_cadence_bound_unavailable" };
 
 /** Verify a day choice before passing its projection to the owning day-based operation.
  * @experimental
  */
 export function selectCatalogProfileCadence(input: CatalogProfileCadenceInput): CatalogProfileCadenceResult {
+  const { nativeMaxFixedDays, profileRef, profile } = input;
+  if (input.mode === "prepaid" && !profileRef && !profile) {
+    return { code: NATIVE_SUBSCRIPTION_CAPABILITIES.multiCyclePrepaid.refusalCode };
+  }
   if (input.choice.kind !== "fixed_days") return { code: "cadence_kind_unsupported" };
   const choice = parseCadenceChoiceV1(input.choice);
   if (!choice || choice.kind !== "fixed_days") return { code: "cadence_not_offered" };
   const { days } = choice;
   if (input.cadenceDays !== undefined && input.cadenceDays !== days) return { code: "cadence_day_projection_mismatch" };
-  const { nativeMaxFixedDays, profileRef, profile } = input;
   if (nativeMaxFixedDays === null || !Number.isSafeInteger(nativeMaxFixedDays) || nativeMaxFixedDays < 1) {
     return { code: "profile_cadence_bound_unavailable" };
   }

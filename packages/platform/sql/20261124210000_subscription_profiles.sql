@@ -9,6 +9,31 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog,
   LIMIT 1
 $$;
 
+-- The original pack bytes and digest bind the profile list in install and restore.
+CREATE FUNCTION public.catalog_definition_install_profile_manifest_matches(
+  p_pack_id text, p_pack_version integer, p_digest text, p_receipt jsonb
+) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  canonical text := p_receipt->>'canonicalManifest';
+  manifest jsonb;
+BEGIN
+  IF NOT (p_receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']) THEN RETURN true; END IF;
+  IF jsonb_typeof(p_receipt->'canonicalManifest') IS DISTINCT FROM 'string'
+    OR jsonb_typeof(p_receipt->'subscriptionProfileDefinitions') IS DISTINCT FROM 'array'
+    OR p_receipt->>'manifestDigest' IS DISTINCT FROM p_digest
+    OR encode(sha256(convert_to(canonical, 'UTF8')), 'hex') IS DISTINCT FROM p_digest
+    OR NOT pg_input_is_valid(canonical, 'jsonb') THEN
+    RETURN false;
+  END IF;
+  manifest := canonical::jsonb;
+  RETURN coalesce(manifest->'id' = to_jsonb(p_pack_id)
+    AND manifest->'version' = to_jsonb(p_pack_version)
+    AND p_receipt->'packId' = manifest->'id' AND p_receipt->'packVersion' = manifest->'version'
+    AND p_receipt->'types' = manifest->'types'
+    AND p_receipt->'subscriptionProfileDefinitions' = manifest->'subscriptionProfileDefinitions', false);
+END;
+$$;
+
 CREATE FUNCTION public.catalog_definition_install_profile_immutable()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
@@ -23,13 +48,14 @@ DECLARE
   digest_pattern CONSTANT text := '^[0-9a-f]{64}$';
 BEGIN
   IF TG_OP <> 'INSERT' THEN
-    IF OLD.receipt ? 'subscriptionProfileDefinitions' OR profiles IS NOT NULL THEN
+    IF OLD.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']
+      OR NEW.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest'] THEN
       RAISE EXCEPTION 'catalog_definition_install_profile_immutable' USING ERRCODE = '55000';
     END IF;
     IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
     RETURN NEW;
   END IF;
-  IF profiles IS NULL THEN RETURN NEW; END IF;
+  IF profiles IS NULL AND NOT (NEW.receipt ? 'canonicalManifest') THEN RETURN NEW; END IF;
 
   -- Every profile receipt writer, including connected restore, shares the
   -- install lock and observes its predecessor in a fresh statement snapshot.
@@ -37,11 +63,8 @@ BEGIN
     RAISE EXCEPTION 'catalog_profile_install_requires_read_committed' USING ERRCODE = '25000';
   END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('openlup:catalog-definitions', 0));
-  IF jsonb_typeof(profiles) IS DISTINCT FROM 'array'
-    OR NEW.receipt->>'packId' IS DISTINCT FROM NEW.pack_id
-    OR NEW.receipt->'packVersion' IS DISTINCT FROM to_jsonb(NEW.pack_version)
-    OR NEW.receipt->>'manifestDigest' IS DISTINCT FROM NEW.manifest_digest THEN
-    RAISE EXCEPTION 'invalid_catalog_pack' USING ERRCODE = '22023';
+  IF NOT public.catalog_definition_install_profile_manifest_matches(NEW.pack_id, NEW.pack_version, NEW.manifest_digest, NEW.receipt) THEN
+    RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023';
   END IF;
   IF jsonb_array_length(profiles) NOT BETWEEN 1 AND 100
     OR EXISTS (SELECT 1 FROM jsonb_array_elements(profiles) p GROUP BY p->'key', p->'version' HAVING count(*) > 1) THEN
@@ -101,6 +124,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.catalog_subscription_profile_identity(text,integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.catalog_definition_install_profile_immutable() FROM PUBLIC;
 CREATE TRIGGER catalog_definition_install_profile_immutable
   BEFORE INSERT OR UPDATE OR DELETE ON public.catalog_definition_installs
@@ -149,7 +173,7 @@ BEGIN
     -- The receipt guard validates the declarations before any type or tax-class writes.
     v_receipt := jsonb_build_object('packId', p_pack_id, 'packVersion', p_pack_version,
       'manifestDigest', v_digest, 'installedAt', clock_timestamp(), 'types', v_manifest->'types',
-      'subscriptionProfileDefinitions', v_profiles);
+      'canonicalManifest', p_manifest->>'manifest', 'subscriptionProfileDefinitions', v_profiles);
     INSERT INTO public.catalog_definition_installs(pack_id, pack_version, manifest_digest, receipt)
       VALUES (p_pack_id, p_pack_version, v_digest, v_receipt);
   END IF;

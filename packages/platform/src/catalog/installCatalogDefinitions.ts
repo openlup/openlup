@@ -31,6 +31,7 @@ export async function installCatalogDefinitions(installExecutor: PgQueryExecutor
   );
   const receipt = rows[0]?.receipt as CatalogDefinitionInstallReceipt | undefined;
   if (rows.length !== 1 || receipt?.manifestDigest !== manifest.digest
+    || receipt.canonicalManifest !== (manifest.subscriptionProfileDefinitions ? payload.manifest : undefined)
     || canonicalCatalogDraftJson(receipt.subscriptionProfileDefinitions ?? null)
     !== canonicalCatalogDraftJson(manifest.subscriptionProfileDefinitions ?? null)) throw new Error("invalid_catalog_install_receipt");
   return receipt;

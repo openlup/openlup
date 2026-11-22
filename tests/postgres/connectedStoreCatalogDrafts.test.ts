@@ -1,8 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { canonicalCatalogSubscriptionProfileJson } from "@openlup/core/catalog";
+import type { PoolClient } from "pg";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { canonicalCatalogDraftJson, installCatalogDefinitions, readInstalledCatalogSubscriptionProfile, withCatalogPublicationRules, type CatalogDraftPublicationStoredApplyResult as CatalogDraftApplyResult,
   type CatalogDraftPublicationStoredCommand as CatalogDraftCommand, type CatalogDraftPayloadV2, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog";
+import { observeCatalogSubscriptionCadenceBound } from "@openlup/platform/subscriptions";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeyRpc, journeySelection, storeJourneyResources,
   type JourneyInstallation } from "../helpers/storeJourney.js";
@@ -121,6 +124,7 @@ beforeAll(async () => {
     VALUES($1,17,'example:stale',1,0,'text','stale-projection-must-not-travel')`, [liveId]);
   target = await resources.installation("catalog-draft-target");
   const pristine = await captureStoreJourney(target.owner, "pristine:catalog-drafts");
+  expect(await observeCatalogSubscriptionCadenceBound(target.runtime)).toBe(3660);
   before = await journeyCensus(source.owner);
   expect(before.catalog_attribute_projection).toHaveLength(1);
   // The whole target census must match retained authority with an empty projection.
@@ -143,20 +147,61 @@ beforeAll(async () => {
   expect(before.catalog_draft_revisions).toHaveLength(12);
   expect(before.catalog_draft_command_receipts).toHaveLength(12);
   expect(before.catalog_draft_sku_reservations).toHaveLength(4);
-  const corrupted = structuredClone(packet);
-  const installs = corrupted.owned.find(entry => entry.table === "catalog_definition_installs")!;
-  installs.rows = installs.rows.map(row => {
-    const value = JSON.parse(row);
-    if (!value.receipt.subscriptionProfileDefinitions) return row;
-    value.receipt.subscriptionProfileDefinitions[0].policyDigest = "b".repeat(64);
-    return JSON.stringify(value);
-  });
-  const { sha256: _old, ...corruptedBody } = corrupted;
-  corrupted.sha256 = createHash("sha256").update(JSON.stringify(corruptedBody)).digest("hex");
+  // The owner normally inherits REPEATABLE READ on this target.
+  await target.owner.query("ALTER DATABASE postgres SET default_transaction_isolation TO 'repeatable read'");
+  await target.owner.query("SET default_transaction_isolation TO 'repeatable read'");
+  expect((await target.owner.query("SHOW transaction_isolation")).rows).toEqual([{ transaction_isolation: "repeatable read" }]);
   const pristineCensus = await journeyCensus(target.owner);
-  await expect(restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet: corrupted, freshTarget: pristine }))
-    .rejects.toMatchObject({ code: "target_conflict", cause: "definition_profile_invalid" });
-  expect(await journeyCensus(target.owner)).toEqual(pristineCensus);
+  for (const rewriteManifest of [false, true]) {
+    const corrupted = structuredClone(packet);
+    const installs = corrupted.owned.find(entry => entry.table === "catalog_definition_installs")!;
+    installs.rows = installs.rows.map(row => {
+      const value = JSON.parse(row);
+      if (!value.receipt.subscriptionProfileDefinitions) return row;
+      const changed = { ...profile, policyDigest: "b".repeat(64) };
+      value.receipt.subscriptionProfileDefinitions = [{
+        ...changed, profileDigest: createHash("sha256").update(canonicalCatalogSubscriptionProfileJson(changed)).digest("hex"),
+      }];
+      if (rewriteManifest) value.receipt.canonicalManifest = canonicalCatalogDraftJson({
+        ...JSON.parse(value.receipt.canonicalManifest),
+        subscriptionProfileDefinitions: value.receipt.subscriptionProfileDefinitions,
+      });
+      return JSON.stringify(value);
+    });
+    const { sha256: _old, ...corruptedBody } = corrupted;
+    corrupted.sha256 = createHash("sha256").update(JSON.stringify(corruptedBody)).digest("hex");
+    let statements: unknown[] = [];
+    let stopTracing = () => {};
+    const traceWrites = (client: PoolClient) => {
+      const query = vi.spyOn(client, "query");
+      stopTracing = () => {
+        statements = query.mock.calls.map(([statement]) => statement);
+        query.mockRestore();
+      };
+    };
+    target.owner.once("acquire", traceWrites);
+    try {
+      await expect(restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet: corrupted, freshTarget: pristine }))
+        .rejects.toMatchObject({ code: "target_conflict", table: "catalog_definition_installs", cause: "catalog_profile_install_manifest_mismatch" });
+    } finally {
+      target.owner.removeListener("acquire", traceWrites);
+      stopTracing();
+    }
+    expect(statements).toContainEqual(expect.stringContaining("catalog_definition_install_profile_manifest_matches"));
+    expect(statements.filter(statement => typeof statement === "string" && /^(INSERT|UPDATE|DELETE|GRANT|REVOKE|ALTER)\b/iu.test(statement.trim())))
+      .toEqual([]);
+    expect(await journeyCensus(target.owner)).toEqual(pristineCensus);
+  }
+  const reinstall = await target.owner.connect();
+  try {
+    await reinstall.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+    const { installedAt: _sourceTime, ...original } = await installCatalogDefinitions(source.owner, packs[1]);
+    const receipt = await installCatalogDefinitions(reinstall, packs[1]);
+    expect(receipt).toMatchObject(original);
+    expect(await installCatalogDefinitions(reinstall, packs[1])).toEqual(receipt);
+  } finally {
+    try { await reinstall.query("ROLLBACK"); } finally { reinstall.release(); }
+  }
   expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine }))
     .toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
   expect(packet.outsideProfileCensus.find(entry => entry.relation === "public.catalog_attribute_projection"))

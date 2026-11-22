@@ -139,6 +139,9 @@ it("SP1-D-026 refuses reserved months at the native install boundary and observe
     storeChoices: choices, skuChoices: choices, offerChoices: choices, commandChoices: choices } as const;
   expect(selectCatalogProfileCadence({ ...selection, choice: fixed(120) })).toEqual({ cadenceDays: 120 });
   expect(selectCatalogProfileCadence({ ...selection, choice: fixed(121) })).toEqual({ code: "cadence_not_offered" });
+  const { maxFixedDays: _cap, ...localWithoutCap } = profile;
+  expect(selectCatalogProfileCadence({ ...selection, choice: fixed(121), profile: { declaration: localWithoutCap, installed } }))
+    .toEqual({ code: "policy_binding_missing" });
   expect(selectCatalogProfileCadence({ ...selection, choice: calendar })).toEqual({ code: "cadence_kind_unsupported" });
   const uncapped = { ...declaration, key: profile.key, version: 2 };
   await installCatalogDefinitions(owner, pack("uncapped", uncapped));
@@ -147,4 +150,30 @@ it("SP1-D-026 refuses reserved months at the native install boundary and observe
     expect(selectCatalogProfileCadence({ ...selection, choice: fixed(days), profileRef: uncapped,
       profile: { declaration: uncapped, installed: uncappedIdentity } })).toEqual({ cadenceDays: days });
   }
+});
+
+it("refuses an installed preview with an earlier guard or a commented-out bound", async () => {
+  const connection = await owner.connect();
+  try {
+    await connection.query("BEGIN");
+    const { rows } = await connection.query<{ definition: string }>(`SELECT pg_get_functiondef(
+      'public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)'::regprocedure) AS definition`);
+    const original = rows[0].definition;
+    const guard = "  IF v_cadence_days NOT BETWEEN 1 AND 3660 OR v_expected_version < 1 THEN";
+    expect(original).toContain(guard);
+    for (const replacement of [
+      `  IF v_cadence_days > 120 THEN RAISE EXCEPTION 'subscription_edit_invalid_request'; END IF;
+${guard}`,
+      `  /*
+${guard}
+  */
+  IF v_cadence_days < 1 OR v_cadence_days > 90 OR v_expected_version < 1 THEN`,
+    ]) {
+      await connection.query(original.replace(guard, replacement));
+      expect(await observeCatalogSubscriptionCadenceBound(connection)).toBeNull();
+    }
+  } finally {
+    try { await connection.query("ROLLBACK"); } finally { connection.release(); }
+  }
+  expect(await observeCatalogSubscriptionCadenceBound(runtime)).toBe(3660);
 });

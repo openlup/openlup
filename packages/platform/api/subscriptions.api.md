@@ -140,7 +140,7 @@ export interface CatalogProfileCadenceInput {
 export type CatalogProfileCadenceResult = {
     readonly cadenceDays: number;
 } | {
-    readonly code: "cadence_kind_unsupported" | "cadence_not_offered" | "cadence_day_projection_mismatch" | "profile_missing" | "policy_binding_missing" | "prepaid_unsupported" | "profile_cadence_bound_unavailable";
+    readonly code: "cadence_kind_unsupported" | "cadence_not_offered" | "cadence_day_projection_mismatch" | "profile_missing" | "policy_binding_missing" | "prepaid_unsupported" | "multi_cycle_prepaid_unsupported" | "profile_cadence_bound_unavailable";
 };
 /** Verify a day choice before passing its projection to the owning day-based operation.
  * @experimental
@@ -880,7 +880,7 @@ export declare function nativeSubscriptionSchema(catalogue: {
 
 ```ts
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
-/** Observe the validated quote constraint and both effective native preview guards.
+/** Read the bound for an exact known native preview and quote-check installation.
  * @experimental
  */
 export declare function observeCatalogSubscriptionCadenceBound(db: SubscriptionQueryExecutor): Promise<number | null>;

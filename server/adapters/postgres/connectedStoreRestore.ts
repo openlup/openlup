@@ -326,7 +326,7 @@ export async function restoreConnectedNativeStore(input: {
   try {
     await client.query("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1,0))", [migrationLock]);
     locked = true;
-    await client.query("BEGIN");
+    await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
     await client.query("SET LOCAL TimeZone = 'UTC'");
     const facts = (await client.query<{ cluster: string; database: string; login: string; xid: string; mode: string }>(`SELECT
       ${connectedStoreClusterIdentitySql} AS cluster,
@@ -346,6 +346,16 @@ export async function restoreConnectedNativeStore(input: {
     if (ledger.rows.length !== expectedLedger.length
       || JSON.stringify(ledger.rows) !== JSON.stringify(expectedLedger.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })))) fail("schema_conflict");
     const ledgerBefore = (await client.query<{ value: string }>("SELECT pg_catalog.to_jsonb(m)::pg_catalog.text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows;
+    const { rows: unboundProfiles } = await client.query(`SELECT 1
+      FROM pg_catalog.unnest($1::text[]) AS incoming(receipt_row)
+      CROSS JOIN LATERAL pg_catalog.jsonb_populate_record(NULL::public.catalog_definition_installs, incoming.receipt_row::jsonb) AS installed
+      WHERE NOT public.catalog_definition_install_profile_manifest_matches(
+        installed.pack_id, installed.pack_version, installed.manifest_digest, installed.receipt)
+      LIMIT 1`, [source.get("catalog_definition_installs")!.rows]);
+    if (unboundProfiles.length) {
+      throw Object.assign(new PostgresTransferError("target_conflict", "catalog_definition_installs"),
+        { cause: "catalog_profile_install_manifest_mismatch" });
+    }
     // The restricted migrator has ADMIN but no inherited owner access at rest.
     // Observe its sealed graph first, then open only the already-admitted
     // acquisition owner privilege inside this transaction for census/locks.
@@ -634,7 +644,7 @@ async function insert(client: PoolClient, table: Rows, row: string): Promise<voi
   await client.query(`INSERT INTO ${name} (${columns}) SELECT ${columns} FROM pg_catalog.jsonb_populate_record(NULL::${name},$1::jsonb) ON CONFLICT DO NOTHING`, [row])
     .catch((error: unknown) => {
       if (table.table === "catalog_definition_installs" && error instanceof Error && "code" in error && error.code === "22023"
-        && ["definition_profile_invalid", "cadence_kind_unsupported", "invalid_catalog_pack"].includes(error.message)) {
+        && ["definition_profile_invalid", "cadence_kind_unsupported", "catalog_profile_install_manifest_mismatch"].includes(error.message)) {
         throw Object.assign(new PostgresTransferError("target_conflict", table.table), { cause: error.message });
       }
       throw error;

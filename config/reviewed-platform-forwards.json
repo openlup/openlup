@@ -6321,6 +6321,10 @@
             "searchPath": "pg_catalog, pg_temp"
           },
           {
+            "signature": "public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
             "signature": "public.catalog_definition_install_profile_immutable()",
             "searchPath": "pg_catalog, pg_temp"
           }
@@ -9129,12 +9133,12 @@
     },
     {
       "path": "db/platform/migrations/20261124210000_subscription_profiles.sql",
-      "sha256": "af886b6014002944ef0d4848585d8e3a0e707aefce17fa86cceff22c65814832",
+      "sha256": "f8448ea443f6d89bc8b7cf030830f3d606643f1c0b4fd9699668b031502d923d",
       "functions": [
         {
           "signature": "public.catalog_definition_install(text,integer,jsonb)",
           "beforeSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2",
-          "afterSha256": "f8fd5aab9da57d84d80919cc3d2eb0cc85cf24afac3f896a7fae2626f2912efa"
+          "afterSha256": "25bfe36c9e6c3056a7eb21f09e7ca426d2a69e12fdb2c7852965d25998724781"
         },
         {
           "signature": "public.catalog_subscription_profile_identity(text,integer)",
@@ -9142,9 +9146,14 @@
           "afterSha256": "9496a9184ff471bd97ae1fc04f4b7d87c6af66735b07afc15afb6934f70846b0"
         },
         {
+          "signature": "public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "0de1e880b2d07a302ecf147925eb93242d0fde9d051b1d1971234122dd305cff"
+        },
+        {
           "signature": "public.catalog_definition_install_profile_immutable()",
           "beforeSha256": null,
-          "afterSha256": "761d8571923548d187ae6042dc054e6c10ebecec8a685e4b852a8ce4c6a246ef"
+          "afterSha256": "7a41e643c67143f1e39436f10aad694230e1cb9191daf104efd19924bd8fcab5"
         }
       ]
     }
