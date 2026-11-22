@@ -240,7 +240,7 @@
     "tests/postgres/paymentsNativeConformance.test.ts": 12799,
     "tests/postgres/platformManifestSuffix.test.ts": 45052,
     "tests/postgres/policyCloseDigest.test.ts": 59712,
-    "tests/postgres/portabilityRows.test.ts": 8359,
+    "tests/postgres/portabilityRows.test.ts": 5370,
     "tests/postgres/postgresContainer.test.ts": 2733,
     "tests/postgres/postgresContainerCleanup.test.ts": 3760,
     "tests/postgres/promotionsNative.test.ts": 6128,
