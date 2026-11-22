@@ -883,10 +883,10 @@ export declare function createNativeSubscriptionBinding(input: {
     };
     schema: RequiredSchema;
     /** Called only after the host's actual paid-realization admission, never on stock arrival alone. */
-    realizationAdmitted(orderId: string): Promise<{
+    realizationAdmitted(orderId: string): Promise<import("./contracts/stockWait.js").StockWaitCase | {
         kind: "refused";
         code: string;
-    } | import("./contracts/stockWait.js").StockWaitCase | {
+    } | {
         readonly kind: "refused";
         readonly code: "disabled";
     } | null>;

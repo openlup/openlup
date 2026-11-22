@@ -24,6 +24,7 @@ const cases: Array<[CatalogQuantity, CatalogQuantity | string, (readonly Catalog
     ])),
   [volume(fluidOunce.code, "1", 2), ml("295735295625", 12), [fluidOunce]],
   [volume(fluidOunce.code, "1", 3), "quantity_not_exactly_representable", [fluidOunce]],
+  [count("openlup:piece", "15", 1), "quantity_fractional_count"],
   [count(halfPiece.code), "quantity_fractional_count", [halfPiece]],
   [count(halfPiece.code, "2"), "quantity_fractional_count", [halfPiece]],
   [count(wholeCase.code, "2"), piece("12"), [wholeCase]],

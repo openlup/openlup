@@ -52,7 +52,6 @@ export function createPostgresCommerceQuoteCatalogReadPort(
   return {
     async listQuoteCatalogItems(requestedSkuCodes = []) {
       const requested = [...new Set(requestedSkuCodes)].filter(code => code.length > 0 && !code.includes("\u0000"));
-      if (requested.length > 100) throw new CommerceQuoteCatalogReadError("catalog_cardinality_exceeded");
       try {
         const items: CommerceQuoteCatalogItem[] = [];
         const seenCursors = new Set<string>();

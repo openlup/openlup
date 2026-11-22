@@ -1400,8 +1400,10 @@ Detail accepts `regionCode`/`atTime`; the feed also accepts `mode`. The exported
 gross, positive-target and window filters before exact-mode selection. Component
 anchors require effective gross minQty-one entries; duplicates refuse. The feed
 emits a whole BOM only when every component has current document and primary
-unit GTIN authority, active product/SKU, positive integral weight and anchor,
-and sellability for the requested mode. Detail retains unready components.
+unit GTIN authority, an active product and SKU, a positive price anchor, and
+sellability for the requested mode. Legacy components require positive integral
+gram weight. Guarded typed components require a count or volume tuple that
+matches the sealed SKU facts. Detail retains unready components.
 With the option, list/detail `hasActiveTargetPrice` also follows the effective
 rule (gross, positive target, `one_time`/`any`, active list, current window)
 instead of the active flag alone.

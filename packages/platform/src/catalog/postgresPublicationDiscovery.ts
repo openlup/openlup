@@ -55,8 +55,8 @@ const batchWire = z.union([
   z.object({ kind: z.literal("refusal"), reason: z.literal("inconsistent_evidence"), detail: z.enum(["catalog_publication_live_drift",
     "active_price_list_ambiguous", "catalog_price_setup_settlement_context_unverified"]).optional() }).strict(),
 ]);
-// SQL alone owns the price and V1 quantity refusals.
-const installedReasons = z.array(z.string().regex(/^[a-z][a-z0-9_]{0,159}$/u).refine(reason => !["price_readiness_missing", "price_shape_invalid", "quantity_requires_v2"].includes(reason)));
+// SQL alone owns the two price reasons.
+const installedReasons = z.array(z.string().regex(/^[a-z][a-z0-9_]{0,159}$/u).refine(reason => !["price_readiness_missing", "price_shape_invalid"].includes(reason)));
 
 /** @experimental */
 export type CatalogMembershipCursor = { skuId: string; headDigest: string; offerVersion: string; mode: "one_time" | "subscription" | null };

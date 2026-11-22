@@ -3,7 +3,10 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import type { CommerceQuoteCatalogReadRefusalCode } from "@openlup/platform/pricing";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { catalogQuantityCharacterization, quantityReaderFixture2099 } from "./catalogPublicationFixture.js";
+import { attestQuantityReaderFixture2099, catalogQuantityCharacterization, createCharacterizationQuote, quantityReaderFixture2099 } from "./catalogPublicationFixture.js";
+import type { Pool } from "pg";
+import { composePurchaseCapabilities } from "../../examples/neutral-store/host/purchase-composition.js";
+import { composeSizedPaidEmailNote } from "../../examples/neutral-store/host/editor-mail.js";
 import { sizedHostPorts } from "../../examples/neutral-store/host/editor-ports.js";
 import { config, createQuoteCatalogFixture, digest, documentFor, seed } from "./commerceQuoteCatalogFixture.js";
 
@@ -270,14 +273,25 @@ it.each([
 
 it("characterizes unmarked mass and incidental typed tuples through the qualified runtime", async () => {
   const sku = seed.skus[0]!;
-  const [baseline] = (await make().listQuoteCatalogItems()).filter(item => item.skuCode === sku.sku);
+  const reader = make();
+  const quotePort = createCharacterizationQuote(fixture.pricing, reader);
+  const request = { mode: "one_time" as const, promoCodes: [], lines: [{ sku: sku.sku, quantity: 2 }] };
+  // Pinned main 2e8a49af9 served stored grams and priced two sale units at 250.
+  const expected = { skuId: sku.id, skuCode: sku.sku, variantId: sku.id, productSlug: seed.products[0]!.slug,
+    isPrimarySku: true, isAddon: false, sellability: { oneTime: true, subscription: false },
+    documentRevision: { id: expect.any(String), digest: digest(documentFor(0)) } };
   try {
     for (const { grams, tuple, quote } of catalogQuantityCharacterization) {
       await fixture.owner.query(`UPDATE public.catalog_skus SET net_weight_g=$2,net_content_dimension=$3,
         net_content_unit=$4,net_content_unscaled=$5,net_content_scale=$6 WHERE id=$1`,
       [sku.id, grams, tuple?.[0] ?? null, tuple?.[1] ?? null, tuple?.[2] ?? null, tuple ? 0 : null]);
-      if (quote) expect((await make().listQuoteCatalogItems()).find(item => item.skuCode === sku.sku)).toEqual({ ...baseline, netWeightG: grams });
-      else await refusal(make(), "catalog_authority_unavailable");
+      if (quote) {
+        expect((await reader.listQuoteCatalogItems([sku.sku])).find(item => item.skuCode === sku.sku)).toEqual({ ...expected, netWeightG: grams });
+        await expect(quotePort.createServerAuthoritativeQuote(request)).resolves.toMatchObject({ quote: {
+          totalGross: { amountMinor: 250, currency: "XXX" }, context: { grams: [grams] },
+          lines: [{ sku: sku.sku, productSlug: seed.products[0]!.slug, quantity: 2, unitPriceGross: { amountMinor: 125, currency: "XXX" } }],
+        } });
+      } else await expect(quotePort.createServerAuthoritativeQuote(request)).rejects.toMatchObject({ code: "catalog_authority_unavailable" });
     }
   } finally {
     await fixture.owner.query(`UPDATE public.catalog_skus
@@ -285,19 +299,56 @@ it("characterizes unmarked mass and incidental typed tuples through the qualifie
   }
 });
 
+it("quotes 101 requested gram SKUs through the released server path", async () => {
+  const lines = seed.skus.slice(0, 500).filter(sku => sku.sellable_standalone).slice(0, 101).map(sku => ({ sku: sku.sku, quantity: 1 }));
+  const quote = createCharacterizationQuote(fixture.pricing, make());
+  const response = await quote.createServerAuthoritativeQuote({ mode: "one_time", lines, promoCodes: [] });
+  expect(response.quote.lines.map(line => line.sku)).toEqual(lines.map(line => line.sku));
+  expect(response.quote.totalGross).toEqual({ amountMinor: 12_625, currency: "XXX" });
+});
+
 it("skips typed ranges before V1 bounds and refuses a typed cart line through the real quote port", async () => {
   const survivor = seed.skus.slice(0, 500).filter(sku => sku.sellable_standalone).sort((a, b) => b.id.localeCompare(a.id))[0]!;
   const typed = seed.skus.slice(0, 500).filter(sku => sku.id !== survivor.id && sku.sellable_standalone)[0]!;
   const lead = seed.skus.slice(0, 500).filter(sku => sku.id < survivor.id).length;
   expect(lead).toBeGreaterThan(100);
-  // 20990101000000_catalog_quantity_reader_fixture. Native issuance and its guard join in PR 2.
+  // Synthetic 2099 guard attestation. Leave the production guard on while reading.
+  let originalGuard: string | undefined;
   await fixture.owner.query("ALTER TABLE public.catalog_skus DISABLE TRIGGER catalog_skus_publication_facts_admitted");
   try {
     await fixture.owner.query(`UPDATE public.catalog_skus SET publication_facts='{"quantityVersion":2}' WHERE id<>$1`, [survivor.id]);
-    expect(await make().listQuoteCatalogItems()).toHaveLength(500);
     await fixture.owner.query(quantityReaderFixture2099);
+    await fixture.owner.query("ALTER TABLE public.catalog_skus ENABLE TRIGGER catalog_skus_publication_facts_admitted");
+    await expect(make().listQuoteCatalogItems([typed.sku])).resolves.toHaveLength(500);
+    const before = fixture.catalog.createPostgresCatalogSkuEnvelopeReadPort(fixture.executor);
+    await expect(before.getSkuEnvelopeById(typed.id)).resolves.toMatchObject({ sku: { code: typed.sku } });
+    const sizedConfig = { ...config, subscriptionEditing: { ...config.subscriptionEditing,
+      catalogue: config.subscriptionEditing.catalogue.filter(item => item.sku === typed.sku) } };
+    const sized = sizedHostPorts(sizedConfig, () => "2099-01-01T12:00:00Z", fixture.executor);
+    const readSized = () => sized.readCatalog(fixture.executor, { subscriptionId: typed.id, clientId: typed.id,
+      binding: "sized.v1", templateVersion: 1, cadenceDays: 28, compositionConstraint: null, nextCycleAt: null,
+      paidCycleCount: 0, marker: null, lines: [], graduationLines: [] });
+    const revisions = (await fixture.owner.query("SELECT id, revision_no FROM public.catalog_product_document_revisions WHERE product_id=$1 ORDER BY revision_no", [typed.product_id])).rows;
+    await fixture.owner.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1", [typed.product_id, revisions[0]!.id]);
+    try { await expect(readSized()).resolves.toMatchObject([{ sku: typed.sku }]); }
+    finally { await fixture.owner.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1", [typed.product_id, revisions[1]!.id]); }
+
+    const note = composeSizedPaidEmailNote({ async query(sql, values) {
+      if (sql.includes("cycle_snapshot")) return { rows: [{ subscription_id: typed.id, cycle_id: typed.id, binding: "sized.v1",
+        cycle_snapshot: { subscriptionId: typed.id, cycle: { status: "correlated", logicalCycleNumber: 2 },
+          templateSnapshot: { cadenceDays: 28 }, orderSnapshot: { lines: [{ lineOrdinal: 1, sku: typed.sku, quantity: 1 }] } } }] };
+      if (sql.includes("commerce_order_items")) return { rows: [{ sku_id: typed.id, quantity: 1, line_ordinal: 1 }] };
+      return fixture.executor.query(sql, values);
+    } }, config);
+    const readMail = () => note(typed.id, config.market.defaultLocale, new AbortController().signal);
+    await expect(readMail()).resolves.toContain(" g");
+    await fixture.owner.query("ALTER TABLE public.catalog_skus DISABLE TRIGGER catalog_skus_publication_facts_admitted");
     await fixture.owner.query("UPDATE public.catalog_products SET primary_sku_id=NULL WHERE id=$1", [typed.product_id]);
     await fixture.owner.query("UPDATE public.catalog_skus SET product_id=$2 WHERE id=$1", [typed.id, survivor.product_id]);
+    originalGuard = await attestQuantityReaderFixture2099(fixture.owner);
+    // A stamped function with its trigger disabled must also leave V1 alone.
+    await expect(before.getSkuEnvelopeById(typed.id)).resolves.toMatchObject({ sku: { code: typed.sku } });
+    await fixture.owner.query("ALTER TABLE public.catalog_skus ENABLE TRIGGER catalog_skus_publication_facts_admitted");
     const envelopes = fixture.catalog.createPostgresCatalogSkuEnvelopeReadPort(fixture.executor);
     expect.soft(await envelopes.listSkuEnvelopes({ cursor: null, limit: 1 })).toMatchObject({ items: [{ sku: { code: survivor.sku } }], nextCursor: null });
     expect.soft(await envelopes.listActiveSkuEnvelopes({ cursor: null, limit: 1, skuCodes: [typed.sku, survivor.sku] }))
@@ -306,32 +357,38 @@ it("skips typed ranges before V1 bounds and refuses a typed cart line through th
     await expect.soft(envelopes.getSkuEnvelope({ kind: "sku_code", skuCode: typed.sku })).rejects.toMatchObject({ code: "quantity_requires_v2", skuCode: typed.sku });
     const read = make(fixture.executor, 1);
     await expect.soft(read.listQuoteCatalogItems()).resolves.toMatchObject([{ skuCode: survivor.sku }]);
-    const tax = { included: true as const, country: "ZZ", category: "standard", vatRateBps: 0, legalBasis: "Fixture" };
-    const quote = fixture.pricing.createDbBackedCommerceQuotePort({
-      quoteCatalogReadPort: read, isStrictD1Quote: false, taxProfile: tax, supportedTaxProfiles: [tax], currency: "XXX", regionCode: "ZZ",
-      pricingResolverPort: { resolvePrice: async ({ variantId, mode }) => ({ variantId, mode, priceEntryId: "fixture-price",
-        priceListId: "fixture-list", amountKind: "gross", unitPriceMinor: 125, matchedMinQty: 1, resolvedAt: "2099-01-01T12:00:00Z" }) },
-      hasPromotionCodePort: false, lineContext: () => ({}), quoteContext: request => () => ({ mode: request.mode, promoCodes: request.promoCodes }),
-      resolveAutomaticQuotePromotions: async () => ({ discounts: [], codeRejections: [] }),
-      applyPromotionCodesV2: async input => ({ discounts: input.discounts, codeRejections: [], codeRejectionDetails: [] }),
-    });
+    const quote = createCharacterizationQuote(fixture.pricing, read);
     const request = { mode: "one_time" as const, promoCodes: [], lines: [{ sku: survivor.sku, quantity: 2 }] };
     await expect.soft(quote.createServerAuthoritativeQuote(request)).resolves.toMatchObject({ quote: { totalGross: { amountMinor: 250 } } });
     const withSku = (sku: string) => ({ ...request, lines: [...request.lines, { sku, quantity: 1 }] });
     await expect.soft(quote.createServerAuthoritativeQuote(withSku(typed.sku))).rejects.toMatchObject({ code: "quantity_requires_v2", skuCode: typed.sku });
     await expect.soft(quote.createServerAuthoritativeQuote(withSku("missing"))).rejects.toMatchObject({ code: "UNKNOWN_SKU" });
-    const sizedConfig = { ...config, subscriptionEditing: { ...config.subscriptionEditing,
-      catalogue: config.subscriptionEditing.catalogue.filter(item => item.sku === typed.sku) } };
-    const sized = sizedHostPorts(sizedConfig, () => "2099-01-01T12:00:00Z", fixture.executor);
-    await expect.soft(sized.readCatalog(fixture.executor, { subscriptionId: typed.id, clientId: typed.id,
-      binding: "sized.v1", templateVersion: 1, cadenceDays: 28, compositionConstraint: null, nextCycleAt: null,
-      paidCycleCount: 0, marker: null, lines: [], graduationLines: [] })).resolves.toEqual([]);
+    const actions = composePurchaseCapabilities(fixture.executor as unknown as Pool, {} as never, undefined, {} as never);
+    const context = { config, actor: { customerRef: null, operatorRef: null }, commandKey: "typed-cart" };
+    const input = { configuration: config.id, country: config.market.country, termsAccepted: true, termsRevision: config.legal.revision,
+      locale: config.market.defaultLocale, email: "buyer@example.test", firstName: "Example", lastName: "Buyer",
+      phone: "00000", line1: "1 Example Lane", city: "Example", postalCode: "00000",
+      cart: { schemaVersion: 1, configuration: config.id, mode: "one_time", cadenceDays: null, lines: [{ sku: typed.sku, quantity: config.offer.minUnits }] } };
+    for (const action of ["offer.validate", "checkout.create"] as const) {
+      await expect(actions[action]!(input, context)).resolves.toEqual({ ok: false, code: "quantity_requires_v2", skuCode: typed.sku });
+    }
+    await fixture.owner.query("UPDATE public.catalog_skus SET sellable_standalone=false, sellable_in_subscription=false WHERE id=$1", [typed.id]);
+    await expect(quote.createServerAuthoritativeQuote(withSku(typed.sku))).rejects.toMatchObject({ code: "quantity_requires_v2", skuCode: typed.sku });
+    await fixture.owner.query("UPDATE public.catalog_skus SET status='archived' WHERE id=$1", [typed.id]);
+    await expect(quote.createServerAuthoritativeQuote(withSku(typed.sku))).rejects.toMatchObject({ code: "quantity_requires_v2", skuCode: typed.sku });
+    await expect(envelopes.listActiveSkuEnvelopes({ cursor: null, limit: 1, skuCodes: [typed.sku] }))
+      .resolves.toMatchObject({ items: [], quantityRefusals: [{ code: "quantity_requires_v2", skuCode: typed.sku }] });
+    await expect(readSized()).resolves.toEqual([]);
+    await expect(readMail()).resolves.toBeNull();
     const earlier = seed.skus.find(sku => sku.id < survivor.id && sku.id !== typed.id && sku.id !== extra.id)!;
     await fixture.owner.query("UPDATE public.catalog_skus SET publication_facts=NULL WHERE id=$1", [earlier.id]);
     expect.soft(await envelopes.listSkuEnvelopes({ cursor: null, limit: 1 })).toMatchObject({ items: [{ sku: { id: earlier.id } }], nextCursor: earlier.id });
     expect.soft(await envelopes.listSkuEnvelopes({ cursor: earlier.id, limit: 1 })).toMatchObject({ items: [{ sku: { id: survivor.id } }], nextCursor: null });
   } finally {
-    await fixture.owner.query("UPDATE public.catalog_skus SET product_id=$2 WHERE id=$1", [typed.id, typed.product_id]);
+    await fixture.owner.query("ALTER TABLE public.catalog_skus DISABLE TRIGGER catalog_skus_publication_facts_admitted");
+    if (originalGuard) await fixture.owner.query(originalGuard);
+    await fixture.owner.query("UPDATE public.catalog_skus SET product_id=$2,status='active',sellable_standalone=$3,sellable_in_subscription=$4 WHERE id=$1",
+      [typed.id, typed.product_id, typed.sellable_standalone, typed.sellable_in_subscription]);
     await fixture.owner.query("UPDATE public.catalog_products SET primary_sku_id=$2 WHERE id=$1", [typed.product_id, typed.id]);
     await fixture.owner.query(`UPDATE public.catalog_skus SET publication_facts=NULL;
       ALTER TABLE public.catalog_skus ENABLE TRIGGER catalog_skus_publication_facts_admitted;

@@ -3,15 +3,16 @@ import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogDraftStoreV3,
-  createPostgresCatalogPublicationCommands, createCatalogProductTypeRegistry, withCatalogPublicationRules,
+  createPostgresCatalogPublicationCommands, createPostgresCommerceQuoteCatalogReadPort, createCatalogProductTypeRegistry, withCatalogPublicationRules,
   catalogDefinitionDigest, type CatalogPublicationCommand, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { publicationWireVectors } from "@openlup/platform/catalog/testing";
 import type { CatalogPublishedSku } from "@openlup/platform/catalog";
-import { canonicalCatalogPriceSetupCommand } from "@openlup/platform/pricing";
+import * as pricing from "@openlup/platform/pricing";
+import { createPostgresCommercePriceAuthorityReadPort } from "@openlup/platform/commerce/server/postgres";
 import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
-import { authoredPublicationDocument, hash, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
+import { authoredPublicationDocument, createCharacterizationQuote, hash, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -460,7 +461,7 @@ it("asks the original administrator to replay a completed child price command", 
     VALUES($1,'Replay list','ZZ','XXX','active',statement_timestamp()-interval '1 hour')`, [priceListId]);
   const child = { schemaVersion: 1, commandKey: randomUUID(), priceListId, variantId: data.skuId,
     mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1200, expected: { entryId: null, unitPriceMinor: null } } as const;
-  const text = canonicalCatalogPriceSetupCommand(child);
+  const text = pricing.canonicalCatalogPriceSetupCommand(child);
   const completed = await transaction(pool, async db => {
     await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: otherActor, role: "authenticated" })]);
     return (await db.query("SELECT public.catalog_price_setup_apply($1,$2) AS result", [text, hash(text)])).rows[0]?.result;
@@ -684,6 +685,28 @@ describe("publication activation prices", () => {
     expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
   });
 
+  it("quotes a published requested gram SKU with independent gross at the pinned V1 amount", async () => {
+    const { api, who, command, code, skuId, slug } = await approvedActivation(82, false);
+    await seedBasePrice(skuId);
+    expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
+    expect((await pool.query("SELECT net_weight_g, gross_mass_unscaled::text AS gross FROM public.catalog_skus WHERE id=$1", [skuId])).rows)
+      .toEqual([{ net_weight_g: 100, gross: "110" }]);
+    // Scope the fixture to its own product without changing the V1 query or its requested-code lookup.
+    const db: PgQueryExecutor = { query(sql, values) {
+      if (!sql.includes("sku.sku = ANY($3::text[])")) return pool.query(sql, values);
+      return pool.query(sql, [values?.[0], values?.[1], [code], ...(values ?? []).slice(3)]);
+    } };
+    const catalog = createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: async (payload, envelope) => {
+      expect(payload).toEqual(authoredPublicationDocument(slug));
+      expect(envelope.documentRevision.digest).toBe(hash(canonicalCatalogDraftJson(payload)));
+    } });
+    const quote = createCharacterizationQuote(pricing, catalog, pricing.createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(db)));
+    const result = await quote.createServerAuthoritativeQuote({ mode: "one_time", promoCodes: [], lines: [{ sku: code, quantity: 2 }] });
+    // Main's immutable grams, gross parcel mass and price are independent facts.
+    expect(result.quote).toMatchObject({ totalGross: { amountMinor: 2000, currency: "XXX" }, context: { grams: [100] },
+      lines: [{ sku: code, productSlug: slug, quantity: 2, unitPriceGross: { amountMinor: 1000, currency: "XXX" } }] });
+  });
+
   it("holds the reused LC3 context after readiness and through issuance", async () => {
     const { command, skuId } = await approvedActivation(19, false);
     const entryId = await seedBasePrice(skuId);
@@ -697,7 +720,7 @@ describe("publication activation prices", () => {
       return result;
     });
     const pending = publisher.execute(command, (await publisher.authorize(actor))!);
-    const text = canonicalCatalogPriceSetupCommand({ schemaVersion: 1, commandKey: randomUUID(), variantId: skuId,
+    const text = pricing.canonicalCatalogPriceSetupCommand({ schemaVersion: 1, commandKey: randomUUID(), variantId: skuId,
       priceListId: listId, mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1,
       expected: { entryId, unitPriceMinor: 1000 } });
     const price = () => transaction(pool, async db => {
@@ -919,7 +942,7 @@ publicationTest("commits deferred publication checks through the restricted logi
       .toEqual([{ mode: "one_time", min_qty: 1, amount_kind: "gross", unit_price_minor: 1733 }]);
     const priceBefore = (await pool.query("SELECT id,active,unit_price_minor FROM public.price_entries WHERE variant_id=$1", [data.skuId])).rows;
     const priceKey = randomUUID();
-    const replacement = canonicalCatalogPriceSetupCommand({ ...data.payload.skus[0]!.priceOperations![0]!,
+    const replacement = pricing.canonicalCatalogPriceSetupCommand({ ...data.payload.skus[0]!.priceOperations![0]!,
       commandKey: priceKey, unitPriceMinor: 1999, expected: { entryId: priceBefore[0]!.id, unitPriceMinor: 1733 } });
     await expect(transaction(publisher, async db => {
       await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor, role: "authenticated" })]);

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Pool, PoolClient } from "pg";
+import type { CommerceQuoteCatalogReadPort, CommercePriceAuthorityPort } from "@openlup/platform/pricing";
 import type { CatalogPublishedSku, CatalogPublishedProduct, CatalogSkuRevisionRef, CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
 
 export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -13,10 +14,39 @@ export const catalogQuantityCharacterization = [
   { grams: 120, tuple: ["mass", "openlup:g", 100], quote: true },
   { grams: 100, tuple: ["mass", "openlup:g", 120], quote: true },
   { grams: 100, tuple: ["volume", "openlup:ml", 50], quote: true },
+  { grams: 100, tuple: ["count", "openlup:piece", 3], quote: true },
   { grams: 0, tuple: ["volume", "openlup:ml", 50], quote: false },
   { grams: -1, tuple: null, quote: false },
 ] as const;
 export const quantityReaderFixture2099 = "ALTER TABLE public.catalog_sku_revisions ADD COLUMN net_content_storage text";
+// Only the 2099 fixture publishes the marker here. PR 2 installs the actual guard.
+export async function attestQuantityReaderFixture2099(db: Pool | PoolClient): Promise<string> {
+  const { rows: [row] } = await db.query("SELECT pg_get_functiondef('public.catalog_publication_admit()'::regprocedure) AS definition");
+  const original = String(row?.definition);
+  const guarded = original.replace("AS $function$", "AS $function$\n-- openlup:native-catalog-quantity-v2:live-guard\n");
+  if (guarded === original) throw new Error("Expected the installed publication admission body");
+  await db.query(guarded);
+  return original;
+}
+
+export function createCharacterizationQuote(
+  pricing: typeof import("@openlup/platform/pricing"),
+  quoteCatalogReadPort: CommerceQuoteCatalogReadPort,
+  commercePriceAuthorityPort?: CommercePriceAuthorityPort,
+) {
+  const tax = { included: true as const, country: "ZZ", category: "standard", vatRateBps: 0, legalBasis: "Fixture" };
+  return pricing.createDbBackedCommerceQuotePort({
+    quoteCatalogReadPort, commercePriceAuthorityPort, isStrictD1Quote: Boolean(commercePriceAuthorityPort),
+    taxProfile: tax, supportedTaxProfiles: [tax], currency: "XXX", regionCode: "ZZ",
+    pricingResolverPort: { resolvePrice: async ({ variantId, mode }) => ({ variantId, mode, priceEntryId: "fixture-price",
+      priceListId: "fixture-list", amountKind: "gross", unitPriceMinor: 125, matchedMinQty: 1, resolvedAt: "2099-01-01T12:00:00Z" }) },
+    hasPromotionCodePort: false, lineContext: (_line, item) => ({ grams: item.netWeightG }),
+    quoteContext: (request, lines) => () => ({ mode: request.mode, promoCodes: request.promoCodes, grams: lines.map(line => line.grams) }),
+    resolveAutomaticQuotePromotions: async () => ({ discounts: [], codeRejections: [] }),
+    applyPromotionCodesV2: async input => ({ discounts: input.discounts, codeRejections: [], codeRejectionDetails: [] }),
+  });
+}
+
 export const readinessSignature = "public.catalog_publication_activation_readiness(text[],text)";
 
 // These isolated SQL suites install individual forwards without the production runner.

@@ -1,7 +1,7 @@
 import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { createPostgresBundleCatalogStore } from "@openlup/platform/catalog";
-import { quantityReaderFixture2099 } from "./catalogPublicationFixture.js";
+import { attestQuantityReaderFixture2099, quantityReaderFixture2099 } from "./catalogPublicationFixture.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -112,9 +112,13 @@ it("requires document, primary GTIN, status, weight and mode sellability for eve
 it("admits certified typed components and refuses mismatched content without falling back to grams", async () => {
   // 20990101000000_catalog_quantity_reader_fixture
   await db.query(quantityReaderFixture2099);
-  await db.query(`UPDATE public.catalog_skus SET net_weight_g=0,net_content_dimension='volume',
-    net_content_unscaled=50,net_content_unit='openlup:ml',net_content_scale=0,
+  await db.query(`UPDATE public.catalog_skus SET net_weight_g=250,net_content_dimension='volume',
+    net_content_unscaled=51,net_content_unit='openlup:ml',net_content_scale=0,
     publication_facts='{"quantityVersion":2,"netContent":{"dimension":"volume","unscaled":"50","unit":"openlup:ml","scale":0}}' WHERE id=$1`, [part]);
+  expect(await feed()).toHaveLength(1);
+  await attestQuantityReaderFixture2099(db);
+  expect(await feed()).toEqual([]);
+  await db.query("UPDATE public.catalog_skus SET net_content_unscaled=50,net_weight_g=0 WHERE id=$1", [part]);
   expect(await feed()).toHaveLength(1);
   await db.query("UPDATE public.catalog_skus SET net_content_unscaled=51,net_weight_g=250 WHERE id=$1", [part]);
   expect(await feed()).toEqual([]);

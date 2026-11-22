@@ -186,6 +186,14 @@ it("refuses a requested typed SKU locally and preserves the gram sibling's full 
   expect(assess).toHaveBeenCalledExactlyOnceWith({ product, sku, evidence });
 });
 
+it("preserves the permitted quantity reason from an existing gram assessor", async () => {
+  const { lane } = owner(batch([subject, absentItem]));
+  expect(await readPostgresCatalogActivationReadiness(lane, { registry, assess: () => ["quantity_requires_v2"] }, readiness))
+    .toEqual({ protocol: "governed", headDigest: digest, items: [
+      { ...readyItems[0], ready: false, reasons: ["quantity_requires_v2"] }, readyItems[1],
+    ] });
+});
+
 it("rejects misaligned or uncertified batches", async () => {
   for (const bad of [
     batch([absentItem, subject]), batch([subject, absentItem], "b".repeat(64)), batch([subject]), batch([subject, absentItem, absentItem]),

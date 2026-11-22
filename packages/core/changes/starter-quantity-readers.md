@@ -12,3 +12,11 @@ edits, move adopter policy into an owned file or reconcile its edits against
 the target. Replan and apply before starting the upgraded app. The starter
 refuses startup during an incomplete upgrade. Existing gram-only installs
 need no new setting or SQL step for these readers.
+
+### Upgrade typed SKU refusals in the starter
+
+The managed upgrade also replaces pristine `host/quote-composition.ts`,
+`host/purchase-composition.ts`, and `shared/api.ts`. The quote and checkout
+actions expose the affected SKU code with the V1 typed-quantity refusal.
+Reconcile local customizations through the same managed upgrade before
+startup. The starter needs no additional install setting.

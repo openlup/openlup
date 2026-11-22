@@ -26,7 +26,7 @@ export type ActionInput = Record<string, unknown>;
 
 export type ActionResult =
   | { ok: true; value: unknown; replayed?: boolean }
-  | { ok: false; code: string; field?: string; status?: 400 | 403 | 409 | 503; message?: string; path?: string; subject?: string;
+  | { ok: false; code: string; skuCode?: string; field?: string; status?: 400 | 403 | 409 | 503; message?: string; path?: string; subject?: string;
     issues?: readonly { path: string; code: string; message?: string; subject?: string }[] };
 
 export interface AppConfigurationResponse {

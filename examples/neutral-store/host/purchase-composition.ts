@@ -7,7 +7,7 @@ import { setTimeout } from 'node:timers/promises';
 import type { PostgresContactClientRegistrar } from '@openlup/platform/identity';
 import { createInterimCheckoutLimiter, createCheckoutAttemptBindings, admitCheckoutAttempt, type CheckoutRateLimit } from './checkout-attempts.ts';
 import { installedAcquisitionPredecessors, createInitialPurchaseActivation, createAcquisitionRenewalBinding, type AcquisitionPredecessors, type AcquisitionRenewalBinding } from './acquisition-predecessors.ts';
-import { createNativeQuoteService, quoteFailure } from './quote-composition.ts';
+import { createNativeQuoteService, quoteActionRefusal } from './quote-composition.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
@@ -83,7 +83,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
   const actions: ApplicationBindings['actions'] = {};
   actions['offer.validate'] = async (payload, context) => {
     try { return success(quotes.public(await quotes.quote(payload, context))); }
-    catch (error) { return refused(quoteFailure(error)); }
+    catch (error) { return quoteActionRefusal(error); }
   };
   actions['checkout.create'] = async (payload, context) => {
     const started = performance.now();
@@ -124,7 +124,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       if (!prior && payload.country !== context.config.market.country) return refused('starter_input_invalid');
       if (!prior) quotes.verify(observed, payload);
       if (observed.terms) renewal.assertAvailable(observed.snapshot);
-    } catch (error) { return refused(quoteFailure(error)); }
+    } catch (error) { return quoteActionRefusal(error); }
     interimLimiter ??= createInterimCheckoutLimiter(context.config.purchase.attemptLimits);
     if (!await admitCheckoutAttempt(checkRateLimit ?? interimLimiter.checkRateLimit,
       { headers: {}, ...(context.actor.requesterKey ? { requesterKey: context.actor.requesterKey } : {}) },
@@ -188,7 +188,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       }
       return failure(error);
     }
-    } catch (error) { return refused(quoteFailure(error)); }
+    } catch (error) { return quoteActionRefusal(error); }
     finally { await setTimeout(Math.max(0, context.config.purchase.responseFloorMs - (performance.now() - started))); }
   };
   actions['checkout.read'] = async (payload, context) => {

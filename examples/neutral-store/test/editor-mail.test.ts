@@ -34,7 +34,7 @@ for (const kind of ['identity','quantity','correlation','acquisition','binding',
     if (kind === 'correlation') f.header.cycle_snapshot.subscriptionId = id(9);
     if (kind === 'acquisition') f.header.cycle_snapshot.cycle.logicalCycleNumber = 1;
     if (kind === 'binding') f.header.binding = 'classic';
-    if (kind === 'typed quantity') Object.assign(f.retained.get(id(4))!,{ quantity_version: 2 });
+    if (kind === 'typed quantity') Object.assign(f.retained.get(id(4))!,{ quantity_requires_v2: true });
     if (kind === 'unreadable') f.retained.get(id(4))!.net_weight_g = 0;
     assert.equal(await f.note(id(1),market.defaultLocale,new AbortController().signal),null);
   });

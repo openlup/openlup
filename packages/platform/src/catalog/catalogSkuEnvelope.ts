@@ -5,7 +5,7 @@ import {
   type NeutralSkuEnvelopeV1,
 } from "./foundationSchemas.js";
 import { parseCatalogActiveSkuSelection } from "./activeSkuSelection.js";
-import { catalogTypedQuantitySql } from "./catalogTypedQuantitySql.js";
+import { CATALOG_SKU_REQUIRES_QUANTITY_V2_SQL as TYPED_QUANTITY_SQL } from "./catalogTypedQuantitySql.js";
 import type {
   CatalogActiveSkuEnvelopeListQuery,
   CatalogSkuEnvelopeListQuery,
@@ -21,7 +21,6 @@ import {
   type PostgresCatalogSkuEnvelopeRow,
 } from "./catalogSkuEnvelopeMapper.js";
 
-const TYPED_QUANTITY_SQL = catalogTypedQuantitySql("sku.publication_facts");
 const ENVELOPE_COLUMNS_SQL = `
     product.id AS product_id,
     product.slug AS product_slug,
@@ -74,9 +73,9 @@ const activeEnvelopesWithRefusalsSql = (quote: boolean) => `
   (${LIST_ACTIVE_ENVELOPES_SQL})
   UNION ALL
   (${SKU_ENVELOPE_FROM_SQL}
-   WHERE ${ACTIVE_SKU_FILTER} AND ${TYPED_QUANTITY_SQL}
+   WHERE ${TYPED_QUANTITY_SQL}
      AND sku.sku = ANY($${quote ? 4 : 3}::text[])
-     AND ${quote ? "product.status = 'active'" : "($1::uuid IS NULL OR sku.id > $1::uuid)"})
+     ${quote ? "" : "AND ($1::uuid IS NULL OR sku.id > $1::uuid)"})
   ORDER BY sku_id`;
 
 const LIST_PUBLIC_ACTIVE_ENVELOPES_SQL = `${SKU_ENVELOPE_FROM_SQL}
