@@ -11,7 +11,7 @@ import { restoreConnectedNativeStore } from "../../server/adapters/postgres/conn
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
 import { sealConnectedCapture } from "./connectedStoreHistoricalPacket.fixture.js";
-import { acquisitionSearchPathPredecessor, installAccountMutations, installBeforeAcquisitionSearchPathPin, subscriptionProfilesPredecessor } from "./customerAccountMutations.fixture.js";
+import { acquisitionSearchPathPredecessor, installAccountMutations, installAtAcquisitionSearchPathBoundary, subscriptionProfilesPredecessor } from "./customerAccountMutations.fixture.js";
 import { prepareOriginal, sandboxRenewal } from "./subscriptionNativeFixture.js";
 
 const profiles = ["bootstrap", "separate", "admin-managed", "admin-operator"] as const;
@@ -202,7 +202,7 @@ async function restoreAcquisitionCapture(target: Store, packet: ConnectedNativeS
 it.each(profiles)("pins pg_temp last on the acquisition functions through %s capture and restore", async profile => {
   const stores: Store[] = [];
   try {
-    const source = await installBeforeAcquisitionSearchPathPin(profile, "capture-before-pin", "subscription-profiles");
+    const source = await installAtAcquisitionSearchPathBoundary(profile, "capture-before-pin", "before-subscription-profiles");
     stores.push(source);
     expect(source.inventory).toBe(subscriptionProfilesPredecessor[profile]);
     await seedQuote(source, await seed(source, { predatesLedger: false, predatesScheme: false }));
@@ -227,14 +227,14 @@ it.each(profiles)("pins pg_temp last on the acquisition functions through %s cap
 }, postgresSetupTimeoutMs);
 
 it("pins pg_temp last on the acquisition functions through capture and restore from the preceding installation", async () => {
-  const source = await installBeforeAcquisitionSearchPathPin("bootstrap", "capture-pin-predecessor");
+  const source = await installAtAcquisitionSearchPathBoundary("bootstrap", "capture-pin-predecessor", "before-pin");
   try {
     expect(source.inventory).toBe(acquisitionSearchPathPredecessor.bootstrap);
     await seedQuote(source, await seed(source, { predatesLedger: false, predatesScheme: false }));
     const predecessor = await capture(source, "pin-predecessor");
     expect(carriedRows(predecessor).find(entry => entry.table === quotes)?.rows).toHaveLength(1);
 
-    const target = await installAccountMutations("bootstrap", false, "restore-pin-predecessor");
+    const target = await installAtAcquisitionSearchPathBoundary("bootstrap", "restore-pin-predecessor", "through-pin");
     try {
       const retained = await restoreAcquisitionCapture(target, predecessor, "restore-pin-predecessor");
       expect((await source.runner.apply()).applied).toEqual([expect.stringMatching(/_acquisition_definer_search_path_pin\.sql$/u)]);

@@ -2524,9 +2524,10 @@ Retry after restoring that configuration.
 For a path, digest or issued-prefix mismatch, recover the original approved SQL
 and its binding together, then verify the complete prefix. For an unissued
 forward with a verified binding and a rendered-form mismatch, regenerate the
-file from the reviewed settings. If admission rejects its order or a target,
-check the introduction base for the first available slot and the exact
-function signature.
+file with `renderNativeStoreSettingsOwnerWindow` in
+`scripts/reviewed-platform-forward.ts`. The admission refusal prints the first
+differing line. If admission rejects its order or a target, check the
+introduction base for the first available slot and the exact function signature.
 A later ordinary slot treats a landed settings-only slot's exact pinned
 `ALTER FUNCTION` statements as known DDL, so it can still replace a hardened
 function or grant privileges on it. A replacement may tighten a single

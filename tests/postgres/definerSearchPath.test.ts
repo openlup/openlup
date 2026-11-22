@@ -2,8 +2,9 @@ import { readFileSync } from "node:fs";
 import type { Pool, PoolClient } from "pg";
 import { expect, it } from "vitest";
 import registry from "../../config/reviewed-platform-forwards.json" with { type: "json" };
+import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
-import { installBeforeAcquisitionSearchPathPin } from "./customerAccountMutations.fixture.js";
+import { acquisitionSearchPathManifest, installAccountMutations, installAtAcquisitionSearchPathBoundary } from "./customerAccountMutations.fixture.js";
 
 const slot = registry.nativeStoreForwardClass.slots.find(entry => entry.path.endsWith("_acquisition_definer_search_path_pin.sql"))!;
 const settings = slot.settingsOnlyFunctions!;
@@ -11,6 +12,7 @@ const signatures = settings.map(entry => entry.signature);
 const binding = registry.nativeStoreForwards.find(entry => entry.path === slot.path)!;
 const lockName = "openlup:public-platform-migrations:v1";
 const ledger = "public.platform_schema_migrations";
+const profiles = ["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const;
 
 type Definer = { signature: string; search_path: string | null };
 
@@ -20,11 +22,13 @@ function searchPathFailures(definers: readonly Definer[]): string[] {
   for (const { signature, search_path: searchPath } of definers) {
     // Keep commas and case inside quoted schema names.
     const schemas = (searchPath?.match(/(?:[^",]|"(?:[^"]|"")*")+/g) ?? [])
-      .map(schema => schema.trim()).filter(Boolean);
-    const names = schemas.map(schema => schema.startsWith('"')
-      ? schema.slice(1, -1).replaceAll('""', '"') : schema.toLowerCase());
+      .map(schema => schema.trim())
+      .map(schema => ({ schema, name: schema.startsWith('"')
+        ? schema.slice(1, -1).replaceAll('""', '"') : schema.toLowerCase() }))
+      .filter(({ name }) => name.length > 0);
+    const names = schemas.map(({ name }) => name);
     if (names.at(-1) === "pg_temp" && !names.slice(0, -1).some(name => temporarySchema.test(name))) continue;
-    const trusted = schemas.filter((_, index) => !temporarySchema.test(names[index]!));
+    const trusted = schemas.filter(({ name }) => !temporarySchema.test(name)).map(({ schema }) => schema);
     const remedy = trusted.length ? `SET search_path = ${[...trusted, "pg_temp"].join(", ")}`
       : "review and set an explicit trusted schema list, then append pg_temp";
     failures.push(`SECURITY DEFINER function ${signature}: pin pg_temp last: ${remedy}`);
@@ -90,10 +94,10 @@ async function rollBackPin(migrator: Pool, prefix: LedgerRow[]) {
   }
 }
 
-it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
-  "pins pg_temp last on the acquisition functions and all installed definers in %s",
+it.each(profiles)(
+  "pins pg_temp last on the acquisition functions in %s",
   async profile => {
-    const { owner, migrator, installation, runner, close } = await installBeforeAcquisitionSearchPathPin(profile, "definer-search-path");
+    const { owner, migrator, installation, runner, close } = await installAtAcquisitionSearchPathBoundary(profile, "definer-search-path", "before-pin");
     try {
       expect(signatures).toHaveLength(11);
       const before = await observe(owner);
@@ -144,6 +148,18 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
       const recorder = await owner.query(`SELECT prosecdef FROM pg_catalog.pg_proc
         WHERE oid='public.catalog_publication_record_command(jsonb)'::regprocedure`);
       expect(recorder.rows).toEqual([{ prosecdef: profile === "bootstrap" || profile === "separate" }]);
+    } finally {
+      await close();
+    }
+  },
+  postgresSetupTimeoutMs,
+);
+
+it.each(profiles)(
+  "checks pg_temp last on every definer in a current %s installation",
+  async profile => {
+    const { owner, close } = await installAccountMutations(profile, false, "current-definer-search-path");
+    try {
       const { rows } = await owner.query<Definer>(`
         SELECT pg_catalog.format('%I.%I(%s)', n.nspname, p.proname,
                  pg_catalog.array_to_string(ARRAY(
@@ -168,11 +184,35 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
   postgresSetupTimeoutMs,
 );
 
+it("keeps the acquisition pin fixture unchanged when a later forward is appended", () => {
+  const current = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
+  if (current?.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
+  const extended = structuredClone(current);
+  const later = { file: "db/platform/migrations/20990101000000_later_settings.sql", sha256: "1".repeat(64) };
+  for (const plan of [extended, extended.qualified, extended.qualifiedAdmin]) plan.forward.push(later);
+  extended.objectInventorySha256 = "2".repeat(64);
+  extended.qualified.objectInventorySha256.bootstrapMigrator.withRestore = extended.objectInventorySha256;
+  extended.qualified.objectInventorySha256.separateMigrator.withRestore = extended.objectInventorySha256;
+  extended.qualifiedAdmin.objectInventorySha256.installerManaged = extended.objectInventorySha256;
+  extended.qualifiedAdmin.objectInventorySha256.operatorProvisioned = extended.objectInventorySha256;
+
+  const before = acquisitionSearchPathManifest(extended, "before-pin");
+  const through = acquisitionSearchPathManifest(extended, "through-pin");
+  expect(before).toEqual(acquisitionSearchPathManifest(current, "before-pin"));
+  expect(through).toEqual(acquisitionSearchPathManifest(current, "through-pin"));
+  for (const [predecessor, installed] of [
+    [before, through], [before.qualified, through.qualified], [before.qualifiedAdmin, through.qualifiedAdmin],
+  ] as const) {
+    expect(installed.forward.slice(predecessor.forward.length)).toEqual([{ file: slot.path, sha256: binding.sha256 }]);
+  }
+});
+
 it("reports how to pin pg_temp last while preserving quoted schema names", () => {
   expect(searchPathFailures([
     { signature: "public.unpinned()", search_path: "pg_catalog, public" },
     { signature: "public.no_setting()", search_path: null },
     { signature: "public.empty_setting()", search_path: "" },
+    { signature: "public.quoted_empty_setting()", search_path: '""' },
     { signature: "public.temp_only()", search_path: "pg_Temp_12" },
     { signature: "public.temp_first()", search_path: "PG_TEMP, public" },
     { signature: "public.temp_repeated()", search_path: 'pg_temp, "pg_temp", "schema, name", public' },
@@ -187,6 +227,7 @@ it("reports how to pin pg_temp last while preserving quoted schema names", () =>
     "SECURITY DEFINER function public.unpinned(): pin pg_temp last: SET search_path = pg_catalog, public, pg_temp",
     "SECURITY DEFINER function public.no_setting(): pin pg_temp last: review and set an explicit trusted schema list, then append pg_temp",
     "SECURITY DEFINER function public.empty_setting(): pin pg_temp last: review and set an explicit trusted schema list, then append pg_temp",
+    "SECURITY DEFINER function public.quoted_empty_setting(): pin pg_temp last: review and set an explicit trusted schema list, then append pg_temp",
     "SECURITY DEFINER function public.temp_only(): pin pg_temp last: review and set an explicit trusted schema list, then append pg_temp",
     "SECURITY DEFINER function public.temp_first(): pin pg_temp last: SET search_path = public, pg_temp",
     'SECURITY DEFINER function public.temp_repeated(): pin pg_temp last: SET search_path = "schema, name", public, pg_temp',
