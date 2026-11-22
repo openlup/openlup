@@ -105,9 +105,10 @@ The convenience factory also retains `poolFactory`, `root` and
 compatibility. Supplying a pool factory retains responsibility for startup
 options and pool lifetime. These are trusted host seams, not sandbox boundaries.
 
-The selection/validator in `src/migrations/catalog.ts` is an exact generated
-copy of the source tooling owner, checked by the same gate: source policy tools
-run before workspace build output exists. Do not edit the copy.
+The selection/validator in `src/migrations/catalog.ts` is a generated copy with
+one generated-from header line followed by the source tooling owner's exact
+bytes, checked by the same gate: source policy tools run before workspace build
+output exists. Do not edit the copy.
 `sql/manifest.json` is generated from the canonical source manifest and its
 issued SQL, following the outbox asset pattern. Do not edit it or its SQL copies.
 The required installed-consumer gate refuses drift. In a source checkout, run
