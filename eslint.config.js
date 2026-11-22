@@ -83,7 +83,9 @@ const RECIPE_MAX_DEPTH = 6;
 const recipeEscapeBoundary = (depth) => ({
   message: "Provider recipes must remain repo-splittable (ADR-001): never import outside recipes/.",
   regexes: [
-    depth === 0 ? "^(?:\\./)?\\.\\.(?:/|$)" : `^(?:\\./)?(?:\\.\\./){${depth + 1}}`,
+    depth === null || depth === 0
+      ? "^(?:\\./)?\\.\\.(?:/|$)"
+      : `^(?:\\./)?(?:\\.\\./){${depth}}\\.\\.(?:/|$)`,
     "^/",
     "^@/",
     "^#",
@@ -393,25 +395,27 @@ export default tseslint.config(
     ignores: DOMAIN_TEST_FILES,
     rules: boundaryRules([packageExports, domainIsolation]),
   },
-  ...Array.from({ length: RECIPE_MAX_DEPTH + 1 }, (_, depth) => {
-    const atDepth = `recipes/${"*/".repeat(depth)}*.${SOURCE_EXTENSIONS}`;
+  ...[null, ...Array.from({ length: RECIPE_MAX_DEPTH + 1 }, (_, depth) => depth)].flatMap((depth) => {
+    const atDepth = depth === null
+      ? sourceFiles("recipes/")
+      : [`recipes/${"*/".repeat(depth)}*.${SOURCE_EXTENSIONS}`];
     const escape = recipeEscapeBoundary(depth);
     return [
       {
-        files: [atDepth],
+        files: atDepth,
         ignores: ["recipes/**/browser/**", "recipes/**/tests/**"],
         rules: boundaryRules([packageExports, escape, recipeServerAllowlist]),
       },
       {
-        files: [[atDepth, `recipes/**/tests/**/*.${SOURCE_EXTENSIONS}`]],
+        files: atDepth.map((file) => [file, `recipes/**/tests/**/*.${SOURCE_EXTENSIONS}`]),
         rules: boundaryRules([packageExports, escape, recipeTestAllowlist]),
       },
       {
-        files: [[atDepth, `recipes/**/browser/**/*.${SOURCE_EXTENSIONS}`]],
+        files: atDepth.map((file) => [file, `recipes/**/browser/**/*.${SOURCE_EXTENSIONS}`]),
         rules: boundaryRules([packageExports, escape, recipeBrowserAllowlist]),
       },
     ];
-  }).flat(),
+  }),
   ...workspacePackages.flatMap((pkg) => [null, ...Array.from({ length: MAX_PACKAGE_DEPTH + 1 }, (_, depth) => depth)]
     .flatMap((depth) => {
       const files = depth === null
