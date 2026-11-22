@@ -1,5 +1,5 @@
 import { createLwaTokenClient, LwaTokenError, type LwaCredentials } from "./lwa.js";
-import { signAwsV4Request, type AwsSigV4Credentials } from "./sigv4.js";
+import { awsUriEncode, signAwsV4Request, type AwsSigV4Credentials } from "./sigv4.js";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -149,6 +149,41 @@ export class AmazonMcfTransportError extends Error {
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_BODY_BYTES = 2 * 1024 * 1024;
 const SAFE_CODE_REGEX = /^[A-Za-z0-9][A-Za-z0-9_]{0,95}$/u;
+const SAFE_ORDER_ID_REGEX = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const FULFILLMENT_ORDERS_PATH_PREFIX = "/fba/outbound/2020-07-01/fulfillmentOrders/";
+
+export function assertSafeAmazonMcfOrderId(sellerFulfillmentOrderId: string): string {
+  if (typeof sellerFulfillmentOrderId !== "string") {
+    throw new AmazonMcfTransportError({
+      code: "amazon_mcf_invalid_order_id",
+      status: null,
+      retryable: false,
+      submissionAttempted: false,
+      mayHaveSucceeded: false,
+      responseBodyRead: false,
+    });
+  }
+  const trimmed = sellerFulfillmentOrderId.trim();
+  if (
+    !trimmed ||
+    trimmed === "." ||
+    trimmed === ".." ||
+    trimmed.includes("/") ||
+    trimmed.includes("\\") ||
+    trimmed.includes("..") ||
+    !SAFE_ORDER_ID_REGEX.test(trimmed)
+  ) {
+    throw new AmazonMcfTransportError({
+      code: "amazon_mcf_invalid_order_id",
+      status: null,
+      retryable: false,
+      submissionAttempted: false,
+      mayHaveSucceeded: false,
+      responseBodyRead: false,
+    });
+  }
+  return trimmed;
+}
 
 export function sanitizeDiagnosticCode(raw: string | null | undefined, fallback: string): string {
   if (typeof raw !== "string") return fallback;
@@ -232,6 +267,37 @@ async function readBoundedText(
         mayHaveSucceeded,
         responseBodyRead: false,
       });
+    }
+  }
+  if (response.body && typeof response.body.getReader === "function") {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let totalBytes = 0;
+    let text = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          totalBytes += value.byteLength;
+          if (totalBytes > maxBytes) {
+            await reader.cancel().catch(() => undefined);
+            throw new AmazonMcfTransportError({
+              code: "amazon_mcf_response_too_large",
+              status: response.status,
+              retryable: false,
+              submissionAttempted,
+              mayHaveSucceeded,
+              responseBodyRead: false,
+            });
+          }
+          text += decoder.decode(value, { stream: true });
+        }
+      }
+      text += decoder.decode();
+      return text;
+    } finally {
+      reader.releaseLock();
     }
   }
   const text = await response.text();
@@ -427,16 +493,29 @@ export function createAmazonMcfHttpClient(options: AmazonMcfHttpClientOptions): 
       baseHeaders["content-type"] = "application/json";
     }
 
-    const signed = signAwsV4Request({
-      method: params.method,
-      url,
-      region: awsRegion,
-      service: "execute-api",
-      headers: baseHeaders,
-      body: bodyBytes,
-      credentials: creds,
-      timestampIso: options.clock(),
-    });
+    let signed;
+    try {
+      signed = signAwsV4Request({
+        method: params.method,
+        url,
+        region: awsRegion,
+        service: "execute-api",
+        headers: baseHeaders,
+        body: bodyBytes,
+        credentials: creds,
+        timestampIso: options.clock(),
+      });
+    } catch (error) {
+      const rawCode = error instanceof Error ? error.message : "amazon_mcf_signing_failed";
+      throw new AmazonMcfTransportError({
+        code: sanitizeDiagnosticCode(rawCode, "amazon_mcf_signing_failed"),
+        status: null,
+        retryable: false,
+        submissionAttempted: false,
+        mayHaveSucceeded: false,
+        responseBodyRead: false,
+      });
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -557,10 +636,27 @@ export function createAmazonMcfHttpClient(options: AmazonMcfHttpClientOptions): 
     },
 
     async getFulfillmentOrder(sellerFulfillmentOrderId: string): Promise<AmazonMcfOrderRecord | null> {
-      const encodedId = encodeURIComponent(sellerFulfillmentOrderId);
+      const safeOrderId = assertSafeAmazonMcfOrderId(sellerFulfillmentOrderId);
+      const encodedId = awsUriEncode(safeOrderId);
+      const path = `${FULFILLMENT_ORDERS_PATH_PREFIX}${encodedId}`;
+      const verified = new URL(path, origin);
+      if (
+        !verified.pathname.startsWith(FULFILLMENT_ORDERS_PATH_PREFIX) ||
+        verified.pathname.slice(FULFILLMENT_ORDERS_PATH_PREFIX.length).includes("/") ||
+        verified.pathname === FULFILLMENT_ORDERS_PATH_PREFIX
+      ) {
+        throw new AmazonMcfTransportError({
+          code: "amazon_mcf_invalid_order_id",
+          status: null,
+          retryable: false,
+          submissionAttempted: false,
+          mayHaveSucceeded: false,
+          responseBodyRead: false,
+        });
+      }
       const result = await requestJson({
         method: "GET",
-        path: `/fba/outbound/2020-07-01/fulfillmentOrders/${encodedId}`,
+        path,
         allowNotFound: true,
       });
       if (result.status === 404 || !result.payload || typeof result.payload !== "object") {

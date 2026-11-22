@@ -21,6 +21,7 @@ import type {
 } from "@openlup/platform/fulfillment/contracts";
 import {
   AmazonMcfTransportError,
+  assertSafeAmazonMcfOrderId,
   sanitizeDiagnosticCode,
   type AmazonMcfClient,
   type AmazonMcfCreateOrderPayload,
@@ -33,6 +34,7 @@ import {
   createAmazonMcfWebhookVerifier,
   deterministicEvidenceReference,
   mapAmazonMcfStatus,
+  resolveAmazonMcfAggregateShipmentStatus,
 } from "./webhook.js";
 
 const SAFE_REF_REGEX = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
@@ -41,7 +43,6 @@ const RFC3339_OFFSET_REGEX =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u;
 const MAX_PREPARED_ENTRIES = 2048;
 const MAX_OUTCOME_ENTRIES = 2048;
-const MAX_PAGE_TOKEN_ENTRIES = 256;
 const MAX_INVENTORY_PAGES = 100;
 
 /**
@@ -207,11 +208,9 @@ function buildObservationFromOrderRecord(params: {
   readonly observationCodecs?: FulfillmentObservationCodecs;
 }): FulfillmentReconciliationObservation {
   const externalRef = safeRef(params.record.sellerFulfillmentOrderId);
-  const latestShipment =
-    params.record.fulfillmentShipments && params.record.fulfillmentShipments.length > 0
-      ? params.record.fulfillmentShipments[params.record.fulfillmentShipments.length - 1]
-      : undefined;
-  const shipmentStatus = latestShipment?.fulfillmentShipmentStatus ?? null;
+  const shipments = params.record.fulfillmentShipments ?? [];
+  const latestShipment = shipments.length > 0 ? shipments[shipments.length - 1] : undefined;
+  const shipmentStatus = resolveAmazonMcfAggregateShipmentStatus(shipments);
   const mapped = mapAmazonMcfStatus(params.record.fulfillmentOrderStatus, shipmentStatus);
 
   const occurredAt =
@@ -368,7 +367,14 @@ export function createAmazonMcfFulfillmentAdapter(
 
   const preparedByFingerprint = new Map<string, PreparedCommandEntry>();
   const retainedOutcomes = new Map<string, FulfillmentDispatchResult>();
-  const pageTokens = new Map<number, string | null>();
+  interface PaginationState {
+    readonly expectedPage: number;
+    readonly buffer: AmazonMcfOrderRecord[];
+    readonly nextToken: string | null;
+    readonly exhausted: boolean;
+  }
+  let paginationState: PaginationState | null = null;
+  const MAX_RECONCILIATION_BUFFER = 2048;
 
   const dispatch: FulfillmentDispatchPort = {
     async prepare(request) {
@@ -446,8 +452,11 @@ export function createAmazonMcfFulfillmentAdapter(
         })),
       };
 
+      // Hash deterministic command bytes (excluding volatile displayableOrderDate) so prepare() is
+      // idempotent across clock ticks and retained unknown/accepted outcomes stay reachable.
+      const { displayableOrderDate: _volatileDate, ...deterministicCommand } = command;
       const commandFingerprint = createHash("sha256")
-        .update(JSON.stringify(command), "utf8")
+        .update(JSON.stringify(deterministicCommand), "utf8")
         .digest("hex");
 
       // Sanitize durable transcript allowlist identically to `dispatchEvidence`.
@@ -602,8 +611,17 @@ export function createAmazonMcfFulfillmentAdapter(
           refusal: { reason: "unsupported", phase: "readback", retryable: false },
         };
       }
+      let safeOrderId: string;
       try {
-        const record = await options.client.getFulfillmentOrder(input.externalRef.trim());
+        safeOrderId = assertSafeAmazonMcfOrderId(input.externalRef);
+      } catch {
+        return {
+          kind: "unknown",
+          refusal: { reason: "malformed", phase: "readback", retryable: false },
+        };
+      }
+      try {
+        const record = await options.client.getFulfillmentOrder(safeOrderId);
         if (!record) {
           // SP-API is eventually consistent; 404 never certifies authoritative absence.
           return {
@@ -645,43 +663,60 @@ export function createAmazonMcfFulfillmentAdapter(
         };
       }
 
-      let nextToken: string | null = null;
       if (input.page === 0) {
-        pageTokens.clear();
-      } else {
-        if (!pageTokens.has(input.page)) {
-          return { kind: "page_exhausted" };
-        }
-        const storedToken = pageTokens.get(input.page) ?? null;
-        if (storedToken === null) {
-          return { kind: "page_exhausted" };
-        }
-        nextToken = storedToken;
+        paginationState = null;
+      } else if (!paginationState || input.page !== paginationState.expectedPage) {
+        return { kind: "page_exhausted" };
       }
 
-      try {
-        const response = await options.client.listAllFulfillmentOrders({ nextToken });
-        boundedSet(pageTokens, input.page + 1, response.nextToken, MAX_PAGE_TOKEN_ENTRIES);
-        const receivedAt = options.clock();
-        const sliced = response.fulfillmentOrders.slice(0, input.size);
-        const rows = sliced.map((record) =>
-          buildObservationFromOrderRecord({
-            record,
-            source: "provider_reconciliation",
-            receivedAt,
-            approveTrackingUrl: options.approveTrackingUrl,
-            observationCodecs: options.observationCodecs,
-          }),
-        );
-        return { kind: "page", rows };
-      } catch (error) {
-        const opError = toOperationError(error, false);
-        return {
-          kind: "failed",
-          refusal: { reason: "io_failure", phase: "readback", retryable: opError.retryable },
-          error: opError,
-        };
+      const buffer: AmazonMcfOrderRecord[] = paginationState ? [...paginationState.buffer] : [];
+      let nextToken: string | null = paginationState ? paginationState.nextToken : null;
+      let exhausted = paginationState ? paginationState.exhausted : false;
+
+      // If no buffered rows remain and SP-API already signaled end-of-stream, report page_exhausted at 0 I/O.
+      if (input.page > 0 && buffer.length === 0 && exhausted) {
+        return { kind: "page_exhausted" };
       }
+
+      // Fetch from SP-API only when buffer has fewer rows than requested and stream is not exhausted.
+      if (buffer.length < input.size && !exhausted) {
+        try {
+          const response = await options.client.listAllFulfillmentOrders({ nextToken });
+          for (const order of response.fulfillmentOrders) {
+            if (buffer.length >= MAX_RECONCILIATION_BUFFER) break;
+            buffer.push(order);
+          }
+          nextToken = response.nextToken;
+          exhausted = nextToken === null;
+        } catch (error) {
+          const opError = toOperationError(error, false);
+          return {
+            kind: "failed",
+            refusal: { reason: "io_failure", phase: "readback", retryable: opError.retryable },
+            error: opError,
+          };
+        }
+      }
+
+      const pageRecords = buffer.splice(0, input.size);
+      paginationState = {
+        expectedPage: input.page + 1,
+        buffer,
+        nextToken,
+        exhausted,
+      };
+
+      const receivedAt = options.clock();
+      const rows = pageRecords.map((record) =>
+        buildObservationFromOrderRecord({
+          record,
+          source: "provider_reconciliation",
+          receivedAt,
+          approveTrackingUrl: options.approveTrackingUrl,
+          observationCodecs: options.observationCodecs,
+        }),
+      );
+      return { kind: "page", rows };
     },
   };
 

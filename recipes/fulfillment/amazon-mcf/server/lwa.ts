@@ -70,6 +70,35 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
       });
     }
   }
+  if (response.body && typeof response.body.getReader === "function") {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let totalBytes = 0;
+    let text = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          totalBytes += value.byteLength;
+          if (totalBytes > maxBytes) {
+            await reader.cancel().catch(() => undefined);
+            throw new LwaTokenError({
+              code: "amazon_lwa_response_too_large",
+              status: response.status,
+              retryable: false,
+              responseBodyRead: false,
+            });
+          }
+          text += decoder.decode(value, { stream: true });
+        }
+      }
+      text += decoder.decode();
+      return text;
+    } finally {
+      reader.releaseLock();
+    }
+  }
   const text = await response.text();
   if (Buffer.byteLength(text, "utf8") > maxBytes) {
     throw new LwaTokenError({

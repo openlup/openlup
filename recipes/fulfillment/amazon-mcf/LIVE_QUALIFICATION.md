@@ -38,4 +38,4 @@ Amazon SP-API delivers `FULFILLMENT_ORDER_STATUS` notifications asynchronously t
 
 ## 4. Promotion Evidence
 
-Record the sandbox/staging verification date, SP-API region, and sanitized test order IDs in the adopter's operational readiness ledger before switching `liveQualification.status` to `live-sandbox-verified` or `live-production-verified`.
+Record the sandbox/staging verification date, SP-API region, and sanitized test order IDs in the adopter's operational readiness ledger before switching `liveQualification.status` to `"dated-sandbox-receipt"` (with ISO-8601 `qualifiedAt` and `qualifiedPlatformVersion` matching `recipes/schema/recipe.schema.json`).

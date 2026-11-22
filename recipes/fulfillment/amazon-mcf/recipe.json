@@ -16,7 +16,6 @@
   "openlupPlatformRange": "^1.3.0",
   "testedAgainstPlatformVersion": "1.3.0",
   "contractImports": [
-    "@openlup/core/fulfillment",
     "@openlup/platform/fulfillment",
     "@openlup/platform/fulfillment/contracts",
     "@openlup/platform/fulfillment/testing"

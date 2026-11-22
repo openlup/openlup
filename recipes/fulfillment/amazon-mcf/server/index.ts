@@ -7,6 +7,7 @@ export {
 export {
   AMAZON_MCF_ENDPOINTS,
   AmazonMcfTransportError,
+  assertSafeAmazonMcfOrderId,
   createAmazonMcfHttpClient,
   resolvePinnedAmazonMcfOrigin,
   sanitizeDiagnosticCode,
@@ -49,6 +50,7 @@ export {
   createAmazonMcfWebhookVerifier,
   deterministicEvidenceReference,
   mapAmazonMcfStatus,
+  resolveAmazonMcfAggregateShipmentStatus,
   sanitizeTrackingUrl,
   type AmazonMcfWebhookVerifierOptions,
   type MappedAmazonMcfStatus,

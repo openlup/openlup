@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   createFulfillmentProviderRegistry,
@@ -155,11 +156,12 @@ function createInMemoryFulfillmentStore(candidate: FulfillmentDispatchRequest): 
 
 describe("recipes/fulfillment/amazon-mcf — Stage 3 real-flow mount proof", () => {
   it("mounts into createFulfillmentProviderRegistry, runs dispatch worker, verified ingress, reconciliation paging, and snapshot-only stock sync", async () => {
-    const calls: { readonly method: string; readonly url: string }[] = [];
+    const calls: { readonly method: string; readonly url: string; readonly body?: string }[] = [];
 
     const fetchImpl: FetchLike = async (urlString, init) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      calls.push({ method, url: urlString });
+      const body = typeof init?.body === "string" ? init.body : undefined;
+      calls.push({ method, url: urlString, body });
       const url = new URL(urlString);
 
       if (urlString === AMAZON_LWA_TOKEN_URL) {
@@ -303,8 +305,24 @@ describe("recipes/fulfillment/amazon-mcf — Stage 3 real-flow mount proof", () 
 
     const dispatchRun1 = await services.runDispatch();
     expect("ok" in dispatchRun1 && dispatchRun1.ok).toBe(true);
-    expect(records.get("req_mount_01")?.externalRef).toBe("MCF-ORD-MOUNT-01");
-    expect(records.get("req_mount_01")?.status).toBe("created");
+    const createdRecord = records.get("req_mount_01");
+    expect(createdRecord?.externalRef).toBe("MCF-ORD-MOUNT-01");
+    expect(createdRecord?.status).toBe("created");
+
+    // Verify transmitted SP-API POST wire body and deterministic commandFingerprint binding
+    const postCall = calls.find(
+      (c) => c.method === "POST" && c.url.includes("/fba/outbound/2020-07-01/fulfillmentOrders"),
+    );
+    expect(postCall?.body).toBeDefined();
+    const sentWirePayload = JSON.parse(postCall!.body!) as Record<string, unknown>;
+    expect(sentWirePayload["marketplaceId"]).toBe(FIXTURE_MARKETPLACE_US);
+    expect(sentWirePayload["sellerFulfillmentOrderId"]).toBe("MCF-ORD-MOUNT-01");
+    expect(sentWirePayload["shippingSpeedCategory"]).toBe("Standard");
+    const { displayableOrderDate: _ignoredDate, ...deterministicWire } = sentWirePayload;
+    const expectedWireFingerprint = createHash("sha256")
+      .update(JSON.stringify(deterministicWire), "utf8")
+      .digest("hex");
+    expect(createdRecord?.evidence.commandFingerprint).toBe(expectedWireFingerprint);
 
     // Verify zero sensitive canaries leaked into persisted store records or provider attempts
     const serializedStore = JSON.stringify({

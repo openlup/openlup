@@ -52,12 +52,36 @@ export function mapAmazonMcfStatus(
   const shipment = typeof shipmentStatusRaw === "string" ? shipmentStatusRaw.trim().toUpperCase() : "";
   const order = typeof orderStatusRaw === "string" ? orderStatusRaw.trim().toUpperCase() : "";
 
+  // 1. Order-level exceptions & cancellations always take precedence over partial shipment delivery/transit.
+  switch (order) {
+    case "UNFULFILLABLE":
+    case "INVALID":
+    case "COMPLETEPARTIALLED":
+    case "COMPLETE_PARTIALLED":
+      return { canonicalStatus: "exception", eventKind: "parcel.exception", recovery: "manual" };
+    case "UNDELIVERABLE":
+    case "DELIVERYATTEMPTED":
+    case "DELIVERY_ATTEMPTED":
+      return { canonicalStatus: "exception", eventKind: "parcel.exception", recovery: "delivery_only" };
+    case "CANCELLED":
+    case "CANCELED":
+      return { canonicalStatus: "cancelled", eventKind: "parcel.cancelled", recovery: null };
+    default:
+      break;
+  }
+
+  // 2. Shipment-level exceptions & cancellations take precedence over normal transit/delivery.
   if (shipment === "RETURNED_TO_SELLER" || shipment === "RETURNED") {
     return { canonicalStatus: "exception", eventKind: "parcel.exception", recovery: "manual" };
   }
   if (shipment === "UNDELIVERABLE" || shipment === "DELIVERY_ATTEMPTED" || shipment === "LOST") {
     return { canonicalStatus: "exception", eventKind: "parcel.exception", recovery: "delivery_only" };
   }
+  if (shipment === "CANCELLED_BY_FULFILLER" || shipment === "CANCELLED_BY_SELLER") {
+    return { canonicalStatus: "cancelled", eventKind: "parcel.cancelled", recovery: null };
+  }
+
+  // 3. Normal shipment progress.
   if (shipment === "DELIVERED") {
     return { canonicalStatus: "delivered", eventKind: "order.delivered", recovery: null };
   }
@@ -65,6 +89,7 @@ export function mapAmazonMcfStatus(
     return { canonicalStatus: "in_transit", eventKind: "order.shipped", recovery: null };
   }
 
+  // 4. Order-level lifecycle fallback.
   switch (order) {
     case "NEW":
     case "RECEIVED":
@@ -75,21 +100,50 @@ export function mapAmazonMcfStatus(
       return { canonicalStatus: "packed", eventKind: "order.picked", recovery: null };
     case "COMPLETE":
       return { canonicalStatus: "delivered", eventKind: "order.delivered", recovery: null };
-    case "CANCELLED":
-    case "CANCELED":
-      return { canonicalStatus: "cancelled", eventKind: "parcel.cancelled", recovery: null };
-    case "UNFULFILLABLE":
-    case "INVALID":
-    case "COMPLETEPARTIALLED":
-    case "COMPLETE_PARTIALLED":
-      return { canonicalStatus: "exception", eventKind: "parcel.exception", recovery: "manual" };
-    case "UNDELIVERABLE":
-    case "DELIVERYATTEMPTED":
-    case "DELIVERY_ATTEMPTED":
-      return { canonicalStatus: "exception", eventKind: "parcel.exception", recovery: "delivery_only" };
     default:
       return null;
   }
+}
+
+const SHIPMENT_STATUS_PRECEDENCE: readonly string[] = [
+  "RETURNED_TO_SELLER",
+  "RETURNED",
+  "UNDELIVERABLE",
+  "DELIVERY_ATTEMPTED",
+  "LOST",
+  "CANCELLED_BY_FULFILLER",
+  "CANCELLED_BY_SELLER",
+  "DELIVERED",
+  "OUT_FOR_DELIVERY",
+  "IN_TRANSIT",
+  "SHIPPED",
+];
+
+/**
+ * Inspect all fulfillment shipments for an order and pick the highest-precedence
+ * shipment status so an exception or cancellation on an earlier shipment is never
+ * masked by a later shipment.
+ */
+export function resolveAmazonMcfAggregateShipmentStatus(
+  shipments: readonly { readonly fulfillmentShipmentStatus?: string | null }[] | undefined,
+): string | null {
+  if (!shipments || shipments.length === 0) return null;
+  let bestStatus: string | null = null;
+  let bestRank = Number.POSITIVE_INFINITY;
+  for (const shipment of shipments) {
+    const raw = typeof shipment.fulfillmentShipmentStatus === "string"
+      ? shipment.fulfillmentShipmentStatus.trim()
+      : "";
+    if (!raw) continue;
+    const upper = raw.toUpperCase();
+    const rank = SHIPMENT_STATUS_PRECEDENCE.indexOf(upper);
+    const effectiveRank = rank >= 0 ? rank : SHIPMENT_STATUS_PRECEDENCE.length;
+    if (effectiveRank < bestRank) {
+      bestRank = effectiveRank;
+      bestStatus = raw;
+    }
+  }
+  return bestStatus;
 }
 
 function getHeaderInsensitive(headers: Readonly<Record<string, string>>, target: string): string | null {
@@ -210,15 +264,18 @@ export function buildNormalizedTrackingRefs(input: {
 
     let carrierRef: string | null = null;
     if (item.carrierCode != null) {
-      const normalizedCarrier =
-        typeof item.carrierCode === "string"
-          ? item.carrierCode.trim().toLowerCase().replace(/[^a-z0-9._:-]+/gu, "_")
-          : "";
+      // Strictly validate opaque carrier token without laundering freeform PII/emails/spaces.
+      const rawCarrier = typeof item.carrierCode === "string" ? item.carrierCode.trim() : "";
+      const hasUnsafePattern =
+        !rawCarrier ||
+        /[\p{Cc}\p{Cf}\s@]/u.test(rawCarrier) ||
+        /[a-z][a-z0-9+.-]*:\/\//iu.test(rawCarrier);
+      const lowered = hasUnsafePattern ? "" : rawCarrier.toLowerCase();
       const admittedCarrier =
         item.serviceRef != null && serviceRef === null
           ? null
-          : normalizedCarrier && SAFE_REF_REGEX.test(normalizedCarrier)
-            ? normalizedCarrier
+          : lowered && SAFE_REF_REGEX.test(lowered)
+            ? lowered
             : null;
       if (admittedCarrier === null) {
         redactedFieldCount += 1;
@@ -266,6 +323,12 @@ export function createAmazonMcfWebhookVerifier(
 
   if (parsedKeys.length === 0 || parsedKeys.length !== options.signingSecrets.length) {
     throw new Error("amazon_mcf_webhook_signing_secret_invalid");
+  }
+  if (
+    options.maxTimestampSkewMs !== undefined &&
+    (!Number.isFinite(options.maxTimestampSkewMs) || options.maxTimestampSkewMs < 0)
+  ) {
+    throw new Error("amazon_mcf_webhook_max_skew_invalid");
   }
 
   return {
