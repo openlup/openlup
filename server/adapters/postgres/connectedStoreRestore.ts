@@ -44,12 +44,19 @@ const beforeAcceptedReferences = {
   "installer-managed": "02c68db9202830bd08f574130d3a3de19345a4050b8879d3338824b379474195",
   "operator-provisioned": "a05e24a7dcdc6cb4394907be818520a33fa89e9a269a7c01853cd656ecfcf91b",
 } satisfies Record<keyof typeof beforePublicationCommands, string>;
+// Purchase admission changes functions and grants only. These packets have the current row shape.
+const beforePurchaseAdmission = {
+  bootstrap: "c6fea6b7fe85a7963f952994c34e1dfbca87045952e3dadbbf947c4b89aab5f6",
+  separate: "d0a803fd96d5fe048179cff18181c437ede56daa3a8dc14b2ee0a62381753619",
+  "installer-managed": "412caa25526d6ba70bb5bb761d5bed2336e7307811a879658295819ad5ab15f5",
+  "operator-provisioned": "d413c04713b9fb5f5f9d8f01dc66c68c67d131f6cc94bcbf12becef47abd4f42",
+} satisfies Record<keyof typeof beforePublicationCommands, string>;
 type SourceShape = "current" | "beforePublicationCommands" | "beforeCheckoutAttemptLedger" | "beforeAcceptedReferences" | "unsupported";
 
 export function connectedStoreSourceShape(
   profile: keyof typeof beforePublicationCommands, catalogueId: string | undefined, currentCatalogueId: string,
 ): SourceShape {
-  if (catalogueId === currentCatalogueId) return "current";
+  if (catalogueId === currentCatalogueId || catalogueId === beforePurchaseAdmission[profile]) return "current";
   if (catalogueId === beforePublicationCommands[profile]) return "beforePublicationCommands";
   if (catalogueId === beforeCheckoutAttemptLedger[profile]) return "beforeCheckoutAttemptLedger";
   if (catalogueId === beforeGovernedLifecycle[profile] || catalogueId === beforeAcceptedReferences[profile]) return "beforeAcceptedReferences";

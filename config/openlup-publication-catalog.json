@@ -1578,6 +1578,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125010000_catalog_purchase_admission.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5154,6 +5158,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125010000_catalog_purchase_admission.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5546,6 +5554,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogAdmission.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogAdmissionFence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogAdmissionSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogConformance.ts",
       "class": "public-output"
     },
@@ -5559,6 +5579,10 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogDraftStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogOwnerQuote.ts",
       "class": "public-output"
     },
     {
@@ -5595,6 +5619,10 @@
     },
     {
       "path": "packages/platform/src/catalog/commerceQuoteCatalogRead.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/admission.ts",
       "class": "public-output"
     },
     {
@@ -6347,6 +6375,10 @@
     },
     {
       "path": "packages/platform/src/commerce/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/catalogAdmissionRefusal.ts",
       "class": "public-output"
     },
     {
@@ -9327,6 +9359,10 @@
     },
     {
       "path": "packages/platform/src/pricing/quoteCodeRejectionDetails.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/quoteDigest.ts",
       "class": "public-output"
     },
     {
@@ -30623,6 +30659,10 @@
     },
     {
       "path": "tests/postgres/bundleNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmission.test.ts",
       "class": "public-output"
     },
     {

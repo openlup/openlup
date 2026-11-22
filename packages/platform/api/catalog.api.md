@@ -1037,6 +1037,15 @@ export declare function createCatalogCandidateServiceWithPublication(deps: Omit<
 }, publication: CatalogCandidatePublicationDeps): CatalogCandidateService;
 export {};
 ```
+## dist/catalog/catalogAdmission.d.ts
+
+```ts
+import type { CatalogAdmissionPort } from "./contracts/admission.js";
+/** Assert owner evidence on the supplied transaction without obtaining mutation authority.
+ * @experimental
+ */
+export declare function createPostgresCatalogAdmission(): CatalogAdmissionPort;
+```
 ## dist/catalog/catalogConformance.d.ts
 
 ```ts
@@ -1417,6 +1426,36 @@ export interface PostgresCommerceQuoteCatalogReadOptions {
  * head. Each call scans afresh; hosts may share a promise within one request.
  */
 export declare function createPostgresCommerceQuoteCatalogReadPort(executor: PgQueryExecutor, options: PostgresCommerceQuoteCatalogReadOptions): CommerceQuoteCatalogReadPort;
+```
+## dist/catalog/contracts/admission.d.ts
+
+```ts
+import type { CatalogAdmissionEvidence } from "@openlup/core/catalog";
+/** Bound owner input for the assertion-only native catalogue port.
+ * @experimental
+ */
+export interface CatalogAdmissionInput {
+    mode: "one_time" | "subscription";
+    context: {
+        regionCode: string;
+        currency: string;
+        channel: string;
+        policy: "not_applicable";
+    };
+    reviewedProjection: unknown;
+    ownerDocument: Pick<CatalogAdmissionEvidence, "consultedHeads" | "offer" | "lineBindings" | "priceEvidenceRef" | "policyEvidenceRef"> & {
+        reviewedProjection: unknown;
+    };
+    evidence: CatalogAdmissionEvidence;
+}
+/** Read and assert current facts on the already-fenced owner transaction.
+ * @experimental
+ */
+export interface CatalogAdmissionPort {
+    assertCurrent(db: {
+        query(sql: string, values: unknown[]): Promise<unknown>;
+    }, input: CatalogAdmissionInput): Promise<void>;
+}
 ```
 ## dist/catalog/contracts/attributes.d.ts
 
@@ -2738,6 +2777,7 @@ export declare function requireCurrentCatalogDocumentAuthority<T extends {
 
 ```ts
 export { CATALOG_DRAFT_MAX_BYTES, CATALOG_DRAFT_MAX_PAGE, canonicalCatalogDraftJson } from "./draft.js";
+export type { CatalogAdmissionInput, CatalogAdmissionPort } from "./admission.js";
 export type { CatalogDraftPayload, CatalogDraftCommand, CatalogDraftSummary, CatalogDraftRecord, CatalogDraftPage, CatalogDraftRefusal, CatalogDraftApplyResult, CatalogDraftGetQuery, CatalogDraftListQuery } from "./draft.js";
 export { CATALOG_FOUNDATION_CONTRACT_VERSION, CatalogSkuAuthorityError, isValidGtin, assertPrimaryUnitGtinAuthority, requireCurrentCatalogDocumentAuthority } from "./foundation.js";
 export type { CatalogDocumentRevisionRef, CatalogSkuIdentifier, CatalogSkuEnvelopeSelector, NeutralSkuEnvelopeV1, CatalogPriceContext, CatalogSkuAuthorityRefusal } from "./foundation.js";
@@ -3772,6 +3812,7 @@ export declare const catalogDraftSkuV2Schema: z.ZodObject<{
         kind: z.ZodLiteral<"boolean">;
         value: z.ZodBoolean;
     }, z.core.$strict>], "kind">>;
+    productId: z.ZodGUID;
     netContent: z.ZodOptional<z.ZodObject<{
         dimension: z.ZodEnum<{
             count: "count";
@@ -3782,7 +3823,6 @@ export declare const catalogDraftSkuV2Schema: z.ZodObject<{
         scale: z.ZodNumber;
         unit: z.ZodString;
     }, z.core.$strict>>;
-    productId: z.ZodGUID;
     identifiers: z.ZodOptional<z.ZodArray<z.ZodObject<{
         scheme: z.ZodString;
         issuer: z.ZodString;
@@ -4198,6 +4238,7 @@ export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, Catalo
 export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
 export { nativeCatalogPublication } from "./publicationCodec.js";
 export { catalogAcceptedReferenceV2Schema, catalogAcceptanceV2Schema, assertCatalogAcceptedReferenceV2, assertCatalogAcceptanceV2 } from "./acceptedReferenceStore.js";
+export { createPostgresCatalogAdmission } from "./catalogAdmission.js";
 export type { CatalogFullPublicationV2, CatalogFullPublicationV3, CatalogPublicationManifestV3, CatalogPublicationReceiptV3, CatalogPublishedProductV3, CatalogPublishedSkuV3, CatalogPublicationFailure, CatalogPublicationManifestV2, CatalogPublicationReceiptV2, CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding, CatalogSkuRevisionRef } from "./publicationContracts.js";
 export { createPostgresCatalogPublicationReads } from "./catalogPublicationReads.js";
 export { createPostgresCatalogPublicationCommands } from "./catalogPublicationCommands.js";

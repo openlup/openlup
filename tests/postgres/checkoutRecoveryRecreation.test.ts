@@ -9,6 +9,7 @@ import { createPostgresPurchaseReservationPort } from '@openlup/platform/invento
 import { createPostgresBillingInvoiceStore } from '@openlup/platform/invoicing';
 import { lifecycleInstallation, lifecycleProfiles, call, lifecycleSubject, type LifecycleInstallation } from './subscriptionLifecycleClosureFixture.js';
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
+import { graph, insertGraph, installPublicationActors, transaction } from './catalogPublicationFixture.js';
 
 const money=(amountMinor:number)=>({amountMinor,currency:'XXX'});
 function quote(sku:string,mode:'subscription'|'one_time'='subscription',unit=100){return{contractVersion:'commerce.v0' as const,quote:{
@@ -72,6 +73,29 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
   (SELECT jsonb_agg(to_jsonb(a)) FROM public.subscription_activations a WHERE a.order_id=o.id) AS activation FROM public.commerce_orders o WHERE o.id=$1`,[f.id])).rows;}
  async function children(id:string){return(await env.owner.query('SELECT id,status,subscription_cycle_id FROM public.commerce_orders WHERE recreated_from_order_id=$1',[id])).rows;}
  async function replacement(f:Subject,key=`checkout-recovery-recreate:${f.id}`,snapshot=f.frozen){const r=await persistence().createOrderDraft({idempotencyKey:key,quoteSnapshot:snapshot},{clientId:f.client});return r.orderDraft.orderId.replace(/^order_/,'');}
+ it('refuses a commercially identical governed replacement in the real native draft owner',async()=>{
+  const f=await subject('one_time');
+  await installPublicationActors(env.owner);
+  await transaction(env.owner,async db=>{
+   await db.query("UPDATE public.catalog_products SET slug=$2,name='Article' WHERE id=$1",[f.skuId,`article-${f.skuId}`]);
+   const value=await graph(db,{productId:f.skuId,skuId:f.skuId,skuCode:f.sku,draftId:randomUUID(),documentId:randomUUID()},null,false,{lifecycle:'active'});
+   await insertGraph(db,value);
+  });
+  const effectCounts=async()=>(await env.owner.query(`SELECT
+   (SELECT count(*) FROM public.commerce_orders) AS orders,
+   (SELECT count(*) FROM public.commerce_order_draft_receipts) AS receipts,
+   (SELECT count(*) FROM public.commerce_settlement_intents) AS intents,
+   (SELECT count(*) FROM public.fulfillment_inventory_reservations) AS reservations,
+   (SELECT count(*) FROM public.payment_simulator_attempts) AS attempts,
+   (SELECT count(*) FROM public.outbox_events) AS outbox`)).rows;
+  const before=await effectCounts(),prepared=vi.fn();
+  const admitted=service(f,{afterPrepare:prepared});
+  await expect(recreate(f,admitted)).rejects.toMatchObject({message:'catalog_admission_quote_authority_required',
+   details:{reason:'catalog_admission_quote_authority_required'}});
+  expect(admitted.quotePort.createQuote).toHaveBeenCalledTimes(1);
+  expect(prepared).not.toHaveBeenCalled();
+  expect(await effectCounts()).toEqual(before);
+ });
  it.each(['subscription','one_time'] as const)('starts one %s replacement under competition, replays through native owners and preserves the predecessor',async mode=>{
   const f=await subject(mode),before=await sourceRows(f),live=await lifecycleSubject(env.owner);
   const liveBefore=(await env.owner.query('SELECT to_jsonb(s) AS row FROM public.subscriptions s WHERE id=$1',[live.subscription])).rows;

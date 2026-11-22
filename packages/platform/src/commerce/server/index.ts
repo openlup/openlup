@@ -212,3 +212,5 @@ export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, Chec
 export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';
 
 export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation } from "./checkoutRecoveryReminderSchedule.js";
+
+export { catalogAdmissionRefusal } from "./catalogAdmissionRefusal.js";

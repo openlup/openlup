@@ -20,6 +20,18 @@ remains application-owned. Consult
 [configuration](../reference/configuration.md), [exports](../reference/exports.md)
 and [maturity](../reference/maturity.md) for the selectable boundaries.
 
+Fresh governed catalogue purchases are unavailable on this native rail.
+`catalog_admission_quote_authority_required` means the installation has no
+enabled governed checkout owner. Use an eligible legacy offer or replay the
+original authorized request with its key. A catalogue read or quote does not
+enable a purchase. Exact replay uses the stored receipt and can continue during
+a catalogue withdrawal or quote outage.
+
+For tokenless legacy checkout, equal payable does not establish equal owner
+evidence. The private record reports a comparison only when the owner can
+authenticate both sets of references. Otherwise the comparison is unavailable
+and legacy checkout can continue.
+
 ## Accepted money and persisted order
 
 The quote guard recomputes the authoritative quote and checks supplied

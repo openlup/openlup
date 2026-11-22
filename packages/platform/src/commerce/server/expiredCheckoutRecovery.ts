@@ -5,6 +5,7 @@ import { CommerceOrderDraftPriceChangedError } from '../orderDraftErrors.js';
 import { createCheckoutRecoveryValidationPolicy, type NativeCheckoutRecoveryOrder } from './checkoutRecoveryInspection.js';
 import { quotesMatchForRecovery } from './checkoutExpiredRecoveryPolicy.js';
 import { isStockUnavailableCheckoutConflict } from './checkoutConflictClassifiers.js';
+import { catalogAdmissionRefusal } from './catalogAdmissionRefusal.js';
 
 export type ExpiredCheckoutRecoveryOrder = NativeCheckoutRecoveryOrder & { quoteSnapshot: CreateQuoteResponse | null };
 export interface ExpiredCheckoutPaymentSafetyPort {
@@ -105,6 +106,7 @@ export function createExpiredCheckoutRecoveryService<Request, Draft extends { or
           await deps.compensationPort.cancelUnstartedPromotionOrder(cleanup).catch(()=>undefined);
         }
         if(error instanceof ExpiredCheckoutRecoveryError)throw error;
+        if(catalogAdmissionRefusal(error)==='catalog_admission_quote_authority_required')throw error;
         if(error instanceof Error&&error.message==='native_prepared_attempt_store_unsupported')throw new ExpiredCheckoutRecoveryError('unavailable','native_prepared_attempt_store_unsupported');
         if(error instanceof CommerceOrderDraftPriceChangedError || isStockUnavailableCheckoutConflict(error))throw new ExpiredCheckoutRecoveryError('order_changed');
         throw new ExpiredCheckoutRecoveryError('execution_failed',undefined,{cause:error});

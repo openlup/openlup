@@ -1,12 +1,101 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CreateQuoteResponse } from "../../src/pricing/index.js";
 import type { CommerceQuoteCatalogItem } from "../../src/pricing/index.js";
 import {
   catalogFactsForQuoteLine,
   projectPublicQuoteSnapshot,
+  quoteDigest,
 } from "../../src/pricing/index.js";
+import { buildCatalogOwnerQuote } from "../../src/catalog/catalogOwnerQuote.js";
+import { createPostgresCatalogAdmission } from "../../src/catalog/catalogAdmission.js";
+import { catalogAdmissionEvidenceSchema } from "../../src/catalog/catalogAdmissionSchema.js";
+import { withCatalogAdmissionFence } from "../../src/catalog/catalogAdmissionFence.js";
 
 const TEST_CURRENCY = "XXX";
+
+it("pins the registered domain, canonical UTF-8 framing and encoder bounds", () => {
+  const document = { policy: "not_applicable", lines: [
+    { sku: "ARTICLE-A", selector: "opaque:α" }, { sku: "ARTICLE-B", selector: "opaque:β" },
+  ] };
+  expect(quoteDigest("catalog.owner-quote.v0", document)).toBe("29bc5f4314f138ef984f252b09391e4ad8f0e41fa3c1d23ab3932dcb95537e92");
+  expect(() => quoteDigest("unknown" as never, document)).toThrow("quote_digest_dialect_unsupported");
+  expect(() => quoteDigest("catalog.owner-quote.v0", "λ".repeat(524_288))).toThrow("draft_payload_too_large");
+  const deep = Array.from({ length: 49 }).reduce<unknown>(value => [value], null);
+  expect(() => quoteDigest("catalog.owner-quote.v0", deep)).toThrow("draft_json_depth");
+});
+
+it("binds the full reviewed projection, distinct source lines and unselected owner dependencies", async () => {
+  const quote = quoteResponse();
+  const first = quote.quote.lines[0]!;
+  first.catalogFacts = catalogFactsForQuoteLine(true, strictItem(), { priceEntryId: "actual-a", unitPriceMinor: 1490 },
+    { priceEntryId: "base-a", unitPriceMinor: 1490 }, "one_time", "2026-06-05T10:00:00.000Z", TEST_CURRENCY, 1490, 1490, 1490);
+  const secondSku = "opaque:item-beta.v1";
+  const second = structuredClone(first);
+  second.sku = secondSku;
+  second.catalogFacts!.skuId = "33333333-3333-4333-8333-333333333333";
+  quote.quote.lines.push(second);
+  quote.quote.subtotalGross.amountMinor = 2980;
+  quote.quote.totalGross.amountMinor = 2980;
+  quote.quote.netTotal.amountMinor = 2422;
+  quote.quote.taxTotal.amountMinor = 558;
+  // The owner inputs are independent of the displayed projection.
+  const input: Parameters<typeof buildCatalogOwnerQuote>[0] = {
+    quote, consultedHeads: [{ productId: "44444444-4444-4444-8444-444444444444",
+      publicationId: "55555555-5555-4555-8555-555555555555", revision: 3, documentDigest: "c".repeat(64) }],
+    lineBindings: quote.quote.lines.map((line, index) => ({ sourceOrdinal: index + 1,
+      skuCode: line.sku, skuId: line.catalogFacts!.skuId, mode: "one_time", quantity: line.quantity,
+      role: "core", source: "legacy" })),
+    priceSelectors: [
+      { sourceOrdinal: 1, role: "comparison", selectorKey: "candidate-unused", evidence: { ref: "opaque:unused" } },
+      { sourceOrdinal: 2, role: "actual", selectorKey: "candidate-b", evidence: { ref: "opaque:β" } },
+      { sourceOrdinal: 1, role: "actual", selectorKey: "candidate-a", evidence: { ref: "opaque:α" } },
+    ],
+    policy: { applicability: "not_applicable", context: { scope: "opaque:verified" } },
+  };
+  const firstProof = buildCatalogOwnerQuote(input);
+  expect(firstProof.evidence.quoteDigest).toBe(quoteDigest("catalog.owner-quote.v0", firstProof.document));
+  const readAgain = structuredClone(input);
+  readAgain.quote.quote.lines[0]!.catalogFacts!.atTime = "2026-06-05T11:00:00.000Z";
+  readAgain.priceSelectors.reverse();
+  expect(buildCatalogOwnerQuote(readAgain)).toEqual(firstProof);
+  for (const change of [
+    (value: typeof input) => { value.consultedHeads[0]!.revision++; },
+    (value: typeof input) => { value.lineBindings[0]!.role = "addon"; },
+    (value: typeof input) => { value.priceSelectors[0]!.evidence = { ref: "opaque:changed-comparison" }; },
+    (value: typeof input) => { value.policy = { applicability: "applies", context: {}, revisionRef: "opaque:policy", revisionDigest: "d".repeat(64) }; },
+    (value: typeof input) => { value.offer = { ref: "opaque:offer", version: "2" }; },
+  ]) {
+    const current = structuredClone(input);
+    change(current);
+    expect(buildCatalogOwnerQuote(current).evidence.quoteDigest).not.toBe(firstProof.evidence.quoteDigest);
+  }
+  expect(catalogAdmissionEvidenceSchema.safeParse({ ...firstProof.evidence, quoteRef: "λ".repeat(121) }).success).toBe(false);
+  expect(catalogAdmissionEvidenceSchema.safeParse({ ...firstProof.evidence, lineBindings: [...input.lineBindings].reverse() }).success).toBe(false);
+  let reads = 0;
+  await expect(createPostgresCatalogAdmission().assertCurrent({ async query() { reads++; return { rows: [] }; } }, {
+    mode: "one_time", context: { regionCode: "ZZ", currency: TEST_CURRENCY, channel: "D2C", policy: "not_applicable" },
+    reviewedProjection: { altered: true }, ownerDocument: firstProof.document,
+    evidence: { ...firstProof.evidence, quoteDigest: "0".repeat(64) },
+  })).rejects.toThrow("catalog_admission_evidence_binding_mismatch");
+  expect(reads).toBe(0);
+});
+
+it("releases both a partially reserved pool pair and a late connection", async () => {
+  const release = vi.fn(), lateRelease = vi.fn();
+  let acquired: (client: unknown) => void = () => {};
+  const connect = vi.fn().mockResolvedValueOnce({ release }).mockImplementationOnce(
+    () => new Promise(resolve => { acquired = resolve; }),
+  );
+  const read = vi.fn();
+  await expect(withCatalogAdmissionFence({ connect } as never, {
+    key: "bounded-request", clientId: "client", skuIds: [], revisionIds: [], priceListId: "list", timeoutMs: 10,
+  }, read)).rejects.toThrow("catalog_admission_fence_unavailable");
+  expect(release).toHaveBeenCalledOnce();
+  expect(read).not.toHaveBeenCalled();
+  acquired({ release: lateRelease });
+  await Promise.resolve();
+  expect(lateRelease).toHaveBeenCalledOnce();
+});
 
 describe("catalog facts provenance", () => {
   it("records document and one-time base price facts without policy authority", () => {
