@@ -169,6 +169,20 @@ const paymentAdapterCarriers = new Set([
 ]);
 const paymentAdapterSubpath = new RegExp(`(?<![\\w-])payments/(?:${paymentAdapterNames.join("|")})(?![\\w-])`, "g");
 const paymentAdapterReport = new RegExp(`(?<![\\w.-])payments-(?:${paymentAdapterNames.join("|")})\\.api\\.md(?![\\w./-])`, "g");
+
+// Owner-approved tax adapter scope (CONTRIBUTING.md, Package, policy and release
+// checks). Only complete path tokens for the first payment provider affect ui-13.
+const taxAdapterName = paymentAdapterNames[0];
+const taxAdapterTree = `packages/platform/(?:src|test)/tax/${taxAdapterName}/`;
+const taxAdapterPaths = new RegExp(`^${taxAdapterTree}`);
+const taxAdapterSubpath = new RegExp(`(?<![\\w.-])tax/${taxAdapterName}(?![\\w-]|\\.[\\w.-])`, "g");
+const taxAdapterReportName = `api/tax-${taxAdapterName}\\.api\\.md`;
+const taxAdapterReport = new RegExp(`(?<![\\w./-])${taxAdapterReportName}(?![\\w./-])`, "g");
+const taxAdapterCarriers = new Set(["packages/platform/package.json", "packages/platform/release-gates.json"]);
+const taxAdapterCatalogueToken = new RegExp(
+  `"path"\\s*:\\s*"(?:${taxAdapterTree}(?=[^"\\r\\n]+")|packages/platform/${taxAdapterReportName}(?="))`, "g",
+);
+
 export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   if (category === "ui-8") {
     const reportingPath = `packages/platform/src/payments/${paymentAdapterNames[1]}/tpayPaymentReconciliationProvider.ts`;
@@ -206,7 +220,14 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
     return contents.split("\n").includes(adapterImport) ? 1 : 0;
   }
   const tokens = adapterCarrierTokens(path, contents, paymentAdapterCarriers, paymentAdapterSubpath, paymentAdapterReport);
-  return tokens?.reduce((count, [token]) => count + [...token.matchAll(word)].length, 0) ?? 0;
+  const paymentCount = tokens?.reduce((count, [token]) => count + [...token.matchAll(word)].length, 0) ?? 0;
+  if (category !== "ui-13" || releaseAdapterTokenCarrier.test(path)) return paymentCount;
+  if (taxAdapterPaths.test(path)) return paymentCount + [...contents.matchAll(taxAdapterSubpath)].length;
+  if (path === "config/openlup-publication-catalog.json") {
+    return paymentCount + [...contents.matchAll(taxAdapterCatalogueToken)].length;
+  }
+  const taxTokens = adapterCarrierTokens(path, contents, taxAdapterCarriers, taxAdapterSubpath, taxAdapterReport);
+  return paymentCount + (taxTokens?.length ?? 0);
 }
 
 // One vendor category, with exact paths and complete, case-sensitive carrier tokens.

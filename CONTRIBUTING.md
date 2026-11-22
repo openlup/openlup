@@ -1345,6 +1345,18 @@ refusals.
 Pinned SQL vocabulary exceptions and their compatibility limits are owned by
 [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
 
+The opt-in payment examples have vendor allowances under
+`packages/platform/src/payments/<provider>/` and
+`packages/platform/test/payments/<provider>/`. The allowance also admits
+complete case-sensitive path tokens for the first payment provider under
+`packages/platform/src/tax/<provider>/` and `packages/platform/test/tax/<provider>/`,
+including test imports. The tax allowance covers the matching publication
+catalogue rows, the `./tax/<provider>` registration in the platform package
+manifest and release gates, and the subpath token in platform change fragments.
+The `api/tax-<provider>.api.md` filename is admitted in the release gates and its
+publication catalogue row. Bare vendor prose, lookalikes, casing changes,
+outside paths and every other category remain checked.
+
 The opt-in fulfillment example lane subtracts only ui-15 at its exact source,
 test, API-report and [A3 ledger](docs/platform/plans/oss-a3-fulfillment-adapter.md)
 paths. Fixed registration carriers and platform change fragments admit only the

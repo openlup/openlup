@@ -950,6 +950,77 @@ it("admits only the exact published adapter import in each native money witness"
   expect(allowedPaymentAdapterWords("tests/postgres/another.test.ts", readback, "ui-14")).toBe(0);
 });
 
+describe("tax adapter neutrality allowance", () => {
+  const vendor = ["str", "ipe"].join("");
+  const subpath = `tax/${vendor}`;
+  const report = `api/tax-${vendor}.api.md`;
+  const source = `packages/platform/src/${subpath}/index.ts`;
+  const test = `packages/platform/test/${subpath}/factory.test.ts`;
+  const catalogue = "config/openlup-publication-catalog.json";
+  const manifest = "packages/platform/package.json";
+  const gates = "packages/platform/release-gates.json";
+  const fragment = "packages/platform/changes/tax-adapter.md";
+  const catalogueRows = (...paths: string[]) => JSON.stringify({ publicPaths: paths.map(path => ({ path })) });
+  const approved: [string, string][] = [
+    [source, `export { quoteTax } from "../../${subpath}/quoteTax.js";`],
+    [test, `import { quoteTax } from "../../../src/${subpath}/index.js";`],
+    [catalogue, catalogueRows(source, test, `packages/platform/${report}`)],
+    [manifest, JSON.stringify({ exports: { [`./${subpath}`]: `./dist/${subpath}/index.js` } })],
+    [gates, JSON.stringify({ packageSurface: { [`./${subpath}`]: {
+      packageSmokeEvidence: [`test/${subpath}/factory.test.ts`],
+      entrypoint: `dist/${subpath}/index.d.ts`,
+      snapshot: report,
+    } } })],
+    [fragment, `Adds the experimental \`@openlup/platform/${subpath}\` adapter.`],
+  ];
+  const scan = (files: [string, string][]) => scanSnapshots(new Map(
+    files.map(([path, contents]) => [path, Buffer.from(contents)]),
+  )).rows;
+
+  it("admits the exact paths, imports, exports, reports and change fragment token", () => {
+    expect(scan(approved)).toEqual({});
+  });
+
+  it("keeps bare prose and other categories counted in the approved files", () => {
+    const otherVendor = ["tp", "ay"].join("");
+    const description = `Uses ${vendor} and tax/${otherVendor}.`;
+    const files: [string, string][] = approved.map(([path, contents]) => [
+      path, path.endsWith(".json") ? JSON.stringify({ ...JSON.parse(contents), description }) : `${contents}\n${description}\n`,
+    ]);
+    expect(scan(files)).toEqual(Object.fromEntries(approved.map(([path]) => [
+      hash(path), { "ui-13": 1, "ui-14": 1 },
+    ])));
+  });
+
+  it("keeps lookalikes, other casing, and tokens outside their approved paths counted", () => {
+    const lookalikes = [`pre-${subpath}`, `${subpath}-extra`, `${subpath}.json`, `tax/${vendor.toUpperCase()}`];
+    const wrongReports = [`api/pre-tax-${vendor}.api.md`, `${report}.bak`, `api/tax-${vendor.toUpperCase()}.api.md`];
+    const outside = [
+      "packages/platform/src/tax/index.ts", "packages/platform/test/tax/factory.test.ts",
+      source.replace(vendor, `${vendor}-extra`), test.replace(vendor, vendor.toUpperCase()),
+      "packages/platform/test/packageBoundary.test.ts", "packages/platform/CHANGELOG.md",
+      "packages/platform/changes/nested/tax-adapter.md", "packages/core/changes/tax-adapter.md",
+    ];
+    expect(scan([
+      [source, lookalikes.join("\n")],
+      [gates, wrongReports.join("\n")],
+      [catalogue, catalogueRows(`docs/${subpath}/index.ts`, `docs/${report}`, `packages/platform/src/${subpath}/${vendor}.ts`)],
+      [manifest, report],
+      [fragment, report],
+      ...outside.map((path): [string, string] => [path, subpath]),
+    ])).toEqual({
+      [hash(source)]: { "ui-13": lookalikes.length },
+      [hash(gates)]: { "ui-13": wrongReports.length },
+      [hash(catalogue)]: { "ui-13": 3 },
+      [hash(manifest)]: { "ui-13": 1 },
+      [hash(fragment)]: { "ui-13": 1 },
+      ...Object.fromEntries(outside.map(path => [hash(path), { "ui-13": 1 }])),
+    });
+    // The pinned scanner already excludes words with adjacent word characters.
+    expect(allowedPaymentAdapterWords(gates, `${subpath}x api/tax-${vendor}s.api.md`)).toBe(0);
+  });
+});
+
 it("admits only approved adapter tokens for all three families in assembled release notes", () => {
   const families = [
     ["communications", ["res", "end"].join("")],
