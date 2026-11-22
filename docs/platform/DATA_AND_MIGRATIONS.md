@@ -524,10 +524,11 @@ policy.
 
 Connected-store restore admits only a packet captured on the target's exact
 current qualified inventory. Any other inventory, including earlier releases
-and unreleased states, refuses with `schema_conflict`: upgrade the source to the
-target's version, then capture. Each release cut decides whether the previous
-release is admitted, with one general additive conversion keyed on that
-release's tables and columns, or documents its refusal. A migration adds no
+and unreleased states, refuses with `schema_conflict`. Upgrade the source to the
+target's exact migration level and qualified installation profile, then capture
+it again. Each release cut decides whether the previous release is admitted,
+with one general additive conversion keyed on that release's tables and
+columns, or documents its refusal. A migration adds no
 restore pin of its own. A migration that adds a captured table or a nullable
 column to one registers it in the capture roster and restore order, or in that
 table's additive columns, in the same change.
@@ -2542,8 +2543,9 @@ moving `pg_temp` to the end. For a missing or empty path, review and set the
 trusted schema list before appending `pg_temp`. Eleven acquisition and partner
 acquisition definer functions now pin `pg_temp` last on their search path.
 If a retained-store packet has an unknown or mismatched inventory, use a
-verified capture from the matching installation profile or upgrade the source
-and capture it again.
+verified capture from the target's exact migration level and qualified
+installation profile, or upgrade the source to that level and profile and capture
+it again.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new
