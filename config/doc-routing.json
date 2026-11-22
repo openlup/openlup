@@ -1066,6 +1066,17 @@
       "anchor": "#assign-connections-by-work"
     },
     {
+      "id": "platform-adapter-kit",
+      "when": "Shared zero-dependency provider adapter protocol primitives (hardened fetch, OAuth2, cooldown, webhook crypto)",
+      "paths": [
+        "packages/platform/src/adapter-kit/**",
+        "packages/platform/test/adapter-kit/**",
+        "packages/platform/api/adapter-kit.api.md"
+      ],
+      "doc": "docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md",
+      "anchor": "#7-shared-tier-1-platform-enablers-keeping-recipes-under-250450-loc"
+    },
+    {
       "id": "platform-http",
       "when": "Node HTTP runtime, request adaptation and deployment-owned security policy contracts",
       "paths": [

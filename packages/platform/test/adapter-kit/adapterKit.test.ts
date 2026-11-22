@@ -125,7 +125,7 @@ describe("@openlup/platform/adapter-kit", () => {
         if (calls === 3) {
           return new Response(JSON.stringify({ error: `invalid ${secretCanary}` }), { status: 401 });
         }
-        return new Response(JSON.stringify({ access_token: `tok-${calls}`, expires_in: 300 }), {
+        return new Response(JSON.stringify({ access_token: `tok-${calls}`, expires_in: 3600 }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
@@ -142,12 +142,12 @@ describe("@openlup/platform/adapter-kit", () => {
     expect(calls).toBe(1);
 
     // Cached hit before refresh skew
-    now += 200_000;
+    now += 3_000_000;
     expect(await manager.getAccessToken()).toBe("tok-1");
     expect(calls).toBe(1);
 
     // Refresh skew triggers renewal
-    now += 50_000;
+    now += 550_000;
     expect(await manager.getAccessToken()).toBe("tok-2");
     expect(calls).toBe(2);
 
