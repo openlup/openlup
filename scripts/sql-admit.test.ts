@@ -256,31 +256,44 @@ END; $$;
   }, 20_000);
 });
 
-describe("qualified price setup EXECUTE in sql:admit and hosted checks", () => {
-  const signatures = ["public.catalog_price_setup_apply_v2(text,text,uuid)", "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)"];
-  const apply = "db/platform/migrations/20990101000000_price_setup_apply.sql";
+describe.each([
+  ["price setup", "price-setup-execute", ["public.catalog_price_setup_apply_v2(text,text,uuid)", "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)"]],
+  ["profile identity", "catalog-publication-subscription-profile-identity-execute", ["public.catalog_publication_subscription_profile_identity(text,integer,text)"]],
+] as const)("qualified %s EXECUTE in sql:admit and hosted checks", (label, row, signatures) => {
+  const first = "db/platform/migrations/20990101000000_guarded_execute_definition.sql";
   const lock = "db/platform/migrations/20990102000000_price_setup_lock.sql";
-  const grant = "db/platform/migrations/20990103000000_price_setup_execute.sql";
+  const predecessors = [first, lock].slice(0, signatures.length);
+  const grant = "db/platform/migrations/20990103000000_guarded_execute.sql";
+  const grantStatement = `GRANT EXECUTE ON FUNCTION ${signatures.join(",\n      ")} TO openlup_catalog_publication;`;
+  const grantLine = `    EXECUTE '${grantStatement}';\n`;
   const guarded = `DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')
 ${ledgerGuard}  THEN
-    EXECUTE 'GRANT EXECUTE ON FUNCTION ${signatures[0]},
-      ${signatures[1]} TO openlup_catalog_publication;';
-  END IF;
+${grantLine}  END IF;
 END; $$;
 `;
   const pass = ["PASS"];
   const ruleChange = ["REFUSED", "reviewed replacement admission machinery must be approved separately before co-located SQL/pins"];
   const unissued = (path: string) => ["REFUSED", `reviewed native store qualified price setup EXECUTE predecessor must already be issued: ${path}`];
   const earlierScanRefusal = ["REFUSED", `reviewed native store cannot scan ${unterminatedEarlierPath}: ${unterminatedReason}`];
+  const exactGrant = ["REFUSED", "reviewed native store qualified price setup EXECUTE forward must contain only the exact guarded grant with final LF"];
+  const malformedGrant = [exactGrant, exactGrant, exactGrant, exactGrant];
+  const lateCreate = ["REFUSED", `reviewed native store qualified price setup EXECUTE requires an earlier native slot creating ${signatures[0]}`];
 
   it.each([
-    ["both predecessors issued", 2, false, 0, [pass, pass, pass, pass]],
-    ["neither predecessor issued", 0, false, 1, [pass, pass, unissued(apply), unissued(apply), unissued(apply), unissued(apply)]],
-    ["the lock predecessor unissued", 1, false, 1, [pass, unissued(lock), unissued(lock), unissued(lock), unissued(lock)]],
-    ["a co-located rule change", 2, true, 1, [pass, pass, ruleChange, ruleChange]],
-    ["an unterminated earlier forward", 2, false, 1, [pass, earlierScanRefusal, earlierScanRefusal, earlierScanRefusal, earlierScanRefusal]],
-  ] as const)("checks %s through trusted admission", (scenario, issued, changeRule, exit, expected) => {
+    ["all predecessors issued", predecessors.length, false, 0, [pass, pass, pass, pass]],
+    ["no predecessor issued", 0, false, 1, [...predecessors.map(() => pass), ...Array.from({ length: 4 }, () => unissued(first))]],
+    ...(predecessors.length === 2 ? [["the lock predecessor unissued", 1, false, 1, [pass, unissued(lock), unissued(lock), unissued(lock), unissued(lock)]]] as const : []),
+    ["a co-located rule change", predecessors.length, true, 1, [pass, pass, ruleChange, ruleChange]],
+    ["an unterminated earlier forward", predecessors.length, false, 1, [pass, earlierScanRefusal, earlierScanRefusal, earlierScanRefusal, earlierScanRefusal]],
+    ...(label === "profile identity" ? [
+      ["the sole grant omitted", 1, false, 1, malformedGrant, guarded.replace(grantLine, "")],
+      ["the sole grant repeated in the same block", 1, false, 1, malformedGrant, guarded.replace(grantLine, grantLine.repeat(2))],
+      ["SELECT alongside EXECUTE", 1, false, 1, malformedGrant, guarded.replace("GRANT EXECUTE", "GRANT EXECUTE, SELECT")],
+      ["the intact grant outside the guard", 1, false, 1, malformedGrant, `${guarded.replace(grantLine, "")}${grantStatement}\n`],
+      ["the pinned CREATE after the grant", 0, false, 1, [lateCreate, pass, lateCreate, lateCreate, lateCreate]],
+    ] as const : []),
+  ] as const)("checks %s through trusted admission", (scenario, issued, changeRule, exit, expected, text = guarded) => {
     const f = fixture(), value = registry();
     const slots = value.nativeStoreForwardClass!.slots, pins = value.nativeStoreForwards!;
     const writeRegistry = (includeIntervening = false) => {
@@ -290,18 +303,21 @@ END; $$;
       f.put(PLATFORM_MIGRATION_MANIFEST, manifest(rows));
     };
     let base = f.base;
-    for (const [i, path] of [apply, lock].entries()) {
+    const createAfterGrant = scenario === "the pinned CREATE after the grant";
+    const definitionPaths = createAfterGrant ? ["db/platform/migrations/20990104000000_guarded_execute_definition.sql"] : predecessors;
+    for (const [i, path] of definitionPaths.entries()) {
       const signature = signatures[i]!;
       const definition = `CREATE FUNCTION ${signature} RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT 'pinned'; $$;`;
       const sql = `${definition}\nREVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;\n`;
-      slots.push({ ...slot(path, `price-setup-${i}`), createdFunctions: [{ signature, searchPath: "pg_catalog, pg_temp" }] });
+      slots.push({ ...slot(path, `definition-${i}`), createdFunctions: [{ signature, searchPath: "pg_catalog, pg_temp" }] });
       pins.push({ path, sha256: sha256(sql), functions: [{ signature, beforeSha256: null, afterSha256: sha256(definition) }] });
       f.put(path, sql);
       if (i + 1 === issued) { writeRegistry(); base = f.commit(); }
     }
-    slots.push({ ...slot(grant, "price-setup-execute"), qualifiedPriceSetupExecute: true });
-    pins.push({ path: grant, sha256: sha256(guarded), functions: [] });
-    f.put(grant, guarded);
+    const grantIndex = createAfterGrant ? 0 : slots.length;
+    slots.splice(grantIndex, 0, { ...slot(grant, row), qualifiedPriceSetupExecute: true });
+    pins.splice(grantIndex, 0, { path: grant, sha256: sha256(text), functions: [] });
+    f.put(grant, text);
     const unterminated = scenario === "an unterminated earlier forward";
     if (unterminated) f.put(unterminatedEarlierPath, unterminatedEarlierSql);
     writeRegistry(unterminated);
@@ -313,6 +329,12 @@ END; $$;
     const reported = verdictLines(result.stdout);
     expect(reported).toEqual(directVerdicts(f, base, head).verdicts);
     expect(reported).toEqual(expected);
+    // Co-location is a queue control. Release independently checks the issued predecessor and prefix.
+    if (!changeRule) {
+      const release = () => assertAdmittedPlatformForward(f.root, f.base, head, grant, Buffer.from(text), true);
+      if (exit) expect(release).toThrow(expected.find(([status]) => status === "REFUSED")![1]);
+      else expect(release).not.toThrow();
+    }
   }, 20_000);
 });
 

@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "id": "fulfillment/shipbob",
+  "domain": "fulfillment",
+  "providerKind": "shipbob",
+  "displayName": "ShipBob 3PL (REST API v1.0 / v2025)",
+  "summary": "Zero-SDK ShipBob 3PL recipe (REST API v1.0 / v2025) with Bearer PAT auth, Standard Webhooks (Svix) HMAC-SHA256 verification, 1-based page reconciliation, and snapshot-only stock sync.",
+  "regions": [
+    "global",
+    "US",
+    "NA",
+    "EU",
+    "APAC"
+  ],
+  "status": "verified",
+  "openlupPlatformRange": "^1.3.0",
+  "testedAgainstPlatformVersion": "1.3.0",
+  "contractImports": [
+    "@openlup/platform/fulfillment",
+    "@openlup/platform/fulfillment/contracts",
+    "@openlup/platform/fulfillment/testing"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/fulfillment/testing",
+    "exportName": "runFulfillmentAdapterConformance",
+    "mode": "full"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://api.shipbob.com",
+    "https://sandbox-api.shipbob.com"
+  ],
+  "webhookAuth": "standard-webhooks",
+  "browserSurface": {
+    "kind": "none"
+  },
+  "supportedCurrenciesPolicy": "not-applicable",
+  "staticCapabilities": {
+    "providerRef": "shipbob",
+    "role": "warehouse",
+    "operations": {
+      "dispatch": {
+        "supported": true
+      },
+      "readback": {
+        "supported": true
+      },
+      "exactAbsence": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "verifyObservation": {
+        "supported": true
+      },
+      "syncStock": {
+        "supported": true
+      },
+      "syncProducts": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "labelCreate": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "labelRead": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "labelVoid": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "cancel": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "pickupPoint": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "courierPickup": {
+        "supported": false,
+        "reason": "not_exposed"
+      }
+    },
+    "authentication": "authenticated_timestamp",
+    "freshness": "authenticated_timestamp",
+    "defaultOff": true,
+    "selected": false,
+    "readiness": {
+      "ready": false,
+      "refusal": {
+        "reason": "not_ready",
+        "phase": "selection",
+        "retryable": false
+      }
+    },
+    "ownsDeliveredNotification": false,
+    "stockAuthority": "external_stock_master_with_local_reservations",
+    "inventory": {
+      "reservationOwner": "local",
+      "consumption": "finished_picking"
+    },
+    "stockMovements": false,
+    "independentSplits": false,
+    "transportSelection": "provider",
+    "labelReadOwner": "none",
+    "actionPolicy": {
+      "providerSpecificAdminActions": false,
+      "genericAdminActions": true,
+      "mutationSurface": "provider_adapter"
+    }
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "LIVE_QUALIFICATION.md",
+      "recipe.json",
+      "server/adapter.ts",
+      "server/client-contract.ts",
+      "server/index.ts",
+      "server/webhook.ts",
+      "tests/conformance.test.ts",
+      "tests/fixtures.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/fulfillment/shipbob/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/fulfillment/shipbob/tests/mount-proof.test.ts"
+  }
+}

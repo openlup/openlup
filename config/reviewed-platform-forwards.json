@@ -6722,6 +6722,61 @@
             "sha256": "0f8d2edfecb524541918b56bfa9b50dbf8b48cf92d671409a4a72b3a9aba9fc8"
           }
         ]
+      },
+      {
+        "row": "acquisition-definer-search-path-pin",
+        "path": "db/platform/migrations/20261125000000_acquisition_definer_search_path_pin.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "settingsOnlyFunctions": [
+          {
+            "signature": "public.acquisition_case_active_count_v1()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.acquisition_case_operator_get_v1(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.acquisition_case_operator_list_v1(uuid,timestamptz,uuid,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.acquisition_case_submit_v1(text,text,text,text,boolean,text,text,text,text,text,text,text,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.acquisition_case_transition_v1(uuid,text,bigint,text,text,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.acquisition_newsletter_consent_v1(text,text,text,text,text,boolean,timestamptz,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.acquisition_survey_operator_list_v1(uuid,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.acquisition_survey_submit_v1(text,text,text,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.partner_acquisition_operator_list_v1(uuid,timestamptz,uuid,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.partner_acquisition_submit_v1(text,text,text,text,text,text,text,text,text,text,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.partner_acquisition_transition_v1(uuid,text,bigint,text,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "dataStatements": [],
+        "ownerWindowRole": "platform_acquisition_owner"
       }
     ]
   },
@@ -9853,6 +9908,11 @@
           "afterSha256": "befab75f0c60beaa4ee533a377fc81a8191c4fbe9b03ba59b8c2c0e0f540208f"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261125000000_acquisition_definer_search_path_pin.sql",
+      "sha256": "ffe320bcdd8fff01cc8e7ecee099243edc4eb3760ba34955a54a2a60f5da5f57",
+      "functions": []
     }
   ],
   "managedExactForwards": [

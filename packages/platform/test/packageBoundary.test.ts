@@ -346,6 +346,16 @@ describe("package source boundary", () => {
     expect(result.outputFiles[0]!.text).toContain("offerAvailabilityRequestItems");
   });
 
+  it("loads the destination port without commerce, payment or subscription entry graphs", async () => {
+    const { metafile } = await build({
+      entryPoints: [join(SOURCE_ROOT, "commerce/server/destinations/index.ts")],
+      bundle: true, platform: "node", format: "esm", write: false, treeShaking: false, metafile: true,
+    });
+    const inputs = Object.keys(metafile.inputs).map(path => path.replaceAll("\\", "/"));
+    expect(inputs.some(path => path.endsWith("commerce/checkoutCommandSchemas.ts"))).toBe(true);
+    expect(inputs.filter(path => /commerce\/index\.ts$|(?:^|\/)(?:payments?|subscriptions?)\//u.test(path))).toEqual([]);
+  });
+
   it.each(files)("$path reaches another module only through that module's public entry", ({ path, source }) => {
     for (const specifier of specifiers(source).filter((value) => value.startsWith("."))) {
       expect(relativeImportAllowed(path, specifier), `${path} imports ${specifier}`).toBe(true);

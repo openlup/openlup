@@ -2512,6 +2512,22 @@ statement, the ordered `ALTER FUNCTION` statements, and the rendered close
 statement. A restricted installer inherits the owner role's privileges only
 within the migration transaction, a superuser installer skips the window, and
 the open statement refuses a pre-existing self-granted membership.
+If role preflight reports `protected_membership_graph_differs` or the migration
+reports a pre-existing self-grant, verify the role, installer and grantor
+against the declared role mode. During controlled maintenance, revoke only the
+unexpected self-grant through its granting installer and preserve the
+bootstrap or operator grant. For other membership drift, restore the declared
+role graph. If an ALTER reports that the installer must be the function owner,
+check the declared login and restore the documented owner and role grants.
+Retry after restoring that configuration.
+
+For a path, digest or issued-prefix mismatch, recover the original approved SQL
+and its binding together, then verify the complete prefix. For an unissued
+forward with a verified binding and a rendered-form mismatch, regenerate the
+file with `renderNativeStoreSettingsOwnerWindow` in
+`scripts/reviewed-platform-forward.ts`. The admission refusal prints the first
+differing line. If admission rejects its order or a target, check the
+introduction base for the first available slot and the exact function signature.
 A later ordinary slot treats a landed settings-only slot's exact pinned
 `ALTER FUNCTION` statements as known DDL, so it can still replace a hardened
 function or grant privileges on it. A replacement may tighten a single
@@ -2521,7 +2537,13 @@ top-level `SET search_path` list of unquoted ASCII identifiers, using `=` or
 tokens normalized and literal and quoted identifier tokens kept byte-exact.
 The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
 requires `pg_temp` last, with no earlier `pg_temp` or `pg_temp_<N>` entry, for every
-installed definer outside the shrink-only `DEFINER_SEARCH_PATH_PENDING` list.
+installed non-system definer. Preserve the intended trusted schemas when
+moving `pg_temp` to the end. For a missing or empty path, review and set the
+trusted schema list before appending `pg_temp`. Eleven acquisition and partner
+acquisition definer functions now pin `pg_temp` last on their search path.
+If a retained-store packet has an unknown or mismatched inventory, use a
+verified capture from the matching installation profile or upgrade the source
+and capture it again.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new
@@ -2919,21 +2941,26 @@ This excludes index creation and attaching a constraint using an index. The
 feature lands the column forward first and introduces the dedicated grant-only
 forward after the column is issued.
 
-At most one native-store slot per registry may declare
+At most one native-store slot per guarded `EXECUTE` entry may declare
 `qualifiedPriceSetupExecute: true`. Its function and data lists are empty,
 and it declares no other capabilities. The whole file, including its final LF,
 must match the frozen role- and authority-ledger-guarded `DO` block. That block
 grants `EXECUTE` on `public.catalog_price_setup_apply_v2(text,text,uuid)` and
 `public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)`, in
 that order, to `openlup_catalog_publication` without grant option.
+Those two signatures are the default for the flag. The reserved row
+`catalog-publication-subscription-profile-identity-execute` selects only
+`public.catalog_publication_subscription_profile_identity(text,integer,text)`.
+The authority ledger guard limits both entries to qualified v2.
 
 Admission resolves each function's initial `createdFunctions` entry from an
 earlier native slot. The registry pins the definition file's path, its whole-file
 SHA-256 and the exact `CREATE FUNCTION` statement's after-hash. The grant's
 approval base must already contain the same definition bytes and bindings.
 The predecessor files and intervening native files must tokenize completely.
-Admission refuses a later static change to either definition. PB-1's PostgreSQL
-witness covers changes reached through dynamic SQL in earlier admitted routines
+Admission requires the issued `PUBLIC` revoke and refuses later static changes
+to any target definition. For price setup, PB-1's PostgreSQL witness covers
+changes reached through dynamic SQL in earlier admitted routines
 and verifies the effective owner, function attributes and privileges under the
 installed profiles.
 

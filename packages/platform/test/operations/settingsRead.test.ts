@@ -252,6 +252,18 @@ describe("settings goal search", () => {
     }));
   });
 
+  it("discovers the read-only checkout address policy by goal", async () => {
+    const { entries } = catalogue.listResult.parse(listSettings({ goal: "subdivision postal format" }));
+    expect(entries).toContainEqual(expect.objectContaining({ key: "shipping.addressPolicy", kind: "code" }));
+    expect(await showSetting({ key: "shipping.addressPolicy" })).toMatchObject({
+      setting: { runtime: { level: "read-only" }, fallback: null, absentMeans: {
+        source: "Application composition", value: null,
+        description: expect.stringContaining("Managed hosts support v1 checkout and saved addresses. Fresh v2 destination issuance requires a native writer."),
+      } },
+      observation: { state: "offline" },
+    });
+  });
+
   it("includes checkout search terms for checkout settings", () => {
     expect(catalogue.searchTerms.checkout).toContain("cart");
     const { entries } = catalogue.listResult.parse(listSettings({ goal: "basket" }));
