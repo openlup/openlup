@@ -86,6 +86,15 @@ const admittedInventories: readonly AdmittedInventory[] = [
     shape: "beforeAcceptedReferences",
     convert: { columns: acceptedReferenceColumns, emptyTables: [editQuotes], attestEmpty: editQuotes },
   },
+  { // Before subscription profile receipts, which remain outside the carried roster.
+    pins: {
+      bootstrap: "c6fea6b7fe85a7963f952994c34e1dfbca87045952e3dadbbf947c4b89aab5f6",
+      separate: "d0a803fd96d5fe048179cff18181c437ede56daa3a8dc14b2ee0a62381753619",
+      "installer-managed": "412caa25526d6ba70bb5bb761d5bed2336e7307811a879658295819ad5ab15f5",
+      "operator-provisioned": "d413c04713b9fb5f5f9d8f01dc66c68c67d131f6cc94bcbf12becef47abd4f42",
+    },
+    shape: "current",
+  },
  ];
 
 function historicalInventoryIndex(list: readonly AdmittedInventory[], profile: Profile, catalogueId: string | undefined): number {
@@ -367,13 +376,14 @@ const order = [
 
 type Installation = QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation;
 type LedgerEntry = { catalog_path: string; sha256: string; position: number };
-type AdmissionFailure = Exclude<PostgresTransferFailure, "database_unavailable">;
+type AdmissionFailure = Exclude<PostgresTransferFailure, "database_unavailable" | "subscription_profile_receipts_unsupported">;
 const refusalOrder: readonly AdmissionFailure[] = [
   "invalid_input", "schema_conflict", "limit_exceeded", "unsupported_table", "insert_trigger_requires_owner", "target_conflict",
 ];
 
 function preferredRefusal(previous: PostgresTransferError | undefined, error: unknown): PostgresTransferError {
-  if (!(error instanceof PostgresTransferError) || error.code === "database_unavailable") throw error;
+  if (!(error instanceof PostgresTransferError) || error.code === "database_unavailable"
+    || error.code === "subscription_profile_receipts_unsupported") throw error;
   return !previous || refusalOrder.indexOf(error.code) < refusalOrder.indexOf(previous.code as AdmissionFailure) ? error : previous;
 }
 

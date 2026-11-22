@@ -21,6 +21,10 @@ const beforeGovernedLifecycle: Record<Mode, string> = {
   "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
   "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
 };
+const beforeSubscriptionProfiles: Record<Mode, string> = {
+  "installer-managed": "412caa25526d6ba70bb5bb761d5bed2336e7307811a879658295819ad5ab15f5",
+  "operator-provisioned": "d413c04713b9fb5f5f9d8f01dc66c68c67d131f6cc94bcbf12becef47abd4f42",
+};
 const groups = ["anon", "authenticated", "service_role", "platform_acquisition_owner",
   "platform_acquisition_runtime", "openlup_retained_import_owner"];
 
@@ -105,9 +109,9 @@ async function withAcquisitionOwnerWindow<T>(installed: Installed, work: (client
     client.release();
   }
 }
-async function capture(installed: Installed, sourceId: string) {
+async function capture(installed: Installed, sourceId: string, catalogueId = installed.inventory) {
   return withAcquisitionOwnerWindow(installed, client =>
-    captureConnectedNativeStore({ sourceId, catalogueId: installed.inventory, maximumRows: 10000,
+    captureConnectedNativeStore({ sourceId, catalogueId, maximumRows: 10000,
       maximumBytes: 64 * 1024 * 1024, source: { async withSnapshot(work) {
         await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
         try {
@@ -250,7 +254,9 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await expect(fixture.runner.status()).rejects.toThrow("outside_role_has_host_authority");
     } finally { await closePostgres(fixture.container, fixture.pools); }
   }, postgresSetupTimeoutMs);
-  it(`restores a connected native graph through ${shape}-shaped ${mode} admission`, async () => {
+  const sourceInventories = shape === "neon"
+    ? [beforeGovernedLifecycle[mode], beforeSubscriptionProfiles[mode]] : [undefined];
+  it.each(sourceInventories)(`restores a connected native graph through ${shape}-shaped ${mode} admission with source pin %s`, async (sourceCatalogueId) => {
     if (!await dockerAvailable()) throw new Error("Restricted restore requires disposable PostgreSQL 16");
     let source: Installed | undefined, target: Installed | undefined;
     try {
@@ -261,14 +267,15 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
         VALUES('synthetic','10000000-0000-4000-8000-000000000001','synthetic.retained','restricted-ordinary-outbox','{}')`);
       const cycle = shape === "rds" ? await writeLineage(source.owner) : undefined;
       // Cover current and predecessor inventories for each restricted role mode.
-      const current = await capture(source, "restricted-source");
+      const current = await capture(source, "restricted-source", sourceCatalogueId);
       let cyclePacket: ConnectedNativeStoreCapture | undefined;
       if (cycle) {
         await cycle(source.owner, true);
         cyclePacket = await capture(source, "restricted-cycle");
         await cycle(source.owner, false);
       }
-      const packet = shape === "neon" ? await projectHistoricalCapture(source.owner, current, beforeGovernedLifecycle[mode]) : current;
+      const packet = sourceCatalogueId === beforeGovernedLifecycle[mode]
+        ? await projectHistoricalCapture(source.owner, current, sourceCatalogueId) : current;
       const freshTarget = await capture(target, "restricted-target");
       expect((await source.runner.status()).pending).toEqual([]);
       expect((await target.runner.status()).pending).toEqual([]);
