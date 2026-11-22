@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool,PoolClient } from 'pg';
 import { expect,it } from 'vitest';
-import { createPostgresStockWaitStore,type NativeRenewalCodec,type SubscriptionQueryExecutor } from '@openlup/platform/subscriptions';
+import { createPostgresStockWaitReads,createPostgresStockWaitStore,type NativeRenewalCodec,type SubscriptionQueryExecutor } from '@openlup/platform/subscriptions';
 import { createPostgresStockAvailability,createPostgresRenewalReservationPort } from '@openlup/platform/inventory';
 import type { RenewalFrozenSnapshot,RenewalReadback,RenewalDue } from '@openlup/platform/subscriptions/contracts';
 import { AT,call,later,renewal,unchangedIdentity,type Renewal } from './subscriptionNativeFixture.js';
@@ -50,11 +50,29 @@ export function registerStockWaitCases(h:{pool:Pool}) {
   const op=await call(h.pool,'subscription_read_renewal',[f.identity]);expect(op).toMatchObject({claimGeneration:2,state:'reserved',operationFingerprint:f.fingerprint});
   await expect(createPostgresRenewalReservationPort(h.pool).reserve({operationId:f.operation,claimToken:f.token,now:later(1)})).rejects.toMatchObject({code:'40001'});
   const prepared=await call(h.pool,'commerce_prepare_subscription_renewal',[f.operation,op.claimToken,later(1)]);
+  const reads=createPostgresStockWaitReads({
+   graph:'native',authorizeOperator:async()=>true,authorizeEvidence:async()=>false,readOwnedAccount:async()=>null,
+   async withReadSnapshot<T>(work:(db:SubscriptionQueryExecutor)=>Promise<T>) {
+    const db=await h.pool.connect();
+    try {
+     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+     return await work(db);
+    } finally {try {await db.query('ROLLBACK');} finally {db.release();}}
+   },
+  });
+  const read=async()=>(await reads.listAdmin({state:'stock_secured',page:1,pageSize:100})).cases.find(row=>row.id===caseId);
+  const links={id:caseId,state:'stock_secured',orderId:prepared.orderId,cycleId:prepared.cycleId,resumedAt:null};
   const unpaid=await allPublicRows(h.pool);
+  const pending=await read();
+  expect(pending).toMatchObject({...links,paymentStatus:'created',paymentEvidence:'recorded'});
+  expect(await read()).toEqual(pending);
   expect(await s.markResumed(prepared.orderId)).toBeNull();
   expect(await allPublicRows(h.pool)).toEqual(unpaid);
   await call(h.pool,'commerce_acknowledge_subscription_renewal_attempt',[f.operation,f.fingerprint,'stock-ack',later(1)]);
   await call(h.pool,'commerce_record_subscription_renewal_outcome',[f.operation,`stock-paid-${f.operation}`,f.fingerprint,'succeeded','stock-ack',null,later(26)]);
+  const paid=await allPublicRows(h.pool);
+  expect(await read()).toMatchObject({...links,paymentStatus:'succeeded',paymentEvidence:'recorded'});
+  expect(await allPublicRows(h.pool)).toEqual(paid);
   await h.pool.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('stock-fixture','3pl',true) ON CONFLICT DO NOTHING");
   await h.pool.query("INSERT INTO public.fulfillment_shipments(order_id,port_key,provider_type,create_idempotency_key) VALUES($1,'stock-fixture','3pl',$2)",[prepared.orderId,`ship-${f.operation}`]);
   const resumed=await s.markResumed(prepared.orderId);expect(resumed).toMatchObject({state:'resumed',caseId});

@@ -532,16 +532,18 @@ it("accepts the pinned predecessor packet shape and refuses a packet with an unk
   table.columns = table.columns.filter(column => column.name !== "scheme");
   table.rows = (await source.owner.query(`SELECT (value::jsonb-'scheme')::text AS row
     FROM unnest($1::text[]) AS rows(value)`, [table.rows])).rows.map(row => row.row);
-  function repin(catalogueId: string) {
-    const { sha256: _captureDigest, compatible, ...body } = capture;
-    const { sha256: _compatDigest, ...fields } = compatible;
+  function repin(input: ConnectedNativeStoreCapture, catalogueId: string, tables = input.compatible.tables) {
+    const { sha256: _captureDigest, ...body } = input;
+    const { sha256: _compatDigest, ...fields } = body.compatible;
     const encoded = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-    const projected = { ...fields, catalogueId };
+    const projected = { ...fields, catalogueId, tables };
     const result = { ...body, compatible: { ...projected, sha256: encoded(projected) } };
     return { ...result, sha256: encoded(result) };
   }
-  await expect(restore(target.owner, repin("a".repeat(64)))).rejects.toMatchObject({ code: "schema_conflict" });
-  expect(await restore(target.owner, repin(historic))).toMatchObject({ replayed: false });
+  await expect(restore(target.owner, repin(packet, "a".repeat(64)))).rejects.toMatchObject({ code: "schema_conflict" });
+  const historicalTables = capture.compatible.tables.filter(entry => entry.table !== "commerce_checkout_attempt_ledger");
+  expect(await restore(target.owner, repin(capture, historic, historicalTables))).toMatchObject({ replayed: false });
+  expect((await target.owner.query("SELECT 1 FROM public.commerce_checkout_attempt_ledger")).rows).toEqual([]);
   expect((await target.owner.query("SELECT scheme FROM public.catalog_sku_identifiers WHERE id=$1", [identifier])).rows)
     .toEqual([{ scheme: null }]);
 }, 105_000);

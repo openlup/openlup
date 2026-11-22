@@ -382,6 +382,7 @@ export {};
 ```ts
 export type { RenewalSchedule, RenewalIdentity, RenewalAdmission, RenewalLine, RenewalCycleCorrelation, RenewalTemplateSnapshot, RenewalPricingSnapshot, RenewalShippingTerms, RenewalLinePricing, RenewalStarterMarker, RenewalRetainedTerms, RenewalRetainedShippingMarker, RenewalOrderSnapshot, RenewalFrozenSnapshot, RenewalDue, RenewalOperationState, RenewalReadback, RenewalPaymentEvidence, RenewalTransactionUnits, RenewalReservationResult, RenewalPreparedSettlement, RenewalStorePort, RenewalSettlementPort, RenewalExecutionRequest, RenewalPaymentRail, RenewalResult } from "./renewal.js";
 export type { DunningCaseOpenInput, DunningCaseOpened, DunningCaseAdvanced, DunningRefusalCode, DunningCaseLifecyclePort, RenewalRetryState, RenewalRetryObligation, RenewalRecoveryAuthorization, RenewalFailureHandoffPort } from "./dunning.js";
+export type { StockWaitReadState, StockWaitReadNotice, StockWaitReadProjection, StockWaitOperatorSummary, StockWaitAdminPage } from "./stockWaitReads.js";
 export type { StockWaitRecoveryBinding, StockWaitDeficit, StockWaitCase, StockWaitFrozenCase, StockWaitStorePort } from "./stockWait.js";
 export type { SubscriptionLifecycleTerms, SubscriptionCancelSurvey, SubscriptionSaveOffer, SubscriptionCommandContext, SubscriptionCommand, SubscriptionCommandAdmission, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, SubscriptionCommandPort, SubscriptionActivationPort } from "./commands.js";
 export type { SubscriptionLifecycleFact, SubscriptionLifecycleMessageDescriptor, SubscriptionLifecycleMessagePort } from "./messages.js";
@@ -1389,5 +1390,65 @@ export interface StockWaitStorePort {
         outcome: "refused";
         reason: "not_stock_only" | "external_ownership" | "stale_snapshot" | "lease_active" | "inventory_unavailable";
     }>;
+}
+```
+## dist/subscriptions/contracts/stockWaitReads.d.ts
+
+```ts
+import type { PaymentIntentStatus } from "@openlup/core/payment";
+import type { StockWaitCase, StockWaitDeficit } from "./stockWait.js";
+/** @experimental */
+export type StockWaitReadState = StockWaitCase["state"];
+/** @experimental */
+export interface StockWaitReadNotice {
+    templateSlug: "subscription-stock-wait-started" | "subscription-stock-wait-resumed";
+    status: string;
+    lastErrorCode: string | null;
+    updatedAt: string;
+}
+/** Compact read evidence. Snapshot, recipient and command bindings stay server-side.
+ * @experimental
+ */
+export interface StockWaitReadProjection {
+    schemaVersion: 2;
+    caseKind: string;
+    id: string;
+    clientId: string;
+    subscriptionId: string;
+    cycleNumber: number;
+    scheduledAt: string;
+    state: StockWaitReadState;
+    deficits: StockWaitDeficit[];
+    orderId: string | null;
+    cycleId: string | null;
+    fulfillmentId: string | null;
+    openedAt: string;
+    lastCheckedAt: string;
+    stockSecuredAt: string | null;
+    resumedAt: string | null;
+    closedAt: string | null;
+    blockReason: string | null;
+    automaticRecoveryEligible: boolean;
+    independentBlock: string | null;
+    notices: StockWaitReadNotice[];
+}
+/** @experimental */
+export interface StockWaitOperatorSummary {
+    totalCount: number;
+    productTotals: {
+        sku: string;
+        displayName: string;
+        missingUnits: number;
+        affectedCases: number;
+    }[];
+}
+/** @experimental */
+export interface StockWaitAdminPage extends StockWaitOperatorSummary {
+    cases: (StockWaitReadProjection & {
+        paymentStatus: PaymentIntentStatus | "not_started";
+        paymentEvidence: "recorded" | "missing" | "not_applicable";
+    })[];
+    page: number;
+    pageSize: number;
 }
 ```

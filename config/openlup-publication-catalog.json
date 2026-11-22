@@ -1566,6 +1566,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124200000_checkout_attempt_ledger.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5087,6 +5091,10 @@
     },
     {
       "path": "packages/platform/sql/20261124180000_catalogue_read_grant.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124200000_checkout_attempt_ledger.sql",
       "class": "public-output"
     },
     {
@@ -9686,6 +9694,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/contracts/stockWaitReads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/exactEditQuote.ts",
       "class": "public-output"
     },
@@ -9798,6 +9810,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/postgresStockWaitReads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/postgresStockWaitStore.ts",
       "class": "public-output"
     },
@@ -9859,6 +9875,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/sizedParcelProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/stockWaitReadQueries.ts",
       "class": "public-output"
     },
     {
@@ -29030,6 +29050,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261124200000_checkout_attempt_ledger.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -30330,6 +30354,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutAttemptLedger.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutInlineRecovery.test.ts",
       "class": "public-output"
     },
@@ -31387,6 +31415,10 @@
     },
     {
       "path": "tests/postgres/subscriptionStockWaitCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionStockWaitReads.test.ts",
       "class": "public-output"
     },
     {

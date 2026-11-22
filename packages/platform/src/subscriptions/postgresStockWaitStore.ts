@@ -24,6 +24,28 @@ function array(value: unknown): unknown[] {
   if (!Array.isArray(value)) throw new Error("stock_wait_array_invalid");
   return value;
 }
+function buildDeficits(value: unknown, catalogBySku: ReadonlyMap<string, Record<string, unknown>>): StockWaitDeficit[] {
+  const rows = array(value).map(subscriptionRecord);
+  return rows.map(r => {
+    // Catalogue labels enrich the projection; quantities still come only from N3.
+    const item = catalogBySku.get(String(r.sku));
+    if (!item) throw new Error("stock_wait_catalog_sku_missing");
+    return { skuId: String(item.id), sku: String(r.sku), displayName: String(item.title), size: null,
+      required: Number(r.requiredUnits), reserved: Number(r.reservedUnits),
+      available: Number(r.availableUnits), missing: Number(r.missingUnits) };
+  });
+}
+async function loadCatalogBySku(db: SubscriptionQueryExecutor, skus: readonly string[]): Promise<Map<string, Record<string, unknown>>> {
+  if (skus.length === 0) return new Map();
+  const catalog = (await db.query("SELECT id,sku,title FROM public.catalog_skus WHERE sku=ANY($1::text[])", [skus])).rows;
+  return new Map(catalog.map(item => [String(item.sku), item]));
+}
+export async function nativeStockWaitDeficits(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitDeficit[]> {
+  const rows = array(value).map(subscriptionRecord);
+  if (rows.length === 0) return [];
+  const catalogBySku = await loadCatalogBySku(db, [...new Set(rows.map(r => String(r.sku)))]);
+  return buildDeficits(rows, catalogBySku);
+}
 /** Each multi-statement mutation uses the host transaction. Payment execution is
  * deliberately outside this store. SQL owns stock locks and subtransactions. */
 export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
@@ -37,28 +59,6 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       }
       throw error;
     })).rows[0]?.response;
-  }
-  function buildDeficits(value: unknown, catalogBySku: ReadonlyMap<string, Record<string, unknown>>): StockWaitDeficit[] {
-    const rows = array(value).map(subscriptionRecord);
-    return rows.map(r => {
-      // Catalogue labels enrich the projection; quantities still come only from N3.
-      const item = catalogBySku.get(String(r.sku));
-      if (!item) throw new Error("stock_wait_catalog_sku_missing");
-      return { skuId: String(item.id), sku: String(r.sku), displayName: String(item.title), size: null,
-        required: Number(r.requiredUnits), reserved: Number(r.reservedUnits),
-        available: Number(r.availableUnits), missing: Number(r.missingUnits) };
-    });
-  }
-  async function loadCatalogBySku(db: SubscriptionQueryExecutor, skus: readonly string[]): Promise<Map<string, Record<string, unknown>>> {
-    if (skus.length === 0) return new Map();
-    const catalog = (await db.query("SELECT id,sku,title FROM public.catalog_skus WHERE sku=ANY($1::text[])", [skus])).rows;
-    return new Map(catalog.map(item => [String(item.sku), item]));
-  }
-  async function deficits(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitDeficit[]> {
-    const rows = array(value).map(subscriptionRecord);
-    if (rows.length === 0) return [];
-    const catalogBySku = await loadCatalogBySku(db, [...new Set(rows.map(r => String(r.sku)))]);
-    return buildDeficits(rows, catalogBySku);
   }
   function projectCaseRow(row: Record<string, unknown>, catalogBySku: ReadonlyMap<string, Record<string, unknown>>): StockWaitCase {
     const r = subscriptionRecord(row.projection), snapshot = codec.decode(subscriptionRecord(row.cycle_snapshot));
@@ -217,7 +217,7 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       return result.rows.map(row => codec.due(row));
     },
     async deficits(input: { snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot; operationId: string; now: string }) {
-      return options.withTransaction(async db => deficits(db, await invoke(db, "subscription_stock_wait_deficits", [codec.encode(input.snapshot), input.operationId, input.now])));
+      return options.withTransaction(async db => nativeStockWaitDeficits(db, await invoke(db, "subscription_stock_wait_deficits", [codec.encode(input.snapshot), input.operationId, input.now])));
     },
     async admit(input: { operationId: string; claimToken: string; snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot; recovery?: StockWaitRecoveryBinding; now: string }): Promise<NativeStockWaitAdmission> {
       const request = { operationId: input.operationId, claimToken: input.claimToken, snapshot: codec.encode(input.snapshot),
