@@ -11,8 +11,8 @@ import type { InvoiceDataLookupPort } from "../../../src/domains/accounting/port
  * lookup adapter, v3 API at https://dane.biznes.gov.pl/api/ceidg/v3.
  *
  * Why this exists: the MF VAT whitelist (`mfVat` adapter) only exposes the
- * sole-proprietor's *personal* name (e.g. "BARTŁOMIEJ ROSZKOWSKI"). The full
- * registered business name (e.g. "Zero to One Bartłomiej Roszkowski") lives in
+ * sole-proprietor's *personal* name (e.g. "JAN KOWALSKI"). The full
+ * registered business name (e.g. "Example Studio Jan Kowalski") lives in
  * CEIDG under `firma.nazwa`. The company-identity service already prefers a
  * fuller sole-proprietor name when a later provider supplies one — this adapter
  * is that later provider for PL/NIP lookups.

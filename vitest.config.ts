@@ -130,6 +130,8 @@ export default defineConfig({
             "server/**/*.{test,spec}.ts",
             "packages/outbox/test/**/*.{test,spec}.ts",
             "packages/platform/test/**/*.{test,spec}.ts",
+            // Self-contained Provider Recipes (ADR-001).
+            "recipes/**/tests/**/*.{test,spec}.ts",
             // src logic tests; the dom project owns the excluded trees below.
             "src/**/*.{test,spec}.ts",
             // Golden-master harness (Platform Portability): deterministic dispatcher contract.
@@ -198,6 +200,7 @@ export default defineConfig({
         // above). V8 can still report imported files outside `include`, so keep
         // the non-product test/tooling roots explicitly out of the denominator.
         "mcp/**",
+        "recipes/**",
         "scripts/**",
         "tests/**",
         // The extracted package owns a stricter package-local coverage/no-zero gate.

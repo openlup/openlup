@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openlup.org/schemas/recipe.v1.schema.json",
+  "title": "OpenLup Provider Recipe Manifest (v1)",
+  "description": "Machine-readable contract manifest for a self-contained, source-owned OpenLup Provider Recipe governed by ADR-001.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "domain",
+    "providerKind",
+    "displayName",
+    "summary",
+    "status",
+    "openlupPlatformRange",
+    "testedAgainstPlatformVersion",
+    "contractImports",
+    "conformanceRunner",
+    "sdkPolicy",
+    "egressOrigins",
+    "webhookAuth",
+    "browserSurface",
+    "staticCapabilities",
+    "liveQualification",
+    "files"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*/[a-z][a-z0-9-]*$",
+      "description": "Canonical recipe identifier matching recipes/<domain>/<provider> (e.g. payments/adyen)."
+    },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "payments",
+        "fulfillment",
+        "communications",
+        "invoicing",
+        "channels",
+        "shipping",
+        "tax",
+        "accounting",
+        "observability",
+        "company-identity",
+        "multi"
+      ]
+    },
+    "providerKind": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{1,47}$",
+      "description": "Canonical providerKind emitted by the adapter's runtime capabilities descriptor."
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 80
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 240
+    },
+    "regions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(global|[A-Z]{2}|EU|APAC|NA|LATAM|MEA)$"
+      },
+      "uniqueItems": true
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "exemplar",
+        "verified",
+        "experimental",
+        "unverified-for-version"
+      ]
+    },
+    "openlupPlatformRange": {
+      "type": "string",
+      "minLength": 1,
+      "description": "SemVer range of @openlup/platform this recipe targets (e.g. ^1.3.0)."
+    },
+    "testedAgainstPlatformVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"
+    },
+    "contractImports": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^@openlup/(core|platform|outbox)(/[a-z0-9-]+)*$"
+      },
+      "description": "Exact public @openlup/* subpaths consumed by the recipe."
+    },
+    "conformanceRunner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "importPath",
+        "exportName"
+      ],
+      "properties": {
+        "importPath": {
+          "type": "string",
+          "pattern": "^@openlup/(core|platform|outbox)(/[a-z0-9-]+)*$"
+        },
+        "exportName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string"
+        }
+      }
+    },
+    "sdkPolicy": {
+      "type": "string",
+      "enum": [
+        "zero-dep-fetch",
+        "injected-structural-client",
+        "optional-peer"
+      ]
+    },
+    "egressOrigins": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^https://([a-z0-9.-]+|\\{[a-z][a-z0-9_]*\\}|\\*)+(:[0-9]+)?$"
+      },
+      "description": "Explicit HTTPS origin patterns the adapter is permitted to contact. Named placeholders such as {liveUrlPrefix} must be strictly validated at construction time."
+    },
+    "webhookAuth": {
+      "type": "string",
+      "enum": [
+        "hmac-sha256-raw",
+        "hmac-sha256-canonical",
+        "standard-webhooks",
+        "jws-x5u",
+        "ed25519",
+        "basic-auth",
+        "none"
+      ]
+    },
+    "browserSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "none",
+            "adapter-component"
+          ]
+        },
+        "entry": {
+          "type": "string",
+          "pattern": "^browser/[A-Za-z0-9._/-]+$"
+        },
+        "cspManifest": {
+          "type": "string",
+          "pattern": "^browser/[A-Za-z0-9._/-]+\\.json$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "adapter-component"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "entry",
+              "cspManifest"
+            ]
+          }
+        }
+      ]
+    },
+    "supportedCurrenciesPolicy": {
+      "type": "string",
+      "enum": [
+        "host-configured",
+        "fixed",
+        "not-applicable"
+      ],
+      "description": "Whether supportedCurrencies is injected by the host (static descriptor uses []) or fixed by the provider."
+    },
+    "staticCapabilities": {
+      "type": "object",
+      "description": "Serializable static projection of the adapter's capabilities descriptor (omitting non-JSON function fields such as assessMandate; verified mechanically via deepStrictEqual against projectStaticCapabilities(descriptor) in conformance tests)."
+    },
+    "liveQualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "checklist"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "offline-protocol-only",
+            "dated-sandbox-receipt"
+          ]
+        },
+        "checklist": {
+          "type": "string",
+          "const": "LIVE_QUALIFICATION.md"
+        },
+        "qualifiedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "qualifiedPlatformVersion": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"
+        }
+      }
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serverEntry",
+        "conformanceTest",
+        "mountProofTest",
+        "liveQualificationDoc",
+        "allFiles"
+      ],
+      "properties": {
+        "serverEntry": {
+          "type": "string",
+          "pattern": "^server/[A-Za-z0-9._/-]+$"
+        },
+        "clientContract": {
+          "type": "string",
+          "pattern": "^server/[A-Za-z0-9._/-]+$"
+        },
+        "conformanceTest": {
+          "type": "string",
+          "pattern": "^tests/[A-Za-z0-9._/-]+$"
+        },
+        "mountProofTest": {
+          "type": "string",
+          "pattern": "^tests/[A-Za-z0-9._/-]+$"
+        },
+        "liveQualificationDoc": {
+          "type": "string",
+          "const": "LIVE_QUALIFICATION.md"
+        },
+        "allFiles": {
+          "type": "array",
+          "minItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$"
+          },
+          "description": "Complete relative file inventory inside the recipe directory for deterministic copy-into-app tooling."
+        }
+      }
+    },
+    "proofCommands": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conformance": {
+          "type": "string"
+        },
+        "mountProof": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

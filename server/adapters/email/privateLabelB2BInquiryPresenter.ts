@@ -33,7 +33,7 @@ export function createPrivateLabelB2BInquiryPresenter(env: PrivateLabelB2BInquir
       const brand = appEmailBrandForOrigin(origin.origin);
       const regionCode = request.country;
       const formattedRegion = formatRegion(regionCode);
-      const sender = env.FROM_EMAIL || "openlup <bart@openlup.com>";
+      const sender = env.FROM_EMAIL || `${brand.theme.logoText} <no-reply@example.test>`;
       const confirmation = renderEmail({
         brand,
         locale: "en",

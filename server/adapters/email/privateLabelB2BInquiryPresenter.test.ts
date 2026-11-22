@@ -22,4 +22,17 @@ describe("private-label B2B inquiry presenter", () => {
 
     expect(result).toEqual({ ok: false, error: "hidden_preview_origin_required" });
   });
+
+  it("uses a neutral fallback sender when FROM_EMAIL is not configured", () => {
+    const result = createPrivateLabelB2BInquiryPresenter({ APP_BASE_URL: "https://preview.example.test" }).present({
+      request: { company: "Acme", country: "US", firstName: "Jane", lastName: "Smith", email: "jane@acme.test" },
+      sourceId: "inq-2",
+      notificationTo: ["ops@example.test"],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.confirmation.sender).toContain("<no-reply@example.test>");
+    expect(result.notification.sender).toBe(result.confirmation.sender);
+  });
 });

@@ -79,6 +79,26 @@ const providerIsolation = {
   ],
 };
 
+const recipeIsolation = {
+  message: "Provider recipes must remain repo-splittable (ADR-001): import only public @openlup/* exports, Node built-ins (in server/tests), or recipe-local files.",
+  regexes: [
+    ...providerIsolation.regexes,
+    "^@/",
+    "^#",
+    "^(?:\\./)?(?:\\.\\./){3,}(?:packages|server|src|examples|scripts|tests|api|mcp)(?:/|$)",
+    "^(?:\\./)?(?:\\.\\./){4,}",
+  ],
+};
+
+const recipeBrowserIsolation = {
+  message: "Recipe browser surfaces must stay Node-free and separate from server/ modules (ADR-001).",
+  regexes: [
+    ...recipeIsolation.regexes,
+    "^node:",
+    "^(?:\\./)?(?:\\.\\./)+server(?:/|$)",
+  ],
+};
+
 const domainIsolation = {
   message: "Domain code must not import provider SDKs or adapter, infra, runtime or route code; inject a port instead.",
   regexes: [
@@ -359,6 +379,14 @@ export default tseslint.config(
     files: DOMAIN_ROOTS.flatMap((root) => sourceFiles(`${root}/`)),
     ignores: DOMAIN_TEST_FILES,
     rules: boundaryRules([packageExports, domainIsolation]),
+  },
+  {
+    files: sourceFiles("recipes/"),
+    rules: boundaryRules([packageExports, recipeIsolation]),
+  },
+  {
+    files: [`recipes/**/browser/**/*.${SOURCE_EXTENSIONS}`],
+    rules: boundaryRules([packageExports, recipeBrowserIsolation]),
   },
   ...workspacePackages.flatMap((pkg) => [null, ...Array.from({ length: MAX_PACKAGE_DEPTH + 1 }, (_, depth) => depth)]
     .flatMap((depth) => {

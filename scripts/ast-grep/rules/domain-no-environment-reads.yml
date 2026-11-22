@@ -18,6 +18,8 @@ files:
   - server/domains/**/*.ts
   - src/domains/**/*.ts
   - packages/core/src/**/*.ts
+  - recipes/**/server/**/*.ts
+  - recipes/**/browser/**/*.ts
 ignores:
   - "**/*.test.ts"
   - server/domains/catalog/catalogPricingJoin.ts
