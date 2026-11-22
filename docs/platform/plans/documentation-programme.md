@@ -307,7 +307,7 @@ No `Docs-impact` line in the PR record; the owner removed that obligation on
 
 - **Code-owned content cannot go stale silently.** Compiled fences and
   generated regions fail when the API changes.
-- **Prose is reviewed** by the change's author ("Deliver a change", step 2),
+- **Prose is reviewed** by the change's author ("Deliver a change", step 3),
   by the guide's review floor of one, and by the per-release pass (S6).
 
 ### S4 — the tutorial runs inside `install-proof`
@@ -345,7 +345,7 @@ result.
 ### S6 — written with the code, checked once per release
 
 - **Same-PR updates.** The author updates the guide in the same PR as the
-  code ("Deliver a change", step 2). A compiled fence or generated region the
+  code ("Deliver a change", step 3). A compiled fence or generated region the
   change breaks makes an omission visible in CI.
 - **One read-only step in release preparation**, listing:
   - the API-report, catalogue and maintainer-page diff since the previous
