@@ -45,7 +45,9 @@ export type CatalogSubscriptionProfileIssue = {
   readonly fix: string;
 };
 
-const cadenceFix = `Use distinct fixed-day choices with whole days from 1 to ${MAX_CADENCE_DAYS}.`;
+const fixedDayChoiceExample = '{ schemaVersion: 1, kind: "fixed_days", days: 30 }';
+const cadenceShapeFix = `Supply a fixed-day choice such as ${fixedDayChoiceExample}.`;
+const distinctDaysFix = `Use distinct fixed-day choices with whole days from 1 to ${MAX_CADENCE_DAYS}.`;
 
 function fieldFix(issue: z.ZodIssue): string {
   const [field, child, property] = issue.path;
@@ -53,22 +55,31 @@ function fieldFix(issue: z.ZodIssue): string {
     case "policyDigest":
       return "Supply policyDigest as a 64-character lowercase SHA-256 hex digest.";
     case "allowedCadences":
-      if (child === undefined && issue.code === "invalid_type" && issue.expected === "array") {
+      if (child === undefined) {
+        if (issue.code === "too_small") return `Add at least one fixed-day choice, such as ${fixedDayChoiceExample}.`;
+        if (issue.input === undefined) return `Supply allowedCadences as an array, such as [${fixedDayChoiceExample}].`;
         return 'Wrap the cadence choice in an array: allowedCadences: [{ schemaVersion: 1, kind: "fixed_days", days }].';
       }
-      return property === "schemaVersion" ? "Use schemaVersion 1 for this cadence choice." : cadenceFix;
+      if (property === undefined || issue.input === undefined) return cadenceShapeFix;
+      if (property === "schemaVersion") return "Use schemaVersion 1 for this cadence choice.";
+      if (property === "kind") {
+        // The discriminator issue carries the choice object rather than the kind value.
+        const choice = issue.input as { kind?: unknown };
+        return choice.kind === undefined ? cadenceShapeFix : 'Use kind "fixed_days" for this cadence choice.';
+      }
+      return `Use a fixed-day choice with a days field containing a whole number from 1 to ${MAX_CADENCE_DAYS}.`;
     case "maxFixedDays":
       return `Supply a whole number from 1 to ${MAX_CADENCE_DAYS} for maxFixedDays or omit it.`;
     case "policyRef":
       if (child === "key") return "Supply a lowercase namespaced policy key of at most 120 characters, such as example:monthly.";
       if (child === "version") return "Supply a whole-number policy version from 1 to 2147483647.";
-      return "Supply policyRef with a namespaced key and a version from 1 to 2147483647.";
+      return 'Supply a policyRef object such as { key: "example:monthly", version: 1 }.';
     case "key":
       return "Supply a lowercase namespaced profile key of at most 120 characters, such as example:monthly.";
     case "version":
       return "Supply a whole-number profile version from 1 to 2147483647.";
     default:
-      return "Supply a subscription profile declaration with the documented fields.";
+      return "Supply a subscription profile declaration object with the documented fields.";
   }
 }
 
@@ -77,7 +88,7 @@ function fieldFix(issue: z.ZodIssue): string {
  */
 export function validateCatalogSubscriptionProfile(input: unknown):
   { profile: CatalogSubscriptionProfileV1 } | { issue: CatalogSubscriptionProfileIssue } {
-  const parsed = schema.safeParse(input);
+  const parsed = schema.safeParse(input, { reportInput: true });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const unexpected = issue.code === "unrecognized_keys" ? issue.keys[0] : undefined;
@@ -89,10 +100,13 @@ export function validateCatalogSubscriptionProfile(input: unknown):
   const { allowedCadences, maxFixedDays, ...profile } = parsed.data;
   const days: number[] = [];
   for (const [index, choice] of allowedCadences.entries()) {
-    if (choice.kind !== "fixed_days") return { issue: { code: "cadence_kind_unsupported", path: `/allowedCadences/${index}`, fix: cadenceFix } };
+    if (choice.kind !== "fixed_days") return { issue: {
+      code: "cadence_kind_unsupported", path: `/allowedCadences/${index}`,
+      fix: `V1 accepts only "fixed_days" choices. Replace this choice with a fixed-day choice such as ${fixedDayChoiceExample}.`,
+    } };
     days.push(choice.days);
   }
-  if (new Set(days).size !== days.length) return { issue: { code: "definition_profile_invalid", path: "/allowedCadences", fix: cadenceFix } };
+  if (new Set(days).size !== days.length) return { issue: { code: "definition_profile_invalid", path: "/allowedCadences", fix: distinctDaysFix } };
   return { profile: Object.freeze({
     ...profile, policyRef: Object.freeze(profile.policyRef),
     allowedCadences: Object.freeze(days.sort((a, b) => a - b)
