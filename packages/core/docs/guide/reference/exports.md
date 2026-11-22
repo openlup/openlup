@@ -109,6 +109,8 @@ Find an import subpath and its API report. API reports list every exported symbo
 | `./shipping/contracts` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/shipping-contracts.api.md) |
 | `./subscriptions` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/subscriptions.api.md) |
 | `./subscriptions/contracts` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/subscriptions-contracts.api.md) |
+| `./tax` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/tax.api.md) |
+| `./tax/contracts` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/tax-contracts.api.md) |
 
 4 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/AGENTS.md#subpath-maturity).
 <!-- /generated:exports:platform -->

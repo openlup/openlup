@@ -197,6 +197,8 @@ export declare class CatalogueMoneyV2Error extends Error {
  * @experimental
  */
 export declare function planCatalogueMoneyV2(input: CatalogueMoneyV2Input): CatalogueMoneyV2Plan;
+/** @beta @experimental */
+export declare function isCatalogueMoneyV2RateDecimal(value: unknown): value is string;
 /**
  * Calculate rounded states and reconcile the payable. See {@link CatalogueMoneyV2Tax}
  * for local rounding and the required provider states.

@@ -338,6 +338,28 @@
       "entrypoint": "dist/migrations/index.d.ts",
       "snapshot": "api/migrations.api.md"
     },
+    "./tax": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "experimental",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/tax/coverage.test.ts"
+      ],
+      "entrypoint": "dist/tax/index.d.ts",
+      "snapshot": "api/tax.api.md"
+    },
+    "./tax/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "experimental",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/tax/contracts.test.ts"
+      ],
+      "entrypoint": "dist/tax/contracts/index.d.ts",
+      "snapshot": "api/tax-contracts.api.md"
+    },
     "./pricing": {
       "role": "capability",
       "maturity": "stable",
@@ -1044,6 +1066,7 @@
       "./communications/contracts": 11776,
       "./identity/contracts": 4800,
       "./inventory/contracts": 32,
+      "./tax/contracts": 8002,
       "./pricing/contracts": 464,
       "./promotions/contracts": 32,
       "./shipping/contracts": 32,
