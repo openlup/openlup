@@ -847,6 +847,49 @@ CREATE CONSTRAINT TRIGGER subscription_events_catalog_final AFTER INSERT OR UPDA
 CREATE CONSTRAINT TRIGGER subscription_quote_previews_catalog_final AFTER INSERT OR UPDATE OR DELETE ON public.subscription_quote_previews DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_edit_acceptance_trigger();
 CREATE CONSTRAINT TRIGGER subscription_edit_quotes_catalog_final AFTER INSERT OR UPDATE OR DELETE ON public.subscription_edit_quotes DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_edit_acceptance_trigger();
 
+CREATE FUNCTION public.catalog_order_line_sum_acceptance(
+  p_order_id uuid,
+  p_old_order_id uuid DEFAULT NULL,
+  p_old_header public.commerce_orders DEFAULT NULL,
+  p_new_header public.commerce_orders DEFAULT NULL
+) RETURNS void
+LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  v_acceptance jsonb;
+BEGIN
+  IF p_new_header IS DISTINCT FROM NULL THEN
+    IF p_old_header.catalog_acceptance IS NOT NULL AND
+      (p_old_header.catalog_acceptance, p_old_header.catalog_basket, p_old_header.catalog_receipt_key, p_old_header.renewal_operation_id, p_old_header.renewal_operation_fingerprint)
+      IS DISTINCT FROM (p_new_header.catalog_acceptance, p_new_header.catalog_basket, p_new_header.catalog_receipt_key, p_new_header.renewal_operation_id, p_new_header.renewal_operation_fingerprint)
+    THEN
+      RAISE EXCEPTION 'catalog_acceptance_immutable' USING ERRCODE = '55000';
+    END IF;
+    IF p_new_header.catalog_acceptance IS NOT NULL THEN
+      PERFORM public.catalog_acceptance_assert_v2(p_new_header.catalog_acceptance);
+    END IF;
+    RETURN;
+  END IF;
+
+  IF p_old_order_id IS NOT NULL THEN
+    IF p_old_order_id = p_order_id THEN RETURN; END IF;
+    p_order_id := p_old_order_id;
+  END IF;
+
+  SELECT catalog_acceptance INTO v_acceptance
+    FROM public.commerce_orders
+   WHERE id = p_order_id;
+  IF v_acceptance IS NOT NULL THEN
+    PERFORM public.catalog_order_acceptance_final(p_order_id);
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders) FROM PUBLIC;
+-- Deferred invoker triggers need EXECUTE under the caller's role.
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders) TO authenticated;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders) TO service_role;'; END IF; END; $$;
+
 CREATE OR REPLACE FUNCTION public.commerce_order_assert_line_sum()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -854,7 +897,6 @@ SET search_path = public, pg_catalog
 AS $$
 DECLARE
   v_order_id uuid;
-  v_acceptance jsonb;
   v_declared bigint;
   v_sum bigint;
 BEGIN
@@ -863,22 +905,17 @@ BEGIN
   -- on every row type the trigger can see, and the two row types here differ.
   IF TG_TABLE_NAME = 'commerce_orders' THEN
     v_order_id := NEW.id;
-    IF TG_OP='UPDATE' AND OLD.catalog_acceptance IS NOT NULL AND
-      (OLD.catalog_acceptance, OLD.catalog_basket, OLD.catalog_receipt_key, OLD.renewal_operation_id, OLD.renewal_operation_fingerprint)
-      IS DISTINCT FROM (NEW.catalog_acceptance, NEW.catalog_basket, NEW.catalog_receipt_key, NEW.renewal_operation_id, NEW.renewal_operation_fingerprint)
-    THEN RAISE EXCEPTION 'catalog_acceptance_immutable' USING ERRCODE='55000'; END IF;
-    IF NEW.catalog_acceptance IS NOT NULL THEN PERFORM public.catalog_acceptance_assert_v2(NEW.catalog_acceptance); END IF;
+    PERFORM public.catalog_order_line_sum_acceptance(v_order_id, p_old_header => OLD, p_new_header => NEW);
   ELSIF TG_OP = 'DELETE' THEN
     v_order_id := OLD.order_id;
   ELSE
     v_order_id := NEW.order_id;
-    IF TG_OP='UPDATE' AND NEW.order_id IS DISTINCT FROM OLD.order_id THEN
-      SELECT catalog_acceptance INTO v_acceptance FROM public.commerce_orders WHERE id=OLD.order_id;
-      IF v_acceptance IS NOT NULL THEN PERFORM public.catalog_order_acceptance_final(OLD.order_id); END IF;
+    IF TG_OP = 'UPDATE' THEN
+      PERFORM public.catalog_order_line_sum_acceptance(v_order_id, OLD.order_id);
     END IF;
   END IF;
 
-  SELECT total_amount_minor,catalog_acceptance INTO v_declared,v_acceptance
+  SELECT total_amount_minor INTO v_declared
     FROM public.commerce_orders
    WHERE id = v_order_id;
   -- The order is gone: a cascade took it, and there is nothing left to be consistent with.
@@ -903,7 +940,7 @@ BEGIN
                       v_order_id, COALESCE(v_declared::text, 'nothing'), v_sum);
   END IF;
 
-  IF v_acceptance IS NOT NULL THEN PERFORM public.catalog_order_acceptance_final(v_order_id); END IF;
+  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);
   RETURN NULL;
 END;
 $$;
