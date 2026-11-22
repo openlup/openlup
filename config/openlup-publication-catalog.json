@@ -5754,6 +5754,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/physicalQuantity.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/postgresBundleAdminWriteStore.ts",
       "class": "public-output"
     },

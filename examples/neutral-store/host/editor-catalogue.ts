@@ -3,6 +3,8 @@ import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync }
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
+import { CATALOG_CANONICAL_UNITS, type CatalogQuantity } from '@openlup/core/catalog';
+import type { CatalogDraftClaimV3 } from '@openlup/platform/catalog/contracts';
 import { canonicalCatalogDraftJson, catalogDefinitionDigest, createCatalogProductTypeRegistry, withCatalogPublicationRules,
   type CatalogDefinitionInstallReceipt, type CatalogProductTypeInput, type CatalogProductTypeRef, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
 import { catalogDraftRegistry } from '../owned/catalogue.ts';
@@ -144,31 +146,140 @@ export function editorDocuments(config: StoreConfig) {
 }
 
 export type ProductDocument = ReturnType<typeof editorDocuments>[number]['document'];
-export function productDocument(value: unknown, schemaId: string): ProductDocument {
+type GramVariant = ProductDocument['variants'][number];
+type GramPhysical = GramVariant['physical'];
+type TypedPhysical = { netContent: CatalogQuantity; issuer: string; unitGtin: string };
+type MixedVariant = Omit<GramVariant, 'physical'> & { physical: GramPhysical | TypedPhysical };
+type MixedProductDocument = Omit<ProductDocument, 'variants'> & { variants: MixedVariant[] };
+type PrimaryUnitGtin = Pick<GramPhysical, 'issuer' | 'unitGtin'>;
+
+function gramPhysical(value: Record<string, unknown>): boolean {
+  return Number.isSafeInteger(value.netWeightG) && Number(value.netWeightG) > 0;
+}
+
+function hasExactKeys(value: object, keys: readonly string[]): boolean {
+  return Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+}
+
+function typedPhysical(value: Record<string, unknown>): boolean {
+  const net = value.netContent;
+  return hasExactKeys(value, ['netContent', 'issuer', 'unitGtin'])
+    && isRecord(net) && hasExactKeys(net, ['dimension', 'unit', 'unscaled', 'scale'])
+    && (net.dimension === 'volume' || net.dimension === 'count') && net.unit === CATALOG_CANONICAL_UNITS[net.dimension]
+    && typeof net.unscaled === 'string' && /^[1-9][0-9]{0,39}$/u.test(net.unscaled)
+    && typeof net.scale === 'number' && Number.isInteger(net.scale) && net.scale >= 0 && net.scale <= 12
+    && (net.scale === 0 || net.dimension === 'volume' && !net.unscaled.endsWith('0'));
+}
+
+function parseProductDocument(value: unknown, schemaId: string, physical: (value: Record<string, unknown>) => boolean): MixedProductDocument {
   if (!isRecord(value) || value.schemaVersion !== schemaId || Object.keys(value).length !== 6
     || typeof value.productId !== 'string' || typeof value.productSlug !== 'string'
     || !Number.isSafeInteger(value.revisionNo) || Number(value.revisionNo) < 1 || typeof value.sourceRef !== 'string'
     || !Array.isArray(value.variants) || !value.variants.length || value.variants.some(row => !isRecord(row)
       || typeof row.skuId !== 'string' || typeof row.sku !== 'string' || !isRecord(row.physical)
-      || !Number.isSafeInteger(row.physical.netWeightG) || Number(row.physical.netWeightG) <= 0
+      || !physical(row.physical)
       || typeof row.physical.issuer !== 'string' || typeof row.physical.unitGtin !== 'string'
       || !Number.isSafeInteger(row.demandPerUnit) || Number(row.demandPerUnit) <= 0
       || !Array.isArray(row.exclusions) || row.exclusions.some(key => typeof key !== 'string' || !key))) {
     throw new CommerceQuoteCatalogReadError('catalog_document_schema_invalid');
   }
-  return value as ProductDocument;
+  return value as MixedProductDocument;
 }
-export function verifyProductDocument(value: unknown, envelope: NeutralSkuEnvelopeV1, schemaId: string): void {
-  const parsed = productDocument(value, schemaId);
-  const variants = parsed.variants.filter(row => row.skuId.toLowerCase() === envelope.sku.id.toLowerCase() && row.sku === envelope.sku.code);
+
+export function productDocument(value: unknown, schemaId: string): ProductDocument {
+  return parseProductDocument(value, schemaId, gramPhysical) as ProductDocument;
+}
+
+/** Evidence supplied by the installed reader on the same loan and snapshot. */
+export interface MixedProductRead {
+  operation: object;
+  evidence: {
+    operation: object;
+    productId: string;
+    documentRevisionId: string;
+    documentDigest: string;
+    siblings: readonly {
+      skuId: string; sku: string; netContent: CatalogQuantity; primaryUnitGtin: PrimaryUnitGtin; issuingDraft: CatalogDraftClaimV3;
+    }[];
+  };
+}
+
+class MixedProductDocumentError extends CommerceQuoteCatalogReadError {
+  readonly path: 'documentRevision' | 'documentRevision.digest';
+  constructor(code: 'catalog_document_schema_invalid' | 'catalog_document_digest_mismatch') {
+    super(code);
+    this.path = code === 'catalog_document_schema_invalid' ? 'documentRevision' : 'documentRevision.digest';
+  }
+}
+
+function verifyMixedProductDocument(value: unknown, schemaId: string, read: MixedProductRead,
+  expected: { productId: unknown; documentRevisionId: unknown; documentDigest: unknown }): MixedProductDocument {
+  if (documentDigest(value) !== expected.documentDigest)
+    throw new MixedProductDocumentError('catalog_document_digest_mismatch');
+  const { evidence } = read;
+  const invalid = (): never => { throw new MixedProductDocumentError('catalog_document_schema_invalid'); };
+  if (read.operation !== evidence.operation || expected.productId !== evidence.productId
+    || expected.documentRevisionId !== evidence.documentRevisionId || expected.documentDigest !== evidence.documentDigest) invalid();
+  let parsed: MixedProductDocument;
+  try {
+    parsed = parseProductDocument(value, schemaId, physical =>
+      Object.hasOwn(physical, 'netContent') ? typedPhysical(physical) : gramPhysical(physical));
+  } catch (error) {
+    if (error instanceof CommerceQuoteCatalogReadError) return invalid();
+    throw error;
+  }
+  const siblings = new Map(evidence.siblings.map(row => [row.skuId.toLowerCase(), row]));
+  if (siblings.size !== evidence.siblings.length || siblings.size === 0) invalid();
+  const ids = new Set<string>(), codes = new Set<string>();
+  for (const { skuId, sku, physical } of parsed.variants) {
+    const id = skuId.toLowerCase();
+    if (ids.has(id) || codes.has(sku)) invalid();
+    ids.add(id);
+    codes.add(sku);
+    if (!('netContent' in physical)) continue;
+    const sibling = siblings.get(id), net = physical.netContent, admitted = sibling?.netContent;
+    const gtin = sibling?.primaryUnitGtin;
+    if (!sibling || !admitted || !gtin || sibling.sku !== sku || physical.issuer !== gtin.issuer
+      || physical.unitGtin !== gtin.unitGtin
+      || net.dimension !== admitted.dimension || net.unit !== admitted.unit || net.unscaled !== admitted.unscaled
+      || net.scale !== admitted.scale) invalid();
+    siblings.delete(id);
+  }
+  if (siblings.size) invalid();
+  return parsed;
+}
+
+export function verifyProductDocument(value: unknown, envelope: NeutralSkuEnvelopeV1, schemaId: string, mixed?: MixedProductRead): void {
+  const { product, sku, documentRevision } = envelope;
+  const parsed = mixed ? verifyMixedProductDocument(value, schemaId, mixed, {
+    productId: product.id, documentRevisionId: documentRevision.id, documentDigest: documentRevision.digest,
+  }) : productDocument(value, schemaId);
+  const variants = parsed.variants.filter(row => row.skuId.toLowerCase() === sku.id.toLowerCase() && row.sku === sku.code);
   const variant = variants[0];
-  if (parsed.productId.toLowerCase() !== envelope.product.id.toLowerCase() || parsed.productSlug !== envelope.product.slug
-    || parsed.schemaVersion !== envelope.documentRevision.schemaId || parsed.revisionNo !== envelope.documentRevision.revisionNo
-    || parsed.sourceRef !== envelope.documentRevision.sourceRef || variants.length !== 1 || !variant
-    || variant.physical.netWeightG !== envelope.sku.netContent.unscaled
+  if (parsed.productId.toLowerCase() !== product.id.toLowerCase() || parsed.productSlug !== product.slug
+    || parsed.schemaVersion !== documentRevision.schemaId || parsed.revisionNo !== documentRevision.revisionNo
+    || parsed.sourceRef !== documentRevision.sourceRef || variants.length !== 1 || !variant
+    || !('netWeightG' in variant.physical) || variant.physical.netWeightG !== sku.netContent.unscaled
     || !envelope.identifiers.some(identifier => identifier.isPrimary && identifier.kind === 'gtin'
+      && (!mixed || identifier.packKind === 'unit' && identifier.packQuantity === 1)
       && identifier.issuer === variant.physical.issuer && identifier.normalizedValue === variant.physical.unitGtin)) {
+    if (mixed) throw new MixedProductDocumentError('catalog_document_schema_invalid');
     throw new CommerceQuoteCatalogReadError('catalog_document_schema_invalid');
   }
-  if (documentDigest(value) !== envelope.documentRevision.digest) throw new CommerceQuoteCatalogReadError('catalog_document_digest_mismatch');
+  if (!mixed && documentDigest(value) !== documentRevision.digest) throw new CommerceQuoteCatalogReadError('catalog_document_digest_mismatch');
+}
+
+export function verifySizedProductDocument(value: unknown, schemaId: string,
+  selection: { skuId: unknown; sku: unknown; productId: unknown; netWeightG: unknown; documentRevisionId: unknown; documentDigest: unknown },
+  mixed?: MixedProductRead & { primaryUnitGtin: PrimaryUnitGtin }): GramVariant {
+  const parsed = mixed ? verifyMixedProductDocument(value, schemaId, mixed, selection) : productDocument(value, schemaId);
+  const variant = parsed.variants.find(row => row.skuId === selection.skuId && row.sku === selection.sku);
+  if (!variant || parsed.productId !== selection.productId || !('netWeightG' in variant.physical)
+    || variant.physical.netWeightG !== selection.netWeightG
+    || (mixed ? variant.physical.issuer !== mixed.primaryUnitGtin.issuer || variant.physical.unitGtin !== mixed.primaryUnitGtin.unitGtin
+      : documentDigest(parsed) !== selection.documentDigest)) {
+    if (mixed) throw new MixedProductDocumentError('catalog_document_schema_invalid');
+    throw new Error('subscription_reprice_sized_catalog_facts_unreadable');
+  }
+  return variant as GramVariant;
 }

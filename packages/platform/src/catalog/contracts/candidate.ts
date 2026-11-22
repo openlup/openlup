@@ -1,3 +1,4 @@
+import type { CatalogQuantityCode } from "@openlup/core/catalog";
 import type { CatalogHeadRef } from "./lifecycle.js";
 import type { CatalogDraftIssue } from "./productTypes.js";
 /** @experimental */
@@ -11,6 +12,7 @@ export interface CatalogCandidateIssue extends CatalogDraftIssue {
   message?: string;
   hook?: string;
   cause?: "throw" | "undefined_result" | "realm_limit" | "invalid_result";
+  quantityCause?: CatalogQuantityCode;
 }
 /** @experimental */
 export interface CatalogCandidatePreview {

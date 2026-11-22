@@ -6,10 +6,12 @@ import type { Pool } from 'pg';
 import { ACQUISITION_TERMS_CAPABILITY, selectAcquisitionTerms, AcquisitionTermsError, CommerceQuoteError } from '@openlup/platform/pricing';
 import { createPromotionQuoteAcceptance } from '@openlup/platform/promotions';
 import type { PromotionRow } from '@openlup/core/promo';
+import type { NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
+import { documentDigest, editorDocuments, verifySizedProductDocument, type MixedProductRead } from '../host/editor-catalogue.ts';
 import { configurations } from '../owned/store.config.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import { composePurchaseCapabilities } from '../host/purchase-composition.ts';
-import { createNativeQuoteService, quoteFailure } from '../host/quote-composition.ts';
+import { createNativeQuoteService, quoteDocumentVerifier, quoteFailure } from '../host/quote-composition.ts';
 import { quoteRefusalCopy, isQuoteRefusalCode } from '../owned/quote-copy.ts';
 import { createAcquisitionRenewalBinding, type AcquisitionPredecessors } from '../host/acquisition-predecessors.ts';
 import { validateCart } from '../shared/offer.ts';
@@ -264,4 +266,90 @@ test('full-result admission covers exact/frozen unchanged base and add-ons, iden
     minimum = String(configured.subscriptionOffers.classic.minimumBaseUnits);
   }
   assert.equal(writes,0);
+});
+
+function documentFixture() {
+  const config = Object.values(configurations)[0]!;
+  const { id: revisionId, document: gramDocument } = editorDocuments(config)[0]!;
+  const gram = gramDocument.variants[0]!;
+  const sibling = { ...gram, skuId: 'f0000000-0000-4000-8000-000000000001', sku: 'LIQUID',
+    physical: { netContent: { dimension: 'volume' as const, unit: 'openlup:ml', unscaled: '295735295625', scale: 12 },
+      issuer: 'example:gtin', unitGtin: '5901234123457' } };
+  const document = { ...gramDocument, variants: [gram, sibling] };
+  const documentRevision = { id: revisionId, digest: documentDigest(document), productId: document.productId,
+    schemaId: document.schemaVersion, revisionNo: document.revisionNo, sourceRef: document.sourceRef, documentRef: 'example:document' };
+  const envelope: NeutralSkuEnvelopeV1 = { contractVersion: 'catalog.foundation.v1',
+    product: { id: document.productId, slug: document.productSlug, primarySkuId: gram.skuId },
+    sku: { id: gram.skuId, productId: document.productId, code: gram.sku, isAddon: false, assetRef: null,
+      netContent: { unscaled: gram.physical.netWeightG, scale: 0, unit: 'openlup:g' },
+      sellability: { status: 'active', subscription: true, oneTime: true } },
+    documentRevision, identifiers: [{ issuer: gram.physical.issuer, normalizedValue: gram.physical.unitGtin,
+      isPrimary: true, kind: 'gtin', packKind: 'unit', packQuantity: 1 }] };
+  const operation = {};
+  const mixed: MixedProductRead & { primaryUnitGtin: typeof gram.physical } = {
+    operation, primaryUnitGtin: gram.physical,
+    evidence: { operation, productId: document.productId, documentRevisionId: revisionId, documentDigest: documentRevision.digest,
+      siblings: [{ skuId: sibling.skuId, sku: sibling.sku, netContent: structuredClone(sibling.physical.netContent),
+        primaryUnitGtin: { issuer: sibling.physical.issuer, unitGtin: sibling.physical.unitGtin }, issuingDraft: {
+        draftId: 'f0000000-0000-4000-8000-000000000002', revision: 1, commandKey: 'example:bottle', fingerprint: 'a'.repeat(64),
+      } }] },
+  };
+  const quote = quoteDocumentVerifier(document.schemaVersion);
+  const sized = (value: unknown, read?: typeof mixed) => verifySizedProductDocument(value, document.schemaVersion, {
+    skuId: gram.skuId, sku: gram.sku, productId: document.productId, netWeightG: gram.physical.netWeightG,
+    documentRevisionId: revisionId, documentDigest: documentRevision.digest,
+  }, read);
+  return { gram, gramDocument, sibling, document, documentRevision, envelope, mixed, quote, sized };
+}
+
+test('quote and sized verify the same mixed document for its gram selection', async () => {
+  const { gram, document, envelope, mixed, quote, sized } = documentFixture();
+  await quote(document, envelope, mixed);
+  assert.deepEqual(sized(document, mixed), gram);
+  await assert.rejects(quote(document, envelope), { code: 'catalog_document_schema_invalid' });
+  assert.throws(() => sized(document), { code: 'catalog_document_schema_invalid' });
+});
+
+type Fixture = ReturnType<typeof documentFixture>;
+const badEvidence: Record<string, (fixture: Fixture) => void> = {
+  operation: ({ mixed }) => { mixed.evidence.operation = {}; },
+  product: ({ mixed }) => { mixed.evidence.productId = 'other'; },
+  revision: ({ mixed }) => { mixed.evidence.documentRevisionId = 'other'; },
+  id: ({ mixed }) => { mixed.evidence.siblings[0]!.skuId = 'other'; },
+  code: ({ mixed }) => { mixed.evidence.siblings[0]!.sku = 'OTHER'; },
+  duplicateId: ({ mixed }) => { mixed.evidence.siblings = [...mixed.evidence.siblings, { ...mixed.evidence.siblings[0]!, sku: 'OTHER' }]; },
+  duplicateCode: ({ mixed }) => { mixed.evidence.siblings = [...mixed.evidence.siblings, { ...mixed.evidence.siblings[0]!, skuId: 'other' }]; },
+  missing: ({ mixed }) => { mixed.evidence.siblings = []; },
+  extra: ({ mixed }) => { mixed.evidence.siblings = [...mixed.evidence.siblings, { ...mixed.evidence.siblings[0]!, skuId: 'other', sku: 'OTHER' }]; },
+  term: ({ mixed }) => { mixed.evidence.siblings[0]!.netContent.unscaled = '295735295626'; },
+  gtin: ({ mixed }) => { mixed.evidence.siblings[0]!.primaryUnitGtin.unitGtin = '5901234123464'; },
+  issuer: ({ mixed }) => { mixed.evidence.siblings[0]!.primaryUnitGtin.issuer = 'example:other'; },
+  openArm: ({ sibling, document, documentRevision, mixed }) => {
+    Object.assign(sibling.physical, { netWeightG: 1 });
+    mixed.evidence.documentDigest = documentRevision.digest = documentDigest(document);
+  },
+};
+for (const [name, mutate] of Object.entries(badEvidence)) test(`quote and sized refuse mixed document ${name}`, async () => {
+  const fixture = documentFixture();
+  mutate(fixture);
+  const { document, envelope, mixed, quote, sized } = fixture;
+  const refusal = { code: 'catalog_document_schema_invalid', path: 'documentRevision' };
+  await assert.rejects(quote(document, envelope, mixed), refusal);
+  assert.throws(() => sized(document, mixed), refusal);
+});
+
+test('both readers preserve their legacy refusal order and verify the original mixed digest first', async () => {
+  const { gram, gramDocument, sibling, document, documentRevision, envelope, mixed, quote, sized } = documentFixture();
+  Object.assign(sibling.physical, { extra: true });
+  const digestRefusal = { code: 'catalog_document_digest_mismatch', path: 'documentRevision.digest' };
+  await assert.rejects(quote(document, envelope, mixed), digestRefusal);
+  assert.throws(() => sized(document, mixed), digestRefusal);
+  const malformed = { ...gramDocument, variants: [{ ...gram, demandPerUnit: 0 }] };
+  await assert.rejects(quote(malformed, envelope), { code: 'catalog_document_schema_invalid' });
+  assert.throws(() => sized(malformed), { code: 'catalog_document_schema_invalid' });
+  await assert.rejects(quote(gramDocument, envelope), { code: 'catalog_document_digest_mismatch' });
+  assert.throws(() => sized(gramDocument), /subscription_reprice_sized_catalog_facts_unreadable/u);
+  documentRevision.digest = documentDigest(gramDocument);
+  await quote(gramDocument, envelope);
+  assert.deepEqual(sized(gramDocument), gram);
 });

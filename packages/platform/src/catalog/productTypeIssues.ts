@@ -1,7 +1,9 @@
 import { z } from "./validation.js";
-import { validateCatalogSubscriptionProfile, validateCatalogUnitFactor, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
+import { CatalogQuantityError, validateCatalogSubscriptionProfile, validateCatalogUnitFactor,
+  type CatalogSubscriptionProfileV1, type CatalogQuantityCode } from "@openlup/core/catalog";
 import type { CatalogConformanceCode, CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
 import type { CatalogProductTypeRef } from "./contracts/productTypes.js";
+import { qualifyTypedCatalogUnit } from "./physicalQuantity.js";
 export const catalogNamespacedKeySchema = z.string().max(120).regex(/^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$/u);
 export const catalogDimensionKeySchema = z.string().max(64).regex(/^[a-z][a-z0-9_-]*$/u)
   .refine((key) => !["__proto__", "constructor", "prototype"].includes(key));
@@ -27,6 +29,7 @@ const unitSchema = z.object({
   integral: z.boolean(),
   factor: z.object({ canonicalUnit: z.enum(["openlup:g", "openlup:ml", "openlup:piece"]), unscaled: z.string().regex(/^[1-9][0-9]{0,39}$/u), scale: z.number().int().min(0).max(12) }).strict().optional(),
 }).strict();
+const typedUnitSchema = unitSchema.extend({ factor: z.unknown().optional() });
 const dimensionSchema = z.discriminatedUnion("kind", [
   z.object({ key: catalogDimensionKeySchema, kind: z.literal("choice"), values: z.array(z.string().min(1).max(120)).min(1).max(1000) }).strict(),
   z.object({ key: catalogDimensionKeySchema, kind: z.literal("quantity"), dimension: catalogQuantityDimensionSchema,
@@ -93,23 +96,38 @@ export function catalogProductTypeIssues(definitions: readonly unknown[]): Catal
   return inspectProductTypes(definitions);
 }
 
-function inspectProductTypes(definitions: readonly unknown[], profileRefs?: Map<number, CatalogProductTypeRef>): CatalogDefinitionIssue[] {
+function inspectProductTypes(definitions: readonly unknown[], profileRefs?: Map<number, CatalogProductTypeRef>,
+  typed = false): CatalogDefinitionIssue[] {
   const issues: CatalogDefinitionIssue[] = [];
   const identities = new Set<string>();
   let typeIndex = 0;
   // Keep a successful ref parse even when a sibling field fails validation.
-  const schema = profileRefs === undefined ? catalogDefinitionMetadataSchema : catalogDefinitionMetadataSchema.extend({
+  const metadataSchema = typed ? catalogDefinitionMetadataSchema.extend({ units: z.array(typedUnitSchema).max(64) })
+    : catalogDefinitionMetadataSchema;
+  const schema = profileRefs === undefined ? metadataSchema : metadataSchema.extend({
     subscriptionProfileRef: catalogProductTypeRefSchema.check(({ value, issues }) => {
       if (issues.length === 0) profileRefs.set(typeIndex, value);
     }).optional(),
   });
-  const add = (code: CatalogConformanceCode, path: PropertyKey[], fix?: string): void => {
-    issues.push({ code, path: pointer(path), ...(fix === undefined ? {} : { fix }) });
+  const add = (code: CatalogConformanceCode, path: PropertyKey[], fix?: string, quantityCause?: CatalogQuantityCode): void => {
+    issues.push({ code, path: pointer(path), ...(fix === undefined ? {} : { fix }),
+      ...(quantityCause === undefined ? {} : { quantityCause }) });
   };
   definitions.forEach((input, index) => {
     const base: PropertyKey[] = [index];
     if (!input || typeof input !== "object" || Array.isArray(input)) { add("definition_invalid_shape", base); return; }
     const { validateContent, ...metadata } = input as Record<string, unknown>;
+    if (typed && Array.isArray(metadata.units)) metadata.units.forEach((rawUnit, i) => {
+      const unit = typedUnitSchema.safeParse(rawUnit);
+      if (!unit.success || unit.data.factor === undefined && (unit.data.dimension === "mass"
+        || !Array.isArray(metadata.netContentUnits) || !metadata.netContentUnits.includes(unit.data.code))) return;
+      try { qualifyTypedCatalogUnit(unit.data); }
+      catch (error) {
+        if (!(error instanceof CatalogQuantityError)) throw error;
+        add("definition_unit_factor_invalid", [...base, "units", i, "factor"],
+          "Supply an exact positive factor for this unit's dimension, with whole pieces for count units.", error.code);
+      }
+    });
     typeIndex = index;
     const result = schema.safeParse(metadata);
     if (typeof validateContent !== "function") add("definition_callback_missing", [...base, "validateContent"]);
@@ -138,9 +156,10 @@ function inspectProductTypes(definitions: readonly unknown[], profileRefs?: Map<
     duplicates(definition.dimensions.map((dimension) => dimension.key), "definition_duplicate_dimension", ["dimensions"], "key");
     duplicates(definition.netContentUnits, "definition_duplicate_net_content_unit", ["netContentUnits"]);
     const units = new Map(definition.units.map((unit) => [unit.code, unit]));
-    definition.units.forEach((unit, i) => {
+    if (!typed) definition.units.forEach((unit, i) => {
       if (!unit.factor) return; // Original definitions remain valid.
-      try { validateCatalogUnitFactor({ ...unit, factor: unit.factor }); }
+      const factor = unit.factor as NonNullable<z.infer<typeof unitSchema>["factor"]>;
+      try { validateCatalogUnitFactor({ ...unit, factor }); }
       catch { add("definition_unit_factor_invalid", [...base, "units", i, "factor"]); }
     });
     definition.netContentUnits.forEach((code, i) => { if (!units.has(code)) add("definition_unknown_net_content_unit", [...base, "netContentUnits", i]); });
@@ -207,7 +226,7 @@ export function catalogPackIssues(input: unknown): CatalogDefinitionIssue[] {
 }
 
 /** @internal */
-export function inspectCatalogPack(input: unknown): {
+export function inspectCatalogPack(input: unknown, typed = false): {
   issues: CatalogDefinitionIssue[]; profiles?: readonly CatalogSubscriptionProfileV1[];
 } {
   const optedIn = input !== null && typeof input === "object" && Object.hasOwn(input, "subscriptionProfileDefinitions");
@@ -246,7 +265,7 @@ export function inspectCatalogPack(input: unknown): {
   });
   const profiles = optedIn ? inspectProfileDefinitions(pack.subscriptionProfileDefinitions) : undefined;
   const profileRefs = optedIn ? new Map<number, CatalogProductTypeRef>() : undefined;
-  for (const issue of inspectProductTypes(pack.types, profileRefs)) issues.push({ ...issue, path: `/types${issue.path}` });
+  for (const issue of inspectProductTypes(pack.types, profileRefs, typed)) issues.push({ ...issue, path: `/types${issue.path}` });
   pack.types.forEach((input, index) => {
     if (!input || typeof input !== "object") return;
     const definition = input as Record<string, unknown>;

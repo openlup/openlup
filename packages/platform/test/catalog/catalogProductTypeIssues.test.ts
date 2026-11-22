@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { catalogProductTypeIssues, createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
 import { CATALOG_CONFORMANCE_RULES } from "../../src/catalog/index.js";
+import { inspectCatalogPack, invalidCatalogPack } from "../../src/catalog/productTypeIssues.js";
 import * as browserContracts from "../../src/catalog/contracts/index.js";
 import type { CatalogProductTypeDefinition } from "../../src/catalog/contracts/productTypes.js";
 const definition: CatalogProductTypeDefinition = {
@@ -72,4 +73,19 @@ describe("shared definition issues", () => {
     const input = { ...definition, attributes: [attribute, attribute], dimensions: [{ key: "finish", kind: "choice", values: ["matte"] }], axes: [{ key: "finish", attributeKey: "finish" }, { key: "finish", attributeKey: "finish" }], validateContent: () => { throw new Error("must not run"); } };
     expect(catalogProductTypeIssues([input]).map(({ code }) => code)).toEqual(expect.arrayContaining(["definition_duplicate_attribute", "definition_facetable_not_filterable", "definition_duplicate_enum_value", "definition_duplicate_axis"]));
   });
+});
+
+it("keeps exact factor and declaration refusals at their original pack positions", () => {
+  const custom = { code: "example:case", dimension: "count", integral: false };
+  const pack = { id: "example:item", namespace: "example", version: 1, openlupRange: "1.x", capabilities: {}, taxClasses: [],
+    types: [{ ...definition, version: 2 }, { ...definition, units: [...definition.units, custom, ...definition.units],
+      netContentUnits: [custom.code, "example:unknown", custom.code] }] };
+  const { issues } = inspectCatalogPack(pack, true);
+  const expected = { code: "definition_unit_factor_invalid", path: "/types/1/units/1/factor", quantityCause: "quantity_unknown_unit", fix: expect.any(String) };
+  expect(issues).toEqual([expected,
+    { code: "definition_duplicate_unit", path: "/types/1/units/2/code" },
+    { code: "definition_duplicate_net_content_unit", path: "/types/1/netContentUnits/2" },
+    { code: "definition_unknown_net_content_unit", path: "/types/1/netContentUnits/1" },
+  ]);
+  expect(invalidCatalogPack(issues[0]!)).toMatchObject({ message: "invalid_catalog_pack", issue: expected });
 });
