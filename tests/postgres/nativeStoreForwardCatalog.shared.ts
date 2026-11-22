@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -511,11 +512,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   }
   const protectedTables = new Set([...checks, ...uniques].map(entry => entry.table));
   if (slot.previewNoopAcceptance) {
-    const isPreviewCheck = (row: Snapshot["constraints"][number]) => row.rel === PREVIEW_TABLE && row.name === PREVIEW_CHECK;
-    const old = before.constraints.find(isPreviewCheck), current = after.constraints.find(isPreviewCheck);
-    if (old?.kind !== "c" || !old.validated || old.def !== PREVIEW_OLD_DEFINITION
-      || !before.relations.some(row => row.name === PREVIEW_TABLE && row.kind === "r")
-      || !before.columns.some(row => row.rel === PREVIEW_TABLE && row.name === "status" && row.attrs.attnotnull === true)) fail("preview acceptance CHECK installed preimage drifted");
+    const current = after.constraints.find(row => row.rel === PREVIEW_TABLE && row.name === PREVIEW_CHECK);
     if (current?.kind !== "c" || !current.validated || current.def !== PREVIEW_NEW_DEFINITION) fail("preview acceptance CHECK must match the three validated branches");
   }
   for (const old of before.columns.filter(column => protectedTables.has(column.rel))) {
@@ -670,6 +667,98 @@ async function pinned<T>(db: PoolClient, run: () => Promise<T>): Promise<T> {
   try { return await run(); } finally { await db.query("RESET search_path").catch(() => undefined); }
 }
 
+// Compare the installed preimage with one expected shape. Only the expected
+// migration owner's name and PostgreSQL's generated FK trigger identifiers vary.
+export async function assertPreviewAcceptancePreimage(db: PoolClient, owner: string): Promise<void> {
+  const table = "subscription_quote_previews";
+  const timestamp = "timestamp with time zone";
+  const indexes = (name: string, definition: string, unique = false) =>
+    [`CREATE ${unique ? "UNIQUE " : ""}INDEX ${table}_${name} ON ${PREVIEW_TABLE} USING btree ${definition}`, true, true, true, false, false];
+  const foreignKeys = { accepted_event_id: "subscription_events", client_id: "clients", subscription_id: "subscriptions" };
+  const expected: Record<string, Record<string, unknown>> = {
+    table: { [PREVIEW_TABLE]: { kind: "r", persistence: "p", owner, rlsEnabled: true, rlsForced: false } },
+    column: Object.fromEntries([
+      ["id", "uuid", true, "gen_random_uuid()"],
+      ["subscription_id", "uuid", true], ["client_id", "uuid", true], ["actor_id", "uuid", true],
+      ["action", "text", true], ["quote_hash", "text", true], ["template_version", "integer", true],
+      ["expires_at", timestamp, true], ["status", "text", true, "'previewed'::text"],
+      ["request_payload", "jsonb", true], ["quote_snapshot", "jsonb", true], ["totals", "jsonb", true],
+      ["accepted_at", timestamp, false], ["accepted_idempotency_key", "text", false], ["accepted_event_id", "uuid", false],
+      ["created_at", timestamp, true, "now()"], ["updated_at", timestamp, true, "now()"],
+    ].map(([name, type, required, defaultValue], position) => [String(name), [position + 1, type, required, defaultValue ?? null, "", "", false, null]])),
+    constraint: {
+      [PREVIEW_CHECK]: ["c", PREVIEW_OLD_DEFINITION, true],
+      [`${table}_pkey`]: ["p", "PRIMARY KEY (id)", true],
+      [`${table}_quote_hash_check`]: ["c", "CHECK ((char_length(quote_hash) = 64))", true],
+      [`${table}_status_check`]: ["c", "CHECK ((status = ANY (ARRAY['previewed'::text, 'accepted'::text])))", true],
+      ...Object.fromEntries(Object.entries(foreignKeys).map(([key, target]) =>
+        [`${table}_${key}_fkey`, ["f", `FOREIGN KEY (${key}) REFERENCES public.${target}(id)`, true]])),
+    },
+    index: {
+      [`${table}_pkey`]: indexes("pkey", "(id)", true),
+      [`${table}_expiry`]: indexes("expiry", "(status, expires_at)"),
+      [`${table}_lookup`]: indexes("lookup", "(subscription_id, action, quote_hash, template_version, created_at DESC)"),
+      [`${table}_open`]: indexes("open", "(subscription_id, client_id, action, quote_hash, template_version) WHERE (status = 'previewed'::text)", true),
+    },
+    trigger: Object.fromEntries(Object.entries(foreignKeys).flatMap(([key, target]) => {
+      const constraint = `${table}_${key}_fkey`;
+      return [["RI_FKey_check_ins", 5], ["RI_FKey_check_upd", 17]].map(([fn, type]) =>
+        [`${constraint}/${fn}`, [true, "O", type, "pg_catalog", fn, `public.${target}`, constraint, false, false, "", "", null, null, true]]);
+    })),
+    "RLS policy": {},
+    "ACL grant": Object.fromEntries(["DELETE", "INSERT", "REFERENCES", "SELECT", "TRIGGER", "TRUNCATE", "UPDATE"]
+      .map(privilege => [`${owner}/${privilege}/${owner}`, false])),
+  };
+  const { searchPath } = (await db.query<{ searchPath: string }>(
+    `SELECT pg_catalog.current_setting('search_path') AS "searchPath"`)).rows[0]!;
+  const { rows } = await pinned(db, () => db.query<{ kind: string; name: string; facts: unknown }>(`
+    WITH preview AS (SELECT c.* FROM pg_class c WHERE c.oid = to_regclass($1))
+    SELECT 'table' AS kind, $1::text AS name,
+      jsonb_build_object('kind', c.relkind, 'persistence', c.relpersistence, 'owner', c.relowner::regrole::text,
+        'rlsEnabled', c.relrowsecurity, 'rlsForced', c.relforcerowsecurity) AS facts FROM preview c
+    UNION ALL
+    SELECT 'column', a.attname, jsonb_build_array(a.attnum, format_type(a.atttypid, a.atttypmod), a.attnotnull,
+      pg_get_expr(d.adbin,d.adrelid), a.attidentity, a.attgenerated, a.attisdropped, a.attacl::text)
+      FROM preview c JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum>0
+      LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
+    UNION ALL
+    SELECT 'constraint', k.conname, jsonb_build_array(k.contype, pg_get_constraintdef(k.oid), k.convalidated)
+      FROM preview c JOIN pg_constraint k ON k.conrelid=c.oid
+    UNION ALL
+    SELECT 'index', i.relname, jsonb_build_array(pg_get_indexdef(i.oid), x.indisvalid, x.indisready, x.indislive, x.indisclustered, x.indisreplident)
+      FROM preview c JOIN pg_index x ON x.indrelid=c.oid JOIN pg_class i ON i.oid=x.indexrelid
+    UNION ALL
+    SELECT 'trigger',
+      CASE WHEN t.tgisinternal AND t.tgname = 'RI_ConstraintTrigger_c_' || t.oid
+        THEN k.conname || '/' || f.proname ELSE t.tgname::text END,
+      jsonb_build_array(t.tgisinternal, t.tgenabled, t.tgtype, n.nspname, f.proname, t.tgconstrrelid::regclass::text,
+        k.conname, t.tgdeferrable, t.tginitdeferred, t.tgattr::text, encode(t.tgargs,'hex'),
+        t.tgoldtable, t.tgnewtable, t.tgqual IS NULL)
+      FROM preview c JOIN pg_trigger t ON t.tgrelid=c.oid
+      JOIN pg_proc f ON f.oid=t.tgfoid JOIN pg_namespace n ON n.oid=f.pronamespace
+      LEFT JOIN pg_constraint k ON k.oid=t.tgconstraint
+    UNION ALL
+    SELECT 'RLS policy', p.polname, to_jsonb(p) FROM preview c JOIN pg_policy p ON p.polrelid=c.oid
+    UNION ALL
+    SELECT 'ACL grant', (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END)
+      || '/' || a.privilege_type || '/' || a.grantor::regrole::text, to_jsonb(a.is_grantable)
+      FROM preview c, aclexplode(COALESCE(c.relacl, acldefault('r',c.relowner))) a
+    ORDER BY kind, name`, [PREVIEW_TABLE]));
+  await db.query("SELECT pg_catalog.set_config('search_path', $1, false)", [searchPath]);
+  const observed = new Set<string>();
+  const drift = (detail: string): never => fail(`${PREVIEW_TABLE} preimage ${detail} before the acceptance forward. Restore the issued table shape.`);
+  for (const { kind, name, facts } of rows) {
+    const key = `${kind} ${name}`;
+    if (!Object.hasOwn(expected[kind]!, name) || observed.has(key)) drift(`has unexpected ${key}`);
+    const wanted = expected[kind]![name];
+    if (!isDeepStrictEqual(facts, wanted)) drift(`changed ${key} (expected ${JSON.stringify(wanted)}, found ${JSON.stringify(facts)})`);
+    observed.add(key);
+  }
+  for (const [kind, items] of Object.entries(expected)) for (const name of Object.keys(items)) {
+    if (!observed.has(`${kind} ${name}`)) drift(`is missing ${kind} ${name}`);
+  }
+}
+
 // Raw ordinary-trigger fixtures can supply intentionally mismatched SQL.
 function hasEarlierTriggerTable(forward: string, relation: string, hash: string) {
   const statements = sqlStatements(forward, false, false, true);
@@ -695,6 +784,7 @@ async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep
     await db.query("BEGIN");
     try {
       if (setup) await db.query(setup);
+      if (slot.previewNoopAcceptance) await assertPreviewAcceptancePreimage(db, migrationRole);
       const reusableBefore = !keep && !setup ? (cachedBefore ?? pristineSnapshots.get(pool)) : undefined;
       const before = reusableBefore ?? await pinned(db, () => snapshot(db));
       const memberships = async () => (await db.query("SELECT * FROM pg_catalog.pg_auth_members ORDER BY oid")).rows;
@@ -895,6 +985,7 @@ const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platf
 const manifest: PlatformMigrationManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const bound = (registry.nativeStoreForwards ?? []).map(pin => ({ pin, slot: registry.nativeStoreForwardClass!.slots.find(slot => slot.path === pin.path)! }))
   .sort((x, y) => x.pin.path.localeCompare(y.pin.path));
+export const previewAcceptanceForwardPath = bound.find(({ slot }) => slot.previewNoopAcceptance)?.pin.path;
 const reminderSignature = "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)";
 const reminderCreation = bound.find(entry => entry.slot.createdFunctions.some(fn => fn.signature === reminderSignature))!;
 const reminderCreationPin = reminderCreation.pin.functions.find(fn => fn.signature === reminderSignature)!;
@@ -985,11 +1076,12 @@ async function provePreviewAcceptance(pool: Pool) {
     const statuses = ["previewed", "accepted", "other", null];
     for (const withReceipt of [false, true]) {
       if (withReceipt) {
+        const role = (await db.query("SELECT current_user::text AS role")).rows[0].role as string;
+        await assertPreviewAcceptancePreimage(db, role);
         const before = await pinned(db, () => snapshot(db));
         await db.query(previewNoopAcceptanceSql);
         const slot: CatalogSlot = { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [], previewNoopAcceptance: true,
           existingTableStatements: [previewNoopAcceptanceSql.split("\n", 1)[0]!] };
-        const role = (await db.query("SELECT current_user::text AS role")).rows[0].role as string;
         await pinned(db, async () => assertSlotCatalog(db, slot, before, await snapshot(db), role, previewNoopAcceptanceSql));
         expect((await db.query(`SELECT status, accepted_noop_receipt_id FROM ${PREVIEW_TABLE} ORDER BY status`)).rows)
           .toEqual([{ status: "accepted", accepted_noop_receipt_id: null }, { status: "previewed", accepted_noop_receipt_id: null }]);

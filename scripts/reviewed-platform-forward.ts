@@ -2664,6 +2664,8 @@ function assertPreviewNoopAcceptance(bytes: Buffer, preceding: { path: string; b
   if (!bytes.equals(Buffer.from(previewNoopAcceptanceSql))) throw new Error("reviewed native store preview acceptance forward requires exactly the receipt column and adjacent validated CHECK replacement");
   const source = preceding.find(unit => unit.path === previewAcceptanceSource);
   if (!source || sqlSha256(source.bytes) !== previewAcceptanceSourceSha256) throw new Error("reviewed native store preview acceptance CHECK preimage file or hash drifted");
+  // This scan checks literal mentions. The PostgreSQL proof checks the installed
+  // shape, including effects of earlier SQL that constructs the table name.
   for (const unit of preceding) {
     if (unit.path === previewAcceptanceSource || !/subscription_quote_previews/iu.test(unit.bytes.toString("utf8"))) continue;
     if (unit.path !== previewAcceptanceReadSource || sqlSha256(unit.bytes) !== previewAcceptanceReadSha256) {

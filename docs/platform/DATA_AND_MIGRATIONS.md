@@ -2674,10 +2674,15 @@ Use the exact three statements in [the admission rule](../../scripts/reviewed-pl
 in order. They add the column and then drop and re-add
 `subscription_quote_previews_acceptance_check` on
 `public.subscription_quote_previews` as an adjacent, validated replacement.
-The rule pins the issued package-editor migration by path and hash and refuses
-other migration history referencing the preview table beyond the pinned
-sized-editor migration. The PostgreSQL catalogue check also verifies the
-effective installed CHECK before replacement.
+Static admission checks the exact forward bytes and pins the issued
+package-editor migration by path and hash. In the native prefix it refuses
+files that literally name the preview table beyond the pinned package-editor
+and sized-editor migrations. Earlier SQL can also reach the table through
+computed identifiers. The PostgreSQL proof compares the installed table with
+one expected snapshot immediately before the forward. It checks every column,
+constraint, index and trigger, along with the row security state, policies and
+table ACL. The [installation matrix](../../tests/postgres/subscriptionExactInstallation.test.ts)
+runs the same check on all five shipped profiles.
 
 Existing previewed rows and acceptances backed by native events keep a NULL
 receipt column. A receipt-backed no-op acceptance requires the acceptance
