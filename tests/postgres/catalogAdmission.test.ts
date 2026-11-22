@@ -200,7 +200,7 @@ it("takes the actual products and price fences before bound evidence reads", asy
       return work(other);
     });
     await expect(asPriceAdmin(other => other.query("SELECT public.catalog_price_setup_preview($1,$2,130)", [issued.skuId, priceListId])))
-      .rejects.toMatchObject({ code: "55P03", where: expect.stringContaining("UPDATE public.price_entries") });
+      .rejects.toMatchObject({ code: "55P03", where: expect.stringContaining("public.catalog_price_setup_preview") });
     const command = pricing.canonicalCatalogPriceSetupCommand({
       schemaVersion: 1, commandKey: randomUUID(), variantId: issued.skuId, priceListId, mode: "one_time",
       minQty: 1, amountKind: "gross", unitPriceMinor: 130, expected: { entryId: resolved.base.priceEntryId, unitPriceMinor: 125 },

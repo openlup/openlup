@@ -849,7 +849,7 @@ describe("publication activation prices", () => {
     await withCatalogAdmissionFence(quotePool, {
       key: randomUUID(), clientId: client!.id, skuIds: [skuId], revisionIds: [], priceListId: quoteListId, timeoutMs: 2000,
     }, async () => {
-      await expect(api.execute(command, who)).resolves.toMatchObject({ outcome: "conflict", reason: "catalog_publication_busy" });
+      await expect(api.execute(command, who)).resolves.toMatchObject({ outcome: "conflict", reason: "publication_busy" });
       expect((await quotePool.query("SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1", [productId])).rows)
         .toEqual([{ publication_id: head.publicationId }]);
     });
