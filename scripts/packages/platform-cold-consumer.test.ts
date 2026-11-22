@@ -136,6 +136,8 @@ function fixture() {
     'export interface TaxCalculationPort { quote(request: TaxQuoteRequestV1): Promise<unknown> }',
     'export type LocalRateTableOptionsV1 = Synthetic;',
     'export type TaxConformanceSubjectV1 = Synthetic;',
+    'export type StripeTaxAdapterOptions = Synthetic;',
+    'export declare function createStripeTaxAdapter(options: StripeTaxAdapterOptions): TaxCalculationPort;',
     'export declare function localRateTable(options: LocalRateTableOptionsV1): TaxCalculationPort;',
     'export declare function runTaxAdapterConformance(subject: TaxConformanceSubjectV1): Promise<readonly string[]>;',
     'export declare function makeTaxQuoteRequest(key: string, input: TaxQuoteInputV1): TaxQuoteRequestV1;',

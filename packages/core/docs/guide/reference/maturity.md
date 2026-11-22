@@ -123,6 +123,6 @@ for package policy definitions and release boundaries.
 | `./tax` | capability | experimental |
 | `./tax/contracts` | capability | experimental |
 
-4 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/AGENTS.md#subpath-maturity).
+5 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/AGENTS.md#subpath-maturity).
 <!-- /generated:maturity:platform -->
 

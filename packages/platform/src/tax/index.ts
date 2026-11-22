@@ -5,3 +5,4 @@ export { localRateTable } from "./localRateTable.js";
 export type { LocalRateTableOptionsV1 } from "./localRateTable.js";
 export { runTaxAdapterConformance } from "./adapterConformance.js";
 export type { TaxConformanceCaseV1, TaxConformanceSubjectV1 } from "./adapterConformance.js";
+export { compareTaxRecalculationProbe } from "./compareProbe.js";

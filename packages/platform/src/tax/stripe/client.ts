@@ -2,29 +2,12 @@ import { isDeepStrictEqual } from "node:util";
 import { isCatalogueMoneyV2RateDecimal } from "@openlup/core/pricing";
 import { array, checked, invalid, oneOf } from "../contracts/decode.js";
 import type { Decode } from "../contracts/decode.js";
-import type { TaxScopeV1 } from "../contracts/index.js";
+import type { TaxRefusalCode, TaxScopeV1 } from "../contracts/index.js";
 
-export type Address = { line1: string; line2?: string; city: string; state?: string; postal_code: string; country: string };
-type Charge = { amount: number; tax_code: string; tax_behavior: "exclusive" };
-export type CalculationParams = {
-  currency: string; tax_date: number; expand: string[];
-  customer_details: { address: Address; address_source: "shipping" };
-  ship_from_details: { address: Address }; shipping_cost?: Charge;
-  line_items: (Charge & { reference: string; quantity: number; metadata: Record<string, string> })[];
-};
-type PageParams = { limit: 100; starting_after?: string };
-export interface StripeQuoteClient {
-  readonly scope: Readonly<Pick<TaxScopeV1, "accountRef" | "mode">>;
-  calculations: {
-    create(params: CalculationParams, options: { idempotencyKey: string }): Promise<unknown>;
-    listLineItems(id: string, params: PageParams & { expand: string[] }): Promise<unknown>;
-  };
-  registrations: { list(params: PageParams & { status: "all" }): Promise<unknown> };
-}
+import type { Address, CalculationParams, PageParams } from "./effects.js";
+export type { Address, CalculationParams, StripeQuoteClient } from "./effects.js";
 
-/** The SDK bridge translates confirmed idempotency conflicts at the transport boundary.
- *  The SDK bridge must also map deterministic provider rejections to refusals when it is added.
- */
+/** The SDK bridge translates confirmed idempotency conflicts at the transport boundary. */
 export class StripeQuoteReferenceConflict extends Error {}
 export class StripeQuoteUnavailable extends Error {}
 export async function providerCall(read: () => Promise<unknown>): Promise<unknown> {
@@ -34,8 +17,17 @@ export async function providerCall(read: () => Promise<unknown>): Promise<unknow
     if (error instanceof StripeQuoteReferenceConflict) {
       invalid("/key", "This evaluation key is bound to a different calculation request. Replay the original request and digest.", "tax_reference_conflict");
     }
+    if (isProviderRejection(error)) invalid(error.field, error.message, error.code);
     throw new StripeQuoteUnavailable();
   }
+}
+
+// The host bridge can construct this error without importing a private runtime module.
+export function isProviderRejection(error: unknown): error is Error & { field: string; code: TaxRefusalCode } {
+  return error instanceof Error && error.name === "TaxProviderRejection"
+    && "field" in error && typeof error.field === "string" && "code" in error
+    && (error.code === "tax_invalid_input" || error.code === "tax_reference_conflict"
+      || error.code === "tax_calculation_expired" || error.code === "tax_calculation_unusable");
 }
 
 export function incomplete(field: string, cause: string): never {
@@ -68,7 +60,7 @@ export function providerDecode<T>(decode: Decode<T>): Decode<T> {
 }
 
 // Project documented fields and tolerate unrelated provider additions.
-function fields<F extends Record<string, Decode<unknown>>>(shape: F): Decode<{ [K in keyof F]: ReturnType<F[K]> }> {
+export function fields<F extends Record<string, Decode<unknown>>>(shape: F): Decode<{ [K in keyof F]: ReturnType<F[K]> }> {
   return providerDecode((value, field) => {
     const source = record(value, field);
     return Object.fromEntries(Object.entries(shape).map(([key, decode]) => {
@@ -81,10 +73,10 @@ function fields<F extends Record<string, Decode<unknown>>>(shape: F): Decode<{ [
 const raw: Decode<unknown> = value => value;
 export const text = providerDecode(checked((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 512
   && !v.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(v), "Obtain nonempty provider text within the supported length."));
-const id = checked((v): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/u.test(v),
+export const id = checked((v): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/u.test(v),
   "Obtain the provider object's identifier.");
 const boolean = providerDecode(checked((v): v is boolean => typeof v === "boolean", "Obtain the provider's boolean value."));
-const nullable = <T>(decode: Decode<T>): Decode<T | null> => (value, path) => value === null ? null : decode(value, path);
+export const nullable = <T>(decode: Decode<T>): Decode<T | null> => (value, path) => value === null ? null : decode(value, path);
 const optional = <T>(decode: Decode<T>): Decode<T | undefined> => (value, path) => value === undefined ? undefined : decode(value, path);
 const minor: Decode<number> = (value, path) => {
   if (typeof value !== "number") incomplete(path, "The provider field must be a number.");

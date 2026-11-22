@@ -38,7 +38,7 @@ async function calculateSnapshot(
   const shipping = delivery?.charge;
   const sendShipping = shipping && (shipping.amount > 0 || plan.zeroShipping);
   const params: CalculationParams = { ...plan.params, line_items, ...(sendShipping && { shipping_cost: shipping }) };
-  const idempotencyKey = "tax-quote-" + taxDigest("input", [input.scope, key, sequence]);
+  const idempotencyKey = "tax-quote-" + taxDigest("input", [input.scope, key, input.taxDate, sequence]);
   const response = await providerCall(() => client.calculations.create(structuredClone(params), { idempotencyKey }));
   const calculatedAt = now().toISOString();
   const calculation = checkCalculationScope(response, params, input.scope);

@@ -98,6 +98,7 @@ export const ADAPTER_ENTRIES = [
   "communications",
   "communications/klaviyo",
   "communications/resend",
+  "tax/stripe",
   "payments/stripe",
   "payments/tpay",
   "fulfillment/omnipack",
@@ -1099,6 +1100,11 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'const taxAdapter: TaxCalculationPort = localRateTable(options);',
     'export const taxQualification = () => runTaxAdapterConformance(subject);',
     'export const taxQuote = taxAdapter.quote(taxQuoteRequestV1Schema.parse(makeTaxQuoteRequest("quote", taxInput)));',
+  );
+  if (entries.includes("tax/stripe")) surfaces.push(
+    'import { createStripeTaxAdapter, type StripeTaxAdapterOptions } from "@openlup/platform/tax/stripe";',
+    'declare const taxProviderOptions: StripeTaxAdapterOptions;',
+    'export const configuredTaxProvider = () => createStripeTaxAdapter(taxProviderOptions);',
   );
   if (entries.includes("marketing") && entries.includes("marketing/contracts")) surfaces.push([
     'import { acquisitionCaseListRequestSchema, prelaunchAcquisitionListRequestSchema, buildHeadDescriptor, organizationLd } from "@openlup/platform/marketing";',
@@ -2700,6 +2706,32 @@ assert.equal(verifyTaxQuoteResult(request, result), undefined);
     proveCommunicationsConsumer(consumer);
     proveResendConsumer(consumer);
     provePaymentAdapterConsumer(consumer);
+    consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createRequire, syncBuiltinESMExports } from "node:module";
+import http from "node:http";
+import https from "node:https";
+import net from "node:net";
+const sdkName = ["str", "ipe"].join("");
+assert.throws(() => createRequire(import.meta.url).resolve(sdkName), { code: "MODULE_NOT_FOUND" });
+const forbidden = () => { throw Error("ambient I/O forbidden"); };
+globalThis.fetch = forbidden; http.request = forbidden; https.request = forbidden; net.connect = forbidden;
+syncBuiltinESMExports();
+const adapter = await import("@openlup/platform/tax/stripe");
+assert.deepEqual(Object.keys(adapter), ["createStripeTaxAdapter"]);
+const scope = { adapter: "stripeTax", adapterVersion: "1", accountRef: "account", mode: "test" };
+const port = adapter.createStripeTaxAdapter({ installationRef: "installation",
+  marketPack: { scope, market: "market-a", currency: "XXX", policyRevision: "policy", classMapRevision: "classes",
+    taxCodes: {}, origins: {}, subdivisions: {}, delivery: [], jurisdictions: [], registrations: [], fees: [] },
+  client: { scope, calculations: { create: forbidden, retrieve: forbidden, listLineItems: forbidden },
+    registrations: { list: forbidden }, transactions: { createFromCalculation: forbidden, createReversal: forbidden,
+      retrieve: forbidden, listLineItems: forbidden } },
+  effects: { accepted: forbidden, commit: forbidden, reverse: forbidden, findTransactionIdByReference: forbidden },
+  now: forbidden });
+assert.equal(port.capabilities().validity, "probe_by_recalculation");
+assert.equal(typeof (await import("@openlup/platform/tax")).compareTaxRecalculationProbe, "function");
+`);
+
     proveWarehouseAdapterConsumer(consumer);
     proveMarketingSyncConsumer(consumer);
     proveInvoicingConsumer(consumer);

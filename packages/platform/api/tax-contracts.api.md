@@ -439,7 +439,8 @@ export type TaxCapabilitiesV1 = Readonly<{
         fees: boolean;
     }>;
     registrations: "effective_intervals" | "unsupported";
-    validity: "read_only" | "unsupported";
+    /** Recalculation uses a fresh quote and leaves the validity read effect-free. */
+    validity: "read_only" | "unsupported" | "probe_by_recalculation";
     calculationLifetimeMs: number;
     posting: "provider" | "unsupported";
     reversals: List<"full" | "lines" | "amount">;

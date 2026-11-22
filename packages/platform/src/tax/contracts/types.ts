@@ -100,7 +100,9 @@ export type TaxCapabilitiesV1 = Readonly<{ scope: TaxScopeV1; markets: List<stri
   /** Inclusive bases are not supported by this contract version. */
   bases: readonly ["exclusive"]; sourcing: List<Sourcing>;
   evidence: Readonly<{ lines: boolean; delivery: boolean; fees: boolean }>;
-  registrations: "effective_intervals" | "unsupported"; validity: "read_only" | "unsupported";
+  registrations: "effective_intervals" | "unsupported";
+  /** Recalculation uses a fresh quote and leaves the validity read effect-free. */
+  validity: "read_only" | "unsupported" | "probe_by_recalculation";
   calculationLifetimeMs: number; posting: "provider" | "unsupported"; reversals: List<"full" | "lines" | "amount">;
   recovery: List<"commit" | "reverse"> }>;
 

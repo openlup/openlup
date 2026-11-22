@@ -17,7 +17,7 @@ export interface TaxConformanceSubjectV1 {
      * Open an isolated offline fixture. Clock cases supply the next charge instant and current input through advance.
      * The fee fixture uses a free delivery bucket and a 25-minor-unit fee with refund rule ref "refund-a", revision "1".
      * Posting fixtures use one taxable position on 100 minor units with zero tax and no fee, fully eligible for reversal.
-     * Positive reversal scenarios use declared modes. The partial-then-full scenario requires both amount and full.
+     * Positive reversal scenarios use declared modes. The partial-then-full scenario uses lines or amount together with full.
      * Report cumulative side effect counts, including unsuccessful calls that dispatched an effect.
      */
     open(caseId: TaxConformanceCaseV1): Promise<{
@@ -36,6 +36,27 @@ export interface TaxConformanceSubjectV1 {
 }
 /** Run isolated synthetic scenarios and throw a case-specific error on the first broken guarantee. */
 export declare function runTaxAdapterConformance(subject: TaxConformanceSubjectV1): Promise<readonly TaxConformanceCaseV1[]>;
+export {};
+```
+## dist/tax/compareProbe.d.ts
+
+```ts
+import type { TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal } from "./contracts/index.js";
+type Field = "positions" | "fees" | "payableMinor" | "currency";
+/**
+ * Compare a bound final quote with a fresh quote for the same logical key and frozen input
+ * at a later tax instant. Both request/result pairs must pass the quote verifier.
+ * The caller owns the renewal dispatch fence, append-only rebind and operator case.
+ * Invoke the probe only after a definitive non-capturing outcome with no pending attempt.
+ * @beta
+ * @experimental
+ */
+export declare function compareTaxRecalculationProbe(boundRequest: TaxQuoteRequestV1, bound: TaxQuoteResultV1, probeRequest: TaxQuoteRequestV1, probe: TaxQuoteResultV1): {
+    kind: "equal";
+} | {
+    kind: "different";
+    field: Field;
+} | TaxRefusal;
 export {};
 ```
 ## dist/tax/contracts/port.d.ts
@@ -94,6 +115,7 @@ export { localRateTable } from "./localRateTable.js";
 export type { LocalRateTableOptionsV1 } from "./localRateTable.js";
 export { runTaxAdapterConformance } from "./adapterConformance.js";
 export type { TaxConformanceCaseV1, TaxConformanceSubjectV1 } from "./adapterConformance.js";
+export { compareTaxRecalculationProbe } from "./compareProbe.js";
 ```
 ## dist/tax/localRateTable.d.ts
 
