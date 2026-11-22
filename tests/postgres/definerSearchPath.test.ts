@@ -1,80 +1,146 @@
+import { readFileSync } from "node:fs";
+import type { Pool, PoolClient } from "pg";
 import { expect, it } from "vitest";
+import registry from "../../config/reviewed-platform-forwards.json" with { type: "json" };
 import { postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
-import { installAccountMutations } from "./customerAccountMutations.fixture.js";
+import { installBeforeAcquisitionSearchPathPin } from "./customerAccountMutations.fixture.js";
 
-// Preserve this baseline when removing settled entries from the pending list.
-const ORIGINAL_PENDING: readonly string[] = Object.freeze([
-  "public.acquisition_case_active_count_v1()",
-  "public.acquisition_case_operator_get_v1(uuid,text)",
-  "public.acquisition_case_operator_list_v1(uuid,timestamp with time zone,uuid,integer)",
-  "public.acquisition_case_submit_v1(text,text,text,text,boolean,text,text,text,text,text,text,text,text,timestamp with time zone)",
-  "public.acquisition_case_transition_v1(uuid,text,bigint,text,text,text,timestamp with time zone)",
-  "public.acquisition_newsletter_consent_v1(text,text,text,text,text,boolean,timestamp with time zone,timestamp with time zone)",
-  "public.acquisition_survey_operator_list_v1(uuid,text,integer)",
-  "public.acquisition_survey_submit_v1(text,text,text,jsonb,timestamp with time zone)",
-  "public.partner_acquisition_operator_list_v1(uuid,timestamp with time zone,uuid,integer)",
-  "public.partner_acquisition_submit_v1(text,text,text,text,text,text,text,text,text,text,text,timestamp with time zone)",
-  "public.partner_acquisition_transition_v1(uuid,text,bigint,text,text,timestamp with time zone)",
-]);
-
-export const DEFINER_SEARCH_PATH_PENDING: readonly string[] = Object.freeze([
-  "public.acquisition_case_active_count_v1()",
-  "public.acquisition_case_operator_get_v1(uuid,text)",
-  "public.acquisition_case_operator_list_v1(uuid,timestamp with time zone,uuid,integer)",
-  "public.acquisition_case_submit_v1(text,text,text,text,boolean,text,text,text,text,text,text,text,text,timestamp with time zone)",
-  "public.acquisition_case_transition_v1(uuid,text,bigint,text,text,text,timestamp with time zone)",
-  "public.acquisition_newsletter_consent_v1(text,text,text,text,text,boolean,timestamp with time zone,timestamp with time zone)",
-  "public.acquisition_survey_operator_list_v1(uuid,text,integer)",
-  "public.acquisition_survey_submit_v1(text,text,text,jsonb,timestamp with time zone)",
-  "public.partner_acquisition_operator_list_v1(uuid,timestamp with time zone,uuid,integer)",
-  "public.partner_acquisition_submit_v1(text,text,text,text,text,text,text,text,text,text,text,timestamp with time zone)",
-  "public.partner_acquisition_transition_v1(uuid,text,bigint,text,text,timestamp with time zone)",
-]);
-
-// The qualified installations already pin these legacy pending entries.
-const QUALIFIED_PINNED: readonly string[] = Object.freeze([
-  "public.acquisition_case_active_count_v1()",
-  "public.acquisition_case_operator_list_v1(uuid,timestamp with time zone,uuid,integer)",
-  "public.acquisition_case_submit_v1(text,text,text,text,boolean,text,text,text,text,text,text,text,text,timestamp with time zone)",
-  "public.acquisition_case_transition_v1(uuid,text,bigint,text,text,text,timestamp with time zone)",
-]);
+const slot = registry.nativeStoreForwardClass.slots.find(entry => entry.path.endsWith("_acquisition_definer_search_path_pin.sql"))!;
+const settings = slot.settingsOnlyFunctions!;
+const signatures = settings.map(entry => entry.signature);
+const binding = registry.nativeStoreForwards.find(entry => entry.path === slot.path)!;
+const lockName = "openlup:public-platform-migrations:v1";
+const ledger = "public.platform_schema_migrations";
 
 type Definer = { signature: string; search_path: string | null };
 
-function searchPathFailures(definers: readonly Definer[], pending: readonly string[]): string[] {
+function searchPathFailures(definers: readonly Definer[]): string[] {
   const failures: string[] = [];
-  const awaitingPin = new Set(pending);
-  const temporarySchema = /^(?:pg_temp(?:_\d+)?|"pg_temp(?:_\d+)?")$/u;
+  const temporarySchema = /^pg_temp(?:_\d+)?$/u;
   for (const { signature, search_path: searchPath } of definers) {
-    // Keep commas inside quoted schema names.
+    // Keep commas and case inside quoted schema names.
     const schemas = (searchPath?.match(/(?:[^",]|"(?:[^"]|"")*")+/g) ?? [])
       .map(schema => schema.trim()).filter(Boolean);
-    const lastSchema = schemas.at(-1);
-    const pinned = (lastSchema === "pg_temp" || lastSchema === '"pg_temp"')
-      && !schemas.slice(0, -1).some(schema => temporarySchema.test(schema));
-    if (awaitingPin.delete(signature)) {
-      if (pinned) failures.push(`remove ${signature} from DEFINER_SEARCH_PATH_PENDING`);
-    } else if (!pinned) {
-      const suggestedPath = [...schemas.filter(schema => !temporarySchema.test(schema)), "pg_temp"].join(", ");
-      failures.push(`SECURITY DEFINER function ${signature}: pin pg_temp last: SET search_path = ${suggestedPath}`);
-    }
-  }
-  for (const signature of awaitingPin) {
-    failures.push(`remove ${signature} from DEFINER_SEARCH_PATH_PENDING: SECURITY DEFINER function is missing`);
+    const names = schemas.map(schema => schema.startsWith('"')
+      ? schema.slice(1, -1).replaceAll('""', '"') : schema.toLowerCase());
+    if (names.at(-1) === "pg_temp" && !names.slice(0, -1).some(name => temporarySchema.test(name))) continue;
+    const trusted = schemas.filter((_, index) => !temporarySchema.test(names[index]!));
+    const remedy = trusted.length ? `SET search_path = ${[...trusted, "pg_temp"].join(", ")}`
+      : "review and set an explicit trusted schema list, then append pg_temp";
+    failures.push(`SECURITY DEFINER function ${signature}: pin pg_temp last: ${remedy}`);
   }
   return failures;
 }
 
-it("allows only removals from the original pending list", () => {
-  const additions = DEFINER_SEARCH_PATH_PENDING.filter(signature => !ORIGINAL_PENDING.includes(signature));
-  expect(additions, "DEFINER_SEARCH_PATH_PENDING may only shrink").toEqual([]);
-});
+type LedgerRow = { catalog_path: string; sha256: string; position: number; executed_at: string };
+
+async function readLedger(client: Pool | PoolClient) {
+  return (await client.query<LedgerRow>(`SELECT catalog_path, sha256, position, executed_at::text
+    FROM ${ledger} ORDER BY position`)).rows;
+}
+
+async function observe(owner: Pool) {
+  const functions = (await owner.query<{ owner: string; record: { proconfig: string[]; prosecdef: boolean } }>(`
+    SELECT r.rolname AS owner, pg_catalog.to_jsonb(p) AS record
+    FROM pg_catalog.unnest($1::text[]) WITH ORDINALITY AS targets(signature, ordinal)
+    JOIN pg_catalog.pg_proc p ON p.oid = pg_catalog.to_regprocedure(targets.signature)
+    JOIN pg_catalog.pg_roles r ON r.oid = p.proowner
+    ORDER BY targets.ordinal
+  `, [signatures])).rows;
+  const memberships = (await owner.query<{
+    role: string; member: string; grantor: string; admin_option: boolean; inherit_option: boolean; set_option: boolean;
+  }>(`SELECT a.*, r.rolname AS role, m.rolname AS member, g.rolname AS grantor
+    FROM pg_catalog.pg_auth_members a
+    JOIN pg_catalog.pg_roles r ON r.oid = a.roleid
+    JOIN pg_catalog.pg_roles m ON m.oid = a.member
+    JOIN pg_catalog.pg_roles g ON g.oid = a.grantor
+    ORDER BY a.oid`)).rows;
+  return { functions, memberships, ledger: await readLedger(owner) };
+}
+
+async function rollBackPin(migrator: Pool, prefix: LedgerRow[]) {
+  const client = await migrator.connect();
+  try {
+    await client.query("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1,0))", [lockName]);
+    await client.query("BEGIN");
+    try {
+      await client.query(`LOCK TABLE ONLY ${ledger} IN SHARE ROW EXCLUSIVE MODE`);
+      const ledgerIdentity = async () => (await client.query("SELECT 'public.platform_schema_migrations'::regclass::oid")).rows;
+      const identity = await ledgerIdentity();
+      expect(await readLedger(client)).toEqual(prefix);
+      await client.query(readFileSync(slot.path, "utf8"));
+      expect(await ledgerIdentity()).toEqual(identity);
+      expect(await readLedger(client)).toEqual(prefix);
+      const { rows, rowCount } = await client.query(
+        `INSERT INTO ${ledger} (catalog_path, sha256, position) VALUES ($1, $2, $3)
+         RETURNING catalog_path, sha256, position`,
+        [slot.path, binding.sha256, prefix.length],
+      );
+      expect(rowCount).toBe(1);
+      expect(rows).toEqual([{ catalog_path: slot.path, sha256: binding.sha256, position: prefix.length }]);
+    } finally {
+      await client.query("ROLLBACK");
+    }
+  } finally {
+    const unlock = await client.query("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,0)) AS unlocked", [lockName])
+      .catch(() => undefined);
+    const unlocked = unlock?.rows[0]?.unlocked === true;
+    client.release(!unlocked);
+    expect(unlocked).toBe(true);
+  }
+}
 
 it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
-  "pins pg_temp last on all non-pending definers in the %s installation",
+  "pins pg_temp last on the acquisition functions and all installed definers in %s",
   async profile => {
-    const { owner, close } = await installAccountMutations(profile, false, "definer-search-path");
+    const { owner, migrator, installation, runner, close } = await installBeforeAcquisitionSearchPathPin(profile, "definer-search-path");
     try {
+      expect(signatures).toHaveLength(11);
+      const before = await observe(owner);
+      expect(before.functions).toHaveLength(11);
+      expect(before.functions.every(fn => fn.owner === slot.ownerWindowRole && fn.record.prosecdef)).toBe(true);
+      const expected = before.functions.map((fn, index) => ({
+        ...fn, record: { ...fn.record, proconfig: fn.record.proconfig.map(setting =>
+          setting.startsWith("search_path=") ? `search_path=${settings[index]!.searchPath}` : setting) },
+      }));
+      expect(expected.filter((fn, index) => fn.record.proconfig.join() !== before.functions[index]!.record.proconfig.join()))
+        .toHaveLength(profile === "legacy" ? 11 : 7);
+
+      if (installation.generation === "qualified-admin") {
+        const grantor = installation.roleMode === "installer-managed" ? installation.bootstrapLogin : installation.operatorLogin;
+        expect(before.memberships.filter(row => row.role === slot.ownerWindowRole && row.member === installation.migrationLogin))
+          .toEqual([expect.objectContaining({ grantor, admin_option: true, inherit_option: false, set_option: false })]);
+        await rollBackPin(migrator, before.ledger);
+        expect(await observe(owner)).toEqual(before);
+
+        const sixth = signatures[5]!;
+        expect(sixth).toMatch(/^public\.acquisition_newsletter_consent_v1\(/u);
+        await owner.query(`ALTER FUNCTION ${sixth} OWNER TO "${installation.bootstrapLogin}"`);
+        try {
+          const beforeFailure = await observe(owner);
+          await expect(runner.apply()).rejects.toThrow(
+            `platform migration ${slot.path} failed: must be owner of function public.acquisition_newsletter_consent_v1`);
+          expect(await observe(owner)).toEqual(beforeFailure);
+        } finally {
+          await owner.query(`ALTER FUNCTION ${sixth} OWNER TO platform_acquisition_owner`);
+        }
+        expect(await observe(owner)).toEqual(before);
+      }
+
+      expect((await runner.apply()).applied).toEqual([slot.path]);
+      const after = await observe(owner);
+      expect(after.functions).toEqual(expected);
+      for (const fn of after.functions) {
+        expect(fn.record.proconfig.filter(setting => setting.startsWith("search_path="))).toEqual(["search_path=pg_catalog, pg_temp"]);
+      }
+      expect(after.memberships).toEqual(before.memberships);
+      expect(after.memberships.filter(row => row.role === slot.ownerWindowRole && row.member === row.grantor)).toEqual([]);
+      expect(after.ledger).toEqual([...before.ledger, expect.objectContaining({
+        catalog_path: slot.path, sha256: binding.sha256, position: before.ledger.length,
+      })]);
+      expect((await runner.apply()).applied).toEqual([]);
+      expect(await observe(owner)).toEqual(after);
+
       const recorder = await owner.query(`SELECT prosecdef FROM pg_catalog.pg_proc
         WHERE oid='public.catalog_publication_record_command(jsonb)'::regprocedure`);
       expect(recorder.rows).toEqual([{ prosecdef: profile === "bootstrap" || profile === "separate" }]);
@@ -93,9 +159,7 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
         WHERE p.prosecdef AND n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'
         ORDER BY 1
       `);
-      const pending = profile === "legacy" ? DEFINER_SEARCH_PATH_PENDING
-        : DEFINER_SEARCH_PATH_PENDING.filter(signature => !QUALIFIED_PINNED.includes(signature));
-      const failures = searchPathFailures(rows, pending);
+      const failures = searchPathFailures(rows);
       expect(failures, failures.join("\n")).toEqual([]);
     } finally {
       await close();
@@ -104,27 +168,30 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
   postgresSetupTimeoutMs,
 );
 
-it("reports a pinned pending definer, an unpinned definer and a stale pending entry", () => {
+it("reports how to pin pg_temp last while preserving quoted schema names", () => {
   expect(searchPathFailures([
-    { signature: "public.pending_pinned()", search_path: "pg_catalog, pg_temp" },
     { signature: "public.unpinned()", search_path: "pg_catalog, public" },
     { signature: "public.no_setting()", search_path: null },
     { signature: "public.empty_setting()", search_path: "" },
-    { signature: "public.temp_first()", search_path: "pg_temp, public" },
+    { signature: "public.temp_only()", search_path: "pg_Temp_12" },
+    { signature: "public.temp_first()", search_path: "PG_TEMP, public" },
     { signature: "public.temp_repeated()", search_path: 'pg_temp, "pg_temp", "schema, name", public' },
     { signature: "public.temp_duplicated()", search_path: '"pg_temp", pg_catalog, pg_temp' },
     { signature: "public.temp_numbered()", search_path: '"pg_temp_12", pg_catalog, pg_temp' },
+    { signature: "public.quoted_upper_last()", search_path: 'pg_catalog, "PG_TEMP"' },
+    { signature: "public.quoted_case()", search_path: '"PG_TEMP", "pg_temp_12A", pg_temp' },
     { signature: "public.quoted_comma()", search_path: '"schema, pg_temp, name", pg_temp' },
     { signature: "public.pinned()", search_path: 'pg_catalog, "pg_temp"' },
-  ], ["public.pending_pinned()", "public.missing()"])).toEqual([
-    "remove public.pending_pinned() from DEFINER_SEARCH_PATH_PENDING",
+    { signature: "public.unquoted_upper()", search_path: "pg_catalog, PG_TEMP" },
+  ])).toEqual([
     "SECURITY DEFINER function public.unpinned(): pin pg_temp last: SET search_path = pg_catalog, public, pg_temp",
-    "SECURITY DEFINER function public.no_setting(): pin pg_temp last: SET search_path = pg_temp",
-    "SECURITY DEFINER function public.empty_setting(): pin pg_temp last: SET search_path = pg_temp",
+    "SECURITY DEFINER function public.no_setting(): pin pg_temp last: review and set an explicit trusted schema list, then append pg_temp",
+    "SECURITY DEFINER function public.empty_setting(): pin pg_temp last: review and set an explicit trusted schema list, then append pg_temp",
+    "SECURITY DEFINER function public.temp_only(): pin pg_temp last: review and set an explicit trusted schema list, then append pg_temp",
     "SECURITY DEFINER function public.temp_first(): pin pg_temp last: SET search_path = public, pg_temp",
     'SECURITY DEFINER function public.temp_repeated(): pin pg_temp last: SET search_path = "schema, name", public, pg_temp',
     "SECURITY DEFINER function public.temp_duplicated(): pin pg_temp last: SET search_path = pg_catalog, pg_temp",
     "SECURITY DEFINER function public.temp_numbered(): pin pg_temp last: SET search_path = pg_catalog, pg_temp",
-    "remove public.missing() from DEFINER_SEARCH_PATH_PENDING: SECURITY DEFINER function is missing",
+    'SECURITY DEFINER function public.quoted_upper_last(): pin pg_temp last: SET search_path = pg_catalog, "PG_TEMP", pg_temp',
   ]);
 });

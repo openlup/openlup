@@ -11,7 +11,7 @@ import { restoreConnectedNativeStore } from "../../server/adapters/postgres/conn
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
 import { sealConnectedCapture } from "./connectedStoreHistoricalPacket.fixture.js";
-import { installAccountMutations } from "./customerAccountMutations.fixture.js";
+import { acquisitionSearchPathPredecessor, installAccountMutations, installBeforeAcquisitionSearchPathPin } from "./customerAccountMutations.fixture.js";
 import { prepareOriginal, sandboxRenewal } from "./subscriptionNativeFixture.js";
 
 const profiles = ["bootstrap", "separate", "admin-managed", "admin-operator"] as const;
@@ -126,7 +126,7 @@ async function capturePredecessor(store: Store, fresh: ConnectedNativeStoreCaptu
   });
 }
 
-async function seed(store: Store, history: History) {
+async function seed(store: Store, history: Pick<History, "predatesScheme" | "predatesLedger">) {
   const f = await sandboxRenewal(store.owner);
   await prepareOriginal(store.owner, f);
   const sku = f.snapshot.lines[0].sku;
@@ -141,6 +141,12 @@ async function seed(store: Store, history: History) {
     (attempt_digest,requester_digest,email_digest,recorded_at_ms)
     VALUES(repeat('a',64),repeat('b',64),repeat('c',64),9007199254740993)`);
   return f.subscription;
+}
+
+async function seedQuote(store: Store, subscription: string) {
+  await store.owner.query(`INSERT INTO public.${quotes}(subscription_id,idempotency_key,request_fingerprint,quote_hash,
+    expected_template_version,proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,expires_at)
+    VALUES($1,'fixture-quote',repeat('b',64),repeat('c',64),1,'[]',28,200,200,'XXX','2026-09-02')`, [subscription]);
 }
 
 it.each(histories.map((history, index) => ({ history, profile: profiles[index], inventory: history.inventories[index] })))(
@@ -159,9 +165,7 @@ it.each(histories.map((history, index) => ({ history, profile: profiles[index], 
       const subscription = await seed(source, history);
       const convertedTarget = await install("restore-converted");
       const fresh = await capture(convertedTarget, "fresh-converted", true);
-      await source.owner.query(`INSERT INTO public.${quotes}(subscription_id,idempotency_key,request_fingerprint,quote_hash,
-        expected_template_version,proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,expires_at)
-        VALUES($1,'fixture-quote',repeat('b',64),repeat('c',64),1,'[]',28,200,200,'XXX','2026-09-02')`, [subscription]);
+      await seedQuote(source, subscription);
       await expect(capturePredecessor(source, fresh, history)).rejects.toMatchObject({ code: "unsupported_table", table: `public.${quotes}` });
       await source.owner.query(`DELETE FROM public.${quotes} WHERE subscription_id=$1`, [subscription]);
       const predecessor = await capturePredecessor(source, fresh, history);
@@ -186,3 +190,34 @@ it.each(histories.map((history, index) => ({ history, profile: profiles[index], 
     }
   }, postgresSetupTimeoutMs,
 );
+
+it.each(profiles)("pins pg_temp last on the acquisition functions through %s capture and restore", async profile => {
+  const stores: Store[] = [];
+  try {
+    const source = await installBeforeAcquisitionSearchPathPin(profile, "capture-before-pin");
+    stores.push(source);
+    expect(source.inventory).toBe(acquisitionSearchPathPredecessor[profile]);
+    await seedQuote(source, await seed(source, { predatesLedger: false, predatesScheme: false }));
+    const predecessor = await capture(source, "before-pin");
+    expect(carriedRows(predecessor).find(entry => entry.table === quotes)?.rows).toHaveLength(1);
+
+    async function restore(packet: ConnectedNativeStoreCapture, label: string) {
+      const target = await installAccountMutations(profile, false, label);
+      stores.push(target);
+      if (target.installation.generation === "legacy") throw new Error("Qualified restore target required");
+      const input = { owner: target.migrator, installation: target.installation, packet, freshTarget: await capture(target, label, true) };
+      expect(await restoreConnectedNativeStore(input)).toMatchObject({ captureSha256: packet.sha256, replayed: false });
+      expect(await restoreConnectedNativeStore(input)).toMatchObject({ captureSha256: packet.sha256, replayed: true });
+      return carriedRows(await capture(target, label));
+    }
+
+    const retained = await restore(predecessor, "restore-before-pin");
+    expect((await source.runner.apply()).applied).toContainEqual(expect.stringMatching(/_acquisition_definer_search_path_pin\.sql$/u));
+    const upgraded = await capture(source, "after-pin");
+    expect(upgraded.compatible.catalogueId).not.toBe(predecessor.compatible.catalogueId);
+    expect(retained).toEqual(carriedRows(upgraded));
+    expect(await restore(upgraded, "restore-after-pin")).toEqual(retained);
+  } finally {
+    await Promise.all(stores.map(store => store.close()));
+  }
+}, postgresSetupTimeoutMs);

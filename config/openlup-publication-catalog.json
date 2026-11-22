@@ -1578,6 +1578,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125000000_acquisition_definer_search_path_pin.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5151,6 +5155,10 @@
     },
     {
       "path": "packages/platform/sql/20261124220001_catalog_accepted_references.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125000000_acquisition_definer_search_path_pin.sql",
       "class": "public-output"
     },
     {

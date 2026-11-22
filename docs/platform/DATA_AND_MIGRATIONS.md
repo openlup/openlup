@@ -2497,6 +2497,21 @@ statement, the ordered `ALTER FUNCTION` statements, and the rendered close
 statement. A restricted installer inherits the owner role's privileges only
 within the migration transaction, a superuser installer skips the window, and
 the open statement refuses a pre-existing self-granted membership.
+If role preflight reports `protected_membership_graph_differs` or the migration
+reports a pre-existing self-grant, verify the role, installer and grantor
+against the declared role mode. During controlled maintenance, revoke only the
+unexpected self-grant through its granting installer and preserve the
+bootstrap or operator grant. For other membership drift, restore the declared
+role graph. If an ALTER reports that the installer must be the function owner,
+check the declared login and restore the documented owner and role grants.
+Retry after restoring that configuration.
+
+For a path, digest or issued-prefix mismatch, recover the original approved SQL
+and its binding together, then verify the complete prefix. For an unissued
+forward with a verified binding and a rendered-form mismatch, regenerate the
+file from the reviewed settings. If admission rejects its order or a target,
+check the introduction base for the first available slot and the exact
+function signature.
 A later ordinary slot treats a landed settings-only slot's exact pinned
 `ALTER FUNCTION` statements as known DDL, so it can still replace a hardened
 function or grant privileges on it. A replacement may tighten a single
@@ -2506,7 +2521,13 @@ top-level `SET search_path` list of unquoted ASCII identifiers, using `=` or
 tokens normalized and literal and quoted identifier tokens kept byte-exact.
 The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
 requires `pg_temp` last, with no earlier `pg_temp` or `pg_temp_<N>` entry, for every
-installed definer outside the shrink-only `DEFINER_SEARCH_PATH_PENDING` list.
+installed non-system definer. Preserve the intended trusted schemas when
+moving `pg_temp` to the end. For a missing or empty path, review and set the
+trusted schema list before appending `pg_temp`. Eleven acquisition and partner
+acquisition definer functions now pin `pg_temp` last on their search path.
+If a retained-store packet has an unknown or mismatched inventory, use a
+verified capture from the matching installation profile or upgrade the source
+and capture it again.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new

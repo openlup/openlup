@@ -1,10 +1,55 @@
 import { createHash, randomUUID } from "node:crypto";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { Pool } from "pg";
+import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresCatalogPayload, qualifiedAdminPostgresCatalogPayload, qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions, type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 export type AccountProfile = "legacy" | "bootstrap" | "separate" | "admin-managed" | "admin-operator";
+export const acquisitionSearchPathPredecessor = {
+  legacy: "37eaad4927661af8b5edc939ce9c8132af7892ed1bb1473c2fc5707c3f3b4e13",
+  bootstrap: "c6fea6b7fe85a7963f952994c34e1dfbca87045952e3dadbbf947c4b89aab5f6",
+  separate: "d0a803fd96d5fe048179cff18181c437ede56daa3a8dc14b2ee0a62381753619",
+  "admin-managed": "412caa25526d6ba70bb5bb761d5bed2336e7307811a879658295819ad5ab15f5",
+  "admin-operator": "d413c04713b9fb5f5f9d8f01dc66c68c67d131f6cc94bcbf12becef47abd4f42",
+} satisfies Record<AccountProfile, string>;
+
+export async function installBeforeAcquisitionSearchPathPin(profile: AccountProfile, label: string) {
+  const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
+  if (manifest?.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
+  const pins = acquisitionSearchPathPredecessor;
+  manifest.objectInventorySha256 = pins.legacy;
+  manifest.qualified.objectInventorySha256 = {
+    bootstrapMigrator: { withRestore: pins.bootstrap },
+    separateMigrator: { withRestore: pins.separate },
+  };
+  manifest.qualifiedAdmin.objectInventorySha256 = {
+    installerManaged: pins["admin-managed"],
+    operatorProvisioned: pins["admin-operator"],
+  };
+  const root = mkdtempSync(join(tmpdir(), "acquisition-search-path-prefix-"));
+  try {
+    for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
+      const position = plan.forward.findIndex(unit => unit.file.endsWith("_acquisition_definer_search_path_pin.sql"));
+      if (position < 0) throw new Error("Acquisition search path migration is missing");
+      plan.forward = plan.forward.slice(0, position);
+      for (const unit of [plan.baseline, ...plan.forward]) {
+        const target = join(root, unit.file);
+        mkdirSync(dirname(target), { recursive: true });
+        copyFileSync(unit.file, target);
+      }
+    }
+    mkdirSync(join(root, "config"));
+    writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(manifest));
+    return await installAccountMutations(profile, false, label, root);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 /** The existing account-consent installation matrix, also used to measure complete-inventory pins. */
 export async function installAccountMutations(profile: AccountProfile, measure = false, label = "source", root?: string) {
   const container = await runPostgresContainer({ name: `account-mutations-${profile}-${label}-${process.pid}`, password: "synthetic-conformance" });
