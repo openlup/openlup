@@ -953,6 +953,31 @@ private tables have RLS and only the existing service-role client-column census
 exception. They are outside the smaller compatible-row utility. The parcel-contact
 privacy contributor owns their export and erasure alongside parcel contacts.
 
+### Native destination receipt authority
+
+The [destination receipt forward](../../db/platform/migrations/20261125040000_commerce_destination_v2_receipts.sql)
+adds a private receipt with the original scoped identity and success, an event
+UUID and schema version, and finite database creation time. Fresh work uses an
+owner transaction under READ COMMITTED. It takes the scoped advisory lock, the
+shared privacy ledger fence, then the client lock on absence. It checks the
+retained receipt again before effects. The transaction commits the receipt and
+the effect together. There is no production issuer in this forward.
+
+The native privacy contributor exports available subject evidence and scrubs
+the owner, dialect, original key and success in the authorized erasure
+transaction. The retained client ID, scoped hash, request digest and audit
+coordinates preserve replay identity. Subject export shows only the audit
+coordinates and erased disposition after scrubbing. Retained replay returns
+a null outcome. Both dispositions block lead absorption. The restricted
+runtime can execute the receipt reader and privacy routines and read the
+client ID for the absorption census.
+
+The connected native profile captures the receipt as an owned row and restores
+it after clients, preserving its exact evidence disposition and audit
+coordinates. Use source packets from the current qualified inventory. Purge
+or recapture private transfer packets that contain evidence erased after capture.
+
+
 ### Policy revision close compatibility
 
 The native `20261122140000_subscription_price_policy_close_digest.sql` forward

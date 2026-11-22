@@ -1590,6 +1590,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125040000_commerce_destination_v2_receipts.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5179,6 +5183,10 @@
     },
     {
       "path": "packages/platform/sql/20261125010000_catalog_purchase_admission.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125040000_commerce_destination_v2_receipts.sql",
       "class": "public-output"
     },
     {
@@ -22158,6 +22166,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/auth/destinationReceiptPrivacyContributor.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/auth/emailTrustBinding.test.ts",
       "class": "public-output"
     },
@@ -31095,6 +31107,14 @@
     },
     {
       "path": "tests/postgres/definerSearchPath.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/destinationReceiptFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/destinationV2Receipts.test.ts",
       "class": "public-output"
     },
     {
