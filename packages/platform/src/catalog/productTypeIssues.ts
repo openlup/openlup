@@ -1,6 +1,7 @@
 import { z } from "./validation.js";
-import { validateCatalogUnitFactor } from "@openlup/core/catalog";
+import { validateCatalogSubscriptionProfile, validateCatalogUnitFactor, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogConformanceCode, CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
+import type { CatalogProductTypeRef } from "./contracts/productTypes.js";
 export const catalogNamespacedKeySchema = z.string().max(120).regex(/^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$/u);
 export const catalogDimensionKeySchema = z.string().max(64).regex(/^[a-z][a-z0-9_-]*$/u)
   .refine((key) => !["__proto__", "constructor", "prototype"].includes(key));
@@ -89,19 +90,36 @@ export function catalogProductTypeRefIssues(input: unknown): CatalogDefinitionIs
  * @experimental
  */
 export function catalogProductTypeIssues(definitions: readonly unknown[]): CatalogDefinitionIssue[] {
+  return inspectProductTypes(definitions);
+}
+
+function inspectProductTypes(definitions: readonly unknown[], profileRefs?: Map<number, CatalogProductTypeRef>): CatalogDefinitionIssue[] {
   const issues: CatalogDefinitionIssue[] = [];
   const identities = new Set<string>();
-  const add = (code: CatalogConformanceCode, path: PropertyKey[]): void => { issues.push({ code, path: pointer(path) }); };
+  let typeIndex = 0;
+  // Keep a successful ref parse even when a sibling field fails validation.
+  const schema = profileRefs === undefined ? catalogDefinitionMetadataSchema : catalogDefinitionMetadataSchema.extend({
+    subscriptionProfileRef: catalogProductTypeRefSchema.check(({ value, issues }) => {
+      if (issues.length === 0) profileRefs.set(typeIndex, value);
+    }).optional(),
+  });
+  const add = (code: CatalogConformanceCode, path: PropertyKey[], fix?: string): void => {
+    issues.push({ code, path: pointer(path), ...(fix === undefined ? {} : { fix }) });
+  };
   definitions.forEach((input, index) => {
     const base: PropertyKey[] = [index];
     if (!input || typeof input !== "object" || Array.isArray(input)) { add("definition_invalid_shape", base); return; }
     const { validateContent, ...metadata } = input as Record<string, unknown>;
-    const result = catalogDefinitionMetadataSchema.safeParse(metadata);
+    typeIndex = index;
+    const result = schema.safeParse(metadata);
     if (typeof validateContent !== "function") add("definition_callback_missing", [...base, "validateContent"]);
     if (!result.success) {
       for (const issue of result.error.issues) {
-        if (issue.code === "unrecognized_keys") for (const key of issue.keys) add("definition_unknown_field", [...base, ...issue.path, key]);
-        else add(parseCode(issue.path, issue.code), [...base, ...issue.path]);
+        const profileRef = profileRefs !== undefined && issue.path[0] === "subscriptionProfileRef";
+        if (issue.code === "unrecognized_keys") {
+          for (const key of issue.keys) add(profileRef ? "definition_profile_ref_invalid" : "definition_unknown_field",
+            [...base, ...issue.path, key], profileRef ? `Remove the unexpected property ${JSON.stringify(key)}.` : undefined);
+        } else add(parseCode(issue.path, issue.code), [...base, ...issue.path], profileRef ? profileRefFix : undefined);
       }
       return;
     }
@@ -171,25 +189,112 @@ const packSchema = z.object({
   taxClasses: z.array(z.object({ key: z.string(), labels: labels.optional() }).strict()),
   subscriptionProfiles: z.array(catalogProductTypeRefSchema).optional(),
 }).strict();
+const optedInPackSchema = packSchema.extend({
+  subscriptionProfileDefinitions: z.array(z.unknown()).optional(),
+});
+const profileRefFix = "Supply a lowercase namespaced key of at most 120 characters and a whole-number version from 1 to 2147483647.";
+
+/** @internal */
+export function invalidCatalogPack(issue: CatalogDefinitionIssue): Error {
+  return Object.assign(new Error("invalid_catalog_pack"), { issue });
+}
+
 /** Shared pack shape, definitions and references; installation also requires pinned validators and unique tax-class keys.
  * @experimental
  */
 export function catalogPackIssues(input: unknown): CatalogDefinitionIssue[] {
-  const parsed = packSchema.safeParse(input);
-  if (!parsed.success) return parsed.error.issues.flatMap<CatalogDefinitionIssue>((issue) => issue.code === "unrecognized_keys"
-    ? issue.keys.map((key) => ({ code: "definition_unknown_field" as const, path: pointer([...issue.path, key]) }))
-    : [{ code: issue.path[0] === "version" ? "definition_version_invalid" as const : "definition_invalid_shape" as const, path: pointer(issue.path) }]);
-  const pack = parsed.data;
-  const issues = catalogProductTypeIssues(pack.types).map((issue) => ({ ...issue, path: `/types${issue.path}` }));
+  return inspectCatalogPack(input).issues;
+}
+
+/** @internal */
+export function inspectCatalogPack(input: unknown): {
+  issues: CatalogDefinitionIssue[]; profiles?: readonly CatalogSubscriptionProfileV1[];
+} {
+  const optedIn = input !== null && typeof input === "object" && Object.hasOwn(input, "subscriptionProfileDefinitions");
+  const parsed = (optedIn ? optedInPackSchema : packSchema).safeParse(input);
+  if (!parsed.success) return { issues: parsed.error.issues.flatMap<CatalogDefinitionIssue>((issue) => {
+    const [field, index] = issue.path;
+    if (optedIn && field === "subscriptionProfiles") {
+      if (issue.code === "unrecognized_keys") return issue.keys.map(key => ({
+        code: "definition_profile_ref_invalid", path: pointer([...issue.path, key]),
+        fix: `Remove the unexpected property ${JSON.stringify(key)}.`,
+      }));
+      return [index === undefined
+        ? { code: "definition_invalid_shape", path: "/subscriptionProfiles", fix: "Supply subscriptionProfiles as an array of key/version references." }
+        : { code: "definition_profile_ref_invalid", path: pointer(issue.path), fix: profileRefFix }];
+    }
+    if (optedIn && field === "subscriptionProfileDefinitions") return [{
+      code: "definition_invalid_shape", path: "/subscriptionProfileDefinitions", fix: "Supply subscriptionProfileDefinitions as an array.",
+    }];
+    if (issue.code === "unrecognized_keys") return issue.keys.map(key => ({
+      code: "definition_unknown_field", path: pointer([...issue.path, key]),
+    }));
+    return [{ code: field === "version" ? "definition_version_invalid" : "definition_invalid_shape", path: pointer(issue.path) }];
+  }) };
+  const pack: z.infer<typeof optedInPackSchema> = parsed.data;
+  const refs = pack.subscriptionProfiles ?? [];
+  const identity = ({ key, version }: { key: string; version: number }) => `${key}@${version}`;
+  const listed = new Set<string>();
+  const issues: CatalogDefinitionIssue[] = [];
+  refs.forEach((ref, index) => {
+    const key = identity(ref);
+    if (optedIn && listed.has(key)) issues.push({
+      code: "definition_duplicate_identity", path: `/subscriptionProfiles/${index}`,
+      fix: "Remove this duplicate reference and keep one entry for the exact profile version.",
+    });
+    listed.add(key);
+  });
+  const profiles = optedIn ? inspectProfileDefinitions(pack.subscriptionProfileDefinitions) : undefined;
+  const profileRefs = optedIn ? new Map<number, CatalogProductTypeRef>() : undefined;
+  for (const issue of inspectProductTypes(pack.types, profileRefs)) issues.push({ ...issue, path: `/types${issue.path}` });
   pack.types.forEach((input, index) => {
     if (!input || typeof input !== "object") return;
     const definition = input as Record<string, unknown>;
     if (typeof definition.key === "string" && !definition.key.startsWith(`${pack.namespace}:`)) issues.push({ code: "pack_type_namespace_mismatch", path: `/types/${index}/key` });
     if (typeof definition.taxClass === "string" && !pack.taxClasses.some(({ key }) => key === definition.taxClass)) issues.push({ code: "definition_unknown_tax_class", path: `/types/${index}/taxClass` });
-    if (definition.subscriptionProfileRef && typeof definition.subscriptionProfileRef === "object") {
-      const ref = definition.subscriptionProfileRef as Record<string, unknown>;
-      if (!pack.subscriptionProfiles?.some(({ key, version }) => key === ref.key && version === ref.version)) issues.push({ code: "definition_unknown_profile_ref", path: `/types/${index}/subscriptionProfileRef` });
+    if (!optedIn) {
+      const candidate = definition.subscriptionProfileRef;
+      if (candidate && typeof candidate === "object") {
+        const ref = candidate as Record<string, unknown>;
+        if (!refs.some(({ key, version }) => key === ref.key && version === ref.version)) issues.push({
+          code: "definition_unknown_profile_ref", path: `/types/${index}/subscriptionProfileRef`,
+        });
+      }
+    } else {
+      const ref = profileRefs?.get(index);
+      if (ref && !listed.has(identity(ref))) issues.push({
+        code: "definition_unknown_profile_ref", path: `/types/${index}/subscriptionProfileRef`,
+        fix: "List the intended exact profile reference or select an identity already listed in subscriptionProfiles.",
+      });
     }
   });
-  return issues;
+  return { issues, profiles };
+
+  function inspectProfileDefinitions(declarations: readonly unknown[] | undefined): CatalogSubscriptionProfileV1[] {
+    if (declarations === undefined) {
+      issues.push({ code: "definition_invalid_shape", path: "/subscriptionProfileDefinitions",
+        fix: "Supply subscriptionProfileDefinitions as an array." });
+      return [];
+    }
+    if (listed.size === 0) issues.push({ code: "definition_invalid_shape", path: "/subscriptionProfiles",
+      fix: "List at least one exact subscription profile key and version." });
+    const declared = new Set<string>();
+    const profiles: CatalogSubscriptionProfileV1[] = [];
+    for (const [index, declaration] of declarations.entries()) {
+      const path = `/subscriptionProfileDefinitions/${index}`;
+      const result = validateCatalogSubscriptionProfile(declaration);
+      if ("issue" in result) {
+        issues.push({ ...result.issue, path: path + result.issue.path });
+        continue;
+      }
+      const key = identity(result.profile);
+      if (declared.has(key)) issues.push({ code: "definition_duplicate_identity", path,
+        fix: "Remove this duplicate declaration and keep one declaration for the exact profile version." });
+      if (!listed.has(key)) issues.push({ code: "definition_unknown_profile_ref", path,
+        fix: "List this declaration's exact key and version in subscriptionProfiles." });
+      declared.add(key);
+      profiles.push(result.profile);
+    }
+    return profiles;
+  }
 }

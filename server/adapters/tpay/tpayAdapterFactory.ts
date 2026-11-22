@@ -90,7 +90,7 @@ export function buildTpayAdapterIfEnabled(
     return {
       mode: "simulator",
       adapter: createReferenceTpayAdapter({
-        client: createTpaySimulatorClient(),
+        client: createTpaySimulatorClient({ simulatorPath: "/skomponuj-pakiet/tpay-simulator" }),
         notificationUrl: urls.notificationUrl,
         successUrl: urls.successUrl,
         errorUrl: urls.errorUrl,
@@ -119,7 +119,7 @@ export function buildTpayAdapterIfEnabled(
     // Live-settlement mode. Fail closed unless the operator has explicitly
     // confirmed production, the client points at the production Open API host,
     // and every callback URL is a direct canonical-host HTTPS URL (a redirect
-    // would drop Tpay's POSTed JWS notification body). The staging/preview
+    // would drop the provider's POSTed JWS notification body). The staging/preview
     // posture guards (findLiveProviderEnv, guard-production-rollout-build) block
     // this mode outside confirmed production.
     if (env.TPAY_PRODUCTION_CONFIRMED !== "true") return null;

@@ -1574,6 +1574,14 @@ version with different bytes or redefining an installed type version refuses.
 Retired tax-class keys stay retired; custom units remain definition JSONB.
 Installation never publishes or binds a runtime capability.
 
+Include `subscriptionProfileDefinitions` to opt into exact profile-version
+checks. Supply an empty array to reuse installed profiles. The first successful
+declaration owns its receipt, and an identical declaration in a later pack
+reuses it. A fresh opted-in install requires READ COMMITTED. Use
+`readInstalledCatalogSubscriptionProfile(executor, { key, version })` with the
+native migration-owner executor to read the exact profile and policy pins or
+receive `null`. Follow the [subscription profile upgrade path](../core/docs/guide/how-to/extend/catalogue-extension.md#subscription-profile).
+
 Products have nullable `type_key` and `type_version`: NULL means legacy and not
 mapped. Existing products, SKU codes, prices, documents and subscription references
 are unchanged. A composite foreign key requires complete new bindings to name an
