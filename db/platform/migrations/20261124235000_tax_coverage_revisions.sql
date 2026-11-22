@@ -155,9 +155,7 @@ BEGIN
         HINT='Use the owner connection in READ COMMITTED and retry.';
     END IF;
     v_revision := v_coverage->>'revision';
-    v_path := '/coverage';
     v_wire := public.catalog_publication_canonical(jsonb_build_array('platform.tax.coverage-revision.v1', v_coverage),0);
-    IF octet_length(convert_to(v_wire,'UTF8')) > 1048576 THEN EXIT validation; END IF;
     v_digest := encode(sha256(convert_to(v_wire,'UTF8')), 'hex');
     PERFORM pg_advisory_xact_lock(hashtextextended(
       jsonb_build_array('openlup:tax-coverage:v1', v_installation_ref, v_account_ref)::text, 0));

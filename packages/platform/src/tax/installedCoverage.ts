@@ -1,5 +1,6 @@
 import { taxCoverageV1Schema } from "./contracts/index.js";
 import type { TaxCoverageV1 } from "./contracts/index.js";
+import { object, schema } from "./contracts/decode.js";
 import { ref } from "./contracts/schemas.js";
 
 interface Executor {
@@ -34,10 +35,23 @@ type ApplyRefusal = Readonly<{
 
 const invalidRemedy = "Supply the documented declaration or request shape.";
 const conflictRemedy = "Replay the original document or read the current head and submit a new revision.";
+const appendReferences = schema(object({
+  installationRef: ref,
+  accountRef: ref,
+  expectedRevision: (value, field) => value === null ? null : ref(value, field),
+  actorRef: ref,
+}));
+const invalidAppend = (field: string): ApplyRefusal =>
+  ({ kind: "refused", code: "tax_invalid_input", field, remedy: invalidRemedy });
 
 /** @experimental Append or replay one revision using a migration-owner executor in READ COMMITTED. */
 export async function applyTaxCoverageRevision(ownerExecutor: Executor, input: ApplyInput): Promise<TaxCoverageRevision | ApplyRefusal> {
-  const request = { ...input.document, expectedRevision: input.expectedHead };
+  const { coverage, ...references } = input.document;
+  const parsedReferences = appendReferences.safeParse({ ...references, expectedRevision: input.expectedHead });
+  if (!parsedReferences.success) return invalidAppend(parsedReferences.error.field);
+  const parsedCoverage = taxCoverageV1Schema.safeParse(coverage);
+  if (!parsedCoverage.success) return invalidAppend("/coverage" + parsedCoverage.error.field);
+  const request = { ...parsedReferences.data, coverage: parsedCoverage.data };
   try {
     const { rows } = await ownerExecutor.query(`SELECT installation_ref, account_ref, revision, sequence_no,
       previous_revision, coverage, coverage_digest, actor_ref,
@@ -47,13 +61,13 @@ export async function applyTaxCoverageRevision(ownerExecutor: Executor, input: A
     return rows[0] as unknown as TaxCoverageRevision;
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "22P05")
-      return { kind: "refused", code: "tax_invalid_input", field: "", remedy: invalidRemedy };
+      return invalidAppend("");
     if (!(error instanceof Error && "code" in error && error.code === "22023"
       && "detail" in error && typeof error.detail === "string")) throw error;
     if (error.message === "tax_coverage_revision_conflict")
       return { kind: "refused", code: error.message, field: error.detail, remedy: conflictRemedy };
     if (error.message !== "tax_invalid_input") throw error;
-    return { kind: "refused", code: error.message, field: error.detail, remedy: invalidRemedy };
+    return invalidAppend(error.detail);
   }
 }
 
@@ -63,7 +77,13 @@ export function bindTaxCoverageReader(db: Executor, scope: Scope) {
   const accountRef = ref(scope.accountRef, "/accountRef");
   return async () => {
     const { rows } = await db.query(`SELECT * FROM public.tax_coverage_read_v1($1::text,$2::text)
-      ORDER BY sequence_no DESC LIMIT 1`, [installationRef, accountRef]);
+      ORDER BY sequence_no DESC LIMIT 1`, [installationRef, accountRef]).catch((error: unknown) => {
+      // A statement-level undefined function means this database lacks the reader.
+      if (error instanceof Error && "code" in error && error.code === "42883" && !("where" in error && error.where)) {
+        throw Object.assign(new Error("Install the native tax coverage reader.", { cause: error }), { code: "tax_coverage_reader_unbound" });
+      }
+      throw error;
+    });
     const row = rows[0];
     if (!row) return { present: false } as const;
     const coverage = taxCoverageV1Schema.parse(row.coverage);

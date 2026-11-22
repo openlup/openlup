@@ -6,6 +6,7 @@ import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderOb
 import { explainSetting, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
 import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue } from "../../src/operations/server/settingsCatalog.js";
 import { settingsMcpTools } from "../../src/operations/server/settingsMcp.js";
+import { bindTaxCoverageReader } from "../../src/tax/installedCoverage.js";
 
 describe("renewal stock policy descriptor", () => {
   it("matches the previous validator's acceptance, normalized value and refusal code", () => {
@@ -167,6 +168,24 @@ it("finds inventory buffer in the packaged settings list", () => {
   const { listResult } = loadSettingsCatalogue();
   const entries = listResult.parse(listSettings({ goal: "inventory buffer" })).entries;
   expect(entries[0]?.key).toBe("inventory_renewal_protection");
+});
+
+it("gives a bound native coverage reader connection guidance", async () => {
+  const key = "tax.coverage";
+  const code = "commerce_setting_read_unavailable";
+  const query = vi.fn().mockRejectedValue(Object.assign(new Error("Connection reset"), { code: "ECONNRESET" }));
+  const reader = bindTaxCoverageReader({ query }, { installationRef: "store-a", accountRef: "account-a" });
+  const connectionRefusal = { refusal: loadSettingsCatalogue().byCode.get(code) };
+  expect(await showSetting({ key }, { [key]: reader })).toEqual(connectionRefusal);
+  expect(await showSetting({ key }, { [key]: async () => ({ refusal: code }) })).toEqual(connectionRefusal);
+  expect(query).toHaveBeenCalledOnce();
+  query.mockRejectedValueOnce(Object.assign(new Error("Missing function inside the installed reader"), {
+    code: "42883", where: "PL/pgSQL function tax_coverage_read_v1(text,text)",
+  }));
+  expect(await showSetting({ key }, { [key]: reader })).toEqual(connectionRefusal);
+  expect(await showSetting({ key }, { [key]: async () => ({ refusal: "tax_coverage_reader_unbound" }) })).toMatchObject({
+    refusal: { code, remediation: { action: expect.stringContaining("Use a qualified native PostgreSQL installation") } },
+  });
 });
 
 describe("settings goal search", () => {

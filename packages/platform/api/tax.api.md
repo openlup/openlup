@@ -186,8 +186,8 @@ export declare function applyTaxCoverageRevision(ownerExecutor: Executor, input:
 /** @experimental Bind the connected settings reader to a host-selected native installation and account. */
 export declare function bindTaxCoverageReader(db: Executor, scope: Scope): () => Promise<{
     readonly present: false;
-    value?: undefined;
-    revision?: undefined;
+    readonly value?: undefined;
+    readonly revision?: undefined;
 } | {
     readonly present: true;
     readonly value: {

@@ -8,6 +8,15 @@ export function coverageCorpus(from: string, until: string) {
   const acknowledged = { ...registered, status: "not_registered_acknowledged", acknowledgementRef: "decision-1" };
   const supplementary = { ...registered, jurisdiction: "🌱" };
   const bmp = { ...registered, jurisdiction: "\uE000" };
+  const bytes = (input: unknown) => Buffer.byteLength(JSON.stringify(input), "utf8");
+  const sized = (size: number) => {
+    const row = (index: number): TaxCoverageV1["declarations"][number] =>
+      ({ ...registered, jurisdiction: `district-${String(index).padStart(5, "0")}` });
+    const length = Math.floor((size - bytes(base) + 1) / (bytes(row(0)) + 1));
+    const value = { ...base, declarations: Array.from({ length }, (_, index) => row(index)) };
+    value.declarations[0] = { ...row(0), actorRef: registered.actorRef + "x".repeat(size - bytes(value)) };
+    return value;
+  };
   return [
     { value: base },
     { value: withRows(acknowledged) },
@@ -15,6 +24,8 @@ export function coverageCorpus(from: string, until: string) {
     { value: withRows({ ...registered, taxKind: "fee" }, registered) },
     { value: { ...base, accountRef: "🌱".repeat(128) } },
     { value: withRows({ ...registered, effective: { from: "0000-02-29T00:00:00.000Z" } }) },
+    { value: sized(1_048_576), byteLength: 1_048_576 },
+    { value: sized(1_048_577), byteLength: 1_048_577, field: "" },
     { value: null, field: "" },
     { value: { ...base, unexpected: true }, field: "" },
     { value: { ...base, schemaVersion: "1" }, field: "/schemaVersion" },

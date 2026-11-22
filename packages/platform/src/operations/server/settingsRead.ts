@@ -30,9 +30,8 @@ function refuse(code: string): { refusal: SettingRefusal } {
   return { refusal };
 }
 
-function refuseReadUnavailable(key: string) {
+function refuseUnboundCoverageRead() {
   const { refusal } = refuse("commerce_setting_read_unavailable");
-  if (key !== "tax.coverage") return { refusal };
   const action = "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation).";
   return { refusal: { ...refusal, hint: "Bind the native reader to the intended installation and account.",
     remediation: { ...refusal.remediation, action,
@@ -57,8 +56,8 @@ function absentObservation(setting: ValueEntry, effective?: JsonValue): Observat
 async function observe(setting: ReturnType<typeof loadSettingsCatalogue>["entries"][number], read?: SettingReader): Promise<Observation | { refusal: SettingRefusal }> {
   if (!read || setting.kind !== "installed") return { state: "offline" };
   const observed = await read();
-  if ("refusal" in observed) return observed.refusal === "commerce_setting_read_unavailable"
-    ? refuseReadUnavailable(setting.key) : refuse(observed.refusal);
+  if ("refusal" in observed) return setting.key === "tax.coverage" && observed.refusal === "tax_coverage_reader_unbound"
+    ? refuseUnboundCoverageRead() : refuse(observed.refusal);
   if (!observed.present) return absentObservation(setting, observed.effective);
   return { state: "override", value: observed.value, revision: observed.revision };
 }
@@ -74,8 +73,10 @@ export async function showSetting(input: unknown, readers: Readonly<Record<strin
     const observation = await observe(setting, Object.hasOwn(readers, setting.key) ? readers[setting.key] : undefined);
     if ("refusal" in observation) return observation;
     return showResult.parse({ schemaVersion: settingsVersion, setting, observation });
-  } catch {
-    return refuseReadUnavailable(setting.key);
+  } catch (error) {
+    if (setting.key === "tax.coverage" && error instanceof Error && "code" in error && error.code === "tax_coverage_reader_unbound")
+      return refuseUnboundCoverageRead();
+    return refuse("commerce_setting_read_unavailable");
   }
 }
 

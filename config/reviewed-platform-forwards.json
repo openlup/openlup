@@ -9888,7 +9888,7 @@
     },
     {
       "path": "db/platform/migrations/20261124235000_tax_coverage_revisions.sql",
-      "sha256": "21e7ad4274ca933cf4f78510ea20d87c59dfc16dceba2a29fc4d51b613bc87bf",
+      "sha256": "744c3c1a7e4ec5a227a017ab867a44adace6f6ac9f06161342756e38f063434b",
       "functions": [
         {
           "signature": "public.tax_coverage_validate(jsonb)",
@@ -9898,7 +9898,7 @@
         {
           "signature": "public.tax_coverage_append_v1(jsonb)",
           "beforeSha256": null,
-          "afterSha256": "3a383435b3d76f823552aba1f69653c4577b4791040d5771c9fb87f14374684f"
+          "afterSha256": "2b7bcbfda8966b89fbaef9c5e8fd639755d9f87a01325994ea2f2d6fabb7d8aa"
         },
         {
           "signature": "public.tax_coverage_read_v1(text,text)",

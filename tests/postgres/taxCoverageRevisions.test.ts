@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { Pool } from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog/contracts";
 import { applyTaxCoverageRevision, bindTaxCoverageReader, describeTaxCoverageSetting, reconcileTaxCoverage } from "@openlup/platform/tax";
 import { taxCoverageV1Schema, type TaxCoverageV1 } from "@openlup/platform/tax/contracts";
@@ -41,9 +41,10 @@ afterAll(() => resources.close(), postgresTeardownTimeoutMs);
 
 it("validates the same corpus and digest in TS and PostgreSQL", async () => {
   const [rule] = describeTaxCoverageSetting().rules;
-  for (const [index, { value, field }] of coverageCorpus(from, until).entries()) {
+  for (const [index, { value, field, byteLength }] of coverageCorpus(from, until).entries()) {
+    if (byteLength !== undefined) expect(Buffer.byteLength(JSON.stringify(value), "utf8")).toBe(byteLength);
     const parsed = taxCoverageV1Schema.safeParse(value);
-    expect(rule.check(value), JSON.stringify(value)).toBe(field === undefined);
+    expect(rule.check(value), `Coverage corpus case ${index}`).toBe(field === undefined);
     const sql = source.owner.query("SELECT public.tax_coverage_validate($1) AS coverage", [JSON.stringify(value)]);
     if (field !== undefined) {
       expect(parsed).toMatchObject({ success: false, error: { code: rule.code, field } });
@@ -55,10 +56,25 @@ it("validates the same corpus and digest in TS and PostgreSQL", async () => {
       const coverage = parsed.data;
       const result = await applyTaxCoverageRevision(source.owner, { expectedHead: null,
         document: { installationRef: `corpus-${index}`, accountRef: coverage.accountRef, actorRef, coverage } });
-      expect(result).toMatchObject({ coverage,
-        coverage_digest: digest(canonicalCatalogDraftJson(["platform.tax.coverage-revision.v1", coverage])) });
+      expect(result).toHaveProperty("coverage_digest",
+        digest(`["platform.tax.coverage-revision.v1",${canonicalCatalogDraftJson(coverage)}]`));
+      expect(result).toHaveProperty("coverage", coverage);
     }
   }
+});
+
+it("refuses invalid caller references before serialization", async () => {
+  const query = vi.fn().mockRejectedValue(Object.assign(new Error("Invalid JSONB Unicode"), { code: "22P05" }));
+  const valid = proposal("valid", null);
+  const cases = [
+    [proposal("invalid\u0000revision", null), "/coverage/revision"],
+    [{ ...valid, expectedHead: "\uD800" }, "/expectedRevision"],
+    [{ ...valid, document: { ...valid.document, actorRef: "\uDFFF" } }, "/actorRef"],
+    [proposal("invalid-declaration", null, [{ jurisdiction: "district\u0000", taxKind: "sale", status: "registered",
+      actorRef, effective: { from }, recordedAt: from }]), "/coverage/declarations/0/jurisdiction"],
+  ] as const;
+  for (const [input, field] of cases) expect(await applyTaxCoverageRevision({ query }, input)).toEqual(invalid(field));
+  expect(query).not.toHaveBeenCalled();
 });
 
 async function race(left: ReturnType<typeof proposal>, right: ReturnType<typeof proposal>) {

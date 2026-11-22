@@ -10,7 +10,7 @@ import {
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
-import { sealConnectedCapture } from "./connectedStoreHistoricalPacket.fixture.js";
+import { loadPreCoverageCapture, sealConnectedCapture } from "./connectedStoreHistoricalPacket.fixture.js";
 import { installAccountMutations } from "./customerAccountMutations.fixture.js";
 import { prepareOriginal, sandboxRenewal } from "./subscriptionNativeFixture.js";
 
@@ -86,8 +86,8 @@ function snapshot(store: Store, target = false): CompatiblePostgresSnapshot {
   } };
 }
 
-function capture(store: Store, sourceId: string, target = false) {
-  return captureConnectedNativeStore({ source: snapshot(store, target), sourceId, catalogueId: store.inventory, ...limits });
+function capture(store: Store, sourceId: string, target = false, captureStore = captureConnectedNativeStore) {
+  return captureStore({ source: snapshot(store, target), sourceId, catalogueId: store.inventory, ...limits });
 }
 
 // Read the old installations directly using the historical table lists and
@@ -95,7 +95,7 @@ function capture(store: Store, sourceId: string, target = false) {
 async function capturePredecessor(store: Store, fresh: ConnectedNativeStoreCapture, history: History) {
   const compatibleTables = fresh.compatible.tables.map(({ table }) => table).filter(table => !history.predatesLedger || table !== ledger);
   const ownedTables = fresh.owned.map(({ table }) => table)
-    .filter(table => table !== coverage && (history.before === taxCoverage || table !== quotes));
+    .filter(table => table !== coverage && table !== quotes);
   const carried = new Set<string>([...compatibleTables, ...ownedTables].map(table => `public.${table}`));
   return snapshot(store).withSnapshot(async db => {
     await db.query("SET LOCAL row_security = off");
@@ -152,6 +152,7 @@ async function seed(store: Store, history: History) {
 
 it.each(histories.map(history => ({ history, profile: history.profile, inventory: history.inventories[profiles.indexOf(history.profile)] })))(
   "restores $profile packets byte for byte against an in-place upgrade from before $history.before", async ({ history, profile, inventory }) => {
+    const taxPredecessor = history.before === taxCoverage;
     const root = mkdtempSync(join(tmpdir(), "connected-restore-prefix-"));
     const stores: Store[] = [];
     const install = async (label: string, prefix?: string) => {
@@ -169,13 +170,15 @@ it.each(histories.map(history => ({ history, profile: history.profile, inventory
       await source.owner.query(`INSERT INTO public.${quotes}(subscription_id,idempotency_key,request_fingerprint,quote_hash,
         expected_template_version,proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,expires_at)
         VALUES($1,'fixture-quote',repeat('b',64),repeat('c',64),1,'[]',28,200,200,'XXX','2026-09-02')`, [subscription]);
-      if (history.before !== taxCoverage) {
+      if (!taxPredecessor) {
         await expect(capturePredecessor(source, fresh, history)).rejects.toMatchObject({ code: "unsupported_table", table: `public.${quotes}` });
         await source.owner.query(`DELETE FROM public.${quotes} WHERE subscription_id=$1`, [subscription]);
       }
-      const predecessor = await capturePredecessor(source, fresh, history);
+      const predecessor = taxPredecessor
+        ? await capture(source, "predecessor", false, await loadPreCoverageCapture())
+        : await capturePredecessor(source, fresh, history);
       expect(predecessor.owned.some(entry => entry.table === coverage)).toBe(false);
-      if (history.before === taxCoverage) {
+      if (taxPredecessor) {
         expect(predecessor.owned.find(entry => entry.table === quotes)?.rows).toHaveLength(1);
       } else {
         expect(predecessor.outsideProfileCensus).toContainEqual(expect.objectContaining({
@@ -191,12 +194,24 @@ it.each(histories.map(history => ({ history, profile: history.profile, inventory
       expect(await restoreConnectedNativeStore(restore)).toMatchObject({ captureSha256: predecessor.sha256, replayed: false });
       expect(await restoreConnectedNativeStore(restore)).toMatchObject({ captureSha256: predecessor.sha256, replayed: true });
       const { applied } = await source.runner.apply();
-      if (history.before === taxCoverage) expect(applied).toEqual([`${schema}/${taxCoverage}`]);
+      if (taxPredecessor) expect(applied).toEqual([`${schema}/${taxCoverage}`]);
       else expect(applied).toContain(`${schema}/${acceptedReferences}`);
       const upgraded = await capture(source, "upgraded-in-place");
       expect(upgraded.owned.find(entry => entry.table === coverage)?.rows).toEqual([]);
-      // Exact current-shape restore is covered by tests/postgres/connectedStoreCatalogRevisions.test.ts:90.
-      expect(carriedRows(await capture(convertedTarget, "restored-converted"))).toEqual(carriedRows(upgraded));
+      const converted = await capture(convertedTarget, "restored-converted");
+      let comparison = upgraded;
+      if (taxPredecessor) {
+        const upgradedTarget = await install("restore-upgraded");
+        if (upgradedTarget.installation.generation === "legacy") throw new Error("Qualified restore target required");
+        const freshUpgraded = await capture(upgradedTarget, "fresh-upgraded", true);
+        expect(await restoreConnectedNativeStore({ owner: upgradedTarget.migrator,
+          installation: upgradedTarget.installation, packet: upgraded, freshTarget: freshUpgraded,
+        })).toMatchObject({ captureSha256: upgraded.sha256, replayed: false });
+        comparison = await capture(upgradedTarget, "restored-upgraded");
+        expect(converted.compatible.catalogueId).toBe(comparison.compatible.catalogueId);
+      }
+      expect(carriedRows(converted)).toEqual(carriedRows(comparison));
+      if (taxPredecessor) expect(converted.outsideProfileCensus).toEqual(comparison.outsideProfileCensus);
     } finally {
       try { await Promise.all(stores.map(store => store.close())); }
       finally { rmSync(root, { recursive: true, force: true }); }
