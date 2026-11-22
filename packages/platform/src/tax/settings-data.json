@@ -1,0 +1,38 @@
+[
+  {
+    "key": "tax.adapter",
+    "domain": "tax",
+    "kind": "code",
+    "goal": "Choose the tax calculation adapter bound to TaxCalculationPort in application composition.",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "absentMeans": {"description": "Exclusive tax calculation requires an explicit binding for the selected scope, market and currency.", "source": "Application composition", "value": null},
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The application owns the market and account for its tax calculations.",
+    "effect": {"appliesTo": "The bound TaxCalculationPort supplies amounts, coverage decisions and evidence for new exclusive tax quotes.", "frozenOn": ["Existing calculations keep their adapter scope and evidence."], "impact": "money"},
+    "runtime": {"level": "read-only", "reason": "Change the binding in application composition and qualify it with the offline conformance kit."},
+    "change": {"reference": "@openlup/platform README, Tax calculation"},
+    "rules": []
+  },
+  {
+    "key": "tax.localRateTable",
+    "domain": "tax",
+    "kind": "code",
+    "goal": "Supply effective rules for each jurisdiction, tax class and kind when binding the local rate table.",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "absentMeans": {"description": "A missing effective rule refuses the quote, including on zero-priced components.", "source": "Pack or application composition", "value": null},
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "Each application supplies its own effective rules and legal basis.",
+    "effect": {"appliesTo": "localRateTable uses effective intervals, exact decimal-percent rates, explicit exemptions, or fixed fees with refund rules. It applies half-up rounding with largest-remainder allocation and carries the table digest in calculation evidence.", "frozenOn": ["Existing calculations keep their recorded amounts, rules and evidence."], "impact": "money"},
+    "runtime": {"level": "read-only", "reason": "Version the LocalRateTableOptionsV1 rules and registration evidence in the pack or application composition."},
+    "change": {"reference": "@openlup/platform README, Tax calculation"},
+    "rules": []
+  }
+]

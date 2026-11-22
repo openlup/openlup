@@ -9914,6 +9914,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/tax/adapterConformance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/tax/contracts/decode.ts",
       "class": "public-output"
     },
@@ -9947,6 +9951,14 @@
     },
     {
       "path": "packages/platform/src/tax/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/localRateTable.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/settings-data.json",
       "class": "public-output"
     },
     {
@@ -12370,6 +12382,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/tax/adapterConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/tax/contracts.test.ts",
       "class": "public-output"
     },
@@ -12379,6 +12395,10 @@
     },
     {
       "path": "packages/platform/test/tax/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/tax/localRateTable.test.ts",
       "class": "public-output"
     },
     {

@@ -58,8 +58,19 @@ function verifyInputDigest(request: TaxQuoteRequestV1, path = ""): TaxRefusal | 
   }
 }
 
+type FiscalEvidence = Pick<TaxCalculationEvidenceV1,
+  "scope" | "destinationDigest" | "shipFromRef" | "policyRevision" | "classMapRevision" | "coverage" | "positions">;
+
+function fiscalPayload({ scope, destinationDigest, shipFromRef, policyRevision, classMapRevision, coverage, positions }: FiscalEvidence) {
+  const tax = positions.tax.map(({ resolutionDigest: _digest, providerLineRef: _providerRef, ...row }) => row);
+  return { scope, destinationDigest, shipFromRef, policyRevision, classMapRevision,
+    coverage: coverage.vector, tax, fees: positions.fees };
+}
+
+export const taxFiscalDigest = (evidence: FiscalEvidence): string => taxDigest("fiscal", fiscalPayload(evidence));
+
 function verifyEvidenceDigests(request: TaxQuoteRequestV1, evidence: TaxCalculationEvidenceV1, digest: string): TaxRefusal | undefined {
-  const { scope, destinationDigest, shipFromRef, policyRevision, classMapRevision, coverage, positions } = evidence;
+  const { destinationDigest, coverage, positions } = evidence;
   for (const [index, row] of positions.tax.entries()) {
     if (!matchesDigest("resolution", row.resolution, row.resolutionDigest)) {
       return replayDigest("/evidence/positions/tax/" + index + "/resolutionDigest", "rule resolution");
@@ -68,10 +79,7 @@ function verifyEvidenceDigests(request: TaxQuoteRequestV1, evidence: TaxCalculat
   if (!matchesDigest("coverage", coverage.vector, coverage.digest)) {
     return replayDigest("/evidence/coverage/digest", "coverage vector");
   }
-  const tax = positions.tax.map(({ resolutionDigest: _digest, providerLineRef: _providerRef, ...row }) => row);
-  const fiscal = { scope, destinationDigest, shipFromRef, policyRevision, classMapRevision,
-    coverage: coverage.vector, tax, fees: positions.fees };
-  if (!matchesDigest("fiscal", fiscal, evidence.fiscalDigest)) {
+  if (!matchesDigest("fiscal", fiscalPayload(evidence), evidence.fiscalDigest)) {
     return replayDigest("/evidence/fiscalDigest", "fiscal payload");
   }
   if (!matchesDigest("evidence", evidence, digest)) {

@@ -365,8 +365,9 @@ Compatibility follows each surface’s classification (see
 <a id="modules-and-distributions"></a>
 
 The experimental tax port lives in `@openlup/platform/tax/contracts`.
-Its server entry `@openlup/platform/tax` owns request preparation and coverage
-reconciliation. Applications own sourcing, coverage declarations and adapter selection.
+Its server entry `@openlup/platform/tax` owns request preparation, coverage
+reconciliation, the local rate-table adapter and offline adapter conformance.
+Applications own sourcing, coverage declarations and adapter selection.
 
 ### Package placement decision (canonical)
 

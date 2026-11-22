@@ -12,32 +12,32 @@ function text(max: number): Decode<string> {
     && !value.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(value), "Supply nonempty Unicode text within " + max + " code units.");
 }
 
-const ref = text(256);
-const moneyRef = text(128);
+export const ref = text(256);
+export const moneyRef = text(128);
 const addressText = text(512);
 const digest = checked((v): v is string => typeof v === "string" && v.length === 64 && /^[0-9a-f]+$/.test(v),
   "Supply a lowercase SHA-256 hex digest.");
-const instant = checked((v): v is string => typeof v === "string" && v.length === 24 && Number.isFinite(Date.parse(v))
+export const instant = checked((v): v is string => typeof v === "string" && v.length === 24 && Number.isFinite(Date.parse(v))
   && new Date(v).toISOString() === v, "Supply a UTC instant with millisecond precision.");
 const signed = checked((v): v is number => typeof v === "number" && Number.isSafeInteger(v) && !Object.is(v, -0),
   "Supply a safe integer.");
-const unsigned: Decode<number> = (value, field) => {
+export const unsigned: Decode<number> = (value, field) => {
   const result = signed(value, field);
   if (result < 0) invalid(field, "Supply a nonnegative safe integer.");
   return result;
 };
 const boolean = checked((v): v is boolean => typeof v === "boolean", "Supply a boolean.");
-const rate = checked(isCatalogueMoneyV2RateDecimal,
+export const rate = checked(isCatalogueMoneyV2RateDecimal,
   "Supply a decimal percent from 0 to 9007199254.740991 with up to six fractional digits and no extra leading zeros.");
 
 const intervalFields = object({ from: instant }, { until: instant });
-const interval: Decode<ReturnType<typeof intervalFields>> = (value, field) => {
+export const interval: Decode<ReturnType<typeof intervalFields>> = (value, field) => {
   const parsed = intervalFields(value, field);
   if (parsed.until !== undefined && parsed.from >= parsed.until) invalid(field + "/until", "Supply an end after the start.");
   return parsed;
 };
 
-const scope = object({ adapter: ref, adapterVersion: ref, accountRef: ref, mode: oneOf("test", "live") });
+export const scope = object({ adapter: ref, adapterVersion: ref, accountRef: ref, mode: oneOf("test", "live") });
 const assignment = { taxClass: ref, assignmentRef: ref };
 type Cell = TaxCoverageInputV1["required"][number];
 const target = variant<Cell["target"]>("kind", {

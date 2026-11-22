@@ -222,7 +222,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 | `./promotions` | Promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
-| `./tax`, `./tax/contracts` | Experimental tax calculation port and coverage reconciliation |
+| `./tax`, `./tax/contracts` | Experimental tax contracts, local calculation and offline adapter conformance |
 | `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
 
@@ -3249,6 +3249,21 @@ Calculation expiry and charge-date fiscal validity are separate checks.
 The caller records `closeCalculation` as a local, idempotent transition for
 affirmatively unused or verified-unpaid evidence. Never void, delete or mutate a
 provider calculation. Indeterminate payments stay open for reconciliation.
+
+Bind `localRateTable` to calculate from rules and registration evidence owned by
+your pack or application. Configure the scope, market, currency, clock,
+calculation lifetime and fiscal-validity window with `LocalRateTableOptionsV1`.
+Each effective jurisdiction, tax class and tax kind needs a rate, explicit
+exemption or fixed fee with a pinned refund rule. Give every rule a legal-basis
+reference. Keep the versioned table associated with the digest carried in
+calculation evidence. The adapter supports read-only fiscal validity and local
+close receipts, with posting and reversals unsupported.
+
+Use `runTaxAdapterConformance` with isolated synthetic fixtures to check your
+adapter's coverage, money, validity and effect behavior offline. The caller owns
+durable quote replay, close recording and posting obligations. Discover the
+composition points under `tax.adapter` and `tax.localRateTable` in the settings
+catalogue.
 
 ## Market packs
 

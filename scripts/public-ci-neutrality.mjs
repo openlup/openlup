@@ -155,20 +155,85 @@ function allowedAdoptionCounts(path, contents, brand) {
   return { brand: names, "ui-0": names, "ui-2": [...approved.matchAll(new RegExp(`${brand}\\.com`, "gi"))].length };
 }
 
-// O-P1/O-P2: vendor categories plus the second adapter's scoped market token. Exact carrier tokens cannot excuse bare vendor prose.
+// Owner-approved platform adapter vocabulary (CONTRIBUTING.md, Package, policy
+// and release checks). Every entry uses the same package paths and carriers.
 const paymentAdapterNames = ["str" + "ipe", "tp" + "ay"];
 const paymentAdapterLedger = "docs/platform/plans/oss-a2-payment-adapters.md";
-const paymentAdapterCarriers = new Set([
-  "packages/platform/package.json", "packages/platform/release-gates.json",
+const platformManifest = "packages/platform/package.json";
+const platformGates = "packages/platform/release-gates.json";
+const publicationCatalogue = "config/openlup-publication-catalog.json";
+const adapterRegistrationCarriers = new Set([platformManifest, platformGates, publicationCatalogue]);
+const platformAdapterCarriers = new Set([
+  ...adapterRegistrationCarriers,
   "packages/platform/test/packageBoundary.test.ts", "packages/platform/README.md",
-  "config/openlup-publication-catalog.json", "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+  "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
   "docs/platform/CANONICAL_CONTRACTS.md", "scripts/packages/platform-cold-consumer.ts",
   "scripts/packages/platform-cold-consumer.test.ts",
   // owner-approved via #526/#585 (2026-11-07)
   "packages/platform/AGENTS.md",
 ]);
-const paymentAdapterSubpath = new RegExp(`(?<![\\w-])payments/(?:${paymentAdapterNames.join("|")})(?![\\w-])`, "g");
-const paymentAdapterReport = new RegExp(`(?<![\\w.-])payments-(?:${paymentAdapterNames.join("|")})\\.api\\.md(?![\\w./-])`, "g");
+const platformAdapterEntries = [
+  ...paymentAdapterNames.map((provider) => ["payments", provider]),
+  ["tax", paymentAdapterNames[0]],
+].map(([module, provider]) => {
+  const subpath = `${module}/${provider}`;
+  const reportName = `${module}-${provider}`;
+  return {
+    provider, subpath,
+    trees: ["src", "test"].map((area) => `packages/platform/${area}/${subpath}/`),
+    snapshot: `api/${reportName}.api.md`,
+    subpathToken: new RegExp(`(?<![\\w-])${subpath}(?![\\w-])`, "g"),
+    reportToken: new RegExp(`(?<![\\w.-])${reportName}\\.api\\.md(?![\\w./-])`, "g"),
+  };
+});
+
+function parseAdapterRegistration(contents) {
+  try {
+    // Keep an escape marker so decoding cannot create an allowance for a
+    // literal occurrence elsewhere. Canonical registration paths use no escapes.
+    return JSON.parse(contents.replace(/\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})/g, "\\\\"));
+  } catch {
+    return undefined;
+  }
+}
+
+// The fixed prefix supplies the only allowed root (and leading "./" for an
+// export target). Every remaining segment must stay below that root.
+function adapterTreePrefixes(values, prefix) {
+  return values.filter((value) => typeof value === "string" && value.startsWith(prefix)
+    && !value.includes("\\")
+    && value.slice(prefix.length).split("/").every((segment) => segment && segment !== "." && segment !== ".."))
+    .map(() => prefix);
+}
+
+function adapterRegistrationText(path, carrier, { subpath, trees, snapshot }) {
+  if (path === publicationCatalogue) {
+    if (!Array.isArray(carrier?.publicPaths)) return "";
+    const paths = carrier.publicPaths.map((row) => row?.path);
+    const reportPath = `packages/platform/${snapshot}`;
+    return [...trees.flatMap((tree) => adapterTreePrefixes(paths, tree)), ...paths.filter((value) => value === reportPath)].join("\n");
+  }
+  const key = `./${subpath}`;
+  if (path === platformManifest) {
+    const exports = carrier?.exports;
+    if (!record(exports) || !Object.hasOwn(exports, key)) return "";
+    const entry = exports[key];
+    const targets = record(entry) ? [entry.types, entry.import, entry.default] : [entry];
+    return [key, ...adapterTreePrefixes(targets, `./dist/${subpath}/`)].join("\n");
+  }
+  const surface = carrier?.packageSurface;
+  if (!record(surface)) return "";
+  // Smoke evidence can be reused by other registered subpaths.
+  const evidence = Object.values(surface).flatMap((entry) => Array.isArray(entry?.packageSmokeEvidence) ? entry.packageSmokeEvidence : []);
+  const tokens = adapterTreePrefixes(evidence, `test/${subpath}/`);
+  if (Object.hasOwn(surface, key)) {
+    const entry = surface[key];
+    tokens.push(key, ...adapterTreePrefixes([entry?.entrypoint], `dist/${subpath}/`));
+    if (entry?.snapshot === snapshot) tokens.push(snapshot);
+  }
+  return tokens.join("\n");
+}
+
 export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   if (category === "ui-8") {
     const reportingPath = `packages/platform/src/payments/${paymentAdapterNames[1]}/tpayPaymentReconciliationProvider.ts`;
@@ -186,7 +251,7 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   }
   const name = paymentAdapterNames[category === "ui-13" ? 0 : category === "ui-14" ? 1 : -1];
   if (!name) return 0;
-  const paymentAdapterPaths = new RegExp(`^packages/platform/(?:src|test)/payments/${name}/`);
+  const adapters = platformAdapterEntries.filter(({ provider }) => provider === name);
   const word = new RegExp(`\\b${name}\\b`, "gi");
   // public provider matrix of shipped opt-in adapters requested by the project owner; the same names the package API and README already publish
   if (path === "ROADMAP.md") return Math.min(2, [...contents.matchAll(word)].length);
@@ -194,8 +259,8 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   if (category === "ui-13" && path === `packages/platform/test/payments/${paymentAdapterNames[1]}/tpayFailureEvidence.test.ts`) {
     return [...contents.matchAll(word)].length;
   }
-  if (paymentAdapterPaths.test(path) || path === `packages/platform/api/payments-${name}.api.md`
-    || path === paymentAdapterLedger) return [...contents.matchAll(word)].length;
+  if (path === paymentAdapterLedger || adapters.some(({ trees, snapshot }) =>
+    path === `packages/platform/${snapshot}` || trees.some((tree) => path.startsWith(tree)))) return [...contents.matchAll(word)].length;
   // Native regression witnesses use these published imports with neutral fixture data.
   const nativeImports = {
     "tests/postgres/paymentReconciliationStore.test.ts": "createTpayPaymentReconciliationProvider",
@@ -205,8 +270,13 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
     const adapterImport = `import { ${nativeImports[path]} } from "@openlup/platform/payments/${name}";`;
     return contents.split("\n").includes(adapterImport) ? 1 : 0;
   }
-  const tokens = adapterCarrierTokens(path, contents, paymentAdapterCarriers, paymentAdapterSubpath, paymentAdapterReport);
-  return tokens?.reduce((count, [token]) => count + [...token.matchAll(word)].length, 0) ?? 0;
+  const registration = adapterRegistrationCarriers.has(path);
+  const carrier = registration ? parseAdapterRegistration(contents) : undefined;
+  return adapters.reduce((count, adapter) => {
+    const text = registration ? adapterRegistrationText(path, carrier, adapter) : contents;
+    const tokens = adapterCarrierTokens(path, text, platformAdapterCarriers, adapter.subpathToken, adapter.reportToken);
+    return count + (tokens?.length ?? 0);
+  }, 0);
 }
 
 // One vendor category, with exact paths and complete, case-sensitive carrier tokens.
@@ -220,7 +290,7 @@ export function allowedFulfillmentAdapterWords(path, contents) {
   if (path === "ROADMAP.md") return Math.min(2, [...contents.matchAll(fulfillmentAdapterWord)].length);
   if (fulfillmentAdapterPaths.test(path) || path === `packages/platform/api/fulfillment-${fulfillmentAdapterName}.api.md`
     || path === "docs/platform/plans/oss-a3-fulfillment-adapter.md") return [...contents.matchAll(fulfillmentAdapterWord)].length;
-  const tokens = adapterCarrierTokens(path, contents, paymentAdapterCarriers, fulfillmentAdapterSubpath, fulfillmentAdapterReport);
+  const tokens = adapterCarrierTokens(path, contents, platformAdapterCarriers, fulfillmentAdapterSubpath, fulfillmentAdapterReport);
   return tokens?.reduce((count, [token]) => count + [...token.matchAll(fulfillmentAdapterWord)].length, 0) ?? 0;
 }
 

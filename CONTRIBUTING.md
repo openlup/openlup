@@ -1345,6 +1345,28 @@ refusals.
 Pinned SQL vocabulary exceptions and their compatibility limits are owned by
 [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
 
+One module/provider table defines the opt-in allowances for both payment
+examples and the tax adapter for the first payment provider. Every entry admits
+whole provider words in its own `packages/platform/src/<module>/<provider>/` and
+`packages/platform/test/<module>/<provider>/` trees and its declaration snapshot
+under `packages/platform/api/<module>-<provider>.api.md`.
+
+The same table derives the case-sensitive tokens and registration positions
+for every entry. The platform manifest admits the exact
+`./<module>/<provider>` export key and its build targets. The release gates admit
+that key, its entrypoint and snapshot, and smoke-evidence paths under the
+adapter's test tree, including reuse by other gate entries. The publication
+catalogue admits only matching paths in its `publicPaths` rows. Registration
+paths use canonical relative segments under their approved roots. Traversal,
+dot-segment re-entry, backslashes and absolute paths stay counted.
+
+The platform agent guide, package README, package boundary test, cold-consumer
+script and test, architecture and contract docs, and platform change fragments
+admit complete subpath tokens. The platform and Core changelogs and versioned
+Core upgrade pages also admit the report filename token. Bare vendor prose in
+shared carriers, subpath lookalikes, casing changes in carrier tokens and
+unrelated categories remain checked.
+
 The opt-in fulfillment example lane subtracts only ui-15 at its exact source,
 test, API-report and [A3 ledger](docs/platform/plans/oss-a3-fulfillment-adapter.md)
 paths. Fixed registration carriers and platform change fragments admit only the
