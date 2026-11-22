@@ -7,9 +7,6 @@ import { qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions, 
 import { createNativeRenewalCodec, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
-const migration = readFileSync("db/platform/migrations/20261106050000_customer_command_key_isolation.sql", "utf8");
-// The runner installs the additive quote column once; upgrade fixtures replace only routines.
-const forward = migration.slice(migration.indexOf("CREATE OR REPLACE FUNCTION"));
 const oldPause = readFileSync("db/platform/migrations/20260812100000_customer_subscription_pause_actor.sql", "utf8").match(/CREATE FUNCTION[\s\S]*?\n\$\$;/u)![0].replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION");
 const oldControl = readFileSync("db/platform/migrations/20260813200000_customer_subscription_control.sql", "utf8");
 const oldBundle = ["preview", "apply"].map(action => oldControl.match(new RegExp(`CREATE FUNCTION public.customer_subscription_${action}_bundle_as_actor\\([\\s\\S]*?\\n\\$\\$;`, "u"))![0].replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")).join("\n");
@@ -17,14 +14,16 @@ const at = "2026-11-06T00:00:00Z", later = "2027-01-01T00:00:00Z";
 const commandKey = (actor: string, key: string) => `command:${createHash("sha256").update(`${actor}:${key}`).digest("hex")}`;
 
 describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer key isolation on %s", profile => {
-  let container: PostgresContainer, owner: Pool, runtime: Pool;
+  let container: PostgresContainer, bootstrap: Pool, owner: Pool, runtime: Pool;
+  let installedCommands: string;
   const pools: Pool[] = [];
   const pool = (url: string, options?: string) => { const db = new Pool({ connectionString: url, options }); pools.push(db); return db; };
   beforeAll(async () => {
     if (!await dockerAvailable()) throw new Error("Customer command key isolation requires real PostgreSQL");
     container = await runPostgresContainer({ name: `customer-key-${profile}-${process.pid}`, password: "synthetic-conformance" });
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Customer key PostgreSQL unavailable");
-    const bootstrap = pool(container.connectionString), admin = profile === "qualified-admin";
+    bootstrap = pool(container.connectionString);
+    const admin = profile === "qualified-admin";
     const login = (name: string) => { const url = new URL(container.connectionString); url.username = name; return url.toString(); };
     let installation: { generation: "legacy" } | QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation = { generation: "legacy" };
     if (profile !== "legacy") {
@@ -39,18 +38,38 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
     const runner = createPostgresMigrationRunner({ connectionString: "injected" }, { installation, poolFactory: () => owner });
     await runner.apply();
     expect(await runner.apply()).toEqual({ applied: [] });
+    // Restore the installed owners after simulating legacy requests. Replaying
+    // the old key-isolation migration would overwrite later acceptance bindings.
+    const { rows } = await owner.query<{ definition: string }>(`SELECT pg_catalog.pg_get_functiondef(oid) AS definition
+      FROM pg_catalog.pg_proc WHERE oid IN (
+        'public.customer_subscription_pause_as_actor(uuid,text,text,text)'::regprocedure,
+        'public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)'::regprocedure,
+        'public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)'::regprocedure
+      ) ORDER BY oid`);
+    installedCommands = rows.map(({ definition }) => definition).join(";\n");
     if (profile === "legacy") await bootstrap.query(`CREATE ROLE key_r LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'; GRANT authenticated TO key_r`);
     runtime = pool(login("key_r"));
   }, postgresSetupTimeoutMs);
   afterAll(async () => { await closePostgres(container, pools); }, postgresTeardownTimeoutMs);
 
-  async function actor<T>(principal: string, work: (db: PoolClient) => Promise<T>) {
-    const db = await runtime.connect();
+  async function actor<T>(principal: string, work: (db: PoolClient) => Promise<T>, legacyCommands?: string) {
+    const db = await (legacyCommands ? bootstrap : runtime).connect();
     try {
-      await db.query("BEGIN"); await db.query("SET LOCAL ROLE authenticated");
+      await db.query("BEGIN");
+      if (legacyCommands) await db.query(legacyCommands);
+      await db.query("SET LOCAL ROLE authenticated");
       await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal, role: "authenticated" })]);
       expect((await db.query("SELECT current_user,(SELECT rolsuper FROM pg_roles WHERE rolname=current_user) AS elevated")).rows).toEqual([{ current_user: "authenticated", elevated: false }]);
-      const result = await work(db); await db.query("COMMIT"); return result;
+      const result = await work(db);
+      if (legacyCommands) {
+        // Historical owners generate the fixture rows. The current owners
+        // must be installed when deferred acceptance checks run at commit.
+        await db.query("RESET ROLE");
+        await db.query(installedCommands);
+        await db.query("SET LOCAL ROLE authenticated");
+      }
+      await db.query("COMMIT");
+      return result;
     } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
   }
   async function system<T>(work: (db: PoolClient) => Promise<T>) {
@@ -78,14 +97,17 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
       VALUES($1,'XXX','synthetic-stock','sandbox',$2,'synthetic-authorization')`, [subscription, at]);
     return { principal, client, subscription, sku, list };
   }
-  const pause = (f: Awaited<ReturnType<typeof fixture>>, key: string) => actor(f.principal, async db => (await db.query("SELECT public.customer_subscription_pause_as_actor($1,$2) AS result", [f.subscription, key])).rows[0].result.subscriptionAction);
+  const pause = (f: Awaited<ReturnType<typeof fixture>>, key: string, legacy = false) =>
+    actor(f.principal, async db => (await db.query("SELECT public.customer_subscription_pause_as_actor($1,$2) AS result", [f.subscription, key])).rows[0].result.subscriptionAction, legacy ? oldPause : undefined);
   const events = async (subscription: string) => (await owner.query("SELECT id,event_type,idempotency_key,payload FROM public.subscription_events WHERE subscription_id=$1 ORDER BY id", [subscription])).rows;
   const resumeFixture = (subscription: string) => owner.query("UPDATE public.subscriptions SET status='active' WHERE id=$1", [subscription]);
   const core = (f: Awaited<ReturnType<typeof fixture>>) => JSON.stringify([{ variantId: f.sku, qty: 2 }]);
-  const previewBundle = (f: Awaited<ReturnType<typeof fixture>>, key: string) => actor(f.principal, async db =>
-    (await db.query("SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3) AS result", [f.subscription, key, core(f)])).rows[0].result.preview);
-  const applyBundle = (f: Awaited<ReturnType<typeof fixture>>, key: string, hash: string) => actor(f.principal, async db =>
-    (await db.query("SELECT public.customer_subscription_apply_bundle_as_actor($1,$2,$3,$4) AS result", [f.subscription, key, hash, core(f)])).rows[0].result.subscriptionAction);
+  const previewBundle = (f: Awaited<ReturnType<typeof fixture>>, key: string, legacy = false) => actor(f.principal, async db =>
+    (await db.query("SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3) AS result", [f.subscription, key, core(f)])).rows[0].result.preview,
+    legacy ? oldBundle : undefined);
+  const applyBundle = (f: Awaited<ReturnType<typeof fixture>>, key: string, hash: string, legacy = false) => actor(f.principal, async db =>
+    (await db.query("SELECT public.customer_subscription_apply_bundle_as_actor($1,$2,$3,$4) AS result", [f.subscription, key, hash, core(f)])).rows[0].result.subscriptionAction,
+    legacy ? oldBundle : undefined);
   const state = async (subscription: string) => (await owner.query(`SELECT jsonb_build_object(
     'subscription',(SELECT to_jsonb(s) FROM public.subscriptions s WHERE id=$1),
     'events',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM public.subscription_events e WHERE subscription_id=$1),
@@ -144,14 +166,12 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
   it.each([false, true])("isolates pause from graduation, including legacy=%s and a pre-claimed fallback", async legacy => {
     for (const full of [true, false]) {
       const f = await fixture(), raw = `${full ? "starter-graduation" : "starter-cadence-normalize"}:${f.subscription}:1`;
-      if (legacy) await owner.query(oldPause);
-      try { expect(await pause(f, raw)).toMatchObject({ status: "applied" }); }
-      finally { if (legacy) await owner.query(forward); }
+      expect(await pause(f, raw, legacy)).toMatchObject({ status: "applied" });
       const customer = await events(f.subscription);
       expect(customer[0].idempotency_key).toBe(legacy ? raw : commandKey(f.principal, raw));
       if (legacy) {
-        await resumeFixture(f.subscription); await owner.query(oldPause);
-        try { await pause(f, `system:${raw}`); } finally { await owner.query(forward); }
+        await resumeFixture(f.subscription);
+        await pause(f, `system:${raw}`, true);
       }
       const before = await events(f.subscription);
       const retained = { version: "native.renewal-terms.v1", minimumPayableMinor: 1, normalCadenceDays: [28],
@@ -183,8 +203,7 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
 
   it.each([false, true])("records dunning exhaustion once without consuming customer history, legacy=%s", async legacy => {
     const f = await fixture(), cycle = randomUUID(), caseId = randomUUID(), raw = `dunning-exhausted:${caseId}`;
-    if (legacy) await owner.query(oldPause);
-    try { await pause(f, raw); } finally { if (legacy) await owner.query(forward); }
+    await pause(f, raw, legacy);
     const before = await events(f.subscription);
     await owner.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) VALUES($1,$2,$3,'payment_pending')", [cycle, f.subscription, later]);
     await owner.query("INSERT INTO public.subscription_dunning_cases(id,subscription_id,cycle_id,client_id,retry_attempt,idempotency_key) VALUES($1,$2,$3,$4,4,$5)", [caseId, f.subscription, cycle, f.client, randomUUID()]);
@@ -198,9 +217,7 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
 
   it("replays legacy and hashed pauses once and refuses foreign ownership and action", async () => {
     const f = await fixture(), raw = "legacy-pause-key";
-    await owner.query(oldPause);
-    let original;
-    try { original = await pause(f, raw); } finally { await owner.query(forward); }
+    const original = await pause(f, raw, true);
     const before = await events(f.subscription);
     expect(await pause(f, raw)).toMatchObject({ status: "replayed", eventId: original.eventId });
     expect(await events(f.subscription)).toEqual(before);
@@ -224,16 +241,13 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
   });
 
   it.each([false, true])("isolates bundle quote/event keys and preserves accepted replay, legacy=%s", async legacy => {
-    const f = await fixture(), key = `dunning-exhausted:${randomUUID()}`, core = JSON.stringify([{ variantId: f.sku, qty: 2 }]);
-    const preview = () => actor(f.principal, async db => (await db.query("SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3) AS result", [f.subscription, key, core])).rows[0].result.preview);
-    const apply = (hash: string) => actor(f.principal, async db => (await db.query("SELECT public.customer_subscription_apply_bundle_as_actor($1,$2,$3,$4) AS result", [f.subscription, key, hash, core])).rows[0].result.subscriptionAction);
+    const f = await fixture(), key = `dunning-exhausted:${randomUUID()}`;
     if (!legacy) await owner.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload) VALUES($1,'dunning_ladder_exhausted',$2,'{}')", [f.subscription, key]);
-    if (legacy) await owner.query(oldBundle);
-    let first, quote;
-    try { quote = await preview(); first = await apply(quote.quoteHash); } finally { if (legacy) await owner.query(forward); }
+    const quote = await previewBundle(f, key, legacy);
+    const first = await applyBundle(f, key, quote.quoteHash, legacy);
     const before = await events(f.subscription);
     expect(before.find(e => e.event_type === "subscription.customer_self_service.update_bundle")?.idempotency_key).toBe(legacy ? key : commandKey(f.principal, key));
-    expect(await apply(quote.quoteHash)).toMatchObject({ status: "replayed", eventId: first.eventId });
+    expect(await applyBundle(f, key, quote.quoteHash)).toMatchObject({ status: "replayed", eventId: first.eventId });
     const storedQuote = (await owner.query("SELECT command_key_identity FROM public.subscription_edit_quotes WHERE subscription_id=$1", [f.subscription])).rows[0];
     expect(storedQuote.command_key_identity).toEqual(legacy ? null : identity(f.principal));
     if (!legacy) expect(before.find(e => e.event_type === "subscription.customer_self_service.update_bundle")?.payload.commandKeyIdentity).toEqual(identity(f.principal));
@@ -255,12 +269,12 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
 
   it.each(["pause", "update_bundle"])("refuses a legacy %s event stored at a distinct command's derived key", async action => {
     const f = await fixture(), key = "ambiguous-event-key", raw = commandKey(f.principal, key);
-    await owner.query(`${oldPause}\n${oldBundle}`);
     let quoteHash = "a".repeat(64);
-    try {
-      if (action === "pause") await pause(f, raw);
-      else { quoteHash = (await previewBundle(f, raw)).quoteHash; await applyBundle(f, raw, quoteHash); }
-    } finally { await owner.query(forward); }
+    if (action === "pause") await pause(f, raw, true);
+    else {
+      quoteHash = (await previewBundle(f, raw, true)).quoteHash;
+      await applyBundle(f, raw, quoteHash, true);
+    }
     await resumeFixture(f.subscription);
     const before = await state(f.subscription);
     const refusal = { code: "23505", message: "subscription_command_ambiguous_idempotency_key" };
@@ -272,9 +286,7 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
 
   it("refuses an unmarked legacy quote at the derived key before preview, apply or pause", async () => {
     const f = await fixture(), key = "ambiguous-quote-key", raw = commandKey(f.principal, key);
-    await owner.query(oldBundle);
-    let quote;
-    try { quote = await previewBundle(f, raw); } finally { await owner.query(forward); }
+    const quote = await previewBundle(f, raw, true);
     const before = await state(f.subscription);
     const refusal = { code: "23505", message: "subscription_command_ambiguous_idempotency_key" };
     await expect(previewBundle(f, key)).rejects.toMatchObject(refusal);
@@ -285,13 +297,9 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
 
   it.each(["pause", "update_bundle"])("refuses reuse of a legacy %s key for another customer action", async action => {
     const f = await fixture(), key = "legacy-other-action-key";
-    await owner.query(`${oldPause}\n${oldBundle}`);
-    let quote;
-    try {
-      quote = await previewBundle(f, key);
-      if (action === "pause") await pause(f, key);
-      else await applyBundle(f, key, quote.quoteHash);
-    } finally { await owner.query(forward); }
+    const quote = await previewBundle(f, key, true);
+    if (action === "pause") await pause(f, key, true);
+    else await applyBundle(f, key, quote.quoteHash, true);
     await resumeFixture(f.subscription);
     const before = await state(f.subscription);
     if (action === "pause") {
@@ -306,9 +314,7 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
 
   it("accepts a legacy in-flight quote once and marks only the new hashed event", async () => {
     const f = await fixture(), key = "legacy-inflight-quote";
-    await owner.query(oldBundle);
-    let quote;
-    try { quote = await previewBundle(f, key); } finally { await owner.query(forward); }
+    const quote = await previewBundle(f, key, true);
     const first = await applyBundle(f, key, quote.quoteHash), before = await state(f.subscription);
     expect(first.status).toBe("applied");
     expect(await applyBundle(f, key, quote.quoteHash)).toMatchObject({ status: "replayed", eventId: first.eventId });

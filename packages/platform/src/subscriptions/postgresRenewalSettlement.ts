@@ -1,5 +1,5 @@
 import type { RenewalSettlementPort } from "./contracts/renewal.js";
-import { subscriptionRecord, type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { readPostgresRenewal, type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
 const PREPARE_SQL = `SELECT public.commerce_prepare_subscription_renewal(
   $1::uuid, $2::uuid, $3::timestamptz) AS response`;
@@ -74,7 +74,7 @@ export function createPostgresRenewalSettlementPort(
       const result = await executor.query(ACKNOWLEDGE_ATTEMPT_SQL, [
         input.operationId, input.operationFingerprint, externalAttemptRef, input.acknowledgedAt,
       ]);
-      return codec.readback(subscriptionRecord(result.rows[0]?.response));
+      return readPostgresRenewal(codec, result.rows[0]?.response);
     },
 
     async recordTerminalOutcome(input) {
@@ -85,7 +85,7 @@ export function createPostgresRenewalSettlementPort(
         input.operationId, input.eventKey, input.operationFingerprint, input.outcome,
         input.externalRef ?? null, input.reason ?? null, input.occurredAt,
       ]);
-      return codec.readback(subscriptionRecord(result.rows[0]?.response));
+      return readPostgresRenewal(codec, result.rows[0]?.response);
     },
   };
 }

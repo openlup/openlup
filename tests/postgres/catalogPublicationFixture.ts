@@ -142,7 +142,7 @@ type Head = { publicationId: string; revision: number; documentDigest: string };
 export async function graph(db: PoolClient, data: Fixture, before: Head | null = null, stageProduct = true,
   options: { draftRevision?: number; registerExisting?: boolean; registrationText?: string | Record<string, never>; documentText?: string;
     retainedSource?: CatalogPublishedProduct["source"]; authoredDocument?: Record<string, unknown>;
-    lifecycle?: "draft" | "active" | "withdrawn" } = {}) {
+    lifecycle?: "draft" | "active" | "withdrawn"; subscriptionEligible?: boolean } = {}) {
   const { productId, skuId, draftId, documentId } = data;
   const revision = (before?.revision ?? 0) + 1;
   const draftRevision = options.draftRevision ?? revision;
@@ -175,7 +175,7 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
     if (options.lifecycle === "active") authored.publication.operations.push(
       { op: "set_product_lifecycle", productSlug: slug, expectedState: "draft", state: "active", children: [] },
       { op: "set_sku_lifecycle", skuCode: code, expectedState: "draft", state: "active" },
-      { op: "set_eligibility", skuCode: code, sellableStandalone: true, sellableInSubscription: false },
+      { op: "set_eligibility", skuCode: code, sellableStandalone: true, sellableInSubscription: options.subscriptionEligible ?? false },
     );
     if (options.lifecycle === "withdrawn") authored.publication.operations.push(
       { op: "set_product_lifecycle", productSlug: slug, expectedState: "active", state: "withdrawn",
@@ -210,7 +210,8 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
   if (options.lifecycle !== undefined) {
     const state = options.lifecycle, status = state === "withdrawn" ? "active" : state;
     Object.assign(product, { schemaVersion: 3, lifecycleState: state, status, definitionDigest });
-    Object.assign(facts, { schemaVersion: 3, lifecycleState: state, status, optionDigest: hash(json(facts.options)), sellableStandalone: state === "active" });
+    Object.assign(facts, { schemaVersion: 3, lifecycleState: state, status, optionDigest: hash(json(facts.options)), sellableStandalone: state === "active",
+      sellableInSubscription: state === "active" && options.subscriptionEligible === true });
   }
   const head = { publicationId: issueId, revision, documentDigest: document.digest };
   const base = { revision, ...data, approvalId, decision, decisionKey, candidateDigest, candidateRef, commandKey, fingerprint, head,
