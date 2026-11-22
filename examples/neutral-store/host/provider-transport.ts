@@ -37,8 +37,7 @@ export class CardRejection extends Error {
 function oneRequest(...[host, port, path, method, headers, data, protocol, timeout]: Parameters<Http['makeRequest']>) {
   const url = new URL(path, origin);
   if (url.origin !== origin || host !== url.hostname || port !== '443' || protocol !== 'https'
-    || !path.startsWith('/v1/') || Object.entries(headers).some(([name, value]) =>
-      /^stripe-(?:account|context)$/iu.test(name) && value !== null && value !== undefined)) {
+    || !path.startsWith('/v1/') || Object.keys(headers).some(name => /^stripe-(?:account|context)$/iu.test(name) && headers[name])) {
     throw new Error(integrityRefusal);
   }
   return new Promise<Awaited<ReturnType<Http['makeRequest']>>>((resolve, reject) => {
