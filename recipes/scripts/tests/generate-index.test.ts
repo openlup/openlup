@@ -128,7 +128,12 @@ describe("recipes/scripts/generate-index", () => {
     };
     delete manifest.browserSurface.entry;
     delete manifest.browserSurface.cspManifest;
-    manifest.constructor = "prototype-bypass-attempt";
+    Object.defineProperty(manifest, "constructor", {
+      value: "prototype-bypass-attempt",
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
     manifest.liveQualification.qualifiedAt = "not-a-timestamp";
     writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
