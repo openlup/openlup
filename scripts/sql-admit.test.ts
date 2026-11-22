@@ -85,13 +85,14 @@ function stageNativeForward(f: Fixture, text = nativeText, entry = slot(nativePa
   f.put(REVIEWED_FORWARD_PATH, encode(value)); f.put(PLATFORM_MIGRATION_MANIFEST, manifest([{ file: entry.path, sha256: sha256(text) }], f.baselineSql)); f.put(entry.path, text);
 }
 
-describe("qualified catalogue read grant in sql:admit and hosted checks", () => {
-  const authorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
-  const authoritySha256 = sha256(readFileSync(authorityPath));
-  const ledgerGuard = `    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
+const authorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+const authoritySha256 = sha256(readFileSync(authorityPath));
+const ledgerGuard = `    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
       WHERE catalog_path OPERATOR(pg_catalog.=) '${authorityPath}'::pg_catalog.text
         AND sha256 OPERATOR(pg_catalog.=) '${authoritySha256}'::pg_catalog.text)
 `;
+
+describe("qualified catalogue read grant in sql:admit and hosted checks", () => {
   const text = `DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')
 ${ledgerGuard}  THEN
@@ -145,6 +146,48 @@ END; $$;
     const reported = verdictLines(result.stdout);
     expect(reported).toEqual(directVerdicts(f, base, head).verdicts);
     expect(reported).toEqual(expected);
+  }, 20_000);
+});
+
+describe("qualified price list basis SELECT in sql:admit and hosted checks", () => {
+  const path = "db/platform/migrations/20990102000000_price_list_basis.sql";
+  const guarded = `DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')
+${ledgerGuard}  THEN
+    EXECUTE 'GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication;';
+  END IF;
+END; $$;
+`;
+  const entry: NativeStoreSlot = { ...slot(path, "price-list-basis"), qualifiedPriceListBasisSelect: true };
+
+  it("admits the flagged forward and refuses the same grant outside a declared slot", () => {
+    const f = fixture();
+    stageNativeForward(f, guarded, entry);
+    const outside = "db/platform/migrations/20990101000000_price_list_basis_outside_slot.sql";
+    f.put(outside, guarded);
+    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([outside, path].map(file => ({ file, sha256: sha256(guarded) }))));
+    const head = f.commit();
+    const result = cli(f.root, ["--base", f.base, "--head", head, STALE]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(1);
+    const reported = verdictLines(result.stdout);
+    expect(reported).toEqual(directVerdicts(f, f.base, head).verdicts);
+    const refusal = ["REFUSED", `non-expand-only forward differs from reviewed replacement path or bytes: ${outside}`];
+    expect(reported).toEqual([refusal, ["PASS"], refusal, ["PASS"], ["PASS"]]);
+  }, 20_000);
+
+  it("refuses the declared forward when it co-locates an admission rule change", () => {
+    const f = fixture();
+    stageNativeForward(f, guarded, entry);
+    f.put("scripts/reviewed-platform-forward.ts", "// Changed admission rule.\n");
+    const head = f.commit();
+    const result = cli(f.root, ["--base", f.base, "--head", head, STALE]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(1);
+    const reported = verdictLines(result.stdout);
+    expect(reported).toEqual(directVerdicts(f, f.base, head).verdicts);
+    const refusal = ["REFUSED", "reviewed replacement admission machinery must be approved separately before co-located SQL/pins"];
+    expect(reported).toEqual([["PASS"], ["PASS"], refusal, refusal]);
   }, 20_000);
 });
 

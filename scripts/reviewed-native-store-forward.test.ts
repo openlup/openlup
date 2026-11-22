@@ -572,6 +572,59 @@ describe("grant-only existing functions", () => {
   });
 });
 
+describe("qualified price list basis SELECT", () => {
+  const grant = "GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication;";
+  const guarded = `DO $$ BEGIN
+${roleGuard}${ledgerGuard}  THEN
+    EXECUTE '${grant}';
+  END IF;
+END; $$;`;
+  const addColumn = "ALTER TABLE public.price_lists ADD COLUMN amount_basis text;";
+  const slot: NativeStoreSlot = {
+    row: "price-list-basis", path: "db/platform/migrations/20990101000000_price_list_basis.sql",
+    replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [],
+  };
+  const flaggedSlot: NativeStoreSlot = { ...slot, qualifiedPriceListBasisSelect: true };
+  function admit(text: string, slots = [flaggedSlot]) {
+    const value = registry();
+    value.nativeStoreForwardClass!.slots = slots;
+    bind(value, 0, text);
+    assertNativeStoreForward(value, slot.path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: before }]);
+  }
+
+  it("admits the exact guarded grant in the flagged slot", () => {
+    expect(() => admit(`${addColumn}\n${guarded}`)).not.toThrow();
+  });
+  it("refuses the grant when the slot lacks the flag", () => {
+    expect(() => admit(guarded, [slot])).toThrow("requires one qualified price list basis SELECT in its declared slot");
+  });
+  it("refuses the flagged slot without the grant", () => {
+    expect(() => admit(addColumn)).toThrow("missing exact qualified price list basis SELECT");
+  });
+  it("refuses two flagged slots in the registry", () => {
+    const second = { ...flaggedSlot, row: "price-list-basis-again", path: "db/platform/migrations/20990102000000_price_list_basis_again.sql" };
+    expect(() => admit(guarded, [flaggedSlot, second])).toThrow("allows one qualifiedPriceListBasisSelect slot with the value true");
+  });
+  it("refuses a second grant in the same slot", () => {
+    expect(() => admit(`${guarded}\n${guarded}`)).toThrow("requires one qualified price list basis SELECT in its declared slot");
+  });
+  it("refuses an unguarded grant in the flagged slot", () => {
+    expect(() => admit(grant)).toThrow("reviewed native store refuses statement outside its closed shapes");
+  });
+  it.each([
+    ["an altered ledger guard", guarded.replace(authoritySha256, "0".repeat(64))],
+    ["a table-level SELECT", guarded.replace(" (amount_basis)", "")],
+    ["another column", guarded.replace("amount_basis", "id")],
+    ["another table", guarded.replace("public.price_lists", "public.catalog_sku_revisions")],
+    ["another role", guarded.replaceAll(catalogueReadRole, "service_role")],
+    ["WITH GRANT OPTION", guarded.replace("TO openlup_catalog_publication;", "TO openlup_catalog_publication WITH GRANT OPTION;")],
+    ["INSERT privilege", guarded.replace("GRANT SELECT", "GRANT INSERT")],
+    ["UPDATE privilege", guarded.replace("GRANT SELECT", "GRANT UPDATE")],
+  ])("refuses %s in the flagged slot", (_label, text) => {
+    expect(() => admit(text)).toThrow("reviewed native store refuses DO outside the single constant role privilege shape");
+  });
+});
+
 describe("the sole conditional role rule", () => {
   it.each([
     ["old function lookup", "    AND pg_catalog.to_regprocedure('public.catalog_publication_bind_live_write()') IS NOT NULL\n"],

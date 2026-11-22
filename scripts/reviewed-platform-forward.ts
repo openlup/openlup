@@ -127,7 +127,7 @@ const deferredTriggerMessages = {
   field: (name: unknown, field: string, rule: string) => `createdTriggers entry ${typeof name === "string" ? name : "<unnamed>"}: ${field} ${rule}`,
 };
 type NativeCreatedTrigger = { name: string; table: string; sha256: string; deferred?: never } | NativeDeferredTrigger;
-export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; settingsOnlyFunctions?: NativeStoreFunctionSetting[]; ownerWindowRole?: string; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: NativeCreatedTrigger[]; purposeCheck?: { beforeSha256: string; values: string[] }; previewNoopAcceptance?: true };
+export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; settingsOnlyFunctions?: NativeStoreFunctionSetting[]; qualifiedPriceListBasisSelect?: true; ownerWindowRole?: string; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: NativeCreatedTrigger[]; purposeCheck?: { beforeSha256: string; values: string[] }; previewNoopAcceptance?: true };
 export type NativeStoreForwardClass = { sealed: boolean; slots: NativeStoreSlot[] };
 type ManagedExactForward = { path: string; sha256: string; prefixSha256: string };
 export type ReviewedForwardRegistry = { managedExactForwards?: ManagedExactForward[]; nativeStoreForwardClass?: NativeStoreForwardClass; nativeStoreForwards?: ForwardBinding[]; qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
@@ -2641,6 +2641,14 @@ const qualifiedCatalogueReadSql = `DO $$ BEGIN
   END IF;
 END; $$;
 `;
+// The shape admits exactly one statement: the authority-ledger-guarded GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication, at most once per registry, inside one declared native-store slot.
+// No table-level SELECT, no other column or table, no write privilege, no grant option, no other role.
+// The column itself is created by the later feature forward; this PR adds no SQL.
+const qualifiedPriceListBasisSelectSql = qualifiedCatalogueReadSql.replace(
+  /GRANT EXECUTE ON FUNCTION [^;]+;/u,
+  "GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication;",
+).trimEnd();
+
 const isQualifiedCatalogueReadGrant = (slot: NativeStoreSlot) => slot.grantOnlyFunctions.some(fn => Array.isArray(fn?.grantTo) && fn.grantTo.includes(cataloguePublicationRole));
 
 const previewAcceptanceSource = "db/platform/migrations/20261109120000_subscription_package_editor.sql";
@@ -3049,7 +3057,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
     const fields = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...nativeStoreOwnerWindowFields(slot, settingsOnly)];
     if (settingsOnly) fields.push("settingsOnlyFunctions");
     else {
-      fields.push(...["purposeCheck", "checkSupersets", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers", "absorptionCensusTables", "previewNoopAcceptance"].filter(key => Object.hasOwn(slot, key)));
+      fields.push(...["purposeCheck", "checkSupersets", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers", "absorptionCensusTables", "qualifiedPriceListBasisSelect", "previewNoopAcceptance"].filter(key => Object.hasOwn(slot, key)));
       if (slot.existingTableStatements !== undefined) fields.push("existingTableStatements");
       if (slot.insertSelectTables !== undefined) fields.push("insertSelectTables");
     }
@@ -3064,6 +3072,10 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       if (!Array.isArray(settings) || !settings.length || settings.some(fn => !fn || !keysAre(fn, "searchPath,signature") || typeof fn.signature !== "string" || nativeStoreSignature(fn.signature) !== fn.signature || typeof fn.searchPath !== "string" || !/^(?:(?!pg_temp, )[a-z_][a-z0-9_]*, )*pg_temp$/u.test(fn.searchPath))) throw new Error("reviewed native store settings-only slot requires canonical qualified signatures and search_path ending in pg_temp");
       if (new Set(settings.map(fn => fn.signature)).size !== settings.length) throw new Error("reviewed native store settings-only slot has duplicate signatures");
       continue;
+    }
+    if (Object.hasOwn(slot, "qualifiedPriceListBasisSelect")
+      && (slot.qualifiedPriceListBasisSelect !== true || control.slots.some(other => other !== slot && other.qualifiedPriceListBasisSelect))) {
+      throw new Error("reviewed native store allows one qualifiedPriceListBasisSelect slot with the value true");
     }
     if (isQualifiedCatalogueReadGrant(slot)) {
       const expected = {
@@ -3549,6 +3561,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const censusTables = slot.absorptionCensusTables ?? [], censusGrants = new Set<string>(), censusPolicies = new Set<string>();
   let pending: string | undefined;
   const baselineActions = new Set<number>();
+  let priceListBasisSelect = false;
   let droppedCheck = false, addedCheck = false, existingTablePosition = 0, insertSelectPolicy = false;
   for (let index = 0; index < statements.length; index++) {
     const statement = statements[index]!;
@@ -3681,6 +3694,11 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (expected) throw new Error(`reviewed native store ${signature}: put this exact statement only immediately after its CREATE OR REPLACE FUNCTION:\n${expected}`);
       throw new Error(`reviewed native store ${signature ?? "<unknown function>"}: remove this statement. It is allowed only immediately after a replacement marked qualifiedSecurityDefiner:\n${statement}`);
     }
+    if (statement === qualifiedPriceListBasisSelectSql) {
+      if (!slot.qualifiedPriceListBasisSelect || priceListBasisSelect) throw new Error("reviewed native store requires one qualified price list basis SELECT in its declared slot");
+      priceListBasisSelect = true;
+      continue;
+    }
     const privilege = nativeStorePrivilege(statement, tables, slot.insertSelectTables ?? [], views, triggerFunctions, censusTables, block);
     if (privilege) {
       if (privilege.kind === "BASELINE") {
@@ -3745,6 +3763,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     }
     throw new Error("reviewed native store refuses statement outside its closed shapes");
   }
+  if (Boolean(slot.qualifiedPriceListBasisSelect) !== priceListBasisSelect) throw new Error("reviewed native store missing exact qualified price list basis SELECT");
   if (defined.size !== functions.length) throw new Error("reviewed native store unlisted, missing or drifted function definition");
   if ([...created].some(signature => !revoked.has(signature))) throw new Error("reviewed native store created function missing PUBLIC revoke");
   if (droppedCheck !== addedCheck || Boolean(slot.purposeCheck) !== addedCheck) throw new Error("reviewed native store requires the complete named CHECK replacement");

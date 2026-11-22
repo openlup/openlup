@@ -1,0 +1,1 @@
+Native migration admission allows one ledger-guarded column SELECT grant on `public.price_lists.amount_basis` to the qualified-v2 catalogue publication login. The net-price publication forward supplies the column, grant and registry slot.

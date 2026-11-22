@@ -2805,13 +2805,22 @@ The legacy and qualified-admin plans omit that migration, so the block skips
 the grant in those databases even when the cluster role exists. The slot
 carries only those two grant capabilities, and its pin lists no function definitions.
 
+At most one native-store slot per registry may declare
+`qualifiedPriceListBasisSelect: true`. Its forward must contain exactly one
+`GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication`
+inside the exact `DO` block with the same role-existence and qualified-v2 authority
+ledger checks. The statement grants access to that column alone, without grant
+option. The later net-price publication forward creates the column and supplies
+the slot and SQL after this admission change lands.
+
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
 TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
 `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
-another slot or an unqualified/IF NOT EXISTS creation refuses. Table grants refuse
-except for the fixed baseline and notice-table allowances below and the listed census tables'
-client-column SELECT allowance above. Census tables keep owner-only table ACLs
+another slot or an unqualified/IF NOT EXISTS creation refuses. The admitted
+table grants are limited to the fixed baseline and notice-table allowances below,
+the listed census tables' client-column SELECT and the qualified price-list
+basis SELECT above. Census tables keep owner-only table ACLs
 and receive only their exact column grant and derived SELECT policy.
 The native paid-notice slot may name `insertSelectTables` with the complete
 value `["public.subscription_notice_refusals"]`, pinned by the reader. A separate
