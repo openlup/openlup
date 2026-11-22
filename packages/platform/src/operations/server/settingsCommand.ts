@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
+import { taxCoverageV1Schema } from "../../tax/contracts/index.js";
 import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue, settingsEntriesWithAppSettings } from "./settingsCatalog.js";
 import { admitDatabaseUrl, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
 import { settingDescriptorSchema, toolInputSchema } from "./toolSchema.js";
@@ -288,8 +289,17 @@ function appFileValue(entry: DeclaredFileEntry): FileValue {
   }
 }
 
-async function validateFileValue(file: FileValue, schema: Record<string, JsonValue> | null, appSchema?: ZodType): Promise<Validation> {
-  if (file.state !== "present" || (!appSchema && !schema)) return { state: "not-validated" };
+async function validateFileValue(key: string, file: FileValue, schema: Record<string, JsonValue> | null, appSchema?: ZodType): Promise<Validation> {
+  if (file.state !== "present") return { state: "not-validated" };
+  if (key === "tax.coverage") {
+    const parsed = taxCoverageV1Schema.safeParse(file.value);
+    return parsed.success ? { state: "valid" } : {
+      state: "invalid",
+      paths: [("coverage" + parsed.error.field).split("/")],
+      messages: [parsed.error.message],
+    };
+  }
+  if (!appSchema && !schema) return { state: "not-validated" };
   try {
     const parsed = appSchema ? await appSchema.safeParseAsync(file.value) : z.fromJSONSchema(schema!).safeParse(file.value);
     return parsed.success ? { state: "valid" }
@@ -310,7 +320,7 @@ async function checkDocument(file: FileBinding | undefined, appValidation: AppVa
     const value = declaration ? appFileValue(declaration.entry) : reportedFileValue(reported);
     const location = declaration?.entry.location;
     const takesEffect = location ? `${location.file} ${location.symbol}` : Object.values(entry.change).join(" ");
-    return [validateFileValue(value, entry.schema ?? null, declaration?.schema).then(validation => ({
+    return [validateFileValue(entry.key, value, entry.schema ?? null, declaration?.schema).then(validation => ({
       key: entry.key, file: value, validation,
       effect: entry.effect.appliesTo, takesEffect, kind: entry.kind,
       ...(entry.kind === "installed" ? {
@@ -338,7 +348,7 @@ function checkText({ appValidation, configuration, rows, state }: Awaited<Return
       return [
         `${row.key}: file ${file.state}, schema ${row.validation.state}${row.validation.state === "invalid"
           ? ` at ${row.validation.paths.map((path, index) => {
-            const label = path.join(".") || "<value>";
+            const label = row.key === "tax.coverage" ? "/" + path.join("/") : path.join(".") || "<value>";
             const message = row.validation.state === "invalid" ? row.validation.messages?.[index] : undefined;
             return message ? `${label}: ${message}` : label;
           }).join(", ")}` : ""}`,
@@ -349,6 +359,26 @@ function checkText({ appValidation, configuration, rows, state }: Awaited<Return
       ];
     }),
   ].join("\n");
+}
+
+function coverageRetryCommand(databaseUrl: string, hasPassword: boolean, values: { app?: string; configuration?: string; json?: boolean }) {
+  const quote = (arg: string) => "'" + arg.replaceAll("'", "'\\''") + "'";
+  // Ask for password-bearing URLs through stdin so diagnostics never copy the password.
+  const url = hasPassword
+    ? [
+      `printf 'Original database URL: ' >&2`,
+      `mode=$(stty -g 2>/dev/null)`,
+      `if [ -n "$mode" ]; then stty -echo; trap 'stty "$mode"; printf "\\n" >&2' 0; fi`,
+      `IFS= read -r url && printf '%s' "$url"`,
+    ].join("; ")
+    : undefined;
+  return [
+    "openlup settings show tax.coverage",
+    ...(values.app !== undefined ? ["--app=" + quote(values.app)] : []),
+    ...(values.configuration !== undefined ? ["--configuration=" + quote(values.configuration)] : []),
+    "--database-url=" + (url === undefined ? quote(databaseUrl) : '"$(' + url + ')"'),
+    ...(values.json ? ["--json"] : []),
+  ].join(" ");
 }
 
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
@@ -636,7 +666,14 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
         })];
       }
       const result = await showSetting({ key }, readers);
-      return [result, "refusal" in result && result.refusal.code === "commerce_setting_read_unavailable" ? 74 : undefined];
+      if (!("refusal" in result) || result.refusal.code !== "commerce_setting_read_unavailable") return [result];
+      const { refusal } = result;
+      // Replace the generic retry template and preserve the separate missing-capability remedy.
+      if (key === "tax.coverage" && databaseUrl && refusal.remediation.command === unavailable().refusal.remediation.command) {
+        const command = coverageRetryCommand(databaseUrl, typeof database?.password === "string", values);
+        return [{ refusal: { ...refusal, remediation: { ...refusal.remediation, command } } }, 74];
+      }
+      return [result, 74];
     } finally { await bindings?.close?.(); }
   }
   let outcome: [Result, number?];

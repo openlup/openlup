@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, expectTypeOf, it, vi } from "vitest";
@@ -190,16 +190,27 @@ it("coverage_revision_append_and_restore", async () => {
     .toEqual(packet.owned.find(row => row.table === "tax_coverage_revisions"));
 }, postgresSetupTimeoutMs);
 
-it("shows an installed setting through the CLI binding and refuses an unbound connected read", async () => {
+it("replays a failed connected CLI coverage read with its original binding", async () => {
   const exec = promisify(execFile);
   const scratch = join(process.cwd(), ".context", "scratch");
   await mkdir(scratch, { recursive: true });
   const directory = await mkdtemp(join(scratch, "coverage-settings-"));
   try {
-    const app = join(directory, "settings.mjs");
-    await writeFile(app, `import { bindTaxCoverageReader } from "@openlup/platform/tax";
-export function createSettingsBindings({ db }) {
-  return { readers: { "tax.coverage": bindTaxCoverageReader(db, { installationRef: "cli", accountRef: "account-a" }) } };
+    const app = join(directory, "bound settings.mjs");
+    const reset = join(directory, "connection-reset");
+    const configuration = "operator's primary";
+    await writeFile(app, `import { existsSync } from "node:fs";
+import { bindTaxCoverageReader } from "@openlup/platform/tax";
+export function createSettingsBindings({ db, configuration }) {
+  const expected = ${JSON.stringify(configuration)};
+  if (configuration !== expected) return { configurationIds: [expected] };
+  const connection = { async query(text, values) {
+    if (existsSync(new URL("./connection-reset", import.meta.url))) {
+      throw Object.assign(new Error("Connection reset"), { code: "ECONNRESET" });
+    }
+    return db.query(text, values);
+  } };
+  return { readers: { "tax.coverage": bindTaxCoverageReader(connection, { installationRef: "cli", accountRef: "account-a" }) } };
 }
 `);
     const cli = async (...args: string[]) => {
@@ -213,11 +224,23 @@ export function createSettingsBindings({ db }) {
       }
     };
     expect(await cli()).toMatchObject({ status: 0, body: { observation: { state: "offline" } } });
-    const db = ["--database-url", source.runtimeUrl], bound = [...db, "--app", app];
+    const db = ["--database-url", source.runtimeUrl], bound = [...db, "--app", app, "--configuration", configuration];
     expect(await cli(...db)).toMatchObject({ status: 74, body: { refusal: { code: "commerce_setting_read_unavailable",
       remediation: { action: expect.stringContaining("Use a qualified native PostgreSQL installation") } } } });
     expect(await cli(...bound)).toMatchObject({ status: 0, body: { observation: { state: "absent" } } });
     await applyTaxCoverageRevision(source.owner, proposal("cli-first", null, [], { installationRef: "cli", accountRef }));
-    expect(await cli(...bound)).toMatchObject({ status: 0, body: { observation: { state: "override", revision: "cli-first" } } });
+    await writeFile(reset, "");
+    const refusal = await cli(...bound);
+    expect(refusal).toMatchObject({ status: 74, body: { refusal: { code: "commerce_setting_read_unavailable" } } });
+    const command: string = refusal.body.refusal.remediation.command;
+    expect(command).toContain("--app");
+    expect(command).toContain("--configuration");
+    expect(command.includes(source.runtimeUrl)).toBe(false);
+    await rm(reset);
+
+    const path = join(process.cwd(), "node_modules", ".bin");
+    const retry = exec("sh", ["-c", command], { env: { ...process.env, PATH: path + delimiter + process.env.PATH } });
+    retry.child.stdin?.end(source.runtimeUrl + "\n");
+    expect(JSON.parse((await retry).stdout)).toMatchObject({ observation: { state: "override", revision: "cli-first" } });
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

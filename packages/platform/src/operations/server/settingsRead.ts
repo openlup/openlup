@@ -74,8 +74,15 @@ export async function showSetting(input: unknown, readers: Readonly<Record<strin
     if ("refusal" in observation) return observation;
     return showResult.parse({ schemaVersion: settingsVersion, setting, observation });
   } catch (error) {
-    if (setting.key === "tax.coverage" && error instanceof Error && "code" in error && error.code === "tax_coverage_reader_unbound")
-      return refuseUnboundCoverageRead();
+    if (setting.key === "tax.coverage" && error instanceof Error && "code" in error) {
+      if (error.code === "tax_coverage_reader_unbound") return refuseUnboundCoverageRead();
+      if (error.code === "42501") {
+        const { refusal } = refuse("commerce_setting_read_unavailable");
+        return { refusal: { ...refusal, remediation: { ...refusal.remediation,
+          action: "Grant the connection role EXECUTE on public.tax_coverage_read_v1(text,text), then repeat the connected read.",
+        } } };
+      }
+    }
     return refuse("commerce_setting_read_unavailable");
   }
 }

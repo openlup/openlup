@@ -179,10 +179,12 @@ it("gives a bound native coverage reader connection guidance", async () => {
   expect(await showSetting({ key }, { [key]: reader })).toEqual(connectionRefusal);
   expect(await showSetting({ key }, { [key]: async () => ({ refusal: code }) })).toEqual(connectionRefusal);
   expect(query).toHaveBeenCalledOnce();
-  for (const sqlstate of ["28P01", "42501"]) {
-    query.mockRejectedValueOnce(Object.assign(new Error("Reader access failure"), { code: sqlstate }));
-    expect(await showSetting({ key }, { [key]: reader })).toEqual(connectionRefusal);
-  }
+  query.mockRejectedValueOnce(Object.assign(new Error("Reader authentication failure"), { code: "28P01" }));
+  expect(await showSetting({ key }, { [key]: reader })).toEqual(connectionRefusal);
+  query.mockRejectedValueOnce(Object.assign(new Error("Reader access failure"), { code: "42501" }));
+  expect(await showSetting({ key }, { [key]: reader })).toMatchObject({ refusal: { code, remediation: {
+    action: "Grant the connection role EXECUTE on public.tax_coverage_read_v1(text,text), then repeat the connected read.",
+  } } });
   const missingCapability = {
     refusal: { code, remediation: { action: expect.stringContaining("Use a qualified native PostgreSQL installation") } },
   };

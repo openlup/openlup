@@ -191,7 +191,7 @@ export const PLATFORM_MODULE_GRAPH = {
   lifecycle: { values: [], types: [] },
   portability: { values: [], types: [] },
   operations: { contracts: true, values: [], types: [] },
-  "operations/server": { values: ["operations", "bff"], types: ["http", "data", "operations/contracts"] },
+  "operations/server": { values: ["operations", "bff", "tax/contracts"], types: ["http", "data", "operations/contracts"] },
   risk: { contracts: true, values: [], types: [] },
   "risk/server": { values: ["commerce", "risk", "identity/contracts"], types: ["risk/contracts", "data", "http", "bff"] },
   marketing: { contracts: true, values: [], types: [] },

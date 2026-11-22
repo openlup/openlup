@@ -3371,10 +3371,15 @@ Use the runtime connection with that binding.
 openlup settings show tax.coverage --app ./settings.mjs --database-url <read-capable-url> --json
 ```
 
-A successful bound read without revisions reports absence. Use a qualified native
-PostgreSQL installation for connected inspection. Managed installations do not
-supply tax coverage history. The setting is read-only in the settings tool.
-Checkout consumption is qualified separately.
+A successful bound read without revisions reports absence. Retry a failed read
+using the command in the refusal. Supply the original database URL at the prompt
+when the URL contains a password. Offline `settings check` validates reported
+coverage declarations and identifies invalid fields at the same pointers as the
+installer.
+
+Use a qualified native PostgreSQL installation for connected inspection. Managed
+installations do not supply tax coverage history. The setting is read-only in the
+settings tool. Checkout consumption is qualified separately.
 
 ## Market packs
 

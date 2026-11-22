@@ -7,6 +7,7 @@ import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, r
 
 import { callSettingsTool, settingsMcpContext, settingsMcpTools } from "../../src/operations/server/settingsMcp.js";
 import { renewalStockProtectionPreviewResult } from "../../src/inventory/renewalStockProtection.js";
+import { applyTaxCoverageRevision } from "../../src/tax/index.js";
 
 const key = "inventory_renewal_protection";
 const url = "postgresql://sample@read.invalid/shop";
@@ -682,6 +683,31 @@ it("checks every packaged schema against its default and valid examples", async 
       expect(JSON.parse(output).rows.find((row: { key: string }) => row.key === entry.key).validation).toEqual({ state: "valid" });
     }
   }
+});
+
+it("checks coverage overlap offline at the installer refusal pointer", async () => {
+  const setting = "tax.coverage";
+  const declaration = { jurisdiction: "district-a", taxKind: "sale", status: "registered", actorRef: "operator-a",
+    effective: { from: asOf }, recordedAt: asOf } as const;
+  const value = { schemaVersion: 1, accountRef: "account-a", revision: "overlap", declarations: [declaration, declaration] } as const;
+  const query = vi.fn();
+  const refused = await applyTaxCoverageRevision({ query }, {
+    expectedHead: null, document: { installationRef: "store-a", accountRef: value.accountRef, actorRef: declaration.actorRef, coverage: value },
+  });
+  const field = "/coverage/declarations/1/effective";
+  expect(refused).toMatchObject({ kind: "refused", code: "tax_invalid_input", field });
+  expect(query).not.toHaveBeenCalled();
+
+  const host = checks(async () => ({ file: { ...minimumFile, entries: { [setting]: { value } } } }));
+  const { exit, output } = await run(checkArgs, { host });
+  expect(exit).toBe(1);
+  expect(JSON.parse(output)).toMatchObject({ state: "invalid" });
+  expect(JSON.parse(output).rows.find((row: { key: string }) => row.key === setting)?.validation).toEqual({
+    state: "invalid", paths: [field.slice(1).split("/")],
+    messages: ["Use nonoverlapping declarations for this jurisdiction and tax kind."],
+  });
+  const text = await run(checkArgs.filter(arg => arg !== "--json"), { host });
+  expect(text.output).toContain(`${setting}: file present, schema invalid at ${field}`);
 });
 
 it("keeps the guide's app declaration identical to the typechecked binding", () => {
