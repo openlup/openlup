@@ -25,7 +25,7 @@ Every directory under `recipes/<domain>/<provider>/` MUST be completely self-con
 npx --no -- tsc -p recipes/tsconfig.json --noEmit
 
 # 2. Offline Stages 1–3 tests (conformance + canaries + negative controls + mount proof)
-npx vitest run recipes/payments/adyen/tests/ recipes/fulfillment/amazon-mcf/tests/ recipes/tax/avalara/tests/
+npx vitest run recipes/payments/adyen/tests/ recipes/payments/mollie/tests/ recipes/fulfillment/amazon-mcf/tests/ recipes/tax/avalara/tests/
 
 # 3. Static ADR-001 guardrails (zero ambient env reads, zero ambient fetch, import isolation)
 npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression
@@ -37,5 +37,6 @@ npx --no -- eslint recipes/
 See [index.json](index.json) for the machine-readable catalog:
 
 - [`payments/adyen`](payments/adyen/recipe.json) — **Exemplar** zero-SDK Adyen Checkout v71 recipe (Drop-in sessions + `recipes/payments/adyen/browser/csp.json`, bank redirect, unattended `ContAuth` recurring, async cancels, canonical HMAC-SHA256 webhook verification).
+- [`payments/mollie`](payments/mollie/recipe.json) — **Verified** zero-SDK Mollie Payments API v2 recipe (hosted checkout redirects, unattended recurring mandates, synchronous readback and cancellation, refund/chargeback observation, readback-authenticated form-urlencoded webhooks).
 - [`fulfillment/amazon-mcf`](fulfillment/amazon-mcf/recipe.json) — **Exemplar** zero-SDK Amazon Multi-Channel Fulfillment recipe (SP-API Outbound v2020-07-01 & FBA Inventory v1, pure `node:crypto` AWS SigV4 signing, single-flight LWA OAuth2, bridged HMAC-SHA256 notifications, `nextToken` reconciliation paging, snapshot-only stock sync).
 - [`tax/avalara`](tax/avalara/recipe.json) — **Experimental** zero-SDK Avalara AvaTax REST v2 exclusive-tax recipe (`SalesOrder` quotes, `SalesInvoice` commits with readback recovery, `ReturnInvoice` partial/remainder reversals, `DocVoided` full voids, retail delivery fees, `compareTaxRecalculationProbe` support).

@@ -5,13 +5,20 @@ import { basename, resolve } from "node:path";
 
 export function checkPlatformMigrationProjection(root: string, update = false): string[] {
   // Pre-build policy tooling must remain runnable before workspace dist exists.
-  // Ship its validator/selection as a checked exact copy, with one authoring owner.
-  const owner = readFileSync(resolve(root, "scripts/platform-migration-manifest.ts"));
+  const ownerPath = "scripts/platform-migration-manifest.ts";
+  const regenerateFrom = "packages/platform/README.md#install-the-portable-postgresql-schema";
+  const header = `// Generated from ${ownerPath}. Edit the owner file and regenerate per ${regenerateFrom}\n`;
+  const owner = readFileSync(resolve(root, ownerPath));
+  const selection = Buffer.concat([Buffer.from(header), owner]);
   const target = resolve(root, "packages/platform/src/migrations/catalog.ts");
-  if (update) writeFileSync(target, owner);
+  if (update) writeFileSync(target, selection);
   const codeErrors: string[] = [];
-  try { if (!owner.equals(readFileSync(target))) codeErrors.push("packaged migration selection drift: scripts/platform-migration-manifest.ts"); }
-  catch { codeErrors.push("packaged migration selection missing: scripts/platform-migration-manifest.ts"); }
+  const fix = `edit ${ownerPath} and regenerate with the command in ${regenerateFrom}`;
+  try {
+    if (!selection.equals(readFileSync(target))) codeErrors.push(`packaged migration selection drift: ${fix}`);
+  } catch {
+    codeErrors.push(`packaged migration selection missing: ${fix}`);
+  }
   const catalog = JSON.parse(readFileSync(resolve(root, "config/platform-migration-manifest.json"), "utf8"));
   const entries = new Map<string, { file: string; sha256: string }>();
   for (const plan of [catalog, catalog.qualified, catalog.qualifiedAdmin].filter(Boolean)) {

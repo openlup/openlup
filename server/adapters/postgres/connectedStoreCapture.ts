@@ -55,7 +55,7 @@ const owned = [
   "payment_method_refs", "payment_method_ref_receipts", "payment_method_recovery_authorities",
   "payment_provider_reconciliation_runs", "payment_prepared_absence_reopens",
   "payment_dunning_case_attribution", "payment_refund_evidence",
-  "commerce_destinations", "commerce_destination_bindings", "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts", "subscription_command_receipts", "subscription_quote_previews",
+  "commerce_destinations", "commerce_destination_bindings", "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts", "subscription_command_receipts", "subscription_quote_previews", "subscription_edit_quotes",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
   // AUTHORITATIVE pack metadata; no customer FK or absorption/erasure duty.
@@ -180,7 +180,21 @@ export async function captureConnectedNativeStore(input: {
       // Existing utility validates source IDs, limits, schema and lossless rows;
       // its callback reuses this held client without another BEGIN/COMMIT.
       const packet = await captureCompatiblePostgresRows({
-        source: { withSnapshot: work => work(db) }, sourceId, catalogueId,
+        source: { async withSnapshot(work) {
+          const { rows: [relation] } = await db.query<{ present: boolean }>(
+            "SELECT pg_catalog.to_regclass('public.catalog_subscription_profile_receipts') IS NOT NULL AS present");
+          if (relation?.present) {
+            const { rows: [receipts] } = await db.query<{ present: boolean }>(
+              "SELECT EXISTS (SELECT 1 FROM public.catalog_subscription_profile_receipts) AS present");
+            if (receipts?.present) {
+              throw Object.assign(new PostgresTransferError(
+                "subscription_profile_receipts_unsupported", "catalog_subscription_profile_receipts"), {
+                remedy: "Wait for connected-store restore support for subscription profile receipts (RS-1).",
+              });
+            }
+          }
+          return work(db);
+        } }, sourceId, catalogueId,
         tables: compatible, maximumRows, maximumBytes,
       });
       const relations = (await db.query<{ schema: string; table: string; owner: string }>(`SELECT n.nspname AS schema,c.relname AS table,

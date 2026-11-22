@@ -694,7 +694,7 @@ export async function mapManagedRetainedBusiness(input: {
       currency_code: row.currency, stock_source_key: stockSku, settlement_channel_key: method.provider_kind,
       unattended_charge_authorized_at: consent.acceptedAt, authorization_ref: method.provider_mandate_ref,
       payer_account_ref: method.provider_customer_ref, delivery_admission: "blocked",
-      delivery_block_reason: "managed-source-address-binding-required", created_at: row.created_at, updated_at: row.updated_at });
+      delivery_block_reason: "managed-source-address-binding-required", catalog_acceptance: null, created_at: row.created_at, updated_at: row.updated_at });
   }
   for (const row of subscriptionLines) {
     const subscription = subscriptionById.get(row.subscription_id), sku = skuById.get(row.variant_id);
@@ -712,7 +712,7 @@ export async function mapManagedRetainedBusiness(input: {
       || quoteLine?.quantity !== undefined && quoteLine.quantity !== row.qty)
       fail("target_conflict", "public.subscription_price_agreements");
     projected.subscription_lines!.push(project("subscription_lines", row, { quantity: row.qty,
-      unit_price_minor: agreement.unit_price_gross_minor, currency_code: agreement.currency }));
+      unit_price_minor: agreement.unit_price_gross_minor, currency_code: agreement.currency, catalog_sku_revision_id: null }));
     projected.subscription_renewal_term_lines!.push({ subscription_id: row.subscription_id,
       line_ordinal: Number(row.sort_order) + 1, sku: sku.sku, quantity: row.qty,
       unit_amount_minor: agreement.unit_price_gross_minor, created_at: row.created_at, updated_at: row.updated_at });
@@ -734,7 +734,7 @@ export async function mapManagedRetainedBusiness(input: {
   for (const row of subscriptionEvents) {
     if (!subscriptionById.has(row.subscription_id) || typeof row.idempotency_key !== "string" || !row.idempotency_key)
       fail("target_conflict", "public.subscription_events");
-    projected.subscription_events!.push(project("subscription_events", row, { communication_subject_id: null }));
+    projected.subscription_events!.push(project("subscription_events", row, { communication_subject_id: null, catalog_acceptance: null, catalog_basket: null }));
   }
   const contactById = byId(contacts), consentKeys = new Set<string>();
   for (const row of permissions) {
@@ -772,7 +772,7 @@ export async function mapManagedRetainedBusiness(input: {
       cancelled_at: null, refunded_at: null, metadata: row.metadata,
       currency_code: row.currency, total_amount_minor: row.total_cents, source_kind: row.source_kind,
       source_channel_id: null, source_order_ref: null, renewal_operation_id: null, renewal_operation_fingerprint: null,
-      recovery_root_order_id: null, recreated_from_order_id: null });
+      recovery_root_order_id: null, recreated_from_order_id: null, catalog_acceptance: null, catalog_receipt_key: null, catalog_basket: null });
   }
   for (const row of items) {
     if (!orderById.has(row.order_id) || typeof row.allocation_ordinal !== "number" || row.sku_id === null

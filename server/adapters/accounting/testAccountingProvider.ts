@@ -14,7 +14,7 @@ export function createTestAccountingProvider(): AccountingDocumentProviderPort {
         providerInvoiceId: `test_inv_${stableRef(snapshot.orderRef)}`,
         providerInvoiceNumber: invoiceNumber,
         raw: {
-          provider: "fakturownia_test",
+          provider: "accounting_test",
           mode: "test",
           invoiceNumber,
           documentKind: snapshot.documentKind ?? "b2c_named",
@@ -35,14 +35,14 @@ export function createTestAccountingProvider(): AccountingDocumentProviderPort {
     async downloadKsefAttachment(providerInvoiceId: string, kind: "gov" | "gov_upo") {
       if (!providerInvoiceId.startsWith("test_inv_")) throw new Error("test_invoice_provider_ref_invalid");
       return {
-        content: Buffer.from(`<test provider="fakturownia_test" kind="${kind}" />`),
+        content: Buffer.from(`<test provider="accounting_test" kind="${kind}" />`),
         contentType: "application/xml",
       };
     },
     async downloadGovernmentAttachment(providerInvoiceId: string, kind: "gov" | "gov_upo") {
       if (!providerInvoiceId.startsWith("test_inv_")) throw new Error("test_invoice_provider_ref_invalid");
       return {
-        content: Buffer.from(`<test provider="fakturownia_test" kind="${kind}" />`),
+        content: Buffer.from(`<test provider="accounting_test" kind="${kind}" />`),
         contentType: "application/xml",
       };
     },
@@ -50,7 +50,7 @@ export function createTestAccountingProvider(): AccountingDocumentProviderPort {
       return {
         ksefStatus: "not_submitted" as const,
         ksefNumber: null,
-        raw: { provider: "fakturownia_test", mode: "test" },
+        raw: { provider: "accounting_test", mode: "test" },
       };
     },
   };
@@ -73,6 +73,6 @@ async function createTestCorrection(
   return {
     providerInvoiceId: `test_inv_correction_${stableRef(options.correctionRef)}`,
     providerInvoiceNumber: invoiceNumber,
-    raw: { provider: "fakturownia_test", mode: "test", invoiceNumber, correction: true },
+    raw: { provider: "accounting_test", mode: "test", invoiceNumber, correction: true },
   };
 }

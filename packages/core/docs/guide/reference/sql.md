@@ -1,6 +1,8 @@
 # SQL catalogue
 
-Find the SQL files each package ships, listed by file name. This is an inventory, not an installation sequence: which files your installation applies, and in which order, depends on the catalogue it selects. Apply SQL through your application's migration chain as described in [Upgrade the database](../upgrade/database-migrations.md).
+Each package lists its SQL files by name. Your selected catalogue determines
+which files apply and in what order. Follow your application's migration chain
+in [Upgrade the database](../upgrade/database-migrations.md).
 
 ## `@openlup/outbox`
 
@@ -194,6 +196,8 @@ Find the SQL files each package ships, listed by file name. This is an inventory
 | [`20261124180000_catalogue_read_grant.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124180000_catalogue_read_grant.sql) |
 | [`20261124200000_checkout_attempt_ledger.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124200000_checkout_attempt_ledger.sql) |
 | [`20261124220000_catalog_governed_lifecycle.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124220000_catalog_governed_lifecycle.sql) |
+| [`20261124220001_catalog_accepted_references.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124220001_catalog_accepted_references.sql) |
+| [`20261124230000_subscription_profiles.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124230000_subscription_profiles.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |
@@ -210,3 +214,13 @@ Find the SQL files each package ships, listed by file name. This is an inventory
 | [`qb_20261026140000_retained_client_subscription_import.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/qb_20261026140000_retained_client_subscription_import.sql) |
 <!-- /generated:sql:platform -->
 
+
+### Subscription profile receipts
+
+`catalog_subscription_profile_receipts` stores immutable declarations and their
+SHA-256 digests under a unique profile key and version. Each row references the
+pack version that first installed it.
+
+The migration owner can call `catalog_subscription_profile_identity(text, integer)`
+to read the exact profile key, version, digest, policy reference and policy
+digest. The function returns SQL NULL when the pair is absent.

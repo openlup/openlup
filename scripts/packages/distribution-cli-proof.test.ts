@@ -9,7 +9,7 @@ import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
   includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers,
-  reminderInstallationTest, starterLifecycle, starterOptionalCatalogueFiles, starterUpgradeSnapshot,
+  reminderInstallationTest, starterLifecycle, starterOptionalOwnedFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization } from "./distribution-cli-proof.ts";
 
@@ -398,7 +398,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   // Expected bytes come from the target inventory, including contracts that
   // have no runtime refusal. The customized expectation adds each local edit.
   for (const path of targetOwnership.owned) {
-    if (starterOptionalCatalogueFiles.has(path)) {
+    if (starterOptionalOwnedFiles.has(path)) {
       expect(existsSync(join(app, path)), path).toBe(false);
       continue;
     }

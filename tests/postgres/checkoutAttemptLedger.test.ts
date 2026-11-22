@@ -1,11 +1,14 @@
+import { canonicalCatalogDraftJson, catalogPackManifest, installCatalogDefinitions } from "@openlup/platform/catalog";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { projectHistoricalCapture, sealConnectedCapture } from "./connectedStoreHistoricalPacket.fixture.js";
 import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
-import { captureStoreJourney, journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
+import { beforeSubscriptionProfilesCatalog, beforeSubscriptionProfilesInventory, captureStoreJourney,
+  journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
 
 const resources = storeJourneyResources();
 const table = "public.commerce_checkout_attempt_ledger";
@@ -211,26 +214,103 @@ it("restores the pre-ledger packet shape with an empty ledger and requires it in
   const product = randomUUID();
   await native.owner.query("INSERT INTO public.catalog_products (id,slug,name) VALUES ($1,$1::uuid::text,'Predecessor product')", [product]);
   const capture = await captureStoreJourney(native.owner, "pre-ledger-source");
-  const { sha256: _outer, ...body } = capture;
-  const { sha256: _inner, ...compatible } = capture.compatible;
-  const tables = compatible.tables.filter(entry => entry.table !== "commerce_checkout_attempt_ledger");
-  const withoutLedger = (catalogueId: string) => {
-    const projected = { ...compatible, catalogueId, tables };
-    const packet = { ...body, compatible: { ...projected, sha256: digest(JSON.stringify(projected)) } };
-    return { ...packet, sha256: digest(JSON.stringify(packet)) };
-  };
+  const missingLedger = structuredClone(capture);
+  missingLedger.compatible.tables = missingLedger.compatible.tables.filter(entry => entry.table !== "commerce_checkout_attempt_ledger");
   const targets = await resources.targetTemplate("pre-ledger-target");
   const target = await targets.nextTarget();
   const freshTarget = await captureStoreJourney(target.owner, "pre-ledger-target");
-  const restore = (packet: ReturnType<typeof withoutLedger>) => restoreConnectedNativeStore({
+  const restore = (packet: typeof capture) => restoreConnectedNativeStore({
     owner: target.owner, installation: journeySelection, packet, freshTarget,
   });
-  await expect(restore(withoutLedger(compatible.catalogueId))).rejects.toMatchObject({ code: "invalid_input" });
+  await expect(restore(sealConnectedCapture(missingLedger))).rejects.toMatchObject({ code: "invalid_input" });
   // Complete separate-migrator inventory immediately before HS-L.
-  const old = withoutLedger("0fca9c01fd08e76700cd55eaafb81ff1dd9f265ed9a672d3c9936812c8df1153");
+  const old = await projectHistoricalCapture(native.owner, capture, "0fca9c01fd08e76700cd55eaafb81ff1dd9f265ed9a672d3c9936812c8df1153", true);
   expect(await restore(old)).toMatchObject({ captureSha256: old.sha256, replayed: false });
   expect((await target.owner.query("SELECT name FROM public.catalog_products WHERE id=$1", [product])).rows)
     .toEqual([{ name: "Predecessor product" }]);
   expect(await ledgerRows(target.owner)).toEqual([]);
   expect(await restore(old)).toMatchObject({ captureSha256: old.sha256, replayed: true });
+}, 105_000);
+
+it("restores and replays a post-accepted-references capture with legacy catalogue receipt bytes intact", async () => {
+  const source = await resources.installation("before-profiles-source", beforeSubscriptionProfilesCatalog());
+  const receipt = await installCatalogDefinitions(source.owner, {
+    id: "example:reference-only", namespace: "example", version: 1, openlupRange: "1.x",
+    capabilities: {}, types: [], taxClasses: [], subscriptionProfiles: [{ key: "example:repeat", version: 1 }],
+  });
+  expect(await attempt(source.runtime)).toEqual(allowed);
+  const savedLedger = await ledgerRows(source.owner);
+  const packet = await captureStoreJourney(source.owner, "before-profiles-source", { catalogueId: beforeSubscriptionProfilesInventory });
+  expect(packet.owned).toContainEqual(expect.objectContaining({ table: "subscription_edit_quotes" }));
+  expect(packet.outsideProfileCensus).not.toContainEqual(expect.objectContaining({ relation: "public.catalog_subscription_profile_receipts" }));
+  const capturedReceipts = packet.owned.find(entry => entry.table === "catalog_definition_installs")!.rows;
+  expect(capturedReceipts.map(row => JSON.parse(row).receipt)).toEqual([receipt]);
+  const targets = await resources.targetTemplate("profiles-target");
+  const target = await targets.nextTarget();
+  const freshTarget = await captureStoreJourney(target.owner, "profiles-target");
+  const restore = (sourcePacket = packet) => restoreConnectedNativeStore({
+    owner: target.owner, installation: journeySelection, packet: sourcePacket, freshTarget,
+  });
+
+  const { sha256: _packetHash, ...packetBody } = packet;
+  const { sha256: _compatibleHash, ...compatible } = packet.compatible;
+  const unknown = { ...compatible, catalogueId: digest("unknown test inventory") };
+  const unknownBody = { ...packetBody, compatible: { ...unknown, sha256: digest(JSON.stringify(unknown)) } };
+  await expect(restore({ ...unknownBody, sha256: digest(JSON.stringify(unknownBody)) }))
+    .rejects.toMatchObject({ code: "schema_conflict" });
+  expect(await restore()).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
+  expect(await ledgerRows(target.owner)).toEqual(savedLedger);
+  expect(await restore()).toMatchObject({ replayed: true, captureSha256: packet.sha256 });
+  const after = await captureStoreJourney(target.owner, "profiles-target-after");
+  expect(after.owned.find(entry => entry.table === "catalog_definition_installs")!.rows).toEqual(capturedReceipts);
+}, 105_000);
+
+it("AK-2 and AL-1 refuse populated profile receipts after validation and before row inspection or collection", async () => {
+  const profileRef = { key: "example:repeat", version: 1 };
+  const pack = {
+    id: "example:profile-capture", namespace: "example", version: 1, openlupRange: "1.x",
+    capabilities: {}, types: [], taxClasses: [], subscriptionProfiles: [profileRef],
+  };
+  const sql: string[] = [];
+  const capture = (limits: { maximumRows?: number; maximumBytes?: number } = {}) => {
+    sql.length = 0;
+    return captureStoreJourney(native.owner, "profile-receipt-source", { ...limits, observeQuery: query => sql.push(query) });
+  };
+  await native.owner.query("INSERT INTO public.clients(email) VALUES ('profile-limit-a@example.invalid'), ('profile-limit-b@example.invalid')");
+  const limits = [{ maximumRows: 1 }, { maximumBytes: 1 }];
+  for (const bound of limits) {
+    await expect(capture(bound)).rejects.toMatchObject({ code: "limit_exceeded" });
+    expect(sql.some(query => query.includes("SELECT to_jsonb(t)::text AS value"))).toBe(true);
+  }
+  const referenceOnly = await installCatalogDefinitions(native.owner, pack);
+  const before = await capture();
+  expect(before.owned.find(entry => entry.table === "catalog_definition_installs")!.rows.map(row => JSON.parse(row).receipt))
+    .toContainEqual(referenceOnly);
+
+  const profile = { ...profileRef, allowedCadences: [{ schemaVersion: 1, kind: "fixed_days", days: 28 }],
+    policyRef: { key: "example:repeat-policy", version: 1 }, policyDigest: digest("synthetic policy") };
+  const canonical = canonicalCatalogDraftJson(profile);
+  const { digest: _legacyDigest, ...projection } = catalogPackManifest({ ...pack, version: 2 });
+  const manifest = canonicalCatalogDraftJson({ ...projection,
+    subscriptionProfileDefinitions: [{ ...profile, profileDigest: digest(canonical) }] });
+  await native.owner.query("SELECT public.catalog_definition_install($1,2,$2::jsonb)", [pack.id, {
+    manifest, types: [], taxClasses: [], profileDeclarationBytes: [canonical],
+  }]);
+  const receiptRelation = "public.catalog_subscription_profile_receipts";
+  await expect(capture({ maximumRows: 0 })).rejects.toMatchObject({ code: "invalid_input" });
+  expect(sql.some(query => query.includes(receiptRelation))).toBe(false);
+  for (const bound of limits) {
+    await expect(capture(bound)).rejects.toMatchObject({
+      code: "subscription_profile_receipts_unsupported",
+      table: "catalog_subscription_profile_receipts",
+      remedy: "Wait for connected-store restore support for subscription profile receipts (RS-1).",
+    });
+    expect(sql.map(query => query.split("\n")[0])).toEqual([
+      expect.stringContaining("transaction_read_only"),
+      "SET LOCAL row_security = off",
+      "SET LOCAL TimeZone = 'UTC'",
+      `SELECT pg_catalog.to_regclass('${receiptRelation}') IS NOT NULL AS present`,
+      `SELECT EXISTS (SELECT 1 FROM ${receiptRelation}) AS present`,
+    ]);
+  }
 }, 105_000);

@@ -1574,6 +1574,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124220001_catalog_accepted_references.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261124230000_subscription_profiles.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -2706,6 +2714,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/payment-rail.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/payment-rail.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/quote-copy.ts",
       "class": "public-output"
     },
@@ -3471,6 +3487,10 @@
     },
     {
       "path": "packages/core/src/bundle/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/catalog/acceptedReferences.ts",
       "class": "public-output"
     },
     {
@@ -5134,6 +5154,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261124220001_catalog_accepted_references.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124230000_subscription_profiles.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5422,6 +5450,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/acceptedReferenceStore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/activeSkuSelection.ts",
       "class": "public-output"
     },
@@ -5707,6 +5739,10 @@
     },
     {
       "path": "packages/platform/src/catalog/installCatalogDefinitions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/installedSubscriptionProfiles.ts",
       "class": "public-output"
     },
     {
@@ -8758,6 +8794,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/contracts/paymentForm.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/contracts/preparedAttempt.ts",
       "class": "public-output"
     },
@@ -9087,6 +9127,10 @@
     },
     {
       "path": "packages/platform/src/payments/tpay/webhookNormalizer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/transientSecret.ts",
       "class": "public-output"
     },
     {
@@ -10259,6 +10303,10 @@
     },
     {
       "path": "packages/platform/test/catalog/fixtures/categoryPublicationRules.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/legacyPackIssues.json",
       "class": "public-output"
     },
     {
@@ -11990,6 +12038,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/transientSecret.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/truth.test.ts",
       "class": "public-output"
     },
@@ -12643,6 +12695,42 @@
     },
     {
       "path": "recipes/payments/adyen/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/server/webhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/tests/mount-proof.test.ts",
       "class": "public-output"
     },
     {
@@ -15111,6 +15199,10 @@
     },
     {
       "path": "server/adapters/postgres/connectedStoreCapture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreRestore.test.ts",
       "class": "public-output"
     },
     {
@@ -21895,14 +21987,6 @@
     },
     {
       "path": "server/infra/tpay/tpaySimulatorClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/vendorRegistry.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/vendorRegistry.ts",
       "class": "public-output"
     },
     {
@@ -30642,6 +30726,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogPublication.test.ts",
       "class": "public-output"
     },
@@ -30671,6 +30759,10 @@
     },
     {
       "path": "tests/postgres/catalogQuantities.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogSubscriptionProfiles.test.ts",
       "class": "public-output"
     },
     {
@@ -30806,11 +30898,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStoreHistoricalPacket.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStorePaymentMethods.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/connectedStorePromotionClaims.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/connectedStoreRestoreUpgrade.test.ts",
       "class": "public-output"
     },
     {

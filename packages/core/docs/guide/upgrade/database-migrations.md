@@ -1,47 +1,37 @@
 # Upgrade the database
 
-Apply the database changes required by your selected OpenLup packages while
-preserving installed history and application data. Check compatibility with
-your running application before applying a forward migration.
+Apply your selected packages' database changes without altering installed
+history or application data. Check compatibility before applying a forward.
 
 ## Follow the additive forward path
 
-Keep the installed baseline and every applied migration unchanged. Upgrade by
-appending the selected catalogue's ordered forward migrations; never split,
-rename, reorder or edit an applied unit, or relabel old SQL as new. The runner
-applies the baseline before forwards on a fresh installation and only the
-pending suffix on an existing matching installation. It provides no down-migration
-operation.
+Append forwards in catalogue order. Preserve the baseline and every applied
+unit without splitting, renaming, reordering or editing them. Never relabel
+old SQL as new. Fresh installs apply the baseline first. Matching installs
+apply only pending forwards. The runner offers no down migrations.
 
-The catalogue binds each SQL file by its canonical path and SHA-256 digest.
-Before executing SQL, the runner refuses missing or unlisted files, duplicate
-identities, changed bytes and an installed history that is not the exact
-selected prefix by path, digest and position. These refusals prevent a changed
-history from being mistaken for pending work. Repair through a new compatible
-forward, preserving the existing prefix.
+The catalogue pins each file's canonical path and SHA-256. Before applying
+SQL, the runner rejects missing or unlisted files, duplicate identities,
+changed bytes and any history that differs from the selected prefix by path,
+digest or position. Repair with a compatible forward that preserves the prefix.
 
-The additive release path admits bounded forms of object creation, table
-additions and literal, idempotent seeds. It refuses destructive operations,
-renames, schema moves, ownership transfers, writes to the application-owned
-`app` schema, procedural or dynamic SQL and unsupported expressions. These are
-release-time admission checks, separate from the runner's history checks;
-passing them does not prove that an older application can use the resulting
-schema. Changes outside this additive path need their own compatibility path.
+Release admission allows bounded object creation, table additions and literal,
+idempotent seeds. It rejects destructive operations, renames, schema moves,
+ownership transfers, writes to the application-owned `app` schema, procedural
+or dynamic SQL and unsupported expressions. Verify application compatibility
+and installed history separately. Other changes need their own compatibility
+path.
 
-An existing application with its own migration chain must compare its schema
-and applied identities with the selected catalogue and prepare compatible
-forwards. A fresh package baseline is not an upgrade over an unrelated database.
-The runner refuses a mismatched ledger; it does not convert another history.
+For an application-owned chain, compare its schema and applied identities with
+the selected catalogue and prepare compatible forwards. Use the package baseline
+for new installs. The runner refuses mismatched ledgers.
 
 ## Select the complete catalogue
 
-Use `createPlatformPostgresMigrationRunner` from
-`@openlup/platform/migrations` for the complete catalogue shipped with the
-installed package. SQL assets resolve relative to that package, so no source
-checkout is needed. Install its optional `pg` peer alongside the package.
-With the `legacy` installation its absence is reported as
-`OPENLUP_E_PEER_MISSING`; with `qualified-v2` or `qualified-admin` the runner
-fails with the module-loading error instead.
+Use `createPlatformPostgresMigrationRunner` from `@openlup/platform/migrations`.
+The complete catalogue and SQL resolve within the installed package without a
+source checkout. Install the optional `pg` peer. Without it, `legacy` reports
+`OPENLUP_E_PEER_MISSING` and qualified installs report the module-loading error.
 
 Supply an explicit `installation` selection: `legacy`, `qualified-v2` or
 `qualified-admin`, with the selected profile's role bindings. Omitting it
@@ -83,17 +73,13 @@ through a query handle you supply and reports blockers such as
 install readiness, runtime grants, pooling or host support; the helper only
 reads, creates no role or schema and runs no installer.
 
-Module migration descriptors are sparse projections of the catalogue. They
-identify their modules' SQL assets; they are not independent installation
-chains. Install the complete selected catalogue, including its dependencies,
-and preserve its full prefix.
+Module descriptors list subsets of the SQL. Install the full selected
+catalogue with its dependencies and preserve its prefix.
 
-The job-run ledger has an additional install-path constraint. Its
-`JOB_RUN_LEDGER_MIGRATIONS` descriptor lists the base ledger and the subsequent
-replacement definitions for the claim/finish routines. Use either those assets
-in your own complete chain or the catalogue that already defines the routines.
-Applying both paths fails when the latter attempts to create existing functions.
-Importing `@openlup/platform/job-ledger` applies no SQL.
+`JOB_RUN_LEDGER_MIGRATIONS` lists the base ledger and claim/finish replacements.
+Use those assets in your complete chain or use the catalogue that defines them.
+Applying both attempts to recreate functions and fails. Importing
+`@openlup/platform/job-ledger` applies no SQL.
 
 ## Inspect and apply
 
@@ -144,17 +130,16 @@ transaction and preserves the connection's isolation setting.
 
 ## Find the current function definition
 
-Read the installed platform package's `sql/manifest.json`, selecting the same
-installation generation as the runner. Follow its baseline and ordered forwards,
-or the applied prefix reported by `status()` when investigating a database that
-is behind. Module SQL lists and a filename search alone do not establish the
-effective definition.
+Open the installed package's `sql/manifest.json` for the runner's generation.
+Follow its baseline and ordered forwards, stopping at the applied prefix from
+`status()` for a database with pending forwards. Resolve definitions from that
+history before relying on module lists or filenames.
 
-Search for an anchored `CREATE FUNCTION` or `CREATE OR REPLACE FUNCTION`, then
-read the complete argument signature and body. Follow later replacements and
-`DROP FUNCTION` for that same signature in catalogue order. Overloads are separate
-functions; calls, grants and dated release notes are not declarations. Keep the
-installed package version separate from a different source checkout.
+Find anchored `CREATE FUNCTION` or `CREATE OR REPLACE FUNCTION` declarations.
+Read the full signature and body, then follow replacements and
+`DROP FUNCTION` for the same signature in order. Resolve each overload
+separately against the installed version. Treat calls, grants and release notes
+as references.
 
 For native `subscription_auto_resume_due(integer,timestamptz)`, the forward
 `20261114110000_payment_method_refs.sql` replaces earlier auto-resume definitions.

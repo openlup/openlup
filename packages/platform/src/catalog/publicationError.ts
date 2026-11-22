@@ -18,7 +18,9 @@ const reviewDraft = "Review the selected draft and prepare it again.";
 const rulesMismatch = "The product rules and installed definition differ. Rebuild the rules, attach the build to the product type, and install the updated definition before retrying.";
 const publicationCodes = [
   "activation_not_assessed", "activation_unknown", "catalog_action_conflict",
-  "catalog_archive_barrier_unavailable", "catalog_lifecycle_child_effects_mismatch", "catalog_lifecycle_evidence_unavailable",
+  "catalog_archive_barrier_unavailable", "catalog_bound_obligations",
+  "catalog_obligation_evidence_unknown", "catalog_obligation_evidence_unavailable",
+  "catalog_lifecycle_child_effects_mismatch", "catalog_lifecycle_evidence_unavailable",
   "catalog_lifecycle_fresh_sale_refused", "catalog_lifecycle_last_active_child", "catalog_lifecycle_raw_status_fenced",
   "catalog_lifecycle_state_conflict", "catalog_lifecycle_transition_refused",
   "catalog_lifecycle_withdrawal_overlay_refused", "catalog_publication_absent", "catalog_publication_use_readback_v2", "catalog_publication_use_readback_v3",
@@ -246,6 +248,9 @@ const publicationRefusals = {
   candidate_invalid: { fix: "Correct the candidate input and prepare the draft again." },
   catalog_action_conflict: { fix: "Choose create for a new product or revise for an existing publication." },
   catalog_archive_barrier_unavailable: ["catalog_archive_barrier_unavailable", "Keep the product or SKU withdrawn until catalogue archive is supported."],
+  catalog_bound_obligations: ["catalog_bound_obligations", "Keep the product or SKU withdrawn while commerce obligations are outstanding."],
+  catalog_obligation_evidence_unknown: ["catalog_obligation_evidence_unknown", "Keep the product or SKU withdrawn and reconcile the commerce owner records."],
+  catalog_obligation_evidence_unavailable: ["catalog_obligation_evidence_unavailable", "Keep the product or SKU withdrawn until the complete commerce census is available."],
   catalog_lifecycle_child_effects_mismatch: { fix: "Reload the current lifecycle state and prepare a transition permitted for the product and its SKUs." },
   catalog_lifecycle_evidence_unavailable: ["catalog_lifecycle_evidence_unavailable", "This product was published without governed lifecycle. Keep revising it with schema-3 drafts until adoption is supported."],
   catalog_lifecycle_fresh_sale_refused: ["catalog_lifecycle_fresh_sale_refused", "Restore the withdrawn product and SKU before making them sellable."],
@@ -375,6 +380,19 @@ export function publicationRemedy(code: PlatformCode): string {
 }
 type AdmissionRefusal = { outcome: "validation_issue"; reason: string; message: string; path?: string };
 
+const acceptedReferenceRefusals = {
+  catalog_accepted_reference_invalid: "Supply a schema-2 accepted reference with exactly the supported fields.",
+  catalog_accepted_reference_mismatch: "Capture the reference from the SKU revision’s issuing publication and retry.",
+  catalog_retained_revision_unavailable: "Recover the issuing publication and SKU revision from the retained catalogue before retrying.",
+  catalog_acceptance_invalid: "Supply a schema-2 acceptance with 1 to 100 distinct SKU identities and codes.",
+  catalog_acceptance_line_mismatch: "Use the persisted draft to register matching purchase lines, preview a fresh edit quote, or rebuild the cycle snapshot from the current due subscription.",
+  catalog_acceptance_receipt_mismatch: "Supply the persisted draft receipt for this order and retry with its original key.",
+  catalog_acceptance_snapshot_mismatch: "Use the stored renewal operation, its original acceptance and its frozen snapshot.",
+  catalog_acceptance_snapshot_immutable: "Replay the renewal operation with its original acceptance and frozen snapshot.",
+  catalog_acceptance_immutable: "Replay the owner command with its original acceptance and evidence.",
+  catalog_acceptance_order_missing: "Persist the order and its draft receipt before attaching the acceptance.",
+} as const;
+
 const deferredForeignKeys = new Map<string, PlatformCode>([
   ["catalog_publications_previous_fk", "catalog_publication_lineage_invalid"],
   ["catalog_publication_heads_issue_fk", "catalog_publication_head_invalid"],
@@ -398,6 +416,12 @@ function sqlAdmissionDiagnostic(error: unknown): PlatformCode | undefined {
  */
 export function catalogPublicationAdmissionRefusal(error: unknown): AdmissionRefusal | null {
   if (error instanceof CatalogPublicationError) return { ...publicationFailure(error), outcome: "validation_issue" };
+  if (error && typeof error === "object" && "code" in error && "message" in error
+    && (error.code === "22023" || error.code === "55000") && typeof error.message === "string"
+    && Object.hasOwn(acceptedReferenceRefusals, error.message)) {
+    const reason = error.message as keyof typeof acceptedReferenceRefusals;
+    return { outcome: "validation_issue", reason, message: acceptedReferenceRefusals[reason] };
+  }
   const name = sqlAdmissionDiagnostic(error);
   if (!name) return null;
   const refusal = publicationRefusals[name];

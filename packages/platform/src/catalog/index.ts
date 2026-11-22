@@ -53,6 +53,7 @@ export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
 export { installCatalogDefinitions } from "./installCatalogDefinitions.js";
+export { readInstalledCatalogSubscriptionProfile } from "./installedSubscriptionProfiles.js";
 export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } from "./catalogDefinitionReadiness.js";
 export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
 export { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
@@ -90,6 +91,8 @@ export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, Catalo
 export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
 
 export { nativeCatalogPublication } from "./publicationCodec.js";
+export { catalogAcceptedReferenceV2Schema, catalogAcceptanceV2Schema,
+  assertCatalogAcceptedReferenceV2, assertCatalogAcceptanceV2 } from "./acceptedReferenceStore.js";
 export type { CatalogFullPublicationV2, CatalogFullPublicationV3, CatalogPublicationManifestV3, CatalogPublicationReceiptV3,
   CatalogPublishedProductV3, CatalogPublishedSkuV3, CatalogPublicationFailure, CatalogPublicationManifestV2, CatalogPublicationReceiptV2,
   CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding, CatalogSkuRevisionRef } from "./publicationContracts.js";

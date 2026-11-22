@@ -62,7 +62,8 @@ export async function lifecycleInstallation(profile: LifecycleProfile) {
       "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz)",
       "public.customer_subscription_pause_as_actor(uuid,text,text,text)"]])).rows;
     const guard = async () => ({
-      function: (await owner.query("SELECT pg_get_functiondef('public.commerce_order_assert_line_sum()'::regprocedure) AS definition")).rows,
+      function: (await owner.query<{ definition: string; body: string }>(`SELECT pg_get_functiondef(oid) AS definition, prosrc AS body
+        FROM pg_catalog.pg_proc WHERE oid='public.commerce_order_assert_line_sum()'::regprocedure`)).rows,
       triggers: (await owner.query(`SELECT tgname,pg_get_triggerdef(oid) AS definition FROM pg_trigger
         WHERE tgname IN ('trg_commerce_orders_line_sum','trg_commerce_order_items_line_sum') ORDER BY tgname`)).rows,
     });
