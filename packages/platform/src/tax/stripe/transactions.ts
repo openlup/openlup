@@ -3,12 +3,13 @@ import { checked, invalid, oneOf } from "../contracts/decode.js";
 import { taxCommitRequestV1Schema, taxReverseRequestV1Schema } from "../contracts/index.js";
 import type { TaxCommitRequestV1, TaxRefusal, TaxRefusalCode, TaxReverseRequestV1, TaxScopeV1, TaxUnavailable } from "../contracts/index.js";
 import { instant, ref } from "../contracts/schemas.js";
-import { matchesDigest, taxDigest, verifyTaxQuoteResult } from "../digest.js";
+import { taxDigest, verifyTaxQuoteResult } from "../digest.js";
 import {
   checkScope, epoch, fields, id, incomplete, isProviderRejection, matchesEcho, member, nullable, readPages, record,
   StripeQuoteUnavailable, text,
 } from "./client.js";
-import type { RefundReservation, ReversalParams, SaleParams, SaleReservation } from "./effects.js";
+import { makeStripeTaxRequestDigest } from "./effects.js";
+import type { RefundReservation, ReversalParams, SaleParams } from "./effects.js";
 import type { StripeTaxAdapterOptions } from "./index.js";
 import { planQuote } from "./plan.js";
 
@@ -119,40 +120,48 @@ function effectRef(input: unknown, field: string): string | undefined {
   catch { return undefined; }
 }
 
-function verifyReservedRequest(operation: "commit" | "reverse", input: object, field: string,
-  reservation: SaleReservation | RefundReservation): void {
-  // Preserve descriptors so a malformed binding cannot read through accessors or drop unexpected fields.
-  const descriptors = Object.getOwnPropertyDescriptors(input);
-  delete descriptors.intent;
-  const body: unknown = Object.create(Object.getPrototypeOf(input), descriptors);
-  const facts = "capture" in reservation ? reservation.capture
-    : { refundEvidenceRef: reservation.refundEvidenceRef, original: reservation.original };
-  if (!matchesDigest(operation, [body, facts], reservation.requestDigest)) integrityConflict(field);
+function verifyReservedRequest(binding: Parameters<typeof makeStripeTaxRequestDigest>[0], field: string, digest: string) {
+  let actual: string;
+  try { actual = makeStripeTaxRequestDigest(binding); }
+  catch { integrityConflict(field); }
+  if (actual !== digest) integrityConflict(field);
 }
 
-function binding(options: StripeTaxAdapterOptions, operation: "commit" | "reverse", ref: string) {
-  const reference = "ol-tax-" + taxDigest("commit", [options.installationRef, options.marketPack.scope, ref]);
-  return { reference, idempotencyKey: "ol-tax-" + operation + "-" + reference.slice(7) };
+function effectReference(options: StripeTaxAdapterOptions, operation: "commit" | "reverse", ref: string) {
+  return "ol-tax-" + operation + "-" + taxDigest(operation, [operation, options.installationRef, options.marketPack.scope, ref]);
 }
 
-function bindWire<T>(operation: "commit" | "reverse", body: T, reservation: SaleReservation | RefundReservation) {
-  if (!matchesDigest(operation, body, reservation.wireDigest)) integrityConflict("/reservation/wireDigest");
-  return { ...body, metadata: { openlup_request_digest: taxDigest(operation, [reservation.requestDigest, reservation.wireDigest]) } };
+function bindWire<T>(operation: "commit" | "reverse", body: T, requestDigest: string) {
+  const bodyDigest = taxDigest(operation, body);
+  return { ...body, metadata: { openlup_request_digest: taxDigest(operation, [requestDigest, bodyDigest]) } };
 }
 
 type Send = NonNullable<ReturnType<StripeTaxAdapterOptions["effects"]["commit"]>>["send"];
+
+class HostReadFailure extends Error {}
+
+function readHost<T>(read: () => T): T {
+  try { return read(); }
+  catch { throw new HostReadFailure(); }
+}
+
+function reportingFailure(error: unknown, input: TaxCommitRequestV1 | TaxReverseRequestV1, send?: Send): TaxRefusal | TaxUnavailable {
+  if (!(error instanceof HostReadFailure)) return refuseError(error);
+  const intent: unknown = Object.getOwnPropertyDescriptor(input, "intent")?.value;
+  return { kind: "unavailable", code: "tax_adapter_unavailable",
+    effect: intent === "recover" || send?.kind === "unknown" ? "unknown" : "none" };
+}
+
 const uncertain = (transport = false): TaxUnavailable => ({
   kind: "unavailable", code: transport ? "tax_adapter_unavailable" : "tax_coverage_evidence_unavailable", effect: "unknown",
 });
 
 async function execute(
   options: StripeTaxAdapterOptions, wire: SaleParams | ReversalParams, expected: Expected,
-  idempotencyKey: string, send: Send, intent: TaxCommitRequestV1["intent"],
+  send: Send, intent: TaxCommitRequestV1["intent"],
   apply: (key: string) => Promise<unknown>, beforeSend?: (now: string) => void,
 ): Promise<ProviderReceipt | TaxRefusal | TaxUnavailable> {
-  let candidate: string | undefined;
-  try { candidate = options.effects.findTransactionIdByReference(wire.reference); }
-  catch { return uncertain(true); }
+  const candidate = readHost(() => options.effects.findTransactionIdByReference(wire.reference));
   if (candidate !== undefined || intent === "recover" || send.kind === "unknown") {
     if (!candidate) return uncertain();
     try {
@@ -161,7 +170,7 @@ async function execute(
       return await verifyReceipt(options, result, wire, expected, candidate);
     } catch (error) { return uncertain(!isProviderRejection(error) && !(error instanceof Error && "field" in error)); }
   }
-  const now = options.now().toISOString();
+  const now = readHost(() => options.now().toISOString());
   beforeSend?.(now);
   if (now >= instant(send.before, "/reservation/send/before")) {
     invalid("/intent", "The reserved send window elapsed. Reconcile the original reporting reference.", "tax_operation_unsupported");
@@ -169,7 +178,7 @@ async function execute(
   assertClientScope(options);
   let result: unknown;
   try {
-    result = await apply(idempotencyKey);
+    result = await apply(wire.reference);
   } catch (error) {
     if (isProviderRejection(error) && error.code !== "tax_reference_conflict") return refuseError(error);
     return uncertain(!isProviderRejection(error));
@@ -180,17 +189,21 @@ async function execute(
 }
 
 export async function commit(options: StripeTaxAdapterOptions, input: TaxCommitRequestV1) {
+  let send: Send | undefined;
   try {
     const key = effectRef(input, "transactionRef");
-    const reservation = key === undefined ? undefined : options.effects.commit(key);
-    if (reservation) verifyReservedRequest("commit", input, "/transactionRef", reservation);
+    const reservation = key === undefined ? undefined : readHost(() => options.effects.commit(key));
+    if (reservation) {
+      verifyReservedRequest({ operation: "commit", request: input, capture: reservation.capture }, "/transactionRef", reservation.requestDigest);
+      send = reservation.send;
+    }
     const request = taxCommitRequestV1Schema.parse(input);
     const { calculationRef, transactionRef, postedAt, capturedAt, captureEvidenceRef, intent } = request;
     if (!reservation) invalid("/transactionRef", "No effect is reserved. Reserve the verified capture before posting.", "tax_calculation_unusable");
-    const { reference, idempotencyKey } = binding(options, "commit", transactionRef);
+    const reference = effectReference(options, "commit", transactionRef);
     assertScope(calculationRef.scope, options.marketPack.scope, "/calculationRef/scope");
     assertClientScope(options);
-    const accepted = options.effects.accepted(calculationRef);
+    const accepted = readHost(() => options.effects.accepted(calculationRef));
     if (!accepted || accepted.result.kind !== "final") {
       invalid("/calculationRef", "The accepted final quote is missing. Supply the original quote and evidence.", "tax_calculation_unusable");
     }
@@ -205,7 +218,7 @@ export async function commit(options: StripeTaxAdapterOptions, input: TaxCommitR
     id(calculationRef.ref, "/calculationRef/ref");
     const { currency } = original.input;
     if (!isDeepStrictEqual(reservation.capture, { ref: captureEvidenceRef, currency, payableMinor: money.payableMinor, capturedAt })) {
-      invalid("/captureEvidenceRef", "The verified capture differs from this quote. Use its exact amount, currency and capture instant.", "tax_reference_conflict");
+      invalid("/captureEvidenceRef", "The verified capture differs from this quote. Replay the original binding or reconcile the original payment and calculation.", "tax_reference_conflict");
     }
     const { vector } = evidence.coverage;
     if (!vector.some(row => row.decision === "in_scope_taxed" || row.decision === "in_scope_exempt")
@@ -221,11 +234,12 @@ export async function commit(options: StripeTaxAdapterOptions, input: TaxCommitR
     const lines: ExpectedUnit[] = [];
     let shipping: ExpectedUnit | undefined;
     const refs = new Map<string, Set<string>>();
-    for (const { cell, providerLineRef } of evidence.positions.tax) {
-      if (cell.target.kind !== "line" || !providerLineRef) continue;
-      const lineRefs = refs.get(cell.target.key) ?? new Set<string>();
+    const providerLines = evidence.providerLines ?? evidence.positions.tax.flatMap(({ cell, providerLineRef }) =>
+      cell.target.kind === "line" && providerLineRef ? [{ lineKey: cell.target.key, providerLineRef }] : []);
+    for (const { lineKey, providerLineRef } of providerLines) {
+      const lineRefs = refs.get(lineKey) ?? new Set<string>();
       lineRefs.add(providerLineRef);
-      refs.set(cell.target.key, lineRefs);
+      refs.set(lineKey, lineRefs);
     }
     for (const { source, code, effectiveMinor } of plan.components) {
       const component = money.components.find(({ ref }) => source
@@ -247,19 +261,20 @@ export async function commit(options: StripeTaxAdapterOptions, input: TaxCommitR
       incomplete("/calculationRef", "The calculation reused a reporting line identity.");
     }
     const body = { calculation: calculationRef.ref, reference, posted_at: postedSeconds };
-    const wire = bindWire("commit", body, reservation);
-    const receipt = await execute(options, wire, { currency, taxDate, postedAt, lines, shipping }, idempotencyKey, reservation.send, intent,
+    const wire = bindWire("commit", body, reservation.requestDigest);
+    const receipt = await execute(options, wire, { currency, taxDate, postedAt, lines, shipping }, reservation.send, intent,
       key => options.client.transactions.createFromCalculation(wire, { idempotencyKey: key }), now => {
         if (accepted.closed) invalid("/calculationRef", "The calculation was closed locally. Reconcile it with the original capture.", "tax_calculation_closed");
         if (now >= evidence.expiresAt || capturedAt >= evidence.expiresAt || postedAt >= evidence.expiresAt) {
           invalid("/calculationRef", "The calculation expired before capture or posting. Reconcile the original obligation.", "tax_calculation_expired");
         }
-        if (capturedAt < evidence.calculatedAt || postedAt > now) {
-          invalid("/postedAt", "Use a capture after calculation and a posting time between capture and the current time.");
+        if (capturedAt < evidence.calculatedAt) {
+          invalid("/capturedAt", "The capture predates calculation. Reconcile the original payment and calculation.");
         }
+        if (postedAt > now) invalid("/postedAt", "Use a posting time on or before the current time.");
       });
     return "kind" in receipt ? receipt : { kind: "committed" as const, providerTransactionRef: receipt.id, positions: receipt.positions };
-  } catch (error) { return refuseError(error); }
+  } catch (error) { return reportingFailure(error, input, send); }
 }
 
 function reversalUnits(request: TaxReverseRequestV1, original: RefundReservation["original"]) {
@@ -296,16 +311,21 @@ function reversalUnits(request: TaxReverseRequestV1, original: RefundReservation
 }
 
 export async function reverse(options: StripeTaxAdapterOptions, input: TaxReverseRequestV1) {
+  let send: Send | undefined;
   try {
     const key = effectRef(input, "reversalRef");
-    const reservation = key === undefined ? undefined : options.effects.reverse(key);
-    if (reservation) verifyReservedRequest("reverse", input, "/reversalRef", reservation);
+    const reservation = key === undefined ? undefined : readHost(() => options.effects.reverse(key));
+    if (reservation) {
+      const { refundEvidenceRef, original, requestDigest } = reservation;
+      verifyReservedRequest({ operation: "reverse", request: input, refundEvidenceRef, original }, "/reversalRef", requestDigest);
+      send = reservation.send;
+    }
     const request = taxReverseRequestV1Schema.parse(input);
     if (request.mode === "amount") {
       invalid("/mode", "Flat amounts have no verified allocation. Reserve an exact line or full reversal.", "tax_operation_unsupported");
     }
     if (!reservation) invalid("/reversalRef", "No effect is reserved. Reserve the verified refund before reversing.", "tax_reversal_unsubstantiated");
-    const { reference, idempotencyKey } = binding(options, "reverse", request.reversalRef);
+    const reference = effectReference(options, "reverse", request.reversalRef);
     assertScope(request.scope, options.marketPack.scope, "/scope");
     assertClientScope(options);
     const { original, refundEvidenceRef } = reservation;
@@ -319,10 +339,10 @@ export async function reverse(options: StripeTaxAdapterOptions, input: TaxRevers
       ...(!full && lines.length && { line_items: lines.map(({ amount, amount_tax, reference, postedPositionRef }) =>
         ({ amount, amount_tax, reference, original_line_item: postedPositionRef! })) }),
       ...(!full && shipping && { shipping_cost: { amount: shipping.amount, amount_tax: shipping.amount_tax } }) };
-    const wire = bindWire("reverse", body, reservation);
+    const wire = bindWire("reverse", body, reservation.requestDigest);
     const expected = { currency: original.currency, taxDate: original.taxDate, original: original.id, lines, shipping, full };
-    const receipt = await execute(options, wire, expected, idempotencyKey, reservation.send, request.intent,
+    const receipt = await execute(options, wire, expected, reservation.send, request.intent,
       key => options.client.transactions.createReversal(wire, { idempotencyKey: key }));
     return "kind" in receipt ? receipt : { kind: "reversed" as const, providerReversalRef: receipt.id, positions: request.positions };
-  } catch (error) { return refuseError(error); }
+  } catch (error) { return reportingFailure(error, input, send); }
 }

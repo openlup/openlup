@@ -1102,9 +1102,10 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'export const taxQuote = taxAdapter.quote(taxQuoteRequestV1Schema.parse(makeTaxQuoteRequest("quote", taxInput)));',
   );
   if (entries.includes("tax/stripe")) surfaces.push(
-    'import { createStripeTaxAdapter, type StripeTaxAdapterOptions } from "@openlup/platform/tax/stripe";',
+    'import { createStripeTaxAdapter, makeStripeTaxRequestDigest, type StripeTaxAdapterOptions } from "@openlup/platform/tax/stripe";',
     'declare const taxProviderOptions: StripeTaxAdapterOptions;',
     'export const configuredTaxProvider = () => createStripeTaxAdapter(taxProviderOptions);',
+    'export const reserveTaxEffect = makeStripeTaxRequestDigest;',
   );
   if (entries.includes("marketing") && entries.includes("marketing/contracts")) surfaces.push([
     'import { acquisitionCaseListRequestSchema, prelaunchAcquisitionListRequestSchema, buildHeadDescriptor, organizationLd } from "@openlup/platform/marketing";',
@@ -2718,7 +2719,7 @@ const forbidden = () => { throw Error("ambient I/O forbidden"); };
 globalThis.fetch = forbidden; http.request = forbidden; https.request = forbidden; net.connect = forbidden;
 syncBuiltinESMExports();
 const adapter = await import("@openlup/platform/tax/stripe");
-assert.deepEqual(Object.keys(adapter), ["createStripeTaxAdapter"]);
+assert.deepEqual(Object.keys(adapter), ["createStripeTaxAdapter", "makeStripeTaxRequestDigest"]);
 const scope = { adapter: "stripeTax", adapterVersion: "1", accountRef: "account", mode: "test" };
 const port = adapter.createStripeTaxAdapter({ installationRef: "installation",
   marketPack: { scope, market: "market-a", currency: "XXX", policyRevision: "policy", classMapRevision: "classes",
@@ -2729,6 +2730,11 @@ const port = adapter.createStripeTaxAdapter({ installationRef: "installation",
   effects: { accepted: forbidden, commit: forbidden, reverse: forbidden, findTransactionIdByReference: forbidden },
   now: forbidden });
 assert.equal(port.capabilities().validity, "probe_by_recalculation");
+const at = "2030-01-01T00:00:00.000Z";
+const request = { calculationRef: { scope, ref: "sample", evidenceDigest: "a".repeat(64) },
+  transactionRef: "sale", postedAt: at, capturedAt: at, captureEvidenceRef: "capture", intent: "apply" };
+const capture = { ref: "capture", currency: "XXX", payableMinor: 1, capturedAt: at };
+assert.match(adapter.makeStripeTaxRequestDigest({ operation: "commit", request, capture }), /^[a-f0-9]{64}$/);
 assert.equal(typeof (await import("@openlup/platform/tax")).compareTaxRecalculationProbe, "function");
 `);
 

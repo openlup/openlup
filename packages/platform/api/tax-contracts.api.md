@@ -304,7 +304,7 @@ export type TaxQuoteRequestV1 = Readonly<{
  *   policyRevision, classMapRevision, coverage, tax, fees }`. Use the coverage
  *   vector for `coverage`, the tax rows with `resolutionDigest` and
  *   `providerLineRef` omitted for `tax`, and the fee rows for `fees`.
- *   This payload excludes the request key, calculation ref, times and expiry.
+ *   This payload excludes the request key, calculation ref, provider line IDs, times and expiry.
  * - `platform.tax.evidence.v1` binds this whole evidence object.
  *
  * Supply one metadata row per emitted assessment, including zero amounts.
@@ -326,6 +326,11 @@ export type TaxCalculationEvidenceV1 = Readonly<{
     classMapRevision: string;
     coverage: CoverageEvidence;
     fiscalDigest: string;
+    /** Complete verified merchandise line IDs for reporting, including lines without assessments. */
+    providerLines?: List<Readonly<{
+        lineKey: string;
+        providerLineRef: string;
+    }>>;
     positions: Readonly<{
         tax: List<Assessed>;
         fees: List<Fee>;

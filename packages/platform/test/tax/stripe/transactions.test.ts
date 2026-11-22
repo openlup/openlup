@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { compareTaxRecalculationProbe, makeTaxQuoteRequest, verifyTaxQuoteRequest, verifyTaxQuoteResult } from "../../../src/tax/index.js";
-import { taxDigest } from "../../../src/tax/digest.js";
-import type { TaxReverseRequestV1 } from "../../../src/tax/contracts/index.js";
+import { makeStripeTaxRequestDigest } from "../../../src/tax/stripe/index.js";
+import type { TaxRefusal, TaxReverseRequestV1 } from "../../../src/tax/contracts/index.js";
 import { date, later } from "../fixtures.js";
 import { detail, snapshot, withFee, page, registration, registrationUrl } from "./fixtures.js";
 import { lifecycleFixture } from "./lifecycleFixtures.js";
 
-function expectIntegrityRefusal(result: unknown, code: "tax_reference_conflict" | "tax_scope_mismatch" | "tax_invalid_input" = "tax_reference_conflict") {
+function expectIntegrityRefusal(result: unknown, code: "tax_reference_conflict" | "tax_scope_mismatch" = "tax_reference_conflict") {
   expect(result).toMatchObject({ kind: "refused", code });
-  expect(result).not.toHaveProperty("expected");
+  expect(Reflect.ownKeys(result as object).map(String).sort()).toEqual(["code", "field", "kind", "remedy"]);
+  const { remedy } = result as TaxRefusal;
+  expect(remedy).not.toMatch(/[a-f0-9]{64}/iu);
+  expect(remedy).not.toMatch(/\d/u);
 }
 
 async function postedLine() {
@@ -28,7 +31,7 @@ describe("reporting lifecycle", () => {
   it("posts the final calculation once and maps out-of-order lines and shipping before replaying after expiry", async () => {
     const f = lifecycleFixture();
     const port = f.open();
-    const { commit, result, reservation } = await f.quoteAndReserve(port);
+    const { commit, result } = await f.quoteAndReserve(port);
     const posted = await port.commit(commit);
     expect(posted).toEqual({ kind: "committed", providerTransactionRef: "tax_sale", positions: [
       { originalPositionRef: "item_0_0", postedPositionRef: "tax_line_0" },
@@ -37,13 +40,106 @@ describe("reporting lifecycle", () => {
     ] });
     const [[wire, write]] = f.client.transactions.createFromCalculation.mock.calls;
     expect(wire).toMatchObject({ calculation: result.evidence.calculationRef, posted_at: Date.parse(date) / 1000,
-      reference: expect.stringMatching(/^ol-tax-[a-f0-9]{64}$/), metadata: { openlup_request_digest: expect.stringMatching(/^[a-f0-9]{64}$/) } });
-    expect(wire.metadata.openlup_request_digest).toBe(taxDigest("commit", [reservation.requestDigest, reservation.wireDigest]));
-    expect(write.idempotencyKey).toEqual("ol-tax-commit-" + wire.reference.slice(7));
+      reference: expect.stringMatching(/^ol-tax-commit-[a-f0-9]{64}$/), metadata: { openlup_request_digest: expect.stringMatching(/^[a-f0-9]{64}$/) } });
+    expect(write.idempotencyKey).toEqual(wire.reference);
     f.setTime(later);
     expect(await port.commit(commit)).toEqual(posted);
     expect(await port.commit({ ...commit, intent: "recover" })).toEqual(posted);
     expect(f.effects().commits).toBe(1);
+  });
+
+  it.each(["commit-first", "reverse-first"])("reports both operations with local reference forty-two in %s order", async order => {
+    const { f, port, input, units } = await postedLine();
+    const { commit } = await f.quoteAndReserve(port, "42");
+    const refund = { ...input, reversalRef: "42" };
+    f.reserveReverse(refund, units, 100);
+    const sale = () => port.commit(commit);
+    const reverse = () => port.reverse(refund);
+    if (order === "commit-first") {
+      expect(await sale()).toMatchObject({ kind: "committed" });
+      expect(await reverse()).toMatchObject({ kind: "reversed" });
+    } else {
+      expect(await reverse()).toMatchObject({ kind: "reversed" });
+      expect(await sale()).toMatchObject({ kind: "committed" });
+    }
+    const [[originalWire], [saleWire]] = f.client.transactions.createFromCalculation.mock.calls;
+    const [[refundWire, refundWrite]] = f.client.transactions.createReversal.mock.calls;
+    expect(saleWire.reference).not.toBe(originalWire.reference);
+    expect(refundWire.reference).toMatch(/^ol-tax-reverse-[a-f0-9]{64}$/u);
+    expect(refundWire.reference).not.toBe(saleWire.reference);
+    expect(refundWrite.idempotencyKey).toBe(refundWire.reference);
+    expect(f.lookup).toHaveBeenCalledWith(saleWire.reference);
+    expect(f.lookup).toHaveBeenCalledWith(refundWire.reference);
+    expect(await port.commit({ ...commit, intent: "recover" })).toMatchObject({ kind: "committed" });
+    expect(await port.reverse({ ...refund, intent: "recover" })).toMatchObject({ kind: "reversed" });
+    expect(f.effects()).toEqual({ commits: 2, reversals: 1, providerCloses: 0 });
+  });
+
+  it("posts verified merchandise line IDs even when a line has no tax rows", async () => {
+    const f = lifecycleFixture();
+    f.input.money.delivery = [];
+    f.input.delivery = [];
+    f.input.required = f.input.required.filter(cell => cell.target.kind === "line");
+    f.input.coverage = { ...f.input.coverage, declarations: f.input.coverage.declarations.map(row => row.jurisdiction === "district-b"
+      ? { ...row, status: "not_registered_acknowledged", acknowledgementRef: "ack-b" } : row) };
+    f.marketPack.registrations = f.marketPack.registrations.map(row => row.jurisdiction === "district-b" ? { ...row, state: "RB" } : row);
+    f.setResult(params => snapshot(params, 0, { lineDetails: row => row.reference === "ol-m-2" ? [] : [detail(10, row.amount)] }));
+    const port = f.open();
+    const { commit, result } = await f.quoteAndReserve(port);
+    expect(verifyTaxQuoteResult(f.request(), result)).toBeUndefined();
+    expect(result.evidence.coverage.vector.map(row => row.decision).sort()).toEqual(["in_scope_taxed", "out_of_scope"]);
+    expect(result.evidence.positions.tax).toHaveLength(1);
+    expect(result.evidence.providerLines).toEqual(f.input.money.sources.map(({ lineKey }, index) =>
+      ({ lineKey, providerLineRef: "item_0_" + index })));
+    expect(await port.commit(commit)).toEqual({ kind: "committed", providerTransactionRef: "tax_sale", positions: [
+      { originalPositionRef: "item_0_0", postedPositionRef: "tax_line_0" },
+      { originalPositionRef: "item_0_1", postedPositionRef: "tax_line_1" },
+    ] });
+  });
+
+  it("refuses calculation lines whose provider ID is missing", async () => {
+    const f = lifecycleFixture();
+    f.setResult(params => {
+      const response = snapshot(params);
+      Reflect.deleteProperty(response.line_items.data[1], "id");
+      return response;
+    });
+    expect(await f.open().quote(f.request())).toMatchObject({ kind: "refused", code: "tax_breakdown_incomplete" });
+    expect(f.effects().commits).toBe(0);
+  });
+
+  it("posts with the request digest as the only persisted hash", async () => {
+    const f = lifecycleFixture();
+    const port = f.open();
+    const { commit, reservation } = await f.quoteAndReserve(port);
+    expect(Object.keys(reservation).sort()).toEqual(["capture", "requestDigest", "send"]);
+    expect(reservation.requestDigest).toBe(makeStripeTaxRequestDigest({
+      operation: "commit", request: { ...commit, intent: "recover" }, capture: reservation.capture,
+    }));
+    expect(await port.commit(commit)).toMatchObject({ kind: "committed" });
+  });
+
+  it("points captures before calculation to the original payment and calculation", async () => {
+    const f = lifecycleFixture();
+    const port = f.open();
+    const { commit, result } = await f.quoteAndReserve(port);
+    const input = { ...commit, capturedAt: "2029-12-31T23:59:59.000Z" };
+    f.reserveCommit(input, result.money.payableMinor);
+    expect(await port.commit(input)).toEqual({ kind: "refused", code: "tax_invalid_input", field: "/capturedAt",
+      remedy: "The capture predates calculation. Reconcile the original payment and calculation." });
+    expect(f.effects().commits).toBe(0);
+  });
+
+  it.each([{ payableMinor: 123 }, { currency: "XTS" }, { capturedAt: later }])("reconciles a verified capture that disagrees with its quote (%j)", async facts => {
+    const f = lifecycleFixture();
+    const port = f.open();
+    const { commit, result } = await f.quoteAndReserve(port);
+    f.reserveCommit(commit, result.money.payableMinor, facts);
+    const refusal = await port.commit(commit);
+    expectIntegrityRefusal(refusal);
+    expect(refusal).toMatchObject({ field: "/captureEvidenceRef",
+      remedy: "The verified capture differs from this quote. Replay the original binding or reconcile the original payment and calculation." });
+    expect(f.effects().commits).toBe(0);
   });
 
   it.each(["closed", "expired", "capture", "deadline", "fee", "conflict"] as const)("refuses %s before reporting", async scenario => {
@@ -68,7 +164,10 @@ describe("reporting lifecycle", () => {
       deadline: "tax_operation_unsupported", fee: "tax_operation_unsupported", conflict: "tax_reference_conflict" }[scenario];
     const result = await port.commit(input);
     expect(result).toMatchObject({ kind: "refused", code });
-    if (code === "tax_reference_conflict") expectIntegrityRefusal(result);
+    if (code === "tax_reference_conflict") {
+      expectIntegrityRefusal(result);
+      expect(f.lookup).not.toHaveBeenCalled();
+    }
     expect(f.effects().commits).toBe(0);
   });
 
@@ -120,15 +219,17 @@ describe("reporting lifecycle", () => {
     const { f, port, input, units } = await postedLine();
     f.reserveReverse(input, units, 100);
     units[0].postedPositionRef = "tax_other_line";
+    f.lookup.mockClear();
     expectIntegrityRefusal(await port.reverse(input));
+    expect(f.lookup).not.toHaveBeenCalled();
     expect(f.effects().reversals).toBe(0);
   });
 
-  it("checks the reserved wire digest before dispatch and recovery lookup", async () => {
+  it("checks the persisted request digest before dispatch and recovery lookup", async () => {
     const { f, port, commit, input, units } = await postedLine();
     const refund = f.reserveReverse(input, units, 100);
     const sale = f.reservations.get(commit.transactionRef)!;
-    sale.wireDigest = refund.wireDigest = "0".repeat(64);
+    sale.requestDigest = refund.requestDigest = "0".repeat(64);
     f.lookup.mockClear();
     for (const intent of ["apply", "recover"] as const) {
       expectIntegrityRefusal(await port.commit({ ...commit, intent }));
@@ -138,14 +239,39 @@ describe("reporting lifecycle", () => {
     expect(f.effects()).toEqual({ commits: 1, reversals: 0, providerCloses: 0 });
   });
 
-  it("returns typed unknown effects when the reference index fails", async () => {
+  it("returns typed failures when the reference index fails", async () => {
     const { f, port, commit, input, units } = await postedLine();
     f.reserveReverse(input, units, 100);
     f.lookup.mockImplementation(() => { throw new Error("Index unavailable"); });
     const unknown = { kind: "unavailable", code: "tax_adapter_unavailable", effect: "unknown" };
     expect(await port.commit({ ...commit, intent: "recover" })).toEqual(unknown);
+    expect(await port.reverse(input)).toEqual({ ...unknown, effect: "none" });
+    f.refunds.get(input.reversalRef)!.send = { kind: "unknown" };
     expect(await port.reverse(input)).toEqual(unknown);
     expect(f.effects()).toEqual({ commits: 1, reversals: 0, providerCloses: 0 });
+  });
+
+  it.each(["readSale", "readAccepted"] as const)("returns a typed no-effect failure when %s throws before a sale dispatch", async read => {
+    const f = lifecycleFixture();
+    const port = f.open();
+    const { commit } = await f.quoteAndReserve(port);
+    f[read].mockImplementation(() => { throw new Error("Host read unavailable"); });
+    expect(await port.commit(commit)).toEqual({ kind: "unavailable", code: "tax_adapter_unavailable", effect: "none" });
+    expect(f.lookup).not.toHaveBeenCalled();
+    expect(f.effects().commits).toBe(0);
+  });
+
+  it("keeps a lost reversal unresolved when the refund reservation store throws during recovery", async () => {
+    const { f, port, input, units } = await postedLine();
+    f.reserveReverse(input, units, 100);
+    f.loseResponse();
+    const unknown = { kind: "unavailable", code: "tax_adapter_unavailable", effect: "unknown" };
+    expect(await port.reverse(input)).toEqual(unknown);
+    f.readRefund.mockImplementation(() => { throw new Error("Refund reservation store unavailable"); });
+    f.lookup.mockClear();
+    expect(await port.reverse({ ...input, intent: "recover" })).toEqual(unknown);
+    expect(f.lookup).not.toHaveBeenCalled();
+    expect(f.effects().reversals).toBe(1);
   });
 
   it("recovers a lost reversal response only after verifying the indexed receipt", async () => {
@@ -157,10 +283,14 @@ describe("reporting lifecycle", () => {
     const recover = { ...input, intent: "recover" as const };
     expect(await port.reverse(recover)).toMatchObject({ kind: "unavailable", effect: "unknown" });
     const [{ reference, metadata }] = f.client.transactions.createReversal.mock.calls[0];
-    expect(metadata.openlup_request_digest).toBe(taxDigest("reverse", [reservation.requestDigest, reservation.wireDigest]));
+    expect(metadata.openlup_request_digest).toMatch(/^[a-f0-9]{64}$/u);
     f.references.set(reference, "tax_sale");
     expect(await port.reverse(recover)).toMatchObject({ kind: "unavailable", effect: "unknown" });
     f.references.set(reference, "tax_refund_1");
+    const stored = f.receipts.get("tax_refund_1")!;
+    stored.metadata = { openlup_request_digest: reservation.requestDigest };
+    expect(await port.reverse(recover)).toEqual({ kind: "unavailable", code: "tax_coverage_evidence_unavailable", effect: "unknown" });
+    stored.metadata = metadata;
     expect(await port.reverse(recover)).toEqual({ kind: "reversed", providerReversalRef: "tax_refund_1", positions: input.positions });
     expect(f.effects().reversals).toBe(1);
   });
@@ -196,8 +326,8 @@ describe("retry validity probe", () => {
     ] as const;
     for (const [input, code, field] of cases) {
       const diagnostic = verifyTaxQuoteRequest(input);
-      expectIntegrityRefusal(diagnostic, code);
-      expect(diagnostic).toMatchObject({ field });
+      if (code !== "tax_invalid_input") expectIntegrityRefusal(diagnostic, code);
+      expect(diagnostic).toMatchObject({ kind: "refused", code, field });
       expect(await port.readFiscalValidity(input)).toEqual({
         kind: "unavailable", code: "tax_fiscal_validity_unavailable", effect: "none",
       });

@@ -1,3 +1,4 @@
+import { taxDigest } from "../digest.js";
 import type { TaxCommitRequestV1, TaxCoverageInputV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxQuoteResultV1, TaxReverseRequestV1, TaxScopeV1 } from "../contracts/index.js";
 
 export type Address = { line1: string; line2?: string; city: string; state?: string; postal_code: string; country: string };
@@ -77,16 +78,8 @@ type Unit = {
 // A ready reservation authorizes its original body and key only until the host's proven send deadline.
 type Send = { kind: "ready"; before: string } | { kind: "unknown" };
 type Reservation = {
-  /**
-   * Hash canonical JSON tagged with platform.tax.<operation>.v1 over
-   * [request without intent, capture] for a sale or [request without intent, { refundEvidenceRef, original }] for a refund.
-   */
+  /** Persist the value returned by makeStripeTaxRequestDigest before dispatch. */
   requestDigest: string;
-  /**
-   * Persist the same tagged hash of the exact provider body before dispatch, with metadata omitted.
-   * The provider metadata carries the tagged hash of [requestDigest, wireDigest].
-   */
-  wireDigest: string;
   send: Send;
 };
 export type SaleReservation = Reservation & {
@@ -98,13 +91,35 @@ export type RefundReservation = Reservation & {
   original: { id: string; scope: TaxScopeV1; currency: string; taxDate: string;
     payableMinor: number; refundedMinor: number; units: readonly Unit[] };
 };
+type RequestBinding =
+  | { operation: "commit"; request: TaxCommitRequestV1; capture: SaleReservation["capture"] }
+  | { operation: "reverse"; request: TaxReverseRequestV1; refundEvidenceRef: string; original: RefundReservation["original"] };
+
+/**
+ * Derive the requestDigest to persist with the verified capture or refund reservation before dispatch.
+ * Binds the port request and immutable facts, including the posted-line mapping for a refund.
+ * Intent and send state can change during recovery. This helper performs no I/O.
+ * @beta
+ * @experimental
+ */
+export function makeStripeTaxRequestDigest(binding: RequestBinding): string {
+  const { operation, request } = binding;
+  // Preserve descriptors so canonicalization rejects accessors and extra fields remain bound.
+  const descriptors = Object.getOwnPropertyDescriptors<object>(request);
+  delete descriptors.intent;
+  const body: unknown = Object.create(Object.getPrototypeOf(request), descriptors);
+  const facts = operation === "commit" ? binding.capture : { refundEvidenceRef: binding.refundEvidenceRef, original: binding.original };
+  return taxDigest(operation, [body, facts]);
+}
+
 export interface Effects {
   /** These callbacks read authoritative records. The host serializes sends and persists effects and local closes. */
   accepted(ref: TaxCommitRequestV1["calculationRef"]): Accepted | undefined;
   commit(transactionRef: string): SaleReservation | undefined;
   reverse(reversalRef: TaxReverseRequestV1["reversalRef"]): RefundReservation | undefined;
-  /** Return a positive observation for the provider reference. It is ol-tax- plus the SHA-256
-   * of canonical JSON for [platform.tax.commit.v1, [installationRef, scope, saleOrRefundRef]].
+  /** Return a positive observation keyed by the exact provider reference.
+   * It is ol-tax-<operation>- followed by the SHA-256 of canonical JSON for
+   * [platform.tax.<operation>.v1, [operation, installationRef, scope, saleOrRefundRef]].
    */
   findTransactionIdByReference(reference: string): string | undefined;
 }

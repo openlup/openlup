@@ -163,16 +163,8 @@ type Send = {
     kind: "unknown";
 };
 type Reservation = {
-    /**
-     * Hash canonical JSON tagged with platform.tax.<operation>.v1 over
-     * [request without intent, capture] for a sale or [request without intent, { refundEvidenceRef, original }] for a refund.
-     */
+    /** Persist the value returned by makeStripeTaxRequestDigest before dispatch. */
     requestDigest: string;
-    /**
-     * Persist the same tagged hash of the exact provider body before dispatch, with metadata omitted.
-     * The provider metadata carries the tagged hash of [requestDigest, wireDigest].
-     */
-    wireDigest: string;
     send: Send;
 };
 export type SaleReservation = Reservation & {
@@ -196,13 +188,32 @@ export type RefundReservation = Reservation & {
         units: readonly Unit[];
     };
 };
+type RequestBinding = {
+    operation: "commit";
+    request: TaxCommitRequestV1;
+    capture: SaleReservation["capture"];
+} | {
+    operation: "reverse";
+    request: TaxReverseRequestV1;
+    refundEvidenceRef: string;
+    original: RefundReservation["original"];
+};
+/**
+ * Derive the requestDigest to persist with the verified capture or refund reservation before dispatch.
+ * Binds the port request and immutable facts, including the posted-line mapping for a refund.
+ * Intent and send state can change during recovery. This helper performs no I/O.
+ * @beta
+ * @experimental
+ */
+export declare function makeStripeTaxRequestDigest(binding: RequestBinding): string;
 export interface Effects {
     /** These callbacks read authoritative records. The host serializes sends and persists effects and local closes. */
     accepted(ref: TaxCommitRequestV1["calculationRef"]): Accepted | undefined;
     commit(transactionRef: string): SaleReservation | undefined;
     reverse(reversalRef: TaxReverseRequestV1["reversalRef"]): RefundReservation | undefined;
-    /** Return a positive observation for the provider reference. It is ol-tax- plus the SHA-256
-     * of canonical JSON for [platform.tax.commit.v1, [installationRef, scope, saleOrRefundRef]].
+    /** Return a positive observation keyed by the exact provider reference.
+     * It is ol-tax-<operation>- followed by the SHA-256 of canonical JSON for
+     * [platform.tax.<operation>.v1, [operation, installationRef, scope, saleOrRefundRef]].
      */
     findTransactionIdByReference(reference: string): string | undefined;
 }
@@ -213,6 +224,7 @@ export {};
 ```ts
 import type { TaxCalculationPortV1 } from "../contracts/index.js";
 import type { Client, Effects, StripeQuoteMarketPack } from "./effects.js";
+export { makeStripeTaxRequestDigest } from "./effects.js";
 /** Host-owned dependencies for one qualified account, mode, market and currency.
  * @beta
  * @experimental

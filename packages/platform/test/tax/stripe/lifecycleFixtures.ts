@@ -1,8 +1,8 @@
 import { vi } from "vitest";
-import { makeTaxQuoteRequest, taxDigest } from "../../../src/tax/digest.js";
+import { makeTaxQuoteRequest } from "../../../src/tax/index.js";
 import type { TaxCommitRequestV1, TaxReverseRequestV1 } from "../../../src/tax/contracts/index.js";
 import type { Client, Accepted, RefundReservation, SaleReservation } from "../../../src/tax/stripe/effects.js";
-import { createStripeTaxAdapter } from "../../../src/tax/stripe/index.js";
+import { createStripeTaxAdapter, makeStripeTaxRequestDigest } from "../../../src/tax/stripe/index.js";
 import { date, later } from "../fixtures.js";
 import { detail, fakeClient, fixture, page, seconds, snapshot } from "./fixtures.js";
 
@@ -60,7 +60,7 @@ export function lifecycleFixture(options: { single?: boolean } = {}) {
   const transactions = {
     createFromCalculation: vi.fn<Client["transactions"]["createFromCalculation"]>(async wire => {
       const calculated = calculations.get(wire.calculation)!;
-      const id = "tax_sale";
+      const id = receipts.has("tax_sale") ? "tax_sale_" + calculated.id : "tax_sale";
       return store(receipt(id, wire.reference, wire.metadata, calculated, undefined,
         calculated.line_items.data.map((row, index) => ({ ...row, id: "tax_line_" + index,
           object: "tax.transaction_line_item", type: "transaction", reversal: null })).reverse(),
@@ -86,53 +86,45 @@ export function lifecycleFixture(options: { single?: boolean } = {}) {
   };
   const client = { ...quoteClient, calculations: { ...quoteClient.calculations, retrieve: vi.fn(async id => calculations.get(id)) }, transactions };
   const lookup = vi.fn((ref: string) => references.get(ref));
+  const readAccepted = vi.fn(() => accepted);
+  const readSale = vi.fn((ref: string) => reservations.get(ref));
+  const readRefund = vi.fn((ref: string) => refunds.get(ref));
   const open = () => createStripeTaxAdapter({ installationRef: "installation", client, marketPack, now: () => new Date(time),
     effects: {
-      accepted: () => accepted, commit: ref => reservations.get(ref), reverse: ref => refunds.get(ref),
+      accepted: readAccepted, commit: readSale, reverse: readRefund,
       findTransactionIdByReference: lookup,
     },
   });
   const effects = () => ({ commits: transactions.createFromCalculation.mock.calls.length,
     reversals: transactions.createReversal.mock.calls.length, providerCloses: 0 });
-  const providerReference = (ref: string) => "ol-tax-" + taxDigest("commit", ["installation", marketPack.scope, ref]);
-  function reserveCommit(request: TaxCommitRequestV1, payableMinor: number) {
-    const { intent: _intent, ...body } = request;
-    const capture = { ref: request.captureEvidenceRef, capturedAt: request.capturedAt, currency: input.currency, payableMinor };
-    const wire = { calculation: request.calculationRef.ref, reference: providerReference(request.transactionRef),
-      posted_at: seconds(request.postedAt) };
-    const value: SaleReservation = { requestDigest: taxDigest("commit", [body, capture]),
-      wireDigest: taxDigest("commit", wire), send: { kind: "ready", before: later }, capture };
+  function reserveCommit(request: TaxCommitRequestV1, payableMinor: number, facts?: Partial<SaleReservation["capture"]>) {
+    const capture = { ref: request.captureEvidenceRef, capturedAt: request.capturedAt, currency: input.currency, payableMinor, ...facts };
+    const value: SaleReservation = { requestDigest: makeStripeTaxRequestDigest({ operation: "commit", request, capture }),
+      send: { kind: "ready", before: later }, capture };
     reservations.set(request.transactionRef, value);
     return value;
   }
   function reserveReverse(request: TaxReverseRequestV1, units: Unit[], payableMinor: number) {
-    const { intent: _intent, ...body } = request;
     const { refundEvidenceRef } = request;
     const original = { id: request.originalRef, scope: input.scope, currency: input.currency,
       taxDate: input.taxDate, payableMinor, refundedMinor: request.fromMinor, units };
-    // Reversal fixtures use a single merchandise unit.
-    const [delta] = request.positions;
-    const full = request.mode === "full" && request.fromMinor === 0;
-    const wire = { reference: providerReference(request.reversalRef), original_transaction: original.id,
-      mode: full ? "full" : "partial", ...(!full && { line_items: [{ reference: "ol-r-0",
-        original_line_item: units[0].postedPositionRef, amount: delta.netDeltaMinor, amount_tax: delta.taxDeltaMinor }] }) };
-    const value: RefundReservation = { requestDigest: taxDigest("reverse", [body, { refundEvidenceRef, original }]),
-      wireDigest: taxDigest("reverse", wire), send: { kind: "ready", before: later }, refundEvidenceRef, original };
+    const value: RefundReservation = { requestDigest: makeStripeTaxRequestDigest({ operation: "reverse", request, refundEvidenceRef, original }),
+      send: { kind: "ready", before: later }, refundEvidenceRef, original };
     refunds.set(request.reversalRef, value);
     return value;
   }
-  async function quoteAndReserve(adapter = open()) {
+  async function quoteAndReserve(adapter = open(), transactionRef = "sale-a") {
     const request = f.request();
     const result = await adapter.quote(request);
     if (result.kind !== "final") throw new Error(JSON.stringify(result));
     const calculationRef = { scope: input.scope, ref: result.evidence.calculationRef, evidenceDigest: result.evidenceDigest };
     accepted = { request, result, closed: false };
-    const commit: TaxCommitRequestV1 = { calculationRef, transactionRef: "sale-a", postedAt: time, capturedAt: time,
+    const commit: TaxCommitRequestV1 = { calculationRef, transactionRef, postedAt: time, capturedAt: time,
       captureEvidenceRef: "capture-a", intent: "apply" };
     const reservation = reserveCommit(commit, result.money.payableMinor);
     return { result, commit, reservation };
   }
-  return { ...f, client, open, effects, receipts, references, reservations, refunds, lookup,
+  return { ...f, client, open, effects, receipts, references, reservations, refunds, lookup, readAccepted, readSale, readRefund,
     setTime: (next: string) => { time = next; },
     setResult: (next: typeof make) => { make = next; },
     loseResponse: () => { lost = true; indexed = false; },

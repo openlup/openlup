@@ -162,8 +162,9 @@ export async function quoteStripeTax(
     { kind: "provider", payableMinor: calculation.amount_total,
       components: plan.components.map(({ ref }, index) => ({ ref, states: states[index] })) });
     const fiscalTax = [...tax.values()].sort((a, b) => a.positionRef < b.positionRef ? -1 : 1);
-    const lineIds = new Map(final.normalized.flatMap(({ plan, lineId }) =>
-      plan.source && lineId ? [[plan.source.lineKey, lineId] as const] : []));
+    const providerLines = final.normalized.flatMap(({ plan, lineId }) =>
+      plan.source && lineId ? [{ lineKey: plan.source.lineKey, providerLineRef: lineId }] : []);
+    const lineIds = new Map(providerLines.map(row => [row.lineKey, row.providerLineRef]));
     const positions = { tax: fiscalTax.map(row => {
       const target = row.cell.target;
       const providerLineRef = target.kind === "line" ? lineIds.get(target.key) : undefined;
@@ -178,7 +179,7 @@ export async function quoteStripeTax(
     }
     const evidence = { ...binding, requestKey: key, inputDigest, calculationRef: calculation.id, calculatedAt,
       expiresAt: calculation.expires_at, taxDate: input.taxDate, coverage: { vector: coverage.vector, digest: coverage.digest },
-      positions, fiscalDigest };
+      providerLines, positions, fiscalDigest };
     const evidenceDigest = taxDigest("evidence", { ...evidence, status: input.purpose });
     const result: TaxQuoteResultV1 = input.purpose === "estimate"
       ? { kind: "estimate", money, evidence: { ...evidence, status: "estimate" }, evidenceDigest }

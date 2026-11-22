@@ -189,7 +189,7 @@ const evidenceFields = object({
   requestKey: ref, scope, calculationRef: ref, status: oneOf("final", "estimate"), calculatedAt: instant, expiresAt: instant, taxDate: instant,
   destinationDigest: digest, shipFromRef: ref, inputDigest: digest, policyRevision: ref, classMapRevision: ref,
   coverage: coverageEvidence, fiscalDigest: digest, positions: object({ tax: array(position), fees: array(fee) }),
-});
+}, { providerLines: array(object({ lineKey: ref, providerLineRef: ref })) });
 
 function evidence(value: unknown, field: string, bindCells = true): TaxCalculationEvidenceV1 {
   const parsed = evidenceFields(value, field);
@@ -208,6 +208,10 @@ function evidence(value: unknown, field: string, bindCells = true): TaxCalculati
       invalid(path + "/decision", "Reconcile the named cell from effective observations.", "tax_calculation_unusable");
     }
   });
+  if (parsed.providerLines) {
+    unique(parsed.providerLines, item => item.lineKey, field + "/providerLines", "tax_breakdown_incomplete");
+    unique(parsed.providerLines, item => item.providerLineRef, field + "/providerLines", "tax_breakdown_incomplete");
+  }
   unique(parsed.positions.tax, item => item.positionRef, field + "/positions/tax", "tax_breakdown_incomplete");
   unique(parsed.positions.fees, item => item.feeKey, field + "/positions/fees", "tax_breakdown_incomplete");
   const cells = new Map(vector.map(row => [cellKey(row.cell), row]));
