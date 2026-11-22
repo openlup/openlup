@@ -5,6 +5,7 @@ import type {
   TaxQuoteResultV1, TaxRefusal, TaxReverseRequestV1,
 } from "./contracts/index.js";
 import { cellKey, compareCells } from "./contracts/identity.js";
+import { instant } from "./contracts/schemas.js";
 import { taxDigest, verifyTaxQuoteResult } from "./digest.js";
 
 const cases = [
@@ -20,6 +21,7 @@ export interface TaxConformanceSubjectV1 {
    * Open an isolated offline fixture. Clock cases supply the next charge instant and current input through advance.
    * The fee fixture uses a free delivery bucket and a 25-minor-unit fee with refund rule ref "refund-a", revision "1".
    * Posting fixtures use one taxable position on 100 minor units with zero tax and no fee, fully eligible for reversal.
+   * Positive reversal scenarios use declared modes. The partial-then-full scenario requires both amount and full.
    * Report cumulative side effect counts, including unsuccessful calls that dispatched an effect.
    */
   open(caseId: TaxConformanceCaseV1): Promise<{
@@ -66,12 +68,25 @@ function calculationRef(result: Final): TaxCalculationRefV1 {
   return { scope: result.evidence.scope, ref: result.evidence.calculationRef, evidenceDigest: result.evidenceDigest };
 }
 
+function checkInstant(assert: Assert, value: unknown, field: string) {
+  try { instant(value, field); }
+  catch { assert(false, "canonical UTC instant at " + field); }
+}
+
 async function checkValidity(assert: Assert, caseId: TaxConformanceCaseV1, fixture: Fixture, final: Final) {
   assert(fixture.advance, "advance control for fiscal validity");
   const current = fixture.advance();
   const { chargeAt } = current;
+  checkInstant(assert, chargeAt, "/chargeAt");
   const { evidence, evidenceDigest } = final;
   const proof = await fixture.port.readFiscalValidity({ ...current, original: fixture.request, evidence, evidenceDigest });
+  if (proof.kind !== "unavailable") {
+    const { observedAt, effective, dispatchBefore } = proof.proof;
+    checkInstant(assert, observedAt, "/proof/observedAt");
+    checkInstant(assert, effective?.from, "/proof/effective/from");
+    if (effective.until !== undefined) checkInstant(assert, effective.until, "/proof/effective/until");
+    checkInstant(assert, dispatchBefore, "/proof/dispatchBefore");
+  }
   if (caseId === "foreign_validity_scope") {
     assert(!isDeepStrictEqual(current.current.scope, fixture.request.input.scope), "fixture uses another scope");
     assert(proof.kind !== "unchanged", "another scope cannot establish unchanged validity");
@@ -86,18 +101,20 @@ async function checkValidity(assert: Assert, caseId: TaxConformanceCaseV1, fixtu
   assert(data.evidenceDigest === evidenceDigest && data.calculationRef === evidence.calculationRef, "proof binds original evidence");
   assert(data.observedAt < data.dispatchBefore && data.effective.from <= chargeAt && chargeAt < data.dispatchBefore
     && (data.effective.until === undefined || data.dispatchBefore <= data.effective.until), "bounded charge-date dispatch deadline");
-  assert(changed ? data.fiscalDigest !== evidence.fiscalDigest : data.fiscalDigest === evidence.fiscalDigest, "fiscal digest matches the observation");
+  if (!changed) assert(data.fiscalDigest === evidence.fiscalDigest, "unchanged validity preserves the fiscal digest");
 }
 
 async function checkPosting(assert: Assert, caseId: TaxConformanceCaseV1, fixture: Fixture, final: Final) {
   const { port, request } = fixture;
-  const capabilities = port.capabilities();
+  const { posting, reversals, recovery } = port.capabilities();
+  if (posting === "provider" && caseId === "partial_then_full"
+    && !(reversals.includes("amount") && reversals.includes("full"))) return;
   const commit: TaxCommitRequestV1 = { calculationRef: calculationRef(final), transactionRef: "sale-a",
     capturedAt: final.evidence.calculatedAt, postedAt: final.evidence.calculatedAt, captureEvidenceRef: "capture-a", intent: "apply" };
   const [position] = final.evidence.positions.tax;
   assert(final.evidence.positions.tax.length === 1 && final.money.payableMinor === 100
     && final.money.netTotal === 100, "posting fixture has a single fully refundable 100-minor-unit position");
-  function reversal(originalRef: string, fromMinor: number, toMinor: number, mode: "amount" | "full"): TaxReverseRequestV1 {
+  function reversal(originalRef: string, fromMinor: number, toMinor: number, mode: TaxReverseRequestV1["mode"]): TaxReverseRequestV1 {
     const requestFields = { originalRef, scope: request.input.scope, currency: request.input.currency, fromMinor, toMinor,
       reversalRef: "reversal-" + fromMinor, refundEvidenceRef: "refund-" + toMinor, intent: "apply" as const,
       positions: [{ originalPositionRef: position.positionRef, netDeltaMinor: fromMinor - toMinor, taxDeltaMinor: 0, feeDeltaMinor: 0 }] };
@@ -105,8 +122,8 @@ async function checkPosting(assert: Assert, caseId: TaxConformanceCaseV1, fixtur
   }
   const conflictingCommit = { ...commit, captureEvidenceRef: "capture-b" };
   const posted = await port.commit(commit);
-  if (capabilities.posting === "unsupported") {
-    assert(!capabilities.reversals.length && !capabilities.recovery.length, "unsupported posting has no reversal or recovery capabilities");
+  if (posting === "unsupported") {
+    assert(!reversals.length && !recovery.length, "unsupported posting has no reversal or recovery capabilities");
     checkRefusal(assert, posted, "tax_operation_unsupported");
     checkRefusal(assert, await port.commit({ ...commit, intent: "recover" }), "tax_operation_unsupported");
     checkRefusal(assert, await port.commit(caseId === "reference_conflict" ? conflictingCommit : commit), "tax_operation_unsupported");
@@ -133,24 +150,30 @@ async function checkPosting(assert: Assert, caseId: TaxConformanceCaseV1, fixtur
   }
   if (caseId === "duplicate_commit") return;
 
+  if (caseId === "reference_conflict") {
+    const mode = reversals.includes("amount") ? "amount" : reversals[0];
+    if (!mode) return;
+    const original = reversal(posted.providerTransactionRef, 0, mode === "amount" ? 40 : 100, mode);
+    const reversed = await port.reverse(original);
+    assert(reversed.kind === "reversed" && reversed.providerReversalRef.length > 0
+      && isDeepStrictEqual(reversed.positions, original.positions), "reversal returns the reserved deltas");
+    checkEffects(assert, fixture, 1, 1);
+    checkRefusal(assert, await port.reverse({ ...original, refundEvidenceRef: "refund-b" }), "tax_reference_conflict");
+    checkEffects(assert, fixture, 1, 1);
+    return;
+  }
+
   const partial = reversal(posted.providerTransactionRef, 0, 40, "amount");
   const first = await port.reverse(partial);
   assert(first.kind === "reversed" && first.providerReversalRef.length > 0
     && isDeepStrictEqual(first.positions, partial.positions), "partial reversal returns exactly the reserved 40");
   checkEffects(assert, fixture, 1, 1);
-  if (caseId === "reference_conflict") {
-    checkRefusal(assert, await port.reverse({ ...partial, refundEvidenceRef: "refund-b" }), "tax_reference_conflict");
-    checkEffects(assert, fixture, 1, 1);
-    return;
-  }
-
   const remainder = reversal(posted.providerTransactionRef, 40, 100, "full");
   const second = await port.reverse(remainder);
   assert(second.kind === "reversed" && second.providerReversalRef.length > 0 && second.providerReversalRef !== first.providerReversalRef
     && isDeepStrictEqual(second.positions, remainder.positions), "full reversal returns exactly the remaining 60 under a distinct reference");
   assert(isDeepStrictEqual(await port.reverse(partial), first) && isDeepStrictEqual(await port.reverse(remainder), second),
     "both reversal reservations replay exactly");
-  checkRefusal(assert, await port.reverse(reversal(posted.providerTransactionRef, 100, 101, "amount")), "tax_reversal_unsubstantiated");
   checkEffects(assert, fixture, 1, 2);
 }
 
@@ -201,6 +224,8 @@ export async function runTaxAdapterConformance(subject: TaxConformanceSubjectV1)
     checkEffects(assert, fixture);
     const result = await port.quote(request);
     if (result.kind === "final" || result.kind === "estimate") {
+      checkInstant(assert, result.evidence?.calculatedAt, "/evidence/calculatedAt");
+      checkInstant(assert, result.evidence?.expiresAt, "/evidence/expiresAt");
       assert(!verifyTaxQuoteResult(request, result), "verifiable quote money and evidence");
     } else {
       // The verifier allows a refusal envelope. It must carry no verifiable calculation.

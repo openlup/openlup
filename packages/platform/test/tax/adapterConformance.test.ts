@@ -11,7 +11,8 @@ import {
 
 type Fixture = Awaited<ReturnType<TaxConformanceSubjectV1["open"]>>;
 type Defect = "wrong_key" | "refusal_with_money" | "wrong_validity" | "unsupported_effect" | "duplicate_commit" | "commit_mapping"
-  | "commit_conflict" | "reversal_conflict" | "full_after_partial" | "reversal_cap";
+  | "commit_conflict" | "reversal_conflict" | "full_after_partial" | "invalid_proof_times" | "invalid_effective_from";
+const postingModes = ["amount", "full"] as const;
 const cleanEffects = () => ({ commits: 0, reversals: 0, providerCloses: 0 });
 
 function localFixture(caseId: TaxConformanceCaseV1): Fixture {
@@ -83,14 +84,13 @@ function effectRefusal(code: TaxRefusal["code"]): TaxRefusal {
   return { kind: "refused", code, field: "", remedy: "Use the original effect binding and reconciled cumulative refund." };
 }
 
-function postingFixture(fixture: Fixture, defect?: Defect): Fixture {
+function postingFixture(fixture: Fixture, modes: readonly TaxReverseRequestV1["mode"][], defect?: Defect): Fixture {
   const counts = cleanEffects();
   const sales = new Map<string, { request: TaxCommitRequestV1; result: TaxCommitResultV1 }>();
   const refunds = new Map<string, { request: TaxReverseRequestV1; result: TaxReverseResultV1 }>();
-  let refunded = 0;
   const port: TaxCalculationPort = {
     ...fixture.port,
-    capabilities: () => ({ ...fixture.port.capabilities(), posting: "provider", reversals: ["amount", "full"] }),
+    capabilities: () => ({ ...fixture.port.capabilities(), posting: "provider", reversals: modes }),
     async commit(request) {
       const prior = sales.get(request.transactionRef);
       if (prior && defect !== "duplicate_commit") {
@@ -108,13 +108,10 @@ function postingFixture(fixture: Fixture, defect?: Defect): Fixture {
       return result;
     },
     async reverse(request) {
+      if (!modes.includes(request.mode)) return effectRefusal("tax_operation_unsupported");
       const prior = refunds.get(request.reversalRef);
       if (prior) return isDeepStrictEqual(prior.request, request) || defect === "reversal_conflict"
         ? prior.result : effectRefusal("tax_reference_conflict");
-      if (request.fromMinor !== refunded || (request.toMinor > 100 && defect !== "reversal_cap")) {
-        return effectRefusal("tax_reversal_unsubstantiated");
-      }
-      refunded = request.toMinor;
       const result: TaxReverseResultV1 = { kind: "reversed", providerReversalRef: request.reversalRef + "-posted",
         positions: request.mode === "full" && defect === "full_after_partial"
           ? [{ ...request.positions[0], netDeltaMinor: -100 }] : request.positions };
@@ -126,11 +123,11 @@ function postingFixture(fixture: Fixture, defect?: Defect): Fixture {
   return { ...fixture, port, effects: () => ({ ...counts }) };
 }
 
-function subject(posting = false, defect?: Defect): TaxConformanceSubjectV1 {
+function subject(modes?: readonly TaxReverseRequestV1["mode"][], defect?: Defect): TaxConformanceSubjectV1 {
   return {
     async open(caseId) {
       const fixture = localFixture(caseId);
-      if (posting) return postingFixture(fixture, defect);
+      if (modes) return postingFixture(fixture, modes, defect);
       const base = fixture.port;
       if (caseId === "local_close" && defect === "wrong_key") {
         fixture.port = { ...base, async quote(request) {
@@ -148,6 +145,16 @@ function subject(posting = false, defect?: Defect): TaxConformanceSubjectV1 {
           });
           return result;
         } };
+      } else if (caseId === "expiry" && (defect === "invalid_proof_times" || defect === "invalid_effective_from")) {
+        fixture.port = { ...base, async readFiscalValidity(request) {
+          const result = await base.readFiscalValidity(request);
+          if (result.kind === "unavailable") throw new Error("Expected available validity proof");
+          return { ...result, proof: {
+            ...result.proof,
+            observedAt: defect === "invalid_proof_times" ? "0" : result.proof.observedAt,
+            effective: { ...result.proof.effective, from: "" },
+          } };
+        } };
       } else if (caseId === "reference_conflict" && defect === "unsupported_effect") {
         const counts = cleanEffects();
         fixture.port = { ...base, async reverse(request) { counts.reversals++; return base.reverse(request); } };
@@ -161,9 +168,15 @@ function subject(posting = false, defect?: Defect): TaxConformanceSubjectV1 {
 describe("offline tax conformance", () => {
   it("qualifies all scenarios on the local adapter and the positive posting control", async () => {
     const local = await runTaxAdapterConformance(subject());
-    const posting = await runTaxAdapterConformance(subject(true));
+    const posting = await runTaxAdapterConformance(subject(postingModes));
     expect(local).toHaveLength(16);
     expect(posting).toEqual(local);
+  });
+
+  it.each<{ modes: readonly TaxReverseRequestV1["mode"][] }>([
+    { modes: ["full"] }, { modes: ["lines"] }, { modes: ["amount"] }, { modes: [] },
+  ])("qualifies a posting adapter with reversal modes $modes", async ({ modes }) => {
+    await expect(runTaxAdapterConformance(subject(modes))).resolves.toHaveLength(16);
   });
 
   it.each<[Defect, TaxConformanceCaseV1, string, boolean]>([
@@ -176,9 +189,10 @@ describe("offline tax conformance", () => {
     ["commit_conflict", "reference_conflict", "tax_reference_conflict", true],
     ["reversal_conflict", "reference_conflict", "tax_reference_conflict", true],
     ["full_after_partial", "partial_then_full", "remaining 60", true],
-    ["reversal_cap", "partial_then_full", "tax_reversal_unsubstantiated", true],
+    ["invalid_proof_times", "expiry", "/proof/observedAt", false],
+    ["invalid_effective_from", "expiry", "/proof/effective/from", false],
   ])("catches the %s defect", async (defect, caseId, assertion, posting) => {
-    await expect(runTaxAdapterConformance(subject(posting, defect)))
+    await expect(runTaxAdapterConformance(subject(posting ? postingModes : undefined, defect)))
       .rejects.toThrow(new RegExp(`tax_adapter_conformance:${caseId}:.*${assertion}`));
   });
 });

@@ -105,6 +105,37 @@ describe("local rate table", () => {
     } });
   });
 
+  it("reports a changed fee even when the digest and all rule references match", async () => {
+    const original = makeTaxQuoteRequest("fee-replacement", feeInput());
+    const rules = [{ ...exemptRule, taxClass: rateRule.taxClass }, exemptRule, feeRule];
+    const result = success(await localRateTable({ ...feeOptions, rules }).quote(original));
+    const reconfigured = localRateTable({ ...feeOptions,
+      rules: [...rules.slice(0, 2), { ...feeRule, amountMinor: 50 }],
+    });
+    const updated = success(await reconfigured.quote(original));
+    expect(updated.money.feeTotal).toBe(50);
+    expect(updated.evidence.fiscalDigest).toBe(result.evidence.fiscalDigest);
+    expect(await reconfigured.readFiscalValidity({ original, evidence: result.evidence, evidenceDigest: result.evidenceDigest,
+      chargeAt: localTime, current: original.input,
+    })).toMatchObject({ kind: "changed", proof: { fiscalDigest: result.evidence.fiscalDigest } });
+  });
+
+  it("refuses a fee key exceeding the money reference limit at the required target", async () => {
+    const input = feeInput();
+    const requestWithKey = (key: string) => makeTaxQuoteRequest("fee-key", { ...input,
+      required: input.required.map(cell => cell.target.kind === "fee" ? { ...cell, target: { ...cell.target, key } } : cell),
+    });
+    const port = localRateTable(feeOptions);
+    const atLimit = "a".repeat(128);
+    expect(success(await port.quote(requestWithKey(atLimit))).money.fees).toEqual([{ feeKey: atLimit, amountMinor: 25 }]);
+    const oversized = requestWithKey(atLimit + "a");
+    expect(verifyTaxQuoteRequest(oversized)).toBeUndefined();
+    const index = oversized.input.required.findIndex(cell => cell.target.kind === "fee");
+    expect(await port.quote(oversized)).toEqual({ kind: "refused", code: "tax_invalid_input",
+      field: `/input/required/${index}/target/key`, remedy: expect.stringContaining("128 code units"),
+    });
+  });
+
   it("refuses an absent free-delivery rule, a foreign scope, and a tampered request before money", async () => {
     const request = makeTaxQuoteRequest("free-delivery", feeInput());
     const port = localRateTable({ ...feeOptions, rules: [rateRule, feeRule] });

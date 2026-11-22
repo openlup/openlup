@@ -17,6 +17,7 @@ export interface TaxConformanceSubjectV1 {
      * Open an isolated offline fixture. Clock cases supply the next charge instant and current input through advance.
      * The fee fixture uses a free delivery bucket and a 25-minor-unit fee with refund rule ref "refund-a", revision "1".
      * Posting fixtures use one taxable position on 100 minor units with zero tax and no fee, fully eligible for reversal.
+     * Positive reversal scenarios use declared modes. The partial-then-full scenario requires both amount and full.
      * Report cumulative side effect counts, including unsuccessful calls that dispatched an effect.
      */
     open(caseId: TaxConformanceCaseV1): Promise<{
@@ -137,7 +138,10 @@ export interface LocalRateTableOptionsV1 {
     readonly registrations: readonly Registration[];
     readonly rules: readonly Rule[];
 }
-/** Calculate exclusive tax from an immutable local table with no posting effects. */
+/**
+ * Calculate exclusive tax from an immutable local table with no posting effects.
+ * Use the result kind from `readFiscalValidity` because it can report `changed` with the same fiscal digest when an effective fee or rate rule is replaced under the same references.
+ */
 export declare function localRateTable(options: LocalRateTableOptionsV1): TaxCalculationPort;
 export {};
 ```

@@ -122,7 +122,10 @@ function calculationRef(tableDigest: string, factsDigest: string, snapshot: Omit
     taxDigest("evidence", { tableDigest, factsDigest, requestKey, inputDigest, fiscalDigest, calculatedAt, expiresAt })].join(".");
 }
 
-/** Calculate exclusive tax from an immutable local table with no posting effects. */
+/**
+ * Calculate exclusive tax from an immutable local table with no posting effects.
+ * Use the result kind from `readFiscalValidity` because it can report `changed` with the same fiscal digest when an effective fee or rate rule is replaced under the same references.
+ */
 export function localRateTable(options: LocalRateTableOptionsV1): TaxCalculationPort {
   const table = tableOptions.parse(options);
   const rules = indexIntervals(table.rules, ruleKey, "/rules");
@@ -147,9 +150,10 @@ export function localRateTable(options: LocalRateTableOptionsV1): TaxCalculation
     const observations: Observation[] = [];
     for (const [index, cell] of input.required.entries()) {
       const { target } = cell;
+      const field = "/input/required/" + index;
+      if (target.kind === "fee") moneyRef(target.key, field + "/target/key");
       const { taxClass, assignmentRef } = target.kind === "fee" ? target : classes.get(targetKey(cell))!;
       const rule = rules.get(ruleKey({ ...cell, taxClass }))?.find(row => includesInstant(row.effective, taxDate));
-      const field = "/input/required/" + index;
       if (!rule || (target.kind === "fee" ? rule.kind === "rate" : rule.kind === "fee")) {
         return { ...refuse("tax_rule_missing", field, "Supply an effective rule or explicit exemption for this class and cell."),
           jurisdiction: cell.jurisdiction, taxKind: cell.taxKind };
