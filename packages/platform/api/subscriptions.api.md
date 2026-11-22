@@ -1387,7 +1387,7 @@ export interface ProviderRenewalPaymentPorts {
                     currency: string;
                 };
                 providerOccurredAt: string | null;
-                capturedAmountBasis?: "provider_capture_v1" | undefined;
+                capturedAmountBasis?: "provider_capture_v1";
             } | {
                 kind: "unknown" | "unsupported" | "absent";
             }>;

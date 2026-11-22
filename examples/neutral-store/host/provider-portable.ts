@@ -29,7 +29,18 @@ export function composeStripePortableRail(input: {
     composeWebhook: (event, control) => renewal.composeWebhook(event, control) });
   const settlement = (db: Native['executor']) => createPostgresRenewalSettlementPort(db, codec, input.withTransaction);
   const renewal = createPostgresProviderRenewalBinding({ enabled: input.enabled, channelKey: adapter.capabilities.providerKind, executor: input.executor,
-    withTransaction: input.withTransaction, paymentRail, codec, settlement, truth, now: input.now,
+    withTransaction: input.withTransaction, codec, settlement, truth, now: input.now,
+    paymentRail: {
+      ...paymentRail,
+      adapter: { readbackPort: {
+        async readPayment(request) {
+          const observed = await paymentRail.adapter.readbackPort.readPayment(request);
+          if (!('observedMoney' in observed)) return observed;
+          const { capturedAmountBasis, ...readback } = observed;
+          return capturedAmountBasis === undefined ? readback : { ...readback, capturedAmountBasis };
+        },
+      } },
+    },
     search: async ({ localIntentId, limit }) => (await input.searchPaymentIntentsByMetadata({ key: 'paymentIntentId', value: localIntentId, limit })).ids });
   return {
     paymentRail,

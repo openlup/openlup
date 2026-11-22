@@ -623,7 +623,7 @@ describe("publication activation prices", () => {
   }
 
   async function approvedActivation(sequence: number, isAddon: boolean, missing?: "logistics" | "purchase mode",
-    { grams = 100, db = pool } = {}) {
+    { grams = 100, governed = false, db = pool } = {}) {
     const data = authored(sequence), api = native(undefined, db), who = (await api.authorize(actor))!;
     const sku = data.payload.skus[0]!;
     sku.netContent = { ...sku.netContent!, unscaled: String(grams) };
@@ -633,23 +633,32 @@ describe("publication activation prices", () => {
     const create = data.payload.publication.operations.find(operation => operation.op === "create_sku")!;
     create.isAddon = isAddon;
     if (sku.logisticsRef) data.payload.publication.operations.push({ op: "set_sku_metadata", skuCode: data.code, logisticsRef: sku.logisticsRef });
-    await save(data, 1, data.payload, db);
+    const draft: CatalogDraftPayloadV3 | CatalogDraftPayloadV4 = governed
+      ? { ...data.payload, schemaVersion: 4 } : data.payload;
+    await save(data, 1, draft, db);
     const first = await prepare(data, 1, null, db);
     expect(await api.execute(first.approve, who)).toMatchObject({ outcome: "committed" });
     const issue = await api.execute(first.publish, who);
     if (!("receipt" in issue) || !("head" in issue.receipt)) throw new Error(JSON.stringify(issue));
 
-    const payload = structuredClone(data.payload);
+    const payload = structuredClone(draft);
     const membership = { skuCode: data.code, admitted: true, offerVersion: "example:open" };
     const content = payload.product.sharedContent;
     content.catalogAction = "revise";
     content.offerMemberships = [membership];
     content.requestedModes = [{ skuCode: data.code, modes: ["one_time"] }];
-    payload.publication.operations = [
-      { op: "set_product_status", productSlug: data.slug, status: "active" },
-      { op: "set_sku_status", skuCode: data.code, status: "active" },
+    const eligibility = [
       { op: "set_eligibility", skuCode: data.code, sellableStandalone: true, sellableInSubscription: false },
       { op: "set_offer_membership", ...membership },
+    ] as const;
+    payload.publication.operations = payload.schemaVersion === 4 ? [
+      { op: "set_product_lifecycle", productSlug: data.slug, expectedState: "draft", state: "active", children: [] },
+      { op: "set_sku_lifecycle", skuCode: data.code, expectedState: "draft", state: "active" },
+      ...eligibility,
+    ] : [
+      { op: "set_product_status", productSlug: data.slug, status: "active" },
+      { op: "set_sku_status", skuCode: data.code, status: "active" },
+      ...eligibility,
     ];
     if (missing === "purchase mode") {
       content.requestedModes = [{ skuCode: data.code, modes: [] }];
@@ -659,7 +668,10 @@ describe("publication activation prices", () => {
     await save(data, 2, payload, db);
     const next = await prepare(data, 2, issue.receipt.head, db);
     expect(await api.execute(next.approve, who)).toMatchObject({ outcome: "committed" });
-    return { ...data, api, who, command: next.publish, head: issue.receipt.head };
+    const command = governed ? {
+      ...next.publish, changes: [{ variantId: data.skuId, expectedRevision: 1, state: "active" }],
+    } as const : next.publish;
+    return { ...data, api, who, command, head: issue.receipt.head };
   }
 
   it.each(["restore first", "enable first"] as const)("commits governed withdrawal, parent-only restore and %s", async order => {
@@ -796,25 +808,31 @@ describe("publication activation prices", () => {
     expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
   });
 
-  it.each([[182, 1], [183, 100], [184, 2_147_483_647]])("quotes published requested SKU %i with factorless %i grams and independent gross", async (sequence, grams) => {
-    const { api, who, command, code, skuId, slug } = await approvedActivation(sequence, false, undefined, { grams, db: quotePool });
+  it.each([
+    { sequence: 182, grams: 1, receiptVersion: 2 },
+    { sequence: 183, grams: 100, receiptVersion: 2 },
+    { sequence: 184, grams: 2_147_483_647, receiptVersion: 2 },
+    { sequence: 185, grams: 125, receiptVersion: 3 },
+  ])("quotes a requested SKU from a v$receiptVersion publication with $grams grams and independent gross", async ({ sequence, grams, receiptVersion }) => {
+    const governed = receiptVersion === 3;
+    const { api, who, command, code, skuId, slug } = await approvedActivation(sequence, false, undefined, { grams, governed, db: quotePool });
     await seedBasePrice(skuId, quotePool, quoteListId);
-    expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
-    expect((await quotePool.query("SELECT net_weight_g, gross_mass_unscaled::text AS gross FROM public.catalog_skus WHERE id=$1", [skuId])).rows)
-      .toEqual([{ net_weight_g: grams, gross: String(grams + 10) }]);
+    expect(await api.execute(command, who)).toMatchObject({ outcome: "committed", receipt: { schemaVersion: receiptVersion } });
+    expect((await quotePool.query(`SELECT net_weight_g, gross_mass_unscaled::text AS gross,
+      publication_facts->'schemaVersion' AS facts_version FROM public.catalog_skus WHERE id=$1`, [skuId])).rows)
+      .toEqual([{ net_weight_g: grams, gross: String(grams + 10), facts_version: governed ? 3 : null }]);
     const db = await quotePool.connect();
     try {
       await db.query("BEGIN");
-      // Hide unrelated fixtures for this read, leaving the issued SKU and the released scan untouched.
-      await db.query(`UPDATE public.catalog_skus SET sellable_standalone=false, sellable_in_subscription=false
-        WHERE id<>$1 AND status='active' AND (sellable_standalone OR sellable_in_subscription)`, [skuId]);
+      // The price-readiness seed has no document. Every published fixture stays visible to the released scan.
+      await db.query("UPDATE public.catalog_skus SET sellable_standalone=false WHERE sku='PRICED-CORE'");
       const catalog = createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: async (payload, envelope) => {
-        expect(payload).toEqual(authoredPublicationDocument(slug));
+        expect(payload).toEqual(authoredPublicationDocument(envelope.product.slug));
         expect(envelope.documentRevision.digest).toBe(hash(canonicalCatalogDraftJson(payload)));
       } });
       const quote = createCharacterizationQuote(pricing, catalog, pricing.createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(db)));
       const result = await quote.createServerAuthoritativeQuote({ mode: "one_time", promoCodes: [], lines: [{ sku: code, quantity: 2 }] });
-      // Main's immutable grams, gross parcel mass and price are independent facts.
+      // Pinned integrated main b30c9f805 offers the net grams and prices two sale units at 2,000.
       expect(result.quote).toMatchObject({ totalGross: { amountMinor: 2000, currency: "XXX" }, context: { grams: [grams] },
         lines: [{ sku: code, productSlug: slug, quantity: 2, unitPriceGross: { amountMinor: 1000, currency: "XXX" } }] });
     } finally {
