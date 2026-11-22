@@ -12554,6 +12554,50 @@
       "class": "public-output"
     },
     {
+      "path": "recipes/fulfillment/amazon-mcf/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/lwa.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/sigv4.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/server/webhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/fulfillment/amazon-mcf/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "recipes/index.json",
       "class": "public-output"
     },

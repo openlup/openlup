@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "id": "fulfillment/amazon-mcf",
+  "domain": "fulfillment",
+  "providerKind": "amazon_mcf",
+  "displayName": "Amazon MCF (SP-API v2020-07-01)",
+  "summary": "Zero-SDK Amazon MCF recipe (SP-API v2020-07-01 & FBA Inventory v1) with node:crypto AWS SigV4, single-flight LWA OAuth2, bridged HMAC-SHA256 notifications, reconciliation paging, and snapshot-only stock sync.",
+  "regions": [
+    "global",
+    "NA",
+    "US",
+    "EU",
+    "APAC"
+  ],
+  "status": "exemplar",
+  "openlupPlatformRange": "^1.3.0",
+  "testedAgainstPlatformVersion": "1.3.0",
+  "contractImports": [
+    "@openlup/core/fulfillment",
+    "@openlup/platform/fulfillment",
+    "@openlup/platform/fulfillment/contracts",
+    "@openlup/platform/fulfillment/testing"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/fulfillment/testing",
+    "exportName": "runFulfillmentAdapterConformance",
+    "mode": "full"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://api.amazon.com",
+    "https://sellingpartnerapi-na.amazon.com",
+    "https://sellingpartnerapi-eu.amazon.com",
+    "https://sellingpartnerapi-fe.amazon.com",
+    "https://sandbox.sellingpartnerapi-na.amazon.com",
+    "https://sandbox.sellingpartnerapi-eu.amazon.com",
+    "https://sandbox.sellingpartnerapi-fe.amazon.com"
+  ],
+  "webhookAuth": "hmac-sha256-canonical",
+  "browserSurface": {
+    "kind": "none"
+  },
+  "supportedCurrenciesPolicy": "not-applicable",
+  "staticCapabilities": {
+    "providerRef": "amazon_mcf",
+    "role": "warehouse",
+    "operations": {
+      "dispatch": {
+        "supported": true
+      },
+      "readback": {
+        "supported": true
+      },
+      "exactAbsence": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "verifyObservation": {
+        "supported": true
+      },
+      "syncStock": {
+        "supported": true
+      },
+      "syncProducts": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "labelCreate": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "labelRead": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "labelVoid": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "cancel": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "pickupPoint": {
+        "supported": false,
+        "reason": "not_exposed"
+      },
+      "courierPickup": {
+        "supported": false,
+        "reason": "not_exposed"
+      }
+    },
+    "authentication": "authenticated_timestamp",
+    "freshness": "authenticated_timestamp",
+    "defaultOff": true,
+    "selected": false,
+    "readiness": {
+      "ready": false,
+      "refusal": {
+        "reason": "not_ready",
+        "phase": "selection",
+        "retryable": false
+      }
+    },
+    "ownsDeliveredNotification": false,
+    "stockAuthority": "external_stock_master_with_local_reservations",
+    "inventory": {
+      "reservationOwner": "local",
+      "consumption": "finished_picking"
+    },
+    "stockMovements": false,
+    "independentSplits": false,
+    "transportSelection": "provider",
+    "labelReadOwner": "none",
+    "actionPolicy": {
+      "providerSpecificAdminActions": false,
+      "genericAdminActions": true,
+      "mutationSurface": "provider_adapter"
+    }
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "recipe.json",
+      "LIVE_QUALIFICATION.md",
+      "server/index.ts",
+      "server/sigv4.ts",
+      "server/lwa.ts",
+      "server/client-contract.ts",
+      "server/webhook.ts",
+      "server/adapter.ts",
+      "tests/fixtures.ts",
+      "tests/conformance.test.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/fulfillment/amazon-mcf/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/fulfillment/amazon-mcf/tests/mount-proof.test.ts"
+  }
+}
