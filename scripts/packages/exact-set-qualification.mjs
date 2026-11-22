@@ -65,7 +65,7 @@ export function proveNeutralStarterConsumer(checkout, input, packInstalled = und
     if (!released) {
       // Copied tests run once, in the extracted application below; the source run keeps the rest.
       const ownership = JSON.parse(readFileSync(join(starter, "ownership.json"), "utf8"));
-      const copied = new Set([...ownership.owned, ...ownership.managed]);
+      const copied = new Set([...ownership.owned, ...ownership.managed, ...(ownership.providerQualification?.managed ?? [])]);
       const sourceTests = readdirSync(join(starter, "test")).map(name => "test/" + name).filter(path => !copied.has(path)).sort();
       assert(sourceTests.length > 0, "Starter source-only tests are missing");
       run(process.execPath, ["--experimental-strip-types", "--test", ...sourceTests], starter);
@@ -181,6 +181,11 @@ function prepareReleasedStarter(receipt, temporary, run, candidateManifest = und
   const inventory = json(join(source, 'config/openlup-packages.json')).packages.filter(entry => entry.publish);
   const packs = candidateManifest && readCurrentPackManifest(source, candidateManifest, expectedCommit);
   const application = json(join(starter, 'package.json'));
+  const profile = application.providerQualification;
+  const qualification = Boolean(packs && profile);
+  delete application.providerQualification;
+  if (qualification) Object.assign(application.dependencies, profile.dependencies);
+  else if (profile) delete application.scripts['provider:qualify'];
   for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
     for (const name of Object.keys(application[section] ?? {})) if (name.startsWith('@openlup/')) application[section][name] = packs ? `file:${packs.get(name).path}` : receipt.setVersion;
   }
@@ -204,6 +209,7 @@ function prepareReleasedStarter(receipt, temporary, run, candidateManifest = und
   const extracted = join(temporary, 'application');
   run(process.execPath, [join(root, 'examples/neutral-store/extract.mjs'), extracted, '--source', starter,
     '--mode', mode, '--set-version', receipt.setVersion, '--source-revision', expectedCommit, '--manifest', packs ? resolve(candidateManifest) : manifest, '--lockfile', lockfile,
+    ...(qualification ? ['--provider-qualification', 'enabled'] : []),
     ...(mode === 'reconstructed' ? ['--reason', 'Release tag predates versioned starter extraction.'] : [])]);
   receipt.extraction = json(join(extracted, '.starter-origin.json'));
   return { application: extracted, packages, source };

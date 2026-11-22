@@ -41,6 +41,27 @@ Review grants retain the native fixed thirty-day expiry, with no application tim
 The unchanged required purchase spec must run against installed PostgreSQL;
 the default database-less UI host cannot satisfy it. See [proof](docs/proof.md).
 
+## Qualify a provider test account
+
+The qualification command is available in a locked candidate application
+extracted with `--mode candidate --provider-qualification enabled`. Use the
+candidate's exact package manifest and the lock generated for that option, then
+run `npm ci` in the extracted application.
+
+In an interactive terminal, configure a named variable with a private 1Password
+reference for the test account's secret key. Use the expected test account ID
+and the variable name in:
+
+```sh
+npm run provider:qualify -- --run --test-mode --account <id> --key-env <name>
+```
+
+Open the local link when prompted and complete the provider challenge within
+five minutes. Use a test account set up for the tax fixtures. The command
+creates synthetic test objects and writes a transcript with hashed identifiers.
+If a write has an unknown outcome, use the original operation in the bound test
+account to reconcile it. Run the command again only for a new qualification.
+
 ## Start from an exact source archive
 
 Start from the [1.1.0 demo store](https://github.com/openlup/demo-store) or use

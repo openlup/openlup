@@ -38,6 +38,27 @@ remain generic, and a failed refresh withholds the previous price.
 After a successful candidate import prints `next: npm ci`, run `npm ci` before
 starting the application.
 
+## Qualify a provider test account
+
+The qualification command is available in a locked candidate application
+extracted with `--mode candidate --provider-qualification enabled`. Use the
+candidate's exact package manifest and the lock generated for that option, then
+run `npm ci` in the extracted application.
+
+In an interactive terminal, configure a named variable with a private 1Password
+reference for the test account's secret key. Use the expected test account ID
+and the variable name in:
+
+```sh
+npm run provider:qualify -- --run --test-mode --account <id> --key-env <name>
+```
+
+Open the local link when prompted and complete the provider challenge within
+five minutes. Use a test account set up for the tax fixtures. The command
+creates synthetic test objects and writes a transcript with hashed identifiers.
+If a write has an unknown outcome, use the original operation in the bound test
+account to reconcile it. Run the command again only for a new qualification.
+
 ## Change a product rule
 
 If you upgraded an existing store, its draft validator still runs from
