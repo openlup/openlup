@@ -12698,6 +12698,42 @@
       "class": "public-output"
     },
     {
+      "path": "recipes/payments/mollie/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/server/webhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/mollie/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "recipes/schema/csp.schema.json",
       "class": "public-output"
     },
