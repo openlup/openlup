@@ -3765,3 +3765,14 @@ Full mode (`{ mode: "full" }`) additionally enforces `guardEmailTransport`
 egress admission, verifies authenticated transport fault handles (5xx, 401/403,
 429, timeout, transport error), scans optional sensitive canaries, and emits a
 deterministic `CommunicationsQualification` receipt.
+
+### Shared adapter protocol primitives (`@openlup/platform/adapter-kit`)
+
+`@openlup/platform/adapter-kit` exports zero-dependency protocol primitives for
+provider adapters and recipes: `createHardenedFetch` (HTTPS origin pinning,
+`redirect: "error"`, composed timeout signal, streaming byte cap, non-2xx body
+cancellation), `createOAuth2TokenManager` (`client_credentials` and
+`refresh_token` with single-flight deduplication and epoch-guarded
+`invalidate`), `parseRetryAfter` / `createRetryAfterCooldown`, and webhook
+verifiers (`verifyHmacSha256`, `verifyHardenedStandardWebhook`,
+`verifyEd25519Signature`).

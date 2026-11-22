@@ -46,6 +46,7 @@ Find an import subpath and its API report. API reports list every exported symbo
 | `./account-support/contracts` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/account-support-contracts.api.md) |
 | `./account-support/postgres` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/account-support-postgres.api.md) |
 | `./account-support/read-contracts` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/account-support-read-contracts.api.md) |
+| `./adapter-kit` | rail | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/adapter-kit.api.md) |
 | `./bff` | rail | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/bff.api.md) |
 | `./blob` | rail | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/blob.api.md) |
 | `./catalog` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/catalog.api.md) |

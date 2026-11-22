@@ -1076,6 +1076,16 @@
       ],
       "entrypoint": "dist/communications/testing/index.d.ts",
       "snapshot": "api/communications-testing.api.md"
+    },
+    "./adapter-kit": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "experimental",
+      "packageSmokeEvidence": [
+        "test/adapter-kit/adapterKit.test.ts"
+      ],
+      "entrypoint": "dist/adapter-kit/index.d.ts",
+      "snapshot": "api/adapter-kit.api.md"
     }
   },
   "pack": {

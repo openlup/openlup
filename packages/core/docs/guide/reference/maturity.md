@@ -57,6 +57,7 @@ for package policy definitions and release boundaries.
 | `./account-support/contracts` | capability | experimental |
 | `./account-support/postgres` | capability | stable |
 | `./account-support/read-contracts` | capability | experimental |
+| `./adapter-kit` | rail | experimental |
 | `./bff` | rail | stable |
 | `./blob` | rail | stable |
 | `./catalog` | capability | stable |

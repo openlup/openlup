@@ -86,6 +86,11 @@
       "import": "./dist/http/index.js",
       "default": "./dist/http/index.js"
     },
+    "./adapter-kit": {
+      "types": "./dist/adapter-kit/index.d.ts",
+      "import": "./dist/adapter-kit/index.js",
+      "default": "./dist/adapter-kit/index.js"
+    },
     "./bff": {
       "types": "./dist/bff/index.d.ts",
       "import": "./dist/bff/index.js",

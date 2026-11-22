@@ -182,6 +182,7 @@ const sourceFiles = (prefix = "") => [`${prefix}**/*.${SOURCE_EXTENSIONS}`];
 // Optional `contracts: true` declares exactly one browser-safe sub-entry at
 // <module>/contracts/index.ts; it has no module edges, including to its server entry.
 export const PLATFORM_MODULE_GRAPH = {
+  "adapter-kit": { values: ["http"], types: [] },
   channels: { contracts: true, values: [], types: [] },
   "channels/server": { values: ["channels", "bff", "inventory"], types: ["http"] },
   "company-identity": { contracts: true, values: [], types: [] },

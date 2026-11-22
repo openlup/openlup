@@ -73,6 +73,7 @@ export const NON_ADAPTER_ENTRIES = [
   "communications/testing",
   "composition",
   "http",
+  "adapter-kit",
   "identity/contracts",
   "inventory",
   "inventory/contracts",
