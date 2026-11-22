@@ -667,6 +667,7 @@ it("checks every packaged schema against its default and valid examples", async 
     "shipping_flat_minor",
     "subscription_minimum_base_units",
     "subscription_sized_intro_phase",
+    "tax.coverage",
   ]);
   for (const entry of entries) {
     const values = [
@@ -883,9 +884,9 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
   // "Default: none (see behavior below)" for null fallbacks (K6),
   // Stage 4 Wave 4B packaged callback and single-row installed entries,
   // Stage 4 Wave 4C packaged code (D1-D3, A16, E12) and multi-row installed entries (B3, B5),
-  // and the market fiscal profile, tax adapter choices and tax class map.
+  // and the market fiscal profile, tax adapter choices, tax class map and installed tax coverage.
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("423fdc6111dcc42b71ba35b7dddfb618ded735ec11338589d49564de6d165c7a");
+    .toBe("38be8dd2e3b11a675fe7127fb8091409827c3c56d8dc954542d3185f56334ea3");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {
