@@ -291,13 +291,15 @@ export type TaxQuoteRequestV1 = Readonly<{
  *   policyRevision, classMapRevision, coverage, tax, fees }`. Use the coverage
  *   vector for `coverage`, the tax rows with `resolutionDigest` and
  *   `providerLineRef` omitted for `tax`, and the fee rows for `fees`.
- *   This payload excludes the calculation ref, times and expiry.
+ *   This payload excludes the request key, calculation ref, times and expiry.
  * - `platform.tax.evidence.v1` binds this whole evidence object.
  *
  * Supply one metadata row per emitted assessment, including zero amounts.
  * A taxed coverage cell may have no emitted position.
  */
 export type TaxCalculationEvidenceV1 = Readonly<{
+    /** The key of the quote request this calculation answers; adapters copy `request.key`. */
+    requestKey: string;
     scope: TaxScopeV1;
     calculationRef: string;
     status: "final" | "estimate";

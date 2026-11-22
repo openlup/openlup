@@ -133,7 +133,7 @@ describe("tax document decoders", () => {
   });
   const resolution = { assignmentRef: "assignment-a", policyRevision: "policy-a", sourceRef: "table-a", effective: { from: date } };
   const receipt = bindFiscal({
-    scope, calculationRef: "calculation-a", status: "final", calculatedAt: date, expiresAt: later,
+    requestKey: request.key, scope, calculationRef: "calculation-a", status: "final", calculatedAt: date, expiresAt: later,
     taxDate: date, destinationDigest: digest, shipFromRef: request.input.shipFromRef, inputDigest: request.inputDigest,
     policyRevision: request.input.policyRevision, classMapRevision: request.input.classMapRevision,
     coverage: { vector, digest: coverageDigest }, fiscalDigest: digest,
@@ -165,6 +165,9 @@ describe("tax document decoders", () => {
 
   it("validates evidence bindings, clock bounds and the shared rate grammar", () => {
     expect(taxCalculationEvidenceV1Schema.parse(receipt)).toEqual(receipt);
+    const { requestKey: _key, ...unbound } = receipt;
+    refuses(() => taxCalculationEvidenceV1Schema.parse(unbound), "/requestKey");
+    refuses(() => taxCalculationEvidenceV1Schema.parse({ ...receipt, requestKey: "" }), "/requestKey");
     const tax = receipt.positions.tax[0];
     refuses(() => taxCalculationEvidenceV1Schema.parse({ ...receipt, expiresAt: date }), "/expiresAt");
     refuses(() => taxCalculationEvidenceV1Schema.parse({
@@ -198,7 +201,7 @@ describe("tax document decoders", () => {
       code: "tax_reference_conflict", field: "/evidence/coverage/digest",
     });
     const undeclared = makeTaxQuoteRequest("other-key", { ...request.input, coverage: coverage() });
-    expect(verify({ ...receipt, inputDigest: undeclared.inputDigest }, undeclared)).toMatchObject({
+    expect(verify({ ...receipt, requestKey: undeclared.key, inputDigest: undeclared.inputDigest }, undeclared)).toMatchObject({
       code: "tax_reference_conflict", field: "/evidence/coverage/vector/0/declaration",
     });
     const incomplete = vector.filter(row => row.cell.target.key !== "item-a");
@@ -217,11 +220,11 @@ describe("tax document decoders", () => {
     const result = successful();
     expect(verifyTaxQuoteResult(request, result)).toBeUndefined();
     const estimateRequest = makeTaxQuoteRequest("estimate", { ...request.input, purpose: "estimate" });
-    const estimate = { ...receipt, status: "estimate" as const, inputDigest: estimateRequest.inputDigest };
+    const estimate = { ...receipt, status: "estimate" as const, requestKey: estimateRequest.key, inputDigest: estimateRequest.inputDigest };
     expect(verifyTaxQuoteResult(estimateRequest, {
       kind: "estimate", money, evidence: estimate, evidenceDigest: taggedDigest("evidence", estimate),
     })).toBeUndefined();
-    const wrongStatus = { ...estimate, inputDigest: request.inputDigest };
+    const wrongStatus = { ...estimate, requestKey: request.key, inputDigest: request.inputDigest };
     const wrongResult = { ...result, evidence: wrongStatus, evidenceDigest: taggedDigest("evidence", wrongStatus) };
     expect(verifyTaxQuoteResult(request, wrongResult as unknown as TaxQuoteResultV1)).toMatchObject({
       code: "tax_calculation_unusable", field: "/evidence/status",
@@ -241,6 +244,28 @@ describe("tax document decoders", () => {
     ] as const) {
       expect(verifyTaxQuoteResult(request, successful(bindFiscal(rebound)))).toMatchObject({ code: "tax_reference_conflict", field });
     }
+  });
+
+  it("identical_inputs_under_two_keys_refused", () => {
+    const { input, evidence, validity } = structuredClone({ input: request.input, evidence: receipt, validity: fiscal });
+    const first = makeTaxQuoteRequest("quote-a", input);
+    const second = makeTaxQuoteRequest("quote-b", input);
+    expect(second.key).not.toBe(first.key);
+    expect(second.inputDigest).toBe(first.inputDigest);
+
+    const result = successful({ ...evidence, requestKey: first.key });
+    const originalValidity = { ...validity, original: first, evidence: result.evidence, evidenceDigest: result.evidenceDigest };
+    expect(verifyTaxQuoteResult(first, result)).toBeUndefined();
+    expect(verifyTaxQuoteRequest(originalValidity)).toBeUndefined();
+
+    const replay = replayRefusal("/evidence/requestKey", "calculation evidence");
+    expect(verifyTaxQuoteResult(second, structuredClone(result))).toEqual(replay);
+    expect(verifyTaxQuoteRequest({ ...structuredClone(originalValidity), original: second })).toEqual(replay);
+
+    const relabeled = { ...result.evidence, requestKey: second.key };
+    expect(fiscalHash(relabeled)).toBe(result.evidence.fiscalDigest);
+    expect(verifyTaxQuoteResult(second, { ...result, evidence: relabeled }))
+      .toEqual(replayRefusal("/evidenceDigest", "calculation evidence"));
   });
 
   it("requires one metadata row per assessed tax position and fee and rejects orphans", () => {
@@ -357,7 +382,7 @@ describe("tax document decoders", () => {
         }),
       });
       const covered = bindFiscal({
-        ...receipt, inputDigest: original.inputDigest, coverage: { vector: coverage.vector, digest: coverage.digest },
+        ...receipt, requestKey: original.key, inputDigest: original.inputDigest, coverage: { vector: coverage.vector, digest: coverage.digest },
       });
       expect(verifyTaxQuoteResult(original, successful(covered))).toMatchObject({
         code: "tax_breakdown_incomplete", field: "/money/components/0/initial/taxPositions/0/taxMinor",
@@ -459,7 +484,7 @@ describe("tax document decoders", () => {
   }).vector;
   const resultWith = (original: TaxQuoteRequestV1, assessment = money, evidence = receipt, rows = evidence.coverage.vector) => {
     const bound = bindFiscal({
-      ...evidence, status: original.input.purpose, inputDigest: original.inputDigest,
+      ...evidence, status: original.input.purpose, requestKey: original.key, inputDigest: original.inputDigest,
       coverage: { vector: rows, digest: taggedDigest("coverage", rows) },
     });
     return { kind: bound.status, money: assessment, evidence: bound, evidenceDigest: taggedDigest("evidence", bound) } as TaxQuoteResultV1;

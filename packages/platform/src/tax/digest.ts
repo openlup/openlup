@@ -80,6 +80,9 @@ function verifyEvidenceDigests(request: TaxQuoteRequestV1, evidence: TaxCalculat
   if (evidence.inputDigest !== request.inputDigest) {
     return replayDigest("/evidence/inputDigest", "request input");
   }
+  if (evidence.requestKey !== request.key) {
+    return replayDigest("/evidence/requestKey", "calculation evidence");
+  }
   if (destinationDigest !== request.input.destination.digest) {
     return replayDigest("/evidence/destinationDigest", "calculation evidence");
   }

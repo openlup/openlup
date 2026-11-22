@@ -186,7 +186,7 @@ const feeScope = variant<Fee["scope"]>("kind", {
 const fee = object({ feeKey: moneyRef, jurisdiction: ref, feeKind: ref, scope: feeScope,
   refundRule: object({ ref, revision: ref }) }, { providerPositionRef: ref });
 const evidenceFields = object({
-  scope, calculationRef: ref, status: oneOf("final", "estimate"), calculatedAt: instant, expiresAt: instant, taxDate: instant,
+  requestKey: ref, scope, calculationRef: ref, status: oneOf("final", "estimate"), calculatedAt: instant, expiresAt: instant, taxDate: instant,
   destinationDigest: digest, shipFromRef: ref, inputDigest: digest, policyRevision: ref, classMapRevision: ref,
   coverage: coverageEvidence, fiscalDigest: digest, positions: object({ tax: array(position), fees: array(fee) }),
 });

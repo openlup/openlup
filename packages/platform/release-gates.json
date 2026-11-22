@@ -1066,7 +1066,7 @@
       "./communications/contracts": 11776,
       "./identity/contracts": 4800,
       "./inventory/contracts": 32,
-      "./tax/contracts": 7993,
+      "./tax/contracts": 8002,
       "./pricing/contracts": 464,
       "./promotions/contracts": 32,
       "./shipping/contracts": 32,
