@@ -884,10 +884,11 @@ describe.each([
   const first = signatures[0], last = signatures.at(-1)!;
   const name = first.slice("public.".length, first.indexOf("("));
   const create = (signature: string) => `CREATE FUNCTION ${signature} RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT 'pinned'; $$;`;
+  const grantStatement = `GRANT EXECUTE ON FUNCTION ${signatures.join(",\n      ")} TO openlup_catalog_publication;`;
+  const grantLine = `    EXECUTE '${grantStatement}';\n`;
   const guarded = `DO $$ BEGIN
 ${roleGuard}${ledgerGuard}  THEN
-    EXECUTE 'GRANT EXECUTE ON FUNCTION ${signatures.join(",\n      ")} TO openlup_catalog_publication;';
-  END IF;
+${grantLine}  END IF;
 END; $$;
 `;
   const exactGrant = "qualified price setup EXECUTE forward must contain only the exact guarded grant with final LF";
@@ -958,6 +959,12 @@ END; $$;
     ["an altered authority hash", guarded.replace(authoritySha256, "0".repeat(64))],
     ["the missing authority guard", guarded.replace(ledgerGuard, "")],
     ["an altered role guard", guarded.replace(roleGuard, roleGuard.replace("rolname=", "rolname<>"))],
+    ...(row === profileIdentityGrantRow ? [
+      ["the sole grant omitted", guarded.replace(grantLine, "")],
+      ["the sole grant repeated in the same block", guarded.replace(grantLine, grantLine.repeat(2))],
+      ["SELECT alongside EXECUTE", guarded.replace("GRANT EXECUTE", "GRANT EXECUTE, SELECT")],
+      ["the intact grant outside the guard", `${guarded.replace(grantLine, "")}${grantStatement}\n`],
+    ] as const : []),
     ...(signatures.length === 2 ? [
       ["only the apply signature", guarded.replace(`,\n      ${last}`, "")],
       ["only the lock signature", guarded.replace(`${first},\n      `, "")],
@@ -992,6 +999,23 @@ END; $$;
     value.nativeStoreForwards!.splice(signatures.length - 1, 1);
     expect(admit).toThrow(`requires an earlier native slot creating ${last}`);
   });
+  if (row === profileIdentityGrantRow) {
+    it("refuses the pinned CREATE in a native slot after the grant", () => {
+      const { slots, value, preceding, admit } = setup();
+      const definition = slots.shift()!;
+      const pin = value.nativeStoreForwards!.shift()!;
+      definition.path = pin.path = "db/platform/migrations/20990104000000_guarded_execute_definition.sql";
+      slots.push(definition);
+      value.nativeStoreForwards!.push(pin);
+      preceding.pop();
+      expect(admit).toThrow(`requires an earlier native slot creating ${first}`);
+    });
+    it("refuses a native prefix out of filename order", () => {
+      const { preceding, admit } = setup();
+      preceding.push({ path: "db/platform/migrations/20981231100000_fixture.sql", bytes: Buffer.from("SELECT 1;\n") });
+      expect(admit).toThrow("requires an ordered same-rail prefix and baseline");
+    });
+  }
   it("refuses a predecessor file whose bytes drift from its pin", () => {
     const { preceding, admit } = setup();
     preceding[1]!.bytes = Buffer.concat([preceding[1]!.bytes, Buffer.from("\n")]);

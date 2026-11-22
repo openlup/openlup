@@ -2937,8 +2937,8 @@ SHA-256 and the exact `CREATE FUNCTION` statement's after-hash. The grant's
 approval base must already contain the same definition bytes and bindings.
 The predecessor files and intervening native files must tokenize completely.
 Admission requires the issued `PUBLIC` revoke and refuses later static changes
-to any target definition. PB-1's PostgreSQL
-witness covers changes reached through dynamic SQL in earlier admitted routines
+to any target definition. For price setup, PB-1's PostgreSQL witness covers
+changes reached through dynamic SQL in earlier admitted routines
 and verifies the effective owner, function attributes and privileges under the
 installed profiles.
 
