@@ -12,7 +12,7 @@ import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPo
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const root = "db/platform/migrations/";
-const profileForward = `${root}20261124210000_subscription_profiles.sql`;
+const profileForward = `${root}20261124230000_subscription_profiles.sql`;
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const artifact = readFileSync("examples/neutral-store/owned/catalogue-rules.cjs");
 const ref = { key: "example:repeat", version: 1 };

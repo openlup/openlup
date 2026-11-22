@@ -1570,7 +1570,11 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261124210000_subscription_profiles.sql",
+      "path": "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261124230000_subscription_profiles.sql",
       "class": "public-output"
     },
     {
@@ -5110,7 +5114,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261124210000_subscription_profiles.sql",
+      "path": "packages/platform/sql/20261124220000_catalog_governed_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124230000_subscription_profiles.sql",
       "class": "public-output"
     },
     {
@@ -5691,6 +5699,10 @@
     },
     {
       "path": "packages/platform/src/catalog/installedSubscriptionProfiles.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/lifecycleDraftSchemas.ts",
       "class": "public-output"
     },
     {
@@ -30339,6 +30351,10 @@
     },
     {
       "path": "tests/postgres/catalogPublicationFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPublicationGovernedRoster.test.ts",
       "class": "public-output"
     },
     {

@@ -44,6 +44,13 @@ const admittedRestoreSourceInventories: readonly Record<RestoreProfile, string>[
     "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
     "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
   },
+  // Main after governed catalogue lifecycle (#982).
+  {
+    "bootstrap": "ec9028a590334948606d160362e9363c50793284548c2b9c092a71632234724c",
+    "separate": "1feea98acf1cd7cdf1de399cdf8ab8c9ff6a30cec67168a274428f05f4722638",
+    "installer-managed": "02c68db9202830bd08f574130d3a3de19345a4050b8879d3338824b379474195",
+    "operator-provisioned": "a05e24a7dcdc6cb4394907be818520a33fa89e9a269a7c01853cd656ecfcf91b",
+  },
 ];
 const checkoutAttemptLedger = "commerce_checkout_attempt_ledger";
 const settings = ["fulfillment_provider_archetypes", "sales_channels", "commerce_settings", "client_absorption_policy",
@@ -801,9 +808,9 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
   const allowed: Readonly<Record<string, readonly string[]>> = {
     // Publication guards validate restored facts and the complete ledger. The
     // live-write binding triggers are scoped to the dedicated publication login.
-    catalog_products: ["catalog_products_publication_pointer_fence", "catalog_publication_live_write"],
+    catalog_products: ["catalog_products_publication_pointer_fence", "catalog_publication_live_write", "catalog_products_lifecycle_projection_final"],
     catalog_definition_installs: ["catalog_definition_install_profile_immutable"],
-    catalog_skus: ["catalog_skus_publication_facts_admitted", "catalog_publication_live_write"],
+    catalog_skus: ["catalog_skus_publication_facts_admitted", "catalog_publication_live_write", "catalog_skus_lifecycle_write_fence"],
     catalog_sku_identifiers: ["catalog_publication_live_write"],
     catalog_product_document_revisions: ["catalog_publication_live_write"],
     catalog_publications: ["catalog_publications_issued", "catalog_publication_record_write_binding", "catalog_publications_open_draft"],

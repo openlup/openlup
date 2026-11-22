@@ -9,7 +9,7 @@ import type { CatalogDraftIssue, CatalogProductTypeDefinition, CatalogQuantity }
 import type { CatalogDraftPayloadV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
 import type { CatalogDraftClaimV3, CatalogDraftMediaClaimV3 } from "./contracts/draftV3.js";
 import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publicationContracts.js";
-import { CATALOG_PUBLICATION_LIMITS } from "./publicationContracts.js";
+import { CATALOG_PUBLICATION_LIMITS, GOVERNED_PUBLICATION_VERSION } from "./publicationContracts.js";
 import { adopterIssue, CatalogPublicationError, publicationDiagnostic, publicationIssue, publicationRefuse,
   type EvaluationIssue, type Issue, type PlatformCode } from "./publicationError.js";
 import { assertNativeProductDocument, assertNativeProductReferences, assertNativeSkuNetWeight, assertPublicationRegistration, assertPublishedFacts, assertPublishedPresentation, assertPublishedSkuDocumentExclusion, catalogPublishedProductSchema, catalogPublishedSkuSchema, comparePublicationText, decodePublishedProduct, decodePublishedSku, publicationContent,
@@ -585,9 +585,8 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       }
     }
     position.subject = definition.key;
-    const { publication: _publication, skus: intentSkus, ...base } = payload;
-    const validationPayload: CatalogDraftPayloadV2 = { ...base, schemaVersion: 2,
-      skus: intentSkus.map(({ demandPolicyRef: _policy, ...sku }) => sku) };
+    const { publication: _publication, ...base } = payload;
+    const validationPayload: CatalogDraftPayloadV2 = { ...base, schemaVersion: 2 };
     position.path = "product.sharedContent";
     const validation = await validateDraftV2Issues(validationPayload, { resolve: () => ({ ...definition,
       validateContent: !withdrawalOnly && rules ? rules.validateContent : () => [] }) }, attributeReferences);
@@ -663,8 +662,13 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     const states = governedState && lifecycleEvidenceSchema.safeParse(governedState).data;
     const governed = governedIntent || governedState !== undefined;
     const lifecycleAvailable = !requestedHead || Boolean(states && retainedState.skus.every(sku => states.skus[sku.code]));
-    if (governed && !lifecycleAvailable)
-      structural.push(missing("catalog_lifecycle_evidence_unavailable", "publication"));
+    const legacyHead = governedState === undefined && head?.success && head.data
+      && recordedProduct?.success && recordedProduct.data && recordedProduct.data.schemaVersion === undefined;
+    const missingLifecycle = (path: string) => unavailable({
+      ...publicationIssue("catalog_lifecycle_evidence_unavailable", position.phase, path, position.subject),
+      ...(legacyHead ? {} : { detail: "Load the current publication evidence, including the product and SKU lifecycle states, and prepare the draft again." }),
+    });
+    if (governed && !lifecycleAvailable) structural.push(missingLifecycle("publication"));
     if (!governedIntent && states && lifecycleAvailable) publicationRefuse("catalog_lifecycle_raw_status_fenced");
     const priceOperations = payload.skus.flatMap(sku => sku.priceOperations ?? []);
     async function checkPrices(draft: CatalogDraftPayloadV2 | undefined) {
@@ -901,7 +905,8 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         position.subject = sku.code ?? sku.id;
         bindPhysicalSource(sku.code, sku);
       }
-      activating = affected.enabling.size > 0 || payload.publication.operations.some(op => op.op === "restore_product" || op.op === "restore_sku");
+      activating = affected.enabling.size > 0 || payload.publication.operations.some(op =>
+        op.op === "set_product_lifecycle" && op.state === "active");
       for (const [index, operation] of payload.publication.operations.entries()) {
         if (operation.op !== "set_eligibility" || !enablesSku(operation)) continue;
         const source = savedSources.get(index);
@@ -957,13 +962,22 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     let productState = states?.product;
     const skuStates = new Map(Object.entries(states?.skus ?? {}));
     let lastChildWithdrawn = false;
+    const pendingEligibility = new Map<string, Extract<PublicationOperation, { op: "set_eligibility" }>>();
+    function applyPendingEligibility() {
+      if (productState !== "active") return;
+      for (const [code, pending] of pendingEligibility) {
+        if (skuStates.get(code)?.state !== "active") continue;
+        applySkuPrefix(knownSku(code), pending, rules);
+        pendingEligibility.delete(code);
+      }
+    }
     function applyLifecycle(operation: PublicationLifecycleOperation) {
       const restored = operation.op === "restore_product" || operation.op === "restore_sku";
       const after = restored ? "active" : operation.state;
       const row = "skuCode" in operation ? knownSku(operation.skuCode) : knownProduct();
       const before = "skuCode" in operation ? skuStates.get(operation.skuCode)?.state : productState;
       if (!before) {
-        structural.push(missing("catalog_lifecycle_evidence_unavailable", "publication.operations"));
+        structural.push(missingLifecycle("publication.operations"));
         return;
       }
       need(before === operation.expectedState, "catalog_lifecycle_state_conflict");
@@ -974,13 +988,19 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           need(!sku.sellableStandalone && !sku.sellableInSubscription && knownProduct().primarySkuId !== sku.id,
             "catalog_publication_v3_compile_archive_refused");
         if (after === "withdrawn") {
+          pendingEligibility.delete(sku.code);
           sku.sellableStandalone = false;
           sku.sellableInSubscription = false;
           lastChildWithdrawn ||= ![...skuStates].some(([code, entry]) => code !== operation.skuCode && entry.state === "active");
         }
         skuStates.set(operation.skuCode, { ...skuStates.get(operation.skuCode), state: after });
       } else {
-        if (after === "active") need(knownProduct().document && knownProduct().primarySkuId, "catalog_publication_v3_compile_product_incomplete");
+        if (after === "active") {
+          const owner = knownProduct();
+          const primary = [...skus.values()].find(sku => sku.id === owner.primarySkuId);
+          need(owner.document && primary?.productId === owner.id && primary.status !== "archived",
+            "catalog_publication_v3_compile_product_incomplete");
+        }
         if (operation.op === "set_product_lifecycle") {
           const children = after === "withdrawn" ? [...skus.keys()].sort().map(skuCode => ({
             skuCode, expectedState: skuStates.get(skuCode)?.state,
@@ -988,6 +1008,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           need(children.every(child => child.expectedState !== undefined) && equal(operation.children, children), "catalog_lifecycle_child_effects_mismatch");
           for (const { skuCode } of children) {
             const sku = knownSku(skuCode);
+            pendingEligibility.delete(skuCode);
             sku.sellableStandalone = false;
             sku.sellableInSubscription = false;
             if (skuStates.get(skuCode)?.state === "active") skuStates.set(skuCode, { ...skuStates.get(skuCode), state: "withdrawn" });
@@ -996,6 +1017,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         productState = after;
       }
       row.status = after === "withdrawn" ? "active" : after;
+      if (after === "active") applyPendingEligibility();
     }
     let highWater = retainedState.documentRevisionHighWater;
     async function applyPrefixes() {
@@ -1063,10 +1085,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           existingCombinations.add(identity);
           skus.set(sku.code, sku); created.add(sku.code);
           creations.set(index, structuredClone(sku));
-          if (governed) {
-            const demandPolicyRef = incoming.get(sku.code)?.demandPolicyRef;
-            skuStates.set(sku.code, { state: "draft", ...(demandPolicyRef === undefined ? {} : { demandPolicyRef }) });
-          }
+          if (governed) skuStates.set(sku.code, { state: "draft" });
         } else if (operation.op === "create_identifier") {
           const sku = knownSku(operation.skuCode);
           need(created.has(sku.code), "catalog_publication_identifier_requires_created_sku");
@@ -1095,15 +1114,24 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           const sku = knownSku(operation.skuCode);
           const on = operation.sellableStandalone || operation.sellableInSubscription;
           const materialized = originalById.get(sku.id);
+          pendingEligibility.delete(sku.code);
+          need(!on || sku.status !== "archived" && materialized?.status !== "archived", "catalog_publication_v3_compile_sku_archived");
           if (on && governed) {
             const state = skuStates.get(sku.code)?.state;
             if (productState === undefined || state === undefined) {
-              structural.push(missing("catalog_lifecycle_evidence_unavailable", position.path));
+              structural.push(missingLifecycle(position.path));
               continue;
             }
-            need(productState === "active" && state === "active", "catalog_lifecycle_fresh_sale_refused");
+            if (productState !== "active" || state !== "active") {
+              const rest = operations.slice(index + 1);
+              need((state === "active" || rest.some(op => (op.op === "restore_sku" || op.op === "set_sku_lifecycle" && op.state === "active")
+                && op.skuCode === sku.code && op.expectedState === state))
+                && (productState === "active" || rest.some(op => (op.op === "restore_product" || op.op === "set_product_lifecycle" && op.state === "active")
+                  && op.expectedState === productState)), "catalog_lifecycle_fresh_sale_refused");
+              pendingEligibility.set(sku.code, operation);
+              continue;
+            }
           }
-          need(!on || sku.status !== "archived" && materialized?.status !== "archived", "catalog_publication_v3_compile_sku_archived");
           applySkuPrefix(sku, operation, rules);
         } else if (operation.op === "set_sku_status") {
           const sku = knownSku(operation.skuCode);
@@ -1145,7 +1173,8 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       position.path = "product";
       position.subject = definition.key;
       const result = missingProduct ? null : knownProduct();
-      if (!missingProduct && lastChildWithdrawn) need(productState === "withdrawn"
+      need(pendingEligibility.size === 0, "catalog_lifecycle_fresh_sale_refused");
+      if (!missingProduct && lastChildWithdrawn && ![...skuStates.values()].some(row => row.state === "active")) need(productState === "withdrawn"
         && payload.publication.operations.some(op => op.op === "set_product_lifecycle" && op.state === "withdrawn"),
       "catalog_lifecycle_last_active_child");
       if (result) {
@@ -1189,10 +1218,8 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         position.subject = sku.code;
         const draft = incoming.get(sku.code);
         if (draft && !created.has(sku.code)) {
-          const policyUnchanged = draft.demandPolicyRef === undefined || draft.demandPolicyRef === skuStates.get(sku.code)?.demandPolicyRef;
-          if (!withdrawalOnly) need(policyUnchanged, "sku_identity_change_requires_new_sku");
           const overlay = { attributes: draft.attributes ?? sku.attributes, grossMass: draft.grossMass ?? sku.grossMass, assetRefs: draft.assetRefs ?? sku.assetRefs };
-          if (withdrawalOnly) need(policyUnchanged && equal(overlay, { attributes: sku.attributes, grossMass: sku.grossMass, assetRefs: sku.assetRefs })
+          if (withdrawalOnly) need(equal(overlay, { attributes: sku.attributes, grossMass: sku.grossMass, assetRefs: sku.assetRefs })
             && (draft.logisticsRef === undefined || draft.logisticsRef === sku.logisticsRef), "catalog_lifecycle_withdrawal_overlay_refused");
           else Object.assign(sku, overlay);
         }
@@ -1212,7 +1239,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           "catalog_publication_v3_compile_derived_facts_mismatch");
         if (result && governed && (sku.sellableStandalone || sku.sellableInSubscription)) {
           const state = skuStates.get(sku.code)?.state;
-          if (productState === undefined || state === undefined) structural.push(missing("catalog_lifecycle_evidence_unavailable", position.path));
+          if (productState === undefined || state === undefined) structural.push(missingLifecycle(position.path));
           else need(productState === "active" && state === "active", "catalog_lifecycle_fresh_sale_refused");
         }
         const key = combination(sku);
@@ -1231,16 +1258,21 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       const promotions = requiredPromotions(payload.publication.operations.filter(op => !isLifecycleOperation(op)), retainedState);
       need((!promotions.product || result.status === "active") && promotions.skus.every(code => skus.get(code)?.status === "active"),
         "catalog_publication_activation_effect_missing");
+      if (governed && productState) Object.assign(result, {
+        schemaVersion: GOVERNED_PUBLICATION_VERSION, lifecycleState: productState, definitionDigest: input.installedDefinitionDigest,
+      });
       const sorted = [...skus.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
       for (const sku of sorted) {
         const before = originalById.get(sku.id);
         // The sealed SKU revision belongs to the issuing draft. The operation's
         // physical source and the registered document retain their own provenance.
-        if (payload.schemaVersion === 3) {
-          sku.source = before && equal({ ...sku, source: before.source }, before) ? before.source : claim;
-        } else if (!withdrawalOnly && before && incoming.has(sku.code) && !equal(before, sku)) {
-          sku.source = claim;
+        const state = skuStates.get(sku.code);
+        if (governed && state) {
+          const optionDigest = combination(sku);
+          need(before?.optionDigest === undefined || before.optionDigest === optionDigest, "sku_identity_change_requires_new_sku");
+          Object.assign(sku, { schemaVersion: GOVERNED_PUBLICATION_VERSION, lifecycleState: state.state, optionDigest });
         }
+        sku.source = before && equal({ ...sku, source: before.source }, before) ? before.source : claim;
         const finalSku = decodePublishedSku(sku, "skus", sku.code);
         assertNativeSkuNetWeight(finalSku);
         assertPublishedSkuDocumentExclusion(finalSku, documentDigests);
@@ -1251,7 +1283,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         result.content = retainedState.product.content;
         result.source = retainedState.product.source;
       }
-      if (payload.schemaVersion === 3) result.source = claim;
+      result.source = claim;
       const published = decodePublishedProduct(result, documentDigests);
       if (!withdrawalOnly && rules && afterDocument) {
         const [refusal] = rules.validateProduct(ruleProduct(published), [...skus.values()].map(ruleSku), documents.map(document => document.canonicalText));
@@ -1299,8 +1331,12 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         need(sku.memberships.some(row => row.admitted), "catalog_publication_activation_membership_required");
       }
       position.subject = definition.key;
-      if (operations.some(operation => operation.op === "set_product_status" && operation.status === "active"
-        || operation.op === "set_product_lifecycle" && operation.state === "active" || operation.op === "restore_product")) {
+      const activatingProduct = operations.some(op => op.op === "set_product_status" && op.status === "active");
+      const startingGovernedSales = governed && lifecycleAvailable && activating && (
+        operations.some(op => op.op === "set_product_lifecycle" && op.state === "active"
+          || op.op === "restore_product" || op.op === "restore_sku")
+        || !retainedState.skus.some(sku => sku.sellableStandalone || sku.sellableInSubscription));
+      if (activatingProduct || startingGovernedSales) {
         position.path = "product.primarySkuId";
         position.subject = primary?.code ?? definition.key;
         need(primary?.status === "active" && (primary.sellableStandalone || primary.sellableInSubscription), "catalog_publication_v3_active_primary_required");
