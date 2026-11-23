@@ -170,7 +170,7 @@ it.each([undefined, 'webhook', 'polling'] as const)('records %s ACK intake, pres
  expect((await h.pool.query('SELECT count(*)::int AS count FROM public.fulfillment_provider_attempts WHERE attempt_key=$1', [acceptance.providerAttemptKey])).rows).toEqual([{ count: 1 }]);
  // Legacy installation need not provision runtime roles; PUBLIC still has no execute.
  const acl = (await h.pool.query("SELECT NOT EXISTS (SELECT 1 FROM aclexplode(coalesce(proacl,acldefault('f',proowner))) WHERE grantee=0 AND privilege_type='EXECUTE') AS no_public, prosecdef, proconfig FROM pg_proc WHERE oid='public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)'::regprocedure")).rows[0];
- expect(acl).toEqual({ no_public: true, prosecdef: false, proconfig: ['search_path=pg_catalog'] });
+ expect(acl).toEqual({ no_public: true, prosecdef: false, proconfig: ['search_path=pg_catalog, pg_temp'] });
 });
 
 

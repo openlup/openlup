@@ -1102,10 +1102,18 @@ top-level `SET search_path` list of unquoted ASCII identifiers, using `=` or
 tokens normalized and literal and quoted identifier tokens kept byte-exact.
 The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
 requires `pg_temp` last, with no earlier `pg_temp` or `pg_temp_<N>` entry, for every
-installed non-system definer. Preserve the intended trusted schemas when
-moving `pg_temp` to the end. For a missing or empty path, review and set the
+installed non-system, non-extension definer and for every such function that sets its own
+search path. Its shrink-only `SEARCH_PATH_PENDING` list names the five remaining
+functions outside `public`. Preserve the intended trusted schemas when
+moving `pg_temp` to the end. When the trusted list is known, the check prints the
+exact `ALTER FUNCTION` statement. For a missing or empty path, review and set the
 trusted schema list before appending `pg_temp`. Eleven acquisition and partner
 acquisition definer functions now pin `pg_temp` last on their search path.
+The [function search-path forward](../../db/platform/migrations/20261125175000_function_search_path_pg_temp.sql)
+appends `pg_temp` to the search path of 388 installer-owned `public` functions
+on every plan, keeping their schema order. Where the qualified-v2 plan already
+sets `pg_catalog, public, pg_temp`, every plan takes that value. Only the
+search path changes.
 If a retained-store packet has an unknown or mismatched inventory, the remedy is
 `capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
 If no such target can be provisioned, connected-store restore is unavailable for that pair.

@@ -1319,7 +1319,9 @@ it("admits the maximum inherited observation roster and refuses one more SKU", a
 it("retains mixed issue dialects and rejects an incomplete governed final state at COMMIT", async () => {
   await pool.query(readFileSync("db/platform/migrations/20261124120000_catalog_publication_reads.sql", "utf8"));
   await pool.query(readFileSync("db/platform/migrations/20261124140000_catalog_publication_readiness.sql", "utf8"));
-  await installAfter(pool, "db/platform/migrations/20261124170000_catalog_publication_commit_perf.sql");
+  // This partial install omits earlier forwards whose functions the search-path forward pins.
+  await installAfter(pool, "db/platform/migrations/20261124170000_catalog_publication_commit_perf.sql",
+    file => /_function_search_path_pg_temp\.sql$/u.test(file));
   const result = await transaction(pool, async db => {
     const old = await graph(db, fixture());
     await insertGraph(db, old);

@@ -44,7 +44,9 @@ async function headers() {
 }
 it("preserves every replaced function's signature, security, configuration and ACL", async () => {
   expect(originalHeaders).toHaveLength(16);
-  expect(await headers()).toEqual(originalHeaders);
+  // The later search-path forward appends pg_temp to each pinned path; nothing else changes.
+  expect(await headers()).toEqual(originalHeaders.map(row => ({ ...row, proconfig: (row.proconfig as string[]).map(setting =>
+    setting.startsWith("search_path=") && !setting.endsWith(", pg_temp") ? `${setting}, pg_temp` : setting) })));
 });
 it.each([["replayed", 7], ["subscription_switch", 4], ["consent_snapshot_merge", 8], ["scope_repair", 24], ["health", 16]] as const)("retains %s assertions on native PostgreSQL", async (file, count) => {
   try {
