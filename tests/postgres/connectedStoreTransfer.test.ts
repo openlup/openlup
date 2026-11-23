@@ -1350,7 +1350,8 @@ it("drains every target acquisition command before opening a new installation-ke
     const started = new Date(Date.now() - 1000).toISOString();
     const env = { OPENLUP_ACQUISITION_DRAIN_STARTED_AT: started, OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS: "3600" };
     const request = (key: string, email: string) => ({ method: "POST", query: {}, headers: { "idempotency-key": key,
-      "x-forwarded-for": "127.0.0.1" }, body: { company: "Synthetic Partner", country: "US", firstName: "Ada",
+      "x-forwarded-for": "127.0.0.1" }, socket: { remoteAddress: "127.0.0.1" },
+      body: { company: "Synthetic Partner", country: "US", firstName: "Ada",
       lastName: "Example", email, phone: "+15551234567", notes: null } });
     const response = () => {
       const headers: Record<string, string> = {};

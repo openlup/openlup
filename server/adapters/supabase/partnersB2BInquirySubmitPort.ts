@@ -1,7 +1,4 @@
-import type {
-  PartnersB2BInquirySubmitPort,
-  PartnersB2BInquiryRequestHeaders,
-} from "../../../src/domains/partners/ports.js";
+import type { PartnersB2BInquirySubmitPort } from "../../../src/domains/partners/ports.js";
 import { createServiceRoleClient } from "../../_lib/admin-domain/auth.js";
 import {
   createPublicIntakeEmailDeliveryPort,
@@ -47,7 +44,7 @@ export type PartnersB2BInquiryRunner = (
     notes?: string | null;
     openlupInternalCheck?: string;
   },
-  context?: { headers?: PartnersB2BInquiryRequestHeaders },
+  rateLimitAddress: string,
   env?: PartnersB2BInquiryRuntimeEnv,
 ) => Promise<{ status: number; body: EdgeB2BInquiryBody }>;
 
@@ -57,8 +54,8 @@ export function createSupabasePartnersB2BInquirySubmitPort(options: {
 } = {}): PartnersB2BInquirySubmitPort {
   const runB2BInquirySubmit = options.runB2BInquirySubmit ?? runB2BInquirySubmitHandler;
   return {
-    async submitB2BInquiry(request, context) {
-      const result = await runB2BInquirySubmit(request, context, options.env);
+    async submitB2BInquiry(request, rateLimitAddress) {
+      const result = await runB2BInquirySubmit(request, rateLimitAddress, options.env);
       if (typeof result.body.success !== "boolean") throw new Error("B2B inquiry submit returned incomplete data");
       return {
         success: result.body.success,
@@ -72,7 +69,7 @@ export function createSupabasePartnersB2BInquirySubmitPort(options: {
   };
 }
 
-export const runB2BInquirySubmitHandler: PartnersB2BInquiryRunner = async (request, context, env = process.env) => {
+export const runB2BInquirySubmitHandler: PartnersB2BInquiryRunner = async (request, rateLimitAddress, env = process.env) => {
   const config = resolveRuntimeConfig(env);
   if (config.ok === false) return { status: 500, body: { success: false, error: config.error, code: config.error } };
   const client = createServiceRoleClient({ url: config.url, serviceRoleKey: config.serviceRoleKey }) as unknown as B2bClient;
@@ -109,7 +106,7 @@ export const runB2BInquirySubmitHandler: PartnersB2BInquiryRunner = async (reque
     presenter: createPrivateLabelB2BInquiryPresenter(env),
     hiddenPreviewEnabled: env.HIDDEN_SANDBOX_PREVIEW_ENABLED === "true",
   });
-  const result = await submit(request, requestHeaders(context?.headers), Boolean(request.openlupInternalCheck));
+  const result = await submit(request, rateLimitAddress, Boolean(request.openlupInternalCheck));
   return { status: result.status, body: result };
 };
 
@@ -137,17 +134,6 @@ function readRequiredResendApiKey(env: PartnersB2BInquiryRuntimeEnv): string {
 
 export function readNotificationTo(env: PartnersB2BInquiryRuntimeEnv): string[] {
   return (env.B2B_NOTIFICATION_EMAIL ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
-}
-
-
-function requestHeaders(input: PartnersB2BInquiryRequestHeaders | undefined): Headers {
-  const headers = new Headers();
-  if (input instanceof Headers) input.forEach((value, key) => headers.set(key, value));
-  else for (const [key, value] of Object.entries(input ?? {})) {
-    if (typeof value === "string") headers.set(key, value);
-    else if (Array.isArray(value)) headers.set(key, value.join(", "));
-  }
-  return headers;
 }
 
 function parseSubmitRpcRow(data: unknown): SubmitB2bInquiryRpcRow | null {

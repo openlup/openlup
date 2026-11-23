@@ -1826,6 +1826,8 @@ readiness takes no commerce locks.
   the `FOR KEY SHARE` of a foreign-key check. After its first catalogue lock it
   locks no further existing commerce row. Rows it inserts itself are exempt,
   because no other transaction can see them before commit.
+  The [admission fence lock order](DATA_AND_MIGRATIONS.md#admission-fence-lock-order)
+  defines the native purchase fence's exact modes and order.
 - **R3. Referenced catalogue rows are never exclusively locked.** Products, SKUs,
   SKU and publication revisions, price lists and price entries that commerce rows
   reference by foreign key are never locked `FOR UPDATE`, never deleted, and never
@@ -1838,7 +1840,8 @@ readiness takes no commerce locks.
   and row locks of the same rank takes the guard first, before any row lock of
   that rank; several guards of one rank are taken in ascending guarded-key order,
   with the guard namespace breaking a tie between equal guarded keys.
-  Overlap guards run under `READ COMMITTED`.
+  Overlap guards run under `READ COMMITTED`. For the native purchase fence,
+  use the [admission fence lock order](DATA_AND_MIGRATIONS.md#admission-fence-lock-order).
 - **R5. Store transfer is a separate regime.** Restore takes table locks on a
   fresh target with no concurrent writers; it is outside this order.
 - **R6. A row that adds a mixed transaction proves it** with independent
