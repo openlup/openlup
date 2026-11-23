@@ -8,7 +8,8 @@ import { dirname, join, resolve } from 'node:path';
 import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs';
-import { previousPublishedSet, proveDistributionCliConsumer, proveSettingsDiscovery, proveSettingsMcp, starterSettingsHost } from './distribution-cli-proof.ts';
+import { needsStarterCareUpgrade, previousPublishedSet, proveDistributionCliConsumer, proveSettingsDiscovery, proveSettingsMcp,
+  starterCareJourney, starterCareWitness, starterSettingsHost } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from './pack-manifest-input.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
 
@@ -232,6 +233,15 @@ function proveReleasedStarter(receipt, input, run, environment) {
   });
 }
 
+export function proveInstalledCareUpgrade(run, application, previous, customized) {
+  run('npx', ['--no', '--', 'playwright', 'install', 'chromium'], application);
+  const fixture = join(application, '.context/care-browser/upgrade.json');
+  mkdirSync(dirname(fixture), { recursive: true, mode: 0o700 });
+  writeFileSync(fixture, JSON.stringify({ predecessor: previous, customized }), { flag: 'wx', mode: 0o600 });
+  try { run(process.execPath, ['lifecycle.mjs', 'browser', starterCareJourney, '--grep', starterCareWitness], application); }
+  finally { rmSync(fixture); }
+}
+
 /** Build only the verified extraction; the original Dockerfile remains in its content identity. */
 export function buildQualifiedImage(application, commit, archive) {
   const base = readCiImage('starter-node'), name = 'ghcr.io/openlup/neutral-store-starter';
@@ -390,15 +400,27 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
         return input;
       });
       const applications = inputs.map(input => input.application);
-      cpSync(applications[0], join(temporary, 'previous'), { recursive: true });
+      const previousApplication = join(temporary, 'previous');
+      cpSync(applications[0], previousApplication, { recursive: true });
       pair.from.result = 'PASS'; pair.from.endedAt = new Date().toISOString();
-      const finish = proveDistributionCliConsumer(applications[1], { from: applications[0], to: applications[1], fromVersion: previous, toVersion: receipt.setVersion, evidence: pair });
-      // The target extraction already passed the extractor's complete lock checker.
-      // The CLI moved declarations; the harness moves the verified lock and installs.
-      assert.deepEqual(readFileSync(join(applications[0], 'package.json')), readFileSync(join(applications[1], 'package.json')), 'file upgrade must move exact dependency declarations');
-      writeFileSync(join(applications[0], 'package-lock.json'), readFileSync(join(applications[1], 'package-lock.json')));
-      proveReleasedStarter(pair.to, { ...inputs[1], application: applications[0] }, run, environment);
-      finish();
+      const care = needsStarterCareUpgrade(applications[0], applications[1]);
+      const upgradeApplication = (application, evidence, pristine) => {
+        const finish = proveDistributionCliConsumer(applications[1], { from: application, to: applications[1],
+          fromVersion: previous, toVersion: receipt.setVersion, evidence, pristine });
+        // Keep the extracted target lock verified by the extractor and install it after moving declarations.
+        assert.deepEqual(readFileSync(join(application, 'package.json')), readFileSync(join(applications[1], 'package.json')), 'file upgrade must move exact dependency declarations');
+        writeFileSync(join(application, 'package-lock.json'), readFileSync(join(applications[1], 'package-lock.json')));
+        proveReleasedStarter(pair.to, { ...inputs[1], application }, run, environment);
+        finish();
+        if (care) proveInstalledCareUpgrade(run, application, previousApplication, !pristine);
+      };
+      if (care) {
+        const pristine = join(temporary, 'pristine');
+        cpSync(previousApplication, pristine, { recursive: true });
+        pair.pristine = { phases: [] };
+        upgradeApplication(pristine, pair.pristine, true);
+      }
+      upgradeApplication(applications[0], pair, false);
       pair.to.result = 'PASS'; pair.to.endedAt = new Date().toISOString();
       pair.result = 'PASS';
     } else {

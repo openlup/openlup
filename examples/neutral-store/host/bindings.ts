@@ -51,6 +51,7 @@ export const customerOperations = new Set<Operation>([
   'account.billing', 'account.defaults', 'account.addresses', 'account.paymentPreference', 'account.deliveryPreference', 'subscription.savedAddress',
   'account.profile', 'account.invoiceCorrection', 'checkout.recoveryStart',
   'account.read', 'account.orders', 'account.invoice', 'account.consent',
+  'subscription.cancelDirect', 'subscription.cancelFeedback', 'subscription.acceptSaveOffer',
   'subscription.command', 'subscription.preview', 'subscription.catalog', 'subscription.address', 'return.request',
 ]);
 

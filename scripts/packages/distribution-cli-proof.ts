@@ -335,13 +335,37 @@ export function proveStarterCatalogueWrappers(app: string, scratch: string): voi
   }
 }
 
-type UpgradePair = { from: string; to: string; fromVersion: string; toVersion: string;
+export const starterCareJourney = "browser/acquisition.spec.ts";
+export const starterCareWitness = "ask_first_offer_only_after_yes";
+const careAccount = "client/pages/account.ts";
+const careCopy = "owned/copy.ts";
+const careSettings = "owned/renewal.config.ts";
+export function needsStarterCareUpgrade(from: string, to: string): boolean {
+  const oldJourney = join(from, starterCareJourney), newJourney = join(to, starterCareJourney);
+  return existsSync(join(to, careCopy)) && existsSync(newJourney)
+    && readFileSync(newJourney, "utf8").includes(starterCareWitness)
+    && !(existsSync(oldJourney) && readFileSync(oldJourney, "utf8").includes(starterCareWitness));
+}
+
+export function mergeStarterCareFile(directory: string, previous: Buffer, local: Buffer, candidate: Buffer) {
+  const merge = mkdtempSync(join(directory, "care-reconcile-"));
+  try {
+    for (const [name, bytes] of [["local", local], ["from", previous], ["to", candidate]] as const) writeFileSync(join(merge, name), bytes);
+    const result = spawnSync("git", ["merge-file", "-p", "local", "from", "to"], { cwd: merge, env: isolatedConsumerEnv() });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, "starter_care_upgrade_manual_reconciliation_required");
+    return result.stdout;
+  } finally { rmSync(merge, { recursive: true, force: true }); }
+}
+
+type UpgradePair = { from: string; to: string; fromVersion: string; toVersion: string; pristine?: boolean;
   evidence: { planSha256?: string; customizations?: Record<string, string>;
     managedConflict?: { path: string; action: "create" | "replace" }; phases: { name: string; result: string }[] } };
 
 function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const app = pair.from, from = starterUpgradeSnapshot(app, pair.fromVersion), to = starterUpgradeSnapshot(pair.to, pair.toVersion);
   const ownership = JSON.parse(readFileSync(join(app, "ownership.json"), "utf8"));
+  const careUpgrade = needsStarterCareUpgrade(app, pair.to);
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
@@ -355,8 +379,10 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     && !from.files[checkoutQuotaJourney]?.includes(checkoutQuotaWitness);
   const copyPath = join(app, starterCheckoutCopy);
   const previousQuotaCopy = reconcileQuotaCopy ? readFileSync(copyPath, "utf8") : undefined;
+  const predecessorSettings = careUpgrade ? owned[starterSettingsHost] : undefined;
+  const predecessorCopy = careUpgrade ? readFileSync(join(app, careCopy)) : undefined;
   phase("migrate-owned-contracts", () => { migrateStarterOwned(app, pair.to, from, to); });
-  phase("customize-owned", () => {
+  if (!pair.pristine) phase("customize-owned", () => {
     for (const [path, before, after] of [
       ["owned/store.config.ts", "#3d6657", "#663d57"],
       ["owned/fragments.ts", "offer-intro", "adopter-offer-intro"],
@@ -365,18 +391,19 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       const original = readFileSync(join(app, path), "utf8"); assert(original.includes(before));
       writeFileSync(join(app, path), original.replaceAll(before, after)); owned[path] = readFileSync(join(app, path));
     }
-    if (previousQuotaCopy !== undefined) {
+    if (previousQuotaCopy !== undefined || predecessorCopy) {
       assert(ownership.owned.includes(starterCheckoutCopy));
       assert(!Object.hasOwn(from.files, starterCheckoutCopy) && !Object.hasOwn(to.files, starterCheckoutCopy));
-      const local = previousQuotaCopy.replace('    cart: "Cart",', '    cart: "Your local basket",');
-      assert.notEqual(local, previousQuotaCopy);
+      const original = previousQuotaCopy ?? predecessorCopy!.toString("utf8");
+      const local = original.replace('    cart: "Cart",', '    cart: "Your local basket",');
+      assert.notEqual(local, original);
       owned[starterCheckoutCopy] = Buffer.from(local);
       writeFileSync(copyPath, owned[starterCheckoutCopy]);
     }
     pair.evidence.customizations = Object.fromEntries(Object.entries(owned).map(([path, bytes]) => [path, hash(bytes)]));
     assertCompleteStarter(app, from);
   });
-  const workspace = join(consumer, "distribution-cli-proof"); mkdirSync(workspace);
+  const workspace = mkdtempSync(join(consumer, "distribution-cli-proof-"));
   const executable = join(consumer, "node_modules/.bin/openlup");
   const writeSnapshots = () => {
     for (const [name, snapshot] of [["from", from], ["to", to]] as const)
@@ -407,6 +434,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const lifecycleReplaced = changed.some((file: { path: string; action: string }) =>
     file.path === starterLifecycle && file.action === "replace");
   const displayReplacements = starterDisplayFiles.filter(path =>
+    !(careUpgrade && !pair.pristine && path === careAccount) &&
     changed.some((file: { path: string; action: string }) => file.path === path && file.action === "replace"));
   const documentReplacements = starterDocumentFiles.filter(path =>
     changed.some((file: { path: string; action: string }) => file.path === path && file.action === "replace"));
@@ -422,7 +450,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     assert.deepEqual(readFiles(), before, "conflict wrote application files");
     return report;
   };
-  phase("managed-conflict", () => {
+  if (!pair.pristine) phase("managed-conflict", () => {
     pair.evidence.managedConflict = { path: conflict, action };
     if (editorReplacement) {
       const local = reconcileEditorCustomization(app, from.files[starterEditorPorts]!, applyRefused);
@@ -437,38 +465,38 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     assertUpgradeConflict(applyRefused(), conflict);
     if (original) writeFileSync(join(app, conflict), original); else rmSync(join(app, conflict));
   });
-  if (lifecycleReplaced) phase("lifecycle-reconciliation", () => {
+  if (!pair.pristine && lifecycleReplaced) phase("lifecycle-reconciliation", () => {
     const local = reconcileLifecycleCustomization(app, from.files[starterLifecycle]!, applyRefused);
     owned[local.path] = local.bytes;
     pair.evidence.customizations![local.path] = hash(local.bytes);
     assert.deepEqual(run("plan"), plan);
   });
-  for (const path of displayReplacements) phase(`display-reconciliation:${path}`, () => {
+  for (const path of pair.pristine ? [] : displayReplacements) phase(`display-reconciliation:${path}`, () => {
     const local = reconcileDisplayCustomization(app, from.files[path]!, applyRefused, path);
     owned[local.path] = local.bytes;
     pair.evidence.customizations![local.path] = hash(local.bytes);
     assert.deepEqual(run("plan"), plan);
   });
-  for (const path of documentReplacements) phase(`document-reconciliation:${path}`, () => {
+  for (const path of pair.pristine ? [] : documentReplacements) phase(`document-reconciliation:${path}`, () => {
     const local = reconcileDocumentCustomization(app, from.files[path]!, applyRefused, path);
     owned[local.path] = local.bytes;
     pair.evidence.customizations![local.path] = hash(local.bytes);
     assert.deepEqual(run("plan"), plan);
   });
-  if (checkoutHostReplacement) phase("checkout-host-reconciliation", () => {
+  if (!pair.pristine && checkoutHostReplacement) phase("checkout-host-reconciliation", () => {
     const local = reconcileManagedCustomization(app, from.files[checkoutHostReplacement]!, applyRefused,
       checkoutHostReplacement, "owned/upgrade-notes/checkout.ts", "\n// Adopter checkout policy.\n");
     owned[local.path] = local.bytes;
     pair.evidence.customizations![local.path] = hash(local.bytes);
     assert.deepEqual(run("plan"), plan);
   });
-  if (offerReplaced) phase("subscription-offer-reconciliation", () => {
+  if (!pair.pristine && offerReplaced) phase("subscription-offer-reconciliation", () => {
     const local = reconcileSubscriptionOfferCustomization(app, from.files[starterSubscriptionOffer]!, applyRefused);
     owned[local.path] = local.bytes;
     pair.evidence.customizations![local.path] = hash(local.bytes);
     assert.deepEqual(run("plan"), plan);
   });
-  if (reminderTestReplaced) phase("reminder-test-reconciliation", () => {
+  if (!pair.pristine && reminderTestReplaced) phase("reminder-test-reconciliation", () => {
     const local = reconcileReminderInstallationTest(app, from.files[reminderInstallationTest]!, () => {
       const before = starterUpgradeSnapshot(app, pair.fromVersion);
       const report = run("apply", 1);
@@ -479,7 +507,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     owned[local.path] = bytes;
     pair.evidence.customizations![local.path] = hash(bytes);
   });
-  if (Object.hasOwn(from.files, starterAgentGuide)) phase("agent-guide-reconciliation", () => {
+  if (!pair.pristine && Object.hasOwn(from.files, starterAgentGuide)) phase("agent-guide-reconciliation", () => {
     const local = reconcileStarterAgentGuide(app, from, to, applyRefused);
     owned[local.path] = local.bytes;
     pair.evidence.customizations![local.path] = hash(local.bytes);
@@ -488,7 +516,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     changed = plan.files.filter((file: { action: string }) => ["replace", "create"].includes(file.action));
     pair.evidence.planSha256 = hash(JSON.stringify(plan));
   });
-  if (Object.hasOwn(to.files, starterSettingsHost)) phase("settings-host-reconciliation", () => {
+  if (!pair.pristine && Object.hasOwn(to.files, starterSettingsHost)) phase("settings-host-reconciliation", () => {
     const local = Buffer.from(readFileSync(join(pair.to, starterSettingsHost), "utf8") + "\n// Adopter settings bindings.\n");
     writeFileSync(join(app, starterSettingsHost), local, { flag: "wx" });
     assertUpgradeConflict(applyRefused(), starterSettingsHost);
@@ -498,6 +526,28 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     changed = plan.files.filter((file: { action: string }) => ["replace", "create"].includes(file.action));
     owned[starterSettingsHost] = local;
     pair.evidence.customizations![starterSettingsHost] = hash(local);
+    pair.evidence.planSha256 = hash(JSON.stringify(plan));
+  });
+  if (!pair.pristine && careUpgrade) phase("care-account-reconciliation", () => {
+    const path = join(app, careAccount), before = Buffer.from(from.files[careAccount]!);
+    const local = Buffer.from(before.toString().replace("context.t('subscriptions'))", "context.t('subscriptions')), el('p', { id: 'adopter-care' }, 'Local care portal')"));
+    assert.notDeepEqual(local, before);
+    writeFileSync(path, local); assertUpgradeConflict(applyRefused(), careAccount);
+    const merged = mergeStarterCareFile(workspace, before, local, Buffer.from(to.files[careAccount]!));
+    writeFileSync(path, merged);
+    owned[careAccount] = merged;
+    pair.evidence.customizations![careAccount] = hash(merged);
+    for (const snapshot of [from, to]) {
+      delete snapshot.files[careAccount];
+      const inventory = JSON.parse(snapshot.files["ownership.json"]!);
+      inventory.managed = inventory.managed.filter((file: string) => file !== careAccount);
+      inventory.owned.push(careAccount);
+      snapshot.files["ownership.json"] = JSON.stringify(inventory, null, 2) + "\n";
+    }
+    writeFileSync(join(app, "ownership.json"), from.files["ownership.json"]!);
+    writeSnapshots();
+    plan = run("plan");
+    changed = plan.files.filter((file: { action: string }) => ["replace", "create"].includes(file.action));
     pair.evidence.planSha256 = hash(JSON.stringify(plan));
   });
   phase("interrupt-and-refuse", () => {
@@ -529,6 +579,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   phase("resume", () => {
     const resumed = run("apply");
     assert(resumed.files.some((file: { action: string }) => file.action === "already-applied"));
+    if (careUpgrade) assert(resumed.applied.length > 0, "care upgrade resume must write remaining files");
     checkUpgradeFiles();
   });
   phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
@@ -542,7 +593,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     assert.deepEqual(run("apply").applied, []);
     checkUpgradeFiles();
   });
-  if (previousQuotaCopy !== undefined && nextQuotaJourney) phase("checkout-attempt-copy-reconciliation", () => {
+  if (previousQuotaCopy !== undefined && nextQuotaJourney && !pair.pristine) phase("checkout-attempt-copy-reconciliation", () => {
     const current = readFileSync(copyPath, "utf8");
     const target = readFileSync(join(pair.to, starterCheckoutCopy), "utf8");
     const reconciled = reconcileCheckoutQuotaCopy(current, previousQuotaCopy, target, nextQuotaJourney);
@@ -551,6 +602,35 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     pair.evidence.customizations![starterCheckoutCopy] = hash(reconciled);
     assert.deepEqual(run("apply").applied, []);
     checkUpgradeFiles();
+  });
+  if (predecessorCopy) phase("care-owned-reconciliation", () => {
+    const target = readFileSync(join(pair.to, careCopy));
+    const copy = pair.pristine ? target : mergeStarterCareFile(workspace, predecessorCopy, readFileSync(copyPath), target);
+    assert.doesNotMatch(copy.toString(), /\b(?:careGuidance|confirmCancel):/u);
+    writeFileSync(copyPath, copy); owned[careCopy] = copy;
+    if (predecessorSettings) {
+      const target = readFileSync(targetSettings);
+      const merged = pair.pristine ? target : mergeStarterCareFile(workspace, predecessorSettings, readFileSync(settingsHost), target);
+      writeFileSync(settingsHost, merged); owned[starterSettingsHost] = merged;
+    }
+    // Apply the adopter rename from packages/core/changes/starter-settings-stage1-fixes.md.
+    for (const path of ["owned/store.config.ts", starterSettingsHost]) {
+      const installed = join(app, path), before = readFileSync(installed, "utf8");
+      const after = before.replace(/(['"])damaged_item\1/gu, "$1damaged$1");
+      if (after === before) continue;
+      writeFileSync(installed, after); owned[path] = Buffer.from(after);
+      if (pair.evidence.customizations?.[path]) pair.evidence.customizations[path] = hash(after);
+    }
+    if (!pair.pristine) {
+      const path = join(app, careSettings), previous = readFileSync(path, "utf8");
+      const local = previous.replace("defaultOffer: 'pause'", "defaultOffer: 'skip'");
+      assert.notEqual(previous, local);
+      writeFileSync(path, local);
+      owned[careSettings] = Buffer.from(local);
+      pair.evidence.customizations![careCopy] = hash(copy);
+      pair.evidence.customizations![careSettings] = hash(local);
+    }
+    assert.deepEqual(run("apply").applied, []); checkUpgradeFiles();
   });
   rmSync(workspace, { recursive: true, force: true });
   return () => phase("installed-application-and-owned-bytes", () => {

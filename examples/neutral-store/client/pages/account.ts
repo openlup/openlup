@@ -1,16 +1,17 @@
 import { accountPreferencePolicy } from '../../owned/renewal.config.ts';
 import { rememberPurchase } from '../purchase.ts';
-import { act } from '../api.ts';
-import { careAvailability, saveOfferKind, saveRescheduleTarget, type CareAction, type PausePreset, type PortalSubscription } from '../../shared/renewal-config.ts';
+import { act, uncertainAction } from '../api.ts';
+import { careAvailability, type CareAction, type PausePreset, type PortalSubscription } from '../../shared/renewal-config.ts';
 import { currentRecoveryToken } from '../recovery-session.ts';
 import type { PageContext } from '../context.ts';
 import type { CopyKey } from '../../owned/copy.ts';
 import { isRecord } from '../../shared/offer.ts';
-import type { Operation } from '../../shared/api.ts';
+import type { ActionInput, Operation, SubscriptionCancelFeedbackInput } from '../../shared/api.ts';
+import type { SubscriptionSaveOfferPresentation } from '@openlup/platform/subscriptions/contracts';
 import { routes } from '../../shared/routes.ts';
 import { downloadInvoice } from '../invoice-download.ts';
 import { el, link, append, button, renderValue } from '../dom.ts';
-import { actionForm, nativeActions, readPanel, refusal, type FieldSpec } from '../forms.ts';
+import { actionForm, field, nativeActions, readPanel, refusal, type FieldSpec } from '../forms.ts';
 import { subscriptionEditorEntries } from '../editors/entries.ts';
 import { date } from '../editors/view.ts';
 
@@ -162,47 +163,203 @@ export function callbackPage(context: PageContext): HTMLElement {
 
 const labels: Record<CareAction, CopyKey> = { skip: 'careSkip', slide: 'reschedule', pause: 'carePause', resume: 'careResume',
   cancel: 'cancelSubscription', order_now: 'careOrderNow', reactivate: 'careReactivate' };
+const careRemedies = [
+  ['starter_local_host_required starter_same_origin_required', 'Open the account on the configured store origin.', 'Otwórz konto pod skonfigurowanym adresem sklepu.'],
+  ['starter_command_identity_required subscription_command_idempotency_conflict', 'Retry the original action with its original input and key.', 'Ponów pierwotną akcję z tymi samymi danymi i kluczem.'],
+  ['starter_input_invalid', 'Reload the card and request the offer again if you want to use it.', 'Odśwież kartę i poproś ponownie o ofertę, jeśli chcesz z niej skorzystać.'],
+  ['customer_session_required starter_subscription_not_found', 'Sign in and choose one of your subscriptions.', 'Zaloguj się i wybierz jedną ze swoich subskrypcji.'],
+  ['starter_cancel_feedback_invalid_reason starter_cancel_feedback_reason_not_offered', 'Choose a current reason or skip feedback.', 'Wybierz aktualny powód lub pomiń opinię.'],
+  ['starter_cancel_feedback_cancel_not_found', 'Retry the original cancellation before sending feedback.', 'Ponów pierwotne anulowanie przed wysłaniem opinii.'],
+  ['starter_cancel_feedback_conflict', 'Retry with your original feedback choice.', 'Ponów próbę, wybierając wcześniej podany powód.'],
+  ['starter_cancel_feedback_setup_required', 'Ask the store to update the feedback installation, then retry feedback.', 'Poproś sklep o zaktualizowanie obsługi opinii, a następnie spróbuj ponownie.'],
+  ['starter_save_offer_unavailable starter_save_offer_stale starter_save_offer_consumed', 'Refresh the card to check which offers are available.', 'Odśwież kartę, aby sprawdzić dostępne oferty.'],
+  ['subscription_command_operation_busy subscription_command_payment_blocked subscription_lifecycle_payment_blocked',
+    'Wait for the operation to finish or resolve the payment issue, then refresh.', 'Poczekaj na zakończenie operacji lub rozwiąż problem z płatnością, a następnie odśwież kartę.'],
+] as const;
 export function subscriptionPortal(context: PageContext): HTMLElement {
   const care = context.config.renewal.subscriptionCare;
   const output = el('div', { 'aria-live': 'polite' });
   const section = el('section', { class: 'panel', id: 'subscriptions' }, el('h2', {}, context.t('subscriptions')),
     el('p', {}, context.t('subscriptionInvariant')));
   const target = context.query.get('sub');
-  async function refresh() {
-    const result = await act('account.read', {}, crypto.randomUUID());
-    output.replaceChildren();
-    if (!result.ok) { append(output, refusal(context, result.code)); return; }
-    const data = isRecord(result.value) && isRecord(result.value.renewal) ? result.value.renewal.subscriptions : null;
-    if (!Array.isArray(data) || !data.length) { append(output, el('p', {}, context.t('careMissing'))); return; }
-    let found = false;
-    for (const value of data) {
-      if (!isRecord(value) || typeof value.subscriptionId !== 'string') continue;
-      const row = value as unknown as PortalSubscription;
-      const card = el('article', { class: 'panel', id: `subscription-${row.subscriptionId}`, tabindex: -1,
-        'data-subscription': row.subscriptionId }, el('h3', {}, row.subscriptionId),
-      el('p', { 'data-care-state': row.status }, `${context.t('careStatus')}: ${row.status}`),
-      el('p', {}, `${context.t('careNext')}: ${date(context, row.nextCycleAt)}`));
-      if (row.pause) append(card, renderValue(row.pause));
-      if (row.action || context.query.get('sekcja') === 'payments' && target === row.subscriptionId) {
-        append(card, el('section', { 'aria-label': context.t('carePayment') }, el('h4', {}, context.t('carePayment')), renderValue(row.action), renderValue(row.payment)));
-      }
-      if (row.winback) append(card, el('section', { 'data-winback': row.winback.status }, el('h4', {}, context.t('careWinback')),
-        renderValue(row.winback), el('p', {}, context.t('careConsent'))));
-      const choices = Object.hasOwn(care.actions, row.status) ? care.actions[row.status as keyof typeof care.actions] : [];
-      const actions = el('div', { class: 'actions' });
-      for (const action of choices) {
-        const reason = careAvailability(row, action, care);
-        const control = button(context.t(labels[action]), () => openAction(row, action));
-        if (reason) { control.disabled = true; control.title = `${context.t('careUnavailable')} ${reason}`; }
-        append(actions, control);
-      }
-      append(card, actions);
-      if (['active','paused'].includes(row.status)) append(card, savedSelection(context, row.subscriptionId, typeof value.shippingSavedAddressId === 'string' ? value.shippingSavedAddressId : null));
-      append(output, card);
-      if (target === row.subscriptionId) { found = true; queueMicrotask(() => { card.focus(); card.scrollIntoView(); }); }
-    }
-    if (target && !found) append(output, el('p', { role: 'status' }, context.t('careNotFound')));
+  const cards = new Map<string, ReturnType<typeof makeCard>>();
+  const notice = el('div', { role: 'status' });
+  let readSequence = 0;
+  type Row = PortalSubscription & { shippingSavedAddressId?: string };
+  type Offer = SubscriptionSaveOfferPresentation;
+  type Write = 'subscription.cancelDirect' | 'subscription.cancelFeedback' | 'subscription.acceptSaveOffer';
+  type Pending = { operation: Write; input: ActionInput; key: string; running: boolean };
+  type Interaction = { generation: string | null; step: 'permission' | 'reading' | 'ready' | 'offer'; offer?: Offer; preset?: string };
+  function makeCard(row: Row) {
+    const evidence = el('div'), actions = el('div', { class: 'actions' }), slot = el('div');
+    const card = el('article', { class: 'panel', id: `subscription-${row.subscriptionId}`, tabindex: -1,
+      'data-subscription': row.subscriptionId }, el('h3', {}, row.subscriptionId), evidence, actions, slot);
+    return { row, card, evidence, actions, slot, present: true, interaction: undefined as Interaction | undefined,
+      pending: new Map<Write, Pending>(), cancelKey: '', reason: '', message: undefined as HTMLElement | undefined };
   }
+  function cancellable(card: ReturnType<typeof makeCard>) {
+    return card.present && ['active', 'paused'].includes(card.row.status);
+  }
+  function careRefusal(code: string) {
+    const remedy = careRemedies.find(([codes]) => codes.split(' ').includes(code));
+    return refusal(context, code, remedy?.[context.locale === 'pl' ? 2 : 1] ?? context.t('careUnavailable'));
+  }
+  async function refresh() {
+    const sequence = ++readSequence;
+    const result = await act('account.read', {}, crypto.randomUUID());
+    if (sequence !== readSequence || !output.isConnected) return;
+    if (!result.ok) { notice.replaceChildren(careRefusal(result.code)); return; }
+    const data = isRecord(result.value) && isRecord(result.value.renewal) ? result.value.renewal.subscriptions : null;
+    const unseen = new Set(cards.keys());
+    for (const value of Array.isArray(data) ? data : []) {
+      if (!isRecord(value) || typeof value.subscriptionId !== 'string') continue;
+      const row = value as unknown as Row;
+      const existing = cards.get(row.subscriptionId), card = existing ?? makeCard(row);
+      unseen.delete(row.subscriptionId);
+      const invalidate = card.row.saveOfferGeneration !== row.saveOfferGeneration || !['active','paused'].includes(row.status);
+      if (!existing || !card.present || JSON.stringify(card.row) !== JSON.stringify(row)) {
+        card.row = row; card.present = true;
+        if (invalidate) card.interaction = undefined;
+        patchCard(card);
+      }
+      if (existing) continue;
+      cards.set(row.subscriptionId, card);
+      append(output, card.card);
+      if (target === row.subscriptionId) queueMicrotask(() => { card.card.focus(); card.card.scrollIntoView(); });
+    }
+    for (const id of unseen) {
+      const card = cards.get(id)!;
+      card.present = false; card.interaction = undefined;
+      if (card.pending.size || card.cancelKey) patchCard(card);
+      else { card.card.remove(); cards.delete(id); }
+    }
+    notice.textContent = target && !cards.get(target)?.present ? context.t('careNotFound')
+      : cards.size ? '' : context.t('careMissing');
+  }
+  function patchCard(card: ReturnType<typeof makeCard>) {
+    const { row, evidence, actions } = card;
+    evidence.hidden = actions.hidden = !card.present;
+    evidence.replaceChildren(el('p', { 'data-care-state': row.status }, `${context.t('careStatus')}: ${row.status}`),
+      el('p', {}, `${context.t('careNext')}: ${date(context, row.nextCycleAt)}`));
+    if (row.pause) append(evidence, renderValue(row.pause));
+    if (row.action || context.query.get('sekcja') === 'payments' && target === row.subscriptionId) {
+      append(evidence, el('section', { 'aria-label': context.t('carePayment') }, el('h4', {}, context.t('carePayment')), renderValue(row.action), renderValue(row.payment)));
+    }
+    if (row.winback) append(evidence, el('section', { 'data-winback': row.winback.status }, el('h4', {}, context.t('careWinback')),
+      renderValue(row.winback), el('p', {}, context.t('careConsent'))));
+    const choices = Object.hasOwn(care.actions, row.status) ? care.actions[row.status as keyof typeof care.actions] : [];
+    actions.replaceChildren(...choices.filter(action => action !== 'cancel').map(action => {
+      const reason = careAvailability(row, action, care), control = button(context.t(labels[action]), () => openAction(row, action));
+      if (reason) { control.disabled = true; control.title = `${context.t('careUnavailable')} ${reason}`; }
+      return control;
+    }));
+    if (cancellable(card)) append(evidence, savedSelection(context, row.subscriptionId, row.shippingSavedAddressId ?? null));
+    renderCare(card);
+  }
+
+  async function ask(card: ReturnType<typeof makeCard>, interaction: Interaction) {
+    interaction.step = 'reading'; renderCare(card);
+    const result = await act('account.read', { saveOfferFor: card.row.subscriptionId }, crypto.randomUUID());
+    if (card.interaction !== interaction || card.row.saveOfferGeneration !== interaction.generation || !cancellable(card)) return;
+    interaction.step = 'ready';
+    if (result.ok && isRecord(result.value)) {
+      const offer = result.value.saveOffer as Offer | null;
+      if (offer?.subscriptionRef === card.row.subscriptionId && offer.generation === interaction.generation) {
+        interaction.step = 'offer'; interaction.offer = offer;
+        if (offer.kind === 'pause') interaction.preset = offer.preselectedPausePreset;
+      }
+    } else if (!result.ok) card.message = careRefusal(result.code);
+    renderCare(card);
+  }
+  async function write(card: ReturnType<typeof makeCard>, operation: Write, input: ActionInput) {
+    if (card.pending.has(operation)) return;
+    const pending = { operation, input, key: crypto.randomUUID(), running: false };
+    card.pending.set(operation, pending);
+    await send(card, pending);
+  }
+  async function send(card: ReturnType<typeof makeCard>, pending: Pending) {
+    if (pending.running) return;
+    pending.running = true; card.message = undefined;
+    if (pending.operation === 'subscription.cancelDirect') card.interaction = undefined;
+    renderCare(card);
+    const result = await act(pending.operation, pending.input, pending.key);
+    pending.running = false;
+    if (!uncertainAction(result)) card.pending.delete(pending.operation);
+    if (result.ok) {
+      if (pending.operation === 'subscription.cancelDirect') card.cancelKey = pending.key;
+      if (pending.operation === 'subscription.acceptSaveOffer') card.interaction = undefined;
+      if (pending.operation === 'subscription.cancelFeedback') finishFeedback(card, 'careFeedbackRecorded');
+    } else if (uncertainAction(result)) {
+      card.message = el('p', { role: 'status' }, context.locale === 'pl'
+        ? 'Wynik jest nieznany. Ponów tę samą akcję.' : 'The result is uncertain. Retry this same action.');
+    } else {
+      card.message = careRefusal(result.code);
+      if (pending.operation === 'subscription.acceptSaveOffer') card.interaction = undefined;
+    }
+    renderCare(card);
+    void refresh();
+  }
+
+  function finishFeedback(card: ReturnType<typeof makeCard>, key: 'careFeedbackSkipped' | 'careFeedbackRecorded') {
+    card.cancelKey = ''; card.reason = ''; card.message = el('p', { role: 'status' }, context.t(key));
+    renderCare(card);
+  }
+  function renderCare(card: ReturnType<typeof makeCard>) {
+    const { row, slot, interaction, pending } = card, subscriptionRef = row.subscriptionId;
+    slot.replaceChildren();
+    if (card.cancelKey && !pending.has('subscription.cancelFeedback')) {
+      const reasons: Record<string, CopyKey> = { too_much_product: 'careTooMuch', delivery_issue: 'careDelivery', too_expensive: 'carePrice', not_a_good_fit: 'careFit', other: 'careOther' };
+      const { wrapper, control } = field(context, { name: 'reasonCode', label: 'cancelReason', type: 'select', value: card.reason, required: false,
+        options: [{ value: '', text: context.t('careFeedbackSkipped') }, ...care.retentionReasons.map(value => ({ value, text: Object.hasOwn(reasons, value) ? context.t(reasons[value]!) : value.replaceAll('_', ' ') }))] });
+      control.addEventListener('change', () => { card.reason = control.value; });
+      append(slot, wrapper, button(context.t('careFeedbackSubmit'), () => {
+        if (!card.reason) { finishFeedback(card, 'careFeedbackSkipped'); return; }
+        const input: SubscriptionCancelFeedbackInput = { subscriptionRef, cancelCommandKey: card.cancelKey, reasonCode: card.reason };
+        return write(card, 'subscription.cancelFeedback', input);
+      }), button(context.t('careFeedbackSkipped'), () => finishFeedback(card, 'careFeedbackSkipped'), 'secondary'));
+    } else if (cancellable(card) && !card.cancelKey && !pending.has('subscription.cancelDirect')) {
+      append(slot, button(context.t('cancelSubscription'), () => {
+        if (interaction) return write(card, 'subscription.cancelDirect', { subscriptionRef });
+        card.message = undefined;
+        card.interaction = { generation: row.saveOfferGeneration ?? null, step: row.saveOfferGeneration && !pending.size ? 'permission' : 'ready' };
+        renderCare(card);
+      }));
+      if (interaction?.step === 'permission') {
+        append(slot, el('p', {}, context.t('careOfferPermission')), button(context.t('careOfferYes'), () => ask(card, interaction)),
+          button(context.t('careOfferNo'), () => { interaction.step = 'ready'; renderCare(card); }, 'secondary'));
+      }
+      if (interaction?.step === 'reading') append(slot, el('p', {}, context.t('loading')));
+      if (interaction?.step === 'reading' || interaction?.step === 'offer') {
+        append(slot, button(context.t('careDismissOffer'), () => {
+          card.interaction = { generation: interaction.generation, step: 'ready' }; renderCare(card);
+        }, 'secondary'));
+      }
+      const offer = interaction?.offer;
+      if (offer && interaction.step === 'offer' && !pending.size) {
+        const action = offer.kind === 'reschedule' ? 'slide' : offer.kind;
+        append(slot, el('p', { 'data-save-offer': '' }, context.t(labels[action]),
+          offer.kind === 'reschedule' ? ` — ${date(context, offer.newNextCycleAt.replace(/^(\d{5})-/u, '+0$1-'))}` : ''));
+        if (offer.kind === 'pause') {
+          const { wrapper, control } = field(context, { name: 'pausePreset', label: 'careDuration', type: 'select', value: interaction.preset ?? offer.preselectedPausePreset,
+            options: offer.pausePresets.map(({ pausePreset, duration }) => ({ value: pausePreset, text: duration.unit === 'indefinite' ? context.t('careIndefinite')
+              : new Intl.NumberFormat(context.locale, { style: 'unit', unit: duration.unit === 'days' ? 'day' : 'month', unitDisplay: 'long' }).format(duration.value) })) });
+          control.addEventListener('change', () => { interaction.preset = control.value; });
+          append(slot, wrapper);
+        }
+        append(slot, button(context.t('careAccept'), () => {
+          const terms = offer.kind === 'pause' ? offer.pausePresets.find(option => option.pausePreset === interaction.preset)
+            : offer.kind === 'reschedule' ? { newNextCycleAt: offer.newNextCycleAt } : {};
+          if (terms) return write(card, 'subscription.acceptSaveOffer', { subscriptionRef, generation: offer.generation, kind: offer.kind, ...terms });
+        }));
+      }
+    }
+    for (const operation of pending.values()) {
+      append(slot, operation.running ? el('p', { role: 'status' }, context.t('loading'))
+        : button(context.t('retry'), () => send(card, operation), 'secondary'));
+    }
+    if (card.message) append(slot, card.message);
+  }
+
   function duration(value: PausePreset = care.pausePresets.default): FieldSpec {
     const text = { '2_weeks': `${context.t('careTwoWeeks')} (${care.terms.pauseDays})`,
       '1_month': `${context.t('careMonth')} (${care.terms.pauseMonths})`, indefinite: context.t('careIndefinite') };
@@ -212,64 +369,29 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
   function openAction(row: PortalSubscription, action: CareAction) {
     const dialog = el('dialog', { 'aria-label': context.t(labels[action]) }, el('h2', {}, context.t(labels[action])));
     const close = () => { dialog.close(); dialog.remove(); };
-    let accepted = false;
-    const targetDate = saveRescheduleTarget(row.nextCycleAt, context.config.renewal.subscriptionCare);
     const fields: FieldSpec[] = [];
     const timing = action === 'order_now' || action === 'reactivate' || action === 'resume' && row.action?.blockedReason === 'payment_expired';
     if (timing) {
       append(dialog, el('p', {}, action === 'order_now'
-        ? `${context.t('careOrderTiming')} ${context.config.renewal.subscriptionCare.terms.orderNowDelayMinutes}`
-        : `${context.t('careTiming')} ${new Date(Date.now() + context.config.renewal.subscriptionCare.terms.reactivateDelayDays * 86400000).toLocaleDateString(context.locale)}`));
+        ? `${context.t('careOrderTiming')} ${care.terms.orderNowDelayMinutes}`
+        : `${context.t('careTiming')} ${new Date(Date.now() + care.terms.reactivateDelayDays * 86400000).toLocaleDateString(context.locale)}`));
       fields.push({ name: 'confirmedChargeTiming', label: 'careConfirmed', type: 'checkbox' });
     }
     if (action === 'pause') fields.push(duration());
     if (action === 'slide') fields.push({ name: 'newNextCycleAt', label: 'nextDelivery', type: 'date' });
-    if (action === 'cancel') {
-      const reasonLabels: Record<string, CopyKey> = { too_much_product: 'careTooMuch', delivery_issue: 'careDelivery', too_expensive: 'carePrice', not_a_good_fit: 'careFit', other: 'careOther' };
-      fields.push({ name: 'reasonCode', label: 'cancelReason', type: 'select', options: context.config.renewal.subscriptionCare.retentionReasons.map(value => ({ value, text: reasonLabels[value] ? context.t(reasonLabels[value]) : value.replaceAll('_', ' ') })) },
-        { name: 'comment', label: 'note', type: 'textarea', maxLength: 240, required: false }, duration(care.retention.pausePreset));
-    }
-    const offered = el('p', { 'data-save-offer': '' });
-    const form = actionForm(context, { operation: 'subscription.command', submit: action === 'cancel' ? 'confirmCancel' : labels[action], fields,
+    const form = actionForm(context, { operation: 'subscription.command', submit: labels[action], fields,
       transform(values) {
         const common = { subscriptionRef: row.subscriptionId, action, ...values };
         if (action === 'slide') return { ...common, newNextCycleAt: new Date(`${String(values.newNextCycleAt)}T12:00:00`).toISOString() };
         if (action === 'pause') return { ...common, reason: `pause_duration=${String(values.pausePreset)}` };
-        if (action !== 'cancel') return common;
-        const reason = String(values.reasonCode), kind = saveOfferKind(reason, context.config.renewal.subscriptionCare), preset = String(values.pausePreset);
-        const note = String(values.comment).trim();
-        const offerId = kind === 'pause' ? `pause-${preset}` : kind;
-        if (accepted && kind === 'skip') return { subscriptionRef: row.subscriptionId, action: 'skip', reason: `save_offer=skip;cancel_reason=${reason}` };
-        if (accepted && kind === 'reschedule') return { subscriptionRef: row.subscriptionId, action: 'slide', newNextCycleAt: targetDate, reason: `save_offer=reschedule;cancel_reason=${reason}` };
-        return { subscriptionRef: row.subscriptionId, action: accepted ? 'pause' : 'cancel',
-          ...(accepted ? { pausePreset: preset } : {}),
-          survey: { reasonCode: reason, comment: note || null, acceptedSaveOfferId: accepted ? offerId : null },
-          saveOffer: { offerId, kind, accepted },
-          reason: accepted ? `save_offer=pause;pause_duration=${preset};cancel_reason=${reason}`
-            : [`cancel_reason=${reason}`, `save_offer_declined=${kind === 'pause' ? `pause:${preset}` : kind}`, ...(note ? [`note=${note}`] : [])].join(';') };
+        return common;
       }, onSuccess() { close(); void refresh(); },
     });
-    if (action === 'cancel') {
-      const chooser = form.querySelector<HTMLSelectElement>('[name=reasonCode]')!;
-      const presets = form.querySelector<HTMLSelectElement>('[name=pausePreset]')!;
-      const offerButton = el('button', { type: 'submit' }, context.t('careAccept'));
-      form.addEventListener('submit', event => { accepted = (event as SubmitEvent).submitter === offerButton; }, { capture: true });
-      const update = () => {
-        const kind = saveOfferKind(chooser.value, context.config.renewal.subscriptionCare);
-        offered.textContent = `${context.t('careOffer')}: ${context.t(kind === 'skip' ? 'careSkip' : kind === 'reschedule' ? 'reschedule' : 'carePause')}${kind === 'reschedule' ? ` — ${targetDate}` : ''}`;
-        presets.parentElement!.hidden = kind !== 'pause';
-        const refusal = careAvailability(row, kind === 'skip' ? 'skip' : kind === 'reschedule' ? 'slide' : 'pause', care);
-        offerButton.disabled = refusal !== null;
-        if (refusal) offerButton.title = `${context.t('careUnavailable')} ${refusal}`;
-      };
-      chooser.addEventListener('change', update);
-      append(form, offered, offerButton, el('p', {}, context.t('careGuidance'))); update();
-    }
     append(dialog, form, button(context.t('cancel'), close, 'secondary'));
     section.append(dialog); dialog.showModal();
     dialog.addEventListener('cancel', () => dialog.remove());
   }
-  append(section, button(context.t('careRead'), refresh, 'secondary'), output);
+  append(section, button(context.t('careRead'), refresh, 'secondary'), notice, output);
   void refresh();
   return section;
 }

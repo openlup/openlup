@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { PaymentAdapter } from '@openlup/platform/payments/contracts';
 import { createNativeRenewalCodec } from '@openlup/platform/subscriptions';
 import { composeSubscriptionEditors } from '../host/subscription-editors.ts';
 import { composeStripePortableRail } from '../host/provider-portable.ts';
-import { composeSubscriptionCare, composeSubscriptionCommands } from '../host/native-composition.ts';
+import { composeCareActions, composeSubscriptionCare, composeSubscriptionCommands } from '../host/native-composition.ts';
 import { dispatchAction, type VerifiedActor } from '../host/bindings.ts';
 import { createApplication } from '../host/server.ts';
 import { configurations } from '../owned/store.config.ts';
@@ -26,6 +27,59 @@ function fixture(owned = true) {
   return { calls,actions,releases: () => releases };
 }
 const actor: VerifiedActor = { customerRef: id(2),principalRef: id(3),operatorRef: null };
+test('cancel_never_requires_offer_or_reason with disabled policy, rejected feedback and missing setup', async () => {
+  const config = structuredClone(configurations.supplements!);
+  config.renewal.subscriptionCare.actions = { active: [], paused: [], cancelled: [], whilePaymentBlocked: [], whilePaymentExpired: [] };
+  config.renewal.subscriptionCare.retention.offerPresentation = 'off';
+  const subscriptionRef = id(1), context = { actor, config, commandKey: randomUUID() };
+  let ready = false, state = 'active', blocker: string | null = null, status = 'recorded';
+  let outcome: Record<string, unknown> | undefined;
+  const db = { release() {}, async query(sql: string, values?: unknown[]) {
+    if (['BEGIN ISOLATION LEVEL READ COMMITTED','COMMIT','ROLLBACK'].includes(sql) || sql.includes('pg_advisory_xact_lock')) return { rows: [] };
+    if (sql.includes('WITH stored AS')) return { rows: outcome ? [{ response: { ...outcome, status: 'replayed' } }] : [] };
+    if (sql.includes('SELECT status FROM public.subscriptions')) return { rows: [{ status: state }] };
+    if (sql.includes('AS payment_blocker')) return { rows: [{ isolation: 'read committed', payment_blocker: blocker }] };
+    if (sql.includes('subscription_command_apply(')) {
+      assert.equal(values?.[4], 'cancel');
+      assert.deepEqual(values?.[5], { actorKind: 'customer', reason: null, survey: null, saveOffer: null, confirmedChargeTiming: false });
+      outcome = { status: 'applied', subscriptionId: subscriptionRef, subscriptionStatus: 'cancelled', eventId: id(4),
+        commandFingerprint: 'a'.repeat(64), templateVersion: 1 };
+      return { rows: [{ response: outcome }] };
+    }
+    if (sql.includes('SELECT command_fingerprint')) return { rows: [outcome && { command_fingerprint: outcome.commandFingerprint }] };
+    if (sql.includes('to_regclass')) return { rows: [{ ready }] };
+    if (sql.includes('r.result')) {
+      assert.deepEqual(values, [id(3), id(2), subscriptionRef, context.commandKey]);
+      return { rows: [{ event_id: id(4) }] };
+    }
+    if (sql.includes('subscription_cancel_feedback_submit(')) {
+      assert.deepEqual(values, [id(4), id(2), 'retired_reason', false]); return { rows: [{ status }] };
+    }
+    throw Error('unexpected_care_query');
+  } };
+  const actions = composeCareActions({ async query() { return { rows: [{ id: subscriptionRef }] }; }, async connect() { return db; } } as unknown as Pool);
+  const direct = actions['subscription.cancelDirect'], feedback = actions['subscription.cancelFeedback'];
+  assert.deepEqual(await direct({ subscriptionRef, reason: 'other' }, context), { ok: false, code: 'starter_input_invalid', status: 400 });
+  for (const [subscriptionStatus, paymentBlocker] of [['active', null], ['paused', null], ['active', 'payment_blocked']] as const) {
+    outcome = undefined; state = subscriptionStatus; blocker = paymentBlocker;
+    assert.partialDeepStrictEqual(await direct({ subscriptionRef }, context), { ok: true, replayed: false, value: { idempotencyKey: context.commandKey } });
+  }
+  const input = { subscriptionRef, cancelCommandKey: context.commandKey, reasonCode: 'retired_reason' };
+  for (const reasonCode of ['a'.repeat(121), 'bad\0reason', 42]) {
+    assert.deepEqual(await feedback({ ...input, reasonCode }, context), { ok: false, code: 'starter_cancel_feedback_invalid_reason', status: 400 });
+  }
+  assert.deepEqual(await feedback(input, context), { ok: false, code: 'starter_cancel_feedback_setup_required' });
+  ready = true;
+  for (const [feedbackStatus, code] of [['reason_not_offered', 'starter_cancel_feedback_reason_not_offered'],
+    ['reason_conflict', 'starter_cancel_feedback_conflict'], ['cancel_not_found', 'starter_cancel_feedback_cancel_not_found']]) {
+    status = feedbackStatus!;
+    assert.deepEqual(await feedback(input, context), { ok: false, code, status: 409 });
+  }
+  status = 'replayed';
+  assert.deepEqual(await feedback(input, context), { ok: true, value: { status } });
+  assert.partialDeepStrictEqual(await direct({ subscriptionRef }, context), { ok: true, replayed: true });
+});
+
 test('mounted care replays a removed preset and returns named fresh admission refusals',async () => {
   const config = structuredClone(Object.values(configurations)[0]!);
   config.renewal.subscriptionCare.pausePresets = { allowed: ['2_weeks'],default: '2_weeks' };

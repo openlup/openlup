@@ -7,6 +7,7 @@ export const operations = [
   'account.billing', 'account.defaults', 'account.addresses', 'account.paymentPreference', 'account.deliveryPreference', 'subscription.savedAddress',
   'account.profile', 'account.invoiceCorrection', 'checkout.recoveryStart', 'operator.paymentLink', 'operator.replacement', 'operator.cancelFulfillment',
   'account.read', 'account.orders', 'account.invoice', 'account.consent',
+  'subscription.cancelDirect', 'subscription.cancelFeedback', 'subscription.acceptSaveOffer',
   'subscription.command', 'subscription.preview', 'subscription.catalog', 'subscription.address', 'return.request',
   'auth.request', 'auth.verify', 'auth.callback', 'auth.signOut', 'auth.operator',
   'operator.orders', 'operator.order', 'operator.hold', 'operator.release',
@@ -23,6 +24,7 @@ export const operations = [
 
 export type Operation = typeof operations[number];
 export type ActionInput = Record<string, unknown>;
+export type SubscriptionCancelFeedbackInput = { subscriptionRef: string; cancelCommandKey: string; reasonCode: string };
 
 export type ActionResult =
   | { ok: true; value: unknown; replayed?: boolean }

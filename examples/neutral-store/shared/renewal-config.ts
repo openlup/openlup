@@ -55,6 +55,7 @@ export interface SubscriptionCareConfig {
   terms: SubscriptionLifecycleTerms;
   retentionReasons: readonly string[];
   retention: { offerByReason: Readonly<Record<string, SaveOfferKind>>; defaultOffer: SaveOfferKind;
+    offerPresentation?: 'ask_permission_first' | 'off';
     /** Pause choice preselected in the cancellation save offer; defaults to pausePresets.default. */
     pausePreset?: PausePreset };
   actions: Record<'active' | 'paused' | 'cancelled' | 'whilePaymentBlocked' | 'whilePaymentExpired', readonly CareAction[]>;
@@ -86,6 +87,7 @@ export function assertSubscriptionCare(config: SubscriptionCareConfig): void {
 
 export interface PortalSubscription {
   subscriptionId: string; status: string; nextCycleAt: string | null; editCutoffAt: string | null;
+  saveOfferGeneration?: string | null;
   blocker: string | null; action: { blockedReason?: string } | null;
   payment: { healthState?: string } | null;
   pause: { pausePreset?: string; pauseEndsAt?: string | null } | null;
@@ -128,6 +130,9 @@ export function careAvailability(row: PortalSubscription, action: CareAction, co
 export type SaveOfferKind = 'skip' | 'reschedule' | 'pause';
 export function assertRetention(config: SubscriptionCareConfig): void {
   const policy = config.retention;
+  if (policy?.offerPresentation !== undefined && !['ask_permission_first', 'off'].includes(policy.offerPresentation)) {
+    throw new Error('starter_retention_configuration_invalid: Set renewal.subscriptionCare.retention.offerPresentation to ask_permission_first or off, or omit it for ask_permission_first.');
+  }
   const kinds: readonly SaveOfferKind[] = ['skip', 'reschedule', 'pause'];
   if (!policy || !policy.offerByReason || typeof policy.offerByReason !== 'object' || Array.isArray(policy.offerByReason)
     || !kinds.includes(policy.defaultOffer) || Object.entries(policy.offerByReason).some(([reason, kind]) =>

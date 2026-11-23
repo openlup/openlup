@@ -7,6 +7,8 @@ import { createCapturedPostgresInvoiceProvider } from '@openlup/platform/invoici
 import { runCheckoutRecovery } from '../host/paid-mail.ts';
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import * as subscriptions from '@openlup/platform/subscriptions';
@@ -60,7 +62,7 @@ test('quote and checkout refuse callers without acquisition capability by name',
 });
 
 test.describe('database subscription care', () => {
-interface Material { id: string; baseURL: string; ownerUrl: string; runtimeUrl: string; state: string }
+interface Material { id: string; baseURL: string; ownerUrl: string; runtimeUrl: string; state: string; upgrade?: { predecessor: string; customized: boolean } }
 interface Purchase { orderRef: string; email: string; subscriptionId: string; clientId: string; nextCycleAt: string; cadenceDays: number }
 let material: Material, owner: pg.Pool, runtime: pg.Pool;
 test.beforeAll(async ({ baseURL }, info) => {
@@ -210,11 +212,13 @@ test('owned offer admission refuses forged fresh checkout requests without durab
     expect(await snapshot()).toEqual(before);
   }
 });
-async function purchase(page: Page): Promise<Purchase> {
+async function purchase(page: Page, existingEmail?: string): Promise<Purchase> {
   const config = configurations[material.id]!;
-  const email = `care-${randomUUID()}@example.test`;
-  const accounts = createPostgresAccountLinkStore({ connectionString: material.runtimeUrl });
-  try { await accounts.createAccount({ email, principalId: randomUUID(), acquisitionSource: 'local-demonstration', lifecycleStage: 'customer' }); } finally { await accounts.close(); }
+  const email = existingEmail ?? `care-${randomUUID()}@example.test`;
+  if (!existingEmail) {
+    const accounts = createPostgresAccountLinkStore({ connectionString: material.runtimeUrl });
+    try { await accounts.createAccount({ email, principalId: randomUUID(), acquisitionSource: 'local-demonstration', lifecycleStage: 'customer' }); } finally { await accounts.close(); }
+  }
   const data = { email, locale: market.defaultLocale, configuration: config.id, acquisitionCapability: 'subscription-acquisition.v1', country: config.market.country,
     termsAccepted: true, termsRevision: config.legal.revision, firstName: 'Example', lastName: 'Buyer', phone: '000000000',
     line1: '1 Example Lane', city: 'Example City', postalCode: '00000',
@@ -274,12 +278,11 @@ async function pause(page: Page, f: Purchase, locale: Locale, preset?: string) {
   await confirm(dialog, copy[locale].carePause);
   await expect(cardFor(page, f).locator('[data-care-state]')).toHaveAttribute('data-care-state', 'paused');
 }
-async function cancel(page: Page, f: Purchase, locale: Locale, reason: string, accepted: boolean) {
-  const dialog = await open(page, f, locale, copy[locale].cancelSubscription);
-  await dialog.getByLabel(copy[locale].cancelReason).selectOption(reason);
-  await dialog.getByLabel(copy[locale].note).fill('Example feedback');
-  if (reason !== 'too_much_product' && reason !== 'delivery_issue') await expect(dialog.getByLabel(copy[locale].careDuration)).toHaveValue('1_month');
-  await confirm(dialog, accepted ? copy[locale].careAccept : copy[locale].confirmCancel);
+async function cancel(page: Page, f: Purchase, locale: Locale) {
+  const card = cardFor(page, f), control = card.getByRole('button', { name: copy[locale].cancelSubscription, exact: true });
+  await control.click();
+  await control.click();
+  await expect(card.locator('[data-care-state]')).toHaveAttribute('data-care-state', 'cancelled');
 }
 async function runCare(locale: Locale, at?: string) {
   const config = structuredClone(configurations[material.id]!);
@@ -369,27 +372,129 @@ for (const locale of market.locales) {
     await confirm(dialog, copy[locale].reschedule);
     expect((await state(f)).next_cycle_at.toISOString().slice(0, 10)).toBe(target);
   });
-  for (const reason of ['too_much_product', 'delivery_issue', 'too_expensive']) {
-    test(`${locale}: cancellation ${reason} offer accepted then declined`, async ({ page }) => {
-      const f = await purchase(page); await signIn(page, f.email, locale);
-      await cancel(page, f, locale, reason, true);
-      let row = await state(f);
-      expect(row.status).toBe(reason === 'too_expensive' ? 'paused' : 'active');
-      if (reason === 'delivery_issue') expect(row.next_cycle_at.getTime()).toBeGreaterThan(Date.parse(f.nextCycleAt));
-      if (reason === 'too_expensive') {
-        const outcome = (await owner.query('SELECT * FROM public.subscription_retention_outcomes WHERE subscription_id=$1', [f.subscriptionId])).rows[0];
-        expect(outcome.cancel_reason_code).toBe(reason); expect(outcome.save_offer_accepted).toBe(true);
-        await confirm(await open(page, f, locale, copy[locale].careResume), copy[locale].careResume);
-        await expect(cardFor(page, f).locator('[data-care-state]')).toHaveAttribute('data-care-state', 'active');
-      }
-      await cancel(page, f, locale, reason, false); row = await state(f); expect(row.status).toBe('cancelled');
-      const declined = (await owner.query('SELECT * FROM public.subscription_retention_outcomes WHERE subscription_id=$1 ORDER BY occurred_at DESC,event_id DESC', [f.subscriptionId])).rows[0];
-      expect(declined.cancel_reason_code).toBe(reason); expect(declined.save_offer_accepted).toBe(false);
+  test(`${locale}: ask_first_offer_only_after_yes and cancel_never_requires_offer_or_reason`, async ({ page }) => {
+    const f = await purchase(page), foreign = await purchase(page);
+    const predecessor = material.upgrade?.predecessor;
+    const legacy = predecessor ? await purchase(page, f.email) : null;
+    await signIn(page, f.email, locale);
+    const card = cardFor(page, f), t = copy[locale], subscriptionRef = f.subscriptionId;
+    if (material.upgrade?.customized) {
+      await expect(page.locator('#adopter-care')).toHaveText('Local care portal');
+      if (String(locale) === 'en') await expect(page.getByText('Your local basket', { exact: true }).first()).toBeVisible();
+    }
+    const control = (name: string) => card.getByRole('button', { name, exact: true });
+    const regular = await call(page, 'account.read', {});
+    expect(regular.value).not.toHaveProperty('saveOffer');
+    const generation = regular.value.renewal.subscriptions.find((row: { subscriptionId: string }) => row.subscriptionId === subscriptionRef).saveOfferGeneration;
+    expect(generation).toMatch(/^[a-f0-9]{64}$/u);
+    for (const id of [randomUUID(), foreign.subscriptionId]) {
+      expect(await call(page, 'account.read', { saveOfferFor: id })).toEqual({ ok: false, code: 'starter_subscription_not_found' });
+    }
+    await control(t.cancelSubscription).click();
+    await expect(card.locator('[data-save-offer]')).toHaveCount(0);
+    await expect(card.getByLabel(t.cancelReason)).toHaveCount(0);
+    const yes = page.waitForResponse(response => response.url().endsWith('/account.read') && response.request().postDataJSON().saveOfferFor === subscriptionRef);
+    await control(t.careOfferYes).click();
+    const offer = (await (await yes).json()).value.saveOffer;
+    const policy = configurations[material.id]!.renewal.subscriptionCare;
+    if (material.upgrade?.customized) expect(policy.retention.defaultOffer).toBe('skip');
+    expect(offer).toMatchObject({ kind: policy.retention.defaultOffer, generation });
+    await expect(card.locator('[data-save-offer]')).toBeVisible();
+    if (offer.kind === 'pause') {
+      await expect(card.getByLabel(t.careDuration)).toHaveValue(offer.preselectedPausePreset);
+      const choice = offer.pausePresets.find((option: { pausePreset: string }) => option.pausePreset !== offer.preselectedPausePreset);
+      await card.getByLabel(t.careDuration).selectOption(choice.pausePreset);
+    }
+    const attempts: string[] = [];
+    await page.route('**/api/actions/subscription.acceptSaveOffer', async route => {
+      attempts.push(JSON.stringify([route.request().headers()['idempotency-key'], route.request().postDataJSON()]));
+      const response = await route.fetch();
+      if (attempts.length === 1) return route.abort();
+      await route.fulfill({ response });
     });
-  }
+    await control(t.careAccept).click();
+    await expect(control(t.careAccept)).toHaveCount(0);
+    await control(t.retry).click();
+    await expect(control(t.retry)).toHaveCount(0);
+    expect(attempts).toEqual([attempts[0], attempts[0]]);
+    await expect.poll(async () => (await call(page, 'account.read', { saveOfferFor: subscriptionRef })).value.saveOffer).toBeNull();
+    expect(await call(page, 'subscription.acceptSaveOffer', { subscriptionRef, generation, kind: offer.kind,
+      ...(offer.kind === 'pause' ? offer.pausePresets[0] : offer.kind === 'reschedule' ? { newNextCycleAt: offer.newNextCycleAt } : {}) }))
+      .toMatchObject({ code: 'starter_save_offer_consumed' });
+    const receipt = page.waitForResponse(response => response.url().endsWith('/subscription.cancelDirect'));
+    await cancel(page, f, locale);
+    const key = (await receipt).request().headers()['idempotency-key']!;
+    await card.getByLabel(t.cancelReason).selectOption('other');
+    await control(t.careFeedbackSubmit).click();
+    await expect(card).toContainText(t.careFeedbackRecorded);
+    expect((await owner.query(`SELECT s.cancellation_reason, e.payload, f.reason_code
+      FROM public.subscriptions s JOIN public.subscription_events e ON e.subscription_id=s.id
+      JOIN public.subscription_cancel_feedback f ON f.cancel_event_id=e.id WHERE s.id=$1`, [subscriptionRef])).rows)
+      .toMatchObject([{ cancellation_reason: null, payload: { payload: { reason: null, survey: null, saveOffer: null } }, reason_code: 'other' }]);
+    expect(await call(page, 'subscription.cancelFeedback', { subscriptionRef, cancelCommandKey: key, reasonCode: 'other' }))
+      .toEqual({ ok: true, value: { status: 'replayed' } });
+    if (predecessor && legacy) {
+      // cx1r_legacy_command_compatibility uses the actual installed predecessor encoder.
+      const load = createRequire(resolve(predecessor, 'package.json'));
+      const prior: typeof subscriptions = await import(pathToFileURL(load.resolve('@openlup/platform/subscriptions')).href);
+      const { rows: [client] } = await runtime.query('SELECT principal_id FROM public.clients WHERE id=$1', [legacy.clientId]);
+      const legacyKey = randomUUID();
+      const input = { action: 'cancel' as const, reason: '  legacy retention  ', confirmedChargeTiming: false,
+        survey: { reasonCode: 'retired_reason', comment: '  prior feedback  ' }, saveOffer: null };
+      const receipt = await prior.createPostgresSubscriptionCommands({
+        retentionReasonCodes: ['retired_reason'], lifecycleTerms: policy.terms,
+        async withTransaction(work) {
+          const db = await runtime.connect();
+          try { await db.query('BEGIN'); const value = await work(db); await db.query('COMMIT'); return value; }
+          catch (error) { await db.query('ROLLBACK'); throw error; } finally { db.release(); }
+        },
+        async futureTerms() { return { outcome: 'refused', reason: 'subscription_command_unsupported_action' }; },
+      }).apply({ ...input, actor: { kind: 'customer', clientId: legacy.clientId, actorId: client.principal_id },
+        subscriptionId: legacy.subscriptionId, idempotencyKey: legacyKey, now: new Date().toISOString() });
+      expect(receipt).toMatchObject({ outcome: 'applied' });
+      expect(await call(page, 'subscription.command', { ...input, subscriptionRef: legacy.subscriptionId }, legacyKey))
+        .toMatchObject({ ok: true, replayed: true, value: { ...receipt, outcome: 'replayed' } });
+    }
+  });
+
+  test(`${locale}: cx1r_keyed_account_recovery keeps cancellation feedback after a lost response`, async ({ page }) => {
+    const f = await purchase(page), other = await purchase(page, f.email);
+    await signIn(page, f.email, locale);
+    const card = cardFor(page, f), t = copy[locale];
+    const handle = await card.elementHandle();
+    const control = (name: string) => card.getByRole('button', { name, exact: true });
+    await control(t.cancelSubscription).click();
+    let release!: () => void;
+    const gate = new Promise<void>(done => { release = done; });
+    await page.route('**/api/actions/account.read', async route => {
+      if (!route.request().postDataJSON().saveOfferFor) return route.continue();
+      const response = await route.fetch(); await gate; await route.fulfill({ response });
+    });
+    const yes = page.waitForRequest(request => request.url().endsWith('/account.read') && request.postDataJSON().saveOfferFor);
+    await control(t.careOfferYes).click(); await yes;
+    await expect(cardFor(page, other)).toBeVisible();
+    await control(t.careDismissOffer).click();
+    const attempts: string[] = [];
+    await page.route('**/api/actions/subscription.cancelDirect', async route => {
+      attempts.push(JSON.stringify([route.request().headers()['idempotency-key'], route.request().postDataJSON()]));
+      const response = await route.fetch();
+      if (attempts.length === 1) return route.fulfill({ status: 503, json: { ok: false, code: 'starter_dependency_unavailable' } });
+      await route.fulfill({ response });
+    });
+    await control(t.cancelSubscription).click();
+    await expect(card.locator('[data-care-state]')).toHaveAttribute('data-care-state', 'cancelled');
+    release();
+    await expect(card.locator('[data-save-offer]')).toHaveCount(0);
+    expect(await card.evaluate((element, original) => element === original, handle)).toBe(true);
+    await control(t.retry).click();
+    await expect(card.getByLabel(t.cancelReason)).toBeVisible();
+    expect(attempts).toEqual([attempts[0], attempts[0]]);
+    await control(t.careFeedbackSubmit).click();
+    await expect(card).toContainText(t.careFeedbackSkipped);
+  });
   for (const action of ['careOrderNow', 'careReactivate'] as const) test(`${locale}: ${action} requires explicit charge-timing confirmation`, async ({ page }) => {
     const f = await purchase(page); await signIn(page, f.email, locale);
-    if (action === 'careReactivate') await cancel(page, f, locale, 'other', false);
+    if (action === 'careReactivate') await cancel(page, f, locale);
     const before = await state(f), command = action === 'careOrderNow' ? 'order_now' : 'reactivate';
     expect((await call(page, 'subscription.command', { action: command, subscriptionRef: f.subscriptionId })).code).toBe('subscription_command_charge_timing_not_confirmed');
     const dialog = await open(page, f, locale, copy[locale][action]);
@@ -495,13 +600,13 @@ for (const locale of market.locales) for (const kind of ['subscription.renewal_u
 for (const locale of market.locales) test(`${locale}: default-ON winback records refusal and a host-authorized outcome, with confirmed reactivation`, async ({ page, context }) => {
   // The owner enables the existing delivery control in this disposable fixture; the host never seeds controls.
   await owner.query("INSERT INTO public.communication_delivery_controls(control_key,enabled) VALUES('subscriber-retention',true) ON CONFLICT(control_key) DO UPDATE SET enabled=true");
-  const denied = await purchase(page); await signIn(page, denied.email, locale); await cancel(page, denied, locale, 'other', false); await ageCancellation(denied);
+  const denied = await purchase(page); await signIn(page, denied.email, locale); await cancel(page, denied, locale); await ageCancellation(denied);
   await runCare(locale); await page.getByRole('button', { name: copy[locale].careRead, exact: true }).click();
   await expect(cardFor(page, denied).locator('[data-winback=refused]')).toContainText('consent_missing');
   await expect(cardFor(page, denied)).toContainText(copy[locale].careConsent);
   await expect(cardFor(page, denied).locator('[name=retention_marketing]')).toHaveCount(0);
   await context.clearCookies();
-  const admitted = await purchase(page); await signIn(page, admitted.email, locale); await cancel(page, admitted, locale, 'other', false); await ageCancellation(admitted);
+  const admitted = await purchase(page); await signIn(page, admitted.email, locale); await cancel(page, admitted, locale); await ageCancellation(admitted);
   const fingerprint = createHash('sha256').update(admitted.email).digest('hex');
   await owner.query("SELECT public.communications_record_recipient_consent($1,'retention_marketing','granted',now())", [fingerprint]);
   await runCare(locale);

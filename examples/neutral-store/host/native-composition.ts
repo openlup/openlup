@@ -5,9 +5,11 @@ import { createPersonalDataContributorRegistry, createCustomerBillingPrivacyCont
 import type { PgQueryExecutor } from '@openlup/platform/data';
 import { customerAccountPolicy } from '../owned/acquisition-policy.ts';
 import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';
-import { createPostgresSubscriptionCommands } from '@openlup/platform/subscriptions';
+import { createPostgresSubscriptionCommands, createPostgresSubscriptionSaveOfferAcceptor } from '@openlup/platform/subscriptions';
+import type { ActionInput, ActionResult } from '../shared/api.ts';
 import { isUuid } from './recurring-fence.ts';
-import { admitCareCommand, assertSubscriptionCare } from '../shared/renewal-config.ts';
+import { admitCareCommand, assertSubscriptionCare, type SubscriptionCareConfig } from '../shared/renewal-config.ts';
+import { isRecord } from '../shared/offer.ts';
 import { readAccountRenewal } from './account-renewal.ts';
 import { composeOperatorRecovery } from './operator-recovery.ts';
 import { composeAuthenticatedRecovery } from './authenticated-recovery.ts';
@@ -197,6 +199,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     return success({ expiresAt: session.expiresAt });
   };
   actions['subscription.command'] = composeSubscriptionCommands(pool);
+  Object.assign(actions, composeCareActions(pool));
   actions['auth.request'] = async (payload, context) => {
     if (!email(payload.email, context.config.purchase.inputLimits.email)) return refused('starter_input_invalid');
     const started = Date.now();
@@ -218,19 +221,37 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     context.setCookie?.(sessions.clearCookie());
     return success({ signedOut: true });
   };
-  actions['account.read'] = async (_payload, context) => {
+  actions['account.read'] = async (payload, context) => {
     const principal = context.actor.principalRef;
     if (!principal) return refused('customer_session_required');
+    const { saveOfferFor } = payload;
+    if (Object.keys(payload).length && !closed(payload, ['saveOfferFor'])) return invalidCareInput();
+    const actor = careActor(context.actor);
+    let offerId: string | undefined;
+    if (Object.hasOwn(payload, 'saveOfferFor')) {
+      if (!isUuid(saveOfferFor)) return invalidCareInput();
+      if (!actor) return refused('customer_session_required');
+      offerId = await ownedSubscription(pool, actor, saveOfferFor);
+      if (!offerId) return refused('starter_subscription_not_found');
+    }
     const account = await asCustomer(principal, async db => ({
       profile: await createPostgresCustomerMePort(db).getCustomerMe(principal),
       subscriptionControl: await createPostgresCustomerSubscriptionSnapshotPort(db).getSnapshot(),
     }));
     // Release the actor transaction before the projection borrows this pool.
+    const renewal = actor && await readAccountRenewal(pool, { principalId: actor.actorId, clientId: actor.clientId });
+    const ids = renewal ? renewal.subscriptions.map(row => String(row.subscriptionId)) : [];
+    const offers = actor && await offerAcceptor(pool, context.config.renewal.subscriptionCare).readPresentations({
+      actor, subscriptionIds: offerId ? [...new Set([...ids, offerId])] : ids, now: new Date().toISOString(),
+    });
     return success({
       ...account,
       profile: account.profile && context.actor.customerRef ? { ...account.profile,
         phone: (await readPostgresCustomerAccountClient(pool, { principalId: principal, clientId: context.actor.customerRef }))?.phone ?? null } : account.profile,
-      renewal: context.actor.customerRef ? await readAccountRenewal(pool, { principalId: principal, clientId: context.actor.customerRef }) : null,
+      renewal: renewal && { subscriptions: renewal.subscriptions.map(row => ({
+        ...row, saveOfferGeneration: offers?.get(String(row.subscriptionId))?.generation ?? null,
+      })) },
+      ...(offerId ? { saveOffer: offers?.get(offerId) ?? null } : {}),
       subscriptionEditors: await readEditorSubscriptions(pool, context.actor),
       accountEvents: context.actor.customerRef ? await createPostgresCustomerAccountMutationPort(pool,
         { principalId: principal, clientId: context.actor.customerRef }, createCustomerAccountMutationSchemas(customerAccountPolicy),
@@ -312,34 +333,148 @@ export function composeSubscriptionCommands(pool: pg.Pool): ActionBinding {
   return (input, context) => Object.hasOwn(input, 'request') ? edit(input, context) : care(input, context);
 }
 
+function careActor(actor: VerifiedActor) {
+  if (actor.principalRef && actor.customerRef) return { kind: 'customer' as const, actorId: actor.principalRef, clientId: actor.customerRef };
+}
+type CareActor = NonNullable<ReturnType<typeof careActor>>;
+async function ownedSubscription(pool: pg.Pool, actor: CareActor, subscriptionRef: string) {
+  const { rows: [owner] } = await pool.query<{ id: string }>(`SELECT s.id FROM public.subscriptions s JOIN public.clients c ON c.id=s.client_id
+    WHERE s.id=$1::uuid AND c.id=$2::uuid AND c.principal_id=$3::uuid`, [subscriptionRef, actor.clientId, actor.actorId]);
+  return owner?.id;
+}
+const closed = (input: ActionInput, keys: string[]) => Object.keys(input).length === keys.length && keys.every(key => Object.hasOwn(input, key));
+const invalidCareInput = () => ({ ...refused('starter_input_invalid'), status: 400 as const });
+const careTransaction = (pool: pg.Pool, begin = 'BEGIN ISOLATION LEVEL READ COMMITTED') => async <T>(work: (db: PgQueryExecutor) => Promise<T>) => {
+  const db = await pool.connect();
+  try { await db.query(begin); const value = await work(db); await db.query('COMMIT'); return value; }
+  catch (error) { await db.query('ROLLBACK'); throw error; }
+  finally { db.release(); }
+};
+function offerAcceptor(pool: pg.Pool, care: SubscriptionCareConfig) {
+  return createPostgresSubscriptionSaveOfferAcceptor({
+    withTransaction: careTransaction(pool), lifecycleTerms: care.terms,
+    admitSubscriptionCommand: facts => admitCareCommand(care, facts),
+    offerPolicy: { offerPresentation: care.retention.offerPresentation ?? 'ask_permission_first',
+      defaultOffer: care.retention.defaultOffer, allowedPausePresets: care.pausePresets.allowed,
+      preselectedPausePreset: care.retention.pausePreset ?? care.pausePresets.default, rescheduleOfferDays: care.rescheduleOfferDays },
+  });
+}
+const offerRefusals = {
+  subscription_save_offer_unavailable: 'starter_save_offer_unavailable',
+  subscription_save_offer_stale: 'starter_save_offer_stale',
+  subscription_save_offer_consumed: 'starter_save_offer_consumed',
+} as const;
+const feedbackRefusals = {
+  invalid_reason: 'starter_cancel_feedback_invalid_reason',
+  cancel_not_found: 'starter_cancel_feedback_cancel_not_found',
+  reason_not_offered: 'starter_cancel_feedback_reason_not_offered',
+  reason_conflict: 'starter_cancel_feedback_conflict',
+} as const;
+function admissionRefusal(error: unknown) {
+  if (error instanceof Error && ['starter_subscription_action_not_admitted', 'starter_pause_preset_not_admitted'].includes(error.message)) return refused(error.message);
+  throw error;
+}
+type OfferInput = Parameters<ReturnType<typeof offerAcceptor>['accept']>[0];
+function exactUtcTerm(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4,5}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u.test(value)) return false;
+  const iso = value[4] === '-' ? value : '+0' + value;
+  const parsed = new Date(iso);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString() === iso.slice(0, -4) + 'Z';
+}
+function offerChoice(input: ActionInput): (Pick<OfferInput, 'generation'> & (
+  Pick<Extract<OfferInput, { kind: 'pause' }>, 'kind' | 'pausePreset' | 'duration'> |
+  Pick<Extract<OfferInput, { kind: 'reschedule' }>, 'kind' | 'newNextCycleAt'> | { kind: 'skip' })) | undefined {
+  const { generation, kind, duration, pausePreset, newNextCycleAt } = input;
+  if (typeof generation !== 'string' || !/^[a-f0-9]{64}$/u.test(generation)) return;
+  const common = ['subscriptionRef', 'generation', 'kind'];
+  if (kind === 'skip' && closed(input, common)) return { generation, kind };
+  if (kind === 'reschedule' && closed(input, [...common, 'newNextCycleAt'])
+    && exactUtcTerm(newNextCycleAt)) return { generation, kind, newNextCycleAt };
+  if (kind !== 'pause' || !closed(input, [...common, 'pausePreset', 'duration']) || !isRecord(duration)
+    || (pausePreset !== '2_weeks' && pausePreset !== '1_month' && pausePreset !== 'indefinite')) return;
+  if (duration.unit === 'indefinite' && closed(duration, ['unit'])) return { generation, kind, pausePreset, duration: { unit: duration.unit } };
+  if ((duration.unit === 'days' || duration.unit === 'months') && closed(duration, ['unit', 'value'])
+    && typeof duration.value === 'number' && Number.isSafeInteger(duration.value) && duration.value > 0) {
+    return { generation, kind, pausePreset, duration: { unit: duration.unit, value: duration.value } };
+  }
+}
+export function composeCareActions(pool: pg.Pool, now = () => new Date().toISOString()) {
+  const direct = composeSubscriptionCare(pool, now, true);
+  const scoped = (work: (input: ActionInput, scope: { actor: CareActor; subscriptionId: string },
+    care: SubscriptionCareConfig, key: string) => Promise<ActionResult>): ActionBinding => async (input, context) => {
+    const actor = careActor(context.actor);
+    if (!actor) return refused('customer_session_required');
+    if (!isUuid(input.subscriptionRef)) return invalidCareInput();
+    const subscriptionId = await ownedSubscription(pool, actor, input.subscriptionRef);
+    if (!subscriptionId) return refused('starter_subscription_not_found');
+    return work(input, { actor, subscriptionId }, context.config.renewal.subscriptionCare, context.commandKey);
+  };
+  return {
+    'subscription.cancelDirect': ((input, context) => closed(input, ['subscriptionRef'])
+      ? direct({ action: 'cancel', subscriptionRef: input.subscriptionRef }, context)
+      : Promise.resolve(invalidCareInput())) satisfies ActionBinding,
+    'subscription.acceptSaveOffer': scoped(async (input, scope, care, idempotencyKey) => {
+      const choice = offerChoice(input);
+      if (!choice) return invalidCareInput();
+      try {
+        const result = await offerAcceptor(pool, care).accept({ ...scope, ...choice, idempotencyKey, now: now() });
+        if (result.outcome !== 'refused') return { ...success(result), replayed: result.outcome === 'replayed' };
+        return refused(offerRefusals[result.reason as keyof typeof offerRefusals] ?? result.reason);
+      } catch (error) { return admissionRefusal(error); }
+    }),
+    'subscription.cancelFeedback': scoped(async (input, { actor, subscriptionId }, care) => {
+      if (!closed(input, ['subscriptionRef', 'cancelCommandKey', 'reasonCode'])
+        || typeof input.cancelCommandKey !== 'string' || !/^[a-zA-Z0-9-]{16,100}$/u.test(input.cancelCommandKey)) return invalidCareInput();
+      const { reasonCode, cancelCommandKey } = input;
+      if (typeof reasonCode !== 'string' || !/^[a-z][a-z0-9_]{0,119}$/u.test(reasonCode)) {
+        return { ...refused(feedbackRefusals.invalid_reason), status: 400 };
+      }
+      return careTransaction(pool)(async db => {
+        const { rows: [setup] } = await db.query(`SELECT to_regclass('public.subscription_cancel_feedback') IS NOT NULL
+          AND pg_catalog.has_function_privilege(current_user,
+            to_regprocedure('public.subscription_cancel_feedback_submit(uuid,uuid,text,boolean)')::oid, 'EXECUTE') AS ready`);
+        if (!setup?.ready) return refused('starter_cancel_feedback_setup_required');
+        const { rows: [receipt] } = await db.query(`SELECT r.result->>'eventId' AS event_id
+          FROM public.subscription_command_receipts r JOIN public.clients c ON c.id=r.client_id
+          WHERE r.actor_id=$1::uuid AND c.principal_id=$1::uuid AND c.id=$2::uuid AND r.subscription_id=$3::uuid
+            AND r.idempotency_key=$4 AND r.command->>'action'='cancel' AND r.status='applied'`,
+        [actor.actorId, actor.clientId, subscriptionId, cancelCommandKey]);
+        if (!receipt?.event_id) return refused(feedbackRefusals.cancel_not_found);
+        const { rows: [result] } = await db.query(`SELECT public.subscription_cancel_feedback_submit($1::uuid,$2::uuid,$3::text,$4::boolean) AS status`,
+          [receipt.event_id, actor.clientId, reasonCode, care.retentionReasons.includes(reasonCode)]);
+        const status = result?.status;
+        if (status === 'recorded' || status === 'replayed') return success({ status });
+        if (typeof status === 'string' && Object.hasOwn(feedbackRefusals, status)) {
+          return { ...refused(feedbackRefusals[status as keyof typeof feedbackRefusals]), status: status === 'invalid_reason' ? 400 : 409 };
+        }
+        throw Error('starter_cancel_feedback_response_invalid');
+      });
+    }),
+  };
+}
+
 /** The session supplies authority; the package owns lifecycle, timing, receipts and all writes. */
-export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().toISOString()): ActionBinding {
+export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().toISOString(), direct = false): ActionBinding {
   return async (input, context) => {
     const refuse = (code: string) => ({ ok: false as const, code });
-    if (!context.actor.principalRef || !context.actor.customerRef) return refuse('customer_session_required');
+    const actor = careActor(context.actor);
+    if (!actor) return refuse('customer_session_required');
+    if (direct && !isUuid(input.subscriptionRef)) return invalidCareInput();
     const allowed = ['action', 'subscriptionRef', 'reason', 'pausePreset', 'survey', 'saveOffer', 'newNextCycleAt', 'confirmedChargeTiming', 'locale'];
     if (Object.keys(input).some(key => !allowed.includes(key)) || !isUuid(input.subscriptionRef)
       || typeof input.action !== 'string' || !['skip', 'slide', 'pause', 'resume', 'cancel', 'order_now', 'reactivate'].includes(input.action)
       || (input.reason != null && (typeof input.reason !== 'string' || input.reason.length > 2000))) return refuse('starter_input_invalid');
-    const owner = (await pool.query(`SELECT s.id FROM public.subscriptions s JOIN public.clients c ON c.id=s.client_id
-      WHERE s.id=$1::uuid AND c.id=$2::uuid AND c.principal_id=$3::uuid`,
-    [input.subscriptionRef, context.actor.customerRef, context.actor.principalRef])).rows[0];
-    if (!owner) return refuse('starter_subscription_not_found');
+    const subscriptionId = await ownedSubscription(pool, actor, input.subscriptionRef);
+    if (!subscriptionId) return refuse('starter_subscription_not_found');
     assertSubscriptionCare(context.config.renewal.subscriptionCare);
     const port = createPostgresSubscriptionCommands({
       lifecycleTerms: context.config.renewal.subscriptionCare.terms,
       retentionReasonCodes: context.config.renewal.subscriptionCare.retentionReasons,
-      admitSubscriptionCommand: facts => admitCareCommand(context.config.renewal.subscriptionCare, facts),
-      async withTransaction(work) {
-        const db = await pool.connect();
-        try { await db.query('BEGIN'); const value = await work(db); await db.query('COMMIT'); return value; }
-        catch (error) { await db.query('ROLLBACK'); throw error; }
-        finally { db.release(); }
-      },
+      admitSubscriptionCommand: facts => { if (!direct) admitCareCommand(context.config.renewal.subscriptionCare, facts); },
+      withTransaction: careTransaction(pool, direct ? undefined : 'BEGIN'),
       async futureTerms() { return { outcome: 'refused', reason: 'subscription_command_unsupported_action' }; },
     });
-    const base = { actor: { kind: 'customer' as const, actorId: context.actor.principalRef, clientId: context.actor.customerRef },
-      subscriptionId: String(owner.id), idempotencyKey: context.commandKey, now: now() };
+    const base = { actor, subscriptionId, idempotencyKey: context.commandKey, now: now() };
     const reason = typeof input.reason === 'string' ? input.reason : null;
     let command: SubscriptionCommand;
     switch (input.action) {
@@ -366,8 +501,7 @@ export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().to
       if (result.outcome === 'refused') return refuse(result.reason);
       return { ok: true, value: result, replayed: result.outcome === 'replayed' };
     } catch (error) {
-      if (error instanceof Error && ['starter_subscription_action_not_admitted', 'starter_pause_preset_not_admitted'].includes(error.message)) return refuse(error.message);
-      throw error;
+      return admissionRefusal(error);
     }
   };
 }

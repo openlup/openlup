@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
@@ -198,6 +199,10 @@ async function databaseBrowserRecipe(argv) {
   const { readStarterCatalogueRules } = await import('./host/editor-catalogue.ts');
   const application = root;
   const directory = resolve(application, '.context/care-browser');
+  const upgrade = await readFile(resolve(directory, 'upgrade.json'), 'utf8')
+    .then(JSON.parse, error => { if (error.code !== 'ENOENT') throw error; });
+  const previousMigrations = upgrade && await import(pathToFileURL(
+    createRequire(resolve(upgrade.predecessor, 'package.json')).resolve('@openlup/platform/migrations')).href);
   const containers = [], hosts = [], pools = [];
   const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   const delay = (ms) => new Promise(done => setTimeout(done, ms));
@@ -241,7 +246,12 @@ async function databaseBrowserRecipe(argv) {
       const migration = new pg.Pool({ connectionString: ownerUrl, options: qualifiedPostgresStartupOptions(selection) });
       pools.push(migration);
       const runner = createPlatformPostgresMigrationRunner({ connectionString: ownerUrl }, { installation: selection, poolFactory: () => migration });
-      await runner.apply();
+      if (previousMigrations) {
+        const prior = previousMigrations.createPlatformPostgresMigrationRunner({ connectionString: ownerUrl }, { installation: selection, poolFactory: () => migration });
+        if (!(await prior.apply()).applied.length) throw new Error('starter_database_browser_predecessor_required');
+      }
+      const applied = await runner.apply();
+      if (previousMigrations && !applied.applied.length) throw new Error('starter_database_browser_upgrade_required');
       if ((await runner.status()).pending.length)
         throw new Error('starter_database_browser_installation_incomplete');
       await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
@@ -285,7 +295,7 @@ async function databaseBrowserRecipe(argv) {
       await writeFile(resolve(state, 'host.private.log'), logs, { mode: 0o600 });
       if (!ready)
         throw new Error('starter_database_browser_host_unavailable');
-      entries.push({ id: config.id, baseURL, runtimeUrl, ownerUrl, state });
+      entries.push({ id: config.id, baseURL, runtimeUrl, ownerUrl, state, upgrade });
     }
     await writeFile(resolve(application, '.context/database-ui-hosts.json'), JSON.stringify(entries.map(({ id, baseURL }) => ({ id, baseURL }))), { mode: 0o600 });
     await writeFile(resolve(directory, 'fixtures.json'), JSON.stringify(entries), { mode: 0o600 });
