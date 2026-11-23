@@ -7,7 +7,6 @@ import { renderSqlInventory } from '../packages/core/scripts/documentation-sql-i
 import { checkPlatformMigrationProjection } from './packages/platform-migration-projection.ts';
 import { readDocumentationState } from './documentation-routing.ts';
 import { renderDocumentationSourceMap } from './documentation-navigation.ts';
-import { createPublicPublicationCatalog } from './oss-publication-policy.ts';
 
 export const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
 
@@ -49,7 +48,8 @@ export function runLandingGenerators(root, paths) {
   const rows = catalog.publicPaths.filter(row => !row.path.startsWith('packages/platform/sql/') || !row.path.endsWith('.sql') || mirrors.has(row.path));
   for (const path of mirrors) if (!rows.some(row => row.path === path)) rows.push({ path, class: 'public-output' });
   rows.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
-  writeFileSync(catalogPath, createPublicPublicationCatalog(rows, catalog.guardViability).contents);
+  catalog.publicPaths = rows;
+  writeFileSync(catalogPath, `${JSON.stringify(catalog, null, 2)}\n`);
   writeFileSync(join(root, 'docs/platform/SOURCE_MAP.md'), renderDocumentationSourceMap(readDocumentationState(root, paths)));
   writeFileSync(join(root, SQL_REFERENCE), syncSqlReference(root));
 }

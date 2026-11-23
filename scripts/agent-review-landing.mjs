@@ -204,8 +204,8 @@ const MIGRATION_RAILS = ['db/platform/migrations/', 'supabase/migrations/'];
 
 export function nextFreeMigrationSlot(slot) {
   const year = Number(slot.slice(0, 4)), month = Number(slot.slice(4, 6)) - 1, day = Number(slot.slice(6, 8));
-  const hour = Number(slot.slice(8, 10)), minute = Number(slot.slice(10, 12));
-  const date = new Date(Date.UTC(year, month, day, hour, minute + 1));
+  const hour = Number(slot.slice(8, 10)), minute = Number(slot.slice(10, 12)), second = Number(slot.slice(12, 14));
+  const date = new Date(Date.UTC(year, month, day, hour, minute + 1, second));
   if (Number.isNaN(date.valueOf())) throw new Error(`landing: invalid migration slot ${slot}`);
   return date.toISOString().replace(/[-:T]/gu, '').slice(0, 14);
 }
@@ -259,14 +259,14 @@ export async function assertNoAuthoredSlotReferences(cwd, base, head, changes) {
   if (hits.length) throw new Error(`landing: --re-slot refuses authored migration references: ${hits.join(', ')}`);
 }
 
-export function applyMigrationReslot(cwd, changes) {
+export function applyMigrationReslot(cwd, changes, moveFiles = true) {
   const replace = value => {
     if (typeof value === 'string') return changes.reduce((text, { path, target }) => text === path ? target : text, value);
     if (Array.isArray(value)) return value.map(replace);
     if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replace(item)]));
     return value;
   };
-  for (const { path, target } of changes) {
+  if (moveFiles) for (const { path, target } of changes) {
     renameSync(resolve(cwd, path), resolve(cwd, target));
     const mirror = resolve(cwd, `packages/platform/sql/${path.split('/').at(-1)}`);
     if (existsSync(mirror)) unlinkSync(mirror);
@@ -376,13 +376,16 @@ export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = p
   for (const path of conflicts.filter(generatedCarrier)) {
     if (path !== SQL_REFERENCE && !REGISTRY_PATHS.includes(path)) await git(cwd, 'checkout', '--ours', '--', path);
   }
-  if (slotChanges.length) applyMigrationReslot(cwd, slotChanges);
   if (needsInventoryRefresh) {
     writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[1]);
     for (const path of MIGRATION_REGISTRIES) {
       const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
       writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventories[1]));
       await git(cwd, 'add', '--', path);
+    }
+    if (slotChanges.length) {
+      applyMigrationReslot(cwd, slotChanges);
+      await git(cwd, 'add', '-A', '--', 'db/platform/migrations', 'supabase/migrations', 'packages/platform/sql');
     }
     // Owners load from the merged tree; this process still holds pre-merge modules.
     run(process.execPath, [resolve(cwd, BUILD_SCRIPT)], { env: carrierEnv });
@@ -392,6 +395,7 @@ export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = p
       const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
       writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventory));
     }
+    if (slotChanges.length) applyMigrationReslot(cwd, slotChanges, false);
   } else {
     writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[2]);
   }
@@ -431,7 +435,7 @@ export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = p
   runGenerators("owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));", paths.join('\0'));
   const staged = [...new Set([...MIGRATION_REGISTRIES, INVENTORY_PATH, ...paths.filter(generatedCarrier), ...outputs])];
   await git(cwd, '--literal-pathspecs', 'add', '--', ...staged);
-  if (slotChanges.length) await git(cwd, 'add', '-A', '--', ...slotChanges.flatMap(({ path, target }) => [path, target]), 'packages/platform/sql', ...MIGRATION_REGISTRIES, PUBLICATION_CATALOGUE);
+  if (slotChanges.length) await git(cwd, 'add', '-A', '--', 'db/platform/migrations', 'supabase/migrations', 'packages/platform/sql', ...MIGRATION_REGISTRIES, PUBLICATION_CATALOGUE);
   if ((await git(cwd, 'diff', '--name-only', '--diff-filter=U')).trim()) throw new Error('landing: unresolved conflicts remain');
   await git(cwd, 'commit', '-s', '-m', 'Merge origin/main and refresh derived carriers');
   return { head: (await git(cwd, 'rev-parse', 'HEAD')).trim(), main, inventoryRefreshed: needsInventoryRefresh };

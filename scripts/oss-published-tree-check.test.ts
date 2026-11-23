@@ -60,11 +60,14 @@ it("syncs only safe tracked public outputs and removes deleted rows", () => {
     ], []).contents);
     put("config/openlup-policy-registry.json", JSON.stringify({ schemaVersion: 1, activePaths: [], contracts: [] }));
     put("new.txt", "safe\n");
+    put("packages/core/changes/fixture.md", "- Add a safe public fixture.\n");
+    put("packages/core/docs/guide/how-to/build/fixture.md", "# Fixture\n\nSafe public guide.\n");
     git("add", "-A");
     expect(syncPublicOutputCatalog(root)).toEqual(["new.txt"]);
     const rows = parsePublicPublicationCatalog(readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8")).publicPaths;
     expect(rows.map(row => row.path)).toEqual(["config/openlup-policy-registry.json", PUBLICATION_CATALOG_PATH, "new.txt"]);
     expect(rows.at(-1)?.class).toBe("public-output");
+    expect(rows.some(row => row.path.includes("fixture.md"))).toBe(false);
     git("add", "-A");
     put("private.txt", ["https://github.com/example", "app"].join("/")); git("add", "-A");
     expect(() => syncPublicOutputCatalog(root)).toThrow(/private coordinate/);

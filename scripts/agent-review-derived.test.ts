@@ -405,7 +405,11 @@ it('keeps a package command that main added after the reviewed head forked', () 
   const names = (revision: string) => JSON.parse(git('show', `${revision}:${CATALOGUE}`)).packageCommands.map(({ name }) => name);
   expect(names(reviewed)).not.toContain('fixture:landing');
   expect(names(main)).toContain('fixture:landing');
-  expect(git('show', `${merged}:${CATALOGUE}`)).toBe(git('show', `${main}:${CATALOGUE}`));
+  const landed = JSON.parse(git('show', `${merged}:${CATALOGUE}`));
+  const upstream = JSON.parse(git('show', `${main}:${CATALOGUE}`));
+  expect(landed.packageCommands).toEqual(upstream.packageCommands);
+  expect(landed.publicPaths.map(row => row.path)).toContain('packages/platform/sql/20990101010000_landing_fixture.sql');
+  expect(landed.publicPaths.map(row => row.path)).toContain('packages/platform/sql/20990101020000_landing_fixture.sql');
 });
 it.each(['user.name', 'user.email'])('refuses landing before merging without configured %s', async key => {
   git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
@@ -661,6 +665,7 @@ it('refuses inverted or duplicate migration slots before starting merge or Docke
 
 it('plans shared migration slots across rails and UTC rollover', () => {
   expect(nextFreeMigrationSlot('20261231235900')).toBe('20270101000000');
+  expect(nextFreeMigrationSlot('20261231235942')).toBe('20270101000042');
   expect(landingSlotPlan(['db/platform/migrations/20270101000000_pr.sql'], [
     'supabase/migrations/qa_20270101010000_main.sql',
   ])).toMatchObject({ maxMainSlot: '20270101010000', nextFreeSlot: '20270101010100',
@@ -696,6 +701,26 @@ it('re-slots migration paths in the manifest, reviewed forwards and publication 
     expect(read(MIGRATION_REGISTRIES[1])).not.toContain(oldPath);
   } finally { restoreDerivedFixture(); }
 });
+
+it('lands an inverted migration only with explicit re-slot', async () => {
+  try {
+    checkout(base);
+    append('20990101010000');
+    const pr = commit();
+    checkout(base);
+    append('20990101020000');
+    const upstream = commit();
+    setMain(upstream);
+    checkout(pr);
+    const result = await landingMerge(root, { reSlot: true, runCommand: (command, args) => {
+      if (args.includes(join(root, 'scripts/installation-inventory-refresh.ts'))) return;
+      fixtureCommand(command, args);
+    } });
+    expect(result.head).toMatch(/^[a-f0-9]{40}$/u);
+    expect(git('ls-files', 'db/platform/migrations/20990101020100_landing_fixture.sql')).toContain('20990101020100');
+    expect(git('ls-files', 'db/platform/migrations/20990101010000_landing_fixture.sql')).toBe('');
+  } finally { git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged); setMain(main); }
+}, 60_000);
 
 it('classifies SQL and migration-inventory inputs conservatively', () => {
   for (const path of [
