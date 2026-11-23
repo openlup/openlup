@@ -14,11 +14,13 @@ openlup recipe add <id> [--dest <dir>] [--catalog <dir>] [--force] [--verify] [-
 openlup recipe verify <path> [--skip-tests] [--json]
 
 Recipes are code-owned, zero-SDK adapters copied into your application (default: owned/adapters/<domain>/<provider>).
+Use a <container>/<domain>/<provider> --dest layout so companion schema/ and index.json files sync cleanly for --verify.
 Offline verify checks manifest parity, ADR-001 static isolation, installed @openlup/platform range, and Stages 1-3 Vitest suites.
 Passing Stages 1-3 offline never claims Stage 4 live account readiness; complete LIVE_QUALIFICATION.md before enabling live traffic.
 Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 64 invalid invocation/JSON, 74 unavailable operation. JSON uses formatVersion=1.`;
 
-const RECIPE_ID_PATTERN = /^[a-z0-9-]+(?:\/[a-z0-9-]+)+$/u;
+const RECIPE_ID_PATTERN = /^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/u;
+const PROVIDER_KIND_PATTERN = /^[a-z][a-z0-9_-]{1,47}$/u;
 const CONTRACT_IMPORT_PATTERN = /^@openlup\/(?:core|platform|outbox)(?:\/[a-z0-9-]+)*$/u;
 const EGRESS_ORIGIN_PATTERN = /^https:\/\/(?:[a-z0-9.-]|\{[a-zA-Z][a-zA-Z0-9_]*\}|\*)+(?::[0-9]+)?$/u;
 const ALLOWED_STATUSES = new Set(["exemplar", "verified", "experimental", "unverified-for-version"]);
@@ -35,16 +37,23 @@ const ALLOWED_WEBHOOK_AUTH = new Set([
 ]);
 const PROVENANCE_FILENAME = ".openlup-provenance.json";
 const SOURCE_CODE_EXT = /\.(?:[cm]?[jt]sx?)$/u;
+const VITEST_TIMEOUT_MS = 60_000;
 
 // Construct environment-read patterns dynamically so neutrality scanners see zero literal env-read tokens.
-const AMBIENT_ENV_PATTERN = new RegExp(
-  `\\b(?:${"proc" + "ess"}\\.${"env"}|${"import\\.meta"}\\.${"env"}|Deno\\.env|Bun\\.env)\\b`,
+const PROC_IDENT = "proc" + "ess";
+const ENV_KEY = "env";
+const AMBIENT_ENV_DOT_PATTERN = new RegExp(
+  `\\b(?:${PROC_IDENT}\\s*(?:\\?\\.)?\\s*\\.|import\\s*\\.\\s*meta\\s*(?:\\?\\.)?\\s*\\.|Deno\\s*(?:\\?\\.)?\\s*\\.|Bun\\s*(?:\\?\\.)?\\s*\\.)${ENV_KEY}\\b`,
   "u",
 );
-const AMBIENT_FETCH_PATTERN = /(?:^|[^.\w$])(?:globalThis\s*\.\s*|window\s*\.\s*)?fetch\s*\(/u;
-const STATIC_IMPORT_PATTERN =
-  /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/gu;
-const DYNAMIC_IMPORT_PATTERN = /\b(?:import|require)\s*\(\s*["']([^"']+)["']\s*\)/gu;
+const AMBIENT_ENV_BRACKET_PATTERN = new RegExp(
+  `\\b(?:${PROC_IDENT}|import\\s*\\.\\s*meta|Deno|Bun)\\s*(?:\\?\\.)?\\s*\\[\\s*["'\`]${ENV_KEY}["'\`]\\s*\\]`,
+  "u",
+);
+const AMBIENT_FETCH_PATTERN =
+  /(?:^|[^.\w$])(?:(?:globalThis|window|self)\s*(?:\?\.)?\s*\.\s*)?fetch\s*(?:\?\.\s*)?\(/u;
+const AMBIENT_FETCH_BRACKET_PATTERN =
+  /\b(?:globalThis|window|self)\s*(?:\?\.)?\s*\[\s*["'`]fetch["'`]\s*\]\s*(?:\?\.\s*)?\(/u;
 
 function asciiCompare(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -158,6 +167,31 @@ async function assertNoSymlinkAncestors(absPath) {
   }
 }
 
+function displayPath(cwdReal, absPath) {
+  const rel = relative(cwdReal, absPath);
+  if (!isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`)) {
+    return rel || ".";
+  }
+  return absPath;
+}
+
+async function canonicalizePathWithMissingTail(absPath) {
+  await assertNoSymlinkAncestors(absPath);
+  let cursor = resolve(absPath);
+  const missingTail = [];
+  for (;;) {
+    const st = await statOrNull(cursor);
+    if (st) {
+      const realBase = await fs.realpath(cursor);
+      return missingTail.length > 0 ? join(realBase, ...missingTail.reverse()) : realBase;
+    }
+    const parent = dirname(cursor);
+    if (parent === cursor) return cursor;
+    missingTail.push(cursor.slice(parent.endsWith(sep) ? parent.length : parent.length + 1));
+    cursor = parent;
+  }
+}
+
 async function resolveCatalogDir(explicitCatalog, cwd) {
   if (explicitCatalog !== undefined) {
     if (typeof explicitCatalog !== "string" || !explicitCatalog.trim()) {
@@ -199,13 +233,27 @@ async function resolveCatalogDir(explicitCatalog, cwd) {
   let dir = await fs.realpath(cwd);
   for (;;) {
     const nested = join(dir, "recipes");
-    const nestedIdx = await statOrNull(join(nested, "index.json"));
-    if (nestedIdx && nestedIdx.isFile() && !nestedIdx.isSymbolicLink()) {
-      return { ok: true, dir: await fs.realpath(nested) };
+    const nestedStat = await statOrNull(nested);
+    if (nestedStat && nestedStat.isDirectory() && !nestedStat.isSymbolicLink()) {
+      const nestedIdx = await statOrNull(join(nested, "index.json"));
+      if (nestedIdx && nestedIdx.isFile() && !nestedIdx.isSymbolicLink()) {
+        return { ok: true, dir: await fs.realpath(nested) };
+      }
     }
     const directIdx = await statOrNull(join(dir, "index.json"));
-    const directSchema = await statOrNull(join(dir, "schema", "recipe.schema.json"));
-    if (directIdx && directIdx.isFile() && directSchema && directSchema.isFile()) {
+    const directSchemaDir = await statOrNull(join(dir, "schema"));
+    const directSchema =
+      directSchemaDir && directSchemaDir.isDirectory() && !directSchemaDir.isSymbolicLink()
+        ? await statOrNull(join(dir, "schema", "recipe.schema.json"))
+        : null;
+    if (
+      directIdx &&
+      directIdx.isFile() &&
+      !directIdx.isSymbolicLink() &&
+      directSchema &&
+      directSchema.isFile() &&
+      !directSchema.isSymbolicLink()
+    ) {
       return { ok: true, dir };
     }
     const parent = dirname(dir);
@@ -283,13 +331,13 @@ function validateManifestShape(manifest) {
   }
   if (manifest.schemaVersion !== 1) errors.push("schemaVersion must equal 1.");
   if (typeof manifest.id !== "string" || !RECIPE_ID_PATTERN.test(manifest.id)) {
-    errors.push("id must match <domain>/<provider> lowercase slug pattern.");
+    errors.push("id must match <domain>/<provider> lowercase two-segment slug pattern.");
   }
   if (typeof manifest.domain !== "string" || !/^[a-z0-9-]+$/u.test(manifest.domain)) {
     errors.push("domain must be a lowercase slug.");
   }
-  if (typeof manifest.providerKind !== "string" || !/^[a-z0-9_]+$/u.test(manifest.providerKind)) {
-    errors.push("providerKind must be a non-empty snake_case identifier.");
+  if (typeof manifest.providerKind !== "string" || !PROVIDER_KIND_PATTERN.test(manifest.providerKind)) {
+    errors.push("providerKind must match ^[a-z][a-z0-9_-]{1,47}$.");
   }
   if (typeof manifest.displayName !== "string" || manifest.displayName.trim().length < 2) {
     errors.push("displayName must be a non-empty string.");
@@ -356,102 +404,395 @@ function validateManifestShape(manifest) {
     !Array.isArray(manifest.files.allFiles) ||
     manifest.files.allFiles.length === 0
   ) {
-    errors.push("files.allFiles must be a non-empty sorted array of relative paths.");
+    errors.push("files.allFiles must be a non-empty array of unique relative paths.");
   } else {
     const uniquenessErr = validateFileListUniqueness(manifest.files.allFiles);
     if (uniquenessErr) errors.push(uniquenessErr);
-    for (const key of [
-      "serverEntry",
-      "clientContract",
-      "conformanceTest",
-      "mountProofTest",
-      "liveQualificationDoc",
-    ]) {
+    if (!manifest.files.allFiles.includes("recipe.json")) {
+      errors.push('files.allFiles must include "recipe.json".');
+    }
+    for (const key of ["serverEntry", "conformanceTest", "mountProofTest", "liveQualificationDoc"]) {
       const value = manifest.files[key];
       if (typeof value !== "string" || !manifest.files.allFiles.includes(value)) {
         errors.push(`files.${key} must be listed inside files.allFiles.`);
+      }
+    }
+    if (manifest.files.clientContract !== undefined) {
+      if (typeof manifest.files.clientContract !== "string" || !manifest.files.allFiles.includes(manifest.files.clientContract)) {
+        errors.push("files.clientContract, when declared, must be listed inside files.allFiles.");
       }
     }
   }
   return errors;
 }
 
-function stripCommentsForStaticScan(source) {
-  // Replace comments with spaces (preserving line breaks) while leaving string literals intact.
-  let out = "";
+const REGEX_PREFIX_KEYWORDS = new Set([
+  "return",
+  "throw",
+  "case",
+  "of",
+  "in",
+  "instanceof",
+  "typeof",
+  "void",
+  "delete",
+  "await",
+  "yield",
+  "new",
+  "else",
+  "do",
+]);
+
+function canPrecedeRegex(prevToken) {
+  if (!prevToken) return true;
+  if (prevToken.kind === "ident") return REGEX_PREFIX_KEYWORDS.has(prevToken.value);
+  if (prevToken.kind === "punct") {
+    return prevToken.value !== ")" && prevToken.value !== "]" && prevToken.value !== "++" && prevToken.value !== "--";
+  }
+  return false;
+}
+
+function lexSourceForStaticScan(source) {
+  const tokens = [];
+  let codeWithoutComments = "";
+  let codeWithMaskedLiterals = "";
   let i = 0;
-  let quote = null;
-  while (i < source.length) {
-    const ch = source[i];
-    const next = source[i + 1];
-    if (quote) {
-      out += ch;
+  let lineBreakBefore = true;
+  const templateBraceStack = [];
+
+  const appendBlank = (ch) => {
+    const blank = ch === "\n" ? "\n" : " ";
+    codeWithoutComments += blank;
+    codeWithMaskedLiterals += blank;
+  };
+
+  const scanTemplateChunk = (isStart) => {
+    let chunkValue = "";
+    let hasInterpolation = !isStart;
+    if (isStart) {
+      codeWithoutComments += "`";
+      codeWithMaskedLiterals += " ";
+      i += 1;
+    }
+    while (i < source.length) {
+      const ch = source[i];
+      const next = source[i + 1];
       if (ch === "\\" && i + 1 < source.length) {
-        out += next;
+        chunkValue += next;
+        codeWithoutComments += ch + next;
+        codeWithMaskedLiterals += (ch === "\n" ? "\n" : " ") + (next === "\n" ? "\n" : " ");
         i += 2;
         continue;
       }
-      if (ch === quote) quote = null;
+      if (ch === "$" && next === "{") {
+        hasInterpolation = true;
+        codeWithoutComments += "${";
+        codeWithMaskedLiterals += "  ";
+        tokens.push({ kind: "punct", value: "${", lineBreakBefore });
+        lineBreakBefore = false;
+        templateBraceStack.push(0);
+        i += 2;
+        return;
+      }
+      if (ch === "`") {
+        codeWithoutComments += "`";
+        codeWithMaskedLiterals += " ";
+        i += 1;
+        if (!hasInterpolation) {
+          tokens.push({ kind: "template", value: chunkValue, lineBreakBefore });
+          lineBreakBefore = false;
+        } else {
+          tokens.push({ kind: "other", value: "`", lineBreakBefore: false });
+        }
+        return;
+      }
+      chunkValue += ch;
+      codeWithoutComments += ch;
+      codeWithMaskedLiterals += ch === "\n" ? "\n" : " ";
+      i += 1;
+    }
+  };
+
+  while (i < source.length) {
+    const ch = source[i];
+    const next = source[i + 1];
+
+    // Whitespace
+    if (ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v") {
+      if (ch === "\n") lineBreakBefore = true;
+      codeWithoutComments += ch;
+      codeWithMaskedLiterals += ch;
       i += 1;
       continue;
     }
-    if (ch === "'" || ch === '"' || ch === "`") {
-      quote = ch;
-      out += ch;
-      i += 1;
-      continue;
-    }
+
+    // Line comment
     if (ch === "/" && next === "/") {
       while (i < source.length && source[i] !== "\n") {
-        out += " ";
+        appendBlank(source[i]);
         i += 1;
       }
       continue;
     }
+
+    // Block comment
     if (ch === "/" && next === "*") {
+      appendBlank("/");
+      appendBlank("*");
       i += 2;
-      out += "  ";
       while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
-        out += source[i] === "\n" ? "\n" : " ";
+        if (source[i] === "\n") lineBreakBefore = true;
+        appendBlank(source[i]);
         i += 1;
       }
       if (i < source.length) {
-        out += "  ";
+        appendBlank("*");
+        appendBlank("/");
         i += 2;
       }
       continue;
     }
-    out += ch;
+
+    // Regex literal
+    if (ch === "/" && canPrecedeRegex(tokens[tokens.length - 1])) {
+      let inClass = false;
+      codeWithoutComments += "/";
+      codeWithMaskedLiterals += " ";
+      i += 1;
+      while (i < source.length) {
+        const rc = source[i];
+        if (rc === "\\" && i + 1 < source.length) {
+          codeWithoutComments += rc + source[i + 1];
+          codeWithMaskedLiterals += "  ";
+          i += 2;
+          continue;
+        }
+        if (rc === "[") inClass = true;
+        else if (rc === "]") inClass = false;
+        codeWithoutComments += rc;
+        codeWithMaskedLiterals += rc === "\n" ? "\n" : " ";
+        i += 1;
+        if (rc === "/" && !inClass) break;
+        if (rc === "\n") break;
+      }
+      while (i < source.length && /[a-z]/iu.test(source[i])) {
+        codeWithoutComments += source[i];
+        codeWithMaskedLiterals += " ";
+        i += 1;
+      }
+      tokens.push({ kind: "other", value: "/re/", lineBreakBefore });
+      lineBreakBefore = false;
+      continue;
+    }
+
+    // Quoted string literal
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      let strVal = "";
+      codeWithoutComments += ch;
+      codeWithMaskedLiterals += " ";
+      i += 1;
+      while (i < source.length) {
+        const sc = source[i];
+        if (sc === "\\" && i + 1 < source.length) {
+          strVal += source[i + 1];
+          codeWithoutComments += sc + source[i + 1];
+          codeWithMaskedLiterals += "  ";
+          i += 2;
+          continue;
+        }
+        codeWithoutComments += sc;
+        codeWithMaskedLiterals += sc === "\n" ? "\n" : " ";
+        i += 1;
+        if (sc === quote || sc === "\n") break;
+        strVal += sc;
+      }
+      tokens.push({ kind: "string", value: strVal, lineBreakBefore });
+      lineBreakBefore = false;
+      continue;
+    }
+
+    // Template literal
+    if (ch === "`") {
+      scanTemplateChunk(true);
+      continue;
+    }
+
+    // Track braces inside template interpolations
+    if (templateBraceStack.length > 0 && ch === "{") {
+      templateBraceStack[templateBraceStack.length - 1] += 1;
+    } else if (templateBraceStack.length > 0 && ch === "}") {
+      const depth = templateBraceStack[templateBraceStack.length - 1];
+      if (depth === 0) {
+        templateBraceStack.pop();
+        codeWithoutComments += "}";
+        codeWithMaskedLiterals += " ";
+        tokens.push({ kind: "punct", value: "}", lineBreakBefore });
+        lineBreakBefore = false;
+        i += 1;
+        scanTemplateChunk(false);
+        continue;
+      }
+      templateBraceStack[templateBraceStack.length - 1] = depth - 1;
+    }
+
+    // Identifier / keyword
+    if (/[A-Za-z_$]/u.test(ch)) {
+      const start = i;
+      while (i < source.length && /[A-Za-z0-9_$]/u.test(source[i])) i += 1;
+      const ident = source.slice(start, i);
+      codeWithoutComments += ident;
+      codeWithMaskedLiterals += ident;
+      tokens.push({ kind: "ident", value: ident, lineBreakBefore });
+      lineBreakBefore = false;
+      continue;
+    }
+
+    // Numeric literal
+    if (/[0-9]/u.test(ch)) {
+      const start = i;
+      while (i < source.length && /[0-9a-fA-FxXoObB_.n]/u.test(source[i])) i += 1;
+      const num = source.slice(start, i);
+      codeWithoutComments += num;
+      codeWithMaskedLiterals += num;
+      tokens.push({ kind: "other", value: num, lineBreakBefore });
+      lineBreakBefore = false;
+      continue;
+    }
+
+    // Multi-char punctuators relevant to JS/TS syntax
+    const two = source.slice(i, i + 2);
+    if (two === "?." || two === "=>" || two === "++" || two === "--") {
+      codeWithoutComments += two;
+      codeWithMaskedLiterals += two;
+      tokens.push({ kind: "punct", value: two, lineBreakBefore });
+      lineBreakBefore = false;
+      i += 2;
+      continue;
+    }
+
+    codeWithoutComments += ch;
+    codeWithMaskedLiterals += ch;
+    tokens.push({ kind: "punct", value: ch, lineBreakBefore });
+    lineBreakBefore = false;
     i += 1;
   }
-  return out;
+
+  return { tokens, codeWithoutComments, codeWithMaskedLiterals };
+}
+
+function extractModuleSpecifiers(tokens) {
+  const specifiers = new Set();
+  let hasDynamicNonLiteralImport = false;
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const tok = tokens[i];
+    const prev = i > 0 ? tokens[i - 1] : null;
+    const isMemberAccess = prev && prev.kind === "punct" && (prev.value === "." || prev.value === "?.");
+    const isStatementStart =
+      !prev ||
+      (prev.kind === "punct" && (prev.value === ";" || prev.value === "{" || prev.value === "}")) ||
+      (tok.lineBreakBefore && !isMemberAccess);
+
+    // Static import declaration
+    if (isStatementStart && tok.kind === "ident" && tok.value === "import") {
+      const next = tokens[i + 1];
+      if (next && !(next.kind === "punct" && (next.value === "(" || next.value === "."))) {
+        if (next.kind === "string") {
+          specifiers.add(next.value);
+          i += 1;
+          continue;
+        }
+        let j = i + 1;
+        while (j < tokens.length) {
+          const cur = tokens[j];
+          if (cur.kind === "punct" && cur.value === ";") break;
+          if (cur.kind === "ident" && cur.value === "from" && tokens[j + 1]?.kind === "string") {
+            specifiers.add(tokens[j + 1].value);
+            i = j + 1;
+            break;
+          }
+          j += 1;
+        }
+        continue;
+      }
+    }
+
+    // Static re-export declaration: `export [type] * [as id] from "spec"` or `export [type] { ... } from "spec"`
+    if (isStatementStart && tok.kind === "ident" && tok.value === "export") {
+      let j = i + 1;
+      if (tokens[j]?.kind === "ident" && tokens[j].value === "type") j += 1;
+      if (tokens[j]?.kind === "punct" && tokens[j].value === "*") {
+        j += 1;
+        if (tokens[j]?.kind === "ident" && tokens[j].value === "as") j += 2;
+        if (tokens[j]?.kind === "ident" && tokens[j].value === "from" && tokens[j + 1]?.kind === "string") {
+          specifiers.add(tokens[j + 1].value);
+          i = j + 1;
+        }
+        continue;
+      }
+      if (tokens[j]?.kind === "punct" && tokens[j].value === "{") {
+        let depth = 0;
+        while (j < tokens.length) {
+          if (tokens[j].kind === "punct" && tokens[j].value === "{") depth += 1;
+          else if (tokens[j].kind === "punct" && tokens[j].value === "}") {
+            depth -= 1;
+            if (depth === 0) {
+              j += 1;
+              break;
+            }
+          }
+          j += 1;
+        }
+        if (tokens[j]?.kind === "ident" && tokens[j].value === "from" && tokens[j + 1]?.kind === "string") {
+          specifiers.add(tokens[j + 1].value);
+          i = j + 1;
+        }
+        continue;
+      }
+    }
+
+    // Dynamic import(...) or require(...)
+    if (
+      !isMemberAccess &&
+      tok.kind === "ident" &&
+      (tok.value === "import" || tok.value === "require") &&
+      tokens[i + 1]?.kind === "punct" &&
+      tokens[i + 1].value === "("
+    ) {
+      const arg = tokens[i + 2];
+      if (arg && (arg.kind === "string" || arg.kind === "template")) {
+        specifiers.add(arg.value);
+      } else if (arg && !(arg.kind === "punct" && arg.value === ")")) {
+        hasDynamicNonLiteralImport = true;
+      }
+    }
+  }
+
+  return { specifiers, hasDynamicNonLiteralImport };
 }
 
 async function runStaticIsolationScan(recipeDir, allFiles) {
   const violations = [];
-  const runtimeFiles = allFiles.filter(
-    (rel) => (rel.startsWith("server/") || rel.startsWith("browser/")) && SOURCE_CODE_EXT.test(rel),
-  );
+  // Scan ALL runtime source files outside tests/ (including any helper outside server/ and browser/).
+  const runtimeFiles = allFiles.filter((rel) => !rel.startsWith("tests/") && SOURCE_CODE_EXT.test(rel));
 
   for (const rel of runtimeFiles) {
     const isBrowser = rel.startsWith("browser/");
     const absFile = join(recipeDir, ...rel.split("/"));
     const raw = await fs.readFile(absFile, "utf8");
-    const code = stripCommentsForStaticScan(raw);
+    const { tokens, codeWithoutComments, codeWithMaskedLiterals } = lexSourceForStaticScan(raw);
 
-    if (AMBIENT_ENV_PATTERN.test(code)) {
+    if (AMBIENT_ENV_DOT_PATTERN.test(codeWithMaskedLiterals) || AMBIENT_ENV_BRACKET_PATTERN.test(codeWithoutComments)) {
       violations.push(`${rel}: ambient runtime environment read is forbidden by ADR-001.`);
     }
-    if (AMBIENT_FETCH_PATTERN.test(code)) {
+    if (AMBIENT_FETCH_PATTERN.test(codeWithMaskedLiterals) || AMBIENT_FETCH_BRACKET_PATTERN.test(codeWithoutComments)) {
       violations.push(`${rel}: ambient global fetch() call is forbidden by ADR-001 (inject fetchImpl).`);
     }
 
-    const specifiers = new Set();
-    for (const match of code.matchAll(STATIC_IMPORT_PATTERN)) {
-      if (match[1]) specifiers.add(match[1]);
-    }
-    for (const match of code.matchAll(DYNAMIC_IMPORT_PATTERN)) {
-      if (match[1]) specifiers.add(match[1]);
+    const { specifiers, hasDynamicNonLiteralImport } = extractModuleSpecifiers(tokens);
+    if (hasDynamicNonLiteralImport) {
+      violations.push(`${rel}: non-literal dynamic import()/require() is forbidden by ADR-001 static isolation.`);
     }
 
     for (const spec of specifiers) {
@@ -477,7 +818,9 @@ async function runStaticIsolationScan(recipeDir, allFiles) {
         }
         continue;
       }
-      violations.push(`${rel}: disallowed external/SDK import "${spec}" (only public @openlup/*, node:* in server/, and local relative imports are permitted).`);
+      violations.push(
+        `${rel}: disallowed external/SDK import "${spec}" (only public @openlup/*, node:* in server/, and local relative imports are permitted).`,
+      );
     }
   }
 
@@ -489,47 +832,108 @@ async function runStaticIsolationScan(recipeDir, allFiles) {
 }
 
 function parseSemverTuple(version) {
-  const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/u.exec(String(version ?? "").trim());
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/u.exec(String(version ?? "").trim());
   if (!match) return null;
   return {
     major: Number(match[1]),
     minor: Number(match[2]),
     patch: Number(match[3]),
-    prerelease: match[4] ?? null,
+    prerelease: match[4] ? match[4].split(".") : null,
   };
 }
 
 function compareSemver(a, b) {
   if (a.major !== b.major) return a.major - b.major;
   if (a.minor !== b.minor) return a.minor - b.minor;
-  return a.patch - b.patch;
+  if (a.patch !== b.patch) return a.patch - b.patch;
+  if (!a.prerelease && !b.prerelease) return 0;
+  if (!a.prerelease) return 1;
+  if (!b.prerelease) return -1;
+  const len = Math.max(a.prerelease.length, b.prerelease.length);
+  for (let i = 0; i < len; i += 1) {
+    if (i >= a.prerelease.length) return -1;
+    if (i >= b.prerelease.length) return 1;
+    const ai = a.prerelease[i];
+    const bi = b.prerelease[i];
+    if (ai === bi) continue;
+    const aNum = /^\d+$/u.test(ai);
+    const bNum = /^\d+$/u.test(bi);
+    if (aNum && bNum) return Number(ai) - Number(bi);
+    if (aNum) return -1;
+    if (bNum) return 1;
+    return asciiCompare(ai, bi);
+  }
+  return 0;
+}
+
+function satisfiesSingleComparator(installed, comparator) {
+  const trimmed = comparator.trim();
+  if (!trimmed) return true;
+  const opMatch = /^(\^|~|>=|<=|>|<|=)?\s*(.+)$/u.exec(trimmed);
+  if (!opMatch) return null;
+  const op = opMatch[1] ?? "=";
+  const base = parseSemverTuple(opMatch[2]);
+  if (!base) return null;
+
+  // Per SemVer / npm semver: prerelease installed versions only match comparators on the same [M, m, p] tuple that also declare a prerelease.
+  if (installed.prerelease) {
+    if (
+      !base.prerelease ||
+      installed.major !== base.major ||
+      installed.minor !== base.minor ||
+      installed.patch !== base.patch
+    ) {
+      return false;
+    }
+  }
+
+  if (op === "^") {
+    if (compareSemver(installed, base) < 0) return false;
+    if (base.major > 0) return installed.major === base.major;
+    if (base.minor > 0) return installed.major === 0 && installed.minor === base.minor;
+    return installed.major === 0 && installed.minor === 0 && installed.patch === base.patch;
+  }
+  if (op === "~") {
+    return installed.major === base.major && installed.minor === base.minor && compareSemver(installed, base) >= 0;
+  }
+  if (op === ">=") return compareSemver(installed, base) >= 0;
+  if (op === "<=") return compareSemver(installed, base) <= 0;
+  if (op === ">") return compareSemver(installed, base) > 0;
+  if (op === "<") return compareSemver(installed, base) < 0;
+  return compareSemver(installed, base) === 0;
 }
 
 function satisfiesSimpleRange(installedStr, rangeStr) {
   const installed = parseSemverTuple(installedStr);
   if (!installed) return null;
-  const trimmed = String(rangeStr ?? "").trim();
-  if (trimmed.startsWith("^")) {
-    const base = parseSemverTuple(trimmed.slice(1));
-    if (!base) return null;
-    if (base.major > 0) {
-      return installed.major === base.major && compareSemver(installed, base) >= 0;
+  const raw = String(rangeStr ?? "").trim();
+  if (!raw) return null;
+
+  const orGroups = raw.split("||");
+  let sawValidGroup = false;
+  for (const group of orGroups) {
+    const parts = group.trim().split(/\s+/u).filter(Boolean);
+    if (parts.length === 0) return null;
+    // Rejoin operator tokens separated from version by space (e.g. ">= 1.3.0")
+    const comparators = [];
+    for (let i = 0; i < parts.length; i += 1) {
+      if (/^(?:\^|~|>=|<=|>|<|=)$/u.test(parts[i]) && i + 1 < parts.length) {
+        comparators.push(`${parts[i]}${parts[i + 1]}`);
+        i += 1;
+      } else {
+        comparators.push(parts[i]);
+      }
     }
-    return installed.major === 0 && installed.minor === base.minor && installed.patch >= base.patch;
+    let groupMatch = true;
+    for (const comp of comparators) {
+      const ok = satisfiesSingleComparator(installed, comp);
+      if (ok === null) return null;
+      if (!ok) groupMatch = false;
+    }
+    sawValidGroup = true;
+    if (groupMatch) return true;
   }
-  if (trimmed.startsWith("~")) {
-    const base = parseSemverTuple(trimmed.slice(1));
-    if (!base) return null;
-    return installed.major === base.major && installed.minor === base.minor && installed.patch >= base.patch;
-  }
-  if (trimmed.startsWith(">=")) {
-    const base = parseSemverTuple(trimmed.slice(2).trim());
-    if (!base) return null;
-    return compareSemver(installed, base) >= 0;
-  }
-  const exact = parseSemverTuple(trimmed);
-  if (!exact) return null;
-  return compareSemver(installed, exact) === 0;
+  return sawValidGroup ? false : null;
 }
 
 async function resolveWorkspaceContext(startDir, cwd) {
@@ -598,16 +1002,28 @@ function evaluatePlatformCompatibility(workspace, manifest) {
       note: `Installed @openlup/platform@${workspace.platformVersion} satisfies ${manifest.openlupPlatformRange}.`,
     };
   }
+  if (directMatch === null) {
+    return {
+      state: "unsupported-range",
+      compatible: false,
+      installedVersion: workspace.platformVersion,
+      requiredRange: manifest.openlupPlatformRange,
+      note: `Unsupported openlupPlatformRange syntax: ${manifest.openlupPlatformRange}.`,
+    };
+  }
   const installedTuple = parseSemverTuple(workspace.platformVersion);
   const testedTuple = parseSemverTuple(manifest.testedAgainstPlatformVersion);
+  const isMonorepoDevTag =
+    Array.isArray(testedTuple?.prerelease) && testedTuple.prerelease.length === 1 && testedTuple.prerelease[0] === "dev";
   if (
     workspace.isMonorepoSource &&
     workspace.hasUnreleasedChanges &&
     installedTuple &&
     testedTuple &&
-    testedTuple.prerelease === "dev" &&
+    isMonorepoDevTag &&
     installedTuple.major === testedTuple.major &&
-    installedTuple.minor + 1 === testedTuple.minor
+    installedTuple.minor + 1 === testedTuple.minor &&
+    satisfiesSimpleRange(`${testedTuple.major}.${testedTuple.minor}.${testedTuple.patch}`, manifest.openlupPlatformRange) === true
   ) {
     return {
       state: "monorepo-next-minor",
@@ -643,6 +1059,8 @@ async function runRecipeVitest(recipeDir, manifest, workspace) {
 
   const conformanceFile = join(recipeDir, ...manifest.files.conformanceTest.split("/"));
   const mountProofFile = join(recipeDir, ...manifest.files.mountProofTest.split("/"));
+  const expectedSuites = new Set([await fs.realpath(conformanceFile), await fs.realpath(mountProofFile)]);
+  const includeList = [...new Set([manifest.files.conformanceTest, manifest.files.mountProofTest])];
   const scratchDir = await fs.mkdtemp(join(tmpdir(), "openlup-recipe-verify-"));
   const configPath = join(scratchDir, "vitest.config.mjs");
   const reportPath = join(scratchDir, "report.json");
@@ -663,13 +1081,14 @@ export default {
   ],
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts", "tests/**/*.test.mts"],
+    include: ${JSON.stringify(includeList)},
   },
 };\n`;
 
   try {
     await fs.writeFile(configPath, configSource, { mode: 0o600, flag: "wx" });
     const started = performance.now();
+    let timedOut = false;
     const exitCode = await new Promise((resolveCode) => {
       const child = spawn(
         process.execPath,
@@ -687,13 +1106,37 @@ export default {
         ],
         {
           cwd: workspace.workspaceRoot,
-          stdio: ["ignore", "ignore", "pipe"],
+          stdio: ["ignore", "ignore", "ignore"],
         },
       );
-      child.on("error", () => resolveCode(74));
-      child.on("close", (code) => resolveCode(code ?? 1));
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGKILL");
+      }, VITEST_TIMEOUT_MS);
+      child.on("error", () => {
+        clearTimeout(timer);
+        resolveCode(74);
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        resolveCode(code ?? 1);
+      });
     });
     const durationMs = Math.round(performance.now() - started);
+
+    if (timedOut) {
+      return {
+        state: "failed",
+        passed: false,
+        numTotalTests: 0,
+        numPassedTests: 0,
+        numFailedTests: 0,
+        durationMs,
+        failedTests: [],
+        errorCode: "OPENLUP_E_RECIPE_TESTS_FAILED",
+        message: `Vitest timed out after ${VITEST_TIMEOUT_MS}ms while running Stages 1-3 suites.`,
+      };
+    }
 
     let report = null;
     try {
@@ -717,21 +1160,47 @@ export default {
     }
 
     const failedTests = [];
+    const passedSuites = new Set();
     for (const suite of Array.isArray(report.testResults) ? report.testResults : []) {
+      const suiteName = typeof suite.name === "string" ? suite.name : "";
+      if (suite.status === "passed" && suiteName) {
+        try {
+          passedSuites.add(await fs.realpath(suiteName));
+        } catch {
+          passedSuites.add(resolve(suiteName));
+        }
+      }
       for (const assertion of Array.isArray(suite.assertionResults) ? suite.assertionResults : []) {
         if (assertion.status === "failed") {
           failedTests.push(String(assertion.fullName ?? assertion.title ?? "unnamed test"));
+        } else if (assertion.status === "pending" || assertion.status === "skipped" || assertion.status === "todo") {
+          failedTests.push(`skipped: ${String(assertion.fullName ?? assertion.title ?? "unnamed test")}`);
         }
       }
       if (suite.status === "failed" && (!Array.isArray(suite.assertionResults) || suite.assertionResults.length === 0)) {
-        failedTests.push(relative(recipeDir, String(suite.name ?? "suite")));
+        failedTests.push(relative(recipeDir, suiteName || "suite"));
+      }
+    }
+
+    for (const expectedSuite of expectedSuites) {
+      if (!passedSuites.has(expectedSuite)) {
+        failedTests.push(`missing or unpassed declared suite: ${relative(recipeDir, expectedSuite)}`);
       }
     }
 
     const numTotalTests = Number(report.numTotalTests ?? 0);
     const numPassedTests = Number(report.numPassedTests ?? 0);
     const numFailedTests = Number(report.numFailedTests ?? 0);
-    const passed = exitCode === 0 && report.success === true && numTotalTests > 0 && numFailedTests === 0;
+    const allDeclaredSuitesPassed = [...expectedSuites].every((s) => passedSuites.has(s));
+    const passed =
+      exitCode === 0 &&
+      report.success === true &&
+      numTotalTests > 0 &&
+      numPassedTests > 0 &&
+      numPassedTests === numTotalTests &&
+      numFailedTests === 0 &&
+      failedTests.length === 0 &&
+      allDeclaredSuitesPassed;
 
     return {
       state: passed ? "passed" : "failed",
@@ -745,7 +1214,7 @@ export default {
         ? {}
         : {
             errorCode: "OPENLUP_E_RECIPE_TESTS_FAILED",
-            message: `${numFailedTests || failedTests.length || 1} Stages 1-3 test(s) failed.`,
+            message: `${numFailedTests || failedTests.length || 1} Stages 1-3 test(s) failed or were skipped.`,
           }),
     };
   } finally {
@@ -754,6 +1223,7 @@ export default {
 }
 
 async function verifyRecipeAtPath(targetPath, options, cwd) {
+  const cwdReal = await fs.realpath(cwd);
   const recheck = shellCommand([
     "recipe",
     "verify",
@@ -762,7 +1232,26 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
     ...(options.json ? ["--json"] : []),
   ]);
 
-  const absTarget = resolve(cwd, targetPath);
+  const absTarget = resolve(cwdReal, targetPath);
+  try {
+    await assertNoSymlinkAncestors(absTarget);
+  } catch {
+    const finding = makeFinding(
+      "OPENLUP_E_RECIPE_UNSAFE_PATH",
+      `Refused symlinked recipe path: ${targetPath}`,
+      "Symlinks are forbidden in recipe paths to prevent directory escape.",
+      "Use an ordinary directory with no symlinks.",
+      recheck,
+    );
+    return {
+      command: "recipe verify",
+      state: "failed",
+      exitCode: 74,
+      path: targetPath,
+      findings: [finding],
+    };
+  }
+
   const st = await statOrNull(absTarget);
   if (!st || !st.isDirectory() || st.isSymbolicLink()) {
     const finding = makeFinding(
@@ -781,27 +1270,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
     };
   }
 
-  let recipeDir;
-  try {
-    await assertNoSymlinkAncestors(absTarget);
-    recipeDir = await fs.realpath(absTarget);
-  } catch {
-    const finding = makeFinding(
-      "OPENLUP_E_RECIPE_UNSAFE_PATH",
-      `Refused symlinked recipe path: ${targetPath}`,
-      "Symlinks are forbidden in recipe paths to prevent directory escape.",
-      "Use an ordinary directory with no symlinks.",
-      recheck,
-    );
-    return {
-      command: "recipe verify",
-      state: "failed",
-      exitCode: 74,
-      path: targetPath,
-      findings: [finding],
-    };
-  }
-
+  const recipeDir = await fs.realpath(absTarget);
   const manifestFile = join(recipeDir, "recipe.json");
   const manifestStat = await statOrNull(manifestFile);
   if (!manifestStat || !manifestStat.isFile() || manifestStat.isSymbolicLink()) {
@@ -816,7 +1285,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
       command: "recipe verify",
       state: "unsatisfied",
       exitCode: 1,
-      path: targetPath,
+      path: displayPath(cwdReal, recipeDir),
       findings: [finding],
     };
   }
@@ -836,7 +1305,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
       command: "recipe verify",
       state: "unsatisfied",
       exitCode: 1,
-      path: targetPath,
+      path: displayPath(cwdReal, recipeDir),
       findings: [finding],
     };
   }
@@ -874,7 +1343,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
         "OPENLUP_E_RECIPE_MANIFEST_INVALID",
         manifestErrors.join(" "),
         "The recipe manifest failed schema or disk file-inventory parity validation.",
-        "Ensure recipe.json satisfies recipes/schema/recipe.schema.json and files.allFiles matches every file on disk in ASCII order.",
+        "Ensure recipe.json satisfies recipes/schema/recipe.schema.json and files.allFiles matches every file on disk.",
         recheck,
         { checked: "recipe.json schema and disk file inventory" },
       ),
@@ -884,10 +1353,17 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
   }
 
   // Provenance check (informational: adopters own installed recipes and may customize them).
+  // Prefer direct sibling provenance first; fall back to container ledger only under canonical <domain>/<provider> layout.
   let provenanceState = "untracked";
-  const containerProv = join(resolve(recipeDir, "../.."), PROVENANCE_FILENAME);
   const siblingProv = `${recipeDir}.provenance.json`;
-  for (const provPath of [containerProv, siblingProv]) {
+  const provCandidates = [siblingProv];
+  if (typeof manifest.id === "string" && RECIPE_ID_PATTERN.test(manifest.id)) {
+    const canonicalSuffix = `${sep}${manifest.id.split("/").join(sep)}`;
+    if (recipeDir.endsWith(canonicalSuffix)) {
+      provCandidates.push(join(resolve(recipeDir, "../.."), PROVENANCE_FILENAME));
+    }
+  }
+  for (const provPath of provCandidates) {
     const pStat = await statOrNull(provPath);
     if (!pStat || !pStat.isFile() || pStat.isSymbolicLink()) continue;
     try {
@@ -920,7 +1396,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
     );
   }
 
-  const workspace = await resolveWorkspaceContext(recipeDir, cwd);
+  const workspace = await resolveWorkspaceContext(recipeDir, cwdReal);
   const platformCompatibility = evaluatePlatformCompatibility(workspace, manifest);
   if (!platformCompatibility.compatible) {
     findings.push(
@@ -946,7 +1422,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
       durationMs: 0,
       failedTests: [],
     };
-  } else if (manifestErrors.length > 0) {
+  } else if (manifestErrors.length > 0 || !staticIsolation.passed) {
     stages1to3Tests = {
       state: "skipped",
       passed: false,
@@ -955,6 +1431,10 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
       numFailedTests: 0,
       durationMs: 0,
       failedTests: [],
+      note:
+        manifestErrors.length > 0
+          ? "Skipped Vitest execution because recipe.json manifest or inventory validation failed."
+          : "Skipped Vitest execution because ADR-001 static isolation failed (refusing to execute isolated code violations).",
     };
   } else {
     stages1to3Tests = await runRecipeVitest(recipeDir, manifest, workspace);
@@ -983,7 +1463,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
     recipeId: typeof manifest.id === "string" ? manifest.id : null,
     providerKind: typeof manifest.providerKind === "string" ? manifest.providerKind : null,
     status: typeof manifest.status === "string" ? manifest.status : null,
-    path: relative(cwd, recipeDir) || ".",
+    path: displayPath(cwdReal, recipeDir),
     recipeTreeSha256: treeHash?.recipeTreeSha256 ?? null,
     provenanceState,
     stages: {
@@ -1109,7 +1589,7 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
   }
 
   const subcommand = positionals[0];
-  const cwd = process.cwd();
+  const cwd = await fs.realpath(process.cwd());
 
   if (subcommand === "list") {
     if (
@@ -1168,7 +1648,7 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
       command: "recipe list",
       state: "complete",
       exitCode: 0,
-      catalogPath: relative(cwd, catalog.dir) || ".",
+      catalogPath: displayPath(cwd, catalog.dir),
       platformVersion: index.platformVersion ?? null,
       totalCount: index.recipes.length,
       filteredCount: filtered.length,
@@ -1250,20 +1730,35 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
       refuse(74, "OPENLUP_E_RECIPE_UNSAFE_PATH", "Catalog manifestPath failed path safety checks.", "Repair index.json.");
       return;
     }
-    const manifestAbs = resolve(catalog.dir, ...entry.manifestPath.split("/"));
-    await assertNoSymlinkSegments(catalog.dir, entry.manifestPath);
-    const manifestReal = await fs.realpath(manifestAbs);
-    if (!isContained(catalog.dir, manifestReal)) {
-      refuse(74, "OPENLUP_E_RECIPE_UNSAFE_PATH", "Resolved manifest escapes catalog root.", "Repair catalog symlinks.");
+    let manifest;
+    try {
+      const manifestAbs = resolve(catalog.dir, ...entry.manifestPath.split("/"));
+      await assertNoSymlinkSegments(catalog.dir, entry.manifestPath);
+      const manifestReal = await fs.realpath(manifestAbs);
+      if (!isContained(catalog.dir, manifestReal)) {
+        refuse(74, "OPENLUP_E_RECIPE_UNSAFE_PATH", "Resolved manifest escapes catalog root.", "Repair catalog symlinks.");
+        return;
+      }
+      manifest = JSON.parse(await fs.readFile(manifestReal, "utf8"));
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("SYMLINK_REFUSED:")) {
+        refuse(74, "OPENLUP_E_RECIPE_UNSAFE_PATH", "Refused symlinked recipe manifest in catalog.", "Remove catalog symlinks.");
+        return;
+      }
+      refuse(74, "OPENLUP_E_RECIPE_MANIFEST_INVALID", "Could not read or parse the recipe manifest in catalog.", "Repair recipe.json.");
       return;
     }
-    const manifest = JSON.parse(await fs.readFile(manifestReal, "utf8"));
+    const manifestErrors = validateManifestShape(manifest);
+    if (manifestErrors.length > 0) {
+      refuse(74, "OPENLUP_E_RECIPE_MANIFEST_INVALID", manifestErrors.join(" "), "Repair the source recipe manifest.");
+      return;
+    }
     const report = {
       command: "recipe show",
       state: "complete",
       exitCode: 0,
       recipeId,
-      catalogPath: relative(cwd, catalog.dir) || ".",
+      catalogPath: displayPath(cwd, catalog.dir),
       installCommand: shellCommand([
         "recipe",
         "add",
@@ -1333,7 +1828,7 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
         `Recipe "${recipeId}" was not found in the catalog.`,
         "The requested recipe id is not listed in index.json.",
         `Choose one of the available recipes: ${available}`,
-        shellCommand(["recipe", "list", ...(values.catalog ? ["--catalog", values.catalog] : [])]),
+        shellCommand(["recipe", "list", ...(values.catalog ? ["--catalog", values.catalog] : []), ...(isJson ? ["--json"] : [])]),
       );
       emit(
         { command: "recipe add", state: "unsatisfied", exitCode: 1, recipeId, findings: [finding] },
@@ -1346,16 +1841,28 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
       refuse(74, "OPENLUP_E_RECIPE_UNSAFE_PATH", "Catalog manifestPath is unsafe.", "Repair index.json.");
       return;
     }
-    const srcManifestAbs = resolve(catalog.dir, ...entry.manifestPath.split("/"));
-    const srcRecipeDir = dirname(srcManifestAbs);
-    await assertNoSymlinkSegments(catalog.dir, entry.manifestPath);
-    const srcRecipeReal = await fs.realpath(srcRecipeDir);
-    if (!isContained(catalog.dir, srcRecipeReal)) {
-      refuse(74, "OPENLUP_E_RECIPE_UNSAFE_PATH", "Source recipe escapes catalog root.", "Check catalog links.");
+
+    let srcRecipeReal;
+    let manifest;
+    try {
+      const srcManifestAbs = resolve(catalog.dir, ...entry.manifestPath.split("/"));
+      const srcRecipeDir = dirname(srcManifestAbs);
+      await assertNoSymlinkSegments(catalog.dir, entry.manifestPath);
+      srcRecipeReal = await fs.realpath(srcRecipeDir);
+      if (!isContained(catalog.dir, srcRecipeReal)) {
+        refuse(74, "OPENLUP_E_RECIPE_UNSAFE_PATH", "Source recipe escapes catalog root.", "Check catalog links.");
+        return;
+      }
+      manifest = JSON.parse(await fs.readFile(join(srcRecipeReal, "recipe.json"), "utf8"));
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("SYMLINK_REFUSED:")) {
+        refuse(74, "OPENLUP_E_RECIPE_UNSAFE_PATH", "Refused symlinked source recipe path in catalog.", "Remove catalog symlinks.");
+        return;
+      }
+      refuse(74, "OPENLUP_E_RECIPE_MANIFEST_INVALID", "Could not read or parse the source recipe manifest.", "Repair recipe.json.");
       return;
     }
 
-    const manifest = JSON.parse(await fs.readFile(join(srcRecipeReal, "recipe.json"), "utf8"));
     const manifestErrors = validateManifestShape(manifest);
     if (manifestErrors.length > 0) {
       refuse(74, "OPENLUP_E_RECIPE_MANIFEST_INVALID", manifestErrors.join(" "), "Repair the source recipe manifest.");
@@ -1368,10 +1875,11 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
       refuse(64, "OPENLUP_E_CLI_INPUT", "Empty --dest path.", "Pass a non-empty destination directory.");
       return;
     }
-    const destAbs = resolve(cwd, requestedDest);
+    const destRawAbs = resolve(cwd, requestedDest);
 
+    let destAbs;
     try {
-      await assertNoSymlinkAncestors(destAbs);
+      destAbs = await canonicalizePathWithMissingTail(destRawAbs);
     } catch {
       refuse(
         74,
@@ -1382,12 +1890,30 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
       return;
     }
 
-    if (destAbs === srcRecipeReal || isContained(srcRecipeReal, destAbs) || isContained(destAbs, srcRecipeReal)) {
-      refuse(
-        1,
+    const recipeIdSuffix = `${sep}${recipeId.split("/").join(sep)}`;
+    const usesCanonicalContainerLayout = destAbs.endsWith(recipeIdSuffix);
+    const containerRoot = usesCanonicalContainerLayout ? resolve(destAbs, "../..") : null;
+
+    const overlapsCatalog =
+      destAbs === srcRecipeReal ||
+      isContained(srcRecipeReal, destAbs) ||
+      isContained(destAbs, srcRecipeReal) ||
+      destAbs === catalog.dir ||
+      isContained(catalog.dir, destAbs) ||
+      isContained(destAbs, catalog.dir) ||
+      (containerRoot !== null && containerRoot === catalog.dir);
+
+    if (overlapsCatalog) {
+      const finding = makeFinding(
         "OPENLUP_E_RECIPE_DEST_CONFLICT",
-        "Destination directory overlaps the source catalog recipe directory.",
+        "Destination directory overlaps the source catalog directory.",
+        "Installing into or over the source catalog would overwrite upstream recipes, schema, or index.json.",
         "Install into an application-owned destination such as `owned/adapters/<domain>/<provider>`.",
+        shellCommand(["recipe", "add", recipeId, ...(values.catalog ? ["--catalog", values.catalog] : []), "--verify"]),
+      );
+      emit(
+        { command: "recipe add", state: "refused", exitCode: 1, recipeId, dest: requestedDest, findings: [finding] },
+        renderFinding(finding),
       );
       return;
     }
@@ -1429,29 +1955,76 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
       }
     }
 
-    // Validate every source file before writing anything to destination.
+    // Validate every source file, target path, and companion container target BEFORE writing anything to disk.
     const plannedFiles = [];
-    for (const relPath of manifest.files.allFiles) {
-      await assertNoSymlinkSegments(srcRecipeReal, relPath);
-      const srcFile = join(srcRecipeReal, ...relPath.split("/"));
-      const srcStat = await fs.lstat(srcFile);
-      if (!srcStat.isFile() || srcStat.isSymbolicLink()) {
-        refuse(74, "OPENLUP_E_RECIPE_UNSAFE_PATH", `Source file is not an ordinary file: ${relPath}`, "Repair catalog.");
+    try {
+      for (const relPath of manifest.files.allFiles) {
+        await assertNoSymlinkSegments(srcRecipeReal, relPath);
+        const srcFile = join(srcRecipeReal, ...relPath.split("/"));
+        const srcStat = await fs.lstat(srcFile);
+        if (!srcStat.isFile() || srcStat.isSymbolicLink()) {
+          refuse(74, "OPENLUP_E_RECIPE_UNSAFE_PATH", `Source file is not an ordinary file: ${relPath}`, "Repair catalog.");
+          return;
+        }
+        const bytes = await fs.readFile(srcFile);
+        plannedFiles.push({
+          relPath,
+          bytes,
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+        });
+      }
+
+      if (destStat) {
+        for (const item of plannedFiles) {
+          await assertNoSymlinkSegments(destAbs, item.relPath);
+        }
+      }
+
+      // Pre-validate companion container paths (schema/, index.json, .openlup-provenance.json) before any write.
+      if (usesCanonicalContainerLayout && containerRoot !== null) {
+        await assertNoSymlinkAncestors(containerRoot);
+        const schemaDstDir = join(containerRoot, "schema");
+        const schemaDstStat = await statOrNull(schemaDstDir);
+        if (schemaDstStat && (schemaDstStat.isSymbolicLink() || !schemaDstStat.isDirectory())) {
+          throw new Error(`SYMLINK_REFUSED:${schemaDstDir}`);
+        }
+        if (schemaDstStat) {
+          const schemaDstReal = await fs.realpath(schemaDstDir);
+          if (!isContained(containerRoot, schemaDstReal)) {
+            throw new Error(`SYMLINK_REFUSED:${schemaDstDir}`);
+          }
+          for (const schemaName of ["recipe.schema.json", "csp.schema.json"]) {
+            const dstSchemaStat = await statOrNull(join(schemaDstDir, schemaName));
+            if (dstSchemaStat && (dstSchemaStat.isSymbolicLink() || !dstSchemaStat.isFile())) {
+              throw new Error(`SYMLINK_REFUSED:${join(schemaDstDir, schemaName)}`);
+            }
+          }
+        }
+        const localIndexStat = await statOrNull(join(containerRoot, "index.json"));
+        if (localIndexStat && (localIndexStat.isSymbolicLink() || !localIndexStat.isFile())) {
+          throw new Error(`SYMLINK_REFUSED:${join(containerRoot, "index.json")}`);
+        }
+        const provStat = await statOrNull(join(containerRoot, PROVENANCE_FILENAME));
+        if (provStat && (provStat.isSymbolicLink() || !provStat.isFile())) {
+          throw new Error(`SYMLINK_REFUSED:${join(containerRoot, PROVENANCE_FILENAME)}`);
+        }
+      } else {
+        const siblingProvStat = await statOrNull(`${destAbs}.provenance.json`);
+        if (siblingProvStat && (siblingProvStat.isSymbolicLink() || !siblingProvStat.isFile())) {
+          throw new Error(`SYMLINK_REFUSED:${destAbs}.provenance.json`);
+        }
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("SYMLINK_REFUSED:")) {
+        refuse(
+          74,
+          "OPENLUP_E_RECIPE_UNSAFE_PATH",
+          "Refused symlinked source, destination, schema, index, or provenance path during recipe install.",
+          "Remove symlinks under the source catalog or destination container directory and retry.",
+        );
         return;
       }
-      const bytes = await fs.readFile(srcFile);
-      plannedFiles.push({
-        relPath,
-        bytes,
-        sha256: createHash("sha256").update(bytes).digest("hex"),
-      });
-    }
-
-    // Check target file paths inside destAbs for symlinks when --force is used.
-    if (destStat) {
-      for (const item of plannedFiles) {
-        await assertNoSymlinkSegments(destAbs, item.relPath);
-      }
+      throw error;
     }
 
     await fs.mkdir(destAbs, { recursive: true });
@@ -1462,15 +2035,13 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
     }
 
     // Sync schema files and record provenance outside RECIPE_DIR so allFiles parity stays 100% intact.
-    const recipeIdSuffix = `${sep}${recipeId.split("/").join(sep)}`;
-    const usesCanonicalContainerLayout = destAbs.endsWith(recipeIdSuffix);
     const sortedPlanned = [...plannedFiles].sort((a, b) => asciiCompare(a.relPath, b.relPath));
     const treeHasher = createHash("sha256");
     for (const item of sortedPlanned) {
       treeHasher.update(`${item.relPath}:${item.sha256}\n`, "utf8");
     }
     const recipeTreeSha256 = treeHasher.digest("hex");
-    const destDisplay = relative(cwd, destAbs) || ".";
+    const destDisplay = displayPath(cwd, destAbs);
 
     const provenanceRecord = {
       recipeId: manifest.id,
@@ -1488,30 +2059,36 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
 
     let provenancePathAbs;
     try {
-      if (usesCanonicalContainerLayout) {
-        const containerRoot = resolve(destAbs, "../..");
-        await assertNoSymlinkAncestors(containerRoot);
+      if (usesCanonicalContainerLayout && containerRoot !== null) {
         const schemaSrcDir = join(catalog.dir, "schema");
-        const schemaDstDir = join(containerRoot, "schema");
-        if (await statOrNull(schemaSrcDir)) {
-          await fs.mkdir(schemaDstDir, { recursive: true });
-          for (const schemaName of ["recipe.schema.json", "csp.schema.json"]) {
-            const srcSchema = join(schemaSrcDir, schemaName);
-            const sStat = await statOrNull(srcSchema);
-            if (sStat && sStat.isFile() && !sStat.isSymbolicLink()) {
-              const dstSchema = join(schemaDstDir, schemaName);
-              const dstStat = await statOrNull(dstSchema);
-              if (dstStat && dstStat.isSymbolicLink()) {
-                throw new Error(`SYMLINK_REFUSED:${dstSchema}`);
+        const schemaSrcStat = await statOrNull(schemaSrcDir);
+        if (schemaSrcStat && schemaSrcStat.isDirectory() && !schemaSrcStat.isSymbolicLink()) {
+          const schemaSrcReal = await fs.realpath(schemaSrcDir);
+          if (isContained(catalog.dir, schemaSrcReal)) {
+            const schemaDstDir = join(containerRoot, "schema");
+            await fs.mkdir(schemaDstDir, { recursive: true });
+            const schemaDstReal = await fs.realpath(schemaDstDir);
+            if (!isContained(containerRoot, schemaDstReal)) {
+              throw new Error(`SYMLINK_REFUSED:${schemaDstDir}`);
+            }
+            for (const schemaName of ["recipe.schema.json", "csp.schema.json"]) {
+              const srcSchema = join(schemaSrcReal, schemaName);
+              const sStat = await statOrNull(srcSchema);
+              if (sStat && sStat.isFile() && !sStat.isSymbolicLink()) {
+                const dstSchema = join(schemaDstReal, schemaName);
+                const dstStat = await statOrNull(dstSchema);
+                if (dstStat && dstStat.isSymbolicLink()) {
+                  throw new Error(`SYMLINK_REFUSED:${dstSchema}`);
+                }
+                await fs.writeFile(dstSchema, await fs.readFile(srcSchema));
               }
-              await fs.writeFile(dstSchema, await fs.readFile(srcSchema));
             }
           }
         }
         // Maintain owned-adapters index.json so conformance suites referencing ../../index.json pass seamlessly.
         const localIndexPath = join(containerRoot, "index.json");
         const idxStat = await statOrNull(localIndexPath);
-        if (idxStat && idxStat.isSymbolicLink()) {
+        if (idxStat && (idxStat.isSymbolicLink() || !idxStat.isFile())) {
           throw new Error(`SYMLINK_REFUSED:${localIndexPath}`);
         }
         let localIndex = { schemaVersion: 1, recipes: [] };
@@ -1534,7 +2111,7 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
 
         provenancePathAbs = join(containerRoot, PROVENANCE_FILENAME);
         const provStat = await statOrNull(provenancePathAbs);
-        if (provStat && provStat.isSymbolicLink()) {
+        if (provStat && (provStat.isSymbolicLink() || !provStat.isFile())) {
           throw new Error(`SYMLINK_REFUSED:${provenancePathAbs}`);
         }
         let existingLedger = { schemaVersion: 1, recipes: {} };
@@ -1554,7 +2131,7 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
       } else {
         provenancePathAbs = `${destAbs}.provenance.json`;
         const provStat = await statOrNull(provenancePathAbs);
-        if (provStat && provStat.isSymbolicLink()) {
+        if (provStat && (provStat.isSymbolicLink() || !provStat.isFile())) {
           throw new Error(`SYMLINK_REFUSED:${provenancePathAbs}`);
         }
         await fs.writeFile(
@@ -1580,6 +2157,17 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
     let verification = null;
     if (values.verify === true) {
       verification = await verifyRecipeAtPath(destDisplay, { skipTests: false, json: isJson }, cwd);
+      if (!usesCanonicalContainerLayout && verification.exitCode !== 0) {
+        verification.findings.push(
+          makeFinding(
+            "OPENLUP_E_RECIPE_NONCANONICAL_DEST",
+            `Installed into non-canonical destination "${destDisplay}" (does not end with "${recipeId}").`,
+            "Recipes whose conformance suites read ../../schema/*.json or ../../index.json require a <container>/<domain>/<provider> layout.",
+            `Install into a canonical destination such as owned/adapters/${recipeId} (the default when --dest is omitted).`,
+            shellCommand(["recipe", "add", recipeId, ...(values.catalog ? ["--catalog", values.catalog] : []), "--verify"]),
+          ),
+        );
+      }
     }
 
     const exitCode = verification ? verification.exitCode : 0;
@@ -1594,7 +2182,7 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
       dest: destDisplay,
       filesCopied: plannedFiles.length,
       recipeTreeSha256,
-      provenancePath: relative(cwd, provenancePathAbs) || provenancePathAbs,
+      provenancePath: displayPath(cwd, provenancePathAbs),
       verifyCommand,
       liveQualificationChecklist: provenanceRecord.liveQualificationChecklist,
       ...(verification ? { verification } : {}),
@@ -1606,6 +2194,7 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
   if (subcommand === "verify") {
     if (
       positionals.length !== 2 ||
+      !positionals[1].trim() ||
       values.domain !== undefined ||
       values.status !== undefined ||
       values.region !== undefined ||

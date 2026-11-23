@@ -304,4 +304,138 @@ describe("openlup recipe CLI (Agent-DX list|show|add|verify)", () => {
     };
     expect(ownedIdx.recipes.map((r) => r.id)).toEqual(["shipping/usps"]);
   }, 30_000);
+
+  it("blocks schema/ symlink escape, catalog overlap under tmpdir, ADR-001 bypasses, manifest drift, and test failures", async () => {
+    const appDir = await makeTempDir("openlup-recipe-cli-regressions-");
+
+    // 1. Symlinked owned/adapters/schema must be refused (exit 74) with zero writes to outside dir OR dest
+    const outsideSchema = join(appDir, "outside-schema");
+    await fs.mkdir(outsideSchema, { recursive: true });
+    await fs.mkdir(join(appDir, "owned/adapters"), { recursive: true });
+    await fs.symlink(outsideSchema, join(appDir, "owned/adapters/schema"), "dir");
+    const schemaEscape = await runCli(
+      ["recipe", "add", "payments/adyen", "--catalog", CATALOG_DIR, "--json"],
+      { cwd: appDir },
+    );
+    expect(schemaEscape.exitCode).toBe(74);
+    expect((JSON.parse(schemaEscape.stdout) as { findings: readonly { code: string }[] }).findings[0]?.code).toBe(
+      "OPENLUP_E_RECIPE_UNSAFE_PATH",
+    );
+    expect(await fs.readdir(outsideSchema)).toEqual([]);
+    await fs.unlink(join(appDir, "owned/adapters/schema"));
+
+    // 2. Source-dest overlap under tmpdir (even with --force) is refused with OPENLUP_E_RECIPE_DEST_CONFLICT
+    const tempCatalog = join(appDir, "temp-catalog");
+    await fs.cp(join(CATALOG_DIR, "shipping/usps"), join(tempCatalog, "shipping/usps"), { recursive: true });
+    await fs.cp(join(CATALOG_DIR, "schema"), join(tempCatalog, "schema"), { recursive: true });
+    await fs.copyFile(join(CATALOG_DIR, "index.json"), join(tempCatalog, "index.json"));
+    const overlap = await runCli([
+      "recipe",
+      "add",
+      "shipping/usps",
+      "--catalog",
+      tempCatalog,
+      "--dest",
+      join(tempCatalog, "shipping/usps"),
+      "--force",
+      "--json",
+    ]);
+    expect(overlap.exitCode).toBe(1);
+    const overlapBody = JSON.parse(overlap.stdout) as {
+      command: string;
+      state: string;
+      findings: readonly { code: string }[];
+    };
+    expect(overlapBody.command).toBe("recipe add");
+    expect(overlapBody.state).toBe("refused");
+    expect(overlapBody.findings[0]?.code).toBe("OPENLUP_E_RECIPE_DEST_CONFLICT");
+
+    // 3. Positive control: valid export containing "from '...'" inside a string must NOT false-positive
+    const uspsDest = join(appDir, "owned/adapters/shipping/usps");
+    const installUsps = await runCli(
+      ["recipe", "add", "shipping/usps", "--catalog", CATALOG_DIR, "--json"],
+      { cwd: appDir },
+    );
+    expect(installUsps.exitCode).toBe(0);
+    const adapterPath = join(uspsDest, "server/adapter.ts");
+    const originalAdapter = await fs.readFile(adapterPath, "utf8");
+    await fs.writeFile(
+      adapterPath,
+      `${originalAdapter}\nexport function describeSource() { return "Loaded from 'USPS' catalog"; }\n`,
+      "utf8",
+    );
+    const positiveVerify = await runCli(["recipe", "verify", uspsDest, "--skip-tests", "--json"]);
+    expect(positiveVerify.exitCode).toBe(0);
+    expect((JSON.parse(positiveVerify.stdout) as { stages: { staticIsolation: { passed: boolean } } }).stages.staticIsolation.passed).toBe(true);
+
+    // 4. Negative control: multiline export + side-effect/whitespace-free import bypass is caught AND skips Vitest
+    await fs.writeFile(
+      adapterPath,
+      `export const ok = 1;\nimport"vendor-sdk";\nimport{x}from"vendor-sdk-2";\nvoid ok; void x;\n${originalAdapter}`,
+      "utf8",
+    );
+    const bypassVerify = await runCli(["recipe", "verify", uspsDest, "--json"]);
+    expect(bypassVerify.exitCode).toBe(1);
+    const bypassBody = JSON.parse(bypassVerify.stdout) as {
+      stages: {
+        staticIsolation: { passed: boolean; violations: readonly string[] };
+        stages1to3Tests: { state: string; passed: boolean };
+      };
+    };
+    expect(bypassBody.stages.staticIsolation.passed).toBe(false);
+    expect(bypassBody.stages.staticIsolation.violations.some((v) => v.includes("vendor-sdk"))).toBe(true);
+    expect(bypassBody.stages.staticIsolation.violations.some((v) => v.includes("vendor-sdk-2"))).toBe(true);
+    expect(bypassBody.stages.stages1to3Tests.state).toBe("skipped");
+    expect(bypassBody.stages.stages1to3Tests.passed).toBe(false);
+
+    // Restore clean adapter, then verify manifest/disk inventory drift fails with OPENLUP_E_RECIPE_MANIFEST_INVALID
+    await fs.writeFile(adapterPath, originalAdapter, "utf8");
+    const extraFile = join(uspsDest, "server/undeclared.ts");
+    await fs.writeFile(extraFile, "export const extra = 1;\n", "utf8");
+    const driftVerify = await runCli(["recipe", "verify", uspsDest, "--skip-tests", "--json"]);
+    expect(driftVerify.exitCode).toBe(1);
+    expect((JSON.parse(driftVerify.stdout) as { findings: readonly { code: string }[] }).findings[0]?.code).toBe(
+      "OPENLUP_E_RECIPE_MANIFEST_INVALID",
+    );
+    await fs.unlink(extraFile);
+
+    // 5. Failing Vitest assertion fails verify with OPENLUP_E_RECIPE_TESTS_FAILED
+    const mountProofPath = join(uspsDest, "tests/mount-proof.test.ts");
+    const origMountProof = await fs.readFile(mountProofPath, "utf8");
+    await fs.writeFile(
+      mountProofPath,
+      `${origMountProof}\nimport { it as _it, expect as _expect } from "vitest";\n_it("planted failure", () => { _expect(1).toBe(2); });\n`,
+      "utf8",
+    );
+    const failingTests = await runCli(["recipe", "verify", uspsDest, "--json"]);
+    expect(failingTests.exitCode).toBe(1);
+    expect((JSON.parse(failingTests.stdout) as { findings: readonly { code: string }[] }).findings[0]?.code).toBe(
+      "OPENLUP_E_RECIPE_TESTS_FAILED",
+    );
+    await fs.writeFile(mountProofPath, origMountProof, "utf8");
+
+    // 6. Cross-subcommand invalid flags, empty verify path, --region filtering, and non-canonical --dest hint
+    expect((await runCli(["recipe", "list", "--force", "--json"])).exitCode).toBe(64);
+    expect((await runCli(["recipe", "verify", uspsDest, "--catalog", CATALOG_DIR, "--json"])).exitCode).toBe(64);
+    expect((await runCli(["recipe", "verify", "", "--json"])).exitCode).toBe(64);
+
+    const regionFiltered = await runCli(["recipe", "list", "--region", "US", "--json"]);
+    expect(regionFiltered.exitCode).toBe(0);
+    expect((JSON.parse(regionFiltered.stdout) as { filteredCount: number }).filteredCount).toBeGreaterThanOrEqual(5);
+
+    const nonCanonical = await runCli([
+      "recipe",
+      "add",
+      "payments/adyen",
+      "--dest",
+      join(appDir, "custom-adyen"),
+      "--catalog",
+      CATALOG_DIR,
+      "--verify",
+      "--json",
+    ]);
+    expect(nonCanonical.exitCode).toBe(1);
+    const ncBody = JSON.parse(nonCanonical.stdout) as { verification: { findings: readonly { code: string }[] } };
+    expect(ncBody.verification.findings.some((f) => f.code === "OPENLUP_E_RECIPE_NONCANONICAL_DEST")).toBe(true);
+  }, 30_000);
 });
