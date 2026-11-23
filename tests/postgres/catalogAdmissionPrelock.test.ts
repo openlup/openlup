@@ -54,7 +54,7 @@ function latch() {
 const pid = async (db: PoolClient) => Number((await db.query("SELECT pg_backend_pid() AS pid")).rows[0]!.pid);
 
 beforeAll(async () => {
-  installation = await lifecycleInstallation("qualified-v2");
+  installation = await lifecycleInstallation("qualified-v2", { freshCluster: true });
   const owner = installation.owner;
   orderingPool = new Pool({ ...owner.options,
     options: `-c deadlock_timeout=200ms -c lock_timeout=${setupTimeout}ms -c statement_timeout=${setupTimeout + wallMarginMs}ms` });
