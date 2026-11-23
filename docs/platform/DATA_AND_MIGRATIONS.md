@@ -528,7 +528,9 @@ is qualified.
 
 ## Compatible data transfer
 
-Checkout attempt ledger rows are authoritative, short-lived admission state.
+The native starter uses the checkout attempt ledger for default quotas across
+processes and restarts on the same store database. Ledger rows are authoritative,
+short-lived admission state.
 The native connected-store profile carries the three digests and original epoch
 milliseconds exactly in owner-only packets. Treat these as restricted
 pseudonymous abuse-control data and keep the packets private. The ledger holds

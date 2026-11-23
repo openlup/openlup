@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import type { NativeCheckoutQuery } from '@openlup/platform/commerce/server/native-checkout';
+import { isRecord } from '../shared/offer.ts';
 import type { StoreConfig } from '../shared/config.ts';
 
 type Settings = StoreConfig['purchase']['attemptLimits'];
@@ -7,40 +9,37 @@ export type CheckoutRateLimit = (request: { headers: Record<string, string | str
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const hex = (value: string) => /^[0-9a-f]{64}$/.test(value);
 
-/** Interim implementation of the checkout admission callback; replace with the durable port.
- * Only digests/numbers survive the call. One synchronous critical section serializes this process. */
-export function createInterimCheckoutLimiter(settings: Settings, now: () => number = Date.now) {
-  const attempts = new Map<string, { requester: string; email: string; at: number }>();
-  const checkRateLimit: CheckoutRateLimit = async (request, intent, sequence = 0) => {
+/** The caller supplies the held checkout session before opening the draft transaction. */
+export function createPostgresCheckoutRateLimit(db: NativeCheckoutQuery, settings: Settings): CheckoutRateLimit {
+  return async (request, intent, sequence = 0) => {
     try {
-      const at = now();
-      if (!Number.isFinite(at) || !request.requesterKey || !hex(request.requesterKey)
-        || !intent.idempotencyKey || !intent.contact.email.trim() || !Number.isSafeInteger(sequence) || sequence < 0
-        || Object.values(settings).some(value => !Number.isSafeInteger(value) || value < 1)
-        || settings.retentionMs < settings.windowMs) return { allowed: false };
-      for (const [key, value] of attempts) {
-        if (!hex(key) || !hex(value.email) || !hex(value.requester) || !Number.isFinite(value.at)) return { allowed: false };
-        if (value.at <= at - settings.retentionMs) attempts.delete(key);
+      const { requesterKey } = request;
+      const { idempotencyKey, contact } = intent;
+      const email = typeof contact.email === 'string' ? contact.email.trim().toLowerCase() : '';
+      const { windowMs, retentionMs, maxPerEmail, maxPerRequester, maxEntries } = settings;
+      const policy = [windowMs, retentionMs, maxPerEmail, maxPerRequester, maxEntries];
+      if (typeof idempotencyKey !== 'string' || !idempotencyKey || !email
+        || typeof requesterKey !== 'string' || !hex(requesterKey)
+        || !Number.isSafeInteger(sequence) || sequence < 0
+        || policy.some(value => !Number.isSafeInteger(value) || value < 1)
+        || retentionMs < windowMs) return { allowed: false };
+
+      const { rows } = await db.query(
+        'SELECT public.commerce_record_checkout_attempt($1::text,$2::text,$3::text,$4::bigint,$5::bigint,$6::bigint,$7::bigint,$8::bigint) AS result',
+        [hash(`${idempotencyKey}\0${sequence}`), requesterKey, hash(email), ...policy]);
+      if (!Array.isArray(rows) || rows.length !== 1) return { allowed: false };
+      const result = rows[0]?.result;
+      if (isRecord(result) && Object.hasOwn(result, 'allowed')) {
+        const keys = Object.keys(result);
+        if (keys.length === 1 && result.allowed === true) return { allowed: true };
+        if (keys.length === 2 && Object.hasOwn(result, 'reason') && result.allowed === false
+          && (result.reason === 'email_quota' || result.reason === 'ip_quota')) {
+          return { allowed: false, reason: result.reason };
+        }
       }
-      const exact = hash(`${intent.idempotencyKey}\0${sequence}`);
-      const existing = attempts.get(exact);
-      if (existing) return { allowed: true };
-      const email = hash(intent.contact.email.trim().toLowerCase());
-      let emails = 0, requesters = 0;
-      for (const value of attempts.values()) if (value.at > at - settings.windowMs) {
-        if (value.email === email) emails++;
-        if (value.requester === request.requesterKey) requesters++;
-      }
-      if (emails >= settings.maxPerEmail) return { allowed: false, reason: 'email_quota' };
-      if (requesters >= settings.maxPerRequester) return { allowed: false, reason: 'ip_quota' };
-      if (!existing && attempts.size >= settings.maxEntries) return { allowed: false };
-      attempts.set(exact, { requester: request.requesterKey, email, at });
-      return { allowed: true };
-    } catch { return { allowed: false }; }
+    } catch { /* Admission fails closed without exposing database or request details. */ }
+    return { allowed: false };
   };
-  return { checkRateLimit,
-    // Private diagnostics contain the exact stored representation, never request inputs.
-    snapshot: () => [...attempts.entries()].map(([key, value]) => ({ key, ...value })) };
 }
 
 /** A thrown or malformed replacement callback cannot turn into admission. */

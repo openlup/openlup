@@ -7,7 +7,8 @@ type Native = Parameters<typeof createNativeSubscriptionBinding>[0];
 type Payment = Parameters<typeof createPostgresProviderPaymentRail>[0];
 
 /** Explicit server composition example. The starter does not select this factory.
- * The host owns SDK construction, credentials, live-mode policy and route auth.
+ * The host owns provider construction, credentials, live-mode policy and route auth.
+ * Use the starter's qualification command to verify a test account before composing a rail.
  * Its client confirms off-session requests and leaves interactive confirmation
  * to the browser. Empty search results never authorize another charge.
  */

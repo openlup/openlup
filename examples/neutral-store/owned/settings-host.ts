@@ -229,7 +229,7 @@ export function createSettingsBindings({ db, configuration }: {
           "assertConfig checks positive safe integers for the attempt limits and requires retentionMs to be at least windowMs.",
         ),
         effect: {
-          appliesTo: "The starter's checkout limiter and attempt bindings use the deployed quotas, windows and capacity when a process initializes them. Warning: this is an abuse-protection threshold — raising quotas weakens brute-force and card-testing throttling, while setting them too low blocks legitimate buyers behind shared IPs. The built-in starter limiter is in-memory per process and resets on restart.",
+          appliesTo: "The default checkout limiter uses these quotas, windows and capacity in PostgreSQL. Counts survive a restart on the same database. Deploy the same limits to every process serving that store. Raising quotas weakens brute-force and card-testing throttling. Setting them too low blocks legitimate buyers behind shared IPs.",
           frozenOn: [],
           impact: 'operations',
         },

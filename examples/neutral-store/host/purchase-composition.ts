@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { setTimeout } from 'node:timers/promises';
 import type { PostgresContactClientRegistrar } from '@openlup/platform/identity';
-import { createInterimCheckoutLimiter, createCheckoutAttemptBindings, admitCheckoutAttempt, type CheckoutRateLimit } from './checkout-attempts.ts';
+import { createPostgresCheckoutRateLimit, createCheckoutAttemptBindings, admitCheckoutAttempt, type CheckoutRateLimit } from './checkout-attempts.ts';
 import { installedAcquisitionPredecessors, createInitialPurchaseActivation, createAcquisitionRenewalBinding, type AcquisitionPredecessors, type AcquisitionRenewalBinding } from './acquisition-predecessors.ts';
 import { createNativeQuoteService, quoteFailure } from './quote-composition.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
@@ -75,7 +75,6 @@ function legacyReviewEvidence(snapshot: CreateQuoteResponse) {
 
 /** Existing request admission precedes each action; ownership is derived here. */
 export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactClientRegistrar, checkRateLimit: CheckoutRateLimit | undefined, recovery: PurchaseRecovery, quoteOptions: { predecessors?: AcquisitionPredecessors; keyring?: PromotionAcceptanceKeyring; renewal?: AcquisitionRenewalBinding; bindContact?(session: PoolClient): PostgresContactClientRegistrar } = {}): ApplicationBindings['actions'] {
-  let interimLimiter: ReturnType<typeof createInterimCheckoutLimiter> | undefined;
   let attemptBindings: ReturnType<typeof createCheckoutAttemptBindings> | undefined;
   const predecessors = quoteOptions.predecessors ?? installedAcquisitionPredecessors();
   const renewal = quoteOptions.renewal ?? createAcquisitionRenewalBinding(db);
@@ -197,8 +196,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       if (isRecord(error) && (error.code === '23505' || error.message === 'starter_command_conflict')) return refused('starter_command_conflict');
       return refused(quoteFailure(error));
     }
-    interimLimiter ??= createInterimCheckoutLimiter(context.config.purchase.attemptLimits);
-    if (!await admitCheckoutAttempt(checkRateLimit ?? interimLimiter.checkRateLimit,
+    const attemptLimit = checkRateLimit ?? createPostgresCheckoutRateLimit(draftSession, context.config.purchase.attemptLimits);
+    if (!await admitCheckoutAttempt(attemptLimit,
       { headers: {}, ...(context.actor.requesterKey ? { requesterKey: context.actor.requesterKey } : {}) },
       { idempotencyKey: context.commandKey, contact: { email } }, 0)) return refused('starter_attempt_limited');
     attemptBindings ??= createCheckoutAttemptBindings(context.config.purchase.attemptLimits);
