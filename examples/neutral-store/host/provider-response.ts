@@ -76,44 +76,47 @@ export const readPage = <T>(value: unknown, read: Read<T>) => ({
 
 const reason = literal('not_collecting', 'not_subject_to_tax', 'product_exempt', 'standard_rated', 'zero_rated',
   'product_exempt_holiday', 'customer_exempt', 'not_supported');
-const taxType = nullable(literal('sales_tax', 'retail_delivery_fee'));
-const rateType = nullable(literal('percentage', 'flat_amount'));
-const percentage: Read<string | undefined> = value =>
-  typeof value === 'string' && /^(?:0|[1-9][0-9]{0,2})(?:\.[0-9]{1,6})?$/u.test(value) ? value.replace(/(\.[0-9]*?)0+$/u, '$1').replace(/\.$/u, '') : undefined;
+const rateLayout = (value: unknown) => {
+  if (value === null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) return undefined;
+  return { type: field(value, 'rate_type', raw => raw === undefined ? undefined : raw === null ? null
+    : literal('percentage', 'flat_amount')(raw) ?? 'other'),
+    hasPercentage: field(value, 'percentage_decimal', text) !== undefined,
+    fee: field(value, 'tax_type', literal('retail_delivery_fee')) === 'retail_delivery_fee' };
+};
 
-function taxAmounts(value: unknown) {
-  return { taxMinor: field(value, 'amount', integer), basisMinor: field(value, 'taxable_amount', integer),
-    reason: field(value, 'taxability_reason', reason) };
+export function taxScopeMatches(value: unknown, accountRef: string, requireMode: boolean) {
+  return field(value, 'account', raw => raw === undefined || reference('acct')(raw) === accountRef)
+    && field(value, 'livemode', raw => flag(raw) === false || (!requireMode && raw === undefined));
 }
 
-const headerRate = (value: unknown) => ({
-  country: field(value, 'country', literal('US')), region: field(value, 'state', literal('NY', 'CA')),
-  taxType: field(value, 'tax_type', taxType), rateType: field(value, 'rate_type', rateType), percentage: field(value, 'percentage_decimal', percentage),
-  flatAmount: field(value, 'flat_amount', value => value === null ? null : undefined),
+const breakdownRow = (value: unknown) => ({
+  taxMinor: field(value, 'amount', integer), basisMinor: field(value, 'taxable_amount', integer),
+  reason: field(value, 'taxability_reason', reason) ?? 'other', rate: field(value, 'tax_rate_details', rateLayout),
 });
-export const readHeader = (value: unknown) => ({
-  ...taxAmounts(value), inclusive: field(value, 'inclusive', flag), rate: field(value, 'tax_rate_details', headerRate),
-});
-const detailRate = (value: unknown) => ({
-  taxType: field(value, 'tax_type', taxType), percentage: field(value, 'percentage_decimal', percentage),
-});
-const jurisdiction = (value: unknown) => ({
-  country: field(value, 'country', literal('US')), region: field(value, 'state', literal('NY', 'CA')),
-  level: field(value, 'level', literal('state', 'city', 'country', 'county', 'district')), name: field(value, 'display_name', text),
-});
-export const readDetail = (value: unknown) => ({
-  ...taxAmounts(value), jurisdiction: field(value, 'jurisdiction', jurisdiction),
-  sourcing: field(value, 'sourcing', literal('origin', 'destination')),
-  rate: field(value, 'tax_rate_details', nullable(detailRate)),
-});
+const header = (value: unknown) => ({ ...breakdownRow(value), inclusive: field(value, 'inclusive', flag) });
 const component = (value: unknown) => ({
-  chargeMinor: field(value, 'amount', integer), breakdown: field(value, 'tax_breakdown', array(readDetail)),
+  taxMinor: field(value, 'amount_tax', integer), chargeMinor: field(value, 'amount', integer),
+  breakdown: field(value, 'tax_breakdown', array(breakdownRow)),
 });
-export const readTaxLine = (value: unknown) => ({
-  ...component(value), live: field(value, 'livemode', flag), ref: field(value, 'reference', text),
-});
+export const readTaxLine = (value: unknown) => ({ ...component(value), ref: field(value, 'reference', text) });
 export const readCalculation = (value: unknown) => ({
-  ref: field(value, 'id', reference('taxcalc')), live: field(value, 'livemode', flag), currency: field(value, 'currency', currency),
-  payableMinor: field(value, 'amount_total', integer), headers: field(value, 'tax_breakdown', array(readHeader)),
+  ref: field(value, 'id', reference('taxcalc')), payableMinor: field(value, 'amount_total', integer),
+  expires: field(value, 'expires_at', nullable(integer)), inclusive: field(value, 'tax_amount_inclusive', integer),
+  exclusive: field(value, 'tax_amount_exclusive', integer), headers: field(value, 'tax_breakdown', array(header)),
   shipping: field(value, 'shipping_cost', value => value === undefined || value === null ? value : component(value)),
+});
+
+const taxReceiptFields = (value: unknown) => ({
+  ref: field(value, 'reference', text), kind: field(value, 'type', literal('transaction', 'reversal')),
+});
+export const readTaxTransaction = (value: unknown) => ({
+  ...taxReceiptFields(value), id: field(value, 'id', reference('tax')),
+  original: field(value, 'reversal', nullable(row => field(row, 'original_transaction', reference('tax')))),
+  shippingTax: field(value, 'shipping_cost', raw => raw === null ? 0 : field(raw, 'amount_tax', integer)),
+});
+export const readTaxTransactionLine = (value: unknown) => ({
+  ...taxReceiptFields(value), id: field(value, 'id', text),
+  original: field(value, 'reversal', nullable(row => field(row, 'original_line_item', text))),
+  taxMinor: field(value, 'amount_tax', integer),
 });

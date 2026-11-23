@@ -6,15 +6,13 @@ import { createServer } from 'node:http';
 import { argv, env, execPath, stdin, stdout, stderr } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { makeTaxQuoteRequest } from '@openlup/platform/tax';
-import type { TaxCommitRequestV1, TaxQuoteInputV1, TaxReverseRequestV1, TaxCommitResultV1, TaxReverseResultV1, TaxRefusal, TaxUnavailable } from '@openlup/platform/tax/contracts';
 import { pathToFileURL } from 'node:url';
 import {
-  accountId, CardRejection, composeProviderTax, credentialRefusal, fixedTaxRemedy, integrityRefusal, makeReportingDigest, openTestProvider, ProviderUnavailable, sdkVersion, TaxProviderRejection,
+  accountId, CardRejection, credentialRefusal, fixedTaxRemedy, integrityRefusal, openTestProvider, ProviderUnavailable, sdkVersion, TaxProviderRejection,
   type VerifiedTestProvider,
 } from './provider-transport.ts';
-import { declineCode, field, integer, literal, readCalculation, readCharge, readCustomer, readIntent, readPage, readTaxLine, reference, text,
-  type readDetail, type readHeader } from './provider-response.ts';
+import { declineCode, field, literal, readCalculation, readCharge, readCustomer, readIntent, readPage, readTaxLine,
+  readTaxTransaction, readTaxTransactionLine, reference, taxScopeMatches, text } from './provider-response.ts';
 
 const usage = 'Run npm run provider:qualify -- --run --test-mode --account <id> --key-env <name> in an interactive session outside CI.';
 const launcherSetup = 'Install the 1Password CLI and make it available on your PATH, then retry.';
@@ -265,55 +263,12 @@ export async function qualifyCard(card: Card, witness: Witness, prompt: (url: st
   if (unresolved) throw new Error(cardRefusal);
 }
 
-const taxRefusal = 'Check the documented test-account tax inputs and reconcile the original operation.';
 const noReportingEffect = 'No reporting effect was observed. Check tax configuration in the bound test account.';
-class TaxQualificationRefusal extends Error {
-  constructor(result: TaxRefusal | TaxUnavailable) {
-    if (result.kind === 'unavailable') {
-      super(field(result, 'effect', literal('none')) === 'none' ? noReportingEffect : integrityRefusal);
-    } else {
-      const fixed = fixedTaxRemedy(result.code, result.field);
-      super(fixed !== undefined && fixed === result.remedy ? fixed
-        : result.code === 'tax_scope_mismatch' || result.code === 'tax_reference_conflict' ? integrityRefusal : taxRefusal);
-    }
-  }
-}
 const fixtures = [
   { state: 'NY', city: 'New York', line1: '350 5th Ave', postal_code: '10118', shipping: 100 },
   { state: 'CA', city: 'San Francisco', line1: '1 Market St', postal_code: '94105', shipping: 0 },
 ] as const;
 
-type Header = ReturnType<typeof readHeader>;
-type Detail = ReturnType<typeof readDetail>;
-
-function verifyQuoteRows(region: 'NY' | 'CA', payable: number, headers: Header[], lines: Detail[], shipping: Detail[]) {
-  // The qualification fixtures expect one state header and one detail per taxable component.
-  const rated = region === 'NY';
-  const regionName = rated ? 'New York' : 'California';
-  const reason = rated ? 'standard_rated' : 'not_subject_to_tax';
-  const rateType = rated ? 'percentage' : null;
-  const taxType = rated ? 'sales_tax' : null;
-  const percentage = rated ? lines[0]?.rate?.percentage : '0';
-  if (percentage === undefined || (rated && percentage === '0')) throw new Error(integrityRefusal);
-  const [whole, fraction = ''] = percentage.split('.');
-  const rate = BigInt(whole + fraction.padEnd(6, '0'));
-  const taxFor = (basis: number) => Number((BigInt(basis) * rate + 50_000_000n) / 100_000_000n);
-  const lineTax = taxFor(1000), shippingTax = taxFor(rated ? 100 : 0);
-  const totalTax = lineTax + shippingTax;
-  const basis = rated ? 1100 : 1000;
-  const headerRate = { country: 'US', region, taxType, rateType, percentage, flatAmount: null };
-  const expectedHeaders = [{ taxMinor: totalTax, basisMinor: basis, reason, inclusive: false, rate: headerRate }];
-  const detail = (basisMinor: number, taxMinor: number) => ({
-    taxMinor, basisMinor, reason, jurisdiction: { country: 'US', region, level: 'state', name: regionName },
-    sourcing: 'destination', rate: rated ? { taxType, percentage } : null,
-  });
-  if (payable !== basis + totalTax || !isDeepStrictEqual(headers, expectedHeaders) || !isDeepStrictEqual(lines, [detail(1000, lineTax)])
-    || !isDeepStrictEqual(shipping, rated ? [detail(100, shippingTax)] : [])) {
-    throw new Error(integrityRefusal);
-  }
-}
-type TaxOptions = Parameters<typeof composeProviderTax>[1];
-const reportingRef = reference('tax');
 type RecoveryOperation = 'quote' | 'post' | 'reverse';
 type EvidenceByRef = (operation: RecoveryOperation, reference: string) => Promise<string | undefined>;
 
@@ -321,189 +276,105 @@ export const recoveryPrompt = (operation: RecoveryOperation, reference: string) 
   `Find the original tax ${operation} with reference ${reference} in the bound test dashboard. Enter its ${operation === 'quote' ? 'calculation' : 'transaction'} ID, or leave blank: `;
 
 export async function qualifyTax(provider: VerifiedTestProvider, witness: Witness, observeOriginal: EvidenceByRef, signal: AbortSignal) {
-  const ref = 'qualification-' + randomUUID();
-  const now = () => new Date();
-  const second = () => new Date(Math.floor(Date.now() / 1000) * 1000).toISOString();
+  const { tax } = provider;
+  const accountRef = field(provider.scope, 'accountRef', reference('acct'));
   function verify(condition: boolean): asserts condition {
     if (condition !== true) throw new Error(integrityRefusal);
   }
-  const calc = async (fixture: typeof fixtures[number]) => {
+  verify(accountRef !== undefined && field(provider.scope, 'mode', literal('test')) === 'test'
+    && field(tax.scope, 'mode', literal('test')) === 'test' && field(tax.scope, 'accountRef', reference('acct')) === accountRef);
+  const scope = (raw: unknown, requireMode = true) => { verify(taxScopeMatches(raw, accountRef, requireMode)); return raw; };
+  const runRef = 'qualification-' + randomUUID();
+  const sum = (rows: readonly { taxMinor: number | undefined }[]) => rows.reduce((total, row) => {
+    verify(row.taxMinor !== undefined);
+    return total + BigInt(row.taxMinor);
+  }, 0n);
+  async function observe<T>(operation: RecoveryOperation, ref: string, send: (options: { idempotencyKey: string }) => Promise<unknown>,
+    inspect: (raw: unknown, original?: string) => Promise<T>, retrieve: (id: string) => Promise<unknown>) {
     signal.throwIfAborted();
+    const options = { idempotencyKey: randomUUID() };
+    let raw;
+    try { raw = await send(options); }
+    catch (error) {
+      if (!(error instanceof ProviderUnavailable)) throw error;
+      witness.note({ operation, effect: 'unknown', key: witness.hash(options.idempotencyKey), reference: witness.hash(ref) });
+      const original = reference(operation === 'quote' ? 'taxcalc' : 'tax')(await observeOriginal(operation, ref));
+      if (original === undefined) throw new Error(operation === 'quote' ? noReportingEffect : integrityRefusal);
+      return inspect(await retrieve(original), original);
+    }
+    const first = await inspect(raw);
+    if (operation !== 'quote') {
+      signal.throwIfAborted();
+      verify(isDeepStrictEqual(first, await inspect(await send(options))));
+    }
+    return first;
+  }
+  const calculate = (fixture: typeof fixtures[number]) => {
     const { shipping, ...address } = fixture;
     const destination = { ...address, country: 'US' };
-    const quoteRef = `${ref}-${fixture.state.toLowerCase()}`;
-    const params = {
+    const ref = runRef + '-' + fixture.state.toLowerCase();
+    return observe('quote', ref, key => tax.calculations.create({
       currency: 'usd', customer_details: { address: destination, address_source: 'shipping' }, ship_from_details: { address: destination },
       expand: ['shipping_cost.tax_breakdown'],
       shipping_cost: { amount: shipping, tax_behavior: 'exclusive', tax_code: 'txcd_92010001' },
-      line_items: [{ amount: 1000, quantity: 1, reference: quoteRef, tax_behavior: 'exclusive', tax_code: 'txcd_99999999' }],
-    } satisfies Parameters<typeof provider.tax.calculations.create>[0];
-    const key = randomUUID();
-    let calculated;
-    try { calculated = readCalculation(await provider.tax.calculations.create(params, { idempotencyKey: key })); }
-    catch (error) {
-      if (!(error instanceof ProviderUnavailable)) throw error;
-      witness.note({ operation: 'quote', effect: 'unknown', key: witness.hash(key), reference: witness.hash(quoteRef) });
-      const original = reference('taxcalc')(await observeOriginal('quote', quoteRef));
-      verify(original !== undefined);
-      calculated = readCalculation(await provider.tax.calculations.retrieve(original));
-      verify(calculated.ref === original);
-    }
-    const { ref: calculationRef, payableMinor, headers, shipping: cost } = calculated;
-    verify(calculationRef !== undefined && calculated.live === false && calculated.currency === 'usd' && payableMinor !== undefined);
-    const list = readPage(await provider.tax.calculations.listLineItems(calculationRef, { limit: 100, expand: ['data.tax_breakdown'] }), readTaxLine);
-    const item = list.rows?.[0];
-    verify(list.more === false && list.path === '/v1/tax/calculations/' + calculationRef + '/line_items'
-      && list.rows?.length === 1 && item?.live === false && item.ref === quoteRef && item.chargeMinor === 1000);
-    const lines = item.breakdown;
-    verify(headers !== undefined && lines !== undefined && cost !== undefined
-      && (cost === null ? shipping === 0 : cost.chargeMinor === shipping && cost.breakdown !== undefined));
-    const delivery = cost === null ? [] : cost.breakdown!;
-    witness.note({ operation: 'tax_quote', region: fixture.state, calculation: witness.hash(calculationRef), currency: 'usd',
-      payableMinor, shippingMinor: cost?.chargeMinor, shippingShape: cost === null ? 'absent' : delivery.length > 0 ? 'detail' : 'empty' });
-    for (const row of headers) {
-      witness.note({ operation: 'tax_breakdown', region: fixture.state, shape: 'header', taxability: row.reason,
-        amountMinor: row.taxMinor, basisMinor: row.basisMinor, rateType: row.rate.rateType,
-        fee: row.rate.taxType === 'retail_delivery_fee', hasRate: true });
-    }
-    for (const [shape, rows] of [['line', lines], ['shipping', delivery]] as const) {
-      for (const row of rows) {
-        witness.note({ operation: 'tax_breakdown', region: fixture.state, shape, taxability: row.reason,
-          amountMinor: row.taxMinor, basisMinor: row.basisMinor, fee: row.rate?.taxType === 'retail_delivery_fee', hasRate: row.rate !== null });
+      line_items: [{ amount: 1000, quantity: 1, reference: ref, tax_behavior: 'exclusive', tax_code: 'txcd_99999999' }],
+    }, key), async (raw, original) => {
+      const calculation = readCalculation(scope(raw));
+      const { ref: id, headers, shipping: cost, inclusive, exclusive, expires } = calculation;
+      verify(id !== undefined && (original === undefined || original === id) && headers !== undefined
+        && cost !== undefined && inclusive !== undefined && exclusive !== undefined);
+      const rawPage = await tax.calculations.listLineItems(id, { limit: 100, expand: ['data.tax_breakdown'] });
+      const page = readPage(scope(rawPage, false), row => readTaxLine(scope(row)));
+      const item = page.rows?.[0], lines = item?.breakdown, delivery = cost === null ? [] : cost.breakdown;
+      verify(page.more === false && page.path === '/v1/tax/calculations/' + id + '/line_items'
+        && page.rows?.length === 1 && item?.ref === ref && lines !== undefined && delivery !== undefined);
+      const lineTax = item.taxMinor, shippingTax = cost === null ? 0 : cost.taxMinor;
+      verify(lineTax !== undefined && shippingTax !== undefined && headers.every(row => row.inclusive !== undefined)
+        && sum(lines) === BigInt(lineTax) && sum(delivery) === BigInt(shippingTax)
+        && sum(headers.filter(row => row.inclusive === true)) === BigInt(inclusive)
+        && sum(headers.filter(row => row.inclusive === false)) === BigInt(exclusive));
+      witness.note({ operation: 'tax_quote', region: fixture.state, calculation: witness.hash(id), currency: 'usd',
+        payableMinor: calculation.payableMinor, shippingMinor: cost?.chargeMinor, shippingShape: cost === null ? 'absent' : delivery.length > 0 ? 'detail' : 'empty' });
+      for (const [shape, rows] of [['header', headers], ['line', lines], ['shipping', delivery]] as const) {
+        for (const row of rows) witness.note({ operation: 'tax_breakdown', region: fixture.state, shape, taxability: row.reason,
+          amountMinor: row.taxMinor, basisMinor: row.basisMinor, fee: row.rate?.fee, rateType: row.rate?.type, hasPercentage: row.rate?.hasPercentage,
+          hasRate: row.rate === undefined ? undefined : row.rate !== null });
       }
-    }
-    verifyQuoteRows(fixture.state, payableMinor, headers, lines, delivery);
+      return { id, expires, ref };
+    }, id => tax.calculations.retrieve(id));
   };
-  const [ny, ca] = fixtures;
-  await calc(ny);
-  await calc(ca);
-  signal.throwIfAborted();
+  const quote = await calculate(fixtures[0]);
+  await calculate(fixtures[1]);
+  verify(quote.expires !== undefined);
+  const before = quote.expires === null ? undefined : quote.expires * 1000;
 
-  const jurisdictions = [{ jurisdiction: witness.hash('state-New York'), taxKind: 'sales', level: 'state', sourcing: 'destination' as const,
-    provider: { country: 'US', state: 'NY', level: 'state', display_name: 'New York' }, taxType: 'sales_tax' }];
-  const accountRef = field(provider.scope, 'accountRef', reference('acct'));
-  const mode = field(provider.scope, 'mode', literal('test'));
-  verify(accountRef !== undefined && mode === 'test');
-  const taxDate = second(), scope = { adapter: 'stripeTax', adapterVersion: '1', accountRef, mode };
-  const address = { countryCode: 'US', subdivisionCode: 'US-NY', line1: ny.line1, city: ny.city, postalCode: ny.postal_code };
-  const delivery = { bucketKey: 'shipping', carrierRef: 'fixture', serviceRef: 'fixture', separatelyStated: true,
-    taxClass: 'shipping', assignmentRef: 'shipping', cost: { ref: 'shipping', currency: 'USD', amountMinor: ny.shipping } };
-  const marketPack: TaxOptions['marketPack'] = { scope, market: 'qualification', currency: 'USD', policyRevision: 'test', classMapRevision: 'test',
-    taxCodes: { merchandise: 'txcd_99999999', shipping: 'txcd_92010001' }, origins: { fixture: address },
-    subdivisions: { US: { 'US-NY': 'NY' } }, delivery: [{ ...delivery, costIndependent: true, zeroAmount: false }],
-    jurisdictions, registrations: jurisdictions.map(row => ({ jurisdiction: row.jurisdiction, taxKind: row.taxKind,
-      country: 'US', state: 'NY', type: 'state_sales_tax', complete: true })), fees: [] };
-  const input: TaxQuoteInputV1 = { scope, market: marketPack.market, currency: 'USD', purpose: 'final', taxDate,
-    destination: { snapshotRef: 'fixture', digest: witness.hash('fixture-address'), policyRevision: 'test', address },
-    shipFromRef: 'fixture', policyRevision: 'test', classMapRevision: 'test', delivery: [delivery],
-    lines: [{ lineKey: 'item', sku: 'fixture', mode: 'one_time', taxClass: 'merchandise', assignmentRef: 'fixture' }],
-    money: { amountBasis: 'exclusive', sources: [{ lineKey: 'item', sourceOrdinal: 1, quantity: 1, unitBasisMinor: 1000 }],
-      delivery: [{ bucketKey: 'shipping', deliveryKind: 'shipping', amountMinor: ny.shipping }], adjustments: [], fees: [] },
-    required: jurisdictions.flatMap(({ jurisdiction, taxKind, level, sourcing }) => [
-      { target: { kind: 'line', key: 'item' }, jurisdiction, taxKind, level, sourcing },
-      { target: { kind: 'delivery', key: 'shipping' }, jurisdiction, taxKind, level, sourcing },
-    ]),
-    coverage: { schemaVersion: 1, accountRef: scope.accountRef, revision: 'test', declarations: jurisdictions.map(({ jurisdiction, taxKind }) =>
-      ({ jurisdiction, taxKind, status: 'registered', actorRef: 'fixture', recordedAt: taxDate, effective: { from: taxDate } })) },
+  const inspect = (ref: string, sale?: { id: string; line: string; lineTax: number; shippingTax: number }) => async (raw: unknown, original?: string) => {
+    const receipt = readTaxTransaction(scope(raw)), { id, shippingTax } = receipt;
+    const kind = sale === undefined ? 'transaction' : 'reversal';
+    verify(id !== undefined && id !== sale?.id && (original === undefined || original === id) && receipt.ref === ref
+      && receipt.kind === kind && receipt.original === (sale?.id ?? null) && shippingTax !== undefined);
+    const rawPage = await tax.transactions.listLineItems(id, { limit: 100 });
+    const page = readPage(scope(rawPage, false), row => readTaxTransactionLine(scope(row)));
+    const line = page.rows?.[0];
+    verify(page.more === false && page.path === '/v1/tax/transactions/' + id + '/line_items' && page.rows?.length === 1
+      && line?.id !== undefined && line.id !== sale?.line && line.kind === kind && line.taxMinor !== undefined
+      && line.original === (sale?.line ?? null) && (sale === undefined ? line.ref === quote.ref
+        : line.taxMinor === -sale.lineTax && shippingTax === -sale.shippingTax));
+    return { id, line: line.id, lineTax: line.taxMinor, shippingTax };
   };
-
-  const effects: Partial<{ [Key in 'accepted' | 'commit' | 'reverse']: ReturnType<TaxOptions['effects'][Key]> }> = {};
-  let observation: { reference?: string; transactionRef?: string } = {};
-  const port = composeProviderTax(provider, { installationRef: ref, marketPack, now, effects: {
-    accepted: () => effects.accepted, commit: () => effects.commit, reverse: () => effects.reverse,
-    findTransactionIdByReference: reference => { observation.reference = reference; return observation.transactionRef; },
-  } });
-  const request = makeTaxQuoteRequest(ref, input);
-  const result = await port.quote(request);
-  if (result.kind === 'unavailable' || result.kind === 'refused') throw new TaxQualificationRefusal(result);
-  if (result.kind !== 'final') throw new Error(taxRefusal);
-  effects.accepted = { request, result, closed: false };
-  const money = result.money;
-  const payable = field(money, 'payableMinor', integer), taxes = field(money, 'taxTotal', integer);
-  verify(field(money, 'feeTotal', integer) === 0 && payable !== undefined && taxes !== undefined);
-  const { evidence, evidenceDigest } = result;
-  const calculationRef = field(evidence, 'calculationRef', reference('taxcalc'));
-  verify(calculationRef !== undefined);
-  const capturedAt = now().toISOString();
-  // Wait for the first whole-second posting instant at or after capture.
-  const postingTime = Math.ceil(Date.parse(capturedAt) / 1000) * 1000;
-  const postingBudget = performance.now() + 2000;
-  let remaining;
-  while ((remaining = postingTime - Date.now()) > 0) {
-    verify(remaining < postingBudget - performance.now());
-    await delay(remaining, undefined, { signal });
-  }
-  const postedAt = new Date(postingTime).toISOString();
-  const commit: TaxCommitRequestV1 = { calculationRef: { scope, ref: calculationRef, evidenceDigest },
-    transactionRef: ref, postedAt, capturedAt, captureEvidenceRef: ref, intent: 'apply' };
-  const capture = { ref, capturedAt, currency: 'USD', payableMinor: payable };
-  const expiry = field(evidence, 'expiresAt', text);
-  verify(expiry !== undefined);
-  const send = { kind: 'ready' as const, before: expiry };
-  effects.commit = { capture, requestDigest: makeReportingDigest({ operation: 'commit', request: commit, capture }), send };
-
-  async function post<R extends TaxCommitResultV1 | TaxReverseResultV1>(name: 'post' | 'reverse',
-    run: (intent: 'apply' | 'recover') => Promise<R>, resultId: (value: R) => string | undefined) {
-    signal.throwIfAborted();
-    observation = {};
-    const first = await run('apply');
-    const firstId = resultId(first);
-    if (firstId !== undefined) {
-      const replay = await run('apply');
-      if (replay.kind === 'unavailable' || replay.kind === 'refused') throw new TaxQualificationRefusal(replay);
-      verify(resultId(replay) === firstId && JSON.stringify(replay) === JSON.stringify(first));
-      return first;
-    }
-    const { reference } = observation;
-    if (first.kind === 'unavailable' && field(first, 'effect', literal('unknown')) === 'unknown' && typeof reference === 'string' && reference.length > 0) {
-      witness.note({ operation: name, effect: 'unknown', key: witness.hash(reference), reference: witness.hash(reference) });
-      const original = await observeOriginal(name, reference);
-      if (original !== undefined && reportingRef(original) !== undefined) {
-        observation.transactionRef = original;
-        const recovered = await run('recover');
-        if (resultId(recovered) === original) return recovered;
-      }
-      throw new Error(integrityRefusal);
-    }
-    if (first.kind === 'refused' || first.kind === 'unavailable') throw new TaxQualificationRefusal(first);
-    throw new Error(integrityRefusal);
-  }
-  const posted = await post('post', intent => port.commit({ ...commit, intent }),
-    row => row.kind === 'committed' ? field(row, 'providerTransactionRef', reportingRef) : undefined);
-  verify(posted.kind === 'committed');
-  const saleRef = field(posted, 'providerTransactionRef', reportingRef);
-  verify(saleRef !== undefined);
-  const units: NonNullable<typeof effects.reverse>['original']['units'][number][] = [];
-  for (const component of result.money.components) {
-    const merchandise = component.ref.kind === 'merchandise';
-    const lineRef = merchandise ? field(evidence.providerLines?.[0], 'providerLineRef', text) : 'shipping:' + calculationRef;
-    const position = posted.positions.find(row => field(row, 'originalPositionRef', text) === lineRef);
-    const postedRef = field(position, 'postedPositionRef', text);
-    const netMinor = field(component.final, 'amountMinor', integer), taxMinor = field(component.final, 'taxMinor', integer);
-    verify(lineRef !== undefined && postedRef !== undefined && netMinor !== undefined && taxMinor !== undefined);
-    units.push({ kind: merchandise ? 'line' : 'shipping', originalPositionRef: lineRef, postedPositionRef: postedRef,
-      taxCode: merchandise ? 'txcd_99999999' : 'txcd_92010001', remainingNetMinor: netMinor, remainingTaxMinor: taxMinor });
-  }
-  const reverse: TaxReverseRequestV1 = { scope, originalRef: saleRef, reversalRef: ref,
-    refundEvidenceRef: ref, currency: 'USD', fromMinor: 0, toMinor: payable, intent: 'apply', mode: 'full',
-    positions: units.map(unit => ({ originalPositionRef: unit.originalPositionRef,
-      netDeltaMinor: unit.remainingNetMinor === 0 ? 0 : -unit.remainingNetMinor,
-      taxDeltaMinor: unit.remainingTaxMinor === 0 ? 0 : -unit.remainingTaxMinor, feeDeltaMinor: 0 })) };
-  const original = { id: saleRef, scope, currency: 'USD', taxDate, payableMinor: payable, refundedMinor: 0, units };
-  effects.reverse = { original, refundEvidenceRef: ref, send, requestDigest: makeReportingDigest({ operation: 'reverse', request: reverse, refundEvidenceRef: ref, original }) };
-  const reversed = await post('reverse', intent => port.reverse({ ...reverse, intent }),
-    row => row.kind === 'reversed' ? field(row, 'providerReversalRef', reportingRef) : undefined);
-  verify(reversed.kind === 'reversed');
-  const reversalRef = field(reversed, 'providerReversalRef', reportingRef);
-  verify(reversalRef !== undefined);
-  witness.note({ operation: 'tax_reporting', verdict: 'pass', currency: 'USD', payableMinor: payable,
-    taxMinor: taxes, sale: witness.hash(saleRef), reversal: witness.hash(reversalRef) });
+  const readTransaction = (id: string) => tax.transactions.retrieve(id);
+  const postRef = runRef + '-post', reverseRef = runRef + '-reverse';
+  const posted = await observe('post', postRef, key => tax.transactions.createFromCalculation({ calculation: quote.id, reference: postRef }, key, before),
+    inspect(postRef), readTransaction);
+  const reversed = await observe('reverse', reverseRef,
+    key => tax.transactions.createReversal({ original_transaction: posted.id, reference: reverseRef, mode: 'full' }, key, before),
+    inspect(reverseRef, posted), readTransaction);
+  witness.note({ operation: 'tax_reporting', verdict: 'pass', currency: 'usd', sale: witness.hash(posted.id), reversal: witness.hash(reversed.id) });
 }
 
 export function qualificationMessage(error: unknown): string {
   if (error instanceof TaxProviderRejection) return fixedTaxRemedy(error.code, error.field) ?? integrityRefusal;
-  if (error instanceof TaxQualificationRefusal
-    || (error instanceof Error && [credentialRefusal, integrityRefusal, cardRefusal, taxRefusal].includes(error.message))) return error.message;
+  if (error instanceof Error && [credentialRefusal, integrityRefusal, cardRefusal, noReportingEffect].includes(error.message)) return error.message;
   return 'Qualification could not verify the original operation. Check the bound test account.';
 }
 
