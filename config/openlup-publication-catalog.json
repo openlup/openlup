@@ -31474,6 +31474,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogAdmissionPrelock.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogAttributeProjection.test.ts",
       "class": "public-output"
     },

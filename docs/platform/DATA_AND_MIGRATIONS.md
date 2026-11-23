@@ -454,6 +454,57 @@ the original proof and historical absence.
 Unbind callers to roll back use; retain committed receipts/history and correct a
 price with a subsequent expected-base command.
 
+### Admission fence lock order
+
+The native fence runs under `REPEATABLE READ`. Mixed writers take commerce
+guards before catalogue locks. Catalogue-only writers take no client locks.
+
+1. The fence pins its snapshot with the exclusive nonce advisory lock, then
+   takes the exclusive key advisory lock. The destination `prelock` takes
+   ledger `SHARE`, client `FOR KEY SHARE`, selection, policy and service guards,
+   then document. Lock rows in ascending key order within each group. Returned
+   keys can bound those locks.
+2. The fence locks the receipt `FOR UPDATE`, then client, sorted SKUs and
+   sorted revisions `FOR KEY SHARE`. The client's mode matches the hook's.
+   It locks `catalog_products` and `price_lists` in `SHARE`, takes the exclusive
+   transaction advisory lock for each sorted list/SKU pair, then takes
+   `price_entries` in `SHARE`. Price apply takes the same advisory lock.
+3. After all locks, run the visibility probe. Start `read` with native
+   authenticated replay, then evaluate fresh owner facts under the same locks.
+   `catalogAdmissionFence.ts:218–245`,
+   `20261125010000_catalog_purchase_admission.sql:2–24,58–94`.
+
+- **Erasure.** The privacy store takes the ledger in `SHARE ROW EXCLUSIVE`,
+  then the identity challenge relation in `EXCLUSIVE` before its subject locks.
+  Destination erasure locks the client `FOR UPDATE`, removes selections and
+  updates documents. `postgresPrivacy.ts:10–24,46–52`,
+  `20261125100000_commerce_destination_v2_checkout.sql:369–383`.
+- **Destination receipt and issuance.** The receipt takes its scoped exclusive
+  advisory lock, ledger `SHARE`, and, for a fresh receipt, client `FOR UPDATE`.
+  Issuance takes those guards before inserting the fresh document, upserting the
+  selection and committing the scoped receipt. Expiry takes ledger `SHARE`, then
+  client, selection and document `FOR UPDATE`, in client and snapshot order.
+  `20261125080000_commerce_destination_v2_receipts.sql:102–132,136–195`,
+  `20261125100000_commerce_destination_v2_checkout.sql:139–148,220–231,398–419`.
+- **Stage B publication.** It takes candidate and command advisory guards, then
+  sorted draft heads `FOR NO KEY UPDATE`. Publish takes `SHARE ROW EXCLUSIVE
+  NOWAIT` on `catalog_products`, `catalog_skus`, `catalog_sku_identifiers`,
+  `catalog_product_document_revisions` and `catalog_attribute_projection` in that
+  order, including through the restricted projection helper. Product, publication
+  head and sorted SKU rows follow with `FOR NO KEY UPDATE NOWAIT`.
+  Later, the unrestricted path claims price receipts in key order and takes
+  sorted exclusive list/SKU advisory locks before staging and applying prices.
+  The restricted path uses the atomic price apply routine for each operation.
+  Both verify effective entries `FOR NO KEY UPDATE`. `catalogPublicationCommands.ts:133–172,214–221,249–258`,
+  `catalogPublicationProjection.ts:80–86,184–215,266–295,403–406,458–466`,
+  `q2_20261123192500_catalog_publication_authority.sql:15–21,92–105`.
+- **Base price.** Apply claims the receipt by insert or existing-row
+  `FOR UPDATE`, takes the exclusive list/SKU advisory lock, and locks the open
+  entries `FOR NO KEY UPDATE` before closing and inserting rows. Preview
+  writes `price_entries` within a subtransaction and rolls it back.
+  `20261123191000_catalog_publication_commands.sql:191–221,281–289,323–331,362–374`,
+  `20261122180000_catalog_base_price_writer.sql:539–552`.
+
 ### Accepted catalogue references and archive
 
 The purchase and edit owners may save an accepted SKU revision alongside their
