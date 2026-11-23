@@ -74,6 +74,7 @@ const packagedAdapterReference = new RegExp([
   // Mask only the directory so the file name itself remains subject to the audit.
   String.raw`(?<= )dist/(?:${adapterSubpaths})(?=/[A-Za-z0-9-]+(?:\.[A-Za-z0-9]+)*(?:\n|(?![\s\S])))`,
   `^### \`packages/platform/api/(?:${adapterReports})\\.api\\.md\`$`,
+  `^Added declarations: [1-9][0-9]*; see \`packages/platform/api/(?:${adapterReports})\\.api\\.md\`\\.$`,
 ].join("|"), "gm");
 const approvedPublicSecurityContact = "dev@openlup.com";
 const approvedPublishConfig = { access: "public", provenance: true, tag: "preview" };
