@@ -10,6 +10,8 @@ import { renderDocumentationSourceMap } from './documentation-navigation.ts';
 import { createPublicPublicationCatalog } from './oss-publication-policy.ts';
 
 export const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
+const PUBLICATION_OWNER = 'scripts/oss-publication-policy.ts';
+const trustedPublicationOwner = readFileSync(new URL('./oss-publication-policy.ts', import.meta.url), 'utf8');
 
 export function syncSqlReference(root) {
   const source = readFileSync(join(root, SQL_REFERENCE), 'utf8');
@@ -55,7 +57,18 @@ export function runLandingGenerators(root, paths) {
   const rows = catalog.publicPaths.filter(row => !mirrorShape.test(row.path) || mirrors.has(row.path) || existsSync(join(root, row.path)));
   for (const path of mirrors) if (!rows.some(row => row.path === path)) rows.push({ path, class: 'public-output' });
   rows.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
-  writeFileSync(catalogPath, createPublicPublicationCatalog(rows, catalog.guardViability).contents);
+  const generated = createPublicPublicationCatalog(rows, catalog.guardViability).contents;
+  if (existsSync(join(root, PUBLICATION_OWNER)) && readFileSync(join(root, PUBLICATION_OWNER), 'utf8') === trustedPublicationOwner) {
+    writeFileSync(catalogPath, generated);
+  } else {
+    // Main may have changed this owner and already regenerated its policy metadata.
+    // Compact replay trees may omit the owner. Keep their reviewed metadata while
+    // this process refreshes only the mirror rows.
+    const merged = JSON.parse(generated);
+    merged.packageCommands = catalog.packageCommands;
+    merged.packageExecutionSurfaces = catalog.packageExecutionSurfaces;
+    writeFileSync(catalogPath, `${JSON.stringify(merged, null, 2)}\n`);
+  }
   writeFileSync(join(root, 'docs/platform/SOURCE_MAP.md'), renderDocumentationSourceMap(readDocumentationState(root, paths)));
   writeFileSync(join(root, SQL_REFERENCE), syncSqlReference(root));
 }

@@ -412,6 +412,17 @@ it('keeps a package command that main added after the reviewed head forked', () 
   expect(landed.publicPaths.map(row => row.path)).toContain('packages/platform/sql/20990101010000_landing_fixture.sql');
   expect(landed.publicPaths.map(row => row.path)).toContain('packages/platform/sql/20990101020000_landing_fixture.sql');
 });
+it('regenerates stale package command metadata when the trusted owner is unchanged', () => {
+  try {
+    checkout(reviewed);
+    const catalog = JSON.parse(read(CATALOGUE));
+    const expected = catalog.packageCommands;
+    catalog.packageCommands = [];
+    write(CATALOGUE, json(catalog));
+    runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
+    expect(JSON.parse(read(CATALOGUE)).packageCommands).toEqual(expected);
+  } finally { restoreDerivedFixture(); }
+});
 it.each(['user.name', 'user.email'])('refuses landing before merging without configured %s', async key => {
   git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
   git('config', key, '');
