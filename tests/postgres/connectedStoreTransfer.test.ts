@@ -1769,10 +1769,23 @@ it("destination_receipt_privacy_round_trip", async () => {
   const [issuedCtx, erasedFirstCtx, retainedCtx] = await Promise.all(
     [issued, erasedFirst, retained].map(id => destinationContext(clean.owner, id)));
   const firstDocument = await snapshot(clean.runtime, issuedCtx), expired = await snapshot(clean.runtime, retainedCtx);
+  // Recovery transcript: altered stored bytes are withheld until owner expiry retires the payload.
+  const alterStoredBytes = (ref: string) => clean.owner.query(`UPDATE ${documentTable} SET document_text=document_text||' ' WHERE snapshot_ref=$1`, [ref]);
+  const documentExport = async (id: string) => (await operations().export(actor, subject(id))).documents.find(d => d.contributorId === documents.id);
+  const withheld = (ref: string) => ({ snapshotRef: ref, issuedAt: expect.stringMatching(/Z$/u), evidenceDisposition: "available",
+    verification: { status: "failed", code: "destination_digest_mismatch", field: "documentDigest" } });
+  const included = ["private checkout destination documents", "destination document expiry and erasure metadata"];
+  await alterStoredBytes(firstDocument.binding.snapshotRef);
+  const recovery = await documentExport(issued);
+  expect(recovery).toEqual({ contributorId: documents.id, version: "commerce.destination-documents.v1",
+    data: [withheld(firstDocument.binding.snapshotRef)], obligations: expect.any(Array), coverage: { complete: false, included,
+      unavailable: ["Destination documents that failed stored-evidence verification are withheld. After their cutoff, run commerce_destination_v2_expire and export again; review any row still withheld."] } });
   await reachDestinationCutoff(clean.owner, firstDocument.binding);
   await reachDestinationCutoff(clean.owner, expired.binding);
   expect((await clean.owner.query("SELECT public.commerce_destination_v2_expire(clock_timestamp(),1000) AS count")).rows)
     .toEqual([{ count: 2 }]);
+  expect(await documentExport(issued)).toEqual({ ...recovery, coverage: { complete: true, included, unavailable: [] },
+    data: [{ snapshotRef: firstDocument.binding.snapshotRef, issuedAt: expect.stringMatching(/Z$/u), evidenceDisposition: "expired" }] });
   const live = await snapshot(clean.runtime, retainedCtx);
   const liveRead = await readSnapshot(clean.runtime, retainedCtx, live.binding);
   expect(await documentPayload(retained)).toEqual(expect.arrayContaining([
@@ -1833,6 +1846,9 @@ it("destination_receipt_privacy_round_trip", async () => {
   await expect(receiptCall(clean.runtime, "read", [issuedArgs[0], issuedArgs[1], issuedArgs[2], "e".repeat(64)]))
     .rejects.toMatchObject(idempotencyConflict);
 
+  const withheldDocument = await snapshot(clean.runtime, erasedFirstCtx);
+  await alterStoredBytes(withheldDocument.binding.snapshotRef);
+  expect(await documentPayload(erasedFirst)).toEqual([withheld(withheldDocument.binding.snapshotRef)]);
   const prepared = deferred<void>(), release = deferred<void>();
   const erasure = operations({ ...store, async prepareErasure(db) {
     await store.prepareErasure(db);
@@ -1858,6 +1874,14 @@ it("destination_receipt_privacy_round_trip", async () => {
     secondWriter.release();
   }
   expect(await receiptCall(clean.runtime, "read", firstEraseArgs)).toEqual({ kind: "absent" });
+  expect(await documentPayload(erasedFirst)).toEqual([{
+    snapshotRef: withheldDocument.binding.snapshotRef, issuedAt: expect.stringMatching(/Z$/u), evidenceDisposition: "erased",
+  }]);
+  expect((await clean.owner.query(`SELECT owner_scope,scope_ref,binding,document_text,document_digest FROM ${documentTable}
+    WHERE client_id=$1`, [erasedFirst])).rows).toEqual([{
+    owner_scope: null, scope_ref: null, binding: null, document_text: null, document_digest: null,
+  }]);
+  expect((await clean.owner.query(`SELECT snapshot_ref FROM ${selectionTable} WHERE scope_ref=$1`, [erasedFirstCtx.scopeRef])).rows).toEqual([]);
 
   const transferred = await captureStoreJourney(clean.owner, "destination-receipts-source");
   const invalid = structuredClone(transferred);
@@ -1870,7 +1894,7 @@ it("destination_receipt_privacy_round_trip", async () => {
   expect(await restore(transferred)).toMatchObject({ replayed: false, captureSha256: transferred.sha256 });
   const readback = await captureStoreJourney(target.owner, "destination-receipts-readback");
   const table = (value: ConnectedNativeStoreCapture, relation: string) => value.owned.find(rows => `public.${rows.table}` === relation);
-  for (const [relation, count] of [[receiptTable, 6], [documentTable, 4], [selectionTable, 1]] as const) {
+  for (const [relation, count] of [[receiptTable, 7], [documentTable, 5], [selectionTable, 1]] as const) {
     expect(table(transferred, relation)?.rows).toHaveLength(count);
     expect(table(readback, relation)).toEqual(table(transferred, relation));
   }

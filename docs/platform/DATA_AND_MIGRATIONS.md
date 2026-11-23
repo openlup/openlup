@@ -984,8 +984,12 @@ a matching current pointer in the same transaction as its payload. Expired
 rows keep owner, scope and binding for exact stale refusals. Erasure clears
 those fields as well as payload and full digest and removes the subject's
 selections. Expired and erased exports expose the snapshot ref, issuance
-time and disposition. Every available row exports the verified document,
-scope, digest and cutoff, including after cutoff until cleanup.
+time and disposition. Verified available rows also export the document,
+scope, digest and cutoff, including after cutoff until cleanup. An available
+row that fails a stored-evidence check exports only the snapshot ref, issuance
+time, disposition and verification status, code and field. The contributor
+reports incomplete coverage. After cutoff, run the owner expiry batch and
+export again. Review any rows still withheld.
 
 Require `destination-receipts` and `destination-documents` in the same
 registry used for native privacy operations. Assemble the two experimental

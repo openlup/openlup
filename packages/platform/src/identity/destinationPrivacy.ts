@@ -11,10 +11,11 @@ type DestinationPrivacyOwner = {
   included: string[];
   exportSql: string;
   eraseSql: string;
+  withheldNotice?: string;
 };
 
 function destinationPrivacy({
-  id, version, evidence, tombstones, reasonCode, included, exportSql, eraseSql,
+  id, version, evidence, tombstones, reasonCode, included, exportSql, eraseSql, withheldNotice,
 }: DestinationPrivacyOwner): PersonalDataContributor<PgQueryExecutor> {
   const obligations = [
     { owner: id, resource: evidence, disposition: "erase" as const, reasonCode, remote: false },
@@ -26,9 +27,11 @@ function destinationPrivacy({
     // Identity takes the ledger fence before resolving the subject.
     async prepareErasure() {},
     async export(db, subject) {
-      const data = subject.contactId ? (await db.query(exportSql, [subject.contactId])).rows[0]!.data : [];
-      return { contributorId: id, version, data: data as PrivacyJson, obligations,
-        coverage: { complete: true, included, unavailable: [] } };
+      // Both owner exports return an array of row objects; a withheld row carries `verification`.
+      const data = (subject.contactId ? (await db.query(exportSql, [subject.contactId])).rows[0]!.data : []) as { [key: string]: PrivacyJson }[];
+      const unavailable = withheldNotice && data.some(row => Object.hasOwn(row, "verification")) ? [withheldNotice] : [];
+      return { contributorId: id, version, data, obligations,
+        coverage: { complete: unavailable.length === 0, included, unavailable } };
     },
     async assessErasure() { return { obligations }; },
     async eraseOrRetain(db, subject, assessment) {
@@ -57,6 +60,7 @@ export function createDestinationDocumentPrivacyContributor(): PersonalDataContr
     evidence: "commerce.destination-document-evidence", tombstones: "commerce.destination-document-tombstones",
     reasonCode: "PRIVATE_DESTINATION_DOCUMENT_EVIDENCE",
     included: ["private checkout destination documents", "destination document expiry and erasure metadata"],
+    withheldNotice: "Destination documents that failed stored-evidence verification are withheld. After their cutoff, run commerce_destination_v2_expire and export again; review any row still withheld.",
     exportSql: "SELECT public.commerce_destination_v2_export($1::uuid) AS data",
     eraseSql: "SELECT public.commerce_destination_v2_erase($1::uuid)",
   });

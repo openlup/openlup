@@ -348,6 +348,26 @@ it.each([
   expect(JSON.stringify(res.json.mock.calls)).not.toContain('synthetic private driver context');
 });
 
+it('native export succeeds with the withheld-document notice instead of the checklist', async () => {
+  f.adopterPolicy = true;
+  vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator');
+  vi.stubEnv('DATABASE_URL', 'postgresql://unused.invalid/test');
+  authorize.mockResolvedValue({ ok: true, principalId: privacyContact, role: 'admin', isMachineActor: false });
+  const withheld = { snapshotRef: privacyContact, issuedAt: '2020-01-15T12:00:00.000Z', evidenceDisposition: 'available',
+    verification: { status: 'failed', code: 'destination_digest_mismatch', field: 'documentDigest' } };
+  privacy.query.mockImplementation(async (sql: string) => sql === 'SELECT public.commerce_destination_v2_export($1::uuid) AS data'
+    ? { rows: [{ data: [withheld] }] } : mountedPrivacyQuery(sql));
+  const { routes, req } = mountedPrivacyRequest('export'), res = response();
+  await dispatch(routes, req, res as unknown as HttpResponse);
+  expect(res.status).toHaveBeenCalledWith(200);
+  expect(res.json).toHaveBeenCalledWith({ ok: true, data: expect.objectContaining({ documents: expect.arrayContaining([{
+    contributorId: 'destination-documents', version: 'commerce.destination-documents.v1', data: [withheld], obligations: expect.any(Array),
+    coverage: { complete: false, included: ['private checkout destination documents', 'destination document expiry and erasure metadata'],
+      unavailable: ['Destination documents that failed stored-evidence verification are withheld. After their cutoff, run commerce_destination_v2_expire and export again; review any row still withheld.'] },
+  }]) }) });
+  expect(JSON.stringify(res.json.mock.calls)).not.toContain('Check the native app binding');
+});
+
 it.each(['export', 'erase'] as const)('adopter policy admits mounted direct %s before managed entries', async operation => {
   f.adopterPolicy = true;
   vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator');

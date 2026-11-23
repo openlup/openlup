@@ -239,16 +239,15 @@ DECLARE
   v_preimage jsonb;
   v_document jsonb;
   v_digest text;
+  v_binding_fields constant text[] := ARRAY['snapshotRef','schemaVersion','destinationDigest','policyRevision'];
 BEGIN
   IF encode(sha256(convert_to(v_row.document_text, 'UTF8')), 'hex') IS DISTINCT FROM v_row.document_digest THEN
-    RAISE EXCEPTION 'destination_digest_mismatch' USING ERRCODE = '55000',
-      DETAIL = 'documentDigest', HINT = 'Replay the original document and its digest.';
+    RETURN jsonb_build_object('verified', false, 'code', 'destination_digest_mismatch', 'field', 'documentDigest');
   END IF;
   BEGIN
     v_preimage := v_row.document_text::jsonb;
   EXCEPTION WHEN invalid_text_representation THEN
-    RAISE EXCEPTION 'destination_digest_mismatch' USING ERRCODE = '55000',
-      DETAIL = 'documentDigest', HINT = 'Replay the original document and its digest.';
+    RETURN jsonb_build_object('verified', false, 'code', 'destination_digest_mismatch', 'field', 'documentDigest');
   END;
   v_document := v_preimage->1;
   IF v_preimage->>0 IS DISTINCT FROM 'commerce.destination.document.v2'
@@ -261,16 +260,26 @@ BEGIN
     OR v_document->'schemaVersion' IS DISTINCT FROM '2'::jsonb
     OR v_document->'revision' IS DISTINCT FROM '1'::jsonb
     OR v_document - ARRAY['revision','owner','clientId','policyRef','classificationKeys','address','contact'] IS DISTINCT FROM v_row.binding THEN
-    RAISE EXCEPTION 'destination_binding_invalid' USING ERRCODE = '22023',
-      DETAIL = 'destination', HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
+    RETURN jsonb_build_object('verified', false, 'code', 'destination_binding_invalid', 'field', 'destination');
   END IF;
   v_digest := encode(sha256(convert_to(public.commerce_destination_v2_canonical(
     jsonb_build_array('commerce.destination.v2', v_document->'address')), 'UTF8')), 'hex');
   IF v_digest IS DISTINCT FROM v_row.binding->>'destinationDigest' THEN
-    RAISE EXCEPTION 'destination_digest_mismatch' USING ERRCODE = '55000',
-      DETAIL = 'destinationDigest', HINT = 'Replay the original document and its digest.';
+    RETURN jsonb_build_object('verified', false, 'code', 'destination_digest_mismatch', 'field', 'destinationDigest');
   END IF;
-  RETURN v_document;
+  -- The stored binding must pass read's caller-binding rules; checked last so earlier outcomes keep precedence.
+  IF jsonb_typeof(v_row.binding) IS DISTINCT FROM 'object'
+    OR NOT v_row.binding ?& v_binding_fields OR v_row.binding - v_binding_fields <> '{}'::jsonb
+    OR v_row.binding->'snapshotRef' IS DISTINCT FROM to_jsonb(v_row.snapshot_ref)
+    OR v_row.binding->>'schemaVersion' IS DISTINCT FROM '2'
+    OR v_row.binding->'schemaVersion' IS DISTINCT FROM '2'::jsonb
+    OR NOT coalesce(v_row.binding->>'destinationDigest' COLLATE "C" ~ '^[0-9a-f]{64}$', false)
+    OR jsonb_typeof(v_row.binding->'destinationDigest') IS DISTINCT FROM 'string'
+    OR jsonb_typeof(v_row.binding->'policyRevision') IS DISTINCT FROM 'string'
+    OR btrim(v_row.binding->>'policyRevision') = '' OR octet_length(v_row.binding->>'policyRevision') > 720 THEN
+    RETURN jsonb_build_object('verified', false, 'code', 'destination_binding_invalid', 'field', 'destination');
+  END IF;
+  RETURN jsonb_build_object('verified', true, 'document', v_document);
 END;
 $$;
 
@@ -278,7 +287,7 @@ CREATE FUNCTION public.commerce_read_destination_v2(p_ctx jsonb, p_kind text, p_
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   v_row public.commerce_destination_v2_documents%ROWTYPE;
-  v_document jsonb;
+  v_verification jsonb;
   v_binding_fields constant text[] := ARRAY['snapshotRef','schemaVersion','destinationDigest','policyRevision'];
 BEGIN
   IF p_kind IS DISTINCT FROM 'snapshot' THEN
@@ -294,7 +303,14 @@ BEGIN
       DETAIL = 'destination.snapshotRef', HINT = 'Re-obtain evidence through the authenticated owner or review the privacy disposition.';
   END IF;
   IF v_row.evidence_disposition = 'available' THEN
-    v_document := public.commerce_destination_v2_verified_document(v_row);
+    v_verification := public.commerce_destination_v2_verified_document(v_row);
+    IF v_verification->>'code' = 'destination_digest_mismatch' THEN
+      RAISE EXCEPTION 'destination_digest_mismatch' USING ERRCODE = '55000',
+        DETAIL = v_verification->>'field', HINT = 'Replay the original document and its digest.';
+    ELSIF NOT (v_verification->>'verified')::boolean THEN
+      RAISE EXCEPTION 'destination_binding_invalid' USING ERRCODE = '22023',
+        DETAIL = v_verification->>'field', HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
+    END IF;
   END IF;
   IF jsonb_typeof(p_expected_binding) IS DISTINCT FROM 'object'
     OR NOT p_expected_binding ?& v_binding_fields OR p_expected_binding - v_binding_fields <> '{}'::jsonb
@@ -324,7 +340,7 @@ BEGIN
     RAISE EXCEPTION 'destination_version_changed' USING ERRCODE = '55000',
       DETAIL = 'destination.snapshotRef', HINT = 'Re-obtain current evidence. Checkout requires a fresh final quote and acceptance.';
   END IF;
-  RETURN jsonb_build_object('binding', v_row.binding, 'document', v_document, 'documentDigest', v_row.document_digest,
+  RETURN jsonb_build_object('binding', v_row.binding, 'document', v_verification->'document', 'documentDigest', v_row.document_digest,
     'evidenceExpiresAt', to_char(v_row.evidence_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 END;
 $$;
@@ -332,14 +348,21 @@ $$;
 CREATE FUNCTION public.commerce_destination_v2_export(p_client_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
-  RETURN (SELECT coalesce(jsonb_agg(
+  RETURN (WITH verified AS MATERIALIZED (
+    SELECT snapshot_ref, issued_at, evidence_disposition, scope_ref, document_digest, evidence_expires_at,
+      CASE WHEN evidence_disposition = 'available' THEN public.commerce_destination_v2_verified_document(d) END AS result
+    FROM public.commerce_destination_v2_documents AS d WHERE client_id = p_client_id
+  )
+  SELECT coalesce(jsonb_agg(
     jsonb_build_object('snapshotRef', snapshot_ref, 'issuedAt',
       to_char(issued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'evidenceDisposition', evidence_disposition)
-    || CASE WHEN evidence_disposition = 'available' THEN
-      jsonb_build_object('document', public.commerce_destination_v2_verified_document(d), 'scopeRef', scope_ref, 'documentDigest', document_digest,
+    || CASE WHEN (result->>'verified')::boolean THEN
+      jsonb_build_object('document', result->'document', 'scopeRef', scope_ref, 'documentDigest', document_digest,
         'evidenceExpiresAt', to_char(evidence_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+    WHEN result IS NOT NULL THEN
+      jsonb_build_object('verification', jsonb_build_object('status', 'failed', 'code', result->'code', 'field', result->'field'))
     ELSE '{}'::jsonb END ORDER BY snapshot_ref), '[]'::jsonb)
-    FROM public.commerce_destination_v2_documents AS d WHERE client_id = p_client_id);
+    FROM verified);
 END;
 $$;
 

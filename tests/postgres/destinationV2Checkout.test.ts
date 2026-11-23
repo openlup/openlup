@@ -1,4 +1,4 @@
-import type { Pool, PoolClient } from "pg";
+import { DatabaseError, type Pool, type PoolClient } from "pg";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
@@ -19,6 +19,8 @@ const unavailable = { code: "55000", message: "destination_evidence_unavailable"
   hint: "Re-obtain evidence through the authenticated owner or review the privacy disposition." };
 const digestMismatch = (detail: string) => ({ code: "55000", message: "destination_digest_mismatch", detail,
   hint: "Replay the original document and its digest." });
+const invalidBinding = { code: "22023", message: "destination_binding_invalid", detail: "destination",
+  hint: "Correct caller-authored input or re-obtain authoritative evidence as applicable." };
 const row = (db: Pool, id: string) => db.query(`SELECT * FROM ${documentTable} WHERE snapshot_ref=$1`, [id]).then(r => r.rows[0]);
 const selection = (db: Pool, scope: string) => db.query(`SELECT snapshot_ref, selection_revision FROM ${selectionTable} WHERE scope_ref=$1`, [scope]).then(r => r.rows);
 const expire = (pool: Pool, limit: number | null) => pool.query("SELECT public.commerce_destination_v2_expire(clock_timestamp() + interval '30 days',$1) AS count", [limit]).then(r => r.rows[0].count);
@@ -118,27 +120,77 @@ it("verifies the owned document's stored bytes and exact binding without returni
     .rejects.toMatchObject({ message: "destination_binding_invalid", detail: "destination" });
   await expect(readSnapshot(runtime, ctx, { ...binding, destinationDigest: "0".repeat(64) })).rejects.toMatchObject(digestMismatch("destinationDigest"));
 
-  const write = (bytes: string, digest: string) => owner.query(`UPDATE ${documentTable} SET document_text=$2,document_digest=$3 WHERE snapshot_ref=$1`,
-    [id, bytes, digest]);
-  for (const [bytes, hash] of [["invalid JSON", stored.document_digest], [stored.document_text, "0".repeat(64)]]) {
-    await write(bytes!, hash!);
-    const error = await readSnapshot(runtime, ctx, binding).catch((reason: unknown) => reason);
-    expect(error).toMatchObject(digestMismatch("documentDigest"));
-    expect(error).not.toHaveProperty("repairValue");
-    expect(error).not.toHaveProperty("value");
+  const tag = "commerce.destination.document.v2";
+  const document = verified.document;
+  const bytes = (changes: object) => JSON.stringify([tag, { ...document, ...changes }]);
+  const changeBinding = (changes: object) => ({ bytes: bytes(changes), storedBinding: JSON.stringify({ ...binding, ...changes }) });
+  const inconsistentOwner = { ...ctx.owner, customerOrSessionRef: other.clientId };
+  const { policyRevision: _policyRevision, ...openBinding } = binding;
+  const { policyRevision: _storedPolicyRevision, ...openDocument } = document;
+  const changedAddress = { address: { ...document.address, line2: "Changed" } };
+  const scaledBinding = {
+    bytes: stored.document_text.replace('"schemaVersion":2', '"schemaVersion":2.0'),
+    storedBinding: JSON.stringify(binding).replace('"schemaVersion":2', '"schemaVersion":2.0'),
+  };
+  type IntegrityCase = { label: string; bytes: string; hash?: string; storedBinding?: string; ownerScope?: typeof ctx.owner; refusal: typeof invalidBinding };
+  const cases: IntegrityCase[] = [
+    { label: "stored digest differs", bytes: stored.document_text, hash: "0".repeat(64), refusal: digestMismatch("documentDigest") },
+    { label: "matching digest with invalid JSON", bytes: "invalid JSON", refusal: digestMismatch("documentDigest") },
+    { label: "wrong tag", bytes: JSON.stringify(["wrong-tag", document]), refusal: invalidBinding },
+    { label: "wrong envelope", bytes: JSON.stringify([tag, document, null]), refusal: invalidBinding },
+    { label: "non-object document", bytes: JSON.stringify([tag, 42]), refusal: invalidBinding },
+    { label: "decoded owner differs", bytes: bytes({ owner: { ...ctx.owner, installationRef: "other" } }), refusal: invalidBinding },
+    { label: "decoded client differs", bytes: bytes({ clientId: other.clientId }), refusal: invalidBinding },
+    { label: "stored owner and client disagree", bytes: bytes({ owner: inconsistentOwner }), ownerScope: inconsistentOwner, refusal: invalidBinding },
+    { label: "wrong snapshot ref", ...changeBinding({ snapshotRef: randomUUID() }), refusal: invalidBinding },
+    { label: "wrong schema version", ...changeBinding({ schemaVersion: 1 }), refusal: invalidBinding },
+    { label: "wrong revision", bytes: bytes({ revision: 2 }), refusal: invalidBinding },
+    { label: "decoded binding differs", bytes: bytes({ policyRevision: "r2" }), refusal: invalidBinding },
+    { label: "address digest differs", bytes: bytes(changedAddress), refusal: digestMismatch("destinationDigest") },
+    { label: "missing policy revision", bytes: JSON.stringify([tag, openDocument]), storedBinding: JSON.stringify(openBinding), refusal: invalidBinding },
+    { label: "extra binding key", ...changeBinding({ unexpected: "extra" }), refusal: invalidBinding },
+    { label: "non-string policy revision", ...changeBinding({ policyRevision: 1 }), refusal: invalidBinding },
+    { label: "blank policy revision", ...changeBinding({ policyRevision: " " }), refusal: invalidBinding },
+    { label: "policy revision over 720 bytes", ...changeBinding({ policyRevision: "é".repeat(361) }), refusal: invalidBinding },
+    { label: "noncanonical schema version text", ...scaledBinding, refusal: invalidBinding },
+    { label: "address digest precedes stored shape", bytes: JSON.stringify([tag, { ...openDocument, ...changedAddress }]),
+      storedBinding: JSON.stringify(openBinding), refusal: digestMismatch("destinationDigest") },
+  ];
+  const write = (text: string, hash = destinationHash(text), storedBinding = JSON.stringify(binding), ownerScope = ctx.owner) =>
+    owner.query(`UPDATE ${documentTable} SET document_text=$2,document_digest=$3,binding=$4,owner_scope=$5 WHERE snapshot_ref=$1`,
+      [id, text, hash, storedBinding, ownerScope]);
+  for (const { label, bytes, hash, storedBinding, ownerScope = ctx.owner, refusal } of cases) {
+    await write(bytes, hash, storedBinding, ownerScope);
+    const error = await readSnapshot(runtime, { ...ctx, owner: ownerScope }, binding).catch((reason: unknown) => reason);
+    expect(error, label).toMatchObject(refusal);
+    expect(Object.getPrototypeOf(error), label).toBe(DatabaseError.prototype);
+    expect(Reflect.ownKeys(error as DatabaseError).filter(key => key !== "stack"), label).toEqual([
+      "message", "length", "name", "severity", "code", "detail", "hint", "position", "internalPosition", "internalQuery",
+      "where", "schema", "table", "column", "dataType", "constraint", "file", "line", "routine",
+    ]);
+    const exported = await runtime.query("SELECT public.commerce_destination_v2_export($1) AS data", [ctx.clientId]);
+    expect(exported.rows[0].data, label).toEqual([{
+      snapshotRef: id, issuedAt: stored.issued_at.toISOString(), evidenceDisposition: "available",
+      verification: { status: "failed", code: refusal.message, field: refusal.detail },
+    }]);
   }
-  const foreign = await snapshot(runtime, other);
-  const foreignRow = await row(owner, foreign.binding.snapshotRef);
-  await write(foreignRow.document_text, foreignRow.document_digest);
-  const misassociated = { message: "destination_binding_invalid", detail: "destination" };
-  await expect(readSnapshot(runtime, ctx, binding)).rejects.toMatchObject(misassociated);
-  await expect(runtime.query("SELECT public.commerce_destination_v2_export($1)", [ctx.clientId])).rejects.toMatchObject(misassociated);
-  const changedAddress = canonicalCatalogDraftJson(["commerce.destination.document.v2", {
-    ...verified.document, address: { ...verified.document.address, line2: "Changed" },
-  }]);
-  await write(changedAddress, destinationHash(changedAddress));
-  await expect(readSnapshot(runtime, ctx, binding)).rejects.toMatchObject(digestMismatch("destinationDigest"));
+  await write(bytes(changedAddress));
+  await expect(readSnapshot(runtime, ctx, { ...binding, policyRevision: "" })).rejects.toMatchObject(digestMismatch("destinationDigest"));
+
+  // Not a verifier check: the canonicalizer's own refusal still raises unchanged on both paths.
+  await write(bytes({ address: { constructor: "out-of-domain" } }));
+  const wireRefusal = { code: "23514", message: "catalog_publication_wire_invalid",
+    constraint: "catalog_publication_wire_invalid", hint: undefined, detail: undefined };
+  await expect(readSnapshot(runtime, ctx, binding)).rejects.toMatchObject(wireRefusal);
+  await expect(runtime.query("SELECT public.commerce_destination_v2_export($1)", [ctx.clientId])).rejects.toMatchObject(wireRefusal);
+
+  // Precedence control: a closed stored binding keeps every pre-existing caller-binding outcome.
   await write(stored.document_text, stored.document_digest);
+  await expect(readSnapshot(runtime, ctx, { ...binding, policyRevision: "r2" })).rejects.toMatchObject({
+    ...stale, detail: "destination.policyRevision",
+  });
+  await expect(readSnapshot(runtime, ctx, { ...binding, destinationDigest: "0".repeat(64) })).rejects.toMatchObject(digestMismatch("destinationDigest"));
+  await expect(readSnapshot(runtime, ctx, openBinding as typeof binding)).rejects.toMatchObject(invalidBinding);
   expect(await readSnapshot(runtime, ctx, binding)).toEqual(verified);
   expect(await row(owner, id)).toEqual(stored);
 });
