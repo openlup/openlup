@@ -9,7 +9,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
 import { digest, explainSession, protectedCoveragePath, carryOver, cumulativeRepairPrefix, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordReport, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
-import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion } from './agent-review-derived.mjs';
+import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion, rewriteCatalogForRelocation, rewriteMigrationRegistryForRelocation, validateRelocationPlan } from './agent-review-derived.mjs';
 import { generatedCarrier, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
 import { readFileSync } from 'node:fs';
 import { join as joinPath } from 'node:path';
@@ -73,6 +73,7 @@ async function integrationParents(cwd, head) {
 // This literal anchors the one-time transition in trusted main's first-parent history.
 const PORTABLE_REVIEW = 'openlup-portable-review-20261103';
 const DERIVED_REVIEW = 'openlup-derived-review-20261110';
+const DERIVED_RELOCATED_REVIEW = 'openlup-derived-relocated-20261123';
 const SESSION_PATH = 'scripts/agent-review-session.mjs';
 
 // Review evidence binds to the candidate's own change: a clean merge onto a later base keeps it.
@@ -123,7 +124,131 @@ export async function replaceTreeBlobs(cwd, tree, replacements) {
   demand([...replacements.keys()].every(path => rows.some(row => path === row.slice(row.indexOf('\t') + 1) || path.startsWith(row.slice(row.indexOf('\t') + 1) + '/'))), 'registry absent from merge tree');
   return objectInput(cwd, ['mktree', '-z'], output.join(''));
 }
-export async function proveReviewIntegration(cwd, previous, current, portable = false, { legacy = false } = {}) {
+const treeSortKey = (type, name) => Buffer.from(type === 'tree' ? `${name}/` : name, 'utf8');
+
+/** Mutate a Git tree by replacing, inserting (100644 blob), or deleting (`null`) blob paths. */
+export async function mutateTreeBlobs(cwd, tree, mutations) {
+  const rows = (await git(cwd, 'ls-tree', '-z', tree)).split('\0').filter(Boolean);
+  const entries = new Map();
+  for (const row of rows) {
+    const match = /^(\d{6}) (blob|tree) ([a-f0-9]{40})\t([\s\S]+)$/u.exec(row);
+    demand(match, 'unreadable merge tree');
+    const [, mode, type, oid, name] = match;
+    entries.set(name, { mode, type, oid, name });
+  }
+  const childMutations = new Map();
+  for (const [path, value] of mutations) {
+    const slash = path.indexOf('/');
+    if (slash < 0) {
+      if (value === null) {
+        entries.delete(path);
+      } else {
+        const existing = entries.get(path);
+        entries.set(path, { mode: existing?.type === 'blob' ? existing.mode : '100644', type: 'blob', oid: value, name: path });
+      }
+    } else {
+      const dir = path.slice(0, slash);
+      const rest = path.slice(slash + 1);
+      let nested = childMutations.get(dir);
+      if (!nested) { nested = new Map(); childMutations.set(dir, nested); }
+      nested.set(rest, value);
+    }
+  }
+  for (const [dir, nested] of childMutations) {
+    const parent = entries.get(dir);
+    demand(parent && parent.type === 'tree', 'mutation parent is not a tree');
+    parent.oid = await mutateTreeBlobs(cwd, parent.oid, nested);
+  }
+  const sorted = [...entries.values()].sort((a, b) => Buffer.compare(treeSortKey(a.type, a.name), treeSortKey(b.type, b.name)));
+  return objectInput(cwd, ['mktree', '-z'], sorted.map(({ mode, type, oid, name }) => `${mode} ${type} ${oid}\t${name}\0`).join(''));
+}
+
+const RELOCATION_SQL_DIRS = ['db/platform/migrations', 'supabase/migrations', 'packages/platform/sql'];
+const RELOCATION_CARRIER_EXCLUSIONS = new Set([
+  ...MIGRATION_REGISTRIES,
+  INVENTORY_PATH,
+  ...REGISTRY_PATHS,
+  'packages/platform/src/migrations/catalog.ts',
+]);
+
+async function diffSqlSides(cwd, fromRev, toRev, ignoreIdenticalTo) {
+  const raw = (await git(cwd, 'diff', '--name-status', '--no-renames', '-z', fromRev, toRev, '--', ...RELOCATION_SQL_DIRS)).split('\0').filter(Boolean);
+  const differing = ignoreIdenticalTo
+    ? new Set((await git(cwd, 'diff', '--name-only', '--no-renames', '-z', ignoreIdenticalTo, toRev, '--', ...RELOCATION_SQL_DIRS)).split('\0').filter(Boolean))
+    : null;
+  const added = [];
+  const modifiedOrDeleted = [];
+  for (let index = 0; index < raw.length; index += 2) {
+    const status = raw[index];
+    const path = raw[index + 1];
+    if (path === 'packages/platform/sql/manifest.json') continue;
+    if (differing && !differing.has(path)) continue;
+    if (status === 'A') added.push(path);
+    else modifiedOrDeleted.push(path);
+  }
+  return { added, modifiedOrDeleted };
+}
+
+/** Collect Git inputs and run shared fail-closed Barriers 1, 3, and 4 for slot relocation. */
+export async function collectRelocationPlan(cwd, base, head, main) {
+  const prSql = await diffSqlSides(cwd, base, head, main);
+  if (prSql.added.length === 0 && prSql.modifiedOrDeleted.length === 0) return [];
+  const mainSql = await diffSqlSides(cwd, base, main, null);
+  const lsTreePaths = async (rev, dirs) => (await git(cwd, 'ls-tree', '-r', '--name-only', '-z', rev, '--', ...dirs)).split('\0').filter(Boolean);
+  const mainAllMigrationPaths = await lsTreePaths(main, ['db/platform/migrations', 'supabase/migrations']);
+  const allExistingPaths = [
+    ...await lsTreePaths(base, RELOCATION_SQL_DIRS),
+    ...await lsTreePaths(head, RELOCATION_SQL_DIRS),
+    ...await lsTreePaths(main, RELOCATION_SQL_DIRS),
+  ];
+  const readRegularBlob = async (rev, path) => {
+    const meta = (await git(cwd, 'ls-tree', rev, '--', path)).trim();
+    demand(meta.startsWith('100644 blob '), `relocation requires regular blob for ${path}`);
+    return git(cwd, 'show', `${rev}:${path}`);
+  };
+  const [baseForwardsSource, headForwardsSource, mainForwardsSource] = await Promise.all(
+    [base, head, main].map(rev => readRegularBlob(rev, MIGRATION_REGISTRIES[1])),
+  );
+  const prSqlBlobsByPath = new Map();
+  const prMirrorBlobsByPath = new Map();
+  for (const path of prSql.added) {
+    if (path.startsWith('packages/platform/sql/')) prMirrorBlobsByPath.set(path, await readRegularBlob(head, path));
+    else prSqlBlobsByPath.set(path, await readRegularBlob(head, path));
+  }
+  const mainSqlBlobsByPath = new Map();
+  for (const path of mainSql.added) {
+    if (!path.startsWith('packages/platform/sql/')) mainSqlBlobsByPath.set(path, await readRegularBlob(main, path));
+  }
+  // Barrier 3: inspect every non-carrier file added or modified by the PR for stale filename/timestamp references.
+  const prRaw = (await git(cwd, 'diff', '--name-status', '--no-renames', '-z', base, head)).split('\0').filter(Boolean);
+  const prSqlSet = new Set(prSql.added);
+  const prNonCarrierFilesByPath = new Map();
+  for (let index = 0; index < prRaw.length; index += 2) {
+    const status = prRaw[index];
+    const path = prRaw[index + 1];
+    if (status === 'D' || prSqlSet.has(path) || RELOCATION_CARRIER_EXCLUSIONS.has(path) || generatedCarrier(path)) continue;
+    const text = await readRegularBlob(head, path);
+    demand(!text.includes('\0'), `relocation refused: binary file ${path} cannot be checked for stale references`);
+    prNonCarrierFilesByPath.set(path, text);
+  }
+  return validateRelocationPlan({
+    baseForwardsSource,
+    headForwardsSource,
+    mainForwardsSource,
+    prSqlAdded: prSql.added,
+    prSqlModifiedOrDeleted: prSql.modifiedOrDeleted,
+    mainSqlAdded: mainSql.added,
+    mainSqlModifiedOrDeleted: mainSql.modifiedOrDeleted,
+    mainAllMigrationPaths,
+    allExistingPaths,
+    prSqlBlobsByPath,
+    prMirrorBlobsByPath,
+    mainSqlBlobsByPath,
+    prNonCarrierFilesByPath,
+  });
+}
+
+export async function proveReviewIntegration(cwd, previous, current, portable = false, { legacy = false, allowRelocated = false } = {}) {
   const parents = await integrationParents(cwd, current.head);
   demand(parents.length === 2 && parents[0] === previous.head && parents[1] === current.base, 'integration parents differ');
   demand(await ancestor(git, cwd, previous.base, current.base), 'integration base ancestry differs');
@@ -158,6 +283,7 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
   const exactParents = (await git(cwd, 'show', '-s', '--format=%P', current.head)).trim().split(' ');
   const onMain = await ancestor(git, cwd, current.base, 'origin/main');
   let derived = false;
+  let relocated = false;
   const provenDerived = new Set();
   // Preserve historical receipt identities; derived proof is selected only by
   // trusted main after this machinery lands. Errors retain the old resolution.
@@ -209,15 +335,88 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
       // replacement above was checked against the committed regular-file blob.
       for (const path of derivedBlobs.keys()) if (!path.endsWith('.sql')) provenDerived.add(path);
     } catch { prediction = oldPrediction; }
+
+    // Opt-in fail-closed derived-relocated lane: proves byte-exact slot relocation of
+    // disjoint nativeStoreForwardClass migrations when standard derived did not apply.
+    if (!derived && allowRelocated) {
+      try {
+        const relocations = await collectRelocationPlan(cwd, previous.base, previous.head, current.base);
+        demand(relocations.length > 0, 'no eligible migration relocations');
+        const read = async (revision, path) => {
+          demand((await git(cwd, 'ls-tree', revision, '--', path)).trim().startsWith('100644 blob '), 'derived-relocated carrier mode differs');
+          return git(cwd, 'show', `${revision}:${path}`);
+        };
+        const blobOid = async (revision, path) => {
+          const line = (await git(cwd, 'ls-tree', revision, '--', path)).trim();
+          const match = /^100644 blob ([a-f0-9]{40})\t/u.exec(line);
+          return match ? match[1] : null;
+        };
+        // Barrier 2: byte-exact SQL & mirror preservation, 100644 mode, old paths removed, new paths absent before merge.
+        const mutations = new Map();
+        for (const item of relocations) {
+          const oldOid = await blobOid(previous.head, item.oldPath);
+          const newSqlOid = await blobOid(current.tree, item.newPath);
+          const newMirrorOid = await blobOid(current.tree, item.newMirror);
+          demand(oldOid && newSqlOid === oldOid && newMirrorOid === oldOid, 'relocated SQL or mirror blob differs');
+          demand((await git(cwd, 'ls-tree', current.tree, '--', item.oldPath, item.oldMirror)).trim() === '', 'old relocated SQL or mirror remains');
+          for (const rev of [previous.base, previous.head, current.base]) {
+            demand((await git(cwd, 'ls-tree', rev, '--', item.newPath, item.newMirror)).trim() === '', 'relocation target existed prior to merge');
+          }
+          mutations.set(item.oldPath, null);
+          mutations.set(item.oldMirror, null);
+          mutations.set(item.newPath, oldOid);
+          mutations.set(item.newMirror, oldOid);
+        }
+        const inventories = await Promise.all([previous.base, previous.head, current.base, current.tree].map(revision => read(revision, INVENTORY_PATH)));
+        const currentOnly = inventoryOnlyCurrent(...inventories);
+        const inventorySame = inventories.every(source => source === inventories[0]);
+        demand(currentOnly || inventorySame, 'historical inventory or envelope differs');
+        if (currentOnly) mutations.set(INVENTORY_PATH, await objectInput(cwd, ['hash-object', '-w', '--stdin'], inventories[3]));
+        for (const path of MIGRATION_REGISTRIES) {
+          const [baseSrc, headSrc, mainSrc] = await Promise.all([previous.base, previous.head, current.base].map(revision => read(revision, path)));
+          const rewrittenHead = rewriteMigrationRegistryForRelocation(path, headSrc, relocations);
+          const union = migrationRegistryUnion(path, baseSrc, rewrittenHead, mainSrc, inventories[3]);
+          demand(union === await read(current.tree, path), 'relocated registry union differs');
+          mutations.set(path, await objectInput(cwd, ['hash-object', '-w', '--stdin'], union));
+        }
+        const catalogue = REGISTRY_PATHS[0];
+        const [baseCat, headCat, mainCat] = await Promise.all([previous.base, previous.head, current.base].map(revision => read(revision, catalogue)));
+        const rewrittenHeadCat = rewriteCatalogForRelocation(headCat, relocations);
+        if (rewrittenHeadCat !== headCat || conflicts.includes(catalogue)) {
+          const catUnion = registryUnion(catalogue, baseCat, rewrittenHeadCat, mainCat);
+          mutations.set(catalogue, await objectInput(cwd, ['hash-object', '-w', '--stdin'], catUnion));
+        }
+        let predicted = await mutateTreeBlobs(cwd, oldPrediction, mutations);
+        const delta = await captureCommittedReviewCandidate(cwd, predicted, current.tree);
+        const carrierPaths = [...new Set([...delta.changedPaths, ...conflicts].filter(path => generatedCarrier(path) && !path.endsWith('.sql')).concat(mutations.has(catalogue) ? [catalogue] : []))];
+        if (carrierPaths.length) {
+          const outputs = withPredictedTree(cwd, predicted, (root, paths) => {
+            runLandingGenerators(root, paths);
+            return carrierPaths.map(path => [path, readFileSync(joinPath(root, path), 'utf8')]);
+          });
+          for (const [path, output] of outputs) {
+            demand(output === await read(current.tree, path), 'relocated generated bytes differ');
+            mutations.set(path, await objectInput(cwd, ['hash-object', '-w', '--stdin'], output));
+          }
+          predicted = await mutateTreeBlobs(cwd, oldPrediction, mutations);
+        }
+        const finalDelta = await captureCommittedReviewCandidate(cwd, predicted, current.tree);
+        demand(finalDelta.changedPaths.length === 0 && !finalDelta.modeChanged, 'unexplained residual changes after relocation');
+        prediction = predicted;
+        derived = true;
+        relocated = true;
+        for (const path of mutations.keys()) provenDerived.add(path);
+      } catch { prediction = oldPrediction; }
+    }
   }
   const delta = await captureCommittedReviewCandidate(cwd, prediction, current.tree);
   demand(conflicts.every(path => replacements.has(path) || delta.changedPaths.includes(path) || provenDerived.has(path)), 'integration commits a conflict without resolving it');
   const resolution = delta.changedPaths; const modeChanged = delta.modeChanged;
-  const kind = resolution.length ? 'resolution' : derived ? 'derived' : conflicts.length ? 'registry-union' : 'git';
-  return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(derived ? { derived: true } : {}), ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
+  const kind = resolution.length ? 'resolution' : relocated ? 'derived-relocated' : derived ? 'derived' : conflicts.length ? 'registry-union' : 'git';
+  return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(derived ? { derived: true } : {}), ...(relocated ? { relocated: true } : {}), ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
 }
 
-export async function captureCoverageEdge(cwd, session, observed, now, historicalKind, { abbreviatedIndex = false, allowDerived = historicalKind === undefined } = {}) {
+export async function captureCoverageEdge(cwd, session, observed, now, historicalKind, { abbreviatedIndex = false, allowDerived = historicalKind === undefined, allowRelocated = historicalKind === undefined } = {}) {
   if (!session || !observed.rules ||
     digest(observed.intent) !== digest(session.history.findLast(event => event.type === 'prepare').intent) ||
     observed.authorSessionId !== session.history.findLast(event => event.type === 'prepare').authorSessionId) return undefined;
@@ -241,8 +440,13 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
       // A session from before the version-3 rules can inherit only through the portable proof.
       if ((historicalKind && historicalKind.startsWith('portable-') !== portable) || (!portable && session.candidate.rules?.version !== 3)) return undefined;
       const derivedEnabled = source.includes(`const DERIVED_REVIEW = '${DERIVED_REVIEW}';`);
-      const historicalLegacy = !allowDerived && historicalKind && !['derived', 'portable-derived'].includes(historicalKind);
-      proof = await proveReviewIntegration(cwd, session.candidate, observed, portable, { legacy: !derivedEnabled || historicalLegacy });
+      const relocatedEnabled = source.includes(`const DERIVED_RELOCATED_REVIEW = '${DERIVED_RELOCATED_REVIEW}';`);
+      const historicalLegacy = !allowDerived && historicalKind && !['derived', 'portable-derived', 'derived-relocated', 'portable-derived-relocated'].includes(historicalKind);
+      const historicalNoRelocate = !allowRelocated && historicalKind && !['derived-relocated', 'portable-derived-relocated'].includes(historicalKind);
+      proof = await proveReviewIntegration(cwd, session.candidate, observed, portable, {
+        legacy: !derivedEnabled || historicalLegacy,
+        allowRelocated: relocatedEnabled && !historicalNoRelocate,
+      });
       if (proof.prediction) { from = proof.prediction; to = observed.tree; }
     } catch { return undefined; }
   }
@@ -283,9 +487,13 @@ export async function validateEconomySession(cwd, session, runGit = git) {
         const before = { ...session, version, candidate: prior.candidate, history: prefix, preparedAt: prior.at };
         const observed = { ...actual, rules, intent: event.intent, authorSessionId: event.authorSessionId };
         const recorded = digest(event.candidate.coverage); const kind = event.candidate.coverage.proof?.kind;
-        const edge = await captureCoverageEdge(cwd, before, observed, event.at, kind, { allowDerived: event.candidate.coverage.proof?.derived === true });
+        const replayOptions = {
+          allowDerived: event.candidate.coverage.proof?.derived === true,
+          allowRelocated: event.candidate.coverage.proof?.relocated === true,
+        };
+        const edge = await captureCoverageEdge(cwd, before, observed, event.at, kind, replayOptions);
         // An edge recorded before full-index digests replays through the abbreviated diff it was recorded with.
-        const legacy = edge && !edge.proof.cumulativeFrom && digest(edge) !== recorded ? await captureCoverageEdge(cwd, before, observed, event.at, kind, { abbreviatedIndex: true, allowDerived: event.candidate.coverage.proof?.derived === true }) : undefined;
+        const legacy = edge && !edge.proof.cumulativeFrom && digest(edge) !== recorded ? await captureCoverageEdge(cwd, before, observed, event.at, kind, { abbreviatedIndex: true, ...replayOptions }) : undefined;
         demand(edge && (digest(edge) === recorded || (legacy && digest(legacy) === recorded)), 'recorded coverage proof differs');
       }
     }

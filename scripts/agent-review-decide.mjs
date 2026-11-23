@@ -184,7 +184,7 @@ export function coverageRequirement(session) {
     demand(cumulativeFrom === undefined || (edge.kind === 'repair' && decision.code === 'needs_agent_review' && repair?.candidate.head === cumulativeFrom), 'cumulative repair prefix differs');
     const priorFull = !decision.ok && edge.kind === 'repair' && repair ? fullReviewReports(repair) : undefined;
     demand(decision.ok || priorFull, 'prior coverage is incomplete or unresolved');
-    const portable = edge.kind === 'integration' && ['portable-git', 'portable-registry-union', 'portable-derived', 'portable-resolution'].includes(edge.proof?.kind);
+    const portable = edge.kind === 'integration' && ['portable-git', 'portable-registry-union', 'portable-derived', 'portable-derived-relocated', 'portable-resolution'].includes(edge.proof?.kind);
     inherited = priorFull ? {
       earliest: Math.min(...priorFull.map(report => report.at)), expires: Math.min(...priorFull.map(report => report.at + DAY)),
       base: repair.candidate.base, paths: repair.candidate.changedPaths,
@@ -194,7 +194,7 @@ export function coverageRequirement(session) {
     } : coverageState(prior);
     if (!portable) demand(prior.candidate.rules?.version === 3, 'coverage policy changed');
     if (edge.kind === 'integration') {
-      demand(candidate.integration && (portable || ['git', 'registry-union', 'derived', 'resolution'].includes(edge.proof?.kind)) && edge.proof.tree === candidate.tree, 'integration proof missing'); floor = 0; scope = edge.proof.kind;
+      demand(candidate.integration && (portable || ['git', 'registry-union', 'derived', 'derived-relocated', 'resolution'].includes(edge.proof?.kind)) && edge.proof.tree === candidate.tree, 'integration proof missing'); floor = 0; scope = edge.proof.kind;
     } else demand(edge.kind === 'repair' && candidate.base === prior.candidate.base && candidate.rules.base === prior.candidate.rules.base && edge.proof?.paths?.length > 0, 'repair delta is missing');
     const delta = edge.kind === 'repair' ? edge.proof.paths : edge.proof.resolution;
     if (delta) {

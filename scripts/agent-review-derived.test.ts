@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
+import { INVENTORY_PATH, MIGRATION_REGISTRIES, assertDisjointRelocationFootprints, assertNoStaleRelocationRefs, extractSlotMetadataFootprint, extractSqlFootprint, inventoryEnvelope, migrationRegistryUnion, nextUtcMigrationSlot, planRelocatedSlots } from './agent-review-derived.mjs';
 import { runLandingGenerators, syncSqlReference } from './agent-review-generators.mjs';
 import { assertAppendOnlyLandingSlots, carrierLocale, isInventoryInputPath, landingMerge } from './agent-review-landing.mjs';
 import { deltaFloor, prepareCandidate, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
@@ -812,4 +812,216 @@ it('deduplicates byte-for-byte identical stacked rows in migrationRegistryUnion 
   conflictForwards.nativeStoreForwards.push(predForward);
   expect(() => migrationRegistryUnion(MIGRATION_REGISTRIES[1], baseForwards, json(leftForwards), json(conflictForwards)))
     .toThrow('derived: duplicate entry');
+});
+
+describe('opt-in fail-closed derived-relocated slot relocation', () => {
+  it('advances UTC slots across calendar boundaries and enforces Barrier 1/3/4 fail-closed checks', () => {
+    expect(nextUtcMigrationSlot('20991231235959')).toBe('21000101000000');
+    expect(nextUtcMigrationSlot('20261123235959')).toBe('20261124000000');
+    expect(() => nextUtcMigrationSlot('20260230120000')).toThrow('derived: non-calendar UTC migration slot');
+
+    // Exact filename collision with origin/main fails closed.
+    expect(() => planRelocatedSlots(
+      ['db/platform/migrations/20990101020000_same.sql'],
+      ['db/platform/migrations/20990101020000_same.sql'],
+    )).toThrow('exact migration filename already exists on origin/main');
+
+    // Qualified and supabase migrations fail closed.
+    expect(() => planRelocatedSlots(
+      ['db/platform/migrations/q2_20990101010000_qual.sql'],
+      ['db/platform/migrations/20990101020000_main.sql'],
+    )).toThrow('relocation supports only plain');
+    expect(() => planRelocatedSlots(
+      ['supabase/migrations/20990101010000_supa.sql'],
+      ['db/platform/migrations/20990101020000_main.sql'],
+    )).toThrow('relocation supports only plain');
+
+    // Barrier 3: stale basename or timestamp in non-carrier file fails closed.
+    const planned = planRelocatedSlots(
+      ['db/platform/migrations/20990101010000_alpha.sql'],
+      ['db/platform/migrations/20990101020000_beta.sql'],
+    );
+    expect(planned).toHaveLength(1);
+    expect(planned[0]).toMatchObject({
+      oldPath: 'db/platform/migrations/20990101010000_alpha.sql',
+      newPath: 'db/platform/migrations/20990101020001_alpha.sql',
+      oldMirror: 'packages/platform/sql/20990101010000_alpha.sql',
+      newMirror: 'packages/platform/sql/20990101020001_alpha.sql',
+    });
+    expect(() => assertNoStaleRelocationRefs(planned, [['tests/example.test.ts', 'const ref = "20990101010000_alpha.sql";']]))
+      .toThrow('stale migration reference');
+    expect(() => assertNoStaleRelocationRefs(planned, [['docs/note.md', 'See migration 20990101010000']]))
+      .toThrow('stale migration reference');
+
+    // Barrier 4a: unknown NativeStoreSlot key and overlapping metadata fields fail closed.
+    expect(() => extractSlotMetadataFootprint({ row: 'r1', path: 'db/platform/migrations/20990101010000_a.sql', unknownFutureFlag: true }))
+      .toThrow('unknown NativeStoreSlot key');
+    expect(() => assertDisjointRelocationFootprints(
+      [{ row: 'r1', path: 'p1', ownerWindowRole: 'custom_owner', replacedFunctions: [], createdFunctions: [] }],
+      [{ row: 'r2', path: 'p2', ownerWindowRole: 'custom_owner', replacedFunctions: [], createdFunctions: [] }],
+      ['SELECT 1;'],
+      ['SELECT 1;'],
+    )).toThrow('overlapping roles footprint');
+    expect(() => assertDisjointRelocationFootprints(
+      [{ row: 'r1', path: 'p1', insertSelectTables: ['public.shared_t'], replacedFunctions: [], createdFunctions: [] }],
+      [{ row: 'r2', path: 'p2', absorptionCensusTables: ['public.shared_t'], replacedFunctions: [], createdFunctions: [] }],
+      ['SELECT 1;'],
+      ['SELECT 1;'],
+    )).toThrow('overlapping relations footprint');
+
+    // Barrier 4b: overlapping SQL statement footprint and unsupported DDL / dynamic EXECUTE fail closed.
+    expect(() => assertDisjointRelocationFootprints(
+      [{ row: 'r1', path: 'p1', replacedFunctions: [], createdFunctions: [] }],
+      [{ row: 'r2', path: 'p2', replacedFunctions: [], createdFunctions: [] }],
+      ['CREATE TABLE public.shared_reloc_tbl (id uuid primary key);'],
+      ['ALTER TABLE public.shared_reloc_tbl ADD COLUMN note text;'],
+    )).toThrow('overlapping relations footprint');
+    expect(() => extractSqlFootprint('CREATE ROLE rogue_role NOLOGIN;')).toThrow('unsupported SQL statement shape');
+    expect(() => extractSqlFootprint('GRANT service_role TO authenticated;')).toThrow('role-membership or schema-wide');
+    expect(() => extractSqlFootprint('CREATE FUNCTION public.dyn() RETURNS void LANGUAGE plpgsql AS $$ BEGIN EXECUTE \'SELECT 1\'; END; $$;'))
+      .toThrow('dynamic EXECUTE');
+
+    // Disjoint SQL statements pass cleanly (including standard runtime role grants on disjoint functions).
+    expect(() => assertDisjointRelocationFootprints(
+      [{ row: 'r1', path: 'p1', replacedFunctions: [], createdFunctions: [] }],
+      [{ row: 'r2', path: 'p2', replacedFunctions: [], createdFunctions: [] }],
+      ['CREATE TABLE public.reloc_alpha (id uuid primary key); CREATE FUNCTION public.fn_alpha() RETURNS void LANGUAGE sql AS $$ SELECT 1; $$; GRANT EXECUTE ON FUNCTION public.fn_alpha() TO service_role;'],
+      ['CREATE TABLE public.reloc_beta (id uuid primary key); CREATE FUNCTION public.fn_beta() RETURNS void LANGUAGE sql AS $$ SELECT 1; $$; GRANT EXECUTE ON FUNCTION public.fn_beta() TO service_role;'],
+    )).not.toThrow();
+  });
+
+  it('lands disjoint inverted migrations with --relocate-slots as derived-relocated, replays economy session, and falls back to resolution on Barrier 2/3/4 tampering', async () => {
+    const appendCustom = (slot: string, slug: string, sql: string, extraSlot: Record<string, unknown> = {}) => {
+      const file = `db/platform/migrations/${slot}_${slug}.sql`;
+      const mirror = `packages/platform/sql/${slot}_${slug}.sql`;
+      write(file, sql);
+      const sha256 = createHash('sha256').update(sql).digest('hex');
+      const manifest = JSON.parse(read(MIGRATION_REGISTRIES[0]));
+      for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) plan.forward.push({ file, sha256 });
+      write(MIGRATION_REGISTRIES[0], json(manifest));
+      const registry = JSON.parse(read(MIGRATION_REGISTRIES[1]));
+      registry.nativeStoreForwardClass.slots.push({ row: `reloc-${slug}`, path: file, replacedFunctions: [], createdFunctions: [], ...extraSlot });
+      registry.nativeStoreForwards.push({ path: file, sha256, functions: [] });
+      write(MIGRATION_REGISTRIES[1], json(registry));
+      expect(checkPlatformMigrationProjection(root, true)).toEqual([]);
+      const catalog = JSON.parse(read(CATALOGUE));
+      catalog.publicPaths.push({ path: file, class: 'public-output' }, { path: mirror, class: 'public-output' });
+      catalog.publicPaths.sort((a: { path: string }, b: { path: string }) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+      write(CATALOGUE, json(catalog));
+      write(SQL_REFERENCE, syncSqlReference(root));
+      return { file, mirror };
+    };
+    const stubbedInventoryRun = (command: string, args: string[]) => {
+      if (args.includes(join(root, 'scripts/installation-inventory-refresh.ts'))) {
+        const env = inventoryEnvelope(read(INVENTORY_PATH));
+        const nextCurrent = structuredClone(env.value.current);
+        for (const [profile, entry] of Object.entries(nextCurrent.profiles)) {
+          (entry as { objectInventorySha256: string }).objectInventorySha256 = createHash('sha256')
+            .update(`reloc-fixture:${profile}:${read(MIGRATION_REGISTRIES[0])}`)
+            .digest('hex');
+        }
+        write(INVENTORY_PATH, env.before + JSON.stringify(nextCurrent, null, 2).replaceAll('\n', '\n  ') + env.after);
+        return;
+      }
+      fixtureCommand(command, args);
+    };
+
+    try {
+      // PR adds earlier slot 20990201010000_alpha_reloc.sql; main adds later disjoint slot 20990201020000_beta_reloc.sql.
+      checkout(base);
+      const prSql = 'CREATE TABLE public.reloc_alpha_isolated (id uuid PRIMARY KEY);\n';
+      const prFiles = appendCustom('20990201010000', 'alpha_reloc', prSql);
+      const prHead = commit();
+
+      checkout(base);
+      const mainSql = 'CREATE TABLE public.reloc_beta_isolated (id uuid PRIMARY KEY);\n';
+      appendCustom('20990201020000', 'beta_reloc', mainSql);
+      const mainHead = commit();
+      setMain(mainHead);
+      checkout(prHead);
+
+      // 1. Default landingMerge (without --relocate-slots) STILL fails fast before merge/Docker.
+      const defaultInvoked: string[][] = [];
+      await expect(landingMerge(root, { runCommand: (_c, args) => { defaultInvoked.push(args); } }))
+        .rejects.toThrow('landing: migration slot is not strictly later than origin/main');
+      expect(defaultInvoked).toEqual([]);
+      expect(git('status', '--porcelain=v1')).toBe('');
+
+      // 2. Opt-in landingMerge({ relocateSlots: true }) relocates PR migration to 20990201020001_alpha_reloc.sql.
+      const landed = await landingMerge(root, { relocateSlots: true, runCommand: stubbedInventoryRun });
+      const newPath = 'db/platform/migrations/20990201020001_alpha_reloc.sql';
+      const newMirror = 'packages/platform/sql/20990201020001_alpha_reloc.sql';
+      expect(landed.relocated).toEqual([{ from: prFiles.file, to: newPath }]);
+      expect(existsSync(join(root, prFiles.file))).toBe(false);
+      expect(existsSync(join(root, prFiles.mirror))).toBe(false);
+      expect(read(newPath)).toBe(prSql);
+      expect(read(newMirror)).toBe(prSql);
+
+      // 3. proveReviewIntegration classifies as derived-relocated (0 residual paths, floor 0) and validateEconomySession replays cleanly.
+      const prevCand = await captureCommittedReviewCandidate(root, base, prHead);
+      const currCand = await captureCommittedReviewCandidate(root, mainHead, landed.head);
+      const proofReloc = await proveReviewIntegration(root, prevCand, currCand, false, { allowRelocated: true });
+      expect(proofReloc).toMatchObject({ kind: 'derived-relocated', derived: true, relocated: true });
+      expect('resolution' in proofReloc).toBe(false);
+
+      const intent = { summary: 'Relocated disjoint migration', criteria: 'Passes barriers', nonGoals: 'None', risk: 'behavior' };
+      const at = 1_795_000_000_000;
+      const prevRules = await captureReviewRules(root, prevCand);
+      let session = prepareCandidate(undefined, { ...prevCand, rules: prevRules, intent, authorSessionId: 'author-reloc' }, at);
+      for (const reviewer of ['cold-reloc-1', 'cold-reloc-2']) {
+        session = recordReport(session, { reviewer, cold: true, tree: prevCand.tree, verdict: 'PASS', documentation: 'ok', findings: [], closes: [] }, at + 1);
+      }
+      const currRules = await captureReviewRules(root, currCand);
+      const currObs = { ...currCand, rules: currRules, intent, authorSessionId: 'author-reloc' };
+      const edge = await captureCoverageEdge(root, session, currObs, at + 2);
+      expect(edge?.proof).toMatchObject({ kind: 'portable-derived-relocated', derived: true, relocated: true });
+      session = prepareCandidate(session, { ...currObs, coverage: edge, integration: integrationReviewContext(session, currObs, { parents: [prHead, mainHead], baseAncestor: true, mechanical: true }, at + 2) }, at + 2);
+      expect(verdict(session, currCand, at + 3).ok).toBe(true);
+      await validateEconomySession(root, session);
+
+      // 4. Barrier 2 tampering: 1-byte edit to relocated SQL downgrades proof from derived-relocated to resolution!
+      checkout(landed.head);
+      write(newPath, `${prSql}-- tampered\n`);
+      write(newMirror, `${prSql}-- tampered\n`);
+      git('add', newPath, newMirror);
+      const tamperedTree = git('write-tree');
+      const tamperedHead = execFileSync('/usr/bin/git', [
+        '-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+        'commit-tree', tamperedTree, '-p', prHead, '-p', mainHead, '-m', 'Tampered relocation\n\nSigned-off-by: Fixture <fixture@example.invalid>',
+      ], { env: fixtureEnvironment, encoding: 'utf8' }).trim();
+      const tamperedCand = await captureCommittedReviewCandidate(root, mainHead, tamperedHead);
+      const tamperedProof = await proveReviewIntegration(root, prevCand, tamperedCand, false, { allowRelocated: true });
+      expect(tamperedProof.kind).toBe('resolution');
+
+      // 5. Barrier 4 end-to-end refusal: overlapping table on PR and main fails fast BEFORE merge/Docker!
+      checkout(base);
+      appendCustom('20990202010000', 'overlap_pr', 'CREATE TABLE public.reloc_overlap_tbl (id uuid PRIMARY KEY);\n');
+      const overlapPr = commit();
+      checkout(base);
+      appendCustom('20990202020000', 'overlap_main', 'ALTER TABLE public.reloc_overlap_tbl ADD COLUMN extra text;\n');
+      const overlapMain = commit();
+      setMain(overlapMain);
+      checkout(overlapPr);
+      const overlapInvoked: string[][] = [];
+      await expect(landingMerge(root, { relocateSlots: true, runCommand: (_c, args) => { overlapInvoked.push(args); } }))
+        .rejects.toThrow('overlapping relations footprint');
+      expect(overlapInvoked).toEqual([]);
+      expect(git('status', '--porcelain=v1')).toBe('');
+
+      // 6. Barrier 3 end-to-end refusal: stale reference in PR file fails fast BEFORE merge/Docker!
+      checkout(base);
+      appendCustom('20990201010000', 'stale_ref_pr', 'CREATE TABLE public.reloc_stale_isolated (id uuid PRIMARY KEY);\n');
+      write('tests/stale-reloc-fixture.txt', 'depends on 20990201010000_stale_ref_pr.sql\n');
+      const stalePr = commit();
+      setMain(mainHead);
+      checkout(stalePr);
+      const staleInvoked: string[][] = [];
+      await expect(landingMerge(root, { relocateSlots: true, runCommand: (_c, args) => { staleInvoked.push(args); } }))
+        .rejects.toThrow('stale migration reference');
+      expect(staleInvoked).toEqual([]);
+      expect(git('status', '--porcelain=v1')).toBe('');
+    } finally {
+      restoreDerivedFixture();
+    }
+  }, 180000);
 });
