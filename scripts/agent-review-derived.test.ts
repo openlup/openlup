@@ -67,12 +67,6 @@ function probeSetting() {
   data.push({ ...data.find(entry => entry.kind === 'invariant'), key: PROBE_KEY, goal: 'Describe fixture reservation replay.' });
   write(SETTING_DATA, json(data));
 }
-function registerOutput(path: string) {
-  const catalogue = JSON.parse(read(CATALOGUE));
-  catalogue.publicPaths.push({ path, class: 'public-output' });
-  catalogue.publicPaths.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-  write(CATALOGUE, json(catalogue));
-}
 function restoreDerivedFixture() {
   if (existsSync(join(root, '.git/MERGE_HEAD'))) git('merge', '--abort');
   checkout(merged);
@@ -155,7 +149,6 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
     const changed = PROBE_OUTPUTS.filter(path => path !== SETTING_REFUSALS).sort();
     expect(integration).toMatchObject({ kind: 'resolution', resolution: changed, modeChanged: false });
     expect(deltaFloor(integration.resolution, integration.modeChanged)).toBe(1);
-    expect(deltaFloor(integration.resolution, true)).toBe(2);
     expect(read(PORTABILITY_REPORT)).toContain('declare const fixturePortability = 1');
     expect(read(SETTING_GUIDE)).toContain(`## ${PROBE_KEY}`);
     expect(git('show', `${base}:${SETTING_REFUSALS}`)).toBe(read(SETTING_REFUSALS).trimEnd());
@@ -174,28 +167,22 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
   } finally { restoreDerivedFixture(); }
 }, 180000);
 
-it('preserves derived substitutions around an actual API resolution and uses its floor for D2', async () => {
+it('preserves derived substitutions around API resolutions and uses the actual report mode for the floor', async () => {
   try {
     checkout(reviewed); probeExport(); const left = commit();
     checkout(merged); probeExport();
     coldBuild('core', 'platform');
     fixtureCommand(process.execPath, ['packages/platform/scripts/api-contract.ts', '--update']);
     git('add', '-A');
-    const head = git('commit-tree', git('write-tree'), '-p', left, '-p', main, '-m', 'Synthetic report resolution');
     const firstParent = await captureCommittedReviewCandidate(root, base, left);
-    const integration = await proveReviewIntegration(root, firstParent, await captureCommittedReviewCandidate(root, main, head));
-    expect(integration).toMatchObject({ kind: 'resolution', derived: true, resolution: [PORTABILITY_REPORT], modeChanged: false });
-    expect(git('diff', '--name-only', integration.prediction, head)).toBe(PORTABILITY_REPORT);
-    const floor = deltaFloor(integration.resolution, integration.modeChanged);
-    expect(floor).toBe(0);
-    expect(firstParent.changedPaths.some(isInventoryInputPath)).toBe(true);
-    // D2 defers only inventory rows with a resolution at floor one or above.
-    const order = (resolutionFloor: number) => [
-      { name: 'catalogue', defer: firstParent.changedPaths.some(isInventoryInputPath) && resolutionFloor >= 1 },
-      { name: 'next', defer: false },
-    ].sort((a, b) => Number(a.defer) - Number(b.defer)).map(({ name }) => name);
-    expect(order(floor)).toEqual(['catalogue', 'next']);
-    expect(order(deltaFloor(integration.resolution, true))).toEqual(['next', 'catalogue']);
+    for (const { modeChanged, floor } of [{ modeChanged: false, floor: 0 }, { modeChanged: true, floor: 2 }]) {
+      if (modeChanged) git('update-index', '--chmod=+x', PORTABILITY_REPORT);
+      const head = git('commit-tree', git('write-tree'), '-p', left, '-p', main, '-m', 'Synthetic report resolution');
+      const integration = await proveReviewIntegration(root, firstParent, await captureCommittedReviewCandidate(root, main, head));
+      expect(integration).toMatchObject({ kind: 'resolution', derived: true, resolution: [PORTABILITY_REPORT], modeChanged });
+      expect(git('diff', '--name-only', integration.prediction, head)).toBe(PORTABILITY_REPORT);
+      expect(deltaFloor(integration.resolution, integration.modeChanged)).toBe(floor);
+    }
   } finally { restoreDerivedFixture(); }
 }, 180000);
 
@@ -246,10 +233,20 @@ it.each([PORTABILITY_REPORT, SETTING_CATALOGUE, SETTING_REFUSALS, SETTING_GUIDE]
   } finally { restoreDerivedFixture(); }
 }, 180000);
 
-it('stages a newly generated report absent from the merged index', () => {
+it('stages a renamed report and validates its exact selector against the generated file', () => {
   try {
     const newReport = 'packages/platform/api/portability-fixture.api.md';
-    checkout(base); probeExport(); registerOutput(newReport);
+    checkout(base); probeExport();
+    const catalogue: { publicPaths: { path: string; class: string }[] } = JSON.parse(read(CATALOGUE));
+    const registration = catalogue.publicPaths.find(({ path }) => path === PORTABILITY_REPORT);
+    if (registration?.class !== 'public-output') throw new Error(`Fixture report is not registered: ${PORTABILITY_REPORT}`);
+    registration.path = newReport;
+    catalogue.publicPaths.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+    write(CATALOGUE, json(catalogue));
+    const routing = 'config/doc-routing.json';
+    expect(read(routing)).toContain(`"${PORTABILITY_REPORT}"`);
+    write(routing, read(routing).replace(`"${PORTABILITY_REPORT}"`, `"${newReport}"`));
+    rmSync(join(root, PORTABILITY_REPORT));
     const gatesPath = 'packages/platform/release-gates.json';
     const gates = JSON.parse(read(gatesPath));
     gates.packageSurface['./portability'].snapshot = 'api/portability-fixture.api.md';
@@ -258,9 +255,69 @@ it('stages a newly generated report absent from the merged index', () => {
     expect(git('ls-files', '--', newReport)).toBe('');
     landingCli();
     expect(git('show', `HEAD:${newReport}`)).toContain('declare const fixturePortability = 1');
+    expect(git('ls-files', '--', PORTABILITY_REPORT)).toBe('');
+    expect(read('docs/platform/SOURCE_MAP.md')).toContain(`\`${newReport}\``).not.toContain(`\`${PORTABILITY_REPORT}\``);
+    fixtureCommand(process.execPath, ['packages/platform/scripts/api-contract.ts', '--update']);
     expect(git('status', '--porcelain')).toBe('');
   } finally { restoreDerivedFixture(); }
 }, 180000);
+
+it.each(['unstaged', 'staged'])('refuses an unselected Core dependency build with a %s change outside API reports', async change => {
+  const path = 'packages/core/README.md';
+  try {
+    checkout(base); probeExport(); const left = commit();
+    checkout(base); const right = commit(); setMain(right); checkout(left);
+    const original = read(path);
+    await expect(landingMerge(root, {
+      runCommand: (command, args) => {
+        fixtureCommand(command, args);
+        if (!args.includes('--workspace=@openlup/core')) return;
+        write(path, original + '\nFixture build side effect.\n');
+        if (change === 'staged') {
+          git('add', '--', path);
+          write(path, original);
+        }
+      },
+    })).rejects.toThrow(`landing: unselected build @openlup/core changed tracked paths: ${path}`);
+    expect(git('rev-parse', 'HEAD')).toBe(left);
+    expect(read(PORTABILITY_REPORT)).not.toContain('fixturePortability');
+  } finally {
+    git('restore', '--source=HEAD', '--staged', '--worktree', '--', path);
+    restoreDerivedFixture();
+  }
+}, 180000);
+
+it('refuses landing before a cold build would delete a tracked dist file', () => {
+  try {
+    checkout(base); probeExport();
+    const path = 'packages/platform/dist/fixture-tracked.txt';
+    write(path, 'Committed fixture bytes\n');
+    git('add', '-f', '--', path);
+    const left = commit();
+    checkout(base); const right = commit(); setMain(right); checkout(left);
+    expect(() => landingCli()).toThrow(`carrier build would overwrite or remove tracked path ${path}; remove it from the index`);
+    expect(read(path)).toBe('Committed fixture bytes\n');
+    expect(git('diff', 'HEAD', '--', path)).toBe('');
+  } finally { restoreDerivedFixture(); }
+}, 60000);
+
+it('refuses landing with a mismatched installed dependency before any owner writes', () => {
+  const record = 'node_modules/.package-lock.json';
+  const original = read(record);
+  try {
+    checkout(base); probeExport(); probeSetting(); const left = commit();
+    checkout(base); const right = commit(); setMain(right); checkout(left);
+    const installed = JSON.parse(original);
+    installed.packages['node_modules/zod'].version = '0.0.0-fixture';
+    write(record, json(installed));
+    expect(() => landingCli()).toThrow('installed npm tree does not match package-lock.json (node_modules/zod); run npm ci');
+    expect(git('rev-parse', 'HEAD')).toBe(left);
+    expect(git('diff', 'HEAD', '--', ...PROBE_OUTPUTS, 'docs/platform/SOURCE_MAP.md')).toBe('');
+  } finally {
+    write(record, original);
+    restoreDerivedFixture();
+  }
+}, 60000);
 
 it.each(['unregistered', 'executable', 'symlink'])('keeps a %s report conflict unresolved', mode => {
   try {

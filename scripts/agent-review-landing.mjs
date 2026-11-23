@@ -1,15 +1,17 @@
 // Local landing helper: merge main, stop on authored conflicts, never push.
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { lstatSync, readFileSync, readlinkSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { isAbsolute, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { git } from './agent-review-session.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { generatedCarrier, SQL_REFERENCE } from './agent-review-generators.mjs';
-import { DEFAULT_INCREMENTAL_PACKAGES } from './build-packages-incremental.mjs';
+import { DEFAULT_INCREMENTAL_PACKAGES, TSBUILDINFO_FILENAME } from './build-packages-incremental.mjs';
 import { isGuidePage } from './oss-publication-policy.ts';
 
 const PUBLICATION_CATALOGUE = REGISTRY_PATHS[0];
@@ -26,6 +28,22 @@ export function carrierNpmCli(script = 'landing:merge') {
   return cli;
 }
 
+function assertLockedInstall(root, locked) {
+  const refuse = path => new Error(`carrier build: installed npm tree does not match package-lock.json (${path}); run npm ci in this checkout`);
+  const record = 'node_modules/.package-lock.json';
+  let installed;
+  try { installed = readJson(root, record).packages; }
+  catch { throw refuse(record); }
+  if (!installed || !Object.keys(installed).length) throw refuse(record);
+  for (const [path, entry] of Object.entries(installed)) {
+    if (!isDeepStrictEqual(entry, locked[path])) throw refuse(path);
+  }
+  // npm's installed record omits the project root and may omit optional packages.
+  for (const [path, entry] of Object.entries(locked)) {
+    if (path && !entry.optional && !Object.hasOwn(installed, path)) throw refuse(path);
+  }
+}
+
 export function assertCarrierToolchain(root, script) {
   const cli = carrierNpmCli(script);
   const node = readFileSync(resolve(root, '.nvmrc'), 'utf8').trim();
@@ -37,6 +55,7 @@ export function assertCarrierToolchain(root, script) {
   if (npm !== `npm@${installedNpm}`) throw new Error(`carrier build requires ${npm}; found npm@${installedNpm}`);
   const workspace = readJson(root, 'config/openlup-packages.json');
   const lock = readJson(root, 'package-lock.json');
+  assertLockedInstall(root, lock.packages);
   const compiler = realpathSync(resolve(root, 'node_modules/typescript/package.json'));
   if (readJson(root, 'node_modules/typescript/package.json').version !== lock.packages['node_modules/typescript'].version) {
     throw new Error('carrier build requires the locked TypeScript version; run npm ci in this checkout');
@@ -48,6 +67,13 @@ export function assertCarrierToolchain(root, script) {
       throw new Error(`carrier build requires workspace links in this checkout (${from}); run npm ci here`);
     }
   }
+}
+
+export async function assertCarrierBuildOutputs(cwd, directories, incremental = false) {
+  const paths = directories.flatMap(directory => incremental
+    ? [`${directory}/dist`, `${directory}/${TSBUILDINFO_FILENAME}`] : [`${directory}/dist`]);
+  const [tracked] = pathsFrom(await git(cwd, '--literal-pathspecs', 'ls-files', '-z', '--', ...paths));
+  if (tracked) throw new Error(`carrier build would overwrite or remove tracked path ${tracked}; remove it from the index with git rm --cached -- <path>`);
 }
 
 export function readReportOwners(cwd) {
@@ -111,6 +137,28 @@ function safeOutput(cwd, path, index) {
   return false;
 }
 
+async function trackedIndex(cwd) {
+  const index = new Map();
+  for (const row of pathsFrom(await git(cwd, 'ls-files', '--stage', '-z'))) {
+    const tab = row.indexOf('\t'), path = row.slice(tab + 1);
+    if (!index.has(path)) index.set(path, []);
+    index.get(path).push(row.slice(0, tab));
+  }
+  return index;
+}
+
+async function trackedBuildState(cwd, outputs) {
+  const state = new Map();
+  for (const [path, stages] of await trackedIndex(cwd)) {
+    if (outputs.has(path)) continue;
+    const target = resolve(cwd, path);
+    const stat = lstatSync(target, { throwIfNoEntry: false });
+    const bytes = stat?.isFile() ? readFileSync(target) : stat?.isSymbolicLink() ? readlinkSync(target, { encoding: 'buffer' }) : undefined;
+    state.set(path, [stages, stat?.mode, bytes && createHash('sha256').update(bytes).digest('hex')]);
+  }
+  return state;
+}
+
 const INVENTORY_INPUT_PATHS = new Set([
   ...MIGRATION_REGISTRIES,
   INVENTORY_PATH,
@@ -152,12 +200,7 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   const conflicts = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=U', '-z'));
   const read = (revision, path) => git(cwd, 'show', `${revision}:${path}`);
   const readUnion = async path => registryUnion(path, ...await Promise.all([base, head, main].map(revision => read(revision, path))));
-  const index = new Map();
-  for (const row of pathsFrom(await git(cwd, 'ls-files', '--stage', '-z'))) {
-    const tab = row.indexOf('\t'), path = row.slice(tab + 1);
-    if (!index.has(path)) index.set(path, []);
-    index.get(path).push(row.slice(0, tab));
-  }
+  const index = await trackedIndex(cwd);
   const legacyConflict = path => [...REGISTRY_PATHS, ...MIGRATION_REGISTRIES, INVENTORY_PATH].includes(path) || (generatedCarrier(path) && !path.endsWith('.sql'));
   const authoredInputs = conflicts.filter(path => /^(?:config\/openlup-packages\.json|packages\/[^/]+\/(?:package|release-gates)\.json)$/u.test(path));
   if (authoredInputs.length) throw new Error(`landing: authored conflicts remain: ${authoredInputs.join(', ')}`);
@@ -167,7 +210,8 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   const { admitted, replaceable } = ownerOutputs(owners, catalogue.publicPaths);
   const other = conflicts.filter(path => !legacyConflict(path) && !(replaceable.has(path) && safeOutput(cwd, path, index)));
   if (other.length) throw new Error(`landing: authored conflicts remain: ${other.join(', ')}`);
-  const generators = JSON.stringify(pathToFileURL(resolve(cwd, 'scripts/agent-review-generators.mjs')).href);
+  const mergedModule = path => JSON.stringify(pathToFileURL(resolve(cwd, path)).href);
+  const generators = mergedModule('scripts/agent-review-generators.mjs');
   // Load the merged owners in a fresh process, including the early authored-conflict check.
   const runGenerators = (script, input = '') => {
     try {
@@ -180,10 +224,19 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   const prPaths = pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z', base, head));
   const run = runCommand ?? ((command, args, options) => execFileSync(command, args, { cwd, stdio: 'inherit', timeout: 900000, ...options }));
   const needsInventoryRefresh = prPaths.some(isInventoryInputPath) || conflicts.some(isInventoryInputPath);
+  const inputs = [...prPaths, ...conflicts];
   // Resolve envelopes before any generator or database work; historical conflict stops.
   const inventories = await Promise.all([base, head, main].map(revision => read(revision, INVENTORY_PATH)));
   const envelopes = inventories.map(inventoryEnvelope);
   if (needsInventoryRefresh && !envelopes.every(value => value.before === envelopes[0].before && value.after === envelopes[0].after)) throw new Error('landing: historical inventory conflict');
+  const checkToolchain = () => run(process.execPath, ['--input-type=module', '-e',
+    `import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; assertCarrierToolchain(process.cwd());`], { env: carrierEnv });
+  if (needsInventoryRefresh) await assertCarrierBuildOutputs(cwd, DEFAULT_INCREMENTAL_PACKAGES, true);
+  const preliminary = carrierPlan(owners, inputs);
+  if (preliminary.builds.length) {
+    await assertCarrierBuildOutputs(cwd, preliminary.builds.map(({ directory }) => directory));
+    checkToolchain();
+  }
   if (conflicts.includes(SQL_REFERENCE)) runGenerators('owners.syncSqlReference(process.cwd());');
   for (const path of conflicts.filter(path => REGISTRY_PATHS.includes(path))) {
     writeFileSync(resolve(cwd, path), path === PUBLICATION_CATALOGUE ? catalogueUnion : await readUnion(path));
@@ -211,11 +264,12 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   } else {
     writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[2]);
   }
-  const paths = pathsFrom(await git(cwd, 'ls-files', '-z'));
   const projection = 'packages/platform/src/migrations/catalog.ts';
   const projectionBefore = readFileSync(resolve(cwd, projection), 'utf8');
-  runGenerators("owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));", paths.join('\0'));
-  const inputs = [...prPaths, ...conflicts];
+  // Only the migration projection feeds compilation. Validate selectors after the reports exist.
+  runGenerators(`const { checkPlatformMigrationProjection } = await import(${mergedModule('scripts/packages/platform-migration-projection.ts')});
+    const errors = checkPlatformMigrationProjection(process.cwd(), true);
+    if (errors.length) throw new Error(errors.join('; '));`);
   if (readFileSync(resolve(cwd, projection), 'utf8') !== projectionBefore) inputs.push(projection);
   const { reports, builds, settings } = carrierPlan(owners, inputs);
   const outputs = [...new Set([...reports.flatMap(owner => owner.reports), ...(settings ? SETTINGS_OUTPUTS : [])])];
@@ -224,23 +278,30 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
       if (!admitted.has(path)) throw new Error(`landing: ${path} needs a reviewed public-output classification in ${PUBLICATION_CATALOGUE}`);
       if (!safeOutput(cwd, path, index)) throw new Error(`landing: ${path} must be a regular non-executable owner output`);
     }
-    run(process.execPath, ['--input-type=module', '-e', `import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; assertCarrierToolchain(process.cwd());`], { env: carrierEnv });
+    const extraBuilds = builds.filter(owner => !preliminary.builds.includes(owner));
+    if (extraBuilds.length) await assertCarrierBuildOutputs(cwd, extraBuilds.map(({ directory }) => directory));
+    if (!preliminary.builds.length) checkToolchain();
     const npmCli = carrierNpmCli();
-    for (const { name } of builds) run(process.execPath, [npmCli, 'run', 'build', `--workspace=${name}`], { env: carrierEnv });
+    const selectedOutputs = new Set(outputs);
+    for (const owner of builds) {
+      const before = reports.includes(owner) ? undefined : await trackedBuildState(cwd, selectedOutputs);
+      run(process.execPath, [npmCli, 'run', 'build', `--workspace=${owner.name}`], { env: carrierEnv });
+      if (!before) continue;
+      const after = await trackedBuildState(cwd, selectedOutputs);
+      const changed = [...new Set([...before.keys(), ...after.keys()])].filter(path => !isDeepStrictEqual(before.get(path), after.get(path)));
+      if (changed.length) throw new Error(`landing: unselected build ${owner.name} changed tracked paths: ${changed.join(', ')}`);
+    }
     for (const { directory, name } of reports) {
       const mergeContext = name === '@openlup/platform' ? [] : [`--landing=${head},${main}`];
       run(process.execPath, [resolve(cwd, directory, 'scripts/api-contract.ts'), '--update', ...mergeContext], { env: carrierEnv });
     }
     if (settings) run(process.execPath, [resolve(cwd, 'scripts/settings-catalogue.ts'), '--write'], { env: carrierEnv });
-    const unselectedReports = builds.filter(owner => !reports.includes(owner)).flatMap(owner => owner.reports);
-    if (unselectedReports.length) {
-      const unexpected = pathsFrom(await git(cwd, '--literal-pathspecs', 'diff', '--name-only', '-z', '--', ...unselectedReports));
-      if (unexpected.length) throw new Error(`landing: unselected reports changed: ${unexpected.join(', ')}`);
-    }
-    if (outputs.some(path => !index.has(path))) {
-      runGenerators("owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));", [...paths, ...outputs].join('\0'));
-    }
   }
+  const tracked = pathsFrom(await git(cwd, 'ls-files', '-z'));
+  const generated = pathsFrom(await git(cwd, 'ls-files', '--others', '--exclude-standard', '-z'))
+    .filter(path => generatedCarrier(path) || outputs.includes(path));
+  const paths = [...new Set([...tracked, ...generated])];
+  runGenerators("owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));", paths.join('\0'));
   const staged = [...new Set([...MIGRATION_REGISTRIES, INVENTORY_PATH, ...paths.filter(generatedCarrier), ...outputs])];
   await git(cwd, '--literal-pathspecs', 'add', '--', ...staged);
   if ((await git(cwd, 'diff', '--name-only', '--diff-filter=U')).trim()) throw new Error('landing: unresolved conflicts remain');

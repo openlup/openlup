@@ -452,8 +452,11 @@ function fastPreflight(now: Date): number {
     if (!clean) return [{ check: "carriers", status: "SKIP", detail: "clean committed checkout required" }];
     const { builds, reports, settings } = carrierPlan(readReportOwners(process.cwd()), fastChanges().map(({ path }) => path));
     if (!builds.length) return [{ check: "carriers", status: "SKIP", detail: "no report or settings inputs changed" }];
+    const buildDirectories = JSON.stringify(builds.map(({ directory }: { directory: string }) => directory));
     const prerequisites = checkCarrier("carrier prerequisites", process.execPath, ["--input-type=module", "-e",
-      `import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; assertCarrierToolchain(process.cwd(), ${JSON.stringify(npmInvocation)});`],
+      `import { assertCarrierBuildOutputs, assertCarrierToolchain } from './scripts/agent-review-landing.mjs';
+        await assertCarrierBuildOutputs(process.cwd(), ${buildDirectories});
+        assertCarrierToolchain(process.cwd(), ${JSON.stringify(npmInvocation)});`],
     "Use the pinned Node and npm and run npm ci in this checkout.");
     const results = [prerequisites];
     if (prerequisites.status === "FAIL") return results;

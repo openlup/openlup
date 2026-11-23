@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { env as processEnvironment } from "node:process";
@@ -104,6 +104,15 @@ it("refuses stale carriers in warm and cold checkouts and names unregistered pub
     expect(get("packages/platform/dist/portability/index.d.ts")).toContain("fixtureFreshness");
     npm("run", "api:update", "--workspace=@openlup/platform"); commit("Regenerate the API report"); fast([]);
 
+    const trackedDist = "packages/platform/dist/fixture-tracked.txt";
+    mkdirSync(path("packages/platform/dist"), { recursive: true });
+    put(trackedDist, "Committed fixture bytes\n");
+    git("add", "-f", "--", trackedDist);
+    commit("Track a file in a directory the cold build would remove");
+    fast(["publication", "carrier prerequisites"], `carrier build would overwrite or remove tracked path ${trackedDist}`,
+      "remove it from the index with git rm --cached");
+    expect(get(trackedDist)).toBe("Committed fixture bytes\n");
+
     reset();
     seed();
     const dataPath = "packages/platform/src/inventory/settings-data.json";
@@ -114,6 +123,16 @@ it("refuses stale carriers in warm and cold checkouts and names unregistered pub
     const settingsCheck = () => fast(["settings-catalogue"], "settings-catalogue: FAIL packages/platform/settings-catalog.json is stale", "node scripts/settings-catalogue.ts --write");
     const warmSettings = settingsCheck();
     cold(); expect(settingsCheck()).toEqual(warmSettings);
+    cold();
+    const record = "node_modules/.package-lock.json";
+    const installedBytes = get(record);
+    const installed = JSON.parse(installedBytes);
+    installed.packages["node_modules/zod"].version = "0.0.0-fixture";
+    put(record, JSON.stringify(installed));
+    fast(["carrier prerequisites"], "installed npm tree does not match package-lock.json (node_modules/zod)", "run npm ci in this checkout");
+    for (const owner of ["core", "platform"]) expect(existsSync(path(`packages/${owner}/dist`))).toBe(false);
+    put(record, installedBytes);
+    seed();
     run(process.execPath, "scripts/settings-catalogue.ts", "--write"); commit("Regenerate the settings carriers"); fast([]);
 
     reset();
