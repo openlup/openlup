@@ -243,6 +243,50 @@ async function grantAlongsideRestore(target: Installation, restore: () => Return
   await target.state("dormant");
 }
 
+async function refusesConcurrentRoutineChange(target: Installation) {
+  const ledger = await target.ledger(), acl = await target.acl();
+  const database = "transfer_absent_dormant";
+  const routine = checkoutOwnerRoutines[0];
+  const writer = await target.owner.connect();
+  const originalQuery = Client.prototype.query;
+  let committed = false, attemptedGrant = false;
+  const query = vi.spyOn(Client.prototype, "query").mockImplementation(function (this: Client, ...args: unknown[]) {
+    const sql = args[0];
+    if (typeof sql === "string" && sql.startsWith("DO $$\nDECLARE\n  checkout_login")) attemptedGrant = true;
+    if (sql !== "LOCK TABLE ONLY public.platform_schema_migrations IN SHARE ROW EXCLUSIVE MODE") {
+      return Reflect.apply(originalQuery, this, args);
+    }
+    return (async () => {
+      const isolation = await Reflect.apply(originalQuery, this, [`SELECT
+        current_setting('default_transaction_isolation') AS session_default,
+        current_setting('transaction_isolation') AS active`]);
+      expect(isolation.rows).toEqual([{ session_default: "repeatable read", active: "read committed" }]);
+      // The runner has read ledger identity. Commit on the competing connection
+      // just before it acquires the ledger lock and checks the live definition.
+      await writer.query("COMMIT");
+      committed = true;
+      return Reflect.apply(originalQuery, this, args);
+    })();
+  } as typeof originalQuery);
+  try {
+    await target.bootstrap.query(`ALTER DATABASE ${database} SET default_transaction_isolation = 'repeatable read'`);
+    await writer.query("BEGIN; SET LOCAL statement_timeout = '15s'; SET LOCAL idle_in_transaction_session_timeout = '15s'");
+    await Reflect.apply(originalQuery, writer, ["LOCK TABLE ONLY public.platform_schema_migrations IN SHARE ROW EXCLUSIVE MODE"]);
+    await writer.query(`ALTER FUNCTION ${routine} SECURITY INVOKER`);
+    await expect(target.grant()).rejects.toThrow("checkout_owner_predecessor_unverified");
+    expect(committed).toBe(true);
+    expect(attemptedGrant).toBe(false);
+    expect(await target.ledger()).toEqual(ledger);
+    expect(await target.acl()).toEqual(acl);
+  } finally {
+    query.mockRestore();
+    if (!committed) await writer.query("ROLLBACK").catch(() => {});
+    writer.release(!committed);
+    await target.bootstrap.query(`ALTER DATABASE ${database} RESET default_transaction_isolation`);
+    if (committed) await target.owner.query(`ALTER FUNCTION ${routine} SECURITY DEFINER`);
+  }
+}
+
 const clients = (host: Installation) => host.owner.query("SELECT id,email FROM public.clients ORDER BY id").then(result => result.rows);
 const subscriptions = (host: Installation) => host.owner.query(`SELECT id,client_id,cadence_days,configured_offer_version
   FROM public.subscriptions ORDER BY id`).then(result => result.rows);
@@ -273,7 +317,7 @@ async function verifyLaterDefinition(source: Installation, root: string, manifes
   expect(await source.ledger()).toEqual(applied);
 }
 
-it.each(profiles)("restores the same nonempty graph across all checkout states on %s", async profile => {
+it.each(profiles)("restores the same nonempty checkout graph on %s", async profile => {
   await withGrantArtifact(async (pkg, root, manifest) => {
     const selection = select(profile);
     const expected = selectPlatformMigrationManifest(manifest, selection.generation, selection.generation === "qualified-admin"
@@ -306,8 +350,12 @@ it.each(profiles)("restores the same nonempty graph across all checkout states o
                 public.customer_support_search_digits('1') AS digits`)).rows).toEqual([{ value: "a", digits: "1" }]);
             } finally { await checkout.end(); }
           }
+          // All profiles observe every source state above. One absent-to-granted
+          // restore per additional profile exercises its login binding, checkout
+          // provisioning, partial-grant refusal and successful restore/replay.
+          if (profile !== "bootstrap" && from !== "absent") continue;
           const packet = await capture(source, "checkout-source", sha256(catalog));
-          for (const to of states) {
+          for (const to of profile === "bootstrap" ? states : ["granted"] as const) {
             const target = await targetFixture.clone(`transfer_${from}_${to}`);
             try {
               await target.state(to);
@@ -357,6 +405,7 @@ it.each(profiles)("restores the same nonempty graph across all checkout states o
                 await target.owner.query("REVOKE SELECT (id) ON public.clients FROM anon");
               }
               if (profile === "bootstrap" && from === "absent" && to === "dormant") {
+                await refusesConcurrentRoutineChange(target);
                 await grantAlongsideRestore(target, () => restoreConnectedNativeStore(input));
               } else expect((await restoreConnectedNativeStore(input)).replayed).toBe(false);
               expect(await clients(target)).toEqual(sourceClients);
