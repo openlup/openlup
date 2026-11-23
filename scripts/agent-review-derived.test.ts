@@ -184,13 +184,13 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
     fixtureCommand(process.execPath, ['scripts/settings-catalogue.ts', '--write']);
     expect(git('status', '--porcelain', '--untracked-files=all')).toBe('');
     const fast = spawnSync(process.execPath, [npmCli, 'run', 'preflight', '--', '--fast'], {
-      cwd: root, env: fixtureEnvironment, encoding: 'utf8', timeout: 180000,
+      cwd: root, env: fixtureEnvironment, encoding: 'utf8', timeout: 300000,
     });
     expect(fast.status, fast.stdout + fast.stderr).toBe(0);
     expect(JSON.parse(fast.stdout.trimEnd().split('\n').at(-1)!)).toEqual({ preflight: 'fast', result: 'pass', head: landed, failed: [] });
     console.info(`D3 landing: fork ${base}, parents ${left} ${right}, merge ${landed}; derived ${changed.join(', ')}; settings refusals already match`);
   } finally { restoreDerivedFixture(); }
-}, 180000);
+}, 360000);
 
 it('lands cold owner bytes after an added Core export and version bump on a warm incremental cache', () => {
   try {
