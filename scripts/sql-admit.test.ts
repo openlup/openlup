@@ -655,13 +655,13 @@ describe("sql:admit", () => {
   }, 20_000);
 
   // Measured 5.2 s on a laptop at load average 5; the bound is four times that.
-  it("refuses admission code that differs from the base unless --allow-stale-rules is given", () => {
+  it("runs trusted base admission rules when the checkout differs from base, and refuses only when base lacks runnable rules unless --allow-stale-rules is given", () => {
     const f = fixture();
     const linear = cli(f.root, ["--base", f.base, "--head", f.base]);
     expect(linear.status).toBe(2);
     expect(linear.stdout).toBe("");
     expect(linear.stderr).toContain("--allow-stale-rules");
-    // A base that carries this checkout's exact admission code runs without a warning.
+    // A base that carries this checkout's exact admission code runs without a warning or delegation.
     const rules = admissionRuleFiles();
     expect(rules).toEqual(expect.arrayContaining(["scripts/agent-review-queue.mjs", "scripts/oss-published-tree-check.ts", "scripts/oss-source-release-contract.ts",
       "scripts/platform-migration-manifest.ts", "scripts/reviewed-platform-forward.ts", "scripts/sql-admit.ts"]));
@@ -669,18 +669,35 @@ describe("sql:admit", () => {
     const current = f.commit();
     f.git("switch", "-q", "-c", "feature"); stageNativeForward(f); const head = f.commit();
     const fresh = cli(f.root, ["--base", current, "--head", head]);
-    expect(fresh.stderr).toBe(""); expect(fresh.status).toBe(0); expect(fresh.stdout).not.toContain("WARNING");
-    // Main then changes one admission file: the checkout is behind, so its verdict may differ from the hosted one.
+    expect(fresh.stderr).toBe(""); expect(fresh.status).toBe(0); expect(fresh.stdout).not.toContain("WARNING"); expect(fresh.stdout).not.toContain("running trusted rules");
+    // Main then changes one admission file without changing verdicts: sql:admit automatically extracts and runs main's trusted rules.
     f.git("switch", "-q", "main"); f.put("scripts/platform-migration-manifest.ts", `${readFileSync("scripts/platform-migration-manifest.ts", "utf8")}// Main moved.\n`);
     const moved = f.commit();
-    const refused = cli(f.root, ["--base", moved, "--head", head]);
-    expect(refused.status).toBe(2); expect(refused.stdout).toBe("");
-    expect(refused.stderr).toContain("differs from");
-    expect(refused.stderr).toContain("in scripts/platform-migration-manifest.ts; hosted CI and the queue would judge with the base's code");
-    const allowed = cli(f.root, ["--base", moved, "--head", head, STALE]);
+    const delegatedPass = cli(f.root, ["--base", moved, "--head", head]);
+    expect(delegatedPass.stderr).toBe(""); expect(delegatedPass.status).toBe(0);
+    expect(delegatedPass.stdout).toContain(`checkout admission code differs from ${moved} in scripts/platform-migration-manifest.ts; running trusted rules from ${moved}`);
+    expect(delegatedPass.stdout).toContain(`PASS     ${nativePath} [self-check forward admission]`);
+    expect(delegatedPass.stdout).not.toContain("WARNING");
+    // Main then adds a stricter refusal rule: delegation must execute main's stricter rule (exit 1), while --allow-stale-rules runs the local checkout's rules (exit 0 + WARNING).
+    const baseAdmitSource = readFileSync("scripts/sql-admit.ts", "utf8");
+    const stricter = baseAdmitSource.replace(
+      "attempt(\"migration history\", \"self-check, base..merge\", () => assertAppendOnlyMigrationHistory(root, base, merge));",
+      "attempt(\"migration history\", \"self-check, base..merge\", () => { throw new Error(\"synthetic_base_stricter_rule\"); });",
+    );
+    expect(stricter).not.toBe(baseAdmitSource);
+    f.put("scripts/sql-admit.ts", stricter);
+    const stricterBase = f.commit();
+    const delegatedRefusal = cli(f.root, ["--base", stricterBase, "--head", head]);
+    expect(delegatedRefusal.stderr).toBe(""); expect(delegatedRefusal.status).toBe(1);
+    expect(delegatedRefusal.stdout).toContain(`running trusted rules from ${stricterBase}`);
+    expect(delegatedRefusal.stdout).toContain("REFUSED  migration history [self-check, base..merge]: synthetic_base_stricter_rule");
+    const allowed = cli(f.root, ["--base", stricterBase, "--head", head, STALE]);
     expect(allowed.stderr).toBe(""); expect(allowed.status).toBe(0);
-    expect(allowed.stdout).toContain(`WARNING  admission code differs from ${moved} in scripts/platform-migration-manifest.ts;`);
-  }, 21_000);
+    expect(allowed.stdout).toContain(`WARNING  admission code differs from ${stricterBase} in scripts/platform-migration-manifest.ts, scripts/sql-admit.ts;`);
+    // Guard against recursive delegation if already running in delegated mode.
+    const guard = cli(f.root, ["--base", moved, "--head", head], { OPENLUP_SQL_ADMIT_DELEGATED: "1" });
+    expect(guard.status).toBe(2); expect(guard.stdout).toBe(""); expect(guard.stderr).toContain("delegated execution still found differing admission code"); expect(guard.stderr).toContain("--allow-stale-rules");
+  }, 30_000);
 
   it("refuses uncommitted new forwards until committed, unless --head is explicit", () => {
     const f = fixture(), path = "supabase/migrations/20271106100000_drop.sql";

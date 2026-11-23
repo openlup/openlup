@@ -11,9 +11,11 @@
 // Every Git call runs through the self-check's
 // helper, whose closed environment drops inherited repository, index and object redirections.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, posix, relative, resolve } from "node:path";
+import { env } from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { needsForwardApproval } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate } from "./agent-review-session.mjs";
@@ -26,12 +28,15 @@ export const SQL_ADMIT_USAGE = "usage: npm run sql:admit -- [--base <rev>] [--he
   + "Checks committed revisions only; commit first; a local commit can be amended.\n"
   + "  --base               comparison base; default: the fetched origin/main (run git fetch origin first)\n"
   + "  --head               candidate commit; default: HEAD (refuses uncommitted changes unless --head is explicit)\n"
-  + "  --allow-stale-rules  run even when this checkout's admission code differs from the base; prints a warning";
+  + "  --allow-stale-rules  run this checkout's admission code even when it differs from the base; prints a warning (by default, trusted base rules are extracted and run instead)";
 const RAILS = ["db/platform/migrations/", "supabase/migrations/"];
 const DOCS = "docs/platform/DATA_AND_MIGRATIONS.md";
 const IDENTITY = ["-c", "user.name=sql-admit", "-c", "user.email=sql-admit@example.invalid"];
 const CODE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ENTRY = "scripts/sql-admit.ts";
+const IMPORT_SPECIFIER = /(?:^|[\s;])(?:import|export)\s[^;]*?\sfrom\s*["'](\.{1,2}\/[^"']+)["']|(?:^|[\s;])import\s*["'](\.{1,2}\/[^"']+)["']|import\(\s*["'](\.{1,2}\/[^"']+)["']\s*\)/gmu;
+const DELEGATED_ENV = "OPENLUP_SQL_ADMIT_DELEGATED";
+const BASE_AUTHORITY_PREFIX = "db/platform/migrations/q2_";
 
 /** Known refusals and the capability each needs. The first match wins; unknown messages keep the generic hint. */
 export const CAPABILITY_HINTS: readonly (readonly [RegExp, string])[] = [
@@ -83,12 +88,11 @@ function commit(cwd: string, revision: string): string {
 
 /** The repository files this command loads: its relative-import closure, which holds every check it runs. */
 export function admissionRuleFiles(): string[] {
-  const specifier = /(?:^|[\s;])(?:import|export)\s[^;]*?\sfrom\s*["'](\.{1,2}\/[^"']+)["']|(?:^|[\s;])import\s*["'](\.{1,2}\/[^"']+)["']|import\(\s*["'](\.{1,2}\/[^"']+)["']\s*\)/gmu;
   const seen = new Set<string>(), pending = [join(CODE_ROOT, ENTRY)];
   for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
     if (seen.has(file)) continue;
     seen.add(file);
-    for (const match of readFileSync(file, "utf8").matchAll(specifier)) {
+    for (const match of readFileSync(file, "utf8").matchAll(IMPORT_SPECIFIER)) {
       const target = join(dirname(file), match[1] ?? match[2] ?? match[3]!);
       // A real import always resolves, because this process loaded it; text that only looks like one is skipped.
       const resolved = [target, target.replace(/\.js$/u, ".ts")].find((candidate) => existsSync(candidate) && statSync(candidate).isFile());
@@ -105,6 +109,83 @@ function staleRuleFiles(cwd: string, base: string): string[] {
   const atBase = new Map(git(cwd, ["ls-tree", "-r", "-z", "--full-tree", base, "--", ...files]).split("\0").filter(Boolean)
     .map((row) => [row.slice(row.indexOf("\t") + 1), row.slice(0, row.indexOf("\t")).split(" ")[2]]));
   return files.filter((path, index) => atBase.get(path) !== local[index]);
+}
+
+function readBaseRuleBlobs(cwd: string, base: string): Map<string, Buffer> | null {
+  const blobs = new Map<string, string>();
+  for (const row of git(cwd, ["ls-tree", "-r", "-z", "--full-tree", base]).split("\0").filter(Boolean)) {
+    const tab = row.indexOf("\t");
+    if (tab < 0) continue;
+    const [mode, type, oid] = row.slice(0, tab).split(" ");
+    if (type !== "blob" || (mode !== "100644" && mode !== "100755") || !oid) continue;
+    blobs.set(row.slice(tab + 1), oid);
+  }
+  if (!blobs.has(ENTRY)) return null;
+  const extracted = new Map<string, Buffer>();
+  const pending = [ENTRY];
+  for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
+    if (extracted.has(file)) continue;
+    const oid = blobs.get(file);
+    if (!oid) return null;
+    const bytes = gitBytes(cwd, ["cat-file", "blob", oid]);
+    extracted.set(file, bytes);
+    for (const match of bytes.toString("utf8").matchAll(IMPORT_SPECIFIER)) {
+      const specifier = match[1] ?? match[2] ?? match[3]!;
+      const target = posix.normalize(posix.join(posix.dirname(file), specifier));
+      if (target === ".." || target.startsWith("../") || target.startsWith("/")) continue;
+      const resolved = [target, target.replace(/\.js$/u, ".ts")].find((candidate) => blobs.has(candidate));
+      if (resolved !== undefined) pending.push(resolved);
+    }
+  }
+  // Include hash-pinned qualified authority SQL read relative to import.meta.url on base.
+  for (const [path, oid] of blobs) {
+    if ((path.startsWith(BASE_AUTHORITY_PREFIX) && path.endsWith(".sql")) || path === "package.json") {
+      if (!extracted.has(path)) extracted.set(path, gitBytes(cwd, ["cat-file", "blob", oid]));
+    }
+  }
+  return extracted;
+}
+
+function runTrustedBaseRules(
+  cwd: string,
+  scratch: string,
+  base: string,
+  head: string,
+  baseFiles: Map<string, Buffer>,
+  log: (line: string) => void,
+  fail: (line: string) => void,
+): number {
+  const rulesRoot = join(scratch, "base-rules");
+  mkdirSync(rulesRoot, { recursive: true });
+  for (const [relPath, bytes] of baseFiles) {
+    const destination = join(rulesRoot, relPath);
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, bytes);
+  }
+  if (!baseFiles.has("package.json")) {
+    writeFileSync(join(rulesRoot, "package.json"), "{\"type\":\"module\"}\n");
+  }
+  const realRulesRoot = realpathSync(rulesRoot);
+  const result = spawnSync(
+    process.execPath,
+    ["--experimental-strip-types", join(realRulesRoot, ENTRY), "--base", base, "--head", head],
+    { cwd, encoding: "utf8", env: { ...env, [DELEGATED_ENV]: "1" } },
+  );
+  if (result.stdout) {
+    for (const line of result.stdout.replace(/\n$/u, "").split("\n")) log(line);
+  }
+  if (result.stderr) {
+    for (const line of result.stderr.replace(/\n$/u, "").split("\n")) fail(line);
+  }
+  if (result.error) {
+    fail(`sql:admit: failed to execute trusted base rules: ${result.error.message}`);
+    return 2;
+  }
+  if ((result.status === 0 || result.status === 1) && !result.stdout.trim()) {
+    fail("sql:admit: trusted base rules produced no verdict output; merge the base branch first or pass --allow-stale-rules to run local rules.");
+    return 2;
+  }
+  return result.status ?? 2;
 }
 
 function parseArguments(argv: readonly string[]): Options | "help" {
@@ -181,15 +262,35 @@ export async function sqlAdmit(cwd: string, argv: readonly string[], log: (line:
     base = commit(cwd, options.base); head = commit(cwd, options.head ?? "HEAD"); stale = staleRuleFiles(cwd, base);
   }
   catch (error) { fail(`sql:admit: ${(error as Error).message}`); return 2; }
-  if (stale.length > 0 && !options.allowStaleRules) {
-    fail(`sql:admit: the admission code this checkout runs differs from ${options.base} in ${stale.join(", ")}; hosted CI and the queue would judge with the base's code. Merge ${options.base} first, or pass --allow-stale-rules to run anyway.`);
-    return 2;
-  }
   const scratch = mkdtempSync(join(temporaryParent, "openlup-sql-admit-"));
   const cleanup = () => rmSync(scratch, { recursive: true, force: true });
   const interrupted = (signal: NodeJS.Signals) => { cleanup(); process.exit(signal === "SIGINT" ? 130 : 143); };
   process.once("SIGINT", interrupted).once("SIGTERM", interrupted);
   try {
+    if (stale.length > 0 && !options.allowStaleRules) {
+      if (env[DELEGATED_ENV] === "1") {
+        fail(`sql:admit: delegated execution still found differing admission code in ${stale.join(", ")}; merge the base branch first or pass --allow-stale-rules to run local rules.`);
+        return 2;
+      }
+      let baseFiles: Map<string, Buffer> | null;
+      try {
+        baseFiles = readBaseRuleBlobs(cwd, base);
+      } catch (error) {
+        fail(`sql:admit: ${(error as Error).message}`);
+        return 2;
+      }
+      if (baseFiles === null) {
+        fail(`sql:admit: checkout admission code differs from base in ${stale.join(", ")}, and base lacks runnable admission rules; merge the base branch first or pass --allow-stale-rules to run local rules.`);
+        return 2;
+      }
+      log(`sql:admit: checkout admission code differs from ${options.base} in ${stale.join(", ")}; running trusted rules from ${base}`);
+      try {
+        return runTrustedBaseRules(cwd, scratch, base, head, baseFiles, log, fail);
+      } catch (error) {
+        fail(`sql:admit: ${(error as Error).message}`);
+        return 2;
+      }
+    }
     let range: Range;
     try { range = prepareRange(cwd, scratch, base, head); }
     catch (error) { fail(`sql:admit: ${(error as Error).message}`); return 2; }
@@ -209,7 +310,17 @@ export async function sqlAdmit(cwd: string, argv: readonly string[], log: (line:
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+function isDirectEntrypoint(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(resolve(entry))).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectEntrypoint()) {
   sqlAdmit(process.cwd(), process.argv.slice(2), (line) => process.stdout.write(`${line}\n`), (line) => process.stderr.write(`${line}\n`))
     .then((code) => { process.exitCode = code; })
     .catch((error: unknown) => { process.stderr.write(`sql:admit: ${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 2; });
