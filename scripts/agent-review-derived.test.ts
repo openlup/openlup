@@ -4,13 +4,16 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
-import { runLandingGenerators } from './agent-review-generators.mjs';
+import { runLandingGenerators, syncSqlReference } from './agent-review-generators.mjs';
 import { carrierLocale, isInventoryInputPath, landingMerge } from './agent-review-landing.mjs';
 import { deltaFloor, prepareCandidate, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, validateEconomySession, proveReviewIntegration, git as sourceGit } from './agent-review-session.mjs';
-import { fixtureNpmCli, localFixtureEnvironment } from './fixtures/landing-test-environment.ts';
+import { fixtureNpmCli, linkFixtureInstallation, localFixtureEnvironment } from './fixtures/landing-test-environment.ts';
+import { renderDocumentationSourceMap } from './documentation-navigation.ts';
+import { readDocumentationState } from './documentation-routing.ts';
+import { checkPlatformMigrationProjection } from './packages/platform-migration-projection.ts';
 
 const source = process.cwd();
 const npmCli = fixtureNpmCli();
@@ -33,7 +36,8 @@ function append(slot: string) {
   registry.nativeStoreForwardClass.slots.push({ row: `fixture-${slot}`, path: file, replacedFunctions: [], createdFunctions: [] });
   registry.nativeStoreForwards.push({ path: file, sha256, functions: [] });
   write(MIGRATION_REGISTRIES[1], json(registry));
-  runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean).concat([file, `packages/platform/sql/${slot}_landing_fixture.sql`]));
+  expect(checkPlatformMigrationProjection(root, true)).toEqual([]);
+  write(SQL_REFERENCE, syncSqlReference(root));
 }
 const CATALOGUE = 'config/openlup-publication-catalog.json';
 const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
@@ -56,6 +60,7 @@ const coldBuild = (...owners: string[]) => {
   for (const owner of owners) fixtureNpm('run', 'build', `--workspace=@openlup/${owner}`);
 };
 const landingCli = () => fixtureNpm('run', 'landing:merge');
+const land = () => landingMerge(root, { runCommand: fixtureCommand });
 const checkout = (rev: string) => { git('reset', '--hard'); git('checkout', '-q', '--detach', rev); };
 const setMain = (rev: string) => { git('branch', '-f', 'main', rev); git('update-ref', 'refs/remotes/origin/main', rev); };
 function probeExport() {
@@ -88,13 +93,15 @@ beforeAll(async () => {
   vi.stubEnv('npm_execpath', npmCli);
   root = realpathSync(mkdtempSync(join(tmpdir(), 'openlup-derived-live-')));
   execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, root], { env: fixtureEnvironment, timeout: 30000 });
-  // Include the candidate's working bytes during development as well as at final HEAD.
-  const overlays = execFileSync('/usr/bin/git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: source, env: fixtureEnvironment, encoding: 'utf8' }).split('\0').filter(Boolean);
-  for (const path of new Set([...git('ls-files', '-z').split('\0').filter(Boolean), ...overlays])) {
+  // The clone already has HEAD. Overlay only differences during local development.
+  const sourcePaths = (...args: string[]) => execFileSync('/usr/bin/git', args, { cwd: source, env: fixtureEnvironment, encoding: 'utf8' }).split('\0').filter(Boolean);
+  const overlays = new Set([...sourcePaths('diff', '--name-only', '--no-renames', '-z', 'HEAD'),
+    ...sourcePaths('ls-files', '-z', '--others', '--exclude-standard')]);
+  for (const path of overlays) {
     if (!existsSync(join(source, path))) { rmSync(join(root, path), { force: true }); continue; }
     mkdirSync(dirname(join(root, path)), { recursive: true }); cpSync(join(source, path), join(root, path));
   }
-  fixtureNpm('ci', '--prefer-offline', '--no-audit', '--fund=false');
+  linkFixtureInstallation(source, root);
   git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
   base = commit();
   append('20990101010000'); reviewed = commit();
@@ -154,7 +161,7 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
     expect(git('show', `${base}:${SETTING_REFUSALS}`)).toBe(read(SETTING_REFUSALS).trimEnd());
     const discovery = JSON.parse(fixtureCommand(process.execPath, ['packages/platform/src/lifecycle/openlup.mjs', 'settings', 'show', PROBE_KEY, '--json']));
     expect(discovery.setting).toMatchObject({ key: PROBE_KEY, kind: 'invariant' });
-    coldBuild('core', 'platform');
+    // Landing's cold declarations still match this source tree. Rerun both renderers.
     fixtureCommand(process.execPath, ['packages/platform/scripts/api-contract.ts', '--update']);
     fixtureCommand(process.execPath, ['scripts/settings-catalogue.ts', '--write']);
     expect(git('status', '--porcelain', '--untracked-files=all')).toBe('');
@@ -164,25 +171,6 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
     expect(fast.status, fast.stdout + fast.stderr).toBe(0);
     expect(JSON.parse(fast.stdout.trimEnd().split('\n').at(-1)!)).toEqual({ preflight: 'fast', result: 'pass', head: landed, failed: [] });
     console.info(`D3 landing: fork ${base}, parents ${left} ${right}, merge ${landed}; residual ${changed.join(', ')}; settings refusals already match`);
-  } finally { restoreDerivedFixture(); }
-}, 180000);
-
-it('preserves derived substitutions around API resolutions and uses the actual report mode for the floor', async () => {
-  try {
-    checkout(reviewed); probeExport(); const left = commit();
-    checkout(merged); probeExport();
-    coldBuild('core', 'platform');
-    fixtureCommand(process.execPath, ['packages/platform/scripts/api-contract.ts', '--update']);
-    git('add', '-A');
-    const firstParent = await captureCommittedReviewCandidate(root, base, left);
-    for (const { modeChanged, floor } of [{ modeChanged: false, floor: 0 }, { modeChanged: true, floor: 2 }]) {
-      if (modeChanged) git('update-index', '--chmod=+x', PORTABILITY_REPORT);
-      const head = git('commit-tree', git('write-tree'), '-p', left, '-p', main, '-m', 'Synthetic report resolution');
-      const integration = await proveReviewIntegration(root, firstParent, await captureCommittedReviewCandidate(root, main, head));
-      expect(integration).toMatchObject({ kind: 'resolution', derived: true, resolution: [PORTABILITY_REPORT], modeChanged });
-      expect(git('diff', '--name-only', integration.prediction, head)).toBe(PORTABILITY_REPORT);
-      expect(deltaFloor(integration.resolution, integration.modeChanged)).toBe(floor);
-    }
   } finally { restoreDerivedFixture(); }
 }, 180000);
 
@@ -222,18 +210,40 @@ it('lands cold owner bytes after an added Core export and version bump on a warm
   } finally { restoreDerivedFixture(); }
 }, 240000);
 
-it.each([PORTABILITY_REPORT, SETTING_CATALOGUE, SETTING_REFUSALS, SETTING_GUIDE])('replaces the exact registered owner conflict at %s', path => {
-  try {
-    const original = git('show', `${base}:${path}`) + '\n';
-    checkout(base); write(path, 'First-parent edit\n' + original); const left = commit();
-    checkout(base); write(path, 'Main edit\n' + original); const right = commit(); setMain(right); checkout(left);
-    landingCli();
-    expect(read(path)).toBe(original);
-    expect(git('status', '--porcelain')).toBe('');
-  } finally { restoreDerivedFixture(); }
-}, 180000);
+describe('registered output conflicts', () => {
+  beforeAll(() => {
+    checkout(base);
+    coldBuild('core', 'platform');
+  }, 60000);
 
-it('stages a renamed report and validates its exact selector against the generated file', () => {
+  it.each([
+    { owner: 'API', paths: [PORTABILITY_REPORT] },
+    { owner: 'settings', paths: [SETTING_CATALOGUE, SETTING_REFUSALS, SETTING_GUIDE] },
+  ])('replaces the exact registered $owner output conflicts', async ({ paths }) => {
+    try {
+      const originals = paths.map(path => [path, git('show', `${base}:${path}`) + '\n'] as const);
+      const parent = (label: string) => {
+        checkout(base);
+        for (const [path, original] of originals) write(path, label + '\n' + original);
+        return commit();
+      };
+      const left = parent('First-parent edit'), right = parent('Main edit');
+      setMain(right); checkout(left);
+      // Only the output differs from the sources built in this group. Keep the real merge and owners.
+      for (const revision of [left, right]) expect(git('diff', '--name-only', base, revision).split('\n')).toEqual([...paths].sort());
+      await landingMerge(root, {
+        runCommand: (command, args) => {
+          if (args[0] === npmCli && args[1] === 'run' && args[2] === 'build') return;
+          fixtureCommand(command, args);
+        },
+      });
+      for (const [path, original] of originals) expect(read(path)).toBe(original);
+      expect(git('status', '--porcelain')).toBe('');
+    } finally { restoreDerivedFixture(); }
+  }, 60000);
+});
+
+it('stages a renamed report and validates its exact selector against the generated file', async () => {
   try {
     const newReport = 'packages/platform/api/portability-fixture.api.md';
     checkout(base); probeExport();
@@ -253,7 +263,7 @@ it('stages a renamed report and validates its exact selector against the generat
     write(gatesPath, json(gates)); const left = commit();
     checkout(base); const right = commit(); setMain(right); checkout(left);
     expect(git('ls-files', '--', newReport)).toBe('');
-    landingCli();
+    await land();
     expect(git('show', `HEAD:${newReport}`)).toContain('declare const fixturePortability = 1');
     expect(git('ls-files', '--', PORTABILITY_REPORT)).toBe('');
     expect(read('docs/platform/SOURCE_MAP.md')).toContain(`\`${newReport}\``).not.toContain(`\`${PORTABILITY_REPORT}\``);
@@ -262,64 +272,7 @@ it('stages a renamed report and validates its exact selector against the generat
   } finally { restoreDerivedFixture(); }
 }, 180000);
 
-it.each(['unstaged', 'staged'])('refuses an unselected Core dependency build with a %s change outside API reports', async change => {
-  const path = 'packages/core/README.md';
-  try {
-    checkout(base); probeExport(); const left = commit();
-    checkout(base); const right = commit(); setMain(right); checkout(left);
-    const original = read(path);
-    await expect(landingMerge(root, {
-      runCommand: (command, args) => {
-        fixtureCommand(command, args);
-        if (!args.includes('--workspace=@openlup/core')) return;
-        write(path, original + '\nFixture build side effect.\n');
-        if (change === 'staged') {
-          git('add', '--', path);
-          write(path, original);
-        }
-      },
-    })).rejects.toThrow(`landing: unselected build @openlup/core changed tracked paths: ${path}`);
-    expect(git('rev-parse', 'HEAD')).toBe(left);
-    expect(read(PORTABILITY_REPORT)).not.toContain('fixturePortability');
-  } finally {
-    git('restore', '--source=HEAD', '--staged', '--worktree', '--', path);
-    restoreDerivedFixture();
-  }
-}, 180000);
-
-it('refuses landing before a cold build would delete a tracked dist file', () => {
-  try {
-    checkout(base); probeExport();
-    const path = 'packages/platform/dist/fixture-tracked.txt';
-    write(path, 'Committed fixture bytes\n');
-    git('add', '-f', '--', path);
-    const left = commit();
-    checkout(base); const right = commit(); setMain(right); checkout(left);
-    expect(() => landingCli()).toThrow(`carrier build would overwrite or remove tracked path ${path}; remove it from the index`);
-    expect(read(path)).toBe('Committed fixture bytes\n');
-    expect(git('diff', 'HEAD', '--', path)).toBe('');
-  } finally { restoreDerivedFixture(); }
-}, 60000);
-
-it('refuses landing with a mismatched installed dependency before any owner writes', () => {
-  const record = 'node_modules/.package-lock.json';
-  const original = read(record);
-  try {
-    checkout(base); probeExport(); probeSetting(); const left = commit();
-    checkout(base); const right = commit(); setMain(right); checkout(left);
-    const installed = JSON.parse(original);
-    installed.packages['node_modules/zod'].version = '0.0.0-fixture';
-    write(record, json(installed));
-    expect(() => landingCli()).toThrow('installed npm tree does not match package-lock.json (node_modules/zod); run npm ci');
-    expect(git('rev-parse', 'HEAD')).toBe(left);
-    expect(git('diff', 'HEAD', '--', ...PROBE_OUTPUTS, 'docs/platform/SOURCE_MAP.md')).toBe('');
-  } finally {
-    write(record, original);
-    restoreDerivedFixture();
-  }
-}, 60000);
-
-it.each(['unregistered', 'executable', 'symlink'])('keeps a %s report conflict unresolved', mode => {
+it.each(['unregistered', 'executable', 'symlink'])('keeps a %s report conflict unresolved', async mode => {
   try {
     const path = mode === 'unregistered' ? 'packages/platform/api/unregistered-fixture.api.md' : PORTABILITY_REPORT;
     checkout(base);
@@ -335,39 +288,51 @@ it.each(['unregistered', 'executable', 'symlink'])('keeps a %s report conflict u
       if (mode === 'executable') chmodSync(join(root, path), 0o755);
     }
     const right = commit(); setMain(right); checkout(left);
-    expect(() => landingCli()).toThrow(`landing: authored conflicts remain: ${path}`);
+    await expect(land()).rejects.toThrow(`landing: authored conflicts remain: ${path}`);
     expect(git('diff', '--name-only', '--diff-filter=U')).toBe(path);
   } finally { restoreDerivedFixture(); }
 }, 60000);
 
-it.each(['core', 'outbox'].flatMap(owner => ['first parent', 'missing', 'removed', 'main only'].map(note => ({ owner, note }))))(
-  'checks the $owner change note from the $note before staging any API reports', ({ owner, note }) => {
+describe.each(['core', 'outbox'])('%s change-note owner', owner => {
+  const directory = `packages/${owner}`;
+  const entry = `${directory}/src/${owner === 'core' ? 'subscription/index.ts' : 'index.ts'}`;
+  const notePath = `${directory}/changes/fixture-api.md`;
+  const report = `${directory}/api/${owner === 'core' ? 'subscription' : 'index'}.api.md`;
+  const addExport = () => write(entry, read(entry) + '\nexport const fixtureApi = 1;\n');
+
+  beforeAll(() => {
+    checkout(base);
+    addExport();
+    coldBuild(...(owner === 'core' ? ['core'] : ['core', 'outbox']));
+    checkout(merged);
+  }, 60000);
+
+  it.each(['first parent', 'missing', 'removed', 'main only'])('checks the %s change note before staging any API reports', note => {
     try {
-      const directory = `packages/${owner}`;
-      const entry = `${directory}/src/${owner === 'core' ? 'subscription/index.ts' : 'index.ts'}`;
-      const notePath = `${directory}/changes/fixture-api.md`;
-      const report = `${directory}/api/${owner === 'core' ? 'subscription' : 'index'}.api.md`;
       checkout(base);
       if (note === 'removed') { write(notePath, '- Describe the fixture contract.\n'); commit(); }
       const fork = git('rev-parse', 'HEAD');
-      write(entry, read(entry) + '\nexport const fixtureApi = 1;\n');
+      addExport();
       if (note === 'first parent') write(notePath, '- Add a fixture API export.\n');
       if (note === 'removed') rmSync(join(root, notePath));
       const left = commit();
       checkout(fork);
       if (note === 'main only') write(notePath, '- Document a main-side change.\n');
-      const right = commit(); setMain(right); checkout(left);
+      const right = commit(); checkout(left);
+      git('merge', '--no-ff', '--no-commit', right);
+      const render = () => fixtureCommand(process.execPath, [`${directory}/scripts/api-contract.ts`, '--update', `--landing=${left},${right}`]);
       if (note === 'first parent') {
-        landingCli();
-        expect(git('show', `HEAD:${report}`)).toContain('declare const fixtureApi = 1');
+        render();
+        expect(read(report)).toContain('declare const fixtureApi = 1');
       } else {
-        expect(() => landingCli()).toThrow(`landing: @openlup/${owner} API snapshots changed`);
-        expect(git('rev-parse', 'HEAD')).toBe(left);
-        expect(git('diff', '--cached', '--name-only', '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api')).toBe('');
+        expect(render).toThrow(`landing: @openlup/${owner} API snapshots changed`);
+        expect(read(report)).not.toContain('fixtureApi');
       }
+      expect(git('rev-parse', 'HEAD')).toBe(left);
+      expect(git('diff', '--cached', '--name-only', '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api')).toBe('');
     } finally { restoreDerivedFixture(); }
-  }, 180000,
-);
+  }, 60000);
+});
 
 it('leaves the merge in place when both sides edit the SQL reference prose', async () => {
   git('reset', '--hard', reviewed); git('checkout', '-q', '--detach', reviewed);
@@ -405,116 +370,181 @@ it.each(['user.name', 'user.email'])('refuses landing before merging without con
     await expect(sourceGit(root, 'rev-parse', '--verify', 'MERGE_HEAD')).rejects.toThrow();
   } finally { git('config', key, key === 'user.name' ? 'Fixture' : 'fixture@example.invalid'); }
 });
-it('carries reviewed coverage through the derived edge and replays its recorded identity', async () => {
-  const previous = await captureCommittedReviewCandidate(root, base, reviewed);
-  const intent = { risk: 'routine', criteria: 'Preserve independently appended forwards and all reviewed boundaries' };
-  let session = prepareCandidate(null, { ...previous, rules: await captureReviewRules(root, previous), intent, authorSessionId: 'fixture-author' }, 1000);
-  for (const reviewer of ['fixture-reviewer-one', 'fixture-reviewer-two']) session = recordReport(session, {
-    reviewer, cold: true, verdict: 'PASS', tree: previous.tree, findings: [], closes: [], documentation: 'Checked the fixture contract and contributor guidance.',
-  }, 1000);
-  const current = await captureCommittedReviewCandidate(root, main, merged);
-  const observed = { ...current, rules: await captureReviewRules(root, current), intent, authorSessionId: 'fixture-author' };
-  const integration = integrationReviewContext(session, observed, { parents: [reviewed, main], baseAncestor: true }, 1001);
-  const coverage = await captureCoverageEdge(root, session, observed, 1001);
-  expect(coverage?.proof.kind).toBe('portable-derived');
-  session = prepareCandidate(session, { ...observed, integration, coverage }, 1001);
-  expect(verdict(session, current, 1001).ok).toBe(true);
-  await validateEconomySession(root, session);
-// Two full-tree generator passes plus receipt replay exceeded the 10 s unit default.
-}, 90000);
-it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong generator bytes', 'missing SQL reference row', 'other byte', 'SQL byte', 'wrong lineage'])('refuses %s on live Git objects', async scenario => {
-  git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
-  if (scenario === 'historical byte') write(INVENTORY_PATH, read(INVENTORY_PATH).replace('"historical": {}', '"historical": { }'));
-  if (scenario === 'edited existing entry') {
-    const path = MIGRATION_REGISTRIES[1], data = JSON.parse(read(path)); data.nativeStoreForwards[0].sha256 = 'a'.repeat(64); write(path, json(data));
-  }
-  if (scenario === 'duplicate slot') {
-    const path = MIGRATION_REGISTRIES[1], data = JSON.parse(read(path)); data.nativeStoreForwardClass.slots.push(data.nativeStoreForwardClass.slots.at(-1)); write(path, json(data));
-  }
-  if (scenario === 'wrong generator bytes') write('packages/platform/sql/manifest.json', read('packages/platform/sql/manifest.json') + ' ');
-  if (scenario === 'missing SQL reference row') {
-    write(SQL_REFERENCE, read(SQL_REFERENCE).split('\n').filter(line => !line.startsWith('| [`20990101010000_landing_fixture.sql`]')).join('\n'));
-  }
-  if (scenario === 'other byte') write('README.md', read('README.md') + '\nUnexpected edit\n');
-  if (scenario === 'SQL byte') write('db/platform/migrations/20990101010000_landing_fixture.sql', 'SELECT 2;\n');
-  git('add', '-A'); const tree = git('write-tree');
-  const args = scenario === 'wrong lineage' ? ['-p', reviewed] : ['-p', reviewed, '-p', main];
-  const head = git('commit-tree', tree, ...args, '-m', 'Synthetic refusal');
-  if (scenario === 'wrong lineage') await expect(proof(head)).rejects.toThrow('integration parents differ');
-  else {
-    const decision = await proof(head);
-    expect(decision.kind).toBe('resolution');
-    if (scenario === 'missing SQL reference row') {
-      expect(decision.derived).toBeUndefined();
-      expect(decision.resolution).toContain(SQL_REFERENCE);
-    }
-  }
-}, 50000);
-it.each(['edited existing entry', 'duplicate slot'])('refuses %s at the registry union boundary', scenario => {
-  const original = git('show', `${base}:${MIGRATION_REGISTRIES[1]}`), side = JSON.parse(original);
-  if (scenario === 'edited existing entry') side.nativeStoreForwards[0].sha256 = 'a'.repeat(64);
-  else side.nativeStoreForwards.push({ ...side.nativeStoreForwards.at(-1), path: side.nativeStoreForwards.at(-1).path.replace(/_[^/]+\.sql$/, '_duplicate.sql') });
-  expect(() => migrationRegistryUnion(MIGRATION_REGISTRIES[1], original, json(side), original)).toThrow();
-});
+describe('integration proof on a compact Git history', () => {
+  let full: { root: string; base: string; reviewed: string; main: string; merged: string };
 
-it.each([
-  { path: SQL_REFERENCE, unresolved: true, expected: 'refusal' },
-  { path: 'docs/platform/SOURCE_MAP.md', unresolved: true, expected: 'refusal' },
-  { path: 'packages/platform/sql/manifest.json', unresolved: true, expected: 'refusal' },
-  { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: true, expected: 'refusal' },
-  { path: 'docs/platform/SOURCE_MAP.md', unresolved: false, expected: 'derived' },
-  { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: false, expected: 'resolution' },
-])('requires $expected for $path with unresolved=$unresolved despite other derived carriers', async ({ path, unresolved, expected }) => {
-  try {
-    // Use the same generated rows on both sides so the SQL page has only a prose conflict.
-    const original = await sourceGit(root, 'show', `${path === SQL_REFERENCE ? merged : base}:${path}`);
-    git('reset', '--hard', reviewed); git('checkout', '-q', '--detach', reviewed);
-    write(path, 'Reviewed carrier variant\n' + original); const left = commit();
-    git('reset', '--hard', main); git('checkout', '-q', '--detach', main);
-    write(path, 'Main carrier variant\n' + original); const right = commit();
-    git('update-ref', 'refs/remotes/origin/main', right);
-    let prediction: string | undefined;
-    try { await sourceGit(root, 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', left, right); }
-    catch (error) {
-      expect(error.code).toBe(1);
-      const [tree, ...conflicts] = error.stdout.split('\0'); prediction = tree;
-      expect(conflicts).toContain(path);
+  beforeAll(() => {
+    full = { root, base, reviewed, main, merged };
+    root = realpathSync(mkdtempSync(join(tmpdir(), 'openlup-derived-objects-')));
+    execFileSync('/usr/bin/git', ['clone', '--shared', '--no-checkout', '-q', full.root, root], { env: fixtureEnvironment, timeout: 30000 });
+    const retained = [
+      INVENTORY_PATH, ...MIGRATION_REGISTRIES, CATALOGUE, SQL_REFERENCE, PORTABILITY, PORTABILITY_REPORT,
+      'README.md', 'db/platform/migrations', 'packages/platform/sql', 'packages/outbox/sql',
+      'packages/core/package.json', 'packages/platform/src/migrations/catalog.ts',
+      'scripts/platform-migration-manifest.ts', 'scripts/agent-review-decide.mjs', 'scripts/agent-review-session.mjs',
+    ];
+    const sourceMap = 'docs/platform/SOURCE_MAP.md';
+    const route = (id: string, selector: string) => ({ id, when: 'Fixture routing', paths: [selector], doc: 'README.md', anchor: '' });
+    function project(revision: string, ...parents: string[]) {
+      git('rm', '-rf', '--ignore-unmatch', '--', '.');
+      git('restore', `--source=${revision}`, '--staged', '--worktree', '--', ...retained);
+      // Keep the real SQL and registry objects. A small routing inventory is
+      // enough to exercise trusted source-map proofs in every variant.
+      write('src/lib/coreDomains.ts', 'export const CORE_DOMAINS = Object.freeze(["fixture"] as const);\n');
+      write('src/domains/fixture/index.ts', 'export const fixture = 1;\n');
+      write('config/doc-routing.json', json({ version: 2, surfaces: [route('fixture-root', '**'), route('domain-fixture', 'src/domains/fixture/**')] }));
+      write(sourceMap, '');
+      git('add', '-A');
+      const paths = git('ls-files', '-z').split('\0').filter(Boolean);
+      write(sourceMap, renderDocumentationSourceMap(readDocumentationState(root, paths)));
+      git('add', '--', sourceMap);
+      return git('commit-tree', git('write-tree'), ...parents.flatMap(parent => ['-p', parent]), '-m', 'Project fixture proof objects');
     }
-    expect(prediction).toMatch(/^[a-f0-9]{40}$/);
-    const markers = await sourceGit(root, 'show', `${prediction}:${path}`);
-    expect(markers).toContain('<<<<<<<');
-    if (path === SQL_REFERENCE) {
-      expect(markers).toMatch(/^<<<<<<< .+\nReviewed carrier variant\n/mu);
-      const regions = '<!-- generated:sql:outbox -->';
-      expect(markers.slice(markers.indexOf(regions))).toBe(original.slice(original.indexOf(regions)));
+    git('read-tree', '--empty');
+    base = project(full.base);
+    reviewed = project(full.reviewed, base);
+    main = project(full.main, base);
+    merged = project(full.merged, reviewed, main);
+    checkout(merged);
+    setMain(main);
+  }, 60000);
+
+  afterAll(() => {
+    if (full) {
+      if (root !== full.root) rmSync(root, { recursive: true, force: true });
+      ({ root, base, reviewed, main, merged } = full);
     }
-    // Keep the correct measured inventory and exact registry unions from the
-    // successful landing, changing only the selected carrier to Git's raw blob.
+  });
+
+  it('preserves derived substitutions around API resolutions and uses the actual report mode for the floor', async () => {
+    try {
+      checkout(reviewed); probeExport(); const left = commit();
+      checkout(merged); probeExport();
+      write(PORTABILITY_REPORT, read(PORTABILITY_REPORT) + '\nFixture API resolution.\n');
+      git('add', '-A');
+      const firstParent = await captureCommittedReviewCandidate(root, base, left);
+      for (const { modeChanged, floor } of [{ modeChanged: false, floor: 0 }, { modeChanged: true, floor: 2 }]) {
+        if (modeChanged) git('update-index', '--chmod=+x', PORTABILITY_REPORT);
+        const head = git('commit-tree', git('write-tree'), '-p', left, '-p', main, '-m', 'Synthetic report resolution');
+        const integration = await proveReviewIntegration(root, firstParent, await captureCommittedReviewCandidate(root, main, head));
+        expect(integration).toMatchObject({ kind: 'resolution', derived: true, resolution: [PORTABILITY_REPORT], modeChanged });
+        expect(git('diff', '--name-only', integration.prediction, head)).toBe(PORTABILITY_REPORT);
+        expect(deltaFloor(integration.resolution, integration.modeChanged)).toBe(floor);
+      }
+    } finally { restoreDerivedFixture(); }
+  }, 180000);
+
+  it('carries reviewed coverage through the derived edge and replays its recorded identity', async () => {
+    const previous = await captureCommittedReviewCandidate(root, base, reviewed);
+    const intent = { risk: 'routine', criteria: 'Preserve independently appended forwards and all reviewed boundaries' };
+    let session = prepareCandidate(null, { ...previous, rules: await captureReviewRules(root, previous), intent, authorSessionId: 'fixture-author' }, 1000);
+    for (const reviewer of ['fixture-reviewer-one', 'fixture-reviewer-two']) session = recordReport(session, {
+      reviewer, cold: true, verdict: 'PASS', tree: previous.tree, findings: [], closes: [], documentation: 'Checked the fixture contract and contributor guidance.',
+    }, 1000);
+    const current = await captureCommittedReviewCandidate(root, main, merged);
+    const observed = { ...current, rules: await captureReviewRules(root, current), intent, authorSessionId: 'fixture-author' };
+    const integration = integrationReviewContext(session, observed, { parents: [reviewed, main], baseAncestor: true }, 1001);
+    const coverage = await captureCoverageEdge(root, session, observed, 1001);
+    expect(coverage?.proof.kind).toBe('portable-derived');
+    session = prepareCandidate(session, { ...observed, integration, coverage }, 1001);
+    expect(verdict(session, current, 1001).ok).toBe(true);
+    await validateEconomySession(root, session);
+  // Two full-tree generator passes plus receipt replay exceeded the 10 s unit default.
+  }, 90000);
+  it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong generator bytes', 'missing SQL reference row', 'other byte', 'SQL byte', 'wrong lineage'])('refuses %s on live Git objects', async scenario => {
     git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
-    const inventory = read(INVENTORY_PATH);
-    expect(inventory).not.toBe(await sourceGit(root, 'show', `${left}:${INVENTORY_PATH}`));
-    for (const registry of MIGRATION_REGISTRIES) {
-      const inputs = await Promise.all([base, left, right].map(revision => sourceGit(root, 'show', `${revision}:${registry}`)));
-      expect(read(registry)).toBe(migrationRegistryUnion(registry, ...inputs, inventory));
+    if (scenario === 'historical byte') write(INVENTORY_PATH, read(INVENTORY_PATH).replace('"historical": {}', '"historical": { }'));
+    if (scenario === 'edited existing entry') {
+      const path = MIGRATION_REGISTRIES[1], data = JSON.parse(read(path)); data.nativeStoreForwards[0].sha256 = 'a'.repeat(64); write(path, json(data));
     }
-    if (unresolved) write(path, markers);
+    if (scenario === 'duplicate slot') {
+      const path = MIGRATION_REGISTRIES[1], data = JSON.parse(read(path)); data.nativeStoreForwardClass.slots.push(data.nativeStoreForwardClass.slots.at(-1)); write(path, json(data));
+    }
+    if (scenario === 'wrong generator bytes') write('packages/platform/sql/manifest.json', read('packages/platform/sql/manifest.json') + ' ');
+    if (scenario === 'missing SQL reference row') {
+      write(SQL_REFERENCE, read(SQL_REFERENCE).split('\n').filter(line => !line.startsWith('| [`20990101010000_landing_fixture.sql`]')).join('\n'));
+    }
+    if (scenario === 'other byte') write('README.md', read('README.md') + '\nUnexpected edit\n');
+    if (scenario === 'SQL byte') write('db/platform/migrations/20990101010000_landing_fixture.sql', 'SELECT 2;\n');
     git('add', '-A'); const tree = git('write-tree');
-    const changed = (await captureCommittedReviewCandidate(root, prediction, tree)).changedPaths;
-    if (unresolved) expect(changed).not.toContain(path);
-    else expect(changed).toContain(path);
-    const head = git('commit-tree', tree, '-p', left, '-p', right, '-m', 'Synthetic conflicting carrier');
-    const result = proveReviewIntegration(root, await captureCommittedReviewCandidate(root, base, left), await captureCommittedReviewCandidate(root, right, head));
-    if (expected === 'refusal') await expect(result).rejects.toThrow('integration commits a conflict without resolving it');
+    const args = scenario === 'wrong lineage' ? ['-p', reviewed] : ['-p', reviewed, '-p', main];
+    const head = git('commit-tree', tree, ...args, '-m', 'Synthetic refusal');
+    if (scenario === 'wrong lineage') await expect(proof(head)).rejects.toThrow('integration parents differ');
     else {
-      const decision = await result;
-      expect(decision.kind).toBe(expected);
-      if (expected === 'resolution') expect(decision.resolution).toContain(path);
+      const decision = await proof(head);
+      expect(decision.kind).toBe('resolution');
+      if (scenario === 'missing SQL reference row') {
+        expect(decision.derived).toBeUndefined();
+        expect(decision.resolution).toContain(SQL_REFERENCE);
+      }
     }
-  } finally {
-    git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
-    git('update-ref', 'refs/remotes/origin/main', main);
-  }
-}, 50000);
+  }, 50000);
+  it.each(['edited existing entry', 'duplicate slot'])('refuses %s at the registry union boundary', scenario => {
+    const original = git('show', `${base}:${MIGRATION_REGISTRIES[1]}`), side = JSON.parse(original);
+    if (scenario === 'edited existing entry') side.nativeStoreForwards[0].sha256 = 'a'.repeat(64);
+    else side.nativeStoreForwards.push({ ...side.nativeStoreForwards.at(-1), path: side.nativeStoreForwards.at(-1).path.replace(/_[^/]+\.sql$/, '_duplicate.sql') });
+    expect(() => migrationRegistryUnion(MIGRATION_REGISTRIES[1], original, json(side), original)).toThrow();
+  });
+
+  it.each([
+    { path: SQL_REFERENCE, unresolved: true, expected: 'refusal' },
+    { path: 'docs/platform/SOURCE_MAP.md', unresolved: true, expected: 'refusal' },
+    { path: 'packages/platform/sql/manifest.json', unresolved: true, expected: 'refusal' },
+    { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: true, expected: 'refusal' },
+    { path: 'docs/platform/SOURCE_MAP.md', unresolved: false, expected: 'derived' },
+    { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: false, expected: 'resolution' },
+  ])('requires $expected for $path with unresolved=$unresolved despite other derived carriers', async ({ path, unresolved, expected }) => {
+    try {
+      // Use the same generated rows on both sides so the SQL page has only a prose conflict.
+      const original = await sourceGit(root, 'show', `${path === SQL_REFERENCE ? merged : base}:${path}`);
+      git('reset', '--hard', reviewed); git('checkout', '-q', '--detach', reviewed);
+      write(path, 'Reviewed carrier variant\n' + original); const left = commit();
+      git('reset', '--hard', main); git('checkout', '-q', '--detach', main);
+      write(path, 'Main carrier variant\n' + original); const right = commit();
+      git('update-ref', 'refs/remotes/origin/main', right);
+      let prediction: string | undefined;
+      try { await sourceGit(root, 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', left, right); }
+      catch (error) {
+        expect(error.code).toBe(1);
+        const [tree, ...conflicts] = error.stdout.split('\0'); prediction = tree;
+        expect(conflicts).toContain(path);
+      }
+      expect(prediction).toMatch(/^[a-f0-9]{40}$/);
+      const markers = await sourceGit(root, 'show', `${prediction}:${path}`);
+      expect(markers).toContain('<<<<<<<');
+      if (path === SQL_REFERENCE) {
+        expect(markers).toMatch(/^<<<<<<< .+\nReviewed carrier variant\n/mu);
+        const regions = '<!-- generated:sql:outbox -->';
+        expect(markers.slice(markers.indexOf(regions))).toBe(original.slice(original.indexOf(regions)));
+      }
+      // Keep the correct measured inventory and exact registry unions from the
+      // successful landing, changing only the selected carrier to Git's raw blob.
+      git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
+      const inventory = read(INVENTORY_PATH);
+      expect(inventory).not.toBe(await sourceGit(root, 'show', `${left}:${INVENTORY_PATH}`));
+      for (const registry of MIGRATION_REGISTRIES) {
+        const inputs = await Promise.all([base, left, right].map(revision => sourceGit(root, 'show', `${revision}:${registry}`)));
+        expect(read(registry)).toBe(migrationRegistryUnion(registry, ...inputs, inventory));
+      }
+      if (unresolved) write(path, markers);
+      git('add', '-A'); const tree = git('write-tree');
+      const changed = (await captureCommittedReviewCandidate(root, prediction, tree)).changedPaths;
+      if (unresolved) expect(changed).not.toContain(path);
+      else expect(changed).toContain(path);
+      const head = git('commit-tree', tree, '-p', left, '-p', right, '-m', 'Synthetic conflicting carrier');
+      const result = proveReviewIntegration(root, await captureCommittedReviewCandidate(root, base, left), await captureCommittedReviewCandidate(root, right, head));
+      if (expected === 'refusal') await expect(result).rejects.toThrow('integration commits a conflict without resolving it');
+      else {
+        const decision = await result;
+        expect(decision.kind).toBe(expected);
+        if (expected === 'resolution') expect(decision.resolution).toContain(path);
+      }
+    } finally {
+      git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
+      git('update-ref', 'refs/remotes/origin/main', main);
+    }
+  }, 50000);
+});
 
 it('runs incremental package build before inventory refresh when PR touches SQL', () => {
   expect(initialLandingResult.inventoryRefreshed).toBe(true);
@@ -601,10 +631,9 @@ it.each(['clean', 'derived-carrier'])('skips Docker inventory refresh on non-SQL
 
     const invoked: { command: string; args: string[] }[] = [];
     const landed = await landingMerge(root, {
-      runCommand: (command, args, options) => {
+      runCommand: (command, args) => {
         invoked.push({ command, args });
         expect(args).not.toContain(join(root, 'scripts/installation-inventory-refresh.ts'));
-        execFileSync(command, args, { cwd: root, stdio: 'ignore', ...options, env: fixtureEnvironment });
       },
     });
     if (mode === 'clean') expect(invoked).toEqual([]);

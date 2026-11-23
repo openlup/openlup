@@ -1,5 +1,5 @@
-import { realpathSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { cpSync, mkdirSync, readdirSync, realpathSync, symlinkSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 
 export function localFixtureEnvironment(): NodeJS.ProcessEnv {
@@ -15,4 +15,18 @@ export function fixtureNpmCli(): string {
   if (cli && isAbsolute(cli)) return cli;
   // Hosted shards run Vitest directly with the Node distribution from setup-node.
   return realpathSync(resolve(dirname(process.execPath), process.platform === "win32" ? "node_modules/npm/bin/npm-cli.js" : "npm"));
+}
+
+export function linkFixtureInstallation(source: string, fixture: string): void {
+  const installed = join(source, "node_modules");
+  const destination = join(fixture, "node_modules");
+  mkdirSync(destination);
+  // npm's relative workspace and executable links resolve inside the fixture.
+  for (const entry of [".bin", ".package-lock.json", "@openlup"]) {
+    cpSync(join(installed, entry), join(destination, entry), { recursive: true, verbatimSymlinks: true });
+  }
+  for (const entry of readdirSync(installed)) {
+    if (entry.startsWith(".") || entry === "@openlup") continue;
+    symlinkSync(join(installed, entry), join(destination, entry));
+  }
 }

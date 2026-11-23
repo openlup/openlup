@@ -28,7 +28,7 @@ export function carrierNpmCli(script = 'landing:merge') {
   return cli;
 }
 
-function assertLockedInstall(root, locked) {
+export function assertLockedInstall(root, locked) {
   const refuse = path => new Error(`carrier build: installed npm tree does not match package-lock.json (${path}); run npm ci in this checkout`);
   const record = 'node_modules/.package-lock.json';
   let installed;
@@ -159,6 +159,14 @@ async function trackedBuildState(cwd, outputs) {
   return state;
 }
 
+export async function runUnselectedBuild(cwd, owner, outputs, build) {
+  const before = await trackedBuildState(cwd, outputs);
+  await build();
+  const after = await trackedBuildState(cwd, outputs);
+  const changed = [...new Set([...before.keys(), ...after.keys()])].filter(path => !isDeepStrictEqual(before.get(path), after.get(path)));
+  if (changed.length) throw new Error(`landing: unselected build ${owner} changed tracked paths: ${changed.join(', ')}`);
+}
+
 const INVENTORY_INPUT_PATHS = new Set([
   ...MIGRATION_REGISTRIES,
   INVENTORY_PATH,
@@ -284,12 +292,9 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
     const npmCli = carrierNpmCli();
     const selectedOutputs = new Set(outputs);
     for (const owner of builds) {
-      const before = reports.includes(owner) ? undefined : await trackedBuildState(cwd, selectedOutputs);
-      run(process.execPath, [npmCli, 'run', 'build', `--workspace=${owner.name}`], { env: carrierEnv });
-      if (!before) continue;
-      const after = await trackedBuildState(cwd, selectedOutputs);
-      const changed = [...new Set([...before.keys(), ...after.keys()])].filter(path => !isDeepStrictEqual(before.get(path), after.get(path)));
-      if (changed.length) throw new Error(`landing: unselected build ${owner.name} changed tracked paths: ${changed.join(', ')}`);
+      const build = () => run(process.execPath, [npmCli, 'run', 'build', `--workspace=${owner.name}`], { env: carrierEnv });
+      if (reports.includes(owner)) build();
+      else await runUnselectedBuild(cwd, owner.name, selectedOutputs, build);
     }
     for (const { directory, name } of reports) {
       const mergeContext = name === '@openlup/platform' ? [] : [`--landing=${head},${main}`];
