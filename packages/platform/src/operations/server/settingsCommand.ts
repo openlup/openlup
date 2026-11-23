@@ -1,8 +1,9 @@
 import { parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
+import { taxCoverageV1Schema } from "../../tax/contracts/index.js";
 import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue, settingsEntriesWithAppSettings } from "./settingsCatalog.js";
-import { admitDatabaseUrl, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
+import { admitDatabaseUrl, refuseCoverageRead, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
 import { settingDescriptorSchema, toolInputSchema } from "./toolSchema.js";
 import {
   explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting,
@@ -67,7 +68,7 @@ Examples:
 function text(result: Result, host?: SettingsHost): string {
   if ("refusal" in result || "explanation" in result) {
     const { code, rule, hint, remediation } = "refusal" in result ? result.refusal : result.explanation;
-    return [code, rule, hint, remediation.action, remediation.command].join("\n");
+    return [code, rule, hint, remediation.action, remediation.command].filter(line => line !== undefined).join("\n");
   }
   if ("entries" in result) {
     const lines: string[] = [];
@@ -288,8 +289,17 @@ function appFileValue(entry: DeclaredFileEntry): FileValue {
   }
 }
 
-async function validateFileValue(file: FileValue, schema: Record<string, JsonValue> | null, appSchema?: ZodType): Promise<Validation> {
-  if (file.state !== "present" || (!appSchema && !schema)) return { state: "not-validated" };
+async function validateFileValue(key: string, file: FileValue, schema: Record<string, JsonValue> | null, appSchema?: ZodType): Promise<Validation> {
+  if (file.state !== "present") return { state: "not-validated" };
+  if (key === "tax.coverage") {
+    const parsed = taxCoverageV1Schema.safeParse(file.value);
+    return parsed.success ? { state: "valid" } : {
+      state: "invalid",
+      paths: [("coverage" + parsed.error.field).split("/")],
+      messages: [parsed.error.message],
+    };
+  }
+  if (!appSchema && !schema) return { state: "not-validated" };
   try {
     const parsed = appSchema ? await appSchema.safeParseAsync(file.value) : z.fromJSONSchema(schema!).safeParse(file.value);
     return parsed.success ? { state: "valid" }
@@ -310,7 +320,7 @@ async function checkDocument(file: FileBinding | undefined, appValidation: AppVa
     const value = declaration ? appFileValue(declaration.entry) : reportedFileValue(reported);
     const location = declaration?.entry.location;
     const takesEffect = location ? `${location.file} ${location.symbol}` : Object.values(entry.change).join(" ");
-    return [validateFileValue(value, entry.schema ?? null, declaration?.schema).then(validation => ({
+    return [validateFileValue(entry.key, value, entry.schema ?? null, declaration?.schema).then(validation => ({
       key: entry.key, file: value, validation,
       effect: entry.effect.appliesTo, takesEffect, kind: entry.kind,
       ...(entry.kind === "installed" ? {
@@ -338,7 +348,7 @@ function checkText({ appValidation, configuration, rows, state }: Awaited<Return
       return [
         `${row.key}: file ${file.state}, schema ${row.validation.state}${row.validation.state === "invalid"
           ? ` at ${row.validation.paths.map((path, index) => {
-            const label = path.join(".") || "<value>";
+            const label = row.key === "tax.coverage" ? "/" + path.join("/") : path.join(".") || "<value>";
             const message = row.validation.state === "invalid" ? row.validation.messages?.[index] : undefined;
             return message ? `${label}: ${message}` : label;
           }).join(", ")}` : ""}`,
@@ -554,7 +564,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     }
   }
   const input = { key, proposed, skus: values.sku, asOf: values["as-of"] };
-  const unavailable = (detail?: string | Partial<Pick<SettingRefusal, "rule" | "hint" | "remediation">>) => {
+  const unavailable = (detail?: string | Partial<Pick<SettingRefusal, "path" | "rule" | "hint" | "remediation">>) => {
     const refusal = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;
     return {
       refusal: typeof detail === "string" ? { ...refusal, hint: detail } : detail ? { ...refusal, ...detail } : refusal,
@@ -617,6 +627,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       }
       const readers = bindings?.readers;
       if (!readers || !Object.hasOwn(readers, key!) || typeof readers[key!] !== "function") {
+        if (key === "tax.coverage") return [refuseCoverageRead(undefined), 74];
         return [unavailable(host && !values.app ? {
           rule: "A connected read requires an application settings reader for this key.",
           hint: "Pass --app <module> that supplies a reader for this setting.",
@@ -642,6 +653,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   let outcome: [Result, number?];
   try { outcome = await dispatch(); }
   catch (error) {
+    if (!preview && key === "tax.coverage") return emit(refuseCoverageRead(error), 74);
     const hint = error instanceof Error && error.message === "NODE_PG_FORCE_NATIVE"
       ? "Unset NODE_PG_FORCE_NATIVE for this command to use the JavaScript PostgreSQL client, then retry."
       : "Check the read-capable database connection and that --app exports createSettingsBindings.";

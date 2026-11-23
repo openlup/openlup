@@ -1,6 +1,6 @@
 import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
 import { listCatalogueSettings, loadSettingsCatalogue, settingsVersion } from "./settingsCatalog.js";
-import { hasNonfiniteNumber } from "./settingsCommandSupport.js";
+import { hasNonfiniteNumber, refuseCoverageRead } from "./settingsCommandSupport.js";
 import { z } from "zod";
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
@@ -24,7 +24,9 @@ export type SettingReader = () => Promise<
   | { refusal: string }
 >;
 
-function refuse(code: string): { refusal: SettingRefusal } {
+type CatalogueRefusal = SettingRefusal & { remediation: { command: string } };
+
+function refuse(code: string): { refusal: CatalogueRefusal } {
   const refusal = loadSettingsCatalogue().byCode.get(code);
   if (!refusal) throw new Error(`Unknown internal settings refusal ${code}`);
   return { refusal };
@@ -48,7 +50,8 @@ function absentObservation(setting: ValueEntry, effective?: JsonValue): Observat
 async function observe(setting: ReturnType<typeof loadSettingsCatalogue>["entries"][number], read?: SettingReader): Promise<Observation | { refusal: SettingRefusal }> {
   if (!read || setting.kind !== "installed") return { state: "offline" };
   const observed = await read();
-  if ("refusal" in observed) return refuse(observed.refusal);
+  if ("refusal" in observed) return setting.key === "tax.coverage"
+    ? refuseCoverageRead(observed.refusal, observed.refusal === "tax_coverage_reader_unbound") : refuse(observed.refusal);
   if (!observed.present) return absentObservation(setting, observed.effective);
   return { state: "override", value: observed.value, revision: observed.revision };
 }
@@ -64,8 +67,8 @@ export async function showSetting(input: unknown, readers: Readonly<Record<strin
     const observation = await observe(setting, Object.hasOwn(readers, setting.key) ? readers[setting.key] : undefined);
     if ("refusal" in observation) return observation;
     return showResult.parse({ schemaVersion: settingsVersion, setting, observation });
-  } catch {
-    return refuse("commerce_setting_read_unavailable");
+  } catch (error) {
+    return setting.key === "tax.coverage" ? refuseCoverageRead(error) : refuse("commerce_setting_read_unavailable");
   }
 }
 
@@ -88,7 +91,7 @@ export function invalidSettingsCommand(): { refusal: SettingRefusal } {
   return refuse("commerce_setting_read_input_invalid");
 }
 
-type PreviewRefusal = { schemaVersion: 1; refusal: SettingRefusal };
+type PreviewRefusal = { schemaVersion: 1; refusal: CatalogueRefusal };
 
 /** @experimental Use the same preview refusal document for host and domain failures. */
 export function refuseSettingsPreview(code: string, detail?: Pick<SettingRefusal, "path" | "hint">): PreviewRefusal {

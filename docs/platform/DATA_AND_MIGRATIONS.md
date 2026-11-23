@@ -1013,6 +1013,24 @@ role assumption. No food-column relaxation applies to this policy-only change.
 The compatibility criterion is unchanged historical digests, the same shortened
 window and named refusal for unverifiable legacy originals on both rails.
 
+### Installed tax coverage history
+
+`tax_coverage_revisions` is authoritative installation configuration in the
+sensitive owner transfer stream. It has no parent relation. Connected restore
+copies the full history, including original actor references and recorded
+times. The owner appends through the
+[installed coverage operation](../../packages/platform/README.md#install-and-inspect-tax-coverage).
+The runtime has execution access to the scoped reader alone. The reader's
+arguments filter a trusted host's query scope.
+
+Use opaque operator and acknowledgement references. Actor references can be
+personal data. Existing identity privacy operations do not export or erase
+this operator audit history. There is no customer link for absorption.
+
+The forward is native-only. A connected settings read on the managed rail
+refuses with `commerce_setting_read_unavailable`. Use a qualified native
+PostgreSQL installation with a host-bound reader to inspect this history.
+
 ## Human OMS admission
 
 `20261110160000_oms_human_operator_admission.sql` replaces only

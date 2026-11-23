@@ -3356,6 +3356,59 @@ durable quote replay, close recording and posting obligations. Discover the
 composition points under `tax.adapter` and `tax.localRateTable` in the settings
 catalogue.
 
+### Install and inspect tax coverage
+
+Discover `tax.coverage` in the settings catalogue. Apply the selected native
+PostgreSQL migration plan first. In your server-side installer, use the
+migration-owner executor in READ COMMITTED and pass the selected installation
+and account plus the authenticated operator's opaque reference.
+
+```ts
+import { applyTaxCoverageRevision, type TaxCoverageExecutor } from "@openlup/platform/tax";
+import type { TaxCoverageV1 } from "@openlup/platform/tax/contracts";
+
+declare const ownerExecutor: TaxCoverageExecutor;
+declare const installationRef: string, accountRef: string, actorRef: string;
+declare const declarations: TaxCoverageV1["declarations"];
+
+const result = await applyTaxCoverageRevision(ownerExecutor, {
+  expectedHead: null,
+  document: {
+    installationRef, accountRef, actorRef,
+    coverage: { schemaVersion: 1, accountRef, revision: "coverage-1", declarations },
+  },
+});
+```
+
+Use `null` for the first append and the last observed revision for a successor.
+A successful result carries `revision`, `previousRevision`, `sequenceNo`,
+`coverageDigest` and `recordedAt`. Use its `revision` as the next `expectedHead`.
+If the response is lost, replay the original document with its original expected
+head. On a conflict, read the current head and submit a new revision. To roll
+back, keep the current head as the expectation and choose a fresh revision.
+Copy the prior declarations to restore their effect, or use an empty declaration
+list to restore undeclared coverage. An empty revision still has a head and
+declares no jurisdiction covered.
+
+In your application's connected settings binding, return
+`readers: { "tax.coverage": bindTaxCoverageReader(db, { installationRef, accountRef }) }`
+from `createSettingsBindings`. Supply the scope from trusted app configuration.
+Use the runtime database URL and the selected app configuration.
+
+```sh
+./node_modules/.bin/openlup settings show tax.coverage --app ./settings.mjs \
+  --configuration sample --database-url "$database_url" --json
+```
+
+A successful bound read without revisions reports absence. After following the
+remedy for a failed read, rerun the same invocation with the same app and
+configuration. Offline `settings check` reports invalid coverage declarations
+at the same pointers as the installer.
+
+Use a qualified native PostgreSQL installation for connected inspection. Managed
+installations do not supply tax coverage history. The setting is read-only in the
+settings tool. Checkout consumption is qualified separately.
+
 ## Market packs
 
 `./market-packs` exposes pure settlement/fiscal record readers,

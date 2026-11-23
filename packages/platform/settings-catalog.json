@@ -1865,6 +1865,214 @@
       "rules": []
     },
     {
+      "key": "tax.coverage",
+      "domain": "tax",
+      "kind": "installed",
+      "goal": "Record and inspect merchant tax coverage declarations by jurisdiction, tax kind and effective dates.",
+      "schemaVersion": 1,
+      "examples": [
+        {
+          "value": {
+            "schemaVersion": 1,
+            "accountRef": "account-a",
+            "revision": "coverage-1",
+            "declarations": []
+          }
+        },
+        {
+          "value": {
+            "schemaVersion": 1,
+            "accountRef": "account-a",
+            "revision": "",
+            "declarations": []
+          },
+          "code": "tax_invalid_input"
+        }
+      ],
+      "fallback": null,
+      "absentMeans": {
+        "description": "No coverage revisions have been installed for the selected account.",
+        "source": "Native tax coverage history",
+        "value": null
+      },
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The merchant declares its coverage explicitly.",
+      "effect": {
+        "appliesTo": "The installed history records the merchant's coverage for the selected account.",
+        "frozenOn": [
+          "Previous declarations retain their original revisions and operator references."
+        ],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Tax coverage history is available on qualified native PostgreSQL installations through a host-bound reader. Managed installations do not supply this capability. Applying the native forward makes history available for installation and inspection. Tax checkout consumption is qualified separately."
+      },
+      "change": {
+        "reference": "@openlup/platform README, Install and inspect tax coverage"
+      },
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "accountRef",
+          "revision",
+          "declarations"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          },
+          "accountRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "revision": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "declarations": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "jurisdiction",
+                    "taxKind",
+                    "actorRef",
+                    "recordedAt",
+                    "effective",
+                    "status"
+                  ],
+                  "properties": {
+                    "jurisdiction": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "taxKind": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "actorRef": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "recordedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                    },
+                    "effective": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "from"
+                      ],
+                      "properties": {
+                        "from": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                        },
+                        "until": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                        }
+                      }
+                    },
+                    "status": {
+                      "const": "registered"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "jurisdiction",
+                    "taxKind",
+                    "actorRef",
+                    "recordedAt",
+                    "effective",
+                    "status",
+                    "acknowledgementRef"
+                  ],
+                  "properties": {
+                    "jurisdiction": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "taxKind": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "actorRef": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "recordedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                    },
+                    "effective": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "from"
+                      ],
+                      "properties": {
+                        "from": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                        },
+                        "until": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                        }
+                      }
+                    },
+                    "status": {
+                      "const": "not_registered_acknowledged"
+                    },
+                    "acknowledgementRef": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "previewSchema": null,
+      "rules": [
+        {
+          "code": "tax_invalid_input",
+          "path": [],
+          "description": "Supply the documented declaration or request shape. Use nonoverlapping intervals for each jurisdiction and tax kind, and include an acknowledgement reference for declarations of non-registration."
+        }
+      ]
+    },
+    {
       "key": "tax.localRateTable",
       "domain": "tax",
       "kind": "code",
@@ -1911,6 +2119,7 @@
     "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
     "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",
     "tax.adapter": "exclusive tax, tax calculation port, tax adapter binding, tax scope",
+    "tax.coverage": "tax coverage, merchant registration, jurisdiction, tax kind, effective dates, acknowledgement, coverage history",
     "tax.classMap": "tax class map, provider tax code, market pack, class-map revision",
     "tax.localRateTable": "local tax rules, jurisdiction, tax class, effective interval, rate, exemption, fixed fee, legal basis, rounding, digest",
     "market.fiscalProfile": "fiscal jurisdiction, tax category, VAT rate, basis points, statutory citation, inclusive VAT",
@@ -2198,6 +2407,7 @@
                   "commerce_setting_preview_validation_missing",
                   "commerce_setting_preview_unexpected",
                   "inventory_renewal_protection_policy_invalid",
+                  "tax_invalid_input",
                   "checkout_recovery_policy_invalid"
                 ]
               },
