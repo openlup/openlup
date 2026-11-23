@@ -1590,7 +1590,11 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261125020000_subscription_cancel_feedback.sql",
+      "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125060000_subscription_cancel_feedback.sql",
       "class": "public-output"
     },
     {
@@ -2622,6 +2626,18 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/provider-qualification.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/provider-response.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/provider-transport.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/purchase-composition.ts",
       "class": "public-output"
     },
@@ -2987,6 +3003,10 @@
     },
     {
       "path": "examples/neutral-store/test/private-capture.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/provider-qualification.test.ts",
       "class": "public-output"
     },
     {
@@ -5222,7 +5242,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261125020000_subscription_cancel_feedback.sql",
+      "path": "packages/platform/sql/20261125050000_subscription_preview_noop_acceptance.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125060000_subscription_cancel_feedback.sql",
       "class": "public-output"
     },
     {
@@ -32751,7 +32775,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-c30f60b239d95d16513deb232dc384112c279837aa3e0c13363dba086d0da31d"
+      "digest": "sha256-4685c4c04c06da2c965814610c1e5813780b332e57233b3dcd5e71c6f6e757d9"
     },
     {
       "path": "package.json",

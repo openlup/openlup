@@ -265,6 +265,30 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   }
   if (path === paymentAdapterLedger || adapters.some(({ trees, snapshot }) =>
     path === `packages/platform/${snapshot}` || trees.some((tree) => path.startsWith(tree)))) return [...contents.matchAll(word)].length;
+  if (category === "ui-13") {
+    const starterWords = {
+      "examples/neutral-store/host/provider-transport.ts": [
+        `import type ProviderSdk from '${name}';`,
+        `  const { default: Sdk } = await import('${name}');`,
+        `import { createStripeTaxAdapter, makeStripeTaxRequestDigest, type StripeTaxAdapterOptions } from '@openlup/platform/tax/${name}';`,
+        `const origin = 'https://api.${name}.com';`,
+        `    || !path.startsWith('/v1/') || Object.keys(headers).some(name => /^${name}-(?:account|context)$/iu.test(name) && headers[name])) {`,
+      ],
+      "examples/neutral-store/host/provider-qualification.ts": [
+        `      apiVersion: version, sdk: '${name}', sdkVersion, keyRetentionHours: 24, records }, null, 2) + '\\n', { flag: 'wx', mode: 0o600 });`,
+      ],
+      "examples/neutral-store/package.json": [`      "${name}": "22.5.0"`],
+    };
+    if (Object.hasOwn(starterWords, path)) {
+      if (path === "examples/neutral-store/package.json") {
+        try {
+          if (parseStrictJson(contents, path)?.providerQualification?.dependencies?.[name] !== "22.5.0") return 0;
+        } catch { return 0; }
+      }
+      const lines = contents.split("\n");
+      return starterWords[path].filter(line => lines.includes(line)).length;
+    }
+  }
   // Native regression witnesses use these published imports with neutral fixture data.
   const nativeImports = {
     "tests/postgres/paymentReconciliationStore.test.ts": "createTpayPaymentReconciliationProvider",

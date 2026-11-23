@@ -11,11 +11,15 @@ const options = new Map();
 const [directory, ...extra] = process.argv.slice(2);
 for (let i = 0; i < extra.length; i += 2) {
   const flag = extra[i], value = extra[i + 1];
-  if (!['--mode', '--set-version', '--source-revision', '--manifest', '--lockfile', '--source', '--reason'].includes(flag)
+  if (!['--mode', '--set-version', '--source-revision', '--manifest', '--lockfile', '--source', '--reason', '--provider-qualification'].includes(flag)
     || !value || value.startsWith('--') || options.has(flag)) throw new Error('starter_extract_arguments_invalid');
   options.set(flag, value);
 }
 const mode = options.get('--mode');
+const qualification = options.has('--provider-qualification');
+if (qualification && (mode !== 'candidate' || options.get('--provider-qualification') !== 'enabled')) {
+  throw new Error('starter_provider_qualification_requires_candidate: Use --mode candidate --provider-qualification enabled.');
+}
 if (!directory || (extra.length && !['released', 'reconstructed', 'candidate'].includes(mode))) throw new Error('starter_extract_requires_empty_directory');
 const source = options.has('--source') ? resolve(options.get('--source')) : dirname(fileURLToPath(import.meta.url));
 const target = resolve(directory);
@@ -23,6 +27,12 @@ if (target === source) throw new Error('starter_extract_independent_directory_re
 await mkdir(target, { recursive: true });
 if ((await readdir(target)).length > 0) throw new Error('starter_extract_directory_not_empty');
 const ownership = JSON.parse(await readFile(resolve(source, 'ownership.json'), 'utf8'));
+const optionalFiles = ownership.providerQualification;
+delete ownership.providerQualification;
+if (qualification) {
+  if (!Array.isArray(optionalFiles?.managed) || !optionalFiles.managed.length) throw new Error('starter_provider_qualification_missing: Use a source archive that includes provider qualification.');
+  ownership.managed.push(...optionalFiles.managed);
+}
 const files = [...ownership.owned, ...ownership.managed];
 if (new Set(files).size !== files.length) throw new Error('starter_ownership_duplicate');
 if (ownership.sourceOnly.some(path => files.includes(path))) throw new Error('starter_ownership_scope_overlap');
@@ -67,7 +77,16 @@ const json = async path => JSON.parse(await readFile(path, 'utf8'));
 const provenance = await json(resolve(source, 'starter-release.json'));
 let identity;
 let lockBytes;
-let application;
+const applicationPath = resolve(source, 'package.json');
+const application = await json(applicationPath);
+const profile = application.providerQualification;
+delete application.providerQualification;
+if (qualification) {
+  if (!profile?.dependencies || Object.keys(profile.dependencies).length !== 1 || !application.scripts?.['provider:qualify']) {
+    throw new Error('starter_provider_qualification_missing: Use a source archive that includes provider qualification.');
+  }
+  Object.assign(application.dependencies, profile.dependencies);
+} else if (profile) delete application.scripts['provider:qualify'];
 if (mode) {
   const refuse = (code, detail = '') => { throw new Error(`starter_release_${code}${detail ? ': ' + detail : ''}`); };
   const version = options.get('--set-version'), revision = options.get('--source-revision');
@@ -102,7 +121,6 @@ if (mode) {
     seen.add(pkg.name);
   }
   for (const name of expected.keys()) if (!seen.has(name)) refuse('manifest_package_missing', name);
-  application = await json(resolve(source, 'package.json'));
   const sections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
   for (const section of sections) {
     for (const name of Object.keys(application[section] ?? {})) if (name.startsWith('@openlup/')) {
@@ -125,6 +143,17 @@ if (mode) {
   for (const key of ['name', 'version', ...sections]) {
     const canonical = value => JSON.stringify(value && typeof value === 'object' ? Object.entries(value).sort() : value);
     if (canonical(lock.packages[''][key]) !== canonical(application[key])) refuse('lock_root_mismatch', key);
+  }
+  if (qualification) {
+    const [[name, version]] = Object.entries(profile.dependencies);
+    const path = `node_modules/${name}`;
+    const pinned = (await json(resolve(tree, 'package-lock.json'))).packages?.[path];
+    const installed = lock.packages[path];
+    if (!pinned || !installed || pinned.version !== version || installed.version !== version
+      || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(pinned.integrity ?? '')
+      || installed.resolved !== pinned.resolved || installed.integrity !== pinned.integrity || installed.link) {
+      refuse('provider_qualification_lock_mismatch', 'Use the SDK locked by this source revision');
+    }
   }
   const allowed = new Set();
   for (const [name, integrity] of expected) {
@@ -185,6 +214,10 @@ for (const path of files) {
       parts.push(Buffer.from(`${gap}## Managed JSON files\n\n${entries.join('\n')}\n`));
     }
     await writeFile(destination, Buffer.concat(parts));
+  } else if (path === 'ownership.json' && optionalFiles) {
+    await writeFile(destination, JSON.stringify(ownership, null, 2) + '\n');
+  } else if (path === 'package.json' && profile && !mode) {
+    await writeFile(destination, JSON.stringify(application, null, 2) + '\n');
   } else await copyFile(origin, destination);
   await chmod(destination, info.mode & 0o777);
 }

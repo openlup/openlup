@@ -258,7 +258,8 @@ const order = [
   // AUTHORITATIVE policy tuples include their original-end close marker, byte-exactly.
   "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
   "catalog_price_setup_receipts",
-  "subscriptions", "commerce_offer_policy_rollout_baselines", "subscription_events", "subscription_cancel_feedback", "subscription_quote_previews", "subscription_edit_quotes", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
+  "subscriptions", "commerce_offer_policy_rollout_baselines", "subscription_events", "subscription_cancel_feedback", "subscription_command_receipts",
+  "subscription_quote_previews", "subscription_edit_quotes", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
   "payment_method_refs", "payment_method_ref_receipts", "subscription_method_states",
   "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders", "commerce_order_items",
   "commerce_order_draft_receipts", "fulfillment_stock_operations",
@@ -277,7 +278,7 @@ const order = [
   "customer_account_consent_events", "customer_account_consent_sync_targets",
   "fulfillment_ports", "fulfillment_shipments", "shipment_external_refs", "fulfillment_shipment_operations", "fulfillment_provider_attempts", "fulfillment_operator_attempts",
   "commerce_fulfillment_provider_commands", "commerce_fulfillment_provider_command_transitions", "fulfillment_dispatch_contexts",
-  "commerce_destinations", "commerce_destination_bindings", "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts", "subscription_command_receipts",
+  "commerce_destinations", "commerce_destination_bindings", "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "fulfillment_dispatch_refs", "fulfillment_paid_handoffs", "fulfillment_observations", "fulfillment_stock_movements",
   "fulfillment_parcel_reservation_sets", "fulfillment_parcel_lines", "fulfillment_parcel_line_reservations",
