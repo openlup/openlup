@@ -101,13 +101,13 @@ describe("offline quote money v2", () => {
       kind: "refused", code: "money_tax_evidence_mismatch", field: "/positions",
     });
     expect(composeCommerceQuoteMoneyV2({ ...compose, allocationIds: compose.allocationIds.slice(1) })).toMatchObject({
-      kind: "refused", code: "promotion_allocation_unsubstantiated", field: "/allocationIds",
+      kind: "refused", code: "money_input_invalid", field: "/allocationIds",
     });
   });
 
   it("refuses positive shipping with zero merchandise weight", () => {
     const { input } = readVector("zero_weight_shipping");
-    expect(planCommerceQuoteMoneyV2(input)).toMatchObject({ kind: "refused", code: "shipping_tax_basis_empty", field: "/baseline/delivery/0/amountMinor" });
+    expect(planCommerceQuoteMoneyV2(input)).toMatchObject({ kind: "refused", code: "shipping_tax_basis_empty", field: "/baseline" });
   });
 
   it("uses inclusive fees and exclusive handling when comparing complete candidates", () => {
@@ -173,6 +173,9 @@ describe("offline quote money v2", () => {
     expect(composeCommerceQuoteMoneyV2({ ...input, positions: input.positions.slice(1) })).toMatchObject({
       kind: "refused", code: "money_tax_evidence_mismatch", field: "/positions",
     });
+    const [firstId, secondId] = input.allocationIds;
+    expect(composeCommerceQuoteMoneyV2({ ...input, allocationIds: [firstId, { ...secondId, allocationId: firstId.allocationId }] }))
+      .toMatchObject({ kind: "refused", code: "money_input_invalid", field: "/allocationIds/1/allocationId" });
   });
 
   it.each([10_000, 2_147_483_647])("checks the exact payable limit %i with a fee on free shipping", limit => {
@@ -185,21 +188,21 @@ describe("offline quote money v2", () => {
     expect(run(1)).toMatchObject({ kind: "composed", money: { feeTotal: 1, payableMinor: limit,
       deliveryBuckets: [{ parts: [{ taxPositions: [], effectiveMinor: 0 }] }],
       feeLines: [{ feeKey: "fee", amountMinor: 1 }] } });
-    expect(run(2)).toEqual({ kind: "refused", code: "money_amount_out_of_range", field: "/facts/paymentLimits/maxMinor",
+    expect(run(2)).toEqual({ kind: "refused", code: "money_amount_out_of_range", field: "/planInput/baseline",
       remedy: "Choose a supported amount and obtain a fresh quote." });
   });
 
   it("refuses mixed basis, unsupported targets and an unreconciled threshold", () => {
     expect(planCommerceQuoteMoneyV2(planInput({ lines: [source("a", 1, 10, 1, "net")] }))).toMatchObject({
-      kind: "refused", code: "money_amount_basis_mixed", field: "/lines/0/amountKind",
+      kind: "refused", code: "money_amount_basis_mixed", field: "/lines/0",
     });
     expect(planCommerceQuoteMoneyV2(planInput({ selected: { ...baseline,
       adjustments: [adjustment("bad", 1, { lineKeys: ["missing"] })] } }))).toMatchObject({
-      kind: "refused", code: "promotion_allocation_unsubstantiated", field: "/selected/adjustments/0/target/lineKeys/0",
+      kind: "refused", code: "promotion_allocation_unsubstantiated", field: "/selected/adjustments/0",
     });
     expect(planCommerceQuoteMoneyV2(planInput({ baseline: { ...baseline, delivery: [{
       ...bucket("shipping", 1), threshold: { flatMinor: 1, freeThresholdMinor: 100 },
-    }] } }))).toMatchObject({ kind: "refused", code: "money_input_invalid", field: "/baseline/delivery/0/amountMinor" });
+    }] } }))).toMatchObject({ kind: "refused", code: "money_input_invalid", field: "/baseline/delivery/0" });
   });
 });
 
@@ -369,14 +372,14 @@ describe("caller-relative quote money refusals", () => {
     { name: "list basis", run: plan, make: () => ({ ...planInput(), listBasis: "invalid" }), field: "/listBasis" },
     { name: "baseline threshold", run: plan, make: () => planInput({ baseline: { ...baseline, delivery: [{
       ...bucket("shipping", 1), threshold: { flatMinor: 1, freeThresholdMinor: 100 },
-    }] } }), field: "/baseline/delivery/0/amountMinor" },
+    }] } }), field: "/baseline/delivery/0" },
     { name: "selected target", run: plan, make: () => planInput({ selected: {
       ...selected, adjustments: [adjustment("bad", 1, { lineKeys: ["missing"] })],
-    } }), field: "/selected/adjustments/0/target/lineKeys/0" },
+    } }), field: "/selected/adjustments/0" },
     { name: "baseline currency", run: plan, make: () => planInput({ baseline: { ...baseline, delivery: [foreign] } }),
-      field: "/baseline/delivery/0/cost/currency" },
+      field: "/baseline/delivery/0" },
     { name: "selected currency", run: plan, make: () => planInput({ selected: { ...selected, delivery: [foreign] } }),
-      field: "/selected/delivery/0/cost/currency" },
+      field: "/selected/delivery/0" },
     { name: "exclusive baseline fee", run: plan, make: () => planInput({ ...netInput, baseline: {
       ...exclusive, feeLines: [fee("baseline", 1)],
     } }), field: "/baseline/feeLines" },
@@ -385,10 +388,10 @@ describe("caller-relative quote money refusals", () => {
     } }), field: "/selected/feeLines" },
     { name: "nonexistent baseline bucket would inflate a cheaper baseline above 105", run: plan,
       make: () => planInput({ baseline: { ...baseline, feeLines: [fee("orphan", 10)] },
-        selected: { ...selected, delivery: [bucket("handling", 6)] } }), field: "/baseline/feeLines/0/scope/bucketKey" },
+        selected: { ...selected, delivery: [bucket("handling", 6)] } }), field: "/baseline/feeLines/0" },
     { name: "nonexistent selected bucket", run: plan, make: () => planInput({
       selected: { ...selected, feeLines: [fee("orphan", 1)] },
-    }), field: "/selected/feeLines/0/scope/bucketKey" },
+    }), field: "/selected/feeLines/0" },
     { name: "explicit undefined candidate", run: plan, make: () => ({ ...planInput(), selected: undefined }), field: "/selected" },
     { name: "non-object composition", run: compose, make: () => 42, field: "" },
     { name: "missing planning input", run: compose, make: () => ({}), field: "/planInput", missing: true },
@@ -401,16 +404,13 @@ describe("caller-relative quote money refusals", () => {
       const valid = composeWithFee();
       return { ...valid, planInput: { ...valid.planInput, lines: [{ ...valid.planInput.lines[0], quantity: 0 }] } };
     }, field: "/planInput/lines/0/quantity" },
-    { name: "invalid selected adjustment in composition", run: compose, make: () => ({
-      ...composeWithFee(), planInput: planInput({ selected: { ...selected, adjustments: [adjustment("bad", 1, { lineKeys: ["missing"] })] } }),
-    }), field: "/planInput/selected/adjustments/0/target/lineKeys/0" },
     { name: "nonpayable winning baseline", run: compose, make: () => fiscalInput(planInput({ lines: [source("a", 1, 0)] })),
       field: "/planInput/baseline" },
     { name: "nonpayable winning selected candidate", run: compose, make: () => fiscalInput(planInput({
       selected: { ...baseline, adjustments: [adjustment("waiver", 100, { lineKeys: ["a"] })] },
     })), field: "/planInput/selected" },
     { name: "missing projected facts", run: compose, make: () => ({ ...composeWithFee(), facts: {} }),
-      field: "/facts/catalogueEvidenceRef", missing: true },
+      field: "/facts/mode", missing: true },
     { name: "explicit undefined cadence", run: compose, make: () => ({
       ...composeWithFee(), facts: { ...facts, cadence: undefined },
     }), field: "/facts/cadence" },
@@ -551,7 +551,10 @@ describe("caller-relative quote money refusals", () => {
       },
     });
     const input = { ...entry.make(), first: child, second: child };
-    const expected = { plan: { kind: "planned" }, compose: { kind: "composed" }, quote: { code: "money_tax_evidence_mismatch" } };
+    const expected = {
+      plan: { kind: "refused", field: "/first" }, compose: { kind: "refused", field: "/first" },
+      quote: { code: "money_tax_evidence_mismatch" },
+    };
     expect(entry.run(input)).toMatchObject(expected[entry.name]);
     expect(reads).toBe(1);
   });
@@ -571,6 +574,106 @@ describe("caller-relative quote money refusals", () => {
     const expected = { plan: { kind: "planned" }, compose: { kind: "composed" }, quote: { success: true } };
     expect(entry.run(input)).toMatchObject(expected[entry.name]);
     expect(reads.sort()).toEqual(expectedKeys);
+  });
+});
+
+const removeMember = Symbol("removeMember");
+const refusalCases = [
+  { finding: "R3A-1", arm: "inclusive", path: "/verifiedMoney", value: { payableMinor: 1 },
+    mutation: "Add verifiedMoney with payableMinor 1 to the fiscal input",
+    code: "money_input_invalid", pointer: "/verifiedMoney", remedy: "Supply the documented value at this field.",
+    action: "Remove verifiedMoney and keep the fiscal arm." },
+  { finding: "R3A-1", arm: "exclusive", path: "/fiscal", value: [],
+    mutation: "Add an empty fiscal array to the exclusive input",
+    code: "money_input_invalid", pointer: "/fiscal", remedy: "Supply the documented value at this field.",
+    action: "Remove fiscal and keep the verified tax arm." },
+  { finding: "R3A-2", arm: "exclusive", path: "/planInput/lines/0/quantity", value: 2, recalculate: true,
+    mutation: "Change quantity from 1 to 2 without refreshing verifiedMoney",
+    code: "money_tax_evidence_mismatch", pointer: "/verifiedMoney", remedy: "Recalculate tax for this exact planning input, then compose again.",
+    action: "Keep quantity 2 and recalculate verifiedMoney for the revised plan." },
+  { finding: "R3A-3", arm: "inclusive", path: "/planInput/selected/adjustments/0/target/lineKeys", value: removeMember,
+    mutation: "Remove lineKeys from the order_total target",
+    code: "money_input_invalid", pointer: "/planInput/selected/adjustments/0/target/lineKeys",
+    remedy: "Supply the documented value at this field.", action: "Restore the required lineKeys array with the existing line key." },
+  { finding: "R3A-3", arm: "inclusive", path: "/planInput/selected/adjustments/0/target/lineKeys/0", value: null,
+    mutation: "Replace the first order_total target line key with null",
+    code: "money_input_invalid", pointer: "/planInput/selected/adjustments/0/target/lineKeys/0",
+    remedy: "Supply the documented value at this field.", action: "Restore the existing line key in the target array." },
+  { finding: "R3A-4", arm: "inclusive", path: "/planInput/baseline/delivery/1/amountMinor", value: Number.MAX_SAFE_INTEGER,
+    mutation: "Set the winning baseline handling charge to Number.MAX_SAFE_INTEGER with a maximum-safe payment limit",
+    code: "money_amount_out_of_range", pointer: "/planInput/baseline", remedy: "Choose a supported amount and obtain a fresh quote.",
+    action: "Restore a supported handling charge without changing the payment limit." },
+  { finding: "R3A-5", arm: "exclusive", path: "/verifiedMoney/fees/1/feeKey", appendAt: "/verifiedMoney/fees/1", value: { feeKey: "service-fee", amountMinor: 2 },
+    mutation: "Append a duplicate verified fee with feeKey service-fee",
+    code: "money_input_invalid", pointer: "/verifiedMoney/fees/1/feeKey", remedy: "Supply the documented value at this field.",
+    action: "Remove the second verified fee and preserve the fee metadata." },
+  { finding: "R3A-5", arm: "inclusive", path: "/positions/1/position/positionRef", value: "position-a",
+    mutation: "Reuse the merchandise positionRef on the shipping position",
+    code: "money_input_invalid", pointer: "/positions/1/position/positionRef", remedy: "Supply the documented value at this field.",
+    action: "Restore the distinct shipping positionRef." },
+  { finding: "basis", arm: "inclusive", path: "/planInput/lines/0/amountKind", value: "net",
+    mutation: "Mark an inclusive line as net",
+    code: "money_amount_basis_mixed", pointer: "/planInput/lines/0", remedy: "Supply a line priced on the published list basis.",
+    action: "Restore the gross line from the inclusive list." },
+  { finding: "shipping", arm: "inclusive", path: "/planInput/selected/adjustments/0/amountOffMinor", value: 100,
+    mutation: "Discount all merchandise while the selected shipping charge is positive",
+    code: "shipping_tax_basis_empty", pointer: "/planInput/selected", remedy: "Select a supported delivery pricing policy.",
+    repair: { path: "/planInput/selected/delivery/0/amountMinor", value: 0 },
+    action: "Keep the waiver and choose zero-charge shipping for that candidate." },
+  { finding: "allocation", arm: "inclusive", path: "/planInput/selected/adjustments/0/target/lineKeys/0", value: "missing",
+    mutation: "Target a merchandise line absent from the planning input",
+    code: "promotion_allocation_unsubstantiated", pointer: "/planInput/selected/adjustments/0",
+    remedy: "Obtain a quote using a supported promotion combination.", action: "Restore the adjustment target to the existing merchandise line." },
+  { finding: "cadence", arm: "inclusive", path: "/facts/cadence", value: { schemaVersion: 1, kind: "fixed_days", days: 7 },
+    mutation: "Add cadence to one-time quote facts",
+    code: "money_input_invalid", pointer: "/facts/cadence", remedy: "Supply the documented value at this field.",
+    action: "Remove cadence from the one-time quote facts." },
+  { finding: "expiry", arm: "exclusive", path: "/taxEvidence/expiresAt", value: localEvidence.taxDate,
+    mutation: "Set the tax evidence expiry equal to its tax date",
+    code: "money_tax_evidence_mismatch", pointer: "/taxEvidence", remedy: "Supply tax evidence with an expiry after its tax date.",
+    action: "Restore an expiry after the tax date." },
+] as const;
+
+describe("composition refusal cases", () => {
+  const inclusive = fiscalInput(planInput({
+    baseline: { ...baseline, delivery: [bucket("shipping", 1), bucket("handling", 1)], feeLines: [fee("baseline-fee", 2)] },
+    selected: { ...baseline, delivery: [bucket("shipping", 1), bucket("handling", Number.MAX_SAFE_INTEGER)],
+      feeLines: [fee("selected-fee", 10)], adjustments: [adjustment("promotion", 1, { lineKeys: ["a"] })] },
+  }), {}, { ...facts, paymentLimits: { ...facts.paymentLimits, maxMinor: Number.MAX_SAFE_INTEGER } });
+  const exclusivePlan = planInput({ listBasis: "exclusive", lines: [source("a", 1, 100, 1, "net")], baseline: { ...baseline, amountBasis: "exclusive" } });
+  const feeLines = [{ ...fee("service-fee", 2), scope: { kind: "order" as const } }];
+  const exclusiveMoney = (planning: PlanCommerceQuoteMoneyV2Input) => {
+    const plan = planned(planning);
+    return calculateCatalogueMoneyV2({ ...plan.moneyInput, fees: feeLines.map(({ feeKey, amountMinor }) => ({ feeKey, amountMinor })) },
+      { kind: "local", components: plan.plan.components.map(({ ref }) => ({ ref, rates: [] })) });
+  };
+  const exclusive = { planInput: exclusivePlan, facts, allocationIds: [], positions: [], feeLines,
+    taxEvidence: { ...localEvidence, kind: "tax_calculation" as const }, verifiedMoney: exclusiveMoney(exclusivePlan) };
+  const fixtures = { inclusive, exclusive };
+
+  it.each(refusalCases)("$finding $mutation", row => {
+    const original = fixtures[row.arm];
+    expect(composeCommerceQuoteMoneyV2(original).kind).toBe("composed");
+    const input = structuredClone(original);
+    const { parent, key } = pointerParent(input, "appendAt" in row ? row.appendAt : row.path);
+    const previous = Object.getOwnPropertyDescriptor(parent, key);
+    if (row.value === removeMember) Reflect.deleteProperty(parent, key);
+    else Object.defineProperty(parent, key, { value: row.value, enumerable: true, writable: true, configurable: true });
+    expect(composeCommerceQuoteMoneyV2(input)).toEqual({ kind: "refused", code: row.code, field: row.pointer, remedy: row.remedy });
+
+    expect(row.path === row.pointer || row.path.startsWith(row.pointer + "/")
+      || row.code === "money_tax_evidence_mismatch" && row.pointer === "/verifiedMoney").toBe(true);
+    const reported = pointerParent(input, row.pointer);
+    expect(Object.hasOwn(reported.parent, reported.key)).toBe(row.value !== removeMember);
+
+    if ("recalculate" in row && "verifiedMoney" in input) input.verifiedMoney = exclusiveMoney(input.planInput);
+    else if ("repair" in row) {
+      const repair = pointerParent(input, row.repair.path);
+      Object.defineProperty(repair.parent, repair.key, { value: row.repair.value });
+    } else if (previous) Object.defineProperty(parent, key, previous);
+    else if (Array.isArray(parent)) parent.pop();
+    else Reflect.deleteProperty(parent, key);
+    expect(composeCommerceQuoteMoneyV2(input).kind).toBe("composed");
   });
 });
 
@@ -606,7 +709,7 @@ describe("position invariants in composition and sealed quotes", () => {
     expect(commerceQuoteV2Schema.safeParse(sealQuote(money)).success).toBe(true);
     const rejected = composeCommerceQuoteMoneyV2(composeInput(true));
     expect(rejected).toMatchObject({ kind: "refused", code: "money_tax_evidence_mismatch",
-      field: exclusive ? "/verifiedMoney/components/1/final/taxPositions" : "/positions" });
+      field: exclusive ? "/verifiedMoney" : "/positions" });
     const [deliveryBucket] = money.deliveryBuckets;
     const badShipping = { ...deliveryBucket.parts[0], taxPositions: [{ ...shipPosition, taxableMinor: 0, taxMinor: 0, rateDecimal: "10" }] };
     const invalid = commerceQuoteV2Schema.safeParse(sealQuote({ ...money, deliveryBuckets: [{ ...deliveryBucket, parts: [badShipping] }] }));
@@ -614,16 +717,8 @@ describe("position invariants in composition and sealed quotes", () => {
       code: "money_tax_evidence_mismatch", field: "/deliveryBuckets/0/parts/0/taxPositions",
       remedy: "Replay the original money and its matching tax evidence.",
     } });
-    expect(rejected).toMatchObject({ remedy: "Replay the original money and its matching tax evidence." });
-  });
-
-  it("points to the repeated inclusive position identity in the caller's metadata", () => {
-    const input = fiscalInput(planInput({ lines: [source("a", 1, 100), source("b", 2, 100)] }));
-    const [first, second] = input.positions;
-    const positions = [first, { ...second, position: { ...second.position, positionRef: first.position.positionRef } }];
-    expect(composeCommerceQuoteMoneyV2({ ...input, positions })).toMatchObject({
-      kind: "refused", code: "money_tax_evidence_mismatch", field: "/positions/1/position/positionRef",
-    });
+    expect(rejected).toMatchObject({ remedy: exclusive ? "Recalculate tax for this exact planning input, then compose again."
+      : "Supply evidence matching the planned money." });
   });
 
   it("requires one position for a positive inclusive state even at zero tax", () => {

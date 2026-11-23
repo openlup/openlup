@@ -1247,6 +1247,8 @@ Provide separate fiscal rates and position metadata for inclusive money, or
 the verified tax result, position and fee metadata for exclusive money. Owner
 diagnostics and `displacedCodes` are separate. In both arms, `taxEvidence.evidenceDigest`
 commits the destination binding, selection, service and evidence expiry.
+If verified tax evidence disagrees with the plan, recalculate tax for the same
+planning input before composing again.
 
 Use `quoteDigest` with `commerce.quote-money.v2` for the shared money and
 `commerce.quote.v2` for the complete estimate or final quote without its
