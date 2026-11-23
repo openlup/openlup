@@ -118,21 +118,22 @@ type Visibility = { xmax: string; xip: string[]; primary: boolean };
 
 async function runPrelock(
   writer: FenceConnection, prelock: (writer: FenceLockWriter) => Promise<void>,
-  deadline: number, abort: Promise<never>,
+  deadline: number, abort: Promise<never>, cancelWriter: () => void,
 ) {
   const aborted = rejection();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let pending = false, closed = false;
+  let pending = false, closed = false, hookPending = false;
   function remaining() {
     const ms = Math.ceil(deadline - performance.now());
     if (ms <= 0) throw expired;
     return ms;
   }
   function expireAtWall() {
-    const ms = Math.ceil(deadline + wallMarginMs - performance.now());
+    const ms = Math.ceil(deadline - performance.now());
     if (ms <= 0) {
       closed = true;
       aborted.reject(expired);
+      if (hookPending) cancelWriter();
     } else timer = setTimeout(expireAtWall, Math.min(ms, maxTimeoutMs));
   }
   let originalLockMs = 0;
@@ -178,9 +179,11 @@ async function runPrelock(
       await setDispatchTimeouts();
       if (closed) throw expired;
       remaining();
+      hookPending = true;
       try {
         await prelock(Object.freeze(lockWriter));
       } finally {
+        hookPending = false;
         closed = true;
         if (pending) aborted.reject(unfinished);
       }
@@ -219,6 +222,17 @@ export async function withCatalogAdmissionFence<T, Connection extends FenceConne
   let writerFailed = false;
   let probeFailed = false;
   let reading = false;
+  let cancellation: Promise<void> | undefined;
+  async function cancelWriter(pid: number) {
+    try {
+      const { rows: [result] } = await probe.query<{ cancelled: boolean }>({
+        text: "SELECT pg_cancel_backend($1) AS cancelled", values: [pid], query_timeout: timeoutMs,
+      });
+      probeFailed = result?.cancelled !== true;
+    } catch {
+      probeFailed = true;
+    }
+  }
   async function transact() {
     await writer.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
     const nonce = [randomInt(1, 2 ** 31), randomInt(1, 2 ** 31)];
@@ -226,7 +240,9 @@ export async function withCatalogAdmissionFence<T, Connection extends FenceConne
       FROM pg_advisory_xact_lock($1::integer,$2::integer)`, nonce)).rows[0]!;
     const scope = [identity.xid, identity.pid, ...nonce];
     await writer.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))", [input.key]);
-    if (prelock && monitor) await runPrelock(writer, prelock, deadline, monitor.abort);
+    if (prelock && monitor) {
+      await runPrelock(writer, prelock, deadline, monitor.abort, () => { cancellation = cancelWriter(identity.pid); });
+    }
     await writer.query("SELECT order_id FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1 FOR UPDATE", [input.key]);
     await writer.query("SELECT id FROM public.clients WHERE id=$1 FOR KEY SHARE", [input.clientId]);
     await writer.query("SELECT id FROM public.catalog_skus WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE", [input.skuIds]);
@@ -253,7 +269,12 @@ export async function withCatalogAdmissionFence<T, Connection extends FenceConne
   try {
     const work = transact();
     return await (monitor ? Promise.race([work, monitor.abort]) : work);
-  } catch (error) {
+  } catch (cause) {
+    const error = cancellation ? expired : cause;
+    if (cancellation) {
+      // Keep the probe checked out through cancel, including when either client emits an error.
+      await cancellation;
+    }
     writerFailed = error === expired || error === unfinished || monitor?.failed === true;
     if (!writerFailed) {
       try {

@@ -24,6 +24,7 @@ const sameKey = "Retry the same request with the same idempotency key.";
 const checklist = "Check the native binding, connection/TLS, privileges and migrations.";
 const unavailable = "catalog_admission_fence_unavailable";
 const visibility = "catalog_admission_visibility_changed";
+const cancelSql = "SELECT pg_cancel_backend($1) AS cancelled";
 const ledgerSql = "LOCK TABLE public.identity_privacy_erasures IN SHARE MODE";
 const clientSql = "SELECT id FROM public.clients WHERE id=$1 FOR KEY SHARE";
 const ownerSql = "SELECT id FROM public.clients WHERE id=$1 FOR UPDATE";
@@ -76,7 +77,8 @@ afterAll(async () => {
 type ClientObserver = (index: number, db: PoolClient) => Promise<void> | void;
 type QueryObserver = (index: number, text: string, request: string | QueryConfig, values?: unknown[]) => Promise<void> | void;
 function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObserver = () => {},
-  pool = installation.owner, observeError?: (error: unknown) => void) {
+  pool = installation.owner, observeError?: (error: unknown) => void,
+  observeResult?: (text: string, rows: Record<string, unknown>[]) => void) {
   let index = 0;
   return { async connect() {
     const number = index++;
@@ -84,8 +86,13 @@ function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObser
     try { await observeClient(number, db); } catch (error) { db.release(true); throw error; }
     return {
       query: async (request: string | QueryConfig, values?: unknown[]) => {
-        await observeQuery(number, typeof request === "string" ? request : request.text, request, values);
-        try { return await (typeof request === "string" ? db.query(request, values) : db.query(request)); }
+        const text = typeof request === "string" ? request : request.text;
+        await observeQuery(number, text, request, values);
+        try {
+          const result = await (typeof request === "string" ? db.query(request, values) : db.query(request));
+          observeResult?.(text, result.rows);
+          return result;
+        }
         catch (error) { observeError?.(error); throw error; }
       },
       on: db.on.bind(db), removeListener: db.removeListener.bind(db), release: db.release.bind(db),
@@ -249,6 +256,7 @@ it("destroys the idle writer, releases the probe and fences late use while the f
 
 it("gives a real 55P03 the same-key retry while its blocker and callback remain pending", async () => {
   const owner = installation.owner;
+  const stricter = new Pool({ ...owner.options, options: "-c lock_timeout=350ms" });
   const holder = await owner.connect(), finish = latch(), blocked = latch(), pgError = latch();
   const input = scope(1200);
   let writerPid = 0;
@@ -258,7 +266,7 @@ it("gives a real 55P03 the same-key retry while its blocker and callback remain 
     await holder.query("BEGIN");
     const holderPid = await pid(holder);
     await holder.query(ownerSql, [clientId]);
-    const pool = pair(async (index, db) => { if (index === 0) writerPid = await pid(db); }, undefined, owner, error => {
+    const pool = pair(async (index, db) => { if (index === 0) writerPid = await pid(db); }, undefined, stricter, error => {
       lockFailure = error;
       pgError.resolve();
     });
@@ -285,6 +293,75 @@ it("gives a real 55P03 the same-key retry while its blocker and callback remain 
     finish.resolve();
     await holder.query("ROLLBACK").finally(() => holder.release());
     await attempt?.catch(() => {});
+    await stricter.end();
+  }
+});
+
+it.each([
+  { lane: "injected round trips", writerDelay: 275, probeDelay: 125 },
+  { lane: "no injected latency", writerDelay: 0, probeDelay: 0 },
+])("cancels a blocked writer at expiry with $lane", async ({ writerDelay, probeDelay }) => {
+  const owner = installation.owner, holder = await owner.connect();
+  const input = scope(900), finish = latch(), started = latch();
+  const read = vi.fn(async () => "unexpected");
+  let writerPid = 0, cancelStarted = 0, cancelRoundTrip = 0;
+  let cancelResult: Record<string, unknown>[] = [];
+  let pgError: unknown;
+  const targets: [number, unknown[] | undefined][] = [];
+  let attempt: Promise<unknown> | undefined, retry: Promise<unknown> | undefined;
+  try {
+    await holder.query("BEGIN");
+    const holderPid = await pid(holder);
+    await holder.query(ownerSql, [clientId]);
+    const pool = pair(async (index, db) => { if (index === 0) writerPid = await pid(db); },
+      async (index, sql, request) => {
+        if (index === 0 && writerDelay && sql.startsWith("SET LOCAL lock_timeout")) await delay(writerDelay);
+        if (sql === cancelSql) {
+          targets.push([index, typeof request === "string" ? undefined : request.values]);
+          cancelStarted = performance.now();
+          if (probeDelay) await delay(probeDelay);
+        }
+      }, owner, error => { pgError = error; }, (sql, rows) => {
+        if (sql === cancelSql) {
+          cancelRoundTrip = performance.now() - cancelStarted;
+          cancelResult = rows;
+        }
+      });
+    const start = performance.now();
+    attempt = withCatalogAdmissionFence(pool, input, read, { prelock: async db => {
+      started.resolve();
+      try { await db.query(clientSql, [clientId]); } finally { await finish.wait(); }
+    } });
+    void attempt.catch(() => {});
+    await started.wait(attempt);
+    await waitForBlock(writerPid, holderPid, "transactionid");
+
+    let acquiredAt = 0;
+    retry = transaction(orderingPool, async db => {
+      await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))", [input.key]);
+      acquiredAt = performance.now();
+      return pid(db);
+    });
+    void retry.catch(() => {});
+    await expect(attempt).rejects.toMatchObject({ message: unavailable, hint: sameKey });
+    const retryPid = await retry;
+    expect(retryPid).not.toBe(writerPid);
+    if (probeDelay || targets.length) {
+      expect(targets).toEqual([[1, [writerPid]]]);
+      expect(cancelResult).toEqual([{ cancelled: true }]);
+      expect(cancelStarted - start).toBeGreaterThanOrEqual(input.timeoutMs);
+      expect(cancelRoundTrip).toBeGreaterThanOrEqual(probeDelay);
+    } else {
+      // On the local connection the server lock timer can win by a fraction of the margin.
+      expect(pgError).toMatchObject({ code: "55P03" });
+    }
+    expect(acquiredAt - start).toBeLessThanOrEqual(input.timeoutMs + wallMarginMs + (probeDelay ? cancelRoundTrip : 0));
+    expect(read).not.toHaveBeenCalled();
+  } finally {
+    finish.resolve();
+    await holder.query("ROLLBACK").finally(() => holder.release());
+    await attempt?.catch(() => {});
+    await retry?.catch(() => {});
   }
 });
 
@@ -296,7 +373,7 @@ it("applies one wall budget to a stream of individually short lock queries", asy
   expect(read).not.toHaveBeenCalled();
 });
 
-it.each(["before", "after"] as const)("uses the wall timer as provenance with a translated 57014 %s expiry", async when => {
+it.each(["before", "after", "cancel fails"] as const)("preserves expiry provenance when cancellation is %s", async when => {
   const input = scope(450), sent = latch();
   const sql = "SELECT pg_advisory_xact_lock(1917, 19)";
   const message = vi.fn(() => "Anweisung wegen Zeitüberschreitung abgebrochen");
@@ -304,13 +381,19 @@ it.each(["before", "after"] as const)("uses the wall timer as provenance with a 
   let cancel!: (reason: Error) => void;
   const pending = new Promise<never>((_, reject) => { cancel = reject; });
   let index = 0;
-  const release = vi.fn();
+  const release = vi.fn(), cancelProbe = vi.fn();
   const pool = { async connect() {
     const client = index++;
     return {
       async query(request: string | QueryConfig) {
         const text = typeof request === "string" ? request : request.text;
         if (text === sql) { sent.resolve(); return pending; }
+        if (text === cancelSql) {
+          cancelProbe(client, typeof request === "string" ? undefined : request.values);
+          if (when === "cancel fails") throw new Error("private probe failure");
+          cancel(translated);
+          return { rows: [{ cancelled: true }] };
+        }
         if (text.includes("pg_current_xact_id()")) return { rows: [{ xid: "3", pid: 1 }] };
         if (text.includes("current_setting('statement_timeout')")) return { rows: [{ statement: "0", lock_ms: 0 }] };
         return { rows: [] };
@@ -324,7 +407,8 @@ it.each(["before", "after"] as const)("uses the wall timer as provenance with a 
     await sent.wait(result);
     if (when === "before") cancel(translated);
     await expect(result).rejects.toMatchObject({ message: unavailable, hint: when === "before" ? checklist : sameKey });
-    expect(release.mock.calls).toEqual([[0, when === "after"], [1, false]]);
+    expect(cancelProbe.mock.calls).toEqual(when === "before" ? [] : [[1, [1]]]);
+    expect(release.mock.calls).toEqual([[0, when !== "before"], [1, when === "cancel fails"]]);
   } finally { cancel(translated); }
   await yieldTurn();
   expect(message).not.toHaveBeenCalled();
