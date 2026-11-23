@@ -1414,8 +1414,12 @@ The command prints PASS or REFUSED per added forward and check with a capability
 hint. Object content, refs, index and worktree stay unchanged, but Git may refresh
 existing objects' timestamps. Every Git call uses a closed environment.
 Hosted CI judges with the merge commit's admission code and the queue
-with main's, so the command exits 2 when the code it loads differs from the base; merge
-`origin/main` first, or pass `--allow-stale-rules` to run it with a warning. A PASS does
+with main's, so when the code this checkout loads differs from the base, the command
+automatically extracts the admission rule closure from the trusted base commit into a
+throwaway directory and runs it against the candidate range. It exits 2 only if the base
+lacks runnable admission rules, if delegated execution fails or produces no verdicts, or
+if already running in delegated mode; merge `origin/main` first, or pass
+`--allow-stale-rules` to run the local checkout's rules with a warning. A PASS does
 not cover `npm run oss:published-tree -- --policy` and `-- --inventory`, the neutrality
 ratchet, the root test suite (including the real-PostgreSQL native catalogue test) or
 pgTAP. Hosted CI and the merge queue remain authoritative.

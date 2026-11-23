@@ -12,7 +12,7 @@
 // helper, whose closed environment drops inherited repository, index and object redirections.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, posix, relative, resolve } from "node:path";
 import { env } from "node:process";
@@ -165,10 +165,6 @@ function runTrustedBaseRules(
   if (!baseFiles.has("package.json")) {
     writeFileSync(join(rulesRoot, "package.json"), "{\"type\":\"module\"}\n");
   }
-  const nodeModules = join(CODE_ROOT, "node_modules");
-  if (existsSync(nodeModules)) {
-    symlinkSync(nodeModules, join(rulesRoot, "node_modules"), "dir");
-  }
   const realRulesRoot = realpathSync(rulesRoot);
   const result = spawnSync(
     process.execPath,
@@ -185,7 +181,7 @@ function runTrustedBaseRules(
     fail(`sql:admit: failed to execute trusted base rules: ${result.error.message}`);
     return 2;
   }
-  if ((result.status === 1 && !result.stdout && result.stderr) || (result.status === 0 && !result.stdout)) {
+  if ((result.status === 0 || result.status === 1) && !result.stdout.trim()) {
     fail("sql:admit: trusted base rules produced no verdict output; merge the base branch first or pass --allow-stale-rules to run local rules.");
     return 2;
   }
@@ -272,13 +268,28 @@ export async function sqlAdmit(cwd: string, argv: readonly string[], log: (line:
   process.once("SIGINT", interrupted).once("SIGTERM", interrupted);
   try {
     if (stale.length > 0 && !options.allowStaleRules) {
-      const baseFiles = env[DELEGATED_ENV] === "1" ? null : readBaseRuleBlobs(cwd, base);
+      if (env[DELEGATED_ENV] === "1") {
+        fail(`sql:admit: delegated execution still found differing admission code in ${stale.join(", ")}; merge the base branch first or pass --allow-stale-rules to run local rules.`);
+        return 2;
+      }
+      let baseFiles: Map<string, Buffer> | null;
+      try {
+        baseFiles = readBaseRuleBlobs(cwd, base);
+      } catch (error) {
+        fail(`sql:admit: ${(error as Error).message}`);
+        return 2;
+      }
       if (baseFiles === null) {
         fail(`sql:admit: checkout admission code differs from base in ${stale.join(", ")}, and base lacks runnable admission rules; merge the base branch first or pass --allow-stale-rules to run local rules.`);
         return 2;
       }
       log(`sql:admit: checkout admission code differs from ${options.base} in ${stale.join(", ")}; running trusted rules from ${base}`);
-      return runTrustedBaseRules(cwd, scratch, base, head, baseFiles, log, fail);
+      try {
+        return runTrustedBaseRules(cwd, scratch, base, head, baseFiles, log, fail);
+      } catch (error) {
+        fail(`sql:admit: ${(error as Error).message}`);
+        return 2;
+      }
     }
     let range: Range;
     try { range = prepareRange(cwd, scratch, base, head); }

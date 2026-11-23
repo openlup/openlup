@@ -696,7 +696,7 @@ describe("sql:admit", () => {
     expect(allowed.stdout).toContain(`WARNING  admission code differs from ${stricterBase} in scripts/platform-migration-manifest.ts, scripts/sql-admit.ts;`);
     // Guard against recursive delegation if already running in delegated mode.
     const guard = cli(f.root, ["--base", moved, "--head", head], { OPENLUP_SQL_ADMIT_DELEGATED: "1" });
-    expect(guard.status).toBe(2); expect(guard.stdout).toBe(""); expect(guard.stderr).toContain("--allow-stale-rules");
+    expect(guard.status).toBe(2); expect(guard.stdout).toBe(""); expect(guard.stderr).toContain("delegated execution still found differing admission code"); expect(guard.stderr).toContain("--allow-stale-rules");
   }, 30_000);
 
   it("refuses uncommitted new forwards until committed, unless --head is explicit", () => {
