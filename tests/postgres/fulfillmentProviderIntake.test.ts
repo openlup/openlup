@@ -318,6 +318,57 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect(get).toHaveBeenCalledOnce();
   });
 
+  it('poll_keeps_the_successor_checkpoint_after_a_stale_finish', async () => {
+    const { rows: [{ expired, observed, received }] } = await h.owner.query<{ expired: Date; observed: Date; received: Date }>(`
+      SELECT instant - interval '1 day' AS expired,
+             instant + interval '1 year' AS observed,
+             instant + interval '1 year 1 hour' AS received
+      FROM (SELECT clock_timestamp() AS instant) AS fixture_clock
+    `);
+    const obs = observation(await subject(), 'picking', observed.toISOString(), [], received.toISOString());
+    const request = job(undefined, 1), real = request.ledger;
+    const entered = Promise.withResolvers<Parameters<PlatformJobRunLedgerPort['finishJobRun']>>();
+    const release = Promise.withResolvers<void>();
+    const first = compose(obs).reconcile({ ...request, ledger: {
+      ...real,
+      async finishJobRun(...args) {
+        entered.resolve(args);
+        await release.promise;
+        return real.finishJobRun(...args);
+      },
+    } });
+    try {
+      const [, runId, , , , metadata] = await Promise.race([
+        entered.promise,
+        first.then(() => { throw new Error('first poll completed before the finish barrier'); }),
+      ]);
+      expect(metadata?.reconciliationPagination).toEqual({ version: 1, page: 0, pageSize: 1, nextPage: 1 });
+      const expiry = await h.owner.query(`UPDATE public.platform_job_controls SET lease_until=$3
+        WHERE job_name=$1 AND lease_token=$2`, [request.jobName, runId, expired]);
+      expect(expiry.rowCount).toBe(1);
+
+      const successor = compose(obs, { pages: { readPage: async () => ({ kind: 'page', rows: [
+        { kind: 'unknown', refusal: { reason: 'malformed', phase: 'normalize', retryable: false } },
+      ] }) } });
+      expect(await successor.reconcile(request)).toMatchObject({ kind: 'finished', status: 502 });
+      const checkpoint = { version: 1, page: 0, pageSize: 1, nextPage: 0, failureStreak: 1 };
+      const latest = async () => (await real.readLatestTerminalRunMetadata(request.jobName))?.reconciliationPagination;
+      expect(await latest()).toEqual(checkpoint);
+
+      const stale = expect(first).rejects.toThrow('reconciliation_job_lease_lost');
+      release.resolve();
+      await stale;
+      // This ordering covers a successor that commits its checkpoint before the stale finish.
+      expect(await latest()).toEqual(checkpoint);
+    } finally {
+      release.resolve();
+      await Promise.allSettled([first]);
+      // Separate autocommit statements leave cleanup usable after a cancelled query.
+      await h.owner.query('DELETE FROM public.platform_job_runs WHERE job_name=$1', [request.jobName]);
+      await h.owner.query('DELETE FROM public.platform_job_controls WHERE job_name=$1', [request.jobName]);
+    }
+  });
+
   it('poll_checkpoint_read_error_restarts_without_skipping_the_hold', async () => {
     const first = observation(await subject(), 'picking', fixtureInstant, [], fixtureInstant);
     const failed = await subject(), obs = observation(failed, 'exception', fixtureInstant, [], fixtureInstant);
