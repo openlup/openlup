@@ -2900,12 +2900,48 @@ separate from both this probe and application-file upgrades.
 
 Frozen historical record (2026-11-13) archived in [Data and migrations evidence](history/data-and-migrations-evidence-2026-11-13.md#compatibility-lifecycle-archived-evidence).
 
-- **Paid-mail capture repair** — archived in [Data and migrations evidence](history/data-and-migrations-evidence-2026-11-13.md#paid-mail-capture-repair).
+### Paid-mail capture repair
+
+Run this read query through the trusted runtime or operator connection to find
+paid orders with a retained paid event and no mail event:
+
+```sql
+SELECT o.id AS order_uuid, o.paid_at
+FROM public.commerce_orders AS o
+WHERE o.status = 'paid'
+  AND EXISTS (
+    SELECT 1 FROM public.outbox_events AS e
+    WHERE e.aggregate_type = 'commerce_order' AND e.aggregate_id = o.id
+      AND e.event_type = 'commerce.order.paid'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM public.outbox_events AS e
+    WHERE e.aggregate_type = 'commerce_order' AND e.aggregate_id = o.id
+      AND e.event_type = 'commerce.order.paid.email'
+  )
+ORDER BY o.paid_at, o.id;
+```
+
+This identifies missing capture, not provider delivery. It can include historical
+paid orders; reconcile their event history before an explicit host-controlled
+repair. The query changes no row and triggers no send. Settlement replay does
+not recreate a mail event omitted during the original paid transition.
+
+Frozen historical delivery record archived in [Data and migrations evidence](history/data-and-migrations-evidence-2026-11-13.md#paid-mail-capture-repair).
+
 ### Managed stock wait, ATP and refund parity
 
 Frozen historical record archived in [Data and migrations evidence](history/data-and-migrations-evidence-2026-11-13.md#managed-stock-wait-atp-and-refund-parity).
 
 ### Native stock wait and ATP (N3)
+
+When upgrading a custom runtime role from the earlier ATP grant list, apply this
+additional grant after the policy migration and before resuming ATP calls
+(replace `runtime_role` with the host's role):
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO runtime_role;
+```
 
 Frozen historical record archived in [Data and migrations evidence](history/data-and-migrations-evidence-2026-11-13.md#native-stock-wait-and-atp-n3).
 
@@ -2978,9 +3014,43 @@ Frozen historical record archived in [Data and migrations evidence](history/data
 
 ### Complete account consent choices
 
-Frozen historical record archived in [Data and migrations evidence](history/data-and-migrations-evidence-2026-11-13.md#complete-account-consent-choices).
+Owner-only read of locally recorded withdrawals without work:
+
+```sql
+-- account-consent-unsynced-denials
+SELECT id, principal_id, client_id, purpose, recipient_fingerprint,
+       metadata->'recipientFingerprints' AS recipient_fingerprints,
+       source, reason, consent_copy_version, source_ref, captured_at,
+       metadata->>'syncDeferredReason' AS sync_deferred_reason
+FROM public.customer_account_consent_events
+WHERE requested_consent = false AND work_id IS NULL
+ORDER BY captured_at, id;
+```
+
+This audit query includes effective denials and retained suppressions, and may
+include historical withdrawals superseded by later explicit choices. It does not
+send or retry anything. Frozen historical record archived in [Data and migrations evidence](history/data-and-migrations-evidence-2026-11-13.md#complete-account-consent-choices).
 
 ### Account newsletter withdrawal upgrade
+
+An opt-out recorded before `20261030110000_customer_newsletter_withdrawal.sql`
+does not change an existing `granted` row until an operator runs the following
+idempotent statement through the direct migration or administration connection:
+
+<!-- account-newsletter-withdrawal-upgrade -->
+```sql
+UPDATE public.communication_recipient_consents AS consent
+SET state = 'denied',
+    updated_at = GREATEST(consent.updated_at, preference.updated_at)
+FROM public.clients AS client
+JOIN public.customer_communication_preferences AS preference
+  ON preference.principal_id = client.principal_id
+WHERE consent.recipient_fingerprint = encode(sha256(convert_to(lower(btrim(client.email, E'\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff')),'UTF8')),'hex')
+  AND consent.purpose = 'marketing_newsletter'
+  AND consent.state = 'granted'
+  AND preference.marketing_newsletter_consent = false
+  AND consent.updated_at <= preference.updated_at;
+```
 
 Frozen historical record archived in [Data and migrations evidence](history/data-and-migrations-evidence-2026-11-13.md#account-newsletter-withdrawal-upgrade).
 

@@ -616,30 +616,7 @@ using the native notice path with customer data.
 
 Evidence: historical record, 2026-11-13. Not reader guidance.
 
-Run this read query through the trusted runtime or operator connection to find
-paid orders with a retained paid event and no mail event:
-
-```sql
-SELECT o.id AS order_uuid, o.paid_at
-FROM public.commerce_orders AS o
-WHERE o.status = 'paid'
-  AND EXISTS (
-    SELECT 1 FROM public.outbox_events AS e
-    WHERE e.aggregate_type = 'commerce_order' AND e.aggregate_id = o.id
-      AND e.event_type = 'commerce.order.paid'
-  )
-  AND NOT EXISTS (
-    SELECT 1 FROM public.outbox_events AS e
-    WHERE e.aggregate_type = 'commerce_order' AND e.aggregate_id = o.id
-      AND e.event_type = 'commerce.order.paid.email'
-  )
-ORDER BY o.paid_at, o.id;
-```
-
-This identifies missing capture, not provider delivery. It can include historical
-paid orders; reconcile their event history before an explicit host-controlled
-repair. The query changes no row and triggers no send. Settlement replay does
-not recreate a mail event omitted during the original paid transition.
+The active operator read query lives in [Paid-mail capture repair](../DATA_AND_MIGRATIONS.md#paid-mail-capture-repair).
 
 The native terminal-renewal replay forward preserves the claim routine's
 signature, defaults, invoker rights, search path, ownership and ACL. It moves a
@@ -1143,13 +1120,10 @@ Alongside the caller's existing relation privileges, ATP requires `SELECT` on
 `subscription_renewal_terms`, `subscription_renewal_term_lines`,
 `subscription_renewal_operations` and `subscription_cycles` in `public`;
 new-purchase reads also require `SELECT` on `public.catalog_skus`.
-When upgrading a custom runtime role from the earlier grant list, apply exactly
-one additional grant after the policy migration and before resuming ATP calls
-(replace `runtime_role` with the host's role):
-
-```sql
-GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO runtime_role;
-```
+When upgrading a custom runtime role from the earlier grant list, apply the
+additional `inventory_renewal_protection_days()` execute grant documented in
+[Native stock wait and ATP (N3)](../DATA_AND_MIGRATIONS.md#native-stock-wait-and-atp-n3)
+after the policy migration and before resuming ATP calls.
 
 Without it ATP fails with SQLSTATE `42501`, even when the policy is absent;
 permission failure never falls back to 14 days. The policy helper is
@@ -1602,19 +1576,8 @@ new grant. The historical denial is retained, and replay never retargets it or
 reapplies it over a later choice. Database/JavaScript case-fold limits below
 still apply; there is no general automatic email-change/provider migration.
 
-Owner-only read of locally recorded withdrawals without work:
-
-```sql
--- account-consent-unsynced-denials
-SELECT id, principal_id, client_id, purpose, recipient_fingerprint,
-       metadata->'recipientFingerprints' AS recipient_fingerprints,
-       source, reason, consent_copy_version, source_ref, captured_at,
-       metadata->>'syncDeferredReason' AS sync_deferred_reason
-FROM public.customer_account_consent_events
-WHERE requested_consent = false AND work_id IS NULL
-ORDER BY captured_at, id;
-```
-
+The active owner-only read query (`-- account-consent-unsynced-denials`) lives in
+[Complete account consent choices](../DATA_AND_MIGRATIONS.md#complete-account-consent-choices).
 This audit query includes effective denials and retained suppressions, and may
 include historical withdrawals superseded by later explicit choices. It does
 not send or retry anything. Operators must reconcile current choices, usable
@@ -1667,26 +1630,12 @@ statement target the evaluator's fingerprint only where the lowercase results
 agree. No case-mapping change is included here; this withdrawal path assumes a UTF8 database.
 
 An opt-out recorded before this version does not change an existing `granted`
-row until an operator runs the following statement through the direct migration
-or administration connection. It denies a newsletter grant only when its timestamp
-is at or before the matching false preference; a later explicit grant is kept.
-The statement preserves suppression, enabled preferences and other purposes.
-It is idempotent: a second run changes no row.
-
-<!-- account-newsletter-withdrawal-upgrade -->
-```sql
-UPDATE public.communication_recipient_consents AS consent
-SET state = 'denied',
-    updated_at = GREATEST(consent.updated_at, preference.updated_at)
-FROM public.clients AS client
-JOIN public.customer_communication_preferences AS preference
-  ON preference.principal_id = client.principal_id
-WHERE consent.recipient_fingerprint = encode(sha256(convert_to(lower(btrim(client.email, E'\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff')),'UTF8')),'hex')
-  AND consent.purpose = 'marketing_newsletter'
-  AND consent.state = 'granted'
-  AND preference.marketing_newsletter_consent = false
-  AND consent.updated_at <= preference.updated_at;
-```
+row until an operator runs the idempotent reconciliation statement documented in
+[Account newsletter withdrawal upgrade](../DATA_AND_MIGRATIONS.md#account-newsletter-withdrawal-upgrade)
+through the direct migration or administration connection. It denies a newsletter
+grant only when its timestamp is at or before the matching false preference; a
+later explicit grant is kept. The statement preserves suppression, enabled
+preferences and other purposes. It is idempotent: a second run changes no row.
 
 The account setter registers no external provider synchronization; compose any
 provider withdrawal separately. A recorded denial stays keyed to the old email
