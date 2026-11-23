@@ -15,9 +15,8 @@ lives in the [reader guide](packages/core/docs/guide/README.md).
 Change rules and contributor process stay in `AGENTS.md` and `CONTRIBUTING.md`;
 do not duplicate reader guide content here.
 
-Platform settings have a versioned [catalogue](packages/core/docs/guide/how-to/operate/settings-catalogue.md).
-In an extracted starter, use the settings script documented in the application's `AGENTS.md` to find platform or app settings by goal and read versioned JSON.
-Follow [Configure settings](packages/core/docs/guide/how-to/operate/configure-settings.md) and [Add a setting](CONTRIBUTING.md#add-a-setting) for the reader and contributor paths.
+Settings: [catalogue](packages/core/docs/guide/how-to/operate/settings-catalogue.md), [Configure](packages/core/docs/guide/how-to/operate/configure-settings.md), [Add](CONTRIBUTING.md#add-a-setting); starters query settings by goal via their settings script.
+Evaluate every new or changed policy variable as a settings candidate.
 
 Read these documents before changing a related boundary:
 

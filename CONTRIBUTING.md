@@ -141,6 +141,11 @@ Document platform limits or non-configurable rules as `cap` or `invariant`
 entries; keep secrets, ports, low-level technical tuning, brand/copy and
 provider selection outside the catalogue.
 
+Every PR adding or changing a business policy, threshold, time window, or
+`commerce_settings` key must evaluate it against the five tests and either add
+it to the configurator (`settings-data.json` / `settings-host.ts`), record an
+explicit exclusion, or plan a scope extension — enforced by `settingsCandidateParity.test.ts` and the `preflight` candidate guard.
+
 For `cap` or `invariant`, add an entry to `packages/platform/src/<domain>/settings-data.json`
 and run the same regeneration steps as for installed settings. Include
 `key`, `domain`, `kind`, `goal`, `schemaVersion: 1`, a read-only `runtime` with one

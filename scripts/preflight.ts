@@ -14,6 +14,7 @@ import { TOOLING_INPUTS, excludedToolingTests } from "./ci-test-scope.mjs";
 import { readCommits, signOffVerdict } from "./dco-signoff-check.ts";
 import { isChangelogFragment, isChangelogFragmentArea } from "./packages/changelog-fragments.ts";
 import { checkPlatformMigrationProjection } from "./packages/platform-migration-projection.ts";
+import { checkSettingsCandidates, isSettingsCandidateSourcePath } from "./settings-candidate-guard.ts";
 
 export type Status = "PASS" | "WARN" | "SKIP" | "FAIL";
 export type CheckResult = { check: string; status: Status; detail: string; notes?: string[] };
@@ -259,6 +260,35 @@ function fragments(changes: readonly Change[]): CheckResult {
   if (missing.length > 0) return { check: "fragments", status: "WARN", detail: `source changed without a changes/*.md fragment in ${missing.join(", ")}` };
   const touched = changes.some(({ path }) => releasedPackageSource(path) !== undefined);
   return touched ? { check: "fragments", status: "PASS", detail: "every changed released package source has a fragment" } : { check: "fragments", status: "SKIP", detail: "no released package source changed" };
+}
+
+function settingsCandidateGuard(
+  base: string,
+  changes: readonly Change[],
+  untracked: ReadonlySet<string>,
+  target?: string,
+): CheckResult {
+  const eligible = changes.filter(({ path, deleted }) => !deleted && isSettingsCandidateSourcePath(path));
+  if (eligible.length === 0) {
+    return { check: "settings-candidates", status: "SKIP", detail: "no packages/platform/src/**/*.ts files changed" };
+  }
+  const findings = checkSettingsCandidates(process.cwd(), base, changes, {
+    target,
+    untracked,
+    runDiff: (args, cwd) => {
+      const result = execute("git", args, { cwd });
+      return { status: result.code, stdout: result.stdout, stderr: result.output };
+    },
+  });
+  if (findings.length === 0) {
+    return { check: "settings-candidates", status: "PASS", detail: `no unaccounted settings candidates in ${eligible.length} changed platform source file(s)` };
+  }
+  return {
+    check: "settings-candidates",
+    status: "FAIL",
+    detail: `${findings.length} unaccounted settings candidate(s); evaluate against CONTRIBUTING.md#add-a-setting`,
+    notes: findings.map(({ path, line, symbol, remediation }) => `${path}:${line}: ${symbol}: ${remediation}`),
+  };
 }
 
 function testLineChecks(lines: readonly AddedLine[] | null, now: Date): CheckResult[] {
@@ -525,6 +555,7 @@ function fastPreflight(now: Date): number {
       return { check: "migration projection", status: errors.length ? "FAIL" : "PASS", detail: errors[0] ?? "fresh", notes: errors };
     }],
     ["fragments", () => fragments(fastChanges())],
+    ["settings-candidates", () => settingsCandidateGuard(forkPoint(), fastChanges(), new Set(), "HEAD")],
     ["test-lines", () => testLineChecks(changedTestLines(forkPoint(), fastChanges(), new Set(), "HEAD"), now)],
     ["gitleaks", () => gitleaks(forkPoint(), [])],
     ["guide-check", () => fastChanges().some(({ path }) => GUIDE_TRIGGER.test(path))
@@ -658,6 +689,7 @@ export function main(now: Date, args: readonly string[] = []): number {
     ["ast-grep hygiene", () => astGrepHygiene()],
     ["neutrality", () => neutrality(base)],
     ["fragments", () => fragments(changes)],
+    ["settings-candidates", () => settingsCandidateGuard(base, changes, new Set(untrackedPaths))],
     ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
     ["gitleaks", () => gitleaks(base, untrackedPaths)],
     ["test discovery", () => { selection = discoverTests(changes); return testDiscoveryVerdict(selection); }],
