@@ -290,7 +290,9 @@ export function createBoundPostgresMigrationRunner(env: PostgresMigrationRunnerE
       if (!grant) throw new Error("checkout_owner_slot_unverified. Use the approved checkout grant unit.");
       assertCheckoutGrantUnit(plan.units, grant);
       return withMigrationSession(await getPool(), options.lockName, async client => {
-        await client.query("BEGIN");
+        // The ledger identity read precedes the table lock. Use a fresh snapshot
+        // for the prefix and checkout observations after acquiring that lock.
+        await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
         try {
           const { applied } = await readLockedPrefix(client, plan.units, "SHARE ROW EXCLUSIVE");
           if (applied.length !== plan.units.length) {

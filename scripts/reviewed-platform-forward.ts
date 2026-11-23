@@ -1737,6 +1737,23 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
     assertForwardApproval(root, base, head);
   }
   if (sqlSha256(bytes) !== forward.sha256) throw checkout ? checkoutForwardRefusal(path) : new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
+  const nativeSlot = registry.nativeStoreForwardClass?.slots.find(slot => slot.path === path);
+  if (path.startsWith("db/platform/migrations/") && replacesCheckoutRoutine(bytes, nativeSlot)) {
+    const manifestBytes = blob(root, head, PLATFORM_MIGRATION_MANIFEST);
+    const manifest = manifestBytes && JSON.parse(manifestBytes.toString("utf8")) as PlatformMigrationManifest;
+    const plans = !manifest ? [] : [manifest, ...(manifest.schemaVersion === 1 ? [] : [manifest.qualified]),
+      ...(manifest.schemaVersion === 3 ? [manifest.qualifiedAdmin] : [])];
+    const prefixes = plans.flatMap(({ forward }) => {
+      const position = forward.findIndex(unit => unit.file === path);
+      return position < 0 ? [] : [forward.slice(0, position)];
+    });
+    if (!prefixes.length || prefixes.some(prefix => !prefix.some(unit => {
+      if (!checkoutOwnerGrantPath.test(unit.file)) return false;
+      const pin = registry.nativeStoreForwards?.find(entry => entry.path === unit.file);
+      const issued = blob(root, approval, unit.file);
+      return pin?.sha256 === unit.sha256 && issued !== undefined && sqlSha256(issued) === unit.sha256;
+    }))) throw checkoutReplacementRefusal(path);
+  }
   if (isQualifiedPlatformMigrationPath(path)) {
     const priorRegistry = blob(root, approval, REVIEWED_FORWARD_PATH);
     if (priorRegistry && approvalBinding(readForwardRegistry(priorRegistry, true), path)) assertUnchangedForwardApproval(root, approval, head, path);
@@ -2752,6 +2769,7 @@ const isCheckoutOwnerSlot = (slot: NativeStoreSlot) => slot.row === checkoutOwne
 const checkoutSlotRefusal = (path: string) => new Error(`checkout_owner_slot_invalid: ${path}. Use the single reviewed checkout-owner grant-only slot and pin.`);
 const checkoutForwardRefusal = (path: string) => new Error(`checkout_owner_forward_unverified: ${path}. Replay the reviewed grant bytes after landing the rule and its definitions.`);
 const checkoutPredecessorRefusal = (subject: string) => new Error(`checkout_owner_predecessor_unverified: ${subject}. Recover the original issued definition and its approval binding.`);
+const checkoutReplacementRefusal = (path: string) => new Error(`checkout_owner_predecessor_unverified: ${path}. Issue the checkout grant unit before replacing a checkout routine.`);
 
 const isQualifiedCatalogueReadGrant = (slot: NativeStoreSlot) => slot.grantOnlyFunctions.some(fn => Array.isArray(fn?.grantTo) && fn.grantTo.includes(cataloguePublicationRole));
 
@@ -3928,6 +3946,18 @@ function checkoutDefinition(earlierSlots: readonly NativeStoreSlot[], path: stri
   return definition;
 }
 
+const checkoutSignatures = new Set<string>(checkoutOwnerRoutines);
+const checkoutRoutineNames = new Set(checkoutOwnerRoutines.map(signature => signature.split("(")[0]!));
+function replacesCheckoutRoutine(bytes: Buffer, slot?: NativeStoreSlot): boolean {
+  if (slot?.replacedFunctions.some(fn => checkoutSignatures.has(fn.signature))) return true;
+  const sql = bytes.toString("utf8").toLowerCase();
+  if (![...checkoutRoutineNames].some(name => sql.includes(name.slice("public.".length)))) return false;
+  return cachedNativePrefixStatements(bytes).some(({ statement, tokens, complete }) =>
+    nativeWord(tokens, 0, "CREATE") && nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE")
+    && nativeWord(tokens, 3, "FUNCTION") && checkoutRoutineNames.has(nativeQualified(tokens, 4)?.name ?? "")
+    && nativeStoreFunctionDefinitionFromTokens(statement, tokens, complete, checkoutSignatures, checkoutRoutineNames, true) !== null);
+}
+
 /** Exact inventory with lexical shape checks; feature SQL still owns behavior proof. */
 export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]) {
   validateNativeStoreClass(registry, new Set());
@@ -3950,6 +3980,11 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (!bytes.equals(Buffer.from(sql))) throw new Error("reviewed native store qualified price setup EXECUTE forward must contain only the exact guarded grant with final LF");
   }
   const earlierSlots = control!.slots.slice(0, control!.slots.indexOf(slot));
+  if (replacesCheckoutRoutine(bytes, slot) && !earlierSlots.some(earlier => checkoutOwnerGrantPath.test(earlier.path)
+    && preceding.some(source => source.path === earlier.path
+      && registry.nativeStoreForwards!.find(pin => pin.path === earlier.path)?.sha256 === sqlSha256(source.bytes)))) {
+    throw checkoutReplacementRefusal(path);
+  }
   const checkoutPredecessor = checkout ? checkoutDefinition(earlierSlots, path) : undefined;
   if (checkoutPredecessor) {
     const pin = registry.nativeStoreForwards!.find(entry => entry.path === checkoutPredecessor.path);

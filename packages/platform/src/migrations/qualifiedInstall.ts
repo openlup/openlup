@@ -33,9 +33,10 @@ const GROUPS = [...ACTOR_GROUPS, ...ACQUISITION_GROUPS];
 // https://www.postgresql.org/docs/16/predefined-roles.html
 const PREDEFINED = ["pg_database_owner", "pg_read_all_data", "pg_write_all_data", "pg_read_all_settings", "pg_read_all_stats", "pg_stat_scan_tables", "pg_monitor", "pg_signal_backend", "pg_read_server_files", "pg_write_server_files", "pg_execute_server_program", "pg_checkpoint", "pg_use_reserved_connections", "pg_create_subscription"];
 const SAFE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/u;
-function fail(code: string): never { throw new Error(`qualified PostgreSQL installation refused: ${code}`); }
-function checkoutLoginUnready(reason: string): never {
-  return fail(`checkout_owner_login_unready: ${checkoutOwnerLogin}. ${reason}`);
+function fail(code: string, options?: ErrorOptions): never { throw new Error(`qualified PostgreSQL installation refused: ${code}`, options); }
+function checkoutLoginUnready(reason: string, diagnostic?: string): never {
+  return fail(`checkout_owner_login_unready: ${checkoutOwnerLogin}. ${reason}`,
+    diagnostic === undefined ? undefined : { cause: new Error(diagnostic) });
 }
 function checkoutAclMismatch(subject: string): never {
   return fail(`checkout_owner_acl_mismatch: ${subject}. Restore the issued owner and ACL, then verify catalog readback.`);
@@ -176,7 +177,8 @@ function checkCheckoutOwner(
     if (row.kind === "role") continue;
     const a = attributes(row);
     if (row.kind === "role-membership" && [a.grantedRole, a.memberRole, a.grantorRole].includes(checkoutOwnerLogin)) {
-      checkoutLoginUnready("Remove all membership and grantor edges for the checkout login.");
+      checkoutLoginUnready("Remove all membership and grantor edges for the checkout login.",
+        `Membership of ${String(a.memberRole)} in ${String(a.grantedRole)} issued by ${String(a.grantorRole)}.`);
     }
     if (row.kind === "function") {
       const signature = checkoutRoutineIdentity(row, row.arguments);
@@ -205,7 +207,11 @@ function checkCheckoutOwner(
     }
     if ([a.owner, a.ownerRole, a.grantor, a.grantee].includes(checkoutOwnerLogin)
       || row.kind === "policy" && Array.isArray(a.roles) && a.roles.includes(checkoutOwnerLogin)) {
-      checkoutLoginUnready("Remove additional catalog access for the checkout login.");
+      const [kind, args] = row.kind === "acl-grant"
+        ? [String(a.targetClass), row.arguments.slice(1, -5)] : [row.kind, row.arguments];
+      const name = row.schema === null ? row.name : `${row.schema}.${row.name}`;
+      checkoutLoginUnready("Remove additional catalog access for the checkout login.",
+        `Additional catalog access on ${kind} ${name}${args.length ? `(${args.join(", ")})` : ""}.`);
     }
   }
   if (definition && found.size !== checkoutRoutines.size) checkoutPredecessorUnverified();
