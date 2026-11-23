@@ -14,7 +14,6 @@ import { createPostgresRenewalReservationPort } from "@openlup/platform/inventor
 import { createPlatformPostgresMigrationRunner } from "@openlup/platform/migrations";
 import { readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
-import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { captureSandboxPurchase } from "./captureSandboxPurchase.js";
 import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "./postgresContainer.js";
@@ -46,6 +45,32 @@ export type JourneyTargetTemplate = {
   clone(dbLabel?: string): Promise<JourneyTargetInstallation>;
 };
 
+const STORE_JOURNEY_ROLE_SNAPSHOT_SQL = `SELECT json_build_object(
+  'roles', (SELECT coalesce(json_agg(r ORDER BY r.rolname), '[]'::json) FROM (
+    SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls, rolconfig
+    FROM pg_catalog.pg_roles
+  ) r),
+  'members', (SELECT coalesce(json_agg(m ORDER BY m.role_name, m.member_name, m.grantor_name), '[]'::json) FROM (
+    SELECT r.rolname AS role_name, u.rolname AS member_name, g.rolname AS grantor_name,
+      a.admin_option, a.inherit_option, a.set_option
+    FROM pg_catalog.pg_auth_members a
+    JOIN pg_catalog.pg_roles r ON r.oid = a.roleid
+    JOIN pg_catalog.pg_roles u ON u.oid = a.member
+    JOIN pg_catalog.pg_roles g ON g.oid = a.grantor
+  ) m)
+)::text AS snapshot`;
+
+function sanitizeJourneyDbSuffix(dbLabel?: string): string {
+  if (!dbLabel) return "";
+  const cleaned = dbLabel.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 32);
+  return cleaned ? `_${cleaned}` : "";
+}
+
+async function readJourneyClusterRoleDigest(bootstrap: Pool): Promise<string> {
+  const { rows } = await bootstrap.query<{ snapshot: string }>(STORE_JOURNEY_ROLE_SNAPSHOT_SQL);
+  return createHash("sha256").update(rows[0]!.snapshot).digest("hex");
+}
+
 /** Own resources per suite; no ambient database, owner fallback or extra runtime grants. */
 export function storeJourneyResources() {
   const containers: PostgresContainer[] = [], pools: Pool[] = [];
@@ -54,81 +79,98 @@ export function storeJourneyResources() {
   const runnerZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const zone = ["Etc/GMT-9", "Etc/GMT+5"].includes(runnerZone) ? runnerZone : undefined;
   const pool = (connectionString: string) => { const value = new Pool({ connectionString }); pools.push(value); return value; };
+  type SharedCluster = {
+    container: PostgresContainer;
+    bootstrap: Pool;
+    baselineRoleDigest: string;
+    urlFor: (database: string, login: string, migration?: boolean) => string;
+  };
+  let clusterPromise: Promise<SharedCluster> | undefined;
+  let sharedCluster: SharedCluster | undefined;
+  let sequence = 0;
+  let closed = false;
+  let ddlChain: Promise<unknown> = Promise.resolve();
+  const enqueueDdl = <T>(work: () => Promise<T>): Promise<T> => {
+    const next = ddlChain.then(work, work);
+    ddlChain = next.then(() => undefined, () => undefined);
+    return next;
+  };
+  // Migrate and verify one sealed template database per storeJourneyResources()
+  // instance, then clone isolated per-installation/target databases in ~100 ms.
+  const ensureCluster = (firstLabel: string): Promise<SharedCluster> => {
+    if (closed) return Promise.reject(new Error("store_journey_resources_closed"));
+    if (!clusterPromise) {
+      clusterPromise = (async () => {
+        if (!await dockerAvailable()) throw new Error("Store journey requires disposable PostgreSQL; Docker absence is missing proof");
+        const container = await runPostgresContainer({
+          name: `store-journey-${firstLabel}-${process.pid}`,
+          password: "synthetic-journey",
+          tmpfsSizeMb: 768,
+          ...(zone ? { command: ["postgres", "-c", `timezone=${zone}`] } : {}),
+        });
+        containers.push(container);
+        if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Store journey PostgreSQL TCP unavailable");
+        const bootstrap = pool(container.connectionString);
+        await bootstrap.query(`CREATE ROLE transfer_owner LOGIN INHERIT SUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-journey';
+          CREATE ROLE transfer_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-journey';
+          CREATE ROLE transfer_restore LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-journey'`);
+        await bootstrap.query("CREATE DATABASE template_migrated OWNER transfer_owner");
+        const urlFor = (database: string, login: string, migration = false) => {
+          const value = new URL(container.connectionStringFor(database)); value.username = login;
+          if (migration) value.searchParams.set("options", qualifiedPostgresStartupOptions(journeySelection));
+          return value.toString();
+        };
+        const templateOwner = new Pool({ connectionString: urlFor("template_migrated", journeySelection.migrationLogin, true) });
+        const templateRuntime = new Pool({ connectionString: urlFor("template_migrated", journeySelection.runtimeLogin) });
+        try {
+          const runner = createPlatformPostgresMigrationRunner({ connectionString: urlFor("template_migrated", journeySelection.migrationLogin) }, {
+            installation: journeySelection, poolFactory: () => templateOwner,
+            catalog: { readManifest: readPlatformMigrationManifest, readMigrations: readPlatformMigrations },
+          });
+          expect(await runner.apply()).toEqual({ applied: [manifest.baseline, ...manifest.forward].map(unit => unit.file) });
+          expect((await runner.status()).pending).toEqual([]);
+          expect((await templateOwner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows)
+            .toEqual([manifest.baseline, ...manifest.forward].map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })));
+          await assertJourneyRuntime(templateRuntime);
+          if (zone) for (const db of [templateOwner, templateRuntime]) expect((await db.query("SHOW TimeZone")).rows).toEqual([{ TimeZone: zone }]);
+        } finally {
+          for (const value of [templateOwner, templateRuntime]) value.on("error", () => {});
+          await Promise.all([templateOwner.end(), templateRuntime.end()]);
+        }
+        await bootstrap.query("ALTER DATABASE template_migrated IS_TEMPLATE = true");
+        await bootstrap.query("ALTER DATABASE template_migrated ALLOW_CONNECTIONS = false");
+        const baselineRoleDigest = await readJourneyClusterRoleDigest(bootstrap);
+        sharedCluster = { container, bootstrap, baselineRoleDigest, urlFor };
+        return sharedCluster;
+      })();
+    }
+    return clusterPromise;
+  };
+  const openClone = async (cluster: SharedCluster, prefix: "install" | "target", dbLabel?: string) => enqueueDdl(async () => {
+    if (closed) throw new Error("store_journey_resources_closed");
+    const dbName = `${prefix}_${++sequence}${sanitizeJourneyDbSuffix(dbLabel)}`;
+    await cluster.bootstrap.query(`CREATE DATABASE "${dbName}" TEMPLATE template_migrated OWNER transfer_owner`);
+    const ownerUrl = cluster.urlFor(dbName, journeySelection.migrationLogin, true);
+    const runtimeUrl = cluster.urlFor(dbName, journeySelection.runtimeLogin);
+    const restoreUrl = cluster.urlFor(dbName, journeySelection.restoreLogin!);
+    return {
+      dbName,
+      owner: pool(ownerUrl),
+      ownerUrl,
+      runtime: pool(runtimeUrl),
+      restore: prefix === "target" ? pool(restoreUrl) : undefined,
+      runtimeUrl,
+    };
+  });
   return {
     async installation(label: string): Promise<JourneyInstallation> {
-      if (!await dockerAvailable()) throw new Error("Store journey requires disposable PostgreSQL; Docker absence is missing proof");
-      const container = await runPostgresContainer({ name: `store-journey-${label}-${process.pid}`, password: "synthetic-journey",
-        ...(zone ? { command: ["postgres", "-c", `timezone=${zone}`] } : {}) });
-      containers.push(container);
-      if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Store journey PostgreSQL TCP unavailable");
-      const bootstrap = pool(container.connectionString);
-      await bootstrap.query(`CREATE ROLE transfer_owner LOGIN INHERIT SUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-journey';
-        ALTER DATABASE postgres OWNER TO transfer_owner;
-        CREATE ROLE transfer_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-journey';
-        CREATE ROLE transfer_restore LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-journey'`);
-      const url = (login: string, migration = false) => {
-        const value = new URL(container.connectionString); value.username = login;
-        if (migration) value.searchParams.set("options", qualifiedPostgresStartupOptions(journeySelection));
-        return value.toString();
-      };
-      const owner = pool(url(journeySelection.migrationLogin, true));
-      const runner = createPlatformPostgresMigrationRunner({ connectionString: url(journeySelection.migrationLogin) }, {
-        installation: journeySelection, poolFactory: () => owner,
-        catalog: { readManifest: readPlatformMigrationManifest, readMigrations: readPlatformMigrations },
-      });
-      expect(await runner.apply()).toEqual({ applied: [manifest.baseline, ...manifest.forward].map(unit => unit.file) });
-      expect((await runner.status()).pending).toEqual([]);
-      expect((await owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows)
-        .toEqual([manifest.baseline, ...manifest.forward].map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })));
-      await bootstrap.end();
-      const runtimeUrl = url(journeySelection.runtimeLogin), runtime = pool(runtimeUrl);
-      await assertJourneyRuntime(runtime);
-      if (zone) for (const db of [owner, runtime]) expect((await db.query("SHOW TimeZone")).rows).toEqual([{ TimeZone: zone }]);
-      return { owner, runtime, runtimeUrl };
+      const cluster = await ensureCluster(label);
+      const clone = await openClone(cluster, "install", label);
+      return { owner: clone.owner, runtime: clone.runtime, runtimeUrl: clone.runtimeUrl };
     },
     async targetTemplate(label: string): Promise<JourneyTargetTemplate> {
-      if (!await dockerAvailable()) throw new Error("Store journey requires disposable PostgreSQL; Docker absence is missing proof");
-      const container = await runPostgresContainer({ name: `store-journey-${label}-${process.pid}`, password: "synthetic-journey",
-        ...(zone ? { command: ["postgres", "-c", `timezone=${zone}`] } : {}) });
-      containers.push(container);
-      if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Store journey PostgreSQL TCP unavailable");
-      const bootstrap = pool(container.connectionString);
-      await bootstrap.query(`CREATE ROLE transfer_owner LOGIN INHERIT SUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-journey';
-        CREATE ROLE transfer_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-journey';
-        CREATE ROLE transfer_restore LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-journey'`);
-      await bootstrap.query("CREATE DATABASE template_migrated OWNER transfer_owner");
-      const urlFor = (database: string, login: string, migration = false) => {
-        const value = new URL(container.connectionStringFor(database)); value.username = login;
-        if (migration) value.searchParams.set("options", qualifiedPostgresStartupOptions(journeySelection));
-        return value.toString();
-      };
-      // Migrate and verify template_migrated once, then close its setup pools so
-      // PostgreSQL permits CREATE DATABASE ... TEMPLATE template_migrated.
-      const templateOwner = new Pool({ connectionString: urlFor("template_migrated", journeySelection.migrationLogin, true) });
-      const templateRuntime = new Pool({ connectionString: urlFor("template_migrated", journeySelection.runtimeLogin) });
-      try {
-        const runner = createPostgresMigrationRunner({ connectionString: urlFor("template_migrated", journeySelection.migrationLogin) },
-          { installation: journeySelection, poolFactory: () => templateOwner });
-        expect(await runner.apply()).toEqual({ applied: [manifest.baseline, ...manifest.forward].map(unit => unit.file) });
-        expect((await runner.status()).pending).toEqual([]);
-        expect((await templateOwner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows)
-          .toEqual([manifest.baseline, ...manifest.forward].map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })));
-        await assertJourneyRuntime(templateRuntime);
-        if (zone) for (const db of [templateOwner, templateRuntime]) expect((await db.query("SHOW TimeZone")).rows).toEqual([{ TimeZone: zone }]);
-      } finally {
-        await Promise.all([templateOwner.end(), templateRuntime.end()]);
-      }
-      let sequence = 0;
+      const cluster = await ensureCluster(label);
       let active: { dbName: string; owner: Pool; runtime: Pool; restore: Pool } | undefined;
-      const openClone = async (dbLabel?: string) => {
-        const suffix = dbLabel ? `_${dbLabel.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 32)}` : "";
-        const dbName = `target_${++sequence}${suffix}`;
-        await bootstrap.query(`CREATE DATABASE "${dbName}" TEMPLATE template_migrated OWNER transfer_owner`);
-        const ownerUrl = urlFor(dbName, journeySelection.migrationLogin, true);
-        const runtimeUrl = urlFor(dbName, journeySelection.runtimeLogin);
-        const restoreUrl = urlFor(dbName, journeySelection.restoreLogin!);
-        return { dbName, owner: pool(ownerUrl), ownerUrl, runtime: pool(runtimeUrl), restore: pool(restoreUrl), runtimeUrl };
-      };
       return {
         async nextTarget(dbLabel?: string): Promise<JourneyTargetInstallation> {
           if (active) {
@@ -143,19 +185,40 @@ export function storeJourneyResources() {
               const index = pools.indexOf(value);
               if (index >= 0) pools.splice(index, 1);
             }
-            await bootstrap.query(`DROP DATABASE IF EXISTS "${previous.dbName}" WITH (FORCE)`);
+            await enqueueDdl(async () => {
+              if (!closed && !cluster.bootstrap.ended) {
+                await cluster.bootstrap.query(`DROP DATABASE IF EXISTS "${previous.dbName}" WITH (FORCE)`);
+              }
+            });
           }
-          const next = await openClone(dbLabel);
-          active = { dbName: next.dbName, owner: next.owner, runtime: next.runtime, restore: next.restore };
-          return { owner: next.owner, ownerUrl: next.ownerUrl, runtime: next.runtime, restore: next.restore, runtimeUrl: next.runtimeUrl };
+          const next = await openClone(cluster, "target", dbLabel);
+          active = { dbName: next.dbName, owner: next.owner, runtime: next.runtime, restore: next.restore! };
+          return { owner: next.owner, ownerUrl: next.ownerUrl, runtime: next.runtime, restore: next.restore!, runtimeUrl: next.runtimeUrl };
         },
         async clone(dbLabel?: string): Promise<JourneyTargetInstallation> {
-          const next = await openClone(dbLabel);
-          return { owner: next.owner, ownerUrl: next.ownerUrl, runtime: next.runtime, restore: next.restore, runtimeUrl: next.runtimeUrl };
+          const next = await openClone(cluster, "target", dbLabel);
+          return { owner: next.owner, ownerUrl: next.ownerUrl, runtime: next.runtime, restore: next.restore!, runtimeUrl: next.runtimeUrl };
         },
       };
     },
-    close: (additionalClosers: (() => Promise<unknown>)[] = []) => closePostgres(containers, pools, additionalClosers),
+    async close(additionalClosers: (() => Promise<unknown>)[] = []) {
+      closed = true;
+      if (clusterPromise) await clusterPromise.catch(() => undefined);
+      await ddlChain;
+      let roleMismatchError: Error | undefined;
+      try {
+        for (const value of pools) value.on("error", () => {});
+        if (sharedCluster && !sharedCluster.bootstrap.ended) {
+          const finalRoleDigest = await readJourneyClusterRoleDigest(sharedCluster.bootstrap);
+          if (finalRoleDigest !== sharedCluster.baselineRoleDigest) {
+            roleMismatchError = new Error("store_journey_cluster_role_mutation_leaked");
+          }
+        }
+      } finally {
+        await closePostgres(containers, pools, additionalClosers);
+      }
+      if (roleMismatchError) throw roleMismatchError;
+    },
   };
 }
 
