@@ -577,7 +577,7 @@ function pristinePackedA1Fixture() {
   for (const [path, source] of packedA1Originals) writeFileSync(path, source);
   return packedA1Consumer;
 }
-it("guide_skeleton_pack_passes_checker", () => {
+it("checks the packed inert catalogue skeleton and reports unavailable content evidence", () => {
   proveCatalogConformanceConsumer(pristinePackedA1Fixture());
 });
 
@@ -1949,8 +1949,8 @@ const pack = withCatalogPublicationRules(${JSON.stringify({ ...fixturePack, type
   call(registration("substituted.mjs", "Example", true), 74);
   const mixed = call(registration("substituted-mixed.mjs", "Example", true, true), 1);
   expect(mixed.findings.map(findingIdentity)).toEqual([
-    ["/packs/0/drafts/0/product/sharedContent", "conformance_owner_unavailable", "error"],
-    ...warnings,
+    ["/packs/0/pack", "advisory_fixtures_skipped_definition_invalid", "warning"],
+    netContentWarning,
     ["/packs/0/pack/types/1/taxClass", "definition_unknown_tax_class", "error"],
     ["/requiredChecks/0", "conformance_owner_unavailable", "error"],
   ]);
@@ -1958,28 +1958,26 @@ const pack = withCatalogPublicationRules(${JSON.stringify({ ...fixturePack, type
   call(good, 74);
 });
 
-it("RP2 typechecks and discovers all nine recipes from the packed skeleton", () => {
+it("typechecks the packed v3 skeleton and discovers its catalogue recipes", () => {
   const { app, consumer, write, call, environment } = packedCatalogue();
   const core = join(consumer, "node_modules/@openlup/core");
   const guide = "docs/guide/how-to/extend/catalogue-extension.md";
+  const namespace = "sample";
   for (const file of ["catalogue.ts", "pack.ts", "fixtures.ts"]) {
-    cpSync(join(dirname(join(core, guide)), "catalogue-pack-skeleton", file), join(app, file));
+    const original = readFileSync(join(dirname(join(core, guide)), "catalogue-pack-skeleton", file), "utf8");
+    write(file, original.replaceAll("stationery", namespace));
   }
   const tsconfig = write("tsconfig.json", JSON.stringify({
     compilerOptions: { noEmit: true, skipLibCheck: true, strict: true, erasableSyntaxOnly: true,
       verbatimModuleSyntax: true, allowImportingTsExtensions: true, module: "nodenext", types: [] },
     files: ["catalogue.ts"],
   }));
-  const compiled = spawnSync(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "--project", tsconfig],
-    { cwd: app, env: environment, encoding: "utf8" });
-  expect(compiled.status, compiled.stdout || compiled.stderr).toBe(0);
   const projected = call(sourceArgs(join(app, "catalogue.ts")), 0);
   const [{ pack, drafts }] = JSON.parse(readFileSync(projected.transport.subjectPath, "utf8")).packs;
-  expect(pack.types[0]).toMatchObject({ key: "stationery:notebook", version: 1, taxClass: "standard" });
-  expect(drafts[0].product.sharedContent).toEqual({ title: "Notebook" });
+  expect(pack.types[0]).toMatchObject({ key: `${namespace}:notebook`, version: 1, taxClass: "standard" });
+  expect(drafts[0]).toMatchObject({ schemaVersion: 3, product: { sharedContent: { presentation: { title: "Notebook" } } } });
   const lines = readFileSync(join(core, guide), "utf8").split("\n");
-  for (const title of ["New vertical", "Add attribute", "Add unit", "Add axis", "Add tax class", "Add category or collection",
-    "Promotion with existing grammar", "Subscription profile", "Upgrade a definition"]) {
+  for (const title of ["New vertical", "Add attribute", "Add unit", "Add axis", "Add tax class", "Subscription profile", "Upgrade a definition"]) {
     const result = JSON.parse(execFileSync(process.execPath, [join(core, "src/openlup-context.js"), "search", title, "--limit", "20", "--json"],
       { cwd: app, env: environment, encoding: "utf8" }));
     const index = lines.indexOf("## " + title);
@@ -1987,6 +1985,30 @@ it("RP2 typechecks and discovers all nine recipes from the packed skeleton", () 
     const next = lines.findIndex((line, i) => i > index && line.startsWith("## "));
     expect(result.hits, title).toContainEqual(expect.objectContaining({ title, start: index + 1, end: next < 0 ? lines.length : next }));
   }
+  const unitStart = lines.indexOf("## Add unit");
+  const unitEnd = lines.findIndex((line, index) => index > unitStart && line.startsWith("## "));
+  const examples = [...lines.slice(unitStart, unitEnd).join("\n").matchAll(/^```ts nocheck\n([^]*?)\n^```$/gm)];
+  expect(examples).toHaveLength(2);
+  const unit = examples[0]![1], quantity = examples[1]![1];
+  write("pack.ts", readFileSync(join(app, "pack.ts"), "utf8")
+    .replace("export const pack =", `const namespace = ${JSON.stringify(namespace)};\n\nexport const pack =`)
+    .replace(`namespace: "${namespace}"`, "namespace")
+    .replace("\n    ],\n    netContentUnits:", `\n${unit}\n    ],\n    netContentUnits:`));
+  write("fixtures.ts", readFileSync(join(app, "fixtures.ts"), "utf8")
+    .replace("quantities: [{ type, value: count }]", `quantities: [{ type, value: count },\n${quantity}\n  ]`));
+  const compiled = spawnSync(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "--project", tsconfig],
+    { cwd: app, env: environment, encoding: "utf8" });
+  expect(compiled.status, compiled.stdout || compiled.stderr).toBe(0);
+  const appended = call(sourceArgs(join(app, "catalogue.ts")), 0);
+  expect(appended.findings.map(({ code }: { code: string }) => code)).toEqual(["advisory_filter_flags_unused"]);
+  const [updated] = JSON.parse(readFileSync(appended.transport.subjectPath, "utf8")).packs;
+  expect(updated.pack.types[0].units).toEqual([...pack.types[0].units, expect.objectContaining({ code: `${namespace}:pair` })]);
+  expect(updated.pack.types[0].netContentUnits).toEqual(["openlup:g"]);
+  expect(updated.quantities.at(-1)).toEqual({
+    type: drafts[0].product.type,
+    value: { dimension: "count", unit: `${namespace}:pair`, unscaled: "2", scale: 0 },
+  });
+
   // Prove the application parser uses native, erasable TypeScript imports.
   call(sourceArgs(write("forward.ts", 'export { catalogueConformance } from "./catalogue.ts";')), 0);
 }, 30_000);

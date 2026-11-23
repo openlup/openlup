@@ -22,8 +22,8 @@ runs the other draft owner checks. `requiredChecks: ["draft-content"]` requires
 at least one admitted fixture per pack that calls its content validator.
 
 Each pack accepts `drafts`, `quantities`, `attributes`, `combinations` and
-`refusals`. Drafts use the v1–v3 schemas and draft owners. Version 3 checks
-operation and price shape. Quantity fixtures use `{type, value, targetUnit?}`,
+`refusals`. Write fixtures as schema version 3 to check draft facts and the shape
+of publication and price operations. Quantity fixtures use `{type, value, targetUnit?}`,
 explicit conversion factors, and a type key and version. Request
 `attribute-values` or `variant-combinations` in `requiredChecks` to require their
 fixtures in each pack.
@@ -46,9 +46,8 @@ to prepare, approve, issue and read the exact saved facts.
 
 In an extracted starter, apply this check to all the recipes below.
 After each change, run `npm run typecheck` from the extracted application root.
-Check `owned/catalogue.ts` with `npm run --silent catalogue:check:source` and
-`owned/catalogue.json` with `npm run --silent catalogue:check`. For a pack at
-another path, use the projection command in the recipe.
+Check `owned/catalogue.ts` with `npm run --silent catalogue:check:source`.
+For a pack at another path, use the projection command in the recipe.
 
 ## New vertical
 
@@ -65,20 +64,13 @@ cp node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-pack-skeleton/*
 npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json
 ```
 
+`catalogue-pack-skeleton/catalogue.json` is input for `openlup catalogue check --packs`; an application started from the starter declares packs only in `owned/catalogue.ts`
+
 For inert checking, copy the [static JSON sample](./catalogue-pack-skeleton/catalogue.json)
-and run `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
-For a capability declared `false`, record a refusal observation such as
-
-```json
-{"name":"feature refusal","capability":"feature","expectedCode":"owner_unsupported","observedCode":"owner_unsupported","zeroEffects":true}
-```
-
-The checker compares the codes and requires zero effects in the record. Requesting
-`requiredChecks: ["owner-refusals"]` reports unavailable evidence until an owner
-can execute that refusal. Usual codes include `pack_type_namespace_mismatch`,
-`definition_unknown_field`, `draft_input_invalid`, `conformance_subject_invalid`,
-`conformance_refusal_fixture_missing`, `conformance_refusal_fixture_invalid` and
-`conformance_refusal_fixture_mismatch`.
+to your working directory and run `npx --no -- openlup catalogue check --packs ./catalogue.json --json`.
+The sample reports unavailable content evidence (exit 2).
+Usual codes include `pack_type_namespace_mismatch`, `definition_unknown_field`,
+`draft_input_invalid` and `conformance_subject_invalid`.
 
 ## Add attribute
 
@@ -90,7 +82,7 @@ labels: {en: "Finish"}}]`. In `fixtures.ts`, `attributes` fixtures call `validat
 references?}`. `input` contains `productAttributes` and `skus: [{id, attributes?}]`.
 Missing required values/locales, scope, unknown keys, storage and projection-text
 bounds retain exact owner diagnostics. Successful rows preserve the owner's exact
-projection values; no projection is written. Attribute values stay outside v1 drafts.
+projection values; no projection is written.
 `references` is an optional array of `{namespace, id, status}` observations.
 One unique `resolved` row supports fixture PASS; absent, omitted, duplicate or
 `unavailable` evidence yields 2. Unique `dangling` or `private` yields 1.
@@ -110,11 +102,32 @@ Usual metadata codes:
 
 ## Add unit
 
-Edit `pack.ts`: `units: [{code: "stationery:each", dimension:
-"count", integral: true, factor: {canonicalUnit: "openlup:piece", unscaled: "1",
-scale: 0}}]`. Add `{type: {key: pack.types[0].key, version: pack.types[0].version},
-value: {dimension: "count", unit:
-"stationery:each", unscaled: "2", scale: 0}}` to `quantities` in `fixtures.ts`.
+In `pack.ts`, move the pack's namespace string into a `const namespace`
+declaration above `defineCatalogPack` and use `namespace` for the pack's
+namespace field. Append this entry to the existing `units` array. Keep the
+existing entries, including `openlup:g`, and leave `netContentUnits` as it is.
+
+```ts nocheck
+// This entry goes inside the skeleton's units array.
+{
+  code: `${namespace}:pair`,
+  dimension: "count",
+  integral: true,
+  factor: { canonicalUnit: "openlup:piece", unscaled: "2", scale: 0 },
+},
+```
+
+In `fixtures.ts`, append this entry to `quantities` using the existing `type`
+binding and `pack` import.
+
+```ts nocheck
+// This entry goes inside the skeleton's quantities array.
+{
+  type,
+  value: { dimension: "count", unit: `${pack.namespace}:pair`, unscaled: "2", scale: 0 },
+},
+```
+
 Exact conversion is available; new dimensions require upstream grammar changes.
 Usual codes: `definition_unit_invalid`, `definition_unit_factor_invalid`,
 `definition_duplicate_unit`, `definition_net_content_invalid`,
@@ -178,30 +191,9 @@ Check: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/
 ## Add tax class
 
 Edit `pack.ts`: `taxClasses: [{key: "standard"}]` and
-`taxClass: "standard"` on the type. Default class references are checked now;
-market-owned dated rates in `owned/market-packs/<market>/tax-table.ts`, coverage,
-gaps/overlaps and tax publication await their owners. No fake rate data belongs
-in this skeleton. New attribute/dimension/promotion kinds remain upstream work.
+`taxClass: "standard"` on the type. The offline check verifies the class reference.
 Usual codes: `definition_tax_class_invalid`, `definition_unknown_tax_class`.
 Check references: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
-Requesting `requiredChecks: ["tax-coverage"]` returns 2 until its owner is available.
-
-## Add category or collection
-
-Request evidence in `catalogue.ts`. Set `requiredChecks:
-["taxonomy"]`. Graph/depth and collection-reference validation and publishing are
-pending; there is no admitted category field to paste into current pack metadata.
-Usual current code: `conformance_owner_unavailable`; future codes belong to the
-taxonomy owner. New closed grammar kinds require upstream work.
-Check availability: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
-
-## Promotion with existing grammar
-
-In `catalogue.ts`, set `requiredChecks:
-["promotions"]`. Target/currency validation and publishing are pending, including
-per-currency money maps; do not invent a campaign field here. New benefit/target
-kinds require upstream work. Usual current code: `conformance_owner_unavailable`.
-Check availability: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
 
 ## Subscription profile
 
@@ -245,6 +237,7 @@ Native cadence guards still decide whether a cadence can be written.
 
 ## Publish net content in grams
 
+Prepare reports `catalog_publication_mass_required_until_mc5` for non-mass net content.
 Publication accepts net content only as a whole number of grams.
 Make `units` contain exactly one `openlup:g` entry, `{code: "openlup:g", dimension: "mass", integral: false, factor: {canonicalUnit: "openlup:g", unscaled: "1", scale: 0}}`, include `openlup:g` exactly once in `netContentUnits`, set each `skus[].netContent` to whole grams (`dimension: "mass"`, `unit: "openlup:g"`, `scale: 0` and a positive integer string of at most 40 digits in `unscaled`), and remove `role: "net_content"` from any dimension that has it while keeping its definition and SKU options otherwise intact, making room within each 64-entry limit or replacing a different `openlup:g` declaration only when the change preserves every retained unit reference.
 
@@ -255,13 +248,17 @@ Keep the flags for a later version or set them to false.
 
 ## Add a unit GTIN
 
-Prepare refuses a SKU without a valid unit trade identifier.
+In a version 3 draft, Prepare reports `unit_trade_identifier_missing` when
+the SKU has a code but lacks a valid unit GTIN. A SKU without a code reports
+`sku_code_missing` first. The legacy version 1 and 2 preview reports
+`publication_preparation_unavailable`.
 Add a valid unit GTIN to the SKU. A SKU holds at most 32 identifiers, so replace
 one when the list is full.
 
 ## Use schema version 3 for offline fixtures
 
-Publication requires a newer draft schema than versions 1 and 2.
+Stored version 1 and 2 drafts remain readable and cannot be published.
+Prepare reports `publication_preparation_unavailable` for a stored version 1 or 2 draft.
 Author offline pack fixtures as schema version 3, the newest draft schema this
 checker evaluates. Use the schema required by your publication workflow for
 saved drafts. Schema version 3 fixtures require `product.sharedContent`.
@@ -272,8 +269,10 @@ a registered `validateContent`. For an otherwise valid v3 fixture, inert
 
 ## Rerun fixtures after definition repair
 
-Fixtures of an invalid type are not evaluated.
-Fix the definition findings first.
+The checker skips fixture evaluation and trusted validation for a pack with
+findings in its own definition. A cross-pack `definition_duplicate_identity`
+finding alone still allows fixtures and trusted validators to run.
+Fix the pack's definition findings first.
 
 ## Upgrade a definition
 
