@@ -80,6 +80,19 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       rolsuper, rolbypassrls FROM pg_roles WHERE rolname=current_user`)).rows[0];
     if (identity?.login !== 'starter_runtime' || identity.role !== 'starter_runtime'
       || identity.rolsuper !== false || identity.rolbypassrls !== false) throw new Error('starter_runtime_connection_required');
+    const ledger = await pool.query(`SELECT routine IS NOT NULL AS present,
+      pg_catalog.has_function_privilege(current_user, routine, 'EXECUTE') AS executable
+      FROM (SELECT pg_catalog.to_regprocedure(
+        'public.commerce_record_checkout_attempt(text,text,text,bigint,bigint,bigint,bigint,bigint)'
+      )::oid AS routine) AS checkout_ledger`).catch(() => {
+      throw new Error('starter_checkout_attempt_ledger_check_failed');
+    });
+    if (!Array.isArray(ledger.rows) || ledger.rows.length !== 1) throw new Error('starter_checkout_attempt_ledger_check_failed');
+    const readiness = ledger.rows[0];
+    if (readiness?.present === false) throw new Error('starter_checkout_attempt_ledger_missing');
+    if (readiness?.present !== true || typeof readiness.executable !== 'boolean')
+      throw new Error('starter_checkout_attempt_ledger_check_failed');
+    if (!readiness.executable) throw new Error('starter_checkout_attempt_ledger_execute_required');
     const installed = await readRenewalStockProtectionPolicy(pool);
     const expected = config.inventory.renewalProtection;
     if (installed.revision !== expected.revision || installed.renewalProtectionDays !== expected.renewalProtectionDays) {

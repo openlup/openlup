@@ -39,6 +39,11 @@ migration port, it awaits migration replay before host admission, HTTP runtime
 construction and serving. A readiness or admission failure stops startup. Bind
 the [database connections](connect-postgresql.md) for their respective work.
 
+For the native starter, provision one PostgreSQL database per store and deploy
+the same checkout attempt limits to every process serving that store. Apply the
+[checkout attempt database forward](../../upgrade/database-migrations.md#check-application-compatibility)
+before updating application files or starting the updated host.
+
 Build your browser application separately and make its output available to the
 host. `distDir` selects the static root and defaults to `dist` in the process
 working directory. The supplied reader prefers `spa-fallback.html`, then
