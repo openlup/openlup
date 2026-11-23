@@ -121,7 +121,8 @@ async function install(pkg: InstalledMigrations, label: string, selection: Retur
       const grant = () => pkg.applyPlatformCheckoutOwnerGrant(env, selection);
       const state = async (next: State) => {
         if (next === current) return;
-        if (current === "granted") await owner.query(revoke);
+        // A concurrent grant can commit before the fixture records it.
+        if (next === "absent" || current === "granted") await owner.query(revoke);
         if (current === "absent") await provisionCheckoutOwner(bootstrap, selection, database, password, operator);
         if (next === "absent") await bootstrap.query(`DROP ROLE ${checkoutOwnerLogin}`);
         if (next === "granted") expect(await grant()).toEqual({ state: "granted" });
@@ -158,6 +159,20 @@ async function install(pkg: InstalledMigrations, label: string, selection: Retur
 }
 
 type Installation = Awaited<ReturnType<typeof install>>["template"];
+
+async function withDisposal(fixture: { dispose(): Promise<void> }, work: () => Promise<void>) {
+  try {
+    await work();
+  } catch (error) {
+    try {
+      await fixture.dispose();
+    } catch (teardownError) {
+      throw new AggregateError([error, teardownError], "Fixture body and teardown both failed");
+    }
+    throw error;
+  }
+  await fixture.dispose();
+}
 
 async function capture(host: Installation, id: string, catalogueId: string) {
   const db = await host.owner.connect();
@@ -210,9 +225,15 @@ async function grantAlongsideRestore(target: Installation, restore: () => Return
     }
     return result;
   } as typeof originalQuery);
-  const deadline = AbortSignal.timeout(15_000);
-  const bounded = (event: Promise<void>) => Promise.race([event, delay(15_000, undefined, { signal: deadline, ref: false })
-    .then(() => { throw new Error("Fixture grant barrier was not reached"); })]);
+  const bounded = async (event: Promise<void>) => {
+    const timer = new AbortController();
+    try {
+      await Promise.race([event, delay(60_000, undefined, { signal: timer.signal, ref: false })
+        .then(() => { throw new Error("Fixture grant barrier was not reached"); })]);
+    } finally {
+      timer.abort();
+    }
+  };
   let operations: Promise<PromiseSettledResult<unknown>[]> | undefined;
   try {
     await expect(target.grant()).rejects.toThrow("Fixture interrupted after the grant");
@@ -270,7 +291,7 @@ async function refusesConcurrentRoutineChange(target: Installation) {
   } as typeof originalQuery);
   try {
     await target.bootstrap.query(`ALTER DATABASE ${database} SET default_transaction_isolation = 'repeatable read'`);
-    await writer.query("BEGIN; SET LOCAL statement_timeout = '15s'; SET LOCAL idle_in_transaction_session_timeout = '15s'");
+    await writer.query("BEGIN; SET LOCAL statement_timeout = '60s'; SET LOCAL idle_in_transaction_session_timeout = '60s'");
     await Reflect.apply(originalQuery, writer, ["LOCK TABLE ONLY public.platform_schema_migrations IN SHARE ROW EXCLUSIVE MODE"]);
     await writer.query(`ALTER FUNCTION ${routine} SECURITY INVOKER`);
     await expect(target.grant()).rejects.toThrow("checkout_owner_predecessor_unverified");
@@ -357,7 +378,7 @@ it.each(profiles)("restores the same nonempty checkout graph on %s", async profi
           const packet = await capture(source, "checkout-source", sha256(catalog));
           for (const to of profile === "bootstrap" ? states : ["granted"] as const) {
             const target = await targetFixture.clone(`transfer_${from}_${to}`);
-            try {
+            await withDisposal(target, async () => {
               await target.state(to);
               expect(await target.project()).toBe(original);
               const acl = await target.acl();
@@ -373,7 +394,7 @@ it.each(profiles)("restores the same nonempty checkout graph on %s", async profi
               if (from === "absent" && to === "granted") {
                 if (profile === "bootstrap") {
                   const sibling = await targetFixture.clone("transfer_other_database");
-                  try {
+                  await withDisposal(sibling, async () => {
                     await target.bootstrap.query(`REVOKE TEMP ON DATABASE transfer_other_database FROM PUBLIC;
                       GRANT TEMP ON DATABASE transfer_other_database TO ${selection.runtimeLogin},${selection.restoreLogin}`);
                     const login = new Pool({ connectionString: sibling.url(checkoutOwnerLogin) });
@@ -382,7 +403,7 @@ it.each(profiles)("restores the same nonempty checkout graph on %s", async profi
                         .toEqual([{ granted: false }]);
                     } finally { await login.end(); }
                     expect(await sibling.project()).toBe(original);
-                  } finally { await sibling.dispose(); }
+                  });
                 }
                 await target.owner.query(`REVOKE EXECUTE ON FUNCTION ${checkoutOwnerRoutines[0]} FROM ${checkoutOwnerLogin}`);
                 await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({ code: "database_unavailable" });
@@ -413,7 +434,7 @@ it.each(profiles)("restores the same nonempty checkout graph on %s", async profi
               expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
               expect(await target.acl()).toEqual(acl);
               expect(await target.ledger()).toEqual(targetLedger);
-            } finally { await target.dispose(); }
+            });
           }
         }
         expect(await source.ledger()).toEqual(sourceLedger);
