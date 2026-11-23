@@ -3,7 +3,7 @@ import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
 import { taxCoverageV1Schema } from "../../tax/contracts/index.js";
 import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue, settingsEntriesWithAppSettings } from "./settingsCatalog.js";
-import { admitDatabaseUrl, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
+import { admitDatabaseUrl, refuseCoverageRead, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
 import { settingDescriptorSchema, toolInputSchema } from "./toolSchema.js";
 import {
   explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting,
@@ -627,6 +627,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       }
       const readers = bindings?.readers;
       if (!readers || !Object.hasOwn(readers, key!) || typeof readers[key!] !== "function") {
+        if (key === "tax.coverage") return [refuseCoverageRead(undefined), 74];
         return [unavailable(host && !values.app ? {
           rule: "A connected read requires an application settings reader for this key.",
           hint: "Pass --app <module> that supplies a reader for this setting.",
@@ -652,14 +653,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   let outcome: [Result, number?];
   try { outcome = await dispatch(); }
   catch (error) {
-    if (!preview && key === "tax.coverage") {
-      return emit(unavailable({
-        path: ["app"],
-        rule: "Coverage reads require a working app binding.",
-        hint: "The installed app binding failed before the coverage reader ran.",
-        remediation: { retry: true, action: "Check the app factory and its configuration binding, then rerun the same command." },
-      }), 74);
-    }
+    if (!preview && key === "tax.coverage") return emit(refuseCoverageRead(error), 74);
     const hint = error instanceof Error && error.message === "NODE_PG_FORCE_NATIVE"
       ? "Unset NODE_PG_FORCE_NATIVE for this command to use the JavaScript PostgreSQL client, then retry."
       : "Check the read-capable database connection and that --app exports createSettingsBindings.";

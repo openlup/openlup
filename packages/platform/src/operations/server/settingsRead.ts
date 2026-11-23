@@ -1,6 +1,6 @@
 import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
 import { listCatalogueSettings, loadSettingsCatalogue, settingsVersion } from "./settingsCatalog.js";
-import { hasNonfiniteNumber } from "./settingsCommandSupport.js";
+import { hasNonfiniteNumber, refuseCoverageRead } from "./settingsCommandSupport.js";
 import { z } from "zod";
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
@@ -30,35 +30,6 @@ function refuse(code: string): { refusal: CatalogueRefusal } {
   const refusal = loadSettingsCatalogue().byCode.get(code);
   if (!refusal) throw new Error(`Unknown internal settings refusal ${code}`);
   return { refusal };
-}
-
-function refuseUnboundCoverageRead() {
-  const { refusal } = refuse("commerce_setting_read_unavailable");
-  const action = "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation).";
-  return { refusal: { ...refusal, hint: "Bind the native reader to the intended installation and account.",
-    remediation: { ...refusal.remediation, action,
-      command: "openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json" } } };
-}
-
-const coverageConnectionCodes = new Set([
-  "57P01", "57P02", "57P03", "53300",
-  "ECONNREFUSED", "ECONNRESET", "ECONNABORTED", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN",
-  "EHOSTUNREACH", "EHOSTDOWN", "ENETUNREACH", "ENETDOWN", "ENETRESET", "EPIPE",
-]);
-
-function refuseCoverageRead(cause: unknown): { refusal: SettingRefusal } {
-  const code = cause !== null && typeof cause === "object" && "code" in cause ? cause.code : cause;
-  if (code === "tax_coverage_reader_unbound") return refuseUnboundCoverageRead();
-  const { refusal } = refuse("commerce_setting_read_unavailable");
-  let action = "The coverage reader failed. Check the database log for this read, then run the same command again.";
-  if (code === "42501") {
-    action = "Grant EXECUTE on public.tax_coverage_read_v1(text,text) to the runtime role, then run the same command again";
-  } else if (code === "42883" || code === "42P01") {
-    action = "The coverage reader is not installed in this database. Apply this release's platform migrations, then run the same command again.";
-  } else if (typeof code === "string" && (/^08[A-Z0-9]{3}$/u.test(code) || coverageConnectionCodes.has(code))) {
-    action = "Restore the database connection, then run the same command again with the same --app and --configuration";
-  }
-  return { refusal: { ...refusal, remediation: { retry: true, action } } };
 }
 
 /** @experimental List matching entries from the installed package, offline. */

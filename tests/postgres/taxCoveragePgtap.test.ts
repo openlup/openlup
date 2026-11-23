@@ -62,7 +62,7 @@ it("refuses connected coverage on the managed chain and names the native remedy"
     const read = bindTaxCoverageReader(runtime, { installationRef: "store-a", accountRef: "account-a" });
     expect(await showCoverageSetting(managed.connectionString, read)).toMatchObject({
       status: 74, body: { refusal: { code: "commerce_setting_read_unavailable", remediation: {
-        action: "The coverage reader is not installed in this database. Apply this release's platform migrations, then run the same command again.",
+        action: "The connected coverage read failed. Check the app binding, the database connection and its TLS settings, the role's connect and EXECUTE privileges, and that this release's migrations are installed on a native database; then run the same command again.",
       } } },
     });
   } finally { await closePostgres(managed, [owner, runtime]); }

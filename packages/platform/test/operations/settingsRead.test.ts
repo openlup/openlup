@@ -170,49 +170,23 @@ it("finds inventory buffer in the packaged settings list", () => {
   expect(entries[0]?.key).toBe("inventory_renewal_protection");
 });
 
-const restoreConnection = "Restore the database connection, then run the same command again with the same --app and --configuration";
-const applyMigrations = "The coverage reader is not installed in this database. Apply this release's platform migrations, then run the same command again.";
-const checkDatabaseLog = "The coverage reader failed. Check the database log for this read, then run the same command again.";
-
-it.each([
-  ["42501", "Grant EXECUTE on public.tax_coverage_read_v1(text,text) to the runtime role, then run the same command again"],
-  ["42883", applyMigrations],
-  ["42P01", applyMigrations],
-  ["08006", restoreConnection],
-  ["57P01", restoreConnection],
-  ["57P02", restoreConnection],
-  ["57P03", restoreConnection],
-  ["53300", restoreConnection],
-  ["ECONNREFUSED", restoreConnection],
-  ["ECONNRESET", restoreConnection],
-  ["ETIMEDOUT", restoreConnection],
-  ["ENOTFOUND", restoreConnection],
-  ["EHOSTUNREACH", restoreConnection],
-  ["28P01", checkDatabaseLog],
-  ["XX000", checkDatabaseLog],
-  [undefined, checkDatabaseLog],
-] as const)("classifies coverage reader error %s without forwarding diagnostics", async (code, action) => {
+it("keeps the original coverage reader cause on the internal refusal only", async () => {
   const key = "tax.coverage";
-  const query = vi.fn().mockRejectedValue(Object.assign(new Error("Fixture database error"), { code, where: "fixture routine" }));
+  const cause = new Error("Private fixture detail");
+  const query = vi.fn().mockRejectedValue(cause);
   const reader = bindTaxCoverageReader({ query }, { installationRef: "store-a", accountRef: "account-a" });
-  const refusal = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;
-  expect(await showSetting({ key }, { [key]: reader })).toEqual({ refusal: { ...refusal, remediation: { retry: true, action } } });
-  expect(query).toHaveBeenCalledOnce();
-});
-
-it.each([
-  ["tax_coverage_reader_unbound", {
-    retry: true,
-    action: "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation).",
-    command: "openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json",
-  }],
-  ["commerce_setting_read_unavailable", { retry: true, action: checkDatabaseLog }],
-  ["commerce_setting_unknown", { retry: true, action: checkDatabaseLog }],
-] as const)("classifies coverage reader refusal %s", async (code, remediation) => {
-  const key = "tax.coverage";
-  expect(await showSetting({ key }, { [key]: async () => ({ refusal: code }) })).toMatchObject({
-    refusal: { code: "commerce_setting_read_unavailable", remediation },
-  });
+  const result = await showSetting({ key }, { [key]: reader });
+  if (!("refusal" in result)) throw new Error("Expected coverage refusal.");
+  const { refusal } = result;
+  const base = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;
+  const expected = { ...base, remediation: { retry: true,
+    action: "The connected coverage read failed. Check the app binding, the database connection and its TLS settings, the role's connect and EXECUTE privileges, and that this release's migrations are installed on a native database; then run the same command again.",
+  } };
+  const descriptor = Object.getOwnPropertyDescriptor(refusal, "cause");
+  expect(descriptor?.enumerable).toBe(false);
+  expect(descriptor?.value).toBe(cause);
+  expect(JSON.parse(JSON.stringify(refusal))).toEqual(expected);
+  expect(base).not.toHaveProperty("cause");
 });
 
 describe("settings goal search", () => {

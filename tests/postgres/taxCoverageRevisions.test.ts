@@ -197,10 +197,8 @@ it("gives words-only guidance for coverage connection and factory failures", asy
   const directory = await mkdtemp(join(scratch, "coverage-settings-"));
   try {
     const app = join(directory, "bound settings.mjs");
-    const failures = [
-      ["connection-reset", "Restore the database connection, then run the same command again with the same --app and --configuration"],
-      ["factory-error", "Check the app factory and its configuration binding, then rerun the same command."],
-    ];
+    const failures = ["connection-reset", "factory-error"];
+    const action = "The connected coverage read failed. Check the app binding, the database connection and its TLS settings, the role's connect and EXECUTE privileges, and that this release's migrations are installed on a native database; then run the same command again.";
     const configuration = "sample";
     await writeFile(app, `import { existsSync } from "node:fs";
 import { bindTaxCoverageReader } from "@openlup/platform/tax";
@@ -235,7 +233,7 @@ export async function createSettingsBindings({ db, configuration }) {
       remediation: { action: expect.stringContaining("Use a qualified native PostgreSQL installation") } } } });
     expect(await cli(...bound)).toMatchObject({ status: 0, body: { observation: { state: "absent" } } });
     await applyTaxCoverageRevision(source.owner, proposal("cli-first", null, [], { installationRef: "cli", accountRef }));
-    for (const [failure, action] of failures) {
+    for (const failure of failures) {
       const marker = join(directory, failure);
       await writeFile(marker, "");
       const result = await cli(...bound);

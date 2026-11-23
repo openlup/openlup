@@ -98,11 +98,11 @@
     ],
     [
       74,
-      "commerce_setting_read_unavailable\nCoverage reads require a working app binding.\nThe installed app binding failed before the coverage reader ran.\nCheck the app factory and its configuration binding, then rerun the same command.\n"
+      "commerce_setting_read_unavailable\nA connected read requires an accessible, valid settings row or confirmed absence.\nRead with an authorized settings reader for the intended store.\nThe connected coverage read failed. Check the app binding, the database connection and its TLS settings, the role's connect and EXECUTE privileges, and that this release's migrations are installed on a native database; then run the same command again.\n"
     ],
     [
       74,
-      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_read_unavailable\",\"path\":[\"app\"],\"rule\":\"Coverage reads require a working app binding.\",\"hint\":\"The installed app binding failed before the coverage reader ran.\",\"remediation\":{\"retry\":true,\"action\":\"Check the app factory and its configuration binding, then rerun the same command.\"}}}\n"
+      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_read_unavailable\",\"path\":[\"key\"],\"rule\":\"A connected read requires an accessible, valid settings row or confirmed absence.\",\"hint\":\"Read with an authorized settings reader for the intended store.\",\"remediation\":{\"retry\":true,\"action\":\"The connected coverage read failed. Check the app binding, the database connection and its TLS settings, the role's connect and EXECUTE privileges, and that this release's migrations are installed on a native database; then run the same command again.\"}}}\n"
     ]
   ],
   "rows": {
@@ -240,13 +240,13 @@
     },
     "show tax.coverage": {
       "text": {
-        "no app": 4,
-        "healthy app": 8,
+        "no app": 24,
+        "healthy app": 24,
         "throwing app": 24
       },
       "json": {
-        "no app": 6,
-        "healthy app": 9,
+        "no app": 25,
+        "healthy app": 25,
         "throwing app": 25
       }
     }

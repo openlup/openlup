@@ -7,7 +7,7 @@ import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, r
 
 import { callSettingsTool, settingsMcpContext, settingsMcpTools } from "../../src/operations/server/settingsMcp.js";
 import { renewalStockProtectionPreviewResult } from "../../src/inventory/renewalStockProtection.js";
-import { applyTaxCoverageRevision } from "../../src/tax/index.js";
+import { applyTaxCoverageRevision, bindTaxCoverageReader } from "../../src/tax/index.js";
 
 const key = "inventory_renewal_protection";
 const url = "postgresql://sample@read.invalid/shop";
@@ -327,53 +327,68 @@ it.each([
   expect(bind).toHaveBeenCalledTimes(setting === "savedAddressValidation" || setting === "unknown" ? 0 : 1);
 });
 
-const bindingCause = "The installed app binding failed before the coverage reader ran.";
-const bindingAction = "Check the app factory and its configuration binding, then rerun the same command.";
-const readerGrant = "Grant EXECUTE on public.tax_coverage_read_v1(text,text) to the runtime role, then run the same command again";
-
 it.each([
-  ["factory 42501", "42501", bindingAction],
-  ["missing app module", "ERR_MODULE_NOT_FOUND", bindingAction],
-  ["unbound reader", "tax_coverage_reader_unbound", "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation)."],
-  ["reader permission denied", "42501", readerGrant],
-  ["reader function missing", "42883", "The coverage reader is not installed in this database. Apply this release's platform migrations, then run the same command again."],
-  ["reader connection reset", "ECONNRESET", "Restore the database connection, then run the same command again with the same --app and --configuration"],
-  ["reader unexpected error", "XX000", "The coverage reader failed. Check the database log for this read, then run the same command again."],
-] as const)("keeps %s guidance in text, JSON and MCP", async (failure, code, action) => {
-  const bindingFailure = failure === "factory 42501" || failure === "missing app module";
-  const rejected = Object.assign(new Error("Fixture refusal"), { code });
-  const read = vi.fn(async () => {
-    if (code === "tax_coverage_reader_unbound") return { refusal: code };
-    throw rejected;
+  ["factory permission denied", "bind", "42501"],
+  ["missing app module", "import", undefined],
+  ["reader permission denied", "read", "42501"],
+  ["CONNECT denied during startup", "read", "42501"],
+  ["reader function missing", "read", "42883"],
+  ["reader relation missing", "read", "42P01"],
+  ["connection reset", "read", "ECONNRESET"],
+  ["TLS certificate expired", "read", "CERT_HAS_EXPIRED"],
+  ["driver initialization", "bind", undefined],
+  ["cleanup hook threw", "close", undefined],
+  ["generic reader error", "read", undefined],
+  ["no reader registered", "missing", undefined],
+  ["managed or unbound reader", "unbound", undefined],
+] as const)("shows only the coverage remedy in text, JSON and MCP for %s", async (failure, stage, code) => {
+  const error = new Error(failure === "driver initialization" ? "NODE_PG_FORCE_NATIVE" : `Private fixture detail: ${failure}`);
+  if (code) Object.assign(error, { code });
+  const query = vi.fn(async () => {
+    if (stage === "read") throw error;
+    return { rows: [] };
   });
-  const app = failure === "missing app module" ? "./missing-settings-app.mjs" : "./settings.mjs";
+  const readCoverage = bindTaxCoverageReader({ query }, { installationRef: "store-a", accountRef: "account-a" });
+  const read = vi.fn(async () => stage === "unbound" ? { refusal: "tax_coverage_reader_unbound" } : readCoverage());
+  const close = vi.fn(async () => { if (stage === "close") throw error; });
+  const app = failure === "driver initialization" ? undefined
+    : stage === "import" ? "./missing-settings-app.mjs" : "./settings.mjs";
   const bind = vi.fn(async ({ app }: { app?: string }) => {
-    if (failure === "factory 42501") throw rejected;
-    if (failure === "missing app module") return import(new URL(app!, import.meta.url).href);
-    return { readers: { "tax.coverage": read } };
+    if (stage === "bind") throw error;
+    if (stage === "import") return import(new URL(app!, import.meta.url).href);
+    return { readers: stage === "missing" ? {} : { "tax.coverage": read }, close };
   });
   const host = { bind };
-  const argv = ["show", "tax.coverage", "--database-url", url, "--app", app, "--configuration", "sample"];
+  const argv = ["show", "tax.coverage", "--database-url", url, ...(app ? ["--app", app, "--configuration", "sample"] : [])];
+  const unbound = stage === "unbound";
+  const action = unbound
+    ? "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation)."
+    : "The connected coverage read failed. Check the app binding, the database connection and its TLS settings, the role's connect and EXECUTE privileges, and that this release's migrations are installed on a native database; then run the same command again.";
+  const command = unbound ? { command: "openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json" } : {};
+  const refusal = {
+    code: "commerce_setting_read_unavailable", path: ["key"],
+    rule: "A connected read requires an accessible, valid settings row or confirmed absence.",
+    hint: unbound ? "Bind the native reader to the intended installation and account." : "Read with an authorized settings reader for the intended store.",
+    remediation: { retry: true, action, ...command },
+  };
+  const result = { schemaVersion: 1, refusal };
   const json = await run([...argv, "--json"], { host });
-  const result = JSON.parse(json.output);
   expect(json.exit).toBe(74);
-  expect(result.refusal.code).toBe("commerce_setting_read_unavailable");
-  if (bindingFailure) expect(result.refusal).toMatchObject({ path: ["app"], hint: bindingCause });
-  const command = code === "tax_coverage_reader_unbound"
-    ? ["openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json"] : [];
-  expect(result.refusal.remediation).toEqual({ retry: true, action, ...(command.length ? { command: command[0] } : {}) });
+  expect(JSON.parse(json.output)).toEqual(result);
 
   const text = await run(argv, { host });
   expect(text.exit).toBe(74);
-  expect(text.output).toBe([result.refusal.code, result.refusal.rule, result.refusal.hint, action, ...command, ""].join("\n"));
+  expect(text.output).toBe([refusal.code, refusal.rule, refusal.hint, action, ...Object.values(command), ""].join("\n"));
 
   const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(row => row.command === "show")!;
   const response = await callSettingsTool(tool, { key: "tax.coverage" }, {
-    "database-url": url, app, configuration: "sample",
+    "database-url": url, ...(app ? { app, configuration: "sample" } : {}),
   }, host);
-  expect(response).toMatchObject({ isError: true, structuredContent: result });
+  expect(response).toEqual({ isError: true, structuredContent: result, content: [{ type: "text", text: json.output.trimEnd() }] });
   expect(bind).toHaveBeenCalledTimes(3);
-  expect(read).toHaveBeenCalledTimes(bindingFailure ? 0 : 3);
+  expect(read).toHaveBeenCalledTimes(stage === "read" || stage === "close" || unbound ? 3 : 0);
+  expect(query).toHaveBeenCalledTimes(stage === "read" || stage === "close" ? 3 : 0);
+  if (stage === "close") expect(close).toHaveBeenCalledTimes(3);
 });
 
 it("shows a recorded policy override and closes the connected reader", async () => {
