@@ -295,6 +295,101 @@ receipt.
 
 Native cadence guards still decide whether a cadence can be written.
 
+## Author a product
+
+Build two version 3 draft payloads from one description with the experimental
+`buildCatalogReleaseDraftV3` export in `@openlup/platform/catalog`. Pin the
+installed product type version. Supply the fields and facts your installed
+rules expect. The builder derives the entity IDs, document references, and
+draft operations. It returns `release` and `activation`, each with a payload
+and its own digest.
+
+This example uses an installed `example:article` type with a `finish` choice
+axis and rules that derive `{ derived: 12 }`. The store has reserved the internal
+identifier sequences 203 and 204 for these SKUs.
+
+```ts
+import { buildCatalogReleaseDraftV3, catalogInternalGtin } from "@openlup/platform/catalog";
+
+const grams = (unscaled: string) => ({ dimension: "mass", unit: "openlup:g", unscaled, scale: 0 } as const);
+const finishSku = (code: string, finish: string, sequence: number) => ({
+  code, title: code,
+  options: { finish: { kind: "choice" as const, value: finish } },
+  attributes: { finish },
+  netContent: grams("100"),
+  grossMass: grams("120"),
+  identifiers: [{ scheme: "gs1:gtin", issuer: "example:internal",
+    value: catalogInternalGtin(sequence), packagingLevel: "unit" as const, isPrimary: true }],
+  sell: { oneTime: true, subscription: false },
+  facts: { derived: 12 },
+  logisticsRef: `example:fulfillment/${code}`,
+});
+
+const { release, activation } = buildCatalogReleaseDraftV3({
+  namespace: "example",
+  type: { key: "example:article", version: 1 },
+  slug: "two-finishes", name: "Example article", presentation: { title: "Example article" },
+  skus: [{ ...finishSku("FINISH-MATTE", "matte", 203), primary: true }, finishSku("FINISH-GLOSS", "gloss", 204)],
+});
+```
+
+1. Save `release.payload`, prepare it, approve it, then publish it. The
+   product and both SKUs are in draft status. Save the publication head.
+2. Set a positive gross base price for each SKU in the effective price list.
+   Verify store offer readiness and subscription price coverage for each SKU,
+   including one-time-only SKUs. Use a positive price derived from the
+   effective D2C policy or, for a list with no policy history, a valid legacy
+   `subscription` entry. Prices and policies live outside both payloads.
+3. Save `activation.payload` as the next revision of the same draft. Prepare
+   it against the release head, approve it, and publish it. This example admits
+   both SKU IDs to `classic`, each with its own logistics reference.
+
+Missing base prices make activation Publish return
+`publication_sku_price_not_ready`. The release remains the current head and
+the SKUs remain in draft status. Set the prices and retry the same Publish
+request. If builder input is refused, correct the field in the error's `path`
+and call the builder again.
+
+## Products labelled in ml or pieces
+
+Use a `quantity` variant option in the unit on the label and supply the
+matching typed attribute. In the installed type, declare the unit and its
+factor, then use `catalogVariantOptions` to declare the axis. Keep publication
+net content in whole grams. If you only have the label quantity, weigh the
+contents or use the manufacturer's density for a volume-to-mass conversion.
+
+For a 50 ml item with 52 g of net content, declare `openlup:g` in
+`netContentUnits`, add this volume unit to `units`, and spread the axis
+definitions into the type.
+
+```ts
+import { catalogVariantOptions } from "@openlup/platform/catalog";
+
+const volumeUnit = { code: "example:ml", dimension: "volume", integral: false,
+  factor: { canonicalUnit: "openlup:ml", unscaled: "1", scale: 0 } } as const;
+const volumeAxis = catalogVariantOptions([
+  { key: "volume", kind: "quantity", dimension: "volume", units: [volumeUnit.code], labels: {} },
+]);
+```
+
+For the `VOLUME-50ML` SKU, use the following values with the same release, price,
+and activation steps. This example uses a 60 g gross mass, logistics reference
+`example:fulfillment/VOLUME-50ML`, and an explicit unit GTIN minted with reserved
+internal sequence 205.
+
+```ts
+const volume = { dimension: "volume", unit: "example:ml", unscaled: "50", scale: 0 } as const;
+const quantities = {
+  options: { volume: { kind: "quantity", value: volume } },
+  attributes: { volume },
+  netContent: { dimension: "mass", unit: "openlup:g", unscaled: "52", scale: 0 },
+  grossMass: { dimension: "mass", unit: "openlup:g", unscaled: "60", scale: 0 },
+} as const;
+```
+
+The PostgreSQL publication witness checks that the stored net weight is 52 g
+and that the stored variant option keeps the exact 50 ml tuple.
+
 ## Publish net content in grams
 
 Prepare reports `catalog_publication_mass_required_until_mc5` for non-mass net content.

@@ -4,7 +4,8 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogDraftStoreV4,
   createPostgresCatalogPublicationCommands, createPostgresCommerceQuoteCatalogReadPort, createCatalogProductTypeRegistry, withCatalogPublicationRules,
-  catalogDefinitionDigest, catalogInternalGtin, type CatalogDraftPayloadV4, type CatalogPublicationCommand, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
+  buildCatalogReleaseDraftV3, catalogDefinitionDigest, catalogInternalGtin, catalogVariantOptions, readPostgresCatalogMembershipPage,
+  type CatalogProductInput, type CatalogDraftPayloadV4, type CatalogPublicationCommand, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogHeadRef, type CatalogPublishCommand } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { publicationWireVectors, withCatalogAdmissionFence } from "@openlup/platform/catalog/testing";
@@ -16,7 +17,7 @@ import { authoredPublicationDocument, createCharacterizationQuote, hash, transac
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
-let pool: Pool, quotePool: Pool, container: PostgresContainer;
+let pool: Pool, quotePool: Pool, authorPool: Pool, container: PostgresContainer;
 const actor = randomUUID(), otherActor = randomUUID();
 function latch() {
   let resolve!: () => void;
@@ -28,8 +29,8 @@ const artifact = Buffer.from(`
   module.exports = {
     validateContent: () => [],
     validateProduct: () => [],
-    identifyDocument: ({ schemaVersion, id, productSlug, revisionNo, name }) =>
-      ({ schemaId: "example:document.v" + schemaVersion, documentRef: id, productSlug, revisionNo, name }),
+    identifyDocument: ({ schemaVersion, id, schemaId, documentRef, productSlug, revisionNo, name }) =>
+      ({ schemaId: schemaId ?? ("example:document.v" + schemaVersion), documentRef: documentRef ?? id, productSlug, revisionNo, name }),
     inspectDocument(text) { return { ...this.identifyDocument(JSON.parse(text)), canonicallyEncoded: wire(JSON.parse(text)) === text }; },
     matchesDocument: (document, text) => wire(document) === text,
     deriveSkuFacts: () => ({ derived: 12 }),
@@ -45,10 +46,16 @@ const registry = createCatalogProductTypeRegistry(withCatalogPublicationRules({ 
     axes: [{ key: "finish", attributeKey: "finish" }],
     attributes: [{ key: "finish", scope: "variant", valueType: { kind: "enum", values: [{ id: "matte" }, { id: "gloss" }] },
       required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }],
+  }, {
+    key: "example:volume-item", version: 1,
+    units: [{ code: "openlup:g", dimension: "mass", integral: false },
+      { code: "example:ml", dimension: "volume", integral: false, factor: { canonicalUnit: "openlup:ml", unscaled: "1", scale: 0 } }],
+    netContentUnits: ["openlup:g"],
+    ...catalogVariantOptions([{ key: "volume", kind: "quantity", dimension: "volume", units: ["example:ml"], labels: {} }]),
   }] },
 () => artifact).types);
 const installed = registry.resolve({ key: "example:article", version: 1 })!;
-const installedDigest = catalogDefinitionDigest(installed);
+const volumeType = registry.resolve({ key: "example:volume-item", version: 1 })!;
 beforeAll(async () => {
   container = await runPostgresContainer({ name: `catalog-publication-commands-${process.pid}`, password: randomUUID() });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Command proof needs PostgreSQL");
@@ -63,16 +70,21 @@ beforeAll(async () => {
     await pool.query(`INSERT INTO public.platform_human_memberships
       (principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())`, [id]);
   }
-  await pool.query(`INSERT INTO public.catalog_type_versions(type_key,version,definition,definition_digest,validator_ref)
-    VALUES($1,1,'{}',$2,$3)`, [installed.key, installedDigest, installed.validatorRef]);
+  for (const definition of [installed, volumeType]) {
+    await pool.query(`INSERT INTO public.catalog_type_versions(type_key,version,definition,definition_digest,validator_ref)
+      VALUES($1,1,'{}',$2,$3)`, [definition.key, catalogDefinitionDigest(definition), definition.validatorRef]);
+  }
   await pool.query(`INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX')
     ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`);
   await pool.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
   // Clone the installation before the command tests introduce other catalogue data.
   await pool.query("CREATE DATABASE catalog_publication_quote TEMPLATE postgres");
   quotePool = new Pool({ connectionString: container.connectionStringFor("catalog_publication_quote") });
+  // Membership discovery certifies all publication heads in its database.
+  await pool.query("CREATE DATABASE catalog_publication_author TEMPLATE postgres");
+  authorPool = new Pool({ connectionString: container.connectionStringFor("catalog_publication_author") });
 }, postgresSetupTimeoutMs);
-afterAll(() => closePostgres(container, [pool, quotePool]), postgresTeardownTimeoutMs);
+afterAll(() => closePostgres(container, [pool, quotePool, authorPool]), postgresTeardownTimeoutMs);
 
 function native(query?: (db: PgQueryExecutor, sql: string, args?: unknown[]) => ReturnType<PgQueryExecutor["query"]>, connection = pool) {
   let allowed = true;
@@ -122,14 +134,15 @@ function authored(sequence: number, internalIdentifier?: DraftIdentifier) {
   };
   return { productId, draftId, skuId, slug, code, barcode, payload };
 }
-async function save(data: ReturnType<typeof authored>, revision: number, payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4 = data.payload, db = pool) {
+async function save(data: Pick<ReturnType<typeof authored>, "draftId" | "payload">, revision: number,
+  payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4 = data.payload, db = pool) {
   const canonicalCommand = canonicalCatalogDraftJson({ schemaVersion: payload.schemaVersion, action: revision === 1 ? "create" : "revise",
     draftId: data.draftId, commandKey: randomUUID(), expectedRevision: revision - 1, payload });
   const saved = await createPostgresCatalogDraftStoreV4(db).apply({ canonicalCommand, fingerprint: hash(canonicalCommand), actorId: actor });
   if (!("record" in saved)) throw new Error(`Draft save failed: ${JSON.stringify(saved)}`);
   return saved.record;
 }
-async function prepare(data: ReturnType<typeof authored>, draftRevision: number, expectedHead: CatalogHeadRef | null, db = pool) {
+async function prepare(data: { productId: string; draftId: string }, draftRevision: number, expectedHead: CatalogHeadRef | null, db = pool) {
   const { productId, draftId } = data;
   const api = native(undefined, db);
   const candidate = await api.prepareCandidate({ draftId, draftRevision, expectedHead }, (await api.authorize(actor))!);
@@ -595,9 +608,11 @@ it.each([
 describe("publication activation prices", () => {
   const listId = randomUUID();
   const quoteListId = randomUUID();
+  const authorListId = randomUUID();
   beforeAll(async () => {
     await installActivationPrices(pool, listId);
     await installActivationPrices(quotePool, quoteListId);
+    await installActivationPrices(authorPool, authorListId);
   });
 
   async function installActivationPrices(db: Pool, listId: string) {
@@ -649,6 +664,67 @@ describe("publication activation prices", () => {
       VALUES($1,$2,$3,'one_time',1000,statement_timestamp()-interval '1 minute')`, [id, priceListId, skuId]);
     return id;
   }
+
+  const builderSku = (code: string, sequence: number, grams: string) => ({
+    code, title: code, netContent: { dimension: "mass", unit: "openlup:g", unscaled: grams, scale: 0 } as const,
+    grossMass: { dimension: "mass", unit: "openlup:g", unscaled: "120", scale: 0 } as const,
+    identifiers: [{ scheme: "gs1:gtin", issuer: "example:internal", value: catalogInternalGtin(sequence),
+      packagingLevel: "unit" as const, isPrimary: true }],
+    sell: { oneTime: true, subscription: false }, facts: { derived: 12 }, logisticsRef: `example:fulfillment/${code}`,
+  });
+
+  async function publishBuiltProduct(input: CatalogProductInput, checkUnpriced: boolean) {
+    const { release, activation } = buildCatalogReleaseDraftV3(input);
+    const data = { productId: release.payload.product.id, draftId: randomUUID(), payload: release.payload };
+    const api = native(undefined, authorPool), who = (await api.authorize(actor))!;
+    const states = async () => (await authorPool.query(`SELECT p.status AS product_status, s.status, h.publication_id
+      FROM public.catalog_products p JOIN public.catalog_skus s ON s.product_id=p.id
+      JOIN public.catalog_publication_heads h ON h.product_id=p.id WHERE p.id=$1`, [data.productId])).rows;
+    await save(data, 1, release.payload, authorPool);
+    const first = await prepare(data, 1, null, authorPool);
+    expect(await api.execute(first.approve, who)).toMatchObject({ outcome: "committed" });
+    const initial = await api.execute(first.publish, who);
+    if (!("receipt" in initial) || !("head" in initial.receipt)) throw new Error(JSON.stringify(initial));
+    const releaseHead = initial.receipt.head;
+    const draftStates = input.skus.map(() => ({ product_status: "draft", status: "draft", publication_id: releaseHead.publicationId }));
+    expect(await states()).toEqual(draftStates);
+    if (!checkUnpriced) for (const sku of release.payload.skus) await seedBasePrice(sku.id, authorPool, authorListId);
+    await save(data, 2, activation.payload, authorPool);
+    const next = await prepare(data, 2, releaseHead, authorPool);
+    expect(await api.execute(next.approve, who)).toMatchObject({ outcome: "committed" });
+    if (checkUnpriced) {
+      expect(await api.execute(next.publish, who)).toMatchObject({ outcome: "validation_issue", reason: "publication_sku_price_not_ready" });
+      expect(await states()).toEqual(draftStates);
+      for (const sku of release.payload.skus) await seedBasePrice(sku.id, authorPool, authorListId);
+    }
+    const result = await api.execute(next.publish, who);
+    if (!("receipt" in result) || !("head" in result.receipt)) throw new Error(JSON.stringify(result));
+    expect(result.outcome).toBe("committed");
+    return { head: result.receipt.head, skus: activation.payload.skus };
+  }
+
+  it("two_skus_build_release_price_then_activate", async () => {
+    const { head, skus } = await publishBuiltProduct({ namespace: "example", type: { key: installed.key, version: installed.version },
+      slug: "two-finishes", name: "Example article", presentation: { title: "Example article" }, skus: [
+        { ...builderSku("FINISH-MATTE", 203, "100"), primary: true, options: { finish: { kind: "choice", value: "matte" } }, attributes: { finish: "matte" } },
+        { ...builderSku("FINISH-GLOSS", 204, "100"), options: { finish: { kind: "choice", value: "gloss" } }, attributes: { finish: "gloss" } },
+      ] }, true);
+    const membership = await readPostgresCatalogMembershipPage(authorPool, { offerVersion: "classic", limit: 100, mode: "one_time" });
+    if (!("protocol" in membership) || membership.protocol !== "governed") throw new Error(JSON.stringify(membership));
+    expect(membership.items.map(({ skuId, logisticsRef, head }) => ({ skuId, logisticsRef, head })))
+      .toEqual(skus.map(sku => ({ skuId: sku.id, logisticsRef: sku.logisticsRef, head })).sort((a, b) => a.skuId.localeCompare(b.skuId)));
+  });
+
+  it("quantity_option_in_ml_with_gram_net_content_publishes", async () => {
+    const volume = { dimension: "volume", unit: "example:ml", unscaled: "50", scale: 0 } as const;
+    const { skus } = await publishBuiltProduct({ namespace: "example", type: { key: volumeType.key, version: volumeType.version },
+      slug: "labelled-volume", name: "Labelled volume", presentation: { title: "Labelled volume" }, skus: [
+        { ...builderSku("VOLUME-50ML", 205, "52"), grossMass: { dimension: "mass", unit: "openlup:g", unscaled: "60", scale: 0 },
+          options: { volume: { kind: "quantity", value: volume } }, attributes: { volume } },
+      ] }, false);
+    expect((await authorPool.query("SELECT net_weight_g, option_values->'volume'->'value' AS volume FROM public.catalog_skus WHERE id=$1",
+      [skus[0]!.id])).rows).toEqual([{ net_weight_g: 52, volume }]);
+  });
 
   async function approvedActivation(sequence: number, isAddon: boolean, missing?: "logistics" | "purchase mode",
     { grams = 100, governed = false, db = pool, internalIdentifier }: {

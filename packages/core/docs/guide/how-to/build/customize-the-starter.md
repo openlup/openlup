@@ -723,9 +723,11 @@ UUID for each new request unless retrying a command.
    preparation. Keep the decision receipt.
 3. Send `{action: "publish", productId, candidateRef, candidateDigest, expectedHead, changes: []}`
    to the same operation with a distinct publication key. Keep the request body
-   and its key until you have the publication receipt. The example issues a
-   draft SKU. Publish also refuses a missing or ineffective list. Offer
-   admission remains an application decision.
+   and its key until you have the publication receipt. **Load draft example**
+   uses `buildCatalogReleaseDraftV3` with the installed rules version and
+   returns its release payload. Publishing that payload issues a draft SKU.
+   The [product authoring recipe](../extend/catalogue-extension.md#author-a-product)
+   shows how to price and activate SKUs in a follow-up publication.
 4. If the response is lost, sign in and send
    `{action: "receipt", productId, commandKey}` with the original publication
    key in the body. Use a fresh transport header for the lookup. The authorized
