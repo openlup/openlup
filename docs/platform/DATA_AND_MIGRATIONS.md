@@ -492,7 +492,7 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
    `price_entries` in `SHARE`. Price apply takes the same advisory lock.
 3. After all locks, run the visibility probe. Start `read` with native
    authenticated replay, then evaluate fresh owner facts under the same locks.
-   `catalogAdmissionFence.ts:214–268`,
+   `catalogAdmissionFence.ts:229–287`,
    `20261125010000_catalog_purchase_admission.sql:2–24,58–94`.
 
 On fence expiry the writer is discarded. The fence key is released within the

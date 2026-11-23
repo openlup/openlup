@@ -129,22 +129,27 @@ const snapshotSql = `WITH snap AS MATERIALIZED (SELECT pg_current_snapshot() AS 
     ) AS primary FROM snap`;
 
 type Visibility = { xmax: string; xip: string[]; primary: boolean };
+type GuardedDispatch = <Row extends Record<string, unknown>>(
+  text: string, values?: unknown[], isClosed?: () => boolean,
+) => Promise<{ rows: Row[] }>;
 
 async function runPrelock(
-  dispatch: FenceLockWriter["query"], prelock: (writer: FenceLockWriter) => Promise<void>, abort: Promise<never>,
+  dispatch: GuardedDispatch, prelock: (writer: FenceLockWriter) => Promise<void>, abort: Promise<never>,
 ) {
   const aborted = rejection();
   let pending = false, closed = false;
+  let queriedAfterSettlement = false;
   const lockWriter: FenceLockWriter = {
     query<Row extends Record<string, unknown>>(text: string, values: unknown[] = []) {
       const work = (async () => {
         if (closed || pending) {
-          if (pending && !closed) aborted.reject(unfinished);
+          if (closed) queriedAfterSettlement = true;
+          else aborted.reject(unfinished);
           throw new Error("Prelock must await one statement at a time");
         }
         pending = true;
         try {
-          return await dispatch<Row>(text, values);
+          return await dispatch<Row>(text, values, () => closed);
         } catch (error) {
           aborted.reject(error);
           throw error;
@@ -158,9 +163,14 @@ async function runPrelock(
   };
   try {
     await Promise.race([aborted.promise, abort, (async () => {
-      await prelock(Object.freeze(lockWriter));
+      try {
+        await prelock(Object.freeze(lockWriter));
+      } finally {
+        closed = true;
+      }
       if (pending) throw unfinished;
     })()]);
+    if (queriedAfterSettlement) throw unfinished;
   } finally {
     closed = true;
   }
@@ -182,7 +192,11 @@ export async function withCatalogAdmissionFence<T, Connection extends FenceConne
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > maxTimeoutMs) {
     throw new TypeError("timeoutMs must be an integer from 1 to 2147483647");
   }
-  const entry = { key, clientId, skuIds: [...skuIds], revisionIds: [...revisionIds], priceListId };
+  const entry = {
+    key, clientId, priceListId,
+    skuIds: Array.isArray(skuIds) ? [...skuIds] : skuIds,
+    revisionIds: Array.isArray(revisionIds) ? [...revisionIds] : revisionIds,
+  };
   const budget = fenceBudget(timeoutMs);
   const monitor = monitorConnections();
   const abort = Promise.race([budget.wall, monitor.abort]);
@@ -198,13 +212,14 @@ export async function withCatalogAdmissionFence<T, Connection extends FenceConne
       return ms;
     }
 
-    async function dispatch<Row extends Record<string, unknown>>(text: string, values: unknown[] = []) {
+    async function dispatch<Row extends Record<string, unknown>>(text: string, values: unknown[] = [], isClosed?: () => boolean) {
       const ms = activeRemaining();
       const lockMs = originalLockMs > 0 ? Math.min(ms, originalLockMs) : ms;
       writerPending = true;
       try {
         await writer.query(`SET LOCAL lock_timeout = ${lockMs}; SET LOCAL statement_timeout = ${ms + wallMarginMs}`);
         activeRemaining();
+        if (isClosed?.()) throw unfinished;
         return await writer.query<Row>({ text, values, queryMode: "extended" });
       } finally {
         writerPending = false;
@@ -263,20 +278,15 @@ export async function withCatalogAdmissionFence<T, Connection extends FenceConne
       return instant;
     }
 
-    async function finish(instant: string) {
-      const result = await read(writer, instant);
-      if (monitor.failed) return monitor.abort;
-      await writer.query("COMMIT");
-      return result;
-    }
-
     try {
       const instant = await Promise.race([abort, prepare()]);
       activeRemaining();
       preparing = false;
       budget.stop();
       reading = true;
-      return await Promise.race([monitor.abort, finish(instant)]);
+      const result = await read(writer, instant);
+      await writer.query("COMMIT");
+      return result;
     } catch (error) {
       preparing = false;
       writerFailed = monitor.failed || writerPending || error === unfinished || (!reading && budget.expiredNow());
@@ -291,7 +301,7 @@ export async function withCatalogAdmissionFence<T, Connection extends FenceConne
         writerFailed = true;
         throw fenceRefusal(expired, false);
       }
-      if (!reading || monitor.failed) throw fenceRefusal(error, !probeFailed && !monitor.failed);
+      if (!reading) throw fenceRefusal(error, !probeFailed && !monitor.failed);
       throw error;
     } finally {
       monitor.release(writer, writerFailed || monitor.failed);

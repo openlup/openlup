@@ -38,10 +38,10 @@ const guard: Prelock = async db => {
   await db.query(ledgerSql);
   await db.query(clientSql, [clientId]);
 };
-function latch() {
-  let resolve!: () => void;
-  const promise = new Promise<void>(ready => { resolve = ready; });
-  return { resolve, async wait(...operations: Promise<unknown>[]) {
+function latch<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>(ready => { resolve = ready; });
+  return { promise, resolve, async wait(...operations: Promise<unknown>[]) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
@@ -79,7 +79,8 @@ type ClientObserver = (index: number, db: PoolClient) => Promise<void> | void;
 type QueryObserver = (index: number, text: string, request: string | QueryConfig, values?: unknown[]) => Promise<void> | void;
 function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObserver = () => {},
   pool: { connect(): Promise<PoolClient> } = installation.owner, observeError?: (error: unknown) => void,
-  observeResult?: (text: string, index: number) => Promise<void> | void) {
+  observeResult?: (text: string, index: number) => Promise<void> | void,
+  observeSettlement?: (text: string, index: number) => void) {
   let index = 0;
   return { async connect() {
     const number = index++;
@@ -95,6 +96,7 @@ function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObser
           return result;
         }
         catch (error) { observeError?.(error); throw error; }
+        finally { observeSettlement?.(text, number); }
       },
       on: db.on.bind(db), removeListener: db.removeListener.bind(db), release: db.release.bind(db),
     } as PoolClient;
@@ -151,6 +153,62 @@ it("prelock runs once on the writer between the key advisory and receipt locks",
     ...lockTrace.slice(0, 3).map(sql => [0, sql]), [0, "hook"], [0, ledgerSql], [0, clientSql],
     ...lockTrace.slice(3).map((sql, i) => [i === 7 ? 1 : 0, sql]),
   ]);
+});
+
+it("refuses a hook statement queued after callback settlement before dispatch", async () => {
+  const read = vi.fn(async () => "unexpected");
+  const trace: string[] = [];
+  const pool = pair(undefined, (_, sql) => { trace.push(sql); });
+  const callback = latch();
+  let lateQuery: Promise<unknown> | undefined;
+  const result = withCatalogAdmissionFence(pool, scope(), read, {
+    prelock(db) {
+      queueMicrotask(() => {
+        callback.resolve();
+        queueMicrotask(() => { lateQuery = db.query(ledgerSql).catch(error => error); });
+      });
+      return callback.promise;
+    },
+  });
+  const refusal = await result.catch(error => error);
+  expect(await lateQuery).toEqual(new Error("Prelock must await one statement at a time"));
+  expect(trace).not.toContain(ledgerSql);
+  expect(read).not.toHaveBeenCalled();
+  expectFenceError(refusal, { message: unavailable, hint: checklist });
+});
+
+it("rechecks the hook handle after the timeout settings round trip", async () => {
+  const read = vi.fn(async () => "unexpected");
+  const trace: string[] = [];
+  const settings = latch<{ rows: [] }>();
+  let settingsCount = 0;
+  const pool = { connect: async () => ({
+    query(request: string | QueryConfig) {
+      const text = typeof request === "string" ? request : request.text;
+      trace.push(text);
+      if (text === captureSql) return Promise.resolve({ rows: [{ statement: "0", lock_ms: 0 }] });
+      if (text.startsWith(lockTrace[1]!)) return Promise.resolve({ rows: [{ xid: "1", pid: 1 }] });
+      if (timeoutSettings.test(text) && ++settingsCount === 3) return settings.promise;
+      return Promise.resolve({ rows: [] });
+    },
+    release() {},
+  } as unknown as PoolClient) };
+  const callback = latch();
+  let rejected: Promise<boolean> | undefined;
+  const refusal = await withCatalogAdmissionFence(pool, scope(), read, {
+    prelock(db) {
+      queueMicrotask(() => {
+        rejected = db.query(ledgerSql).then(() => false, () => true);
+        callback.resolve();
+        settings.resolve({ rows: [] });
+      });
+      return callback.promise;
+    },
+  }).catch(error => error);
+  expect(await rejected).toBe(true);
+  expect(trace).not.toContain(ledgerSql);
+  expect(read).not.toHaveBeenCalled();
+  expectFenceError(refusal, { message: unavailable, hint: checklist });
 });
 
 it("omitted and empty options guard the original statement order and snapshot entry values", async () => {
@@ -216,6 +274,19 @@ it("omitted and empty options guard the original statement order and snapshot en
   }
 });
 
+it.each([false, true])("lets the price helper refuse a null SKU list with prelock=%s", async hooked => {
+  const input = { ...scope(), skuIds: null as unknown as string[] };
+  const read = vi.fn(async () => "unexpected");
+  let native: unknown;
+  const pool = pair(undefined, undefined, installation.owner, error => { native = error; });
+  const refusal = await withCatalogAdmissionFence(pool, input, read, hooked ? { prelock: guard } : undefined)
+    .catch(error => error);
+  const message = "catalog_admission_price_context_required";
+  expect(native).toMatchObject({ message, code: "22023" });
+  expectFenceError(refusal, { message });
+  expect(read).not.toHaveBeenCalled();
+});
+
 const keySql = "SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))";
 const refusalStages = [
   { stage: "reservation" },
@@ -255,23 +326,30 @@ it.each(stageCases)("bounds $stage with prelock=$hooked", async ({ stage, prefix
   owner.on("release", release);
   let writerPid = 0;
   const target = (index: number, text: string) => index === Number(stage === "probe") && !!prefix && text.startsWith(prefix);
-  const stall = async () => { reached.resolve(); await resume.wait(); settled.resolve(); };
+  const stall = async () => { reached.resolve(); await resume.wait(); };
   const pool = pair(async (index, db) => {
     clients[index] = db;
     if (index === 0) writerPid = await pid(db);
-    if (index === 1 && stage === "reservation") await stall();
+    if (index === 1 && stage === "reservation") {
+      await stall();
+      settled.resolve();
+    }
     // This independent delay must also reduce the probe's allowance.
     if (index === 1 && stage === "probe") await delay(45);
+    if (index === 1 && stage === "rollback") await delay(175);
   }, (index, text, request) => {
     trace.push({ index, text, request, at: performance.now() });
     if (target(index, text) && blocker) reached.resolve();
   }, owner, undefined, async (text, index) => {
     if (target(index, text) && !blocker) await stall();
+  }, (text, index) => {
+    if (target(index, text)) settled.resolve();
   });
   const options = hooked ? { prelock: vi.fn<Prelock>(async db => {
     if (stage === "hook settlement") {
       await stall();
-      await expect(db.query(ledgerSql)).rejects.toBeDefined();
+      try { await expect(db.query(ledgerSql)).rejects.toBeDefined(); }
+      finally { settled.resolve(); }
     }
   }) } : undefined;
   let result: Promise<unknown> | undefined;
@@ -285,6 +363,13 @@ it.each(stageCases)("bounds $stage with prelock=$hooked", async ({ stage, prefix
     result = withCatalogAdmissionFence(pool, input, read, options).catch(error => error);
     await reached.wait(result);
     if (blocker) await waitForBlock(writerPid, await pid(blocker), table ? "relation" : "advisory", table && `public.${table}`);
+    expectFenceError(await result, { message: unavailable, hint: sameKey });
+    if (stage === "rollback") expect(performance.now() - start).toBeLessThanOrEqual(input.timeoutMs + wallMarginMs);
+    expect(releases).toEqual(stage === "reservation" ? [[0, false]] : [[0, true], [1, stage === "probe"]]);
+    const refusedTrace = [...trace];
+    resume.resolve();
+    await settled.wait();
+    await yieldTurn();
     const hits = trace.filter(({ index, text }) => target(index, text));
     expect(hits).toHaveLength(prefix ? 1 : 0);
     if (stage === "probe") {
@@ -296,34 +381,27 @@ it.each(stageCases)("bounds $stage with prelock=$hooked", async ({ stage, prefix
       expect(allowance).toBeLessThanOrEqual(input.timeoutMs - 40);
     }
     if (stage === "rollback") {
+      expect(hits[0]!.at - start).toBeGreaterThanOrEqual(150);
       expect(trace.at(-1)?.request).toBe("ROLLBACK");
       expect(trace.at(-2)?.text).toBe("SELECT public.catalog_admission_lock_checkout_price($1,$2)");
     }
-    expectFenceError(await result, { message: unavailable, hint: sameKey });
-    if (stage === "rollback") expect(performance.now() - start).toBeLessThanOrEqual(input.timeoutMs + wallMarginMs);
-    expect(read).not.toHaveBeenCalled();
     expect(options?.prelock.mock.calls.length ?? 0).toBe(Number(hooked && !["reservation", "nonce", "key"].includes(stage)));
     expect(trace.some(({ text }) => text.includes("pg_cancel_backend"))).toBe(false);
 
     for (const [offset, record] of trace.entries()) {
-      if (record.index !== 0 || typeof record.request === "string") continue;
+      if (record.index !== 0 || timeoutSettings.test(record.text) ||
+        [captureSql, "BEGIN ISOLATION LEVEL REPEATABLE READ", "ROLLBACK"].includes(record.text)) continue;
+      expect(record.request).toEqual({ text: record.text, values: expect.any(Array), queryMode: "extended" });
       const setting = trace[offset - 1]!;
       const [, lock, statement] = timeoutSettings.exec(setting.text) ?? [];
+      expect(typeof setting.request).toBe("string");
       expect(setting.index).toBe(0);
       expect(Number(statement) - Number(lock)).toBe(wallMarginMs);
       const expectedMs = input.timeoutMs - (setting.at - start);
       expect(Number(lock)).toBeGreaterThanOrEqual(expectedMs - 2);
       expect(Number(lock)).toBeLessThanOrEqual(expectedMs + 3);
-      expect(record.request).toHaveProperty("queryMode", "extended");
     }
 
-    expect(releases).toEqual(stage === "reservation" ? [[0, false]] : [[0, true], [1, stage === "probe"]]);
-    const refusedTrace = [...trace];
-    resume.resolve();
-    if (!blocker) await settled.wait();
-    await yieldTurn();
-    expect(trace).toEqual(refusedTrace);
-    expect(read).not.toHaveBeenCalled();
     if (stage === "reservation") expect(releases).toEqual([[0, false], [1, false]]);
 
     if (stage === "key") {
@@ -341,6 +419,8 @@ it.each(stageCases)("bounds $stage with prelock=$hooked", async ({ stage, prefix
       expect(await pid(peer)).not.toBe(writerPid);
       await peer.query(keySql, [input.key]);
     });
+    expect(trace).toEqual(refusedTrace);
+    expect(read).not.toHaveBeenCalled();
   } finally {
     resume.resolve();
     await blocker?.query("ROLLBACK").finally(() => blocker.release());
@@ -367,6 +447,27 @@ it.each(["writer", "restore", "callback", "probe", "read", "COMMIT"] as const)("
     else expectFenceError(error, { message: visibility, code: "40001", hint: sameKey });
   }
   expect(read).toHaveBeenCalledTimes(stage === "read" || stage === "COMMIT" ? 2 : 0);
+});
+
+it.each([false, true])("propagates the emitted COMMIT error and discards the writer with prelock=%s", async hooked => {
+  const owner = installation.owner, clients: PoolClient[] = [];
+  const failure = Object.assign(new Error("connection lost during COMMIT"), { code: "ECONNRESET" });
+  const read = vi.fn(async () => "read complete");
+  const release = vi.fn();
+  owner.on("release", release);
+  const pool = pair((index, db) => { clients[index] = db; }, (index, sql) => {
+    if (sql === "COMMIT") {
+      clients[index]!.emit("error", failure);
+      throw failure;
+    }
+  });
+  try {
+    await expect(withCatalogAdmissionFence(pool, scope(), read, hooked ? { prelock: guard } : undefined)).rejects.toBe(failure);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledWith(true, clients[0]);
+  } finally {
+    owner.removeListener("release", release);
+  }
 });
 
 it("ends the fence budget at the synchronous read handoff", async () => {
