@@ -329,6 +329,10 @@ describe("Node scheduler", () => {
       [undefined, "No AdvisoryLock resolved."],
       [createNoopAdvisoryLock(), 'The resolved AdvisoryLock declares durability "process".'],
       [unlabelledLock, "The resolved AdvisoryLock is unlabelled."],
+      [
+        { ...mutex(), durability: "cluser" } as unknown as AdvisoryLock,
+        "The resolved AdvisoryLock declares an unsupported durability.",
+      ],
     ] as const) {
       let error: unknown;
       try {
@@ -339,6 +343,7 @@ describe("Node scheduler", () => {
       assert(error instanceof Error, "Expected cluster mode to refuse the resolved lock");
       expect(error.message.split("\n")[0]).toBe(code);
       expect(error.message).toBe([code, `Observed: ${observation}`, remedy].join("\n"));
+      expect(cron.schedule).not.toHaveBeenCalled();
     }
   });
 });

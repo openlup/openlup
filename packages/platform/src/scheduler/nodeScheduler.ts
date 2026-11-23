@@ -115,9 +115,11 @@ export function createNodeScheduler(options: CreateNodeSchedulerOptions): NodeSc
   if (lockMode === "cluster") {
     const durability = suppliedLock?.durability;
     if (durability !== "cluster") {
-      let observation = "The resolved AdvisoryLock is unlabelled.";
+      let observation: string;
       if (!suppliedLock) observation = "No AdvisoryLock resolved.";
+      else if (durability === undefined) observation = "The resolved AdvisoryLock is unlabelled.";
       else if (durability === "process") observation = 'The resolved AdvisoryLock declares durability "process".';
+      else observation = "The resolved AdvisoryLock declares an unsupported durability.";
       throw new Error([
         "OPENLUP_E_SCHEDULER_CLUSTER_LOCK_REQUIRED",
         `Observed: ${observation}`,

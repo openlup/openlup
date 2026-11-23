@@ -251,6 +251,10 @@ describe("host scheduled execution", () => {
       { advisoryLock: { ...lockFixture(), durability: "process" }, observation: 'The resolved AdvisoryLock declares durability "process".' },
       { advisoryLock: { tryAcquire: vi.fn(), release: vi.fn(), close: vi.fn() }, observation: "The resolved AdvisoryLock is unlabelled." },
       { observation: "No AdvisoryLock resolved." },
+      {
+        advisoryLock: { ...lockFixture(), durability: "cluser" } as unknown as AdvisoryLock,
+        observation: "The resolved AdvisoryLock declares an unsupported durability.",
+      },
     ])("refuses before registering timers or listening ($observation)", async ({ advisoryLock, observation }) => {
       const { host, bundle, runtime } = hostFixture();
       if (!advisoryLock) bundle.descriptor = { ...bundle.descriptor, readReadiness: () => ({ ok: true }) };
