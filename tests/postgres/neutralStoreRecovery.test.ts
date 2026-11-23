@@ -1,12 +1,13 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync } from 'node:fs';
+import { createConnection, createServer, type Server } from 'node:net';
 import { chromium } from '@playwright/test';
-import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
+import { promisify } from 'node:util';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } from '@openlup/platform/migrations';
@@ -31,12 +32,15 @@ import type { RenewalReadback } from '@openlup/platform/subscriptions/contracts'
 
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const upper = (value: string) => value.toUpperCase();
+const runBrowser = promisify(execFile);
 
 describe.each(Object.values(configurations))('$id recurring recovery HTTP boundary', config => {
   let container: PostgresContainer | undefined;
   let owner: Pool, migration: Pool, runtime: Pool;
   let host: ChildProcess | undefined;
-  let base: string, state: string, runtimeUrl: string, keyringFile: string, port: number;
+  let hostPort: number | undefined;
+  let listener: Server | undefined;
+  let base: string, state: string, runtimeUrl: string, keyringFile: string;
   let logs = '';
   const outputs: string[] = [];
   const privateValues = new Set<string>();
@@ -54,6 +58,7 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     return result;
   }
   async function stopHost() {
+    hostPort = undefined;
     if (host && host.exitCode === null && host.signalCode === null) {
       const exited = once(host, 'exit'); host.kill('SIGTERM'); await exited;
     }
@@ -62,8 +67,8 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
   async function startHost() {
     const hostUrl = new URL(runtimeUrl); hostUrl.password = ''; hostUrl.protocol = 'postgresql:';
     parseHostArguments(['--database-url', hostUrl.toString()]);
-    host = spawn(process.execPath, ['--experimental-strip-types', resolve('examples/neutral-store/host/server.ts'),
-      '--configuration', config.id, '--port', String(port), '--database-url', hostUrl.toString(),
+    host = spawn(process.execPath, ['--experimental-strip-types', resolve('tests/helpers/neutralStoreScenario.mjs'),
+      '--configuration', config.id, '--port', new URL(base).port, '--database-url', hostUrl.toString(),
       '--quote-acceptance-key-file', keyringFile],
     { cwd: state, env: { ...processEnvironment, PGPASSWORD: 'synthetic-conformance' }, stdio: ['ignore', 'pipe', 'pipe'] });
     await new Promise<void>((done, fail) => {
@@ -73,9 +78,13 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
           .finally(() => fail(new Error('recovery_host_start_failed'))); };
       host!.once('error', failed); host!.once('exit', failed);
       host!.stderr?.on('data', (data: Buffer) => { logs += data.toString(); });
+      let output = '';
       host!.stdout?.on('data', (data: Buffer) => {
         logs += data.toString();
-        if (data.toString().includes('Neutral store local candidate:')) {
+        output += data.toString();
+        const port = /Neutral store local candidate: http:\/\/127\.0\.0\.1:(\d+)\n/.exec(output)?.[1];
+        if (port) {
+          hostPort = Number(port);
           clearTimeout(timer); host!.removeListener('error', failed); host!.removeListener('exit', failed); done();
         }
       });
@@ -208,9 +217,20 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
     const url = new URL(container.connectionString); url.username = 'starter_runtime'; url.password = 'synthetic-conformance'; runtimeUrl = url.toString();
     runtime = new Pool({ connectionString: runtimeUrl });
     expect((await runtime.query("SELECT current_user,(SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user) AS elevated")).rows[0]).toEqual({ current_user: 'starter_runtime', elevated: false });
-    const probe = createServer().listen(0, '127.0.0.1'); await once(probe, 'listening');
-    const address = probe.address(); if (!address || typeof address === 'string') throw new Error('recovery_port_required');
-    port = address.port; await new Promise<void>(done => probe.close(() => done())); base = `http://127.0.0.1:${port}`;
+    // Captured notices include the origin and must replay byte-for-byte after a real host restart.
+    listener = createServer(socket => {
+      if (!hostPort) { socket.destroy(); return; }
+      const upstream = createConnection({ host: '127.0.0.1', port: hostPort });
+      socket.on('error', () => upstream.destroy());
+      upstream.on('error', () => socket.destroy());
+      socket.once('close', () => upstream.destroySoon());
+      upstream.once('close', () => socket.destroySoon());
+      socket.pipe(upstream).pipe(socket);
+    }).listen(0, '127.0.0.1');
+    await once(listener, 'listening');
+    const address = listener.address();
+    if (!address || typeof address === 'string') throw new Error('recovery_port_required');
+    base = `http://${address.address}:${address.port}`;
     await startHost();
   }, 60_000);
   afterAll(async () => {
@@ -219,6 +239,7 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
       const output = [logs, ...outputs].join('\n');
       for (const value of privateValues) expect(output.includes(value), 'private mailbox material in output').toBe(false);
     } finally {
+      if (listener?.listening) await new Promise<void>(done => listener!.close(() => done()));
       await closePostgres(container, [owner, migration, runtime].filter(Boolean));
       if (state) await rm(state, { recursive: true, force: true });
     }
@@ -240,8 +261,10 @@ export default defineConfig({testDir:'../browser',testMatch:'recovery.proof.ts',
   use:{baseURL:${JSON.stringify(base)},headless:true,trace:'off',screenshot:'off',video:'off'}});`);
     try {
       execFileSync(process.execPath, [resolve('node_modules/vite/bin/vite.js'), 'build'], { cwd: app, stdio: 'pipe' });
-      process.stdout.write(execFileSync(process.execPath, [resolve('node_modules/@playwright/test/cli.js'),
-        'test', '--config', configuration], { cwd: app, encoding: 'utf8', timeout: 30_000, stdio: 'pipe' }));
+      // Keep the forwarding listener responsive while Playwright makes requests.
+      const { stdout } = await runBrowser(process.execPath, [resolve('node_modules/@playwright/test/cli.js'),
+        'test', '--config', configuration], { cwd: app, encoding: 'utf8', timeout: 30_000 });
+      process.stdout.write(stdout);
     } catch (error) {
       if (error && typeof error === 'object' && 'stdout' in error) process.stdout.write(String(error.stdout));
       throw new Error('starter_recovery_browser_failed');
