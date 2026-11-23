@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  commerceQuoteV2Schema,
   createCommerceQuoteSchemas,
   quoteDiscountSchema,
   quoteMoneyCurrenciesMatch,
@@ -8,6 +9,9 @@ import {
 import { catalogFactsProvenanceSchema } from "../../src/pricing/index.js";
 import { COMMERCE_CONTRACT_VERSION } from "../../src/pricing/contracts/index.js";
 import type { CommerceCurrency, CommerceMoney, CommerceQuote } from "../../src/pricing/contracts/index.js";
+
+import type { CommerceQuoteMoneyV2, CommerceQuoteV2 } from "../../src/pricing/index.js";
+import { id, moneyGolden, sealQuote } from "./quoteMoneyV2Fixtures.js";
 
 import { z } from "zod";
 import { slugSchema } from "@openlup/core/catalog";
@@ -297,4 +301,90 @@ it("preserves both shipping and discount tax lanes and their currency backstop",
   expect(commerceQuoteSchema.safeParse({ ...quote, shippingDiscountGross: money(55, "XXX") }).success).toBe(false);
   expect(quoteMoneyCurrenciesMatch({ ...quote, shippingGross: money(108, "XTS") })).toBe(false);
   expect(quoteMoneyCurrenciesMatch({ ...quote, shippingDiscountGross: money(54, "XTS") })).toBe(false);
+});
+
+describe("strict quote v2", () => {
+  function refusal(value: unknown) {
+    const result = commerceQuoteV2Schema.safeParse(value);
+    if (result.success) throw new Error("Expected a quote refusal");
+    return result.error.issues[0];
+  }
+
+  it.each(["final", "estimate"] as const)("validates the sealed %s quote", status => {
+    const quote = sealQuote(moneyGolden(), status);
+    expect(commerceQuoteV2Schema.parse(quote)).toStrictEqual(quote);
+  });
+
+  it("preserves the original v0 quote serialization through the v0 schema", () => {
+    const legacy = { contractVersion: COMMERCE_CONTRACT_VERSION, quote: validQuote() };
+    expect(JSON.stringify(createQuoteResponseSchema.parse(legacy))).toBe(JSON.stringify(legacy));
+  });
+
+  it("requires both original digests before amount or expiry advice", () => {
+    const original = sealQuote();
+    const [first, ...rest] = original.lines;
+    const [share] = first.discountAllocations;
+    const altered = [
+      { ...original, lines: [{ ...first, discountAllocations: [{ ...share, allocationId: id(6) }] }, ...rest] },
+      { ...original, destination: { ...original.destination, snapshotRef: id(7) } },
+      { ...original, status: "estimate" },
+      { ...original, paymentLimits: { ...original.paymentLimits, maxMinor: original.payableMinor - 1 },
+        taxEvidence: { ...original.taxEvidence, expiresAt: original.taxEvidence.taxDate } },
+    ];
+    altered.forEach((quote, index) => {
+      expect(quote.payableMinor).toBe(original.payableMinor);
+      expect(refusal(quote)).toMatchObject({ params: {
+        code: "money_tax_evidence_mismatch", field: index === 2 ? "/quoteDigest" : "/moneyDigest",
+        remedy: "Replay the original document and its digest.",
+      } });
+      expect(JSON.stringify(refusal(quote))).not.toContain(original.quoteDigest);
+    });
+  });
+
+  it.each([
+    ["unknown nested key", (body: CommerceQuoteMoneyV2) => ({ ...body, destination: { ...body.destination, extra: "value" } })],
+    ["UUID casing", (body: CommerceQuoteMoneyV2) => ({ ...body, destination: { ...body.destination, snapshotRef: "A" + id(1).slice(1) } })],
+    ["digest width", (body: CommerceQuoteMoneyV2) => ({ ...body, coverageDigest: "a".repeat(63) })],
+    ["canonical instant", (body: CommerceQuoteMoneyV2) => ({ ...body, taxEvidence: { ...body.taxEvidence, taxDate: "2026-06-05T10:00:00Z" } })],
+    ["source count", (body: CommerceQuoteMoneyV2) => ({ ...body, lines: Array.from({ length: 51 }, () => body.lines[0]) })],
+    ["quantity upper bound", (body: CommerceQuoteMoneyV2) =>
+      ({ ...body, lines: [{ ...body.lines[0], quantity: 100 }, ...body.lines.slice(1)] })],
+    ["fractional amount", (body: CommerceQuoteMoneyV2) => ({ ...body, payableMinor: 5.5 })],
+    ["unsafe amount", (body: CommerceQuoteMoneyV2) => ({ ...body, payableMinor: Number.MAX_SAFE_INTEGER + 1 })],
+    ["wrong total", (body: CommerceQuoteMoneyV2) => ({ ...body, taxTotal: 1 })],
+    ["currency mismatch", (body: CommerceQuoteMoneyV2) => ({ ...body, paymentLimits: { ...body.paymentLimits, currency: "ZZZ" } })],
+    ["subscription without cadence", (body: CommerceQuoteMoneyV2) => ({ ...body, mode: "subscription" as const })],
+    ["one-time quote with cadence", (body: CommerceQuoteMoneyV2) => ({ ...body, cadence: { schemaVersion: 1 as const, kind: "fixed_days" as const, days: 17 } })],
+    ["wrong evidence arm", (body: CommerceQuoteMoneyV2) => ({ ...body, taxEvidence: { ...body.taxEvidence, kind: "tax_calculation" as const } })],
+    ["unreconciled tax state", (body: CommerceQuoteMoneyV2) => {
+      const [first, ...rest] = body.lines;
+      const [share] = first.discountAllocations;
+      const before = { ...share.before, taxPositions: [{ ...share.before.taxPositions[0], taxMinor: 0 }] };
+      return { ...body, lines: [{ ...first, discountAllocations: [{ ...share, before }] }, ...rest] };
+    }],
+  ] as const)("rejects %s even with matching digests", (_name, change) => {
+    expect(commerceQuoteV2Schema.safeParse(sealQuote(change(moneyGolden()) as CommerceQuoteMoneyV2)).success).toBe(false);
+  });
+
+  it("rejects explicit undefined, negative zero, hidden keys and accessors", () => {
+    const quote = sealQuote();
+    expect(commerceQuoteV2Schema.safeParse({ ...quote, cadence: undefined }).success).toBe(false);
+    expect(commerceQuoteV2Schema.safeParse({ ...quote, feeTotal: -0 }).success).toBe(false);
+    expect(commerceQuoteV2Schema.safeParse({ ...quote, catalogueEvidenceRef: "λ".repeat(1_048_577) }).success).toBe(false);
+    const hidden = Object.defineProperty({ ...quote.destination }, "hidden", { enumerable: false, value: 1 });
+    expect(commerceQuoteV2Schema.safeParse({ ...quote, destination: hidden }).success).toBe(false);
+    let reads = 0;
+    const accessed: CommerceQuoteV2 = { ...quote, get payableMinor() { reads += 1; return quote.payableMinor; } };
+    expect(commerceQuoteV2Schema.safeParse(accessed).success).toBe(false);
+    expect(reads).toBe(0);
+  });
+
+  it("admits independent line modes and checks range on an intact document", () => {
+    const body = moneyGolden();
+    const subscription = { ...body, mode: "subscription", cadence: { schemaVersion: 1, kind: "fixed_days", days: 3660 } } as const;
+    expect(commerceQuoteV2Schema.parse(sealQuote(subscription)).lines[0].mode).toBe("one_time");
+    expect(refusal(sealQuote({ ...body, paymentLimits: { ...body.paymentLimits, maxMinor: 4 } }))).toMatchObject({
+      params: { code: "money_amount_out_of_range", field: "/payableMinor" },
+    });
+  });
 });

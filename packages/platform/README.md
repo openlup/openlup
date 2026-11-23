@@ -1233,6 +1233,30 @@ feature flags and readiness remain reference composition responsibilities.
 Reference paths use named exports of the same functions and error classes;
 the browser keeps its existing policy schema binding locally.
 
+### Offline quote money v2
+
+Use experimental `planCommerceQuoteMoneyV2` from `./pricing` with resolved line
+prices, the promotion owner's selected outcome and the no-promotion baseline.
+Each candidate carries its own delivery and threshold facts. Inclusive plans
+rank gross payable with fees. Exclusive plans rank merchandise, shipping and
+handling before tax and fees. Equal scores retain the promotion owner's choice.
+
+Pass that plan to `composeCommerceQuoteMoneyV2` with matching tax evidence and
+allocation IDs. Provide fiscal rates and position metadata separately for
+inclusive money. For exclusive money, supply the verified tax result and its
+position and fee metadata. Code diagnostics sit beside the money. The sealed
+evaluation commits the private destination binding, selection, service and
+evidence expiry through `taxEvidence.evidenceDigest` in both quote arms.
+
+Use `quoteDigest` with `commerce.quote-money.v2` for the shared money and
+`commerce.quote.v2` for the complete estimate or final quote without its
+`quoteDigest` field. `commerceQuoteV2Schema` checks both digests before evaluating
+totals and amount limits. The new types in `./pricing/contracts` and
+`./commerce/contracts` share the money shape through `@openlup/core/pricing`.
+The offline functions rely on their caller for evidence acquisition and issuance.
+
+### Legacy quote foundation
+
 The quote foundation also owns neutral money/tax/quote DTOs, promotion evidence
 and rejection details, bounded catalog facts, provenance creation/public stripping
 and the supported-tax-profile guard. `createCommerceQuoteSchemas` requires the
