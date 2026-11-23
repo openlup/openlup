@@ -166,6 +166,11 @@ export function admit<T>(input: T): T {
 export const absentFeeBucket = (fees: CommerceQuoteMoneyV2["feeLines"], buckets: ReadonlySet<string>): number =>
   fees.findIndex(({ scope }) => scope.kind === "delivery" && !buckets.has(scope.bucketKey));
 
+export const positionsMatchBasis = (basisMinor: number, netMinor: number, taxPositions: readonly { taxableMinor: number }[],
+  inclusive: boolean, shipping: boolean) =>
+  !(shipping && basisMinor === 0 && taxPositions.length)
+  && (!inclusive || (taxPositions.length === Number(basisMinor > 0) && taxPositions.every(position => position.taxableMinor === netMinor)));
+
 export function checkMoney(money: CommerceQuoteMoneyV2): MoneyIssue | undefined {
   const ordinals = new Set<number>(), lineKeys = new Set<string>(), bucketKeys = new Set<string>();
   const ids = new Set<string>(), adjustments = new Map<number, string>(), sequences = new Map<string, number>();
@@ -176,9 +181,7 @@ export function checkMoney(money: CommerceQuoteMoneyV2): MoneyIssue | undefined 
     const assessed = sumMinor(value.taxPositions, position => position.taxMinor);
     const basis = BigInt(value.netMinor) + (isInclusive ? assessed : 0n);
     if (basis !== BigInt(value.basisMinor) || assessed !== BigInt(value.taxMinor)) return taxMismatch(path);
-    if ((shipping && value.basisMinor === 0 && value.taxPositions.length)
-      || (isInclusive && (value.taxPositions.length !== Number(value.basisMinor > 0)
-        || value.taxPositions.some(position => position.taxableMinor !== value.netMinor)))) return taxMismatch([...path, "taxPositions"]);
+    if (!positionsMatchBasis(value.basisMinor, value.netMinor, value.taxPositions, isInclusive, shipping)) return taxMismatch([...path, "taxPositions"]);
     const seen = new Set<string>();
     for (const [index, { positionRef }] of value.taxPositions.entries()) {
       const prior = positionOwners.get(positionRef);

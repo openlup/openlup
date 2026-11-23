@@ -591,6 +591,16 @@ const refusalCases = [
     mutation: "Change quantity from 1 to 2 without refreshing verifiedMoney",
     code: "money_tax_evidence_mismatch", pointer: "/verifiedMoney", remedy: "Recalculate tax for this exact planning input, then compose again.",
     action: "Keep quantity 2 and recalculate verifiedMoney for the revised plan." },
+  { finding: "R4A-1", arm: "exclusive", path: "/verifiedMoney/components/1/initial/taxPositions", recalculate: true,
+    value: [{ positionRef: "free-shipping", jurisdictionRef: "district-a", rateDecimal: "10", taxableMinor: 0, taxMinor: 0 }],
+    mutation: "Add a position only to the verified zero-charge shipping state",
+    code: "money_tax_evidence_mismatch", pointer: "/verifiedMoney", remedy: "Recalculate tax for this exact planning input, then compose again.",
+    action: "recalculate verifiedMoney without the zero-charge shipping position" },
+  { finding: "R4A-1", arm: "exclusiveWaived", path: "/verifiedMoney/components/1/allocations/0/after/taxPositions", recalculate: true,
+    value: [{ positionRef: "waived-shipping", jurisdictionRef: "district-a", taxableMinor: 0, taxMinor: 0 }],
+    mutation: "Add a position only to the verified shipping state after a full waiver",
+    code: "money_tax_evidence_mismatch", pointer: "/verifiedMoney", remedy: "Recalculate tax for this exact planning input, then compose again.",
+    action: "recalculate verifiedMoney without the zero-charge shipping position" },
   { finding: "R3A-3", arm: "inclusive", path: "/planInput/selected/adjustments/0/target/lineKeys", value: removeMember,
     mutation: "Remove lineKeys from the order_total target",
     code: "money_input_invalid", pointer: "/planInput/selected/adjustments/0/target/lineKeys",
@@ -640,7 +650,8 @@ describe("composition refusal cases", () => {
     selected: { ...baseline, delivery: [bucket("shipping", 1), bucket("handling", Number.MAX_SAFE_INTEGER)],
       feeLines: [fee("selected-fee", 10)], adjustments: [adjustment("promotion", 1, { lineKeys: ["a"] })] },
   }), {}, { ...facts, paymentLimits: { ...facts.paymentLimits, maxMinor: Number.MAX_SAFE_INTEGER } });
-  const exclusivePlan = planInput({ listBasis: "exclusive", lines: [source("a", 1, 100, 1, "net")], baseline: { ...baseline, amountBasis: "exclusive" } });
+  const exclusivePlan = planInput({ listBasis: "exclusive", lines: [source("a", 1, 100, 1, "net")],
+    baseline: { ...baseline, amountBasis: "exclusive", delivery: [bucket("shipping", 0)] } });
   const feeLines = [{ ...fee("service-fee", 2), scope: { kind: "order" as const } }];
   const exclusiveMoney = (planning: PlanCommerceQuoteMoneyV2Input) => {
     const plan = planned(planning);
@@ -649,7 +660,26 @@ describe("composition refusal cases", () => {
   };
   const exclusive = { planInput: exclusivePlan, facts, allocationIds: [], positions: [], feeLines,
     taxEvidence: { ...localEvidence, kind: "tax_calculation" as const }, verifiedMoney: exclusiveMoney(exclusivePlan) };
-  const fixtures = { inclusive, exclusive };
+  const shipping = { ...baseline, amountBasis: "exclusive" as const, delivery: [bucket("shipping", 10)] };
+  const waivedPlan = planInput({ listBasis: "exclusive", lines: exclusivePlan.lines, baseline: shipping,
+    selected: { ...shipping, adjustments: [adjustment("waiver", 10, { bucketKey: "shipping" }, "shipping")] } });
+  const shippingPosition = metadata("charged-shipping");
+  const waivedMoney = (planning: PlanCommerceQuoteMoneyV2Input) => {
+    const plan = planned(planning);
+    return calculateCatalogueMoneyV2(plan.moneyInput, {
+      kind: "provider", payableMinor: 100,
+      components: plan.plan.components.map(({ ref }) => ({
+        ref, states: ref.kind === "delivery" ? [
+          { afterSequence: 0, amountMinor: 10, taxPositions: [{ positionRef: shippingPosition.positionRef,
+            jurisdictionRef: shippingPosition.jurisdictionRef, taxableMinor: 10, taxMinor: 1 }] },
+          { afterSequence: 1, amountMinor: 0, taxPositions: [] },
+        ] : [{ afterSequence: 0, amountMinor: 100, taxPositions: [] }],
+      })),
+    });
+  };
+  const exclusiveWaived = { ...exclusive, planInput: waivedPlan, allocationIds: ids(planned(waivedPlan)),
+    feeLines: [], positions: [shippingPosition], verifiedMoney: waivedMoney(waivedPlan) };
+  const fixtures = { inclusive, exclusive, exclusiveWaived };
 
   it.each(refusalCases)("$finding $mutation", row => {
     const original = fixtures[row.arm];
@@ -666,8 +696,10 @@ describe("composition refusal cases", () => {
     const reported = pointerParent(input, row.pointer);
     expect(Object.hasOwn(reported.parent, reported.key)).toBe(row.value !== removeMember);
 
-    if ("recalculate" in row && "verifiedMoney" in input) input.verifiedMoney = exclusiveMoney(input.planInput);
-    else if ("repair" in row) {
+    if ("recalculate" in row && "verifiedMoney" in input) {
+      const recalculate = row.arm === "exclusiveWaived" ? waivedMoney : exclusiveMoney;
+      input.verifiedMoney = recalculate(input.planInput);
+    } else if ("repair" in row) {
       const repair = pointerParent(input, row.repair.path);
       Object.defineProperty(repair.parent, repair.key, { value: row.repair.value });
     } else if (previous) Object.defineProperty(parent, key, previous);

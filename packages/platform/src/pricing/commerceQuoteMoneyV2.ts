@@ -12,7 +12,7 @@ import { CATALOG_DRAFT_MAX_BYTES } from "../catalog/contracts/index.js";
 import { quoteCodeRejectionDetailSchema } from "./quoteCodeRejectionDetails.js";
 import { quoteDigest } from "./quoteDigest.js";
 import { absentFeeBucket, admit, bucketSource, checkMoney, currency, engine, evidence, factsShape, feeLine,
-  lineSource, minor, MoneyIssue, moneyRef, pointer, positionAmounts, positionMetadata, price, ref, remedies,
+  lineSource, minor, MoneyIssue, moneyRef, pointer, positionAmounts, positionMetadata, positionsMatchBasis, price, ref, remedies,
   shapePath, sumMinor, uuid } from "./quoteMoneyValidationV2.js";
 import type { Code, Path } from "./quoteMoneyValidationV2.js";
 
@@ -197,6 +197,12 @@ const evidenceMismatch = (field: string) => new MoneyIssue("money_tax_evidence_m
 
 function exclusiveResult(input: Extract<ComposeCommerceQuoteMoneyV2Input, { verifiedMoney: CatalogueMoneyV2Result }>, planned: CommerceQuoteMoneyV2Plan) {
   const { verifiedMoney } = input;
+  const shipping = new Set(planned.winner.delivery.filter(bucket => bucket.kind === "shipping").map(bucket => bucket.bucketKey));
+  for (const { ref, initial, final, allocations } of verifiedMoney.components) {
+    const isShipping = ref.kind === "delivery" && shipping.has(ref.bucketKey);
+    if ([initial, ...allocations.flatMap(({ before, after }) => [before, after]), final].some(({ amountMinor, netMinor, taxPositions }) =>
+      !positionsMatchBasis(amountMinor, netMinor, taxPositions, false, isShipping))) throw verifiedMismatch();
+  }
   const state = (row: CatalogueMoneyV2State, afterSequence: number) =>
     ({ afterSequence, amountMinor: row.amountMinor, taxPositions: row.taxPositions });
   const result = calculateCatalogueMoneyV2({ ...planned.moneyInput, fees: verifiedMoney.fees }, {
