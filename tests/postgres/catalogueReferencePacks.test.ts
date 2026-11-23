@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -50,7 +51,7 @@ beforeAll(() => {
   app = join(scratch, "starter");
   // The trusted catalogue CLI requires its projection directory outside any application tree.
   temporary = mkdtempSync(join(tmpdir(), "openlup-reference-packs-"));
-  childEnv = { ...process.env, TMPDIR: temporary, TMP: temporary, TEMP: temporary,
+  childEnv = { ...processEnvironment, TMPDIR: temporary, TMP: temporary, TEMP: temporary,
     COMPOSE_PROJECT_NAME: `reference-packs-${randomUUID()}`, COMPOSE_FILE: join(app, "compose.yaml") };
 });
 
@@ -277,28 +278,29 @@ function publicationDraft(catalog: Catalog, fixture: CatalogDraftPayloadV3, slug
   const name = String(fixture.product.sharedContent.presentation.title);
   const document = { schemaId, documentRef, productSlug: slug, revisionNo: 1, name };
   const canonicalText = catalog.canonicalCatalogDraftJson(document), digest = hash(canonicalText);
-  for (const [index, sku] of payload.skus.entries()) {
-    Object.assign(sku, { id: randomUUID(), productId, code: `${slug.toUpperCase()}-${index + 1}` });
-  }
-  Object.assign(payload.product, { id: productId, slug, primarySkuId: payload.skus[0]!.id,
+  const skus = payload.skus.map((sku, index) => ({
+    ...sku, id: randomUUID(), productId, code: `${slug.toUpperCase()}-${index + 1}`,
+  }));
+  payload.skus = skus;
+  Object.assign(payload.product, { id: productId, slug, primarySkuId: skus[0]!.id,
     documentRevision: { id: revisionId, productId, revisionNo: 1, schemaId, sourceRef, documentRef, digest } });
   const shared = payload.product.sharedContent;
   shared.document = document;
-  shared.publicationSkus = payload.skus.map(sku => ({
+  shared.publicationSkus = skus.map(sku => ({
     skuCode: sku.code, title: name, minQuantity: 1, isAddon: false, facts: {},
   }));
-  shared.requestedModes = payload.skus.map(sku => ({ skuCode: sku.code, modes: [] }));
+  shared.requestedModes = skus.map(sku => ({ skuCode: sku.code, modes: [] }));
   payload.publication.operations = [
     { op: "create_product", productId, productSlug: slug, name },
     { op: "register_document_revision", productSlug: slug, revisionId, revisionNo: 1, documentRef,
       sourceRef, canonicalText, digest, provenance: { source: "current_draft" } },
     { op: "move_document_pointer", productSlug: slug, documentRevisionNo: 1 },
-    ...payload.skus.flatMap((sku, index): CatalogDraftPayloadV3["publication"]["operations"] => [
+    ...skus.flatMap((sku, index): CatalogDraftPayloadV3["publication"]["operations"] => [
       { op: "create_sku", productSlug: slug, documentRevisionNo: 1, skuId: sku.id, ...shared.publicationSkus[index]! },
       { op: "create_identifier", skuCode: sku.code, ...sku.identifiers![0]!,
         quantity: 1, isPrimary: true, label: null, sourceRef: null },
     ]),
-    { op: "set_primary_sku", productSlug: slug, skuCode: payload.skus[0]!.code },
+    { op: "set_primary_sku", productSlug: slug, skuCode: skus[0]!.code },
     { op: "set_product_presentation", productSlug: slug, presentation: shared.presentation },
   ];
   return { payload, draftId, productId };
@@ -308,7 +310,7 @@ async function publicationEffects(db: Pool) {
   const tables = ["catalog_operator_receipts", "catalog_publication_decisions", "catalog_publications",
     "catalog_publication_heads", "catalog_products", "catalog_product_document_revisions", "catalog_skus",
     "catalog_sku_revisions", "catalog_sku_identifiers", "catalog_attribute_projection", "price_entries", "outbox_events"];
-  const results = [];
+  const results: Awaited<ReturnType<typeof tableRows>>[] = [];
   for (const table of tables) results.push(await tableRows(db, table));
   return results;
 }
