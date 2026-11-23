@@ -33,6 +33,7 @@ import type { RenewalReadback } from '@openlup/platform/subscriptions/contracts'
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const upper = (value: string) => value.toUpperCase();
 const runBrowser = promisify(execFile);
+let starterUiBuilt = false;
 
 describe.each(Object.values(configurations))('$id recurring recovery HTTP boundary', config => {
   let container: PostgresContainer | undefined;
@@ -42,6 +43,8 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
   let listener: Server | undefined;
   let base: string, state: string, runtimeUrl: string, keyringFile: string;
   let logs = '';
+  let witnessedCustomerCooldown = false;
+  let witnessedOperatorCooldown = false;
   const outputs: string[] = [];
   const privateValues = new Set<string>();
   const cookies = new Map<string, string>();
@@ -92,21 +95,45 @@ describe.each(Object.values(configurations))('$id recurring recovery HTTP bounda
   }
   async function signIn(email: string, operator = false) {
     privateValues.add(email);
-    // Honor both native one-minute challenge cadences across real host restarts.
+    const mailbox = resolve(state, '.context/captured-messages/identity.jsonl');
+    const messages = async () => (await readFile(mailbox, 'utf8').catch(error => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
+      throw error;
+    })).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
     const source = operator
       ? 'public.operator_identity_challenges challenge JOIN public.platform_human_principals client ON client.principal_id=challenge.principal_id'
       : 'public.customer_identity_challenges challenge JOIN public.clients client ON client.id=challenge.client_id';
     const wait = Number((await owner.query(`SELECT GREATEST(0,extract(epoch FROM
       (max(challenge.created_at)+interval '60.1 seconds'-now()))*1000) AS wait_ms
       FROM ${source} WHERE client.email=$1`, [email])).rows[0].wait_ms);
-    for (let remaining = Math.ceil(wait); remaining > 0; remaining -= 30_000) {
-      await new Promise(done => setTimeout(done, Math.min(remaining, 30_000)));
+    if (wait > 0) {
+      // Witness the real 60-second challenge cooldown once per actor class before
+      // aging consumed challenge timestamps past the window instead of sleeping 60 s.
+      if ((!operator && !witnessedCustomerCooldown) || (operator && !witnessedOperatorCooldown)) {
+        const beforeCooldown = new Set((await messages()).filter(row => row.email === email).map(row => row.token));
+        expect((await call(operator ? 'auth.operator' : 'auth.request', { email }, email)).ok).toBe(true);
+        await new Promise(done => setTimeout(done, 250));
+        const cooldownIssued = (await messages()).filter(row => row.email === email && typeof row.token === 'string' && !beforeCooldown.has(row.token));
+        expect(cooldownIssued).toEqual([]);
+        if (operator) witnessedOperatorCooldown = true;
+        else witnessedCustomerCooldown = true;
+      }
+      if (operator) {
+        await owner.query(`UPDATE public.operator_identity_challenges
+          SET created_at = created_at - interval '2 minutes',
+              expires_at = expires_at - interval '2 minutes',
+              used_at = used_at - interval '2 minutes'
+          WHERE principal_id IN (SELECT principal_id FROM public.platform_human_principals WHERE email=$1)
+            AND used_at IS NOT NULL`, [email]);
+      } else {
+        await owner.query(`UPDATE public.customer_identity_challenges
+          SET created_at = created_at - interval '2 minutes',
+              expires_at = expires_at - interval '2 minutes',
+              used_at = used_at - interval '2 minutes'
+          WHERE client_id IN (SELECT id FROM public.clients WHERE email=$1)
+            AND used_at IS NOT NULL`, [email]);
+      }
     }
-    const mailbox = resolve(state, '.context/captured-messages/identity.jsonl');
-    const messages = async () => (await readFile(mailbox, 'utf8').catch(error => {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
-      throw error;
-    })).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
     const priorTokens = new Set((await messages()).filter(row => row.email === email).map(row => row.token));
     const requested = await call(operator ? 'auth.operator' : 'auth.request', { email }, email);
     expect(requested.ok).toBe(true);
@@ -260,7 +287,10 @@ export default defineConfig({testDir:'../browser',testMatch:'recovery.proof.ts',
   reporter:'list',metadata:{recoveryFixture:${JSON.stringify(fixture)}},
   use:{baseURL:${JSON.stringify(base)},headless:true,trace:'off',screenshot:'off',video:'off'}});`);
     try {
-      execFileSync(process.execPath, [resolve('node_modules/vite/bin/vite.js'), 'build'], { cwd: app, stdio: 'pipe' });
+      if (!starterUiBuilt) {
+        execFileSync(process.execPath, [resolve('node_modules/vite/bin/vite.js'), 'build'], { cwd: app, stdio: 'pipe' });
+        starterUiBuilt = true;
+      }
       // Keep the forwarding listener responsive while Playwright makes requests.
       const { stdout } = await runBrowser(process.execPath, [resolve('node_modules/@playwright/test/cli.js'),
         'test', '--config', configuration], { cwd: app, encoding: 'utf8', timeout: 30_000 });
