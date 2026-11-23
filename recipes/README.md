@@ -18,6 +18,23 @@ Every directory under `recipes/<domain>/<provider>/` MUST be completely self-con
    - **Stage 3:** Real-flow Mount Proof (`<recipe>/tests/mount-proof.test.ts`) wiring the adapter into real `@openlup/platform` rails + negative control proving unmounting fails.
    - **Stage 4:** Explicit test-account checklist in `LIVE_QUALIFICATION.md` (offline proofs never claim live account readiness).
 
+## Quick Start via `openlup recipe` CLI (1-Command Install & Verify)
+
+```bash
+# Discover all 15 recipes (filter by --domain, --status, or --region; add --json for agents)
+npx --no -- openlup recipe list
+npx --no -- openlup recipe list --domain payments --json
+
+# Inspect manifest, egress origins, contract imports, and capabilities
+npx --no -- openlup recipe show payments/adyen
+
+# Install a code-owned recipe into owned/adapters/<domain>/<provider> and verify Stages 1–3 immediately
+npx --no -- openlup recipe add payments/adyen --verify
+
+# Re-verify an installed or customized recipe at any time
+npx --no -- openlup recipe verify owned/adapters/payments/adyen --json
+```
+
 ## Verify Recipes Locally (<1s)
 
 ```bash
