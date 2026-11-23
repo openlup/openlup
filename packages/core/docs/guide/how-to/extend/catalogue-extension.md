@@ -102,17 +102,30 @@ Usual metadata codes:
 
 ## Add unit
 
-In `pack.ts`, append this entry to the existing `units` array. Keep the
-`openlup:g` and `stationery:each` entries and leave `netContentUnits` as it is.
+In `pack.ts`, move the pack's namespace string into a `const namespace`
+declaration above `defineCatalogPack` and use `namespace` for the pack's
+namespace field. Append this entry to the existing `units` array. Keep the
+existing entries, including `openlup:g`, and leave `netContentUnits` as it is.
 
-```json
-{"code":"stationery:pair","dimension":"count","integral":true,"factor":{"canonicalUnit":"openlup:piece","unscaled":"2","scale":0}}
+```ts nocheck
+// This entry goes inside the skeleton's units array.
+{
+  code: `${namespace}:pair`,
+  dimension: "count",
+  integral: true,
+  factor: { canonicalUnit: "openlup:piece", unscaled: "2", scale: 0 },
+},
 ```
 
-In `fixtures.ts`, append this fixture to the existing `quantities` array.
+In `fixtures.ts`, append this entry to `quantities` using the existing `type`
+binding and `pack` import.
 
-```json
-{"type":{"key":"stationery:notebook","version":1},"value":{"dimension":"count","unit":"stationery:pair","unscaled":"2","scale":0}}
+```ts nocheck
+// This entry goes inside the skeleton's quantities array.
+{
+  type,
+  value: { dimension: "count", unit: `${pack.namespace}:pair`, unscaled: "2", scale: 0 },
+},
 ```
 
 Exact conversion is available; new dimensions require upstream grammar changes.

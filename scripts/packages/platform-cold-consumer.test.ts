@@ -1962,20 +1962,19 @@ it("typechecks the packed v3 skeleton and discovers its catalogue recipes", () =
   const { app, consumer, write, call, environment } = packedCatalogue();
   const core = join(consumer, "node_modules/@openlup/core");
   const guide = "docs/guide/how-to/extend/catalogue-extension.md";
+  const namespace = "sample";
   for (const file of ["catalogue.ts", "pack.ts", "fixtures.ts"]) {
-    cpSync(join(dirname(join(core, guide)), "catalogue-pack-skeleton", file), join(app, file));
+    const original = readFileSync(join(dirname(join(core, guide)), "catalogue-pack-skeleton", file), "utf8");
+    write(file, original.replaceAll("stationery", namespace));
   }
   const tsconfig = write("tsconfig.json", JSON.stringify({
     compilerOptions: { noEmit: true, skipLibCheck: true, strict: true, erasableSyntaxOnly: true,
       verbatimModuleSyntax: true, allowImportingTsExtensions: true, module: "nodenext", types: [] },
     files: ["catalogue.ts"],
   }));
-  const compiled = spawnSync(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "--project", tsconfig],
-    { cwd: app, env: environment, encoding: "utf8" });
-  expect(compiled.status, compiled.stdout || compiled.stderr).toBe(0);
   const projected = call(sourceArgs(join(app, "catalogue.ts")), 0);
   const [{ pack, drafts }] = JSON.parse(readFileSync(projected.transport.subjectPath, "utf8")).packs;
-  expect(pack.types[0]).toMatchObject({ key: "stationery:notebook", version: 1, taxClass: "standard" });
+  expect(pack.types[0]).toMatchObject({ key: `${namespace}:notebook`, version: 1, taxClass: "standard" });
   expect(drafts[0]).toMatchObject({ schemaVersion: 3, product: { sharedContent: { presentation: { title: "Notebook" } } } });
   const lines = readFileSync(join(core, guide), "utf8").split("\n");
   for (const title of ["New vertical", "Add attribute", "Add unit", "Add axis", "Add tax class", "Subscription profile", "Upgrade a definition"]) {
@@ -1988,19 +1987,27 @@ it("typechecks the packed v3 skeleton and discovers its catalogue recipes", () =
   }
   const unitStart = lines.indexOf("## Add unit");
   const unitEnd = lines.findIndex((line, index) => index > unitStart && line.startsWith("## "));
-  const examples = [...lines.slice(unitStart, unitEnd).join("\n").matchAll(/^```json\n([^]*?)\n^```$/gm)];
+  const examples = [...lines.slice(unitStart, unitEnd).join("\n").matchAll(/^```ts nocheck\n([^]*?)\n^```$/gm)];
   expect(examples).toHaveLength(2);
-  const unit = JSON.parse(examples[0]![1]), quantity = JSON.parse(examples[1]![1]);
+  const unit = examples[0]![1], quantity = examples[1]![1];
   write("pack.ts", readFileSync(join(app, "pack.ts"), "utf8")
-    .replace("\n    ],\n    netContentUnits:", `\n      ${JSON.stringify(unit)},\n    ],\n    netContentUnits:`));
+    .replace("export const pack =", `const namespace = ${JSON.stringify(namespace)};\n\nexport const pack =`)
+    .replace(`namespace: "${namespace}"`, "namespace")
+    .replace("\n    ],\n    netContentUnits:", `\n${unit}\n    ],\n    netContentUnits:`));
   write("fixtures.ts", readFileSync(join(app, "fixtures.ts"), "utf8")
-    .replace("quantities: [{ type, value: count }]", `quantities: [{ type, value: count }, ${JSON.stringify(quantity)}]`));
+    .replace("quantities: [{ type, value: count }]", `quantities: [{ type, value: count },\n${quantity}\n  ]`));
+  const compiled = spawnSync(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "--project", tsconfig],
+    { cwd: app, env: environment, encoding: "utf8" });
+  expect(compiled.status, compiled.stdout || compiled.stderr).toBe(0);
   const appended = call(sourceArgs(join(app, "catalogue.ts")), 0);
   expect(appended.findings.map(({ code }: { code: string }) => code)).toEqual(["advisory_filter_flags_unused"]);
   const [updated] = JSON.parse(readFileSync(appended.transport.subjectPath, "utf8")).packs;
-  expect(updated.pack.types[0].units).toEqual([...pack.types[0].units, unit]);
+  expect(updated.pack.types[0].units).toEqual([...pack.types[0].units, expect.objectContaining({ code: `${namespace}:pair` })]);
   expect(updated.pack.types[0].netContentUnits).toEqual(["openlup:g"]);
-  expect(updated.quantities.at(-1)).toEqual(quantity);
+  expect(updated.quantities.at(-1)).toEqual({
+    type: drafts[0].product.type,
+    value: { dimension: "count", unit: `${namespace}:pair`, unscaled: "2", scale: 0 },
+  });
 
   // Prove the application parser uses native, erasable TypeScript imports.
   call(sourceArgs(write("forward.ts", 'export { catalogueConformance } from "./catalogue.ts";')), 0);
