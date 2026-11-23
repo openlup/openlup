@@ -243,3 +243,12 @@ it("refuses an empty default ACL omitted by the unchanged legacy projection", as
     expect(await snapshot(client)).toEqual(before);
   });
 });
+
+it("refuses ambient default routine grants before installation", async () => {
+  await admittedSession(async client => {
+    await client.query("ALTER DEFAULT PRIVILEGES FOR ROLE postgres GRANT EXECUTE ON FUNCTIONS TO authenticated");
+    const before = await snapshot(client);
+    await expect(assertQualifiedPostgresSession(client, [], selection, lockName)).rejects.toThrow("qualified_profile_requires_canonical_default_privileges");
+    expect(await snapshot(client)).toEqual(before);
+  });
+});

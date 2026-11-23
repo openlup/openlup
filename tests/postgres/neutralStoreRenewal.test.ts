@@ -1,7 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { createServer } from 'node:net';
 import { existsSync } from 'node:fs';
 import { env as processEnvironment } from 'node:process';
 import { chromium } from '@playwright/test';
@@ -382,21 +381,22 @@ it.runIf(existsSync(chromium.executablePath())).each(Object.values(configuration
       try { await db.query('BEGIN'); const result = await work(db); await db.query('COMMIT'); return result; }
       catch (error) { await db.query('ROLLBACK'); throw error; } finally { db.release(); }
     };
-    const probe = createServer().listen(0, '127.0.0.1'); await once(probe, 'listening');
-    const address = probe.address(); if (!address || typeof address === 'string') throw new Error('starter_browser_port_required');
-    await new Promise<void>(done => probe.close(() => done()));
-    const base = `http://127.0.0.1:${address.port}`;
     const keyring = resolve(directory, 'quote-keyring.private.json');
     await writeFile(keyring, JSON.stringify({ current: randomBytes(32).toString('base64url') }), { mode: 0o600 });
     // Select fictional nonzero shipping in this process before loading the real host.
     const setup = `import {configurations} from ${JSON.stringify(pathToFileURL(resolve(app, 'owned/store.config.ts')).href)};
 configurations[${JSON.stringify(config.id)}].offer.freeShippingFromMinor=100000;`;
-    host = spawn(process.execPath, ['--experimental-strip-types', '--import', `data:text/javascript,${encodeURIComponent(setup)}`, resolve(app, 'host/server.ts'), '--configuration', config.id,
-      '--port', String(address.port), '--database-url', connection.toString(), '--quote-acceptance-key-file', keyring],
+    host = spawn(process.execPath, ['--experimental-strip-types', '--import', `data:text/javascript,${encodeURIComponent(setup)}`,
+      resolve('tests/helpers/neutralStoreScenario.mjs'), '--configuration', config.id,
+      '--database-url', connection.toString(), '--quote-acceptance-key-file', keyring],
     { cwd: directory, env: { ...processEnvironment, PGPASSWORD: 'synthetic-conformance' }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     host.stdout!.on('data', data => { output += String(data); }); host.stderr!.on('data', () => {});
-    await vi.waitFor(() => { expect(output).toContain('Neutral store local candidate:'); }, { timeout: 15_000 });
+    const base = await vi.waitFor(() => {
+      const origin = /Neutral store local candidate: (http:\/\/127\.0\.0\.1:\d+)\n/.exec(output)?.[1];
+      if (!origin) throw new Error('starter_browser_origin_required');
+      return origin;
+    }, { timeout: 15_000 });
     const call = async (operation: string, payload: Record<string, unknown>) => {
       const response = await fetch(`${base}/api/actions/${operation}`, { method: 'POST', headers: {
         Origin: base, 'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': randomUUID(),

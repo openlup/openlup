@@ -1610,6 +1610,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125090000_catalog_runtime_checkout_dark.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql",
       "class": "public-output"
     },
@@ -5290,6 +5294,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125090000_catalog_runtime_checkout_dark.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261125100000_commerce_destination_v2_checkout.sql",
       "class": "public-output"
     },
@@ -6563,6 +6571,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/catalogAdmissionRefusal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/catalogAdmissionRefusalMessage.ts",
       "class": "public-output"
     },
     {
@@ -13871,6 +13883,10 @@
     },
     {
       "path": "scripts/fixtures/20261022195100_invoicing_seller_revision.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/landing-test-environment.ts",
       "class": "public-output"
     },
     {
@@ -31150,6 +31166,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/neutralStoreScenario.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/postgresContainer.ts",
       "class": "public-output"
     },
@@ -31463,6 +31483,14 @@
     },
     {
       "path": "tests/postgres/catalogQuantities.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogRuntimeCheckout.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogRuntimeCheckout.test.ts",
       "class": "public-output"
     },
     {

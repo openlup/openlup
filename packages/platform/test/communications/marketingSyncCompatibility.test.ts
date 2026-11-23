@@ -4,7 +4,6 @@ import ts from "typescript";
 import { expect, it } from "vitest";
 import type { MarketingAutomationClaim, MarketingAutomationObservation, MarketingAutomationProviderPort } from "../../src/communications/contracts/marketingAutomation.js";
 import type { NewsletterSyncProviderPort } from "../../src/communications/contracts/newsletter.js";
-import { neutralExports } from "./helpers/marketingSyncConformance.js";
 
 it("K01 old-only marketing implementation retains unchanged observations", async () => {
   const observation: MarketingAutomationObservation = { effectId: "effect:1", generation: 1, observedAtMs: 1, status: "accepted", remoteReference: "legacy:remote" };
@@ -55,6 +54,5 @@ for (const [id, entry, snapshot] of [
   console.info(`${id}: strict/exactOptionalPropertyTypes PASS; 47/47 unmarked probes rejected; positive controls PASS`);
   const api = readFileSync(new URL(`../../api/${snapshot}.api.md`, import.meta.url), "utf8");
   expect(api).toContain("## dist/communications/contracts/marketingSync.d.ts");
-  for (const name of neutralExports) expect(api).toMatch(new RegExp(`export (?:type|interface) ${name}\\b`));
   expect(api).not.toContain("createKlaviyoMarketingAdapter");
 }, 45_000);

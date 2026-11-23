@@ -220,6 +220,14 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
 }
 export type Graph = Awaited<ReturnType<typeof graph>>;
 
+export async function projectOfferOnlyMembership(owner: Pool, productId: Fixture["productId"], skuId: Fixture["skuId"], skuCode: string, offerVersion: string) {
+  await transaction(owner, async db => {
+    const { facts } = await graph(db, { ...fixture(), productId, skuId, skuCode }, null, false);
+    await db.query("UPDATE public.catalog_skus SET publication_facts=$2 WHERE id=$1",
+      [skuId, { ...facts, memberships: [{ offerVersion, admitted: true }] }]);
+  });
+}
+
 export async function publicationManifestText(pool: Pool, head: Graph["head"]): Promise<string> {
   const { rows } = await pool.query<{ canonical_state: string }>(
     "SELECT canonical_state FROM public.catalog_publications WHERE id=$1", [head.publicationId],

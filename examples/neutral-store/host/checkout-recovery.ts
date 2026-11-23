@@ -64,14 +64,12 @@ import { normalizeSandboxPaymentRecoveryEvidence, createPostgresSandboxExpiredCh
 import { createPostgresNativeCheckoutHostPort } from '@openlup/platform/commerce/server/native-checkout';
 import { createPostgresNativeCheckoutSubscriptionPort } from '@openlup/platform/subscriptions';
 import { createPostgresPurchaseReservationPort } from '@openlup/platform/inventory';
-import { createNativeQuoteService } from './quote-composition.ts';
+import { createNativeQuoteService, governedCheckoutRefusal } from './quote-composition.ts';
 import { installedAcquisitionPredecessors, createInitialPurchaseActivation } from './acquisition-predecessors.ts';
 import { createAcquisitionFinancialPolicy, checkoutLinkPolicy } from '../owned/acquisition-policy.ts';
 import { isRecord } from '../shared/offer.ts';
 import { sameUuid, isInitialCheckoutOrder } from './recurring-fence.ts';
 import type { ApplicationBindings } from './bindings.ts';
-
-const admissionUnavailable = 'catalog_admission_quote_authority_required';
 
 async function authenticateRecoveryDraft(pool: Pool, order: NativeCheckoutRecoveryOrder, rootId: string) {
   const key = order.recreatedFromOrderId ? `checkout-recovery-recreate:${order.recreatedFromOrderId}` : null;
@@ -185,7 +183,7 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
     if (original.subscriptionCycleId !== null || latest.subscriptionCycleId !== null) return refuse('unavailable');
     if (latestDraft.governed && latest.technicallyExpired
       && (latest.status === 'expired' || latest.status === 'cancelled') && payload.action !== 'simulate') {
-      return { ok: false as const, code: admissionUnavailable };
+      return governedCheckoutRefusal;
     }
     const simulator = createPostgresSandboxPaymentSimulator(pool, context.config.purchase.sandbox);
     const activeAttempt = latest.recreatedFromOrderId && latest.paymentIntentId
@@ -243,7 +241,7 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
     } catch (error) {
       if (payload.action === 'simulate') return refuse('unavailable');
       const admission = catalogAdmissionRefusal(error);
-      if (admission) return { ok: false as const, code: admission };
+      if (admission) return admission === governedCheckoutRefusal.code ? governedCheckoutRefusal : { ok: false as const, code: admission };
       if (error instanceof ExpiredCheckoutRecoveryError) return refuse(error.reason);
       throw error;
     }

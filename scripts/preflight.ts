@@ -9,9 +9,11 @@ import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { INVENTORY_PATH } from "./agent-review-derived.mjs";
+import { carrierLocale, carrierNpmCli, carrierPlan, describeCarrierToolchain, readReportOwners } from "./agent-review-landing.mjs";
 import { TOOLING_INPUTS, excludedToolingTests } from "./ci-test-scope.mjs";
 import { readCommits, signOffVerdict } from "./dco-signoff-check.ts";
 import { isChangelogFragment, isChangelogFragmentArea } from "./packages/changelog-fragments.ts";
+import { checkPlatformMigrationProjection } from "./packages/platform-migration-projection.ts";
 
 export type Status = "PASS" | "WARN" | "SKIP" | "FAIL";
 export type CheckResult = { check: string; status: Status; detail: string; notes?: string[] };
@@ -134,18 +136,32 @@ export function shortExpiries(lines: readonly AddedLine[]): Finding[] {
   });
 }
 
-type Outcome = { code: number | null; stdout: string; output: string; missing: boolean; seconds: number };
+type Outcome = { code: number | null; stdout: string; output: string; missing: boolean; timedOut: boolean; seconds: number };
 
 function execute(command: string, args: readonly string[], options: SpawnSyncOptions = {}): Outcome {
   const started = Date.now();
   const result = spawnSync(command, args, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, shell: process.platform === "win32", ...options });
+  const errorCode = (result.error as NodeJS.ErrnoException | undefined)?.code;
   return {
     code: result.status,
     stdout: result.stdout?.toString() ?? "",
     output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
-    missing: (result.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT",
+    missing: errorCode === "ENOENT",
+    timedOut: errorCode === "ETIMEDOUT",
     seconds: Math.round((Date.now() - started) / 1000),
   };
+}
+
+function npmVersionForToolchain(npmCli: string, options: SpawnSyncOptions): string {
+  try {
+    const version = execute(process.execPath, [npmCli, "--version"], { ...options, timeout: 5_000 });
+    if (version.timedOut) return "unavailable (timed out after 5 s)";
+    if (version.code === 0) return version.stdout.trim() || "unavailable (empty output)";
+    if (version.code !== null) return `unavailable (exit status ${version.code})`;
+  } catch {
+    // Toolchain reporting is advisory even if the launch throws.
+  }
+  return "unavailable (probe failed)";
 }
 
 function git(args: readonly string[], output: "output" | "stdout" = "output"): string {
@@ -375,7 +391,7 @@ function print(result: CheckResult): void {
 }
 
 const STACK_BASE_SHA = /^[0-9a-f]{40}$/u;
-const GUIDE_TRIGGER = /^(?:packages\/core\/docs\/guide\/|AGENTS\.md$|CONTRIBUTING\.md$|packages\/[^/]+\/(?:AGENTS|README)\.md$)/u;
+const GUIDE_TRIGGER = /^(?:AGENTS\.md$|CONTRIBUTING\.md$|packages\/[^/]+\/(?:api\/|src\/|sql\/.*\.sql$|(?:AGENTS|README)\.md$|(?:package|release-gates)\.json$)|packages\/core\/(?:docs\/guide\/|scripts\/(?:documentation[^/]*|public-api-config)\.ts$)|packages\/platform\/settings-refusals\.json$|packages\/ui\/smoke\/neutrality\.ts$|config\/(?:environment-variables|documentation-guide-allowlist)\.json$)/u;
 const PACKAGE_MANIFEST_TRIGGER = /^(?:packages\/[^/]+\/package\.json|config\/openlup-packages\.json)$/u;
 
 const AREA_EXCLUDED_TESTS = new Set([
@@ -426,7 +442,8 @@ function fastPreflight(now: Date): number {
   if (execute("git", ["fetch", "origin", "main"], { timeout: 5_000 }).code !== 0) {
     console.error("preflight: git fetch origin main failed. Using local origin/main.");
   }
-  const offlineNpm = { env: { ...processEnvironment, npm_config_offline: "true", npm_config_update_notifier: "false" } };
+  const offlineNpm = { env: { ...processEnvironment, ...carrierLocale, npm_config_offline: "true", npm_config_update_notifier: "false" } };
+  const npmInvocation = "preflight -- --fast";
   const command = (check: string, bin: string, args: string[], options?: SpawnSyncOptions): CheckResult => {
     const { code, output } = execute(bin, args, options);
     return { check, status: code === 0 ? "PASS" : "FAIL", detail: lastLine(output) || `${bin} did not complete successfully`,
@@ -436,12 +453,42 @@ function fastPreflight(now: Date): number {
   const forkPoint = (): string => (fork ??= git(["merge-base", "HEAD", "origin/main"], "stdout").trim());
   let cachedChanges: Change[] | undefined;
   const fastChanges = (): Change[] => (cachedChanges ??= parseNameStatus(git(["diff", "--name-status", "--no-renames", "-z", forkPoint(), "HEAD"], "stdout")));
+  let clean = false;
+  const checkCarrier = (check: string, bin: string, args: string[], remedy?: string): CheckResult => {
+    const result = command(check, bin, args, offlineNpm);
+    if (result.status === "FAIL") {
+      const message = result.notes?.find(line => line.startsWith("Error: "))?.slice("Error: ".length) ?? result.detail;
+      result.detail = remedy ? `${message}. ${remedy}` : message;
+    }
+    return result;
+  };
+  const carrierChecks = (): CheckResult[] => {
+    if (!clean) return [{ check: "carriers", status: "SKIP", detail: "clean committed checkout required" }];
+    const { builds, reports, settings } = carrierPlan(readReportOwners(process.cwd()), fastChanges().map(({ path }) => path));
+    if (!builds.length) return [{ check: "carriers", status: "SKIP", detail: "no report or settings inputs changed" }];
+    const buildDirectories = JSON.stringify(builds.map(({ directory }: { directory: string }) => directory));
+    const prerequisites = checkCarrier("carrier prerequisites", process.execPath, ["--input-type=module", "-e",
+      `import { assertCarrierBuildOutputs, assertCarrierToolchain } from './scripts/agent-review-landing.mjs';
+        await assertCarrierBuildOutputs(process.cwd(), ${buildDirectories});
+        assertCarrierToolchain(process.cwd(), ${JSON.stringify(npmInvocation)});`],
+    "Use the required Node and npm majors and run npm ci in this checkout.");
+    const results = [prerequisites];
+    if (prerequisites.status === "FAIL") return results;
+    const npmCli = carrierNpmCli(npmInvocation);
+    for (const { name } of builds) {
+      const build = checkCarrier(`carrier build ${name}`, process.execPath, [npmCli, "run", "build", `--workspace=${name}`], "Fix the workspace build before checking carrier bytes.");
+      results.push(build);
+      if (build.status === "FAIL") return results;
+    }
+    for (const { name } of reports) results.push(checkCarrier(`api:check ${name}`, process.execPath, [npmCli, "run", "api:check", `--workspace=${name}`]));
+    if (settings) results.push(checkCarrier("settings-catalogue", process.execPath, ["scripts/settings-catalogue.ts"], "Run node scripts/settings-catalogue.ts --write."));
+    return results;
+  };
   const checks: Array<[string, () => CheckResult | CheckResult[]]> = [
-    ["clean", () => ({
-      check: "clean",
-      status: git(["status", "--porcelain", "--untracked-files=all"], "stdout").trim() ? "FAIL" : "PASS",
-      detail: "worktree has uncommitted changes. Commit or remove them.",
-    })],
+    ["clean", () => {
+      clean = !git(["status", "--porcelain", "--untracked-files=all"], "stdout").trim();
+      return { check: "clean", status: clean ? "PASS" : "FAIL", detail: "worktree has uncommitted changes. Commit or remove them." };
+    }],
     ["merge-clean", () => {
       const stackBase = processEnvironment.OPENLUP_STACK_BASE;
       if (stackBase !== undefined && STACK_BASE_SHA.test(stackBase)
@@ -455,15 +502,33 @@ function fastPreflight(now: Date): number {
     ["ui-neutrality", () => command("ui-neutrality", process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts"])],
     ["ast-grep", () => astGrep(offlineNpm)],
     ["ast-grep-hygiene", () => astGrepHygiene(offlineNpm)],
-    ["publication", () => command("publication", "npm", [
-      "run", "oss:published-tree", "--", "--self-check",
-      ...(processEnvironment.OPENLUP_STACK_BASE !== undefined ? [] : ["--docs-base", forkPoint()]),
-    ], offlineNpm)],
+    ["publication", () => {
+      let npmCli: string;
+      let npmVersion = "unavailable (npm CLI path missing or relative)";
+      try {
+        npmCli = carrierNpmCli(npmInvocation);
+        npmVersion = npmVersionForToolchain(npmCli, offlineNpm);
+      } finally {
+        console.log(describeCarrierToolchain(npmVersion));
+      }
+      const result = command("publication", process.execPath, [npmCli, "run", "oss:published-tree", "--", "--self-check",
+        ...(processEnvironment.OPENLUP_STACK_BASE !== undefined ? [] : ["--docs-base", forkPoint()]),
+      ], offlineNpm);
+      const missing = result.notes?.find(line => /materialized output inventory mismatch .*; extra (?!none\))/u.test(line));
+      if (missing) result.detail = `${missing}. Add the reviewed classification in config/openlup-publication-catalog.json.`;
+      return result;
+    }],
+    ["carriers", carrierChecks],
+    ["migration projection", () => {
+      if (!clean) return { check: "migration projection", status: "SKIP", detail: "clean committed checkout required" };
+      const errors = checkPlatformMigrationProjection(process.cwd());
+      return { check: "migration projection", status: errors.length ? "FAIL" : "PASS", detail: errors[0] ?? "fresh", notes: errors };
+    }],
     ["fragments", () => fragments(fastChanges())],
     ["test-lines", () => testLineChecks(changedTestLines(forkPoint(), fastChanges(), new Set(), "HEAD"), now)],
     ["gitleaks", () => gitleaks(forkPoint(), [])],
     ["guide-check", () => fastChanges().some(({ path }) => GUIDE_TRIGGER.test(path))
-      ? command("guide-check", process.execPath, ["--experimental-strip-types", "packages/core/scripts/documentation-contract.ts", "--check-guide", "packages/core"])
+      ? command("guide-check", process.execPath, ["--experimental-strip-types", "packages/core/scripts/documentation-contract.ts", "--check-guide", "packages/core"], offlineNpm)
       : { check: "guide-check", status: "SKIP", detail: "no guide or rule files changed" }],
     ["package-manifest", () => fastChanges().some(({ path }) => PACKAGE_MANIFEST_TRIGGER.test(path))
       ? command("package-manifest", "npm", ["run", "packages:check", "--", "--manifest-only"], offlineNpm)
@@ -486,7 +551,7 @@ function fastPreflight(now: Date): number {
       outcome = [{ check: name, status: "FAIL", detail, notes: tail(detail) }];
     }
     for (const result of outcome) {
-      const label = outcome.length > 1 ? result.check : name;
+      const label = outcome.length > 1 || name === "carriers" ? result.check : name;
       if (result.status === "PASS") {
         console.log(`${label}: ok`);
         continue;
@@ -567,8 +632,18 @@ export function main(now: Date, args: readonly string[] = []): number {
     console.error("preflight: --fast and --area are mutually exclusive");
     return 2;
   }
+  if (fast) {
+    const optionalLocks = processEnvironment.GIT_OPTIONAL_LOCKS;
+    processEnvironment.GIT_OPTIONAL_LOCKS = "0";
+    try {
+      process.chdir(git(["rev-parse", "--show-toplevel"], "stdout").trim());
+      return fastPreflight(now);
+    } finally {
+      if (optionalLocks === undefined) delete processEnvironment.GIT_OPTIONAL_LOCKS;
+      else processEnvironment.GIT_OPTIONAL_LOCKS = optionalLocks;
+    }
+  }
   process.chdir(git(["rev-parse", "--show-toplevel"], "stdout").trim());
-  if (fast) return fastPreflight(now);
   if (area) return areaPreflight();
   const started = Date.now();
   const fork = readForkChanges();

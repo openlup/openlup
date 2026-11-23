@@ -4,11 +4,12 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 import { expect } from "vitest";
-import { createKlaviyoMarketingAdapter } from "../../../src/communications/klaviyo/index.js";
+import * as klaviyoEntry from "../../../src/communications/klaviyo/index.js";
 import { binding, audience, request as neutralRequest, pushRequest as neutralPushRequest } from "../helpers/marketingSyncConformance.js";
 import type { ConsentPushRequest, SyncAudience, SyncRequest } from "../../../src/communications/contracts/marketingSync.js";
 
 type WireBody = { data: { [key: string]: unknown; attributes: Record<string, unknown>; relationships: unknown } };
+const { createKlaviyoMarketingAdapter } = klaviyoEntry;
 type Config = Parameters<typeof createKlaviyoMarketingAdapter>[0];
 export { binding, audience };
 export type Factory = typeof createKlaviyoMarketingAdapter;
@@ -142,7 +143,8 @@ const dropAvailability: [string, string] = ['quarantine = true; availability.qua
 for (const name of ["lost-record", "read-quarantine", "record-quarantine"]) mutations[name].push(dropAvailability);
 mutations["host-availability"] = [dropAvailability];
 const modules = new Map<string, Factory>();
-const surfaces = new Map<string, string[]>();
+const surfaces = new Map<string, Record<string, string>>();
+export const klaviyoSurface = (entry: object) => Object.fromEntries(Object.entries(entry).map(([name, value]) => [name, typeof value]));
 let temporary = "";
 export async function preparePlants(names: string[]) {
   temporary = mkdtempSync(join(tmpdir(), "openlup-offline-protocol-"));
@@ -167,9 +169,9 @@ export async function preparePlants(names: string[]) {
     changed = changed.replace('"./events.js"', '"./events.mjs"').replace('"../ecommerceEvents.js"', '"./ecommerceEvents.mjs"');
     const file = join(temporary, `${name}.mjs`); writeFileSync(file, compile(changed));
     const module = await import(/* @vite-ignore */ pathToFileURL(file).href);
-    modules.set(name, module.createKlaviyoMarketingAdapter); surfaces.set(name, Object.keys(module));
+    modules.set(name, module.createKlaviyoMarketingAdapter); surfaces.set(name, klaviyoSurface(module));
   }
 }
-export const planted = (name?: string, options?: Parameters<typeof fixture>[1]) => ({ ...fixture(name ? modules.get(name)! : createKlaviyoMarketingAdapter, options), surface: name ? surfaces.get(name)! : ["createKlaviyoMarketingAdapter"] });
+export const planted = (name?: string, options?: Parameters<typeof fixture>[1]) => ({ ...fixture(name ? modules.get(name)! : createKlaviyoMarketingAdapter, options), surface: name ? surfaces.get(name)! : klaviyoSurface(klaviyoEntry) });
 export function cleanupPlants() { if (temporary) rmSync(temporary, { recursive: true, force: true }); }
 export const factoryFor = (name: string) => modules.get(name)!;

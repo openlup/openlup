@@ -117,10 +117,8 @@ it("refuses equal-money changed second promises, source revisions, omitted grant
   await f.owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set($2::jsonb,'{applies_to_payload,acquisitionTerms,revision}','\"demo-revised\"') WHERE promotion_id=$1", [id, configured(id)]);
   await refused(() => f.port().createOrderDraft(input, { clientId }), { message: "acquisition_terms_changed" });
   await f.owner.query("UPDATE public.commerce_promotion_definitions SET definition=$2 WHERE promotion_id=$1", [id, configured(id)]);
-  await refused(() => f.port().createOrderDraft(awaitRequestWithoutOffer(), { clientId }), { message: "acquisition_terms_changed" });
-  function awaitRequestWithoutOffer() {
-    const copy = structuredClone(input); delete copy.quoteSnapshot.quote.context.acquisitionTerms; copy.quoteSnapshot.quote.discounts = []; return copy;
-  }
+  const withoutOffer = await f.request(id, false);
+  await refused(() => f.port().createOrderDraft(withoutOffer, { clientId }), { message: "acquisition_terms_changed" });
   await f.owner.query("UPDATE public.commerce_promotion_definitions SET active=false WHERE promotion_id=$1", [id]);
   await refused(() => f.port().createOrderDraft(input, { clientId }), { reason: "acquisition_terms_not_effective" });
 });
@@ -248,15 +246,16 @@ it("routes mounted checkout through the acquisition adapter without a lower pers
     return entry.isDirectory() ? walk(path) : /\.tsx?$/.test(path) && !/\.(test|spec)\./.test(path) ? [path] : [];
   });
   const callers: { path: string; factory: string; owner: string | undefined }[] = [];
+  const persistenceFactories = new Set(["createPostgresNativeCheckoutPersistence", "createPostgresCommerceOrderJourneyPorts", "nativeCheckoutPersistence"]);
   for (const path of ["api", "mcp", "server", "src", "examples", "packages/core/src", "packages/outbox/src", "packages/platform/src"].flatMap(walk)) {
     const text = readFileSync(path, "utf8");
-    if (!/createPostgresNativeCheckoutPersistence|createPostgresCommerceOrderJourneyPorts/.test(text)) continue;
+    if (![...persistenceFactories].some(factory => text.includes(factory))) continue;
     const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
     const visit = (node: ts.Node) => {
       if (ts.isCallExpression(node)) {
         const expression = node.expression;
         const factory = ts.isIdentifier(expression) ? expression.text : ts.isPropertyAccessExpression(expression) ? expression.name.text : "";
-        if (factory === "createPostgresNativeCheckoutPersistence" || factory === "createPostgresCommerceOrderJourneyPorts") {
+        if (persistenceFactories.has(factory)) {
           let parent: ts.Node | undefined = node.parent;
           while (parent && !ts.isFunctionDeclaration(parent)) parent = parent.parent;
           callers.push({ path, factory, owner: parent && ts.isFunctionDeclaration(parent) ? parent.name?.text : undefined });
@@ -266,8 +265,9 @@ it("routes mounted checkout through the acquisition adapter without a lower pers
     };
     visit(source);
   }
-  expect(callers).toEqual([{ path: "packages/platform/src/commerce/server/native-checkout/index.ts",
-    factory: "createPostgresNativeCheckoutPersistence", owner: "createPostgresAcquisitionCheckoutPersistence" }]);
+  expect(callers).toEqual(["createPostgresNativeCheckoutPersistence", "createPostgresAcquisitionCheckoutPersistence"].map(owner => ({
+    path: "packages/platform/src/commerce/server/native-checkout/index.ts", factory: "nativeCheckoutPersistence", owner,
+  })));
   const host = "examples/neutral-store/host/purchase-composition.ts";
   const source = ts.createSourceFile(host, readFileSync(host, "utf8"), ts.ScriptTarget.Latest, true);
   const declarations = new Map<string, ts.Expression>();

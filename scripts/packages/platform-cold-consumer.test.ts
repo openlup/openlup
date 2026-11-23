@@ -46,6 +46,7 @@ import {
   proveNativeCommunicationsOperations,
   proveResendConsumer,
   proveMarketingSyncConsumer,
+  proveCommunicationsConsumer,
   catalogMigrationExpectations,
   proveCatalogCompositionConsumer,
   proveCatalogConformanceConsumer,
@@ -543,11 +544,11 @@ it("proves the installed Resend surface with no SDK/optional peers and only inje
 it("refuses extra exports and raw bypass in the installed Resend adapter", () => {
   for (const mode of ["extra-export", "unverified"] as const) {
     expect(() => proveMarketingSyncConsumer(marketingFixture(mode)), `P2 installed ${mode}`)
-      .toThrow(mode === "extra-export" ? /P2 installed exact one-export surface/ : /P2 installed pending account evidence/);
+      .toThrow(mode === "extra-export" ? /P2 packed\/built export parity/ : /P2 installed pending account evidence/);
   }
   for (const mode of ["extra-export", "raw-bypass"] as const) {
     expect(() => proveResendConsumer(resendFixture(mode)), `I02 ${mode}: named invariant assertion`)
-      .toThrow(mode === "raw-bypass" ? /AssertionError.*I02 blocked\/drop zero POST/s : /AssertionError.*I02 exact three-export surface/s);
+      .toThrow(mode === "raw-bypass" ? /AssertionError.*I02 blocked\/drop zero POST/s : /AssertionError.*I02 packed\/built export parity/s);
   }
 });
 
@@ -1108,6 +1109,12 @@ it("proves the opt-in fulfillment/omnipack entry default-off without SDK, peers 
   const consumer = pristinePackedA1Fixture();
   assertConsumerIsolation(consumer, root);
   proveWarehouseAdapterConsumer(consumer);
+});
+
+it("keeps the packed communications contracts surface and pure rendering", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  proveCommunicationsConsumer(consumer);
 });
 
 it("M10 installed facades and composition prove positive selection, readiness refusal and lifecycle identity", () => {
