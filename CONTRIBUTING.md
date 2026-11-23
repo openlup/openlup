@@ -774,6 +774,11 @@ and source-release snapshot; and `--typecheck` compares the preview's
 diagnostics with its tracked compatibility debt. The source repository's
 aggregate typechecker is not part of the projected command inventory and is not
 a substitute for `--typecheck`.
+`npm run oss:published-tree -- --sync-catalog` updates the catalogue from tracked
+Git paths: it removes deleted rows and admits new safe files as `public-output`.
+Pattern-admitted fragments and guide pages remain outside per-file rows; policy
+paths, withheld files, untracked files, private coordinates, and unknown direct
+execution entrypoints are refused. Review any new class before publishing.
 `check:dco-signoff` takes both range ends as full 40-character commit SHAs,
 hence `git rev-parse`: it refuses a short SHA or a ref name with exit code 2,
 and exits 1 on a range that contains no commit. In a fork, use the remote that
@@ -1801,6 +1806,13 @@ From a clean committed task checkout, refresh the remote reference, then run:
 git fetch origin main
 npm run landing:merge
 ```
+
+If a newly added SQL migration uses a slot at or before the latest timestamp on
+`origin/main`, the helper stops before builds and prints the next free UTC slot.
+Run `npm run landing:merge -- --re-slot` to opt into moving that migration and
+updating its registries and SQL mirror. An authored reference to the old filename
+in code, tests, SQL, or documentation makes this operation refuse with file and
+line locations. The changed SQL remains subject to integration review.
 
 The helper merges the exact fetched `origin/main` with DCO sign-off; it never
 rebases or pushes. Configure your Git `user.name` and `user.email` before running
