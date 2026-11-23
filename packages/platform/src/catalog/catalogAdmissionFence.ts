@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
+import { setImmediate as yieldTurn, setTimeout as delay } from "node:timers/promises";
 
 interface FenceLockWriter {
   query<Row extends Record<string, unknown>>(sql: string, values?: unknown[]): Promise<{ rows: Row[] }>;
@@ -284,7 +284,12 @@ export async function withCatalogAdmissionFence<T, Connection extends FenceConne
       preparing = false;
       budget.stop();
       reading = true;
-      const result = await read(writer, instant);
+      const result = await Promise.race([read(writer, instant), monitor.abort.catch(async error => {
+        // Let a query rejection from the same connection failure reach the read first.
+        await yieldTurn();
+        throw fenceRefusal(error, false);
+      })]);
+      if (monitor.failed) throw fenceRefusal(undefined, false);
       await writer.query("COMMIT");
       return result;
     } catch (error) {

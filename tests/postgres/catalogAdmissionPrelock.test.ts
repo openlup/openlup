@@ -449,6 +449,60 @@ it.each(["writer", "restore", "callback", "probe", "read", "COMMIT"] as const)("
   expect(read).toHaveBeenCalledTimes(stage === "read" || stage === "COMMIT" ? 2 : 0);
 });
 
+it.each([false, true])("aborts a pending read on a standalone probe error with prelock=%s", async hooked => {
+  const owner = installation.owner, clients: PoolClient[] = [];
+  const atRead = latch(), resume = latch<string>(), discarded = latch();
+  const trace: string[] = [];
+  const pool = pair((index, db) => { clients[index] = db; }, (_, sql) => { trace.push(sql); });
+  const release = vi.fn((discard: unknown, db: PoolClient) => {
+    if (discard === true && db === clients[1]) discarded.resolve();
+  });
+  owner.on("release", release);
+  const result = withCatalogAdmissionFence(pool, scope(), () => {
+    atRead.resolve();
+    return resume.promise;
+  }, hooked ? { prelock: guard } : undefined).catch(error => error);
+  try {
+    await atRead.wait(result);
+    clients[1]!.emit("error", new Error("private probe connection diagnostic"));
+    await discarded.wait();
+    expectFenceError(await result, { message: unavailable, hint: checklist });
+    expect(release).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledWith(true, clients[0]);
+    expect(release).toHaveBeenCalledWith(true, clients[1]);
+  } finally {
+    resume.resolve("read complete");
+    await result;
+    owner.removeListener("release", release);
+  }
+  await yieldTurn();
+  expect(trace).not.toContain("COMMIT");
+});
+
+it.each([
+  ["resolves", false], ["resolves", true], ["rejects", false], ["rejects", true],
+] as const)("keeps a failed connection from committing when read %s with prelock=%s", async (settlement, hooked) => {
+  const owner = installation.owner, clients: PoolClient[] = [], trace: string[] = [];
+  const release = vi.fn();
+  const pool = pair((index, db) => { clients[index] = db; }, (_, sql) => { trace.push(sql); });
+  const failure = new Error("original read rejection");
+  owner.on("release", release);
+  try {
+    const error = await withCatalogAdmissionFence(pool, scope(), async () => {
+      clients[0]!.emit("error", new Error("private writer connection diagnostic"));
+      await new Promise<void>(resolve => process.nextTick(resolve));
+      if (settlement === "rejects") throw failure;
+    }, hooked ? { prelock: guard } : undefined).catch(error => error);
+    if (settlement === "rejects") expect(error).toBe(failure);
+    else expectFenceError(error, { message: unavailable, hint: checklist });
+    expect(trace).not.toContain("COMMIT");
+    expect(release).toHaveBeenCalledWith(true, clients[0]);
+    expect(release).toHaveBeenCalledWith(true, clients[1]);
+  } finally {
+    owner.removeListener("release", release);
+  }
+});
+
 it.each([false, true])("propagates the emitted COMMIT error and discards the writer with prelock=%s", async hooked => {
   const owner = installation.owner, clients: PoolClient[] = [];
   const failure = Object.assign(new Error("connection lost during COMMIT"), { code: "ECONNRESET" });
