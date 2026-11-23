@@ -63,7 +63,12 @@ test('mixed-store preview preserves one-time quotes and explains the missing sub
 for (const capability of [undefined, 'wrong-protocol']) {
   test(`unsupported acquisition caller refuses quote and checkout before effects: ${capability}`, async () => {
     let effects = 0;
-    const db = { query: async () => { effects++; throw new Error('no database work expected'); } } as unknown as Pool;
+    const query = async (sql: string) => {
+      if (/pg_advisory|commerce_order_draft_receipts|catalog_admission_requires_quote_authority/.test(sql)) return { rows: [] };
+      effects++;
+      throw new Error('no effect expected');
+    };
+    const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
     const quotes = createNativeQuoteService(db, unavailable);
     const input = { ...payload, ...(capability ? { acquisitionCapability: capability } : {}) };
     await assert.rejects(quotes.quote(input,context), (error: unknown) => error instanceof AcquisitionTermsError
@@ -178,20 +183,28 @@ test('forged fresh cadence/SKU/quantity refuse quote and checkout with zero writ
   assert.equal(writes,0);
 });
 
-test('fresh governed selection refuses before the quote, contact or draft owner', async () => {
+test('fresh offer-only membership refuses before capability, terms, cadence, quote or writes', async () => {
   const calls: string[] = [];
-  const query = async (sql: string) => {
+  const query = async (sql: string, values?: unknown[]) => {
     calls.push(sql);
-    if (sql.includes('catalog_admission_requires_quote_authority')) return { rows: [{ governed: true }] };
+    if (sql.includes('catalog_admission_requires_quote_authority')) {
+      assert.deepEqual(values, [cart.lines.map(line => line.sku), '{"offerVersion":"classic"}']);
+      return { rows: [{ governed: true }] };
+    }
     if (sql.includes('pg_advisory') || sql.includes('commerce_order_draft_receipts')) return { rows: [] };
     throw new Error('A fresh quote cannot be read on this path');
   };
   const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
   const contacts = { async ensureContactClient() { throw new Error('Contact must not be provisioned'); } };
   const actions = composePurchaseCapabilities(db,contacts as never,undefined,{} as never,{ predecessors: unavailable });
-  const result = await actions['checkout.create']!({ ...payload, quoteAcceptance: 'opaque', acquisitionCapability: ACQUISITION_TERMS_CAPABILITY },context);
-  assert.deepEqual(result,{ ok: false,code: 'catalog_admission_quote_authority_required' });
-  assert.equal(calls.length,4);
+  for (const acquisitionCapability of [undefined, 'wrong', ACQUISITION_TERMS_CAPABILITY]) {
+    const result = await dispatchAction({ ...pendingBindings(),actions }, 'checkout.create', {
+      ...payload, cart: { ...cart, cadenceDays: 35 }, termsRevision: 'stale', acquisitionCapability,
+    }, context);
+    assert.deepEqual(result, { ok: false, code: 'catalog_admission_quote_authority_required',
+      message: 'Governed checkout is unavailable for this selection. Use a supported offer or replay the original request.' });
+  }
+  assert.equal(calls.length,12);
 });
 
 for (const narrowing of ['withdrawn offers', 'lowered quantity and line limits']) {
@@ -290,9 +303,8 @@ test('expired stamped checkout replays the saved pending and completed purchase'
   const resumable = ['commerce_register_order_destination','fulfillment_record_stock_current','fulfillment_reserve_purchase_order_items',
     'subscription_declare_provisional_activation','commerce_open_settlement_intent'];
   const effects: string[] = [], unexpected: string[] = [], receiptCalls: unknown[][] = [];
-  let lookupCount = 0, savedQuoteChecks = 0;
+  let savedQuoteChecks = 0;
   const query = async (sql: string, args: unknown[] = []) => {
-    lookupCount++;
     if (sql.includes('SELECT email')) return { rows: [{ email: payload.email }] };
     if (sql.includes('pg_advisory')) return { rows: [] };
     if (sql.includes('commerce_order_draft_receipts')) return { rows: [stored] };
@@ -316,14 +328,13 @@ test('expired stamped checkout replays the saved pending and completed purchase'
   const actions = composePurchaseCapabilities(db,{} as never,async () => ({ allowed: true }),{} as never,{ predecessors, renewal });
   const replay = (input: Record<string, unknown>) => actions['checkout.create']!(input,{ ...context, actor });
   const input = { ...original, quoteAcceptance: token };
-  assert.deepEqual(await replay({ ...input, termsAccepted: false }),{ ok: false,code: 'starter_terms_required' });
-  assert.equal(lookupCount,0);
-  for (const changed of [{ quoteAcceptance: token + 'a' }, { expectedTotal: { ...money, amountMinor: 1001 } },
+  for (const changed of [{ termsAccepted: false }, { quoteAcceptance: token + 'a' }, { expectedTotal: { ...money, amountMinor: 1001 } },
     { cart: { ...cart, cadenceDays: cart.cadenceDays! + 1 } }, { termsRevision: 'different-terms' }]) {
     assert.deepEqual(await replay({ ...input, ...changed }),{ ok: false,code: 'starter_command_conflict' });
   }
   assert.deepEqual(effects,[]);
   assert.equal(savedQuoteChecks,0);
+  assert.equal(receiptCalls.length,5);
   assert.ok(receiptCalls.every(args => args[0] === key && args[1] === actor.customerRef && args[2] === scope.lane
     && args[3] !== submit.submitDigest && args[3] !== stored.fingerprint));
   const response = { ok: true,value: { orderRef: stored.id,status: stored.status,total: money },replayed: true };

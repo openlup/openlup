@@ -131,7 +131,7 @@ it.each([0,1,3660,3661,2_147_483_647])('preserves historical native checkout and
   status:'draft',paymentStatus:'not_started',idempotencyKey:'cadence-boundary',quoteSnapshot:snapshot,replayed:true}};
  const query=vi.fn(async(sql:string)=>({rows:sql.startsWith('SELECT 1')?[{}]:[{response}]})),port=createPostgresNativeCheckoutPersistence({query});
  const result=port.createOrderDraft({idempotencyKey:'cadence-boundary',quoteSnapshot:snapshot});
- if(days>=1){await expect(result).resolves.toEqual(response);expect(query).toHaveBeenCalledTimes(days>3660?2:1);}
+ if(days>=1){await expect(result).resolves.toEqual(response);expect(query).toHaveBeenCalledTimes(2);}
  else{await expect(result).rejects.toThrow();expect(query).not.toHaveBeenCalled();}
  const valid=quote();valid.quote.context.cadenceDays=1;
  const readback=port.createOrderDraft({idempotencyKey:'cadence-boundary',quoteSnapshot:valid});
@@ -143,7 +143,9 @@ it('refuses a fresh 3661-day native draft after checking receipts without callin
  const query=vi.fn(async()=>({rows:[]}));
  await expect(createPostgresNativeCheckoutPersistence({query}).createOrderDraft({idempotencyKey:'fresh-cadence-boundary',quoteSnapshot:snapshot}))
   .rejects.toMatchObject({name:'CommerceOrderDraftPersistenceError',details:{reason:'cadence_limit_exceeded',maximumCadenceDays:3660}});
- expect(query).toHaveBeenCalledOnce();expect(query.mock.calls[0]).toEqual(['SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1',['fresh-cadence-boundary']]);
+ expect(query).toHaveBeenCalledTimes(2);
+ expect(query.mock.calls[0]).toEqual(['SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1',['fresh-cadence-boundary']]);
+ expect(query.mock.calls[1]?.[0]).toContain('catalog_admission_requires_quote_authority');
 });
 it.each([0,3661])('refuses fresh acquisition draft cadence %i before policy or writing RPC calls',async cadenceDays=>{
  const snapshot=quote();snapshot.quote.context.cadenceDays=cadenceDays;

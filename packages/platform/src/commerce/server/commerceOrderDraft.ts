@@ -5,6 +5,7 @@ import type { CommerceOrderDraftWritePort, CreateOrderDraftOptions } from "../co
 import type { RpcError as CommerceOrderDraftRpcError } from "../contracts/omsTypes.js";
 import { ORDER_DRAFT_RPC_NAME } from "./orderDraftRpcPayload.js";
 import { catalogAdmissionRefusal } from "./catalogAdmissionRefusal.js";
+import { catalogAdmissionRefusalMessage } from "./catalogAdmissionRefusalMessage.js";
 
 /** Companion RPC that supersedes a stale pre-payment draft for a stable journey key. */
 export const ORDER_DRAFT_SUPERSEDE_RPC_NAME =
@@ -84,7 +85,7 @@ async function supersedeStalePrePaymentDraft<Args extends Record<string, unknown
 
 function mapRpcError(error: CommerceOrderDraftRpcError): Error {
   const admission = catalogAdmissionRefusal(error);
-  if (admission) return new CommerceOrderDraftConflictError(admission, { reason: admission, boundary: ORDER_DRAFT_RPC_NAME });
+  if (admission) return new CommerceOrderDraftConflictError(catalogAdmissionRefusalMessage(admission), { reason: admission, boundary: ORDER_DRAFT_RPC_NAME });
   const catalogReason = ["commerce_order_draft_catalog_head_moved", "commerce_order_draft_catalog_anchor_missing", "commerce_order_draft_offer_membership_refused"]
     .find((reason) => [error.message, error.details, error.hint].some((value) => value?.includes(reason)));
   if (catalogReason) return new CommerceOrderDraftConflictError("Commerce catalog admission changed", {

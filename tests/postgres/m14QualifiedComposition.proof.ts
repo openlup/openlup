@@ -23,12 +23,13 @@ import { createNativeFulfillmentBinding } from "@openlup/platform/fulfillment/na
 import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { proveCheckoutOwnerGrant, provisionCheckoutOwner, readIssuedPlatformManifest, withIssuedPlatformCatalog, withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { profile, request } from "../helpers/fulfillmentComposition.js";
+import { proveRuntimeCheckout, watchRuntimeCheckoutAclDelta } from "./catalogRuntimeCheckout.proof.js";
 import { fixture, openCase } from "../helpers/fulfillmentNative.js";
 import { cataloguePublicationAuthority, catalogueReadGrant, fixture as catalogueFixture, graph, insertGraph,
   installPublicationActors, membershipSignature, readinessSignature, transaction } from "./catalogPublicationFixture.js";
 
 const input: { connectionString: string; freshConnectionString?: string; selection: QualifiedPostgresInstallation; expectedInventory: string;
-  discriminators: boolean } = JSON.parse(process.argv[2]!);
+  discriminators: boolean; freshRuntimeCheckout?: boolean } = JSON.parse(process.argv[2]!);
 const { selection } = input;
 const lockName = "openlup:public-platform-migrations:v1";
 const password = "synthetic-proof-only";
@@ -822,9 +823,20 @@ async function prove() {
     }
     return inventorySha256;
   }
-  const runner = createPostgresMigrationRunner({ connectionString }, { installation: selection });
+  const migrationUrl = new URL(connectionString);
+  migrationUrl.searchParams.set("options", qualifiedPostgresStartupOptions(selection));
+  const migration = pool(migrationUrl.href);
+  const assertAclDelta = watchRuntimeCheckoutAclDelta(migration);
+  const runner = createPostgresMigrationRunner({ connectionString }, { installation: selection, poolFactory: () => migration });
+  const deniedCheckout = [pool(loginUrl(selection.restoreLogin!)), pool(loginUrl("openlup_checkout_owner"))];
   const before = await runner.status();
   assert.deepEqual(before, { applied: [], pending: expected.map(entry => entry.file) });
+  if (input.freshRuntimeCheckout) {
+    assert.deepEqual(await runner.apply(), { applied: expected.map(entry => entry.file) });
+    assertAclDelta();
+    await proveRuntimeCheckout(bootstrap, pool(loginUrl(selection.runtimeLogin)), selection.migrationLogin, deniedCheckout);
+    return { freshRuntimeCheckout: true, ledgerRows: expected.length };
+  }
   let issuedInventorySha256 = "";
   const prefixApplied = await withIssuedPlatformCatalog(async root => {
     const prefixRunner = createPostgresMigrationRunner({ connectionString }, { root, installation: selection });
@@ -857,6 +869,7 @@ async function prove() {
     }).apply());
   assert.deepEqual(grantApplied.applied, [catalogueReadGrant]);
   const suffixApplied = await runner.apply();
+  assertAclDelta();
   assert.deepEqual(suffixApplied.applied, expected.slice(grantPosition + 1).map(entry => entry.file));
   const appliedNow = { applied: [...prefixApplied, ...beforeGrant.applied, ...grantApplied.applied, ...suffixApplied.applied] };
   assert.deepEqual(appliedNow, { applied: expected.map(entry => entry.file) });
@@ -875,6 +888,7 @@ async function prove() {
   assert.deepEqual(await ledger(), installed);
   const inventorySha256 = await observeInventory(manifest.objectInventorySha256);
   const fresh = input.freshConnectionString && await prepareFixtureCluster(input.freshConnectionString);
+  await proveRuntimeCheckout(bootstrap, pool(loginUrl(selection.runtimeLogin)), selection.migrationLogin, deniedCheckout);
   await proveCheckoutOwnerGrant(connectionString, loginUrl(selection.runtimeLogin), selection, password,
     fresh ? fresh.connectionString : undefined);
   await bootstrap.query("DROP ROLE openlup_checkout_owner");

@@ -3,11 +3,10 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { canonicalCatalogPriceSetupCommand, createPostgresCatalogPriceSetupStore } from "@openlup/platform/pricing";
-import { createPostgresNativeCheckoutPersistence } from "@openlup/platform/commerce/server/native-checkout";
 import { createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
 import { createPostgresPurchaseRenewalWriter, createPostgresRenewalStore, createNativeRenewalCodec, createPostgresPackageEditReadPort } from "@openlup/platform/subscriptions";
-import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
+import { captureSandboxPurchase, createHistoricalPurchaseDraft } from "../helpers/captureSandboxPurchase.js";
 import { journeyCensus } from "../helpers/storeJourney.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -72,11 +71,10 @@ async function genuinePurchase(db: Pool) {
   const line = { sku: "READINESS-AGREED", productSlug: "readiness-agreed", quantity: 2, unitPriceGross: money(137), lineSubtotalGross: money(274),
     tax: { included: true as const, country: "ZZ", category: "standard", vatRateBps: 0, legalBasis: "Synthetic tax",
       netAmount: money(274), vatAmount: money(0), grossAmount: money(274) } };
-  const result = await createPostgresNativeCheckoutPersistence(db).createOrderDraft({ idempotencyKey: `readiness:${randomUUID()}`,
-    quoteSnapshot: { contractVersion: "commerce.v0", quote: { currency: "XXX", taxIncluded: true, lines: [line], discounts: [],
+  const order = await createHistoricalPurchaseDraft(db, `readiness:${randomUUID()}`,
+    { contractVersion: "commerce.v0", quote: { currency: "XXX", taxIncluded: true, lines: [line], discounts: [],
       context: { mode: "subscription", cadenceDays: 28, promoCodes: [] }, subtotalGross: money(274), discountTotalGross: money(0),
-      shippingGross: money(0), shippingDiscountGross: money(0), totalGross: money(274), netTotal: money(274), taxTotal: money(0) } } }, { clientId: client });
-  const order = result.orderDraft.orderId.replace(/^order_/, "");
+      shippingGross: money(0), shippingDiscountGross: money(0), totalGross: money(274), netTotal: money(274), taxTotal: money(0) } }, client);
   const at = (await db.query("SELECT to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value")).rows[0].value;
   const intent = await rpc(db, "commerce_open_settlement_intent", [`open:${order}`, order, "sandbox", 274, "XXX", "{}", at]);
   await rpc(db, "subscription_declare_provisional_activation", [`declare:${order}`, order, 28, at]);
