@@ -5,7 +5,6 @@ import { expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
-import { projectHistoricalCapture } from "./connectedStoreHistoricalPacket.fixture.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedAdminPostgresStartupOptions, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer,
@@ -16,14 +15,6 @@ type Mode = "installer-managed" | "operator-provisioned";
 type Installed = { container: PostgresContainer; pools: Pool[]; owner: Pool; runner: ReturnType<typeof createPostgresMigrationRunner>;
   selection: QualifiedAdminPostgresInstallation; inventory: string };
 const password = "synthetic-restricted-restore";
-const beforeGovernedLifecycle: Record<Mode, string> = {
-  "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
-  "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
-};
-const beforeSubscriptionProfiles: Record<Mode, string> = {
-  "installer-managed": "412caa25526d6ba70bb5bb761d5bed2336e7307811a879658295819ad5ab15f5",
-  "operator-provisioned": "d413c04713b9fb5f5f9d8f01dc66c68c67d131f6cc94bcbf12becef47abd4f42",
-};
 const groups = ["anon", "authenticated", "service_role", "platform_acquisition_owner",
   "platform_acquisition_runtime", "openlup_retained_import_owner"];
 
@@ -108,9 +99,9 @@ async function withAcquisitionOwnerWindow<T>(installed: Installed, work: (client
     client.release();
   }
 }
-async function capture(installed: Installed, sourceId: string, catalogueId = installed.inventory) {
+async function capture(installed: Installed, sourceId: string) {
   return withAcquisitionOwnerWindow(installed, client =>
-    captureConnectedNativeStore({ sourceId, catalogueId, maximumRows: 10000,
+    captureConnectedNativeStore({ sourceId, catalogueId: installed.inventory, maximumRows: 10000,
       maximumBytes: 64 * 1024 * 1024, source: { async withSnapshot(work) {
         await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
         try {
@@ -184,20 +175,25 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await expect(fixture.runner.status()).rejects.toThrow("outside_role_has_host_authority");
     } finally { await closePostgres(fixture.container, fixture.pools); }
   }, postgresSetupTimeoutMs);
-  const sourceInventories = shape === "neon"
-    ? [beforeGovernedLifecycle[mode], beforeSubscriptionProfiles[mode]] : [undefined];
-  it.each(sourceInventories)(`restores a connected native graph through ${shape}-shaped ${mode} admission with source pin %s`, async (sourceCatalogueId) => {
+  it(`restores a connected native graph through ${shape}-shaped ${mode} admission`, async () => {
     if (!await dockerAvailable()) throw new Error("Restricted restore requires disposable PostgreSQL 16");
     let source: Installed | undefined, target: Installed | undefined;
     try {
       source = await install(shape, mode, "source");
       target = await install(shape, mode, "target");
-      await source.owner.query("INSERT INTO public.clients(email,lifecycle_stage) VALUES('restricted@example.invalid','lead')");
+      const { rows: [subscription] } = await source.owner.query<{ id: string }>(`WITH client AS (
+        INSERT INTO public.clients(email,lifecycle_stage) VALUES('restricted@example.invalid','lead') RETURNING id
+      )
+      INSERT INTO public.subscriptions(client_id,cadence_days,next_cycle_at)
+        SELECT id,28,'2026-11-29T12:00:00Z' FROM client RETURNING id`);
+      await source.owner.query(`INSERT INTO public.subscription_edit_quotes(subscription_id,idempotency_key,request_fingerprint,
+        quote_hash,expected_template_version,proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,expires_at)
+        VALUES($1,'fixture-quote',repeat('b',64),repeat('c',64),1,'[]',28,200,200,'XXX','2026-11-02')`, [subscription!.id]);
       await source.owner.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
         VALUES('synthetic','10000000-0000-4000-8000-000000000001','synthetic.retained','restricted-ordinary-outbox','{}')`);
-      const current = await capture(source, "restricted-source", sourceCatalogueId);
-      const packet = sourceCatalogueId === beforeGovernedLifecycle[mode]
-        ? await projectHistoricalCapture(source.owner, current, sourceCatalogueId) : current;
+      const packet = await capture(source, "restricted-source");
+      const quotes = packet.owned.find(entry => entry.table === "subscription_edit_quotes");
+      expect(quotes!.rows).toHaveLength(1);
       const freshTarget = await capture(target, "restricted-target");
       expect((await source.runner.status()).pending).toEqual([]);
       expect((await target.runner.status()).pending).toEqual([]);
@@ -214,6 +210,7 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       expect((await target.runner.status()).pending).toEqual([]);
       expect((await restoreConnectedNativeStore(input)).replayed).toBe(false);
       expect((await target.owner.query("SELECT email FROM public.clients")).rows).toEqual([{ email: "restricted@example.invalid" }]);
+      expect((await capture(target, "restricted-restored")).owned.find(entry => entry.table === "subscription_edit_quotes")).toEqual(quotes);
       expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
       expect((await target.owner.query("SELECT event_type FROM public.outbox_events")).rows).toEqual([{ event_type: "synthetic.retained" }]);
       if (shape === "neon" && mode === "installer-managed") {

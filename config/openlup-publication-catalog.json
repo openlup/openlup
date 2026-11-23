@@ -31470,10 +31470,6 @@
       "class": "public-output"
     },
     {
-      "path": "tests/postgres/connectedStoreHistoricalPacket.fixture.ts",
-      "class": "public-output"
-    },
-    {
       "path": "tests/postgres/connectedStorePaymentMethods.test.ts",
       "class": "public-output"
     },
