@@ -1590,6 +1590,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125020000_subscription_cancel_feedback.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5215,6 +5219,10 @@
     },
     {
       "path": "packages/platform/sql/20261125010000_catalog_purchase_admission.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125020000_subscription_cancel_feedback.sql",
       "class": "public-output"
     },
     {

@@ -6878,6 +6878,19 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "subscription-cancel-feedback",
+        "path": "db/platform/migrations/20261125020000_subscription_cancel_feedback.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_cancel_feedback_submit(uuid,uuid,text,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -10123,6 +10136,17 @@
           "signature": "public.catalog_admission_guard_purchase_item(public.commerce_order_items)",
           "beforeSha256": null,
           "afterSha256": "1ee7c46e95017d18b7d0e4f3d60e89b00ddb98ae8abc560cbbe5395417320eeb"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125020000_subscription_cancel_feedback.sql",
+      "sha256": "b6b98980d14fec27e8a169e720b228f2e8adbd6abc62b92d93e5579db5f78730",
+      "functions": [
+        {
+          "signature": "public.subscription_cancel_feedback_submit(uuid,uuid,text,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "98ef9606f9c451aa8a7a73f94577c163158933f803f394174bc1d09981b9ba5d"
         }
       ]
     }
