@@ -8610,6 +8610,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/lifecycle/recipeCli.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/market-packs/currencyExponent.ts",
       "class": "public-output"
     },
@@ -11891,6 +11895,10 @@
     },
     {
       "path": "packages/platform/test/lifecycle/postgresInstallQualification.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/recipeCli.test.ts",
       "class": "public-output"
     },
     {
