@@ -28,7 +28,7 @@ export function catalogPackManifest(pack: CatalogPackInput): CatalogPackManifest
 }
 
 /** @internal */
-export function prepareCatalogPackManifest(pack: CatalogPackInput, profiles: readonly CatalogSubscriptionProfileV1[] | undefined):
+export function prepareCatalogPackManifest(pack: CatalogPackInput, profiles: readonly CatalogSubscriptionProfileV1[] | undefined, reportLegacySize = false):
   { manifest: CatalogPackManifest; canonicalManifest: string; profileDeclarationBytes?: string[] } | { issue: CatalogDefinitionIssue } {
   const declarations = profiles?.map(profile => {
     const bytes = canonicalCatalogSubscriptionProfileJson(profile);
@@ -46,8 +46,8 @@ export function prepareCatalogPackManifest(pack: CatalogPackInput, profiles: rea
   try {
     canonicalManifest = canonicalCatalogDraftJson(projection);
   } catch (error) {
-    if (profiles === undefined || !(error instanceof Error) || error.message !== "draft_payload_too_large") throw error;
-    return { issue: { code: "draft_payload_too_large", path: "", fix: "Split the profile declarations across pack versions or packs." } };
+    if (profiles === undefined && !reportLegacySize || !(error instanceof Error) || error.message !== "draft_payload_too_large") throw error;
+    return { issue: { code: "draft_payload_too_large", path: "", fix: profiles === undefined ? "Split the catalogue definitions across packs." : "Split the profile declarations across pack versions or packs." } };
   }
   const digest = createHash("sha256").update(canonicalManifest).digest("hex");
   return { manifest: Object.freeze({ ...projection, digest }), canonicalManifest, profileDeclarationBytes: declarations?.map(({ bytes }) => bytes) };

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AppUpgradePlan, AppVerificationFinding } from "@openlup/platform/lifecycle";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
@@ -318,13 +318,25 @@ export function reconcileLifecycleCustomization(app: string, predecessor: string
   return { path, bytes };
 }
 
-export function proveStarterCatalogueWrappers(app: string, scratch: string): void {
-  const { scripts } = JSON.parse(readFileSync(join(app, "package.json"), "utf8")) as { scripts?: Record<string, unknown> };
-  for (const [script, expected] of [
-    ["catalogue:check", "openlup catalogue check --packs ./owned/catalogue.json --json"],
-    ["catalogue:check:source", "openlup catalogue project --trusted-packs ./owned/catalogue.ts --json"],
-  ] as const) {
-    const command = scripts?.[script];
+const retiredCatalogueFile = "owned/catalogue.json";
+const catalogueScripts = {
+  "catalogue:check": "openlup catalogue check --packs ./owned/catalogue.json --json",
+  "catalogue:check:source": "openlup catalogue project --trusted-packs ./owned/catalogue.ts --json",
+} as const;
+function readStarterScripts(bytes: string | undefined): Record<string, unknown> {
+  return bytes === undefined ? {} : JSON.parse(bytes).scripts ?? {};
+}
+
+export function proveStarterCatalogueWrappers(app: string, scratch: string,
+  manifest = readFileSync(join(app, "package.json"), "utf8")): void {
+  const scripts = readStarterScripts(readFileSync(join(app, "package.json"), "utf8"));
+  const expectedScripts = readStarterScripts(manifest);
+  for (const [script, expected] of Object.entries(catalogueScripts)) {
+    if (!Object.hasOwn(expectedScripts, script)) {
+      assert(!Object.hasOwn(scripts, script), `unexpected starter catalogue script: ${script}`);
+      continue;
+    }
+    const command = scripts[script];
     assert(typeof command === "string" && command === expected, `unexpected starter catalogue script: ${script}`);
     const [, ...args] = command.split(" ");
     const report = JSON.parse(execFileSync(process.execPath, [realpathSync(join(app, "node_modules/.bin/openlup")), ...args], {
@@ -333,6 +345,12 @@ export function proveStarterCatalogueWrappers(app: string, scratch: string): voi
     assert.equal(report.command, script.endsWith(":source") ? "catalogue project" : "catalogue check");
     assert.equal(report.exitCode, 0);
   }
+}
+
+export function retiresStarterCatalogue(from: string | undefined, to: string | undefined): boolean {
+  const previous = readStarterScripts(from), next = readStarterScripts(to);
+  return previous["catalogue:check"] === catalogueScripts["catalogue:check"] &&
+    !Object.hasOwn(next, "catalogue:check") && next["catalogue:check:source"] === catalogueScripts["catalogue:check:source"];
 }
 
 export const starterCareJourney = "browser/acquisition.spec.ts";
@@ -369,6 +387,13 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
+  const retireCatalogue = retiresStarterCatalogue(from.files["package.json"], to.files["package.json"]);
+  if (retireCatalogue) {
+    assert(ownership.owned.includes(retiredCatalogueFile));
+    assert(!existsSync(join(pair.to, retiredCatalogueFile)));
+    assert(!Object.hasOwn(from.files, retiredCatalogueFile) && !Object.hasOwn(to.files, retiredCatalogueFile));
+    owned[retiredCatalogueFile] = readFileSync(join(app, retiredCatalogueFile));
+  }
   const settingsHost = join(app, starterSettingsHost);
   if (existsSync(settingsHost)) owned[starterSettingsHost] = readFileSync(settingsHost);
   const targetSettings = join(pair.to, starterSettingsHost);
@@ -406,6 +431,10 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert.notEqual(local, previous);
       owned[careSettings] = Buffer.from(local);
       writeFileSync(path, owned[careSettings]);
+    }
+    if (retireCatalogue) {
+      owned[retiredCatalogueFile] = Buffer.concat([owned[retiredCatalogueFile]!, Buffer.from("\n")]);
+      writeFileSync(join(app, retiredCatalogueFile), owned[retiredCatalogueFile]!);
     }
     pair.evidence.customizations = Object.fromEntries(Object.entries(owned).map(([path, bytes]) => [path, hash(bytes)]));
     assertCompleteStarter(app, from);
@@ -642,7 +671,14 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   rmSync(workspace, { recursive: true, force: true });
   return () => phase("installed-application-and-owned-bytes", () => {
     assertCompleteStarter(app, to); checkUpgradeFiles();
-    if (to.files["package.json"]?.includes('"catalogue:check:source"')) proveStarterCatalogueWrappers(app, dirname(app));
+    if (to.files["package.json"]?.includes('"catalogue:check:source"'))
+      proveStarterCatalogueWrappers(app, dirname(app), to.files["package.json"]);
+    if (retireCatalogue) phase("starter-catalogue-guided-consolidation", () => {
+      if (!pair.pristine) renameSync(join(app, retiredCatalogueFile), join(app, "owned/catalogue-archive.json"));
+      else rmSync(join(app, retiredCatalogueFile));
+      assert(!existsSync(join(app, retiredCatalogueFile)));
+      if (!pair.pristine) assert.deepEqual(readFileSync(join(app, "owned/catalogue-archive.json")), owned[retiredCatalogueFile]);
+    });
   });
 }
 

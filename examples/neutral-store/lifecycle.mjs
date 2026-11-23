@@ -70,8 +70,11 @@ if (command === 'candidate') {
     assertConfig(config);
     run('docker', ['compose', 'build']);
     run('docker', ['compose', 'up', '--wait', 'database']);
-    run('docker', ['compose', 'run', '--rm', '--no-deps', 'installation',
-      'node', 'lifecycle.mjs', 'install', '--configuration', config.id]);
+    const installer = spawnSync('docker', ['compose', 'run', '--rm', '--no-deps', 'installation',
+      'node', 'lifecycle.mjs', 'install', '--configuration', config.id], { cwd: root, stdio: 'inherit' });
+    if (installer.error || installer.status === null) throw installer.error ?? new Error('starter_installation_failed');
+    if (installer.status === 2) process.exit(installer.status);
+    if (installer.status !== 0) throw new Error('starter_installation_failed');
     // Install and runtime receive the same non-secret configuration through arguments.
     const override = { services: { application: { command: [
       'node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo',
@@ -113,20 +116,26 @@ if (command === 'candidate') {
   }
 } else if (command === 'install') {
   // Internal one-shot Compose entry; no install connection reaches the HTTP host.
-  const { installDemonstration, bootstrapDemonstration } = await import('./installation/install.ts');
+  let installation;
+  try { installation = await import('./installation/install.ts'); }
+  catch { process.stderr.write('starter_installation_failed\n'); process.exit(2); }
   const { selectConfiguration } = await import('./owned/store.config.ts');
+  const installEntry = Symbol.for('openlup.neutral-store.install-entry');
+  // This one-shot process has its own catalogue admission before the host import.
+  Reflect.set(globalThis, installEntry, true);
   try {
-    await installDemonstration(selectConfiguration(configurationArgument(args)), bootstrapDemonstration);
+    await installation.installDemonstration(selectConfiguration(configurationArgument(args)), installation.bootstrapDemonstration);
   } catch (error) {
-    const code = error instanceof Error ? error.message : 'starter_installation_failed';
-    process.stderr.write(`${code}\n`);
-    const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
-    if (hint) process.stderr.write(`${hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit)}\n`);
-    if (code === 'starter_seed_demonstration_database_required') {
-      process.stderr.write('See node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md#reset-an-interrupted-first-install for the local demonstration reset recipe.\n');
+    const report = installation.installationReport?.(error);
+    if (report) process.stderr.write(report);
+    else {
+      const code = error instanceof Error ? error.message : 'starter_installation_failed';
+      process.stderr.write(`${code}\n`);
+      const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
+      if (hint) process.stderr.write(`${hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit)}\n`);
     }
     process.exitCode = 2;
-  }
+  } finally { Reflect.deleteProperty(globalThis, installEntry); }
   // The installed runner owns its pool; this one-shot process owns its lifetime.
   process.exit(process.exitCode ?? 0);
 } else if (command === 'browser') {

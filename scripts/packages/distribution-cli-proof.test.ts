@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { env } from "node:process";
 import { proveInstalledCareUpgrade, qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
-  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers,
+  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers, retiresStarterCatalogue,
   reminderInstallationTest, starterLifecycle, starterOptionalOwnedFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization, starterEditorPorts, starterDocumentFiles,
@@ -495,7 +495,8 @@ it("migrates the pristine catalogue after the 1.2.0 starter release", () => {
   const previous = released(path), packBytes = released(pack);
   const next = readFileSync(resolve("examples/neutral-store", path), "utf8");
   write(path, previous); write(pack, packBytes); candidate(path, next);
-  write("package.json", released("package.json"));
+  const historicalManifest = released("package.json");
+  write("package.json", historicalManifest);
   candidate("package.json", readFileSync(resolve("examples/neutral-store/package.json"), "utf8"));
   const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
   migrateStarterOwned(app, target, from, { ...to, version: "1.2.0" });
@@ -510,12 +511,23 @@ it("migrates the pristine catalogue after the 1.2.0 starter release", () => {
   mkdirSync(join(app, "node_modules/.bin"), { recursive: true });
   symlinkSync(bin, join(app, "node_modules/.bin/openlup"));
   symlinkSync(resolve("packages/platform"), join(app, "node_modules/@openlup/platform"));
+  const customizedPack = packBytes + "\n";
+  write(pack, customizedPack);
   write("from.json", from);
   write("to.json", to);
   const upgraded = spawnSync(process.execPath, [bin, "upgrade", "apply", "--root", app, "--from", join(app, "from.json"),
     "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { cwd: app, encoding: "utf8" });
   expect(upgraded.status, upgraded.stdout).toBe(0);
-  const verifyWrappers = () => proveStarterCatalogueWrappers(app, target);
+  const verifyWrappers = () => proveStarterCatalogueWrappers(app, target, to.files["package.json"]);
+  expect(retiresStarterCatalogue(from.files["package.json"], to.files["package.json"])).toBe(true);
+  const dual = JSON.parse(historicalManifest);
+  dual.scripts["catalogue:check:source"] = JSON.parse(to.files["package.json"]).scripts["catalogue:check:source"];
+  const fromDual = { ...from, files: { ...from.files, "package.json": JSON.stringify(dual) } };
+  expect(retiresStarterCatalogue(fromDual.files["package.json"], to.files["package.json"])).toBe(true);
+  expect(readFileSync(join(app, pack), "utf8")).toBe(customizedPack);
+  renameSync(join(app, pack), join(app, "owned/catalogue-archive.json"));
+  expect(readFileSync(join(app, "owned/catalogue-archive.json"), "utf8")).toBe(customizedPack);
+  expect(JSON.parse(readFileSync(join(app, "package.json"), "utf8")).scripts).not.toHaveProperty("catalogue:check");
   verifyWrappers();
 
   write("released-catalogue.ts", previous);
@@ -748,12 +760,13 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   ]);
   const from = starterUpgradeSnapshot(app, "1.1.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
   const managedTarget = { ...to.files };
+  const legacyCatalogue = readFileSync(join(app, "owned/catalogue.json"));
   const marketPath = "owned/market.config.ts";
   expect(existsSync(join(app, marketPath))).toBe(false);
   if (customized) {
     const previousFile = (path: string) => join(source, previousOwnership.sourceMappings?.[path] ?? path);
     const changedOwned = previousOwnership.owned.filter(path =>
-      !readFileSync(previousFile(path)).equals(readFileSync(join(target, path))));
+      existsSync(join(target, path)) && !readFileSync(previousFile(path)).equals(readFileSync(join(target, path))));
     for (const path of changedOwned) expect(customizations.has(path), `missing local edit for ${path}`).toBe(true);
     for (const [path, [before, after]] of customizations) edit(path, before, after);
     // Reconcile each local file in place against its released base and target.
@@ -814,6 +827,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   expect(JSON.parse(result.stdout).applied).toEqual(expect.arrayContaining([marketPath, starterSettingsHost, reminderInstallationTest, starterLifecycle, ...starterDisplayFiles]));
   checkUpgradedFiles();
   replay();
+  expect(readFileSync(join(app, "owned/catalogue.json"))).toEqual(legacyCatalogue);
   // Expected bytes come from the target inventory, including contracts that
   // have no runtime refusal. The customized expectation adds each local edit.
   for (const path of targetOwnership.owned) {

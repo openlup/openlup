@@ -46,7 +46,8 @@ to prepare, approve, issue and read the exact saved facts.
 
 In an extracted starter, apply this check to all the recipes below.
 After each change, run `npm run typecheck` from the extracted application root.
-Check `owned/catalogue.ts` with `npm run --silent catalogue:check:source`.
+The starter’s catalogue check is `npm run --silent catalogue:check:source`.
+It checks the packs and fixtures declared in `owned/catalogue.ts`.
 For a pack at another path, use the projection command in the recipe.
 
 ## New vertical
@@ -63,8 +64,6 @@ mkdir -p owned/catalogue
 cp node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-pack-skeleton/*.ts owned/catalogue/
 npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json
 ```
-
-`catalogue-pack-skeleton/catalogue.json` is input for `openlup catalogue check --packs`; an application started from the starter declares packs only in `owned/catalogue.ts`
 
 For inert checking, copy the [static JSON sample](./catalogue-pack-skeleton/catalogue.json)
 to your working directory and run `npx --no -- openlup catalogue check --packs ./catalogue.json --json`.

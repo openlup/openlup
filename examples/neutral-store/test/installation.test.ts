@@ -276,7 +276,7 @@ for (const config of Object.values(configurations)) {
     await installDemonstration(config, async () => { bootstraps++; return first.binding; });
     assert.equal(bootstraps, 1);
     assert.equal(first.closed(), 1);
-    assert.equal(first.calls[0]!.text, 'BEGIN');
+    assert.equal(first.calls[0]!.text, 'BEGIN ISOLATION LEVEL READ COMMITTED');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
     for (const { text } of first.calls.slice(1, -1)) {
       assert.doesNotMatch(text, /\b(?:BEGIN|COMMIT|ROLLBACK|START\s+TRANSACTION|END|SAVEPOINT|RELEASE|ABORT|PREPARE\s+TRANSACTION)\b/i);

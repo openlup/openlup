@@ -12,8 +12,9 @@ import { isRecord } from '../shared/offer.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import type { EditorProduct } from '../shared/subscription-edit.ts';
 
-// Admit owned definitions at host import, including hosts without a rules file.
-void catalogDraftRegistry.resolve;
+// Admit owned definitions at host import. The one-shot installer uses its admitted snapshot.
+if (!Reflect.has(globalThis, Symbol.for('openlup.neutral-store.install-entry')))
+  void catalogDraftRegistry.resolve;
 
 export const starterCatalogueType = { key: 'starter:item', version: 1 } as const;
 const buildDirectory = fileURLToPath(new URL('../.context/catalogue-builds', import.meta.url));
@@ -31,8 +32,9 @@ export function readStarterCatalogueRules(): Buffer | undefined {
 }
 
 /** The installer and operator host run from the same image built by lifecycle up. */
-export function starterCataloguePack(artifact: Uint8Array) {
-  const definition = catalogDraftRegistry.resolve(starterCatalogueType);
+export function starterCataloguePack(artifact: Uint8Array,
+  resolve = () => catalogDraftRegistry.resolve(starterCatalogueType)) {
+  const definition = resolve();
   if (!definition) throw new Error('Define starter:item at version 1 in owned/catalogue.ts to install catalogue rules.');
   const { validateContent: _legacyRule, validatorRef: _legacyRef, ...legacyType } = definition;
   const unit = 'openlup:g';
@@ -52,8 +54,8 @@ function starterBuild(type: Omit<CatalogProductTypeInput, 'validateContent'>, ar
 }
 
 /** Stage the receipt and exact rules. Only a committed install may publish their link. */
-export function stageStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDefinitionInstallReceipt, directory = buildDirectory) {
-  const definition = starterCataloguePack(artifact).types[0]!;
+export function stageStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDefinitionInstallReceipt, directory = buildDirectory,
+  definition = starterCataloguePack(artifact).types[0]!) {
   const { validateContent: _callback, ...type } = definition;
   const installed = receipt.types.find(row => row.key === type.key && row.version === type.version);
   if (!installed || installed.definitionDigest !== catalogDefinitionDigest(definition)) throw new Error('starter_catalogue_install_receipt_invalid');
