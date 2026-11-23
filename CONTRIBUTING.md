@@ -1806,6 +1806,12 @@ The helper merges the exact fetched `origin/main` with DCO sign-off; it never
 rebases or pushes. Configure your Git `user.name` and `user.email` before running
 it: the merge uses that identity and `-s` for your personal
 [DCO certification](#developer-certificate-of-origin).
+For an inverted UTC slot involving only disjoint plain platform migrations, use
+`npm run landing:merge -- --relocate-slots`. This opt-in path relocates the PR's
+new slot after `origin/main` only when its SQL, mirrors, registry metadata and
+references pass the closed disjointness proof. An unsupported or ambiguous SQL
+shape refuses relocation; resolve it manually and review that resolution.
+The command without the flag still refuses an inverted slot before merging.
 It stops on an authored conflict, leaving the merge for a
 human or worker. It refreshes its carrier set with the merged tree's own
 inventory refresh and generators, run in new processes, not the code it loaded

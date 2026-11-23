@@ -436,6 +436,14 @@ export function extractSqlFootprint(sqlText) {
     const { outer, dollarBodies } = stripSqlCommentsAndStrings(statement);
     if (!outer) continue;
     check(ALLOWED_SQL_HEAD.test(outer), `relocation refuses unsupported SQL statement shape: ${outer.slice(0, 64)}`);
+    // Single-quoted and SQL-standard function bodies are opaque after string stripping.
+    if (/^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b/iu.test(outer)) {
+      check(dollarBodies.length === 1, 'relocation refuses function body without one dollar-quoted body');
+    }
+    // LIKE and INHERITS read another relation outside the simple DDL footprint grammar.
+    if (/^CREATE\s+(?:UNLOGGED\s+)?TABLE\b/iu.test(outer)) {
+      check(!/\b(?:LIKE|INHERITS)\b/iu.test(outer), 'relocation refuses CREATE TABLE LIKE or INHERITS');
+    }
     if (/^(?:GRANT|REVOKE)\b/iu.test(outer)) {
       check(/\bON\s+(?:TABLE|FUNCTION|SEQUENCE|VIEW)\b/iu.test(outer), 'relocation refuses role-membership or schema-wide GRANT/REVOKE');
     }

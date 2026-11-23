@@ -226,10 +226,15 @@ export async function collectRelocationPlan(cwd, base, head, main) {
   for (let index = 0; index < prRaw.length; index += 2) {
     const status = prRaw[index];
     const path = prRaw[index + 1];
-    if (status === 'D' || prSqlSet.has(path) || RELOCATION_CARRIER_EXCLUSIONS.has(path) || generatedCarrier(path)) continue;
+    if (status === 'D' || prSqlSet.has(path) || RELOCATION_CARRIER_EXCLUSIONS.has(path) || (generatedCarrier(path) && path !== 'packages/core/docs/guide/reference/sql.md')) continue;
     const text = await readRegularBlob(head, path);
     demand(!text.includes('\0'), `relocation refused: binary file ${path} cannot be checked for stale references`);
-    prNonCarrierFilesByPath.set(path, text);
+    // The SQL reference has preserved author prose around generated inventory blocks.
+    // Scan that prose; the generated blocks are refreshed after relocation.
+    const authoredText = path === 'packages/core/docs/guide/reference/sql.md'
+      ? text.replace(/<!-- generated:(sql:[a-z]+) -->\n[\s\S]*?<!-- \/generated:\1 -->/gu, '')
+      : text;
+    prNonCarrierFilesByPath.set(path, authoredText);
   }
   return validateRelocationPlan({
     baseForwardsSource,

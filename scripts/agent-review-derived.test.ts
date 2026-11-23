@@ -880,6 +880,12 @@ describe('opt-in fail-closed derived-relocated slot relocation', () => {
     expect(() => extractSqlFootprint('GRANT service_role TO authenticated;')).toThrow('role-membership or schema-wide');
     expect(() => extractSqlFootprint('CREATE FUNCTION public.dyn() RETURNS void LANGUAGE plpgsql AS $$ BEGIN EXECUTE \'SELECT 1\'; END; $$;'))
       .toThrow('dynamic EXECUTE');
+    expect(() => extractSqlFootprint("CREATE FUNCTION public.copy() RETURNS void LANGUAGE plpgsql AS 'BEGIN INSERT INTO public.shared_reloc_tbl VALUES (1); END;';"))
+      .toThrow('function body without one dollar-quoted body');
+    expect(() => extractSqlFootprint('CREATE TABLE public.copy (LIKE public.shared_reloc_tbl INCLUDING ALL);'))
+      .toThrow('CREATE TABLE LIKE or INHERITS');
+    expect(() => extractSqlFootprint('CREATE TABLE public.child (id uuid) INHERITS (public.shared_reloc_tbl);'))
+      .toThrow('CREATE TABLE LIKE or INHERITS');
 
     // Disjoint SQL statements pass cleanly (including standard runtime role grants on disjoint functions).
     expect(() => assertDisjointRelocationFootprints(
@@ -1019,6 +1025,20 @@ describe('opt-in fail-closed derived-relocated slot relocation', () => {
       await expect(landingMerge(root, { relocateSlots: true, runCommand: (_c, args) => { staleInvoked.push(args); } }))
         .rejects.toThrow('stale migration reference');
       expect(staleInvoked).toEqual([]);
+      expect(git('status', '--porcelain=v1')).toBe('');
+
+      // Authored prose in a generated-carrier page is still a stale reference.
+      checkout(base);
+      appendCustom('20990201010000', 'stale_prose_pr', 'CREATE TABLE public.reloc_prose_isolated (id uuid PRIMARY KEY);\n');
+      write('packages/core/docs/guide/reference/sql.md',
+        'Authored note: 20990201010000_stale_prose_pr.sql\n\n<!-- generated:sql:platform -->\nGenerated inventory\n<!-- /generated:sql:platform -->\n');
+      const prosePr = commit();
+      setMain(mainHead);
+      checkout(prosePr);
+      const proseInvoked: string[][] = [];
+      await expect(landingMerge(root, { relocateSlots: true, runCommand: (_c, args) => { proseInvoked.push(args); } }))
+        .rejects.toThrow('stale migration reference');
+      expect(proseInvoked).toEqual([]);
       expect(git('status', '--porcelain=v1')).toBe('');
     } finally {
       restoreDerivedFixture();
