@@ -125,6 +125,35 @@ describe("checkout owner execute on self-check, queue and release", () => {
       expect(release).not.toThrow();
     }
   }, 20_000);
+
+  it.each(["q2", "qa", "qb"])("scans %s controls in selected plan order and names the drifting file", generation => {
+    const f = fixture(), value = registry();
+    const bind = (file: string, text: string) => {
+      f.put(file, text);
+      return { file, sha256: sqlSha256(text) };
+    };
+    const definition = bind(definitionPath, definitionSql);
+    const drift = bind(`db/platform/migrations/${generation}_20261026130000_runtime_capabilities.sql`,
+      "GRANT EXECUTE ON FUNCTION public.catalog_admission_lock_shared() TO service_role;\n");
+    value.nativeStoreForwardClass!.slots.push(definitionSlot);
+    value.nativeStoreForwards!.push(definitionPin());
+    f.put(REVIEWED_FORWARD_PATH, encode(value));
+    const base = f.commit();
+    const grant = bind(grantPath, grantSql);
+    const qualified = bind("db/platform/migrations/q2_00000000000000_platform_baseline.sql", baseline);
+    const admin = bind("db/platform/migrations/qa_00000000000000_platform_baseline.sql", baseline);
+    const forward = (belongs: boolean) => [definition, ...(belongs ? [drift] : []), grant];
+    f.put(PLATFORM_MIGRATION_MANIFEST, encode({ ...JSON.parse(manifest([definition, grant])), schemaVersion: 3,
+      qualified: { baseline: qualified, forward: forward(generation === "q2") },
+      qualifiedAdmin: { baseline: admin, forward: forward(generation !== "q2") },
+    }));
+    value.nativeStoreForwardClass!.slots.push(grantSlot);
+    value.nativeStoreForwards!.push({ path: grantPath, sha256: grant.sha256, functions: [] });
+    f.put(REVIEWED_FORWARD_PATH, encode(value));
+    const head = f.commit();
+    const reject = () => assertAdmittedPlatformForward(f.root, base, head, grantPath, Buffer.from(grantSql));
+    expect(reject).toThrow(`checkout_owner_predecessor_unverified: ${drift.file}.`);
+  });
 });
 
 const authorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";

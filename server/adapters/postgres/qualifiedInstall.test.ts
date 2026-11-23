@@ -66,9 +66,11 @@ it.each([
     publication_replication_default_unsafe: unsafe, unsafe_replication_default: false,
     default_privileges_exist: false, runtime_setting: selection.runtimeLogin,
     restore_setting: selection.restoreLogin, mode_setting: "installer-managed", ledger_exists: true, ledger_owner: selection.migrationLogin,
-  }] } : { rows: [role(selection.bootstrapLogin, true, true), role(selection.migrationLogin, true, false),
+  }] } : { rows: [{ checkout: null, checkoutPaths: [], catalog: [
+    role(selection.bootstrapLogin, true, true), role(selection.migrationLogin, true, false),
     role(selection.runtimeLogin, false, false), role(selection.restoreLogin, false, false),
-    ...(unsafe ? [role("openlup_catalog_publication", false, false)] : [])] }; } } as PoolClient;
+    ...(unsafe ? [role("openlup_catalog_publication", false, false)] : []),
+  ] }] }; } } as PoolClient;
   await expect(assertQualifiedPostgresSession(client, applied, selection, "fixture"))
     .rejects.toThrow(diagnostic);
 });
