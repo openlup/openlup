@@ -4,10 +4,9 @@ import type { SettingRefusal } from "../contracts/settings.js";
 import type { runSettingsCommand } from "./settingsCommand.js";
 import { loadSettingsCatalogue } from "./settingsCatalog.js";
 
-export function refuseCoverageRead(cause: unknown): { refusal: SettingRefusal } {
-  const code = cause !== null && typeof cause === "object" && "code" in cause ? cause.code : cause;
+export function refuseCoverageRead(cause: unknown, unbound = false): { refusal: SettingRefusal } {
   const base = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;
-  const refusal = code === "tax_coverage_reader_unbound" ? {
+  const refusal = unbound ? {
     ...base,
     hint: "Bind the native reader to the intended installation and account.",
     remediation: { ...base.remediation,

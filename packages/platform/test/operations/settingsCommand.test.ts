@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
 import { z, type ZodType } from "zod";
 import { runSettingsCommand, type SettingsAppBindings } from "../../src/operations/server/settingsCommand.js";
+import * as settingsCommandSupport from "../../src/operations/server/settingsCommandSupport.js";
 import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
 
 import { callSettingsTool, settingsMcpContext, settingsMcpTools } from "../../src/operations/server/settingsMcp.js";
@@ -340,10 +341,19 @@ it.each([
   ["cleanup hook threw", "close", undefined],
   ["generic reader error", "read", undefined],
   ["no reader registered", "missing", undefined],
+  ["factory throws an unbound code", "bind", "tax_coverage_reader_unbound"],
+  ["reader throws an unbound code", "read", "tax_coverage_reader_unbound"],
+  ["cleanup throws an unbound code", "close", "tax_coverage_reader_unbound"],
+  ["factory throws a throwing code getter", "bind", "throwing getter"],
+  ["reader throws a throwing code getter", "read", "throwing getter"],
+  ["cleanup throws a throwing code getter", "close", "throwing getter"],
   ["managed or unbound reader", "unbound", undefined],
 ] as const)("shows only the coverage remedy in text, JSON and MCP for %s", async (failure, stage, code) => {
   const error = new Error(failure === "driver initialization" ? "NODE_PG_FORCE_NATIVE" : `Private fixture detail: ${failure}`);
-  if (code) Object.assign(error, { code });
+  const codeGetter = code === "throwing getter"
+    ? vi.fn(() => { throw new Error("Fixture code was inspected"); }) : undefined;
+  if (codeGetter) Object.defineProperty(error, "code", { get: codeGetter });
+  else if (code) Object.assign(error, { code });
   const query = vi.fn(async () => {
     if (stage === "read") throw error;
     return { rows: [] };
@@ -372,7 +382,18 @@ it.each([
     remediation: { retry: true, action, ...command },
   };
   const result = { schemaVersion: 1, refusal };
-  const json = await run([...argv, "--json"], { host });
+  const buildRefusal = codeGetter ? vi.spyOn(settingsCommandSupport, "refuseCoverageRead") : undefined;
+  const json = await run([...argv, "--json"], { host }).then(output => {
+    if (buildRefusal) {
+      expect(buildRefusal).toHaveBeenCalledOnce();
+      const built = buildRefusal.mock.results[0];
+      if (built?.type !== "return") throw new Error("Expected an internal coverage refusal.");
+      const cause = Object.getOwnPropertyDescriptor(built.value.refusal, "cause");
+      expect(cause?.value).toBe(error);
+      expect(cause?.enumerable).toBe(false);
+    }
+    return output;
+  }).finally(() => buildRefusal?.mockRestore());
   expect(json.exit).toBe(74);
   expect(JSON.parse(json.output)).toEqual(result);
 
@@ -389,6 +410,7 @@ it.each([
   expect(read).toHaveBeenCalledTimes(stage === "read" || stage === "close" || unbound ? 3 : 0);
   expect(query).toHaveBeenCalledTimes(stage === "read" || stage === "close" ? 3 : 0);
   if (stage === "close") expect(close).toHaveBeenCalledTimes(3);
+  if (codeGetter) expect(codeGetter).not.toHaveBeenCalled();
 });
 
 it("shows a recorded policy override and closes the connected reader", async () => {

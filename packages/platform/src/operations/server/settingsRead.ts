@@ -50,7 +50,8 @@ function absentObservation(setting: ValueEntry, effective?: JsonValue): Observat
 async function observe(setting: ReturnType<typeof loadSettingsCatalogue>["entries"][number], read?: SettingReader): Promise<Observation | { refusal: SettingRefusal }> {
   if (!read || setting.kind !== "installed") return { state: "offline" };
   const observed = await read();
-  if ("refusal" in observed) return setting.key === "tax.coverage" ? refuseCoverageRead(observed.refusal) : refuse(observed.refusal);
+  if ("refusal" in observed) return setting.key === "tax.coverage"
+    ? refuseCoverageRead(observed.refusal, observed.refusal === "tax_coverage_reader_unbound") : refuse(observed.refusal);
   if (!observed.present) return absentObservation(setting, observed.effective);
   return { state: "override", value: observed.value, revision: observed.revision };
 }
