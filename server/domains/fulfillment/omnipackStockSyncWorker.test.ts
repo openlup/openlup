@@ -8,11 +8,13 @@ import {
 import type { InventoryStockLine } from "../../../src/domains/inventory/contracts.js";
 import * as fulfillment from "@openlup/platform/fulfillment";
 
+const providerKind = "omnipack";
+
 describe("OmniPack stock sync worker", () => {
   it("retains the fixed stock replay diagnostic for the nominal rejection", async () => {
     const port = fakePort();
     const provider = fakeProvider({ movements: [], stock: [
-      { provider: "omnipack", sku: "sku-a", totalQuantity: 1, forSaleQuantity: 1, reservedOrUnavailableQuantity: 0 },
+      { provider: providerKind, sku: "sku-a", totalQuantity: 1, forSaleQuantity: 1, reservedOrUnavailableQuantity: 0 },
     ] });
     const reason = "fulfillment_stock_current_idempotency_conflict";
     const ErrorClass = Reflect.get(fulfillment, "FulfillmentStockReplayConflictError");
@@ -31,7 +33,7 @@ describe("OmniPack stock sync worker", () => {
     });
     const provider = fakeProvider({
       stock: [
-        { provider: "omnipack", sku: "OPENLUP-BEEF-2KG", totalQuantity: 4, forSaleQuantity: 4, reservedOrUnavailableQuantity: 0 },
+        { provider: providerKind, sku: "OPENLUP-BEEF-2KG", totalQuantity: 4, forSaleQuantity: 4, reservedOrUnavailableQuantity: 0 },
         { provider: "omnipack", sku: "OPENLUP-DUCK-2KG", totalQuantity: 8, forSaleQuantity: 8, reservedOrUnavailableQuantity: 0 },
       ],
       movements: [

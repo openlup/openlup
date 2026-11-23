@@ -6,11 +6,8 @@ import type { createFulfillmentCommandLedger } from './providerCommandLedger.js'
 export interface PgExecutor {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
-export async function nativeCall<T>(db: PgExecutor, name: string, values: unknown[], queryRefusal?: (error: unknown) => Error | undefined): Promise<T> {
-  const sql = `SELECT public.${name}(${values.map((_, index) => `$${index + 1}`).join(',')}) AS response`;
-  let result;
-  try { result = await db.query(sql, values); }
-  catch (error) { throw queryRefusal?.(error) ?? error; }
+export async function nativeCall<T>(db: PgExecutor, name: string, values: unknown[]): Promise<T> {
+  const result = await db.query(`SELECT public.${name}(${values.map((_, index) => `$${index + 1}`).join(',')}) AS response`, values);
   if (!result.rows[0] || result.rows[0].response === undefined) throw new Error('fulfillment_native_response_missing');
   return result.rows[0].response as T;
 }

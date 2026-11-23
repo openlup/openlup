@@ -27,6 +27,12 @@ export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: 
 }): FulfillmentStockSyncPort {
   const source = options.sourceKey.trim();
   if (!source) throw new Error('fulfillment_stock_source_key_required');
+  const currentStockExecutor: PgExecutor = {
+    async query(text, values) {
+      try { return await db.query(text, values); }
+      catch (error) { throw stockCurrentRefusal(error) ?? error; }
+    },
+  };
   return {
     readLocalInventoryStock: at => options.readLocalInventoryStock(at),
     async readCursor() {
@@ -107,7 +113,7 @@ export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: 
       const { snapshot } = input;
       const values = [source, input.requestKey, fingerprint(input), snapshot.skuRef, snapshot.totalQuantity, snapshot.forSaleQuantity,
         snapshot.reservedOrUnavailableQuantity, input.inventoryClass, input.lastSyncedAt, input.staleAfter, snapshot.syncRunId];
-      return nativeCall(db, 'fulfillment_record_stock_current', values, stockCurrentRefusal);
+      return nativeCall(currentStockExecutor, 'fulfillment_record_stock_current', values);
     },
     async recordProviderStockCurrentBatch(inputs) {
       if (!inputs.length) return [];

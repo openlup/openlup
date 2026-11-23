@@ -5393,7 +5393,8 @@ export { withCheckoutRecoveryPaymentHold } from './checkoutRecoveryPaymentHold.j
 export type { CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.js';
 export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, CheckoutInlineRecoveryError } from './checkoutInlineRecovery.js';
 export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';
-export { CheckoutRecoveryScheduleChangeBlockedError, installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation } from "./checkoutRecoveryReminderSchedule.js";
+export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation } from "./checkoutRecoveryReminderSchedule.js";
+export { CheckoutRecoveryScheduleChangeBlockedError } from "./checkoutRecoveryReminderSchedule.js";
 export { catalogAdmissionRefusal } from "./catalogAdmissionRefusal.js";
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
@@ -6807,7 +6808,8 @@ export { createProductReconciliationEvidenceHandler } from "./productReconciliat
 export { runFulfillmentAdapterConformance } from "./adapterConformance.js";
 export { createPostgresFulfillmentShipmentSpinePort } from './postgresShipmentSpine.js';
 export { createPostgresFulfillmentLowStockEvidencePort } from './postgresEvidenceReadPort.js';
-export { createPostgresFulfillmentStockSyncPort, FulfillmentStockReplayConflictError } from './postgresStockSyncPort.js';
+export { createPostgresFulfillmentStockSyncPort } from './postgresStockSyncPort.js';
+export { FulfillmentStockReplayConflictError } from './postgresStockSyncPort.js';
 export { createPostgresPaidFulfillmentRecoveryOpsPort } from './postgresPaidFulfillmentRecovery.js';
 export { createPostgresFulfillmentDispatchStore } from './postgresDispatchStore.js';
 export { createPostgresPaidFulfillmentHandoffStore } from './postgresPaidHandoffStore.js';
@@ -7116,7 +7118,7 @@ export interface PgExecutor {
         rows: Record<string, unknown>[];
     }>;
 }
-export declare function nativeCall<T>(db: PgExecutor, name: string, values: unknown[], queryRefusal?: (error: unknown) => Error | undefined): Promise<T>;
+export declare function nativeCall<T>(db: PgExecutor, name: string, values: unknown[]): Promise<T>;
 export declare function createPostgresFulfillmentDispatchStore(db: PgExecutor, host: {
     /** Synchronize authoritative withholding/contact revision on prepare and every source edit. */
     prepare(fulfillmentRef: string): ReturnType<FulfillmentStorePort['prepare']>;
