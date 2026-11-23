@@ -75,7 +75,7 @@ export type ManagedCommerceForwardBinding = BatchedForwardBinding & { constraint
 export type SupportAuthorityForwardBinding = ManagedCommerceForwardBinding;
 type NativeStoreFunction = { signature: string; beforeSha256: string | null; searchPath: string | null; qualifiedSecurityDefiner?: true };
 type NativeStoreFunctionSetting = { signature: string; searchPath: string };
-type NativeStoreGrantOnly = { signature: string; grantTo: string[]; revokeFrom: string[] };
+type NativeStoreGrantOnly = { signature: string; grantTo: string[]; revokeFrom: string[]; revokePublic?: true };
 export type NativeStoreCheck = { table: string; constraint: string; column: string } & (
   { values: string[] } | { range: { lower: number; upper: number }; beforeSha256: string }
 );
@@ -252,6 +252,7 @@ function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwar
 
 function parseAndValidateForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwardRegistry {
   const raw = parseStrictJson(bytes.toString("utf8"), REVIEWED_FORWARD_PATH) as ReviewedForwardRegistry;
+  assertRevokePublicPlacement(raw);
   if (raw.schemaVersion !== 1 || !hash(raw.baselineSha256) || !Array.isArray(raw.replacementForwards) || raw.replacementForwards.length !== 2 || !Array.isArray(raw.creationForwards) || raw.creationForwards.length !== 1) throw new Error("reviewed replacement registry requires one baseline, two replacement forwards and one creation forward");
   const paths = new Set<string>(), signatures = new Set<string>(), replaced = new Set<string>();
   if (raw.qualifiedInstallations !== undefined) {
@@ -3362,6 +3363,35 @@ function assertNativeStoreSettingsOwnerWindow(settings: readonly NativeStoreFunc
   throw new Error(`reviewed native store settings-only owner window must match the rendered file exactly. Line ${index + 1}: expected ${show(expected[index])}; actual ${show(actual[index])}.`);
 }
 
+export const nativeStoreRevokePublicMessages = {
+  placement: "native_store_revoke_public_placement: The flag is outside grantOnlyFunctions. Remove it from that field.",
+  slot: "native_store_revoke_public_slot: The slot is outside the closed ACL-only shape. Use the documented revokePublic entry and companions.",
+  base: "native_store_revoke_public_base: The target is absent from the pre-class chain. Use an existing base-chain function.",
+  target: "native_store_revoke_public_target: An ACL statement names an unlisted function. Use one PUBLIC revoke per registered signature in registry order, then grant to the complete ordered list in the guarded block.",
+  missing: "native_store_revoke_public_missing: A listed target lacks its direct PUBLIC revoke. Add it before the guarded grant.",
+  order: "native_store_revoke_public_order: The ACL statements are out of order. Put the PUBLIC revokes in registry order before the guarded grant.",
+  grant: "native_store_revoke_public_grant: The slot requires one guarded service_role EXECUTE grant. Use the documented block without grant option.",
+  security: "native_store_revoke_public_security: The target is a SECURITY DEFINER. Use an existing SECURITY INVOKER target.",
+  history: "native_store_revoke_public_history: Earlier SQL changes or may change the target's ACL. Remove this target from the slot and use a separate reviewed ACL change if needed.",
+  aclOnly: "native_store_revoke_public_acl_only: The slot contains a change outside its ACL statements. Move that change to a separate reviewed forward.",
+} as const;
+
+function assertRevokePublicPlacement(value: unknown, path: (string | number)[] = []): void {
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => assertRevokePublicPlacement(entry, [...path, index]));
+  } else if (value && typeof value === "object") {
+    for (const [key, entry] of Object.entries(value)) {
+      if (key === "revokePublic" && !(path.length === 5 && path[0] === "nativeStoreForwardClass"
+        && path[1] === "slots" && typeof path[2] === "number" && path[3] === "grantOnlyFunctions"
+        && typeof path[4] === "number")) throw new Error(nativeStoreRevokePublicMessages.placement);
+      if (entry && typeof entry === "object") assertRevokePublicPlacement(entry, [...path, key]);
+    }
+  }
+}
+
+const hasRevokePublic = (slot: NativeStoreSlot) =>
+  Array.isArray(slot.grantOnlyFunctions) && slot.grantOnlyFunctions.some(fn => fn && Object.hasOwn(fn, "revokePublic"));
+
 function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<string>): void {
   const control = registry.nativeStoreForwardClass;
   if (control === undefined) {
@@ -3369,6 +3399,17 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
     return;
   }
   if (!keysAre(control, "sealed,slots") || typeof control.sealed !== "boolean" || !Array.isArray(control.slots)) throw new Error("reviewed native store requires a closed slots list");
+  for (const slot of control.slots.filter(hasRevokePublic)) {
+    const binding = Array.isArray(registry.nativeStoreForwards) ? registry.nativeStoreForwards.find(pin => pin.path === slot.path) : undefined;
+    if (!keysAre(slot, "createdFunctions,dataStatements,grantOnlyFunctions,path,replacedFunctions,row")
+      || [slot.createdFunctions, slot.replacedFunctions, slot.dataStatements, ...(binding ? [binding.functions] : [])].some(list => !Array.isArray(list) || list.length)
+      || slot.grantOnlyFunctions.some(fn => !fn || !keysAre(fn, "grantTo,revokeFrom,revokePublic,signature") || fn.revokePublic !== true
+        || canonical(fn.grantTo) !== '["service_role"]' || canonical(fn.revokeFrom) !== "[]"
+        || typeof fn.signature !== "string" || nativeStoreSignature(fn.signature) !== fn.signature)
+      || new Set(slot.grantOnlyFunctions.map(fn => fn.signature)).size !== slot.grantOnlyFunctions.length) {
+      throw new Error(nativeStoreRevokePublicMessages.slot);
+    }
+  }
   let previous = "";
   let previewNoopAcceptance = false;
   const rows = new Set<string>();
@@ -3398,6 +3439,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
     if (!keysAre(slot, keys) || typeof slot.row !== "string" || !/^[A-Za-z][A-Za-z0-9_-]*$/u.test(slot.row) || rows.has(slot.row) || !time || time <= previous || paths.has(slot.path)) throw new Error("reviewed native store slot path, row or order drifted");
     previous = time; rows.add(slot.row);
     paths.add(slot.path);
+    if (hasRevokePublic(slot)) continue;
     if (!Array.isArray(slot.replacedFunctions) || !Array.isArray(slot.createdFunctions) || !Array.isArray(slot.grantOnlyFunctions)) throw new Error("reviewed native store requires three closed function lists");
     if (settingsOnly) {
       const settings = slot.settingsOnlyFunctions;
@@ -3920,9 +3962,13 @@ function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earl
   return pin;
 }
 
+const routinePrivilegeOn = (tokens: readonly PlatformSqlToken[]) =>
+  tokens.findIndex((_token, index) => nativeWord(tokens, index, "ON"));
+const publicRoutineAclPattern = /\bon\s+all\s+(?:functions|routines)\s+in\s+schema\s+"?public\b/iu;
+
 function checkoutRoutinePrivilege(tokens: PlatformSqlToken[], names: readonly string[]): boolean {
   const targetsCheckout = (list: PlatformSqlToken[]) => {
-    const on = list.findIndex((_token, index) => nativeWord(list, index, "ON"));
+    const on = routinePrivilegeOn(list);
     if (on < 0) return false;
     const kind = nativeIdentifier(list[on + 1]);
     if (kind === "all" && ["functions", "routines"].includes(nativeIdentifier(list[on + 2]) ?? "")) {
@@ -3937,7 +3983,94 @@ function checkoutRoutinePrivilege(tokens: PlatformSqlToken[], names: readonly st
   // Inspect the routine DDL/ACL discriminator in a migration DO block. This does
   // not relax the existing admission rules for procedural SQL.
   return /\b(?:grant|revoke)\b/iu.test(body)
-    && (names.some(name => body.toLowerCase().includes(name)) || /\bon\s+all\s+(?:functions|routines)\s+in\s+schema\s+"?public\b/iu.test(body));
+    && (names.some(name => body.toLowerCase().includes(name)) || publicRoutineAclPattern.test(body));
+}
+
+const publicRoutineAclScope = Symbol("public routine ACL scope");
+type RoutineAclTarget = string | null | typeof publicRoutineAclScope;
+
+function routineAclTargets(sql: string, tokens: PlatformSqlToken[]): RoutineAclTarget[] {
+  if (!nativeWord(tokens, 0, "GRANT") && !nativeWord(tokens, 0, "REVOKE")) return [];
+  const on = routinePrivilegeOn(tokens), kind = nativeIdentifier(tokens[on + 1]);
+  if (on === -1) return [];
+  const role = tokens.findIndex((_token, index) => index > on && (nativeWord(tokens, index, "TO") || nativeWord(tokens, index, "FROM")));
+  if (kind === "all" && ["functions", "routines"].includes(nativeIdentifier(tokens[on + 2]) ?? "")) {
+    const schemas = tokens.slice(on + 5, role === -1 ? undefined : role);
+    if (schemas.some(token => nativeIdentifier(token) === "public")) return [publicRoutineAclScope];
+    return role === -1 || schemas.some(token => nativeIdentifier(token) === null && token.value !== ",") ? [null] : [];
+  }
+  if (!["function", "routine", "procedure"].includes(kind ?? "")) return [];
+  const start = tokens[on + 2]?.start;
+  if (start === undefined || role === -1) return [null];
+  let targets: string[];
+  try { targets = nativeStoreArguments(sql.slice(start, tokens[role]!.start)); }
+  catch { return [null]; }
+  return targets.map(target => {
+    const { tokens, complete } = platformSqlTokens(target, false, true);
+    const qualified = nativeQualified(tokens, 0), bare = nativeIdentifier(tokens[0]);
+    if (!bare || (!qualified && (nativeSymbol(tokens, 1, ".") || nativeSymbol(tokens, 1, "&")))) return null;
+    const name = qualified?.name ?? `public.${bare}`, args = qualified?.next ?? 1;
+    if (!complete || name !== name.toLowerCase() || !nativeSymbol(tokens, args, "(") || !nativeSymbol(tokens, tokens.length - 1, ")")) return name;
+    return nativeStoreSignature(`${name}(${tokens.slice(args + 1, -1).map(token => target.slice(token.start, token.end)).join(" ")})`) ?? name;
+  });
+}
+
+function nativeStoreAclTargets(statement: string, tokens: PlatformSqlToken[], names: readonly string[]): RoutineAclTarget[] {
+  if (!nativeWord(tokens, 0, "DO")) return routineAclTargets(statement, tokens);
+  const body = tokens.find(token => token.kind === "string")?.value ?? "";
+  if (!/\b(?:grant|revoke)\b/iu.test(body)) return [];
+  const parsed = platformSqlTokens(body, false, true);
+  if (!parsed.complete && checkoutRoutinePrivilege(tokens, names)) return [publicRoutineAclPattern.test(body) ? publicRoutineAclScope : null];
+  return parsed.tokens.flatMap((_token, index) => {
+    if (nativeWord(parsed.tokens, index, "EXECUTE")) {
+      const end = parsed.tokens.findIndex((_, offset) => offset > index && nativeSymbol(parsed.tokens, offset, ";"));
+      const expression = parsed.tokens.slice(index + 1, end === -1 ? undefined : end);
+      const payload = expression.flatMap(token => token.kind === "string"
+        ? routineAclTargets(token.value, platformSqlTokens(token.value, false, true).tokens) : []);
+      return expression.length === 1 ? payload : payload.map(target => target === publicRoutineAclScope ? target : null);
+    }
+    return nativeWord(parsed.tokens, index, "GRANT") || nativeWord(parsed.tokens, index, "REVOKE")
+      ? routineAclTargets(body, parsed.tokens.slice(index)) : [];
+  });
+}
+
+function nativeStoreDefinitionIsDefiner(statement: string): boolean {
+  const { tokens } = platformSqlTokens(statement, false, true);
+  let depth = 0;
+  for (let index = 0; index < tokens.length; index++) {
+    if (nativeSymbol(tokens, index, "(")) depth++;
+    if (nativeSymbol(tokens, index, ")")) depth--;
+    if (depth !== 0) continue;
+    if (nativeWord(tokens, index, "RETURN") || (nativeWord(tokens, index, "BEGIN") && nativeWord(tokens, index + 1, "ATOMIC"))) break;
+    if (nativeWord(tokens, index, "SECURITY") && nativeWord(tokens, index + 1, "DEFINER")) return true;
+  }
+  return false;
+}
+
+function assertRevokePublicSql(sql: string, signatures: string[], names: ReadonlySet<string>): void {
+  const messages = nativeStoreRevokePublicMessages;
+  let statements: string[];
+  try { statements = sqlStatements(sql, false, false, true); }
+  catch { throw new Error(/(?:^|;)[ \t\n]*DO\b/iu.test(sql) ? messages.grant : messages.aclOnly); }
+  const expected = new Set(signatures);
+  const revokes: string[] = [], blocks: number[] = [];
+  for (const [index, statement] of statements.entries()) {
+    const { tokens } = platformSqlTokens(statement, false, true);
+    if (nativeStoreAclTargets(statement, tokens, [...names].map(name => name.slice("public.".length)))
+      .some(target => typeof target === "string" && !expected.has(target) && !names.has(target))) throw new Error(messages.target);
+    const revoke = /^REVOKE ALL ON FUNCTION (.+) FROM PUBLIC;$/i.exec(normalizeNativeStoreHeader(statement));
+    if (revoke && expected.has(revoke[1]!)) revokes.push(revoke[1]!);
+    if (nativeWord(tokens, 0, "DO")) blocks.push(index);
+  }
+  if (signatures.some(signature => !revokes.includes(signature))) throw new Error(messages.missing);
+  const grantIndex = blocks.find(index => {
+    const block = nativeStoreRolePrivilege.exec(statements[index]!);
+    const grant = block?.[1] === "service_role" && /^GRANT EXECUTE ON FUNCTION (.+) TO service_role;?$/i.exec(normalizeNativeStoreHeader(block[2]!));
+    return grant && canonical(grant[1]!.split(/(?<=\)) *, */u)) === canonical(signatures);
+  });
+  if (grantIndex === undefined) throw new Error(messages.grant);
+  if (statements.length !== signatures.length + 1 || revokes.length !== signatures.length) throw new Error(messages.aclOnly);
+  if (grantIndex !== signatures.length || revokes.some((signature, index) => signature !== signatures[index])) throw new Error(messages.order);
 }
 
 function assertExecutePredecessors(registry: ReviewedForwardRegistry, earlierSlots: NativeStoreSlot[],
@@ -4050,6 +4183,7 @@ function replacesCheckoutRoutine(bytes: Buffer, slot?: NativeStoreSlot): boolean
 
 /** Exact inventory with lexical shape checks; feature SQL still owns behavior proof. */
 export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]) {
+  assertRevokePublicPlacement(registry);
   validateNativeStoreClass(registry, new Set());
   const control = registry.nativeStoreForwardClass, slot = control?.slots.find(slot => slot.path === path);
   const forward = registry.nativeStoreForwards?.find(pin => pin.path === path);
@@ -4102,7 +4236,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const grandfatheredSecurityDefiner = isGrandfatheredSecurityDefinerForward(path, bytes);
   const pins = (slot.createdTriggers ?? []).filter((entry): entry is NativeDeferredTrigger => entry.deferred === true);
   const created = new Set(slot.createdFunctions.map(fn => fn.signature));
-  const statements = scanNativeStoreSql(path, () => sqlStatements(bytes.toString("utf8"), false, false, true));
+  const revokePublic = hasRevokePublic(slot);
+  const statements = revokePublic ? [] : scanNativeStoreSql(path, () => sqlStatements(bytes.toString("utf8"), false, false, true));
   const pinnedMessage = (pin: NativeDeferredTrigger, name = pin.name) => {
     const digest = created.has(pin.function) && forward.functions.find(binding => binding.signature === pin.function)?.afterSha256;
     const creation = digest ? statements.find(sql => sqlSha256(sql) === digest) : undefined;
@@ -4151,8 +4286,20 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const indexCreates = new Set<string>();
   let checkSource: string | undefined;
   const allowedSignatures = new Set(signatures);
+  const bareNames = revokePublic ? [...names].map(name => name.slice("public.".length)) : [];
+  let priorAclWrite = false;
   for (const source of preceding) for (const { statement, tokens, complete } of scanNativeStoreSql(source.path, () => cachedNativePrefixStatements(source.bytes))) {
     if (landedSettings.get(source.path)?.has(statement)) continue;
+    if (revokePublic && !priorAclWrite) {
+      priorAclWrite = nativeStoreAclTargets(statement, tokens, bareNames).some(target => {
+        if (target === publicRoutineAclScope) return true;
+        if (typeof target === "string" && target.includes("(")) return allowedSignatures.has(target);
+        const body = nativeWord(tokens, 0, "DO") ? tokens.find(token => token.kind === "string")?.value.toLowerCase() : undefined;
+        return body === undefined
+          ? tokens.some(token => bareNames.includes(nativeIdentifier(token)?.toLowerCase() ?? ""))
+          : bareNames.some(name => body.includes(name));
+      });
+    }
     const functionIndex = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
     if (source.path !== PLATFORM_BASELINE_FILE && ["CREATE", "ALTER", "DROP"].some(word => nativeWord(tokens, 0, word)) && nativeWord(tokens, functionIndex, "FUNCTION")) {
       const target = functionIndex + 1, name = nativeQualified(tokens, target);
@@ -4187,6 +4334,14 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     }
     if (slot.purposeCheck && statement.startsWith(`CREATE TABLE ${purposeTable} (`)) checkSource = statement;
     if (slot.purposeCheck && /^(?:ALTER|DROP)\b/iu.test(statement) && /\bTABLE\b/iu.test(statement) && statement.toLowerCase().includes("communication_native_sync_state")) throw new Error("reviewed native store purpose CHECK intervening DDL refused");
+  }
+  if (revokePublic) {
+    const messages = nativeStoreRevokePublicMessages;
+    if (signatures.some(signature => !baseDefinitions.has(signature))) throw new Error(messages.base);
+    if (signatures.some(signature => nativeStoreDefinitionIsDefiner(priorStatements.get(signature)!))) throw new Error(messages.security);
+    if (priorAclWrite) throw new Error(messages.history);
+    assertRevokePublicSql(bytes.toString("utf8"), signatures, names);
+    return { slot, ordinaryProof };
   }
   if (definitionSources) {
     for (const [sourcePath, signature] of qualifiedCatalogueReadTargets) {

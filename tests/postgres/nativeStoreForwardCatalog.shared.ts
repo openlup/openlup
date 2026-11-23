@@ -5,6 +5,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { qualifiedCatalogueStorageSelectSql, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, previewNoopAcceptanceSql, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { nativeStoreRevokePublicMessages } from "../../scripts/reviewed-platform-forward.js";
 import { definitionPath, definitionSql, grantPath, grantSql, NATIVE_STORE_GUARD_CATALOGS } from "../helpers/issuedPlatformCatalog.js";
 import { readSelectedCatalogProjection } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -340,9 +341,43 @@ const fail = (message: string): never => { throw new Error(`catalog: ${message}`
 
 type NativeAdmission = ReturnType<typeof assertNativeStoreForward>;
 
+const revokePublicPreimageMessage = "native_store_revoke_public_preimage: The installed function has an explicit ACL. Remove this target from the slot and use a separate reviewed ACL change if needed.";
+const revokePublicFinalAclMessage = "native_store_revoke_public_final_acl: The installed ACL differs from the required role-dependent ACL. Check which role applied the migration and which guarded blocks ran. Remove the target from the slot if the required ACL cannot be established.";
+const revokePublicEffectiveAclMessage = "native_store_revoke_public_effective_acl: A browser role retains effective EXECUTE. Remove this target from the slot and qualify its ownership and role memberships before retrying.";
+
+async function readRevokePublicPreimages(db: PoolClient, slot: CatalogSlot, before: Snapshot): Promise<Map<number, FunctionRow>> {
+  const preimages = new Map<number, FunctionRow>();
+  for (const fn of slot.grantOnlyFunctions.filter(entry => entry.revokePublic)) {
+    const { oid } = (await db.query("SELECT pg_catalog.to_regprocedure($1)::oid::int AS oid", [fn.signature])).rows[0];
+    const old = before.functions.find(row => row.oid === oid);
+    if (!old) return fail(nativeStoreRevokePublicMessages.aclOnly);
+    if (old.attrs.prosecdef !== false) fail(nativeStoreRevokePublicMessages.security);
+    if (old.rawMetadata[0] !== null) fail(revokePublicPreimageMessage);
+    preimages.set(old.oid, old);
+  }
+  return preimages;
+}
+
+async function assertRevokePublicCatalog(db: PoolClient, old: FunctionRow, now: FunctionRow | undefined): Promise<void> {
+  if (!now || !isDeepStrictEqual({ ...now, acl: old.acl, rawMetadata: [old.rawMetadata[0], now.rawMetadata[1]] }, old)) {
+    fail(nativeStoreRevokePublicMessages.aclOnly);
+  }
+  const { direct, effective } = (await db.query(`SELECT
+    ARRAY(SELECT ROW(a.grantee, a.privilege_type, a.is_grantable) FROM pg_catalog.aclexplode(p.proacl) a ORDER BY a.grantee)
+      = ARRAY(SELECT ROW(r.oid, 'EXECUTE'::text, false) FROM pg_catalog.pg_roles r WHERE r.oid=p.proowner OR r.rolname='service_role' ORDER BY r.oid) AS direct,
+    EXISTS (SELECT 1 FROM pg_catalog.pg_roles r WHERE r.rolname IN ('anon', 'authenticated')
+      AND pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE')) AS effective
+    FROM pg_catalog.pg_proc p WHERE p.oid=$1::oid`, [old.oid])).rows[0];
+  if (!direct) fail(revokePublicFinalAclMessage);
+  if (effective) fail(revokePublicEffectiveAclMessage);
+}
+
 /** Compare PostgreSQL's own before/after catalogs with one slot's closed lists. Throws on any difference. */
-async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snapshot, after: Snapshot, migrationRole: string, forward = "", admission?: NativeAdmission) {
+async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snapshot, after: Snapshot, migrationRole: string, forward = "", admission?: NativeAdmission, preimages?: Map<number, FunctionRow>) {
   const resolve = async (signature: string) => Number((await db.query("SELECT $1::regprocedure::oid::int AS oid", [signature])).rows[0].oid);
+  const revokePublic = preimages ?? await readRevokePublicPreimages(db, slot, before);
+  const current = new Map(after.functions.map(row => [row.oid, row]));
+  for (const old of revokePublic.values()) await assertRevokePublicCatalog(db, old, current.get(old.oid));
   const created = new Map<number, CatalogSlot["createdFunctions"][number]>();
   for (const fn of slot.createdFunctions) created.set(await resolve(fn.signature), fn);
   const replaced = new Map<number, CatalogSlot["replacedFunctions"][number]>();
@@ -363,8 +398,8 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   if (JSON.stringify(added.map(row => row.oid).sort(byOid)) !== JSON.stringify([...created.keys()].sort(byOid))) fail(`created functions differ from the slot list: ${added.map(row => row.name).join(", ")}`);
 
   // 2. Existing functions change only as allowed by their slot lists.
-  const current = new Map(after.functions.map(row => [row.oid, row]));
   for (const old of before.functions) {
+    if (revokePublic.has(old.oid)) continue;
     const now = current.get(old.oid);
     if (!now) return fail(`function ${old.name} was dropped`);
     const searchPath = settings.get(old.oid);
@@ -1163,12 +1198,14 @@ async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep
       if (slot.previewNoopAcceptance) await assertPreviewAcceptancePreimage(db, migrationRole);
       const reusableBefore = !setup ? (cachedBefore ?? (!keep ? pristineSnapshots.get(pool) : undefined)) : undefined;
       const before = reusableBefore ?? await pinned(db, () => snapshot(db));
+      const preimages = slot.grantOnlyFunctions.some(fn => fn.revokePublic)
+        ? await pinned(db, () => readRevokePublicPreimages(db, slot, before)) : undefined;
       const memberships = async () => (await db.query("SELECT * FROM pg_catalog.pg_auth_members ORDER BY oid")).rows;
       const membersBefore = slot.ownerWindowRole === undefined ? undefined : await memberships();
       await db.query(forward);
       if (membersBefore && JSON.stringify(await memberships()) !== JSON.stringify(membersBefore)) fail("pg_auth_members changed during the settings-only forward");
       const after = await pinned(db, () => snapshot(db));
-      await pinned(db, () => assertSlotCatalog(db, slot, before, after, migrationRole, forward, admission));
+      await pinned(db, () => assertSlotCatalog(db, slot, before, after, migrationRole, forward, admission, preimages));
       passed = true;
       return after;
     } finally {
@@ -1745,6 +1782,54 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     INSERT INTO public.client_absorption_policy VALUES ('subscription_successor_proposals','block',NULL),('subscription_successor_wait_cases_v2','block',NULL);`;
   const storageCreate = storageEntries.map(([name, statement]) => `${statement}\nALTER TABLE ${name} ENABLE ROW LEVEL SECURITY;\nREVOKE ALL ON TABLE ${name} FROM PUBLIC;`).join("\n");
   it("admits a conforming forward", async () => { await checkForward(pool, SYNTHETIC_SLOT, CONFORMING); });
+
+  const revokePublicPath = "db/platform/migrations/20990101000000_revoke_public_fixture.sql";
+  const aclTargets = ["public.fixture_narrow(text)", "public.fixture_narrow(integer)"];
+  const [aclTarget] = aclTargets;
+  const explicitInvoker = "CREATE FUNCTION public.fixture_narrow(p text DEFAULT 'original') RETURNS text LANGUAGE sql SECURITY INVOKER AS $$ SELECT 'SECURITY DEFINER'; $$;";
+  const implicitInvoker = "CREATE FUNCTION public.fixture_narrow(integer) RETURNS text LANGUAGE sql AS $$ SELECT 'SECURITY DEFINER'; $$;";
+  const aclSetup = `${explicitInvoker}\n${implicitInvoker}`;
+  const publicRevokes = aclTargets.map(signature => `REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`).join("\n");
+  const aclForward = `${publicRevokes}\n${guarded("service_role", "GRANT EXECUTE ON FUNCTION", `${aclTargets.join(", ")} TO service_role;`)}`;
+  const aclSlot: NativeStoreSlot = {
+    path: revokePublicPath, row: "PublicRevoke", createdFunctions: [], replacedFunctions: [], dataStatements: [],
+    grantOnlyFunctions: aclTargets.map(signature => ({ signature, revokePublic: true, grantTo: ["service_role"], revokeFrom: [] })),
+  };
+  it("admits and replays the PUBLIC-first ACL-only forward for both invokers", async () => {
+    const baseline = Buffer.from(aclSetup), bytes = Buffer.from(aclForward);
+    await verifyForward(pool, {
+      ...registry, baselineSha256: sqlSha256(baseline), nativeStoreForwardClass: { sealed: true, slots: [aclSlot] },
+      batchedForwards: undefined, portableReplacementForwards: undefined, portableCreationForwards: undefined, channelIngestForwards: undefined,
+      nativeStoreForwards: [{ path: revokePublicPath, sha256: sqlSha256(bytes), functions: [] }],
+    }, revokePublicPath, bytes, [{ path: PLATFORM_BASELINE_FILE, bytes: baseline }], false, aclSetup);
+  });
+
+  const preimageRefusal = "native_store_revoke_public_preimage: The installed function has an explicit ACL. Remove this target from the slot and use a separate reviewed ACL change if needed.";
+  const securityRefusal = "native_store_revoke_public_security: The target is a SECURITY DEFINER. Use an existing SECURITY INVOKER target.";
+  const changeRefusal = "native_store_revoke_public_acl_only: The slot contains a change outside its ACL statements. Move that change to a separate reviewed forward.";
+  const directRefusal = "native_store_revoke_public_final_acl: The installed ACL differs from the required role-dependent ACL. Check which role applied the migration and which guarded blocks ran. Remove the target from the slot if the required ACL cannot be established.";
+  const effectiveRefusal = "native_store_revoke_public_effective_acl: A browser role retains effective EXECUTE. Remove this target from the slot and qualify its ownership and role memberships before retrying.";
+  const replaceInvoker = explicitInvoker.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION");
+  it.each([
+    ["an installer-default ACL", aclForward, `ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;\n${aclSetup}`, preimageRefusal],
+    ["an explicit default-equivalent ACL", aclForward, `${aclSetup}\nREVOKE EXECUTE ON FUNCTION ${aclTarget} FROM PUBLIC; GRANT EXECUTE ON FUNCTION ${aclTarget} TO PUBLIC;`, preimageRefusal],
+    ["a DEFINER preimage", aclForward, aclSetup.replace("SECURITY INVOKER", "SECURITY DEFINER"), securityRefusal],
+    ["a changed body", `${aclForward}\n${implicitInvoker.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("SELECT 'SECURITY DEFINER'", "SELECT 'changed'")}`, aclSetup, changeRefusal],
+    ["a changed attribute", `${aclForward}\nALTER FUNCTION ${aclTarget} STABLE;`, aclSetup, changeRefusal],
+    ["changed raw default positions", `${aclForward}\n${replaceInvoker}`, aclSetup, changeRefusal],
+    ...["PUBLIC", "anon", "authenticated"].map(role => [`a direct grant to ${role}`, `${aclForward}\nGRANT EXECUTE ON FUNCTION ${aclTarget} TO ${role};`, aclSetup, directRefusal]),
+    ...(serviceRole ? [
+      ["a missing service_role grant", publicRevokes, aclSetup, directRefusal],
+      ["a service_role grant option", aclForward.replace("TO service_role;", "TO service_role WITH GRANT OPTION;"), aclSetup, directRefusal],
+      ["inherited browser EXECUTE with the exact direct ACL", aclForward, `GRANT service_role TO anon WITH INHERIT TRUE;\n${aclSetup}`, effectiveRefusal],
+    ] : []),
+  ])("refuses %s in the PUBLIC-revoke catalog comparison", async (_label, forward, setup, message) => {
+    const error: unknown = await checkForward(pool, aclSlot, forward!, false, setup).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(Error);
+    expect(Object.getPrototypeOf(error)).toBe(Error.prototype);
+    expect(Reflect.ownKeys(error as Error).filter(key => key !== "stack")).toEqual(["message"]);
+    expect((error as Error).message).toBe(`catalog: ${message}`);
+  });
 
   const qualifiedSignature = "public.catalog_price_setup_region_code()";
   const qualifiedSearchPath = "pg_catalog, pg_temp";
