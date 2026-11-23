@@ -372,9 +372,9 @@ export interface ServeNodeOptions {
      */
     advisoryLock?: AdvisoryLock;
     /**
-     * Scheduler lock enforcement mode. Defaults to `"cluster"` for `node-cron` bundles so
-     * multi-instance hosts fail closed without a cluster-scoped lock (`durability: "cluster"`).
-     * Pass `"process"` only for deliberate single-instance or test hosts.
+     * Scheduler lock enforcement mode. Defaults to `"process"`.
+     * Use `"cluster"` with a session-affine lock that declares `durability: "cluster"`
+     * when multiple instances can overlap.
      */
     lockMode?: SchedulerLockMode;
     /** Skip binding the network listener (unit tests build the runtime without opening a socket). */
