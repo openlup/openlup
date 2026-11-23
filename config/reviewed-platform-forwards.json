@@ -10141,12 +10141,12 @@
     },
     {
       "path": "db/platform/migrations/20261125020000_subscription_cancel_feedback.sql",
-      "sha256": "b6b98980d14fec27e8a169e720b228f2e8adbd6abc62b92d93e5579db5f78730",
+      "sha256": "86ce776553a8e30f03738103b9b39756f82b08a1b43c470cdd76cb9cf8b8c3a1",
       "functions": [
         {
           "signature": "public.subscription_cancel_feedback_submit(uuid,uuid,text,boolean)",
           "beforeSha256": null,
-          "afterSha256": "98ef9606f9c451aa8a7a73f94577c163158933f803f394174bc1d09981b9ba5d"
+          "afterSha256": "fde436cf46a80cbd5e0f64b30e8b949528214c4aa472197194b43e994aa673cd"
         }
       ]
     }

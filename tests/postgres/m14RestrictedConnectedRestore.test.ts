@@ -226,13 +226,27 @@ it.each(["installer-managed", "operator-provisioned"] as const)("cx1r_feedback_n
     for (const code of [null, "", "a".repeat(121), "Mixed_case", "a-b", "a\n", "ä"]) {
       expect(await submitFeedback(runtime, event, client, code, true)).toBe("invalid_reason");
     }
-    for (const [cancelEvent, owner] of [[wrongEvent, client], [randomUUID(), client], [event, foreign]] as const) {
+    const missingEvent = randomUUID();
+    for (const [cancelEvent, owner] of [[wrongEvent, client], [missingEvent, client], [event, foreign]] as const) {
       expect(await submitFeedback(runtime, cancelEvent, owner, reason, true)).toBe("cancel_not_found");
     }
+    expect(await submitFeedback(runtime, event, foreign, "Mixed_case", true)).toBe("invalid_reason");
+    expect(await submitFeedback(runtime, missingEvent, client, "Mixed_case", true)).toBe("invalid_reason");
     for (const offered of [false, null]) {
       expect(await submitFeedback(runtime, event, client, reason, offered)).toBe("reason_not_offered");
     }
     expect((await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows).toEqual([]);
+
+    await source.owner.query(`CREATE COLLATION public.feedback_loose
+      (provider = icu, locale = 'und-u-ka-shifted-ks-level1', deterministic = false)`);
+    const submitEquivalent = async (db: Pool | PoolClient, offered: boolean) => {
+      const { rows: [result] } = await db.query<{ equal: boolean; status: string }>(`SELECT
+        $3::text COLLATE public.feedback_loose = $4::text AS equal,
+        public.subscription_cancel_feedback_submit($1,$2,$3::text COLLATE public.feedback_loose,$5) AS status`,
+      [event, client, "sche_dule", reason, offered]);
+      expect(result!.equal).toBe(true);
+      return result!.status;
+    };
 
     const writer = await runtime.connect();
     const same = await runtime.connect();
@@ -243,9 +257,17 @@ it.each(["installer-managed", "operator-provisioned"] as const)("cx1r_feedback_n
       expect(await submitFeedback(writer, event, client, reason, true)).toBe("recorded");
       const pids = await Promise.all([same, different].map(async db => (await db.query("SELECT pg_backend_pid() AS pid")).rows[0].pid));
       const { pid } = (await writer.query("SELECT pg_backend_pid() AS pid")).rows[0];
-      attempts = Promise.allSettled([submitFeedback(same, event, client, reason, true), submitFeedback(different, event, client, alternateReason, true)]);
+      attempts = Promise.allSettled([submitFeedback(same, event, client, reason, true), submitEquivalent(different, true)]);
+      // An independent session can share both parent locks while the writer is open.
+      const parents = await source.owner.query(`SELECT e.id FROM public.subscriptions s
+        JOIN public.subscription_events e ON e.subscription_id=s.id
+        WHERE s.id=$1 AND e.id=$2 FOR SHARE OF s,e NOWAIT`, [command.subscriptionId, event]);
+      expect(parents.rows).toEqual([{ id: event }]);
+      // The rivals have reached INSERT on the sidecar before waiting for the writer.
       await expect.poll(async () => (await source.owner.query(`SELECT count(*)::int AS waiting FROM unnest($1::int[]) waiting(pid)
-        WHERE $2::int=ANY(pg_blocking_pids(pid))`, [pids, pid])).rows[0].waiting).toBe(2);
+        WHERE $2::int=ANY(pg_blocking_pids(waiting.pid)) AND EXISTS (SELECT 1 FROM pg_locks l
+          WHERE l.pid=waiting.pid AND l.relation='public.subscription_cancel_feedback'::regclass
+          AND l.mode='RowExclusiveLock' AND l.granted)`, [pids, pid])).rows[0].waiting).toBe(2);
       await writer.query("COMMIT");
       expect(await attempts).toEqual([{ status: "fulfilled", value: "replayed" }, { status: "fulfilled", value: "reason_conflict" }]);
     } finally {
@@ -256,11 +278,61 @@ it.each(["installer-managed", "operator-provisioned"] as const)("cx1r_feedback_n
     const stored = (await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows;
     expect(stored).toEqual([{ cancel_event_id: event, reason_code: reason, recorded_at: expect.any(Date) }]);
     expect(await submitFeedback(runtime, event, client, reason, false)).toBe("replayed");
+    expect(await submitEquivalent(runtime, false)).toBe("reason_conflict");
     expect(await submitFeedback(runtime, event, client, alternateReason, false)).toBe("reason_conflict");
     expect(await submitFeedback(runtime, event, foreign, reason, true)).toBe("cancel_not_found");
     expect((await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows).toEqual(stored);
     expect(await commands(runtime).apply(command)).toEqual({ ...receipt, outcome: "replayed" });
     expect(await cancellationRows(source.owner, command.subscriptionId)).toEqual(retained);
+  } finally { await closePostgres(source.container, source.pools); }
+}, postgresSetupTimeoutMs);
+
+it("cx1r_feedback_retries_when_winner_is_deleted", async () => {
+  const source = await install("neon", "operator-provisioned", "vanished-feedback");
+  try {
+    const runtime = feedbackRuntime(source);
+    const { event, client } = await cancelSubscription(source.owner, runtime);
+    // Test-only barrier after an INSERT that changed no rows.
+    await source.owner.query(`CREATE FUNCTION public.pause_skipped_feedback_insert() RETURNS trigger
+      LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM inserted_feedback) THEN
+          PERFORM pg_advisory_xact_lock(38145, 1);
+        END IF;
+        RETURN NULL;
+      END;
+      $$;
+      CREATE TRIGGER pause_skipped_feedback_insert AFTER INSERT ON public.subscription_cancel_feedback
+      REFERENCING NEW TABLE AS inserted_feedback FOR EACH STATEMENT
+      EXECUTE FUNCTION public.pause_skipped_feedback_insert()`);
+    const owner = await source.owner.connect();
+    const writer = await runtime.connect();
+    let pending: Promise<PromiseSettledResult<string>[]> | undefined;
+    try {
+      const { rows: [{ pid }] } = await writer.query("SELECT pg_backend_pid() AS pid");
+      await owner.query("SELECT pg_advisory_lock(38145, 1)");
+      await owner.query("BEGIN");
+      await owner.query("INSERT INTO public.subscription_cancel_feedback(cancel_event_id,reason_code) VALUES ($1,$2)", [event, reason]);
+      pending = Promise.allSettled([submitFeedback(writer, event, client, alternateReason, true)]);
+      await expect.poll(async () => (await owner.query("SELECT pg_backend_pid()=ANY(pg_blocking_pids($1)) AS waiting", [pid])).rows[0].waiting)
+        .toBe(true);
+      await owner.query("COMMIT");
+      await expect.poll(async () => (await owner.query(`SELECT EXISTS (SELECT 1 FROM pg_locks WHERE pid=$1
+        AND locktype='advisory' AND NOT granted) AS paused`, [pid])).rows[0].paused).toBe(true);
+      await owner.query("SET lock_timeout = '5s'");
+      const erased = await owner.query("DELETE FROM public.subscription_cancel_feedback WHERE cancel_event_id=$1 RETURNING reason_code", [event]);
+      expect(erased.rows).toEqual([{ reason_code: reason }]);
+      await owner.query("SELECT pg_advisory_unlock(38145, 1)");
+      expect(await pending).toEqual([{ status: "fulfilled", value: "recorded" }]);
+      expect(await submitFeedback(writer, event, client, alternateReason, false)).toBe("replayed");
+    } finally {
+      await owner.query("ROLLBACK");
+      await owner.query("SELECT pg_advisory_unlock(38145, 1)");
+      await owner.query("RESET lock_timeout");
+      await pending;
+      owner.release();
+      writer.release();
+    }
   } finally { await closePostgres(source.container, source.pools); }
 }, postgresSetupTimeoutMs);
 

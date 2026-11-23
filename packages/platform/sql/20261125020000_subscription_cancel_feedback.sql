@@ -32,26 +32,24 @@ BEGIN
     RETURN 'cancel_not_found';
   END IF;
 
-  SELECT reason_code INTO v_reason_code
-  FROM public.subscription_cancel_feedback WHERE cancel_event_id = p_cancel_event_id;
-  IF FOUND THEN
-    RETURN CASE WHEN v_reason_code = p_reason_code THEN 'replayed' ELSE 'reason_conflict' END;
-  END IF;
-  IF p_reason_offered IS NOT TRUE THEN
-    RETURN 'reason_not_offered';
-  END IF;
+  LOOP
+    SELECT reason_code INTO v_reason_code
+    FROM public.subscription_cancel_feedback WHERE cancel_event_id = p_cancel_event_id;
+    IF FOUND THEN
+      RETURN CASE WHEN v_reason_code COLLATE pg_catalog."C" = p_reason_code THEN 'replayed' ELSE 'reason_conflict' END;
+    END IF;
+    IF p_reason_offered IS NOT TRUE THEN
+      RETURN 'reason_not_offered';
+    END IF;
 
-  INSERT INTO public.subscription_cancel_feedback (cancel_event_id, reason_code)
-  VALUES (p_cancel_event_id, p_reason_code)
-  ON CONFLICT (cancel_event_id) DO NOTHING;
-  IF FOUND THEN
-    RETURN 'recorded';
-  END IF;
-
-  -- After a concurrent insert wins, a new statement sees its committed row at READ COMMITTED.
-  SELECT reason_code INTO STRICT v_reason_code
-  FROM public.subscription_cancel_feedback WHERE cancel_event_id = p_cancel_event_id;
-  RETURN CASE WHEN v_reason_code = p_reason_code THEN 'replayed' ELSE 'reason_conflict' END;
+    INSERT INTO public.subscription_cancel_feedback (cancel_event_id, reason_code)
+    VALUES (p_cancel_event_id, p_reason_code)
+    ON CONFLICT (cancel_event_id) DO NOTHING;
+    IF FOUND THEN
+      RETURN 'recorded';
+    END IF;
+    -- Re-read in a new statement and retry the insert if the owner erased the winner.
+  END LOOP;
 END;
 $$;
 
