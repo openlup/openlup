@@ -207,16 +207,6 @@ function admitPacks(rulesFor: () => Uint8Array | undefined) {
   return { artifact, fixtures, packs };
 }
 
-function seedConnection(connection: InstallConnection, preserveRefusal?: (error: unknown) => boolean): InstallConnection {
-  return { async query(text, values) {
-    try { return await connection.query(text, values); }
-    catch (error) {
-      if (preserveRefusal?.(error)) throw error;
-      throw installationFailure(error);
-    }
-  } };
-}
-
 async function withInstallationCleanup<T>(work: () => Promise<T>, cleanup: () => Promise<unknown>): Promise<T> {
   let result: T;
   try { result = await work(); }
@@ -253,7 +243,10 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     await Promise.all([import('../host/editor-catalogue.ts'), import('../owned/demo-seed.ts'), import('./quote-seed.ts')])
       .catch(error => { throw installationFailure(error); });
   const { installRole, runtimeRole } = installation;
-  const connection = seedConnection(installation.connection);
+  const connection: InstallConnection = { async query(text, values) {
+    try { return await installation.connection.query(text, values); }
+    catch (error) { throw installationFailure(error); }
+  } };
   if (!installRole || !runtimeRole || installRole === runtimeRole) throw installerRoleRequired();
   const seed = buildDemoSeed(config);
   await connection.query('BEGIN ISOLATION LEVEL READ COMMITTED');
@@ -299,18 +292,14 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     [row.id, row.product_id, row.sku, row.title, row.status, row.min_order_qty,
       row.is_addon, row.sellable_standalone, row.sellable_in_subscription,row.net_weight_g]);
     await installRenewalStockProtectionPolicy(connection, config.inventory.renewalProtection);
-    // Preserve the reminder owner's existing refusal and hint at this write boundary.
-    const reminderConnection = seedConnection(installation.connection, error =>
-      error instanceof Error && 'code' in error && error.code === '55000'
-      && /^checkout_recovery_schedule_change_blocked_open_episodes \([1-9][0-9]* blocking orders\)$/u.test(error.message));
-    await installCheckoutRecoveryReminderSchedule(reminderConnection, config.checkoutRecoveryReminders);
+    await installCheckoutRecoveryReminderSchedule(installation.connection, config.checkoutRecoveryReminders);
     const settlement = seed.priceLists[0]!;
     const settings = [...seed.settings, { key: 'settlement_region', value: settlement.region_code },
       { key: 'settlement_currency', value: settlement.currency }];
     for (const row of settings) await connection.query(`INSERT INTO public.commerce_settings(key,value_text)
       VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`, [row.key,row.value]);
     const stock = installation.stock ?? (await import('@openlup/platform/fulfillment').catch(error => { throw installationFailure(error); }))
-      .createPostgresFulfillmentStockSyncPort(connection,
+      .createPostgresFulfillmentStockSyncPort(installation.connection,
       { sourceKey: `starter-demo:${config.id}`,readLocalInventoryStock: async () => [] });
     for (const product of editorProducts(config)) await stock.recordProviderStockCurrent({ requestKey: `starter-stock:${product.sku}`,snapshot: {
       providerRef: config.purchase.stock.providerRef,collectedAt: config.purchase.stock.collectedAt,sourceRevision: null,revisionSource: 'collection',quantityKind: 'snapshot',
@@ -422,7 +411,7 @@ export async function bootstrapDemonstration(config: StoreConfig): Promise<Demon
   try {
     await connection.connect();
     const { createPostgresFulfillmentStockSyncPort } = await import('@openlup/platform/fulfillment');
-    const stock = createPostgresFulfillmentStockSyncPort(seedConnection(connection), { sourceKey: `starter-demo:${config.id}`, readLocalInventoryStock: async () => [] });
+    const stock = createPostgresFulfillmentStockSyncPort(connection, { sourceKey: `starter-demo:${config.id}`, readLocalInventoryStock: async () => [] });
     return { connection, stock, installRole, runtimeRole, close: () => connection.end() };
   } catch (error) {
     return withInstallationCleanup(async () => { throw error; }, () => connection.end());
