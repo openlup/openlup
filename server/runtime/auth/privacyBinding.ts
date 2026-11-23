@@ -1,11 +1,13 @@
+import { destinationV2Capabilities } from "@openlup/platform/commerce/server/destinations";
+import type { PgQueryExecutor } from "@openlup/platform/data";
 import { createEcommerceEventPrivacyContributor } from '@openlup/platform/communications';
 import { randomUUID } from "node:crypto";
 import { createPostgresPrivacyUnitOfWork, createPostgresPrivacyStore, createManagedPrivacyStore, createIdentityPersonalDataContributor,
   createPersonalDataContributorRegistry, createPrivacyOperations, createPrivacyExportHandler, createPrivacyEraseHandler,
-  readBearerToken, createFulfillmentParcelContactPrivacyContributor, createCustomerBillingPrivacyContributor, type ManagedIdentityClient, type IdentityPrivacyPolicy } from "@openlup/platform/identity";
+  createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor,
+  readBearerToken, createFulfillmentParcelContactPrivacyContributor, createCustomerBillingPrivacyContributor, type ManagedIdentityClient, type IdentityPrivacyPolicy, type PrivacyUseCaseDependencies } from "@openlup/platform/identity";
 import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
 import { resolveAdminAuthBinding } from "./adminAuthBinding.js";
-import { createDestinationReceiptPrivacyContributor } from "./destinationReceiptPrivacyContributor.js";
 import { createSubscriptionsPrivacyContributor } from "./subscriptionsPrivacyContributor.js";
 import { createServiceRoleClient, resolveSupabaseServiceRoleEnv } from "../../_lib/admin-domain/auth.js";
 import { sendBffError } from "../../_lib/bff/response.js";
@@ -13,6 +15,25 @@ import { readObservedResponseContext } from "../../_lib/observability/requestCon
 const policy: IdentityPrivacyPolicy = { retainedContactFields: Object.fromEntries(["lifecycle_stage", "acquisition_source"].map(field => [field, {
   owner: "clients", resource: `clients.${field}`, disposition: "retain" as const, reasonCode: "CONTACT_LIFECYCLE_RETENTION", remote: false,
 }])) };
+const nativeUnavailable = "Check the native app binding, database connection and TLS, runtime CONNECT and EXECUTE privileges, and installed migrations. Then retry the same operation.";
+
+export function composeNativePrivacy(
+  deps: Pick<PrivacyUseCaseDependencies<PgQueryExecutor>, "store" | "unitOfWork">,
+  destination: { installed?: boolean; issuanceEnabled?: boolean } = {},
+) {
+  const registry = createPersonalDataContributorRegistry([
+    createIdentityPersonalDataContributor(deps.store, policy, randomUUID), createSubscriptionsPrivacyContributor(),
+    createFulfillmentParcelContactPrivacyContributor(), createCustomerBillingPrivacyContributor(),
+    createEcommerceEventPrivacyContributor(), createDestinationReceiptPrivacyContributor(), createDestinationDocumentPrivacyContributor(),
+  ], { requiredContributorIds: [
+    "identity", "subscriptions", "fulfillment-parcel-contacts", "customer-billing", "communication-events",
+    "destination-receipts", "destination-documents",
+  ] });
+  return {
+    operations: createPrivacyOperations({ ...deps, registry, now: () => new Date(), randomId: randomUUID }),
+    destination: destinationV2Capabilities({ ...destination, rail: "native", privacyRegistry: registry }),
+  };
+}
 export async function handlePrivacyRequest(operation: "export" | "erase", req: HttpRequest, res: HttpResponse, env: Record<string, string | undefined>): Promise<unknown> {
   let close: (() => Promise<void>) | undefined;
   try {
@@ -26,8 +47,8 @@ export async function handlePrivacyRequest(operation: "export" | "erase", req: H
       if (!env.DATABASE_URL?.trim()) throw new Error("privacy_database_required");
       const unitOfWork = createPostgresPrivacyUnitOfWork({ connectionString: env.DATABASE_URL }); close = unitOfWork.close;
       const store = createPostgresPrivacyStore();
-      const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, policy, randomUUID), createSubscriptionsPrivacyContributor(), createFulfillmentParcelContactPrivacyContributor(), createCustomerBillingPrivacyContributor(), createEcommerceEventPrivacyContributor(), createDestinationReceiptPrivacyContributor()], { requiredContributorIds: ["identity", "subscriptions", "fulfillment-parcel-contacts", "customer-billing", "communication-events", "destination-receipts"] });
-      return await createHandler({ authorizeAdmin, responseRequestId, operations: createPrivacyOperations({ store, unitOfWork, registry, now: () => new Date(), randomId: randomUUID }) })(req, res);
+      const { operations } = composeNativePrivacy({ store, unitOfWork });
+      return await createHandler({ authorizeAdmin, responseRequestId, operations, unavailableMessage: nativeUnavailable })(req, res);
     }
     const service = resolveSupabaseServiceRoleEnv(env);
     if (!service) throw new Error("privacy_service_required");
@@ -35,6 +56,8 @@ export async function handlePrivacyRequest(operation: "export" | "erase", req: H
     const store = createManagedPrivacyStore();
     const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, policy, randomUUID)], { requiredContributorIds: ["identity", "subscriptions"] });
     return await createHandler({ authorizeAdmin, responseRequestId, operations: createPrivacyOperations({ store, registry, unitOfWork: { run: work => work(client) }, now: () => new Date(), randomId: randomUUID }) })(req, res);
-  } catch { return sendBffError(res, "UPSTREAM_UNAVAILABLE", "Privacy operation unavailable"); }
+  } catch {
+    return sendBffError(res, "UPSTREAM_UNAVAILABLE", env.PLATFORM_BUNDLE === "node-postgres" ? nativeUnavailable : "Privacy operation unavailable");
+  }
   finally { await close?.(); }
 }

@@ -964,6 +964,58 @@ it after clients, preserving its exact evidence disposition and audit
 coordinates. Use source packets from the current qualified inventory. Purge
 or recapture private transfer packets that contain evidence erased after capture.
 
+### Native checkout destination documents
+
+The [checkout destination forward](../../db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql)
+adds private, immutable checkout snapshots and a mutable selection per
+authorized owner and checkout scope. The runtime can issue and replay a
+snapshot, read it by exact binding, and export or erase subject data.
+Fresh issuance remains dormant in the reference host and starter.
+
+The trusted native context supplies the installation and canonical principal,
+the linked client ID, and the server-authorized checkout scope. A fresh issue
+rechecks the principal link under the client lock. Use READ COMMITTED so
+receipt coordination can observe a concurrent commit. Hash the tagged request
+with the dialect, owner, key, purpose, scope and original address and contact
+strings. The validated projection and caller time are outside that hash.
+The shipping policy owner supplies the validated projection. The stored
+document uses `country` and optional `subdivision`. Read and export share a
+verifier that hashes stored UTF-8 bytes before decoding and checking ownership
+and binding.
+
+A selection advances to a new revision and snapshot even at equal address
+bytes. Each unbound snapshot expires 24 hours after the database issue time
+at millisecond precision. An exact replay keeps the first cutoff, and the
+reader refuses at the cutoff. Run `commerce_destination_v2_expire` as the
+migration owner with a batch size of 1–1,000. It uses database time and retires
+a matching current pointer in the same transaction as its payload. Expired
+rows keep owner, scope and binding for exact stale refusals. Erasure clears
+those fields as well as payload and full digest and removes the subject's
+selections. Expired and erased exports expose the snapshot ref, issuance
+time and disposition. Verified available rows also export the document,
+scope, digest and cutoff, including after cutoff until cleanup. An available
+row that fails a stored-evidence check exports only the snapshot ref, issuance
+time, disposition and verification status, code and field. The contributor
+reports incomplete coverage. After cutoff, run the owner expiry batch and
+export again. Review any rows still withheld.
+
+Require `destination-receipts` and `destination-documents` in the same
+registry used for native privacy operations. Assemble the two experimental
+factories from `@openlup/platform/identity` and keep the registry installed
+when issuance is disabled. Pass that same registry as `privacyRegistry` to
+`destinationV2Capabilities`. Erasure uses the registry's required-owner check
+before entering the privacy transaction. An authorized historical replay
+of erased evidence returns the erased disposition alone.
+
+Both relations carry through exact-current connected-store capture and
+restore. The restricted runtime has only the document client-ID column for
+lead absorption, which counts every disposition. Discard or recapture any
+private transfer packet containing evidence erased after capture.
+
+For an infrastructure failure, check the native app binding, database
+connection and TLS, runtime CONNECT and EXECUTE privileges, and installed
+migrations. Then retry the same operation.
+
 ### Policy revision close compatibility
 
 The native `20261122140000_subscription_price_policy_close_digest.sql` forward

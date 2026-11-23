@@ -1618,6 +1618,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5298,6 +5302,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125100000_commerce_destination_v2_checkout.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -8095,6 +8103,10 @@
     },
     {
       "path": "packages/platform/src/identity/customerVerifyOtpHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/destinationPrivacy.ts",
       "class": "public-output"
     },
     {
@@ -22790,10 +22802,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/runtime/auth/destinationReceiptPrivacyContributor.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/runtime/auth/emailTrustBinding.test.ts",
       "class": "public-output"
     },
@@ -31750,7 +31758,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationDocumentFixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/destinationReceiptFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/destinationV2Checkout.test.ts",
       "class": "public-output"
     },
     {

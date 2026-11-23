@@ -11,6 +11,7 @@ import { connectedNativeStoreTables } from "../../server/adapters/postgres/conne
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { cataloguePublicationAuthority, catalogueReadGrant, membershipSignature, readinessSignature } from "./catalogPublicationFixture.js";
 import { proveReceiptEncoderParity } from "./destinationReceiptFixture.js";
+import { proveDocumentEncoderParity } from "./destinationDocumentFixture.js";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
 it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const)("installs the sized editor on %s with the selected ownership and binding ACLs", async profile => {
@@ -67,6 +68,7 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
     if (profile === "legacy") await owner.query("DROP ROLE openlup_catalog_publication");
     expect((await runner.apply()).applied).toEqual([]);
     await proveReceiptEncoderParity(migrator);
+    await proveDocumentEncoderParity(migrator);
     expect((await owner.query("SELECT count(*)::int n FROM public.platform_schema_migrations")).rows[0].n).toBe(installationInventory.current.profiles[profile].count);
     const measured = installationInventory.current.profiles[profile];
     expect(measuredSha256).toBe(measured.objectInventorySha256);
