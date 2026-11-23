@@ -1,6 +1,24 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
+const FIXED_GIT_PATHS = [
+  "/usr/bin/git",
+  "/opt/homebrew/bin/git",
+  "/usr/local/bin/git",
+] as const;
+
+function resolveFixedGitBinary(): string {
+  for (const candidate of FIXED_GIT_PATHS) {
+    if (existsSync(candidate)) return candidate;
+  }
+  throw new Error("Unable to locate git binary in fixed system directories.");
+}
+
+export type SettingsCandidateDiffRunner = (
+  args: readonly string[],
+  cwd: string,
+) => { status: number | null; stdout?: string; stderr?: string };
 
 export type SettingsCandidateFinding = {
   path: string;
@@ -162,7 +180,11 @@ export function checkSettingsCandidates(
   root: string,
   base: string,
   changes: readonly SettingsCandidateChange[],
-  options: { target?: string; untracked?: ReadonlySet<string> } = {},
+  options: {
+    target?: string;
+    untracked?: ReadonlySet<string>;
+    runDiff?: SettingsCandidateDiffRunner;
+  } = {},
 ): SettingsCandidateFinding[] {
   const untracked = options.untracked ?? new Set<string>();
   const changedPaths = changes.filter(({ deleted }) => !deleted).map(({ path }) => path);
@@ -176,21 +198,24 @@ export function checkSettingsCandidates(
 
   if (trackedEligible.length > 0) {
     const range = options.target ? [base, options.target] : [base];
-    const result = spawnSync(
-      "git",
-      [
-        "diff",
-        "--unified=2",
-        "--no-color",
-        "--no-ext-diff",
-        "--src-prefix=a/",
-        "--dst-prefix=b/",
-        ...range,
-        "--",
-        ...trackedEligible,
-      ],
-      { cwd: root, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
-    );
+    const diffArgs = [
+      "diff",
+      "--unified=2",
+      "--no-color",
+      "--no-ext-diff",
+      "--src-prefix=a/",
+      "--dst-prefix=b/",
+      ...range,
+      "--",
+      ...trackedEligible,
+    ];
+    const result = options.runDiff
+      ? options.runDiff(diffArgs, root)
+      : spawnSync(resolveFixedGitBinary(), diffArgs, {
+          cwd: root,
+          encoding: "utf8",
+          maxBuffer: 256 * 1024 * 1024,
+        });
     if (result.status !== 0) {
       const detail = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
       throw new Error(`git diff for settings-candidate-guard failed: ${detail}`);

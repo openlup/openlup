@@ -272,7 +272,14 @@ function settingsCandidateGuard(
   if (eligible.length === 0) {
     return { check: "settings-candidates", status: "SKIP", detail: "no packages/platform/src/**/*.ts files changed" };
   }
-  const findings = checkSettingsCandidates(process.cwd(), base, changes, { target, untracked });
+  const findings = checkSettingsCandidates(process.cwd(), base, changes, {
+    target,
+    untracked,
+    runDiff: (args, cwd) => {
+      const result = execute("git", args, { cwd });
+      return { status: result.code, stdout: result.stdout, stderr: result.output };
+    },
+  });
   if (findings.length === 0) {
     return { check: "settings-candidates", status: "PASS", detail: `no unaccounted settings candidates in ${eligible.length} changed platform source file(s)` };
   }
