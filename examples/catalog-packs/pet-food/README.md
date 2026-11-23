@@ -18,8 +18,8 @@ using its candidate extraction recipe. Keep the existing `owned/catalogue-rules.
    +catalogueConformance.packs.push(petFood);
    ```
 
-   Run `npm run --silent catalogue:check:source`. Expect exit 0 and JSON
-   `"state":"satisfied"`. For this reference entry, expect neither
+   Run `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue.ts --json`.
+   Expect exit 0 and JSON `"state":"satisfied"`. For this reference entry, expect neither
    `advisory_net_content_not_publishable` nor `advisory_unit_identifier_missing`.
    The existing starter fixture uses schema version 1 and has its own advisories.
 3. Run `./lifecycle up` in the PostgreSQL sandbox. Expect exit 0 and a healthy

@@ -24,7 +24,7 @@ const cases = [
 const source = resolve("examples/neutral-store");
 const cli = resolve("packages/platform/src/lifecycle/openlup.mjs");
 const example = (name: string) => resolve("examples/catalog-packs", name);
-const sourceCheck = "npm run --silent catalogue:check:source";
+const sourceCheck = "npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue.ts --json";
 const up = "./lifecycle up";
 const health = String.raw`curl --fail --silent --output /dev/null --write-out '%{http_code}\n' http://127.0.0.1:4319/api/config`;
 const satisfied = '"state":"satisfied"';
