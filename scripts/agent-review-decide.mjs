@@ -199,6 +199,10 @@ export function coverageRequirement(session) {
     const delta = edge.kind === 'repair' ? edge.proof.paths : edge.proof.resolution;
     if (delta) {
       floor = deltaFloor(delta, edge.proof.modeChanged === true);
+      if (edge.kind === 'repair' && (priorFull || fullReviewReports(prior)) &&
+        edge.proof.modeChanged !== true &&
+        !delta.some(path => twoReviewerPath(path) && !(priorFull ? repair : prior).candidate.changedPaths.includes(path)) &&
+        floor !== 0) floor = 1;
       demand(deltaReports.every(report => report.delta === edge.delta), 'delta reviewer must confirm the exact delta');
       if (fullReports.length) {
         inherited = undefined; floor = candidateFloor(candidate, event.intent.risk); scope = 'full';
@@ -260,7 +264,9 @@ export function recordReport(session, report, now) {
   stateValid(session);
   demand(report && identity(report.reviewer) && !authorIds(session).has(report.reviewer) && report.cold === true, 'reviewer must be cold and independent of the author');
   demand(identity(report.documentation), 'documentation assessment is required');
-  demand(!session.history.some(event => event.type === 'report' && event.report.reviewer === report.reviewer), 'reviewer id already used in this session');
+  demand(!(session.version === 3 ? currentReports(session).some(prior => prior.reviewer === report.reviewer) :
+    session.history.some(event => event.type === 'report' && event.report.reviewer === report.reviewer)),
+  session.version === 3 ? 'reviewer id already used in this round' : 'reviewer id already used in this session');
   demand(report.tree === session.candidate.tree && ['PASS', 'FAIL'].includes(report.verdict), 'report tree or verdict differs');
   demand(Number.isFinite(now) && now >= session.preparedAt && session.history.every(event => event.at <= now), 'report time is invalid');
   demand(Array.isArray(report.findings) && Array.isArray(report.closes), 'findings and closes must be arrays');
@@ -301,8 +307,13 @@ function validateHistory(session) {
 }
 function validateSessionReports(session, now) {
   const identities = authorIds(session);
-  for (const event of session.history) if (event.type === 'report') {
-    demand(event.report.cold === true && identity(event.report.reviewer) && !identities.has(event.report.reviewer), 'reviewer must be cold, independent and unique'); identities.add(event.report.reviewer);
+  const round = new Set();
+  for (const event of session.history) {
+    if (event.type === 'prepare') round.clear();
+    if (event.type !== 'report') continue;
+    demand(event.report.cold === true && identity(event.report.reviewer) && !identities.has(event.report.reviewer), 'reviewer must be cold and independent of the author');
+    demand(!round.has(event.report.reviewer), 'reviewer id already used in this round'); round.add(event.report.reviewer);
+    if (session.version === 2) identities.add(event.report.reviewer);
   }
   demand(session.history.every((event, index) => Number.isFinite(event.at) && event.at <= now && (index === 0 || event.at >= session.history[index - 1].at)), 'history time is invalid');
   if (session.version === 3) validateHistory(session);

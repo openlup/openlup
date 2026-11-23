@@ -5,10 +5,6 @@ import type {
 } from "./contracts.js";
 import type { PartnersB2BInquiryStatusUpdatePort } from "@openlup/core/partners";
 
-export type PartnersB2BInquiryRequestHeaders =
-  | Headers
-  | Record<string, string | string[] | undefined>;
-
 export interface PartnersB2BInquirySubmitResult {
   success: boolean;
   id?: string;
@@ -21,7 +17,7 @@ export interface PartnersB2BInquirySubmitResult {
 export interface PartnersB2BInquirySubmitPort {
   submitB2BInquiry(
     request: PartnersB2BInquirySubmitRequest,
-    context?: { headers?: PartnersB2BInquiryRequestHeaders },
+    rateLimitAddress: string,
   ): Promise<PartnersB2BInquirySubmitResult>;
 }
 

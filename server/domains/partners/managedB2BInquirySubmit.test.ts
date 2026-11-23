@@ -5,6 +5,7 @@ const request = {
   company: "Acme Foods", country: "US", firstName: "Jane", lastName: "Smith", email: "jane@acmepets.com",
   phone: "+1 555 123 4567", notes: "Private label retail range.",
 };
+const address = "198.51.100.9";
 const FREE_EMAIL_DOMAIN_FIXTURE = "gmail.com";
 
 describe("managed B2B inquiry submit", () => {
@@ -12,22 +13,24 @@ describe("managed B2B inquiry submit", () => {
     const deps = fixture();
     const submit = createManagedB2BInquirySubmit(deps);
 
-    await expect(submit({ ...request, email: `b2b-free-domain@${FREE_EMAIL_DOMAIN_FIXTURE}` }, new Headers())).resolves.toMatchObject({ status: 400, error: "blocked_email_domain" });
-    await expect(submit(request, new Headers(), true)).resolves.toEqual({ success: true, status: 200 });
+    await expect(submit({ ...request, email: `b2b-free-domain@${FREE_EMAIL_DOMAIN_FIXTURE}` }, address)).resolves.toMatchObject({ status: 400, error: "blocked_email_domain" });
+    await expect(submit(request, address, true)).resolves.toEqual({ success: true, status: 200 });
 
+    expect(deps.hashIp).not.toHaveBeenCalled();
     expect(deps.gateway.submit).not.toHaveBeenCalled();
     expect(deps.delivery.evaluatePolicy).not.toHaveBeenCalled();
     expect(deps.delivery.deliver).not.toHaveBeenCalled();
   });
 
-  it("hashes the forwarded address and durably submits before policy or email", async () => {
+  it("hashes the resolved address and durably submits before policy or email", async () => {
     const events: string[] = [];
     const deps = fixture({ events });
     const submit = createManagedB2BInquirySubmit(deps);
 
-    await expect(submit(request, new Headers({ "x-forwarded-for": "198.51.100.9, proxy" }))).resolves.toMatchObject({ success: true, id: "inq-1", status: 200 });
+    await expect(submit(request, address)).resolves.toMatchObject({ success: true, id: "inq-1", status: 200 });
 
-    expect(deps.gateway.submit).toHaveBeenCalledWith({ ipHash: "hash:198.51.100.9", request });
+    expect(deps.hashIp).toHaveBeenCalledExactlyOnceWith(address);
+    expect(deps.gateway.submit).toHaveBeenCalledWith({ ipHash: `hash:${address}`, request });
     expect(events).toEqual(["primary", "policy:transactional", "policy:admin_notification", "deliver", "deliver"]);
   });
 
@@ -37,7 +40,7 @@ describe("managed B2B inquiry submit", () => {
   ])("does not send when the primary RPC is %s", async (_name, result, status, error) => {
     const deps = fixture({ submitResult: result });
 
-    await expect(createManagedB2BInquirySubmit(deps)(request, new Headers())).resolves.toMatchObject({ status, error });
+    await expect(createManagedB2BInquirySubmit(deps)(request, address)).resolves.toMatchObject({ status, error });
     expect(deps.delivery.evaluatePolicy).not.toHaveBeenCalled();
     expect(deps.delivery.deliver).not.toHaveBeenCalled();
   });
@@ -45,7 +48,7 @@ describe("managed B2B inquiry submit", () => {
   it("preserves the primary success when both policy decisions deny delivery", async () => {
     const deps = fixture({ policyAllowed: false });
 
-    await expect(createManagedB2BInquirySubmit(deps)(request, new Headers())).resolves.toEqual({
+    await expect(createManagedB2BInquirySubmit(deps)(request, address)).resolves.toEqual({
       success: true, id: "inq-1", skipped: "policy_blocked", status: 200,
     });
     expect(deps.presenter.present).not.toHaveBeenCalled();
@@ -64,7 +67,7 @@ describe("managed B2B inquiry submit", () => {
       },
     });
 
-    await expect(createManagedB2BInquirySubmit(deps)(request, new Headers())).resolves.toMatchObject({ success: true, id: "inq-1" });
+    await expect(createManagedB2BInquirySubmit(deps)(request, address)).resolves.toMatchObject({ success: true, id: "inq-1" });
 
     expect(deps.delivery.evaluatePolicy).toHaveBeenCalledTimes(4);
     expect(deps.delivery.evaluatePolicy.mock.calls.map(([input]) => input.email)).toEqual([request.email, ...notificationTo]);
@@ -85,7 +88,7 @@ describe("managed B2B inquiry submit", () => {
       { accepted: false, messageId: null, skip: null, error: "provider_accepted_without_message_id" },
     ]) {
       const deps = fixture({ deliveryResult });
-      await expect(createManagedB2BInquirySubmit(deps)(request, new Headers())).resolves.toMatchObject({ success: true, id: "inq-1", status: 200 });
+      await expect(createManagedB2BInquirySubmit(deps)(request, address)).resolves.toMatchObject({ success: true, id: "inq-1", status: 200 });
       expect(deps.delivery.deliver).toHaveBeenCalledTimes(2);
     }
   });
@@ -95,7 +98,7 @@ describe("managed B2B inquiry submit", () => {
       deliveryResult: { accepted: false, messageId: null, skip: null, error: "provider_accepted_without_message_id" },
     });
 
-    await expect(createManagedB2BInquirySubmit(deps)(request, new Headers())).resolves.toMatchObject({ success: true, id: "inq-1", status: 200 });
+    await expect(createManagedB2BInquirySubmit(deps)(request, address)).resolves.toMatchObject({ success: true, id: "inq-1", status: 200 });
 
     expect(deps.delivery.deliver).toHaveBeenCalledWith(expect.objectContaining({
       dedupeKey: "b2b_confirmation:inq-1",
@@ -106,7 +109,7 @@ describe("managed B2B inquiry submit", () => {
   it("keeps the legacy origin error after the primary write and before sends", async () => {
     const deps = fixture({ presentation: { ok: false as const, error: "untrusted_origin" } });
 
-    await expect(createManagedB2BInquirySubmit(deps)(request, new Headers())).resolves.toMatchObject({
+    await expect(createManagedB2BInquirySubmit(deps)(request, address)).resolves.toMatchObject({
       success: false, status: 500, error: "untrusted_origin", code: "email_origin_error",
     });
     expect(deps.delivery.deliver).not.toHaveBeenCalled();

@@ -14,6 +14,7 @@ it("bundles the SEO and content leaves for a browser without imports or ambient 
     "src/marketing/contactLegal.ts",
     "src/marketing/seo/jsonLd.ts",
     "src/marketing/seo/metadata.ts",
+    "src/marketing/seo/restrictedCirculationNumber.ts",
     "src/marketing/seo/serializeJsonLd.ts",
     "src/marketing/seo/urls.ts",
   ]);

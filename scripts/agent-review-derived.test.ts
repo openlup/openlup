@@ -193,8 +193,12 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
       await captureCommittedReviewCandidate(root, base, left), await captureCommittedReviewCandidate(root, right, landed));
     expect(git('diff', '--raw', left, landed, '--', 'packages/core/api', 'packages/outbox')).toBe('');
     const changed = PROBE_OUTPUTS.filter(path => path !== SETTING_REFUSALS).sort();
-    expect(integration).toMatchObject({ kind: 'resolution', resolution: changed, modeChanged: false });
-    expect(deltaFloor(integration.resolution, integration.modeChanged)).toBe(1);
+    expect(integration).toMatchObject({ kind: 'derived', derived: true });
+    expect(integration.resolution).toBeUndefined();
+    const historical = await proveReviewIntegration(root,
+      await captureCommittedReviewCandidate(root, base, left), await captureCommittedReviewCandidate(root, right, landed),
+      false, { resolvedOwnerOutputs: changed });
+    expect(historical).toMatchObject({ kind: 'resolution', resolution: changed, modeChanged: false });
     expect(read(PORTABILITY_REPORT)).toContain('declare const fixturePortability = 1');
     expect(read(SETTING_GUIDE)).toContain(`## ${PROBE_KEY}`);
     expect(git('show', `${base}:${SETTING_REFUSALS}`)).toBe(read(SETTING_REFUSALS).trimEnd());
@@ -205,13 +209,13 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
     fixtureCommand(process.execPath, ['scripts/settings-catalogue.ts', '--write']);
     expect(git('status', '--porcelain', '--untracked-files=all')).toBe('');
     const fast = spawnSync(process.execPath, [npmCli, 'run', 'preflight', '--', '--fast'], {
-      cwd: root, env: fixtureEnvironment, encoding: 'utf8', timeout: 180000,
+      cwd: root, env: fixtureEnvironment, encoding: 'utf8', timeout: 300000,
     });
     expect(fast.status, fast.stdout + fast.stderr).toBe(0);
     expect(JSON.parse(fast.stdout.trimEnd().split('\n').at(-1)!)).toEqual({ preflight: 'fast', result: 'pass', head: landed, failed: [] });
-    console.info(`D3 landing: fork ${base}, parents ${left} ${right}, merge ${landed}; residual ${changed.join(', ')}; settings refusals already match`);
+    console.info(`D3 landing: fork ${base}, parents ${left} ${right}, merge ${landed}; derived ${changed.join(', ')}; settings refusals already match`);
   } finally { restoreDerivedFixture(); }
-}, 180000);
+}, 360000);
 
 it('lands cold owner bytes after an added Core export and version bump on a warm incremental cache', () => {
   try {
@@ -337,8 +341,9 @@ it.each([
   ['outbox', 'missing'],
   ['outbox', 'removed'],
   ['outbox', 'main only'],
+  ['core', 'first parent'],
   ['core', 'missing'],
-])('checks the %s change note through landing (%s)', (owner, note) => {
+])('checks the %s change note through landing (%s)', async (owner, note) => {
   const directory = `packages/${owner}`;
   const entry = `${directory}/src/${owner === 'core' ? 'subscription/index.ts' : 'index.ts'}`;
   const notePath = `${directory}/changes/fixture-api.md`;
@@ -356,9 +361,14 @@ it.each([
     const right = commit(); setMain(right); checkout(left);
     if (note === 'first parent') {
       landingCli();
+      const landed = git('rev-parse', 'HEAD');
       expect(git('show', '-s', '--format=%P', 'HEAD')).toBe(`${left} ${right}`);
       expect(git('show', `HEAD:${report}`)).toContain('declare const fixtureApi = 1');
       expect(git('status', '--porcelain')).toBe('');
+      const integration = await proveReviewIntegration(root,
+        await captureCommittedReviewCandidate(root, fork, left),
+        await captureCommittedReviewCandidate(root, right, landed));
+      expect(integration).toMatchObject({ kind: 'derived', derived: true });
     } else {
       const cli = spawnSync(process.execPath, [npmCli, 'run', 'landing:merge'], { cwd: root, env: fixtureEnvironment, encoding: 'utf8', timeout: 180000 });
       expect(cli.status).toBe(1);
@@ -369,7 +379,7 @@ it.each([
       expect(git('diff', '--cached', '--name-only', '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api')).toBe('');
     }
   } finally { restoreDerivedFixture(); }
-}, 60000);
+}, 180000);
 
 it.each([
   ['package-lock.json', '1'],

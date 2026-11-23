@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
+import { rateLimitClientAddress } from "../../_lib/rate-limit/clientAddress.js";
 import {
   sendBffError,
   sendBffSuccess,
@@ -33,9 +34,7 @@ export function createPartnersPublicB2BInquirySubmitHandler({
     }
 
     try {
-      const result = await submitPort.submitB2BInquiry(request.data, {
-        headers: headersFromRequest(req),
-      });
+      const result = await submitPort.submitB2BInquiry(request.data, rateLimitClientAddress(req));
       if (!result.success) {
         sendSubmitError(res, result);
         return;
@@ -115,13 +114,4 @@ function mapSubmitError(result: { status?: number; error?: string; code?: string
     reason: "upstream_unavailable",
     privateReason: reason,
   };
-}
-
-function headersFromRequest(req: VercelRequest): Headers {
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (typeof value === "string") headers.set(key, value);
-    else if (Array.isArray(value)) headers.set(key, value.join(", "));
-  }
-  return headers;
 }

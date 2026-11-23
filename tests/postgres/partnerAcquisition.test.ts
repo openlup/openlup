@@ -192,7 +192,7 @@ export {request,list,factory};`;
   it("04: preserves email/requester quotas, duplicate-attempt effects and inclusive hour reset after reopening", async () => {
     const { input, row } = await capture("email-quota");
     for (let n = 2; n <= 3; n++) expect(await port.submit({ ...input, idempotencyKey: `${input.idempotencyKey}-${n}` })).toEqual({ ok: false, error: { kind: "conflict" } });
-    expect(await port.submit({ ...input, idempotencyKey: `${input.idempotencyKey}-4` })).toEqual({ ok: false, error: { kind: "rate_limited" } });
+    expect(await port.submit({ ...input, idempotencyKey: `${input.idempotencyKey}-4`, requesterKey: "new-requester-same-email" })).toEqual({ ok: false, error: { kind: "rate_limited" } });
     expect(await counts(row.caseRef)).toEqual({ cases: 1, contacts: 1, details: 1, commands: 1, audit: 1 });
     const requester = `requester-quota-${++sequence}`;
     const attempts = Array.from({ length: 6 }, (_, n) => command(`requester-${n}`, { requesterKey: requester }));

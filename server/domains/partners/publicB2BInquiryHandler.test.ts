@@ -1,9 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import type { PartnersB2BInquirySubmitPort } from "../../../src/domains/partners/ports.js";
 import { createPartnersPublicB2BInquirySubmitHandler } from "./publicB2BInquiryHandler.js";
 
 describe("partners public B2B inquiry submit handler", () => {
+  beforeEach(() => {
+    vi.stubEnv("CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS", undefined);
+    vi.stubEnv("VERCEL", undefined);
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
   it("submits valid B2B inquiries through the port", async () => {
     const submitPort = createSubmitPort({ success: true, id: "inq-1", status: 200 });
     const res = createResponse();
@@ -13,9 +19,7 @@ describe("partners public B2B inquiry submit handler", () => {
       res,
     );
 
-    expect(submitPort.submitB2BInquiry).toHaveBeenCalledWith(validRequest(), {
-      headers: expect.any(Headers),
-    });
+    expect(submitPort.submitB2BInquiry).toHaveBeenCalledWith(validRequest(), "192.0.2.7");
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({
       ok: true,
@@ -153,6 +157,7 @@ function request(method: string, body: unknown): VercelRequest {
       "user-agent": "test-agent",
       "x-forwarded-for": "127.0.0.1",
     },
+    socket: { remoteAddress: "192.0.2.7" },
   } as unknown as VercelRequest;
 }
 
