@@ -6881,7 +6881,7 @@
       },
       {
         "row": "preview-noop-acceptance",
-        "path": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+        "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
         "replacedFunctions": [],
         "createdFunctions": [],
         "grantOnlyFunctions": [],
@@ -10139,7 +10139,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+      "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
       "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049",
       "functions": []
     }

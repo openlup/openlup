@@ -1590,7 +1590,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+      "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
       "class": "public-output"
     },
     {
@@ -5238,7 +5238,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261125010001_subscription_preview_noop_acceptance.sql",
+      "path": "packages/platform/sql/20261125050000_subscription_preview_noop_acceptance.sql",
       "class": "public-output"
     },
     {

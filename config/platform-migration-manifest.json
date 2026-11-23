@@ -726,7 +726,7 @@
       "sha256": "700aab2616bff9c6049eb83af4efcea8596f36862a0de4c1dde1bca6647282a4"
     },
     {
-      "file": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+      "file": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
       "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049"
     }
   ],
@@ -1482,7 +1482,7 @@
         "sha256": "700aab2616bff9c6049eb83af4efcea8596f36862a0de4c1dde1bca6647282a4"
       },
       {
-        "file": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+        "file": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
         "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049"
       }
     ],
@@ -2238,7 +2238,7 @@
         "sha256": "700aab2616bff9c6049eb83af4efcea8596f36862a0de4c1dde1bca6647282a4"
       },
       {
-        "file": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+        "file": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
         "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049"
       }
     ],

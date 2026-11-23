@@ -7,7 +7,7 @@
         "objectInventorySha256": "447591829a46af42f2efc282977d6ce2851766bd91250c37a3e8f639b1e27961",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+            "file": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
             "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049"
           },
           {
@@ -742,7 +742,7 @@
         "objectInventorySha256": "e7221f79f24d2109a34af84738a01940841e03e98dcf968bbda048b1c8aa2636",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+            "file": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
             "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049"
           },
           {
@@ -1501,7 +1501,7 @@
         "objectInventorySha256": "f84bef0249557e2afa32092540ed609b34275112d087734d93d0f17c1ae9f133",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+            "file": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
             "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049"
           },
           {
@@ -2260,7 +2260,7 @@
         "objectInventorySha256": "093b44b00ac93a4626e3516b390e94c03d251f82e20ccf39e6a2266bf0409daf",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+            "file": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
             "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049"
           },
           {
@@ -3011,7 +3011,7 @@
         "objectInventorySha256": "8176dbfee3f001506262c89d2d3d2dda072a2a2f2be5cd49dd3bf19f46b305fe",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+            "file": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
             "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049"
           },
           {

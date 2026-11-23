@@ -2823,7 +2823,7 @@ foreign key uses PostgreSQL's default `NO ACTION`. The forward uses the three
 exact admitted statements. They add the column and then drop and re-add
 `subscription_quote_previews_acceptance_check` on
 `public.subscription_quote_previews` as an adjacent, validated replacement.
-[Forward SQL](../../db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql) ·
+[Forward SQL](../../db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql) ·
 [Admission rule](../../scripts/reviewed-platform-forward.ts)
 
 Static admission checks the exact forward bytes and pins the issued
