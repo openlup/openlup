@@ -467,19 +467,12 @@ export function collectTestFiles(rootDir = REPOSITORY_ROOT) {
   walkMatchingFiles(rootDir, "mcp", (fileRel) => TS_TEST_PATTERN.test(fileRel), found);
 
   // recipes/**/tests/**/*.{test,spec}.{ts,tsx}
-  const recipesAbs = resolve(rootDir, "recipes");
-  if (existsSync(recipesAbs)) {
-    for (const entry of readdirSync(recipesAbs, { withFileTypes: true })) {
-      if (entry.isDirectory() && !IGNORED_DIRS.has(entry.name)) {
-        walkMatchingFiles(
-          rootDir,
-          posix.join("recipes", entry.name, "tests"),
-          (fileRel) => TS_TEST_PATTERN.test(fileRel),
-          found,
-        );
-      }
-    }
-  }
+  walkMatchingFiles(
+    rootDir,
+    "recipes",
+    (fileRel) => /(?:^|\/)tests\/.+\.(?:test|spec)\.(?:ts|tsx)$/.test(fileRel),
+    found,
+  );
 
   return [...found].sort(compareCodeUnits);
 }
