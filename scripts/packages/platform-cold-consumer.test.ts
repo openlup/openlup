@@ -1958,7 +1958,7 @@ const pack = withCatalogPublicationRules(${JSON.stringify({ ...fixturePack, type
   call(good, 74);
 });
 
-it("typechecks the packed v3 skeleton and discovers its catalogue recipes", () => {
+it("skeleton_pack_projects_clean", () => {
   const { app, consumer, write, call, environment } = packedCatalogue();
   const core = join(consumer, "node_modules/@openlup/core");
   const guide = "docs/guide/how-to/extend/catalogue-extension.md";
@@ -1972,12 +1972,15 @@ it("typechecks the packed v3 skeleton and discovers its catalogue recipes", () =
       verbatimModuleSyntax: true, allowImportingTsExtensions: true, module: "nodenext", types: [] },
     files: ["catalogue.ts"],
   }));
-  const projected = call(sourceArgs(join(app, "catalogue.ts")), 0);
+  const projected = call(sourceArgs("./catalogue.ts"), 0);
   const [{ pack, drafts }] = JSON.parse(readFileSync(projected.transport.subjectPath, "utf8")).packs;
-  expect(pack.types[0]).toMatchObject({ key: `${namespace}:notebook`, version: 1, taxClass: "standard" });
+  expect(pack.types[0]).toMatchObject({ key: `${namespace}:notebook`, version: 1, taxClass: "standard",
+    attributes: [{ key: "lined", scope: "variant", valueType: { kind: "boolean" } }],
+    dimensions: [{ key: "lined", kind: "boolean" }], axes: [{ key: "lined", attributeKey: "lined" }],
+  });
   expect(drafts[0]).toMatchObject({ schemaVersion: 3, product: { sharedContent: { presentation: { title: "Notebook" } } } });
   const lines = readFileSync(join(core, guide), "utf8").split("\n");
-  for (const title of ["New vertical", "Add attribute", "Add unit", "Add axis", "Add tax class", "Subscription profile", "Upgrade a definition"]) {
+  for (const title of ["New vertical", "Add attribute", "Add unit", "Add axis", "Set the Platform version range", "Add tax class", "Subscription profile", "Upgrade a definition"]) {
     const result = JSON.parse(execFileSync(process.execPath, [join(core, "src/openlup-context.js"), "search", title, "--limit", "20", "--json"],
       { cwd: app, env: environment, encoding: "utf8" }));
     const index = lines.indexOf("## " + title);

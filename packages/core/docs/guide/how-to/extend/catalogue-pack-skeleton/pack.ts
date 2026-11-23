@@ -1,5 +1,5 @@
 // eslint-disable-next-line no-restricted-imports -- copied application example using the installed Platform authoring entry
-import { defineCatalogPack } from "@openlup/platform/catalog";
+import { catalogVariantOptions, defineCatalogPack } from "@openlup/platform/catalog";
 
 export const pack = defineCatalogPack({
   id: "stationery", namespace: "stationery", version: 1, openlupRange: "1.x",
@@ -13,11 +13,8 @@ export const pack = defineCatalogPack({
         factor: { canonicalUnit: "openlup:piece", unscaled: "1", scale: 0 } },
     ],
     netContentUnits: ["openlup:g"],
-    attributes: [{ key: "lined", scope: "variant", valueType: { kind: "boolean" }, required: true,
-      cardinality: { min: 1, max: 1 }, filterable: true, facetable: true, public: true,
-      displayOrder: 0, labels: { en: "Lined" } }],
-    dimensions: [{ key: "lined", kind: "boolean" }],
-    axes: [{ key: "lined", attributeKey: "lined" }],
+    ...catalogVariantOptions([{ key: "lined", kind: "boolean", labels: { en: "Lined" },
+      filterable: true, facetable: true }]),
     validateContent(content: unknown) {
       const presentation = content && typeof content === "object" && "presentation" in content
         ? content.presentation : undefined;

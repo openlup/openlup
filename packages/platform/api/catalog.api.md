@@ -1050,6 +1050,10 @@ export declare function createPostgresCatalogAdmission(): CatalogAdmissionPort;
 
 ```ts
 import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts/catalogConformance.js";
+/** Read the package metadata beside the checker in source and packed installs.
+ * @internal
+ */
+export declare function readCatalogCheckerPackageVersion(): string;
 /** @experimental */
 export declare const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>>;
 ```
@@ -2066,7 +2070,7 @@ import type { CatalogQuantityCode } from "@openlup/core/catalog";
 /** Stable meanings shared by runtime admission and offline conformance.
  * @experimental
  */
-export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | "attribute_projection_text_too_large" | "attribute_storage_too_large" | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict" | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing" | "attribute_reference_unresolved" | "attribute_publication_revision_invalid" | "conformance_subject_invalid" | "conformance_owner_unavailable" | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch" | "draft_input_invalid" | "draft_payload_invalid" | "draft_payload_too_large" | "quantity_invalid" | "quantity_cross_dimension" | "quantity_fractional_count" | "quantity_unknown_unit" | "quantity_overflow" | "quantity_not_exactly_representable" | "axis_not_installed" | "duplicate_axis" | "option_not_selected" | "option_missing" | "option_invalid" | "unit_factor_missing" | "sku_identity_change_requires_new_sku" | "duplicate_combination" | "combination_digest_collision" | "duplicate_sku_id" | "combination_identity_integrity_failed" | "sku_payload_limit" | "product_capacity_exceeded" | "product_capacity_invalid" | "definition_profile_invalid" | "cadence_kind_unsupported" | "advisory_net_content_not_publishable" | "advisory_filter_flags_unused" | "advisory_unit_identifier_missing" | "advisory_draft_version_not_publishable" | "advisory_fixtures_skipped_definition_invalid";
+export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_axis_mismatch" | "definition_duplicate_axis_attribute" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | "attribute_projection_text_too_large" | "attribute_storage_too_large" | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict" | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing" | "attribute_reference_unresolved" | "attribute_publication_revision_invalid" | "conformance_subject_invalid" | "conformance_owner_unavailable" | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch" | "draft_input_invalid" | "draft_payload_invalid" | "draft_payload_too_large" | "quantity_invalid" | "quantity_cross_dimension" | "quantity_fractional_count" | "quantity_unknown_unit" | "quantity_overflow" | "quantity_not_exactly_representable" | "axis_not_installed" | "duplicate_axis" | "option_not_selected" | "option_missing" | "option_invalid" | "unit_factor_missing" | "sku_identity_change_requires_new_sku" | "duplicate_combination" | "combination_digest_collision" | "duplicate_sku_id" | "combination_identity_integrity_failed" | "sku_payload_limit" | "product_capacity_exceeded" | "product_capacity_invalid" | "definition_profile_invalid" | "cadence_kind_unsupported" | "advisory_net_content_not_publishable" | "advisory_filter_flags_unused" | "advisory_unit_identifier_missing" | "advisory_draft_version_not_publishable" | "advisory_fixtures_skipped_definition_invalid" | "advisory_variant_attribute_without_axis" | "advisory_openlup_range_unrecognised" | "advisory_openlup_range_unsatisfied";
 /** @experimental */
 export interface CatalogConformanceRule {
     severity: "error" | "warning";
@@ -4242,6 +4246,7 @@ export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } 
 export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
 export { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
 export { catalogPackIssues } from "./productTypeIssues.js";
+export { catalogVariantOptions, type CatalogVariantOptionInput } from "./variantOptions.js";
 export { backfillCatalogNetContent } from "./backfillCatalogNetContent.js";
 export { validateCatalogAttributes, catalogAttributesReadyForPublication } from "./attributeValidation.js";
 export type { CatalogAttributeInput, CatalogAttributeValidation, CatalogAttributeProjectionValue } from "./attributeValidation.js";
@@ -5789,4 +5794,74 @@ export declare function validateCatalogCombinationChangesV2(input: {
     incoming: readonly CatalogCombinationChangeV2[];
     capacity?: number;
 }): readonly CatalogRetainedCombinationV2[];
+```
+## dist/catalog/variantOptions.d.ts
+
+```ts
+import type { AttributeDefinition, CatalogAttributeScalarType, CatalogAxisDefinition } from "./contracts/attributes.js";
+import type { CatalogQuantityDimension } from "./contracts/productTypes.js";
+type OptionDisplay = Pick<AttributeDefinition, "key" | "labels"> & Partial<Pick<AttributeDefinition, "filterable" | "facetable" | "public" | "displayOrder">>;
+type ChoiceValueType = Extract<CatalogAttributeScalarType, {
+    kind: "enum";
+}>;
+type QuantityOptionInput = {
+    kind: "quantity";
+    dimension: CatalogQuantityDimension;
+    units: readonly string[];
+    role?: "net_content";
+};
+/** One variant option in the catalogue definition.
+ * @experimental
+ */
+export type CatalogVariantOptionInput = OptionDisplay & ({
+    kind: "choice";
+    values: ChoiceValueType["values"];
+} | {
+    kind: "boolean";
+} | QuantityOptionInput);
+type OptionQuantity<O extends QuantityOptionInput> = {
+    kind: "quantity";
+    dimension: O["dimension"];
+    units: readonly O["units"][number][];
+};
+type OptionValueType<O extends CatalogVariantOptionInput> = O extends {
+    kind: "choice";
+} ? ChoiceValueType : O extends QuantityOptionInput ? OptionQuantity<O> : {
+    kind: "boolean";
+};
+type OptionDimension<O extends CatalogVariantOptionInput> = {
+    key: O["key"];
+} & (O extends {
+    kind: "choice";
+} ? {
+    kind: "choice";
+    values: readonly string[];
+} : O extends QuantityOptionInput ? OptionQuantity<O> & {
+    role?: "net_content";
+} : {
+    kind: "boolean";
+});
+type VariantOptions<O extends readonly CatalogVariantOptionInput[]> = {
+    attributes: {
+        [I in keyof O]: Omit<AttributeDefinition, "key" | "scope" | "valueType"> & {
+            key: O[I]["key"];
+            scope: "variant";
+            valueType: OptionValueType<O[I]>;
+        };
+    };
+    dimensions: {
+        [I in keyof O]: OptionDimension<O[I]>;
+    };
+    axes: {
+        [I in keyof O]: CatalogAxisDefinition & {
+            key: O[I]["key"];
+            attributeKey: O[I]["key"];
+        };
+    };
+};
+/** Build one attribute, dimension and axis per option, in input order.
+ * @experimental
+ */
+export declare function catalogVariantOptions<const O extends readonly CatalogVariantOptionInput[]>(options: O): VariantOptions<O>;
+export {};
 ```

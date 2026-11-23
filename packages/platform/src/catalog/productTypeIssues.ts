@@ -51,6 +51,21 @@ const scalarSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("date") }).strict(),
 ]);
 const valueTypeSchema = z.union([scalarSchema, z.object({ kind: z.literal("list"), item: scalarSchema, min: bound, max: bound }).strict()]);
+
+function sameMembers(left: readonly string[], right: readonly string[]): boolean {
+  const members = new Set(left);
+  const other = new Set(right);
+  return members.size === other.size && [...other].every(value => members.has(value));
+}
+
+function axisDeclarationsMatch(dimension: z.infer<typeof dimensionSchema>, valueType: z.infer<typeof valueTypeSchema>): boolean {
+  switch (dimension.kind) {
+    case "choice": return valueType.kind === "enum" && sameMembers(dimension.values, valueType.values.map(value => value.id));
+    case "boolean": return valueType.kind === "boolean";
+    case "quantity": return valueType.kind === "quantity" && dimension.dimension === valueType.dimension && sameMembers(dimension.units, valueType.units);
+  }
+}
+
 const attributeSchema = z.object({
   key: catalogDimensionKeySchema, scope: z.enum(["product", "variant"]), valueType: valueTypeSchema,
   required: z.boolean(), cardinality: z.object({ min: bound, max: bound }).strict(),
@@ -200,11 +215,15 @@ function inspectProductTypes(definitions: readonly unknown[], profileRefs?: Map<
     });
     const axes = definition.axes ?? [];
     duplicates(axes.map((axis) => axis.key), "definition_duplicate_axis", ["axes"], "key");
+    duplicates(axes.map((axis) => axis.attributeKey), "definition_duplicate_axis_attribute", ["axes"], "attributeKey");
     axes.forEach((axis, i) => {
+      const path = [...base, "axes", i];
       const attribute = attributes.find(({ key }) => key === axis.attributeKey);
-      if (!attribute) add("definition_unknown_axis_attribute", [...base, "axes", i, "attributeKey"]);
-      else if (attribute.scope !== "variant") add("definition_axis_scope_invalid", [...base, "axes", i, "attributeKey"]);
-      if (!definition.dimensions.some(({ key }) => key === axis.key)) add("definition_unknown_axis_dimension", [...base, "axes", i, "key"]);
+      const dimension = definition.dimensions.find(({ key }) => key === axis.key);
+      if (!attribute) add("definition_unknown_axis_attribute", [...path, "attributeKey"]);
+      else if (attribute.scope !== "variant") add("definition_axis_scope_invalid", [...path, "attributeKey"]);
+      if (!dimension) add("definition_unknown_axis_dimension", [...path, "key"]);
+      else if (attribute?.scope === "variant" && !axisDeclarationsMatch(dimension, attribute.valueType)) add("definition_axis_mismatch", path);
     });
   });
   return issues;

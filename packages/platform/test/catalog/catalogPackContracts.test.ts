@@ -3,6 +3,7 @@ import { defineCatalogPack } from "../../src/catalog/contracts/catalogPack.js";
 import { catalogDefinitionDigest } from "../../src/catalog/catalogDefinitionDigest.js";
 import { catalogPackManifest } from "../../src/catalog/catalogPackManifest.js";
 import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
+import { canonicalizeCatalogCombinationV2, catalogProductTypeIssues, catalogVariantOptions } from "../../src/catalog/index.js";
 import type { AttributeDefinition } from "../../src/catalog/contracts/attributes.js";
 const attribute = {
   key: "finish" as const, scope: "variant", valueType: { kind: "text" as const, maxLength: 64 }, required: true,
@@ -14,6 +15,41 @@ const definition = {
   validatorRef: `sha256:${"a".repeat(64)}` as const, validateContent: (_input: unknown) => [],
 } as const;
 describe("catalog pack projection", () => {
+  it("variant_options_helper_output_has_no_findings", () => {
+    const input = [
+      { key: "finish", kind: "choice", values: [{ id: "matte" }, { id: "gloss", labels: { en: "Gloss" } }], labels: { en: "Finish" } },
+      { key: "lined", kind: "boolean", labels: { en: "Lined" }, filterable: true, facetable: true, public: false, displayOrder: 7 },
+      { key: "size", kind: "quantity", dimension: "count", units: ["openlup:piece"], role: "net_content", labels: {} },
+    ] as const;
+    const options = catalogVariantOptions(input);
+    const defaults = { scope: "variant", required: true, cardinality: { min: 1, max: 1 }, filterable: false, facetable: false, public: true };
+    expect(options).toEqual({
+      attributes: [
+        { ...defaults, key: "finish", valueType: { kind: "enum", values: input[0].values }, displayOrder: 0, labels: input[0].labels },
+        { ...defaults, key: "lined", valueType: { kind: "boolean" }, displayOrder: 7, labels: input[1].labels,
+          filterable: true, facetable: true, public: false },
+        { ...defaults, key: "size", valueType: { kind: "quantity", dimension: "count", units: ["openlup:piece"] }, displayOrder: 2, labels: {} },
+      ],
+      dimensions: [
+        { key: "finish", kind: "choice", values: ["matte", "gloss"] },
+        { key: "lined", kind: "boolean" },
+        { key: "size", kind: "quantity", dimension: "count", units: ["openlup:piece"], role: "net_content" },
+      ],
+      axes: input.map(({ key }) => ({ key, attributeKey: key })),
+    });
+    expect(catalogVariantOptions(input)).toEqual(options);
+    expect(catalogProductTypeIssues([{ ...definition, ...options }])).toEqual([]);
+  });
+  it("volume_option_in_ml_with_factor_has_no_findings", () => {
+    const units = [{ code: "example:ml", dimension: "volume", integral: false,
+      factor: { canonicalUnit: "openlup:ml", unscaled: "1", scale: 0 } }] as const;
+    const options = catalogVariantOptions([{ key: "size", kind: "quantity", dimension: "volume", units: ["example:ml"], labels: {} }]);
+    const volume = { ...definition, units, netContentUnits: [units[0].code], ...options };
+    expect(catalogProductTypeIssues([volume])).toEqual([]);
+    expect(canonicalizeCatalogCombinationV2({ definition: volume, axes: ["size"], options: {
+      size: { kind: "quantity", value: { dimension: "volume", unit: "example:ml", unscaled: "100", scale: 0 } },
+    } }).version).toBe(2);
+  });
   it("freezes literals without validating or executing them at import", () => {
     const pack = defineCatalogPack({ id: "example:pack", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, taxClasses: [], types: [{ ...definition, key: "example:item", version: -1, validateContent: () => { throw new Error("not invoked"); } }] });
     expect(Object.isFrozen(pack.types[0].attributes[0].valueType)).toBe(true);

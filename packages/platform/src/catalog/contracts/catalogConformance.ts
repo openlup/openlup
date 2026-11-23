@@ -13,7 +13,7 @@ export type CatalogConformanceCode =
   | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute"
   | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis"
   | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value"
-  | "definition_unknown_axis_dimension"
+  | "definition_unknown_axis_dimension" | "definition_axis_mismatch" | "definition_duplicate_axis_attribute"
   | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch"
   | "attribute_projection_text_too_large" | "attribute_storage_too_large"
   | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict"
@@ -30,7 +30,8 @@ export type CatalogConformanceCode =
   | "sku_payload_limit" | "product_capacity_exceeded" | "product_capacity_invalid"
   | "definition_profile_invalid" | "cadence_kind_unsupported"
   | "advisory_net_content_not_publishable" | "advisory_filter_flags_unused" | "advisory_unit_identifier_missing"
-  | "advisory_draft_version_not_publishable" | "advisory_fixtures_skipped_definition_invalid";
+  | "advisory_draft_version_not_publishable" | "advisory_fixtures_skipped_definition_invalid"
+  | "advisory_variant_attribute_without_axis" | "advisory_openlup_range_unrecognised" | "advisory_openlup_range_unsatisfied";
 /** @experimental */
 export interface CatalogConformanceRule { severity: "error" | "warning"; rule: string; fix: string; recipe: string }
 /** @experimental */
