@@ -351,6 +351,40 @@ describe("strict quote v2", () => {
     });
   });
 
+  it("checks the remaining seal before shape when its peer is missing or malformed", () => {
+    const original = sealQuote();
+    const { moneyDigest: _inner, ...withoutMoney } = original;
+    const { quoteDigest: _outer, ...withoutQuote } = original;
+    const encode = vi.mocked(canonicalCatalogDraftJson);
+    const rows = [
+      [withoutMoney, "/moneyDigest", "commerce.quote.v2"],
+      [withoutQuote, "/quoteDigest", "commerce.quote-money.v2"],
+      [{ ...original, quoteDigest: "malformed", payableMinor: -1 }, "/moneyDigest", "commerce.quote-money.v2"],
+      [{ ...original, moneyDigest: "malformed" }, "/quoteDigest", "commerce.quote.v2"],
+    ] as const;
+    for (const [input, field, dialect] of rows) {
+      encode.mockClear();
+      expect(refusal(input).params).toEqual({
+        code: "money_tax_evidence_mismatch", field, remedy: "Replay the original document and its digest.",
+      });
+      expect(encode.mock.calls.map(([preimage]) => (preimage as readonly unknown[])[0])).toEqual([dialect]);
+    }
+  });
+
+  it("refuses LC6-incompatible input before calling either seal encoder", () => {
+    const original = sealQuote();
+    const encode = vi.mocked(canonicalCatalogDraftJson);
+    const rows = [
+      [{ ...original, destination: { ...original.destination, policyRevision: "a\u0000b" } }, "/destination/policyRevision"],
+      [{ ...original, catalogueEvidenceRef: "λ".repeat(524_288) }, "/catalogueEvidenceRef"],
+    ] as const;
+    for (const [input, field] of rows) {
+      encode.mockClear();
+      expect(refusal(input).params).toMatchObject({ code: "money_input_invalid", field });
+      expect(encode).not.toHaveBeenCalled();
+    }
+  });
+
   it("encodes each digest preimage once without encoding the whole quote first", () => {
     const quote = sealQuote();
     const encode = vi.mocked(canonicalCatalogDraftJson);

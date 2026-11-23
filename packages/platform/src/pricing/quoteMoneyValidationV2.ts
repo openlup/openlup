@@ -115,8 +115,9 @@ export function shapePath(issue: z.ZodIssue): Path {
 export const pointer = (path: Path): string =>
   path.map(key => "/" + String(key).replaceAll("~", "~0").replaceAll("/", "~1")).join("");
 
-export function admit<T>(input: T, remaining = Infinity): T {
-  const ancestors = new Set<object>();
+export function admit<T>(input: T): T {
+  const ancestors = new Set<object>(), copies = new Map<object, Record<string, unknown> | unknown[]>();
+  let remaining = CATALOG_DRAFT_MAX_BYTES;
   let path: Path = [];
   const refusal = () => new MoneyIssue("money_input_invalid", path, "Supply plain JSON data at this field.");
   function charge(value: string) {
@@ -125,17 +126,18 @@ export function admit<T>(input: T, remaining = Infinity): T {
   }
   function visit(value: unknown, at: Path): unknown {
     path = at;
-    if (at.length > 46) throw refusal();
+    if (at.length > 47) throw refusal();
     if (at.length && (value === null || typeof value === "boolean" || (typeof value === "string" && jsonText(value))
       || (typeof value === "number" && Number.isFinite(value) && !Object.is(value, -0)))) {
-      if (remaining !== Infinity) charge(JSON.stringify(value));
+      charge(JSON.stringify(value));
       return value;
     }
     if (value === null || typeof value !== "object" || ancestors.has(value)) throw refusal();
-    const array = Array.isArray(value), prototype = Object.getPrototypeOf(value);
-    if (array ? !at.length || prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) throw refusal();
-    const keys = Reflect.ownKeys(value);
-    const length: unknown = array ? Object.getOwnPropertyDescriptor(value, "length")?.value : undefined;
+    const captured = copies.get(value) ?? value;
+    const array = Array.isArray(captured), prototype = Object.getPrototypeOf(captured);
+    if (array ? !at.length || at.length === 47 || prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) throw refusal();
+    const keys = Reflect.ownKeys(captured);
+    const length: unknown = array ? Object.getOwnPropertyDescriptor(captured, "length")?.value : undefined;
     const snapshot: Record<string, unknown> | unknown[] = array ? [] : {};
     ancestors.add(value);
     charge("[]");
@@ -144,23 +146,21 @@ export function admit<T>(input: T, remaining = Infinity): T {
       path = at; // A symbol can only be identified by its containing object in a JSON pointer.
       if (typeof key !== "string") throw refusal();
       if (array && key === "length") continue;
+      if (array && (!/^(0|[1-9][0-9]*)$/u.test(key) || typeof length !== "number" || Number(key) >= length)) throw refusal();
       path = [...at, key];
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (!descriptor?.enumerable || !("value" in descriptor) || !jsonText(key) || ["__proto__", "constructor", "prototype"].includes(key)
-        || (array && (!/^(0|[1-9][0-9]*)$/u.test(key) || typeof length !== "number" || Number(key) >= length))) throw refusal();
-      if (remaining !== Infinity) charge(separator + (array ? "" : JSON.stringify(key) + ":"));
+      const descriptor = Object.getOwnPropertyDescriptor(captured, key);
+      if (!descriptor?.enumerable || !("value" in descriptor) || !jsonText(key) || ["__proto__", "constructor", "prototype"].includes(key)) throw refusal();
+      charge(separator + (array ? "" : JSON.stringify(key) + ":"));
       (snapshot as Record<string, unknown>)[key] = visit(descriptor.value, path);
       separator = ",";
     }
     if (array && length !== keys.length - 1) { path = at; throw refusal(); }
     ancestors.delete(value);
+    copies.set(value, snapshot);
     return snapshot;
   }
   try { return visit(input, []) as T; }
   catch { throw refusal(); }
-}
-export function checkDocumentSize(value: object, path: Path, framingBytes = 0): void {
-  if (Buffer.byteLength(JSON.stringify(value)) + framingBytes > CATALOG_DRAFT_MAX_BYTES) throw invalid(path);
 }
 
 export const absentFeeBucket = (fees: CommerceQuoteMoneyV2["feeLines"], buckets: ReadonlySet<string>): number =>

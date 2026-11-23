@@ -8,9 +8,10 @@ import type { PromotionEngineVersion } from "./contracts/offerPolicy.js";
 import type { CommerceCodeRejection, CommerceQuoteDiscount } from "./contracts/quote.js";
 import type { CommerceQuoteMoneyV2 as Body, DeliveryBucketV2, DiscountAllocationV2, FeeLineV2,
   MoneyLineV2, TaxPositionV2 } from "./contracts/quoteV2.js";
+import { CATALOG_DRAFT_MAX_BYTES } from "../catalog/contracts/index.js";
 import { quoteCodeRejectionDetailSchema } from "./quoteCodeRejectionDetails.js";
 import { quoteDigest } from "./quoteDigest.js";
-import { absentFeeBucket, admit, bucketSource, checkDocumentSize, checkMoney, currency, engine, evidence, factsShape, feeLine,
+import { absentFeeBucket, admit, bucketSource, checkMoney, currency, engine, evidence, factsShape, feeLine,
   lineSource, minor, MoneyIssue, moneyRef, pointer, positionAmounts, positionMetadata, price, ref, remedies,
   shapePath, sumMinor, uuid } from "./quoteMoneyValidationV2.js";
 import type { Code, Path } from "./quoteMoneyValidationV2.js";
@@ -41,6 +42,9 @@ type SharedFacts = Pick<Body, "catalogueEvidenceRef" | "mode" | "cadence" | "des
 type CodeDiagnostics = Readonly<{
   codeRejections: readonly CommerceCodeRejection[]; codeRejectionDetails: readonly CommerceCodeRejectionDetail[];
 }>;
+type PromotionDiagnostics = Readonly<{ codeDiagnostics?: CodeDiagnostics;
+  displacedCodes?: readonly (CommerceCodeRejection & { reason: "better_price_exists" })[];
+}>;
 type RateRows = Extract<CatalogueMoneyV2Tax, { kind: "inclusive" }>["components"];
 
 /** @experimental Resolved list-basis prices, owner adjustments and delivery alternatives. Supply the promotion owner’s applied code values in order. */
@@ -52,8 +56,8 @@ export type PlanCommerceQuoteMoneyV2Input = Readonly<{
 /** @experimental Winning basis plan for offline tax composition. */
 export type CommerceQuoteMoneyV2Plan = Readonly<{
   kind: "planned"; currency: string; price: Body["price"]; promotion: Body["promotion"]; lines: readonly Source[];
-  winner: Candidate; moneyInput: CatalogueMoneyV2Input; plan: CatalogueMoneyV2Plan; codeDiagnostics?: CodeDiagnostics;
-}>;
+  winner: Candidate; moneyInput: CatalogueMoneyV2Input; plan: CatalogueMoneyV2Plan;
+}> & PromotionDiagnostics;
 /** @experimental Planning input and evidence required to assemble money for the winning candidate. */
 export type ComposeCommerceQuoteMoneyV2Input = Readonly<{
   planInput: PlanCommerceQuoteMoneyV2Input; facts: SharedFacts;
@@ -170,16 +174,16 @@ function planAdmitted(input: PlanCommerceQuoteMoneyV2Input): CommerceQuoteMoneyV
     const selected = selectedFacts && adjustments && planCandidate({ ...selectedFacts, adjustments }, currencyCode, lines, scope, amountBasis);
     const winner = selected && selected.score <= baseline.score ? selected : baseline;
     const diagnostics = input.codeDiagnostics;
-    const displaced = winner === baseline ? diagnostics?.appliedCodes.map(code => ({ code, reason: "better_price_exists" as const })) : undefined;
+    const displacedCodes = winner === baseline ? diagnostics?.appliedCodes.map(code => ({ code, reason: "better_price_exists" as const })) : undefined;
     return { kind: "planned", currency: currencyCode, price: priceFacts, lines,
       winner: winner.winner, moneyInput: winner.moneyInput, plan: winner.plan,
       promotion: { engine: input.engine, rankingRuleRef: amountBasis === "inclusive" ? "lowest_payable_gross" : "lowest_pre_tax.v1" },
       ...(diagnostics ? { codeDiagnostics: { codeRejectionDetails: diagnostics.codeRejectionDetails,
-        codeRejections: displaced?.length ? [...diagnostics.codeRejections, ...displaced] : diagnostics.codeRejections } } : {}) };
+        codeRejections: diagnostics.codeRejections } } : {}), ...(displacedCodes?.length ? { displacedCodes } : {}) };
   } catch (error) { return refusal(error, scope, true); }
 }
 
-/** @experimental Rank the supplied owner outcome and the no-adjustment baseline on their list basis. */
+/** @experimental For exclusive tax, derive the request from the unmodified plan for one immutable planning input and call verifyTaxQuoteResult on that exact request and result before composition. */
 export function planCommerceQuoteMoneyV2(input: PlanCommerceQuoteMoneyV2Input): CommerceQuoteMoneyV2Plan | CommerceQuoteMoneyV2Refusal {
   try { return planAdmitted(admit(input)); }
   catch (error) { return refusal(error, "/currency"); }
@@ -188,9 +192,6 @@ export function planCommerceQuoteMoneyV2(input: PlanCommerceQuoteMoneyV2Input): 
 function componentKey(component: CatalogueMoneyV2ComponentRef): string {
   return JSON.stringify(component.kind === "merchandise"
     ? [component.kind, component.lineKey, component.sourceOrdinal] : [component.kind, component.bucketKey, component.sourceOrdinal]);
-}
-function allocationKey(component: CatalogueMoneyV2ComponentRef, sequence: number): string {
-  return componentKey(component) + "/" + sequence;
 }
 function uniqueMap<T>(entries: readonly T[], key: (item: T) => string, code: Code, field: string): Map<string, T> {
   const result = new Map<string, T>();
@@ -225,7 +226,6 @@ function exclusiveResult(input: Extract<ComposeCommerceQuoteMoneyV2Input, { veri
   return { result, feeLines };
 }
 
-type ResultComponent = CatalogueMoneyV2Result["components"][number];
 function positionReader(input: ComposeCommerceQuoteMoneyV2Input, result: CatalogueMoneyV2Result) {
   const remaining = uniqueMap(input.positions.map((row, index) => "ref" in row
     ? { index, key: componentKey(row.ref), position: row.position } : { index, key: row.positionRef, position: row }),
@@ -261,22 +261,21 @@ function positionReader(input: ComposeCommerceQuoteMoneyV2Input, result: Catalog
 
 function projectComponents(input: ComposeCommerceQuoteMoneyV2Input, planned: CommerceQuoteMoneyV2Plan, result: CatalogueMoneyV2Result) {
   const positions = positionReader(input, result);
-  const ids = uniqueMap(input.allocationIds, row => allocationKey(row.ref, row.sequence),
+  const ids = uniqueMap(input.allocationIds, row => componentKey(row.ref) + "/" + row.sequence,
     "promotion_allocation_unsubstantiated", "/allocationIds");
-  function project({ ref, initial, final, allocations }: ResultComponent) {
+  function project({ ref, initial, final, allocations }: CatalogueMoneyV2Result["components"][number]) {
     const state = (row: CatalogueMoneyV2State) => ({
       basisMinor: row.amountMinor, netMinor: row.netMinor, taxMinor: row.taxMinor, taxPositions: positions.read(ref, row),
     });
     const discountAllocations: DiscountAllocationV2[] = allocations.map(share => {
       const { adjustmentRef, sequence, basisReductionMinor, netReductionMinor, taxReductionMinor } = share;
-      const key = allocationKey(ref, sequence);
+      const key = componentKey(ref) + "/" + sequence;
       const supplied = ids.get(key);
-      const adjustment = planned.winner.adjustments[sequence - 1];
       if (!supplied) fail("promotion_allocation_unsubstantiated", "/allocationIds");
       ids.delete(key);
       return { allocationId: supplied.allocationId,
         adjustmentRef, sequence, basisReductionMinor, netReductionMinor, taxReductionMinor, source: "legacy_promotion",
-        evidenceRef: adjustment.evidenceRef, before: state(share.before), after: state(share.after) };
+        evidenceRef: planned.winner.adjustments[sequence - 1].evidenceRef, before: state(share.before), after: state(share.after) };
     });
     return { preDiscountMinor: initial.amountMinor, effectiveMinor: final.amountMinor, discountAllocations,
       netMinor: final.netMinor, taxMinor: final.taxMinor, lineTotalMinor: final.totalMinor, taxPositions: positions.read(ref, final) };
@@ -303,10 +302,9 @@ function projectComponents(input: ComposeCommerceQuoteMoneyV2Input, planned: Com
   return { lines, deliveryBuckets };
 }
 
-function compositionPath(input: ComposeCommerceQuoteMoneyV2Input, selected: boolean, money: Body, path: Path): Path {
+function compositionPath(input: ComposeCommerceQuoteMoneyV2Input, candidate: Path, money: Body, path: Path): Path {
   const [root, index, ...tail] = path;
-  const candidate = ["planInput", selected ? "selected" : "baseline"];
-  if (root === "payableMinor") return ["facts", "paymentLimits", money.payableMinor > input.facts.paymentLimits.maxMinor ? "maxMinor" : "minMinor"];
+  if (root === "payableMinor") return money.payableMinor === 0 ? candidate : ["facts", "paymentLimits", money.payableMinor > input.facts.paymentLimits.maxMinor ? "maxMinor" : "minMinor"];
   if (root === "feeLines") {
     if ("fiscal" in input) return [...candidate, ...path];
     const feeIndex = input.feeLines.findIndex(fee => fee.feeKey === money.feeLines[Number(index)]?.feeKey);
@@ -355,9 +353,9 @@ const compositionShape = z.looseObject({ planInput: z.looseObject({}), facts: fa
 const fiscalShape = z.array(z.strictObject({ ref: componentRef, rateBps: z.number() }));
 const fiscalPositions = z.array(z.strictObject({ ref: componentRef, position: positionMetadata }));
 
-/** @experimental Assemble digest-bound money from a plan and its resolved tax evidence. */
+/** @experimental For exclusive tax, reuse the immutable planning input and pass the result verified by verifyTaxQuoteResult against the exact request derived from the unmodified plan. */
 export function composeCommerceQuoteMoneyV2(input: ComposeCommerceQuoteMoneyV2Input):
-  Readonly<{ kind: "composed"; money: Body; moneyDigest: string; codeDiagnostics?: CodeDiagnostics }> | CommerceQuoteMoneyV2Refusal {
+  (Readonly<{ kind: "composed"; money: Body; moneyDigest: string }> & PromotionDiagnostics) | CommerceQuoteMoneyV2Refusal {
   let scope = "/planInput";
   try {
     const admitted = admit(input);
@@ -370,7 +368,6 @@ export function composeCommerceQuoteMoneyV2(input: ComposeCommerceQuoteMoneyV2In
       read(fiscalPositions, admitted.positions, "/positions", "money_tax_evidence_mismatch");
     } else {
       read(resultShape, admitted.verifiedMoney, "/verifiedMoney");
-      checkDocumentSize(admitted.verifiedMoney, ["verifiedMoney"]);
       read(z.array(positionMetadata), admitted.positions, "/positions", "money_tax_evidence_mismatch");
       read(z.array(feeLine).max(256), admitted.feeLines, "/feeLines");
     }
@@ -387,10 +384,12 @@ export function composeCommerceQuoteMoneyV2(input: ComposeCommerceQuoteMoneyV2In
     const projected = { ...admitted.facts, ...projectComponents(admitted, planned, result), feeLines, amountBasis,
       netTotal, taxTotal, feeTotal, payableMinor, taxEvidence, price: planned.price, currency: planned.currency,
       deliverySelectionRef: planned.winner.deliverySelectionRef, promotion: planned.promotion } as Body;
+    const candidate = ["planInput", planned.winner.adjustments.length ? "selected" : "baseline"];
     const issue = checkMoney(projected);
-    if (issue) throw new MoneyIssue(issue.code, compositionPath(admitted, planned.winner.adjustments.length > 0, projected, issue.path), issue.remedy);
-    checkDocumentSize(projected, ["planInput"], 28);
+    if (issue) throw new MoneyIssue(issue.code, compositionPath(admitted, candidate, projected, issue.path), issue.remedy);
+    if (Buffer.byteLength(JSON.stringify(projected)) + 28 > CATALOG_DRAFT_MAX_BYTES) throw new MoneyIssue("money_input_invalid", candidate);
     return { kind: "composed", money: projected, moneyDigest: quoteDigest("commerce.quote-money.v2", projected),
-      ...(planned.codeDiagnostics ? { codeDiagnostics: planned.codeDiagnostics } : {}) };
+      ...(planned.codeDiagnostics ? { codeDiagnostics: planned.codeDiagnostics } : {}),
+      ...(planned.displacedCodes ? { displacedCodes: planned.displacedCodes } : {}) };
   } catch (error) { return refusal(error, scope); }
 }

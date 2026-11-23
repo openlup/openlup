@@ -270,6 +270,7 @@ describe("promotion owner parity with offline composition", () => {
     const quote = composed(fiscalInput(ownerPlan(result, "v2", 900)));
     expect(quote.money.lines[0].discountAllocations).toMatchObject([{ adjustmentRef: "Z-winner" }]);
     expect(quote.codeDiagnostics?.codeRejections).toEqual(result.codeRejections);
+    expect(quote).not.toHaveProperty("displacedCodes");
 
     const codeWinner = await owner([], codes, "v2", 900, candidates);
     expect(codeWinner.discounts).toMatchObject([{ promotionId: "a-code", code: "Other" }]);
@@ -293,7 +294,7 @@ describe("promotion owner parity with offline composition", () => {
     { engine: "v1", codes: ["save", "Unknown", "SAVE"], collision: true },
     { engine: "v1", codes: [" sAvE ", "Unknown"], collision: false },
     { engine: "v2", codes: [" sAvE ", "Unknown"], collision: false },
-  ] as const)("appends the $engine owner's literal applied values after its unchanged diagnostics", async ({ engine, codes, collision }) => {
+  ] as const)("returns the $engine owner's literal applied values separately from its diagnostics", async ({ engine, codes, collision }) => {
     const coupon = row("promo", { code: "SAVE", trigger_type: "coupon_code", discount_type: "fixed_amount", discount_value: 90 });
     const rows = collision ? [row("lower", { ...coupon, id: "lower", code: "save", discount_value: 10 }), coupon] : [coupon];
     const result = await owner(rows, [...codes], engine, 1_000);
@@ -303,23 +304,24 @@ describe("promotion owner parity with offline composition", () => {
     const planning = ownerPlan(result, engine, 1_000);
     const outcome = composed(fiscalInput(planning));
     expect(outcome.money).toMatchObject({ payableMinor: 1_000, deliveryBuckets: [{ parts: [{ effectiveMinor: 0 }] }] });
-    expect(outcome.codeDiagnostics).toStrictEqual({
-      codeRejections: [...result.codeRejections, { code: "SAVE", reason: "better_price_exists" }],
-      codeRejectionDetails: result.codeRejectionDetails,
-    });
+    expect(outcome.displacedCodes).toStrictEqual([{ code: "SAVE", reason: "better_price_exists" }]);
+    expect(JSON.stringify(outcome.codeDiagnostics?.codeRejections)).toBe(JSON.stringify(result.codeRejections));
+    expect(JSON.stringify(outcome.codeDiagnostics?.codeRejectionDetails)).toBe(JSON.stringify(result.codeRejectionDetails));
   });
 
-  it("retains the owner's applied order and exact values alongside unchanged rejection details", () => {
-    const codeRejections = [{ code: "   Not eligible ", reason: "not_eligible" }] as const;
-    const codeRejectionDetails = [{ code: "   Not eligible ", reason: "global_limit_reached" }] as const;
+  it("keeps displacement duplicates in owner order and passes both diagnostic arrays through byte for byte", () => {
+    const codeRejections = [{ reason: "not_eligible", code: "   Not eligible " }] as const;
+    const codeRejectionDetails = [{ reason: "global_limit_reached", code: "   Not eligible " }] as const;
+    const appliedCodes = ["Z", " sAvE ", "SAVE", " sAvE "];
     const planning = planInput({
       selected: { ...baseline, delivery: [bucket("handling", 3)], adjustments: [adjustment("promotion", 1, { lineKeys: ["a"] })] },
-      codeDiagnostics: { appliedCodes: ["Z", " sAvE ", "SAVE"], codeRejections, codeRejectionDetails },
+      codeDiagnostics: { appliedCodes, codeRejections, codeRejectionDetails },
     });
-    expect(composed(fiscalInput(planning)).codeDiagnostics).toStrictEqual({
-      codeRejectionDetails,
-      codeRejections: [...codeRejections, ...["Z", " sAvE ", "SAVE"].map(code => ({ code, reason: "better_price_exists" }))],
-    });
+    for (const outcome of [planned(planning), composed(fiscalInput(planning))]) {
+      expect(JSON.stringify(outcome.codeDiagnostics?.codeRejections)).toBe(JSON.stringify(codeRejections));
+      expect(JSON.stringify(outcome.codeDiagnostics?.codeRejectionDetails)).toBe(JSON.stringify(codeRejectionDetails));
+      expect(outcome.displacedCodes).toStrictEqual(appliedCodes.map(code => ({ code, reason: "better_price_exists" })));
+    }
   });
 });
 
@@ -399,6 +401,14 @@ describe("caller-relative quote money refusals", () => {
       const valid = composeWithFee();
       return { ...valid, planInput: { ...valid.planInput, lines: [{ ...valid.planInput.lines[0], quantity: 0 }] } };
     }, field: "/planInput/lines/0/quantity" },
+    { name: "invalid selected adjustment in composition", run: compose, make: () => ({
+      ...composeWithFee(), planInput: planInput({ selected: { ...selected, adjustments: [adjustment("bad", 1, { lineKeys: ["missing"] })] } }),
+    }), field: "/planInput/selected/adjustments/0/target/lineKeys/0" },
+    { name: "nonpayable winning baseline", run: compose, make: () => fiscalInput(planInput({ lines: [source("a", 1, 0)] })),
+      field: "/planInput/baseline" },
+    { name: "nonpayable winning selected candidate", run: compose, make: () => fiscalInput(planInput({
+      selected: { ...baseline, adjustments: [adjustment("waiver", 100, { lineKeys: ["a"] })] },
+    })), field: "/planInput/selected" },
     { name: "missing projected facts", run: compose, make: () => ({ ...composeWithFee(), facts: {} }),
       field: "/facts/catalogueEvidenceRef", missing: true },
     { name: "explicit undefined cadence", run: compose, make: () => ({
@@ -467,17 +477,34 @@ describe("caller-relative quote money refusals", () => {
   ] as const;
   const trap = () => { throw new Error("must stay inside admission"); };
   const accessor = { get defect() { throw new Error("getter must not be invoked"); } };
+  const deep = (links: number, leaf: unknown) => Array.from({ length: links }).reduce<unknown>(value => ({ defect: value }), leaf);
   const cases = [
     { name: "revoked root proxy", nested: false, make: (value: object) => {
       const { proxy, revoke } = Proxy.revocable(value, {});
       revoke();
       return proxy;
     }, suffix: "" },
+    { name: "root array hole", nested: false, make: () => Array(2), suffix: "" },
+    { name: "root symbol key", nested: false, make: (value: object) => ({ ...value, [Symbol()]: 1 }), suffix: "" },
     { name: "throwing root reflection", nested: false, make: (value: object) => new Proxy(value, { ownKeys: trap }), suffix: "" },
     { name: "throwing nested reflection", nested: true, make: (value: object) => new Proxy(value, { getPrototypeOf: trap }), suffix: "" },
     { name: "accessor", nested: true, make: (value: object) => Object.defineProperties({ ...value }, Object.getOwnPropertyDescriptors(accessor)), suffix: "/defect" },
     { name: "hidden own key", nested: true, make: (value: object) => Object.defineProperty({ ...value }, "defect", { value: 1 }), suffix: "/defect" },
     { name: "symbol own key", nested: true, make: (value: object) => ({ ...value, [Symbol("defect")]: 1 }), suffix: "" },
+    { name: "escaped own-member key", nested: true, make: (value: object) => Object.defineProperty({ ...value }, "defect~/", { value: 1 }), suffix: "/defect~0~1" },
+    { name: "array hole", nested: true, make: (value: object) => ({ ...value, defect: Array(2) }), suffix: "/defect" },
+    { name: "array extra own key", nested: true, make: (value: object) => ({ ...value, defect: Object.assign([1], { extra: 1 }) }), suffix: "/defect" },
+    { name: "hidden array index", nested: true, make: (value: object) => ({ ...value, defect: Object.defineProperty([1], "0", { enumerable: false }) }), suffix: "/defect/0" },
+    { name: "cycle", nested: true, make: (value: object) => {
+      const linked = { ...value, defect: value };
+      linked.defect = linked;
+      return linked;
+    }, suffix: "/defect" },
+    { name: "NUL string", nested: true, make: (value: object) => ({ ...value, defect: "a\u0000b" }), suffix: "/defect" },
+    { name: "NUL key", nested: true, make: (value: object) => ({ ...value, "a\u0000b": 1 }), suffix: "/a\u0000b" },
+    { name: "LC6 UTF-8 byte limit", nested: true, make: (value: object) => ({ ...value, defect: "λ".repeat(524_288) }), suffix: "/defect" },
+    { name: "LC6 depth limit", nested: true, make: (value: object) => ({ ...value, defect: deep(46, true) }), suffix: "/defect".repeat(47) },
+    { name: "LC6 depth limit for array length", nested: true, make: (value: object) => ({ ...value, defect: deep(45, []) }), suffix: "/defect".repeat(46) },
     { name: "non-plain prototype", nested: true, make: (value: object) => Object.assign(Object.create({ custom: true }), value) as object, suffix: "" },
     { name: "explicit undefined", nested: true, make: (value: object) => ({ ...value, defect: undefined }), suffix: "/defect" },
     { name: "infinite number", nested: true, make: (value: object) => ({ ...value, defect: Infinity }), suffix: "/defect" },
@@ -513,6 +540,37 @@ describe("caller-relative quote money refusals", () => {
     const success = { plan: { kind: "planned" }, compose: { kind: "composed" }, quote: { success: true } };
     expect(entry.run(input)).toMatchObject(success[entry.name]);
     expect(calls).toBe(1);
+  });
+  it.each(entries)("$name keeps a descriptor capture when the same proxy occurs at two paths", entry => {
+    let reads = 0;
+    const child = new Proxy({ observed: 1 }, {
+      get: trap,
+      getOwnPropertyDescriptor(target, key) {
+        if (++reads > 1) trap();
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+    });
+    const input = { ...entry.make(), first: child, second: child };
+    const expected = { plan: { kind: "planned" }, compose: { kind: "composed" }, quote: { code: "money_tax_evidence_mismatch" } };
+    expect(entry.run(input)).toMatchObject(expected[entry.name]);
+    expect(reads).toBe(1);
+  });
+
+  it.each(entries)("$name admits a dense array and reads its intrinsic length exactly once", entry => {
+    const input = entry.make() as unknown as { lines: unknown[]; planInput?: { lines: unknown[] } };
+    const holder = input.planInput ?? input;
+    const reads: string[] = [];
+    const expectedKeys = [...Object.keys(holder.lines), "length"].sort();
+    holder.lines = new Proxy([...holder.lines], {
+      get: trap,
+      getOwnPropertyDescriptor(target, key) {
+        reads.push(String(key));
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+    });
+    const expected = { plan: { kind: "planned" }, compose: { kind: "composed" }, quote: { success: true } };
+    expect(entry.run(input)).toMatchObject(expected[entry.name]);
+    expect(reads.sort()).toEqual(expectedKeys);
   });
 });
 

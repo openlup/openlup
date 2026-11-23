@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { CATALOG_DRAFT_MAX_BYTES } from "../catalog/contracts/index.js";
 import type { CommerceQuoteV2 } from "./contracts/quoteV2.js";
 import { quoteDigest } from "./quoteDigest.js";
 import { admit, checkMoney, digest, MoneyIssue, pointer, quoteShape, shapePath } from "./quoteMoneyValidationV2.js";
@@ -7,16 +6,18 @@ import { admit, checkMoney, digest, MoneyIssue, pointer, quoteShape, shapePath }
 function checkIntegrity(document: CommerceQuoteV2): void {
   const { quoteDigest: outer, ...quote } = document;
   const { moneyDigest: inner, quoteId: _id, status: _status, schemaVersion: _schema, contractVersion: _contract, ...money } = quote;
-  if (!digest.safeParse(inner).success || !digest.safeParse(outer).success) return;
-  const remedy = "Replay the original document and its digest.";
-  if (quoteDigest("commerce.quote-money.v2", money) !== inner) throw new MoneyIssue("money_tax_evidence_mismatch", ["moneyDigest"], remedy);
-  if (quoteDigest("commerce.quote.v2", quote) !== outer) throw new MoneyIssue("money_tax_evidence_mismatch", ["quoteDigest"], remedy);
+  const moneyMismatch = inner === undefined ? outer !== undefined
+    : digest.safeParse(inner).success && quoteDigest("commerce.quote-money.v2", money) !== inner;
+  const quoteMismatch = outer === undefined ? inner !== undefined
+    : digest.safeParse(outer).success && quoteDigest("commerce.quote.v2", quote) !== outer;
+  if (moneyMismatch || quoteMismatch) throw new MoneyIssue("money_tax_evidence_mismatch",
+    [moneyMismatch && outer !== undefined ? "moneyDigest" : "quoteDigest"], "Replay the original document and its digest.");
 }
 
 /** @experimental Validate plain JSON quotes, refusing hidden own keys. Read code, field and remedy from issue params. */
 export const commerceQuoteV2Schema: z.ZodType<CommerceQuoteV2> = z.unknown().transform((value, ctx) => {
   try {
-    const input = admit(value, CATALOG_DRAFT_MAX_BYTES);
+    const input = admit(value);
     checkIntegrity(input as CommerceQuoteV2);
     const parsed = quoteShape.safeParse(input);
     if (!parsed.success) throw new MoneyIssue("money_input_invalid", shapePath(parsed.error.issues[0]));

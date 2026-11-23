@@ -919,6 +919,12 @@ type CodeDiagnostics = Readonly<{
     codeRejections: readonly CommerceCodeRejection[];
     codeRejectionDetails: readonly CommerceCodeRejectionDetail[];
 }>;
+type PromotionDiagnostics = Readonly<{
+    codeDiagnostics?: CodeDiagnostics;
+    displacedCodes?: readonly (CommerceCodeRejection & {
+        reason: "better_price_exists";
+    })[];
+}>;
 type RateRows = Extract<CatalogueMoneyV2Tax, {
     kind: "inclusive";
 }>["components"];
@@ -945,8 +951,7 @@ export type CommerceQuoteMoneyV2Plan = Readonly<{
     winner: Candidate;
     moneyInput: CatalogueMoneyV2Input;
     plan: CatalogueMoneyV2Plan;
-    codeDiagnostics?: CodeDiagnostics;
-}>;
+}> & PromotionDiagnostics;
 /** @experimental Planning input and evidence required to assemble money for the winning candidate. */
 export type ComposeCommerceQuoteMoneyV2Input = Readonly<{
     planInput: PlanCommerceQuoteMoneyV2Input;
@@ -980,15 +985,14 @@ export type CommerceQuoteMoneyV2Refusal = Readonly<{
     field: string;
     remedy: string;
 }>;
-/** @experimental Rank the supplied owner outcome and the no-adjustment baseline on their list basis. */
+/** @experimental For exclusive tax, derive the request from the unmodified plan for one immutable planning input and call verifyTaxQuoteResult on that exact request and result before composition. */
 export declare function planCommerceQuoteMoneyV2(input: PlanCommerceQuoteMoneyV2Input): CommerceQuoteMoneyV2Plan | CommerceQuoteMoneyV2Refusal;
-/** @experimental Assemble digest-bound money from a plan and its resolved tax evidence. */
-export declare function composeCommerceQuoteMoneyV2(input: ComposeCommerceQuoteMoneyV2Input): Readonly<{
+/** @experimental For exclusive tax, reuse the immutable planning input and pass the result verified by verifyTaxQuoteResult against the exact request derived from the unmodified plan. */
+export declare function composeCommerceQuoteMoneyV2(input: ComposeCommerceQuoteMoneyV2Input): (Readonly<{
     kind: "composed";
     money: Body;
     moneyDigest: string;
-    codeDiagnostics?: CodeDiagnostics;
-}> | CommerceQuoteMoneyV2Refusal;
+}> & PromotionDiagnostics) | CommerceQuoteMoneyV2Refusal;
 export {};
 ```
 ## dist/pricing/commerceQuoteSnapshotExpect.d.ts

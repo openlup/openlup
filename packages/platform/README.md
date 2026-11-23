@@ -1244,9 +1244,9 @@ handling before tax and fees. Equal scores retain the promotion owner's choice.
 Pass the same planning input as `planInput` to `composeCommerceQuoteMoneyV2`
 with matching tax evidence and allocation IDs. Composition reruns the planner.
 Provide separate fiscal rates and position metadata for inclusive money, or
-the verified tax result, position and fee metadata for exclusive money. Code
-diagnostics sit beside the money. The sealed evaluation commits the destination
-binding, selection, service and evidence expiry through `taxEvidence.evidenceDigest` in both arms.
+the verified tax result, position and fee metadata for exclusive money. Owner
+diagnostics and `displacedCodes` are separate. In both arms, `taxEvidence.evidenceDigest`
+commits the destination binding, selection, service and evidence expiry.
 
 Use `quoteDigest` with `commerce.quote-money.v2` for the shared money and
 `commerce.quote.v2` for the complete estimate or final quote without its
