@@ -22,6 +22,10 @@ const ENV = {
   PLATFORM_OPERATOR_TOKEN: TOKEN,
   PLATFORM_OPERATOR_ID: ACTOR,
 };
+const TRUSTED_HOPS = "CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS";
+const SUBMISSION = {
+  company: "Acme Foods", country: "US", firstName: "Jane", lastName: "Smith", email: "jane@acme.example",
+};
 const CASE = {
   contractVersion: "partner_acquisition_v1" as const,
   caseRef: "acquisition-case:11111111-1111-4111-8111-111111111111",
@@ -70,6 +74,7 @@ function request(
       "x-forwarded-for": "127.0.0.1",
       ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
+    socket: { remoteAddress: "127.0.0.1" },
   } as unknown as HttpRequest;
 }
 
@@ -96,6 +101,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe("partner acquisition direct BFF", () => {
@@ -156,6 +163,72 @@ describe("partner acquisition direct BFF", () => {
       ok: true,
       data: { success: true, id: CASE.caseRef },
     });
+  });
+
+  it("keys port commands by the socket peer across different forwarding values", async () => {
+    const adapter = port();
+    const submit = createPartnerAcquisitionSubmitHandler({ env: ENV, resolvePort: async () => adapter });
+    for (const [peer, forwarded] of [
+      ["192.0.2.7", "198.51.100.7"],
+      ["192.0.2.7", "198.51.100.8"],
+      ["192.0.2.8", "198.51.100.7"],
+    ] as const) {
+      const req = request("POST", SUBMISSION);
+      req.headers["x-forwarded-for"] = forwarded;
+      req.socket = { remoteAddress: peer } as HttpRequest["socket"];
+      await submit(req, response());
+    }
+    expect(vi.mocked(adapter.submit).mock.calls.map(([command]) => command.requesterKey))
+      .toEqual(["192.0.2.7", "192.0.2.7", "192.0.2.8"]);
+  });
+
+  it("uses the selected environment's hosted address despite ambient hop configuration", async () => {
+    vi.stubEnv(TRUSTED_HOPS, "1");
+    const adapter = port();
+    const submit = createPartnerAcquisitionSubmitHandler({
+      env: { ...ENV, VERCEL: "1" },
+      resolvePort: async () => adapter,
+    });
+    const req = request("POST", SUBMISSION);
+    req.headers["x-real-ip"] = "203.0.113.7";
+    await submit(req, response());
+
+    expect(adapter.submit).toHaveBeenCalledWith(expect.objectContaining({ requesterKey: "203.0.113.7" }));
+  });
+
+  it("uses the shared requester key for malformed hop configuration", async () => {
+    const adapter = port();
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await createPartnerAcquisitionSubmitHandler({
+      env: { ...ENV, [TRUSTED_HOPS]: "invalid" },
+      resolvePort: async () => adapter,
+    })(request("POST", SUBMISSION), response());
+
+    expect(adapter.submit).toHaveBeenCalledWith(expect.objectContaining({ requesterKey: "unknown" }));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("OPENLUP_E_TRUSTED_PROXY_HOPS_INVALID"));
+  });
+
+  it("uses the shared requester key when address provenance is absent", async () => {
+    const adapter = port();
+    const req = request("POST", SUBMISSION);
+    delete req.headers["x-forwarded-for"];
+    const withoutPeer = { ...req, socket: undefined } as unknown as HttpRequest;
+    const res = response();
+    await createPartnerAcquisitionSubmitHandler({ env: ENV, resolvePort: async () => adapter })(withoutPeer, res);
+
+    expect(adapter.submit).toHaveBeenCalledWith(expect.objectContaining({ requesterKey: "unknown" }));
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("refuses an invalid idempotency key on a valid body before opening the port", async () => {
+    const resolvePort = vi.fn(async () => port());
+    const req = request("POST", SUBMISSION);
+    req.headers["idempotency-key"] = "bad";
+    const res = response();
+    await createPartnerAcquisitionSubmitHandler({ env: ENV, resolvePort })(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(resolvePort).not.toHaveBeenCalled();
   });
 
   it("authorizes before opening the partner port", async () => {

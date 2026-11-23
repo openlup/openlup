@@ -31,11 +31,13 @@ type SurveySubmitRuntimeEnv = Record<string, string | undefined> & {
 };
 
 type SurveyTable = "survey_responses_producer" | "survey_responses_consumer";
+type SurveyCountFilter = {
+  gte(field: "created_at", value: string): Promise<{ count: number | null; error?: unknown }>;
+};
 type SurveyTableClient = {
   select(columns: "id", options: { count: "exact"; head: true }): {
-    eq(field: "ip_address", value: string): {
-      gte(field: "created_at", value: string): Promise<{ count: number | null; error?: unknown }>;
-    };
+    eq(field: "ip_address", value: string): SurveyCountFilter;
+    is(field: "ip_address", value: null): SurveyCountFilter;
   };
   insert(row: Record<string, unknown>): {
     select(columns: "id"): {
@@ -51,39 +53,38 @@ type SurveyClient = PublicIntakeEmailDeliveryClient & {
 };
 
 export function createSupabaseResearchSurveySubmitPort(
-  env: SurveySubmitRuntimeEnv = process.env,
+  env: SurveySubmitRuntimeEnv,
+  rateLimitAddress: string,
 ): MarketingResearchSurveySubmitPort {
   return {
     async submitSurveyResponse(request, context) {
-      const config = resolveRuntimeConfig(env);
-      if (config.ok === false) throw new Error(config.error);
-      return runResearchSurveySubmitHandler(request, context?.headers, env, config);
+      return runResearchSurveySubmitHandler(request, context?.headers, rateLimitAddress, env);
     },
   };
 }
 
-export async function runResearchSurveySubmitHandler(
+async function runResearchSurveySubmitHandler(
   request: ResearchSurveySubmitRequest,
   headers: MarketingResearchSurveyRequestHeaders | undefined,
-  env: SurveySubmitRuntimeEnv = process.env,
-  resolvedConfig?: Extract<ReturnType<typeof resolveRuntimeConfig>, { ok: true }>,
+  rateLimitAddress: string,
+  env: SurveySubmitRuntimeEnv,
 ): Promise<ResearchSurveySubmitResponse> {
-  const config = resolvedConfig ?? resolveRuntimeConfig(env);
+  const config = resolveRuntimeConfig(env);
   if (config.ok === false) throw new Error(config.error);
   const client = createServiceRoleClient({
     url: config.url,
     serviceRoleKey: config.serviceRoleKey,
   }) as unknown as SurveyClient;
+  const ipAddress = rateLimitAddress === "unknown" ? null : rateLimitAddress;
   const gateway: ManagedSurveyResponseGateway = {
     async checkRateLimit(input) {
       const boundedWindow = Math.max(1, Math.min(input.windowMinutes, 720));
       const boundedMax = Math.max(1, Math.min(input.maxPerIp, 100));
       const since = new Date(input.now.getTime() - boundedWindow * 60_000).toISOString();
       try {
-        const { count, error } = await client.from(input.table)
-          .select("id", { count: "exact", head: true })
-          .eq("ip_address", input.ip)
-          .gte("created_at", since);
+        const query = client.from(input.table).select("id", { count: "exact", head: true });
+        const matched = ipAddress === null ? query.is("ip_address", null) : query.eq("ip_address", ipAddress);
+        const { count, error } = await matched.gte("created_at", since);
         if (error || count === null) return "unavailable";
         return count >= boundedMax ? "limited" : "allowed";
       } catch {
@@ -93,7 +94,7 @@ export async function runResearchSurveySubmitHandler(
     async insert(input) {
       const { data, error } = await client.from(input.table).insert({
         response_data: input.responseData,
-        ip_address: input.ip,
+        ip_address: ipAddress,
         user_agent: input.userAgent,
       }).select("id").single();
       return error || !data ? null : { id: data.id };
@@ -116,7 +117,11 @@ export async function runResearchSurveySubmitHandler(
     windowMinutes: readPositiveNumberEnv(env, "SURVEY_RESPONSE_RATE_LIMIT_WINDOW_MINUTES", 60),
     maxPerIp: readPositiveNumberEnv(env, "SURVEY_RESPONSE_RATE_LIMIT_MAX_PER_IP", 20),
   });
-  return submit(request, requestHeaders(headers));
+  const submitHeaders = new Headers();
+  headers?.forEach((value, key) => {
+    if (key.toLowerCase() === "user-agent") submitHeaders.set("user-agent", value);
+  });
+  return submit(request, submitHeaders);
 }
 
 function resolveRuntimeConfig(env: SurveySubmitRuntimeEnv):
@@ -145,12 +150,6 @@ function readRequiredResendApiKey(env: SurveySubmitRuntimeEnv): string {
     throw new Error("RESEND_API_KEY is required unless RESEND_PROVIDER_MODE=sandbox is set");
   }
   return env.RESEND_API_KEY;
-}
-
-function requestHeaders(input: MarketingResearchSurveyRequestHeaders | undefined): Headers {
-  const headers = new Headers();
-  input?.forEach((value, key) => headers.set(key, value));
-  return headers;
 }
 
 export function readNotifyTo(env: SurveySubmitRuntimeEnv): string[] {

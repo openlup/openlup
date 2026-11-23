@@ -38,13 +38,13 @@ export interface ManagedB2BInquirySubmitDeps {
 
 export function createManagedB2BInquirySubmit(deps: ManagedB2BInquirySubmitDeps) {
   const hashIp = deps.hashIp ?? (async (value) => createHash("sha256").update(value).digest("hex"));
-  return async (request: PartnersB2BInquirySubmitRequest, headers?: Headers, honeypotFilled = false) => {
+  return async (request: PartnersB2BInquirySubmitRequest, rateLimitAddress: string, honeypotFilled = false) => {
     try {
       if (honeypotFilled) return { success: true, status: 200 };
       if (invalidRequest(request, deps.hiddenPreviewEnabled)) {
         return { success: false, status: 400, error: invalidRequest(request, deps.hiddenPreviewEnabled)!, code: "validation_error" };
       }
-      const submitted = await deps.gateway.submit({ ipHash: await hashIp(readIp(headers)), request });
+      const submitted = await deps.gateway.submit({ ipHash: await hashIp(rateLimitAddress), request });
       if (submitted.kind === "unavailable") return unavailable();
       if (submitted.kind === "rate_limited") return { success: false, status: 429, error: "rate_limit", code: "rate_limit" };
 
@@ -133,10 +133,6 @@ function invalidRequest(request: PartnersB2BInquirySubmitRequest, hiddenPreviewE
   if ((isFreeEmailDomain(email) || B2B_SPECIFIC_BLOCKED_EMAIL_DOMAINS.has(email.split("@")[1] ?? "")) && !(hiddenPreviewEnabled && HIDDEN_PREVIEW_APPROVED_TEST_EMAILS.has(email))) return "blocked_email_domain";
   if (request.phone && (!/^[+\d\s\-().]+$/.test(request.phone) || request.phone.replace(/\D/g, "").length < 7 || request.phone.replace(/\D/g, "").length > 15)) return "invalid_phone";
   return request.notes && request.notes.length > 1000 ? "invalid_notes" : null;
-}
-
-function readIp(headers: Headers | undefined): string {
-  return headers?.get("x-forwarded-for")?.split(",")[0]?.trim() || headers?.get("cf-connecting-ip") || "unknown";
 }
 
 async function deliver(deps: ManagedB2BInquirySubmitDeps, input: {
