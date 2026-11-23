@@ -52,7 +52,7 @@
     "scripts/packages/release-workflow-authenticity.test.ts": 4990,
     "scripts/packages/required-package-gates.test.ts": 14573,
     "scripts/packages/set-release.test.ts": 33040,
-    "scripts/preflight.test.ts": 220770,
+    "scripts/preflight.test.ts": 288713,
     "scripts/public-ci-neutrality.test.ts": 106861,
     "scripts/public-ci-payment-allowance.test.ts": 2624,
     "scripts/public-ci-pgtap.test.ts": 2872,

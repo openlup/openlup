@@ -44,15 +44,24 @@ export function assertLockedInstall(root, locked) {
   }
 }
 
+export function describeCarrierToolchain(npm) {
+  return `carrier toolchain: Node ${process.versions.node}, npm ${npm}, ICU ${process.versions.icu}`;
+}
+
 export function assertCarrierToolchain(root, script) {
   const cli = carrierNpmCli(script);
   const node = readFileSync(resolve(root, '.nvmrc'), 'utf8').trim();
   const npm = readJson(root, 'package.json').packageManager;
-  if (process.versions.node !== node || new Intl.Collator().resolvedOptions().locale !== 'en-US') {
-    throw new Error(`carrier build requires Node ${node} and the en-US ICU profile`);
+  if (process.versions.node.split('.')[0] !== /^v?(\d+)\./u.exec(node)?.[1]) {
+    throw new Error(`carrier build requires the Node major pinned by .nvmrc (${node}); found Node ${process.versions.node}. Run nvm install && nvm use.`);
+  }
+  if (new Intl.Collator().resolvedOptions().locale !== 'en-US') {
+    throw new Error('carrier build requires the en-US ICU profile');
   }
   const installedNpm = execFileSync(process.execPath, [cli, '--version'], { cwd: root, encoding: 'utf8' }).trim();
-  if (npm !== `npm@${installedNpm}`) throw new Error(`carrier build requires ${npm}; found npm@${installedNpm}`);
+  if (installedNpm.split('.')[0] !== /^npm@(\d+)\./u.exec(npm)?.[1]) {
+    throw new Error(`carrier build requires the npm major pinned by packageManager (${npm}); found npm@${installedNpm}. Run npm install --global ${npm}.`);
+  }
   const workspace = readJson(root, 'config/openlup-packages.json');
   const lock = readJson(root, 'package-lock.json');
   assertLockedInstall(root, lock.packages);
@@ -67,6 +76,7 @@ export function assertCarrierToolchain(root, script) {
       throw new Error(`carrier build requires workspace links in this checkout (${from}); run npm ci here`);
     }
   }
+  return describeCarrierToolchain(installedNpm);
 }
 
 export async function assertCarrierBuildOutputs(cwd, directories, incremental = false) {
@@ -204,7 +214,7 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   const carrierEnv = { ...processEnvironment, ...carrierLocale };
   const run = runCommand ?? ((command, args, options) => execFileSync(command, args, { cwd, stdio: 'inherit', timeout: 900000, ...options }));
   const checkToolchain = () => run(process.execPath, ['--input-type=module', '-e',
-    `import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; assertCarrierToolchain(process.cwd());`], { env: carrierEnv });
+    `import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; console.log(assertCarrierToolchain(process.cwd()));`], { env: carrierEnv });
   checkToolchain();
   try { await git(cwd, '-c', 'core.hooksPath=/dev/null', 'merge', '--no-ff', '--no-commit', main); }
   catch (error) { if (error.code !== 1) throw error; }

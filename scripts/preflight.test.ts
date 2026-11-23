@@ -103,25 +103,25 @@ describe("real fast preflight", () => {
     return verdict;
   }
 
-  it("refuses a stale API report with warm-seeded and cold caches, then accepts the owner's repair", () => {
-    reset(true);
+  it.each([
+    { cache: "warm-seeded", warm: true },
+    { cache: "cold", warm: false },
+  ])("refuses a stale API report with a $cache cache, then accepts the owner's repair", ({ cache, warm }) => {
+    reset(warm);
     const entry = "packages/platform/src/portability/index.ts";
     const api = "packages/platform/api/portability.api.md";
     put(entry, get(entry) + "\nexport const fixtureFreshness = 1;\n");
     put("packages/platform/changes/fixture-freshness.md", "- Exercise the portability report owner.\n");
     commit("Add the fixture export with its original report");
     const declaration = "packages/platform/dist/portability/index.d.ts";
-    expect(get(declaration)).not.toContain("fixtureFreshness");
-    const apiCheck = (cache: string) => fast(`API stale (${cache})`, ["api:check @openlup/platform"],
+    if (warm) expect(get(declaration)).not.toContain("fixtureFreshness");
+    else expect(existsSync(path(declaration))).toBe(false);
+    fast(`API stale (${cache})`, ["api:check @openlup/platform"],
       `api:check @openlup/platform: FAIL ${api}`, "npm run api:update --workspace=@openlup/platform");
-    const warmApi = apiCheck("warm");
-    expect(get(declaration)).toContain("fixtureFreshness");
-    cold();
-    expect(apiCheck("cold")).toEqual(warmApi);
     expect(get(declaration)).toContain("fixtureFreshness");
     run(process.execPath, "packages/platform/scripts/api-contract.ts", "--update");
     commit("Regenerate the API report");
-    fast("API repaired", []);
+    fast(`API repaired (${cache})`, []);
   }, 300000);
 
   it("refuses stale settings with warm-seeded and cold caches, then accepts the owner's repair", () => {
@@ -154,6 +154,29 @@ describe("real fast preflight", () => {
     fast("path registered", []);
     for (const owner of owners) expect(existsSync(path(`packages/${owner}/dist`))).toBe(false);
   }, 180000);
+
+  it.each(["patch drift", "Node major mismatch", "npm major mismatch"])("checks the installed toolchain with %s", variant => {
+    reset();
+    const node = process.versions.node;
+    const npm = run(process.execPath, npmCli, "--version");
+    const differentPin = (version: string, majorMismatch: boolean) => {
+      const [major, minor, patch] = version.split(".").map(Number);
+      return `${majorMismatch ? major + 1 : major}.${minor}.${patch + 1}`;
+    };
+    const pinnedNode = differentPin(node, variant === "Node major mismatch");
+    const pinnedNpm = `npm@${differentPin(npm, variant === "npm major mismatch")}`;
+    put(".nvmrc", `${pinnedNode}\n`);
+    put("package.json", JSON.stringify({ ...JSON.parse(get("package.json")), packageManager: pinnedNpm }));
+    const check = () => run(process.execPath, "--input-type=module", "-e",
+      "import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; console.log(assertCarrierToolchain(process.cwd()));");
+    if (variant === "Node major mismatch") {
+      expect(check).toThrow(`requires the Node major pinned by .nvmrc (${pinnedNode}); found Node ${node}. Run nvm install && nvm use.`);
+    } else if (variant === "npm major mismatch") {
+      expect(check).toThrow(`requires the npm major pinned by packageManager (${pinnedNpm}); found npm@${npm}. Run npm install --global ${pinnedNpm}.`);
+    } else {
+      expect(check()).toBe(`carrier toolchain: Node ${node}, npm ${npm}, ICU ${process.versions.icu}`);
+    }
+  }, 30_000);
 });
 
 describe("carrier guards on Git fixtures", () => {
@@ -278,6 +301,7 @@ describe("fast preflight", () => {
       "npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression",
       `${process.execPath} scripts/ast-grep/check-filewide-ignore.mjs`,
       "npx --no -- ast-grep test --skip-snapshot-tests",
+      `${npm} --version`,
       `${npm} run oss:published-tree -- --self-check --docs-base ${fork}`,
       `git diff --name-status --no-renames -z ${fork} HEAD`,
       "gitleaks version",
@@ -287,7 +311,7 @@ describe("fast preflight", () => {
     const outputs = new Map([
       [expected[0], process.cwd()], [expected[1], head], [expected[3], dirty ? "?? local.txt\n" : ""],
       [expected[4], conflict], [expected[5], fork], [expected[6], increase],
-      [expected[11], `${mismatch}\n${closing}`], [expected[14], upstream],
+      [expected[11], "11.19.1\n"], [expected[12], `${mismatch}\n${closing}`], [expected[15], upstream],
     ]);
     vi.mocked(spawnSync).mockImplementation(((bin, args, options) => {
       const call = `${bin} ${(args ?? []).join(" ")}`;
@@ -302,8 +326,8 @@ describe("fast preflight", () => {
       const status = Number((call === expected[2] && offline)
         || (call === expected[4] && failures.includes("merge-clean"))
         || (call === expected[6] && failures.includes("neutrality"))
-        || (call === expected[11] && failures.includes("publication")));
-      const stderr = warnings && [expected[0], expected[1], expected[3], expected[5], expected[12], expected[14]].includes(call)
+        || (call === expected[12] && failures.includes("publication")));
+      const stderr = warnings && [expected[0], expected[1], expected[3], expected[5], expected[13], expected[15]].includes(call)
         ? "warning: fixture Git warning\n" : "";
       return { status, stdout: outputs.get(call) ?? "", stderr };
     }) as typeof spawnSync);
@@ -326,6 +350,7 @@ describe("fast preflight", () => {
       dco: `missing Signed-off-by on ${head.slice(0, 12)}`,
     };
     const skipLines: Record<string, string> = {
+      "carrier toolchain": `carrier toolchain: Node ${process.versions.node}, npm 11.19.1, ICU ${process.versions.icu}`,
       fragments: "fragments: skip no released package source changed",
       "test dates": "test dates: skip no new or changed test files",
       "test expiries": "test expiries: skip no new or changed test files",
@@ -338,7 +363,7 @@ describe("fast preflight", () => {
     expect(lines.filter((line) => !line.startsWith("    ")).map((line) => line.replace(/ \(\d+ s\)$/u, "")))
       .toEqual([
         "clean", "merge-clean", "neutrality", "ui-neutrality", "ast-grep", "ast-grep-hygiene",
-        "publication", "carriers", "migration projection",
+        "carrier toolchain", "publication", "carriers", "migration projection",
         "fragments", "test dates", "test expiries", "gitleaks", "guide-check", "package-manifest", "dco",
       ].map((name) => skipLines[name] ?? `${name}: ${failures.includes(name) ? `FAIL ${reasons[name]}` : "ok"}`));
     expect(lines.filter((line) => line.startsWith("    "))).toEqual(

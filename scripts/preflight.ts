@@ -9,7 +9,7 @@ import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { INVENTORY_PATH } from "./agent-review-derived.mjs";
-import { carrierLocale, carrierNpmCli, carrierPlan, readReportOwners } from "./agent-review-landing.mjs";
+import { carrierLocale, carrierNpmCli, carrierPlan, describeCarrierToolchain, readReportOwners } from "./agent-review-landing.mjs";
 import { TOOLING_INPUTS, excludedToolingTests } from "./ci-test-scope.mjs";
 import { readCommits, signOffVerdict } from "./dco-signoff-check.ts";
 import { isChangelogFragment, isChangelogFragmentArea } from "./packages/changelog-fragments.ts";
@@ -457,7 +457,7 @@ function fastPreflight(now: Date): number {
       `import { assertCarrierBuildOutputs, assertCarrierToolchain } from './scripts/agent-review-landing.mjs';
         await assertCarrierBuildOutputs(process.cwd(), ${buildDirectories});
         assertCarrierToolchain(process.cwd(), ${JSON.stringify(npmInvocation)});`],
-    "Use the pinned Node and npm and run npm ci in this checkout.");
+    "Use the required Node and npm majors and run npm ci in this checkout.");
     const results = [prerequisites];
     if (prerequisites.status === "FAIL") return results;
     const npmCli = carrierNpmCli(npmInvocation);
@@ -489,7 +489,10 @@ function fastPreflight(now: Date): number {
     ["ast-grep", () => astGrep(offlineNpm)],
     ["ast-grep-hygiene", () => astGrepHygiene(offlineNpm)],
     ["publication", () => {
-      const result = command("publication", process.execPath, [carrierNpmCli(npmInvocation), "run", "oss:published-tree", "--", "--self-check",
+      const npmCli = carrierNpmCli(npmInvocation);
+      const version = execute(process.execPath, [npmCli, "--version"], { ...offlineNpm, timeout: 5_000 });
+      if (version.code === 0 && version.stdout.trim()) console.log(describeCarrierToolchain(version.stdout.trim()));
+      const result = command("publication", process.execPath, [npmCli, "run", "oss:published-tree", "--", "--self-check",
         ...(processEnvironment.OPENLUP_STACK_BASE !== undefined ? [] : ["--docs-base", forkPoint()]),
       ], offlineNpm);
       const missing = result.notes?.find(line => /materialized output inventory mismatch .*; extra (?!none\))/u.test(line));

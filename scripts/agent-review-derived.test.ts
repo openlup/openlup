@@ -146,7 +146,7 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
     for (const parent of [left, right]) {
       expect(git('diff', '--raw', base, parent, '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api', ...PROBE_OUTPUTS)).toBe('');
     }
-    landingCli();
+    expect(landingCli()).toContain(`carrier toolchain: Node ${process.versions.node}, npm ${fixtureNpm('--version').trim()}, ICU ${process.versions.icu}`);
     const landed = git('rev-parse', 'HEAD');
     expect(git('show', '-s', '--format=%P%n%B', landed)).toBe(`${left} ${right}\nMerge origin/main and refresh derived carriers\n\nSigned-off-by: Fixture <fixture@example.invalid>`);
     expect(git('status', '--porcelain', '--untracked-files=all')).toBe('');
