@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createDestinationDocumentPrivacyContributor } from "@openlup/platform/identity";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 // eslint-disable-next-line no-restricted-imports -- run the private guard sequence on the claim writer
@@ -7,7 +8,7 @@ import { destinationV2Prelock } from "../../packages/platform/src/commerce/serve
 import { ref } from "../../packages/platform/src/pricing/quoteMoneyValidationV2.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
-import { bindDestinationOrder, deferred, destinationContext, destinationFence, documentTable, insertDestinationOrder,
+import { bindDestinationOrder, deferred, destinationContext, destinationFence, destinationHash, documentTable, insertDestinationOrder,
   orderBindingTable, readSnapshot, reachDestinationCutoff, recheckDestination, registerDestination,
   selectionTable, snapshot, testServicePin } from "./destinationDocumentFixture.js";
 import { awaitReceiptWait, backendPid } from "./destinationReceiptFixture.js";
@@ -21,6 +22,44 @@ const refused = (code: string, field: string) => expect.objectContaining({
 });
 const unavailable = (field: string) => refused("destination_evidence_unavailable", field);
 const stale = (field: string) => refused("destination_version_changed", field);
+
+it.each([
+  ["prohibited key", { constructor: "out-of-domain" }, "23514"],
+  ["excess depth", { city: JSON.parse("[".repeat(49) + "null" + "]".repeat(49)) }, "22023"],
+] as const)("withholds hash-matching stored evidence with %s on the typed paths", async (_kind, address, sqlstate) => {
+  const { owner, runtime } = store;
+  const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx);
+  const order = await bindDestinationOrder(owner, ctx, issued);
+  const { document } = await readSnapshot(runtime, ctx, issued.binding);
+  const bytes = JSON.stringify(["commerce.destination.document.v2", { ...document, address }]);
+  await owner.query(`UPDATE ${documentTable} SET document_text=$2,document_digest=$3 WHERE snapshot_ref=$1`,
+    [issued.binding.snapshotRef, bytes, destinationHash(bytes)]);
+  const invalid = expect.objectContaining({
+    outcome: "refused", code: "destination_binding_invalid", field: "destination",
+    fix: "Send the retained evidence to the destination owner for review.",
+  });
+  const read = () => readSnapshot(runtime, ctx, issued.binding, order, "order");
+  const fresh = () => destinationFence(owner, ctx, issued, async writer => {
+    await writer.query("SAVEPOINT corrupt_address");
+    const id = await insertDestinationOrder(writer, ctx);
+    try { return await registerDestination(writer, ctx, id, issued); }
+    finally { await writer.query("ROLLBACK TO SAVEPOINT corrupt_address"); }
+  });
+  const exportDocuments = () => createDestinationDocumentPrivacyContributor().export(runtime, {
+    contactId: ctx.clientId, principalId: ctx.owner.principalRef, identity: {},
+  });
+  await expect.soft(recheckDestination(runtime, ctx, issued)).resolves.toEqual(invalid);
+  await expect.soft(fresh()).resolves.toEqual(invalid);
+  await expect.soft(registerDestination(runtime, ctx, order, issued)).resolves.toEqual(invalid);
+  await expect.soft(read()).resolves.toEqual(invalid);
+  await expect(readSnapshot(runtime, ctx, issued.binding))
+    .rejects.toMatchObject({ code: sqlstate, message: "catalog_publication_wire_invalid" });
+  await expect(exportDocuments()).resolves.toEqual(expect.objectContaining({
+    coverage: expect.objectContaining({ complete: false }),
+    data: [{ snapshotRef: issued.binding.snapshotRef, evidenceDisposition: "available", issuedAt: expect.any(String),
+      verification: { status: "failed", code: "destination_binding_invalid", field: "destination" } }],
+  }));
+});
 
 it("checks exact stored evidence before stale selection advice on the guarded claim writer", async () => {
   const { owner, runtime } = store;
@@ -72,7 +111,15 @@ it("preserves exact sealed replay and parent-authorized reads through cutoff, re
   const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx), foreign = await destinationContext(owner);
   const missing = await insertDestinationOrder(owner, ctx);
   expect(await registerDestination(runtime, ctx, missing, issued)).toEqual(unavailable("orderId"));
-  const order = await bindDestinationOrder(owner, ctx, issued);
+  const service = { ...testServicePin, adapterRevision: " \t𐌀é  " };
+  const order = await destinationFence(owner, ctx, issued, async writer => {
+    const id = await insertDestinationOrder(writer, ctx);
+    expect(await registerDestination(writer, ctx, id, issued, service)).toEqual(issued.binding);
+    return id;
+  });
+  expect((await owner.query(`SELECT service,encode(convert_to(service->>'adapterRevision','UTF8'),'hex') AS bytes
+    FROM ${orderBindingTable} WHERE order_id=$1`, [order])).rows)
+    .toEqual([{ service, bytes: Buffer.from(service.adapterRevision, "utf8").toString("hex") }]);
   const shipment = randomUUID();
   await owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('destination-bind-parcel','3pl',true)");
   await owner.query(`INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key)
@@ -82,15 +129,18 @@ it("preserves exact sealed replay and parent-authorized reads through cutoff, re
   expect(await readSnapshot(runtime, ctx, issued.binding, shipment, "shipment")).toEqual(original);
   await reachDestinationCutoff(owner, issued.binding);
   const moved = await snapshot(runtime, ctx);
-  expect(await registerDestination(runtime, ctx, order, issued)).toEqual(issued.binding);
-  expect(await registerDestination(runtime, ctx, order, issued, { ...testServicePin, serviceRef: "another-service" }))
+  expect(await registerDestination(runtime, ctx, order, issued, service)).toEqual(issued.binding);
+  expect(await registerDestination(runtime, ctx, order, { ...issued,
+    selection: { ...issued.selection, selectionRevision: moved.selection.selectionRevision },
+  }, service)).toEqual(refused("destination_order_binding_occupied", "orderId"));
+  expect(await registerDestination(runtime, ctx, order, issued, { ...service, serviceRef: "another-service" }))
     .toEqual(refused("destination_order_binding_occupied", "orderId"));
-  expect(await registerDestination(runtime, ctx, order, moved)).toEqual(refused("destination_order_binding_occupied", "orderId"));
+  expect(await registerDestination(runtime, ctx, order, moved, service)).toEqual(refused("destination_order_binding_occupied", "orderId"));
   await owner.query(`UPDATE ${orderBindingTable} SET service='{}' WHERE order_id=$1`, [order]);
   expect(await registerDestination(runtime, ctx, order, issued)).toMatchObject({
     code: "destination_binding_invalid", fix: "Send the retained evidence to the destination owner for review.",
   });
-  await owner.query(`UPDATE ${orderBindingTable} SET service=$2 WHERE order_id=$1`, [order, testServicePin]);
+  await owner.query(`UPDATE ${orderBindingTable} SET service=$2 WHERE order_id=$1`, [order, service]);
   for (const [kind, id] of [["order", order], ["shipment", shipment]] as const) {
     expect(await readSnapshot(runtime, ctx, moved.binding, id, kind)).toEqual(expect.objectContaining({
       code: "destination_version_changed", field: "destination.snapshotRef", fix: "Use the binding recorded for the original order.",
@@ -98,12 +148,12 @@ it("preserves exact sealed replay and parent-authorized reads through cutoff, re
     expect(await readSnapshot(runtime, ctx, issued.binding, id, kind)).toMatchObject({ binding: issued.binding, document: original.document });
   }
   const foreignRead = await readSnapshot(runtime, foreign, issued.binding, order, "order");
-  const foreignBind = await registerDestination(runtime, foreign, order, issued);
+  const foreignBind = await registerDestination(runtime, foreign, order, issued, service);
   expect(foreignRead).toEqual(unavailable("orderId"));
   expect(foreignBind).toEqual(foreignRead);
   await runtime.query("SELECT public.commerce_destination_v2_erase($1)", [ctx.clientId]);
   expect(await readSnapshot(runtime, ctx, issued.binding, order, "order")).toEqual(foreignRead);
-  expect(await registerDestination(runtime, ctx, order, issued)).toEqual(foreignBind);
+  expect(await registerDestination(runtime, ctx, order, issued, service)).toEqual(foreignBind);
   expect((await owner.query(`SELECT selection,service FROM ${orderBindingTable} WHERE order_id=$1`, [order])).rows)
     .toEqual([{ selection: null, service: null }]);
 });
@@ -143,25 +193,19 @@ it("returns busy only for the existing order lock and reads the committed child 
     expect(await registerDestination(replay, ctx, order, issued)).toEqual(refused("destination_busy", "orderId"));
     await holder.query("ROLLBACK");
 
-    const bindingReady = deferred<string>(), finish = deferred<void>();
-    const bind = destinationFence(owner, ctx, issued, async writer => {
-      const another = await insertDestinationOrder(writer, ctx);
-      expect(await registerDestination(writer, ctx, another, issued)).toEqual(issued.binding);
-      await writer.query("SELECT id FROM public.clients WHERE id=$1 FOR UPDATE", [ctx.clientId]);
-      bindingReady.resolve(another);
-      await finish.promise;
-    });
-    void bind.catch(bindingReady.reject);
-    try {
-      const another = await bindingReady.promise;
-      const pid = await backendPid(replay);
-      pending = registerDestination(replay, ctx, another, issued);
-      void pending.catch(() => undefined);
-      await awaitReceiptWait(owner, pid, "transactionid", "ShareLock");
-      finish.resolve();
-      await bind;
-      expect(await pending).toEqual(issued.binding);
-    } finally { finish.resolve(); await bind; }
+    const committedPin = { ...testServicePin, serviceRef: "committed-after-order-lock" };
+    await holder.query("BEGIN");
+    await holder.query(`LOCK TABLE ${orderBindingTable} IN ACCESS EXCLUSIVE MODE`);
+    await holder.query(`UPDATE ${orderBindingTable} SET service=$2 WHERE order_id=$1`, [order, committedPin]);
+    const pid = await backendPid(replay);
+    pending = registerDestination(replay, ctx, order, issued, committedPin);
+    void pending.catch(() => undefined);
+    await awaitReceiptWait(owner, pid, "relation", "AccessShareLock");
+    // A joined or earlier child read waits for the child table before it locks the order.
+    await expect(owner.query("SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE NOWAIT", [order]))
+      .rejects.toMatchObject({ code: "55P03" });
+    await holder.query("COMMIT");
+    expect(await pending).toEqual(issued.binding);
   } finally { await holder.query("ROLLBACK"); await pending?.catch(() => undefined); holder.release(); replay.release(); }
 });
 
@@ -181,18 +225,65 @@ it("rolls back the freshly inserted order before exposing the post-lock cutoff r
   expect(await recheckDestination(runtime, ctx, issued)).toMatchObject({ binding: issued.binding });
 });
 
+it("uses current database time when a fresh bind statement crosses cutoff", async () => {
+  const { owner, runtime } = store;
+  const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx);
+  const result = await destinationFence(owner, ctx, issued, async writer => {
+    const id = await insertDestinationOrder(writer, ctx);
+    const { rows: [timing] } = await writer.query(`UPDATE ${documentTable}
+      SET evidence_expires_at=clock_timestamp()+interval '1 second'
+      WHERE snapshot_ref=$1 RETURNING evidence_expires_at`, [issued.binding.snapshotRef]);
+    const decision = await writer.query(`WITH gate AS MATERIALIZED (
+        SELECT statement_timestamp() < $8::timestamptz AS began_before,
+          pg_sleep_until($8::timestamptz + interval '10 milliseconds')
+      ) SELECT public.commerce_register_order_destination_v2($1,$2,$3,$4,$5,$6,$7) AS value
+      FROM gate WHERE began_before`,
+    [ctx, id, "checkout", ctx.scopeRef, issued.selection.selectionRevision, issued.binding, testServicePin, timing.evidence_expires_at]);
+    throw { decision: decision.rows.map(row => row.value) };
+  }).catch(error => error.decision);
+  expect(result).toEqual([stale("destination.snapshotRef")]);
+});
+
+it("attempts the fresh-path order lock before checking the cutoff", async () => {
+  const { owner, runtime } = store;
+  const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx);
+  // A committed order lets a second writer hold the row lock while we exercise the RR entry.
+  const order = await insertDestinationOrder(owner, ctx);
+  await reachDestinationCutoff(owner, issued.binding);
+  const holder = await owner.connect(), writer = await owner.connect();
+  try {
+    await holder.query("BEGIN");
+    await holder.query("SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE", [order]);
+    await writer.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    expect(await registerDestination(writer, ctx, order, issued)).toEqual(refused("destination_busy", "orderId"));
+    await holder.query("ROLLBACK");
+    expect(await registerDestination(writer, ctx, order, issued)).toEqual(stale("destination.snapshotRef"));
+  } finally {
+    await writer.query("ROLLBACK"); await holder.query("ROLLBACK"); writer.release(); holder.release();
+  }
+});
+
 it.each([selectionTable, documentTable])("preserves fence contention for the guarded row in %s", async table => {
   const { owner, runtime } = store;
   const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx);
-  const holder = await owner.connect(), read = vi.fn();
+  const holder = await owner.connect(), waiter = await runtime.connect(), read = vi.fn();
   try {
     await holder.query("BEGIN");
     await holder.query(`SELECT 1 FROM ${table} WHERE snapshot_ref=$1 FOR UPDATE`, [issued.binding.snapshotRef]);
+    await waiter.query("BEGIN");
+    await waiter.query("SET LOCAL lock_timeout = '1s'");
+    const acquire = table === selectionTable
+      ? waiter.query("SELECT public.commerce_lock_destination_v2_selection($1,$2)", [ctx, ctx.scopeRef])
+      : waiter.query("SELECT public.commerce_lock_destination_v2_document($1,$2,$3)", [ctx, ctx.scopeRef, issued.binding.snapshotRef]);
+    await expect(acquire).rejects.toMatchObject({
+      code: "55P03", message: `could not obtain lock on row in relation "${table.split(".")[1]}"`,
+    });
+    await waiter.query("ROLLBACK");
     await expect(destinationFence(owner, ctx, issued, read)).rejects.toMatchObject({
       message: "catalog_admission_fence_unavailable", hint: "Retry the same request with the same idempotency key.",
     });
     expect(read).not.toHaveBeenCalled();
-  } finally { await holder.query("ROLLBACK"); holder.release(); }
+  } finally { await waiter.query("ROLLBACK"); await holder.query("ROLLBACK"); waiter.release(); holder.release(); }
 });
 
 it.each(["reselections", "erasures"] as const)("orders %s before and after the bound writer", async mutation => {
@@ -236,6 +327,10 @@ it.each(["reselections", "erasures"] as const)("orders %s before and after the b
         if (relation) expect(await changing).toBe(1);
         else await changing;
         await other.query("COMMIT");
+        if (relation) {
+          expect((await owner.query(`SELECT order_id,snapshot_ref,selection,service FROM ${orderBindingTable} WHERE order_id=$1`, [order])).rows)
+            .toEqual([{ order_id: order, snapshot_ref: issued.binding.snapshotRef, selection: null, service: null }]);
+        }
         expect(await registerDestination(runtime, ctx, order, issued)).toEqual(relation ? unavailable("orderId") : issued.binding);
       } else {
         await awaitReceiptWait(owner, await writerReady.promise, relation ? "relation" : "transactionid", "ShareLock");
@@ -252,6 +347,28 @@ it.each(["reselections", "erasures"] as const)("orders %s before and after the b
     }
   }
 }, 20000);
+
+it("erases binding pins reached through either parent and counts only the subject's documents", async () => {
+  const { owner, runtime } = store;
+  const erased = await destinationContext(owner), foreign = await destinationContext(owner);
+  const [erasedDoc, foreignDoc] = await Promise.all([snapshot(runtime, erased), snapshot(runtime, foreign)]);
+  const [erasedOrder, foreignOrder] = await Promise.all([insertDestinationOrder(owner, erased), insertDestinationOrder(owner, foreign)]);
+  await owner.query(`INSERT INTO ${orderBindingTable}(order_id,snapshot_ref,selection,service)
+    VALUES($1,$2,$3,$7),($4,$5,$6,$7)`, [erasedOrder, foreignDoc.binding.snapshotRef, foreignDoc.selection,
+    foreignOrder, erasedDoc.binding.snapshotRef, erasedDoc.selection, testServicePin]);
+  const markers = async () => (await owner.query(`SELECT order_id,snapshot_ref,selection,service
+    FROM ${orderBindingTable} WHERE order_id IN ($1,$2)`, [erasedOrder, foreignOrder])).rows;
+  expect(await markers()).toEqual(expect.arrayContaining([
+    { order_id: erasedOrder, snapshot_ref: foreignDoc.binding.snapshotRef, selection: foreignDoc.selection, service: testServicePin },
+    { order_id: foreignOrder, snapshot_ref: erasedDoc.binding.snapshotRef, selection: erasedDoc.selection, service: testServicePin },
+  ]));
+  expect((await runtime.query("SELECT public.commerce_destination_v2_erase($1) AS count", [erased.clientId])).rows).toEqual([{ count: 1 }]);
+  expect(await markers()).toEqual(expect.arrayContaining([
+    { order_id: erasedOrder, snapshot_ref: foreignDoc.binding.snapshotRef, selection: null, service: null },
+    { order_id: foreignOrder, snapshot_ref: erasedDoc.binding.snapshotRef, selection: null, service: null },
+  ]));
+  expect(await readSnapshot(runtime, foreign, foreignDoc.binding)).toMatchObject({ binding: foreignDoc.binding });
+});
 
 it("installs private destination bindings with four runtime identities and restrictive parents", async () => {
   const db = await store.owner.connect();
@@ -276,6 +393,8 @@ it("installs private destination bindings with four runtime identities and restr
       "public.commerce_register_order_destination_v2(jsonb,uuid,text,uuid,uuid,jsonb,jsonb)",
     ];
     for (const signature of identities) {
+      const attributes = await db.query("SELECT provolatile,prosecdef FROM pg_proc WHERE oid=$1::regprocedure", [signature]);
+      expect(attributes.rows, signature).toEqual([{ provolatile: "v", prosecdef: true }]);
       const { rows } = await db.query(`SELECT rolname, has_function_privilege(oid,$1::regprocedure,'EXECUTE') AS execute
         FROM pg_roles WHERE rolname = ANY($2) ORDER BY rolname`, [signature, roles]);
       expect(rows).toEqual(roles.map(rolname => ({ rolname, execute: rolname === "service_role" })));
@@ -288,6 +407,7 @@ it("installs private destination bindings with four runtime identities and restr
     await db.query(`INSERT INTO ${orderBindingTable}(order_id,snapshot_ref) VALUES($1,$2)`, [orderId, document.snapshot_ref]);
     for (const [sql, key, code] of [
       [`UPDATE ${orderBindingTable} SET selection='{}' WHERE order_id=$1`, orderId, "23514"],
+      [`UPDATE ${orderBindingTable} SET service='{}' WHERE order_id=$1`, orderId, "23514"],
       ["DELETE FROM public.commerce_orders WHERE id=$1", orderId, "23503"],
       [`DELETE FROM ${documentTable} WHERE snapshot_ref=$1`, document.snapshot_ref, "23503"],
     ]) {

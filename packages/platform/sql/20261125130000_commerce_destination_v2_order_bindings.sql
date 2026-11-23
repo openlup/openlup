@@ -110,6 +110,7 @@ BEGIN
     v_verified := public.commerce_destination_v2_verified_document(p_row);
   EXCEPTION WHEN untranslatable_character THEN
     RETURN public.commerce_destination_v2_refusal('stored_digest', 'documentDigest');
+  WHEN check_violation OR invalid_parameter_value THEN RETURN public.commerce_destination_v2_refusal('stored_binding', 'destination');
   END;
   IF v_verified->>'verified' = 'true' THEN RETURN v_verified; END IF;
   RETURN public.commerce_destination_v2_refusal(
@@ -396,13 +397,15 @@ DECLARE
   v_count integer;
 BEGIN
   IF current_setting('transaction_isolation') <> 'read committed' THEN
-    RAISE EXCEPTION 'destination_isolation_unsupported' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'destination_isolation_unsupported' USING ERRCODE = '22023',
+      DETAIL = 'isolation', HINT = 'Roll back and restart in READ COMMITTED.';
   END IF;
   LOCK TABLE public.identity_privacy_erasures IN SHARE ROW EXCLUSIVE MODE;
   PERFORM 1 FROM public.clients WHERE id = p_client_id FOR UPDATE;
   UPDATE public.commerce_destination_v2_order_bindings b SET selection = NULL, service = NULL
-    FROM public.commerce_destination_v2_documents d WHERE b.snapshot_ref = d.snapshot_ref
-      AND d.client_id = p_client_id AND (b.selection IS NOT NULL OR b.service IS NOT NULL);
+    WHERE b.selection IS NOT NULL AND (
+      b.snapshot_ref IN (SELECT snapshot_ref FROM public.commerce_destination_v2_documents WHERE client_id = p_client_id)
+      OR b.order_id IN (SELECT id FROM public.commerce_orders WHERE client_id = p_client_id));
   DELETE FROM public.commerce_destination_v2_checkout_selections s USING public.commerce_destination_v2_documents d
     WHERE s.snapshot_ref = d.snapshot_ref AND d.client_id = p_client_id;
   UPDATE public.commerce_destination_v2_documents SET owner_scope = NULL, scope_ref = NULL, binding = NULL,
@@ -426,7 +429,8 @@ BEGIN
       HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
   END IF;
   IF current_setting('transaction_isolation') <> 'read committed' THEN
-    RAISE EXCEPTION 'destination_isolation_unsupported' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'destination_isolation_unsupported' USING ERRCODE = '22023',
+      DETAIL = 'isolation', HINT = 'Roll back and restart in READ COMMITTED.';
   END IF;
   LOCK TABLE public.identity_privacy_erasures IN SHARE MODE;
   v_batch_time := clock_timestamp();
@@ -441,9 +445,9 @@ BEGIN
     PERFORM 1 FROM public.clients WHERE id = v_candidate.client_id FOR UPDATE;
     PERFORM 1 FROM public.commerce_destination_v2_checkout_selections
       WHERE owner_scope = v_candidate.owner_scope AND scope_ref = v_candidate.scope_ref FOR UPDATE;
+    PERFORM 1 FROM public.commerce_destination_v2_documents WHERE snapshot_ref = v_candidate.snapshot_ref FOR UPDATE;
     IF NOT EXISTS (SELECT 1 FROM public.commerce_destination_v2_documents WHERE snapshot_ref = v_candidate.snapshot_ref
-      AND evidence_disposition = 'available' AND evidence_expires_at <= clock_timestamp()
-      FOR UPDATE) THEN CONTINUE; END IF;
+      AND evidence_disposition = 'available' AND evidence_expires_at <= clock_timestamp()) THEN CONTINUE; END IF;
     IF EXISTS (SELECT 1 FROM public.commerce_destination_v2_order_bindings b
       WHERE b.snapshot_ref = v_candidate.snapshot_ref) THEN CONTINUE; END IF;
     IF EXISTS (SELECT 1 FROM public.commerce_destination_v2_checkout_selections

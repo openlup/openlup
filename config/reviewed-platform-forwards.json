@@ -10571,7 +10571,7 @@
     },
     {
       "path": "db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql",
-      "sha256": "09c92f8ac1759c41d1267783c01be88f125135d718288f30bcbb0050b6f2ab61",
+      "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f",
       "functions": [
         {
           "signature": "public.commerce_read_destination_v2(jsonb,text,uuid,jsonb)",
@@ -10586,12 +10586,12 @@
         {
           "signature": "public.commerce_destination_v2_erase(uuid)",
           "beforeSha256": "d3709e44792d234b4946d6fd9ef859d5fe0ca81b928e36e6f6458e9e87c52149",
-          "afterSha256": "37ea23a59134462b6cef217f123bfc01e0fc3f8b112a5a49769051e97075f957"
+          "afterSha256": "4443fc3acc3cea1333bc5e99533450022b6be4076c1d6131e520e3063d081f69"
         },
         {
           "signature": "public.commerce_destination_v2_expire(timestamptz,integer)",
           "beforeSha256": "4673135baf70ca57fe2c02d81ab0654927d696ca6de21105bc76b0ba6c9c7923",
-          "afterSha256": "1fc10cfeb84ad8236779662578dbdea2159b3b99499f0db6baece79ed88232d4"
+          "afterSha256": "3be495dee10745eaa4836409402befb1c4f30a226f6bbceb9a35d8f45a15643a"
         },
         {
           "signature": "public.commerce_destination_v2_refusal(text,text)",
@@ -10626,7 +10626,7 @@
         {
           "signature": "public.commerce_destination_v2_check_document(public.commerce_destination_v2_documents,text)",
           "beforeSha256": null,
-          "afterSha256": "17e3459ec0ff5629b9511719787a2e55e313f146e4f3d0c952ef1d6015183358"
+          "afterSha256": "7d0454625b6addf3fc8590b44f23cbfaa940cec78e070ad02a4fe6db788147f3"
         },
         {
           "signature": "public.commerce_lock_destination_v2_selection(jsonb,uuid)",

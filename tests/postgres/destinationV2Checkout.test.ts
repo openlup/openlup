@@ -1,4 +1,4 @@
-import { DatabaseError, type Pool, type PoolClient } from "pg";
+import { DatabaseError, type Pool, type PoolClient, type QueryResult } from "pg";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
@@ -178,12 +178,16 @@ it("verifies the owned document's stored bytes and exact binding without returni
   await write(bytes(changedAddress));
   await expect(readSnapshot(runtime, ctx, { ...binding, policyRevision: "" })).rejects.toMatchObject(digestMismatch("destinationDigest"));
 
-  // Not a verifier check: the canonicalizer's own refusal still raises unchanged on both paths.
+  // The installed snapshot read retains the raw diagnostic; the export withholds invalid evidence.
   await write(bytes({ address: { constructor: "out-of-domain" } }));
   const wireRefusal = { code: "23514", message: "catalog_publication_wire_invalid",
     constraint: "catalog_publication_wire_invalid", hint: undefined, detail: undefined };
   await expect(readSnapshot(runtime, ctx, binding)).rejects.toMatchObject(wireRefusal);
-  await expect(runtime.query("SELECT public.commerce_destination_v2_export($1)", [ctx.clientId])).rejects.toMatchObject(wireRefusal);
+  const { rows: [invalidExport] } = await runtime.query("SELECT public.commerce_destination_v2_export($1) AS data", [ctx.clientId]);
+  expect(invalidExport.data).toEqual([{
+    snapshotRef: id, issuedAt: stored.issued_at.toISOString(), evidenceDisposition: "available",
+    verification: { status: "failed", code: "destination_binding_invalid", field: "destination" },
+  }]);
 
   // Precedence control: a closed stored binding keeps every pre-existing caller-binding outcome.
   await write(stored.document_text, stored.document_digest);
@@ -320,17 +324,55 @@ it("rechecks binding absence after expiry waits behind a committed fresh bind", 
   }
 }, 12000);
 
+it("rechecks the cutoff in a new statement after taking the document lock", async () => {
+  const { owner, runtime } = store;
+  const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx);
+  const ref = issued.binding.snapshotRef;
+  await owner.query(`UPDATE ${documentTable} SET issued_at='1999-01-01',evidence_expires_at='1999-01-02'
+    WHERE snapshot_ref=$1`, [ref]);
+  const clientHolder = await owner.connect(), documentHolder = await owner.connect(), expiry = await owner.connect();
+  let pending: Promise<QueryResult<{ count: number }>> | undefined;
+  try {
+    await clientHolder.query("BEGIN");
+    await clientHolder.query("SELECT id FROM public.clients WHERE id=$1 FOR UPDATE", [ctx.clientId]);
+    const pid = await backendPid(expiry);
+    pending = expiry.query<{ count: number }>("SELECT public.commerce_destination_v2_expire(clock_timestamp(),1) AS count");
+    void pending.catch(() => undefined);
+    await awaitReceiptWait(owner, pid, "transactionid", "ShareLock");
+    const { rows: [deadline] } = await documentHolder.query(`UPDATE ${documentTable}
+      SET evidence_expires_at=clock_timestamp()+interval '2 seconds' WHERE snapshot_ref=$1 RETURNING evidence_expires_at`, [ref]);
+    await documentHolder.query("BEGIN");
+    await documentHolder.query(`SELECT 1 FROM ${documentTable} WHERE snapshot_ref=$1 FOR UPDATE`, [ref]);
+    const blocker = await backendPid(documentHolder);
+    await clientHolder.query("COMMIT");
+    // At the locking statement the new cutoff is in the future. It passes while the row is held.
+    await expect.poll(async () => (await owner.query("SELECT $2 = ANY(pg_blocking_pids($1)) AS waiting", [pid, blocker])).rows[0].waiting,
+      { timeout: 4000 }).toBe(true);
+    await documentHolder.query("SELECT pg_sleep_until($1::timestamptz + interval '10 milliseconds')", [deadline.evidence_expires_at]);
+    await documentHolder.query("COMMIT");
+    expect((await pending).rows).toEqual([{ count: 1 }]);
+    expect(await row(owner, ref)).toMatchObject({ evidence_disposition: "expired", document_text: null });
+    expect(await selection(owner, ctx.scopeRef)).toEqual([]);
+  } finally {
+    await clientHolder.query("ROLLBACK"); await documentHolder.query("ROLLBACK");
+    await pending?.catch(() => undefined);
+    clientHolder.release(); documentHolder.release(); expiry.release();
+  }
+}, 12000);
+
 it.each(["REPEATABLE READ", "SERIALIZABLE"])("refuses expiry and erasure under %s", async isolation => {
   const { owner, runtime } = store;
   const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx);
   const db = await owner.connect(), eraser = await runtime.connect();
+  const diagnostic = { code: "22023", message: "destination_isolation_unsupported", detail: "isolation",
+    hint: "Roll back and restart in READ COMMITTED." };
   try {
     await db.query(`BEGIN ISOLATION LEVEL ${isolation}`);
     await eraser.query(`BEGIN ISOLATION LEVEL ${isolation}`);
     await expect(db.query("SELECT public.commerce_destination_v2_expire(clock_timestamp(),1)"))
-      .rejects.toMatchObject({ code: "22023", message: "destination_isolation_unsupported" });
+      .rejects.toMatchObject(diagnostic);
     await expect(eraser.query("SELECT public.commerce_destination_v2_erase($1)", [ctx.clientId]))
-      .rejects.toMatchObject({ code: "22023", message: "destination_isolation_unsupported" });
+      .rejects.toMatchObject(diagnostic);
   } finally {
     await db.query("ROLLBACK"); await eraser.query("ROLLBACK"); db.release(); eraser.release();
   }
