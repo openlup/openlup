@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql } from "../tests/helpers/issuedPlatformCatalog.ts";
+import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql, NATIVE_STORE_GUARD_CATALOGS } from "../tests/helpers/issuedPlatformCatalog.ts";
 import { renderCheckoutOwnerGrant, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
@@ -132,6 +132,29 @@ describe("checkout owner execute admission", () => {
     const definitions = definitionSql.replace("SECURITY DEFINER", "SECURITY INVOKER");
     const text = renderCheckoutOwnerGrant(definitionPath, sqlSha256(definitions));
     expect(() => checkGrant(candidate(text, definitions), text, definitions)).toThrow(/^checkout_owner_predecessor_unverified:/u);
+  });
+
+  it.each(["before", "unissued", "after", "unlisted"] as const)("checks the checkout writer replacement %s the grant", order => {
+    const value = candidate();
+    const binding = definitionPin().functions.at(-1)!;
+    const statement = sqlStatements(definitionSql).find(sql => sql.startsWith(`CREATE FUNCTION ${binding.signature}`))!;
+    const replacement = statement.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")
+      .replace("fixture_checkout_writer_dark", "fixture_checkout_writer_replacement");
+    const path = `db/platform/migrations/20990101000${order === "after" || order === "unissued" ? "200" : "050"}_checkout_writer_fixture.sql`;
+    const slot = emptySlot(path);
+    if (order !== "unlisted") slot.replacedFunctions.push({ signature: binding.signature,
+      searchPath: "pg_catalog, pg_temp", beforeSha256: binding.afterSha256 });
+    const slots = value.nativeStoreForwardClass!.slots;
+    slots.push(slot);
+    slots.sort((left, right) => left.path.localeCompare(right.path));
+    if (order === "unlisted") value.nativeStoreForwards!.push({ path, sha256: sqlSha256(replacement), functions: [] });
+    else bind(value, slots.indexOf(slot), replacement);
+    value.nativeStoreForwards!.sort((left, right) => left.path.localeCompare(right.path));
+    const prefix = [{ path: PLATFORM_BASELINE_FILE, bytes: before }, { path: definitionPath, bytes: Buffer.from(definitionSql) }];
+    if (order === "after") prefix.push({ path: grantPath, bytes: Buffer.from(grantSql) });
+    const admit = () => assertNativeStoreForward(value, path, Buffer.from(replacement), prefix);
+    if (order === "after") expect(admit).not.toThrow();
+    else expect(admit).toThrow(`checkout_owner_predecessor_unverified: ${path}. Issue the checkout grant unit before replacing a checkout routine.`);
   });
 });
 
@@ -1244,6 +1267,10 @@ describe("real Git introduction, release and co-location", () => {
   it("names exactly the protected catalog test files in the documentation", () => {
     const named = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8").split("catalog test and these named files:")[1]?.split("Code those files run")[0] ?? "";
     expect([...named.matchAll(/`([^`]+)`/gu)].map(match => match[1]).sort()).toEqual([...NATIVE_CATALOG_CONTROLS, "tests/setup/"].sort());
+  });
+  it("names exactly the guard catalogs in the documentation", () => {
+    const section = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8").split("- The guard catalogs")[1]?.split(/\n(?:- |\n)/u)[0] ?? "";
+    expect([...new Set([...section.matchAll(/`(pg_[a-z_]+)`/gu)].map(match => match[1]))].sort()).toEqual([...NATIVE_STORE_GUARD_CATALOGS].sort());
   });
   // Measured 8.3 s alone and 12.1 s at load average 7 exceed Vitest's 5 s default.
   it("accepts class, slot, pins and SQL together while preserving machinery and issued immutability", () => {

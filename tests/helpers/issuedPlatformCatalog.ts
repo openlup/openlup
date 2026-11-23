@@ -58,6 +58,13 @@ export async function withPlatformCatalog<T>(manifest: ReturnType<typeof readIss
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
+/** Guard catalogs observed by the native-store catalog proof and documented in DATA_AND_MIGRATIONS.md. */
+export const NATIVE_STORE_GUARD_CATALOGS = [
+  "pg_namespace", "pg_authid", "pg_auth_members", "pg_db_role_setting",
+  "pg_database", "pg_default_acl", "pg_event_trigger", "pg_extension",
+  "pg_cast", "pg_parameter_acl", "pg_trigger", "pg_policy", "pg_rewrite",
+] as const;
+
 export const definitionPath = "db/platform/migrations/20990101000000_catalog_purchase_admission.sql";
 export const grantPath = "db/platform/migrations/20990101000100_catalog_checkout_owner_execute.sql";
 export const definitionSql = checkoutOwnerRoutines.map((signature, index) => `

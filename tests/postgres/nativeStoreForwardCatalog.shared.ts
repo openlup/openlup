@@ -5,7 +5,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { qualifiedCatalogueStorageSelectSql, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, previewNoopAcceptanceSql, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
-import { definitionPath, definitionSql, grantPath, grantSql } from "../helpers/issuedPlatformCatalog.js";
+import { definitionPath, definitionSql, grantPath, grantSql, NATIVE_STORE_GUARD_CATALOGS } from "../helpers/issuedPlatformCatalog.js";
 import { readSelectedCatalogProjection } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -32,7 +32,7 @@ type FunctionRow = { oid: number; name: string; owner: string; returnsTrigger: b
 type RelationRow = { oid: number; name: string; schema: string; relation: string; kind: string; owner: string; rls: boolean; forceRls: boolean; options: string | null; acl: string[]; columnAcls: unknown };
 type Snapshot = {
   indexes: { oid: number; name: string; table: string; definition: string; attrs: unknown }[];
-  functions: FunctionRow[]; relations: RelationRow[]; columns: { rel: string; name: string; attrs: Record<string, unknown>; default: string | null }[]; system: { functions: string; relations: string };
+  functions: FunctionRow[]; relations: RelationRow[]; columns: { rel: string; name: string; attrs: Record<string, unknown>; default: string | null }[]; system: { functions: string; relations: string }; systemRules: string;
   relationOids: number[]; constraintOids: number[]; constraints: { oid: number; relationOid: number; kind: string; rel: string; name: string; def: string; validated: boolean; deferrable: boolean; deferred: boolean; indexOid: number }[]; guards: Record<string, Record<string, unknown>[]>;
 };
 // Every guard catalog is read whole through to_jsonb, with its OID and volatile columns left out and parser positions in
@@ -47,62 +47,76 @@ const GUARDS: { id: string; catalog: string; where?: string; drop?: string[]; re
   { id: "eventTriggers", catalog: "pg_event_trigger" }, { id: "extensions", catalog: "pg_extension" },
   { id: "casts", catalog: "pg_cast" }, { id: "parameterAcls", catalog: "pg_parameter_acl" },
   { id: "triggers", catalog: "pg_trigger", relation: "tgrelid", added: (row, newConstraints) => row.tgisinternal === true && newConstraints.has(Number(row.tgconstraint)) }, { id: "policies", catalog: "pg_policy", relation: "polrelid" },
-  { id: "rules", catalog: "pg_rewrite", relation: "ev_class" },
+  { id: "rules", catalog: "pg_rewrite", where: `t.ev_class >= ${OID_FLOOR}`, relation: "ev_class" },
 ];
-const GUARDS_SNAPSHOT_SQL = `SELECT jsonb_build_object(${GUARDS.map(guard =>
+const GUARDS_SNAPSHOT_EXPR = `jsonb_build_object(${GUARDS.map(guard =>
   `'${guard.id}', (SELECT COALESCE(jsonb_agg(r ORDER BY r),'[]'::jsonb) FROM (
     SELECT regexp_replace((to_jsonb(t)${["oid", ...guard.drop ?? []].map(key => ` - '${key}'`).join("")})::text, ${POSITIONS}, 'g')::jsonb AS r
     FROM ${guard.catalog} t WHERE ${guard.where ?? "true"}) s)`
-).join(", ")}) AS guards`;
+).join(", ")})`;
 const aclOf = (expr: string, kind: string, owner: string) => `ARRAY(SELECT (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END)||':'||a.privilege_type||(CASE WHEN a.is_grantable THEN '${GRANT_OPTION}' ELSE '' END)
   FROM aclexplode(COALESCE(${expr}, acldefault(${kind}, ${owner}))) a ORDER BY 1)`;
 
-// Preserve every structural attribute; normalize only parse positions.
-async function snapshot(db: PoolClient): Promise<Snapshot> {
-  const functions = (await db.query(`SELECT p.oid::int AS oid, p.oid::regprocedure::text AS name, p.proowner::regrole::text AS owner, p.prorettype = 'pg_catalog.trigger'::regtype AS "returnsTrigger",
-    (to_jsonb(p)-'prosrc'-'proacl'-'proargdefaults')||jsonb_build_object('proargdefaults',regexp_replace(COALESCE(p.proargdefaults::text,''),${POSITIONS},'g')) AS attrs,
-    ${aclOf("p.proacl", "'f'", "p.proowner")} AS acl, ARRAY[p.proacl::text, p.proargdefaults::text] AS "rawMetadata", p.prosrc AS src
-    FROM pg_proc p WHERE p.oid >= ${OID_FLOOR} ORDER BY p.oid`)).rows;
-  const relations = (await db.query(`SELECT c.oid::int AS oid, c.oid::regclass::text AS name, n.nspname::text AS schema, c.relname::text AS relation,
-    c.relkind::text AS kind, c.relowner::regrole::text AS owner,
-    c.relrowsecurity AS rls, c.relforcerowsecurity AS "forceRls", c.reloptions::text AS options,
-    ${aclOf("c.relacl", "(CASE WHEN c.relkind='S' THEN 's' ELSE 'r' END)::\"char\"", "c.relowner")} AS acl,
-    (SELECT jsonb_agg(jsonb_build_array(a.attname,a.attacl::text) ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attacl IS NOT NULL) AS "columnAcls"
-    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.oid >= ${OID_FLOOR} ORDER BY c.oid`)).rows;
-  // Objects PostgreSQL ships are compared as one digest of the facts that carry privileges; statistics columns are left out
-  // because autovacuum changes them between two snapshots.
-  const systemAndOids = (await db.query(`SELECT
-    md5(COALESCE((SELECT string_agg(to_jsonb(p)::text, E'\\n' ORDER BY p.oid) FROM pg_proc p WHERE p.oid < ${OID_FLOOR}),'')) AS functions,
-    md5(COALESCE((SELECT string_agg(jsonb_build_array(c.oid,c.relname,c.relnamespace,c.relowner,c.relkind,c.relrowsecurity,c.relforcerowsecurity,c.reloptions,c.relacl::text)::text, E'\\n' ORDER BY c.oid) FROM pg_class c WHERE c.oid < ${OID_FLOOR}),'')
-      || COALESCE((SELECT string_agg(a.attrelid||'.'||a.attname||'='||a.attacl::text, E'\\n' ORDER BY a.attrelid,a.attnum) FROM pg_attribute a WHERE a.attrelid < ${OID_FLOOR} AND a.attacl IS NOT NULL),'')) AS relations,
-    COALESCE((SELECT array_agg(oid::int ORDER BY oid) FROM pg_class), ARRAY[]::int[]) AS "relationOids",
-    COALESCE((SELECT array_agg(oid::int ORDER BY oid) FROM pg_constraint), ARRAY[]::int[]) AS "constraintOids"`)).rows[0];
-  // The relation is schema-qualified explicitly: regclass text omits a schema that is on the search path.
-  const constraints = (await db.query(`SELECT con.oid::int AS oid, con.conrelid::int AS "relationOid", con.contype AS kind, con.condeferrable AS deferrable, con.condeferred AS deferred,
-    COALESCE(n.nspname||'.'||c.relname, 'type:'||con.contypid::regtype::text) AS rel, con.conname AS name, pg_get_constraintdef(con.oid) AS def, con.convalidated AS validated, con.conindid::int AS "indexOid"
+const SNAPSHOT_SQL = `SELECT
+  COALESCE((SELECT json_agg(t) FROM (
+    SELECT p.oid::int AS oid, p.oid::regprocedure::text AS name, p.proowner::regrole::text AS owner, p.prorettype = 'pg_catalog.trigger'::regtype AS "returnsTrigger",
+      (to_jsonb(p)-'prosrc'-'proacl'-'proargdefaults')||jsonb_build_object('proargdefaults',regexp_replace(COALESCE(p.proargdefaults::text,''),${POSITIONS},'g')) AS attrs,
+      ${aclOf("p.proacl", "'f'", "p.proowner")} AS acl, ARRAY[p.proacl::text, p.proargdefaults::text] AS "rawMetadata", p.prosrc AS src
+    FROM pg_proc p WHERE p.oid >= ${OID_FLOOR} ORDER BY p.oid
+  ) t), '[]'::json) AS functions,
+  COALESCE((SELECT json_agg(t) FROM (
+    SELECT c.oid::int AS oid, c.oid::regclass::text AS name, n.nspname::text AS schema, c.relname::text AS relation,
+      c.relkind::text AS kind, c.relowner::regrole::text AS owner,
+      c.relrowsecurity AS rls, c.relforcerowsecurity AS "forceRls", c.reloptions::text AS options,
+      ${aclOf("c.relacl", "(CASE WHEN c.relkind='S' THEN 's' ELSE 'r' END)::\"char\"", "c.relowner")} AS acl,
+      (SELECT jsonb_agg(jsonb_build_array(a.attname,a.attacl::text) ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attacl IS NOT NULL) AS "columnAcls"
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.oid >= ${OID_FLOOR} ORDER BY c.oid
+  ) t), '[]'::json) AS relations,
+  md5(COALESCE((SELECT string_agg(p::text, E'\\n' ORDER BY p.oid) FROM pg_proc p WHERE p.oid < ${OID_FLOOR}),'')) AS "systemFunctions",
+  md5(COALESCE((SELECT string_agg(jsonb_build_array(c.oid,c.relname,c.relnamespace,c.relowner,c.relkind,c.relrowsecurity,c.relforcerowsecurity,c.reloptions,c.relacl::text)::text, E'\\n' ORDER BY c.oid) FROM pg_class c WHERE c.oid < ${OID_FLOOR}),'')
+    || COALESCE((SELECT string_agg(a.attrelid||'.'||a.attname||'='||a.attacl::text, E'\\n' ORDER BY a.attrelid,a.attnum) FROM pg_attribute a WHERE a.attrelid < ${OID_FLOOR} AND a.attacl IS NOT NULL),'')) AS "systemRelations",
+  md5(COALESCE((SELECT string_agg(t::text, E'\\n' ORDER BY t.oid) FROM pg_rewrite t WHERE t.ev_class < ${OID_FLOOR}),'')) AS "systemRules",
+  COALESCE((SELECT array_agg(oid::int ORDER BY oid) FROM pg_class), ARRAY[]::int[]) AS "relationOids",
+  COALESCE((SELECT array_agg(oid::int ORDER BY oid) FROM pg_constraint), ARRAY[]::int[]) AS "constraintOids",
+  COALESCE((SELECT json_agg(t) FROM (
+    SELECT con.oid::int AS oid, con.conrelid::int AS "relationOid", con.contype AS kind, con.condeferrable AS deferrable, con.condeferred AS deferred,
+      COALESCE(n.nspname||'.'||c.relname, 'type:'||con.contypid::regtype::text) AS rel, con.conname AS name, pg_get_constraintdef(con.oid) AS def, con.convalidated AS validated, con.conindid::int AS "indexOid"
     FROM pg_constraint con LEFT JOIN pg_class c ON c.oid=con.conrelid LEFT JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE con.contype <> 'n' ORDER BY 1,2`)).rows;
-  const columns = (await db.query(`SELECT n.nspname||'.'||c.relname AS rel, a.attname AS name,
-    to_jsonb(a)-'attrelid' AS attrs, pg_get_expr(d.adbin,d.adrelid) AS default
+    WHERE con.contype <> 'n' ORDER BY 1,2
+  ) t), '[]'::json) AS constraints,
+  COALESCE((SELECT json_agg(t) FROM (
+    SELECT n.nspname||'.'||c.relname AS rel, a.attname AS name,
+      to_jsonb(a)-'attrelid' AS attrs, pg_get_expr(d.adbin,d.adrelid) AS default
     FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace
     LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
-    WHERE c.relkind IN ('r','p') AND a.attnum>0 ORDER BY 1,a.attnum`)).rows;
-  const indexes = (await db.query(`SELECT c.oid::int AS oid, n.nspname||'.'||c.relname AS name,
-    tn.nspname||'.'||t.relname AS table, pg_get_indexdef(c.oid) AS definition,
-    regexp_replace(to_jsonb(i)::text, ${POSITIONS}, 'g')::jsonb AS attrs
+    WHERE c.relkind IN ('r','p') AND a.attnum>0 ORDER BY 1,a.attnum
+  ) t), '[]'::json) AS columns,
+  COALESCE((SELECT json_agg(t) FROM (
+    SELECT c.oid::int AS oid, n.nspname||'.'||c.relname AS name,
+      tn.nspname||'.'||t.relname AS table, pg_get_indexdef(c.oid) AS definition,
+      regexp_replace(to_jsonb(i)::text, ${POSITIONS}, 'g')::jsonb AS attrs
     FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace
-    JOIN pg_class t ON t.oid=i.indrelid JOIN pg_namespace tn ON tn.oid=t.relnamespace ORDER BY c.oid`)).rows;
-  const guards = (await db.query(GUARDS_SNAPSHOT_SQL)).rows[0].guards as Snapshot["guards"];
+    JOIN pg_class t ON t.oid=i.indrelid JOIN pg_namespace tn ON tn.oid=t.relnamespace ORDER BY c.oid
+  ) t), '[]'::json) AS indexes,
+  ${GUARDS_SNAPSHOT_EXPR} AS guards`;
+
+// Preserve every structural attribute in one MVCC snapshot; normalize only parse positions.
+// Objects PostgreSQL ships are compared as one digest of the facts that carry privileges; statistics columns are left out
+// because autovacuum changes them between two snapshots. The relation is schema-qualified explicitly: regclass text omits
+// a schema that is on the search path.
+async function snapshot(db: PoolClient): Promise<Snapshot> {
+  const row = (await db.query(SNAPSHOT_SQL)).rows[0]!;
   return {
-    functions,
-    relations,
-    columns,
-    indexes,
-    system: { functions: systemAndOids.functions as string, relations: systemAndOids.relations as string },
-    relationOids: systemAndOids.relationOids as number[],
-    constraintOids: systemAndOids.constraintOids as number[],
-    constraints,
-    guards,
+    functions: row.functions as FunctionRow[],
+    relations: row.relations as RelationRow[],
+    columns: row.columns as Snapshot["columns"],
+    indexes: row.indexes as Snapshot["indexes"],
+    system: { functions: row.systemFunctions as string, relations: row.systemRelations as string },
+    systemRules: row.systemRules as string,
+    relationOids: row.relationOids as number[],
+    constraintOids: row.constraintOids as number[],
+    constraints: row.constraints as Snapshot["constraints"],
+    guards: row.guards as Snapshot["guards"],
   };
 }
 
@@ -666,6 +680,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   const existing = new Set(before.relationOids), knownConstraints = new Set(before.constraintOids);
   const newConstraints = new Set(after.constraintOids.filter(oid => !knownConstraints.has(oid)));
   for (const guard of GUARDS) {
+    if (guard.id === "rules" && before.systemRules !== after.systemRules) fail("rules on existing relations changed");
     const rows = (snap: Snapshot) => snap.guards[guard.id]!.filter(row => !guard.relation || existing.has(Number(row[guard.relation])));
     const was = new Set(rows(before).map(row => JSON.stringify(row))), now = rows(after);
     const kept = new Set(now.map(row => JSON.stringify(row)));
@@ -1127,16 +1142,16 @@ function hasEarlierTriggerTable(forward: string, relation: string, hash: string)
   return position >= 0 && statements.slice(0, position).some(statement => nativeStoreCreatedTable(statement) === relation);
 }
 
-async function verifyForward(pool: Pool, registry: ReviewedForwardRegistry, path: string, bytes: Buffer, prefix: Parameters<typeof assertNativeStoreForward>[3], keep = false, setup = "") {
+async function verifyForward(pool: Pool, registry: ReviewedForwardRegistry, path: string, bytes: Buffer, prefix: Parameters<typeof assertNativeStoreForward>[3], keep = false, setup = "", cachedBefore?: Snapshot) {
   const admission = assertNativeStoreForward(registry, path, bytes, prefix);
-  return checkForward(pool, admission.slot, bytes.toString("utf8"), keep, setup, admission);
+  return checkForward(pool, admission.slot, bytes.toString("utf8"), keep, setup, admission, cachedBefore);
 }
 
 const pristineSnapshots = new WeakMap<Pool, Snapshot>();
 
 // Run a forward in a transaction on a real database and check it against the slot. It is rolled
 // back, except that `keep` commits a forward that passed so the next slot sees the cumulative chain.
-async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep = false, setup = "", admission?: NativeAdmission, cachedBefore?: Snapshot) {
+async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep = false, setup = "", admission?: NativeAdmission, cachedBefore?: Snapshot): Promise<Snapshot> {
   if (!admission && (keep || slot.createdTriggers?.some(entry => entry.deferred))) fail("deferred verification and commit require static admission");
   const db = await pool.connect();
   let passed = false;
@@ -1146,14 +1161,16 @@ async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep
     try {
       if (setup) await db.query(setup);
       if (slot.previewNoopAcceptance) await assertPreviewAcceptancePreimage(db, migrationRole);
-      const reusableBefore = !keep && !setup ? (cachedBefore ?? pristineSnapshots.get(pool)) : undefined;
+      const reusableBefore = !setup ? (cachedBefore ?? (!keep ? pristineSnapshots.get(pool) : undefined)) : undefined;
       const before = reusableBefore ?? await pinned(db, () => snapshot(db));
       const memberships = async () => (await db.query("SELECT * FROM pg_catalog.pg_auth_members ORDER BY oid")).rows;
       const membersBefore = slot.ownerWindowRole === undefined ? undefined : await memberships();
       await db.query(forward);
       if (membersBefore && JSON.stringify(await memberships()) !== JSON.stringify(membersBefore)) fail("pg_auth_members changed during the settings-only forward");
-      await pinned(db, async () => assertSlotCatalog(db, slot, before, await snapshot(db), migrationRole, forward, admission));
+      const after = await pinned(db, () => snapshot(db));
+      await pinned(db, () => assertSlotCatalog(db, slot, before, after, migrationRole, forward, admission));
       passed = true;
+      return after;
     } finally {
       await db.query(keep && passed ? "COMMIT" : "ROLLBACK");
       if (keep && passed) pristineSnapshots.delete(pool);
@@ -1509,16 +1526,29 @@ async function replayChain(connectionString: string, probePreimage: boolean) {
   const prefix: Parameters<typeof assertNativeStoreForward>[3] = [];
   const steps = [...chain.map(unit => ({ path: unit.path, unit })), ...bound.map(entry => ({ path: entry.pin.path, entry }))].sort((x, y) => x.path.localeCompare(y.path));
   try {
+    let lastSnapshot: Snapshot | undefined;
     for (const step of steps) {
       const { path } = step, bytes = "unit" in step ? step.unit.bytes : readFileSync(path);
-      if ("unit" in step) { await chainDb.query(bytes.toString("utf8")); applied += 1; }
-      else {
-        if (step.entry.slot.previewNoopAcceptance) await provePreview();
-        const error = await verifyForward(chainDb, registry, path, bytes, prefix, true).then(() => null, (error: Error) => error);
+      if ("unit" in step) {
+        await chainDb.query(bytes.toString("utf8"));
+        applied += 1;
+        lastSnapshot = undefined;
+      } else {
+        if (step.entry.slot.previewNoopAcceptance) {
+          await provePreview();
+          lastSnapshot = undefined;
+        }
+        let nextSnapshot: Snapshot | undefined;
+        const error = await verifyForward(chainDb, registry, path, bytes, prefix, true, "", lastSnapshot)
+          .then(after => { nextSnapshot = after; return null; }, (error: Error) => error);
         outcomes.set(path, error);
-        if (error) continue;
+        if (error) { lastSnapshot = undefined; continue; }
+        lastSnapshot = nextSnapshot;
         // Probe the first replacement at creation and roll each probe back.
-        if (path === reminderCreation.pin.path) creationOutcomes = await reminderCreationProbes(chainDb);
+        if (path === reminderCreation.pin.path) {
+          creationOutcomes = await reminderCreationProbes(chainDb);
+          lastSnapshot = undefined;
+        }
       }
       prefix.push({ path, bytes });
     }
@@ -2530,12 +2560,12 @@ ${extra}`, false,
         expect(after.functions.length).toBe(before.functions.length + 2);
         expect(after.relations).toEqual(before.relations);
         expect(after.system).toEqual(before.system);
+        expect(after.systemRules).toEqual(before.systemRules);
       } finally { await db.query("ROLLBACK"); }
     } finally { db.release(); }
   });
-  it("names exactly the guard catalogs in the documentation", () => {
-    const section = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8").split("- The guard catalogs")[1]?.split(/\n(?:- |\n)/u)[0] ?? "";
-    expect([...new Set([...section.matchAll(/`(pg_[a-z_]+)`/gu)].map(match => match[1]))].sort()).toEqual(GUARDS.map(guard => guard.catalog).sort());
+  it("matches the shared guard catalog list checked against documentation", () => {
+    expect(GUARDS.map(guard => guard.catalog).sort()).toEqual([...NATIVE_STORE_GUARD_CATALOGS].sort());
   });
   // Each guard catalog is wired into the comparison: one extra row in the after snapshot is a change.
   it.each(GUARDS)("compares every row of the guard catalog $catalog", async ({ id, relation }) => {

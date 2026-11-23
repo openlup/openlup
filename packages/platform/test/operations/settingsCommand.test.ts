@@ -3,10 +3,12 @@ import { readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
 import { z, type ZodType } from "zod";
 import { runSettingsCommand, type SettingsAppBindings } from "../../src/operations/server/settingsCommand.js";
+import * as settingsCommandSupport from "../../src/operations/server/settingsCommandSupport.js";
 import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
 
 import { callSettingsTool, settingsMcpContext, settingsMcpTools } from "../../src/operations/server/settingsMcp.js";
 import { renewalStockProtectionPreviewResult } from "../../src/inventory/renewalStockProtection.js";
+import { applyTaxCoverageRevision, bindTaxCoverageReader } from "../../src/tax/index.js";
 
 const key = "inventory_renewal_protection";
 const url = "postgresql://sample@read.invalid/shop";
@@ -325,6 +327,91 @@ it.each([
   else expect(output).toBe(document(await showSetting({ key: setting }, readers)));
   // A connected request only needs a binding for a known installed key.
   expect(bind).toHaveBeenCalledTimes(setting === "savedAddressValidation" || setting === "unknown" ? 0 : 1);
+});
+
+it.each([
+  ["factory permission denied", "bind", "42501"],
+  ["missing app module", "import", undefined],
+  ["reader permission denied", "read", "42501"],
+  ["CONNECT denied during startup", "read", "42501"],
+  ["reader function missing", "read", "42883"],
+  ["reader relation missing", "read", "42P01"],
+  ["connection reset", "read", "ECONNRESET"],
+  ["TLS certificate expired", "read", "CERT_HAS_EXPIRED"],
+  ["driver initialization", "bind", undefined],
+  ["cleanup hook threw", "close", undefined],
+  ["generic reader error", "read", undefined],
+  ["no reader registered", "missing", undefined],
+  ["factory throws an unbound code", "bind", "tax_coverage_reader_unbound"],
+  ["reader throws an unbound code", "read", "tax_coverage_reader_unbound"],
+  ["cleanup throws an unbound code", "close", "tax_coverage_reader_unbound"],
+  ["factory throws a throwing code getter", "bind", "throwing getter"],
+  ["reader throws a throwing code getter", "read", "throwing getter"],
+  ["cleanup throws a throwing code getter", "close", "throwing getter"],
+  ["managed or unbound reader", "unbound", undefined],
+] as const)("shows only the coverage remedy in text, JSON and MCP for %s", async (failure, stage, code) => {
+  const error = new Error(failure === "driver initialization" ? "NODE_PG_FORCE_NATIVE" : `Private fixture detail: ${failure}`);
+  const codeGetter = code === "throwing getter"
+    ? vi.fn(() => { throw new Error("Fixture code was inspected"); }) : undefined;
+  if (codeGetter) Object.defineProperty(error, "code", { get: codeGetter });
+  else if (code) Object.assign(error, { code });
+  const query = vi.fn(async () => {
+    if (stage === "read") throw error;
+    return { rows: [] };
+  });
+  const readCoverage = bindTaxCoverageReader({ query }, { installationRef: "store-a", accountRef: "account-a" });
+  const read = vi.fn(async () => stage === "unbound" ? { refusal: "tax_coverage_reader_unbound" } : readCoverage());
+  const close = vi.fn(async () => { if (stage === "close") throw error; });
+  const app = failure === "driver initialization" ? undefined
+    : stage === "import" ? "./missing-settings-app.mjs" : "./settings.mjs";
+  const bind = vi.fn(async ({ app }: { app?: string }) => {
+    if (stage === "bind") throw error;
+    if (stage === "import") return import(new URL(app!, import.meta.url).href);
+    return { readers: stage === "missing" ? {} : { "tax.coverage": read }, close };
+  });
+  const host = { bind };
+  const argv = ["show", "tax.coverage", "--database-url", url, ...(app ? ["--app", app, "--configuration", "sample"] : [])];
+  const unbound = stage === "unbound";
+  const action = unbound
+    ? "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation)."
+    : "The connected coverage read failed. Check the app binding, the database connection and its TLS settings, the role's connect and EXECUTE privileges, and that this release's migrations are installed on a native database; then run the same command again.";
+  const command = unbound ? { command: "openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json" } : {};
+  const refusal = {
+    code: "commerce_setting_read_unavailable", path: ["key"],
+    rule: "A connected read requires an accessible, valid settings row or confirmed absence.",
+    hint: unbound ? "Bind the native reader to the intended installation and account." : "Read with an authorized settings reader for the intended store.",
+    remediation: { retry: true, action, ...command },
+  };
+  const result = { schemaVersion: 1, refusal };
+  const buildRefusal = codeGetter ? vi.spyOn(settingsCommandSupport, "refuseCoverageRead") : undefined;
+  const json = await run([...argv, "--json"], { host }).then(output => {
+    if (buildRefusal) {
+      expect(buildRefusal).toHaveBeenCalledOnce();
+      const built = buildRefusal.mock.results[0];
+      if (built?.type !== "return") throw new Error("Expected an internal coverage refusal.");
+      const cause = Object.getOwnPropertyDescriptor(built.value.refusal, "cause");
+      expect(cause?.value).toBe(error);
+      expect(cause?.enumerable).toBe(false);
+    }
+    return output;
+  }).finally(() => buildRefusal?.mockRestore());
+  expect(json.exit).toBe(74);
+  expect(JSON.parse(json.output)).toEqual(result);
+
+  const text = await run(argv, { host });
+  expect(text.exit).toBe(74);
+  expect(text.output).toBe([refusal.code, refusal.rule, refusal.hint, action, ...Object.values(command), ""].join("\n"));
+
+  const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(row => row.command === "show")!;
+  const response = await callSettingsTool(tool, { key: "tax.coverage" }, {
+    "database-url": url, ...(app ? { app, configuration: "sample" } : {}),
+  }, host);
+  expect(response).toEqual({ isError: true, structuredContent: result, content: [{ type: "text", text: json.output.trimEnd() }] });
+  expect(bind).toHaveBeenCalledTimes(3);
+  expect(read).toHaveBeenCalledTimes(stage === "read" || stage === "close" || unbound ? 3 : 0);
+  expect(query).toHaveBeenCalledTimes(stage === "read" || stage === "close" ? 3 : 0);
+  if (stage === "close") expect(close).toHaveBeenCalledTimes(3);
+  if (codeGetter) expect(codeGetter).not.toHaveBeenCalled();
 });
 
 it("shows a recorded policy override and closes the connected reader", async () => {
@@ -668,6 +755,7 @@ it("checks every packaged schema against its default and valid examples", async 
     "shipping_flat_minor",
     "subscription_minimum_base_units",
     "subscription_sized_intro_phase",
+    "tax.coverage",
   ]);
   for (const entry of entries) {
     const values = [
@@ -682,6 +770,31 @@ it("checks every packaged schema against its default and valid examples", async 
       expect(JSON.parse(output).rows.find((row: { key: string }) => row.key === entry.key).validation).toEqual({ state: "valid" });
     }
   }
+});
+
+it("checks coverage overlap offline at the installer refusal pointer", async () => {
+  const setting = "tax.coverage";
+  const declaration = { jurisdiction: "district-a", taxKind: "sale", status: "registered", actorRef: "operator-a",
+    effective: { from: asOf }, recordedAt: asOf } as const;
+  const value = { schemaVersion: 1, accountRef: "account-a", revision: "overlap", declarations: [declaration, declaration] } as const;
+  const query = vi.fn();
+  const refused = await applyTaxCoverageRevision({ query }, {
+    expectedHead: null, document: { installationRef: "store-a", accountRef: value.accountRef, actorRef: declaration.actorRef, coverage: value },
+  });
+  const field = "/coverage/declarations/1/effective";
+  expect(refused).toMatchObject({ kind: "refused", code: "tax_invalid_input", field });
+  expect(query).not.toHaveBeenCalled();
+
+  const host = checks(async () => ({ file: { ...minimumFile, entries: { [setting]: { value } } } }));
+  const { exit, output } = await run(checkArgs, { host });
+  expect(exit).toBe(1);
+  expect(JSON.parse(output)).toMatchObject({ state: "invalid" });
+  expect(JSON.parse(output).rows.find((row: { key: string }) => row.key === setting)?.validation).toEqual({
+    state: "invalid", paths: [field.slice(1).split("/")],
+    messages: ["Use nonoverlapping declarations for this jurisdiction and tax kind."],
+  });
+  const text = await run(checkArgs.filter(arg => arg !== "--json"), { host });
+  expect(text.output).toContain(`${setting}: file present, schema invalid at ${field}`);
 });
 
 it("keeps the guide's app declaration identical to the typechecked binding", () => {
@@ -839,6 +952,11 @@ type ParityCapture = {
 };
 const parityCapture: ParityCapture = JSON.parse(readFileSync(new URL("./settingsBoundParity.main.json", import.meta.url), "utf8"));
 
+const parityCases = (entries: readonly { key: string }[]) => [
+  ["list"], ["list", "--goal", " "], ["list", "--goal", "qzxunique"], ["explain", "commerce_setting_unknown"],
+  ...entries.flatMap(({ key }) => [["list", "--goal", key], ["show", key], ["explain", key]]),
+];
+
 async function settingsParity() {
   // Reopen the real settings implementation with the frozen package data at its file-read boundary.
   vi.resetModules();
@@ -860,10 +978,7 @@ async function settingsParity() {
   }
   const catalogue = read({});
   if (!("entries" in catalogue)) throw new Error("Unable to read the package catalogue");
-  const cases = [
-    ["list"], ["list", "--goal", " "], ["list", "--goal", "qzxunique"], ["explain", "commerce_setting_unknown"],
-    ...catalogue.entries.flatMap(({ key }) => [["list", "--goal", key], ["show", key], ["explain", key]]),
-  ];
+  const cases = parityCases(catalogue.entries);
   const bytes = [];
   const loadHealthy = vi.fn(async () => appFixture(() => { throw new Error("unexpected value read"); }));
   const loadBroken = vi.fn(async () => { throw new Error("rejected\nedit"); });
@@ -915,6 +1030,11 @@ async function settingsParity() {
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   const expected = parityCapture;
+  const liveData = JSON.parse(readFileSync(new URL("../../settings-catalog.json", import.meta.url), "utf8")) as {
+    entries: { key: string; kind: string }[];
+  };
+  const frozenKeys = new Set(catalogue.entries.map(({ key }) => key));
+  const addedKeys = new Set(liveData.entries.filter(({ key }) => !frozenKeys.has(key)).map(({ key }) => key));
   const bound = [
     ...catalogue.entries.map(entry => ({
       args: ["show", entry.key, ...parityArgs],
@@ -935,8 +1055,10 @@ async function settingsParity() {
       const argv = [...args, ...(mode === "no app" ? [] : appArgs), ...outputArgs];
       const { exit, output, warnings } = await run(argv, { host: boundParityHost(mode) }, command);
       let baselineOutput = output;
+      let captured = fixture ? expected.outputs[expected.rows[fixture]![format][mode]]! : offline;
       if (fixture === "check" && mode !== "no app") {
         const addressPolicy = "shipping.addressPolicy";
+        const [capturedExit, capturedOutput] = captured!;
         if (format === "json") {
           const result = JSON.parse(output);
           const rows = result.rows as { key: string }[];
@@ -944,25 +1066,41 @@ async function settingsParity() {
             key: addressPolicy, kind: "code", file: { state: "not-reported" }, validation: { state: "not-validated" },
           })]);
           baselineOutput = document({ ...result, rows: rows.filter(row => row.key !== addressPolicy) });
+          const snapshot = JSON.parse(capturedOutput);
+          captured = [capturedExit, document({ ...snapshot, rows: snapshot.rows.filter(({ key }: { key: string }) => !addedKeys.has(key)) })];
         } else {
           baselineOutput = output.replace(/^shipping\.addressPolicy: file not-reported, schema not-validated\n {2}Effect: [^\n]+\n/mu, "");
           expect(baselineOutput).not.toBe(output);
+          const blocks = capturedOutput.split(/(?=^\S)/mu);
+          captured = [capturedExit, blocks.filter(block => !addedKeys.has(/^(\S+): file /u.exec(block)?.[1] ?? "")).join("")];
         }
       }
-      expect([exit, baselineOutput], `${mode}: ${argv.join(" ")}`).toEqual(fixture ? expected.outputs[expected.rows[fixture]![format][mode]] : offline);
+      expect([exit, baselineOutput], `${mode}: ${argv.join(" ")}`).toEqual(captured);
       expect(warnings).toEqual([]);
     }
   }
 
-  const liveData = JSON.parse(readFileSync(new URL("../../settings-catalog.json", import.meta.url), "utf8")) as {
-    entries: { key: string; kind: string }[];
-  };
   const discovery = listSettings({});
   expect("entries" in discovery && discovery.entries.map(({ key }) => key)).toEqual(liveData.entries.map(({ key }) => key));
+  const liveBytes = [];
+  const liveCases = parityCases(liveData.entries);
+  for (const json of [false, true]) for (const args of liveCases) {
+    const { exit, output } = await run(json ? [...args, "--json"] : args);
+    liveBytes.push([exit, output]);
+  }
+  // Main's current package digest includes installed tax coverage.
+  expect(createHash("sha256").update(JSON.stringify(liveBytes)).digest("hex"))
+    .toBe("18f75be66daccace6f25ba4040a82542f324c00d25bb2a29788bc16c371b578d");
   const checkKeys = liveData.entries.filter(({ kind }) => kind === "code" || kind === "installed").map(({ key }) => key);
   const representatives = bound.filter(({ args, fixture }) => fixture !== undefined &&
     (args[0] === "check" || args[1] === key || args[1] === "checkout_recovery_reminders" && args[0] === "show" ||
       args[1] === "catalog.bundleAvailabilityPolicy" && args[0] === "preview"));
+  for (const { key, kind } of liveData.entries) {
+    const fixture = `show ${key}`;
+    if (kind === "installed" && addedKeys.has(key) && Object.hasOwn(expected.rows, fixture)) {
+      representatives.push({ args: ["show", key, ...parityArgs], fixture });
+    }
+  }
   for (const format of ["text", "json"] as const) for (const mode of parityModes) {
     const flags = [...(mode === "no app" ? [] : appArgs), ...(format === "json" ? ["--json"] : [])];
     const host = boundParityHost(mode);

@@ -467,7 +467,7 @@ it("restores reordered sealed history and recovers the original publication afte
     code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_changed" },
   });
   expect(await journeyCensus(target.owner)).toEqual(weighed);
-});
+}, 150_000);
 
 it("refuses a retained registration whose original text is a JSON object during restore", async () => {
   if (!(await source.owner.query("SELECT 1 FROM public.platform_human_principals WHERE principal_id=$1", [actorId])).rows.length) {

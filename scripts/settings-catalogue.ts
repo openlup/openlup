@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "@openlup/platform/operations/contracts";
 import { describeRenewalStockProtectionSetting, renewalStockProtectionPreviewResult } from "@openlup/platform/inventory";
+import { describeTaxCoverageSetting } from "@openlup/platform/tax";
 import { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "@openlup/platform/operations/server";
 
 type ValueDescriptor = Extract<SettingDescriptor, { rules: unknown }>;
@@ -37,7 +38,7 @@ function readSettingDescriptors(root: string): readonly SourceDescriptor[] {
       throw new Error(`Invalid settings data in ${path}`, { cause });
     }
   });
-  return [describeRenewalStockProtectionSetting(), ...data];
+  return [describeRenewalStockProtectionSetting(), describeTaxCoverageSetting(), ...data];
 }
 
 function settingCommand(key: string, connected = false): string {
@@ -73,6 +74,7 @@ const searchTerms: Record<string, string> = {
   "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
   "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",
   "tax.adapter": "exclusive tax, tax calculation port, tax adapter binding, tax scope",
+  "tax.coverage": "tax coverage, merchant registration, jurisdiction, tax kind, effective dates, acknowledgement, coverage history",
   "tax.classMap": "tax class map, provider tax code, market pack, class-map revision",
   "tax.localRateTable": "local tax rules, jurisdiction, tax class, effective interval, rate, exemption, fixed fee, legal basis, rounding, digest",
   "market.fiscalProfile": "fiscal jurisdiction, tax category, VAT rate, basis points, statutory citation, inclusive VAT",

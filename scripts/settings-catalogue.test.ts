@@ -1,5 +1,6 @@
 import { ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { describeRenewalStockProtectionSetting } from "@openlup/platform/inventory";
+import { describeTaxCoverageSetting } from "@openlup/platform/tax";
 import { spawnSync } from "node:child_process";
 import { globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,12 +17,12 @@ it("represents every domain data key and executable descriptor in the catalogue"
   const { entries } = JSON.parse(readFileSync("packages/platform/settings-catalog.json", "utf8"));
   const dataKeys = globSync("packages/platform/src/*/settings-data.json").flatMap(path =>
     (JSON.parse(readFileSync(path, "utf8")) as Array<{ key: string }>).map(({ key }) => key));
-  const expected = [describeRenewalStockProtectionSetting().key, ...dataKeys].sort();
+  const expected = [describeRenewalStockProtectionSetting().key, describeTaxCoverageSetting().key, ...dataKeys].sort();
   expect(entries.map(({ key }) => key)).toEqual(expected);
   expect(new Set(expected).size).toBe(expected.length);
   expect(entries.filter(({ kind }) => kind === "installed").map(({ key }) => key)).toEqual(expect.arrayContaining([
     "inventory_renewal_protection", "checkout_recovery_reminders", "subscriber_winback_policy",
-    "pricing.subscriptionPricePolicy", "communications.nativeDeliveryControls",
+    "pricing.subscriptionPricePolicy", "communications.nativeDeliveryControls", "tax.coverage",
   ]));
   expect(entries.filter(({ kind }) => kind === "cap").length).toBeGreaterThanOrEqual(40);
   expect(entries.filter(({ kind }) => kind === "code").map(({ key }) => key)).toEqual([

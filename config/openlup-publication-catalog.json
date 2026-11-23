@@ -1598,6 +1598,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125070000_job_run_finish_lease_fence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125075000_tax_coverage_revisions.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -3007,6 +3015,10 @@
     },
     {
       "path": "examples/neutral-store/test/provider-qualification.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/quote-acceptance.test.ts",
       "class": "public-output"
     },
     {
@@ -5254,6 +5266,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125070000_job_run_finish_lease_fence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125075000_tax_coverage_revisions.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5703,6 +5723,14 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogOwnerQuote.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogOwnerQuoteEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogOwnerQuoteSubscription.ts",
       "class": "public-output"
     },
     {
@@ -9646,6 +9674,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/promotions/promotionQuoteAcceptanceEnvelope.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/promotions/promotionQuoteBinding.ts",
       "class": "public-output"
     },
@@ -10223,6 +10255,10 @@
     },
     {
       "path": "packages/platform/src/tax/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/installedCoverage.ts",
       "class": "public-output"
     },
     {
@@ -12387,6 +12423,14 @@
     },
     {
       "path": "packages/platform/test/pricing/dbBackedCommerceQuoteSnapshotVerifier.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/fixtures/catalog-owner-quote/one-time.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/fixtures/catalog-owner-quote/subscription.json",
       "class": "public-output"
     },
     {
@@ -31734,6 +31778,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/taxCoverage/corpus.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/taxCoverage/revisions.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/taxCoverage/settings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fulfillmentAlignmentComposition.test.ts",
       "class": "public-output"
     },
@@ -32503,6 +32559,14 @@
     },
     {
       "path": "tests/postgres/subscriptionWinback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCoveragePgtap.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCoverageRevisions.test.ts",
       "class": "public-output"
     },
     {

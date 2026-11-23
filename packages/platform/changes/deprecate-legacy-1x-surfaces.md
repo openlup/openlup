@@ -4,6 +4,9 @@ payment reference-support exports under provider payment subpaths, the
 7-generic `RenewalCyclePolicy` interface, `createFulfillmentCommandLedger`, and
 the legacy hosted-bundle default in `DEFAULT_PLATFORM_BUNDLE`.
 
+Defaulting Node hosts on `node-cron` bundles to `lockMode: "cluster"` is an
+unscheduled candidate for 2.0.
+
 Migration: no runtime or type changes in 1.x. Existing 1.x replacements
 (`PaymentAdapter` / `PaymentProviderRegistry` from `@openlup/platform/payments/contracts`,
 `createPaymentProviderRegistry` from `@openlup/platform/payments`,

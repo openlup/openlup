@@ -6903,6 +6903,52 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "job-run-finish-lease-fence",
+        "path": "db/platform/migrations/20261125070000_job_run_finish_lease_fence.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.platform_finish_job_run_v2(text,uuid,text,integer,integer,text,text,jsonb)",
+            "beforeSha256": "4bdac6fcbc2c095d4ea65735bf2d9e285edd2f8198ec85563e6994d0450b44dd",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "tax-coverage-revisions",
+        "path": "db/platform/migrations/20261125075000_tax_coverage_revisions.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.tax_coverage_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_coverage_append_v1(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_coverage_read_v1(text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_coverage_revision_immutable()",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "tax_coverage_revision_immutable",
+            "table": "public.tax_coverage_revisions",
+            "sha256": "8f4a1963fafd18f444fb2ddc31e023d0421b3afcd352792c79f87cbc52746f27"
+          }
+        ]
       }
     ]
   },
@@ -10164,6 +10210,43 @@
           "signature": "public.subscription_cancel_feedback_submit(uuid,uuid,text,boolean)",
           "beforeSha256": null,
           "afterSha256": "fde436cf46a80cbd5e0f64b30e8b949528214c4aa472197194b43e994aa673cd"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125070000_job_run_finish_lease_fence.sql",
+      "sha256": "733abd4fc89c802ecc5020c2a8d4701f55f7cfc29379cf1f7a7649b48ecce005",
+      "functions": [
+        {
+          "signature": "public.platform_finish_job_run_v2(text,uuid,text,integer,integer,text,text,jsonb)",
+          "beforeSha256": "4bdac6fcbc2c095d4ea65735bf2d9e285edd2f8198ec85563e6994d0450b44dd",
+          "afterSha256": "d9dff63fad006e02658f9e9d27f5ee6abd7cc328b05e1d6890312159ecd895a8"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125075000_tax_coverage_revisions.sql",
+      "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3",
+      "functions": [
+        {
+          "signature": "public.tax_coverage_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "94be386c89976b5335225d9bce5323d7bd5faa275ba6b65f8c065f9dd4dd8894"
+        },
+        {
+          "signature": "public.tax_coverage_append_v1(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "2b7bcbfda8966b89fbaef9c5e8fd639755d9f87a01325994ea2f2d6fabb7d8aa"
+        },
+        {
+          "signature": "public.tax_coverage_read_v1(text,text)",
+          "beforeSha256": null,
+          "afterSha256": "ea0cb57bbc37846387b4f4c6175c04452f9c55f908fcf487808d3a89707f6c18"
+        },
+        {
+          "signature": "public.tax_coverage_revision_immutable()",
+          "beforeSha256": null,
+          "afterSha256": "8366de3d0bcd66159f18e0077f0eb4ee429425b5c2e05ad3c1e469e59399e379"
         }
       ]
     }

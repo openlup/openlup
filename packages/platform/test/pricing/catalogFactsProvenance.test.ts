@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { buildLineBreakdown } from "@openlup/core/pricing";
+import { mapPricingComponent } from "../../src/pricing/dbBackedCommerceQuoteHelpers.js";
 import { describe, expect, it, vi } from "vitest";
 import type { CreateQuoteResponse } from "../../src/pricing/index.js";
 import type { CommerceQuoteCatalogItem } from "../../src/pricing/index.js";
@@ -6,7 +9,11 @@ import {
   projectPublicQuoteSnapshot,
   quoteDigest,
 } from "../../src/pricing/index.js";
-import { buildCatalogOwnerQuote } from "../../src/catalog/catalogOwnerQuote.js";
+import { buildCatalogOwnerQuote } from "../../src/catalog/testing/index.js";
+import { buildSelectedSubscriptionOwnerQuote, type SelectedSubscriptionOwnerInput } from "../../src/catalog/catalogOwnerQuoteSubscription.js";
+import { canonicalCatalogDraftJson as canonical } from "../../src/catalog/contracts/draft.js";
+import { splitIncludedVat } from "../../src/pricing/quoteSchemas.js";
+import { digestSubscriptionPricePolicy } from "../../src/pricing/subscriptionPricePolicy.js";
 import { createPostgresCatalogAdmission } from "../../src/catalog/catalogAdmission.js";
 import { catalogAdmissionEvidenceSchema } from "../../src/catalog/catalogAdmissionSchema.js";
 import { withCatalogAdmissionFence } from "../../src/catalog/catalogAdmissionFence.js";
@@ -89,6 +96,8 @@ it("binds the full reviewed projection, distinct source lines and unselected own
     policy: { applicability: "not_applicable", context: { scope: "opaque:verified" } },
   };
   const firstProof = buildCatalogOwnerQuote(input);
+  expect(tagged(firstProof.document)).toBe(ownerGolden("one-time"));
+  expect(firstProof.evidence.quoteDigest).toBe("35eabb1479c54e3a534e20a445083335916fcac31886bd114fac57767a044edd");
   expect(firstProof.evidence.quoteDigest).toBe(quoteDigest("catalog.owner-quote.v0", firstProof.document));
   const readAgain = structuredClone(input);
   readAgain.quote.quote.lines[0]!.catalogFacts!.atTime = "2026-06-05T11:00:00.000Z";
@@ -286,3 +295,209 @@ function quoteResponse(): CreateQuoteResponse {
     },
   };
 }
+
+const tagged = (document: unknown) => canonical(["catalog.owner-quote.v0", document]);
+const ownerGolden = (name: string) => readFileSync(new URL(`./fixtures/catalog-owner-quote/${name}.json`, import.meta.url), "utf8");
+const sample = "2026-06-05T10:00:00.000Z";
+const validFrom = "2026-06-01T00:00:00.000Z";
+
+async function selectedSubscription(policyId?: string): Promise<SelectedSubscriptionOwnerInput> {
+  const scope = { priceListId: id(10), regionCode: "ZZ", currency: TEST_CURRENCY, channel: "D2C" } as const;
+  const tuple = { ...scope, id: policyId ?? id(11), revisionNo: 1, effectiveFrom: validFrom, effectiveTo: null,
+    discountBps: 1000, roundingQuantumMinor: 10, roundingRule: "FLOOR_TO_QUANTUM" } as const;
+  const policy = policyId ? { ...tuple, digest: await digestSubscriptionPricePolicy(tuple) } : null;
+  const price = (i: number, base: boolean) => ({
+    variantId: id(20 + i), mode: base ? "one_time" as const : "subscription" as const, matchedMinQty: 1 as const,
+    unitPriceMinor: base ? 1490 : 1340, amountKind: "gross" as const, priceListId: scope.priceListId,
+    priceEntryId: id((base ? 30 : 40) + i), resolvedAt: sample,
+  });
+  const results = [1, 2].map(i => policy
+    ? { kind: "subscription_policy" as const, base: price(i, true), unitPriceMinor: 1340, policy }
+    : { kind: "subscription_legacy" as const, base: price(i, true), unitPriceMinor: 1340, legacyResolved: price(i, false) });
+  const gross = (amountMinor: number) => ({ amountMinor, currency: TEST_CURRENCY });
+  const lines = results.map((result, index) => {
+    const item = { ...strictItem(), skuId: result.base.variantId, skuCode: `ARTICLE-${index + 1}` };
+    const baseLine = quoteResponse().quote.lines[0]!;
+    const { netMinor, vatMinor } = splitIncludedVat(1340, 2300);
+    const pricingComponents = buildLineBreakdown({ variant_id: item.skuId, line_qty: 1, base_unit_price_minor: 1490,
+      resolved_unit_price_minor: 1340, matched_tier_min_qty: 1, mode_at_line: "subscription", mode_resolved_via_fallback: false })
+      .map(component => mapPricingComponent(component, "line"));
+    return { ...baseLine, sku: item.skuCode, unitPriceGross: gross(1340), lineSubtotalGross: gross(1340), pricingComponents,
+      tax: { ...baseLine.tax, netAmount: gross(netMinor), vatAmount: gross(vatMinor), grossAmount: gross(1340) },
+      catalogFacts: catalogFactsForQuoteLine(true, item, price(index + 1, false), result.base,
+        "subscription", sample, TEST_CURRENCY, 1340, 1340, 1490,
+        policy ? { policyRevisionId: policy.id, policyDigest: policy.digest } : undefined)! };
+  });
+  const lineBindings = lines.map((line, index) => ({
+    sourceOrdinal: index + 1, skuCode: line.sku, skuId: line.catalogFacts.skuId, mode: "subscription", quantity: 1, role: "core",
+    ...(index === 0 ? { source: "fresh", skuRevisionId: id(51) } as const : { source: "legacy" } as const),
+  } as const));
+  const linePricing = lines.map(line => ({ sku: line.sku, quantity: 1, unitAmountMinor: 1340, isAddon: false, quoteLine: structuredClone(line) }));
+  const head = (n: number) => ({ productId: id(n), publicationId: id(n + 10), revision: 3, documentDigest: "c".repeat(64) });
+  const first = head(60), unused = head(61);
+  const actual = (i: number) => policy ? price(i, true) : price(i, false);
+  const row = (i: number, role: "actual" | "base" | "comparison", value = role === "base" ? price(i, true) : actual(i)) => ({
+    sourceOrdinal: i, role, selectorKey: `opaque:${role}:α`, declaringRef: "opaque:中", value: { ...value, resolvedAt: validFrom },
+    outcome: role === "comparison" ? "rejected" as const : "selected" as const, validFrom,
+    validTo: role === "comparison" ? "2026-06-03T00:00:00.000Z" : null,
+  });
+  const shippingTerms = { version: "shipping-threshold.v1", currency: TEST_CURRENCY, flatMinor: 150, freeThresholdMinor: 2700 } as const;
+  const acquisitionCapability = "subscription-acquisition.v1" as const;
+  const snapshot = quoteResponse();
+  const ship = splitIncludedVat(150, 2300), discount = splitIncludedVat(296, 2300);
+  return {
+    atTime: sample, request: { principalRef: id(80), clientId: id(81), ownerNamespace: "fixture:store", purpose: "checkout",
+      offerSelector: "configured:regular", acquisitionCapability, mode: "subscription", cadenceDays: 28,
+      lines: lines.map(({ sku, quantity }) => ({ sku, quantity })), promoCodes: [],
+      checkout: { configuration: "regular", country: "ZZ", termsRevision: "terms:1", firstName: "Sample", lastName: null,
+        phone: null, line1: null, line2: null, city: null, postalCode: null, email: "fixture@example.invalid", purchaser: id(81) } },
+    offer: { ref: "owner:regular-α", version: "1" }, consultedHeads: [unused, first], lineBindings,
+    issues: [{ ...first, publicationId: id(79), revision: 1, kind: "compared", sourceOrdinal: 1, skuRevisionId: id(52) },
+      { ...first, revision: 2, publicationId: id(78), kind: "declaring", sourceOrdinal: 1, skuRevisionId: id(51) }],
+    price: { ...scope, lists: [{ priceListId: scope.priceListId, validFrom, validTo: null }],
+      selectors: [row(2, "base"), row(1, "comparison", { ...actual(1), priceEntryId: id(95) }), row(1, "actual"), row(2, "actual"), row(1, "base")],
+      results },
+    policyHistory: policy ? [policy] : [], secondTotalMinor: 2236,
+    decisions: { promotions: [{ ref: "promotion:regular", revision: "1", validFrom, validTo: null, decision: "applied" },
+      { ref: "promotion:unused", revision: "2", validFrom, validTo: null, decision: "ineligible" }],
+      eligibilityRef: "owner:eligibility-α", claim: "eligible", acquisitionPolicyRef: "owner:acquisition", taxRef: "owner:tax",
+      shippingRef: "owner:shipping", destination: { ref: "owner:destination-β", digest: "d".repeat(64) } },
+    phase: { applicability: "certified", phaseDigest: "e".repeat(64), lineBindings: structuredClone(lineBindings),
+      basis: { templateRef: "owner:phase", templateVersion: 1, cadenceDays: 56 } },
+    quote: { ...snapshot, quote: { ...snapshot.quote, lines, subtotalGross: gross(2680), shippingGross: gross(150),
+      pricingComponents: lines.flatMap(line => line.pricingComponents),
+      discounts: [{ promotionId: "promotion:regular", label: "Initial subscription", reasonCode: "promotion_target_percentage",
+        appliesTo: "order_total", amountOffMinor: 296 }],
+      discountTotalGross: gross(296), shippingDiscountGross: gross(0), totalGross: gross(2534),
+      netTotal: gross(ship.netMinor - discount.netMinor + lines[0]!.tax.netAmount.amountMinor * 2),
+      taxTotal: gross(ship.vatMinor - discount.vatMinor + lines[0]!.tax.vatAmount.amountMinor * 2),
+      context: { mode: "subscription", cadenceDays: 28, acquisitionCapability, promoCodes: [], starterRequest: "a".repeat(64),
+        pricingPolicy: { offerPolicyVersion: "commerce.offer-policy.v2", promotionEngineVersion: "promotion-engine.v2" },
+        acquisitionTerms: { schemaVersion: acquisitionCapability, revision: "acquisition:1", initialDiscountBps: 2000,
+          delivery2DiscountBps: 3000, effectiveFrom: validFrom, effectiveTo: null, sourcePromotionId: "promotion:regular" },
+        shippingTerms, starterRenewalTerms: { version: "native.renewal-terms.v1", shippingTerms, minimumPayableMinor: 10,
+          linePricing, normalCadenceDays: [56], starterPack: { schemaVersion: "1", starterIntervalDays: 28, basisTemplateVersion: 1,
+            delivery2: { discountBps: 3000, basisSubtotalMinor: 2680, discountMinor: 594 },
+            graduation: { cadenceDays: 56, lines: linePricing.map(({ sku, quoteLine }, sortOrder) =>
+              ({ sku, qty: 1, isAddon: false, sortOrder, quoteLine: structuredClone(quoteLine) })) } } } } } },
+  };
+}
+
+it("pins the mixed subscription preimage and keeps timed observations, contact and private decisions scoped", async () => {
+  const input = await selectedSubscription(), originalQuote = structuredClone(input.quote);
+  const first = buildSelectedSubscriptionOwnerQuote(input);
+  expect(input.quote).toEqual(originalQuote);
+  expect(tagged(first.document)).toBe(ownerGolden("subscription"));
+  expect(first.evidence.quoteDigest).toBe("d02afe16aaaf3b7d8e4fb268bcab03ff02a9f811ae55a89e1d1902c1f1694acf");
+  const later = "2026-06-05T11:00:00.000Z";
+  input.atTime = input.quote.quote.context.atTime = later;
+  input.quote.quote.context.starterRequest = "b".repeat(64);
+  input.quote.quote.context.pricingPolicy.pricingPolicyToken = "opaque".repeat(12);
+  const terms = input.quote.quote.context.starterRenewalTerms;
+  for (const line of [...input.quote.quote.lines, ...terms.linePricing.map(row => row.quoteLine),
+    ...terms.starterPack.graduation.lines.map(row => row.quoteLine)]) line.catalogFacts.atTime = later;
+  for (const result of input.price!.results) {
+    result.base.resolvedAt = later;
+    if (result.kind === "subscription_legacy") result.legacyResolved.resolvedAt = later;
+  }
+  input.price!.selectors.reverse();
+  input.consultedHeads!.reverse();
+  expect(buildSelectedSubscriptionOwnerQuote(input)).toEqual(first);
+  input.request.checkout.email = "other@example.invalid";
+  expect(buildSelectedSubscriptionOwnerQuote(input).document).toEqual(first.document);
+  expect(first.requestBinding.checkout.email).toBe("fixture@example.invalid");
+  expect(Object.keys(first.evidence).sort()).toEqual(["consultedHeads", "destinationDigest", "destinationRef", "graduation", "lineBindings",
+    "moneyVersion", "offer", "policyEvidenceRef", "priceEvidenceRef", "quoteDigest"]);
+  expect(tagged(first.document)).not.toMatch(/catalogFacts|example\.invalid|starterRequest|resolvedAt/);
+  const wire = projectPublicQuoteSnapshot(originalQuote);
+  expect(wire.quote.lines.every(line => !Object.hasOwn(line, "catalogFacts"))).toBe(true);
+  expect(Object.keys(wire.quote.context).sort()).toEqual(["acquisitionCapability", "acquisitionTerms", "cadenceDays", "mode",
+    "pricingPolicy", "promoCodes", "shippingTerms", "starterRenewalTerms", "starterRequest"]);
+  expect(tagged(wire)).not.toMatch(/ownerDecisions|renewalTerms|phaseDigest|destinationDigest|priceEvidenceRef/);
+});
+
+it("binds isolated equal-payable price, catalogue, promotion, acquisition and future decisions", async () => {
+  const input = await selectedSubscription(), first = buildSelectedSubscriptionOwnerQuote(input);
+  const updateEntry = (x: SelectedSubscriptionOwnerInput, role: "actual" | "base") => {
+    const result = x.price!.results[0]!;
+    if (result.kind !== "subscription_legacy") throw new Error("Expected a legacy observation");
+    const entry = role === "actual" ? result.legacyResolved : result.base;
+    entry.priceEntryId = x.price!.selectors.find(s => s.sourceOrdinal === 1 && s.role === role)!.value.priceEntryId = id(96);
+    const terms = x.quote.quote.context.starterRenewalTerms;
+    for (const line of [x.quote.quote.lines[0]!, terms.linePricing[0]!.quoteLine, terms.starterPack.graduation.lines[0]!.quoteLine]) {
+      if (line.catalogFacts.version !== "catalog_facts_v1") throw new Error("Expected legacy facts");
+      line.catalogFacts[role === "actual" ? "resolvedPriceEntryId" : "basePriceEntryId"] = id(96);
+    }
+  };
+  const altered = [
+    (x: typeof input) => updateEntry(x, "actual"), (x: typeof input) => updateEntry(x, "base"),
+    (x: typeof input) => { x.price!.selectors[1]!.value.priceEntryId = id(97); },
+    (x: typeof input) => { x.price!.selectors[2]!.validTo = "2026-08-01T00:00:00.000Z"; },
+    (x: typeof input) => { x.consultedHeads![0]!.revision++; },
+    (x: typeof input) => { x.issues[1]!.publicationId = id(98); },
+    (x: typeof input) => { x.offer!.version = "2"; },
+    (x: typeof input) => { x.decisions.promotions[0]!.revision = "2"; },
+    (x: typeof input) => { x.decisions.eligibilityRef += "2"; },
+    (x: typeof input) => { x.decisions.promotions[1]!.validTo = "2026-08-01T00:00:00.000Z"; },
+    (x: typeof input) => { x.decisions.acquisitionPolicyRef += "2"; },
+    (x: typeof input) => { x.decisions.destination = { ref: "owner:destination-δ", digest: "f".repeat(64) }; },
+    (x: typeof input) => {
+      if (x.phase.applicability === "certified") x.phase.phaseDigest = "9".repeat(64);
+    },
+    (x: typeof input) => {
+      if (x.phase.applicability === "certified" && x.phase.lineBindings[0]!.source !== "legacy") x.phase.lineBindings[0]!.skuRevisionId = id(99);
+    },
+    (x: typeof input) => { x.phase = { applicability: "absent" }; },
+    (x: typeof input) => { x.secondTotalMinor++; },
+    (x: typeof input) => { x.request.cadenceDays = x.quote.quote.context.cadenceDays = x.quote.quote.context.starterRenewalTerms.starterPack.starterIntervalDays = 35; },
+  ].map(update => { const copy = structuredClone(input); update(copy); return copy; });
+  const policy = buildSelectedSubscriptionOwnerQuote(await selectedSubscription(id(11)));
+  const otherPolicy = buildSelectedSubscriptionOwnerQuote(await selectedSubscription(id(12)));
+  expect(otherPolicy.evidence.policyEvidenceRef).not.toBe(policy.evidence.policyEvidenceRef);
+  expect(otherPolicy.evidence.quoteDigest).not.toBe(policy.evidence.quoteDigest);
+  const rebuilt = altered.map(buildSelectedSubscriptionOwnerQuote);
+  expect(rebuilt.at(-2)!.document.reviewedProjection.secondTotalMinor).toBe(input.secondTotalMinor + 1);
+  expect(rebuilt.at(-1)!.document.reviewedProjection.cadenceDays).toBe(35);
+  for (const moved of [...rebuilt, policy, otherPolicy]) {
+    expect(moved.document.reviewedProjection.totalGross).toEqual(first.document.reviewedProjection.totalGross);
+    expect(tagged(moved.document)).not.toBe(tagged(first.document));
+    expect(moved.evidence.quoteDigest).not.toBe(first.evidence.quoteDigest);
+  }
+});
+
+it("refuses malformed coordinates, lossy JSON and unavailable decisions with fixed remedies", async () => {
+  const input = await selectedSubscription(), malformed = "Recover the original purchase evidence with its owner and replay the original request.";
+  for (const mutate of [
+    (x: typeof input) => { x.consultedHeads!.push({ ...x.consultedHeads![0]!, revision: 9 }); },
+    (x: typeof input) => { x.price!.selectors.push(x.price!.selectors[0]!); },
+    (x: typeof input) => { x.price!.selectors.splice(2, 1); },
+    (x: typeof input) => { x.price!.selectors[0]!.role = "actual"; },
+    (x: typeof input) => { x.price!.selectors[0]!.value.matchedMinQty = 2 as never; },
+    (x: typeof input) => { x.request.lines[0]!.quantity++; },
+    (x: typeof input) => { x.quote.quote.context.starterRenewalTerms.linePricing[0]!.quoteLine.catalogFacts.documentDigest = "b".repeat(64); },
+    (x: typeof input) => { if (x.phase.applicability === "certified") x.phase.lineBindings[0]!.role = "addon"; },
+    (x: typeof input) => { x.offer!.ref = "λ".repeat(121); },
+    (x: typeof input) => { delete (x.decisions.destination as Partial<NonNullable<typeof x.decisions.destination>>).digest; },
+    (x: typeof input) => { Object.assign(x.quote.quote.context, { unexpected: 1 }); },
+    (x: typeof input) => { Object.assign(x.quote.quote.context, { cyclic: x }); },
+    (x: typeof input) => { Object.assign(x.quote.quote.context, { atTime: undefined }); },
+  ]) {
+    const copy = structuredClone(input);
+    mutate(copy);
+    expect(() => buildSelectedSubscriptionOwnerQuote(copy)).toThrow(malformed);
+  }
+  input.offer!.ref = "λ".repeat(120);
+  expect(buildSelectedSubscriptionOwnerQuote(input).document.offer?.ref).toBe(input.offer!.ref);
+  const policy = await selectedSubscription(id(11));
+  policy.policyHistory[0]!.effectiveFrom = "2026-08-01T00:00:00.000Z";
+  expect(() => buildSelectedSubscriptionOwnerQuote(policy)).toThrow("Use a selection supported on this installation.");
+  policy.policyHistory[0]!.effectiveFrom = validFrom;
+  policy.policyHistory.push({ ...policy.policyHistory[0]!, id: id(12), revisionNo: 2 });
+  expect(() => buildSelectedSubscriptionOwnerQuote(policy)).toThrow("Use a selection supported on this installation.");
+  const payload = "a".repeat(1_048_576 - Buffer.byteLength(tagged("")));
+  expect(quoteDigest("catalog.owner-quote.v0", payload)).toMatch(/^[0-9a-f]{64}$/u);
+  expect(() => quoteDigest("catalog.owner-quote.v0", payload + "a")).toThrow("draft_payload_too_large");
+  const depth47 = Array.from({ length: 47 }).reduce<unknown>(value => [value], null);
+  expect(quoteDigest("catalog.owner-quote.v0", depth47)).toMatch(/^[0-9a-f]{64}$/u);
+  expect(() => quoteDigest("catalog.owner-quote.v0", [depth47])).toThrow("draft_json_depth");
+});

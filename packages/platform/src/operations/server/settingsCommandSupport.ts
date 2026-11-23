@@ -1,6 +1,25 @@
 import { isIPv4 } from "node:net";
 import { z } from "zod";
+import type { SettingRefusal } from "../contracts/settings.js";
 import type { runSettingsCommand } from "./settingsCommand.js";
+import { loadSettingsCatalogue } from "./settingsCatalog.js";
+
+export function refuseCoverageRead(cause: unknown, unbound = false): { refusal: SettingRefusal } {
+  const base = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;
+  const refusal = unbound ? {
+    ...base,
+    hint: "Bind the native reader to the intended installation and account.",
+    remediation: { ...base.remediation,
+      action: "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation).",
+      command: "openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json" },
+  } : {
+    ...base,
+    remediation: { retry: true,
+      action: "The connected coverage read failed. Check the app binding, the database connection and its TLS settings, the role's connect and EXECUTE privileges, and that this release's migrations are installed on a native database; then run the same command again." },
+  };
+  Object.defineProperty(refusal, "cause", { value: cause, enumerable: false });
+  return { refusal };
+}
 
 type SettingsDatabase = NonNullable<Parameters<NonNullable<Parameters<typeof runSettingsCommand>[2]>["bind"]>[0]["database"]>;
 

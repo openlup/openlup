@@ -145,6 +145,7 @@
     "client/quote-acceptance.ts",
     "host/quote-secret.ts",
     "test/acquisition-quote.test.ts",
+    "test/quote-acceptance.test.ts",
     "test/quote-shipping.test.ts",
     "client/live-quote.ts",
     "host/paid-mail-artifact.ts",

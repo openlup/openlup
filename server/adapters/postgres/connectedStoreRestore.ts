@@ -245,6 +245,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
 
 // Explicit owner order, not schema discovery or a general FK/translation engine.
 const order = [
+  "tax_coverage_revisions",
   "platform_human_principals", "platform_control_operators", "commerce_operators", "clients",
   "platform_human_memberships", "platform_human_membership_audit_events", "platform_communication_operators",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",

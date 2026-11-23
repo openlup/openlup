@@ -378,6 +378,11 @@ export type SettingReader = () => Promise<{
 } | {
     refusal: string;
 }>;
+type CatalogueRefusal = SettingRefusal & {
+    remediation: {
+        command: string;
+    };
+};
 /** @experimental List matching entries from the installed package, offline. */
 export declare function listSettings(input: unknown): ListResult | {
     refusal: SettingRefusal;
@@ -398,7 +403,7 @@ export declare function invalidSettingsCommand(): {
 };
 type PreviewRefusal = {
     schemaVersion: 1;
-    refusal: SettingRefusal;
+    refusal: CatalogueRefusal;
 };
 /** @experimental Use the same preview refusal document for host and domain failures. */
 export declare function refuseSettingsPreview(code: string, detail?: Pick<SettingRefusal, "path" | "hint">): PreviewRefusal;

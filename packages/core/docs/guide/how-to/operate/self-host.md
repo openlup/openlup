@@ -140,7 +140,13 @@ no timezone, so configure its scheduler process to use UTC. An optional
 `schedulerProfile` can project declared jobs and validate admission before
 registration.
 
-Use a session-affine cluster lock (`durability: "cluster"`) when instances can overlap. `createNodeHost` defaults to `lockMode: "cluster"` on `node-cron` bundles and fails closed unless the resolved lock declares `durability: "cluster"` (pass `lockMode: "process"` only for deliberate single-instance or test hosts). Direct `createNodeScheduler` callers default to `lockMode: "process"` for 1.x compatibility; pass `lockMode: "cluster"` to fail closed instead of falling back to the standalone no-op lock.
+`createNodeHost().serveNode` and `createNodeScheduler` default to `lockMode: "process"`.
+The scheduler uses the resolved lock when one is available.
+If no lock resolves, process mode uses a no-op lock that permits concurrent callbacks.
+When instances can overlap, pass `lockMode: "cluster"` with a session-affine
+`AdvisoryLock` that declares `durability: "cluster"`.
+Cluster mode requires that durability before the scheduler registers any timers.
+
 Bundle readiness also checks required scheduler configuration and reports missing
 settings as `OPENLUP_E_ENV_MISSING`. Keep each
 job's durable lease and replay behavior; a timer is not evidence that work

@@ -281,7 +281,7 @@ describe("host scheduled execution", () => {
     const { cron, callbacks } = cronFixture();
     const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal("fetch", fetch);
-    const result = await host.serveNode({ env: {}, cron, listen: false, lockMode: "process" });
+    const result = await host.serveNode({ env: {}, cron, listen: false });
     await callbacks[0]();
     expect(fetch).toHaveBeenCalledWith("http://localhost:3000/api/cron/nightly-report", { method: "GET", headers: {} });
     await result.stop();
@@ -760,30 +760,57 @@ describe("capability readiness at the boot gate", () => {
       .toThrow('not ready: unknown PLATFORM_BUNDLE "edge-cluster"');
   });
 
-  it("fails closed on node-cron bundles when given a process-only or unlabelled lock unless lockMode is process", async () => {
+  it("registers jobs and honors a process lock when lockMode is omitted", async () => {
+    const { host, bundle } = hostFixture();
+    bundle.descriptor = { ...bundle.descriptor, readReadiness: () => ({ ok: true }) };
+    const { cron, callbacks } = cronFixture();
+    const advisoryLock = { ...lockFixture(), durability: "process" as const };
+    advisoryLock.tryAcquire.mockResolvedValueOnce(false);
+    const run = vi.fn();
+    const result = await host.serveNode({
+      env, cron, listen: false, advisoryLock, scheduledJobHandlers: { "nightly-report": run },
+    });
+    expect(result.registeredJobs).toEqual(jobs.map(({ jobId }) => jobId));
+    expect(cron.schedule.mock.calls.map(([expression]) => expression)).toEqual(jobs.map(({ schedule }) => schedule));
+
+    await callbacks[0]();
+    expect(advisoryLock.tryAcquire).toHaveBeenCalledExactlyOnceWith("nightly-report");
+    expect(run).not.toHaveBeenCalled();
+    expect(advisoryLock.release).not.toHaveBeenCalled();
+
+    await callbacks[0]();
+    expect(run).toHaveBeenCalledExactlyOnceWith({ jobId: "nightly-report", invocationSource: "node_cron" });
+    expect(advisoryLock.release).toHaveBeenCalledExactlyOnceWith("nightly-report");
+    await result.stop();
+  });
+
+  it("registers and runs jobs with no resolved lock when lockMode is omitted", async () => {
+    const { host, bundle } = hostFixture();
+    bundle.descriptor = { ...bundle.descriptor, readReadiness: () => ({ ok: true }) };
+    const { cron, callbacks } = cronFixture();
+    const run = vi.fn();
+    const result = await host.serveNode({
+      env: {}, cron, listen: false, scheduledJobHandlers: { "nightly-report": run },
+    });
+    expect(result.registeredJobs).toEqual(jobs.map(({ jobId }) => jobId));
+    expect(cron.schedule.mock.calls.map(([expression]) => expression)).toEqual(jobs.map(({ schedule }) => schedule));
+    await callbacks[0]();
+    expect(run).toHaveBeenCalledExactlyOnceWith({ jobId: "nightly-report", invocationSource: "node_cron" });
+    await result.stop();
+  });
+
+  it.each<{ kind: string; advisoryLock: AdvisoryLock | undefined }>([
+    { kind: "no resolved lock", advisoryLock: undefined },
+    { kind: "a process-only lock", advisoryLock: { ...lockFixture(), durability: "process" } },
+    { kind: "an unlabelled lock", advisoryLock: { tryAcquire: vi.fn(), release: vi.fn(), close: vi.fn() } },
+  ])("refuses explicit cluster mode with $kind before registering timers", async ({ advisoryLock }) => {
     const { host, bundle } = hostFixture();
     bundle.descriptor = { ...bundle.descriptor, readReadiness: () => ({ ok: true }) };
     const { cron } = cronFixture();
-    const processLock: AdvisoryLock = {
-      durability: "process",
-      tryAcquire: vi.fn().mockResolvedValue(true),
-      release: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn().mockResolvedValue(undefined),
-    };
-    const unlabelledLock: AdvisoryLock = {
-      tryAcquire: vi.fn().mockResolvedValue(true),
-      release: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn().mockResolvedValue(undefined),
-    };
-
-    await expect(host.serveNode({ env: {}, cron, listen: false }))
-      .rejects.toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
-    await expect(host.serveNode({ env, cron, listen: false, advisoryLock: processLock }))
-      .rejects.toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
-    await expect(host.serveNode({ env, cron, listen: false, advisoryLock: unlabelledLock }))
-      .rejects.toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
-
-    const explicitProcess = await host.serveNode({ env, cron, listen: false, advisoryLock: processLock, lockMode: "process" });
-    await explicitProcess.stop();
+    const startup = host.serveNode({ env: advisoryLock ? env : {}, cron, listen: false, advisoryLock, lockMode: "cluster" });
+    await expect(startup).rejects.toBeInstanceOf(Error);
+    await expect(startup).rejects.toHaveProperty("message", 'node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+    await expect(startup).rejects.not.toHaveProperty("code");
+    expect(cron.schedule).not.toHaveBeenCalled();
   });
 });

@@ -253,6 +253,90 @@ test(`authenticated completed order read and receipt replay survive ${narrowing}
 });
 }
 
+test('expired stamped checkout replays the saved pending and completed purchase', async () => {
+  const { createHash } = await import('node:crypto');
+  const { canonicalCatalogDraftJson } = await import('@openlup/platform/catalog');
+  const { pricingPolicy } = await import('../host/quote-composition.ts');
+  const digest = (value: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(value)).digest('hex');
+  const actor = { ...context.actor, principalRef: '00000000-0000-4000-8000-000000000001',
+    customerRef: '00000000-0000-4000-8000-000000000002', requesterKey: 'a'.repeat(64) };
+  const key = 'checkout:' + createHash('sha256').update(JSON.stringify([actor.principalRef, context.commandKey])).digest('hex');
+  const checkout = { configuration: payload.configuration, country: payload.country, termsRevision: payload.termsRevision,
+    firstName: payload.firstName, lastName: payload.lastName, phone: payload.phone, line1: payload.line1, line2: null,
+    city: payload.city, postalCode: payload.postalCode, email: payload.email, purchaser: actor.customerRef };
+  const request = { mode: cart.mode, cadenceDays: cart.cadenceDays, lines: cart.lines, promoCodes: [], pricingPolicy,
+    acquisitionCapability: ACQUISITION_TERMS_CAPABILITY, checkout };
+  const money = { amountMinor: 1000, currency: config.market.currency };
+  const tax = { ...config.purchase.tax, included: true as const, country: config.market.country,
+    netAmount: money, vatAmount: { ...money, amountMinor: 0 }, grossAmount: money };
+  const acquisitionTerms = selectAcquisitionTerms([row()],'2026-01-01T00:00:00.000Z','ZZ',createAcquisitionFinancialPolicy())!.terms;
+  const snapshot = { contractVersion: 'commerce.v0' as const, quote: { currency: money.currency, taxIncluded: true as const, discounts: [],
+    lines: [{ ...cart.lines[0]!, productSlug: config.offer.products[0]!.slug, unitPriceGross: money, lineSubtotalGross: money, tax }],
+    subtotalGross: money, netTotal: money, taxTotal: tax.vatAmount, discountTotalGross: tax.vatAmount, totalGross: money,
+    context: { mode: 'subscription' as const, cadenceDays: cart.cadenceDays, promoCodes: [], starterRequest: digest(request), acquisitionTerms } } };
+  const issuer = createPromotionQuoteAcceptance<typeof request>({ projectRequest: value => value });
+  const signed = { request, quote: snapshot.quote, acquisitionTerms, keyring: { current: 'fixture-only-acceptance-key-00000000000000' } };
+  const token = issuer.issuePromotionQuoteAcceptance({ ...signed, now: new Date('2026-01-01T00:00:00.000Z') })!;
+  assert.equal(issuer.verifyPromotionQuoteAcceptanceWithOutcome({
+    ...signed, token, expectedTotal: money, now: new Date('2026-01-05T00:00:00.000Z'),
+  }).reason,'expired');
+  const original = { ...payload, acquisitionCapability: ACQUISITION_TERMS_CAPABILITY, expectedTotal: money };
+  const scope = { schemaVersion: 1, ownerNamespace: 'starter-demo:' + config.id, clientId: actor.customerRef, actorRef: actor.principalRef,
+    lane: 'starter-checkout', requestKey: key, acceptanceTokenDigest: digest(token) };
+  const submit = { ...scope, submitDigest: digest(['catalog.checkout-submit.v1', scope, original]) };
+  const stored = { id: '00000000-0000-4000-8000-000000000003', client_id: actor.customerRef, owned: true,
+    status: 'pending_payment', total_amount_minor: money.amountMinor, currency_code: money.currency, completed: false,
+    created_at: '2026-01-01T00:00:00.000Z', snapshot, submit, fingerprint: 'b'.repeat(32) };
+  const resumable = ['commerce_register_order_destination','fulfillment_record_stock_current','fulfillment_reserve_purchase_order_items',
+    'subscription_declare_provisional_activation','commerce_open_settlement_intent'];
+  const effects: string[] = [], unexpected: string[] = [], receiptCalls: unknown[][] = [];
+  let lookupCount = 0, savedQuoteChecks = 0;
+  const query = async (sql: string, args: unknown[] = []) => {
+    lookupCount++;
+    if (sql.includes('SELECT email')) return { rows: [{ email: payload.email }] };
+    if (sql.includes('pg_advisory')) return { rows: [] };
+    if (sql.includes('commerce_order_draft_receipts')) return { rows: [stored] };
+    if (sql.includes('catalog_admission_replay_order_draft')) {
+      receiptCalls.push(args);
+      if (args[3] !== submit.submitDigest) throw Object.assign(new Error('receipt conflict'), { code: '23505' });
+      return { rows: [] };
+    }
+    if (sql.includes('initial_checkout')) return { rows: [{ initial_checkout: true }] };
+    if (sql.includes('FROM public.commerce_orders WHERE id=$1')) return { rows: [stored] };
+    if (sql.includes('FROM public.commerce_order_items')) return { rows: [{ id: stored.id, sku_id: stored.id, quantity: 1 }] };
+    const step = resumable.find(name => sql.includes(name));
+    if (!step) { unexpected.push(sql); throw new Error('Live quote or unexpected effect'); }
+    effects.push(step);
+    return { rows: [{ result: {}, response: {} }] };
+  };
+  const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
+  const predecessors = { ...unavailable, checkout: () => ({ async createOrderDraft() { assert.fail('Draft already exists'); } }) };
+  const renewal = { assertAvailable(saved: unknown) { savedQuoteChecks++; assert.equal(saved,snapshot); },
+    async activate() { assert.fail('Purchase has not been paid'); } };
+  const actions = composePurchaseCapabilities(db,{} as never,async () => ({ allowed: true }),{} as never,{ predecessors, renewal });
+  const replay = (input: Record<string, unknown>) => actions['checkout.create']!(input,{ ...context, actor });
+  const input = { ...original, quoteAcceptance: token };
+  assert.deepEqual(await replay({ ...input, termsAccepted: false }),{ ok: false,code: 'starter_terms_required' });
+  assert.equal(lookupCount,0);
+  for (const changed of [{ quoteAcceptance: token + 'a' }, { expectedTotal: { ...money, amountMinor: 1001 } },
+    { cart: { ...cart, cadenceDays: cart.cadenceDays! + 1 } }, { termsRevision: 'different-terms' }]) {
+    assert.deepEqual(await replay({ ...input, ...changed }),{ ok: false,code: 'starter_command_conflict' });
+  }
+  assert.deepEqual(effects,[]);
+  assert.equal(savedQuoteChecks,0);
+  assert.ok(receiptCalls.every(args => args[0] === key && args[1] === actor.customerRef && args[2] === scope.lane
+    && args[3] !== submit.submitDigest && args[3] !== stored.fingerprint));
+  const response = { ok: true,value: { orderRef: stored.id,status: stored.status,total: money },replayed: true };
+  assert.deepEqual(await replay(input),response);
+  assert.deepEqual(effects,resumable);
+  stored.completed = true;
+  assert.deepEqual(await replay(input),response);
+  assert.deepEqual(effects,resumable);
+  assert.deepEqual(receiptCalls.slice(-2),Array.from({ length: 2 }, () => [key, actor.customerRef, scope.lane, submit.submitDigest]));
+  assert.equal(savedQuoteChecks,1);
+  assert.deepEqual(unexpected,[]);
+});
+
 test('full-result admission covers exact/frozen unchanged base and add-ons, identity and installed-minimum drift', async () => {
   const { starterTermsAdmission } = await import('../host/editor-ports.ts');
   const { demoIdentifier } = await import('../host/editor-catalogue.ts');

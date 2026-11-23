@@ -6,6 +6,7 @@ import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderOb
 import { explainSetting, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
 import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue } from "../../src/operations/server/settingsCatalog.js";
 import { settingsMcpTools } from "../../src/operations/server/settingsMcp.js";
+import { bindTaxCoverageReader } from "../../src/tax/installedCoverage.js";
 
 describe("renewal stock policy descriptor", () => {
   it("matches the previous validator's acceptance, normalized value and refusal code", () => {
@@ -169,6 +170,25 @@ it("finds inventory buffer in the packaged settings list", () => {
   expect(entries[0]?.key).toBe("inventory_renewal_protection");
 });
 
+it("keeps the original coverage reader cause on the internal refusal only", async () => {
+  const key = "tax.coverage";
+  const cause = new Error("Private fixture detail");
+  const query = vi.fn().mockRejectedValue(cause);
+  const reader = bindTaxCoverageReader({ query }, { installationRef: "store-a", accountRef: "account-a" });
+  const result = await showSetting({ key }, { [key]: reader });
+  if (!("refusal" in result)) throw new Error("Expected coverage refusal.");
+  const { refusal } = result;
+  const base = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;
+  const expected = { ...base, remediation: { retry: true,
+    action: "The connected coverage read failed. Check the app binding, the database connection and its TLS settings, the role's connect and EXECUTE privileges, and that this release's migrations are installed on a native database; then run the same command again.",
+  } };
+  const descriptor = Object.getOwnPropertyDescriptor(refusal, "cause");
+  expect(descriptor?.enumerable).toBe(false);
+  expect(descriptor?.value).toBe(cause);
+  expect(JSON.parse(JSON.stringify(refusal))).toEqual(expected);
+  expect(base).not.toHaveProperty("cause");
+});
+
 describe("settings goal search", () => {
   const catalogue = loadSettingsCatalogue();
 
@@ -182,6 +202,7 @@ describe("settings goal search", () => {
     ["renewal retry policy", "subscriptions.retrySchedule"],
     ["skus", "catalog.optionalGtin"],
     ["VAT rate", "market.fiscalProfile"],
+    ["merchant tax registration coverage history", "tax.coverage"],
   ])("includes %s matches such as %s", (goal, key) => {
     const { entries } = catalogue.listResult.parse(listSettings({ goal }));
     expect(entries.map(entry => entry.key)).toContain(key);
