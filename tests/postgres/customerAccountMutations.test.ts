@@ -8,7 +8,7 @@ import type { AccountSupportCapabilities } from "@openlup/platform/account-suppo
 import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
-import { installAccountMutations, type AccountProfile } from "./customerAccountMutations.fixture.js";
+import { createAccountMutationsTemplate, type AccountMutationsStore, type AccountMutationsTemplate, type AccountProfile } from "./customerAccountMutations.fixture.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 const AT = "2026-11-10T12:00:00.000Z";
 const policy = { key: { min: 8, max: 180 }, name: { min: 2, max: 80 }, phone: { callingCode: "99", localDigits: 9 }, correction: { reasonMin: 8, reasonMax: 500, fieldsMax: 20, fieldMax: 80, noteMax: 240 } };
@@ -20,9 +20,13 @@ const capabilities: AccountSupportCapabilities = {
   subscriptions: { ...NATIVE_SUBSCRIPTION_CAPABILITIES, genericBundleCommands: { supported: false, refusalCode: "native_generic_bundle_commands_unsupported" }, commandBoundReceipts: { supported: false, refusalCode: "native_command_bound_receipts_unsupported" } },
 };
 for (const profile of ["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as AccountProfile[]) describe(`owned account mutations on ${profile}`, () => {
-  let db: Awaited<ReturnType<typeof installAccountMutations>>;
-  beforeAll(async () => { db = await installAccountMutations(profile); }, postgresSetupTimeoutMs);
-  afterAll(async () => { if (db) await db.close(); }, postgresTeardownTimeoutMs);
+  let template: AccountMutationsTemplate | undefined;
+  let db: AccountMutationsStore;
+  beforeAll(async () => {
+    template = await createAccountMutationsTemplate(profile, "account-mutations");
+    db = await template.clone("main");
+  }, postgresSetupTimeoutMs);
+  afterAll(async () => { if (template) await template.close(); }, postgresTeardownTimeoutMs);
   async function fixture() {
     const clientId = randomUUID(), principalId = randomUUID(), otherClient = randomUUID(), otherPrincipal = randomUUID(), invoice = randomUUID(), foreign = randomUUID();
     for (const [id, principal, document] of [[clientId, principalId, invoice], [otherClient, otherPrincipal, foreign]]) {
@@ -76,7 +80,8 @@ for (const profile of ["legacy", "bootstrap", "separate", "admin-managed", "admi
     expect(expected).toHaveLength(2);
     expect(packet.owned.find(row=>row.table==="customer_account_events")?.rows).toEqual(expected);
     if (profile === "legacy") return; // Finite restore requires a qualified target.
-    const target=await installAccountMutations(profile,false,"target");
+    if (!template) throw new Error("account_mutations_template_missing");
+    const target=await template.clone("target");
     try {
       if (target.installation.generation === "legacy") throw new Error("qualified_restore_target_required");
       const freshTarget=await capture(target);
@@ -180,4 +185,33 @@ for (const profile of ["legacy", "bootstrap", "separate", "admin-managed", "admi
     expect(await createAccountEventPrivacyContributor<PgQueryExecutor>({read:null,assess:null}).export(db.owner,{contactId:f.clientId,principalId:null,identity:{}})).toMatchObject({coverage:{complete:false,unavailable:["account-support.account-events"]}});
   });
 
+});
+
+describe("account mutations template isolation", () => {
+  it("isolates concurrent clones, drops closed clone databases and detects leaked cluster role mutations", async () => {
+    const template = await createAccountMutationsTemplate("bootstrap", "isolation-witness");
+    let closedByAssertion = false;
+    try {
+      const [first, second] = await Promise.all([template.clone("Alpha-1"), template.clone("Beta-2")]);
+      const firstDb = (await first.owner.query<{ name: string }>("SELECT current_database() AS name")).rows[0]!.name;
+      const secondDb = (await second.owner.query<{ name: string }>("SELECT current_database() AS name")).rows[0]!.name;
+      expect(firstDb).not.toBe(secondDb);
+      const principalId = randomUUID();
+      await first.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [principalId, `${principalId}@example.invalid`]);
+      expect((await second.owner.query("SELECT principal_id FROM public.platform_human_principals WHERE principal_id=$1", [principalId])).rows).toEqual([]);
+      await first.close();
+      await first.close();
+      expect((await second.owner.query("SELECT datname FROM pg_catalog.pg_database WHERE datname=$1", [firstDb])).rows).toEqual([]);
+      await second.owner.query("CREATE ROLE leaked_template_witness_role NOLOGIN");
+      closedByAssertion = true;
+      const [firstClose, secondClose] = await Promise.allSettled([template.close(), template.close()]);
+      expect(firstClose.status).toBe("rejected");
+      expect(secondClose.status).toBe("rejected");
+      if (firstClose.status === "rejected") expect(String(firstClose.reason)).toContain("account_mutations_template_cluster_role_mutation_leaked");
+      if (secondClose.status === "rejected") expect(String(secondClose.reason)).toContain("account_mutations_template_cluster_role_mutation_leaked");
+      await expect(template.clone("after-close")).rejects.toThrow("account_mutations_template_closed");
+    } finally {
+      if (!closedByAssertion) await template.close();
+    }
+  }, postgresSetupTimeoutMs);
 });

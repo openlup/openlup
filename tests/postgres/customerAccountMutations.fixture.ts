@@ -92,47 +92,279 @@ export async function installAtAcquisitionSearchPathBoundary(
   }
 }
 
+export type AccountMutationsInstallation =
+  | { generation: "legacy" }
+  | QualifiedPostgresInstallation
+  | QualifiedAdminPostgresInstallation;
+
+export interface AccountMutationsStore {
+  owner: Pool;
+  migrator: Pool;
+  installation: AccountMutationsInstallation;
+  runtime: Pool;
+  runner: ReturnType<typeof createPostgresMigrationRunner>;
+  readonly inventory: string;
+  close: () => Promise<void>;
+}
+
+export interface AccountMutationsTemplate {
+  readonly installation: AccountMutationsInstallation;
+  readonly inventory: string;
+  clone: (label?: string) => Promise<AccountMutationsStore>;
+  close: () => Promise<void>;
+}
+
+const CLUSTER_ROLE_SNAPSHOT_SQL = `SELECT json_build_object(
+  'roles', (SELECT coalesce(json_agg(r ORDER BY r.rolname), '[]'::json) FROM (
+    SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls, rolconfig
+    FROM pg_catalog.pg_roles
+  ) r),
+  'members', (SELECT coalesce(json_agg(m ORDER BY m.role_name, m.member_name, m.grantor_name), '[]'::json) FROM (
+    SELECT r.rolname AS role_name, u.rolname AS member_name, g.rolname AS grantor_name,
+      a.admin_option, a.inherit_option, a.set_option
+    FROM pg_catalog.pg_auth_members a
+    JOIN pg_catalog.pg_roles r ON r.oid = a.roleid
+    JOIN pg_catalog.pg_roles u ON u.oid = a.member
+    JOIN pg_catalog.pg_roles g ON g.oid = a.grantor
+  ) m)
+)::text AS snapshot`;
+
+function loginUrlFor(baseConnectionString: string, name: string, password: string): string {
+  const url = new URL(baseConnectionString);
+  url.username = name;
+  if (name !== "postgres") url.password = password;
+  return url.toString();
+}
+
+function migrationStartupOptions(installation: AccountMutationsInstallation): string | undefined {
+  if (installation.generation === "qualified-v2") return qualifiedPostgresStartupOptions(installation);
+  if (installation.generation === "qualified-admin") return qualifiedAdminPostgresStartupOptions(installation);
+  return undefined;
+}
+
+function createInventoryRunner(
+  migrationUrl: string,
+  migrator: Pool,
+  installation: AccountMutationsInstallation,
+  onInventory: (sha256: string) => void,
+  sourceRoot?: string,
+) {
+  return createPostgresMigrationRunner({ connectionString: migrationUrl }, {
+    root: sourceRoot,
+    installation,
+    poolFactory: () => migrator,
+    catalogProjectionPayload: async client => {
+      const payload = installation.generation === "qualified-v2"
+        ? await qualifiedPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
+        : installation.generation === "qualified-admin"
+          ? await qualifiedAdminPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
+          : selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client));
+      onInventory(createHash("sha256").update(payload).digest("hex"));
+      return payload;
+    },
+  });
+}
+
+async function provisionAccountMutationsRoles(
+  owner: Pool,
+  connectionString: string,
+  profile: AccountProfile,
+  password: string,
+  targetDatabase: "postgres" | "template_migrated",
+): Promise<{ installation: AccountMutationsInstallation; dbOwner: string; runtimeLogin: string }> {
+  const m = "account_m", r = "account_r", s = "account_s", o = "account_o";
+  const admin = profile.startsWith("admin-"), separate = profile === "separate" || admin, operatorMode = profile === "admin-operator";
+  const dbOwner = separate ? m : "postgres";
+  if (separate) {
+    await owner.query(`CREATE ROLE ${m} LOGIN ${admin ? "NOINHERIT NOSUPERUSER" : "INHERIT SUPERUSER"} ${admin && !operatorMode ? "CREATEROLE" : "NOCREATEROLE"} NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+    if (targetDatabase === "postgres") await owner.query(`ALTER DATABASE postgres OWNER TO ${m}`);
+  }
+  if (targetDatabase !== "postgres") {
+    await owner.query(`CREATE DATABASE "${targetDatabase}" OWNER ${dbOwner}`);
+  }
+  if (profile !== "legacy") {
+    for (const name of [r, s]) {
+      await owner.query(`CREATE ROLE ${name} LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+    }
+  }
+  if (operatorMode) {
+    await owner.query(`CREATE ROLE ${o} LOGIN NOINHERIT NOSUPERUSER CREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+    const operator = new Pool({ connectionString: loginUrlFor(connectionString, o, password) });
+    try {
+      for (const group of ["anon", "authenticated", "service_role", "platform_acquisition_owner", "platform_acquisition_runtime", "openlup_retained_import_owner"]) {
+        await owner.query(`CREATE ROLE ${group} NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS`);
+        await owner.query(`GRANT ${group} TO ${o} WITH ADMIN TRUE, INHERIT FALSE, SET FALSE`);
+        await operator.query(`GRANT ${group} TO ${m} WITH ADMIN TRUE, INHERIT FALSE, SET FALSE GRANTED BY ${o}`);
+        if (["anon", "authenticated", "service_role", "platform_acquisition_runtime"].includes(group)) {
+          await operator.query(`GRANT ${group} TO ${r} WITH ADMIN FALSE, INHERIT ${group === "service_role" ? "TRUE" : "FALSE"}, SET TRUE GRANTED BY ${o}`);
+        }
+      }
+    } finally {
+      await operator.end();
+    }
+  }
+  const installation: AccountMutationsInstallation = profile === "legacy" ? { generation: "legacy" }
+    : admin ? operatorMode ? { generation: "qualified-admin", roleMode: "operator-provisioned", bootstrapLogin: "postgres", migrationLogin: m, runtimeLogin: r, restoreLogin: s, operatorLogin: o }
+      : { generation: "qualified-admin", roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: m, runtimeLogin: r, restoreLogin: s }
+    : { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: separate ? m : "postgres", runtimeLogin: r, restoreLogin: s };
+  return { installation, dbOwner, runtimeLogin: r };
+}
+
+async function readClusterRoleDigest(bootstrap: Pool): Promise<string> {
+  const { rows } = await bootstrap.query<{ snapshot: string }>(CLUSTER_ROLE_SNAPSHOT_SQL);
+  return createHash("sha256").update(rows[0]!.snapshot).digest("hex");
+}
+
+function sanitizeCloneSuffix(label?: string): string {
+  if (!label) return "";
+  const cleaned = label.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 32);
+  return cleaned ? `_${cleaned}` : "";
+}
+
+async function endPoolsSafely(targetPools: Pool[]): Promise<void> {
+  const unique = [...new Set(targetPools)];
+  for (const value of unique) value.on("error", () => {});
+  await Promise.all(unique.map(value => value.ended ? Promise.resolve() : value.end()));
+}
+
 /** The existing account-consent installation matrix, also used to measure complete-inventory pins. */
-export async function installAccountMutations(profile: AccountProfile, measure = false, label = "source", root?: string, upgradeRoot?: string) {
+export async function installAccountMutations(profile: AccountProfile, measure = false, label = "source", root?: string, upgradeRoot?: string): Promise<AccountMutationsStore> {
   const container = await runPostgresContainer({ name: `account-mutations-${profile}-${label}-${process.pid}`, password: "synthetic-conformance" });
   const pools: Pool[] = [];
   const pool = (url: string, options?: string) => { const value = new Pool({ connectionString: url, options }); pools.push(value); return value; };
   try {
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("account_mutations_postgres_unavailable");
     const owner = pool(container.connectionString), password = randomUUID();
-    const m = "account_m", r = "account_r", s = "account_s", o = "account_o";
-    const admin = profile.startsWith("admin-"), separate = profile === "separate" || admin, operatorMode = profile === "admin-operator";
-    const login = (name: string) => { const url = new URL(container.connectionString); url.username = name; if (name !== "postgres") url.password = password; return url.toString(); };
-    if (separate) {
-      await owner.query(`CREATE ROLE ${m} LOGIN ${admin ? "NOINHERIT NOSUPERUSER" : "INHERIT SUPERUSER"} ${admin && !operatorMode ? "CREATEROLE" : "NOCREATEROLE"} NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
-      await owner.query(`ALTER DATABASE postgres OWNER TO ${m}`);
-    }
-    if (profile !== "legacy") for (const name of [r, s]) await owner.query(`CREATE ROLE ${name} LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
-    if (operatorMode) {
-      await owner.query(`CREATE ROLE ${o} LOGIN NOINHERIT NOSUPERUSER CREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
-      const operator = pool(login(o));
-      for (const group of ["anon", "authenticated", "service_role", "platform_acquisition_owner", "platform_acquisition_runtime", "openlup_retained_import_owner"]) {
-        await owner.query(`CREATE ROLE ${group} NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS`);
-        await owner.query(`GRANT ${group} TO ${o} WITH ADMIN TRUE, INHERIT FALSE, SET FALSE`);
-        await operator.query(`GRANT ${group} TO ${m} WITH ADMIN TRUE, INHERIT FALSE, SET FALSE GRANTED BY ${o}`);
-        if (["anon", "authenticated", "service_role", "platform_acquisition_runtime"].includes(group)) await operator.query(`GRANT ${group} TO ${r} WITH ADMIN FALSE, INHERIT ${group === "service_role" ? "TRUE" : "FALSE"}, SET TRUE GRANTED BY ${o}`);
-      }
-    }
-    const installation: { generation: "legacy" } | QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation = profile === "legacy" ? { generation: "legacy" }
-      : admin ? operatorMode ? { generation: "qualified-admin", roleMode: "operator-provisioned", bootstrapLogin: "postgres", migrationLogin: m, runtimeLogin: r, restoreLogin: s, operatorLogin: o }
-        : { generation: "qualified-admin", roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: m, runtimeLogin: r, restoreLogin: s }
-      : { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: separate ? m : "postgres", runtimeLogin: r, restoreLogin: s };
-    const migrationUrl = login(installation.generation === "legacy" ? "postgres" : installation.migrationLogin);
-    const migrator = pool(migrationUrl, installation.generation === "qualified-v2" ? qualifiedPostgresStartupOptions(installation) : installation.generation === "qualified-admin" ? qualifiedAdminPostgresStartupOptions(installation) : undefined);
+    const { installation, runtimeLogin } = await provisionAccountMutationsRoles(owner, container.connectionString, profile, password, "postgres");
+    const migrationUrl = loginUrlFor(container.connectionString, installation.generation === "legacy" ? "postgres" : installation.migrationLogin, password);
+    const migrator = pool(migrationUrl, migrationStartupOptions(installation));
     let inventory = "";
-    const runnerAt = (sourceRoot?: string) => createPostgresMigrationRunner({ connectionString: migrationUrl }, { root: sourceRoot, installation, poolFactory: () => migrator, catalogProjectionPayload: async client => {
-      const payload = installation.generation === "qualified-v2" ? await qualifiedPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
-        : installation.generation === "qualified-admin" ? await qualifiedAdminPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1") : selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client));
-      inventory = createHash("sha256").update(payload).digest("hex"); return payload;
-    } });
+    const runnerAt = (sourceRoot?: string) => createInventoryRunner(migrationUrl, migrator, installation, sha256 => { inventory = sha256; }, sourceRoot);
     try { await runnerAt(root).apply(); }
     catch (error) { if (!measure || !inventory || !(error instanceof Error) || !error.message.includes("object inventory SHA-256 mismatch")) throw error; }
-    return { owner, migrator, installation, runtime: profile === "legacy" ? owner : pool(login(r)), runner: runnerAt(upgradeRoot),
+    return { owner, migrator, installation, runtime: profile === "legacy" ? owner : pool(loginUrlFor(container.connectionString, runtimeLogin, password)), runner: runnerAt(upgradeRoot),
       get inventory() { return inventory; }, close: () => closePostgres(container, pools) };
   } catch (error) { await closePostgres(container, pools); throw error; }
+}
+
+/**
+ * Migrate one disposable PostgreSQL database per profile into a sealed template
+ * database and clone isolated per-test/per-role databases in ~100 ms.
+ * Callers must keep cluster-wide role grants balanced and avoid concurrent
+ * `qualified-admin` capture/restore across sibling clones of one template
+ * (those helpers temporarily GRANT/REVOKE `platform_acquisition_owner`
+ * cluster-wide). `close()` verifies the `pg_roles`/`pg_auth_members` digest
+ * matches the post-migration baseline and bounds every open clone pool through
+ * `closePostgres`.
+ */
+export async function createAccountMutationsTemplate(profile: AccountProfile, label = "template", root?: string, upgradeRoot?: string): Promise<AccountMutationsTemplate> {
+  const container = await runPostgresContainer({ name: `account-mutations-tpl-${profile}-${label}-${process.pid}`, password: "synthetic-conformance" });
+  const bootstrap = new Pool({ connectionString: container.connectionString });
+  const activeClones = new Set<{ dbName: string; pools: Pool[]; closed: boolean }>();
+  let templateClosed = false;
+  let closePromise: Promise<void> | undefined;
+  try {
+    if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("account_mutations_postgres_unavailable");
+    const password = randomUUID();
+    const { installation, dbOwner, runtimeLogin } = await provisionAccountMutationsRoles(bootstrap, container.connectionString, profile, password, "template_migrated");
+    const templateConn = container.connectionStringFor("template_migrated");
+    const migrationLogin = installation.generation === "legacy" ? "postgres" : installation.migrationLogin;
+    const templateMigrationUrl = loginUrlFor(templateConn, migrationLogin, password);
+    const templateMigrator = new Pool({ connectionString: templateMigrationUrl, options: migrationStartupOptions(installation) });
+    let inventory = "";
+    try {
+      await createInventoryRunner(templateMigrationUrl, templateMigrator, installation, sha256 => { inventory = sha256; }, root).apply();
+    } finally {
+      await endPoolsSafely([templateMigrator]);
+    }
+    await bootstrap.query("ALTER DATABASE template_migrated IS_TEMPLATE = true");
+    await bootstrap.query("ALTER DATABASE template_migrated ALLOW_CONNECTIONS = false");
+    const baselineRoleDigest = await readClusterRoleDigest(bootstrap);
+    let sequence = 0;
+    let ddlChain: Promise<unknown> = Promise.resolve();
+    const enqueueDdl = <T>(work: () => Promise<T>): Promise<T> => {
+      const next = ddlChain.then(work, work);
+      ddlChain = next.then(() => undefined, () => undefined);
+      return next;
+    };
+    return {
+      installation,
+      get inventory() { return inventory; },
+      clone(cloneLabel?: string): Promise<AccountMutationsStore> {
+        return enqueueDdl(async (): Promise<AccountMutationsStore> => {
+          if (templateClosed) throw new Error("account_mutations_template_closed");
+          const dbName = `account_${++sequence}${sanitizeCloneSuffix(cloneLabel)}`;
+          await bootstrap.query(`CREATE DATABASE "${dbName}" TEMPLATE template_migrated OWNER ${dbOwner}`);
+          const cloneConn = container.connectionStringFor(dbName);
+          const clonePools: Pool[] = [];
+          const openPool = (url: string, options?: string) => {
+            const value = new Pool({ connectionString: url, options });
+            clonePools.push(value);
+            return value;
+          };
+          const owner = openPool(cloneConn);
+          const cloneMigrationUrl = loginUrlFor(cloneConn, migrationLogin, password);
+          const migrator = openPool(cloneMigrationUrl, migrationStartupOptions(installation));
+          const runtime = profile === "legacy" ? owner : openPool(loginUrlFor(cloneConn, runtimeLogin, password));
+          let cloneInventory = inventory;
+          const runner = createInventoryRunner(cloneMigrationUrl, migrator, installation, sha256 => { cloneInventory = sha256; }, upgradeRoot);
+          const record = { dbName, pools: clonePools, closed: false };
+          activeClones.add(record);
+          return {
+            owner,
+            migrator,
+            installation,
+            runtime,
+            runner,
+            get inventory() { return cloneInventory; },
+            close: async () => {
+              if (record.closed) return;
+              record.closed = true;
+              activeClones.delete(record);
+              try {
+                await endPoolsSafely(record.pools);
+              } finally {
+                await enqueueDdl(async () => {
+                  if (!templateClosed && !bootstrap.ended) {
+                    await bootstrap.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+                  }
+                });
+              }
+            },
+          };
+        });
+      },
+      close: () => {
+        if (closePromise) return closePromise;
+        templateClosed = true;
+        closePromise = (async () => {
+          await ddlChain;
+          const remainingPools: Pool[] = [bootstrap];
+          let roleMismatchError: Error | undefined;
+          try {
+            const openClones = [...activeClones];
+            activeClones.clear();
+            for (const entry of openClones) {
+              entry.closed = true;
+              for (const value of entry.pools) {
+                value.on("error", () => {});
+                remainingPools.push(value);
+              }
+            }
+            const finalRoleDigest = await readClusterRoleDigest(bootstrap);
+            if (finalRoleDigest !== baselineRoleDigest) {
+              roleMismatchError = new Error("account_mutations_template_cluster_role_mutation_leaked");
+            }
+          } finally {
+            await closePostgres(container, [...new Set(remainingPools)]);
+          }
+          if (roleMismatchError) throw roleMismatchError;
+        })();
+        return closePromise;
+      },
+    };
+  } catch (error) {
+    await closePostgres(container, [bootstrap]);
+    throw error;
+  }
 }
