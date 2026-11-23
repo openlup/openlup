@@ -31626,6 +31626,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogueReferencePacks.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/channelConnectedRestore.test.ts",
       "class": "public-output"
     },
