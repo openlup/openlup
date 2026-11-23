@@ -20,6 +20,7 @@ import {
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer,
 } from '../helpers/postgresContainer.js';
 
+const ledgerSignature = 'public.commerce_record_checkout_attempt(text,text,text,bigint,bigint,bigint,bigint,bigint)';
 const spellings = {
   uppercase: (id: string) => id.toUpperCase(),
   mixed: (id: string) => {
@@ -424,13 +425,36 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
 
   const ledger = async () => (await owner!.query(
     'SELECT * FROM public.commerce_checkout_attempt_ledger ORDER BY attempt_digest')).rows;
+  const purchaseCounts = async () => (await owner!.query(`SELECT
+    (SELECT count(*) FROM public.clients) AS clients, (SELECT count(*) FROM public.commerce_orders) AS orders`)).rows[0];
+
+  it('native checkout records its attempt and fails closed when runtime EXECUTE is revoked', async () => {
+    await stopHost();
+    await startHost();
+    const previous = new Set((await ledger()).map(row => row.attempt_digest));
+    const key = randomUUID();
+    expect((await call('checkout.create', checkout(`native-ledger-${config.id}@example.test`), false, key)).ok).toBe(true);
+    const recorded = await ledger();
+    expect(recorded.filter(row => !previous.has(row.attempt_digest)).map(row => row.attempt_digest))
+      .toEqual([createHash('sha256').update(`${key}\0${0}`).digest('hex')]);
+
+    const before = await purchaseCounts();
+    // The restricted runtime inherits this grant through service_role.
+    await owner!.query(`REVOKE EXECUTE ON FUNCTION ${ledgerSignature} FROM service_role`);
+    try {
+      expect(await call('checkout.create', checkout(`native-ledger-refused-${config.id}@example.test`)))
+        .toEqual({ ok: false, code: 'starter_attempt_limited' });
+      expect(await purchaseCounts()).toEqual(before);
+      expect(await ledger()).toEqual(recorded);
+    } finally {
+      await owner!.query(`GRANT EXECUTE ON FUNCTION ${ledgerSignature} TO service_role`);
+    }
+  }, 30_000);
 
   it('limiter_survives_restart on the held session with a one-client pool', async () => {
     await stopHost();
     await startHost(true);
-    const counts = async () => (await owner!.query(`SELECT
-      (SELECT count(*) FROM public.clients) AS clients, (SELECT count(*) FROM public.commerce_orders) AS orders`)).rows[0];
-    const before = await counts();
+    const before = await purchaseCounts();
     const input = checkout(`restart-${config.id}@example.test`);
     const key = randomUUID();
     const digest = createHash('sha256').update(`${key}\0${0}`).digest('hex');
@@ -439,32 +463,31 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect((await control(null)).registrations).toBe(1);
     const original = await ledger();
     expect(original).toContainEqual(expect.objectContaining({ attempt_digest: digest }));
-    expect(await counts()).toEqual(before);
+    expect(await purchaseCounts()).toEqual(before);
 
     await stopHost();
     await startHost(true);
     expect((await exchange('checkout.create', input)).body).toEqual({ ok: false, code: 'starter_attempt_limited' });
     expect((await control(null)).registrations).toBe(0);
-    expect(await counts()).toEqual(before);
+    expect(await purchaseCounts()).toEqual(before);
     expect(await call('checkout.create', input, false, key)).toEqual(stopped);
     expect((await control(null)).registrations).toBe(1);
     expect(await ledger()).toEqual(original);
-    expect(await counts()).toEqual(before);
+    expect(await purchaseCounts()).toEqual(before);
   }, 45_000);
 
   it('native startup requires the ledger and runtime EXECUTE', async () => {
     await stopHost();
-    const signature = 'public.commerce_record_checkout_attempt(text,text,text,bigint,bigint,bigint,bigint,bigint)';
     const before = await ledger();
-    await owner!.query(`ALTER FUNCTION ${signature} RENAME TO checkout_attempt_ledger_fixture`);
+    await owner!.query(`ALTER FUNCTION ${ledgerSignature} RENAME TO checkout_attempt_ledger_fixture`);
     try { await expect(startHost()).rejects.toThrow('starter_checkout_attempt_ledger_missing'); }
     finally {
-      await owner!.query(`ALTER FUNCTION ${signature.replace('commerce_record_checkout_attempt', 'checkout_attempt_ledger_fixture')}
+      await owner!.query(`ALTER FUNCTION ${ledgerSignature.replace('commerce_record_checkout_attempt', 'checkout_attempt_ledger_fixture')}
         RENAME TO commerce_record_checkout_attempt`);
     }
-    await owner!.query(`REVOKE EXECUTE ON FUNCTION ${signature} FROM service_role`);
+    await owner!.query(`REVOKE EXECUTE ON FUNCTION ${ledgerSignature} FROM service_role`);
     try { await expect(startHost()).rejects.toThrow('starter_checkout_attempt_ledger_execute_required'); }
-    finally { await owner!.query(`GRANT EXECUTE ON FUNCTION ${signature} TO service_role`); }
+    finally { await owner!.query(`GRANT EXECUTE ON FUNCTION ${ledgerSignature} TO service_role`); }
     await startHost();
     expect(await ledger()).toEqual(before);
   }, 45_000);

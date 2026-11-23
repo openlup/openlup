@@ -327,8 +327,9 @@ it("upgrades pristine checkout hosts and preserves customized checkout files", (
   const released = (path: string) => execFileSync("git",
     ["show", `openlup-core-v1.3.0:examples/neutral-store/${path}`], { encoding: "utf8", timeout: 5_000 });
   const next = (path: string) => readFileSync(resolve("examples/neutral-store", path), "utf8");
+  const copyPath = "owned/copy.ts";
   const ownership = { managed: ["package.json", ...starterCheckoutFiles],
-    owned: ["AGENTS.md", "owned/store.config.ts", "owned/fragments.ts", starterSettingsHost], generated: [] };
+    owned: ["AGENTS.md", "owned/store.config.ts", "owned/fragments.ts", starterSettingsHost, copyPath], generated: [] };
   for (const save of [write, candidate]) {
     save("ownership.json", ownership);
     save("AGENTS.md", "# Application\n\n## Change a business setting\n");
@@ -346,6 +347,10 @@ it("upgrades pristine checkout hosts and preserves customized checkout files", (
   candidate(starterSettingsHost, targetSettings);
   expect(effect(targetSettings)).toContain("PostgreSQL");
 
+  const releasedCopy = released(copyPath), targetCopy = next(copyPath);
+  write(copyPath, releasedCopy);
+  candidate(copyPath, targetCopy);
+
   for (const path of starterCheckoutFiles) {
     const before = released(path), after = next(path);
     expect(after, path).not.toBe(before);
@@ -360,11 +365,19 @@ it("upgrades pristine checkout hosts and preserves customized checkout files", (
   if (finish) finish();
   expect(evidence.phases).toEqual([
     "migrate-owned-contracts", "customize-owned", "plan", "managed-conflict", "checkout-host-reconciliation",
-    "interrupt-and-refuse", "resume", "replay", "checkout-attempt-effect-reconciliation", "installed-application-and-owned-bytes",
+    "interrupt-and-refuse", "resume", "replay", "checkout-attempt-effect-reconciliation", "checkout-attempt-copy-reconciliation",
+    "installed-application-and-owned-bytes",
   ].map(name => ({ name, result: "PASS" })));
   expect(readFileSync(join(app, "owned/upgrade-notes/checkout.ts"), "utf8")).toContain("// Adopter checkout policy.");
   expect(readFileSync(join(app, starterSettingsHost), "utf8"))
     .toBe(localSettings.replace(effect(releasedSettings), effect(targetSettings)));
+  const candidateEntries = targetCopy.split("\n").filter(line => line.startsWith("    attemptLimitsInterim:"));
+  expect(candidateEntries).toHaveLength(2);
+  let entry = 0;
+  const expectedCopy = releasedCopy.replace('    cart: "Cart",', '    cart: "Your local basket",')
+    .split("\n").map(line => line.startsWith("    attemptLimitsInterim:") ? candidateEntries[entry++] : line).join("\n");
+  expect(entry).toBe(2);
+  expect(readFileSync(join(app, copyPath))).toEqual(Buffer.from(expectedCopy));
   for (const path of starterCheckoutFiles) expect(readFileSync(join(app, path), "utf8"), path).toBe(next(path));
 });
 
@@ -625,6 +638,7 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
   const phases = evidence.upgrade.phases.map(({ name }: { name: string }) => name);
   expect(phases).not.toContain("checkout-host-reconciliation");
   expect(phases).not.toContain("checkout-attempt-effect-reconciliation");
+  expect(phases).not.toContain("checkout-attempt-copy-reconciliation");
   for (const path of starterDisplayFiles)
     expect(evidence.upgrade.phases).toContainEqual({ name: `display-reconciliation:${path}`, result: "PASS" });
   expect(evidence.upgrade.phases.filter((phase: { result: string }) => phase.result !== "PASS")).toEqual([]);
