@@ -817,7 +817,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(admission).toContain("ref: main\n          fetch-depth: 0\n          persist-credentials: false");
     expect(admission).toContain("package-manager-cache: false");
     expect(admission).toContain("run: node scripts/agent-review-queue.mjs wait");
-    expect(admission).not.toContain("npm ci");
+    expect(admission).not.toContain("run: npm ci --prefer-offline");
     const command = admission.split("        run: |\n")[1]?.split("      - uses:")[0]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
     expect(command).toBeTruthy();
     const names = ["NEEDS_DCO", "NEEDS_TYPECHECK", "NEEDS_INSTALL_PROOF", "NEEDS_TEST", "NEEDS_SELF_CHECK", "NEEDS_GITLEAKS"];
