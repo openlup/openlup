@@ -22,7 +22,9 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['server/runtime/outbox/candidateAdmission.ts']))
       .toEqual(all.filter(test => !test.endsWith('outbox-consumer-proof.test.ts') && !test.endsWith('eslint-import-map.test.ts')));
     expect(excludedToolingTests(['packages/core/src/index.ts']))
-      .toEqual(Object.entries(TOOLING_INPUTS).filter(([, inputs]) => !inputs.includes('packages/')).map(([test]) => test).sort());
+      .toEqual(Object.entries(TOOLING_INPUTS)
+        .filter(([, inputs]) => !inputs.includes('packages/') && !inputs.includes('packages/core/src/'))
+        .map(([test]) => test).sort());
   });
   it.each(['package.json', 'package-lock.json', 'vitest.config.ts', 'tsconfig.json', 'tsconfig.app.json',
     'LICENSE', 'UNKNOWN.md', 'scripts/run-vitest.mjs',
@@ -39,7 +41,7 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['docs/platform/README.md'])).toEqual(all);
     expect(excludedToolingTests(['config/doc-routing.json'])).toEqual(all);
     expect(excludedToolingTests(['config/openlup-packages.json'])).toEqual(all.filter(test =>
-      !['distribution-cli-proof', 'distribution-cli-settings', 'outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy', 'packages-check'].some(name => test.endsWith(`${name}.test.ts`))));
+      !['agent-review-derived-inventory', 'distribution-cli-proof', 'distribution-cli-settings', 'outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy', 'packages-check'].some(name => test.endsWith(`${name}.test.ts`))));
   });
   it.each(ROOT_DOC_FILES)(
     'does not disable all exclusions for root doc %s while retaining doc and policy checks',
@@ -153,8 +155,52 @@ describe('conservative tooling scope', () => {
     const pkgChange = excludedToolingTests(['packages/core/src/index.ts']);
     expect(pkgChange).not.toContain('scripts/packages/distribution-cli-settings.test.ts');
     expect(pkgChange).not.toContain('scripts/packages/reference-delegation-consumer.test.ts');
-    expect(pkgChange).not.toContain('scripts/packages/release-docs-pass.test.ts');
+    expect(pkgChange).not.toContain('scripts/packages/eslint-import-map.test.ts');
     expect(pkgChange).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
+    expect(pkgChange).toContain('scripts/packages/release-docs-pass.test.ts');
+    expect(excludedToolingTests(['packages/core/scripts/documentation-contract.ts']))
+      .not.toContain('scripts/packages/release-docs-pass.test.ts');
+
+    // Narrowed package-SQL / SQL-reference falsifier: retains all 11 live-pack/SQL/manifest tests
+    // plus the split Docker inventory witness, while skipping the 10 narrowed synthetic/unrelated tests.
+    const narrowedSynthetic = [
+      'scripts/documentation-cli.test.ts',
+      'scripts/packages/eslint-import-map.test.ts',
+      'scripts/packages/guide-tutorial.test.ts',
+      'scripts/packages/pack-manifest-input.test.ts',
+      'scripts/packages/package-release.test.ts',
+      'scripts/packages/release-docs-pass.test.ts',
+      'scripts/packages/release-gate.test.ts',
+      'scripts/packages/release-workflow-authenticity.test.ts',
+      'scripts/packages/required-package-gates.test.ts',
+      'scripts/packages/set-release.test.ts',
+    ];
+    const retainedOnPackageSql = [
+      'scripts/agent-review-derived-inventory.test.ts',
+      'scripts/reviewed-batch-forward.test.ts',
+      'scripts/packages/distribution-cli-proof.test.ts',
+      'scripts/packages/distribution-cli-settings.test.ts',
+      'scripts/packages/outbox-consumer-proof.test.ts',
+      'scripts/packages/package-manifest-policy.test.ts',
+      'scripts/packages/package-size-policy.test.ts',
+      'scripts/packages/package-tarball-gate.test.ts',
+      'scripts/packages/packages-check.test.ts',
+      'scripts/packages/platform-cold-consumer.test.ts',
+      'scripts/packages/reference-delegation-consumer.test.ts',
+      'scripts/packages/release-bump.test.ts',
+      'tests/postgres/reviewedBatchForwards.test.ts',
+    ];
+    for (const sqlPath of ['packages/platform/sql/20990101000000_example.sql', 'packages/core/docs/guide/reference/sql.md']) {
+      const excluded = excludedToolingTests([sqlPath]);
+      for (const test of narrowedSynthetic) expect(excluded, `${sqlPath} excludes ${test}`).toContain(test);
+      for (const test of retainedOnPackageSql) {
+        if (sqlPath.endsWith('sql.md') && test === 'scripts/reviewed-batch-forward.test.ts') continue;
+        expect(excluded, `${sqlPath} retains ${test}`).not.toContain(test);
+      }
+    }
+    expect(excludedToolingTests(['src/pages/Home.tsx'])).toContain('scripts/agent-review-derived-inventory.test.ts');
+    expect(excludedToolingTests(['db/platform/migrations/20990101000000_example.sql']))
+      .not.toContain('scripts/agent-review-derived-inventory.test.ts');
 
     expect(excludedToolingTests(['server/adapters/postgres/migrationRunner.ts'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['src/domains/commerce/offerAvailability.ts'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');

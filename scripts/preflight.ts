@@ -425,6 +425,7 @@ const GUIDE_TRIGGER = /^(?:AGENTS\.md$|CONTRIBUTING\.md$|packages\/[^/]+\/(?:api
 const PACKAGE_MANIFEST_TRIGGER = /^(?:packages\/[^/]+\/package\.json|config\/openlup-packages\.json)$/u;
 
 const AREA_EXCLUDED_TESTS = new Set([
+  "scripts/agent-review-derived-inventory.test.ts",
   "scripts/packages/outbox-consumer-proof.test.ts",
   "scripts/packages/distribution-cli-proof.test.ts",
   "scripts/packages/distribution-cli-settings.test.ts",

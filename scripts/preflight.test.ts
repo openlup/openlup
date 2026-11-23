@@ -576,6 +576,7 @@ describe("fast preflight", () => {
 
 describe("area preflight", () => {
   const excludedHeavyOrDocker = [
+    "scripts/agent-review-derived-inventory.test.ts",
     "scripts/packages/outbox-consumer-proof.test.ts",
     "scripts/packages/distribution-cli-proof.test.ts",
     "scripts/packages/distribution-cli-settings.test.ts",
