@@ -20,25 +20,14 @@ const BACKSTOP_SQL = `
   FROM public.platform_job_controls
   WHERE job_name = $1`;
 
-const TERMINAL_METADATA_SQL = `
+const LATEST_TERMINAL_METADATA_SQL = `
   SELECT metadata
   FROM public.platform_job_runs
   WHERE job_name = $1
     AND status IN ('success', 'failed')
-    AND finished_at IS NOT NULL`;
-
-const LATEST_FIRST_SQL = `
+    AND finished_at IS NOT NULL
   ORDER BY started_at DESC
   LIMIT 1`;
-
-const LATEST_TERMINAL_METADATA_SQL = `${TERMINAL_METADATA_SQL}${LATEST_FIRST_SQL}`;
-
-const LATEST_NATIVE_CHECKPOINT_SQL = `${TERMINAL_METADATA_SQL}
-    AND NOT (
-      status = 'failed'
-      AND metadata->>'reason' IS NOT DISTINCT FROM 'reconciliation_checkpoint_read_failed'
-      AND metadata->>'reconciliationPagination' IS NULL
-    )${LATEST_FIRST_SQL}`;
 
 export interface PostgresPlatformJobRunLedgerOptions {
   /** Release and deployment identity merged into every claim and finish row's metadata. */
@@ -107,9 +96,8 @@ export function createPostgresPlatformJobRunLedger(
       } : null;
     },
 
-    async readLatestTerminalRunMetadata(jobName, scope: "nativeFulfillmentCheckpoint" | undefined = undefined) {
-      const sql = scope === "nativeFulfillmentCheckpoint" ? LATEST_NATIVE_CHECKPOINT_SQL : LATEST_TERMINAL_METADATA_SQL;
-      const result = await executor.query(sql, [jobName]);
+    async readLatestTerminalRunMetadata(jobName) {
+      const result = await executor.query(LATEST_TERMINAL_METADATA_SQL, [jobName]);
       return plainRecord(plainRecord(result.rows[0])?.metadata);
     },
   };

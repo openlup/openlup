@@ -32,10 +32,17 @@ const adapterOrderIdentity = {
 const invocation = { triggerKind: 'scheduler' as const, invocationSource: 'offline-native-witness' };
 const verification = { rawBody: new Uint8Array([123, 125]), headers: {}, receivedAt: at };
 type Intake = ReturnType<typeof createPostgresFulfillmentProviderIntake>;
-type NativeCheckpointRead = (jobName: string, scope?: 'nativeFulfillmentCheckpoint') => ReturnType<PlatformJobRunLedgerPort['readLatestTerminalRunMetadata']>;
 for (const profile of lifecycleProfiles) describe(`native provider intake on ${profile}`, () => {
   let h: LifecycleInstallation;
-  beforeAll(async () => { h = await lifecycleInstallation(profile); }, postgresSetupTimeoutMs);
+  let fixtureInstant: string;
+  beforeAll(async () => {
+    h = await lifecycleInstallation(profile);
+    // Seed the database fixture clock at noon UTC so separate runs share identical inputs.
+    const { rows } = await h.owner.query<{ instant: Date }>(
+      "SELECT date_trunc('day', $1::timestamptz, 'UTC') + interval '12 hours' AS instant", [at],
+    );
+    fixtureInstant = rows[0]!.instant.toISOString();
+  }, postgresSetupTimeoutMs);
   afterAll(async () => { await h?.close(); }, postgresTeardownTimeoutMs);
   async function subject(reservations = true, accepted = true) {
     const f = await fixture(h.owner), external = `external:${randomUUID()}`, dispatch = randomUUID();
@@ -102,11 +109,8 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     DROP FUNCTION IF EXISTS public.fixture_hold_fault()`);
   it('poll_hold_failure_retries_before_advancing', async () => {
     const before = await subject(), failed = await subject(), after = await subject();
-    const due = new Date(await pgInstant());
-    // Base and candidate probes on this UTC fixture day share the exact admission instant.
-    due.setUTCHours(0, 0, 0, 0);
-    const anchor = due.toISOString();
-    const arrived = shiftHours(anchor, -2), observed = shiftHours(anchor, -1);
+    const due = new Date(fixtureInstant);
+    const arrived = shiftHours(fixtureInstant, -2), observed = shiftHours(fixtureInstant, -1);
     const time = observed.toISOString();
     const obs = observation(failed, 'exception', time, [], time);
     const first = row(observation(before, 'picking', time, [], time)), last = row(observation(after, 'picking', time, [], time));
@@ -175,13 +179,12 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
   const repeatedPageRemedy = 'an item on this page fails repeatedly; inspect the fulfilment exception for the order and record it manually';
   const holdFailureReason = 'reconciliation_local_operation_failed:P0001';
   const shiftHours = (instant: string, hours: number) => new Date(Date.parse(instant) + hours * 60 * 60 * 1000);
-  const pgInstant = async () => (await h.owner.query<{ instant: Date }>('SELECT now() AS instant')).rows[0]!.instant.toISOString();
   const jobRuns = async (jobName: string) => (await h.owner.query(
     "SELECT status,error,metadata FROM public.platform_job_runs WHERE job_name=$1 AND finished_at IS NOT NULL ORDER BY started_at", [jobName],
   )).rows;
 
   it('poll_three_failures_advance_and_signal', async () => {
-    const failed = await subject(), sibling = await subject(), time = await pgInstant();
+    const failed = await subject(), sibling = await subject(), time = fixtureInstant;
     const obs = observation(failed, 'exception', time, [], time), healthy = observation(sibling, 'picking', time, [], time);
     const key = keys.exception(failed.shipment, obs.intake!.occurrenceKey), request = job(undefined, 3);
     const pages: number[] = [], attempts: string[] = [];
@@ -223,7 +226,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
   });
 
   it('poll_retained_page_has_no_duplicate_effects', async () => {
-    const successful = await subject(), failed = await subject(), sibling = await subject(), time = await pgInstant();
+    const successful = await subject(), failed = await subject(), sibling = await subject(), time = fixtureInstant;
     const reservation = await reserveParcelStock(sibling, time);
     const exception = observation(successful, 'exception', time, [], time), bad = observation(failed, 'exception', time, [], time);
     const healthy = observation(sibling, 'in_transit', time, undefined, time);
@@ -276,13 +279,13 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
   });
 
   it('poll_retained_checkpoint_respects_lease', async () => {
-    const time = await pgInstant(), obs = observation(await subject(), 'picking', time, [], time);
+    const time = fixtureInstant, obs = observation(await subject(), 'picking', time, [], time);
     const request = job(undefined, 2);
     let signalGet!: () => void, releaseGet!: () => void;
     const entered = new Promise<void>(resolve => { signalGet = resolve; });
     const release = new Promise<void>(resolve => { releaseGet = resolve; });
     const real = request.ledger;
-    const read = vi.fn<NativeCheckpointRead>(real.readLatestTerminalRunMetadata);
+    const read = vi.fn(real.readLatestTerminalRunMetadata);
     const unknown: FulfillmentReconciliationObservation = { kind: 'unknown', refusal: { reason: 'malformed', phase: 'normalize', retryable: false } };
     const get = vi.fn(async () => {
       signalGet();
@@ -294,7 +297,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     const first = native.reconcile(observed);
     try {
       await Promise.race([entered, first.then(() => { throw new Error('first run finished before GET'); })]);
-      expect(read.mock.calls).toEqual([[request.jobName, 'nativeFulfillmentCheckpoint']]);
+      expect(read.mock.calls).toEqual([[request.jobName]]);
       expect(await native.reconcile(observed)).toEqual({ kind: 'skipped', reason: 'lease_active' });
       expect(read).toHaveBeenCalledOnce();
       expect(get).toHaveBeenCalledOnce();
@@ -321,48 +324,52 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
   });
 
   it('poll_checkpoint_read_error_preserves_streak', async () => {
-    const time = await pgInstant(), obs = observation(await subject(), 'picking', time, [], time);
+    const time = fixtureInstant, obs = observation(await subject(), 'picking', time, [], time);
     const real = createPostgresPlatformJobRunLedger(h.runtime, {
       releaseCorrelation: () => ({ releaseSha: 'fixture-revision', reason: 'rolling_deployment', reconciliationPagination: 'release_checkpoint' }),
       defaultFailureReason: 'offline_failed',
     });
-    const request = job(real, 1);
-    const read: NativeCheckpointRead = real.readLatestTerminalRunMetadata;
-    const readCheckpoint = () => read.call(real, request.jobName, 'nativeFulfillmentCheckpoint');
-    const get = vi.fn(async ({ page }: { page: number }) => page === 0
-      ? { kind: 'page' as const, rows: [row(obs)] }
-      : { kind: 'failed' as const, refusal: { reason: 'malformed' as const, phase: 'readback' as const, retryable: true } });
+    let failRead = false;
+    const forwardingRead = vi.fn((jobName: string) => {
+      if (failRead) throw new Error('synthetic_checkpoint_failure');
+      return real.readLatestTerminalRunMetadata(jobName);
+    });
+    const request = job({ ...real, readLatestTerminalRunMetadata: forwardingRead }, 1);
+    const legacy = { version: 1, page: 3, pageSize: 1, nextPage: 4 };
+    const claim = await real.claimJobRun(request.jobName, invocation);
+    expect(await real.finishJobRun(request.jobName, claim.runId!, invocation, 'success',
+      { checked: 1, updated: 0, failures: 0, skipped: false }, { reconciliationPagination: legacy })).toBe(true);
+    expect(await real.readLatestTerminalRunMetadata(request.jobName)).toMatchObject({ reconciliationPagination: legacy });
+
+    const get = vi.fn(async (_page: { page: number }) => ({
+      kind: 'failed' as const, refusal: { reason: 'malformed' as const, phase: 'readback' as const, retryable: true },
+    }));
     const native = () => compose(obs, { pages: { readPage: get } });
-    expect(await native().reconcile(request)).toMatchObject({ status: 200 });
-    const { rows: [{ metadata: legacy }] } = await h.owner.query(
-      "SELECT metadata FROM public.platform_job_runs WHERE job_name=$1 AND status IN ('success', 'failed') AND finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1",
-      [request.jobName],
-    );
-    expect(legacy.reconciliationPagination).toEqual({ version: 1, page: 0, pageSize: 1, nextPage: 1 });
-    expect(await readCheckpoint()).toStrictEqual(legacy);
     for (const failureStreak of [1, 2]) {
       expect(await native().reconcile(request)).toMatchObject({ status: 502 });
-      expect(await real.readLatestTerminalRunMetadata(request.jobName)).toMatchObject({ reconciliationPagination: { page: 1, nextPage: 1, failureStreak } });
+      expect(await real.readLatestTerminalRunMetadata(request.jobName)).toMatchObject({
+        reconciliationPagination: { page: 4, nextPage: 4, failureStreak },
+      });
     }
-    const checkpoint = await real.readLatestTerminalRunMetadata(request.jobName);
+    expect(get.mock.calls).toEqual([[{ page: 4, size: 1 }], [{ page: 4, size: 1 }]]);
     get.mockClear();
     const readError = 'reconciliation_checkpoint_read_failed';
-    const failingRead = async () => { throw new Error('synthetic_checkpoint_failure'); };
-    expect(await native().reconcile({ ...request, ledger: { ...real, readLatestTerminalRunMetadata: failingRead } }))
-      .toEqual({ kind: 'failed', status: 502, reason: readError });
+    failRead = true;
+    expect(await native().reconcile(request)).toEqual({ kind: 'failed', status: 502, reason: readError });
+    failRead = false;
     expect(get).not.toHaveBeenCalled();
     const recorded = await jobRuns(request.jobName);
     expect(recorded.at(-1)).toMatchObject({ status: 'failed', error: readError,
       metadata: { reason: readError, failures: 1, reconciliationPagination: null, releaseSha: 'fixture-revision' },
     });
     expect(await real.readLatestTerminalRunMetadata(request.jobName)).toStrictEqual(recorded.at(-1)?.metadata);
-    expect(await readCheckpoint()).toStrictEqual(checkpoint);
     expect(await native().reconcile(request)).toMatchObject({ status: 502, result: { reason: 'malformed' },
-      metadata: { reconciliationPagination: { page: 1, nextPage: 2 } } });
-    expect(get.mock.calls).toEqual([[{ page: 1, size: 1 }]]);
+      metadata: { reconciliationPagination: { page: 4, nextPage: 5 } } });
+    expect(get.mock.calls).toEqual([[{ page: 4, size: 1 }]]);
+    expect(forwardingRead.mock.calls).toEqual(Array.from({ length: 4 }, () => [request.jobName]));
     const final = (await jobRuns(request.jobName)).at(-1);
     expect(final).toMatchObject({ status: 'failed', error: repeatedPageRemedy, metadata: { reason: 'malformed', failures: 1 } });
-    expect(final?.metadata.reconciliationPagination).toEqual({ version: 1, page: 1, pageSize: 1, nextPage: 2 });
+    expect(final?.metadata.reconciliationPagination).toEqual({ version: 1, page: 4, pageSize: 1, nextPage: 5 });
   });
 
   it('non_native_terminal_reader_preserves_checkpoint', async () => {
@@ -550,7 +557,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect((await h.owner.query("SELECT outcome FROM public.fulfillment_observations WHERE event_key=$1", [`quarantine:${obs.eventKey}`])).rows[0].outcome.reason).toBe('missing_external_ref');
   });
   it('early stages are evidence only; packed consumes accepted exact reservations without creating a label or handoff', async () => {
-    const f = await subject(), time = await pgInstant();
+    const f = await subject(), time = fixtureInstant;
     const receipt = { ...verification, receivedAt: time };
     for (const status of ['provider_received', 'picking'] as const) {
       expect(await compose(observation(f, status, time, [], time)).ingest(receipt)).toMatchObject({ kind: 'processed' }); expect((await state(f)).status).toBe('created');
@@ -717,7 +724,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect((await h.owner.query("SELECT * FROM public.commerce_order_operations WHERE order_id=$1 AND operation_type='hold_released'", [f.order])).rows).toHaveLength(1);
   });
   it('leases before checkpoint and GET, pins a failed full page and resets successful short or empty pages', async () => {
-    const f = await subject(), time = await pgInstant(), obs = observation(f, 'picking', time, [], time);
+    const f = await subject(), time = fixtureInstant, obs = observation(f, 'picking', time, [], time);
     const events: string[] = [], finishes: Parameters<PlatformJobRunLedgerPort['finishJobRun']>[] = [];
     let checkpoint: unknown = { reconciliationPagination: { version: 1, page: 1, pageSize: 2, nextPage: 2 } };
     const real = job().ledger;
@@ -765,7 +772,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect(await native.reconcile(job(ledger))).toEqual({ kind: 'skipped', reason: 'lease_busy' }); expect(events).toEqual([]);
   });
   it('native zero-scan failure retains its cursor and wraps when retries at the largest page run out', async () => {
-    const f = await subject(), time = await pgInstant(), obs = observation(f, 'in_transit', time, [], time), request = job();
+    const f = await subject(), time = fixtureInstant, obs = observation(f, 'in_transit', time, [], time), request = job();
     let checkpoint: Record<string, number> = { version: 1, pageSize: 50, page: 2, nextPage: 3 };
     const finish = vi.fn<PlatformJobRunLedgerPort['finishJobRun']>(async () => true);
     const ledger: PlatformJobRunLedgerPort = { ...request.ledger, claimJobRun: async () => ({ acquired: true, runId: randomUUID(), reason: 'acquired' }),
