@@ -41,7 +41,7 @@ export interface CatalogConformanceFinding {
   severity: "error" | "warning";
   path: string;
   fixture: string;
-  /** A slash value with two or more segments renders as `<host path>`. */
+  /** A value containing `/`, `\` or `file:` is shown as `<host path>`; look the value up at the reported path. */
   observed: string;
   cause: string;
   fix: string;
