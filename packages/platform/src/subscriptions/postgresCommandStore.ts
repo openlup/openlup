@@ -441,9 +441,11 @@ export function createPostgresSubscriptionSaveOfferAcceptor(binding: OfferBindin
     async readPresentations({ actor, subscriptionIds, now }: {
       actor: SubscriptionCommandContext["actor"]; subscriptionIds: readonly string[]; now: string;
     }): Promise<Map<string, Presentation | null>> {
-      if (subscriptionIds.length === 0) return new Map();
+      const request = { actor: { ...actor }, subscriptionIds: [...subscriptionIds], now };
+      if (request.subscriptionIds.length === 0) return new Map();
       const settings = snapshotOfferBinding(binding);
-      const rows = await binding.withTransaction(db => readOfferState(db, actor, subscriptionIds, now, settings.offerPolicy.defaultOffer, settings, true));
+      const rows = await binding.withTransaction(db => readOfferState(db, request.actor, request.subscriptionIds, request.now,
+        settings.offerPolicy.defaultOffer, settings, true));
       const presentations = new Map<string, Presentation | null>();
       for (const row of rows) {
         let presentation = row.consumed || !row.action_available ? null : await derivePresentation(row, settings);
@@ -458,10 +460,13 @@ export function createPostgresSubscriptionSaveOfferAcceptor(binding: OfferBindin
       return presentations;
     },
     async accept(input: OfferAcceptance): Promise<SubscriptionCommandReceipt | SubscriptionCommandRefusal | OfferRefusal> {
-      if (!/^[a-zA-Z0-9-]{16,100}$/u.test(input.idempotencyKey)) return { outcome: "refused", reason: "subscription_command_invalid_input" };
+      const request = { ...input };
+      request.actor = { ...request.actor };
+      if (request.kind === "pause") request.duration = { ...request.duration };
+      const { actor, subscriptionId, now, generation, kind, idempotencyKey } = request;
+      if (!/^[a-zA-Z0-9-]{16,100}$/u.test(idempotencyKey)) return { outcome: "refused", reason: "subscription_command_invalid_input" };
       return binding.withTransaction(async db => {
-        const { actor, subscriptionId, now, generation, kind } = input;
-        const key = `save-offer-accept:v1:${input.idempotencyKey}`;
+        const key = `save-offer-accept:v1:${idempotencyKey}`;
         await lockCommandKey(db, actor.actorId, key);
         const { rows: [owned] } = await db.query(`SELECT id::text, client_id::text, status,
           $3::uuid::text AS actor_id, current_setting('transaction_isolation') AS isolation
@@ -471,14 +476,14 @@ export function createPostgresSubscriptionSaveOfferAcceptor(binding: OfferBindin
         if (!owned) return { outcome: "refused", reason: stored
           ? "subscription_command_idempotency_conflict" : "subscription_save_offer_unavailable" };
         if (owned.isolation !== "read committed") throw new Error("subscription_command_admission_isolation_unsupported");
-        const digest = offerDigest(["cx1r-accept-v1", owned.actor_id, owned.client_id, owned.id, generation, kind, chosenTerms(input)]);
+        const digest = offerDigest(["cx1r-accept-v1", owned.actor_id, owned.client_id, owned.id, generation, kind, chosenTerms(request)]);
         if (stored) {
           const result = subscriptionRecord(stored.result);
           if (stored.subscription_id !== owned.id || stored.client_id !== owned.client_id ||
             result.cx1rRequestSha256 !== digest || stored.status === "previewed") {
             return { outcome: "refused", reason: "subscription_command_idempotency_conflict" };
           }
-          return mappedReceipt(input, { ...result, status: stored.status === "refused" ? "refused" : "replayed",
+          return mappedReceipt(request, { ...result, status: stored.status === "refused" ? "refused" : "replayed",
             commandFingerprint: stored.command_fingerprint });
         }
         await db.query("SELECT 1 FROM public.subscription_renewal_terms WHERE subscription_id=$1::uuid FOR UPDATE", [subscriptionId]);
@@ -487,10 +492,10 @@ export function createPostgresSubscriptionSaveOfferAcceptor(binding: OfferBindin
         if (row?.consumed) return { outcome: "refused", reason: "subscription_save_offer_consumed" };
         const offer = await derivePresentation(row, settings);
         if (!offer) return { outcome: "refused", reason: "subscription_save_offer_unavailable" };
-        if (!matchesPresentation(offer, input)) return { outcome: "refused", reason: "subscription_save_offer_stale" };
+        if (!matchesPresentation(offer, request)) return { outcome: "refused", reason: "subscription_save_offer_stale" };
 
         const terms = lifecycleTerms(settings.lifecycleTerms);
-        const native = offerCommand({ ...input, idempotencyKey: key }, input);
+        const native = offerCommand({ actor, subscriptionId, now, idempotencyKey: key }, request);
         if (binding.admitSubscriptionCommand) await admitCommand(db, binding.admitSubscriptionCommand, native, String(owned.status));
         // Direct N2 apply gives semantic no-ops the native payment fences too.
         const result = await dispatchCommand(db, commandValues(native), false, terms);
@@ -506,7 +511,7 @@ export function createPostgresSubscriptionSaveOfferAcceptor(binding: OfferBindin
           [subscriptionId, row.marker_key, kind, row.next_cycle_number, now]);
           if (!marker.rows.length) throw new Error("subscription_save_offer_marker_missing");
         }
-        return mappedReceipt(input, { ...result, commandFingerprint: receipt.command_fingerprint });
+        return mappedReceipt(request, { ...result, commandFingerprint: receipt.command_fingerprint });
       });
     },
   };

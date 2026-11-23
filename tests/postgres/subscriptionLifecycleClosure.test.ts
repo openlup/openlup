@@ -329,14 +329,58 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
       }
     }, 30_000);
 
-  it("cx1r_accept_once_and_recover: December 9999 reschedule is offered and accepted", async () => {
+  it("cx1r_accept_once_and_recover: December 9999 reschedule uses one request time per entry point", async () => {
     const f = await lifecycleSubject(env.owner);
-    const now = "9999-12-10T12:00:00Z", target = "9999-12-23T12:00:00.123456Z";
+    const now = "9999-12-10T12:00:00Z", closedNow = "9999-12-19T12:00:00Z", target = "9999-12-23T12:00:00.123456Z";
     await env.owner.query("UPDATE public.subscriptions SET next_cycle_at='9999-12-20T12:00:00.123456Z' WHERE id=$1", [f.subscription]);
     const service = acceptor(env.runtime, { defaultOffer: "reschedule" });
-    const offer = await presented(service, f, "reschedule", now);
+    const query = { actor: offerActor(f), subscriptionIds: [f.subscription] };
+    expect(await service.readPresentations({ ...query, now: closedNow })).toEqual(new Map([[f.subscription, null]]));
+    let readCount = 0, acceptCount = 0;
+    const offer = (await service.readPresentations({ ...query,
+      get now() { return readCount++ === 0 ? now : closedNow; },
+    })).get(f.subscription);
+    if (offer?.kind !== "reschedule") throw new Error("Expected a reschedule presentation");
+    expect(readCount).toBe(1);
     expect(offer.newNextCycleAt).toBe(target);
-    expect(await service.accept(acceptPresentation(f, offer, now))).toMatchObject({ outcome: "applied" });
+    expect(await service.accept({ ...acceptPresentation(f, offer, now),
+      get now() { return acceptCount++ === 0 ? now : closedNow; },
+    })).toMatchObject({ outcome: "applied" });
+    expect(acceptCount).toBe(1);
+    expect((await env.owner.query(`SELECT event_type, occurred_at=$2::timestamptz AS exact
+      FROM public.subscription_events WHERE subscription_id=$1 AND event_type IN
+        ('subscription.customer_self_service.slide_next_cycle','subscription.save_offer_accepted') ORDER BY event_type`,
+    [f.subscription, now])).rows).toEqual([
+      { event_type: "subscription.customer_self_service.slide_next_cycle", exact: true },
+      { event_type: "subscription.save_offer_accepted", exact: true },
+    ]);
+    expect((await env.owner.query("SELECT next_cycle_at=$2::timestamptz AS exact FROM public.subscriptions WHERE id=$1",
+      [f.subscription, target])).rows).toEqual([{ exact: true }]);
+  }, 30_000);
+
+  it("cx1r_accept_once_and_recover: reschedule accepts exactly the 36500-day offset cap", async () => {
+    const f = await lifecycleSubject(env.owner), cap = 36_500;
+    const now = "2040-03-21T12:00:00.123456Z", target = "2140-02-26T13:00:00.123456Z";
+    await env.owner.query(`UPDATE public.subscriptions SET next_cycle_at='2040-03-21T13:00:00.123456Z', edit_window_hours=1
+      WHERE id=$1`, [f.subscription]);
+    const binding = offerBinding(env.runtime);
+    const bound = (rescheduleOfferDays: number) => createPostgresSubscriptionSaveOfferAcceptor({
+      ...binding, lifecycleTerms: { ...terms, slideMaxDays: cap },
+      offerPolicy: { ...offerPolicy, defaultOffer: "reschedule", rescheduleOfferDays },
+      withTransaction: work => binding.withTransaction(async db => {
+        // The slide limit uses local calendar days, so the change from daylight to
+        // standard time gives the UTC offset target exactly one edit-window hour.
+        await db.query("SET LOCAL TIME ZONE 'America/New_York'");
+        return work(db);
+      }),
+    });
+    const service = bound(cap), offer = await presented(service, f, "reschedule", now);
+    const input = acceptPresentation(f, offer, now), outside = bound(cap + 1);
+    expect(offer.newNextCycleAt).toBe(target);
+    expect(await outside.readPresentations({ actor: offerActor(f), subscriptionIds: [f.subscription], now }))
+      .toEqual(new Map([[f.subscription, null]]));
+    expect(await outside.accept(input)).toEqual(refused("subscription_save_offer_unavailable"));
+    expect(await service.accept(input)).toMatchObject({ outcome: "applied" });
     expect((await env.owner.query("SELECT next_cycle_at=$2::timestamptz AS exact FROM public.subscriptions WHERE id=$1",
       [f.subscription, target])).rows).toEqual([{ exact: true }]);
   }, 30_000);
