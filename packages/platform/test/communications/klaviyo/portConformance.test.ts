@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, vi } from "vitest";
 import { conformanceCase, neutralExports, publicSurface } from "../helpers/marketingSyncConformance.js";
-import { audience, binding, cleanupPlants, fixture, planted, preparePlants, request } from "./harness.js";
+import { audience, binding, cleanupPlants, fixture, klaviyoSurface, planted, preparePlants, request } from "./harness.js";
 import type { SyncRequest } from "../../../src/communications/contracts/marketingSync.js";
 
 const names = ["binding", "target", "projection", "consent", "generation", "tombstone", "mapping", "surface", "scope", "grant", "bounce", "case", "receipt", "ack-completed", "absence-completed", "generation-key", "lost-admission", "lost-record", "expired-read", "cooldown", "pacing", "read-quarantine", "read-fact", "read-generation", "record-quarantine", "host-availability"];
@@ -65,8 +65,9 @@ row("S04", ["mapping", "pacing"], async (h, plant) => {
 });
 row("S05", ["surface"], async (h, plant) => {
   expect(publicSurface(), "S05/neutral unchanged").toEqual(neutralExports);
-  expect(Object.keys(await import("../../../src/communications/klaviyo/index.js"))).toEqual(["createKlaviyoMarketingAdapter"]);
-  expect(h.surface, "S05/surface").toEqual(["createKlaviyoMarketingAdapter"]);
+  const actual = await import("../../../src/communications/klaviyo/index.js");
+  expect(Object.keys(actual)).toEqual(["createKlaviyoMarketingAdapter"]);
+  expect(h.surface, "S05/surface").toEqual(klaviyoSurface(actual));
   // Factory module exports are checked directly by the source mutant's added enumerable export.
   const r = request("profile.sync"); let n = 0;
   h.state.afterAwait = () => { if (++n === 2) (r.payload.projection.fields as { givenName: string }).givenName = "Caller changed"; };

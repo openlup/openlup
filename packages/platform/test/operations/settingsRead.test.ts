@@ -417,7 +417,26 @@ it("passes exact SKU identifiers through and deduplicates only exact matches", a
 it("pins strict read-only schemas for the five binary tools", () => {
   const expected = readFileSync(new URL("./settingsReadToolSchemas.main.json", import.meta.url), "utf8");
   const tools = settingsMcpTools(renewalStockProtectionPreviewResult);
-  expect(JSON.stringify(tools.map(({ definition }) => definition)) + "\n").toBe(expected);
+  const { refusals } = JSON.parse(readFileSync(new URL("../../settings-refusals.json", import.meta.url), "utf8")) as {
+    refusals: { code: string }[];
+  };
+  const codes = refusals.map(({ code }) => code);
+  type CodeField = { properties: { code: { enum?: string[] } } };
+  const definitions = structuredClone(tools.map(({ definition }) => definition));
+  for (const { name, outputSchema } of definitions) {
+    const [result, failure] = (outputSchema as { anyOf: [
+      { anyOf: [unknown, { properties: { explanation: CodeField } }] },
+      { properties: { refusal: CodeField } },
+    ] }).anyOf;
+    const codeFields = [failure.properties.refusal];
+    if (name === "settings_explain") codeFields.push(result.anyOf[1].properties.explanation);
+    for (const { properties: { code } } of codeFields) {
+      expect(code.enum, name).toContain("tax_invalid_input");
+      expect(code.enum, name).toEqual(codes);
+      delete code.enum;
+    }
+  }
+  expect(JSON.stringify(definitions) + "\n").toBe(expected);
   const refusal = refuseSettingsPreview("commerce_setting_unknown");
   for (const { input, output, definition } of tools) {
     expect(definition.annotations).toEqual({ readOnlyHint: true });

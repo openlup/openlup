@@ -1,6 +1,10 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { env as processEnvironment } from "node:process";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:child_process", async (original) => {
   const actual = await original<typeof import("node:child_process")>();
@@ -12,6 +16,10 @@ import {
   parseNameStatus, main, neutralityVerdict, releasedPackageSource, separateTestFiles, shortExpiries,
   sqlTreeChanges, testDiscoveryVerdict, vitestFiles, type AddedLine, type Change,
 } from "./preflight.ts";
+import {
+  assertCarrierBuildOutputs, assertCarrierToolchain, assertLockedInstall, carrierLocale, carrierPlan, readReportOwners, runUnselectedBuild,
+} from "./agent-review-landing.mjs";
+import { fixtureNpmCli, linkFixtureInstallation, localFixtureEnvironment } from "./fixtures/landing-test-environment.ts";
 
 afterEach(() => {
   vi.mocked(execFileSync).mockReset();
@@ -25,13 +33,266 @@ const line = (text: string): AddedLine[] => [{ path: "scripts/example.test.ts", 
 // An injected clock; the window is measured from it, never from the real clock.
 const now = new Date("2040-01-01T00:00:00Z");
 
-describe("fast preflight", () => {
+describe("real fast preflight", () => {
+  const source = process.cwd();
+  const npmCli = fixtureNpmCli();
+  const env = { ...localFixtureEnvironment(), ...carrierLocale, npm_execpath: npmCli };
+  const owners = ["core", "platform"];
+  let childProcess: typeof import("node:child_process");
+  let directory: string, root: string, fork: string;
+  const options = () => ({ cwd: root, env, encoding: "utf8" as const, timeout: 180000, maxBuffer: 16 * 1024 * 1024 });
+  const run = (bin: string, ...args: string[]) => childProcess.execFileSync(bin, args, options()).trim();
+  const git = (...args: string[]) => run("git", ...args);
+  const path = (file: string) => join(root, file);
+  const put = (file: string, bytes: string) => writeFileSync(path(file), bytes);
+  const get = (file: string) => readFileSync(path(file), "utf8");
+  const commit = (message: string) => { git("add", "-A"); git("commit", "-qs", "-m", message); return git("rev-parse", "HEAD"); };
+
+  beforeAll(async () => {
+    childProcess = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+    directory = mkdtempSync(join(tmpdir(), "openlup-fast-preflight-"));
+    root = join(directory, "fixture");
+    childProcess.execFileSync("git", ["clone", "--shared", "--no-hardlinks", "-q", source, root], { env, timeout: 30000 });
+    for (const file of ["scripts/preflight.ts", "scripts/agent-review-landing.mjs", ...["core", "outbox", "platform"].map(pkg => `packages/${pkg}/scripts/api-contract.ts`)]) {
+      cpSync(join(source, file), path(file));
+    }
+    git("config", "user.name", "Fixture"); git("config", "user.email", "fixture@example.invalid");
+    git("config", "commit.gpgSign", "false"); git("config", "core.hooksPath", "/dev/null");
+    git("add", "-A"); git("commit", "--allow-empty", "-qs", "-m", "Prepare fast fixture");
+    fork = git("rev-parse", "HEAD");
+    git("branch", "-f", "main", fork); git("remote", "set-url", "origin", ".");
+    git("update-ref", "refs/remotes/origin/main", fork);
+    linkFixtureInstallation(source, root);
+  }, 180000);
+  afterAll(() => { if (directory) rmSync(directory, { recursive: true, force: true }); });
+
+  const cold = () => {
+    for (const owner of owners) for (const leaf of ["dist", ".tsbuildinfo-build"]) {
+      rmSync(path(`packages/${owner}/${leaf}`), { recursive: true, force: true });
+    }
+  };
+  function reset(warm = false) {
+    git("checkout", "-q", "--detach", "--force", fork);
+    git("clean", "-fd");
+    cold();
+    // Hosted test-prep and local pretest already built the unchanged parent inputs.
+    if (warm) for (const owner of owners) {
+      const dist = `packages/${owner}/dist`;
+      cpSync(join(source, dist), path(dist), { recursive: true });
+    }
+  }
+  function snapshot() {
+    const index = readFileSync(path(".git/index"));
+    const hash = createHash("sha256");
+    for (const file of git("ls-files", "-z").split("\0").filter(Boolean)) {
+      hash.update(file + "\0").update(readFileSync(path(file))).update("\0");
+    }
+    return { index, tracked: hash.digest("hex") };
+  }
+  function fast(label: string, expected: string[], message?: string, remedy?: string) {
+    const state = snapshot();
+    const started = performance.now();
+    const result = childProcess.spawnSync(process.execPath, [npmCli, "run", "preflight", "--", "--fast"], options());
+    console.info(`D3 fast preflight ${label}: ${(performance.now() - started).toFixed(0)} ms`);
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stdout + result.stderr).toBe(expected.length ? 1 : 0);
+    const verdict = JSON.parse(result.stdout.trimEnd().split("\n").at(-1)!);
+    expect(verdict, result.stdout + result.stderr).toEqual({ preflight: "fast", result: expected.length ? "fail" : "pass", head: git("rev-parse", "HEAD"), failed: expected });
+    if (message && remedy) expect(result.stdout).toContain(message).toContain(remedy);
+    expect(snapshot()).toEqual(state);
+    return verdict;
+  }
+
   it.each([
-    { name: "clean", dirty: false, offline: false, warnings: false, failures: [], exit: 0 },
+    { cache: "warm-seeded", warm: true },
+    { cache: "cold", warm: false },
+  ])("refuses a stale API report with a $cache cache, then accepts the owner's repair", ({ cache, warm }) => {
+    reset(warm);
+    const entry = "packages/platform/src/portability/index.ts";
+    const api = "packages/platform/api/portability.api.md";
+    put(entry, get(entry) + "\nexport const fixtureFreshness = 1;\n");
+    put("packages/platform/changes/fixture-freshness.md", "- Exercise the portability report owner.\n");
+    commit("Add the fixture export with its original report");
+    const declaration = "packages/platform/dist/portability/index.d.ts";
+    if (warm) expect(get(declaration)).not.toContain("fixtureFreshness");
+    else expect(existsSync(path(declaration))).toBe(false);
+    fast(`API stale (${cache})`, ["api:check @openlup/platform"],
+      `api:check @openlup/platform: FAIL ${api}`, "npm run api:update --workspace=@openlup/platform");
+    expect(get(declaration)).toContain("fixtureFreshness");
+    run(process.execPath, "packages/platform/scripts/api-contract.ts", "--update");
+    commit("Regenerate the API report");
+    fast(`API repaired (${cache})`, []);
+  }, 300000);
+
+  it("refuses stale settings with warm-seeded and cold caches, then accepts the owner's repair", () => {
+    reset(true);
+    const dataPath = "packages/platform/src/inventory/settings-data.json";
+    const entries: { kind: string }[] = JSON.parse(get(dataPath));
+    put(dataPath, JSON.stringify([...entries, { ...entries.find(entry => entry.kind === "invariant"), key: "inventory.fixtureFreshness", goal: "Describe the freshness fixture." }], null, 2) + "\n");
+    put("packages/platform/changes/fixture-freshness.md", "- Exercise the settings catalogue owner.\n");
+    commit("Add the fixture setting with its original catalogue");
+    const settingsCheck = (cache: string) => fast(`settings stale (${cache})`, ["settings-catalogue"],
+      "settings-catalogue: FAIL packages/platform/settings-catalog.json is stale", "node scripts/settings-catalogue.ts --write");
+    const warmSettings = settingsCheck("warm");
+    cold();
+    expect(settingsCheck("cold")).toEqual(warmSettings);
+    run(process.execPath, "scripts/settings-catalogue.ts", "--write");
+    commit("Regenerate the settings carriers");
+    fast("settings repaired", []);
+  }, 300000);
+
+  it("names the unregistered public path and accepts its reviewed classification", () => {
+    reset();
+    const extra = "packages/platform/api/fixture-freshness.md";
+    put(extra, "# Fixture freshness\n"); commit("Add a public path before classification");
+    fast("unregistered path", ["publication"], `extra ${extra}`, "Add the reviewed classification in config/openlup-publication-catalog.json.");
+    const catalogue = "config/openlup-publication-catalog.json";
+    const registration: { publicPaths: { path: string; class: string }[] } = JSON.parse(get(catalogue));
+    registration.publicPaths.push({ path: extra, class: "public-output" });
+    registration.publicPaths.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+    put(catalogue, JSON.stringify(registration, null, 2) + "\n"); commit("Register the fixture path");
+    fast("path registered", []);
+    for (const owner of owners) expect(existsSync(path(`packages/${owner}/dist`))).toBe(false);
+  }, 180000);
+
+  it.each(["patch drift", "Node major mismatch", "npm major mismatch"])("checks the installed toolchain with %s", variant => {
+    reset();
+    const node = process.versions.node;
+    const npm = run(process.execPath, npmCli, "--version");
+    const differentPin = (version: string, majorMismatch: boolean) => {
+      const [major, minor, patch] = version.split(".").map(Number);
+      return `${majorMismatch ? major + 1 : major}.${minor}.${patch + 1}`;
+    };
+    const pinnedNode = differentPin(node, variant === "Node major mismatch");
+    const pinnedNpm = `npm@${differentPin(npm, variant === "npm major mismatch")}`;
+    put(".nvmrc", `${pinnedNode}\n`);
+    put("package.json", JSON.stringify({ ...JSON.parse(get("package.json")), packageManager: pinnedNpm }));
+    const check = () => run(process.execPath, "--input-type=module", "-e",
+      "import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; console.log(assertCarrierToolchain(process.cwd()));");
+    if (variant === "Node major mismatch") {
+      expect(check).toThrow(`requires the Node major pinned by .nvmrc (${pinnedNode}); found Node ${node}. Run nvm install && nvm use.`);
+    } else if (variant === "npm major mismatch") {
+      expect(check).toThrow(`requires the npm major pinned by packageManager (${pinnedNpm}); found npm@${npm}. Run npm install --global ${pinnedNpm}.`);
+    } else {
+      expect(check()).toBe(`carrier toolchain: Node ${node}, npm ${npm}, ICU ${process.versions.icu}`);
+    }
+  }, 30_000);
+});
+
+describe("carrier guards on Git fixtures", () => {
+  let git: (...args: string[]) => string, root: string;
+  const tracked = "packages/platform/dist/fixture-tracked.txt";
+  const readme = "README.md";
+  const bytes = "Committed fixture bytes\n";
+  const path = (file: string) => join(root, file);
+  const snapshot = () => ({
+    tracked: git("ls-files", "-z").split("\0").filter(Boolean).map(file => [file, readFileSync(path(file))]),
+    index: readFileSync(path(".git/index")),
+  });
+
+  beforeEach(async () => {
+    const childProcess = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+    root = mkdtempSync(join(tmpdir(), "openlup-carrier-guard-"));
+    const env = localFixtureEnvironment();
+    git = (...args) => childProcess.execFileSync("git", args, { cwd: root, env, encoding: "utf8" }).trim();
+    git("init", "-q");
+    writeFileSync(path(".gitignore"), "dist/\nnode_modules/\n");
+    mkdirSync(path("packages/platform/dist"), { recursive: true });
+    writeFileSync(path(tracked), bytes);
+    writeFileSync(path(readme), bytes);
+    git("add", "--", ".gitignore", readme);
+    git("add", "-f", "--", tracked);
+    git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgSign=false", "commit", "-qm", "Track a build output");
+  });
+  afterEach(() => { if (root) rmSync(root, { recursive: true, force: true }); });
+
+  it("refuses a tracked dist file with its exact path and index remedy", async () => {
+    const before = snapshot();
+    await expect(assertCarrierBuildOutputs(root, ["packages/platform"]))
+      .rejects.toThrow(`carrier build would overwrite or remove tracked path ${tracked}; remove it from the index with git rm --cached -- <path>`);
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("refuses a mismatched installed dependency with the npm ci remedy", () => {
+    const locked = { "node_modules/zod": { version: "4.0.0" } };
+    writeFileSync(path("package-lock.json"), JSON.stringify({ packages: locked }));
+    git("add", "--", "package-lock.json");
+    mkdirSync(path("node_modules"));
+    writeFileSync(path("node_modules/.package-lock.json"), JSON.stringify({ packages: { "node_modules/zod": { version: "3.0.0" } } }));
+    const before = snapshot();
+    const committed = JSON.parse(readFileSync(path("package-lock.json"), "utf8"));
+    expect(() => assertLockedInstall(root, committed.packages))
+      .toThrow("carrier build: installed npm tree does not match package-lock.json (node_modules/zod); run npm ci in this checkout");
+    expect(snapshot()).toEqual(before);
+  });
+
+  it.each(["unstaged", "staged"])("refuses an unselected build with a %s tracked change", async change => {
+    const before = snapshot();
+    let planted: ReturnType<typeof snapshot> | undefined;
+    await expect(runUnselectedBuild(root, "@openlup/core", new Set(), () => {
+      writeFileSync(path(readme), "Fixture build side effect.\n");
+      if (change === "staged") {
+        git("add", "--", readme);
+        writeFileSync(path(readme), bytes);
+      }
+      planted = snapshot();
+    })).rejects.toThrow(`landing: unselected build @openlup/core changed tracked paths: ${readme}`);
+    expect(planted).toBeDefined();
+    expect(snapshot()).toEqual(planted);
+    const after = snapshot();
+    if (change === "staged") {
+      expect(after.tracked).toEqual(before.tracked);
+      expect(after.index).not.toEqual(before.index);
+    } else {
+      expect(after.tracked).not.toEqual(before.tracked);
+      expect(after.index).toEqual(before.index);
+    }
+  });
+});
+
+it.each([undefined, "npm-cli.js"])("refuses landing carrier checks with npm_execpath %s", npmCli => {
+  vi.stubEnv("npm_execpath", npmCli);
+  expect(() => assertCarrierToolchain(process.cwd())).toThrow("run through npm run landing:merge");
+});
+
+it.each([
+  { path: "README.md", builds: [], reports: [], settings: false },
+  { path: "packages/outbox/src/index.ts", builds: ["core", "outbox"], reports: ["outbox"], settings: false },
+  { path: "packages/platform/api/portability.api.md", builds: ["core", "platform"], reports: ["platform"], settings: true },
+  { path: "packages/platform/src/inventory/settings-data.json", builds: ["core", "platform"], reports: [], settings: true },
+  { path: "packages/platform/settings-catalog.json", builds: ["core", "platform"], reports: [], settings: true },
+  { path: "packages/platform/settings-refusals.json", builds: ["core", "platform"], reports: [], settings: true },
+  { path: "packages/core/docs/guide/how-to/operate/settings-catalogue.md", builds: ["core", "platform"], reports: [], settings: true },
+  { path: "packages/core/package.json", builds: ["core", "outbox", "platform"], reports: ["core", "outbox", "platform"], settings: true },
+  { path: "package-lock.json", builds: ["core", "outbox", "platform"], reports: ["core", "outbox", "platform"], settings: true },
+])("selects the dependency closure and check owners for $path", ({ path, builds, reports, settings }) => {
+  const plan = carrierPlan(readReportOwners(process.cwd()), [path]);
+  expect(plan.builds.map(({ name }) => name)).toEqual(builds.map(name => `@openlup/${name}`));
+  expect(plan.reports.map(({ name }) => name)).toEqual(reports.map(name => `@openlup/${name}`));
+  expect(plan.settings).toBe(settings);
+});
+
+describe("fast preflight", () => {
+  const npmCli = join(process.cwd(), "fixture-npm-cli.js");
+  const npm = `${process.execPath} ${npmCli}`;
+  const carrierNpmRun = (args: readonly string[] | undefined) =>
+    args?.[0] === npmCli && args[1] === "run" && ["build", "api:check"].includes(args[2]);
+  const clean = { dirty: false, offline: false, warnings: false, failures: [], exit: 0 };
+  beforeEach(() => { vi.stubEnv("npm_execpath", npmCli); });
+  it.each([
+    { ...clean, name: "clean" },
+    { ...clean, name: "clean with an npm version timeout", npmVersion: "unavailable (timed out after 5 s)",
+      versionProbe: { status: null, stdout: "", error: Object.assign(new Error("npm version timed out"), { code: "ETIMEDOUT" }) } },
+    { ...clean, name: "clean with a non-zero npm version exit", npmVersion: "unavailable (exit status 1)",
+      versionProbe: { status: 1, stdout: "11.19.1\n" } },
+    { ...clean, name: "clean with empty npm version output", npmVersion: "unavailable (empty output)",
+      versionProbe: { status: 0, stdout: " \n" } },
+    { ...clean, name: "clean when launching the npm version probe throws", npmVersion: "unavailable (probe failed)",
+      versionProbe: new Error("npm version probe could not launch") },
     { name: "clean with Git stderr warnings", dirty: false, offline: false, warnings: true, failures: [], exit: 0 },
     { name: "dirty with a failed fetch", dirty: true, offline: true, warnings: false, failures: ["clean"], exit: 1 },
     { name: "multiple failures", dirty: false, offline: false, warnings: false, failures: ["merge-clean", "neutrality", "publication", "dco"], exit: 1 },
-  ])("reports every check and ends with JSON for a $name fixture", ({ dirty, offline, warnings, failures, exit }) => {
+  ])("reports every check and ends with JSON for a $name fixture", ({ dirty, offline, warnings, failures, exit, npmVersion = "11.19.1", versionProbe }) => {
     const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
     const increase = '"scripts/example.ts": brand increased 0 -> 1';
     const conflict = "CONFLICT (content): Merge conflict in example.ts";
@@ -49,7 +310,8 @@ describe("fast preflight", () => {
       "npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression",
       `${process.execPath} scripts/ast-grep/check-filewide-ignore.mjs`,
       "npx --no -- ast-grep test --skip-snapshot-tests",
-      `npm run oss:published-tree -- --self-check --docs-base ${fork}`,
+      `${npm} --version`,
+      `${npm} run oss:published-tree -- --self-check --docs-base ${fork}`,
       `git diff --name-status --no-renames -z ${fork} HEAD`,
       "gitleaks version",
       "git rev-parse origin/main",
@@ -58,13 +320,19 @@ describe("fast preflight", () => {
     const outputs = new Map([
       [expected[0], process.cwd()], [expected[1], head], [expected[3], dirty ? "?? local.txt\n" : ""],
       [expected[4], conflict], [expected[5], fork], [expected[6], increase],
-      [expected[11], `${mismatch}\n${closing}`], [expected[14], upstream],
+      [expected[11], "11.19.1\n"], [expected[12], `${mismatch}\n${closing}`], [expected[15], upstream],
     ]);
     vi.mocked(spawnSync).mockImplementation(((bin, args, options) => {
       const call = `${bin} ${(args ?? []).join(" ")}`;
       calls.push(call);
+      if (bin === "git") expect(processEnvironment.GIT_OPTIONAL_LOCKS).toBe("0");
       if (bin === "npx") {
         expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
+      }
+      if (call === expected[11] && versionProbe) {
+        expect(options?.timeout).toBe(5_000);
+        if (versionProbe instanceof Error) throw versionProbe;
+        return { ...versionProbe, stderr: "" };
       }
       if (bin === "gitleaks") {
         return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
@@ -72,8 +340,8 @@ describe("fast preflight", () => {
       const status = Number((call === expected[2] && offline)
         || (call === expected[4] && failures.includes("merge-clean"))
         || (call === expected[6] && failures.includes("neutrality"))
-        || (call === expected[11] && failures.includes("publication")));
-      const stderr = warnings && [expected[0], expected[1], expected[3], expected[5], expected[12], expected[14]].includes(call)
+        || (call === expected[12] && failures.includes("publication")));
+      const stderr = warnings && [expected[0], expected[1], expected[3], expected[5], expected[13], expected[15]].includes(call)
         ? "warning: fixture Git warning\n" : "";
       return { status, stdout: outputs.get(call) ?? "", stderr };
     }) as typeof spawnSync);
@@ -96,17 +364,21 @@ describe("fast preflight", () => {
       dco: `missing Signed-off-by on ${head.slice(0, 12)}`,
     };
     const skipLines: Record<string, string> = {
+      "carrier toolchain": `carrier toolchain: Node ${process.versions.node}, npm ${npmVersion}, ICU ${process.versions.icu}`,
       fragments: "fragments: skip no released package source changed",
       "test dates": "test dates: skip no new or changed test files",
       "test expiries": "test expiries: skip no new or changed test files",
       gitleaks: "gitleaks: skip gitleaks is not on PATH; the required gitleaks job still scans the pull request",
       "guide-check": "guide-check: skip no guide or rule files changed",
+      carriers: `carriers: skip ${dirty ? "clean committed checkout required" : "no report or settings inputs changed"}`,
+      ...(dirty ? { "migration projection": "migration projection: skip clean committed checkout required" } : {}),
       "package-manifest": "package-manifest: skip no package manifests or config/openlup-packages.json changed",
     };
     expect(lines.filter((line) => !line.startsWith("    ")).map((line) => line.replace(/ \(\d+ s\)$/u, "")))
       .toEqual([
         "clean", "merge-clean", "neutrality", "ui-neutrality", "ast-grep", "ast-grep-hygiene",
-        "publication", "fragments", "test dates", "test expiries", "gitleaks", "guide-check", "package-manifest", "dco",
+        "carrier toolchain", "publication", "carriers", "migration projection",
+        "fragments", "test dates", "test expiries", "gitleaks", "guide-check", "package-manifest", "dco",
       ].map((name) => skipLines[name] ?? `${name}: ${failures.includes(name) ? `FAIL ${reasons[name]}` : "ok"}`));
     expect(lines.filter((line) => line.startsWith("    "))).toEqual(
       failures.includes("publication") ? [conflict, increase, mismatch, closing].map((line) => `    ${line}`) : [],
@@ -180,7 +452,7 @@ describe("fast preflight", () => {
     expect(unlanded.calls).toContain(`git merge-base --is-ancestor ${stackBase} HEAD`);
     expect(unlanded.calls).toContain(`git merge-base --is-ancestor ${stackBase} origin/main`);
     expect(unlanded.calls).not.toContain("git merge-tree --write-tree origin/main HEAD");
-    expect(unlanded.calls).toContain("npm run oss:published-tree -- --self-check");
+    expect(unlanded.calls).toContain(`${npm} run oss:published-tree -- --self-check`);
     expect(unlanded.calls.some((call) => call.includes("--docs-base"))).toBe(false);
     expect(unlanded.lines).toContain("merge-clean: skip unlanded OPENLUP_STACK_BASE; merge-tree skipped");
 
@@ -220,6 +492,9 @@ describe("fast preflight", () => {
       if (call === "npm run packages:check -- --manifest-only") {
         expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
       }
+      if (bin === process.execPath && carrierNpmRun(args)) {
+        expect([options?.env?.GIT_OPTIONAL_LOCKS, options?.env?.LC_ALL, options?.env?.LANG]).toEqual(["0", "en_US.UTF-8", "en_US.UTF-8"]);
+      }
       if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
       if (call === "git rev-parse HEAD") return { status: 0, stdout: head, stderr: "" };
       if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
@@ -237,6 +512,10 @@ describe("fast preflight", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     expect(main(now, ["--fast"])).toBe(0);
+    const owners = ["core", "outbox", "platform"];
+    expect(calls.filter(call => call.startsWith(`${npm} run build --workspace=`) || call.startsWith(`${npm} run api:check --workspace=`))).toEqual(
+      ["build", "api:check"].flatMap(command => owners.map(owner => `${npm} run ${command} --workspace=@openlup/${owner}`)),
+    );
     expect(calls).toContain(`${process.execPath} --experimental-strip-types packages/core/scripts/documentation-contract.ts --check-guide packages/core`);
     expect(calls).toContain("npm run packages:check -- --manifest-only");
     expect(calls).toContain("gitleaks git . --config config/gitleaks.toml --gitleaks-ignore-path .gitleaksignore --redact --no-banner --no-color --log-opts bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..HEAD");

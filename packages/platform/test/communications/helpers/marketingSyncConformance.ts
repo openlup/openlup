@@ -142,13 +142,19 @@ export function conformanceCase<P extends string, H>(id: string, plants: readonl
   });
 }
 
-export const neutralExports = ["ConsentPushRequest", "ConsentPushResult", "ConsentPushPort", "SyncBinding", "SyncAudience", "ProfileProjection", "SyncRequest", "NegativeFeedback", "ConsentReadback", "SyncFailure", "SyncReceipt", "SyncResult", "SyncCapabilities", "ProfileSyncPort", "ConsentReadPort", "ErasurePort", "MarketingSyncProvider"].sort();
-export function publicSurface(planted = false) {
-  const path = fileURLToPath(new URL("../../../src/communications/contracts/marketingSync.ts", import.meta.url));
-  const source = readFileSync(path, "utf8") + (planted ? "\nexport type ProfileRead = unknown;\n" : "");
+function exportedDeclarationNames(path: string, source: string) {
   const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
   return file.statements.filter(s => ts.canHaveModifiers(s) && ts.getModifiers(s)?.some(m => m.kind === ts.SyntaxKind.ExportKeyword))
     .map(s => (s as ts.InterfaceDeclaration).name.text).sort();
+}
+const neutralReport = readFileSync(new URL("../../../api/communications-contracts.api.md", import.meta.url), "utf8");
+const neutralSection = /^## dist\/communications\/contracts\/marketingSync\.d\.ts\n\n```ts\n([\s\S]*?)^```$/mu.exec(neutralReport)?.[1];
+if (neutralSection === undefined) throw new Error("Communications contracts report is missing its marketingSync.d.ts section");
+export const neutralExports = exportedDeclarationNames("marketingSync.d.ts", neutralSection);
+export function publicSurface(planted = false) {
+  const path = fileURLToPath(new URL("../../../src/communications/contracts/marketingSync.ts", import.meta.url));
+  const source = readFileSync(path, "utf8") + (planted ? "\nexport type ProfileRead = unknown;\n" : "");
+  return exportedDeclarationNames(path, source);
 }
 
 const authorityVariants = ["foreign:1", "provider:subscribed", "grant:other-subject", "grant:other-audience", "grant:other-purpose"] as const;
