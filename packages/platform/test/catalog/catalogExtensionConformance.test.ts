@@ -112,7 +112,7 @@ describe("catalogue conformance findings", () => {
   it.each([
     ["incoming", false, "/incoming/1/optionValues/pack_size"],
     ["retained", false, "/retained/1/optionValues/pack_size"],
-    ["incoming", true, "/incoming"],
+    ["incoming", true, "/incoming/1"],
     ["retained", true, "/retained/1"],
   ] as const)("reports fractional count from %s (repeated key: %s) at %s", async (field, repeated, suffix) => {
     const declaration = pack();
@@ -133,7 +133,7 @@ describe("catalogue conformance findings", () => {
     const report = await checkSubject({ packs: [{ pack: { ...declaration, types: [definition] }, combinations: [{ type, input }] }] });
     expect(report).toMatchObject({ state: "violated", exitCode: 1 });
     expect(errors(report)).toMatchObject([{ code: "quantity_fractional_count", path,
-      observed: expect.stringContaining(repeated && field === "incoming" ? `${path} = [` : '"scale":1,"unit":"stationery:each","unscaled":"15"'),
+      observed: expect.stringContaining('"scale":1,"unit":"stationery:each","unscaled":"15"'),
     }]);
   });
 

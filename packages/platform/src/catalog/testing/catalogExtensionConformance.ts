@@ -133,14 +133,16 @@ function combinationQuantityPointer(input: CombinationFixtureInput, definition: 
   error: CatalogQuantityError, retainedIndex: number | undefined): string {
   const rows = retainedIndex === undefined ? input.incoming : [input.retained[retainedIndex]];
   const keys = [...input.axes].sort(compare);
-  for (const { optionValues } of rows) for (const key of keys) {
+  for (const [index, { optionValues }] of rows.entries()) for (const key of keys) {
     const value = optionValues?.[key];
     if (value?.kind !== "quantity") continue;
     try {
       canonicalizeCatalogCombinationV2({ definition, axes: [key], options: { [key]: value } });
     } catch (probe) {
-      if (probe instanceof CatalogQuantityError && probe.code === error.code)
-        return combinationOptionPointer(input, key, retainedIndex);
+      if (probe instanceof CatalogQuantityError && probe.code === error.code) {
+        const optionPath = combinationOptionPointer(input, key, retainedIndex);
+        return optionPath === "/incoming" ? pointer(["incoming", index]) : optionPath;
+      }
       // Diagnostic replay preserves the original refusal if a probe fails for another reason.
     }
   }
