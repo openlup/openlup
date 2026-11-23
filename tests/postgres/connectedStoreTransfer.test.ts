@@ -434,7 +434,7 @@ beforeAll(async () => {
       } finally { await seeded.changeCondition(); }
     }
   }
-  // Keep both an accepted agreement and an open preview, including the event FK.
+  // Keep all three preview shapes, including both acceptance foreign keys.
   const previewActor = randomUUID();
   const previewVersion = Number((await source.owner.query("SELECT template_version FROM public.subscriptions WHERE id=$1", [graph.subscription])).rows[0].template_version);
   const recordPreview = async (hash: string) => (await source.runtime.query(
@@ -448,6 +448,18 @@ beforeAll(async () => {
     VALUES($1,'subscription.customer_self_service.update_package_template','retained-package-edit','{"linePricing":[]}') RETURNING id`, [graph.subscription])).rows[0].id;
   await source.runtime.query("SELECT public.subscription_quote_preview_mark_accepted($1,'retained-package-key',$2,'2026-11-05T12:00:00Z')", [acceptedPreview.id, editEvent]);
   await recordPreview("d".repeat(64));
+  const noopPreview = await recordPreview("e".repeat(64));
+  // Seed the storage shape directly. The consent writer is outside this witness.
+  await source.owner.query(`WITH receipt AS (
+    INSERT INTO public.subscription_command_receipts
+      (actor_id,idempotency_key,subscription_id,client_id,command_fingerprint,command,result,status)
+    VALUES ($1,'retained-package-noop',$2,$3,repeat('a',64),'{}','{}','noop')
+    RETURNING id,idempotency_key
+  )
+  UPDATE public.subscription_quote_previews q
+  SET status='accepted',accepted_at='2026-11-05T12:00:00Z',accepted_idempotency_key=receipt.idempotency_key,
+    accepted_noop_receipt_id=receipt.id
+  FROM receipt WHERE q.id=$4`, [previewActor, graph.subscription, graph.client, noopPreview.id]);
   // Capture the new event's delivery receipt as well, so later dispatcher replay
   // does not create a new obligation on an otherwise identical restored graph.
   await dispatchNotices(source);
@@ -1458,20 +1470,28 @@ try {
 }, 245_000);
 
 // About 4x the slowest hosted run (24,658 ms), rounded up to 5 s.
-it("round-trips open and accepted package previews with their event and subscription parents", async () => {
+it("round-trips open, event-backed and receipt-backed package previews under the current inventory", async () => {
   const captured = packet.owned.find(table => table.table === "subscription_quote_previews");
-  expect(captured?.rows).toHaveLength(2);
-  expect(captured!.rows.map(row => JSON.parse(row).status).sort()).toEqual(["accepted", "previewed"]);
-  await restore();
-  expect((await census(target.owner)).subscription_quote_previews).toEqual((await census(source.owner)).subscription_quote_previews);
-  expect((await target.owner.query(`SELECT q.status,e.event_type,s.client_id=q.client_id AS owned
+  expect(captured?.columns).toContainEqual({ name: "accepted_noop_receipt_id", type: "uuid" });
+  expect(captured?.rows).toHaveLength(3);
+  expect(packet.compatible.catalogueId).toBe(selected.objectInventorySha256);
+  expect(pristine.compatible.catalogueId).toBe(packet.compatible.catalogueId);
+  const sourceRows = await census(source.owner);
+  expect((await restore()).replayed).toBe(false);
+  expect(await census(target.owner)).toEqual(sourceRows);
+  expect((await target.owner.query(`SELECT q.status,e.event_type,r.idempotency_key AS receipt_key,
+    s.client_id=q.client_id AS owned
     FROM public.subscription_quote_previews q JOIN public.subscriptions s ON s.id=q.subscription_id
-    LEFT JOIN public.subscription_events e ON e.id=q.accepted_event_id ORDER BY q.status`)).rows)
-    .toEqual([{ status: "accepted", event_type: "subscription.customer_self_service.update_package_template", owned: true },
-      { status: "previewed", event_type: null, owned: true }]);
-  const beforeReplay = await census(target.owner);
+    LEFT JOIN public.subscription_events e ON e.id=q.accepted_event_id
+    LEFT JOIN public.subscription_command_receipts r ON r.id=q.accepted_noop_receipt_id
+    ORDER BY q.status,r.idempotency_key NULLS FIRST`)).rows)
+    .toEqual([
+      { status: "accepted", event_type: "subscription.customer_self_service.update_package_template", receipt_key: null, owned: true },
+      { status: "accepted", event_type: null, receipt_key: "retained-package-noop", owned: true },
+      { status: "previewed", event_type: null, receipt_key: null, owned: true },
+    ]);
   expect((await restore()).replayed).toBe(true);
-  expect(await census(target.owner)).toEqual(beforeReplay);
+  expect(await census(target.owner)).toEqual(sourceRows);
 }, 100_000);
 
 
