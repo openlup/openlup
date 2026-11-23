@@ -1,8 +1,7 @@
-import { createHash } from "node:crypto";
 import type { CatalogAdmissionEvidence } from "@openlup/core/catalog";
 import type { CatalogAdmissionInput } from "./contracts/admission.js";
 import { catalogAdmissionEvidenceSchema } from "./catalogAdmissionSchema.js";
-import { canonicalCatalogDraftJson } from "./contracts/draft.js";
+import { evidenceRef } from "./catalogOwnerQuoteEvidence.js";
 import { projectPublicQuoteSnapshot, quoteDigest, type CreateQuoteResponse } from "../pricing/index.js";
 
 const dependencyRoles = ["actual", "base", "comparison", "offer"] as const;
@@ -14,9 +13,6 @@ type PriceSelector = {
 };
 
 const order = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
-const evidenceRef = (dialect: "price.v1" | "policy.v1", value: unknown) =>
-  `${dialect}:${createHash("sha256").update(canonicalCatalogDraftJson([dialect, value]), "utf8").digest("hex")}`;
-
 // Exclude the private fact copies already lifted to selector and line evidence.
 // Preserve public values, including times the buyer actually reviewed.
 function omitPrivateFacts(key: string, value: unknown): unknown {

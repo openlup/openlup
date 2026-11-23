@@ -2,6 +2,7 @@ import type { CatalogAdmissionEvidence } from "@openlup/core/catalog";
 import { z } from "./validation.js";
 
 const ref = z.string().min(1).max(240).refine(value => value.trim() === value && new TextEncoder().encode(value).length <= 240);
+export const catalogAdmissionRefSchema = ref;
 const guid = z.guid().refine(value => value === value.toLowerCase());
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const positive = z.number().int().min(1).max(2_147_483_647);
@@ -19,6 +20,10 @@ const lines = z.array(z.discriminatedUnion("source", [
   const keys = values.flatMap(value => value.lineKey === undefined ? [] : [value.lineKey]);
   return new Set(keys).size === keys.length && values.every((value, index) => value.sourceOrdinal === index + 1);
 });
+export const catalogAdmissionLinesSchema = lines;
+export const catalogAdmissionHeadSchema = z.object({
+  productId: guid, publicationId: guid, revision: positive, documentDigest: digest,
+}).strict();
 const review = z.object({ priceEvidenceRef, policyEvidenceRef });
 const legacyReview = z.discriminatedUnion("identityComparison", [
   review.extend({ identityComparison: z.literal("unavailable") }).strict(),
@@ -30,9 +35,8 @@ const legacyReview = z.discriminatedUnion("identityComparison", [
 export const catalogAdmissionEvidenceSchema: z.ZodType<CatalogAdmissionEvidence> = z.object({
   quoteRef: ref.optional(), quoteDigest: digest, moneyVersion: z.literal("v0"),
   priceEvidenceRef, policyEvidenceRef, acceptanceTokenDigest: digest.optional(),
-  consultedHeads: z.array(z.object({
-    productId: guid, publicationId: guid, revision: positive, documentDigest: digest,
-  }).strict()).max(500).refine(values => values.every((value, index) => index === 0 || values[index - 1]!.productId < value.productId)),
+  consultedHeads: z.array(catalogAdmissionHeadSchema).max(500)
+    .refine(values => values.every((value, index) => index === 0 || values[index - 1]!.productId < value.productId)),
   offer: z.object({ ref, version: ref }).strict().optional(), lineBindings: lines,
   legacyReviewEvidence: legacyReview.optional(), destinationRef: ref.optional(), destinationDigest: digest.optional(),
   graduation: z.object({ phaseDigest: digest, lineBindings: lines }).strict().optional(),
