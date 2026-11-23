@@ -661,6 +661,7 @@ export type { NativeRetryFailure, NativeRetryRequest, NativeRetryPositive, Nativ
 export { createPostgresRetryLifecycleBinding } from "./postgresRetryStore.js";
 export type { NativeRetryLifecycleBinding } from "./postgresRetryStore.js";
 export { createPostgresSubscriptionCommandStore, createPostgresSubscriptionCommands } from "./postgresCommandStore.js";
+export { createPostgresSubscriptionSaveOfferAcceptor } from "./postgresCommandStore.js";
 export type { NativeSubscriptionCommand, NativeSubscriptionCommandBinding } from "./postgresCommandStore.js";
 export { createPostgresStockWaitReads, stockWaitHealth } from "./postgresStockWaitReads.js";
 export type { StockWaitReadState, StockWaitReadNotice, StockWaitReadProjection, StockWaitOperatorSummary, StockWaitAdminPage } from "./contracts/stockWaitReads.js";
@@ -1092,7 +1093,7 @@ export declare function createPostgresSubscriptionAutoResume(executor: Subscript
 ## dist/subscriptions/postgresCommandStore.d.ts
 
 ```ts
-import type { SubscriptionCommand, SubscriptionCommandAdmission, SubscriptionCommandPort, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
+import type { SubscriptionCommand, SubscriptionCommandAdmission, SubscriptionCommandContext, SubscriptionCommandPort, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionLifecycleTerms, SubscriptionSaveOfferPresentation } from "./contracts/commands.js";
 import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 export interface NativeSubscriptionCommand {
     actorId: string;
@@ -1143,6 +1144,47 @@ export declare function createPostgresSubscriptionCommands(binding: NativeSubscr
         action: "edit_future_terms";
     }>): Promise<Record<string, unknown> | SubscriptionCommandRefusal>;
 };
+type Presentation = SubscriptionSaveOfferPresentation;
+type OfferKind = Presentation["kind"];
+type PauseOption = Extract<Presentation, {
+    kind: "pause";
+}>["pausePresets"][number];
+type OfferChoice = {
+    kind: "skip";
+} | {
+    kind: "reschedule";
+    newNextCycleAt: string;
+} | ({
+    kind: "pause";
+} & PauseOption);
+type OfferAcceptance = SubscriptionCommandContext & {
+    generation: string;
+} & OfferChoice;
+type OfferBinding = Pick<NativeSubscriptionCommandBinding, "withTransaction" | "admitSubscriptionCommand"> & {
+    lifecycleTerms: SubscriptionLifecycleTerms;
+    offerPolicy: {
+        offerPresentation: "ask_permission_first" | "off";
+        defaultOffer: OfferKind;
+        allowedPausePresets: readonly PauseOption["pausePreset"][];
+        preselectedPausePreset: PauseOption["pausePreset"];
+        rescheduleOfferDays: number;
+    };
+};
+type OfferRefusal = {
+    outcome: "refused";
+    reason: "subscription_save_offer_unavailable" | "subscription_save_offer_stale" | "subscription_save_offer_consumed";
+};
+/** @experimental Present and accept one native save offer per kind and logical renewal.
+ * Bind an authenticated actor and a READ COMMITTED transaction on one connection. */
+export declare function createPostgresSubscriptionSaveOfferAcceptor(binding: OfferBinding): {
+    readPresentations({ actor, subscriptionIds, now }: {
+        actor: SubscriptionCommandContext["actor"];
+        subscriptionIds: readonly string[];
+        now: string;
+    }): Promise<Map<string, Presentation | null>>;
+    accept(input: OfferAcceptance): Promise<SubscriptionCommandReceipt | SubscriptionCommandRefusal | OfferRefusal>;
+};
+export {};
 ```
 ## dist/subscriptions/postgresDeliveryAlignmentStore.d.ts
 

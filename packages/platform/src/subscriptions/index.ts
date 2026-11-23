@@ -32,6 +32,7 @@ export { createPostgresRetryLifecycleBinding } from "./postgresRetryStore.js";
 export type { NativeRetryLifecycleBinding } from "./postgresRetryStore.js";
 
 export { createPostgresSubscriptionCommandStore, createPostgresSubscriptionCommands } from "./postgresCommandStore.js";
+export { createPostgresSubscriptionSaveOfferAcceptor } from "./postgresCommandStore.js";
 export type { NativeSubscriptionCommand, NativeSubscriptionCommandBinding } from "./postgresCommandStore.js";
 
 export { createPostgresStockWaitReads, stockWaitHealth } from "./postgresStockWaitReads.js";

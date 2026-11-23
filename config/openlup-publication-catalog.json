@@ -1798,6 +1798,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/history/data-and-migrations-evidence-2026-11-13.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/history/managed-query-baseline-2026-11-19.md",
       "class": "public-output"
     },
