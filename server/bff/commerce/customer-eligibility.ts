@@ -55,7 +55,7 @@ function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
         ),
       countPaidOrdersByMode: (clientId) => promoDataPort.countPaidOrdersByMode(clientId),
       checkRateLimit: (request, email) =>
-        rateLimitPort.check({ headers: request.headers, email }),
+        rateLimitPort.check({ request, email }),
       starterPackEnabled,
     })(req, res);
   });

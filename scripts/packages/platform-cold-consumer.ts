@@ -2098,15 +2098,13 @@ const command = ["catalogue", "check", "--packs", registry];
 const text = readFileSync(join(owned, "catalogue.json"), "utf8"), subject = JSON.parse(text);
 const write = (name, value) => { const path = join(owned, name); writeFileSync(path, JSON.stringify(value)); return ["catalogue", "check", "--packs", path]; };
 const findingIdentity = ({code,path,severity}) => ({code,path,severity});
-const netContentWarning = {code:"advisory_net_content_not_publishable",path:"/packs/0/pack/types/0/netContentUnits",severity:"warning"};
 const cases = [
- { name: "guide_skeleton_pack_passes_checker", async run() {
-   for (const report of [await runCatalogExtensionConformance(text),invoke(command)]) {
-     assert.equal(report.state,"satisfied"); assert.equal(report.exitCode,0);
-     assert.deepEqual(report.findings.map(findingIdentity),[
-       {code:"advisory_draft_version_not_publishable",path:"/packs/0/drafts/0/schemaVersion",severity:"warning"},
-       {code:"advisory_unit_identifier_missing",path:"/packs/0/drafts/0/skus/0/identifiers",severity:"warning"},
-       netContentWarning,
+ { name: "guide_skeleton_reports_unavailable_content_evidence", async run() {
+   assert.equal(subject.packs[0].drafts[0].schemaVersion, 3);
+   for (const report of [await runCatalogExtensionConformance(text), invoke(command)]) {
+     assert.equal(report.state,"unavailable"); assert.equal(report.exitCode,2);
+     assert.deepEqual(report.findings.map(findingIdentity), [
+       {code:"conformance_owner_unavailable",path:"/packs/0/drafts/0/product/sharedContent",severity:"error"},
      ]);
    }
  } },
@@ -2115,7 +2113,9 @@ const cases = [
    assert.equal(invoke(["verify", "--packs", registry]).exitCode, 64);
    assert.equal(invoke(["upgrade", "plan", "--packs", registry]).exitCode, 64);
    for (const flag of ["--root", "--from", "--to", "--schema-version"]) assert.equal(invoke([...command, flag, "unused"]).exitCode, 64);
-   assert.equal(invoke(write("unavailable.json", {...subject, requiredChecks:["taxonomy"]})).exitCode, 2);
+   const unavailable = invoke(write("unavailable.json", {...subject, requiredChecks:["taxonomy"]}));
+   assert.equal(unavailable.exitCode, 2);
+   assert(unavailable.findings.some(f => f.code === "conformance_owner_unavailable" && f.path === "/requiredChecks/0"));
    const invalidSubject = structuredClone(subject); invalidSubject.packs[0].pack.types.push(invalidSubject.packs[0].pack.types[0]);
    const invalidArgs = write("invalid.json", invalidSubject), invalid = invoke(invalidArgs);
    assert.equal(invalid.exitCode, 1); assert(invalid.findings.some(f => f.code === "definition_duplicate_identity")); assert.deepEqual(invalid, invoke(invalidArgs));
@@ -2151,7 +2151,6 @@ const cases = [
    const attributes = {packs:[{pack,attributes:[{type,input,publicationRevision:"7"}]}]};
    const definitionWarnings = [
      {code:"advisory_filter_flags_unused",path:"/packs/0/pack/types/0/attributes/0/filterable",severity:"warning"},
-     netContentWarning,
    ];
    for (const report of [await runCatalogExtensionConformance(JSON.stringify(attributes)),invoke(write("attributes.json",attributes))]) {
      assert.equal(report.state,"violated"); assert.equal(report.exitCode,1);
@@ -2193,7 +2192,9 @@ const three = [1,2,3].map(index => {
 });
 const start = performance.now(); const report = await runCatalogExtensionConformance(JSON.stringify({packs:three}));
 // Synthetic fixture timing only, not full reference-pack completion or a timing gate.
-console.log("synthetic three-pack warm check ms=" + (performance.now()-start).toFixed(3)); assert.equal(report.exitCode, 0);
+console.log("synthetic three-pack warm check ms=" + (performance.now()-start).toFixed(3));
+assert.equal(report.exitCode, 2);
+assert.deepEqual(report.findings.map(finding => finding.code), three.map(() => "conformance_owner_unavailable"));
 `).trim());
 }
 

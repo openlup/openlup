@@ -262,6 +262,10 @@ export async function landingMerge(cwd = process.cwd(), { runCommand, relocateSl
   if ((await git(cwd, 'rev-parse', '--verify', 'MERGE_HEAD')).trim() !== main) throw new Error('landing: exact main merge required');
   const conflicts = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=U', '-z'));
   const read = (revision, path) => git(cwd, 'show', `${revision}:${path}`);
+  const registryConflicts = conflicts.filter(path => REGISTRY_PATHS.includes(path));
+  if (registryConflicts.length && (await git(cwd, 'merge-base', '--all', head, main)).trim() !== base) {
+    throw new Error(`landing: authored conflicts remain: ${registryConflicts.join(', ')}`);
+  }
   const readUnion = async path => {
     const [baseSrc, headSrc, mainSrc] = await Promise.all([base, head, main].map(revision => read(revision, path)));
     const rewrittenHead = relocations.length && path === PUBLICATION_CATALOGUE
@@ -331,7 +335,7 @@ export async function landingMerge(cwd = process.cwd(), { runCommand, relocateSl
     await assertCarrierBuildOutputs(cwd, preliminary.builds.map(({ directory }) => directory));
   }
   if (conflicts.includes(SQL_REFERENCE)) runGenerators('owners.syncSqlReference(process.cwd());');
-  for (const path of conflicts.filter(path => REGISTRY_PATHS.includes(path))) {
+  for (const path of registryConflicts) {
     writeFileSync(resolve(cwd, path), path === PUBLICATION_CATALOGUE ? catalogueUnion : await readUnion(path));
     await git(cwd, 'add', '--', path);
   }

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { hashCustomerMagicLinkRateLimitKey } from "../../_lib/rate-limit/customerMagicLinkRateLimit.js";
+import { HOSTED_RUNTIME_MARKER_KEY } from "../../adapters/vercel/runtimeProvenance.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import {
   APPLICATION_ENVIRONMENT_KEY,
@@ -41,8 +43,10 @@ const ENV_KEYS = [
   "SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "APP_BASE_URL",
+  "PLATFORM_BUNDLE",
   "CUSTOMER_AUTH_REDIRECT_ORIGIN",
-  "VERCEL",
+  HOSTED_RUNTIME_MARKER_KEY,
+  "CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS",
   "VERCEL_URL",
   APPLICATION_ENVIRONMENT_KEY,
   LEGACY_APPLICATION_ENVIRONMENT_KEY,
@@ -76,6 +80,7 @@ describe("POST /api/bff/customers/magic-link", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     for (const key of ENV_KEYS) {
       const value = originalEnv.get(key);
       if (value === undefined) delete process.env[key];
@@ -107,6 +112,7 @@ describe("POST /api/bff/customers/magic-link", () => {
 
   it("uses a service client only for the limiter and an anonymous client only for OTP", async () => {
     enableEnv();
+    vi.stubEnv("PLATFORM_BUNDLE", "node-supabase");
     const { default: handler } = await import("./magic-link.js");
     const res = createResponse();
 
@@ -120,7 +126,7 @@ describe("POST /api/bff/customers/magic-link", () => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
     expect(mockRpc).toHaveBeenNthCalledWith(1, "public_record_customer_magic_link_attempt", {
-      p_ip_hash: "7f60d869b36f6e64c0c99395754c14658bc62173eadceb489ea008ddfe76398d",
+      p_ip_hash: hashCustomerMagicLinkRateLimitKey("192.0.2.10"),
       p_email_hash: "6a6c26195c3682faa816966af789717c3bfa834eee6c599d667d2b3429c27cfd",
       p_window_minutes: 60,
       p_max_per_ip: 5,
@@ -399,6 +405,7 @@ function spoofedRequest() {
       "x-forwarded-host": "spoofed.example.com",
       host: "host.example.com", origin: "https://origin.example.com", referer: "https://referer.example.com/path",
     },
+    socket: { remoteAddress: "192.0.2.10" },
   } as unknown as VercelRequest;
 }
 
@@ -408,6 +415,7 @@ function request(body: unknown): VercelRequest {
     body,
     query: {},
     headers: { "x-forwarded-for": "198.51.100.1" },
+    socket: { remoteAddress: "192.0.2.10" },
   } as unknown as VercelRequest;
 }
 

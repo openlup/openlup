@@ -1,4 +1,5 @@
-import { CATALOG_QUANTITY_UNITS, canonicalizeCatalogQuantity, convertCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
+import { CATALOG_QUANTITY_UNITS, CatalogQuantityError, canonicalizeCatalogQuantity, convertCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
+import { readCatalogCheckerPackageVersion } from "../catalogConformance.js";
 import {
   CATALOG_CONFORMANCE_RULES, catalogProductTypeRefIssues,
   validateCatalogAttributes, prepareCatalogAttributeProjection, canonicalizeCatalogCombinationV2,
@@ -17,7 +18,8 @@ import { verifyCatalogRulesAtInstall } from "../publicationRules.js";
 import { renderPublicationIssue, type Issue } from "../publicationError.js";
 import type { CatalogConformanceFinding, CatalogConformanceReport, CatalogConformanceSubject } from "./contracts.js";
 
-const boundary = "Offline definitions, subscription profile declarations, exact quantities, supplied v1–v3 drafts, attribute validation/projection preparation and V2 combination fixtures. Draft admission checks operation and price shape. Reference evidence, retained options and refusal records are fixture observations. Category graphs, tax intervals, cadence execution, promotion grammar, price execution and publication require other evidence. Installed versions, database references, listing capacity, publication races and legal rate correctness remain unobserved. PASS grants no installation, migration, publication or activation authority. No database, network, seed or publish path is supplied by the checker.";
+const boundary = "Offline definitions, subscription profile declarations, exact quantities, supplied v1–v3 drafts, attribute validation/projection preparation and V2 combination fixtures. Draft admission checks operation and price shape. Reference evidence, retained options and refusal records are fixture observations. The pack range compares the checker’s @openlup/platform package version. Application and database runtime state, including installed definitions and database references, remain unobserved. Category graphs, tax intervals, cadence execution, promotion grammar, price execution and publication require other evidence. Listing capacity, publication races and legal rate correctness remain unobserved. PASS grants no installation, migration, publication or activation authority. No database, network, seed or publish path is supplied by the checker.";
+const platformVersion = readCatalogCheckerPackageVersion();
 const command = "npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json";
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const closed = (value: unknown, keys: readonly string[]): boolean => object(value) && Object.keys(value).every(key => keys.includes(key));
@@ -31,14 +33,12 @@ function atPointer(subject: unknown, path: string): unknown {
   }, subject) : subject;
 }
 
-function observedAt(subject: unknown, path: string): string {
-  const value = atPointer(subject, path), label = path || "/";
-  if (value === undefined) return `${label} is absent`;
+function previewValue(value: unknown, remaining: number, preserveRootOrder = false): string {
   // Serialize only the prefix so deeply nested invalid input can still produce a finding.
-  let remaining = 160, preview = "";
+  let preview = "";
   function json(input: unknown): string {
     if (typeof input !== "string") return JSON.stringify(input);
-    const safe = /(?:^|[\s"'(=,[])(?:file:|[a-z]:[\\/]|[\\/].*[\\/])/isu.test(input) ? "<host path>" : input;
+    const safe = /[\\/]|file:/iu.test(input) ? "<host path>" : input;
     return JSON.stringify(safe.slice(0, remaining * 2));
   }
   function append(text: string): void {
@@ -46,10 +46,10 @@ function observedAt(subject: unknown, path: string): string {
     preview += points.join("");
     remaining -= points.length;
   }
-  function write(value: unknown): void {
+  function write(value: unknown, preserveOrder = false): void {
     if (value === null || typeof value !== "object") { append(json(value)); return; }
     const array = Array.isArray(value), keys = Object.keys(value);
-    if (!array) keys.sort(compare);
+    if (!array && !preserveOrder) keys.sort(compare);
     append(array ? "[" : "{");
     for (const [index, key] of keys.entries()) {
       if (!remaining) break;
@@ -59,8 +59,120 @@ function observedAt(subject: unknown, path: string): string {
     }
     append(array ? "]" : "}");
   }
-  write(value);
-  return `${label} = ${preview}`;
+  write(value, preserveRootOrder);
+  return preview;
+}
+
+function observedAt(subject: unknown, path: string): string {
+  const value = atPointer(subject, path), label = path || "/";
+  return value === undefined ? `${label} is absent` : `${label} = ${previewValue(value, 160)}`;
+}
+
+function axisMismatchPreview(subject: unknown, path: string): string {
+  const axis = atPointer(subject, path) as { key: string; attributeKey: string };
+  const definition = atPointer(subject, path.slice(0, path.lastIndexOf("/axes/"))) as CatalogPackInput["types"][number];
+  // Definition admission emits this issue only after it finds both sides.
+  const dimension = definition.dimensions.find(({ key }) => key === axis.key)!;
+  const { key, kind } = dimension;
+  const dimensionFields = kind === "choice" ? { kind, values: dimension.values, key }
+    : kind === "quantity" ? { kind, dimension: dimension.dimension, units: dimension.units, key }
+    : { kind, key };
+  const { valueType } = definition.attributes!.find(({ key }) => key === axis.attributeKey)!;
+  const attributeFields = valueType.kind === "enum" ? { kind: valueType.kind, values: valueType.values.map(({ id }) => id) }
+    : valueType.kind === "quantity" ? { kind: valueType.kind, dimension: valueType.dimension, units: valueType.units }
+    : { kind: valueType.kind };
+  return `dimension = ${previewValue(dimensionFields, 68, true)}; attribute = ${previewValue(attributeFields, 66, true)}`;
+}
+
+const semverNumber = "(0|[1-9][0-9]*)";
+const semverTriplet = `${semverNumber}\\.${semverNumber}\\.${semverNumber}`;
+const majorRange = new RegExp(`^${semverNumber}\\.x$`, "u");
+const caretRange = new RegExp(`^\\^${semverTriplet}$`, "u");
+const nextMajorRange = new RegExp(`^>=${semverTriplet} <${semverNumber}\\.0\\.0$`, "u");
+const installedVersion = new RegExp(`^${semverTriplet}(?:\\+[0-9A-Za-z.-]+)?$`, "u").exec(platformVersion);
+
+function satisfiesPlatformRange(range: string): boolean | undefined {
+  const major = majorRange.exec(range);
+  if (major) return installedVersion?.[1] === major[1];
+  const caret = caretRange.exec(range);
+  const interval = caret ? null : nextMajorRange.exec(range);
+  const lower = caret ?? interval;
+  if (!lower || (interval && BigInt(interval[1]) + 1n !== BigInt(interval[4]))) return undefined;
+  if (!installedVersion || installedVersion[1] !== lower[1]) return false;
+  const [, majorVersion, minor, patch] = lower;
+  const installedMinor = BigInt(installedVersion[2]);
+  const minimumMinor = BigInt(minor);
+  if (caret && majorVersion === "0") {
+    if (installedMinor !== minimumMinor) return false;
+    if (minor === "0") return installedVersion[3] === patch;
+  }
+  return installedMinor > minimumMinor || (installedMinor === minimumMinor && BigInt(installedVersion[3]) >= BigInt(patch));
+}
+
+type CombinationFixtureInput = NonNullable<CatalogConformanceSubject["packs"][number]["combinations"]>[number]["input"];
+
+function combinationOptionPointer(input: CombinationFixtureInput, key: string | undefined, retainedIndex: number | undefined,
+  missing = false): string {
+  const field = retainedIndex === undefined ? "incoming" : "retained";
+  const hasKey = (row: CombinationFixtureInput[typeof field][number]) =>
+    key !== undefined && !!row.optionValues && Object.hasOwn(row.optionValues, key);
+  const candidates = input[field].flatMap((row, index) => hasKey(row) ? [index] : []);
+  if (missing) {
+    const index = retainedIndex ?? input.incoming.findIndex(row => row.optionValues && !hasKey(row));
+    return index >= 0 ? pointer([field, index]) : pointer([field]);
+  }
+  const other = field === "incoming" ? "retained" : "incoming";
+  if (key !== undefined && candidates.length === 1 && !input[other].some(hasKey))
+    return pointer([field, candidates[0], "optionValues", key]);
+  return pointer(retainedIndex === undefined ? [field] : [field, retainedIndex]);
+}
+
+// Core quantity errors have no option path. On refusal, replay only the selected
+// quantity options through the same owner, in its row and key order.
+function combinationQuantityPointer(input: CombinationFixtureInput, definition: CatalogPackInput["types"][number],
+  error: CatalogQuantityError, retainedIndex: number | undefined): string {
+  const rows = retainedIndex === undefined ? input.incoming : [input.retained[retainedIndex]];
+  const keys = [...input.axes].sort(compare);
+  for (const [index, { optionValues }] of rows.entries()) for (const key of keys) {
+    const value = optionValues?.[key];
+    if (value?.kind !== "quantity") continue;
+    try {
+      canonicalizeCatalogCombinationV2({ definition, axes: [key], options: { [key]: value } });
+    } catch (probe) {
+      if (probe instanceof CatalogQuantityError && probe.code === error.code) {
+        const optionPath = combinationOptionPointer(input, key, retainedIndex);
+        return optionPath === "/incoming" ? pointer(["incoming", index]) : optionPath;
+      }
+      // Diagnostic replay preserves the original refusal if a probe fails for another reason.
+    }
+  }
+  return retainedIndex === undefined && rows.length === 1 ? "/incoming/0" : combinationOptionPointer(input, undefined, retainedIndex);
+}
+
+function combinationFixturePointer(input: CombinationFixtureInput, error: CatalogCombinationError, retainedIndex: number | undefined): string {
+  if (!skuIdPathErrors.has(error)) {
+    if (error.path.startsWith("axes.")) {
+      const key = error.path.slice("axes.".length);
+      const index = input.axes.indexOf(key);
+      return index >= 0 && index === input.axes.lastIndexOf(key) ? pointer(["axes", index]) : "/axes";
+    }
+    if (error.path.startsWith("options.") || error.path === "options") {
+      const key = error.path.startsWith("options.") ? error.path.slice("options.".length) : undefined;
+      return combinationOptionPointer(input, key, retainedIndex, error.code === "option_missing");
+    }
+    return pointer(error.path.split("."));
+  }
+  const duplicate = error.code === "duplicate_sku_id";
+  // The owner checks retained duplicates first and uses the incoming row for an updated SKU.
+  const fields = duplicate ? ["retained", "incoming"] as const : ["incoming", "retained"] as const;
+  for (const field of fields) {
+    const rows = input[field];
+    const first = rows.findIndex(row => row.skuId === error.path);
+    if (first < 0) continue;
+    const index = duplicate ? rows.findIndex((row, i) => i > first && row.skuId === error.path) : first;
+    if (index >= 0) return pointer(error.code === "option_missing" ? [field, index] : [field, index, "skuId"]);
+  }
+  return "";
 }
 
 type Validator = CatalogPackInput["types"][number]["validateContent"];
@@ -133,7 +245,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
   const findings: CatalogConformanceFinding[] = [];
   let unavailable = false, violated = false, recheck = command;
   let parsed: unknown, observedSubject: unknown;
-  function add(issue: string | Issue | CatalogDefinitionIssue, path: string, fixture = "", requiredEvidence = false): void {
+  function add(issue: string | Issue | CatalogDefinitionIssue, path: string, fixture = "", requiredEvidence = false, preview?: string): void {
     const code = typeof issue === "string" ? issue : issue.code;
     const adopterIssue = typeof issue !== "string" && "kind" in issue && issue.kind === "adopterRule" ? issue : undefined;
     const rule = !adopterIssue && Object.hasOwn(CATALOG_CONFORMANCE_RULES, code)
@@ -143,23 +255,26 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     if (rule.severity === "error") {
       if (requiredEvidence) unavailable = true; else violated = true;
     }
-    findings.push({ code, severity: rule.severity, path, fixture, observed: observedAt(observedSubject, path),
+    findings.push({ code, severity: rule.severity, path, fixture,
+      observed: preview === undefined ? observedAt(observedSubject, path) : `${path}: ${preview}`,
       cause: rule.rule, fix, recipe: rule.recipe, recheck,
       evidence: { declared: "JSON fixture observations", bound: validators ? "Offline owners and registered content validators" : "Offline owner validators only", checked: path,
         unknown: ["Installed and runtime state; see boundary"] } });
   }
-  function advise(code: Extract<CatalogConformanceCode, `advisory_${string}`>, path: string, fixture = ""): void {
-    add(code, path, fixture);
+  function advise(code: Extract<CatalogConformanceCode, `advisory_${string}`>, path: string, preview?: string): void {
+    add(code, path, "", false, preview);
   }
   // Only shared owner calls enter this boundary; parsing, checker logic and CLI I/O remain outside.
   async function owner<T>(path: string, work: () => T | Promise<T>,
-    combinationPath = (error: CatalogCombinationError) => pointer(error.path.split("."))): Promise<T | undefined> {
+    combinationPath = (error: CatalogCombinationError) => pointer(error.path.split(".")),
+    quantityPath?: (error: CatalogQuantityError) => string): Promise<T | undefined> {
     try { return await work(); }
     catch (error) {
       if (error instanceof SyntaxError) throw error;
       const named = error instanceof Error ? "code" in error && typeof error.code === "string" ? error.code : error.message : "";
       if (!OWNER_INPUT_CODES.has(named)) throw error;
-      const suffix = error instanceof CatalogCombinationError ? combinationPath(error) : "";
+      const suffix = error instanceof CatalogCombinationError ? combinationPath(error)
+        : error instanceof CatalogQuantityError ? quantityPath?.(error) ?? "" : "";
       add(named, path + suffix);
       return undefined;
     }
@@ -202,8 +317,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
   if (typeof subject.recheck === "string") recheck = subject.recheck;
   let attributesAvailable = true, combinationsAvailable = true, packsWithContent = 0;
   const typeIdentities = new Set<string>();
-  const ready: { index: number; pack: CatalogPackInput; types: CatalogPackInput["types"];
-    invalidTypes: Map<string, string>; trusted: boolean }[] = [];
+  const ready: { index: number; pack: CatalogPackInput; types: CatalogPackInput["types"] }[] = [];
   for (const [index, entry] of subject.packs.entries()) {
     const at = `/packs/${index}`;
     if (!closed(entry, ["pack", "drafts", "quantities", "attributes", "combinations", "refusals"])
@@ -212,6 +326,10 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     }
     attributesAvailable &&= !!entry.attributes?.length;
     combinationsAvailable &&= !!entry.combinations?.length;
+    const reportSkippedFixtures = () => {
+      if ([entry.drafts, entry.quantities, entry.attributes, entry.combinations, entry.refusals].some(fixtures => fixtures?.length))
+        advise("advisory_fixtures_skipped_definition_invalid", at + "/pack");
+    };
     // Only this internal callback enters owner definitions. JSON never supplies executable code.
     const invalid = new Set<number>();
     const pack = object(entry.pack) && Array.isArray(entry.pack.types) ? { ...entry.pack, types: entry.pack.types.map((type, i) => {
@@ -224,59 +342,62 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       return { ...type, validateContent: validators && !invalid.has(i) ? callback : () => [] };
     }) } as CatalogPackInput : entry.pack as CatalogPackInput;
     const inspected = await owner(`${at}/pack`, () => inspectCatalogPack(pack));
-    if (!inspected) continue;
+    if (!inspected) { reportSkippedFixtures(); continue; }
     const { issues, profiles } = inspected;
+    if (typeof pack?.openlupRange === "string") {
+      const path = `${at}/pack/openlupRange`;
+      const satisfied = satisfiesPlatformRange(pack.openlupRange);
+      if (satisfied === undefined) advise("advisory_openlup_range_unrecognised", path);
+      else if (!satisfied) {
+        const installed = `; Platform = ${platformVersion}`;
+        advise("advisory_openlup_range_unsatisfied", path, `range = ${previewValue(pack.openlupRange, 160 - 8 - installed.length)}${installed}`);
+      }
+    }
     let packInvalid = false;
     for (const issue of issues) {
-      add(issue, `${at}/pack${issue.path}`);
+      const path = `${at}/pack${issue.path}`;
+      add(issue, path, "", false, issue.code === "definition_axis_mismatch" ? axisMismatchPreview(observedSubject, path) : undefined);
       const typeIndex = /^\/types\/(\d+)(?:\/|$)/u.exec(issue.path)?.[1];
       if (typeIndex === undefined) packInvalid = true;
       else invalid.add(Number(typeIndex));
     }
-    if (packInvalid) continue;
+    if (packInvalid) { reportSkippedFixtures(); continue; }
     let definitionsRefused = invalid.size > 0;
     if (!definitionsRefused && profiles !== undefined) {
       const prepared = await owner(`${at}/pack`, () => prepareCatalogPackManifest(pack, profiles));
       definitionsRefused = !prepared || "issue" in prepared;
       if (prepared && "issue" in prepared) add(prepared.issue, `${at}/pack${prepared.issue.path}`);
     }
-    const invalidTypes = new Map<string, string>();
     const types = pack.types.filter((type, i) => {
       const path = `${at}/pack/types/${i}`;
       if (!object(type) || typeof type.key !== "string" || typeof type.version !== "number") return false;
       const identity = referenceKey(type.key, String(type.version));
-      if (invalid.has(i)) { invalidTypes.set(identity, path); return false; }
+      if (invalid.has(i)) return false;
       if (typeIdentities.has(identity)) add("definition_duplicate_identity", `${path}/key`);
       typeIdentities.add(identity);
       if (!type.units.some(unit => type.netContentUnits.includes(unit.code) && unit.dimension === "mass"
         && (unit.factor?.canonicalUnit === "openlup:g" || CATALOG_QUANTITY_UNITS.some(builtIn => builtIn.code === unit.code && builtIn.dimension === "mass"))))
         advise("advisory_net_content_not_publishable", `${path}/netContentUnits`);
+      const boundAttributes = type.axes && new Set(type.axes.map(axis => axis.attributeKey));
       type.attributes?.forEach((attribute, j) => {
         if (attribute.filterable || attribute.facetable)
           advise("advisory_filter_flags_unused", `${path}/attributes/${j}/${attribute.filterable ? "filterable" : "facetable"}`);
+        if (attribute.scope === "variant" && boundAttributes && !boundAttributes.has(attribute.key))
+          advise("advisory_variant_attribute_without_axis", `${path}/attributes/${j}/key`);
       });
       return true;
     });
-    ready.push({ index, pack, types, invalidTypes, trusted: validators !== undefined && !definitionsRefused });
+    if (definitionsRefused) { reportSkippedFixtures(); continue; }
+    ready.push({ index, pack, types });
   }
-  for (const { index, pack, types, invalidTypes, trusted } of ready) {
+  for (const { index, pack, types } of ready) {
     const at = `/packs/${index}`, { drafts, quantities, attributes, combinations, refusals } = subject.packs[index];
-    if (trusted) verifyCatalogRulesAtInstall(pack);
+    if (validators) verifyCatalogRulesAtInstall(pack);
     const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(types));
     if (!registry) continue;
     let contentChecked = false;
-    const skipped = new Set<string>();
-    function skipInvalidType(ref: unknown): boolean {
-      if (!object(ref) || typeof ref.key !== "string" || typeof ref.version !== "number") return false;
-      const path = invalidTypes.get(referenceKey(ref.key, String(ref.version)));
-      if (path === undefined) return false;
-      if (!skipped.has(path)) advise("advisory_fixtures_skipped_definition_invalid", path);
-      skipped.add(path);
-      return true;
-    }
     for (const [i, draft] of (drafts ?? []).entries()) {
       const path = `${at}/drafts/${i}`, version = object(draft) ? draft.schemaVersion : undefined;
-      if (object(draft) && object(draft.product) && skipInvalidType(draft.product.type)) continue;
       const schema = version === 3 ? catalogDraftPayloadV3Schema : version === 2 ? catalogDraftPayloadV2Schema : catalogDraftPayloadSchema;
       const admitted = await owner(path, () => schema.safeParse(draft));
       if (!admitted) continue;
@@ -291,7 +412,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       });
       const definition = registry.resolve(payload.product.type);
       const validation = validateDraftFacts(payload, { resolve: () => definition && { ...definition, validateContent: content => {
-        if (!trusted) {
+        if (!validators) {
           add("conformance_owner_unavailable", `${path}/product/sharedContent`, "", true);
           return [];
         }
@@ -317,7 +438,6 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     if (contentChecked) packsWithContent++;
     for (const [i, fixture] of (quantities ?? []).entries()) {
       const path = `${at}/quantities/${i}`;
-      if (object(fixture) && skipInvalidType(fixture.type)) continue;
       if (!closed(fixture, ["type", "value", "targetUnit"])) { add("conformance_subject_invalid", path); continue; }
       if (!quantityShape(fixture.value, `${path}/value`)) continue;
       if (fixture.targetUnit !== undefined && typeof fixture.targetUnit !== "string") { add("quantity_invalid", `${path}/targetUnit`); continue; }
@@ -336,7 +456,6 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     for (const field of ["attributes", "combinations"] as const) {
       for (const [i, fixture] of (field === "attributes" ? attributes ?? [] : combinations ?? []).entries()) {
         const path = `${at}/${field}/${i}`;
-        if (object(fixture) && skipInvalidType(fixture.type)) continue;
         if (!closed(fixture, field === "attributes" ? ["type", "input", "publicationRevision", "references"] : ["type", "input"])) {
           add("conformance_subject_invalid", path); continue;
         }
@@ -391,24 +510,17 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
             }
           }
           if (invalid) continue;
+          let retainedIndex: number | undefined;
           await owner(`${path}/input`, () => {
-            const retained = input.retained.map(row => ({ ...row, identity: row.optionValues === null ? null
-              : canonicalizeCatalogCombinationV2({ definition, axes: input.axes, options: row.optionValues }) }));
+            const retained = input.retained.map((row, index) => {
+              retainedIndex = index;
+              return { ...row, identity: row.optionValues === null ? null
+                : canonicalizeCatalogCombinationV2({ definition, axes: input.axes, options: row.optionValues }) };
+            });
+            retainedIndex = undefined;
             return validateCatalogCombinationChangesV2({ ...input, definition, retained });
-          }, error => {
-            if (!skuIdPathErrors.has(error)) return pointer(error.path.split("."));
-            const duplicate = error.code === "duplicate_sku_id";
-            // The owner checks retained duplicates first and uses the incoming row for an updated SKU.
-            const fields = duplicate ? ["retained", "incoming"] as const : ["incoming", "retained"] as const;
-            for (const field of fields) {
-              const rows = input[field];
-              const first = rows.findIndex(row => row.skuId === error.path);
-              if (first < 0) continue;
-              const index = duplicate ? rows.findIndex((row, i) => i > first && row.skuId === error.path) : first;
-              if (index >= 0) return pointer([field, index, "skuId"]);
-            }
-            return "";
-          });
+          }, error => combinationFixturePointer(input, error, retainedIndex),
+          error => combinationQuantityPointer(input, definition, error, retainedIndex));
         }
       }
     }

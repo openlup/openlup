@@ -60,6 +60,13 @@ export function createStarterPersonalDataRegistry(additional: readonly PersonalD
 
 /** Local demonstration only. Publication uses a private credential on the same database. */
 export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, config: StoreConfig, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring, publicationPassword?: string): Promise<ApplicationBindings> {
+  if (!isRecord(config) || !isRecord(config.inventory) || !isRecord(config.inventory.renewalProtection) || !isRecord(config.checkoutRecoveryReminders)) {
+    throw new Error('OPENLUP_E_STARTER_STORE_CONFIG_REQUIRED\n'
+      + 'Observed: The third argument is missing a starter StoreConfig.\n'
+      + 'Cause: Native composition needs the selected configuration for its installed-policy checks.\n'
+      + 'Fix: Pass the selected StoreConfig as argument three and the optional keyring as argument four.\n'
+      + 'Recheck: Rerun the same readiness check or startup after correcting the call.');
+  }
   const pool = new pg.Pool({ connectionString, max: 4 });
   const publication = publicationPassword === undefined ? undefined : (() => {
     const url = new URL(connectionString);

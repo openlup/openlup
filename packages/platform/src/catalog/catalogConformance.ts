@@ -1,4 +1,13 @@
+import { readFileSync } from "node:fs";
 import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts/catalogConformance.js";
+
+/** Read the package metadata beside the checker in source and packed installs.
+ * @internal
+ */
+export function readCatalogCheckerPackageVersion(): string {
+  const manifest = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
+  return manifest.version;
+}
 
 /** Server-side guidance; browser contracts export the shared codes and shapes as types only. */
 const recipe = (anchor: string): string => `how-to/extend/catalogue-extension.md#${anchor}`;
@@ -6,17 +15,23 @@ const rule = (text: string, fix: string, anchor: string, severity: CatalogConfor
   Object.freeze({ severity, rule: text, fix, recipe: recipe(anchor) });
 /** @experimental */
 export const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>> = Object.freeze({
-  advisory_net_content_not_publishable: rule("Publication accepts net content only as a whole number of grams.",
+  advisory_net_content_not_publishable: rule("Prepare reports `catalog_publication_mass_required_until_mc5` for non-mass net content. Publication accepts net content only as a whole number of grams.",
     "Make `units` contain exactly one `openlup:g` entry, `{code: \"openlup:g\", dimension: \"mass\", integral: false, factor: {canonicalUnit: \"openlup:g\", unscaled: \"1\", scale: 0}}`, include `openlup:g` exactly once in `netContentUnits`, set each `skus[].netContent` to whole grams (`dimension: \"mass\"`, `unit: \"openlup:g\"`, `scale: 0` and a positive integer string of at most 40 digits in `unscaled`), and remove `role: \"net_content\"` from any dimension that has it while keeping its definition and SKU options otherwise intact, making room within each 64-entry limit or replacing a different `openlup:g` declaration only when the change preserves every retained unit reference.",
     "publish-net-content-in-grams", "warning"),
   advisory_filter_flags_unused: rule("No listing or search reader consumes these flags in this version.", "Keep the flags for a later version or set them to false.", "review-filter-and-facet-flags", "warning"),
-  advisory_unit_identifier_missing: rule("Prepare refuses a SKU without a valid unit trade identifier.", "Add a valid unit GTIN to the SKU. A SKU holds at most 32 identifiers, so replace one when the list is full.", "add-a-unit-gtin", "warning"),
-  advisory_draft_version_not_publishable: rule("Publication requires a newer draft schema than versions 1 and 2.",
+  advisory_unit_identifier_missing: rule("In a version 3 draft, Prepare reports `unit_trade_identifier_missing` when the SKU has a code but lacks a valid unit GTIN. A SKU without a code reports `sku_code_missing` first. The legacy version 1 and 2 preview reports `publication_preparation_unavailable`.", "Add a valid unit GTIN to the SKU. A SKU holds at most 32 identifiers, so replace one when the list is full.", "add-a-unit-gtin", "warning"),
+  advisory_draft_version_not_publishable: rule("Prepare reports `publication_preparation_unavailable` for a stored version 1 or 2 draft.",
     "Author offline pack fixtures as schema version 3, the newest draft schema this checker evaluates. Use the schema required by your publication workflow for saved drafts. "
     + "Schema version 3 fixtures require `product.sharedContent`. Check them with `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue.ts` and a registered `validateContent`. "
     + "For an otherwise valid v3 fixture, inert `catalogue check` reports `conformance_owner_unavailable` and exits 2.",
     "use-schema-version-3-for-offline-fixtures", "warning"),
-  advisory_fixtures_skipped_definition_invalid: rule("Fixtures of an invalid type are not evaluated.", "Fix the definition findings first.", "rerun-fixtures-after-definition-repair", "warning"),
+  advisory_fixtures_skipped_definition_invalid: rule("Fixtures of a pack with definition findings are not evaluated.", "Fix the definition findings first.", "rerun-fixtures-after-definition-repair", "warning"),
+  advisory_variant_attribute_without_axis: rule("This attribute is stored per SKU and has no variant axis.",
+    "If it varies by SKU, bind it with an axis when there are fewer than 16 axes and an unused compatible dimension, or room for a valid new one. A type holds up to 16 dimensions, and a quantity dimension must match the attribute and use at most 32 units. If the attribute describes the whole product, set its scope to `product` and move the supplied values into product attributes. Otherwise keep it as a variant attribute. This advisory is informational.",
+    "add-attribute", "warning"),
+  advisory_openlup_range_unrecognised: rule("The checker does not recognise this Platform range.", "Use `1.x`.", "set-the-platform-version-range", "warning"),
+  advisory_openlup_range_unsatisfied: rule("The pack's Platform range excludes the version running the checker.",
+    "Update `openlupRange` to include the reported Platform version, or install a compatible Platform version.", "set-the-platform-version-range", "warning"),
   attribute_projection_text_too_large: rule("Every projected text slot fits the unconditional composite B-tree index.", "Keep the UTF-8 text slot within 2048 bytes, including the full localized JSON map; facet/filter flags do not bypass this limit.", "add-attribute"),
   attribute_storage_too_large: rule("Each attribute object fits 1 MiB of PostgreSQL-rendered JSONB text.", "Reduce this product or SKU object's rendered UTF-8 size, including separator spaces.", "add-attribute"),
   attribute_values_invalid: rule("Values use bounded canonical JSON objects and unique SKU identities.", "Correct the object shape, identity, JSON depth or byte bound.", "add-attribute"),
@@ -77,6 +92,10 @@ export const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, 
   definition_duplicate_axis: rule("Axis keys are unique per type.", "Remove the duplicate axis key.", "add-axis"),
   definition_unknown_axis_attribute: rule("Axis attributes exist in the same type.", "Reference an attribute declared by this type.", "add-axis"),
   definition_axis_scope_invalid: rule("Axis attributes belong to variants.", "Choose a variant-scoped attribute.", "add-axis"),
+  definition_axis_mismatch: rule("An axis must bind a dimension and a variant attribute that declare the same option.",
+    "Declare the option once with `catalogVariantOptions`, or make both declarations match.", "add-axis"),
+  definition_duplicate_axis_attribute: rule("One variant attribute can back one axis.",
+    "Remove the duplicate axis assignment.", "add-axis"),
   definition_duplicate_enum_value: rule("Enum value IDs are unique.", "Remove the duplicate value ID; labels do not identify values.", "add-attribute"),
   definition_unknown_axis_dimension: rule("An axis key names a declared option dimension.", "Declare the option dimension or correct the axis key.", "add-axis"),
   axis_not_installed: rule("Selected axes belong to the installed definition.", "Select an installed axis key.", "add-axis"),

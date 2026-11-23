@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkAndRecordCustomerMagicLinkAttempt,
-  extractClientIp,
 } from "./customerMagicLinkRateLimit.js";
 
 describe("checkAndRecordCustomerMagicLinkAttempt", () => {
@@ -220,15 +219,5 @@ describe("checkAndRecordCustomerMagicLinkAttempt", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.reason).toBeUndefined();
-  });
-});
-
-describe("extractClientIp", () => {
-  it("prefers the first x-forwarded-for hop", () => {
-    expect(extractClientIp({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" })).toBe("203.0.113.7");
-  });
-
-  it("falls back to unknown when no client IP header is present", () => {
-    expect(extractClientIp({})).toBe("unknown");
   });
 });

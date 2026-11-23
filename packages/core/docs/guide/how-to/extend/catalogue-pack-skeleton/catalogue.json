@@ -5,7 +5,7 @@
         "id": "stationery",
         "namespace": "stationery",
         "version": 1,
-        "openlupRange": "^0.44.0",
+        "openlupRange": "1.x",
         "capabilities": {},
         "taxClasses": [
           {
@@ -19,18 +19,13 @@
             "taxClass": "standard",
             "units": [
               {
-                "code": "stationery:each",
-                "dimension": "count",
-                "integral": true,
-                "factor": {
-                  "canonicalUnit": "openlup:piece",
-                  "unscaled": "1",
-                  "scale": 0
-                }
+                "code": "openlup:g",
+                "dimension": "mass",
+                "integral": false
               }
             ],
             "netContentUnits": [
-              "stationery:each"
+              "openlup:g"
             ],
             "dimensions": []
           }
@@ -38,7 +33,7 @@
       },
       "drafts": [
         {
-          "schemaVersion": 1,
+          "schemaVersion": 3,
           "product": {
             "id": "00000000-0000-4000-8000-000000000001",
             "type": {
@@ -47,7 +42,15 @@
             },
             "slug": "notebook",
             "dimensions": [],
-            "primarySkuId": "00000000-0000-4000-8000-000000000002"
+            "primarySkuId": "00000000-0000-4000-8000-000000000002",
+            "sharedContent": {
+              "schemaVersion": 1,
+              "catalogAction": "create",
+              "presentation": { "title": "Notebook" },
+              "offerMemberships": [],
+              "requestedModes": [],
+              "publicationSkus": []
+            }
           },
           "skus": [
             {
@@ -56,13 +59,33 @@
               "code": "NOTEBOOK",
               "options": {},
               "netContent": {
-                "dimension": "count",
-                "unit": "stationery:each",
-                "unscaled": "1",
+                "dimension": "mass",
+                "unit": "openlup:g",
+                "unscaled": "100",
                 "scale": 0
-              }
+              },
+              "identifiers": [
+                {
+                  "scheme": "gs1:gtin",
+                  "issuer": "stationery",
+                  "value": "5901234123457",
+                  "packagingLevel": "unit"
+                }
+              ]
             }
-          ]
+          ],
+          "publication": {
+            "kind": "release",
+            "evidence": {},
+            "operations": [
+              {
+                "op": "create_product",
+                "productId": "00000000-0000-4000-8000-000000000001",
+                "productSlug": "notebook",
+                "name": "Notebook"
+              }
+            ]
+          }
         }
       ]
     }

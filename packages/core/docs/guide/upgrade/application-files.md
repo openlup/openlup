@@ -17,14 +17,25 @@ only in `to` to create it, or only in `from` to remove it.
 
 Pass both snapshots, `root` and `schemaVersion` as `AppUpgradeInput`. Obtain
 `root` with `realpath` from `node:fs/promises`: it must be the absolute canonical
-path of an existing ordinary application directory. The schema ordinal must
-be a nonnegative safe integer inside both snapshots' ranges. Observe the
-database and choose those ranges separately; the primitive trusts the values
-you supply and performs no database probe.
+path of an existing ordinary application directory. For `schemaVersion` or
+`--schema-version`, use `(await runner.status()).applied.length` from the
+migration runner for the actual database and the same installation profile.
+Use the predecessor observation when planning against that state. Package
+versions and the migration manifest's format version are separate from the
+applied ledger count. If `status()` refuses, resolve catalogue or ledger
+admission for that database and profile before using a count.
+
+The count must be a nonnegative safe integer inside both inclusive ranges.
+If the ranges do not overlap, stop the hop and use a documented intermediate
+hop only if one exists. If the database needs a forward migration, follow the
+[application migration chain](database-migrations.md) and observe again.
+The file commands trust the supplied ordinal and perform no database probe.
 
 ## Plan and reconcile conflicts
 
 Call `planAppUpgrade(input)` and inspect its `files` actions and `conflicts`.
+With `openlup upgrade plan --json`, read the top-level `conflicts` array and
+the findings for each refusal.
 Planning only reads the application tree. The upgrade preserves local edits to
 files that did not change between the snapshots, and
 refuses divergent changed files before writes: a managed file whose local edits
@@ -48,6 +59,9 @@ symbolic links and nonregular managed files refuse. Directory prefixes must
 have one exact spelling across both snapshots, including directories that do
 not yet exist. Existing managed components must match their directory-entry
 spelling. An alias does not make an unlisted entry managed.
+Preserve and move a structural obstruction without following it. Restore the
+exact predecessor or candidate state with the expected spelling, including
+absence for a target-only creation, then rerun the plan.
 
 ## Apply in a maintenance window
 

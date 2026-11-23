@@ -5,7 +5,7 @@ import { Console } from "node:console";
 import { promises as fs } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { parseArgs } from "node:util";
+import { parseArgs, types } from "node:util";
 
 const help = `openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SNAPSHOT.json --schema-version N [--json]
 openlup verify [--app ./application-observations.mjs] [--json]
@@ -14,11 +14,13 @@ openlup catalogue project --trusted-packs ./owned/catalogue.ts [--json]
 openlup settings list|show|preview|explain [--help] [--json] (experimental)
 openlup settings mcp [--app <module>] [--configuration <id>] [--database-url <url>] (experimental, read-only stdio)
 openlup settings check --app <module> [--configuration <id>] [--json] (experimental, offline)
+openlup recipe list|show|add|verify [--help] [--json] (experimental)
 
 Upgrade snapshots use the existing AppVersionSnapshot contract. All unlisted paths are application-owned; upstream-unchanged files preserve local edits. Apply requires an exclusive maintenance window. Rerun identical inputs to resume. No SQL, package installation or hooks run.
 Verify loads no app implicitly. --app explicitly trusts and imports application code exporting createVerificationInput(); that module must only assemble observations and read-only probes, must not write stdout, and must close its own resources before returning/report completion. The CLI does not sandbox that module. Only the supplied schema observer is invoked by diagnosis; routes and jobs never run.
 Catalogue check reads inert JSON. Catalogue project imports an explicitly trusted module exporting catalogueConformance with the operator’s process permissions and checks an external scratch subject. PASS grants no install, migration, publication or activation authority.
 Settings reads the catalogue offline by default. Connected show and preview use --database-url and explicit --app bindings where needed. Preview takes --value <json> or --value - for stdin. Settings JSON uses schemaVersion=1. A completed preview with an invalid policy exits 0, refusals exit 1, invalid syntax/input exits 64, and unavailable operations exit 74. For settings check, a missing app module or factory export exits 74, while a module that throws during loading or binding exits 1 with the cause.
+Recipe commands discover, inspect, install into owned/adapters/<domain>/<provider>, and offline-verify (manifest parity, ADR-001 isolation, platform SemVer range, and Stages 1-3 Vitest suites) provider recipes. Passing offline Stages 1-3 never claims Stage 4 live account readiness.
 Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 2 unknown, 64 invalid invocation/JSON, 74 unavailable operation. JSON uses formatVersion=1, one object on stdout.
 `;
 let json = process.argv.slice(2).includes("--json");
@@ -36,8 +38,107 @@ function renderFinding(finding) {
 }
 
 function refuse(exitCode, code, observed, fix, cause = exitCode === 64 ? "Invalid command or input syntax." : "Snapshot admission, a filesystem operation or trusted application loading failed.") {
-  const finding = { code, observed, cause, fix, recheck: "Rerun the same command after repair.", evidence: { declared: "Not established", bound: "Not established", checked: "The command could not complete", unknown: ["Remaining application and filesystem state"] } };
-  emit({ command: "openlup", state: exitCode === 64 ? "refused" : "failed", exitCode, findings: [finding] }, `${renderFinding(finding)}\n${help}`);
+  emitRefusal(exitCode, cliFinding(code, observed, cause, fix, "Rerun the same command after repair."));
+}
+
+function cliFinding(code, observed, cause, fix, recheck) {
+  return { code, observed, cause, fix, recheck, evidence: { declared: "Not established", bound: "Not established", checked: "The command could not complete", unknown: ["Remaining application and filesystem state"] } };
+}
+
+function emitRefusal(exitCode, finding, fields = {}) {
+  emit({ command: "openlup", state: exitCode === 64 ? "refused" : "failed", exitCode, findings: [finding], ...fields }, `${renderFinding(finding)}\n${help}`);
+}
+
+const assemblyDiagnostics = [
+  "OPENLUP_E_STARTER_STORE_CONFIG_REQUIRED\n" +
+  "Observed: The third argument is missing a starter StoreConfig.\n" +
+  "Cause: Native composition needs the selected configuration for its installed-policy checks.\n" +
+  "Fix: Pass the selected StoreConfig as argument three and the optional keyring as argument four.\n" +
+  "Recheck: Rerun the same readiness check or startup after correcting the call.",
+];
+
+function assemblyDiagnostic(error) {
+  if (types.isProxy(error) || !types.isNativeError(error)) return undefined;
+  const descriptor = Object.getOwnPropertyDescriptor(error, "message");
+  const message = descriptor && Object.hasOwn(descriptor, "value") ? descriptor.value : undefined;
+  return assemblyDiagnostics.find(diagnostic => diagnostic === message);
+}
+
+const recheckUpgrade = "Rerun upgrade plan after repair. Apply only after a clear plan.";
+
+function upgradeConflictFinding({ path, reason }) {
+  if (path === "") return cliFinding(
+    "OPENLUP_E_UPGRADE_SCHEMA_RANGE", reason,
+    "The supplied ordinal falls outside a snapshot's declared compatibility range.",
+    "Read the verified applied migration count from the same database and installation profile. If status refuses, resolve catalogue or ledger admission there before using a count. Use the observed count and a compatible released snapshot pair. If the ranges do not overlap, stop this hop and use a documented intermediate hop only if one exists. If the database needs a forward migration, follow the application migration chain and observe again. Keep the original pair after apply has written files.",
+    recheckUpgrade,
+  );
+  const diverged = reason === "current bytes match neither predecessor nor candidate";
+  return cliFinding(
+    "OPENLUP_E_UPGRADE_FILE_CONFLICT", `${path}: ${reason}`,
+    diverged ? "A changed managed file diverged from both snapshots." : "A managed path has a spelling, symlink or file type obstruction.",
+    diverged
+      ? "Save local changes and reconcile to exact predecessor or candidate bytes, including expected absence."
+      : "Preserve local data and move the obstruction without following it. Restore the exact predecessor or candidate state with ordinary components and the expected spelling, including absence where required.",
+    recheckUpgrade,
+  );
+}
+
+function refuseUpgradeInput(observed, fix = "Correct the invocation using an ordinary app directory, readable exact JSON snapshots and the observed schema ordinal.") {
+  emitRefusal(64, cliFinding("OPENLUP_E_CLI_INPUT", observed, "Invalid command or input syntax.", fix, recheckUpgrade), { conflicts: [] });
+}
+
+async function upgrade(verb, values) {
+  const ordinal = values["schema-version"] ?? "";
+  if (values.app !== undefined || values.packs !== undefined || !values.root || !values.from || !values.to
+    || !/^(0|[1-9][0-9]*)$/u.test(ordinal) || !Number.isSafeInteger(Number(ordinal))) {
+    refuseUpgradeInput("Upgrade options do not match the public syntax.");
+    return;
+  }
+  const command = `upgrade ${verb}`;
+  const boundary = "Only explicit snapshot paths are upgrade-managed. All unlisted files are application-owned. Upstream-unchanged paths preserve local edits. No SQL, installs, deployment, version marker or hooks run. Apply needs exclusive access; a complete upgrade is not atomic.";
+  let readingInput = true;
+  try {
+    const requestedRoot = resolve(values.root);
+    const stat = await fs.lstat(requestedRoot);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new TypeError("invalid_root");
+    const input = {
+      root: await fs.realpath(requestedRoot),
+      from: JSON.parse(await fs.readFile(resolve(values.from), "utf8")),
+      to: JSON.parse(await fs.readFile(resolve(values.to), "utf8")),
+      schemaVersion: Number(ordinal),
+    };
+    readingInput = false;
+    // eslint-disable-next-line no-restricted-syntax -- tool entry, not a platform module: it loads the installed package's published entry by name, exactly as an adopter's process would; the module graph forbids this for modules, and the file lives in lifecycle only because src holds module directories only
+    const { planAppUpgrade, applyAppUpgrade, AppUpgradeConflictError } = await import("@openlup/platform/lifecycle");
+    let result;
+    try {
+      result = verb === "plan" ? { plan: await planAppUpgrade(input), applied: [] } : await applyAppUpgrade(input);
+    } catch (error) {
+      if (!(error instanceof AppUpgradeConflictError)) throw error;
+      const findings = error.conflicts.map(upgradeConflictFinding);
+      emit({ command, state: "refused", exitCode: 1, boundary, conflicts: error.conflicts, applied: [], findings },
+        `${command}: refused before any write\n${boundary}\n${findings.map(renderFinding).join("\n")}`);
+      return;
+    }
+    const { conflicts, ...plan } = result.plan;
+    const exitCode = conflicts.length ? 1 : 0;
+    const state = exitCode ? "refused" : "complete";
+    const files = plan.files.map(file => ({ ...file, ownership: file.action === "preserved" || file.action === "unchanged" ? "locally-customizable" : "upgrade-managed" }));
+    const findings = conflicts.map(upgradeConflictFinding);
+    emit({ command, state, exitCode, boundary, ownership: { unlisted: "application-owned" }, plan, applied: result.applied, files, conflicts, ...(exitCode ? { findings } : {}) },
+      [`${command}: ${state}`, boundary, ...files.map(file => `${file.path}: ${file.action} (${file.ownership})`), ...findings.map(renderFinding)].join("\n"));
+  } catch (error) {
+    if (readingInput && (error instanceof SyntaxError || error instanceof TypeError)) {
+      refuseUpgradeInput("Upgrade requires an ordinary app directory and valid snapshot JSON.");
+      return;
+    }
+    emitRefusal(74, cliFinding("OPENLUP_E_CLI_FAILURE",
+      "The upgrade operation could not complete; raw error details are withheld.",
+      "Snapshot admission, installed lifecycle loading or a filesystem operation failed.",
+      "Check the original snapshots' validity and identity, the app root and filesystem access, and availability of the installed target CLI. If apply failed after writes, restore access and resume with the identical snapshots under exclusive access.",
+      recheckUpgrade), { conflicts: [] });
+  }
 }
 
 function readSettingText(value, code) {
@@ -251,6 +352,17 @@ function runSettingsToolProcess(argv, stdin) {
 }
 
 async function main(args) {
+  if (args[0] === "recipe") {
+    validatingInput = false;
+    const { runRecipeCommand } = await import("./recipeCli.mjs");
+    await runRecipeCommand(args.slice(1), {
+      emit,
+      refuse,
+      renderFinding,
+      setJson: value => { json = value; },
+    });
+    return;
+  }
   if (args[0] === "settings" || args[0] === "settings-mcp-tool") {
     const isolateStdout = args[0] === "settings-mcp-tool";
     validatingInput = false;
@@ -300,34 +412,15 @@ async function main(args) {
     }, strict: true, allowPositionals: true,
   });
   json = values.json === true;
+  const isUpgrade = positionals.length === 2 && positionals[0] === "upgrade" && ["plan", "apply"].includes(positionals[1]);
   if (values["trusted-packs"] !== undefined && (positionals[0] !== "catalogue" || positionals[1] !== "project" || values.packs !== undefined || values.app !== undefined)) {
-    refuse(64, "OPENLUP_E_CLI_INPUT", "Trusted pack paths are exclusive to catalogue project.", "Use one documented catalogue input flag.");
+    const observed = "Trusted pack paths are exclusive to catalogue project.";
+    if (isUpgrade) refuseUpgradeInput(observed, "Remove --trusted-packs, which applies only to catalogue commands, and rerun the same upgrade command.");
+    else refuse(64, "OPENLUP_E_CLI_INPUT", observed, "Use one documented catalogue input flag.");
   } else if (values.help) {
     emit({ command: "help", state: "complete", exitCode: 0, help }, help.trimEnd());
-  } else if (positionals[0] === "upgrade" && ["plan", "apply"].includes(positionals[1]) && positionals.length === 2 && values.app === undefined && values.packs === undefined && values.root && values.from && values.to && /^(0|[1-9][0-9]*)$/u.test(values["schema-version"] ?? "") && Number.isSafeInteger(Number(values["schema-version"]))) {
-    const command = `upgrade ${positionals[1]}`;
-    const requestedRoot = resolve(values.root);
-    const stat = await fs.lstat(requestedRoot);
-    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new TypeError("invalid_root");
-    const input = {
-      root: await fs.realpath(requestedRoot),
-      from: JSON.parse(await fs.readFile(resolve(values.from), "utf8")),
-      to: JSON.parse(await fs.readFile(resolve(values.to), "utf8")),
-      schemaVersion: Number(values["schema-version"]),
-    };
-    validatingInput = false;
-    // eslint-disable-next-line no-restricted-syntax -- tool entry, not a platform module: it loads the installed package's published entry by name, exactly as an adopter's process would; the module graph forbids this for modules, and the file lives in lifecycle only because src holds module directories only
-    const { planAppUpgrade, applyAppUpgrade, AppUpgradeConflictError } = await import("@openlup/platform/lifecycle");
-    const boundary = "Only explicit snapshot paths are upgrade-managed. All unlisted files are application-owned. Upstream-unchanged paths preserve local edits. No SQL, installs, deployment, version marker or hooks run. Apply needs exclusive access; a complete upgrade is not atomic.";
-    const describe = plan => plan.files.map(file => ({ ...file, ownership: file.action === "preserved" || file.action === "unchanged" ? "locally-customizable" : "upgrade-managed" }));
-    try {
-      const result = positionals[1] === "plan" ? { plan: await planAppUpgrade(input), applied: [] } : await applyAppUpgrade(input);
-      const exitCode = result.plan.conflicts.length ? 1 : 0;
-      emit({ command, state: exitCode ? "refused" : "complete", exitCode, boundary, ownership: { unlisted: "application-owned" }, ...result, files: describe(result.plan) }, `${command}: ${exitCode ? "refused" : "complete"}\n${boundary}\n${describe(result.plan).map(file => `${file.path}: ${file.action} (${file.ownership})`).join("\n")}\n${result.plan.conflicts.map(item => `${item.path || "schema"}: ${item.reason}`).join("\n")}`.trimEnd());
-    } catch (error) {
-      if (!(error instanceof AppUpgradeConflictError)) throw error;
-      emit({ command, state: "refused", exitCode: 1, boundary, conflicts: error.conflicts, applied: [] }, `${command}: refused before any write\n${boundary}\n${error.conflicts.map(item => `${item.path || "schema"}: ${item.reason}`).join("\n")}\nFix: reconcile touched files with the predecessor or candidate snapshot, then rerun the same command.`);
-    }
+  } else if (isUpgrade) {
+    await upgrade(positionals[1], values);
   } else if (positionals.length === 1 && positionals[0] === "verify" && ![values.packs, values.root, values.from, values.to, values["schema-version"]].some(value => value !== undefined)) {
     if (values.app === "") throw new TypeError("empty_app_path");
     validatingInput = false;
@@ -369,7 +462,12 @@ try { await main(process.argv.slice(2)); } catch (error) {
   } else if (appStage === 2) {
     refuse(74, "OPENLUP_E_CLI_FAILURE", "The loaded --app module does not export a createVerificationInput() function.", "Export a createVerificationInput() function returning ReadinessInput from the --app module.", "The trusted --app module loaded, but createVerificationInput was absent or not a function.");
   } else if (appStage === 3) {
-    refuse(74, "OPENLUP_E_CLI_FAILURE", "createVerificationInput() failed while assembling observations; raw application errors are withheld.", "Ensure createVerificationInput() assembles read-only ReadinessInput observations and closes its own resources without throwing.", "Executing createVerificationInput() in the trusted --app module failed before readiness evaluation.");
+    const diagnostic = assemblyDiagnostic(error);
+    const observed = "createVerificationInput() failed while assembling observations";
+    const cause = "Executing createVerificationInput() in the trusted --app module failed before readiness evaluation.";
+    refuse(74, "OPENLUP_E_CLI_FAILURE", diagnostic ? observed + "." : observed + "; raw application errors are withheld.",
+      "Ensure createVerificationInput() assembles read-only ReadinessInput observations and closes its own resources without throwing.",
+      diagnostic ? cause + "\n" + diagnostic : cause);
   } else {
     const invalid = validatingInput && (error instanceof SyntaxError || error instanceof TypeError || (typeof error?.code === "string" && error.code.startsWith("ERR_PARSE_ARGS")));
     refuse(invalid ? 64 : 74, invalid ? "OPENLUP_E_CLI_INPUT" : "OPENLUP_E_CLI_FAILURE", "The operation could not complete; raw input and application errors are withheld.", "Check the command, readable JSON snapshots and schema ordinal, the catalogue JSON, or the trusted --app module and its documented export. After a partial upgrade, rerun the identical snapshots under exclusive access.");

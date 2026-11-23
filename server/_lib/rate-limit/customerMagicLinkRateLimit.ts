@@ -109,22 +109,6 @@ export async function checkAndRecordCustomerMagicLinkAttempt(
   return { ...primary, attemptsGlobal: globalAttempts };
 }
 
-export function extractClientIp(
-  headers: Record<string, string | string[] | undefined>,
-): string {
-  const candidates = [
-    pickHeader(headers["x-forwarded-for"]),
-    pickHeader(headers["cf-connecting-ip"]),
-    pickHeader(headers["x-real-ip"]),
-  ];
-
-  for (const candidate of candidates) {
-    if (candidate) return candidate.split(",")[0]?.trim() ?? candidate;
-  }
-
-  return "unknown";
-}
-
 interface RpcRow {
   allowed?: unknown;
   reason?: unknown;
@@ -188,14 +172,6 @@ function pickGlobalCount(data: unknown): number | null {
   if (isRecord(data)) {
     const value = data.public_count_customer_magic_link_attempts_global ?? data.count ?? data.attempts_global;
     return typeof value === "number" && Number.isFinite(value) ? value : null;
-  }
-  return null;
-}
-
-function pickHeader(value: string | string[] | undefined): string | null {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
-    return value[0];
   }
   return null;
 }

@@ -37,7 +37,7 @@ export function createStockNotifyHandler({ rateLimitPort, subscribePort }: Stock
     try {
       if (rateLimitPort) {
         const rateLimit = await rateLimitPort.check({
-          headers: req.headers,
+          request: req,
           email: request.data.email,
           sku: request.data.sku,
         });

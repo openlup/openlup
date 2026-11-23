@@ -1622,6 +1622,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125120000_catalog_legacy_draft_fixed_locks.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5306,6 +5310,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125120000_catalog_legacy_draft_fixed_locks.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -6067,6 +6075,10 @@
     },
     {
       "path": "packages/platform/src/catalog/variantCombination.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/variantOptions.ts",
       "class": "public-output"
     },
     {
@@ -8623,6 +8635,10 @@
     },
     {
       "path": "packages/platform/src/lifecycle/postgresInstallQualification.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/recipeCli.mjs",
       "class": "public-output"
     },
     {
@@ -11394,6 +11410,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fixtures/catalogue-conformance/axis-mismatch.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fixtures/catalogue-conformance/six-errors.json",
       "class": "public-output"
     },
@@ -11907,6 +11927,10 @@
     },
     {
       "path": "packages/platform/test/lifecycle/postgresInstallQualification.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/recipeCli.test.ts",
       "class": "public-output"
     },
     {
@@ -15059,6 +15083,14 @@
     },
     {
       "path": "server/_lib/rate-limit/adminMagicLinkRateLimit.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/_lib/rate-limit/clientAddress.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/_lib/rate-limit/clientAddress.ts",
       "class": "public-output"
     },
     {

@@ -4,18 +4,38 @@ import { readHostedClientAddress } from "../../adapters/vercel/runtimeProvenance
 type Env = Record<string, string | undefined>;
 
 export const TRUSTED_PROXY_HOPS_ENV_KEY = "CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS";
+const INVALID_TRUSTED_PROXY_HOPS = "OPENLUP_E_TRUSTED_PROXY_HOPS_INVALID";
+
+export function readTrustedProxyHops(env: Env): number | null {
+  const declared = env[TRUSTED_PROXY_HOPS_ENV_KEY]?.trim() ?? "";
+  if (!declared) return null;
+  if (!/^\d+$/.test(declared)) {
+    throw Object.assign(new Error([
+      INVALID_TRUSTED_PROXY_HOPS,
+      `Observed: ${TRUSTED_PROXY_HOPS_ENV_KEY} is malformed.`,
+      "Cause: The hop count must be a non-negative decimal integer.",
+      "Fix: Set it to the number of trusted forwarding hops, or unset it to disable the forwarded address.",
+      "Recheck: Call a rate-limited route through the configured ingress and verify that this code is absent from the logs.",
+    ].join("\n")), { code: INVALID_TRUSTED_PROXY_HOPS });
+  }
+  return Number(declared);
+}
+
+export function isInvalidTrustedProxyHopsError(error: unknown): error is Error {
+  return error instanceof Error && "code" in error && error.code === INVALID_TRUSTED_PROXY_HOPS;
+}
 
 export interface ClientAddressInput {
   /**
-   * Already parsed by the caller, which owns the refusal: a malformed hop count
-   * must refuse ingest, never reach a weaker rung. `null` leaves the rung unused.
+   * Parse with readTrustedProxyHops before resolving an address. Handle a
+   * malformed setting before any rung can run. `null` leaves the forwarded rung unused.
    */
   trustedProxyHops: number | null;
   env: Env;
 }
 
 /**
- * Resolves the address a diagnostic admission bucket is keyed by, through rungs
+ * Resolves the address for diagnostic admission and rate-limit buckets through rungs
  * that degrade instead of trusting a caller-chosen header (ADR 003: the host
  * adapter is one replaceable rung, the Node socket is the non-provider path).
  *

@@ -206,7 +206,8 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | --- | --- | --- |
 | Edit live products, SKUs, price lists, price entries or promotions | These are demonstration seed data; there is no runtime editor. Bundle and catalogue drafts have separate operator editors. | `starter_promotion_write_unavailable` |
 | Enter checkout promotion codes | Nonempty promotion-code input is rejected. | `starter_promotion_codes_unsupported` |
-| Publish a catalogue draft | Draft authoring does not publish the live catalogue. The visible action refuses. | `starter_catalog_publication_unavailable` |
+| Publish a catalogue draft from the operator UI | The button displays a local refusal. Use the [operator API to prepare, approve and publish a saved version 3 draft](../how-to/build/customize-the-starter.md#publish-a-saved-catalogue-draft). | `starter_catalog_publication_unavailable` |
+| Evaluate a promotion with line targeting | `line_with_variant` and `line_with_category` are stored. The Core promotion evaluator calculates each kind as `order_total`. | — |
 | Purchase an activated bundle | Activation does not make a bundle available to this storefront or checkout. | —; no purchase control |
 | Use lot traceability, locations or stock movements | The starter supplies none of these inventory facilities. The limits-page action refuses. | `starter_inventory_traceability_unavailable` |
 | Run the starter against a hosted database | The supplied installation is a local demonstration database recipe. It provides no hosted-database setup. | —; no hosted installation recipe |
@@ -216,6 +217,8 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Seed an unmarked database | The demonstration marker is required; the bootstrap also refuses a pre-existing unmarked database. | `starter_seed_demonstration_database_required` |
 | Keep demonstration sessions across a restart | Sessions live in the current process, have a bounded lifetime and disappear on restart. Issuance stops when the session store is full. | `starter_session_capacity_exceeded` at capacity |
 | Call an unbound operation | A missing host binding refuses. Customer and operator admission may refuse first. | `host_binding_required`; `customer_session_required` or `operator_required` before admission |
+
+Product type `taxClass` is checked for an active class at publication; the catalogue applies no rate.
 
 ## Sessions and private captures
 

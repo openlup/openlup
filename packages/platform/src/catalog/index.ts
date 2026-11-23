@@ -58,6 +58,7 @@ export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } 
 export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
 export { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
 export { catalogPackIssues } from "./productTypeIssues.js";
+export { catalogVariantOptions, type CatalogVariantOptionInput } from "./variantOptions.js";
 export { backfillCatalogNetContent } from "./backfillCatalogNetContent.js";
 export { validateCatalogAttributes, catalogAttributesReadyForPublication } from "./attributeValidation.js";
 export type { CatalogAttributeInput, CatalogAttributeValidation, CatalogAttributeProjectionValue } from "./attributeValidation.js";

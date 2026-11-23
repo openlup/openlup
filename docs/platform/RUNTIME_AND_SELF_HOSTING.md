@@ -517,6 +517,8 @@ opt-in selector mounts no live route feeding them.
 
 ## Self-host boundary
 
+Checkout, magic-link sign-in, customer eligibility, stock notification and signup rate limits use the same address order as diagnostic admission. A positive `CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS` selects an entry counted from the right of `x-forwarded-for` when the chain has enough entries. Trust the selected hop only when every request reaches the host through the trusted proxies and each proxy appends its peer. A blank selected entry uses the shared bucket. When no hop is selected, the resolver uses the hosted client-address header if the platform's system environment variables are exposed and the header is non-blank. Otherwise it uses the socket peer, as on a directly exposed Node host. If the socket peer is absent or blank, it uses the shared bucket. A malformed hop count puts all clients in the shared rate-limit bucket and logs `OPENLUP_E_TRUSTED_PROXY_HOPS_INVALID`. Diagnostic admission refuses a malformed hop count.
+
 Application-file lifecycle maintenance belongs to the
 [snapshot owner](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades);
 database compatibility and runtime admission remain separate checks. The

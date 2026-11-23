@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
@@ -19,12 +20,35 @@ function response() {
     status(code: number) { this.statusCode = code; return this; }, json(body: unknown) { this.body = body; return this; } };
 }
 const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
+const hashLimiterKey = (value: string) => createHash("sha256").update(value).digest("hex");
+const directIngressEnv: NodeJS.ProcessEnv = {};
+
+async function assertLimiterAddress(s: Setup, email: string, remoteAddress: string, route: "reference" | "managed") {
+  const { service } = createEnvelopeClients(s);
+  const { data, error } = await service.from("customer_magic_link_attempts")
+    .select("ip_hash")
+    .eq("email_hash", hashLimiterKey(email.trim().toLowerCase()))
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  assert.ok(!error, "sign-in limiter key could not be read");
+  assert.ok(data?.ip_hash === hashLimiterKey(remoteAddress), `${route} sign-in limiter did not record the transport peer`);
+}
+
 async function capturedSession(s: Setup, email: string, customerSignIn?: ReturnType<typeof createEnvelopeCustomerMagicLink>) {
   const res = response();
-  const requestSignIn = customerSignIn ?? createReferenceAccountHandlers(s, s.origin).requestSignIn;
-  await requestSignIn({ method: "POST", headers: customerSignIn ? { "x-forwarded-for": "192.0.2.21" } : {},
-    body: customerSignIn ? { email, locale: "en" } : { email } } as never, res as never);
+  const requestSignIn = customerSignIn ?? createReferenceAccountHandlers(s, s.origin, directIngressEnv).requestSignIn;
+  const remoteAddress = customerSignIn ? "192.0.2.32" : "192.0.2.31";
+  const forwardedAddress = customerSignIn ? "192.0.2.21" : "192.0.2.20";
+  await requestSignIn({
+    method: "POST", headers: { "x-forwarded-for": forwardedAddress }, socket: { remoteAddress },
+    body: customerSignIn ? { email, locale: "en" } : { email },
+  } as never, res as never);
   assert.equal(res.statusCode, 200, "reference sign-in failed");
+  // The owned-stack runner always selects a phase. The policy test stubs sign-in and has no limiter ledger.
+  if (s.phase !== undefined) {
+    await assertLimiterAddress(s, email, remoteAddress, customerSignIn ? "managed" : "reference");
+  }
   for (let attempt = 0; attempt < 30; attempt++) {
     const list = await fetch(`${s.mail}/api/v1/messages`, { signal: AbortSignal.timeout(3000) });
     assert.equal(list.status, 200);
@@ -205,7 +229,7 @@ async function softAccountFirstLogin(s: Setup) {
   }
   assert.deepEqual(authState(), { id, confirmed: null }, "provisioning replay confirmed the user");
 
-  const requestSignIn = createEnvelopeCustomerMagicLink(s);
+  const requestSignIn = createEnvelopeCustomerMagicLink(s, directIngressEnv);
   const session = await capturedSession(s, email, requestSignIn);
   const { data, error } = await actor.auth.getUser(session.access_token);
   assert.equal(error, null);
@@ -237,9 +261,13 @@ async function softAccountFirstLogin(s: Setup) {
   const unknown = "unknown-login@example.com";
   assert.equal(userCount(unknown), "0");
   const res = response();
-  await requestSignIn({ method: "POST", headers: { "x-forwarded-for": "192.0.2.21" },
-    body: { email: unknown, locale: "en" } } as never, res as never);
+  const remoteAddress = "192.0.2.32";
+  await requestSignIn({
+    method: "POST", headers: { "x-forwarded-for": "192.0.2.21" }, socket: { remoteAddress },
+    body: { email: unknown, locale: "en" },
+  } as never, res as never);
   assert.equal(res.statusCode, 200);
+  await assertLimiterAddress(s, unknown, remoteAddress, "managed");
   assert.deepEqual(res.body, { ok: true, data: { accepted: true } });
   const mail = await fetch(`${s.mail}/api/v1/messages`, { signal: AbortSignal.timeout(3000) });
   assert.equal(mail.status, 200);

@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, expectTypeOf, it } from "vitest";
 import { defineCatalogPack, draftsFor, type CatalogPackInput, type CatalogPackDraft, type CatalogTypeDefinitionV2, type CatalogQuantity as PlatformQuantity } from "../../src/catalog/contracts/index.js";
 import type { CatalogQuantity } from "@openlup/core/catalog";
 import { catalogDraftPayloadSchema } from "../../src/catalog/draftSchemas.js";
@@ -6,6 +6,28 @@ import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeS
 import { catalogPackIssues } from "../../src/catalog/productTypeIssues.js";
 import { validateCatalogDraft } from "../../src/catalog/draftValidation.js";
 import type { VerifiedCatalogPublisher } from "../../src/catalog/publicationPorts.js";
+import { catalogVariantOptions, type CatalogVariantOptionInput } from "../../src/catalog/variantOptions.js";
+
+it("preserves ordered literal option keys in the three declarations", () => {
+  const input = [{ key: "finish", kind: "choice", values: [{ id: "matte" }], labels: {} },
+    { key: "lined", kind: "boolean", labels: {} },
+    { key: "size", kind: "quantity", dimension: "volume", units: ["openlup:ml"], labels: {} },
+  ] as const satisfies readonly CatalogVariantOptionInput[];
+  const { attributes, dimensions, axes } = catalogVariantOptions(input);
+  expectTypeOf<[typeof attributes[0]["key"], typeof attributes[1]["key"], typeof attributes[2]["key"]]>()
+    .toEqualTypeOf<["finish", "lined", "size"]>();
+  expectTypeOf<[typeof dimensions[0]["key"], typeof dimensions[1]["key"], typeof dimensions[2]["key"]]>()
+    .toEqualTypeOf<["finish", "lined", "size"]>();
+  expectTypeOf<[typeof axes[0]["key"], typeof axes[1]["key"], typeof axes[2]["key"]]>()
+    .toEqualTypeOf<["finish", "lined", "size"]>();
+  expectTypeOf<[typeof axes[0]["attributeKey"], typeof axes[1]["attributeKey"], typeof axes[2]["attributeKey"]]>()
+    .toEqualTypeOf<["finish", "lined", "size"]>();
+  const pack = defineCatalogPack({ id: "sample", namespace: "sample", version: 1, openlupRange: "1.x", capabilities: {}, taxClasses: [],
+    types: [{ key: "sample:pack", version: 1, units: [{ code: "openlup:ml", dimension: "volume", integral: false }],
+      netContentUnits: ["openlup:ml"], attributes, dimensions, axes, validateContent: () => [] }],
+  });
+  expect(catalogPackIssues(pack)).toEqual([]);
+});
 
 const flags = { scope: "variant", required: true, cardinality: { min: 1, max: 1 }, filterable: true, facetable: true, public: true, displayOrder: 0, labels: { en: "Example" } } as const;
 const text = { kind: "text", minLength: 1, maxLength: 80 } as const;
@@ -232,13 +254,13 @@ const matrix: MatrixCase[] = [
     defineCatalogPack(input);
     return packCodes(input);
   } },
-  { form: 'as const', name: 'undeclared attribute unit', expected: ['definition_unknown_attribute_unit'], run: () => {
+  { form: 'as const', name: 'undeclared attribute unit', expected: ['definition_unknown_attribute_unit', 'definition_axis_mismatch'], run: () => {
     const input = { ...constPack, types: constPack.types.map((type) => type.key === "example:item" ? { ...type, attributes: primary.attributes.map((attribute) => attribute.key === "amount" ? { ...attribute, valueType: { ...attribute.valueType, units: ["example:missing"] as const } } : attribute) } : type) } as const;
     // @ts-expect-error undeclared attribute unit.
     defineCatalogPack(input);
     return packCodes(input);
   } },
-  { form: 'as const', name: 'quantity axis dimension disagrees with unit', expected: ['definition_dimension_unit_mismatch'], run: () => {
+  { form: 'as const', name: 'quantity axis dimension disagrees with unit', expected: ['definition_dimension_unit_mismatch', 'definition_axis_mismatch'], run: () => {
     const input = { ...constPack, types: constPack.types.map((type) => type.key === "example:item" ? { ...type, dimensions: primary.dimensions.map((dimension) => dimension.kind === "quantity" ? { ...dimension, units: ["openlup:ml"] as const } : dimension) } : type) } as const;
     // @ts-expect-error quantity axis dimension disagrees with unit.
     defineCatalogPack(input);
@@ -470,13 +492,13 @@ const matrix: MatrixCase[] = [
     defineCatalogPack(input);
     return packCodes(input);
   } },
-  { form: 'readonly arrays', name: 'undeclared attribute unit', expected: ['definition_unknown_attribute_unit'], run: () => {
+  { form: 'readonly arrays', name: 'undeclared attribute unit', expected: ['definition_unknown_attribute_unit', 'definition_axis_mismatch'], run: () => {
     const input = { ...readonlyPack, types: readonlyPack.types.map((type) => type.key === "example:item" ? { ...type, attributes: primary.attributes.map((attribute) => attribute.key === "amount" ? { ...attribute, valueType: { ...attribute.valueType, units: ["example:missing"] as const } } : attribute) } : type) } as const;
     // @ts-expect-error undeclared attribute unit.
     defineCatalogPack(input);
     return packCodes(input);
   } },
-  { form: 'readonly arrays', name: 'quantity axis dimension disagrees with unit', expected: ['definition_dimension_unit_mismatch'], run: () => {
+  { form: 'readonly arrays', name: 'quantity axis dimension disagrees with unit', expected: ['definition_dimension_unit_mismatch', 'definition_axis_mismatch'], run: () => {
     const input = { ...readonlyPack, types: readonlyPack.types.map((type) => type.key === "example:item" ? { ...type, dimensions: primary.dimensions.map((dimension) => dimension.kind === "quantity" ? { ...dimension, units: ["openlup:ml"] as const } : dimension) } : type) } as const;
     // @ts-expect-error quantity axis dimension disagrees with unit.
     defineCatalogPack(input);
@@ -708,13 +730,13 @@ const matrix: MatrixCase[] = [
     defineCatalogPack(input);
     return packCodes(input);
   } },
-  { form: 'mutable arrays', name: 'undeclared attribute unit', expected: ['definition_unknown_attribute_unit'], run: () => {
+  { form: 'mutable arrays', name: 'undeclared attribute unit', expected: ['definition_unknown_attribute_unit', 'definition_axis_mismatch'], run: () => {
     const input = { ...mutablePack, types: mutablePack.types.map((type) => type.key === "example:item" ? { ...type, attributes: primary.attributes.map((attribute) => attribute.key === "amount" ? { ...attribute, valueType: { ...attribute.valueType, units: ["example:missing"] as const } } : attribute) } : type) } as const;
     // @ts-expect-error undeclared attribute unit.
     defineCatalogPack(input);
     return packCodes(input);
   } },
-  { form: 'mutable arrays', name: 'quantity axis dimension disagrees with unit', expected: ['definition_dimension_unit_mismatch'], run: () => {
+  { form: 'mutable arrays', name: 'quantity axis dimension disagrees with unit', expected: ['definition_dimension_unit_mismatch', 'definition_axis_mismatch'], run: () => {
     const input = { ...mutablePack, types: mutablePack.types.map((type) => type.key === "example:item" ? { ...type, dimensions: primary.dimensions.map((dimension) => dimension.kind === "quantity" ? { ...dimension, units: ["openlup:ml"] as const } : dimension) } : type) } as const;
     // @ts-expect-error quantity axis dimension disagrees with unit.
     defineCatalogPack(input);
@@ -1194,13 +1216,13 @@ const matrix: MatrixCase[] = [
     defineCatalogPack(input);
     return packCodes(input);
   } },
-  { form: 'inline literals', name: 'undeclared attribute unit', expected: ['definition_unknown_attribute_unit'], run: () => {
+  { form: 'inline literals', name: 'undeclared attribute unit', expected: ['definition_unknown_attribute_unit', 'definition_axis_mismatch'], run: () => {
     const input = { ...inlinePack, types: inlinePack.types.map((type) => type.key === "example:item" ? { ...type, attributes: primary.attributes.map((attribute) => attribute.key === "amount" ? { ...attribute, valueType: { ...attribute.valueType, units: ["example:missing"] as const } } : attribute) } : type) } as const;
     // @ts-expect-error undeclared attribute unit.
     defineCatalogPack(input);
     return packCodes(input);
   } },
-  { form: 'inline literals', name: 'quantity axis dimension disagrees with unit', expected: ['definition_dimension_unit_mismatch'], run: () => {
+  { form: 'inline literals', name: 'quantity axis dimension disagrees with unit', expected: ['definition_dimension_unit_mismatch', 'definition_axis_mismatch'], run: () => {
     const input = { ...inlinePack, types: inlinePack.types.map((type) => type.key === "example:item" ? { ...type, dimensions: primary.dimensions.map((dimension) => dimension.kind === "quantity" ? { ...dimension, units: ["openlup:ml"] as const } : dimension) } : type) } as const;
     // @ts-expect-error quantity axis dimension disagrees with unit.
     defineCatalogPack(input);
@@ -1432,13 +1454,13 @@ const matrix: MatrixCase[] = [
     defineCatalogPack(input);
     return packCodes(input);
   } },
-  { form: 'referenced objects', name: 'undeclared attribute unit', expected: ['definition_unknown_attribute_unit'], run: () => {
+  { form: 'referenced objects', name: 'undeclared attribute unit', expected: ['definition_unknown_attribute_unit', 'definition_axis_mismatch'], run: () => {
     const input = { ...referencedPack, types: referencedPack.types.map((type) => type.key === "example:item" ? { ...type, attributes: primary.attributes.map((attribute) => attribute.key === "amount" ? { ...attribute, valueType: { ...attribute.valueType, units: ["example:missing"] as const } } : attribute) } : type) } as const;
     // @ts-expect-error undeclared attribute unit.
     defineCatalogPack(input);
     return packCodes(input);
   } },
-  { form: 'referenced objects', name: 'quantity axis dimension disagrees with unit', expected: ['definition_dimension_unit_mismatch'], run: () => {
+  { form: 'referenced objects', name: 'quantity axis dimension disagrees with unit', expected: ['definition_dimension_unit_mismatch', 'definition_axis_mismatch'], run: () => {
     const input = { ...referencedPack, types: referencedPack.types.map((type) => type.key === "example:item" ? { ...type, dimensions: primary.dimensions.map((dimension) => dimension.kind === "quantity" ? { ...dimension, units: ["openlup:ml"] as const } : dimension) } : type) } as const;
     // @ts-expect-error quantity axis dimension disagrees with unit.
     defineCatalogPack(input);

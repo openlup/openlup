@@ -1,7 +1,6 @@
-import {
-  extractClientIp,
-  hashRateLimitKey,
-} from "./publicSignupRateLimit.js";
+import type { HttpRequest } from "../types/http.js";
+import { rateLimitClientAddress } from "./clientAddress.js";
+import { hashRateLimitKey } from "./publicSignupRateLimit.js";
 
 const RPC_NAME = "commerce_record_stock_notify_attempt" as const;
 
@@ -36,7 +35,7 @@ export interface StockNotifyRateLimitArgs {
 }
 
 export interface StockNotifyRateLimitPort {
-  check(input: { headers: Record<string, string | string[] | undefined>; email: string; sku: string }): Promise<StockNotifyRateLimitResult>;
+  check(input: { request: HttpRequest; email: string; sku: string }): Promise<StockNotifyRateLimitResult>;
 }
 
 export function createSupabaseStockNotifyRateLimitPort(client: StockNotifyRateLimitClient): StockNotifyRateLimitPort {
@@ -44,7 +43,7 @@ export function createSupabaseStockNotifyRateLimitPort(client: StockNotifyRateLi
     check(input) {
       return checkAndRecordStockNotifyAttempt({
         client,
-        ip: extractClientIp(input.headers),
+        ip: rateLimitClientAddress(input.request),
         email: input.email,
         sku: input.sku,
       });
