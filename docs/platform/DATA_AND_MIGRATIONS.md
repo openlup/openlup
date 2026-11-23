@@ -482,9 +482,10 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
 
 1. The fence pins its snapshot with the exclusive nonce advisory lock, then
    takes the exclusive key advisory lock. The destination `prelock` takes
-   ledger `SHARE`, client `FOR KEY SHARE`, selection, policy and service guards,
-   then document. Lock rows in ascending key order within each group. Returned
-   keys can bound those locks.
+   ledger `SHARE`, client `FOR KEY SHARE`, checkout selection `FOR SHARE NOWAIT`,
+   then the expected document `FOR SHARE NOWAIT`. Lock rows in ascending key
+   order within each group. The hook uses the issued policy revision and sealed
+   service pin only after the probe, during recheck.
 2. The fence locks the receipt `FOR UPDATE`, then client, sorted SKUs and
    sorted revisions `FOR KEY SHARE`. The client's mode matches the hook's.
    It locks `catalog_products` and `price_lists` in `SHARE`, takes the exclusive
@@ -494,6 +495,10 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
    authenticated replay, then evaluate fresh owner facts under the same locks.
    `catalogAdmissionFence.ts:223–250`,
    `20261125010000_catalog_purchase_admission.sql:2–24,58–94`.
+
+The [legacy draft forward](../../db/platform/migrations/20261125120000_catalog_legacy_draft_fixed_locks.sql)
+also locks the client first, then SKUs by ascending ID. Its repeatable-read
+writer locks products by ascending ID after taking the shared catalogue fence.
 
 On hook expiry, the fence discards the writer connection and releases the
 probe. The fence key is released within the hook budget plus the wall margin
@@ -1077,8 +1082,17 @@ time and disposition. Verified available rows also export the document,
 scope, digest and cutoff, including after cutoff until cleanup. An available
 row that fails a stored-evidence check exports only the snapshot ref, issuance
 time, disposition and verification status, code and field. The contributor
-reports incomplete coverage. After cutoff, run the owner expiry batch and
-export again. Review any rows still withheld.
+reports incomplete coverage. After cutoff, run the owner expiry batch for
+unbound documents and export again. Review withheld bound evidence with the
+destination owner.
+
+The [order destination forward](../../db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql)
+adds typed recheck, bind and retained order and shipment reads. Bind saves the
+issued document link, checkout selection and sealed service pin. Retained reads
+use the binding recorded for the original order even after reselection or cutoff.
+The owner expiry batch and direct erasure require `READ COMMITTED`. Expiry skips
+bound documents. Erasure clears the two pins and keeps the order and snapshot refs.
+Privacy export includes only verified same-subject order bindings.
 
 Require `destination-receipts` and `destination-documents` in the same
 registry used for native privacy operations. Assemble the two experimental
@@ -1088,7 +1102,7 @@ when issuance is disabled. Pass that same registry as `privacyRegistry` to
 before entering the privacy transaction. An authorized historical replay
 of erased evidence returns the erased disposition alone.
 
-Both relations carry through exact-current connected-store capture and
+Documents, checkout selections and order bindings carry through exact-current connected-store capture and
 restore. The restricted runtime has only the document client-ID column for
 lead absorption, which counts every disposition. Discard or recapture any
 private transfer packet containing evidence erased after capture.

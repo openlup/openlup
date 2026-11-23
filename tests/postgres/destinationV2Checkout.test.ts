@@ -5,7 +5,8 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
 import { awaitReceiptWait, backendPid, idempotencyConflict, ownerUnlinked, receiptCall } from "./destinationReceiptFixture.js";
-import { snapshotCommand, destinationContext, destinationHash, documentTable, readSnapshot, reachDestinationCutoff,
+import { bindDestinationOrder, deferred, destinationFence, insertDestinationOrder, registerDestination, snapshotCommand,
+  destinationContext, destinationHash, documentTable, readSnapshot, reachDestinationCutoff,
   selectionTable, snapshot, snapshotPreimage } from "./destinationDocumentFixture.js";
 
 const resources = storeJourneyResources();
@@ -115,7 +116,7 @@ it("verifies the owned document's stored bytes and exact binding without returni
   for (const [context, ref] of [[other, id], [{ ...ctx, scopeRef: randomUUID() }, id], [ctx, randomUUID()]] as const) {
     await expect(readSnapshot(runtime, context, binding, ref)).rejects.toMatchObject(unavailable);
   }
-  await expect(readSnapshot(runtime, ctx, binding, id, "order")).rejects.toMatchObject({ message: "destination_dialect_invalid", detail: "version" });
+  await expect(readSnapshot(runtime, ctx, binding, id, "subscription")).rejects.toMatchObject({ message: "destination_dialect_invalid", detail: "version" });
   await expect(readSnapshot(runtime, ctx, { ...binding, snapshotRef: randomUUID() }, id))
     .rejects.toMatchObject({ message: "destination_binding_invalid", detail: "destination" });
   await expect(readSnapshot(runtime, ctx, { ...binding, destinationDigest: "0".repeat(64) })).rejects.toMatchObject(digestMismatch("destinationDigest"));
@@ -264,4 +265,74 @@ it("grants the restricted runtime only the four installed destination routines",
       .toEqual([{ prosecdef: runtime, provolatile: volatility, proconfig: ["search_path=pg_catalog, pg_temp"],
         service: runtime, anon: false, authenticated: false }]);
   }
+});
+
+it("skips a full page of older bound evidence before applying the expiry limit", async () => {
+  const { owner, runtime } = store;
+  const bound: string[] = [];
+  for (let index = 0; index < 2; index++) {
+    const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx);
+    await bindDestinationOrder(owner, ctx, issued);
+    bound.push(issued.binding.snapshotRef);
+    await owner.query(`UPDATE ${documentTable} SET issued_at='2000-01-01',evidence_expires_at='2000-01-02'
+      WHERE snapshot_ref=$1`, [issued.binding.snapshotRef]);
+  }
+  const ctx = await destinationContext(owner), unbound = await snapshot(runtime, ctx);
+  await owner.query(`UPDATE ${documentTable} SET issued_at='2000-01-02',evidence_expires_at='2000-01-03'
+    WHERE snapshot_ref=$1`, [unbound.binding.snapshotRef]);
+  expect(await expire(owner, bound.length)).toBeGreaterThanOrEqual(1);
+  expect(await row(owner, unbound.binding.snapshotRef)).toMatchObject({ evidence_disposition: "expired", document_text: null });
+  for (const ref of bound) expect(await row(owner, ref)).toMatchObject({ evidence_disposition: "available", document_text: expect.any(String) });
+});
+
+it("rechecks binding absence after expiry waits behind a committed fresh bind", async () => {
+  const { owner, runtime } = store;
+  const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx);
+  await owner.query(`UPDATE ${documentTable} SET evidence_expires_at=clock_timestamp()+interval '2 seconds' WHERE snapshot_ref=$1`,
+    [issued.binding.snapshotRef]);
+  const bound = deferred<void>(), finish = deferred<void>();
+  const writer = destinationFence(owner, ctx, issued, async db => {
+    const order = await insertDestinationOrder(db, ctx);
+    expect(await registerDestination(db, ctx, order, issued)).toEqual(issued.binding);
+    bound.resolve();
+    await finish.promise;
+  });
+  void writer.catch(bound.reject);
+  const expiry = await owner.connect();
+  let pending: Promise<unknown> | undefined;
+  try {
+    await bound.promise;
+    await expiry.query(`SELECT pg_sleep(greatest(0,extract(epoch FROM evidence_expires_at-clock_timestamp())))
+      FROM ${documentTable} WHERE snapshot_ref=$1`, [issued.binding.snapshotRef]);
+    const pid = await backendPid(expiry);
+    pending = expiry.query("SELECT public.commerce_destination_v2_expire(clock_timestamp(),1000)");
+    void pending.catch(() => undefined);
+    await awaitReceiptWait(owner, pid, "transactionid", "ShareLock");
+    finish.resolve();
+    await writer;
+    await pending;
+    expect(await row(owner, issued.binding.snapshotRef)).toMatchObject({ evidence_disposition: "available", document_text: expect.any(String) });
+  } finally {
+    finish.resolve();
+    await writer.catch(() => undefined);
+    await pending?.catch(() => undefined);
+    expiry.release();
+  }
+}, 12000);
+
+it.each(["REPEATABLE READ", "SERIALIZABLE"])("refuses expiry and erasure under %s", async isolation => {
+  const { owner, runtime } = store;
+  const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx);
+  const db = await owner.connect(), eraser = await runtime.connect();
+  try {
+    await db.query(`BEGIN ISOLATION LEVEL ${isolation}`);
+    await eraser.query(`BEGIN ISOLATION LEVEL ${isolation}`);
+    await expect(db.query("SELECT public.commerce_destination_v2_expire(clock_timestamp(),1)"))
+      .rejects.toMatchObject({ code: "22023", message: "destination_isolation_unsupported" });
+    await expect(eraser.query("SELECT public.commerce_destination_v2_erase($1)", [ctx.clientId]))
+      .rejects.toMatchObject({ code: "22023", message: "destination_isolation_unsupported" });
+  } finally {
+    await db.query("ROLLBACK"); await eraser.query("ROLLBACK"); db.release(); eraser.release();
+  }
+  expect(await readSnapshot(runtime, ctx, issued.binding)).toMatchObject({ binding: issued.binding });
 });
