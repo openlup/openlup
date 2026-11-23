@@ -32,9 +32,12 @@ export function snapshotCommand(ctx: Context, requestKey = `destination-${uuid()
     policyRef: "fixture.policy", policyRevision: "r1" };
   const command = { dialect: receiptDialect, requestKey, purpose: "checkout", scopeRef: ctx.scopeRef,
     original: { address: originalAddress, contact }, validated } as const;
-  const preimage = ["commerce.destination.request.v2", { dialect: command.dialect, owner: ctx.owner,
-    requestKey, purpose: command.purpose, scopeRef: ctx.scopeRef, original: command.original }];
+  const preimage = snapshotPreimage(ctx, command);
   return { command: { ...command, requestDigest: destinationHash(canonicalCatalogDraftJson(preimage)) }, preimage };
+}
+export function snapshotPreimage(ctx: Context, command: { dialect: string; requestKey: string; purpose: string; original: object }): unknown[] {
+  return ["commerce.destination.request.v2", { dialect: command.dialect, owner: ctx.owner,
+    requestKey: command.requestKey, purpose: command.purpose, scopeRef: ctx.scopeRef, original: command.original }];
 }
 export async function snapshot(db: Db, ctx: Context, command: Record<string, unknown> = snapshotCommand(ctx).command) {
   return (await db.query<{ value: Issued }>("SELECT public.commerce_snapshot_destination_v2($1,$2,clock_timestamp()) AS value",
@@ -44,7 +47,7 @@ export async function readSnapshot(db: Db, ctx: Context, binding: Binding, id = 
   return (await db.query("SELECT public.commerce_read_destination_v2($1,$2,$3,$4) AS value", [ctx, kind, id, binding])).rows[0]!.value;
 }
 export async function reachDestinationCutoff(owner: Db, binding: Binding) {
-  await owner.query(`UPDATE ${documentTable} SET evidence_expires_at=statement_timestamp(), issued_at=statement_timestamp()-interval '24 hours'
+  await owner.query(`UPDATE ${documentTable} SET evidence_expires_at=clock_timestamp(), issued_at=clock_timestamp()-interval '24 hours'
     WHERE snapshot_ref=$1`, [binding.snapshotRef]);
 }
 export async function proveDocumentEncoderParity(owner: Db) {

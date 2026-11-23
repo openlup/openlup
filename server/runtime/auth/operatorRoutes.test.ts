@@ -24,7 +24,8 @@ vi.mock('../../_lib/admin-domain/auth.js', async importOriginal => ({
 vi.mock('../../adapters/supabase/adminAuthVerifier.js', () => ({ createSupabaseAdminAuthFromEnv: () => ({ authorize }) }));
 import bffRouter from '../../../api/bff/[...path].js';
 import type { VercelRequest, VercelResponse } from '../../_lib/types/vercel.js';
-import type { AdminAuthorizationResult } from '@openlup/platform/identity';
+import { createPostgresPrivacyStore, type AdminAuthorizationResult } from '@openlup/platform/identity';
+import { composeNativePrivacy } from './privacyBinding.js';
 import type { HttpRequest, HttpResponse } from '@openlup/platform/http';
 import type { OperatorMembership } from '@openlup/platform/identity';
 import type { DeploymentRouteOptions } from '../../_lib/publicDeploymentPolicies.js';
@@ -287,9 +288,22 @@ it.each(['export', 'erase'] as const)('mounted managed %s retains admin and mach
   }
   expect(managed.from).not.toHaveBeenCalled(); expect(privacy.query).not.toHaveBeenCalled();
 });
+const privacyComposition = () => ({
+  store: createPostgresPrivacyStore(), unitOfWork: { async run<T>(): Promise<T> { throw new Error('unexpected privacy transaction'); } },
+});
+const issuanceEnabled = { installed: true, issuanceEnabled: true };
+it('keeps native destination issuance dormant with a complete privacy registry', () => {
+  expect(composeNativePrivacy(privacyComposition(), issuanceEnabled).destination.destinationAddressV2.available).toBe(true);
+  expect(composeNativePrivacy(privacyComposition()).destination.destinationAddressV2.available).toBe(false);
+});
 it.each(['destination-receipts', 'destination-documents'])('native privacy composition requires %s', async missing => {
   f.adopterPolicy = true;
   f.missingDestinationOwner = missing;
+  const composition = composeNativePrivacy(privacyComposition(), issuanceEnabled);
+  expect(composition.destination.destinationAddressV2).toMatchObject({ available: false, refusalCode: 'destination_v2_unavailable' });
+  await expect(composition.operations.erase({ principalId: privacyContact }, {
+    subject: { kind: 'contact', contactId: privacyContact }, idempotencyKey: privacyContact,
+  })).rejects.toMatchObject({ code: 'PRIVACY_CONTRIBUTOR_MISSING' });
   vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator');
   vi.stubEnv('DATABASE_URL', 'postgresql://unused.invalid/test');
   authorize.mockResolvedValue({ ok: true, principalId: privacyContact, role: 'admin', isMachineActor: false });
@@ -306,6 +320,32 @@ it.each(['destination-receipts', 'destination-documents'])('native privacy compo
     error: expect.objectContaining({ details: { privacyCode: 'PRIVACY_CONTRIBUTOR_MISSING' } }),
   }));
   expect(privacy.query).not.toHaveBeenCalled();
+});
+
+it.each([
+  { operation: 'export' as const, code: '42883' },
+  { operation: 'erase' as const, code: '42501' },
+  { operation: 'export' as const, code: 'ECONNRESET' },
+])('native $operation returns one checklist for infrastructure failure $code', async ({ operation, code }) => {
+  f.adopterPolicy = true;
+  vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator');
+  vi.stubEnv('DATABASE_URL', 'postgresql://unused.invalid/test');
+  authorize.mockResolvedValue({ ok: true, principalId: privacyContact, role: 'admin', isMachineActor: false });
+  privacy.query.mockImplementation((sql: string) => {
+    if (sql.includes(`public.commerce_destination_v2_${operation}(`)) {
+      throw Object.assign(new Error('synthetic private driver context'), { code });
+    }
+    return mountedPrivacyQuery(sql);
+  });
+  const { routes, req } = mountedPrivacyRequest(operation), res = response();
+  await dispatch(routes, req, res as unknown as HttpResponse);
+  expect(res.status).toHaveBeenCalledWith(503);
+  expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({
+    code: 'UPSTREAM_UNAVAILABLE',
+    message: 'Check the native app binding, database connection and TLS, runtime CONNECT and EXECUTE privileges, and installed migrations. Then retry the same operation.',
+    details: { privacyCode: 'PRIVACY_ASSESSMENT_UNAVAILABLE' },
+  }) }));
+  expect(JSON.stringify(res.json.mock.calls)).not.toContain('synthetic private driver context');
 });
 
 it.each(['export', 'erase'] as const)('adopter policy admits mounted direct %s before managed entries', async operation => {

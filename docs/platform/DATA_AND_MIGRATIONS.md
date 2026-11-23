@@ -971,8 +971,9 @@ receipt coordination can observe a concurrent commit. Hash the tagged request
 with the dialect, owner, key, purpose, scope and original address and contact
 strings. The validated projection and caller time are outside that hash.
 The shipping policy owner supplies the validated projection. The stored
-document uses `country` and optional `subdivision`. The reader hashes its
-stored UTF-8 bytes before decoding and checking the binding.
+document uses `country` and optional `subdivision`. Read and export share a
+verifier that hashes stored UTF-8 bytes before decoding and checking ownership
+and binding.
 
 A selection advances to a new revision and snapshot even at equal address
 bytes. Each unbound snapshot expires 24 hours after the database issue time
@@ -983,13 +984,14 @@ a matching current pointer in the same transaction as its payload. Expired
 rows keep owner, scope and binding for exact stale refusals. Erasure clears
 those fields as well as payload and full digest and removes the subject's
 selections. Expired and erased exports expose the snapshot ref, issuance
-time and disposition. An available row includes the document, scope, digest
-and cutoff while the evidence is live.
+time and disposition. Every available row exports the verified document,
+scope, digest and cutoff, including after cutoff until cleanup.
 
 Require `destination-receipts` and `destination-documents` in the same
 registry used for native privacy operations. Assemble the two experimental
 factories from `@openlup/platform/identity` and keep the registry installed
-when issuance is disabled. Erasure uses the registry's required-owner check
+when issuance is disabled. Pass that same registry as `privacyRegistry` to
+`destinationV2Capabilities`. Erasure uses the registry's required-owner check
 before entering the privacy transaction. An authorized historical replay
 of erased evidence returns the erased disposition alone.
 

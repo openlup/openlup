@@ -1970,6 +1970,8 @@ import { type PrivacyOperations } from "./privacyPorts.js";
 export interface PrivacyHandlerDependencies extends IdentityResponseOptions {
     authorizeAdmin: () => Promise<AdminAuthorizationResult>;
     operations: PrivacyOperations;
+    /** Host guidance for an unclassified upstream failure. */
+    unavailableMessage?: string;
 }
 export declare const createPrivacyExportHandler: (deps: PrivacyHandlerDependencies) => HttpHandler;
 export declare const createPrivacyEraseHandler: (deps: PrivacyHandlerDependencies) => HttpHandler;

@@ -71,6 +71,43 @@ DECLARE
   v_cutoff timestamptz;
   v_receipt jsonb;
 BEGIN
+  IF jsonb_typeof(p_command) IS DISTINCT FROM 'object' THEN
+    RAISE EXCEPTION 'address_invalid_input' USING ERRCODE = '22023',
+      DETAIL = 'command', HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
+  END IF;
+  IF v_dialect IS DISTINCT FROM 'commerce.destination.snapshot.v2' THEN
+    RAISE EXCEPTION 'destination_dialect_invalid' USING ERRCODE = '22023',
+      DETAIL = 'version', HINT = 'Use the supported entry.';
+  END IF;
+  v_field := CASE
+    WHEN NOT coalesce(isfinite(p_now), false) THEN 'now'
+    WHEN jsonb_typeof(p_command->'requestKey') IS DISTINCT FROM 'string' THEN 'requestKey'
+    WHEN p_command->'purpose' IS DISTINCT FROM '"checkout"'::jsonb THEN 'purpose'
+    WHEN NOT coalesce(p_command->>'scopeRef' COLLATE "C" ~ v_uuid, false) THEN 'scopeRef'
+    WHEN jsonb_typeof(p_command->'requestDigest') IS DISTINCT FROM 'string' OR NOT coalesce(p_command->>'requestDigest' COLLATE "C" ~ '^[0-9a-f]{64}$', false) THEN 'requestDigest'
+    WHEN jsonb_typeof(v_original) IS DISTINCT FROM 'object' OR octet_length(v_original::text) > 16384 THEN 'original'
+    WHEN jsonb_typeof(v_original->'address') IS DISTINCT FROM 'object' THEN 'original.address'
+    WHEN jsonb_typeof(v_original->'contact') IS DISTINCT FROM 'object' THEN 'original.contact'
+  END;
+  IF v_field IS NULL THEN
+    SELECT name INTO v_field FROM (
+      SELECT key AS name FROM jsonb_object_keys(p_command - ARRAY['dialect','requestKey','requestDigest','purpose','scopeRef','original','validated']) AS keys(key)
+      UNION ALL SELECT 'original.' || key FROM jsonb_object_keys(v_original - ARRAY['address','contact']) AS keys(key)
+      UNION ALL SELECT 'original.address.' || key FROM jsonb_object_keys((v_original->'address') - v_address_fields) AS keys(key)
+      UNION ALL SELECT 'original.contact.' || key FROM jsonb_object_keys((v_original->'contact') - v_contact_fields) AS keys(key)
+      UNION ALL SELECT 'original.address.' || key FROM unnest(ARRAY['line1','city','postalCode','countryCode']) AS keys(key)
+        WHERE NOT (v_original->'address') ? key
+      UNION ALL SELECT 'original.' || part || '.' || field.key
+        FROM (VALUES ('address', v_original->'address'), ('contact', v_original->'contact')) AS section(part, body)
+        CROSS JOIN LATERAL jsonb_each(body) AS field
+        WHERE jsonb_typeof(field.value) <> 'string' OR (field.value #>> '{}') COLLATE "C" ~ v_controls
+    ) AS invalid ORDER BY name COLLATE "C" LIMIT 1;
+  END IF;
+  IF v_field IS NOT NULL THEN
+    RAISE EXCEPTION 'address_invalid_input' USING ERRCODE = '22023',
+      DETAIL = v_field, HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
+  END IF;
+
   -- The native host supplies these coordinates after authorizing the checkout scope.
   IF jsonb_typeof(p_ctx) IS DISTINCT FROM 'object'
     OR p_ctx - ARRAY['owner','clientId','scopeRef'] <> '{}'::jsonb
@@ -90,42 +127,10 @@ BEGIN
   v_client := (p_ctx->>'clientId')::uuid;
   v_scope := (p_ctx->>'scopeRef')::uuid;
 
-  IF v_dialect IS DISTINCT FROM 'commerce.destination.snapshot.v2' THEN
-    RAISE EXCEPTION 'destination_dialect_invalid' USING ERRCODE = '22023',
-      DETAIL = 'version', HINT = 'Use the supported entry.';
-  END IF;
-  IF jsonb_typeof(p_command) IS DISTINCT FROM 'object'
-    OR p_command - ARRAY['dialect','requestKey','requestDigest','purpose','scopeRef','original','validated'] <> '{}'::jsonb
-    OR p_command->'purpose' IS DISTINCT FROM '"checkout"'::jsonb OR NOT coalesce(isfinite(p_now), false)
-    OR jsonb_typeof(p_command->'requestKey') IS DISTINCT FROM 'string'
-    OR jsonb_typeof(v_original) IS DISTINCT FROM 'object'
-    OR v_original - ARRAY['address','contact'] <> '{}'::jsonb
-    OR jsonb_typeof(v_original->'address') IS DISTINCT FROM 'object'
-    OR (v_original->'address') - v_address_fields <> '{}'::jsonb
-    OR NOT (v_original->'address') ?& ARRAY['line1','city','postalCode','countryCode']
-    OR jsonb_typeof(v_original->'contact') IS DISTINCT FROM 'object'
-    OR (v_original->'contact') - v_contact_fields <> '{}'::jsonb
-    OR octet_length(v_original::text) > 16384 THEN
-    RAISE EXCEPTION 'address_invalid_input' USING ERRCODE = '22023',
-      DETAIL = 'original', HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
-  END IF;
-  FOR v_field IN SELECT key FROM jsonb_each((v_original->'address') || (v_original->'contact'))
-    WHERE jsonb_typeof(value) <> 'string' OR (value #>> '{}') COLLATE "C" ~ v_controls
-    ORDER BY key COLLATE "C"
-  LOOP
-    RAISE EXCEPTION 'address_invalid_input' USING ERRCODE = '22023',
-      DETAIL = v_field, HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
-  END LOOP;
-
   v_request_digest := encode(sha256(convert_to(public.commerce_destination_v2_canonical(jsonb_build_array(
     'commerce.destination.request.v2', jsonb_build_object('dialect', v_dialect, 'owner', v_owner,
       'requestKey', v_key, 'purpose', 'checkout', 'scopeRef', v_scope, 'original', v_original)
   )), 'UTF8')), 'hex');
-  IF jsonb_typeof(p_command->'requestDigest') IS DISTINCT FROM 'string'
-    OR p_command->>'requestDigest' COLLATE "C" !~ '^[0-9a-f]{64}$' THEN
-    RAISE EXCEPTION 'address_invalid_input' USING ERRCODE = '22023',
-      DETAIL = 'requestDigest', HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
-  END IF;
   IF p_command->>'requestDigest' COLLATE "C" IS DISTINCT FROM v_request_digest THEN
     RAISE EXCEPTION 'destination_idempotency_conflict' USING ERRCODE = '23505',
       DETAIL = 'idempotencyKey', HINT = 'Replay the original command or begin a distinct action.';
@@ -147,16 +152,25 @@ BEGIN
 
   v_address := v_validated->'address';
   v_contact := v_validated->'contact';
-  IF jsonb_typeof(v_validated) IS DISTINCT FROM 'object'
-    OR v_validated - ARRAY['policyRef','policyRevision','address','contact','classificationKeys'] <> '{}'::jsonb
-    OR jsonb_typeof(v_address) IS DISTINCT FROM 'object' OR v_address - v_address_fields <> '{}'::jsonb
-    OR NOT v_address ?& ARRAY['line1','city','postalCode','countryCode']
-    OR jsonb_typeof(v_contact) IS DISTINCT FROM 'object' OR v_contact - v_contact_fields <> '{}'::jsonb
-    OR NOT coalesce(v_address->>'countryCode' COLLATE "C" ~ '^[A-Z]{2}$', false)
-    OR (v_address ? 'subdivisionCode' AND NOT coalesce(v_address->>'subdivisionCode' COLLATE "C" ~ '^[A-Z0-9-]{1,16}$', false))
-    OR jsonb_typeof(v_validated->'classificationKeys') IS DISTINCT FROM 'array' THEN
+  v_field := CASE
+    WHEN jsonb_typeof(v_validated) IS DISTINCT FROM 'object' THEN 'validated'
+    WHEN jsonb_typeof(v_address) IS DISTINCT FROM 'object' THEN 'validated.address'
+    WHEN jsonb_typeof(v_contact) IS DISTINCT FROM 'object' THEN 'validated.contact'
+    WHEN NOT coalesce(v_address->>'countryCode' COLLATE "C" ~ '^[A-Z]{2}$', false) THEN 'countryCode'
+    WHEN v_address ? 'subdivisionCode' AND NOT coalesce(v_address->>'subdivisionCode' COLLATE "C" ~ '^[A-Z0-9-]{1,16}$', false) THEN 'subdivisionCode'
+    WHEN jsonb_typeof(v_validated->'classificationKeys') IS DISTINCT FROM 'array' THEN 'classificationKeys'
+  END;
+  IF v_field IS NULL THEN
+    SELECT name INTO v_field FROM (
+      SELECT 'validated.' || key AS name FROM jsonb_object_keys(v_validated - ARRAY['policyRef','policyRevision','address','contact','classificationKeys']) AS keys(key)
+      UNION ALL SELECT 'validated.address.' || key FROM jsonb_object_keys(v_address - v_address_fields) AS keys(key)
+      UNION ALL SELECT 'validated.contact.' || key FROM jsonb_object_keys(v_contact - v_contact_fields) AS keys(key)
+      UNION ALL SELECT key FROM unnest(ARRAY['line1','city','postalCode']) AS keys(key) WHERE NOT v_address ? key
+    ) AS invalid ORDER BY name COLLATE "C" LIMIT 1;
+  END IF;
+  IF v_field IS NOT NULL THEN
     RAISE EXCEPTION 'address_invalid_input' USING ERRCODE = '22023',
-      DETAIL = 'validated', HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
+      DETAIL = v_field, HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
   END IF;
   -- Validate the projection's wire shape. Postal and classification decisions belong to the host policy.
   FOR v_field, v_limit IN SELECT * FROM (VALUES
@@ -219,13 +233,52 @@ BEGIN
 END;
 $$;
 
-CREATE FUNCTION public.commerce_read_destination_v2(p_ctx jsonb, p_kind text, p_id uuid, p_expected_binding jsonb)
-RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+CREATE FUNCTION public.commerce_destination_v2_verified_document(v_row public.commerce_destination_v2_documents)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
-  v_row public.commerce_destination_v2_documents%ROWTYPE;
   v_preimage jsonb;
   v_document jsonb;
   v_digest text;
+BEGIN
+  IF encode(sha256(convert_to(v_row.document_text, 'UTF8')), 'hex') IS DISTINCT FROM v_row.document_digest THEN
+    RAISE EXCEPTION 'destination_digest_mismatch' USING ERRCODE = '55000',
+      DETAIL = 'documentDigest', HINT = 'Replay the original document and its digest.';
+  END IF;
+  BEGIN
+    v_preimage := v_row.document_text::jsonb;
+  EXCEPTION WHEN invalid_text_representation THEN
+    RAISE EXCEPTION 'destination_digest_mismatch' USING ERRCODE = '55000',
+      DETAIL = 'documentDigest', HINT = 'Replay the original document and its digest.';
+  END;
+  v_document := v_preimage->1;
+  IF v_preimage->>0 IS DISTINCT FROM 'commerce.destination.document.v2'
+    OR v_preimage IS DISTINCT FROM jsonb_build_array('commerce.destination.document.v2', v_document)
+    OR jsonb_typeof(v_document) IS DISTINCT FROM 'object'
+    OR v_document->'owner' IS DISTINCT FROM v_row.owner_scope
+    OR v_document->'clientId' IS DISTINCT FROM to_jsonb(v_row.client_id)
+    OR v_row.owner_scope->'customerOrSessionRef' IS DISTINCT FROM to_jsonb(v_row.client_id)
+    OR v_document->'snapshotRef' IS DISTINCT FROM to_jsonb(v_row.snapshot_ref)
+    OR v_document->'schemaVersion' IS DISTINCT FROM '2'::jsonb
+    OR v_document->'revision' IS DISTINCT FROM '1'::jsonb
+    OR v_document - ARRAY['revision','owner','clientId','policyRef','classificationKeys','address','contact'] IS DISTINCT FROM v_row.binding THEN
+    RAISE EXCEPTION 'destination_binding_invalid' USING ERRCODE = '22023',
+      DETAIL = 'destination', HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
+  END IF;
+  v_digest := encode(sha256(convert_to(public.commerce_destination_v2_canonical(
+    jsonb_build_array('commerce.destination.v2', v_document->'address')), 'UTF8')), 'hex');
+  IF v_digest IS DISTINCT FROM v_row.binding->>'destinationDigest' THEN
+    RAISE EXCEPTION 'destination_digest_mismatch' USING ERRCODE = '55000',
+      DETAIL = 'destinationDigest', HINT = 'Replay the original document and its digest.';
+  END IF;
+  RETURN v_document;
+END;
+$$;
+
+CREATE FUNCTION public.commerce_read_destination_v2(p_ctx jsonb, p_kind text, p_id uuid, p_expected_binding jsonb)
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  v_row public.commerce_destination_v2_documents%ROWTYPE;
+  v_document jsonb;
   v_binding_fields constant text[] := ARRAY['snapshotRef','schemaVersion','destinationDigest','policyRevision'];
 BEGIN
   IF p_kind IS DISTINCT FROM 'snapshot' THEN
@@ -241,32 +294,7 @@ BEGIN
       DETAIL = 'destination.snapshotRef', HINT = 'Re-obtain evidence through the authenticated owner or review the privacy disposition.';
   END IF;
   IF v_row.evidence_disposition = 'available' THEN
-    IF encode(sha256(convert_to(v_row.document_text, 'UTF8')), 'hex') IS DISTINCT FROM v_row.document_digest THEN
-      RAISE EXCEPTION 'destination_digest_mismatch' USING ERRCODE = '55000',
-        DETAIL = 'documentDigest', HINT = 'Replay the original document and its digest.';
-    END IF;
-    BEGIN
-      v_preimage := v_row.document_text::jsonb;
-    EXCEPTION WHEN invalid_text_representation THEN
-      RAISE EXCEPTION 'destination_digest_mismatch' USING ERRCODE = '55000',
-        DETAIL = 'documentDigest', HINT = 'Replay the original document and its digest.';
-    END;
-    v_document := v_preimage->1;
-    IF v_preimage->>0 IS DISTINCT FROM 'commerce.destination.document.v2'
-      OR v_preimage IS DISTINCT FROM jsonb_build_array('commerce.destination.document.v2', v_document)
-      OR v_document->'owner' IS DISTINCT FROM v_row.owner_scope
-      OR v_document->'clientId' IS DISTINCT FROM to_jsonb(v_row.client_id)
-      OR v_document->'revision' IS DISTINCT FROM '1'::jsonb
-      OR v_document - ARRAY['revision','owner','clientId','policyRef','classificationKeys','address','contact'] IS DISTINCT FROM v_row.binding THEN
-      RAISE EXCEPTION 'destination_binding_invalid' USING ERRCODE = '22023',
-        DETAIL = 'destination', HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
-    END IF;
-    v_digest := encode(sha256(convert_to(public.commerce_destination_v2_canonical(
-      jsonb_build_array('commerce.destination.v2', v_document->'address')), 'UTF8')), 'hex');
-    IF v_digest IS DISTINCT FROM v_row.binding->>'destinationDigest' THEN
-      RAISE EXCEPTION 'destination_digest_mismatch' USING ERRCODE = '55000',
-        DETAIL = 'destinationDigest', HINT = 'Replay the original document and its digest.';
-    END IF;
+    v_document := public.commerce_destination_v2_verified_document(v_row);
   END IF;
   IF jsonb_typeof(p_expected_binding) IS DISTINCT FROM 'object'
     OR NOT p_expected_binding ?& v_binding_fields OR p_expected_binding - v_binding_fields <> '{}'::jsonb
@@ -292,7 +320,7 @@ BEGIN
     RAISE EXCEPTION 'destination_binding_invalid' USING ERRCODE = '22023',
       DETAIL = 'destination', HINT = 'Correct caller-authored input or re-obtain authoritative evidence as applicable.';
   END IF;
-  IF v_row.evidence_disposition = 'expired' OR statement_timestamp() >= v_row.evidence_expires_at THEN
+  IF v_row.evidence_disposition = 'expired' OR clock_timestamp() >= v_row.evidence_expires_at THEN
     RAISE EXCEPTION 'destination_version_changed' USING ERRCODE = '55000',
       DETAIL = 'destination.snapshotRef', HINT = 'Re-obtain current evidence. Checkout requires a fresh final quote and acceptance.';
   END IF;
@@ -307,11 +335,11 @@ BEGIN
   RETURN (SELECT coalesce(jsonb_agg(
     jsonb_build_object('snapshotRef', snapshot_ref, 'issuedAt',
       to_char(issued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'evidenceDisposition', evidence_disposition)
-    || CASE WHEN evidence_disposition = 'available' AND statement_timestamp() < evidence_expires_at THEN
-      jsonb_build_object('document', document_text::jsonb->1, 'scopeRef', scope_ref, 'documentDigest', document_digest,
+    || CASE WHEN evidence_disposition = 'available' THEN
+      jsonb_build_object('document', public.commerce_destination_v2_verified_document(d), 'scopeRef', scope_ref, 'documentDigest', document_digest,
         'evidenceExpiresAt', to_char(evidence_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
     ELSE '{}'::jsonb END ORDER BY snapshot_ref), '[]'::jsonb)
-    FROM public.commerce_destination_v2_documents WHERE client_id = p_client_id);
+    FROM public.commerce_destination_v2_documents AS d WHERE client_id = p_client_id);
 END;
 $$;
 
@@ -384,15 +412,15 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
   EXECUTE 'REVOKE ALL ON TABLE public.commerce_destination_v2_documents, public.commerce_destination_v2_checkout_selections FROM service_role;';
 END IF; END; $$;
 
-REVOKE ALL ON FUNCTION public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz), public.commerce_read_destination_v2(jsonb,text,uuid,jsonb), public.commerce_destination_v2_export(uuid), public.commerce_destination_v2_erase(uuid), public.commerce_destination_v2_canonical(jsonb), public.commerce_destination_v2_expire(timestamptz,integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz), public.commerce_read_destination_v2(jsonb,text,uuid,jsonb), public.commerce_destination_v2_export(uuid), public.commerce_destination_v2_erase(uuid), public.commerce_destination_v2_canonical(jsonb), public.commerce_destination_v2_verified_document(public.commerce_destination_v2_documents), public.commerce_destination_v2_expire(timestamptz,integer) FROM PUBLIC;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz), public.commerce_read_destination_v2(jsonb,text,uuid,jsonb), public.commerce_destination_v2_export(uuid), public.commerce_destination_v2_erase(uuid), public.commerce_destination_v2_canonical(jsonb), public.commerce_destination_v2_expire(timestamptz,integer) FROM anon;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz), public.commerce_read_destination_v2(jsonb,text,uuid,jsonb), public.commerce_destination_v2_export(uuid), public.commerce_destination_v2_erase(uuid), public.commerce_destination_v2_canonical(jsonb), public.commerce_destination_v2_verified_document(public.commerce_destination_v2_documents), public.commerce_destination_v2_expire(timestamptz,integer) FROM anon;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz), public.commerce_read_destination_v2(jsonb,text,uuid,jsonb), public.commerce_destination_v2_export(uuid), public.commerce_destination_v2_erase(uuid), public.commerce_destination_v2_canonical(jsonb), public.commerce_destination_v2_expire(timestamptz,integer) FROM authenticated;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz), public.commerce_read_destination_v2(jsonb,text,uuid,jsonb), public.commerce_destination_v2_export(uuid), public.commerce_destination_v2_erase(uuid), public.commerce_destination_v2_canonical(jsonb), public.commerce_destination_v2_verified_document(public.commerce_destination_v2_documents), public.commerce_destination_v2_expire(timestamptz,integer) FROM authenticated;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz), public.commerce_read_destination_v2(jsonb,text,uuid,jsonb), public.commerce_destination_v2_export(uuid), public.commerce_destination_v2_erase(uuid), public.commerce_destination_v2_canonical(jsonb), public.commerce_destination_v2_expire(timestamptz,integer) FROM service_role;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz), public.commerce_read_destination_v2(jsonb,text,uuid,jsonb), public.commerce_destination_v2_export(uuid), public.commerce_destination_v2_erase(uuid), public.commerce_destination_v2_canonical(jsonb), public.commerce_destination_v2_verified_document(public.commerce_destination_v2_documents), public.commerce_destination_v2_expire(timestamptz,integer) FROM service_role;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
   EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz), public.commerce_read_destination_v2(jsonb,text,uuid,jsonb), public.commerce_destination_v2_export(uuid), public.commerce_destination_v2_erase(uuid) TO service_role;';
