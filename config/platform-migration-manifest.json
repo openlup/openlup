@@ -726,7 +726,7 @@
       "sha256": "700aab2616bff9c6049eb83af4efcea8596f36862a0de4c1dde1bca6647282a4"
     },
     {
-      "file": "db/platform/migrations/20261125020000_tax_coverage_revisions.sql",
+      "file": "db/platform/migrations/20261125030000_tax_coverage_revisions.sql",
       "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3"
     }
   ],
@@ -1482,7 +1482,7 @@
         "sha256": "700aab2616bff9c6049eb83af4efcea8596f36862a0de4c1dde1bca6647282a4"
       },
       {
-        "file": "db/platform/migrations/20261125020000_tax_coverage_revisions.sql",
+        "file": "db/platform/migrations/20261125030000_tax_coverage_revisions.sql",
         "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3"
       }
     ],
@@ -2238,7 +2238,7 @@
         "sha256": "700aab2616bff9c6049eb83af4efcea8596f36862a0de4c1dde1bca6647282a4"
       },
       {
-        "file": "db/platform/migrations/20261125020000_tax_coverage_revisions.sql",
+        "file": "db/platform/migrations/20261125030000_tax_coverage_revisions.sql",
         "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3"
       }
     ],

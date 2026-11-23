@@ -6881,7 +6881,7 @@
       },
       {
         "row": "tax-coverage-revisions",
-        "path": "db/platform/migrations/20261125020000_tax_coverage_revisions.sql",
+        "path": "db/platform/migrations/20261125030000_tax_coverage_revisions.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -10159,7 +10159,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261125020000_tax_coverage_revisions.sql",
+      "path": "db/platform/migrations/20261125030000_tax_coverage_revisions.sql",
       "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3",
       "functions": [
         {
