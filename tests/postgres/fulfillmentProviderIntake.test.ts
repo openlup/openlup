@@ -32,6 +32,7 @@ const adapterOrderIdentity = {
 const invocation = { triggerKind: 'scheduler' as const, invocationSource: 'offline-native-witness' };
 const verification = { rawBody: new Uint8Array([123, 125]), headers: {}, receivedAt: at };
 type Intake = ReturnType<typeof createPostgresFulfillmentProviderIntake>;
+type NativeCheckpointRead = (jobName: string, scope?: 'nativeFulfillmentCheckpoint') => ReturnType<PlatformJobRunLedgerPort['readLatestTerminalRunMetadata']>;
 for (const profile of lifecycleProfiles) describe(`native provider intake on ${profile}`, () => {
   let h: LifecycleInstallation;
   beforeAll(async () => { h = await lifecycleInstallation(profile); }, postgresSetupTimeoutMs);
@@ -77,13 +78,14 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     return { ledger: ledger ?? createPostgresPlatformJobRunLedger(h.runtime, { releaseCorrelation: () => ({}), defaultFailureReason: 'offline_failed' }), jobName: `intake-${randomUUID()}`, invocation, pageSize };
   }
   async function reserveParcelStock(f: Subject, time: string) {
+    const expiry = shiftHours(time, 1);
     const product = randomUUID(), skuId = randomUUID(), source = randomUUID(), sku = `SKU-${randomUUID()}`;
     await h.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1::uuid,$1::text,'Unit')", [product]);
     await h.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,$3,'Unit')", [skuId, product, sku]);
     await h.owner.query('UPDATE public.commerce_order_items SET sku_id=$2 WHERE order_id=$1', [f.order, skuId]);
-    await h.owner.query("INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint) VALUES($1,$2,100,100,0,'sellable',$3,'2099-01-01T00:00:00Z',$1,$1,repeat('a',64))", [source, sku, time]);
+    await h.owner.query("INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint) VALUES($1,$2,100,100,0,'sellable',$3,$4,$1,$1,repeat('a',64))", [source, sku, time, expiry]);
     const item = (await h.owner.query('SELECT id FROM public.commerce_order_items WHERE order_id=$1', [f.order])).rows[0].id;
-    const reserve = async () => (await h.runtime.query("SELECT public.fulfillment_reserve_purchase_order_items($1,$2,$3,$4,'succeeded','2099-01-01T00:00:00Z','{}',$5) AS value", [randomUUID(), f.order, source, JSON.stringify([{ orderItemId: item, skuId, quantity: 1 }]), time])).rows[0].value.reservations[0].reservationId;
+    const reserve = async () => (await h.runtime.query("SELECT public.fulfillment_reserve_purchase_order_items($1,$2,$3,$4,'succeeded',$5,'{}',$6) AS value", [randomUUID(), f.order, source, JSON.stringify([{ orderItemId: item, skuId, quantity: 1 }]), expiry, time])).rows[0].value.reservations[0].reservationId;
     const reservation = await reserve();
     const line = (await h.owner.query('INSERT INTO public.fulfillment_parcel_lines(shipment_id,order_item_id,sku_id,sku,quantity) VALUES($1,$2,$3,$4,1) RETURNING id', [f.shipment, item, skuId, sku])).rows[0].id;
     await h.owner.query('INSERT INTO public.fulfillment_parcel_line_reservations(line_id,reservation_id,quantity) VALUES($1,$2,1)', [line, reservation]);
@@ -100,8 +102,11 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     DROP FUNCTION IF EXISTS public.fixture_hold_fault()`);
   it('poll_hold_failure_retries_before_advancing', async () => {
     const before = await subject(), failed = await subject(), after = await subject();
-    const { rows: [{ arrived, observed, due }] } = await h.owner.query<{ arrived: Date; observed: Date; due: Date }>(`SELECT
-      now()-interval '2 hours' AS arrived, now()-interval '1 hour' AS observed, now() AS due`);
+    const due = new Date(await pgInstant());
+    // Base and candidate probes on this UTC fixture day share the exact admission instant.
+    due.setUTCHours(0, 0, 0, 0);
+    const anchor = due.toISOString();
+    const arrived = shiftHours(anchor, -2), observed = shiftHours(anchor, -1);
     const time = observed.toISOString();
     const obs = observation(failed, 'exception', time, [], time);
     const first = row(observation(before, 'picking', time, [], time)), last = row(observation(after, 'picking', time, [], time));
@@ -152,7 +157,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
       tick += 1;
       await native.reconcile(request);
       checkpoints.push((await request.ledger.readLatestTerminalRunMetadata(request.jobName))?.reconciliationPagination);
-      const { rows: [{ admission }] } = await h.runtime.query('SELECT public.subscription_delivery_alignment_admit_renewal($1,$2,$2) AS admission', [failed.subscription, due]);
+      const { rows: [{ admission }] } = await h.runtime.query('SELECT public.subscription_delivery_alignment_admit_renewal($1,$2,p_as_of => $3) AS admission', [failed.subscription, due, due]);
       expect({ pages, checkpoints, admission }).toMatchObject({ pages: [0, 0, 1], checkpoints: [
         { page: 0, nextPage: 0, failureStreak: 1 }, { page: 0, nextPage: 1 }, { page: 1, nextPage: 0 },
       ], admission: { allowed: false, reason: 'delivery_alignment_protected' } });
@@ -169,6 +174,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
   });
   const repeatedPageRemedy = 'an item on this page fails repeatedly; inspect the fulfilment exception for the order and record it manually';
   const holdFailureReason = 'reconciliation_local_operation_failed:P0001';
+  const shiftHours = (instant: string, hours: number) => new Date(Date.parse(instant) + hours * 60 * 60 * 1000);
   const pgInstant = async () => (await h.owner.query<{ instant: Date }>('SELECT now() AS instant')).rows[0]!.instant.toISOString();
   const jobRuns = async (jobName: string) => (await h.owner.query(
     "SELECT status,error,metadata FROM public.platform_job_runs WHERE job_name=$1 AND finished_at IS NOT NULL ORDER BY started_at", [jobName],
@@ -276,7 +282,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     const entered = new Promise<void>(resolve => { signalGet = resolve; });
     const release = new Promise<void>(resolve => { releaseGet = resolve; });
     const real = request.ledger;
-    const read = vi.fn(real.readLatestTerminalRunMetadata);
+    const read = vi.fn<NativeCheckpointRead>(real.readLatestTerminalRunMetadata);
     const unknown: FulfillmentReconciliationObservation = { kind: 'unknown', refusal: { reason: 'malformed', phase: 'normalize', retryable: false } };
     const get = vi.fn(async () => {
       signalGet();
@@ -288,7 +294,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     const first = native.reconcile(observed);
     try {
       await Promise.race([entered, first.then(() => { throw new Error('first run finished before GET'); })]);
-      expect(read).toHaveBeenCalledOnce();
+      expect(read.mock.calls).toEqual([[request.jobName, 'nativeFulfillmentCheckpoint']]);
       expect(await native.reconcile(observed)).toEqual({ kind: 'skipped', reason: 'lease_active' });
       expect(read).toHaveBeenCalledOnce();
       expect(get).toHaveBeenCalledOnce();
@@ -305,10 +311,9 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
       });
       get.mockClear();
       await expect(native.reconcile({ ...fresh, ledger: { ...fresh.ledger, finishJobRun: finish,
-        readLatestTerminalRunMetadata: async name => {
-          if (failRead) throw new Error('synthetic_checkpoint_failure');
-          return fresh.ledger.readLatestTerminalRunMetadata(name);
-        },
+        readLatestTerminalRunMetadata: failRead
+          ? async () => { throw new Error('synthetic_checkpoint_failure'); }
+          : fresh.ledger.readLatestTerminalRunMetadata,
       } })).rejects.toThrow('reconciliation_job_lease_lost');
       expect(finish).toHaveBeenCalledOnce();
       expect(get).toHaveBeenCalledTimes(failRead ? 0 : 1);
@@ -317,7 +322,13 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
 
   it('poll_checkpoint_read_error_preserves_streak', async () => {
     const time = await pgInstant(), obs = observation(await subject(), 'picking', time, [], time);
-    const request = job(undefined, 1), real = request.ledger;
+    const real = createPostgresPlatformJobRunLedger(h.runtime, {
+      releaseCorrelation: () => ({ releaseSha: 'fixture-revision', reason: 'rolling_deployment', reconciliationPagination: 'release_checkpoint' }),
+      defaultFailureReason: 'offline_failed',
+    });
+    const request = job(real, 1);
+    const read: NativeCheckpointRead = real.readLatestTerminalRunMetadata;
+    const readCheckpoint = () => read.call(real, request.jobName, 'nativeFulfillmentCheckpoint');
     const get = vi.fn(async ({ page }: { page: number }) => page === 0
       ? { kind: 'page' as const, rows: [row(obs)] }
       : { kind: 'failed' as const, refusal: { reason: 'malformed' as const, phase: 'readback' as const, retryable: true } });
@@ -328,7 +339,7 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
       [request.jobName],
     );
     expect(legacy.reconciliationPagination).toEqual({ version: 1, page: 0, pageSize: 1, nextPage: 1 });
-    expect(await real.readLatestTerminalRunMetadata(request.jobName)).toStrictEqual(legacy);
+    expect(await readCheckpoint()).toStrictEqual(legacy);
     for (const failureStreak of [1, 2]) {
       expect(await native().reconcile(request)).toMatchObject({ status: 502 });
       expect(await real.readLatestTerminalRunMetadata(request.jobName)).toMatchObject({ reconciliationPagination: { page: 1, nextPage: 1, failureStreak } });
@@ -341,15 +352,31 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
       .toEqual({ kind: 'failed', status: 502, reason: readError });
     expect(get).not.toHaveBeenCalled();
     const recorded = await jobRuns(request.jobName);
-    expect(recorded.at(-1)).toMatchObject({ status: 'failed', error: readError, metadata: { reason: readError, failures: 1 } });
-    expect(recorded.at(-1)?.metadata).not.toHaveProperty('reconciliationPagination');
-    expect(await real.readLatestTerminalRunMetadata(request.jobName)).toStrictEqual(checkpoint);
+    expect(recorded.at(-1)).toMatchObject({ status: 'failed', error: readError,
+      metadata: { reason: readError, failures: 1, reconciliationPagination: null, releaseSha: 'fixture-revision' },
+    });
+    expect(await real.readLatestTerminalRunMetadata(request.jobName)).toStrictEqual(recorded.at(-1)?.metadata);
+    expect(await readCheckpoint()).toStrictEqual(checkpoint);
     expect(await native().reconcile(request)).toMatchObject({ status: 502, result: { reason: 'malformed' },
       metadata: { reconciliationPagination: { page: 1, nextPage: 2 } } });
     expect(get.mock.calls).toEqual([[{ page: 1, size: 1 }]]);
     const final = (await jobRuns(request.jobName)).at(-1);
     expect(final).toMatchObject({ status: 'failed', error: repeatedPageRemedy, metadata: { reason: 'malformed', failures: 1 } });
     expect(final?.metadata.reconciliationPagination).toEqual({ version: 1, page: 1, pageSize: 1, nextPage: 2 });
+  });
+
+  it('non_native_terminal_reader_preserves_checkpoint', async () => {
+    const { ledger, jobName } = job();
+    const summary = { checked: 0, updated: 0, failures: 0, skipped: false };
+    const earlier = await ledger.claimJobRun(jobName, invocation);
+    expect(await ledger.finishJobRun(jobName, earlier.runId!, invocation, 'success', summary, { accountCheckpoint: 'earlier' })).toBe(true);
+    const latest = await ledger.claimJobRun(jobName, invocation);
+    const reason = 'reconciliation_checkpoint_read_failed';
+    const metadata = { accountCheckpoint: 'latest', reason };
+    expect(await ledger.finishJobRun(jobName, latest.runId!, invocation, 'failed', { ...summary, reason, failures: 1 }, metadata)).toBe(true);
+    const before = (await jobRuns(jobName)).at(-1)?.metadata;
+    expect(before).toMatchObject(metadata);
+    expect(await ledger.readLatestTerminalRunMetadata(jobName)).toStrictEqual(before);
   });
 
   it('verifies before parse/storage and gates disabled, polling-only and unbound selections without writes', async () => {
@@ -523,17 +550,18 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect((await h.owner.query("SELECT outcome FROM public.fulfillment_observations WHERE event_key=$1", [`quarantine:${obs.eventKey}`])).rows[0].outcome.reason).toBe('missing_external_ref');
   });
   it('early stages are evidence only; packed consumes accepted exact reservations without creating a label or handoff', async () => {
-    const f = await subject();
+    const f = await subject(), time = await pgInstant();
+    const receipt = { ...verification, receivedAt: time };
     for (const status of ['provider_received', 'picking'] as const) {
-      expect(await compose(observation(f, status)).ingest(verification)).toMatchObject({ kind: 'processed' }); expect((await state(f)).status).toBe('created');
+      expect(await compose(observation(f, status, time, [], time)).ingest(receipt)).toMatchObject({ kind: 'processed' }); expect((await state(f)).status).toBe('created');
     }
-    const reservation = await reserveParcelStock(f, at);
-    const invoice = vi.fn(); const obs = observation(f, 'packed');
-    expect(await compose(obs, { accounting: { issue: invoice, classify: () => ({ permanent: false, identifier: null, sqlstate: null, benign: false }) } }).ingest(verification)).toMatchObject({ kind: 'processed' });
+    const reservation = await reserveParcelStock(f, time);
+    const invoice = vi.fn(); const obs = observation(f, 'packed', time, [], time);
+    expect(await compose(obs, { accounting: { issue: invoice, classify: () => ({ permanent: false, identifier: null, sqlstate: null, benign: false }) } }).ingest(receipt)).toMatchObject({ kind: 'processed' });
     expect(await state(f)).toMatchObject({ status: 'packed', handed_over_at: null, delivered_at: null }); expect(invoice).not.toHaveBeenCalled();
     expect((await h.owner.query('SELECT status FROM public.fulfillment_inventory_reservations WHERE id=$1', [reservation])).rows[0].status).toBe('consumed');
     expect((await h.owner.query("SELECT * FROM public.shipment_external_refs WHERE shipment_id=$1 AND ref_role='label'", [f.shipment])).rows).toEqual([]);
-    expect(await compose(obs).ingest(verification)).toMatchObject({ kind: 'processed', replayed: true });
+    expect(await compose(obs).ingest(receipt)).toMatchObject({ kind: 'processed', replayed: true });
   });
   it('physical effects commit before accounting and webhook accounting failures are fail-soft', async () => {
     const f = await subject(), obs = observation(f); let observed = false;
@@ -689,7 +717,8 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect((await h.owner.query("SELECT * FROM public.commerce_order_operations WHERE order_id=$1 AND operation_type='hold_released'", [f.order])).rows).toHaveLength(1);
   });
   it('leases before checkpoint and GET, pins a failed full page and resets successful short or empty pages', async () => {
-    const f = await subject(), obs = observation(f, 'picking'), events: string[] = [], finishes: Parameters<PlatformJobRunLedgerPort['finishJobRun']>[] = [];
+    const f = await subject(), time = await pgInstant(), obs = observation(f, 'picking', time, [], time);
+    const events: string[] = [], finishes: Parameters<PlatformJobRunLedgerPort['finishJobRun']>[] = [];
     let checkpoint: unknown = { reconciliationPagination: { version: 1, page: 1, pageSize: 2, nextPage: 2 } };
     const real = job().ledger;
     const ledger: PlatformJobRunLedgerPort = { ...real,
@@ -731,12 +760,12 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     }
     events.length = 0; finishes.length = 0;
     ledger.readLatestTerminalRunMetadata = async () => { events.push('checkpoint'); throw new Error('synthetic_checkpoint_failure'); };
-    expect(await native.reconcile(job(ledger, 2))).toMatchObject({ kind: 'failed', reason: 'reconciliation_checkpoint_read_failed' }); expect(events).toEqual(['lease', 'checkpoint', 'finish']); expect(finishes[0]?.[5]).toBeUndefined();
+    expect(await native.reconcile(job(ledger, 2))).toMatchObject({ kind: 'failed', reason: 'reconciliation_checkpoint_read_failed' }); expect(events).toEqual(['lease', 'checkpoint', 'finish']); expect(finishes[0]?.[5]).toEqual({ failures: 1, skipped: false, reason: 'reconciliation_checkpoint_read_failed', reconciliationPagination: null });
     ledger.claimJobRun = async () => ({ acquired: false, runId: null, reason: 'lease_busy' }); events.length = 0;
     expect(await native.reconcile(job(ledger))).toEqual({ kind: 'skipped', reason: 'lease_busy' }); expect(events).toEqual([]);
   });
   it('native zero-scan failure retains its cursor and wraps when retries at the largest page run out', async () => {
-    const f = await subject(), obs = observation(f), request = job();
+    const f = await subject(), time = await pgInstant(), obs = observation(f, 'in_transit', time, [], time), request = job();
     let checkpoint: Record<string, number> = { version: 1, pageSize: 50, page: 2, nextPage: 3 };
     const finish = vi.fn<PlatformJobRunLedgerPort['finishJobRun']>(async () => true);
     const ledger: PlatformJobRunLedgerPort = { ...request.ledger, claimJobRun: async () => ({ acquired: true, runId: randomUUID(), reason: 'acquired' }),

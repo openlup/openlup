@@ -172,10 +172,11 @@ checkpoint and stores the following message in `platform_job_runs.error`.
 Failed pages return HTTP 502 with the original diagnostic. A checkpoint-read
 failure makes no provider call and leaves the last checkpoint available for the
 next tick. If you supply a custom job ledger, skip finished failed runs whose
-reason is `reconciliation_checkpoint_read_failed` and whose metadata has no
-pagination checkpoint when selecting the latest terminal metadata. Keep the
-existing ordering and eligibility for other runs. Sequential cursor translation
-belongs to the adapter.
+reason is `reconciliation_checkpoint_read_failed` and whose pagination checkpoint
+is absent or null when selecting the latest terminal metadata for polling.
+Keep the existing ordering and eligibility for other runs. When finishing a
+polling attempt, give its supplied reason and checkpoint metadata precedence over
+deployment metadata. Sequential cursor translation belongs to the adapter.
 
 Pass the selected adapter's `orderIdentity` mapping to native intake when its
 outbound merchant identity differs from the stored number. This optional mapping translates an echoed outbound

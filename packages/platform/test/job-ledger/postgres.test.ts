@@ -19,11 +19,6 @@ const latestSql = `
   WHERE job_name = $1
     AND status IN ('success', 'failed')
     AND finished_at IS NOT NULL
-    AND NOT (
-      status = 'failed'
-      AND metadata->>'reason' IS NOT DISTINCT FROM 'reconciliation_checkpoint_read_failed'
-      AND metadata->'reconciliationPagination' IS NULL
-    )
   ORDER BY started_at DESC
   LIMIT 1`;
 const invocation = { triggerKind: "scheduler", invocationSource: "  scheduled-entry  " } as const;
@@ -189,7 +184,7 @@ describe("PostgreSQL job-run ledger", () => {
   });
 
   it("reads the latest finished terminal metadata with exact parameterized ordering", async () => {
-    const metadata = { checkpoint: "offset-9", nested: { count: 2 } };
+    const metadata = { reason: "reconciliation_checkpoint_read_failed", checkpoint: "offset-9", nested: { count: 2 } };
     const { ledger, query } = fixture([{ metadata }, { metadata: { checkpoint: "older" } }]);
     const result = await ledger.readLatestTerminalRunMetadata("nightly-report");
     expect(result).toEqual(metadata);

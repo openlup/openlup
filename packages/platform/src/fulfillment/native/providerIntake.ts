@@ -10,6 +10,10 @@ import { createPostgresFulfillmentShipmentCommandPort } from './shipmentCommands
 
 const repeatedPageRemedy = 'an item on this page fails repeatedly; inspect the fulfilment exception for the order and record it manually';
 
+type NativeCheckpointReader = {
+  readLatestTerminalRunMetadata(jobName: string, scope: 'nativeFulfillmentCheckpoint'): Promise<Record<string, unknown> | null>;
+};
+
 type Ingress = Parameters<typeof verifyAndNormalizeFulfillmentObservation>[0];
 type Poll = Parameters<typeof runFulfillmentReconciliationPage>[0];
 type Evidence = Parameters<Poll['lifecycle']['findDispatchRef']>[0];
@@ -203,14 +207,17 @@ export function createPostgresFulfillmentProviderIntake(input: NativeFulfillment
       if (!Number.isSafeInteger(job.pageSize) || job.pageSize <= 0) throw new Error('reconciliation_page_size_invalid');
       const claim = await job.ledger.claimJobRun(job.jobName, job.invocation);
       if (!claim.acquired || !claim.runId) return { kind: 'skipped' as const, reason: claim.reason };
+      const reader: NativeCheckpointReader = job.ledger;
       let checkpoint: unknown;
-      try { checkpoint = await job.ledger.readLatestTerminalRunMetadata(job.jobName); }
+      try { checkpoint = await reader.readLatestTerminalRunMetadata(job.jobName, 'nativeFulfillmentCheckpoint'); }
       catch {
-        const released = await job.ledger.finishJobRun(job.jobName, claim.runId, job.invocation, 'failed', {
-          checked: 0, updated: 0, failures: 1, skipped: false, reason: 'reconciliation_checkpoint_read_failed',
-        });
+        const reason = 'reconciliation_checkpoint_read_failed';
+        const summary = { checked: 0, updated: 0, failures: 1, skipped: false, reason } as const;
+        // Finish metadata has precedence over correlation and claim metadata.
+        const extraMetadata = { failures: summary.failures, skipped: summary.skipped, reason, reconciliationPagination: null };
+        const released = await job.ledger.finishJobRun(job.jobName, claim.runId, job.invocation, 'failed', summary, extraMetadata);
         if (!released) throw new Error('reconciliation_job_lease_lost');
-        return { kind: 'failed' as const, status: 502 as const, reason: 'reconciliation_checkpoint_read_failed' };
+        return { kind: 'failed' as const, status: 502 as const, reason };
       }
       const page = await runFulfillmentReconciliationPage({ ...poll, provider: input.pages!, checkpoint, pageSize: job.pageSize });
       const pagination = page.metadata.reconciliationPagination;
