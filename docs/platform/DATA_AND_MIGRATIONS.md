@@ -474,6 +474,11 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
    `catalogAdmissionFence.ts:223–250`,
    `20261125010000_catalog_purchase_admission.sql:2–24,58–94`.
 
+On hook expiry, the fence discards the writer connection and releases the
+probe. The fence key is released within the hook budget plus the wall margin
+plus two round trips of the writer connection. Writer connection latency
+delays delivery of the timeout settings and the lock request to PostgreSQL.
+
 - **Erasure.** The privacy store takes the ledger in `SHARE ROW EXCLUSIVE`,
   then the identity challenge relation in `EXCLUSIVE` before its subject locks.
   Destination erasure locks the client `FOR UPDATE`, removes selections and
