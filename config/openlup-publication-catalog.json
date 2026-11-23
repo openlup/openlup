@@ -1610,6 +1610,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125090000_catalog_runtime_checkout_dark.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5286,6 +5290,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125090000_catalog_runtime_checkout_dark.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -6555,6 +6563,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/catalogAdmissionRefusal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/catalogAdmissionRefusalMessage.ts",
       "class": "public-output"
     },
     {
@@ -11366,6 +11378,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fixtures/catalogue-conformance/six-errors.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fixtures/catalogue-conformance/volume-net-content.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/adapterConformance.test.ts",
       "class": "public-output"
     },
@@ -12071,6 +12091,10 @@
     },
     {
       "path": "packages/platform/test/operations/settingsBoundParity.main.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/settingsCandidateParity.test.ts",
       "class": "public-output"
     },
     {
@@ -14671,6 +14695,14 @@
     },
     {
       "path": "scripts/serverless-include-globs.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/settings-candidate-guard.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/settings-candidate-guard.ts",
       "class": "public-output"
     },
     {
@@ -31463,6 +31495,14 @@
     },
     {
       "path": "tests/postgres/catalogQuantities.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogRuntimeCheckout.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogRuntimeCheckout.test.ts",
       "class": "public-output"
     },
     {

@@ -1,0 +1,39 @@
+{
+  "packs": [{
+    "pack": {
+      "id": "outer", "namespace": "outer", "version": 1, "openlupRange": "1.x", "capabilities": {}, "taxClasses": [],
+      "types": [], "categories": []
+    }
+  }, {
+    "pack": {
+      "id": "items", "namespace": "items", "version": 1, "openlupRange": "1.x", "capabilities": {}, "taxClasses": [],
+      "types": [{
+        "key": "items:invalid", "version": 1, "taxClass": "missing",
+        "subscriptionProfileRef": { "key": "items:repeat", "version": 1 },
+        "units": [{ "code": "openlup:g", "dimension": "mass", "integral": false }],
+        "netContentUnits": ["openlup:g"], "dimensions": []
+      }, {
+        "key": "items:other", "version": 1, "promotions": [],
+        "units": [{ "code": "openlup:g", "dimension": "mass", "integral": false }],
+        "netContentUnits": ["openlup:g"], "dimensions": []
+      }, {
+        "key": "items:valid", "version": 1,
+        "units": [{ "code": "openlup:g", "dimension": "mass", "integral": false }],
+        "netContentUnits": ["openlup:g"], "dimensions": [{ "key": "choice", "kind": "choice", "values": ["one"] }]
+      }]
+    },
+    "drafts": [{
+      "schemaVersion": 1,
+      "product": { "id": "00000000-0000-4000-8000-000000000001", "type": { "key": "items:valid", "version": 1 }, "dimensions": ["choice", "missing"] },
+      "skus": [{
+        "id": "00000000-0000-4000-8000-000000000002", "productId": "00000000-0000-4000-8000-000000000001",
+        "options": { "choice": { "kind": "choice", "value": "two" } }
+      }]
+    }, {
+      "schemaVersion": 1,
+      "product": { "id": "00000000-0000-4000-8000-000000000003", "type": { "key": "items:invalid", "version": 1 }, "dimensions": ["missing"] },
+      "skus": []
+    }],
+    "quantities": [{ "type": { "key": "items:invalid", "version": 1 }, "value": null }]
+  }]
+}

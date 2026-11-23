@@ -79,7 +79,7 @@ describe("real fast preflight", () => {
     directory = mkdtempSync(join(tmpdir(), "openlup-fast-preflight-"));
     root = join(directory, "fixture");
     childProcess.execFileSync("git", ["clone", "--shared", "--no-hardlinks", "-q", source, root], { env, timeout: 30000 });
-    for (const file of ["scripts/preflight.ts", "scripts/agent-review-landing.mjs", ...["core", "outbox", "platform"].map(pkg => `packages/${pkg}/scripts/api-contract.ts`)]) {
+    for (const file of ["scripts/preflight.ts", "scripts/settings-candidate-guard.ts", "scripts/agent-review-landing.mjs", ...["core", "outbox", "platform"].map(pkg => `packages/${pkg}/scripts/api-contract.ts`)]) {
       cpSync(join(source, file), path(file));
     }
     git("config", "user.name", "Fixture"); git("config", "user.email", "fixture@example.invalid");
@@ -392,6 +392,7 @@ describe("fast preflight", () => {
     const skipLines: Record<string, string> = {
       "carrier toolchain": `carrier toolchain: Node ${process.versions.node}, npm ${npmVersion}, ICU ${process.versions.icu}`,
       fragments: "fragments: skip no released package source changed",
+      "settings-candidates": "settings-candidates: skip no packages/platform/src/**/*.ts files changed",
       "test dates": "test dates: skip no new or changed test files",
       "test expiries": "test expiries: skip no new or changed test files",
       gitleaks: "gitleaks: skip gitleaks is not on PATH; the required gitleaks job still scans the pull request",
@@ -404,7 +405,7 @@ describe("fast preflight", () => {
       .toEqual([
         "clean", "merge-clean", "neutrality", "ui-neutrality", "ast-grep", "ast-grep-hygiene",
         "carrier toolchain", "publication", "carriers", "migration projection",
-        "fragments", "test dates", "test expiries", "gitleaks", "guide-check", "package-manifest", "dco",
+        "fragments", "settings-candidates", "test dates", "test expiries", "gitleaks", "guide-check", "package-manifest", "dco",
       ].map((name) => skipLines[name] ?? `${name}: ${failures.includes(name) ? `FAIL ${reasons[name]}` : "ok"}`));
     expect(lines.filter((line) => line.startsWith("    "))).toEqual(
       failures.includes("publication") ? [conflict, increase, mismatch, closing].map((line) => `    ${line}`) : [],
@@ -553,6 +554,49 @@ describe("fast preflight", () => {
     expect(lines).toContain("guide-check: ok");
     expect(lines).toContain("package-manifest: ok");
     expect(JSON.parse(lines.at(-1)!)).toEqual({ preflight: "fast", result: "pass", head, failed: [] });
+  });
+
+  it("fails --fast when an unaccounted settings candidate constant is added in packages/platform/src/<domain>/ and passes when annotated", async () => {
+    const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
+    const targetPath = "packages/platform/src/commerce/policy.ts";
+    const runFastWithDiff = async (diffBody: string) => {
+      mockChildProcesses((bin, args) => {
+        const call = `${bin} ${(args ?? []).join(" ")}`;
+        if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
+        if (call === "git rev-parse HEAD") return { status: 0, stdout: head, stderr: "" };
+        if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
+        if (call === `git diff --name-status --no-renames -z ${fork} HEAD`) return { status: 0, stdout: `M\0${targetPath}\0`, stderr: "" };
+        if (call === `git diff --unified=2 --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ ${fork} HEAD -- ${targetPath}`) {
+          return {
+            status: 0,
+            stdout: `diff --git a/${targetPath} b/${targetPath}\n+++ b/${targetPath}\n@@ -1,1 +1,3 @@\n${diffBody}\n`,
+            stderr: "",
+          };
+        }
+        if (call === "git rev-parse origin/main") return { status: 0, stdout: upstream, stderr: "" };
+        if (bin === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+        return { status: 0, stdout: "", stderr: "" };
+      });
+      vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1fchange\n\nSigned-off-by: Test Fixture <fixture@example.invalid>\0`);
+      const lines: string[] = [];
+      vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      return { exit: await main(now, ["--fast"]), lines };
+    };
+
+    const unaccounted = await runFastWithDiff(" export const existing = 1;\n+export const CHECKOUT_GRACE_MINUTES = 15;");
+    expect(unaccounted.exit).toBe(1);
+    expect(JSON.parse(unaccounted.lines.at(-1)!)).toEqual({
+      preflight: "fast", result: "fail", head, failed: ["settings-candidates"],
+    });
+    expect(unaccounted.lines).toContain("settings-candidates: FAIL 1 unaccounted settings candidate(s); evaluate against CONTRIBUTING.md#add-a-setting");
+
+    const annotated = await runFastWithDiff("+// settings-candidate: excluded (internal transport timeout)\n+export const CHECKOUT_GRACE_MINUTES = 15;");
+    expect(annotated.exit).toBe(0);
+    expect(JSON.parse(annotated.lines.at(-1)!)).toEqual({
+      preflight: "fast", result: "pass", head, failed: [],
+    });
+    expect(annotated.lines).toContain("settings-candidates: ok");
   });
 });
 

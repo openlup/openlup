@@ -33,9 +33,13 @@ describe("neutral checkout command", () => {
     expect(f.deps.quotePort.createQuote).toHaveBeenCalledOnce();
     expect(f.deps.persistencePort.persistCheckoutCommand).toHaveBeenCalledOnce();
     await expect(orderDraftPort.createOrderDraft.mock.results[0].value).resolves.toMatchObject({ orderDraft: { replayed: true } });
-    expect(query).toHaveBeenCalledOnce();
-    expect(query.mock.calls[0][0]).toContain("public.commerce_create_promoted_order_draft_with_outbox");
-    expect(query.mock.calls[0][1]?.[0]).toBe(f.command.idempotencyKey);
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[0]).toEqual([
+      "SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1",
+      [f.command.idempotencyKey],
+    ]);
+    expect(query.mock.calls[1][0]).toContain("public.commerce_create_promoted_order_draft_with_outbox");
+    expect(query.mock.calls[1][1]?.[0]).toBe(f.command.idempotencyKey);
     expect(f.deps.quotePort.createQuote.mock.invocationCallOrder[0])
       .toBeLessThan(f.deps.persistencePort.persistCheckoutCommand.mock.invocationCallOrder[0]);
     expect(f.deps.persistencePort.persistCheckoutCommand.mock.invocationCallOrder[0])

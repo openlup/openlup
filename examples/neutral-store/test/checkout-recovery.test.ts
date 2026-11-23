@@ -183,7 +183,8 @@ test('expired checkout checks owned draft evidence before disclosing the closed 
   const action = composeExpiredRecovery(pool, {} as never, tokens)['checkout.recovery']!;
   const context = { config: Object.values(configurations)[0]!, commandKey: 'test-command-identity', actor: { customerRef: null, operatorRef: null } };
   const request = { token: `rcv_${'a'.repeat(43)}`, action: 'pay' };
-  assert.deepEqual(await action(request, context), { ok: false, code: 'catalog_admission_quote_authority_required' });
+  assert.deepEqual(await action(request, context), { ok: false, code: 'catalog_admission_quote_authority_required',
+    message: 'Governed checkout is unavailable for this selection. Use a supported offer or replay the original request.' });
   exactReceipt = false;
   assert.deepEqual(await action(request, context), { ok: false, code: 'starter_recovery_unavailable' });
 });

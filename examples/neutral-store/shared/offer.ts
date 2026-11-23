@@ -15,6 +15,12 @@ export interface Cart {
   lines: CartLine[];
 }
 
+export const checkoutSubscriptionOfferVersion = 'classic';
+
+export function checkoutOfferContext(mode: PurchaseMode) {
+  return mode === 'subscription' ? { offerVersion: checkoutSubscriptionOfferVersion } : {};
+}
+
 export interface OfferQuote {
   lines: Array<CartLine & { baseUnitMinor: number; unitMinor: number; lineMinor: number }>;
   subtotalMinor: number;
@@ -80,7 +86,7 @@ export function parseCart(configuration: string, input: unknown):
 export function validateCart(config: StoreConfig, input: unknown, phase: 'checkout' | 'graduation' = 'checkout'): ReturnType<typeof parseCart> {
   const parsed = parseCart(config.id,input);
   if (!parsed.ok) return parsed;
-  const { cart } = parsed, issues: OfferIssue[] = [], plan = config.subscriptionOffers.classic;
+  const { cart } = parsed, issues: OfferIssue[] = [], plan = config.subscriptionOffers[checkoutSubscriptionOfferVersion];
   if (cart.mode === 'subscription' && cart.lines.length > plan.maximumBaseLines) return fail('cart_invalid');
   if (cart.mode === 'subscription' && !contains(phase === 'checkout' ? plan.checkoutDays ?? plan.days : plan.days,cart.cadenceDays!)) return fail('cadence_unavailable');
   for (const line of cart.lines) {

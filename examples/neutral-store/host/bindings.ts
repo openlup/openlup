@@ -72,7 +72,8 @@ export async function dispatchAction(
     const selected = operation === 'checkout.create' && bindings.actions[operation]
       ? parseCart(context.config.id,input.cart) : validateCart(context.config,input.cart);
     if (!selected.ok) return { ok: false,code: selected.issues[0]!.code };
-    if (selected.cart.mode === 'subscription' && input.acquisitionCapability !== 'subscription-acquisition.v1') return { ok: false,code: 'acquisition_terms_capability_required' };
+    if (selected.cart.mode === 'subscription' && (operation === 'offer.validate' || !bindings.actions[operation])
+      && input.acquisitionCapability !== 'subscription-acquisition.v1') return { ok: false,code: 'acquisition_terms_capability_required' };
     if (selected.cart.mode === 'subscription' && operation === 'offer.validate' && !bindings.actions[operation]) return { ok: false,code: 'host_binding_required' };
   }
   if (operation === 'offer.validate' && bindings.actions[operation]) return bindings.actions[operation]!(input, context);

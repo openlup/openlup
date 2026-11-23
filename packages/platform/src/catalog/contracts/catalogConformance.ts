@@ -28,7 +28,9 @@ export type CatalogConformanceCode =
   | "option_missing" | "option_invalid" | "unit_factor_missing" | "sku_identity_change_requires_new_sku"
   | "duplicate_combination" | "combination_digest_collision" | "duplicate_sku_id" | "combination_identity_integrity_failed"
   | "sku_payload_limit" | "product_capacity_exceeded" | "product_capacity_invalid"
-  | "definition_profile_invalid" | "cadence_kind_unsupported";
+  | "definition_profile_invalid" | "cadence_kind_unsupported"
+  | "advisory_net_content_not_publishable" | "advisory_filter_flags_unused" | "advisory_unit_identifier_missing"
+  | "advisory_draft_version_not_publishable" | "advisory_fixtures_skipped_definition_invalid";
 /** @experimental */
 export interface CatalogConformanceRule { severity: "error" | "warning"; rule: string; fix: string; recipe: string }
 /** @experimental */
