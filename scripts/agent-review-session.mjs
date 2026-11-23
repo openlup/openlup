@@ -197,7 +197,8 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
       const trustedPaths = ['scripts/agent-review-generators.mjs', 'scripts/agent-review-session.mjs',
         'scripts/build-packages-incremental.mjs', 'scripts/settings-catalogue.ts',
         'config/openlup-packages.json', 'package-lock.json',
-        ...ownerPaths.filter(path => /\/api\//u.test(path)).map(path => `packages/${path.split('/')[1]}/scripts/api-contract.ts`)];
+        ...ownerPaths.filter(path => /\/api\//u.test(path)).map(path => `packages/${path.split('/')[1]}/scripts/api-contract.ts`),
+        ...(ownerPaths.some(path => path.startsWith('packages/core/api/')) ? ['packages/core/scripts/public-api-config.ts'] : [])];
       const trustedRows = ownerPaths.length ? await Promise.allSettled(trustedPaths.map(async path =>
         [path, await read(current.base, path)])) : [];
       const trusted = Object.fromEntries(trustedRows.filter(row => row.status === 'fulfilled').map(row => row.value));

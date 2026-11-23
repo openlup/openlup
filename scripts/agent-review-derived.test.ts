@@ -316,8 +316,9 @@ it.each([
   ['outbox', 'missing'],
   ['outbox', 'removed'],
   ['outbox', 'main only'],
+  ['core', 'first parent'],
   ['core', 'missing'],
-])('checks the %s change note through landing (%s)', (owner, note) => {
+])('checks the %s change note through landing (%s)', async (owner, note) => {
   const directory = `packages/${owner}`;
   const entry = `${directory}/src/${owner === 'core' ? 'subscription/index.ts' : 'index.ts'}`;
   const notePath = `${directory}/changes/fixture-api.md`;
@@ -335,9 +336,14 @@ it.each([
     const right = commit(); setMain(right); checkout(left);
     if (note === 'first parent') {
       landingCli();
+      const landed = git('rev-parse', 'HEAD');
       expect(git('show', '-s', '--format=%P', 'HEAD')).toBe(`${left} ${right}`);
       expect(git('show', `HEAD:${report}`)).toContain('declare const fixtureApi = 1');
       expect(git('status', '--porcelain')).toBe('');
+      const integration = await proveReviewIntegration(root,
+        await captureCommittedReviewCandidate(root, fork, left),
+        await captureCommittedReviewCandidate(root, right, landed));
+      expect(integration).toMatchObject({ kind: 'derived', derived: true });
     } else {
       expect(landingCli).toThrow(`landing: @openlup/${owner} API snapshots changed; add or modify ${directory}/changes/*.md or ${directory}/CHANGELOG.md on the first parent and retain it in the merge`);
       expect(git('rev-parse', 'HEAD')).toBe(left);
@@ -346,7 +352,7 @@ it.each([
       expect(git('diff', '--cached', '--name-only', '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api')).toBe('');
     }
   } finally { restoreDerivedFixture(); }
-}, 60000);
+}, 180000);
 
 it('refuses an inventory-only landing with a mismatched installed dependency before writing', () => {
   const installedLock = 'node_modules/.package-lock.json';

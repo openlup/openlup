@@ -86,7 +86,12 @@ export function runDerivedOutputGenerators(root, source, installationRoot, carri
     for (const owner of reports) {
       const script = `packages/${owner}/scripts/api-contract.ts`;
       if (trusted[script] !== readFileSync(join(root, script), 'utf8')) throw new Error(`derived: changed generator ${script}`);
-      execFileSync(process.execPath, [join(root, script), '--update'], { cwd: root, timeout: 120000, stdio: 'pipe' });
+      if (owner === 'core') {
+        const helper = 'packages/core/scripts/public-api-config.ts';
+        if (trusted[helper] !== readFileSync(join(root, helper), 'utf8')) throw new Error(`derived: changed generator ${helper}`);
+      }
+      execFileSync(process.execPath, [join(root, script), '--update', ...(owner === 'platform' ? [] : ['--derived-proof'])],
+        { cwd: root, timeout: 120000, stdio: 'pipe' });
     }
   }
   if (settings) {
