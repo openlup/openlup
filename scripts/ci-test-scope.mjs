@@ -62,22 +62,19 @@ const PACKAGE_SRC_DIRS = [
 export const TOOLING_INPUTS = {
   'scripts/agent-review-derived-inventory.test.ts': [
     'db/platform/migrations/',
-    'packages/platform/sql/',
-    'packages/core/docs/guide/reference/sql.md',
-    'packages/platform/src/migrations/',
-    'packages/platform/src/catalog/',
-    'packages/core/package.json',
-    'packages/outbox/package.json',
-    'packages/platform/package.json',
+    'packages/',
     'config/platform-migration-manifest.json',
     'config/reviewed-platform-forwards.json',
     'config/openlup-publication-catalog.json',
     'config/openlup-packages.json',
     'config/ci-images.json',
+    'config/doc-routing.json',
+    'docs/platform/SOURCE_MAP.md',
+    'src/lib/coreDomains.ts',
     'tests/postgres/current-installation-inventory.json',
     'tests/helpers/postgresContainer.ts',
     'server/adapters/postgres/',
-  ], // Real Docker landing:merge + installation-inventory-refresh.ts witness.
+  ], // Real Docker landing:merge + installation-inventory-refresh.ts witness (builds core/outbox/platform, syncs SQL/source-map, refreshes 5 PG inventories).
   'scripts/agent-review-queue.test.ts': [], // Synthetic Git repositories and recorded transport.
   'scripts/agent-review-gate.test.ts': [], // Real-Git witnesses of the session CLI and hosted admission.
   'scripts/agent-review-registry.test.ts': ['config/openlup-publication-catalog.json', 'packages/platform/test/packageBoundary.test.ts'], // Closed-registry union and review-economy fixtures reading REGISTRY_PATHS.
@@ -96,7 +93,7 @@ export const TOOLING_INPUTS = {
   'scripts/packages/guide-tutorial.test.ts': ['packages/core/docs/guide/start/tutorial.md'], // Reads packages/core/docs/guide/start/tutorial.md plus temp fixtures.
   'scripts/packages/outbox-consumer-proof.test.ts': ['packages/', 'server/runtime/outbox/', 'config/openlup-packages.json', 'config/ci-images.json'], // Actual config, image pins, packs, smoke scripts and reference wiring.
   'scripts/packages/package-manifest-policy.test.ts': ['packages/', 'config/openlup-packages.json'], // Actual config, core exports and root tsconfigs.
-  'scripts/packages/package-release.test.ts': ['packages/core/scripts/'], // Release module mutations and Git fixtures (transitively imports core consumer audit via release-docs-pass).
+  'scripts/packages/package-release.test.ts': ['packages/core/scripts/'], // Release module mutations and synthetic Git fixtures.
   'scripts/packages/package-size-policy.test.ts': ['packages/', 'config/openlup-packages.json'], // Actual config, npm packs/browser entries and budgets.
   'scripts/packages/package-tarball-gate.test.ts': ['packages/'], // Tarball and attestation fixtures.
   'scripts/packages/packages-check.test.ts': ['packages/', 'config/openlup-packages.json'], // Actual manifest-only check plus cold fixture builds.

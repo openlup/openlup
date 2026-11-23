@@ -39,7 +39,7 @@ describe('conservative tooling scope', () => {
   );
   it('excludes bounded tooling tests for docs and unrelated config changes', () => {
     expect(excludedToolingTests(['docs/platform/README.md'])).toEqual(all);
-    expect(excludedToolingTests(['config/doc-routing.json'])).toEqual(all);
+    expect(excludedToolingTests(['config/doc-routing.json'])).toEqual(all.filter(test => test !== 'scripts/agent-review-derived-inventory.test.ts'));
     expect(excludedToolingTests(['config/openlup-packages.json'])).toEqual(all.filter(test =>
       !['agent-review-derived-inventory', 'distribution-cli-proof', 'distribution-cli-settings', 'outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy', 'packages-check'].some(name => test.endsWith(`${name}.test.ts`))));
   });
@@ -199,8 +199,17 @@ describe('conservative tooling scope', () => {
       }
     }
     expect(excludedToolingTests(['src/pages/Home.tsx'])).toContain('scripts/agent-review-derived-inventory.test.ts');
-    expect(excludedToolingTests(['db/platform/migrations/20990101000000_example.sql']))
-      .not.toContain('scripts/agent-review-derived-inventory.test.ts');
+    for (const inventoryInput of [
+      'db/platform/migrations/20990101000000_example.sql',
+      'packages/core/scripts/documentation-sql-inventory.ts',
+      'packages/outbox/sql/20990101000000_example.sql',
+      'packages/platform/src/portability/index.ts',
+      'docs/platform/SOURCE_MAP.md',
+      'src/lib/coreDomains.ts',
+    ]) {
+      expect(excludedToolingTests([inventoryInput]), inventoryInput)
+        .not.toContain('scripts/agent-review-derived-inventory.test.ts');
+    }
 
     expect(excludedToolingTests(['server/adapters/postgres/migrationRunner.ts'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['src/domains/commerce/offerAvailability.ts'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');

@@ -17,9 +17,8 @@ const npmCli = fixtureNpmCli();
 const fixtureEnvironment = { ...localFixtureEnvironment(), ...carrierLocale, npm_execpath: npmCli };
 const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
-const describeIfDocker = (await dockerAvailable()) ? describe : describe.skip;
 
-describeIfDocker('landing:merge real Docker inventory refresh witness', () => {
+describe('landing:merge real Docker inventory refresh witness', () => {
   let root = '';
 
   afterAll(() => {
@@ -27,6 +26,9 @@ describeIfDocker('landing:merge real Docker inventory refresh witness', () => {
   });
 
   it('runs real installation-inventory-refresh.ts against Docker PostgreSQL and lands derived integration proof', async () => {
+    if (!await dockerAvailable()) {
+      throw new Error('landing:merge inventory witness requires Docker PostgreSQL');
+    }
     root = realpathSync(mkdtempSync(join(tmpdir(), 'openlup-derived-inventory-')));
     execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, root], { env: fixtureEnvironment, timeout: 30000 });
     const sourcePaths = (...args: string[]) => execFileSync('/usr/bin/git', args, { cwd: source, env: fixtureEnvironment, encoding: 'utf8' }).split('\0').filter(Boolean);
