@@ -54,9 +54,9 @@ describe("marketing research survey responses public BFF route", () => {
 
 });
 
-const now = "2026-01-15T12:00:00.000Z";
-const cutoff = "2026-01-15T11:00:00.000Z";
-const recent = "2026-01-15T11:59:00.000Z";
+const now = "2020-01-15T12:00:00.000Z";
+const cutoff = "2020-01-15T11:00:00.000Z";
+const recent = "2020-01-15T11:59:00.000Z";
 const producer = "survey_responses_producer";
 const consumer = "survey_responses_consumer";
 const peer = "192.0.2.10";
@@ -140,7 +140,7 @@ describe("managed survey response quota and storage", () => {
     const db = surveyDatabase([
       { table: producer, ip_address: null, created_at: recent, id: "recent" },
       { table: producer, ip_address: null, created_at: cutoff, id: "at-cutoff" },
-      { table: producer, ip_address: null, created_at: "2026-01-15T10:59:59.999Z", id: "too-old" },
+      { table: producer, ip_address: null, created_at: "2020-01-15T10:59:59.999Z", id: "too-old" },
       { table: producer, ip_address: peer, created_at: recent, id: "known" },
       { table: consumer, ip_address: null, created_at: recent, id: "other-table" },
     ]);

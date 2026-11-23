@@ -1,4 +1,5 @@
 import { withObservedRoute } from "../../../_lib/observability/route.js";
+import { readProcessEnvironment } from "../../../_lib/observability/runtimeProvenance.js";
 import { rateLimitClientAddress } from "../../../_lib/rate-limit/clientAddress.js";
 import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.js";
 import { createResearchSurveySubmitHandler } from "../../../domains/marketing/research/surveyResponseSubmitHandler.js";
@@ -14,7 +15,7 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     if (isAcquisitionSurveyView(req)) return handleAcquisitionSurveySubmit(req, res);
     return sendDirectUnavailable(res);
   }
-  const env = process.env;
+  const env = readProcessEnvironment();
   return createResearchSurveySubmitHandler({
     submitPort: createSupabaseResearchSurveySubmitPort(env, rateLimitClientAddress(req, env)),
   })(req, res);
