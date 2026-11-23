@@ -4,7 +4,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogDraftStoreV4,
   createPostgresCatalogPublicationCommands, createPostgresCommerceQuoteCatalogReadPort, createCatalogProductTypeRegistry, withCatalogPublicationRules,
-  catalogDefinitionDigest, type CatalogDraftPayloadV4, type CatalogPublicationCommand, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
+  catalogDefinitionDigest, catalogInternalGtin, type CatalogDraftPayloadV4, type CatalogPublicationCommand, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogHeadRef, type CatalogPublishCommand } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { publicationWireVectors, withCatalogAdmissionFence } from "@openlup/platform/catalog/testing";
@@ -89,7 +89,9 @@ function native(query?: (db: PgQueryExecutor, sql: string, args?: unknown[]) => 
   });
   return { ...api, disableRules() { allowed = false; } };
 }
-function authored(sequence: number) {
+type DraftIdentifier = NonNullable<CatalogDraftPayloadV3["skus"][number]["identifiers"]>[number];
+
+function authored(sequence: number, internalIdentifier?: DraftIdentifier) {
   const productId = randomUUID(), draftId = randomUUID(), skuId = randomUUID(), documentId = randomUUID();
   const slug = `article-${sequence}`, code = `ARTICLE-${sequence}`;
   const barcodePrefix = String(590123412340 + sequence);
@@ -100,7 +102,7 @@ function authored(sequence: number) {
   const ref = { id: documentId, productId, revisionNo: 1, schemaId: "example:document.v1",
     sourceRef: "example:source", documentRef: document.id, digest };
   const facts = { skuCode: code, title: "Example article", minQuantity: 1, isAddon: false, facts: { derived: 12 } };
-  const identifier = { scheme: "gs1:gtin", issuer: "example", value: barcode, packagingLevel: "unit" as const };
+  const identifier = internalIdentifier ?? { scheme: "gs1:gtin", issuer: "example", value: barcode, packagingLevel: "unit" as const };
   const payload: CatalogDraftPayloadV3 = { schemaVersion: 3, product: { id: productId, type: { key: installed.key, version: 1 },
     dimensions: ["finish"], slug, primarySkuId: skuId, documentRevision: ref,
     sharedContent: { schemaVersion: 1, catalogAction: "create", document, presentation: {}, publicationSkus: [facts],
@@ -326,6 +328,32 @@ it("resamples legacy GTINs committed between the first read and the catalogue fe
   expect(await publisher.execute(commands.publish, publisherCapability)).toMatchObject({ outcome: "conflict", reason: "publication_gtin_conflict" });
   expect(crossed).toBe(true);
   expect((await pool.query("SELECT id FROM public.catalog_products WHERE id=$1", [data.productId])).rows).toEqual([]);
+});
+
+it("duplicate_internal_sequence_refuses_gtin_conflict", async () => {
+  const identifier = { scheme: "gs1:gtin", issuer: "example:internal", value: catalogInternalGtin(200), packagingLevel: "unit" } as const;
+  const first = authored(200, identifier);
+  const second = authored(201, { ...identifier, issuer: "another:internal" });
+  const api = native(), who = (await api.authorize(actor))!;
+  await save(first, 1);
+  const initial = await prepare(first, 1, null);
+  expect(await api.execute(initial.approve, who)).toMatchObject({ outcome: "committed" });
+  expect(await api.execute(initial.publish, who)).toMatchObject({ outcome: "committed" });
+  await save(second, 1);
+  const duplicate = await prepare(second, 1, null);
+  expect(await api.execute(duplicate.approve, who)).toMatchObject({ outcome: "committed" });
+  expect(await api.execute(duplicate.publish, who)).toMatchObject({
+    outcome: "conflict", reason: "publication_gtin_conflict",
+    message: "This GTIN is already assigned. Verify the barcode and prepare the draft again.",
+  });
+
+  const replacement = catalogInternalGtin(201);
+  second.payload.skus[0]!.identifiers![0]!.value = replacement;
+  second.payload.publication.operations.find(operation => operation.op === "create_identifier")!.value = replacement;
+  await save(second, 2);
+  const retry = await prepare(second, 2, null);
+  expect(await api.execute(retry.approve, who)).toMatchObject({ outcome: "committed" });
+  expect(await api.execute(retry.publish, who)).toMatchObject({ outcome: "committed" });
 });
 
 it("waits for the draft-head write conflict before taking a decision timestamp", async () => {
@@ -623,8 +651,10 @@ describe("publication activation prices", () => {
   }
 
   async function approvedActivation(sequence: number, isAddon: boolean, missing?: "logistics" | "purchase mode",
-    { grams = 100, governed = false, db = pool } = {}) {
-    const data = authored(sequence), api = native(undefined, db), who = (await api.authorize(actor))!;
+    { grams = 100, governed = false, db = pool, internalIdentifier }: {
+      grams?: number; governed?: boolean; db?: Pool; internalIdentifier?: DraftIdentifier;
+    } = {}) {
+    const data = authored(sequence, internalIdentifier), api = native(undefined, db), who = (await api.authorize(actor))!;
     const sku = data.payload.skus[0]!;
     sku.netContent = { ...sku.netContent!, unscaled: String(grams) };
     sku.grossMass = { ...sku.netContent, unscaled: String(grams + 10) };
@@ -635,8 +665,21 @@ describe("publication activation prices", () => {
     if (sku.logisticsRef) data.payload.publication.operations.push({ op: "set_sku_metadata", skuCode: data.code, logisticsRef: sku.logisticsRef });
     const draft: CatalogDraftPayloadV3 | CatalogDraftPayloadV4 = governed
       ? { ...data.payload, schemaVersion: 4 } : data.payload;
-    await save(data, 1, draft, db);
-    const first = await prepare(data, 1, null, db);
+    let revision = 1;
+    if (internalIdentifier) {
+      const missing = structuredClone(draft);
+      missing.skus[0]!.identifiers = [];
+      missing.publication.operations = missing.publication.operations.filter(operation => operation.op !== "create_identifier");
+      await save(data, revision, missing, db);
+      const blocked = await api.prepareCandidate({ draftId: data.draftId, draftRevision: revision, expectedHead: null }, who);
+      expect(blocked).toMatchObject({ preparation: { structural: { outcome: "blocked-input", issues: expect.arrayContaining([
+        { code: "unit_trade_identifier_missing", path: "skus.0.identifiers", phase: "structural", subject: data.code,
+          message: "Add a valid unit trade identifier to the SKU, then prepare the draft again. For a product without a GS1 barcode, mint one with catalogInternalGtin." },
+      ]) } } });
+      revision += 1;
+    }
+    await save(data, revision, draft, db);
+    const first = await prepare(data, revision, null, db);
     expect(await api.execute(first.approve, who)).toMatchObject({ outcome: "committed" });
     const issue = await api.execute(first.publish, who);
     if (!("receipt" in issue) || !("head" in issue.receipt)) throw new Error(JSON.stringify(issue));
@@ -665,8 +708,8 @@ describe("publication activation prices", () => {
       content.offerMemberships = [];
       payload.publication.operations = payload.publication.operations.slice(0, 1);
     }
-    await save(data, 2, payload, db);
-    const next = await prepare(data, 2, issue.receipt.head, db);
+    await save(data, revision + 1, payload, db);
+    const next = await prepare(data, revision + 1, issue.receipt.head, db);
     expect(await api.execute(next.approve, who)).toMatchObject({ outcome: "committed" });
     const command = governed ? {
       ...next.publish, changes: [{ variantId: data.skuId, expectedRevision: 1, state: "active" }],
@@ -806,6 +849,25 @@ describe("publication activation prices", () => {
       message: expect.stringContaining(`SKU ${code}. Use gross one-time or subscription pricing`) });
     await pool.query("DELETE FROM public.price_entries WHERE id=$1", [override]);
     expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
+  });
+
+  it("sku_with_internal_identifier_publishes_and_quotes", async () => {
+    const identifier = { scheme: "gs1:gtin", issuer: "example:internal", value: catalogInternalGtin(202), packagingLevel: "unit" } as const;
+    const { api, who, command, code, skuId, slug } =
+      await approvedActivation(202, false, undefined, { db: quotePool, internalIdentifier: identifier });
+    await seedBasePrice(skuId, quotePool, quoteListId);
+    expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
+    await transaction(quotePool, async db => {
+      // The price-readiness seed has no document and cannot participate in the quote read.
+      await db.query("UPDATE public.catalog_skus SET sellable_standalone=false WHERE sku='PRICED-CORE'");
+      const catalog = createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: async (payload, envelope) => {
+        expect(payload).toEqual(authoredPublicationDocument(envelope.product.slug));
+      } });
+      expect(await catalog.listQuoteCatalogItems()).toContainEqual(expect.objectContaining({
+        skuId, skuCode: code, variantId: skuId, productSlug: slug, sellability: { oneTime: true, subscription: false },
+      }));
+      await db.query("UPDATE public.catalog_skus SET sellable_standalone=true WHERE sku='PRICED-CORE'");
+    });
   });
 
   it.each([
