@@ -31138,6 +31138,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/neutralStoreScenario.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/postgresContainer.ts",
       "class": "public-output"
     },

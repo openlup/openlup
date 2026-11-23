@@ -1,6 +1,5 @@
 /** Installed engine and seed witness; subscription admission/activation retain their explicit predecessors. */
 import { execFileSync } from 'node:child_process';
-import { createServer } from 'node:net';
 import { createRequire } from 'node:module';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -15,6 +14,7 @@ let consumer: string;
 let migrations: typeof import('@openlup/platform/migrations');
 const containers: PostgresContainer[] = [];
 const pools: Pool[] = [];
+const scenarioHelper = pathToFileURL(resolve('tests/helpers/neutralStoreScenario.mjs')).href;
 beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error('Starter quote proof requires real PostgreSQL');
   mkdirSync(resolve('.context/scratch'), { recursive: true });
@@ -59,6 +59,7 @@ afterAll(async () => {
 const shippingScript = String.raw`
   import assert from 'node:assert/strict';
   import pg from 'pg';
+  import {bindScenarioServer} from ${JSON.stringify(scenarioHelper)};
   import {configurations} from './application/owned/store.config.ts';
   import {composeNativeBindings} from './application/host/native-composition.ts';
   import {createOriginPolicy} from './application/host/origin-policy.ts';
@@ -69,14 +70,13 @@ const shippingScript = String.raw`
   config.offer.products[0].unitPrice.amountMinor = 1499;
   config.offer.shippingMinor = 640;
   configurations[fixture.configuration] = config;
+  const {server,port,base} = await bindScenarioServer();
   const {createApplication} = await import('./application/host/server.ts');
   const owner = new pg.Pool({connectionString:fixture.ownerUrl});
   const runtime = new pg.Pool({connectionString:fixture.runtimeUrl});
-  const bindings = await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,fixture.port),config,{current:'fixture-only-acceptance-key-00000000000000'});
-  const server = createApplication(bindings);
-  await new Promise(resolve=>server.listen(fixture.port,'127.0.0.1',resolve));
+  const bindings = await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),config,{current:'fixture-only-acceptance-key-00000000000000'});
+  server.on('request',createApplication(bindings).listeners('request')[0]);
   try {
-    const base = 'http://127.0.0.1:'+fixture.port;
     const call = async (operation,payload,key=crypto.randomUUID()) => {
       const response = await fetch(base+'/api/actions/'+operation,{method:'POST',headers:{Origin:base,'Content-Type':'application/json','X-Starter-Request':'1','Idempotency-Key':key},body:JSON.stringify(payload)});
       const body = await response.json();assert.equal(body.ok,true,body.code);return body;
@@ -180,16 +180,11 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
   await runner.apply();expect((await runner.status()).pending).toEqual([]);
   await owner.query("COMMENT ON DATABASE neutral_store IS 'openlup-neutral-store-demo-v1'");
   const runtime = new URL(container.connectionString);runtime.username = 'starter_runtime';runtime.password = 'synthetic-conformance';
-  const probe = createServer();
-  await new Promise<void>(resolve => probe.listen(0,'127.0.0.1',resolve));
-  const address = probe.address();
-  if (!address || typeof address === 'string') throw new Error('Starter quote fixture port unavailable');
-  const port = address.port;
-  await new Promise<void>(resolve => probe.close(() => resolve()));
   const script = String.raw`
     import assert from 'node:assert/strict';
     import pg from 'pg';
     import {createHash} from 'node:crypto';
+    import {bindScenarioServer} from ${JSON.stringify(scenarioHelper)};
     import * as awaitedPricing from '@openlup/platform/pricing';
     import {configurations} from './application/owned/store.config.ts';
     import {applyDemoSeed} from './application/installation/install.ts';
@@ -247,15 +242,14 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
       await assert.rejects(applyDemoSeed(physical,install),/starter_document_seed_conflict/);
       await owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}',$1::jsonb)",[JSON.stringify(config.quote.acquisition.delivery2DiscountBps)]);
       configurations[fixture.configuration] = config;
-      const port=fixture.port;
+      const {server,port,base}=await bindScenarioServer();
       const {createApplication}=await import('./application/host/server.ts');
       const {composeNativeBindings}=await import('./application/host/native-composition.ts');
       const {createOriginPolicy}=await import('./application/host/origin-policy.ts');
       const keyring={current:'fixture-only-acceptance-key-00000000000000'};
       const bindings=await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),config,keyring);
-      const server=createApplication(bindings);await new Promise(resolve=>server.listen(port,'127.0.0.1',resolve));
+      server.on('request',createApplication(bindings).listeners('request')[0]);
       try {
-        const base='http://127.0.0.1:'+port;
         const call=async(operation,payload,key=crypto.randomUUID())=>{
           const response=await fetch(base+'/api/actions/'+operation,{method:'POST',headers:{Origin:base,'Content-Type':'application/json','X-Starter-Request':'1','Idempotency-Key':key},body:JSON.stringify(payload)});
           return {body:await response.json(),cookie:response.headers.get('set-cookie')};
@@ -352,14 +346,14 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
       console.log(JSON.stringify({configuration:config.id,unit:1420,subtotal:4260,second:3958,capabilityRefused:true,secondPromiseRefresh:true,retainedCapture:true}));
     } finally {await runtime.end();await owner.end();}
   `;
-  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,port,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${script}`);
+  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${script}`);
   const childStarted = performance.now();
   let output: string;
-  try { output = execFileSync(process.execPath,['--experimental-strip-types','scenario.mjs','--configuration',configuration,'--port',String(port)], { cwd: consumer,encoding: 'utf8',timeout: 20_000 }); }
+  try { output = execFileSync(process.execPath,['--experimental-strip-types','scenario.mjs','--configuration',configuration], { cwd: consumer,encoding: 'utf8',timeout: 20_000 }); }
   catch (error) { throw new Error((error as { stderr?: Buffer }).stderr?.toString() ?? 'Starter quote child failed',{ cause: error }); }
   expect(JSON.parse(output.trim())).toMatchObject({ configuration,unit: 1420,subtotal: 4260,second: 3958,capabilityRefused: true,secondPromiseRefresh: true,retainedCapture: true });
-  writeFileSync(join(consumer,'shipping-scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,port,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${shippingScript.replaceAll('\\`','`')}`);
-  const shippingRun = () => execFileSync(process.execPath,['--experimental-strip-types','shipping-scenario.mjs','--configuration',configuration,'--port',String(port)], { cwd: consumer,encoding: 'utf8',timeout: 20_000,stdio: 'pipe' });
+  writeFileSync(join(consumer,'shipping-scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${shippingScript.replaceAll('\\`','`')}`);
+  const shippingRun = () => execFileSync(process.execPath,['--experimental-strip-types','shipping-scenario.mjs','--configuration',configuration], { cwd: consumer,encoding: 'utf8',timeout: 20_000,stdio: 'pipe' });
   let shippingOutput: string;
   try { shippingOutput = shippingRun(); }
   catch (error) { throw new Error((error as { stderr?: Buffer }).stderr?.toString() ?? 'Shipping child failed',{ cause: error }); }
