@@ -221,6 +221,8 @@ export function landingSlotPlan(prAddedPaths, mainMigrationPaths) {
     const slot = MIGRATION_FORWARD.exec(path)[1];
     if (slot > maxMainSlot) usedSlots.add(slot);
   }
+  while (usedSlots.has(next)) next = nextFreeMigrationSlot(next);
+  const nextFreeSlot = next;
   const changes = [];
   const seen = new Set();
   for (const path of additions) {
@@ -235,7 +237,7 @@ export function landingSlotPlan(prAddedPaths, mainMigrationPaths) {
     occupied.add(target);
     usedSlots.add(MIGRATION_FORWARD.exec(target)[1]);
   }
-  return { maxMainSlot, nextFreeSlot: maxMainSlot === '00000000000000' ? next : nextFreeMigrationSlot(maxMainSlot), changes };
+  return { maxMainSlot, nextFreeSlot, changes };
 }
 
 export function assertAppendOnlyLandingSlots(prAddedPaths, mainMigrationPaths) {
@@ -260,9 +262,22 @@ export async function assertNoAuthoredSlotReferences(cwd, base, head, changes) {
 }
 
 export function applyMigrationReslot(cwd, changes, moveFiles = true) {
+  const targets = new Set(changes.map(({ target }) => target));
   const replace = value => {
     if (typeof value === 'string') return changes.reduce((text, { path, target }) => text === path ? target : text, value);
-    if (Array.isArray(value)) return value.map(replace);
+    if (Array.isArray(value)) {
+      const items = value.map(replace);
+      const key = entry => entry && typeof entry === 'object' ? entry.file ?? entry.path : undefined;
+      const order = entry => MIGRATION_FORWARD.exec(key(entry) ?? '')?.[1] ?? key(entry);
+      const moved = items.filter(entry => targets.has(key(entry)));
+      if (!moved.length) return items;
+      const ordered = items.filter(entry => !targets.has(key(entry)));
+      for (const entry of moved.sort((left, right) => order(left) < order(right) ? -1 : order(left) > order(right) ? 1 : 0)) {
+        const index = ordered.findIndex(other => typeof order(other) === 'string' && order(other) > order(entry));
+        ordered.splice(index < 0 ? ordered.length : index, 0, entry);
+      }
+      return ordered;
+    }
     if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replace(item)]));
     return value;
   };

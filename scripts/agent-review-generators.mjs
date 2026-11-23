@@ -1,6 +1,6 @@
 // Import the trusted owners here, never the predicted tree's executable files.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 // eslint-disable-next-line no-restricted-imports -- landing needs the trusted SQL inventory owner before workspace packages are installed
 import { renderSqlInventory } from '../packages/core/scripts/documentation-sql-inventory.ts';
@@ -43,9 +43,10 @@ export function runLandingGenerators(root, paths) {
   if (errors.length) throw new Error(errors.join('; '));
   const catalogPath = join(root, 'config/openlup-publication-catalog.json');
   const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'));
-  const mirrors = new Set(readdirSync(join(root, 'packages/platform/sql'))
-    .filter(name => name.endsWith('.sql')).map(name => `packages/platform/sql/${name}`));
-  const rows = catalog.publicPaths.filter(row => !row.path.startsWith('packages/platform/sql/') || !row.path.endsWith('.sql') || mirrors.has(row.path));
+  const projection = JSON.parse(readFileSync(join(root, 'packages/platform/sql/manifest.json'), 'utf8'));
+  const mirrors = new Set(projection.migrations.map(({ file }) => `packages/platform/sql/${file}`));
+  const mirrorShape = /^packages\/platform\/sql\/(?:(?:q2|qa|qb)_)?\d{14}_[A-Za-z0-9_-]+\.sql$/u;
+  const rows = catalog.publicPaths.filter(row => !mirrorShape.test(row.path) || mirrors.has(row.path));
   for (const path of mirrors) if (!rows.some(row => row.path === path)) rows.push({ path, class: 'public-output' });
   rows.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   catalog.publicPaths = rows;

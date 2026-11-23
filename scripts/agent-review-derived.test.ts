@@ -14,6 +14,7 @@ import { fixtureNpmCli, linkFixtureInstallation, localFixtureEnvironment } from 
 import { renderDocumentationSourceMap } from './documentation-navigation.ts';
 import { readDocumentationState } from './documentation-routing.ts';
 import { checkPlatformMigrationProjection } from './packages/platform-migration-projection.ts';
+import { evaluatePlatformMigrationManifestMetadata } from './platform-migration-manifest.ts';
 
 const source = process.cwd();
 const npmCli = fixtureNpmCli();
@@ -670,6 +671,13 @@ it('plans shared migration slots across rails and UTC rollover', () => {
     'supabase/migrations/qa_20270101010000_main.sql',
   ])).toMatchObject({ maxMainSlot: '20270101010000', nextFreeSlot: '20270101010100',
     changes: [{ path: 'db/platform/migrations/20270101000000_pr.sql', target: 'db/platform/migrations/20270101010100_pr.sql' }] });
+  expect(landingSlotPlan([
+    'db/platform/migrations/20270101000000_old.sql',
+    'db/platform/migrations/20270101010100_new.sql',
+  ], ['supabase/migrations/20270101010000_main.sql'])).toMatchObject({
+    nextFreeSlot: '20270101010200',
+    changes: [{ target: 'db/platform/migrations/20270101010200_old.sql' }],
+  });
 });
 
 it('refuses authored migration filenames before re-slot changes the tree', async () => {
@@ -719,8 +727,32 @@ it('lands an inverted migration only with explicit re-slot', async () => {
     expect(result.head).toMatch(/^[a-f0-9]{40}$/u);
     expect(git('ls-files', 'db/platform/migrations/20990101020100_landing_fixture.sql')).toContain('20990101020100');
     expect(git('ls-files', 'db/platform/migrations/20990101010000_landing_fixture.sql')).toBe('');
+    const manifest = JSON.parse(read(MIGRATION_REGISTRIES[0]));
+    const earlier = 'db/platform/migrations/20990101020000_landing_fixture.sql';
+    const later = 'db/platform/migrations/20990101020100_landing_fixture.sql';
+    for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
+      const files = plan.forward.map(({ file }) => file);
+      expect(files.indexOf(later)).toBeGreaterThan(files.indexOf(earlier));
+    }
+    const registry = JSON.parse(read(MIGRATION_REGISTRIES[1]));
+    const slots = registry.nativeStoreForwardClass.slots.map(({ path }) => path);
+    expect(slots.indexOf(later)).toBeGreaterThan(slots.indexOf(earlier));
+    expect(evaluatePlatformMigrationManifestMetadata(manifest)).toEqual([]);
   } finally { git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged); setMain(main); }
 }, 60_000);
+
+it('does not auto-admit an authored SQL bystander as a generated mirror', () => {
+  try {
+    checkout(merged);
+    write('packages/platform/sql/rogue.sql', 'SELECT 1;\n');
+    runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
+    const paths = JSON.parse(read(CATALOGUE)).publicPaths.map(({ path }) => path);
+    expect(paths).not.toContain('packages/platform/sql/rogue.sql');
+  } finally {
+    rmSync(join(root, 'packages/platform/sql/rogue.sql'), { force: true });
+    restoreDerivedFixture();
+  }
+});
 
 it('classifies SQL and migration-inventory inputs conservatively', () => {
   for (const path of [
