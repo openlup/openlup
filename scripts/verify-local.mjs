@@ -77,7 +77,7 @@ function resolvePgtapSelection(candidate, pgtap) {
   };
 }
 
-export async function explainVerification({ cwd = process.cwd(), env = processEnvironment, pgtap = false } = {}) {
+export async function explainVerification({ cwd = process.cwd(), env = processEnvironment, pgtap = false, layered = false } = {}) {
   let candidate; let error;
   try {
     candidate = await captureSessionCandidate(cwd, undefined, {
@@ -86,7 +86,7 @@ export async function explainVerification({ cwd = process.cwd(), env = processEn
   } catch (failure) { error = failure.message; }
   const scope = candidate ? { state: 'known', candidate } : { state: 'unknown', error };
   const resolvedPgtap = resolvePgtapSelection(candidate, pgtap);
-  const plan = verificationPlan(candidate ?? { base: '<comparison-base>', head: '<candidate-head>' }, '<run-directory>', '<package-artifacts>', resolvedPgtap.selected);
+  const plan = verificationPlan(candidate ?? { base: '<comparison-base>', head: '<candidate-head>' }, '<run-directory>', '<package-artifacts>', resolvedPgtap.selected, { layered, rootDir: cwd });
   if (resolvedPgtap.note) plan.pgtap = resolvedPgtap.note;
   return {
     kind: 'verification-plan', evidence: 'none; verification commands have not run', scope,
@@ -129,6 +129,12 @@ async function assertCandidateUnchanged(cwd, candidate, env) {
 }
 
 async function executePhase(step, { cwd, env, directory, broker, run }) {
+  if (step.skipMessage) {
+    const log = join(directory, `${step.name}.log`);
+    await writeFile(log, `${step.skipMessage}\n`);
+    console.log(`Local verification: ${step.name}; ${step.skipMessage}`);
+    return { name: step.name, argv: [], env: step.env, resource: null, log, seconds: 0, code: 0, skipped: true };
+  }
   const argv = [fileURLToPath(new URL('./agent-review-session.mjs', import.meta.url)), 'verify-command', ...(broker && step.resource ? ['--resource', step.resource] : []), '--', ...step.command];
   const started = Date.now(); const log = join(directory, `${step.name}.log`);
   console.log(`Local verification: ${step.name}; resource=${broker && step.resource ? step.resource : 'direct'}; log=${log}`);
@@ -136,7 +142,7 @@ async function executePhase(step, { cwd, env, directory, broker, run }) {
   return { name: step.name, argv, env: step.env, resource: broker && step.resource ? step.resource : null, log, seconds: (Date.now() - started) / 1000, ...phase };
 }
 
-export async function verifyLocal({ cwd = process.cwd(), env = processEnvironment, pgtap = false, run = runLogged, concurrency = DEFAULT_READ_ONLY_CONCURRENCY } = {}) {
+export async function verifyLocal({ cwd = process.cwd(), env = processEnvironment, pgtap = false, layered = false, run = runLogged, concurrency = DEFAULT_READ_ONLY_CONCURRENCY } = {}) {
   env = { ...env, PATH: `${dirname(process.execPath)}${delimiter}${env.PATH ?? ''}` };
   const scratch = join(cwd, '.context', 'scratch'); await mkdir(scratch, { recursive: true });
   const directory = await mkdtemp(join(scratch, 'verify-local-'));
@@ -160,7 +166,7 @@ export async function verifyLocal({ cwd = process.cwd(), env = processEnvironmen
     const packs = await mkdtemp(join(tmpdir(), 'openlup-verify-packs-')); result.packs = packs;
     const broker = hasBroker(env); result.broker = broker;
     const resolvedPgtap = resolvePgtapSelection(candidate, pgtap);
-    const plan = verificationPlan(candidate, directory, packs, resolvedPgtap.selected);
+    const plan = verificationPlan(candidate, directory, packs, resolvedPgtap.selected, { layered, rootDir: cwd });
     if (resolvedPgtap.note) {
       plan.pgtap = resolvedPgtap.note;
       console.log('Local verification: auto-selected pgTAP due to SQL changes');
@@ -223,10 +229,10 @@ export async function verifyLocal({ cwd = process.cwd(), env = processEnvironmen
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const args = process.argv.slice(2);
-  if (new Set(args).size !== args.length || args.some(arg => !['--pgtap', '--plan', '--json'].includes(arg)) || (args.includes('--json') && !args.includes('--plan'))) {
-    console.error('usage: node scripts/verify-local.mjs [--pgtap] [--plan [--json]]'); process.exitCode = 1;
+  if (new Set(args).size !== args.length || args.some(arg => !['--layered', '--pgtap', '--plan', '--json'].includes(arg)) || (args.includes('--json') && !args.includes('--plan'))) {
+    console.error('usage: node scripts/verify-local.mjs [--layered] [--pgtap] [--plan [--json]]'); process.exitCode = 2;
   } else if (args.includes('--plan')) {
-    const plan = await explainVerification({ pgtap: args.includes('--pgtap') });
+    const plan = await explainVerification({ pgtap: args.includes('--pgtap'), layered: args.includes('--layered') });
     if (args.includes('--json')) console.log(JSON.stringify(plan, null, 2));
     else {
       console.log(`Verification plan only; no verification commands executed. Scope: ${plan.scope.state}.`);
@@ -240,5 +246,5 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     }
     process.exitCode = plan.scope.state === 'known' ? 0 : 2;
   }
-  else process.exitCode = await verifyLocal({ pgtap: args.includes('--pgtap') });
+  else process.exitCode = await verifyLocal({ pgtap: args.includes('--pgtap'), layered: args.includes('--layered') });
 }

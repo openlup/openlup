@@ -657,6 +657,8 @@ node scripts/verify-local.mjs --plan
 node scripts/verify-local.mjs --plan --json
 # Include the raw DB diagnostic when its inputs are in scope:
 node scripts/verify-local.mjs --plan --pgtap
+# Inspect the opt-in affected-test plan:
+node scripts/verify-local.mjs --layered --plan --json
 ```
 
 Planning is read-only and works on an unreviewed, dirty task worktree without
@@ -694,6 +696,13 @@ The runner uses the commands below once: a single locked install, lint's package
 prerequisites, both reference builds, shared package/API/coverage gates and one
 `test:scoped`. Hosted shards, event-bound dependency comparison and receipt
 admission remain hosted checks; this optional command is local feedback.
+
+For a shorter opt-in local loop after review, use `node scripts/verify-local.mjs
+--layered`. It keeps the same fast phases and package gates, then runs
+`npm test -- <affected paths>` selected by `scripts/affected-tests.mjs`. If no
+Vitest file is affected, the tests phase reports `0 affected Vitest files
+(full suite runs in hosted CI)` and succeeds. The default command still runs
+`test:scoped`; hosted CI and Merge Queue run all eight Vitest shards.
 
 Each phase uses the existing native before/after review and candidate checks.
 Where the optional resource broker is installed, a closed phase map selects its

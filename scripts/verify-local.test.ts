@@ -65,6 +65,37 @@ async function fixture(reviewed = true, nodePin = process.versions.node, uiViola
 const candidate = { base: 'a'.repeat(40), head: 'b'.repeat(40) };
 
 describe('full local verification command ownership', () => {
+  it('shows targeted layered commands while retaining the default full command', async () => {
+    const f = await fixture(false, process.versions.node, false, [
+      'db/platform/migrations/20400101000000_example.sql',
+      'scripts/platform-migration-manifest.test.ts',
+    ]);
+    const cli = resolve('scripts/verify-local.mjs');
+    const plan = (...args: string[]) => spawnSync(process.execPath, [cli, ...args, '--plan', '--json'], { cwd: f.cwd, env: f.env, encoding: 'utf8' });
+    const layered = plan('--layered');
+    expect(layered.status).toBe(0);
+    const selected = JSON.parse(layered.stdout);
+    expect(selected.mode).toBe('layered');
+    expect(selected.phases.find((step: { name: string }) => step.name === 'tests').command)
+      .toEqual(['env', '-u', 'OPENLUP_STACK_BASE', 'npm', 'test', '--', 'scripts/platform-migration-manifest.test.ts']);
+    const full = JSON.parse(plan().stdout);
+    expect(full.mode).toBe('full');
+    expect(full.phases.find((step: { name: string }) => step.name === 'tests').command)
+      .toEqual(['env', '-u', 'OPENLUP_STACK_BASE', 'npm', 'run', 'test:scoped']);
+  });
+  it('reports a clean layered skip when no Vitest file is affected', async () => {
+    const f = await fixture();
+    const logs: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation(message => { logs.push(String(message)); });
+    const run = vi.fn(async () => ({ code: 0 }));
+    expect(await verifyLocal({ cwd: f.cwd, env: f.env, layered: true, run })).toBe(0);
+    const result = await f.result(); directories.push(result.packs);
+    expect(result.phases.find((phase: { name: string }) => phase.name === 'tests'))
+      .toMatchObject({ skipped: true, code: 0 });
+    expect(run).toHaveBeenCalledTimes(12);
+    expect(logs.join('\n')).toContain('0 affected Vitest files (full suite runs in hosted CI)');
+    log.mockRestore();
+  });
   it('runs one installation and scoped suite, preserving package proof before tests and lint builds before typecheck', () => {
     const steps = verificationSteps(candidate, '/work/.context/scratch/run', '/tmp/packs', false);
     expect(steps.map(step => step.name)).toEqual(['policy', 'inventory', 'dco', 'gitleaks', 'neutrality', 'ui-neutrality',
