@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { runLandingGenerators, syncSqlReference } from './agent-review-generators.mjs';
-import { assertAppendOnlyLandingSlots, carrierLocale, isInventoryInputPath, landingMerge } from './agent-review-landing.mjs';
+import { applyMigrationReslot, assertAppendOnlyLandingSlots, assertNoAuthoredSlotReferences, carrierLocale, isInventoryInputPath, landingMerge, landingSlotPlan, nextFreeMigrationSlot } from './agent-review-landing.mjs';
 import { deltaFloor, prepareCandidate, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, validateEconomySession, proveReviewIntegration, git as sourceGit } from './agent-review-session.mjs';
 import { fixtureNpmCli, linkFixtureInstallation, localFixtureEnvironment } from './fixtures/landing-test-environment.ts';
@@ -658,6 +658,44 @@ it('refuses inverted or duplicate migration slots before starting merge or Docke
     setMain(main);
   }
 }, 60_000);
+
+it('plans shared migration slots across rails and UTC rollover', () => {
+  expect(nextFreeMigrationSlot('20261231235900')).toBe('20270101000000');
+  expect(landingSlotPlan(['db/platform/migrations/20270101000000_pr.sql'], [
+    'supabase/migrations/qa_20270101010000_main.sql',
+  ])).toMatchObject({ maxMainSlot: '20270101010000', nextFreeSlot: '20270101010100',
+    changes: [{ path: 'db/platform/migrations/20270101000000_pr.sql', target: 'db/platform/migrations/20270101010100_pr.sql' }] });
+});
+
+it('refuses authored migration filenames before re-slot changes the tree', async () => {
+  try {
+    checkout(base);
+    append('20990101010000');
+    write('scripts/fixture-reference.test.ts', 'const migration = "20990101010000_landing_fixture.sql";\n');
+    const head = commit();
+    const changes = [{ path: 'db/platform/migrations/20990101010000_landing_fixture.sql',
+      target: 'db/platform/migrations/20990101030100_landing_fixture.sql' }];
+    await expect(assertNoAuthoredSlotReferences(root, base, head, changes))
+      .rejects.toThrow('scripts/fixture-reference.test.ts:1');
+    expect(git('status', '--porcelain=v1')).toBe('');
+  } finally { restoreDerivedFixture(); }
+});
+
+it('re-slots migration paths in the manifest, reviewed forwards and publication catalogue', () => {
+  try {
+    checkout(base);
+    append('20990101010000');
+    const oldPath = 'db/platform/migrations/20990101010000_landing_fixture.sql';
+    const newPath = 'db/platform/migrations/20990101030100_landing_fixture.sql';
+    applyMigrationReslot(root, [{ path: oldPath, target: newPath }]);
+    expect(existsSync(join(root, oldPath))).toBe(false);
+    expect(existsSync(join(root, newPath))).toBe(true);
+    expect(read(MIGRATION_REGISTRIES[0])).toContain(newPath);
+    expect(read(MIGRATION_REGISTRIES[1])).toContain(newPath);
+    expect(read(MIGRATION_REGISTRIES[0])).not.toContain(oldPath);
+    expect(read(MIGRATION_REGISTRIES[1])).not.toContain(oldPath);
+  } finally { restoreDerivedFixture(); }
+});
 
 it('classifies SQL and migration-inventory inputs conservatively', () => {
   for (const path of [

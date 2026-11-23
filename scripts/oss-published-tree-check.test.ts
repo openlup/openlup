@@ -35,6 +35,7 @@ import {
   publicInventoryVerdict,
   selfCheckCommand,
   selfCheckVerdict,
+  syncPublicOutputCatalog,
   typecheckVerdict,
 } from "./oss-published-tree-check.ts";
 import { assertSimulatedUpgradePage, previousCoreTag } from "./packages/release-docs-pass.ts";
@@ -45,6 +46,33 @@ import { readManagedMigrationChain } from "./public-ci-pgtap.mjs";
 import { parsePackagesConfig } from "./packages/package-manifest-policy.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+it("syncs only safe tracked public outputs and removes deleted rows", () => {
+  const root = mkdtempSync(join(tmpdir(), "public-catalog-sync-"));
+  const git = (...args: string[]) => execFileSync("/usr/bin/git", ["-C", root, ...args], { encoding: "utf8" });
+  const put = (path: string, contents: string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), contents); };
+  try {
+    git("init", "-q");
+    put(PUBLICATION_CATALOG_PATH, createPublicPublicationCatalog([
+      { path: "config/openlup-policy-registry.json", class: "policy" },
+      { path: PUBLICATION_CATALOG_PATH, class: "policy" },
+      { path: "old.txt", class: "public-output" },
+    ], []).contents);
+    put("config/openlup-policy-registry.json", JSON.stringify({ schemaVersion: 1, activePaths: [], contracts: [] }));
+    put("new.txt", "safe\n");
+    git("add", "-A");
+    expect(syncPublicOutputCatalog(root)).toEqual(["new.txt"]);
+    const rows = parsePublicPublicationCatalog(readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8")).publicPaths;
+    expect(rows.map(row => row.path)).toEqual(["config/openlup-policy-registry.json", PUBLICATION_CATALOG_PATH, "new.txt"]);
+    expect(rows.at(-1)?.class).toBe("public-output");
+    git("add", "-A");
+    put("private.txt", ["https://github.com/example", "app"].join("/")); git("add", "-A");
+    expect(() => syncPublicOutputCatalog(root)).toThrow(/private coordinate/);
+    git("rm", "-fq", "private.txt");
+    put("unexpected.mjs", "#!/usr/bin/env node\nconsole.log('hello');\n"); git("add", "-A");
+    expect(() => syncPublicOutputCatalog(root)).toThrow(/unauthorized execution entrypoint/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 const WORKFLOW = ".github/workflows/published-tree-ci.yml";
 const workflow = readFileSync(join(ROOT, WORKFLOW), "utf8");
 const sourcePreviewWorkflow = readFileSync(join(ROOT, ".github/workflows/publish-source-preview.yml"), "utf8");

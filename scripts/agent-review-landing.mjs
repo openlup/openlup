@@ -1,7 +1,7 @@
 // Local landing helper: merge main, stop on authored conflicts, never push.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, readlinkSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { isAbsolute, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
@@ -13,7 +13,6 @@ import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegis
 import { generatedCarrier, SQL_REFERENCE } from './agent-review-generators.mjs';
 import { DEFAULT_INCREMENTAL_PACKAGES, TSBUILDINFO_FILENAME } from './build-packages-incremental.mjs';
 import { isGuidePage } from './oss-publication-policy.ts';
-import { isQualifiedPlatformMigrationPath } from './platform-migration-manifest.ts';
 
 const PUBLICATION_CATALOGUE = REGISTRY_PATHS[0];
 const SETTINGS_GUIDE = 'packages/core/docs/guide/how-to/operate/settings-catalogue.md';
@@ -200,31 +199,97 @@ export function isInventoryInputPath(path) {
     /^packages\/platform\/src\/migrations\//u.test(path);
 }
 
-const MIGRATION_FORWARD = /^(?:db\/platform|supabase)\/migrations\/(\d{14})_[A-Za-z0-9_-]+\.sql$/u;
+const MIGRATION_FORWARD = /^(?:db\/platform|supabase)\/migrations\/(?:(?:q2|qa|qb)_)?(\d{14})_[A-Za-z0-9_-]+\.sql$/u;
 const MIGRATION_RAILS = ['db/platform/migrations/', 'supabase/migrations/'];
 
+export function nextFreeMigrationSlot(slot) {
+  const year = Number(slot.slice(0, 4)), month = Number(slot.slice(4, 6)) - 1, day = Number(slot.slice(6, 8));
+  const hour = Number(slot.slice(8, 10)), minute = Number(slot.slice(10, 12));
+  const date = new Date(Date.UTC(year, month, day, hour, minute + 1));
+  if (Number.isNaN(date.valueOf())) throw new Error(`landing: invalid migration slot ${slot}`);
+  return date.toISOString().replace(/[-:T]/gu, '').slice(0, 14);
+}
+
+export function landingSlotPlan(prAddedPaths, mainMigrationPaths) {
+  const mainSlots = mainMigrationPaths.map(path => MIGRATION_FORWARD.exec(path)?.[1]).filter(Boolean);
+  const maxMainSlot = mainSlots.sort().at(-1) ?? '00000000000000';
+  let next = maxMainSlot === '00000000000000' ? '19700101000000' : nextFreeMigrationSlot(maxMainSlot);
+  const occupied = new Set(mainMigrationPaths);
+  const usedSlots = new Set(mainSlots);
+  const additions = prAddedPaths.filter(path => MIGRATION_FORWARD.test(path)).sort();
+  for (const path of additions) {
+    const slot = MIGRATION_FORWARD.exec(path)[1];
+    if (slot > maxMainSlot) usedSlots.add(slot);
+  }
+  const changes = [];
+  const seen = new Set();
+  for (const path of additions) {
+    const slot = MIGRATION_FORWARD.exec(path)[1];
+    if (slot > maxMainSlot && !occupied.has(path) && !seen.has(slot)) { seen.add(slot); continue; }
+    let target;
+    do {
+      target = path.replace(slot, next);
+      next = nextFreeMigrationSlot(next);
+    } while (occupied.has(target) || prAddedPaths.includes(target) || usedSlots.has(MIGRATION_FORWARD.exec(target)[1]));
+    changes.push({ path, target });
+    occupied.add(target);
+    usedSlots.add(MIGRATION_FORWARD.exec(target)[1]);
+  }
+  return { maxMainSlot, nextFreeSlot: maxMainSlot === '00000000000000' ? next : nextFreeMigrationSlot(maxMainSlot), changes };
+}
+
 export function assertAppendOnlyLandingSlots(prAddedPaths, mainMigrationPaths) {
-  for (const rail of MIGRATION_RAILS) {
-    let version = '';
-    for (const path of mainMigrationPaths) {
-      if (!path.startsWith(rail) || isQualifiedPlatformMigrationPath(path)) continue;
-      const slot = MIGRATION_FORWARD.exec(path)?.[1];
-      if (slot && slot > version) version = slot;
+  const plan = landingSlotPlan(prAddedPaths, mainMigrationPaths);
+  if (plan.changes.length) throw new Error(`landing: migration slot is not strictly later than origin/main: ${plan.changes[0].path}; maxMainSlot ${plan.maxMainSlot}; nextFreeSlot ${plan.nextFreeSlot}; run npm run landing:merge -- --re-slot`);
+}
+
+const RESLOT_REGISTRIES = new Set([...REGISTRY_PATHS, ...MIGRATION_REGISTRIES, INVENTORY_PATH]);
+export async function assertNoAuthoredSlotReferences(cwd, base, head, changes) {
+  const paths = pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z', base, head));
+  const hits = [];
+  for (const path of paths) {
+    if (RESLOT_REGISTRIES.has(path) || generatedCarrier(path) || changes.some(change => change.path === path)) continue;
+    let content;
+    try { content = await git(cwd, 'show', `${head}:${path}`); }
+    catch (error) { if (error.code === 128) continue; throw error; }
+    for (const [index, line] of content.split('\n').entries()) {
+      if (changes.some(({ path: oldPath }) => line.includes(oldPath.split('/').at(-1)))) hits.push(`${path}:${index + 1}`);
     }
-    const additions = prAddedPaths
-      .filter(path => path.startsWith(rail) && !isQualifiedPlatformMigrationPath(path) && MIGRATION_FORWARD.test(path))
-      .sort();
-    for (const path of additions) {
-      const next = MIGRATION_FORWARD.exec(path)[1];
-      if (next <= version) {
-        throw new Error('landing: migration slot is not strictly later than origin/main; rename the new migration to a later UTC timestamp and refresh derived files');
+  }
+  if (hits.length) throw new Error(`landing: --re-slot refuses authored migration references: ${hits.join(', ')}`);
+}
+
+export function applyMigrationReslot(cwd, changes) {
+  const replace = value => {
+    if (typeof value === 'string') return changes.reduce((text, { path, target }) => text === path ? target : text, value);
+    if (Array.isArray(value)) return value.map(replace);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replace(item)]));
+    return value;
+  };
+  for (const { path, target } of changes) {
+    renameSync(resolve(cwd, path), resolve(cwd, target));
+    const mirror = resolve(cwd, `packages/platform/sql/${path.split('/').at(-1)}`);
+    if (existsSync(mirror)) unlinkSync(mirror);
+  }
+  for (const path of ['config/platform-migration-manifest.json', 'config/reviewed-platform-forwards.json', PUBLICATION_CATALOGUE]) {
+    const file = resolve(cwd, path);
+    const updated = replace(readJson(cwd, path));
+    if (path === 'config/reviewed-platform-forwards.json') {
+      const directory = 'supabase/migrations/';
+      const sql = readdirSync(resolve(cwd, directory)).filter(name => name.endsWith('.sql'))
+        .map(name => `${directory}${name}`).sort();
+      for (const pin of updated.managedExactForwards ?? []) {
+        if (!changes.some(({ path: oldPath, target }) => oldPath.startsWith(directory) && (pin.path >= target || pin.path >= oldPath))) continue;
+        const prefix = sql.filter(name => name < pin.path).map(name =>
+          [name, createHash('sha256').update(readFileSync(resolve(cwd, name))).digest('hex')]);
+        pin.prefixSha256 = createHash('sha256').update(JSON.stringify(prefix)).digest('hex');
       }
-      version = next;
     }
+    writeFileSync(file, `${JSON.stringify(updated, null, 2)}\n`);
   }
 }
 
-export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
+export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = process.argv.includes('--re-slot') } = {}) {
   if ((await git(cwd, '--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all')).trim()) throw new Error('landing: clean committed checkout required');
   for (const key of ['user.name', 'user.email']) {
     let configured;
@@ -237,13 +302,17 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   const base = (await git(cwd, 'merge-base', head, main)).trim();
   if (head === main) throw new Error('landing: already at origin/main');
   const prAdded = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=A', '--no-renames', '-z', base, head));
+  let slotChanges = [];
   if (prAdded.some(path => MIGRATION_RAILS.some(rail => path.startsWith(rail)))) {
     // Skip migrations already present byte-for-byte identically on origin/main (stacked PRs whose predecessor squash-merged).
     const differingFromMain = new Set(pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z', main, head, '--', 'db/platform/migrations', 'supabase/migrations')));
     const netAdded = prAdded.filter(path => differingFromMain.has(path));
     if (netAdded.length > 0) {
       const mainMigrations = pathsFrom(await git(cwd, 'ls-tree', '-r', '--name-only', '-z', main, '--', 'db/platform/migrations', 'supabase/migrations'));
-      assertAppendOnlyLandingSlots(netAdded, mainMigrations);
+      const plan = landingSlotPlan(netAdded, mainMigrations);
+      if (plan.changes.length && !reSlot) assertAppendOnlyLandingSlots(netAdded, mainMigrations);
+      slotChanges = plan.changes;
+      if (slotChanges.length) await assertNoAuthoredSlotReferences(cwd, base, head, slotChanges);
     }
   }
   const carrierEnv = { ...processEnvironment, ...carrierLocale };
@@ -307,6 +376,7 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   for (const path of conflicts.filter(generatedCarrier)) {
     if (path !== SQL_REFERENCE && !REGISTRY_PATHS.includes(path)) await git(cwd, 'checkout', '--ours', '--', path);
   }
+  if (slotChanges.length) applyMigrationReslot(cwd, slotChanges);
   if (needsInventoryRefresh) {
     writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[1]);
     for (const path of MIGRATION_REGISTRIES) {
@@ -361,6 +431,7 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   runGenerators("owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));", paths.join('\0'));
   const staged = [...new Set([...MIGRATION_REGISTRIES, INVENTORY_PATH, ...paths.filter(generatedCarrier), ...outputs])];
   await git(cwd, '--literal-pathspecs', 'add', '--', ...staged);
+  if (slotChanges.length) await git(cwd, 'add', '-A', '--', ...slotChanges.flatMap(({ path, target }) => [path, target]), 'packages/platform/sql', ...MIGRATION_REGISTRIES, PUBLICATION_CATALOGUE);
   if ((await git(cwd, 'diff', '--name-only', '--diff-filter=U')).trim()) throw new Error('landing: unresolved conflicts remain');
   await git(cwd, 'commit', '-s', '-m', 'Merge origin/main and refresh derived carriers');
   return { head: (await git(cwd, 'rev-parse', 'HEAD')).trim(), main, inventoryRefreshed: needsInventoryRefresh };

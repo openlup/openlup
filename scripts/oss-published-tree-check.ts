@@ -6,7 +6,7 @@ import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, posix } from "node:path";
 import { pathToFileURL } from "node:url";
 import { PUBLIC_EXECUTION_ENTRYPOINTS, SOURCE_RELEASE_CONTRACT_PATH, isDirectExecutionEntrypoint, validateSourceReleaseContract } from "./oss-publication-contract.ts";
-import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, packageExecutionDigest, parsePublicPolicyRegistry, parsePublicPublicationCatalog, effectivePublicCatalogPaths, type PublicPackageExecutionSurface } from "./oss-publication-policy.ts";
+import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, packageExecutionDigest, parsePublicPolicyRegistry, parsePublicPublicationCatalog, effectivePublicCatalogPaths, createPublicPublicationCatalog, isGuidePageArea, type PublicPackageExecutionSurface } from "./oss-publication-policy.ts";
 import { carriesPrivateOperationalCoordinate } from "./oss-public-coordinate-detector.ts";
 import { runPlatformMigrationManifestCheck } from "./platform-migration-manifest.ts";
 import { comparePublicTypecheck, readPublicTypecheckCompatibility, runPublicTypecheckProjects, summarizePublicDiagnostics } from "./oss-public-typecheck.ts";
@@ -16,7 +16,7 @@ import { evaluatePlatformMigrationManifest, evaluatePlatformMigrationManifestHis
 import { assertAdmittedPlatformForward, deriveSourceReleaseContract } from "./oss-source-release-contract.ts";
 import { AGENT_GUIDE_PATH, renderAgentGuide, renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
 import { assertMaterializedOutputInventory } from "./oss-published-tree-output.ts";
-import { isChangelogFragment } from "./packages/changelog-fragments.ts";
+import { isChangelogFragment, isChangelogFragmentArea } from "./packages/changelog-fragments.ts";
 import { PACKAGES_CONFIG_PATH } from "./packages/package-manifest-policy.ts";
 import { assertMigrationBlocks } from "./packages/packages-check.ts";
 import { RELEASE_NOTE_PACKAGED_CONTENT_REMEDY, assertSimulatedUpgradePage, findReleaseNotePackagedContentViolations } from "./packages/release-docs-pass.ts";
@@ -152,6 +152,43 @@ export function assertChangelogFragmentsPackagedContent(root: string, paths: Ite
 
 const trackedFiles = (root: string): string[] =>
   documentationGit(root, ["ls-files", "-z"]).toString("utf8").split("\0").filter(Boolean);
+
+/** Admit new tracked outputs only after the existing public trust checks hold. */
+export function syncPublicOutputCatalog(root: string): string[] {
+  const catalogPath = join(root, PUBLICATION_CATALOG_PATH);
+  const source = readFileSync(catalogPath, "utf8");
+  const catalog = parsePublicPublicationCatalog(source);
+  const tracked = trackedFiles(root);
+  const trackedSet = new Set(tracked);
+  const untracked = documentationGit(root, ["ls-files", "--others", "--exclude-standard", "-z"])
+    .toString("utf8").split("\0").filter(Boolean);
+  if (untracked.length) throw new Error(`sync-catalog: add files to Git before syncing: ${untracked.join(", ")}`);
+  const admitted = new Set(effectivePublicCatalogPaths(source, tracked.map((path) => {
+    const stat = lstatSync(join(root, path));
+    return { path, mode: stat.isFile() ? (stat.mode & 0o111 ? "100755" : "100644") : "unsupported" };
+  }), (path) => readFileSync(join(root, path))).map(({ path }) => path));
+  const missing = tracked.filter((path) => !admitted.has(path));
+  const policy = parsePublicPolicyRegistry(readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"));
+  const active = new Set(policy.activePaths);
+  const withheld = new Set(catalog.guardViability.filter((row) => row.status === "withheld")
+    .flatMap((row) => row.withheldPaths));
+  for (const path of missing) {
+    if (isChangelogFragmentArea(path) || isGuidePageArea(path) || withheld.has(path) || active.has(path))
+      throw new Error(`sync-catalog: ${path} requires pattern or explicit policy admission`);
+    const stat = lstatSync(join(root, path));
+    if (!stat.isFile() || (stat.mode & 0o111)) throw new Error(`sync-catalog: ${path} must be a regular non-executable file`);
+    const contents = readFileSync(join(root, path), "utf8");
+    if (isDirectExecutionEntrypoint(path, contents) && !PUBLIC_EXECUTION_ENTRYPOINTS.includes(path as typeof PUBLIC_EXECUTION_ENTRYPOINTS[number]))
+      throw new Error(`sync-catalog: unauthorized execution entrypoint ${path}`);
+    if (carriesPrivateOperationalCoordinate(contents, path)) throw new Error(`sync-catalog: private coordinate in ${path}`);
+  }
+  assertMaterializedRepositoryDocReferences(root, trackedSet);
+  const rows = [...catalog.publicPaths.filter(({ path }) => trackedSet.has(path)),
+    ...missing.map((path) => ({ path, class: "public-output" }))]
+    .sort((left, right) => Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)));
+  writeFileSync(catalogPath, createPublicPublicationCatalog(rows, catalog.guardViability).contents);
+  return missing;
+}
 
 function assertMaterializedMarkdownLinks(root: string, paths: Iterable<string>): void {
   const inventory = new Set(paths); const exactPath = /^(?:(?:\.\.?\/)|(?:\.github|api|config|db|deploy|docs|mcp|packages|scripts|server|src|supabase|tests)\/)[A-Za-z0-9_.@%+[\]/-]+\.(?:md|json|ts|tsx|js|mjs|cjs|sh|sql|toml|ya?ml)(?:#[A-Za-z0-9_.:-]+)?$/u;
@@ -376,6 +413,11 @@ export function selfCheckVerdict(root: string, log: (line: string) => void): boo
 }
 
 async function main(root: string, argv: string[]): Promise<number> {
+  if (argv.length === 1 && argv[0] === "--sync-catalog") {
+    const added = syncPublicOutputCatalog(root);
+    process.stdout.write(`synced ${added.length} public-output path(s)\n`);
+    return 0;
+  }
   const modes = ["--typecheck", "--inventory", "--policy", "--self-check"].filter((mode) => argv.includes(mode));
   if (modes.length !== 1) {
     process.stderr.write("usage: oss-published-tree-check.ts --typecheck | --inventory | --policy | --self-check\n  run inside a checkout of the published tree\n");
