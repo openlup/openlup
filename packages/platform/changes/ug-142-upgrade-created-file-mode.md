@@ -1,0 +1,1 @@
+- New managed files created by `openlup upgrade apply` are readable by the app user (`0644` subject to the process umask). Replaced files keep their existing mode.
