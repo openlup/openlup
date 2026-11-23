@@ -326,19 +326,21 @@ async function readOfferState(executor: SubscriptionQueryExecutor, actor: Subscr
   const { slideMinDays, slideMaxDays } = binding.lifecycleTerms;
   const { rows } = await executor.query(`SELECT s.id::text, s.client_id::text, $8::uuid::text AS actor_id,
       s.status, s.template_version::text, rt.next_cycle_number::text,
-      CASE WHEN isfinite(s.next_cycle_at)
+      CASE WHEN dates.retained IS NOT NULL
         THEN to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END AS next_cycle_at,
-      -- The marker wins before any date arithmetic. Leave one day for
-      -- session-zone conversion at the native timestamp ceiling.
-      CASE WHEN event.id IS NULL AND $5::integer IS NOT NULL AND isfinite(s.next_cycle_at) AND isfinite($3::timestamptz) THEN
-        CASE WHEN $7::integer <= date '294276-12-30' - $3::timestamptz::date THEN
-          CASE WHEN (extract(epoch FROM s.next_cycle_at) + $5::numeric * 86400)
-            BETWEEN extract(epoch FROM $3::timestamptz + make_interval(days=>$6::integer))
-                AND extract(epoch FROM $3::timestamptz + make_interval(days=>$7::integer))
-            THEN to_char((s.next_cycle_at AT TIME ZONE 'UTC') + make_interval(days=>$5::integer),'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END
-        END
+      -- Check the UTC target and both native calendar-day bounds as numbers
+      -- before constructing timestamps. A session zone can use week-scale
+      -- POSIX offsets, so reserve space for conversion in both directions.
+      CASE WHEN shifted.target BETWEEN finite.first_at AND finite.last_at
+        AND dates.requested BETWEEN finite.clock_first AND finite.clock_last
+        AND dates.requested + $6::numeric * 86400 BETWEEN finite.clock_first AND finite.clock_last
+        AND dates.requested + $7::numeric * 86400 BETWEEN finite.clock_first AND finite.clock_last
+      THEN CASE WHEN shifted.target
+        BETWEEN extract(epoch FROM clock.at + make_interval(days=>$6::integer))
+            AND extract(epoch FROM clock.at + make_interval(days=>$7::integer))
+        THEN to_char((s.next_cycle_at AT TIME ZONE 'UTC') + make_interval(days=>$5::integer),'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END
       END AS slide_target,
-      $3::timestamptz <= s.next_cycle_at - make_interval(hours=>s.edit_window_hours) AS edit_open,
+      shifted.cutoff BETWEEN finite.first_at AND finite.last_at AND dates.requested <= shifted.cutoff AS edit_open,
       ${paymentBlockerSql("s.id")} AS payment_blocker,
       CASE WHEN $9::boolean AND $4::text IN ('skip','reschedule') THEN
         (CASE WHEN public.subscription_method_uses_recorded_refs(s.id)
@@ -356,6 +358,18 @@ async function readOfferState(executor: SubscriptionQueryExecutor, actor: Subscr
       'save-offer:v1:' || encode(sha256(convert_to(
         format('["cx1r-occurrence-v1","%s","%s","%s"]',s.id,$4::text,rt.next_cycle_number),'UTF8')),'hex') END AS key) marker
     LEFT JOIN public.subscription_events event ON event.subscription_id=s.id AND event.idempotency_key=marker.key
+    -- Unix seconds of PostgreSQL's first and last finite timestamps.
+    CROSS JOIN (SELECT first_at, last_at, first_at + zone_margin AS clock_first, last_at - zone_margin AS clock_last
+      FROM (SELECT -210866803200::numeric AS first_at, 9224318015999.999999::numeric AS last_at,
+        CASE WHEN current_setting('TimeZone') = 'UTC' THEN 0 ELSE 15 * 86400 END AS zone_margin) limits) finite
+    CROSS JOIN LATERAL (SELECT CASE WHEN event.id IS NULL AND pg_input_is_valid($3::text,'timestamp with time zone')
+      THEN $3::text::timestamptz END AS at) clock
+    LEFT JOIN LATERAL (
+      SELECT extract(epoch FROM s.next_cycle_at) AS retained, extract(epoch FROM clock.at) AS requested
+      WHERE isfinite(s.next_cycle_at) AND isfinite(clock.at)
+    ) dates ON true
+    CROSS JOIN LATERAL (SELECT dates.retained - s.edit_window_hours::numeric * 3600 AS cutoff,
+      dates.retained + $5::numeric * 86400 AS target) shifted
     WHERE s.client_id=$1::uuid AND s.id=ANY($2::uuid[])`,
   [actor.clientId, ids, now, kind, policy.defaultOffer === "reschedule" ? policy.rescheduleOfferDays : null,
     slideMinDays, slideMaxDays, actor.actorId, presenting]);

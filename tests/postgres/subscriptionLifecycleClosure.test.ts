@@ -209,6 +209,32 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     ]);
   }, 30_000);
 
+  it("cx1r_accept_once_and_recover: timestamp extremes leave the marker authoritative", async () => {
+    const f = await lifecycleSubject(env.owner);
+    const service = acceptor(env.runtime, { defaultOffer: "reschedule" });
+    const offer = await presented(service, f, "reschedule");
+    const read = { actor: offerActor(f), subscriptionIds: [f.subscription], now: AT };
+    const input = { ...acceptInput(f, offer.generation), kind: offer.kind, newNextCycleAt: offer.newNextCycleAt };
+    const extremes = ["4714-11-24 00:00:00+00 BC", "294276-12-31 23:59:59.999999+00", "-infinity", "infinity"];
+    for (const now of [...extremes, "294277-01-01 00:00:00+00"]) {
+      expect(await service.readPresentations({ ...read, now })).toEqual(new Map([[f.subscription, null]]));
+      expect(await service.accept({ ...input, now })).toEqual(refused("subscription_save_offer_unavailable"));
+    }
+    const schedule = (at: string) => env.owner.query("UPDATE public.subscriptions SET next_cycle_at=$2::timestamptz WHERE id=$1", [f.subscription, at]);
+    for (const at of extremes) {
+      await schedule(at);
+      expect(await service.readPresentations(read)).toEqual(new Map([[f.subscription, null]]));
+      expect(await service.accept(input)).toEqual(refused("subscription_save_offer_unavailable"));
+    }
+    await schedule(later(240));
+    expect(await service.accept(input)).toMatchObject({ outcome: "applied" });
+    for (const at of extremes) {
+      await schedule(at);
+      expect(await service.readPresentations(read)).toEqual(new Map([[f.subscription, null]]));
+      expect(await service.accept({ ...input, idempotencyKey: randomUUID() })).toEqual(refused("subscription_save_offer_consumed"));
+    }
+  }, 30_000);
+
   it("cx1r_accept_once_and_recover: admission filters individual presets and fences fresh dispatch", async () => {
     const f = await lifecycleSubject(env.owner);
     let allowMonth = true;
