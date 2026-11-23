@@ -15,6 +15,7 @@ const request = {
   phone: "+1 555 123 4567",
   notes: "Private label wet dog food for retail.",
 };
+const address = "192.0.2.7";
 
 describe("supabase partners B2B inquiry submit port", () => {
   it("does not invent an internal notification recipient when env is empty", () => {
@@ -31,9 +32,7 @@ describe("supabase partners B2B inquiry submit port", () => {
 
     await expect(createSupabasePartnersB2BInquirySubmitPort({
       runB2BInquirySubmit,
-    }).submitB2BInquiry(request, {
-      headers: new Headers({ "x-forwarded-for": "127.0.0.1" }),
-    })).resolves.toEqual({
+    }).submitB2BInquiry(request, address)).resolves.toEqual({
       success: true,
       id: "inq-1",
       skipped: undefined,
@@ -44,7 +43,7 @@ describe("supabase partners B2B inquiry submit port", () => {
 
     expect(runB2BInquirySubmit).toHaveBeenCalledWith(
       request,
-      { headers: expect.any(Headers) },
+      address,
       undefined,
     );
   });
@@ -55,7 +54,7 @@ describe("supabase partners B2B inquiry submit port", () => {
         status: 200,
         body: {},
       }),
-    }).submitB2BInquiry(request)).rejects.toThrow("B2B inquiry submit returned incomplete data");
+    }).submitB2BInquiry(request, address)).rejects.toThrow("B2B inquiry submit returned incomplete data");
   });
 
   it("composes the Node capability seam without a dynamic module bridge", async () => {
@@ -68,7 +67,7 @@ describe("supabase partners B2B inquiry submit port", () => {
   });
 
   it("fails closed when Supabase service-role env is missing", async () => {
-    await expect(runB2BInquirySubmitHandler(request, undefined, {})).resolves.toEqual({
+    await expect(runB2BInquirySubmitHandler(request, address, {})).resolves.toEqual({
       status: 500,
       body: {
         success: false,
@@ -79,7 +78,7 @@ describe("supabase partners B2B inquiry submit port", () => {
   });
 
   it("fails closed when Resend live key env is missing", async () => {
-    await expect(runB2BInquirySubmitHandler(request, undefined, {
+    await expect(runB2BInquirySubmitHandler(request, address, {
       SUPABASE_URL: "https://example.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "service-role",
     })).resolves.toEqual({
@@ -93,7 +92,7 @@ describe("supabase partners B2B inquiry submit port", () => {
   });
 
   it("fails closed when sandbox mode lacks the sandbox key", async () => {
-    await expect(runB2BInquirySubmitHandler(request, undefined, {
+    await expect(runB2BInquirySubmitHandler(request, address, {
       SUPABASE_URL: "https://example.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "service-role",
       RESEND_PROVIDER_MODE: "sandbox",
