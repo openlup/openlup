@@ -10183,7 +10183,7 @@
     },
     {
       "path": "db/platform/migrations/20261125080000_commerce_destination_v2_receipts.sql",
-      "sha256": "e95c8e81311c0258862bbbf506ae55972c9c6b7869e8c94a58e9e0e4e53ec8e1",
+      "sha256": "58b37e8d6b283c98960618be934891c92ef5188e1109936ae6b60d80d794a78f",
       "functions": [
         {
           "signature": "public.commerce_destination_v2_receipt_scoped_key(jsonb,text,text,text)",
@@ -10198,12 +10198,12 @@
         {
           "signature": "public.commerce_destination_v2_receipt_lock(jsonb,text,text,text)",
           "beforeSha256": null,
-          "afterSha256": "c7e55956255df6e8b8c48ef39046d6a64ddac5abd2ab508c75d75598f44b65a2"
+          "afterSha256": "f10fefa4b4f92be6538791de60f00e4b11b8dd39977de39efaca49e11259041a"
         },
         {
           "signature": "public.commerce_destination_v2_receipt_commit(jsonb,text,text,text,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "2cd1e33e992d3d7e4dae0068c344e0f60600c95c79ce6cc3faf18ade761c0fce"
+          "afterSha256": "c64bb1859d9d9efba0325e4d93088aa96c6ba7f5a4f2d6d9343caee3410534ae"
         },
         {
           "signature": "public.commerce_destination_v2_receipts_erase(uuid)",

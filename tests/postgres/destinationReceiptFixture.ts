@@ -29,7 +29,7 @@ export async function receiptOutcome(db: Db) {
     evidenceExpiresAt: row!.cutoff.toISOString(),
   };
 }
-export async function receiptCall(db: Db, action: "read" | "lock" | "commit", args: ReceiptArgs, outcome?: object) {
+export async function receiptCall(db: Db, action: "read" | "lock" | "commit", args: ReceiptArgs, outcome?: object | string) {
   const placeholders = action === "commit" ? "$1,$2,$3,$4,$5" : "$1,$2,$3,$4";
   return (await db.query(`SELECT public.commerce_destination_v2_receipt_${action}(${placeholders}) AS value`,
     action === "commit" ? [...args, outcome] : [...args])).rows[0].value;

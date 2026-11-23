@@ -110,8 +110,7 @@ DECLARE
   v_receipt jsonb;
 BEGIN
   IF current_setting('transaction_isolation') <> 'read committed' THEN
-    RAISE EXCEPTION 'destination_busy' USING ERRCODE = '22023',
-      DETAIL = 'idempotencyKey', HINT = 'Wait for cycle eligibility, reread and retry the scoped action, or resolve the existing binding without moving it.';
+    RAISE EXCEPTION 'destination_isolation_unsupported' USING ERRCODE = '22023';
   END IF;
   v_key := public.commerce_destination_v2_receipt_scoped_key(p_ctx, p_dialect, p_request_key, p_request_digest);
   v_client_id := (p_ctx->>'clientId')::uuid;
@@ -143,6 +142,7 @@ DECLARE
   v_binding jsonb := p_outcome->'binding';
   v_selection jsonb := p_outcome->'selection';
   v_expiry text := p_outcome->>'evidenceExpiresAt';
+  v_uuid_pattern constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
   v_event_id uuid;
   v_created_at timestamptz := clock_timestamp();
 BEGIN
@@ -156,9 +156,10 @@ BEGIN
     OR p_outcome - ARRAY['binding', 'selection', 'evidenceExpiresAt'] <> '{}'::jsonb
     OR jsonb_typeof(v_binding) IS DISTINCT FROM 'object'
     OR v_binding - ARRAY['snapshotRef', 'schemaVersion', 'destinationDigest', 'policyRevision'] <> '{}'::jsonb
-    OR v_binding->'schemaVersion' IS DISTINCT FROM '2'::jsonb
+    OR jsonb_typeof(v_binding->'schemaVersion') IS DISTINCT FROM 'number'
+    OR (v_binding->>'schemaVersion') IS DISTINCT FROM '2'
     OR jsonb_typeof(v_binding->'snapshotRef') IS DISTINCT FROM 'string'
-    OR NOT pg_input_is_valid(v_binding->>'snapshotRef', 'uuid')
+    OR (v_binding->>'snapshotRef') COLLATE "C" !~ v_uuid_pattern
     OR jsonb_typeof(v_binding->'destinationDigest') IS DISTINCT FROM 'string'
     OR (v_binding->>'destinationDigest') COLLATE "C" !~ '^[0-9a-f]{64}$'
     OR jsonb_typeof(v_binding->'policyRevision') IS DISTINCT FROM 'string'
@@ -168,11 +169,11 @@ BEGIN
     OR v_selection - ARRAY['kind', 'scopeRef', 'selectionRevision'] <> '{}'::jsonb
     OR v_selection->'kind' IS DISTINCT FROM '"checkout"'::jsonb
     OR jsonb_typeof(v_selection->'scopeRef') IS DISTINCT FROM 'string'
-    OR NOT pg_input_is_valid(v_selection->>'scopeRef', 'uuid')
+    OR (v_selection->>'scopeRef') COLLATE "C" !~ v_uuid_pattern
     OR jsonb_typeof(v_selection->'selectionRevision') IS DISTINCT FROM 'string'
-    OR NOT pg_input_is_valid(v_selection->>'selectionRevision', 'uuid')
+    OR (v_selection->>'selectionRevision') COLLATE "C" !~ v_uuid_pattern
     OR jsonb_typeof(p_outcome->'evidenceExpiresAt') IS DISTINCT FROM 'string'
-    OR v_expiry COLLATE "C" !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,6})?Z$'
+    OR v_expiry COLLATE "C" !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\.[0-9]{3}Z$'
     OR NOT pg_input_is_valid(v_expiry, 'timestamptz')
     OR NOT isfinite(v_created_at) THEN
     RAISE EXCEPTION 'destination_binding_invalid' USING ERRCODE = '22023',

@@ -969,6 +969,10 @@ shared privacy ledger fence, then the client lock on absence. It checks the
 retained receipt again before effects. The transaction commits the receipt and
 the effect together. There is no production issuer in this forward.
 
+Lock and commit return `destination_isolation_unsupported` (SQLSTATE `22023`)
+under other isolation levels. Roll back, then run the operation in a new
+READ COMMITTED transaction.
+
 The native privacy contributor exports available subject evidence and scrubs
 the owner, dialect, original key and success in the authorized erasure
 transaction. The retained client ID, scoped hash, request digest and audit

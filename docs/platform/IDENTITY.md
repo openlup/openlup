@@ -508,8 +508,9 @@ respect the same ten-minute constraint as issued challenges.
 The reference composition registers identity and a subscriptions veto on one
 direct executor, holding a `SHARE` relation lock on subscriptions through commit.
 Its opaque contact retention declares only `lifecycle_stage` and
-`acquisition_source`. The Node host also registers `customer-billing` and
-`fulfillment-parcel-contacts`; account-event registration remains host composition.
+`acquisition_source`. The Node host also registers `customer-billing`,
+`fulfillment-parcel-contacts` and `destination-receipts`;
+account-event registration remains host composition.
 The native-store transfer carries parcel snapshots and erasure markers.
 
 The direct forward `20261018190000_identity_privacy_erasures` adds the retained

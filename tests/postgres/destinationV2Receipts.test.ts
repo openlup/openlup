@@ -65,7 +65,7 @@ it("destination_replay_before_validation", async () => {
       for (const action of ["lock", "commit"] as const) {
         await retry.query(`BEGIN ISOLATION LEVEL ${isolation}`);
         await retry.query("SELECT count(*) FROM public.clients");
-        await expect(receiptCall(retry, action, args, outcome)).rejects.toMatchObject({ code: "22023", message: "destination_busy", detail: "idempotencyKey" });
+        await expect(receiptCall(retry, action, args, outcome)).rejects.toMatchObject({ code: "22023", message: "destination_isolation_unsupported" });
         await retry.query("ROLLBACK");
       }
     }
@@ -123,8 +123,16 @@ it("refuses malformed scope, original bytes, and open or oversized successes", a
   for (const invalid of [
     { ...outcome, eventId: randomUUID() }, { ...outcome, replayed: false },
     { ...outcome, binding: { ...outcome.binding, address: "Synthetic" } },
+    { ...outcome, binding: { ...outcome.binding, snapshotRef: "123E4567-E89B-12D3-A456-426614174000" } },
+    { ...outcome, binding: { ...outcome.binding, schemaVersion: "2" } },
+    // A JavaScript number would serialize 2.0 as 2 before PostgreSQL saw it.
+    JSON.stringify(outcome).replace('"schemaVersion":2', '"schemaVersion":2.0'),
     { ...outcome, selection: { ...outcome.selection, kind: "other" } },
+    { ...outcome, selection: { ...outcome.selection, scopeRef: "{123e4567-e89b-12d3-a456-426614174000}" } },
+    { ...outcome, selection: { ...outcome.selection, selectionRevision: "123e4567e89b12d3a456426614174000" } },
     { ...outcome, evidenceExpiresAt: "infinity" },
+    { ...outcome, evidenceExpiresAt: "2026-11-25T00:00:00Z" },
+    { ...outcome, evidenceExpiresAt: "2026-11-25T00:00:00.123456Z" },
     { ...outcome, binding: { ...outcome.binding, policyRevision: "😀".repeat(1024) } },
   ]) {
     await expect(receiptCall(store.owner, "commit", args, invalid)).rejects.toMatchObject({
