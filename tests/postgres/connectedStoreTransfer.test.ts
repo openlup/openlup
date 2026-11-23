@@ -1691,6 +1691,16 @@ it("round-trips an actually recreated checkout and its root with complete row eq
   expect(await census(target.owner)).toEqual(before);
 }, 160_000);
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((onResolve, onReject) => {
+    resolve = onResolve;
+    reject = onReject;
+  });
+  return { promise, resolve, reject };
+}
+
 it("destination_receipt_privacy_round_trip", async () => {
   const clean = await sourceTemplates.clone("destination-receipts");
   const operator = randomUUID();
@@ -1748,7 +1758,7 @@ it("destination_receipt_privacy_round_trip", async () => {
   try {
     await writer.query("BEGIN");
     expect(await receiptCall(writer, "lock", issuedArgs)).toEqual({ kind: "absent" });
-    const erasurePid = Promise.withResolvers<number>();
+    const erasurePid = deferred<number>();
     firstErasure = operations(store, erasurePid.resolve).erase(actor, erasureRequest);
     void firstErasure.catch(erasurePid.reject);
     await awaitReceiptWait(clean.owner, await erasurePid.promise, "relation", "ShareRowExclusiveLock");
@@ -1770,7 +1780,7 @@ it("destination_receipt_privacy_round_trip", async () => {
   await expect(receiptCall(clean.runtime, "read", [issuedArgs[0], issuedArgs[1], issuedArgs[2], "e".repeat(64)]))
     .rejects.toMatchObject(idempotencyConflict);
 
-  const prepared = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const prepared = deferred<void>(), release = deferred<void>();
   const erasure = operations({ ...store, async prepareErasure(db) {
     await store.prepareErasure(db);
     prepared.resolve();

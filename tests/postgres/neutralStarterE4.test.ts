@@ -232,7 +232,7 @@ async function snapshot() {
     OR tablename LIKE 'accounting_%' OR tablename LIKE '%outbox%') ORDER BY tablename`)).rows;
   const result: Record<string, string> = {};
   for (const { tablename } of tables) {
-    if (!/^[a-z_]+$/.test(tablename)) throw new Error('starter_snapshot_table_invalid');
+    if (!/^[a-z0-9_]+$/.test(tablename)) throw new Error('starter_snapshot_table_invalid');
     result[tablename] = (await installer.query(`SELECT coalesce(jsonb_agg(row ORDER BY row::text),'[]'::jsonb)::text AS value FROM
       (SELECT to_jsonb(t) AS row FROM public."${tablename}" t) x`)).rows[0]!.value;
   }

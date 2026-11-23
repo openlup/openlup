@@ -278,7 +278,7 @@ for (const generation of ["qualified-v2", "qualified-admin"] as const) describe(
     const empty = await receiptClient(owner, "lead"), unrelated = await receiptClient(owner, "lead");
     const available = await receiptClient(owner, "lead"), erased = await receiptClient(owner, "lead");
     const now = (await owner.query("SELECT clock_timestamp() AS value")).rows[0].value;
-    const keys = new Map([empty, unrelated, available, erased].map(id => [id, `absorb-${randomUUID()}`]));
+    const keys = new Map<string, string>([empty, unrelated, available, erased].map(id => [id, `absorb-${randomUUID()}`]));
     const absorb = (lead: string, db = runtime as Pick<Pool, "query">) => db.query(
       "SELECT public.customer_support_absorb_lead_v1($1,$2,$3,$4,$5,$6) AS value",
       [operatorId, customer, lead, `${lead}@example.invalid`, keys.get(lead), now],
