@@ -35,7 +35,8 @@ means required evidence is unavailable, 64 means invalid command or inert JSON
 syntax, and 74 means a load, I/O, integrity or unexpected validator failure.
 Violations take precedence over unavailable evidence. JSON stdout is one
 `formatVersion: 1` object. Findings retain owner codes, JSON pointers, cause, fix,
-recipe, recheck and evidence, ordered by path, code and fixture.
+recipe, recheck and evidence. Findings sort by numeric pack index, then by
+lexicographic path, then by code.
 An integrity failure such as `combination_identity_integrity_failed` exits 74.
 The CLI withholds raw errors when loading the module or running its validators.
 
@@ -241,6 +242,38 @@ to change the declaration. The legacy pack can still replay its original
 receipt.
 
 Native cadence guards still decide whether a cadence can be written.
+
+## Publish net content in grams
+
+Publication accepts net content only as a whole number of grams.
+Make `units` contain exactly one `openlup:g` entry, `{code: "openlup:g", dimension: "mass", integral: false, factor: {canonicalUnit: "openlup:g", unscaled: "1", scale: 0}}`, include `openlup:g` exactly once in `netContentUnits`, set each `skus[].netContent` to whole grams (`dimension: "mass"`, `unit: "openlup:g"`, `scale: 0` and a positive integer string of at most 40 digits in `unscaled`), and remove `role: "net_content"` from any dimension that has it while keeping its definition and SKU options otherwise intact, making room within each 64-entry limit or replacing a different `openlup:g` declaration only when the change preserves every retained unit reference.
+
+## Review filter and facet flags
+
+No listing or search reader consumes these flags in this version.
+Keep the flags for a later version or set them to false.
+
+## Add a unit GTIN
+
+Prepare refuses a SKU without a valid unit trade identifier.
+Add a valid unit GTIN to the SKU. A SKU holds at most 32 identifiers, so replace
+one when the list is full.
+
+## Use schema version 3 for offline fixtures
+
+Publication requires a newer draft schema than versions 1 and 2.
+Author offline pack fixtures as schema version 3, the newest draft schema this
+checker evaluates. Use the schema required by your publication workflow for
+saved drafts. Schema version 3 fixtures require `product.sharedContent`.
+Check them with
+`npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue.ts` and
+a registered `validateContent`. For an otherwise valid v3 fixture, inert
+`catalogue check` reports `conformance_owner_unavailable` and exits 2.
+
+## Rerun fixtures after definition repair
+
+Fixtures of an invalid type are not evaluated.
+Fix the definition findings first.
 
 ## Upgrade a definition
 

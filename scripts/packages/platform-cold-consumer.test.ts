@@ -1622,6 +1622,8 @@ catalogueConformance.packs[0].pack.types[0].validateContent = ${callback};
 `;
 const sourceArgs = (path: string) => ["catalogue", "project", "--trusted-packs", path];
 const replayArgs = (path: string) => ["catalogue", "check", "--packs", path];
+const findingIdentity = ({ path, code, severity }: { path: string; code: string; severity: string }) => [path, code, severity];
+const netContentWarning = ["/packs/0/pack/types/0/netContentUnits", "advisory_net_content_not_publishable", "warning"];
 
 it("RP2 keeps executable suffixes inert", () => {
   const { app, write, call } = packedCatalogue();
@@ -1649,6 +1651,9 @@ it("RP2 admits trust flags before loading and classifies failures", () => {
     const file = write("throws.mjs", sourceModule(data, `() => { throw ${failure}; }`));
     expect(call(sourceArgs(file), 74).findings[0].code).toBe("OPENLUP_E_CLI_FAILURE");
   }
+  const crossPackDuplicate = write("cross-pack-duplicate.mjs", sourceModule({ packs: [{ pack: fixturePack }, ...data.packs] })
+    + 'catalogueConformance.packs[1].pack.types[0].validateContent = () => { throw new Error("SYNTHETIC_PRIVATE_DETAIL"); };');
+  expect(call(sourceArgs(crossPackDuplicate), 74).findings[0].code).toBe("OPENLUP_E_CLI_FAILURE");
   const valid = write("valid.mjs", sourceModule(data));
   call(sourceArgs(valid), 74, [], join(temp, "missing"));
   const unavailable = { ...data, requiredChecks: ["taxonomy"] };
@@ -1656,9 +1661,12 @@ it("RP2 admits trust flags before loading and classifies failures", () => {
   const broken = write("broken 'source.mjs", sourceModule({ ...unavailable, packs: [{ pack: fixturePack,
     drafts: [null], quantities: [{}] }] }));
   const report = call(sourceArgs(broken), 1);
-  expect(report.findings.map(({ code, path }: { code: string; path: string }) => [path, code])).toEqual([
-    ["/packs/0/drafts/0", "draft_input_invalid"], ["/packs/0/quantities/0/value", "quantity_invalid"],
-    ["/requiredChecks/0", "conformance_owner_unavailable"],
+  expect(report.state).toBe("violated");
+  expect(report.findings.map(findingIdentity)).toEqual([
+    ["/packs/0/drafts/0", "draft_input_invalid", "error"],
+    netContentWarning,
+    ["/packs/0/quantities/0/value", "quantity_invalid", "error"],
+    ["/requiredChecks/0", "conformance_owner_unavailable", "error"],
   ]);
   expect(report.transport.recheck).toContain("'\"'\"'");
   expect(report.findings.every(({ recheck }: { recheck: string }) => recheck === report.transport.recheck)).toBe(true);
@@ -1908,20 +1916,44 @@ import { withCatalogPublicationRules } from "@openlup/platform/catalog";
 const pack = withCatalogPublicationRules(${JSON.stringify({ ...fixturePack, types: [{ ...fixturePack.types[0], validatorRef }] })},
   () => readFileSync(new URL("./rules.cjs", import.meta.url)));
 `;
-  function registration(name: string, title: string, replace = false) {
+  function registration(name: string, title: string, replace = false, invalidSibling = false) {
     const content = { ...contentDraft, product: { ...contentDraft.product, sharedContent: { title } } };
-    const projectedPack = replace ? '{ ...pack, types: [{ ...pack.types[0], validateContent: () => [] }] }' : "pack";
+    const types = [replace ? "{ ...pack.types[0], validateContent: () => [] }" : "pack.types[0]"];
+    if (invalidSibling) types.push('{ ...pack.types[0], key: "sample:invalid", taxClass: "missing" }');
+    const projectedPack = `{ ...pack, types: [${types.join(", ")}] }`;
     return sourceArgs(write(name, binding + `export const catalogueConformance = {
       packs: [{ pack: ${projectedPack}, drafts: [${JSON.stringify(content)}] }], requiredChecks: ["draft-content"] };
     `));
   }
   const good = registration("good.mjs", "Example");
   const pass = call(good, 0);
-  expect(call(replayArgs(pass.transport.subjectPath), 2).findings.map(({ code }: { code: string }) => code))
-    .toEqual(["conformance_owner_unavailable", "conformance_owner_unavailable"]);
+  const warnings = [
+    ["/packs/0/drafts/0/schemaVersion", "advisory_draft_version_not_publishable", "warning"],
+    netContentWarning,
+  ];
+  expect(pass.state).toBe("satisfied");
+  expect(pass.findings.map(findingIdentity)).toEqual(warnings);
+  const replay = call(replayArgs(pass.transport.subjectPath), 2);
+  expect(replay.state).toBe("unavailable");
+  expect(replay.findings.map(findingIdentity)).toEqual([
+    ["/packs/0/drafts/0/product/sharedContent", "conformance_owner_unavailable", "error"],
+    ...warnings,
+    ["/requiredChecks/0", "conformance_owner_unavailable", "error"],
+  ]);
   const refusal = call(registration("refused.mjs", ""), 1);
-  expect(refusal.findings).toEqual([expect.objectContaining({ code: "title_required", path: "/packs/0/drafts/0/product/sharedContent/title" })]);
+  expect(refusal.state).toBe("violated");
+  expect(refusal.findings.map(findingIdentity)).toEqual([
+    ["/packs/0/drafts/0/product/sharedContent/title", "title_required", "error"],
+    ...warnings,
+  ]);
   call(registration("substituted.mjs", "Example", true), 74);
+  const mixed = call(registration("substituted-mixed.mjs", "Example", true, true), 1);
+  expect(mixed.findings.map(findingIdentity)).toEqual([
+    ["/packs/0/drafts/0/product/sharedContent", "conformance_owner_unavailable", "error"],
+    ...warnings,
+    ["/packs/0/pack/types/1/taxClass", "definition_unknown_tax_class", "error"],
+    ["/requiredChecks/0", "conformance_owner_unavailable", "error"],
+  ]);
   write("rules.cjs", artifact + "\n");
   call(good, 74);
 });

@@ -148,6 +148,7 @@ export interface CatalogConformanceFinding {
     severity: "error" | "warning";
     path: string;
     fixture: string;
+    /** A slash value with two or more segments renders as `<host path>`. */
     observed: string;
     cause: string;
     fix: string;
