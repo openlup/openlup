@@ -3,7 +3,7 @@
 // --area runs ESLint, Docker-free area tooling guards, and SQL admission.
 import { spawn, spawnSync, type SpawnOptions, type SpawnSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
@@ -160,34 +160,28 @@ function executeAsync(command: string, args: readonly string[], options: SpawnOp
     let stdout = "";
     let stderr = "";
     let settled = false;
-    let timedOut = false;
     const child = spawn(command, args, {
       shell: process.platform === "win32",
       stdio: ["ignore", "pipe", "pipe"],
       ...(timeout !== undefined ? { timeout } : {}),
       ...spawnOptions,
     });
-    const timer = timeout ? setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, timeout) : undefined;
     const finish = (code: number | null, missing = false, errorTimedOut = false) => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeout(timer);
       resolveOutcome({
         code,
         stdout,
         output: `${stdout}${stderr}`,
         missing,
-        timedOut: timedOut || errorTimedOut,
+        timedOut: errorTimedOut,
         seconds: Math.round((Date.now() - started) / 1000),
       });
     };
     child.stdout?.on("data", (chunk: Buffer | string) => { stdout += chunk.toString(); });
     child.stderr?.on("data", (chunk: Buffer | string) => { stderr += chunk.toString(); });
     child.on("error", (error: NodeJS.ErrnoException) => { finish(null, error.code === "ENOENT", error.code === "ETIMEDOUT"); });
-    child.on("close", (code) => { finish(code); });
+    child.on("close", (code, signal) => { finish(code, false, Boolean(timeout && code === null && signal === "SIGTERM")); });
   });
 }
 
@@ -280,6 +274,7 @@ const INVENTORY_CLOSURE_FILES = [
   INVENTORY_PATH,
   "config/ci-images.json",
   "scripts/agent-review-derived.mjs",
+  "scripts/agent-review-registry.mjs",
   "scripts/ci-image-pull.mjs",
   "scripts/ci-image-mirror.mjs",
   "scripts/disposable-docker.mjs",
@@ -305,7 +300,7 @@ function collectFilesRecursive(root: string, dir: string, filter?: (rel: string)
   const entries: string[] = [];
   for (const name of readdirSync(full).sort()) {
     const rel = `${dir}/${name}`;
-    const stat = statSync(resolve(root, rel));
+    const stat = lstatSync(resolve(root, rel));
     if (stat.isDirectory()) entries.push(...collectFilesRecursive(root, rel, filter));
     else if (stat.isFile() && (!filter || filter(rel))) entries.push(rel);
   }
@@ -396,39 +391,43 @@ async function releaseGatesHeadroom(changes: readonly Change[], typecheckPassed:
   if (!budget?.maxFiles || !budget?.maxUnpackedBytes) {
     return { check: "release-gates headroom", status: "SKIP", detail: "pack caps unavailable" };
   }
-  const packDir = mkdtempSync(join(tmpdir(), "openlup-preflight-pack-"));
-  try {
-    const result = await executeAsync("npm", ["pack", "--json", "--dry-run", "--pack-destination", packDir], { cwd: resolve("packages/platform") });
-    if (result.code !== 0) {
-      return { check: "release-gates headroom", status: "WARN", detail: `npm pack --dry-run unavailable (${result.seconds} s)`, notes: tail(result.output) };
-    }
-    const reports = JSON.parse(result.stdout) as Array<{ entryCount?: number; unpackedSize?: number }>;
-    const report = reports[0];
-    if (!report || typeof report.entryCount !== "number" || typeof report.unpackedSize !== "number") {
-      return { check: "release-gates headroom", status: "WARN", detail: "npm pack --json --dry-run output unreadable" };
-    }
-    const checks: Array<[string, number, number]> = [
-      ["files", report.entryCount, budget.maxFiles],
-      ["unpacked bytes", report.unpackedSize, budget.maxUnpackedBytes],
-    ];
-    const exceeded: string[] = [];
-    const low: string[] = [];
-    for (const [label, value, limit] of checks) {
-      if (value > limit) exceeded.push(`${label} ${value} exceeds cap ${limit}`);
-      else if ((limit - value) / limit < RELEASE_GATES_HEADROOM_WARN_RATIO) {
-        low.push(`${label} ${value}/${limit} (${((limit - value) / limit * 100).toFixed(1)}% headroom)`);
-      }
-    }
-    if (exceeded.length > 0) {
-      return { check: "release-gates headroom", status: "FAIL", detail: `packages/platform pack budget exceeded (${result.seconds} s)`, notes: exceeded };
-    }
-    if (low.length > 0) {
-      return { check: "release-gates headroom", status: "WARN", detail: `packages/platform pack headroom under 10% (${result.seconds} s)`, notes: low };
-    }
-    return { check: "release-gates headroom", status: "PASS", detail: `packages/platform ${report.entryCount}/${budget.maxFiles} files, ${report.unpackedSize}/${budget.maxUnpackedBytes} unpacked bytes (${result.seconds} s)` };
-  } finally {
-    rmSync(packDir, { recursive: true, force: true });
+  const result = await executeAsync(
+    "npm",
+    ["pack", "--dry-run", "--json", "--ignore-scripts", "--workspaces=false"],
+    { cwd: resolve("packages/platform") },
+  );
+  if (result.code !== 0) {
+    return { check: "release-gates headroom", status: "WARN", detail: `npm pack --dry-run unavailable (${result.seconds} s)`, notes: tail(result.output) };
   }
+  let report: { entryCount?: number; unpackedSize?: number } | undefined;
+  try {
+    const reports = JSON.parse(result.stdout) as Array<{ entryCount?: number; unpackedSize?: number }>;
+    report = Array.isArray(reports) ? reports[0] : undefined;
+  } catch {
+    report = undefined;
+  }
+  if (!report || typeof report.entryCount !== "number" || typeof report.unpackedSize !== "number") {
+    return { check: "release-gates headroom", status: "WARN", detail: "npm pack --json --dry-run output unreadable" };
+  }
+  const checks: Array<[string, number, number]> = [
+    ["files", report.entryCount, budget.maxFiles],
+    ["unpacked bytes", report.unpackedSize, budget.maxUnpackedBytes],
+  ];
+  const exceeded: string[] = [];
+  const low: string[] = [];
+  for (const [label, value, limit] of checks) {
+    if (value > limit) exceeded.push(`${label} ${value} exceeds cap ${limit}`);
+    else if ((limit - value) / limit < RELEASE_GATES_HEADROOM_WARN_RATIO) {
+      low.push(`${label} ${value}/${limit} (${((limit - value) / limit * 100).toFixed(1)}% headroom)`);
+    }
+  }
+  if (exceeded.length > 0) {
+    return { check: "release-gates headroom", status: "FAIL", detail: `packages/platform pack budget exceeded (${result.seconds} s)`, notes: exceeded };
+  }
+  if (low.length > 0) {
+    return { check: "release-gates headroom", status: "WARN", detail: `packages/platform pack headroom under 10% (${result.seconds} s)`, notes: low };
+  }
+  return { check: "release-gates headroom", status: "PASS", detail: `packages/platform ${report.entryCount}/${budget.maxFiles} files, ${report.unpackedSize}/${budget.maxUnpackedBytes} unpacked bytes (${result.seconds} s)` };
 }
 
 function fragments(changes: readonly Change[]): CheckResult {
@@ -901,31 +900,38 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
   const { base, untrackedPaths, changes } = fork;
   let selection: TestSelection | undefined;
   let typecheckPassed = false;
-  return runCheckWaves(started, [
-    {
-      parallel: true,
-      checks: [
-        ["ast-grep", () => astGrep()],
-        ["ast-grep hygiene", () => astGrepHygiene()],
-        ["neutrality", () => neutrality(base)],
-        ["fragments", () => fragments(changes)],
-        ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
-        ["gitleaks", () => gitleaks(base, untrackedPaths)],
-        ["test discovery", () => { selection = discoverTests(changes); return testDiscoveryVerdict(selection); }],
-        ["eslint changed", () => eslintChanged(changes)],
-        ["sql admit", () => sqlAdmit(changes)],
-      ],
-    },
-    {
-      parallel: false,
-      checks: [
-        ["typecheck", async () => { const res = await typecheck(); typecheckPassed = res.status === "PASS"; return res; }],
-        ["release-gates headroom", () => releaseGatesHeadroom(changes, typecheckPassed)],
-        ["inventory", () => inventory(changes)],
-        ["hosted tests", () => hostedTests(selection)],
-      ],
-    },
-  ]);
+  const optionalLocks = processEnvironment.GIT_OPTIONAL_LOCKS;
+  processEnvironment.GIT_OPTIONAL_LOCKS = "0";
+  try {
+    return await runCheckWaves(started, [
+      {
+        parallel: true,
+        checks: [
+          ["ast-grep", () => astGrep()],
+          ["ast-grep hygiene", () => astGrepHygiene()],
+          ["neutrality", () => neutrality(base)],
+          ["fragments", () => fragments(changes)],
+          ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
+          ["gitleaks", () => gitleaks(base, untrackedPaths)],
+          ["test discovery", () => { selection = discoverTests(changes); return testDiscoveryVerdict(selection); }],
+          ["eslint changed", () => eslintChanged(changes)],
+          ["sql admit", () => sqlAdmit(changes)],
+        ],
+      },
+      {
+        parallel: false,
+        checks: [
+          ["typecheck", async () => { const res = await typecheck(); typecheckPassed = res.status === "PASS"; return res; }],
+          ["release-gates headroom", () => releaseGatesHeadroom(changes, typecheckPassed)],
+          ["inventory", () => inventory(changes)],
+          ["hosted tests", () => hostedTests(selection)],
+        ],
+      },
+    ]);
+  } finally {
+    if (optionalLocks === undefined) delete processEnvironment.GIT_OPTIONAL_LOCKS;
+    else processEnvironment.GIT_OPTIONAL_LOCKS = optionalLocks;
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

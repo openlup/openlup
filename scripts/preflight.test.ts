@@ -870,17 +870,28 @@ describe("preflight report", () => {
       const ciBypass = await runInventoryCase({ ci: "true" });
       expect(ciBypass.exit).toBe(0);
       expect(ciBypass.calls).toContain("npm run inventory:refresh");
+
+      writeFileSync(cacheFile, "{not-valid-json", "utf8");
+      const corruptCache = await runInventoryCase({});
+      expect(corruptCache.exit).toBe(0);
+      expect(corruptCache.calls).toContain("npm run inventory:refresh");
+
+      writeFileSync(cacheFile, JSON.stringify({ digest: "stale-digest" }), "utf8");
+      const staleCache = await runInventoryCase({});
+      expect(staleCache.exit).toBe(0);
+      expect(staleCache.calls).toContain("npm run inventory:refresh");
     } finally {
       if (priorCache === null) rmSync(cacheFile, { force: true });
       else writeFileSync(cacheFile, priorCache, "utf8");
     }
   });
 
-  it("reports packages/platform release-gates headroom PASS, WARN (<10%) and FAIL (>cap)", async () => {
+  it("reports packages/platform release-gates headroom PASS, WARN (<10% or unreadable), SKIP (failed typecheck) and FAIL (>cap)", async () => {
     const gates = JSON.parse(readFileSync("packages/platform/release-gates.json", "utf8")) as {
       pack: { maxFiles: number; maxUnpackedBytes: number };
     };
-    const runHeadroom = async (entryCount: number, unpackedSize: number) => {
+    const runHeadroom = async (options: { packStdout?: string; failTypecheck?: boolean }) => {
+      const packArgs: string[][] = [];
       mockChildProcesses((command, args) => {
         if (command === "git") {
           if (args?.includes("--show-toplevel")) return { status: 0, stdout: process.cwd(), stderr: "" };
@@ -888,8 +899,12 @@ describe("preflight report", () => {
           if (args?.includes("--name-status")) return { status: 0, stdout: "M\0packages/platform/sql/20400101000000_example.sql\0", stderr: "" };
           return { status: 0, stdout: "", stderr: "" };
         }
+        if (options.failTypecheck && command === "npm" && args?.[0] === "run" && args?.[1] === "prelint") {
+          return { status: 1, stdout: "", stderr: "prelint failed" };
+        }
         if (command === "npm" && args?.[0] === "pack") {
-          return { status: 0, stdout: JSON.stringify([{ entryCount, unpackedSize }]), stderr: "" };
+          packArgs.push([...args]);
+          return { status: 0, stdout: options.packStdout ?? "[]", stderr: "" };
         }
         if (command === "docker") return { status: 1, stdout: "", stderr: "" };
         if (command === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
@@ -899,18 +914,34 @@ describe("preflight report", () => {
       vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
       vi.spyOn(process.stderr, "write").mockImplementation(() => true);
       const exit = await main(now);
-      return { exit, lines };
+      return { exit, lines, packArgs };
     };
 
-    const ok = await runHeadroom(Math.floor(gates.pack.maxFiles * 0.5), Math.floor(gates.pack.maxUnpackedBytes * 0.5));
+    const ok = await runHeadroom({
+      packStdout: JSON.stringify([{ entryCount: Math.floor(gates.pack.maxFiles * 0.5), unpackedSize: Math.floor(gates.pack.maxUnpackedBytes * 0.5) }]),
+    });
     expect(ok.exit).toBe(0);
+    expect(ok.packArgs).toEqual([["pack", "--dry-run", "--json", "--ignore-scripts", "--workspaces=false"]]);
     expect(ok.lines).toContainEqual(expect.stringMatching(/^PASS release-gates headroom: /u));
 
-    const warn = await runHeadroom(Math.ceil(gates.pack.maxFiles * 0.95), Math.floor(gates.pack.maxUnpackedBytes * 0.5));
+    const warn = await runHeadroom({
+      packStdout: JSON.stringify([{ entryCount: Math.ceil(gates.pack.maxFiles * 0.95), unpackedSize: Math.floor(gates.pack.maxUnpackedBytes * 0.5) }]),
+    });
     expect(warn.exit).toBe(0);
     expect(warn.lines).toContainEqual(expect.stringMatching(/^WARN release-gates headroom: packages\/platform pack headroom under 10%/u));
 
-    const fail = await runHeadroom(gates.pack.maxFiles + 1, Math.floor(gates.pack.maxUnpackedBytes * 0.5));
+    const unreadable = await runHeadroom({ packStdout: "> prepack banner\nnot json" });
+    expect(unreadable.exit).toBe(0);
+    expect(unreadable.lines).toContainEqual("WARN release-gates headroom: npm pack --json --dry-run output unreadable");
+
+    const skipped = await runHeadroom({ failTypecheck: true });
+    expect(skipped.exit).toBe(1);
+    expect(skipped.packArgs).toEqual([]);
+    expect(skipped.lines).toContainEqual("SKIP release-gates headroom: typecheck build did not complete");
+
+    const fail = await runHeadroom({
+      packStdout: JSON.stringify([{ entryCount: gates.pack.maxFiles + 1, unpackedSize: Math.floor(gates.pack.maxUnpackedBytes * 0.5) }]),
+    });
     expect(fail.exit).toBe(1);
     expect(fail.lines).toContainEqual(expect.stringMatching(/^FAIL release-gates headroom: packages\/platform pack budget exceeded/u));
   });
