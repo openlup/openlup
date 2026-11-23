@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import type { HttpRequest } from "../types/http.js";
+import { rateLimitClientAddress } from "./clientAddress.js";
 
 const RPC_NAME = "public_record_signup_attempt" as const;
 
@@ -83,16 +85,10 @@ export async function checkAndRecordSignupAttempt(
   };
 }
 
-export interface PublicSignupRateLimitRequestShape {
-  method?: string;
-  body?: unknown;
-  headers: Record<string, string | string[] | undefined>;
-}
-
 export interface MaybeCheckPublicSignupRateLimitArgs {
   client: PublicSignupRateLimitClient;
   endpoint: PublicSignupEndpoint;
-  req: PublicSignupRateLimitRequestShape;
+  req: HttpRequest;
   windowMinutes?: number;
   maxPerIp?: number;
   maxPerEmail?: number;
@@ -117,7 +113,7 @@ export async function maybeCheckPublicSignupRateLimit(
   return checkAndRecordSignupAttempt({
     client: args.client,
     endpoint: args.endpoint,
-    ip: extractClientIp(args.req.headers),
+    ip: rateLimitClientAddress(args.req),
     email,
     windowMinutes: args.windowMinutes,
     maxPerIp: args.maxPerIp,
@@ -143,24 +139,6 @@ export function isPublicSignupLimiterUnavailable(
   result: PublicSignupRateLimitResult,
 ): boolean {
   return !result.allowed && result.reason === "limiter_unavailable";
-}
-
-export function extractClientIp(
-  headers: Record<string, string | string[] | undefined>,
-): string {
-  const candidates = [
-    pickHeader(headers["x-forwarded-for"]),
-    pickHeader(headers["cf-connecting-ip"]),
-    pickHeader(headers["x-real-ip"]),
-  ];
-
-  for (const candidate of candidates) {
-    if (candidate) {
-      return candidate.split(",")[0]?.trim() ?? candidate;
-    }
-  }
-
-  return "unknown";
 }
 
 interface RpcRow {
@@ -190,14 +168,6 @@ function pickReason(value: unknown): PublicSignupRateLimitReason | undefined {
 
 function pickNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
-function pickHeader(value: string | string[] | undefined): string | null {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
-    return value[0];
-  }
-  return null;
 }
 
 function failClosedUnavailableResult(): PublicSignupRateLimitResult {

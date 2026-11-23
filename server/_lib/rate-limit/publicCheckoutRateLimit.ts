@@ -131,24 +131,6 @@ export function formatPublicCheckoutRateLimitMessage(
   return "Zbyt wiele prób z tego adresu. Spróbuj ponownie za godzinę.";
 }
 
-export function extractClientIp(
-  headers: Record<string, string | string[] | undefined>,
-): string {
-  const candidates = [
-    pickHeader(headers["x-forwarded-for"]),
-    pickHeader(headers["cf-connecting-ip"]),
-    pickHeader(headers["x-real-ip"]),
-  ];
-
-  for (const candidate of candidates) {
-    if (candidate) {
-      return candidate.split(",")[0]?.trim() ?? candidate;
-    }
-  }
-
-  return "unknown";
-}
-
 interface RpcRow {
   allowed?: unknown;
   reason?: unknown;
@@ -217,14 +199,6 @@ function isAttemptSequence(value: unknown): value is number {
     Number.isSafeInteger(value) &&
     value >= 0 &&
     value <= 50;
-}
-
-function pickHeader(value: string | string[] | undefined): string | null {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
-    return value[0];
-  }
-  return null;
 }
 
 /** Fail-CLOSED: deny on any limiter failure. */

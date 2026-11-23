@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
 
 const mock = vi.hoisted(() => ({ otp: vi.fn(), limit: vi.fn(), pad: vi.fn(), getUser: vi.fn(), findByEmail: vi.fn(), createAccount: vi.fn(), assess: vi.fn() }));
@@ -12,23 +12,30 @@ vi.mock("@openlup/platform/identity", async importOriginal => ({
   createSupabaseAccountLinkStore: () => ({ isReservedPrincipal: async () => false, findAccountByPrincipalId: async () => null,
     findAccountByEmail: mock.findByEmail, createAccount: mock.createAccount }),
 }));
-vi.mock("../../_lib/rate-limit/customerMagicLinkRateLimit.js", () => ({
+vi.mock("../../_lib/rate-limit/customerMagicLinkRateLimit.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../_lib/rate-limit/customerMagicLinkRateLimit.js")>()),
   checkAndRecordCustomerMagicLinkAttempt: mock.limit,
-  extractClientIp: () => "127.0.0.1",
 }));
 vi.mock("../../_lib/timing.js", () => ({ padResponseTime: mock.pad }));
 
 import { createReferenceAccountHandlers } from "./subscriptionAccount.js";
 const env = { url: "http://127.0.0.1:54321", anonKey: "anon", serviceRoleKey: "service" };
 const origin = "http://127.0.0.1:54330";
-const request = { headers: {}, body: { email: "buyer@example.test" } } as HttpRequest;
+const request = {
+  headers: { "x-forwarded-for": "203.0.113.8" },
+  socket: { remoteAddress: "192.0.2.10" },
+  body: { email: "buyer@example.test" },
+} as unknown as HttpRequest;
 const response = () => ({ status: vi.fn().mockReturnThis(), json: vi.fn(), setHeader: vi.fn() }) as unknown as HttpResponse;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS", undefined);
   mock.limit.mockResolvedValue({ allowed: true });
   mock.otp.mockResolvedValue({ error: null });
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("captured sign-in error boundary", () => {
   it.each(["returned", "thrown"])("pads and hides an Auth %s failure instead of claiming acceptance", async (kind) => {
@@ -54,6 +61,7 @@ describe("captured sign-in error boundary", () => {
 
   it("sends only the server-selected callback and no caller metadata", async () => {
     await createReferenceAccountHandlers(env, origin).requestSignIn(request, response());
+    expect(mock.limit).toHaveBeenCalledWith(expect.objectContaining({ ip: "192.0.2.10" }));
     expect(mock.otp).toHaveBeenCalledWith({ email: "buyer@example.test", options: {
       shouldCreateUser: true, emailRedirectTo: `${origin}/account/auth/callback`,
     } });

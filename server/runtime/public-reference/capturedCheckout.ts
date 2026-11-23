@@ -6,7 +6,8 @@ import { CommerceRuntimeConflictError, type CheckoutCommandRuntimeResult } from 
 import type { ApplyHiddenCheckoutPaymentResultRequest, ApplyHiddenCheckoutPaymentResultResponse } from "../../../src/domains/commerce/runtimeContracts.js";
 import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
 import { sendBffError } from "../../_lib/bff/response.js";
-import { checkAndRecordCheckoutAttempt, extractClientIp, type PublicCheckoutRateLimitClient } from "../../_lib/rate-limit/publicCheckoutRateLimit.js";
+import { rateLimitClientAddress } from "../../_lib/rate-limit/clientAddress.js";
+import { checkAndRecordCheckoutAttempt, type PublicCheckoutRateLimitClient } from "../../_lib/rate-limit/publicCheckoutRateLimit.js";
 import { checkoutRiskBlockingEnabled, riskHashSecret } from "../../_lib/config/featureFlags.js";
 import { riskSubjectHash } from "../../domains/risk/riskFingerprint.js";
 import { createReferenceCheckoutHandler } from "../../domains/commerce/referenceCheckoutHandler.js";
@@ -238,6 +239,7 @@ export function createCapturedReferenceCheckoutHandler(input: {
   outcome: Outcome;
   assertDisposable: () => Promise<void>;
   verifyAccessToken: IdentityVerifierPort["verifyAccessToken"];
+  env?: NodeJS.ProcessEnv;
 }) {
   return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
     try {
@@ -281,7 +283,7 @@ export function createCapturedReferenceCheckoutHandler(input: {
         },
         checkRateLimit: (request, command) => checkAndRecordCheckoutAttempt({
           client: client as PublicCheckoutRateLimitClient,
-          ip: extractClientIp(request.headers),
+          ip: rateLimitClientAddress(request, input.env),
           email: command.customer.email,
           journeyIdempotencyKey: command.idempotencyKey,
           paymentAttemptSequence: 0,
@@ -290,7 +292,7 @@ export function createCapturedReferenceCheckoutHandler(input: {
           ? async (request, command) => createLocalReferenceRiskCheckoutBlocklistPort(client).checkExactBlocklist({
             subjectRefs: [
               { subjectKind: "email", subjectHash: riskSubjectHash("email", command.customer.email, riskHashSecret()) },
-              { subjectKind: "ip", subjectHash: riskSubjectHash("ip", extractClientIp(request.headers), riskHashSecret()) },
+              { subjectKind: "ip", subjectHash: riskSubjectHash("ip", rateLimitClientAddress(request, input.env), riskHashSecret()) },
             ],
           })
           : undefined,

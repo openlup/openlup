@@ -124,11 +124,11 @@ export function createSubscriptionProfile(env: NodeJS.ProcessEnv) {
   const csp = subscriptionCsp(config.authOrigin);
   const gateway = createSupabaseDataGateway(config.data);
   const assertDisposable = () => config.assertDisposable();
-  const account = createReferenceAccountHandlers(config.data, config.origin);
+  const account = createReferenceAccountHandlers(config.data, config.origin, env);
   const routes = new Map<string, { method: string; handler: ReferenceHandler }>([
     ["/api/bff/catalog/items", { method: "GET", handler: createReferenceCatalogItemsHandler({ catalogPort: createLocalReferenceDemoSellableCatalogPort() }) }],
     ["/api/bff/commerce/checkouts", { method: "POST", handler: createCapturedReferenceCheckoutHandler({
-      gateway, outcome: config.outcome, assertDisposable,
+      gateway, outcome: config.outcome, assertDisposable, env,
       verifyAccessToken: (token) => createSupabaseIdentityVerifier(createCustomerClient(config.data, token)).verifyAccessToken(token),
     }) }],
     ["/api/bff/customers/magic-link", { method: "POST", handler: account.requestSignIn }],

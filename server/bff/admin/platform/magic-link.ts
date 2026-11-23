@@ -14,8 +14,8 @@ import {
 } from "../../../../src/domains/platform/contracts.js";
 import {
   checkAndRecordAdminMagicLinkAttempt,
-  extractClientIp,
 } from "../../../_lib/rate-limit/adminMagicLinkRateLimit.js";
+import { rateLimitClientAddress } from "../../../_lib/rate-limit/clientAddress.js";
 import { padResponseTime } from "../../../_lib/timing.js";
 
 const ADMIN_AUTH_CALLBACK_PATH = "/admin/auth/callback";
@@ -25,7 +25,8 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     responseRequestId: (res) => readObservedResponseContext(res)?.requestId,
     requestSchema: adminMagicLinkRequestSchema, responseSchema: adminMagicLinkResponseSchema,
     readEnvironment: readSupabaseAdminServiceEnv, createRuntime: createAdminMagicLinkRuntime,
-    checkAttempt: checkAndRecordAdminMagicLinkAttempt, extractClientIp, padResponseTime,
+    checkAttempt: checkAndRecordAdminMagicLinkAttempt,
+    extractClientIp: () => rateLimitClientAddress(req), padResponseTime,
     redirectOrigins: [process.env.APP_BASE_URL?.trim() || process.env.SITE_URL?.trim() || ""], callbackPath: ADMIN_AUTH_CALLBACK_PATH,
   })(req, res);
 }

@@ -8,7 +8,7 @@ import { createCustomerDiagnosticHistoryPort } from "../../adapters/customerDiag
 import {
   createPostgresCustomerDiagnosticHistoryTransactionLane,
 } from "../../adapters/postgres/dataGateway.js";
-import { TRUSTED_PROXY_HOPS_ENV_KEY, resolveClientAddress } from "./clientAddressResolver.js";
+import { isInvalidTrustedProxyHopsError, readTrustedProxyHops, resolveClientAddress } from "./clientAddressResolver.js";
 import type {
   CustomerDiagnosticHistoryPort,
   CustomerDiagnosticOverviewPort,
@@ -146,10 +146,14 @@ export function resolveCustomerDiagnosticHistoryBinding(
       }
       // No minute epoch: the sliding window belongs to the SQL admission check,
       // and a rotating key would hand every caller a fresh bucket each minute.
-      const clientAddress = resolveClientAddress(req, {
-        trustedProxyHops: readTrustedProxyHops(env),
-        env,
-      });
+      let trustedProxyHops: number | null;
+      try {
+        trustedProxyHops = readTrustedProxyHops(env);
+      } catch (error) {
+        if (!isInvalidTrustedProxyHopsError(error)) throw error;
+        throw new CustomerDiagnosticConfigurationError();
+      }
+      const clientAddress = resolveClientAddress(req, { trustedProxyHops, env });
       return createHmac("sha256", config.ingressKey)
         .update(`diagnostic-ingress:v1:${clientAddress}`)
         .digest("hex");
@@ -231,19 +235,6 @@ function readHistoryConfig(env: Env): {
     // fallback "consulted when APP_BASE_URL is absent". Without either the ingest fails closed.
     origin: normalizeOrigin(env.APP_BASE_URL?.trim() || env.SITE_URL?.trim() || ""),
   };
-}
-
-/**
- * A non-integer or negative hop count is a misconfiguration, not a reason to
- * silently fall through to a weaker address rung: it refuses public ingest the
- * way a bad retention refuses storage. Parsed here, beside the other env reads,
- * so the neutral resolver never has to know this runtime's failure vocabulary.
- */
-function readTrustedProxyHops(env: Env): number | null {
-  const declared = env[TRUSTED_PROXY_HOPS_ENV_KEY]?.trim() ?? "";
-  if (!declared) return null;
-  if (!/^\d+$/.test(declared)) throw new CustomerDiagnosticConfigurationError();
-  return Number(declared);
 }
 
 function normalizeOrigin(value: string): string | null {

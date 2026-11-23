@@ -9,8 +9,8 @@ import {
 } from "../../../src/domains/customers/contracts.js";
 import {
   checkAndRecordCustomerMagicLinkAttempt,
-  extractClientIp,
 } from "../../_lib/rate-limit/customerMagicLinkRateLimit.js";
+import { rateLimitClientAddress } from "../../_lib/rate-limit/clientAddress.js";
 import { padResponseTime } from "../../_lib/timing.js";
 import {
   createCustomerClient,
@@ -40,7 +40,8 @@ async function handler(req: VercelRequest, res: VercelResponse, resolveSession: 
     disabledDetails: { featureFlag: "COMMERCE_V2_W12_CUSTOMER_AUTH_UI" },
     requestSchema: customerMagicLinkRequestSchema, responseSchema: customerMagicLinkResponseSchema,
     readEnvironment: readCustomerSelfServiceEnv, createCustomerClient, createCustomerServiceClient,
-    checkAttempt: checkAndRecordCustomerMagicLinkAttempt, extractClientIp, padResponseTime,
+    checkAttempt: checkAndRecordCustomerMagicLinkAttempt,
+    extractClientIp: () => rateLimitClientAddress(req), padResponseTime,
     redirectOrigins: [process.env.APP_BASE_URL?.trim() || process.env.CUSTOMER_AUTH_REDIRECT_ORIGIN?.trim() || ""], callbackPath: customerAuthCallbackPath, resolveSession,
   })(req, res);
 }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { hashAdminMagicLinkRateLimitKey } from "../../../_lib/rate-limit/adminMagicLinkRateLimit.js";
 import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.js";
 import {
   APPLICATION_ENVIRONMENT_KEY,
@@ -52,6 +53,7 @@ const ENV_KEYS = [
   "APP_BASE_URL",
   "SITE_URL",
   "VERCEL",
+  "CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS",
   "VERCEL_URL",
   APPLICATION_ENVIRONMENT_KEY,
   LEGACY_APPLICATION_ENVIRONMENT_KEY,
@@ -137,6 +139,9 @@ describe("POST /api/bff/admin/platform/magic-link", () => {
 
     await handler(request({ email: " Admin@Example.com " }), res);
 
+    expect(mockRpc).toHaveBeenCalledWith("public_record_admin_magic_link_attempt", expect.objectContaining({
+      p_ip_hash: hashAdminMagicLinkRateLimitKey("192.0.2.10"),
+    }));
     expect(mockFrom).toHaveBeenCalledWith("admin_users");
     expect(mockSelect).toHaveBeenCalledWith("id, role");
     expect(mockEq).toHaveBeenCalledWith("email", "admin@example.com");
@@ -341,6 +346,7 @@ function requestWithHeaders(headers: Record<string, string>): VercelRequest {
     body: { email: "admin@example.com" },
     query: {},
     headers,
+    socket: { remoteAddress: "192.0.2.10" },
   } as unknown as VercelRequest;
 }
 
@@ -359,6 +365,7 @@ function request(body: unknown): VercelRequest {
     body,
     query: {},
     headers: { "x-forwarded-for": "198.51.100.1" },
+    socket: { remoteAddress: "192.0.2.10" },
   } as unknown as VercelRequest;
 }
 
