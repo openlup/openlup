@@ -293,46 +293,78 @@ it.each(['unregistered', 'executable', 'symlink'])('keeps a %s report conflict u
   } finally { restoreDerivedFixture(); }
 }, 60000);
 
-describe.each(['core', 'outbox'])('%s change-note owner', owner => {
+it.each([
+  ['outbox', 'first parent'],
+  ['outbox', 'missing'],
+  ['outbox', 'removed'],
+  ['outbox', 'main only'],
+  ['core', 'missing'],
+])('checks the %s change note through landing (%s)', (owner, note) => {
   const directory = `packages/${owner}`;
   const entry = `${directory}/src/${owner === 'core' ? 'subscription/index.ts' : 'index.ts'}`;
   const notePath = `${directory}/changes/fixture-api.md`;
   const report = `${directory}/api/${owner === 'core' ? 'subscription' : 'index'}.api.md`;
-  const addExport = () => write(entry, read(entry) + '\nexport const fixtureApi = 1;\n');
-
-  beforeAll(() => {
+  try {
     checkout(base);
-    addExport();
-    coldBuild(...(owner === 'core' ? ['core'] : ['core', 'outbox']));
-    checkout(merged);
-  }, 60000);
-
-  it.each(['first parent', 'missing', 'removed', 'main only'])('checks the %s change note before staging any API reports', note => {
-    try {
-      checkout(base);
-      if (note === 'removed') { write(notePath, '- Describe the fixture contract.\n'); commit(); }
-      const fork = git('rev-parse', 'HEAD');
-      addExport();
-      if (note === 'first parent') write(notePath, '- Add a fixture API export.\n');
-      if (note === 'removed') rmSync(join(root, notePath));
-      const left = commit();
-      checkout(fork);
-      if (note === 'main only') write(notePath, '- Document a main-side change.\n');
-      const right = commit(); checkout(left);
-      git('merge', '--no-ff', '--no-commit', right);
-      const render = () => fixtureCommand(process.execPath, [`${directory}/scripts/api-contract.ts`, '--update', `--landing=${left},${right}`]);
-      if (note === 'first parent') {
-        render();
-        expect(read(report)).toContain('declare const fixtureApi = 1');
-      } else {
-        expect(render).toThrow(`landing: @openlup/${owner} API snapshots changed`);
-        expect(read(report)).not.toContain('fixtureApi');
-      }
+    if (note === 'removed') { write(notePath, '- Describe the fixture contract.\n'); commit(); }
+    const fork = git('rev-parse', 'HEAD');
+    write(entry, read(entry) + '\nexport const fixtureApi = 1;\n');
+    if (note === 'first parent') write(notePath, '- Add a fixture API export.\n');
+    if (note === 'removed') rmSync(join(root, notePath));
+    const left = commit();
+    checkout(fork);
+    if (note === 'main only') write(notePath, '- Document a main-side change.\n');
+    const right = commit(); setMain(right); checkout(left);
+    if (note === 'first parent') {
+      landingCli();
+      expect(git('show', '-s', '--format=%P', 'HEAD')).toBe(`${left} ${right}`);
+      expect(git('show', `HEAD:${report}`)).toContain('declare const fixtureApi = 1');
+      expect(git('status', '--porcelain')).toBe('');
+    } else {
+      expect(landingCli).toThrow(`landing: @openlup/${owner} API snapshots changed; add or modify ${directory}/changes/*.md or ${directory}/CHANGELOG.md on the first parent and retain it in the merge`);
       expect(git('rev-parse', 'HEAD')).toBe(left);
+      expect(git('rev-parse', 'MERGE_HEAD')).toBe(right);
+      expect(read(report)).not.toContain('fixtureApi');
       expect(git('diff', '--cached', '--name-only', '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api')).toBe('');
-    } finally { restoreDerivedFixture(); }
-  }, 60000);
-});
+    }
+  } finally { restoreDerivedFixture(); }
+}, 60000);
+
+it('refuses an inventory-only landing with a mismatched installed dependency before writing', () => {
+  const installedLock = 'node_modules/.package-lock.json';
+  const lockBytes = read(installedLock);
+  const indexBytes = () => readFileSync(join(root, '.git/index'));
+  const trackedDigest = () => {
+    const hash = createHash('sha256');
+    for (const path of git('ls-files', '-z').split('\0').filter(Boolean)) {
+      hash.update(path).update('\0').update(createHash('sha256').update(readFileSync(join(root, path))).digest());
+    }
+    return hash.digest('hex');
+  };
+  try {
+    checkout(base);
+    const manifest = 'scripts/platform-migration-manifest.ts';
+    write(manifest, read(manifest) + '\n// Fixture inventory input.\n');
+    const left = commit();
+    expect(git('diff', '--name-only', base, left)).toBe(manifest);
+    checkout(base);
+    write('README.md', read('README.md') + '\nFixture main change.\n');
+    const right = commit(); setMain(right); checkout(left);
+    const lock = JSON.parse(lockBytes);
+    lock.packages['node_modules/zod'].version = '0.0.0-fixture';
+    write(installedLock, json(lock));
+    const bytes = trackedDigest(), index = indexBytes();
+
+    expect(landingCli).toThrow('carrier build: installed npm tree does not match package-lock.json (node_modules/zod); run npm ci in this checkout');
+    expect(trackedDigest()).toBe(bytes);
+    expect(indexBytes()).toEqual(index);
+    expect(git('rev-parse', 'HEAD')).toBe(left);
+    expect(existsSync(join(root, '.git/MERGE_HEAD'))).toBe(false);
+  } finally {
+    write(installedLock, lockBytes);
+    restoreDerivedFixture();
+  }
+}, 30000);
 
 it('leaves the merge in place when both sides edit the SQL reference prose', async () => {
   git('reset', '--hard', reviewed); git('checkout', '-q', '--detach', reviewed);
@@ -549,6 +581,7 @@ describe('integration proof on a compact Git history', () => {
 it('runs incremental package build before inventory refresh when PR touches SQL', () => {
   expect(initialLandingResult.inventoryRefreshed).toBe(true);
   expect(initialLandingCommands.map(({ args }) => args)).toEqual([
+    ['--input-type=module', '-e', expect.stringContaining('assertCarrierToolchain(process.cwd())')],
     [join(root, 'scripts/build-packages-incremental.mjs')],
     ['--import', 'tsx', join(root, 'scripts/installation-inventory-refresh.ts')],
   ]);
@@ -636,7 +669,9 @@ it.each(['clean', 'derived-carrier'])('skips Docker inventory refresh on non-SQL
         expect(args).not.toContain(join(root, 'scripts/installation-inventory-refresh.ts'));
       },
     });
-    if (mode === 'clean') expect(invoked).toEqual([]);
+    if (mode === 'clean') expect(invoked).toEqual([{
+      command: process.execPath, args: ['--input-type=module', '-e', expect.stringContaining('assertCarrierToolchain(process.cwd())')],
+    }]);
     else expect(invoked.filter(({ args }) => args[0] === npmCli)).toEqual(['core', 'outbox', 'platform'].map(owner => ({
       command: process.execPath, args: [npmCli, 'run', 'build', `--workspace=@openlup/${owner}`],
     })));

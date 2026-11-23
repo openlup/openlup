@@ -190,7 +190,7 @@ export function isInventoryInputPath(path) {
 }
 
 export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
-  if ((await git(cwd, 'status', '--porcelain=v1', '--untracked-files=all')).trim()) throw new Error('landing: clean committed checkout required');
+  if ((await git(cwd, '--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all')).trim()) throw new Error('landing: clean committed checkout required');
   for (const key of ['user.name', 'user.email']) {
     let configured;
     try { configured = (await git(cwd, 'config', '--get', key)).trim(); }
@@ -201,10 +201,14 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   const main = (await git(cwd, 'rev-parse', 'origin/main')).trim();
   const base = (await git(cwd, 'merge-base', head, main)).trim();
   if (head === main) throw new Error('landing: already at origin/main');
+  const carrierEnv = { ...processEnvironment, ...carrierLocale };
+  const run = runCommand ?? ((command, args, options) => execFileSync(command, args, { cwd, stdio: 'inherit', timeout: 900000, ...options }));
+  const checkToolchain = () => run(process.execPath, ['--input-type=module', '-e',
+    `import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; assertCarrierToolchain(process.cwd());`], { env: carrierEnv });
+  checkToolchain();
   try { await git(cwd, '-c', 'core.hooksPath=/dev/null', 'merge', '--no-ff', '--no-commit', main); }
   catch (error) { if (error.code !== 1) throw error; }
   if ((await git(cwd, 'rev-parse', '--verify', 'MERGE_HEAD')).trim() !== main) throw new Error('landing: exact main merge required');
-  const carrierEnv = { ...processEnvironment, ...carrierLocale };
   const conflicts = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=U', '-z'));
   const read = (revision, path) => git(cwd, 'show', `${revision}:${path}`);
   const readUnion = async path => registryUnion(path, ...await Promise.all([base, head, main].map(revision => read(revision, path))));
@@ -230,20 +234,20 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
     } catch (error) { throw new Error(error.stderr?.trim() || error.message, { cause: error }); }
   };
   const prPaths = pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z', base, head));
-  const run = runCommand ?? ((command, args, options) => execFileSync(command, args, { cwd, stdio: 'inherit', timeout: 900000, ...options }));
   const needsInventoryRefresh = prPaths.some(isInventoryInputPath) || conflicts.some(isInventoryInputPath);
   const inputs = [...prPaths, ...conflicts];
   // Resolve envelopes before any generator or database work; historical conflict stops.
   const inventories = await Promise.all([base, head, main].map(revision => read(revision, INVENTORY_PATH)));
   const envelopes = inventories.map(inventoryEnvelope);
   if (needsInventoryRefresh && !envelopes.every(value => value.before === envelopes[0].before && value.after === envelopes[0].after)) throw new Error('landing: historical inventory conflict');
-  const checkToolchain = () => run(process.execPath, ['--input-type=module', '-e',
-    `import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; assertCarrierToolchain(process.cwd());`], { env: carrierEnv });
+  // Main can change the requirements after the initial checkout passes validation.
+  const toolchainInputs = ['.nvmrc', 'package.json', 'package-lock.json', 'config/openlup-packages.json', 'scripts/agent-review-landing.mjs',
+    ...DEFAULT_INCREMENTAL_PACKAGES.map(directory => `${directory}/package.json`)];
+  if (await git(cwd, '--literal-pathspecs', 'diff', '--name-only', '-z', head, '--', ...toolchainInputs)) checkToolchain();
   if (needsInventoryRefresh) await assertCarrierBuildOutputs(cwd, DEFAULT_INCREMENTAL_PACKAGES, true);
   const preliminary = carrierPlan(owners, inputs);
   if (preliminary.builds.length) {
     await assertCarrierBuildOutputs(cwd, preliminary.builds.map(({ directory }) => directory));
-    checkToolchain();
   }
   if (conflicts.includes(SQL_REFERENCE)) runGenerators('owners.syncSqlReference(process.cwd());');
   for (const path of conflicts.filter(path => REGISTRY_PATHS.includes(path))) {
@@ -288,7 +292,6 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
     }
     const extraBuilds = builds.filter(owner => !preliminary.builds.includes(owner));
     if (extraBuilds.length) await assertCarrierBuildOutputs(cwd, extraBuilds.map(({ directory }) => directory));
-    if (!preliminary.builds.length) checkToolchain();
     const npmCli = carrierNpmCli();
     const selectedOutputs = new Set(outputs);
     for (const owner of builds) {
