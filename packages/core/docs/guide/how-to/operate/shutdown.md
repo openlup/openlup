@@ -36,6 +36,9 @@ await `stopAll()`. A custom scheduler must preserve that asynchronous drain
 contract. The adapter permits new registrations after `stopAll()`, so have
 your host prevent registration during shutdown.
 
-`createNodeHost().serveNode` and `createNodeScheduler` default to `lockMode: "process"`.
-When instances can overlap, pass `lockMode: "cluster"` with a session-affine
-`AdvisoryLock` that declares `durability: "cluster"`.
+When you supply `cron` on a `node-cron` bundle, `serveNode` defaults to
+`lockMode: "cluster"`.
+Set `lockMode: "process"` for an intentional single-instance host whose
+scheduler profile permits it.
+Direct `createNodeScheduler` calls default to `lockMode: "process"`.
+See [select background work](self-host.md#select-background-work) for lock configuration.

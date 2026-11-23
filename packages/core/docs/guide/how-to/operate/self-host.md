@@ -140,12 +140,20 @@ no timezone, so configure its scheduler process to use UTC. An optional
 `schedulerProfile` can project declared jobs and validate admission before
 registration.
 
-`createNodeHost().serveNode` and `createNodeScheduler` default to `lockMode: "process"`.
-The scheduler uses the resolved lock when one is available.
+When you supply `cron`, `createNodeHost().serveNode` defaults to
+`lockMode: "cluster"` on `node-cron` bundles.
+Other scheduler capabilities default to `lockMode: "process"`.
+A configured `DATABASE_URL` supplies the default lock.
+To override it, pass a session-affine `AdvisoryLock` as `advisoryLock`.
+Cluster mode refuses before timer registration unless the resolved lock declares
+`durability: "cluster"`.
+Set `lockMode: "process"` for an intentional single-instance host whose
+scheduler profile permits it.
+Built-in `node-cron` bundles require `DATABASE_URL` in either mode.
+
+Direct `createNodeScheduler` calls default to `lockMode: "process"`.
+Pass a custom `AdvisoryLock` to `createNodeScheduler` as `lock`.
 If no lock resolves, process mode uses a no-op lock that permits concurrent callbacks.
-When instances can overlap, pass `lockMode: "cluster"` with a session-affine
-`AdvisoryLock` that declares `durability: "cluster"`.
-Cluster mode requires that durability before the scheduler registers any timers.
 
 Bundle readiness also checks required scheduler configuration and reports missing
 settings as `OPENLUP_E_ENV_MISSING`. Keep each

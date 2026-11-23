@@ -319,11 +319,16 @@ describe("Node scheduler", () => {
     expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: createNoopAdvisoryLock(), lockMode: "process" })).not.toThrow();
     expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: clusterLock, lockMode: "cluster" })).not.toThrow();
 
+    const remedy = [
+      'Cause: A cluster-mode scheduler needs an AdvisoryLock that declares durability "cluster".',
+      'Fix: Pass a cluster AdvisoryLock as advisoryLock to serveNode or as lock to createNodeScheduler (for example, createPgAdvisoryLock with a dedicated PostgreSQL session), or set lockMode: "process" for an intentional single-instance host whose scheduler profile permits it.',
+      'Recheck: Repeat the failed serveNode or createNodeScheduler call with the corrected options and verify that it completes.',
+    ].join("\n");
     expect(() => createNodeScheduler({ cron, jobs, env: {}, lockMode: "cluster" }))
-      .toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+      .toThrow(new Error(`Observed: No AdvisoryLock resolved.\n${remedy}`));
     expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: createNoopAdvisoryLock(), lockMode: "cluster" }))
-      .toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+      .toThrow(new Error(`Observed: The resolved AdvisoryLock declares durability "process".\n${remedy}`));
     expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: unlabelledLock, lockMode: "cluster" }))
-      .toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+      .toThrow(new Error(`Observed: The resolved AdvisoryLock is unlabelled.\n${remedy}`));
   });
 });
