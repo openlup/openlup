@@ -750,35 +750,54 @@ it('lands an inverted migration only with explicit re-slot', async () => {
 }, 60_000);
 
 it('does not auto-admit an authored SQL bystander as a generated mirror', () => {
+  const rogue = 'packages/platform/sql/20990101040000_rogue.sql';
   try {
     checkout(merged);
-    write('packages/platform/sql/rogue.sql', 'SELECT 1;\n');
+    write(rogue, 'SELECT 1;\n');
+    const prior = JSON.parse(read('packages/platform/sql/manifest.json'));
+    prior.migrations.push({ file: '20260809150001_job_run_ledger_v3.sql', source: 'db/platform/migrations/20990101040000_forged.sql', sha256: '0'.repeat(64) });
+    write('packages/platform/sql/manifest.json', json(prior));
     runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
     const paths = JSON.parse(read(CATALOGUE)).publicPaths.map(({ path }) => path);
-    expect(paths).not.toContain('packages/platform/sql/rogue.sql');
+    expect(paths).not.toContain(rogue);
     expect(paths).toContain('packages/platform/sql/20260809150001_job_run_ledger_v3.sql');
+    expect(read('packages/platform/sql/20260809150001_job_run_ledger_v3.sql')).toContain('CREATE OR REPLACE');
   } finally {
-    rmSync(join(root, 'packages/platform/sql/rogue.sql'), { force: true });
+    rmSync(join(root, rogue), { force: true });
     restoreDerivedFixture();
   }
 });
 
-it('removes a stale generated SQL mirror and its catalogue row', () => {
+it('removes a catalogue row when a generated SQL mirror was deleted', () => {
   const stale = 'packages/platform/sql/20990101040000_stale_fixture.sql';
   try {
     checkout(merged);
-    const projection = JSON.parse(read('packages/platform/sql/manifest.json'));
-    projection.migrations.push({ file: '20990101040000_stale_fixture.sql', source: 'db/platform/migrations/20990101040000_stale_fixture.sql', sha256: '0'.repeat(64) });
-    write('packages/platform/sql/manifest.json', json(projection));
-    write(stale, 'SELECT 1;\n');
     const catalog = JSON.parse(read(CATALOGUE));
     catalog.publicPaths.push({ path: stale, class: 'public-output' });
     catalog.publicPaths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
     write(CATALOGUE, json(catalog));
     runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
-    expect(existsSync(join(root, stale))).toBe(false);
     expect(JSON.parse(read(CATALOGUE)).publicPaths.some(({ path }) => path === stale)).toBe(false);
-  } finally { rmSync(join(root, stale), { force: true }); restoreDerivedFixture(); }
+  } finally { restoreDerivedFixture(); }
+});
+
+it('keeps a platform SQL mirror when only a supabase migration is re-slotted', () => {
+  const oldPath = 'supabase/migrations/20990101040000_shared_fixture.sql';
+  const target = 'supabase/migrations/20990101050000_shared_fixture.sql';
+  const mirror = 'packages/platform/sql/20990101040000_shared_fixture.sql';
+  try {
+    checkout(merged);
+    write(oldPath, 'SELECT 1;\n');
+    write(mirror, 'SELECT 2;\n');
+    applyMigrationReslot(root, [{ path: oldPath, target }]);
+    expect(existsSync(join(root, mirror))).toBe(true);
+    expect(read(mirror)).toBe('SELECT 2;\n');
+  } finally {
+    rmSync(join(root, oldPath), { force: true });
+    rmSync(join(root, target), { force: true });
+    rmSync(join(root, mirror), { force: true });
+    restoreDerivedFixture();
+  }
 });
 
 it('classifies SQL and migration-inventory inputs conservatively', () => {

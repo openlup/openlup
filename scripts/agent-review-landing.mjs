@@ -284,8 +284,10 @@ export function applyMigrationReslot(cwd, changes, moveFiles = true) {
   };
   if (moveFiles) for (const { path, target } of changes) {
     renameSync(resolve(cwd, path), resolve(cwd, target));
-    const mirror = resolve(cwd, `packages/platform/sql/${path.split('/').at(-1)}`);
-    if (existsSync(mirror)) unlinkSync(mirror);
+    if (path.startsWith('db/platform/migrations/')) {
+      const mirror = resolve(cwd, `packages/platform/sql/${path.split('/').at(-1)}`);
+      if (existsSync(mirror)) unlinkSync(mirror);
+    }
   }
   for (const path of ['config/platform-migration-manifest.json', 'config/reviewed-platform-forwards.json', PUBLICATION_CATALOGUE]) {
     const file = resolve(cwd, path);
@@ -419,7 +421,8 @@ export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = p
   const projection = 'packages/platform/src/migrations/catalog.ts';
   const projectionBefore = readFileSync(resolve(cwd, projection), 'utf8');
   // Only the migration projection feeds compilation. Validate selectors after the reports exist.
-  runGenerators(`const errors = owners.syncPlatformMigrationProjection(process.cwd());
+  runGenerators(`const { checkPlatformMigrationProjection } = await import(${mergedModule('scripts/packages/platform-migration-projection.ts')});
+    const errors = checkPlatformMigrationProjection(process.cwd(), true);
     if (errors.length) throw new Error(errors.join('; '));`);
   if (readFileSync(resolve(cwd, projection), 'utf8') !== projectionBefore) inputs.push(projection);
   const { reports, builds, settings } = carrierPlan(owners, inputs);
