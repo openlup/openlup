@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { VercelRequest } from "../../_lib/types/vercel.js";
 import { resolveClientAddress } from "./clientAddressResolver.js";
+import * as clientAddressResolver from "./clientAddressResolver.js";
 
 const forwarded = { "x-forwarded-for": "203.0.113.7, 198.51.100.4, 192.0.2.9" };
 
@@ -63,3 +64,22 @@ function request(
     ...(remoteAddress === undefined ? {} : { socket: { remoteAddress } }),
   } as unknown as VercelRequest;
 }
+
+describe("readTrustedProxyHops", () => {
+  it("throws a plain coded error with four facts and omits the malformed value", () => {
+    const key = "CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS";
+    const value = "private-invalid-hop-fixture";
+    let error: unknown;
+    try {
+      clientAddressResolver.readTrustedProxyHops({ [key]: value });
+    } catch (cause) {
+      error = cause;
+    }
+    expect(error?.constructor).toBe(Error);
+    expect((error as Error).message).toMatch(
+      /^OPENLUP_E_TRUSTED_PROXY_HOPS_INVALID\nObserved: .+\nCause: .+\nFix: .+\nRecheck: .+$/,
+    );
+    expect((error as Error).message).toContain(key);
+    expect((error as Error).message).not.toContain(value);
+  });
+});

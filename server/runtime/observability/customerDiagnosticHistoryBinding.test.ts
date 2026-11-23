@@ -100,9 +100,11 @@ describe("customer diagnostic history runtime binding", () => {
     const spoofed = ["203.0.113.7, 10.0.0.1", "198.51.100.4"].map((forwarded) =>
       resolveCustomerDiagnosticHistoryBinding(request({ origin, "x-forwarded-for": forwarded }), env).ingressAbuseKey());
     expect(spoofed).toEqual([shared, shared]);
-    expect(() => resolveCustomerDiagnosticHistoryBinding(request({ origin }), {
-      ...env, CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS: "not-a-number",
-    }).ingressAbuseKey()).toThrow(CustomerDiagnosticConfigurationError);
+    const malformedHops = { ...env, CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS: "not-a-number" };
+    expect(() => resolveCustomerDiagnosticHistoryBinding(request({ origin }), malformedHops).ingressAbuseKey())
+      .toThrow(CustomerDiagnosticConfigurationError);
+    expect(() => resolveCustomerDiagnosticHistoryBinding(request(), malformedHops).ingressAbuseKey())
+      .toThrow(CustomerDiagnosticOriginError);
     for (const value of [undefined, "", "null", "https://other.example.test", "https://shop.example.test/path"]) {
       expect(() => resolveCustomerDiagnosticHistoryBinding(request(value === undefined ? {} : { origin: value }), env).ingressAbuseKey())
         .toThrow(CustomerDiagnosticOriginError);
