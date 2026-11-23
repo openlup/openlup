@@ -6,13 +6,13 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { env } from "node:process";
-import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
+import { proveInstalledCareUpgrade, qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
   includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers,
   reminderInstallationTest, starterLifecycle, starterOptionalOwnedFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization, starterEditorPorts, starterDocumentFiles,
-  reconcileDocumentCustomization, proveDistributionCliConsumer, starterCheckoutFiles } from "./distribution-cli-proof.ts";
+  reconcileDocumentCustomization, proveDistributionCliConsumer, starterCheckoutFiles, mergeStarterCareFile, needsStarterCareUpgrade } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -69,6 +69,32 @@ it("derives snapshots from ownership, excludes generated and owned bytes, and ad
   expect(starterUpgradeSnapshot(directory, "0.40.0").files["nested/new.ts"]).toBe("new bytes");
   ownership.managed.push("owned.ts"); write("ownership.json", ownership);
   expect(() => starterUpgradeSnapshot(directory, "0.40.0")).toThrow("upgrade_snapshot_ownership_overlap");
+});
+
+it("reuses the mounted CX-1R journey for first-cut upgrades and merges adopter copy against both snapshots", () => {
+  const { directory, write } = fixture();
+  const witness = "ask_first_offer_only_after_yes";
+  const previous = join(directory, "previous"), target = join(directory, "target");
+  write("target/browser/acquisition.spec.ts", witness);
+  expect(needsStarterCareUpgrade(previous, target)).toBe(false);
+  write("target/owned/copy.ts", "careOfferYes");
+  expect(needsStarterCareUpgrade(previous, target)).toBe(true);
+  write("previous/browser/acquisition.spec.ts", witness);
+  expect(needsStarterCareUpgrade(previous, target)).toBe(false);
+  const calls: unknown[] = [];
+  const fixturePath = join(directory, ".context/care-browser/upgrade.json");
+  proveInstalledCareUpgrade((...args: unknown[]) => {
+    calls.push(args);
+    if (args[0] === process.execPath) expect(JSON.parse(readFileSync(fixturePath, "utf8"))).toEqual({ predecessor: "released", customized: true });
+  }, directory, "released", true);
+  expect(calls.at(-1)).toEqual([process.execPath, ["lifecycle.mjs", "browser", "browser/acquisition.spec.ts", "--grep", witness],
+    directory]);
+  expect(existsSync(fixturePath)).toBe(false);
+  const old = Buffer.from("Cart\n\nTitle\n\nconfirmCancel\n"), local = Buffer.from("Basket\n\nTitle\n\nconfirmCancel\n");
+  expect(mergeStarterCareFile(directory, old, local, Buffer.from("Cart\n\nTitle\n\ncareOfferYes\n")).toString())
+    .toBe("Basket\n\nTitle\n\ncareOfferYes\n");
+  expect(() => mergeStarterCareFile(directory, old, local, Buffer.from("Bag\n\nTitle\n\nconfirmCancel\n")))
+    .toThrow("starter_care_upgrade_manual_reconciliation_required");
 });
 
 it("asserts the real CLI's named conflict before writes and the incomplete file/dependency refusal", () => {
@@ -322,7 +348,7 @@ it("upgrades the starter document readers together and preserves reconciled cust
     expect(readFileSync(join(app, "owned/upgrade-notes", path.split("/").at(-1)!), "utf8")).toContain("Adopter document verification policy");
 });
 
-it("upgrades pristine checkout hosts and preserves customized checkout files", () => {
+it.each([true, false])("upgrades checkout with a changed quota descriptor, pristine=%s", pristine => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const released = (path: string) => execFileSync("git",
     ["show", `openlup-core-v1.3.0:examples/neutral-store/${path}`], { encoding: "utf8", timeout: 5_000 });
@@ -342,10 +368,11 @@ it("upgrades pristine checkout hosts and preserves customized checkout files", (
   const localSettings = releasedSettings.replace("const config = selectConfiguration(configuration);",
     "const config = selectConfiguration(configuration); // Keep the adopter's configuration binding.");
   expect(localSettings).not.toBe(releasedSettings);
-  write(starterSettingsHost, localSettings);
+  write(starterSettingsHost, pristine ? releasedSettings : localSettings);
   const targetSettings = next(starterSettingsHost);
   candidate(starterSettingsHost, targetSettings);
   expect(effect(targetSettings)).toContain("PostgreSQL");
+  expect(effect(targetSettings)).not.toBe(effect(releasedSettings));
 
   const releasedCopy = released(copyPath), targetCopy = next(copyPath);
   write(copyPath, releasedCopy);
@@ -359,10 +386,19 @@ it("upgrades pristine checkout hosts and preserves customized checkout files", (
   }
   mkdirSync(join(target, "node_modules/.bin"));
   symlinkSync(resolve("packages/platform/src/lifecycle/openlup.mjs"), join(target, "node_modules/.bin/openlup"));
-  const evidence = { phases: [] };
-  const finish = proveDistributionCliConsumer(target, { from: app, to: target, fromVersion: "1.3.0", toVersion: "999999.0.0", evidence });
+  const evidence = { phases: [] as { name: string; result: string }[] };
+  const finish = proveDistributionCliConsumer(target, { from: app, to: target, fromVersion: "1.3.0", toVersion: "999999.0.0", evidence, pristine });
   expect(typeof finish).toBe("function");
   if (finish) finish();
+  if (pristine) {
+    expect(evidence).not.toHaveProperty("customizations");
+    expect(evidence.phases.map(({ name }) => name)).toEqual([
+      "migrate-owned-contracts", "plan", "interrupt-and-refuse", "resume", "replay", "installed-application-and-owned-bytes",
+    ]);
+    expect(readFileSync(join(app, starterSettingsHost), "utf8")).toBe(releasedSettings);
+    expect(readFileSync(join(app, copyPath), "utf8")).toBe(releasedCopy);
+    return;
+  }
   expect(evidence.phases).toEqual([
     "migrate-owned-contracts", "customize-owned", "plan", "managed-conflict", "checkout-host-reconciliation",
     "interrupt-and-refuse", "resume", "replay", "checkout-attempt-effect-reconciliation", "checkout-attempt-copy-reconciliation",

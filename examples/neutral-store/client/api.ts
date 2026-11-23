@@ -24,6 +24,7 @@ export async function act(operation: Operation, input: ActionInput, commandKey: 
           ? [{ path: issue.path, code: issue.code, ...(typeof issue.message === 'string' ? { message: issue.message } : {}),
             ...(typeof issue.subject === 'string' ? { subject: issue.subject } : {}) }] : []) : [];
       return { ok: false, code: result.code, ...(issues.length ? { issues } : {}),
+        ...(response.status === 503 ? { status: 503 as const } : {}),
         ...(typeof result.message === 'string' ? { message: result.message } : {}),
         ...(typeof result.path === 'string' ? { path: result.path } : {}),
         ...(typeof result.subject === 'string' ? { subject: result.subject } : {}) };
@@ -35,4 +36,8 @@ export async function act(operation: Operation, input: ActionInput, commandKey: 
   } catch {
     return { ok: false, code: 'starter_transport_unavailable' };
   }
+}
+
+export function uncertainAction(result: ActionResult): boolean {
+  return !result.ok && (result.status === 503 || ['starter_transport_unavailable', 'starter_response_invalid'].includes(result.code));
 }

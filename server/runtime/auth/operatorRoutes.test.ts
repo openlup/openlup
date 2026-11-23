@@ -24,13 +24,15 @@ vi.mock('../../_lib/admin-domain/auth.js', async importOriginal => ({
 vi.mock('../../adapters/supabase/adminAuthVerifier.js', () => ({ createSupabaseAdminAuthFromEnv: () => ({ authorize }) }));
 import bffRouter from '../../../api/bff/[...path].js';
 import type { VercelRequest, VercelResponse } from '../../_lib/types/vercel.js';
-import type { AdminAuthorizationResult } from '@openlup/platform/identity';
+import { createPostgresPrivacyStore, type AdminAuthorizationResult } from '@openlup/platform/identity';
+import { composeNativePrivacy } from './privacyBinding.js';
 import type { HttpRequest, HttpResponse } from '@openlup/platform/http';
 import type { OperatorMembership } from '@openlup/platform/identity';
 import type { DeploymentRouteOptions } from '../../_lib/publicDeploymentPolicies.js';
 const f = vi.hoisted(() => ({
   adopterPolicy: false,
   privacyAuth: false,
+  missingDestinationOwner: undefined as string | undefined,
   policy: vi.fn(),
   store: {
     issue: vi.fn(async () => ({ deliverable: true, email: 'admin@example.invalid', expiresAt: new Date(Date.now() + 600000).toISOString() })),
@@ -40,7 +42,12 @@ const f = vi.hoisted(() => ({
   },
 }));
 // Operator sign-in keeps real session factories, handlers, preflight and observation.
-vi.mock('@openlup/platform/identity', async importOriginal => ({ ...await importOriginal<object>(), createPostgresOperatorIdentityStore: () => f.store, createPostgresPrivacyUnitOfWork: privacy.createUnitOfWork }));
+vi.mock('@openlup/platform/identity', async importOriginal => {
+  const actual = await importOriginal<typeof import('@openlup/platform/identity')>();
+  return { ...actual, createPostgresOperatorIdentityStore: () => f.store, createPostgresPrivacyUnitOfWork: privacy.createUnitOfWork,
+    createPersonalDataContributorRegistry: (...[contributors, options]: Parameters<typeof actual.createPersonalDataContributorRegistry>) =>
+      actual.createPersonalDataContributorRegistry(contributors.filter(c => c.id !== f.missingDestinationOwner), options) };
+});
 vi.mock('#deployment-route-policy', async importOriginal => {
   const policy = await importOriginal<typeof import('../../_lib/publicDeploymentPolicies.js')>();
   return { ...policy, enforceDeploymentRoutePolicy: (options: DeploymentRouteOptions, req: HttpRequest, res: HttpResponse) => {
@@ -71,7 +78,7 @@ let configuration: Record<string, string>;
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
-  vi.clearAllMocks(); f.adopterPolicy = false; f.privacyAuth = false;
+  vi.clearAllMocks(); f.adopterPolicy = false; f.privacyAuth = false; f.missingDestinationOwner = undefined;
   for (const [name, value] of Object.entries(configuration)) vi.stubEnv(name, value);
   f.store.findMembership.mockResolvedValue({ principalId: '11111111-1111-4111-8111-111111111111', email: 'admin@example.invalid', role: 'distributor', membershipState: 'active' });
 });
@@ -169,6 +176,7 @@ async function mountedPrivacyQuery(sql: string) {
   if (sql === 'SELECT public.communication_event_privacy($1::uuid,false) AS value') return { rows: [{ value: [] }] };
   if (sql.startsWith('SELECT public.customer_billing_export')) return { rows: [{ data: { profiles: [{ client_id: privacyContact, full_name: 'Billing Buyer' }], invoiceBuyers: [{ buyer: { name: 'Frozen Buyer' } }] } }] };
   if (sql === 'SELECT public.commerce_destination_v2_receipts_export($1::uuid) AS data') return { rows: [{ data: [{ evidenceDisposition: 'erased' }] }] };
+  if (sql === 'SELECT public.commerce_destination_v2_export($1::uuid) AS data') return { rows: [{ data: [{ evidenceDisposition: 'expired' }] }] };
   if (sql.startsWith('SELECT public.fulfillment_export_parcel_contacts')) return { rows: [{ data: [] }] };
   if (sql.startsWith('SELECT public.fulfillment_erase_parcel_contacts')) return { rows: [{ fulfillment_erase_parcel_contacts: { erased: 0 } }] };
   return { rows: sql.startsWith('SELECT c.*') || sql.startsWith('SELECT * FROM public.clients')
@@ -280,6 +288,86 @@ it.each(['export', 'erase'] as const)('mounted managed %s retains admin and mach
   }
   expect(managed.from).not.toHaveBeenCalled(); expect(privacy.query).not.toHaveBeenCalled();
 });
+const privacyComposition = () => ({
+  store: createPostgresPrivacyStore(), unitOfWork: { async run<T>(): Promise<T> { throw new Error('unexpected privacy transaction'); } },
+});
+const issuanceEnabled = { installed: true, issuanceEnabled: true };
+it('keeps native destination issuance dormant with a complete privacy registry', () => {
+  expect(composeNativePrivacy(privacyComposition(), issuanceEnabled).destination.destinationAddressV2.available).toBe(true);
+  expect(composeNativePrivacy(privacyComposition()).destination.destinationAddressV2.available).toBe(false);
+});
+it.each(['destination-receipts', 'destination-documents'])('native privacy composition requires %s', async missing => {
+  f.adopterPolicy = true;
+  f.missingDestinationOwner = missing;
+  const composition = composeNativePrivacy(privacyComposition(), issuanceEnabled);
+  expect(composition.destination.destinationAddressV2).toMatchObject({ available: false, refusalCode: 'destination_v2_unavailable' });
+  await expect(composition.operations.erase({ principalId: privacyContact }, {
+    subject: { kind: 'contact', contactId: privacyContact }, idempotencyKey: privacyContact,
+  })).rejects.toMatchObject({ code: 'PRIVACY_CONTRIBUTOR_MISSING' });
+  vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator');
+  vi.stubEnv('DATABASE_URL', 'postgresql://unused.invalid/test');
+  authorize.mockResolvedValue({ ok: true, principalId: privacyContact, role: 'admin', isMachineActor: false });
+  privacy.query.mockImplementation(mountedPrivacyQuery);
+  const read = mountedPrivacyRequest('export'), readResponse = response();
+  await dispatch(read.routes, read.req, readResponse as unknown as HttpResponse);
+  expect(readResponse.json).toHaveBeenCalledWith({ ok: true, data: expect.objectContaining({ missingContributors: [missing] }) });
+
+  privacy.query.mockClear();
+  const erase = mountedPrivacyRequest('erase'), eraseResponse = response();
+  await dispatch(erase.routes, erase.req, eraseResponse as unknown as HttpResponse);
+  expect(eraseResponse.status).toHaveBeenCalledWith(503);
+  expect(eraseResponse.json).toHaveBeenCalledWith(expect.objectContaining({
+    error: expect.objectContaining({ details: { privacyCode: 'PRIVACY_CONTRIBUTOR_MISSING' } }),
+  }));
+  expect(privacy.query).not.toHaveBeenCalled();
+});
+
+it.each([
+  { operation: 'export' as const, code: '42883' },
+  { operation: 'erase' as const, code: '42501' },
+  { operation: 'export' as const, code: 'ECONNRESET' },
+])('native $operation returns one checklist for infrastructure failure $code', async ({ operation, code }) => {
+  f.adopterPolicy = true;
+  vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator');
+  vi.stubEnv('DATABASE_URL', 'postgresql://unused.invalid/test');
+  authorize.mockResolvedValue({ ok: true, principalId: privacyContact, role: 'admin', isMachineActor: false });
+  privacy.query.mockImplementation((sql: string) => {
+    if (sql.includes(`public.commerce_destination_v2_${operation}(`)) {
+      throw Object.assign(new Error('synthetic private driver context'), { code });
+    }
+    return mountedPrivacyQuery(sql);
+  });
+  const { routes, req } = mountedPrivacyRequest(operation), res = response();
+  await dispatch(routes, req, res as unknown as HttpResponse);
+  expect(res.status).toHaveBeenCalledWith(503);
+  expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({
+    code: 'UPSTREAM_UNAVAILABLE',
+    message: 'Check the native app binding, database connection and TLS, runtime CONNECT and EXECUTE privileges, and installed migrations. Then retry the same operation.',
+    details: { privacyCode: 'PRIVACY_ASSESSMENT_UNAVAILABLE' },
+  }) }));
+  expect(JSON.stringify(res.json.mock.calls)).not.toContain('synthetic private driver context');
+});
+
+it('native export succeeds with the withheld-document notice instead of the checklist', async () => {
+  f.adopterPolicy = true;
+  vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator');
+  vi.stubEnv('DATABASE_URL', 'postgresql://unused.invalid/test');
+  authorize.mockResolvedValue({ ok: true, principalId: privacyContact, role: 'admin', isMachineActor: false });
+  const withheld = { snapshotRef: privacyContact, issuedAt: '2020-01-15T12:00:00.000Z', evidenceDisposition: 'available',
+    verification: { status: 'failed', code: 'destination_digest_mismatch', field: 'documentDigest' } };
+  privacy.query.mockImplementation(async (sql: string) => sql === 'SELECT public.commerce_destination_v2_export($1::uuid) AS data'
+    ? { rows: [{ data: [withheld] }] } : mountedPrivacyQuery(sql));
+  const { routes, req } = mountedPrivacyRequest('export'), res = response();
+  await dispatch(routes, req, res as unknown as HttpResponse);
+  expect(res.status).toHaveBeenCalledWith(200);
+  expect(res.json).toHaveBeenCalledWith({ ok: true, data: expect.objectContaining({ documents: expect.arrayContaining([{
+    contributorId: 'destination-documents', version: 'commerce.destination-documents.v1', data: [withheld], obligations: expect.any(Array),
+    coverage: { complete: false, included: ['private checkout destination documents', 'destination document expiry and erasure metadata'],
+      unavailable: ['Destination documents that failed stored-evidence verification are withheld. After their cutoff, run commerce_destination_v2_expire and export again; review any row still withheld.'] },
+  }]) }) });
+  expect(JSON.stringify(res.json.mock.calls)).not.toContain('Check the native app binding');
+});
+
 it.each(['export', 'erase'] as const)('adopter policy admits mounted direct %s before managed entries', async operation => {
   f.adopterPolicy = true;
   vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator');
@@ -292,6 +380,7 @@ it.each(['export', 'erase'] as const)('adopter policy admits mounted direct %s b
   expect(res.json).toHaveBeenCalledWith({ ok: true, data: expect.objectContaining(operation === 'export'
     ? { missingContributors: [], documents: expect.arrayContaining([expect.objectContaining({ contributorId: 'subscriptions' }),
       expect.objectContaining({ contributorId: 'destination-receipts', data: [{ evidenceDisposition: 'erased' }], coverage: expect.objectContaining({ complete: true }) }),
+      expect.objectContaining({ contributorId: 'destination-documents', data: [{ evidenceDisposition: 'expired' }], coverage: expect.objectContaining({ complete: true }) }),
       expect.objectContaining({ contributorId: 'fulfillment-parcel-contacts', data: [], coverage: expect.objectContaining({ complete: true }) }),
       expect.objectContaining({ contributorId: 'communication-events', data: [], coverage: expect.objectContaining({ complete: false, unavailable: ['provider event history', 'commercial source owners'] }) }),
       expect.objectContaining({ contributorId: 'customer-billing', data: { profiles: [{ client_id: privacyContact, full_name: 'Billing Buyer' }], invoiceBuyers: [{ buyer: { name: 'Frozen Buyer' } }] },
@@ -305,11 +394,13 @@ it.each(['export', 'erase'] as const)('adopter policy admits mounted direct %s b
     ]) }) });
   if (operation === 'export') {
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.commerce_destination_v2_receipts_export($1::uuid) AS data', [privacyContact]);
+    expect(privacy.query).toHaveBeenCalledWith('SELECT public.commerce_destination_v2_export($1::uuid) AS data', [privacyContact]);
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.customer_billing_export($1) AS data', [privacyContact]);
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.communication_event_privacy($1::uuid,false) AS value', [privacyContact]);
   }
   if (operation === 'erase') {
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.commerce_destination_v2_receipts_erase($1::uuid)', [privacyContact]);
+    expect(privacy.query).toHaveBeenCalledWith('SELECT public.commerce_destination_v2_erase($1::uuid)', [privacyContact]);
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.customer_billing_prepare_erasure()');
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.customer_billing_erase($1)', [privacyContact]);
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.communication_event_privacy($1::uuid,true)', [privacyContact]);

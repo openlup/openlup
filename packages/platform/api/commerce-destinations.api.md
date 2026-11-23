@@ -127,6 +127,12 @@ export declare function destinationV2Capabilities(input: {
     rail: "native" | "managed";
     installed?: boolean;
     issuanceEnabled?: boolean;
+    privacyRegistry?: {
+        readonly contributors: readonly {
+            readonly id: string;
+        }[];
+        readonly missingContributors: readonly string[];
+    };
 }): {
     [K in "destinationAddressV2" | "savedAddressV2"]: CapabilityStatus & {
         capability: K;

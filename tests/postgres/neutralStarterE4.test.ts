@@ -14,6 +14,7 @@ import type * as Invoices from '@openlup/platform/invoicing';
 import type * as Identity from '@openlup/platform/identity';
 import type * as Native from '@openlup/platform/invoicing/postgres';
 import type * as Fulfillment from '@openlup/platform/fulfillment';
+import type { createStarterPersonalDataRegistry } from '../../examples/neutral-store/host/native-composition.ts';
 import type { composeE4Capabilities } from '../../examples/neutral-store/host/e4-composition.ts';
 import type * as Migrations from '@openlup/platform/migrations';
 import type { InvoiceFacts, InvoiceHostPorts } from '@openlup/platform/invoicing/contracts';
@@ -26,6 +27,7 @@ let container: PostgresContainer | undefined;
 let bootstrap: Pool, installer: Pool, runtime: Pool;
 let invoices: typeof Invoices, native: typeof Native, fulfillment: typeof Fulfillment;
 let composeReads: typeof composeE4Capabilities;
+let createInstalledRegistry: typeof createStarterPersonalDataRegistry;
 let browserShipmentRef: string;
 let scratch: string, app: string, runtimeUrl: string, runtimeConnection: string;
 const children: ChildProcess[] = [];
@@ -111,6 +113,7 @@ beforeAll(async () => {
   invoices = await installed<typeof Invoices>('@openlup/platform/invoicing');
   native = await installed<typeof Native>('@openlup/platform/invoicing/postgres');
   const identity = await installed<typeof Identity>('@openlup/platform/identity');
+  createInstalledRegistry = (await import(/* @vite-ignore */ pathToFileURL(join(app, 'host/native-composition.ts')).href)).createStarterPersonalDataRegistry;
   const migrations = await installed<typeof Migrations>('@openlup/platform/migrations');
   container = await runPostgresContainer({ name: `starter-order-documents-${process.pid}`, database: 'neutral_store', password: 'synthetic-conformance' });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Starter PostgreSQL unavailable');
@@ -324,6 +327,12 @@ for (const zone of ['default', 'Etc/GMT-9', 'Etc/GMT+5']) it(`reads shipment sna
   browserShipmentRef = shipmentId;
 }, shipmentReadTimeoutMs);
 
+it('registers both destination privacy owners in the extracted native starter', () => {
+  const registry = createInstalledRegistry();
+  expect(registry.contributors.map(c => c.id)).toEqual(expect.arrayContaining(['destination-receipts', 'destination-documents']));
+  expect(registry.missingContributors).toEqual(['identity', 'subscriptions']);
+});
+
 it('reads pending, issued, corrected, retry and guest summaries and owned PDF bytes with no read effects', async () => {
   let issued: Awaited<ReturnType<typeof invoiceFixture>> | undefined;
   for (const mode of ['pending', 'issued', 'corrected', 'retry', 'guest'] as const) {
@@ -436,10 +445,10 @@ it('all three operation limits preserve the complete effect snapshot over replay
   expect(removed.body.code).toBe('starter_operation_unknown');
   for (const host of hosts) {
     const status = (await action('application.status', {}, operatorCookie, randomUUID(), host.baseURL)).body.value.bindings;
-    expect(status.length).toBe(71);
+    expect(status.length).toBe(74);
     expect(status.find((item: { operation: string }) => item.operation === 'operator.catalogPublication'))
       .toMatchObject({ declared: true, bound: false });
-    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(66);
+    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(69);
     for (const operation of Object.keys(operationLimits)) {
       expect(status.find((item: { operation: string }) => item.operation === operation).bound).toBe(false);
     }

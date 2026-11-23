@@ -1,7 +1,7 @@
 import type { Operation, ActionInput } from '../shared/api.ts';
 import type { PageContext } from './context.ts';
 import type { CopyKey } from '../owned/copy.ts';
-import { act } from './api.ts';
+import { act, uncertainAction } from './api.ts';
 import { append, button, el, renderValue } from './dom.ts';
 import { limitFor, nativeLimits, operationLimits, otherLimits } from '../shared/limits.ts';
 
@@ -132,7 +132,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       try {
         const result = await act(options.operation, values, commandKey);
         if (!current()) return;
-        uncertain = !result.ok && ['starter_transport_unavailable', 'starter_response_invalid'].includes(result.code)
+        uncertain = uncertainAction(result)
           ? { input, prepared: values } : undefined;
         output.replaceChildren(result.ok
           ? el('section', {}, el('h4', {}, context.t('response')),

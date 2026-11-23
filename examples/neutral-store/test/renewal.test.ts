@@ -51,8 +51,10 @@ test('reason-driven save offers retain the reference branches', () => {
   for (const config of Object.values(configurations)) {
     assertConfig(config);
     assert.deepEqual(config.renewal.subscriptionCare.retentionReasons, Object.keys(expected));
-    for (const [reason, kind] of Object.entries(expected)) assert.equal(saveOfferKind(reason, config.renewal.subscriptionCare), kind);
-    for (const reason of ['appended_reason', 'toString', '__proto__']) assert.equal(saveOfferKind(reason, config.renewal.subscriptionCare), 'pause');
+    const reference = demoSubscriptionCare();
+    reference.retention = { ...reference.retention, defaultOffer: 'pause' };
+    for (const [reason, kind] of Object.entries(expected)) assert.equal(saveOfferKind(reason, reference), kind);
+    for (const reason of ['appended_reason', 'toString', '__proto__']) assert.equal(saveOfferKind(reason, config.renewal.subscriptionCare), config.renewal.subscriptionCare.retention.defaultOffer);
   }
 });
 test('reschedule offer postpones the current renewal and clamps to configured bounds', () => {
@@ -97,6 +99,17 @@ test('startup refuses unknown retention reason keys and offer kinds with the nam
     config.renewal.subscriptionCare.retention = retention as unknown as typeof config.renewal.subscriptionCare.retention;
     assert.throws(() => assertConfig(config), { message: 'starter_retention_configuration_invalid' });
   }
+});
+
+test('offer mode defaults to ask-first and above-cap legacy timing remains loadable', () => {
+  const config = structuredClone(Object.values(configurations)[0]!);
+  const care = config.renewal.subscriptionCare;
+  care.rescheduleOfferDays = 36_501;
+  assertConfig(config);
+  care.retention.offerPresentation = 'off';
+  assertConfig(config);
+  Object.assign(care.retention, { offerPresentation: 'always' });
+  assert.throws(() => assertConfig(config), /starter_retention_configuration_invalid: Set renewal.subscriptionCare.retention.offerPresentation/);
 });
 test('startup accepts three retry rungs and refuses budgets inconsistent with SQL attempt four', () => {
   for (const ladder of [[24, 48], [24, 48, 72, 96]]) {

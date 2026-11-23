@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { runLandingGenerators, syncSqlReference } from './agent-review-generators.mjs';
-import { carrierLocale, isInventoryInputPath, landingMerge } from './agent-review-landing.mjs';
+import { assertAppendOnlyLandingSlots, carrierLocale, isInventoryInputPath, landingMerge } from './agent-review-landing.mjs';
 import { deltaFloor, prepareCandidate, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, validateEconomySession, proveReviewIntegration, git as sourceGit } from './agent-review-session.mjs';
 import { fixtureNpmCli, linkFixtureInstallation, localFixtureEnvironment } from './fixtures/landing-test-environment.ts';
@@ -104,20 +104,34 @@ beforeAll(async () => {
   linkFixtureInstallation(source, root);
   git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
   base = commit();
-  append('20990101010000'); reviewed = commit();
-  git('checkout', '-q', '--detach', base); append('20990101020000'); addPackageCommand();
+  append('20990101020000'); reviewed = commit();
+  git('checkout', '-q', '--detach', base); append('20990101010000'); addPackageCommand();
   write(SQL_REFERENCE, read(SQL_REFERENCE).replace(SQL_HEADING, MAIN_SQL_HEADING));
   main = commit();
   git('remote', 'set-url', 'origin', '.'); setMain(main); git('checkout', '-q', '--detach', reviewed);
   initialLandingCommands = [];
+  const inventoryScript = join(root, 'scripts/installation-inventory-refresh.ts');
   initialLandingResult = await landingMerge(root, {
     runCommand: (command, args) => {
       initialLandingCommands.push({ command, args });
+      if (args.includes(inventoryScript)) {
+        // Real Docker PostgreSQL measurement is witnessed in scripts/agent-review-derived-inventory.test.ts;
+        // keep this unlisted scanner suite Docker-free while preserving exact current-only envelope semantics.
+        const env = inventoryEnvelope(read(INVENTORY_PATH));
+        const nextCurrent = structuredClone(env.value.current);
+        for (const [profile, entry] of Object.entries(nextCurrent.profiles)) {
+          (entry as { objectInventorySha256: string }).objectInventorySha256 = createHash('sha256')
+            .update(`derived-fixture:${profile}:${read(MIGRATION_REGISTRIES[0])}`)
+            .digest('hex');
+        }
+        write(INVENTORY_PATH, env.before + JSON.stringify(nextCurrent, null, 2).replaceAll('\n', '\n  ') + env.after);
+        return;
+      }
       execFileSync(command, args, { cwd: root, env: fixtureEnvironment, stdio: 'inherit', timeout: 900000 });
     },
   });
   merged = initialLandingResult.head;
-}, 600000);
+}, 180000);
 afterAll(() => {
   vi.unstubAllEnvs();
   if (root) rmSync(root, { recursive: true, force: true });
@@ -586,6 +600,64 @@ it('runs incremental package build before inventory refresh when PR touches SQL'
     ['--import', 'tsx', join(root, 'scripts/installation-inventory-refresh.ts')],
   ]);
 });
+
+it('refuses inverted or duplicate migration slots before starting merge or Docker', async () => {
+  const mainPaths = [
+    'db/platform/migrations/20990101020000_main.sql',
+    'supabase/migrations/20990101020000_main.sql',
+  ];
+  expect(() => assertAppendOnlyLandingSlots(['db/platform/migrations/20990101030000_pr.sql'], mainPaths)).not.toThrow();
+  expect(() => assertAppendOnlyLandingSlots(['db/platform/migrations/20990101010000_pr.sql'], mainPaths))
+    .toThrow('landing: migration slot is not strictly later than origin/main');
+  expect(() => assertAppendOnlyLandingSlots(['db/platform/migrations/20990101020000_pr.sql'], mainPaths))
+    .toThrow('landing: migration slot is not strictly later than origin/main');
+  expect(() => assertAppendOnlyLandingSlots([
+    'db/platform/migrations/20990101030000_first.sql',
+    'db/platform/migrations/20990101030000_second.sql',
+  ], mainPaths)).toThrow('landing: migration slot is not strictly later than origin/main');
+  expect(() => assertAppendOnlyLandingSlots(['supabase/migrations/20990101010000_pr.sql'], mainPaths))
+    .toThrow('landing: migration slot is not strictly later than origin/main');
+
+  try {
+    git('checkout', '-q', '--detach', base);
+    append('20990101010000');
+    const invertedPr = commit();
+    git('checkout', '-q', '--detach', base);
+    append('20990101020000');
+    const aheadMain = commit();
+    setMain(aheadMain);
+    git('checkout', '-q', '--detach', invertedPr);
+    const invoked: string[][] = [];
+    await expect(landingMerge(root, {
+      runCommand: (_command, args) => { invoked.push(args); },
+    })).rejects.toThrow('landing: migration slot is not strictly later than origin/main');
+    expect(invoked).toEqual([]);
+    expect(git('status', '--porcelain=v1')).toBe('');
+    expect(existsSync(join(root, '.git/MERGE_HEAD'))).toBe(false);
+
+    // Stacked PR whose predecessor migration squash-merged byte-identically onto origin/main must not be falsely refused.
+    git('checkout', '-q', '--detach', base);
+    append('20990101010000');
+    write('README.md', `${read('README.md')}\n<!-- stacked-child -->\n`);
+    const stackedChild = commit();
+    git('checkout', '-q', '--detach', base);
+    append('20990101010000');
+    const squashMergedMain = commit();
+    setMain(squashMergedMain);
+    git('checkout', '-q', '--detach', stackedChild);
+    const stackedInvoked: string[][] = [];
+    const stackedLanded = await landingMerge(root, {
+      runCommand: (_command, args) => { stackedInvoked.push(args); },
+    });
+    expect(stackedLanded.head).toMatch(/^[0-9a-f]{40}$/u);
+    expect(stackedInvoked.length).toBeGreaterThan(0);
+    expect(git('status', '--porcelain=v1')).toBe('');
+  } finally {
+    git('reset', '--hard', merged);
+    git('checkout', '-q', '--detach', merged);
+    setMain(main);
+  }
+}, 60_000);
 
 it('classifies SQL and migration-inventory inputs conservatively', () => {
   for (const path of [

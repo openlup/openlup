@@ -220,23 +220,32 @@ refuse the affected field. See [saved-address policy and defaults](../../concept
 
 ## Configure cancellation offers
 
-In starter releases from 1.1.0 onward, edit `subscriptionCare.retention` in
-`owned/renewal.config.ts`, composed through `renewal` in `owned/store.config.ts`:
+Edit `subscriptionCare.retention` in `owned/renewal.config.ts`. Run
+`npm --silent run settings -- show renewal.subscriptionCare.retention --json`
+in your extracted app to see the effective policy and the source location.
 
-```ts
-const retention = {
-  offerByReason: { too_much_product: 'skip', delivery_issue: 'reschedule' },
-  defaultOffer: 'pause',
-} as const;
-```
+Omit `offerPresentation` for `ask_permission_first`. After a customer chooses
+Yes, the native account requests one offer of the configured `defaultOffer`
+kind (`skip`, `reschedule`, or `pause`). Set `offerPresentation: 'off'`
+to turn off the prompt. Use `retentionReasons` for optional reason-only
+feedback after cancellation in either mode. Keep `offerByReason` for any legacy
+composition that uses it. Its keys must still belong to `retentionReasons`.
 
-These defaults preserve the starter's existing offers. Every other configured
-reason uses `defaultOffer`. Keys must belong to `retentionReasons`; values and
-the default must be `skip`, `reschedule` or `pause`. `assertRetention`, called
-from `assertConfig`, refuses unknown keys or kinds with
-`starter_retention_configuration_invalid`. The browser uses the same map for
-the displayed offer and its submitted kind. Reason codes, accepted-offer IDs
-and native command authorization keep their existing meaning.
+The native server returns the eligible pause presets with their configured
+durations. It falls back to the first admitted choice when the preferred one
+is unavailable. Reschedule adds `rescheduleOfferDays` in UTC days to the exact
+retained date and offers the result only within the current slide bounds.
+A save offer requires dates in 1970–9999. The offer path also limits its timing
+operands to 36,500 days, 1,200 months and 876,000 edit-window hours. Existing
+values above those limits can stay in your settings. For those values the
+account receives no offer.
+
+Cancel stays available for active and paused subscriptions, including during
+dunning, independently of the configured action lists. Native payment and
+lifecycle fences continue to apply. A lost response can be recovered with the
+original request and key. If feedback reports
+`starter_cancel_feedback_setup_required`, apply the native forward or restore
+the runtime's permission to execute the feedback routine, then retry feedback.
 
 ## Configure account actions and pauses
 
@@ -252,10 +261,9 @@ Set `pausePresets` with the starter-local `choice(default, ...allowed)` helper.
 The native preset vocabulary is `2_weeks`, `1_month` and `indefinite`; durations
 still come from owned lifecycle `terms`. `assertChoice` refuses an empty,
 duplicate or unknown selection, or a default outside it, with
-`starter_pause_presets_invalid`. Both pause forms offer `allowed`. The account
-pause form preselects `default` (`2_weeks` in the demonstration); the
-cancellation save offer preselects `retention.pausePreset` (`1_month`), which
-must be allowed and falls back to `default` when omitted.
+`starter_pause_presets_invalid`. The ordinary pause form preselects `default` (`2_weeks` in the demonstration).
+If set, `retention.pausePreset` must belong to `allowed`. The native save offer
+uses that choice or the ordinary default, subject to the offer admission above.
 
 The managed host binds the same data through
 [command admission](../../concepts/subscriptions.md#admit-account-commands).
@@ -361,10 +369,15 @@ does not establish zero database reads for the whole checkout request.
 ## Validate a checkout destination
 
 Use `destinationV2Capabilities` from `@openlup/platform/commerce/server/destinations`
-with the host rail and actual installation and issuance state. The experimental
-schema and policy validator run offline. Fresh v2 destination issuance requires
+with the host rail and actual installation and issuance state. Readiness
+discovery must use the same registry that runs privacy operations: set up the
+[personal-data contributor registry](../../concepts/personal-data.md#personal-data-coverage)
+with `destination-receipts` and `destination-documents` as required contributors
+and pass it as `privacyRegistry`. The experimental schema and policy validator
+run offline. Fresh v2 destination issuance requires
 an installed native writer. A native host reports `destination_v2_unavailable`
-for `destinationAddressV2` until the writer is installed and issuance is enabled.
+for `destinationAddressV2` until the writer is installed, issuance is enabled
+and both required destination contributors are registered.
 Managed hosts continue to support v1 checkout and saved addresses. They report
 `destination_v2_unsupported_rail` for `destinationAddressV2`. Keep installed
 readers and exact replay available when disabling fresh issuance.
