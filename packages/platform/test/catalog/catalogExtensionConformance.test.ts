@@ -47,7 +47,7 @@ describe("catalogue conformance findings", () => {
     const path = `${typePath}/axes/0`;
     expect(await checkSubject(subject)).toMatchObject({ state: "violated", exitCode: 1, findings: [{
       code: "definition_axis_mismatch", severity: "error", path, recheck,
-      observed: `${path}: dimension = {"key":"finish","kind":"choice","values":["matte","gloss"]}; attribute = {"kind":"boolean"}`,
+      observed: `${path}: dimension = {"kind":"choice","values":["matte","gloss"],"key":"finish"}; attribute = {"kind":"boolean"}`,
       cause: "An axis must bind a dimension and a variant attribute that declare the same option.",
       fix: "Declare the option once with `catalogVariantOptions`, or make both declarations match.",
       recipe: "how-to/extend/catalogue-extension.md#add-axis",
@@ -64,6 +64,24 @@ describe("catalogue conformance findings", () => {
     }] });
     type.axes.pop();
     expect(await checkSubject(subject)).toMatchObject({ state: "satisfied", exitCode: 0, findings: [] });
+  });
+
+  it("shows both compared kinds before a 64-character axis key", async () => {
+    const subject = JSON.parse(fixture("axis-mismatch"));
+    const { dimensions: [dimension], attributes: [attribute], axes: [axis] } = subject.packs[0].pack.types[0];
+    const key = "a".repeat(64);
+    Object.assign(axis, { key, attributeKey: key });
+    dimension.key = attribute.key = key;
+
+    const path = `${typePath}/axes/0`;
+    const report = await checkSubject(subject);
+    expect(report).toMatchObject({ state: "violated", exitCode: 1, findings: [{
+      code: "definition_axis_mismatch", path,
+      observed: expect.stringMatching(/dimension = \{"kind":"choice","values":\["matte","gloss"\],"key":"a+; attribute = \{"kind":"boolean"\}$/u),
+    }] });
+    const [dimensionSide, attributeSide] = report.findings[0]!.observed.slice(path.length + 2).split("; ");
+    expect(Array.from(dimensionSide).length).toBeLessThanOrEqual(80);
+    expect(Array.from(attributeSide).length).toBeLessThanOrEqual(80);
   });
 
   it("maps combination diagnostics to the supplied fixture values or their container", async () => {
@@ -91,6 +109,34 @@ describe("catalogue conformance findings", () => {
     }
   });
 
+  it.each([
+    ["incoming", false, "/incoming/1/optionValues/pack_size"],
+    ["retained", false, "/retained/1/optionValues/pack_size"],
+    ["incoming", true, "/incoming"],
+    ["retained", true, "/retained/1"],
+  ] as const)("reports fractional count from %s (repeated key: %s) at %s", async (field, repeated, suffix) => {
+    const declaration = pack();
+    const definition = { ...declaration.types[0], ...catalogVariantOptions([
+      { key: "pack_size", kind: "quantity", dimension: "count", units: ["stationery:each"], labels: {} },
+    ]) };
+    const option = (unscaled: string, scale: number) => ({
+      pack_size: { kind: "quantity", value: { dimension: "count", unit: "stationery:each", unscaled, scale } },
+    });
+    const input = { typed: false, axes: ["pack_size"], incoming: [], retained: [],
+      [field]: [
+        { skuId: "first", state: "draft", optionValues: repeated ? option("1", 0) : null },
+        { skuId: "second", state: "draft", optionValues: option("15", 1) },
+      ],
+    };
+    const type = { key: definition.key, version: definition.version };
+    const path = `/packs/0/combinations/0/input${suffix}`;
+    const report = await checkSubject({ packs: [{ pack: { ...declaration, types: [definition] }, combinations: [{ type, input }] }] });
+    expect(report).toMatchObject({ state: "violated", exitCode: 1 });
+    expect(errors(report)).toMatchObject([{ code: "quantity_fractional_count", path,
+      observed: expect.stringContaining(repeated && field === "incoming" ? `${path} = [` : '"scale":1,"unit":"stationery:each","unscaled":"15"'),
+    }]);
+  });
+
   it("reports a variant attribute without an axis and applies the feasible binding", async () => {
     const declaration = pack();
     const variant = catalogVariantOptions([{ key: "lined", kind: "boolean", labels: {} }]);
@@ -102,8 +148,9 @@ describe("catalogue conformance findings", () => {
         fix: expect.stringContaining("an unused compatible dimension"), cause: expect.any(String),
       })]),
     });
-    expect((await checkWithRecheck({ ...declaration, types: [{ ...type, axes: variant.axes }] })).findings.map(({ code }) => code))
-      .not.toContain("advisory_variant_attribute_without_axis");
+    const repaired = await checkWithRecheck({ ...declaration, types: [{ ...type, axes: variant.axes }] });
+    expect(repaired).toMatchObject({ state: "satisfied", exitCode: 0 });
+    expect(repaired.findings.map(({ code }) => code)).not.toContain("advisory_variant_attribute_without_axis");
 
     const filled = catalogVariantOptions(Array.from({ length: 16 }, (_, i) => ({ key: `flag_${i}`, kind: "boolean", labels: {} })));
     const ineligible = { ...type, ...filled, attributes: [...variant.attributes, ...filled.attributes] };

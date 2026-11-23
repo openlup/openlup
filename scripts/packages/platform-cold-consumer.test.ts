@@ -1993,11 +1993,22 @@ it("skeleton_pack_projects_clean", () => {
   const examples = [...lines.slice(unitStart, unitEnd).join("\n").matchAll(/^```ts nocheck\n([^]*?)\n^```$/gm)];
   expect(examples).toHaveLength(2);
   const unit = examples[0]![1], quantity = examples[1]![1];
+  const axisStart = lines.indexOf("## Add axis");
+  const axisEnd = lines.findIndex((line, index) => index > axisStart && line.startsWith("## "));
+  const axisExamples = [...lines.slice(axisStart, axisEnd).join("\n").matchAll(/^```ts nocheck\n([^]*?)\n^```$/gm)];
+  expect(axisExamples).toHaveLength(3);
+  const [, option] = axisExamples[0]!;
+  const [, bindings] = axisExamples[1]!;
   write("pack.ts", readFileSync(join(app, "pack.ts"), "utf8")
+    .replace("filterable: true, facetable: true }]),", `filterable: true, facetable: true },\n${option}\n    ]),`)
     .replace("export const pack =", `const namespace = ${JSON.stringify(namespace)};\n\nexport const pack =`)
     .replace(`namespace: "${namespace}"`, "namespace")
     .replace("\n    ],\n    netContentUnits:", `\n${unit}\n    ],\n    netContentUnits:`));
   write("fixtures.ts", readFileSync(join(app, "fixtures.ts"), "utf8")
+    .replace(/^const options = .*$/m, bindings)
+    .replace('dimensions: ["lined"]', "dimensions: selectedAxes")
+    .replace('axes: ["lined"]', "axes: selectedAxes")
+    .replaceAll("attributes: { lined: true }", "attributes: skuAttributes")
     .replace("quantities: [{ type, value: count }]", `quantities: [{ type, value: count },\n${quantity}\n  ]`));
   const compiled = spawnSync(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "--project", tsconfig],
     { cwd: app, env: environment, encoding: "utf8" });
@@ -2007,6 +2018,13 @@ it("skeleton_pack_projects_clean", () => {
   const [updated] = JSON.parse(readFileSync(appended.transport.subjectPath, "utf8")).packs;
   expect(updated.pack.types[0].units).toEqual([...pack.types[0].units, expect.objectContaining({ code: `${namespace}:pair` })]);
   expect(updated.pack.types[0].netContentUnits).toEqual(["openlup:g"]);
+  const finish = { kind: "choice", value: "matte" };
+  expect(updated).toMatchObject({
+    pack: { types: [{ axes: [{ key: "lined" }, { key: "finish", attributeKey: "finish" }] }] },
+    drafts: [{ product: { dimensions: ["lined", "finish"] }, skus: [{ options: { finish }, attributes: { finish: "matte" } }] }],
+    attributes: [{ input: { skus: [{ attributes: { finish: "matte" } }] } }],
+    combinations: [{ input: { axes: ["lined", "finish"], incoming: [{ optionValues: { finish } }] } }],
+  });
   expect(updated.quantities.at(-1)).toEqual({
     type: drafts[0].product.type,
     value: { dimension: "count", unit: `${namespace}:pair`, unscaled: "2", scale: 0 },

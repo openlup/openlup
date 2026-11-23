@@ -169,6 +169,21 @@ and declare each option once. For example, add this entry to the skeleton's
 { key: "finish", kind: "choice", values: [{ id: "matte" }, { id: "gloss", labels: { en: "Gloss" } }], labels: { en: "Finish" } },
 ```
 
+In `fixtures.ts`, replace the existing `options` binding with these bindings.
+
+```ts nocheck
+// These bindings replace the skeleton's options declaration.
+const finish = "matte";
+const selectedAxes = ["lined", "finish"] as const;
+const options = { lined: { kind: "boolean", value: true }, finish: { kind: "choice", value: finish } } as const;
+const skuAttributes = { lined: true, finish } as const;
+```
+
+Set the draft's `product.dimensions` and the combination fixture's `input.axes`
+to `selectedAxes`. Use `attributes: skuAttributes` for the draft SKU and for
+the SKU in the attribute projection fixture. The draft SKU's `options` and the
+incoming combination row's `optionValues` both use the updated `options` binding.
+
 The helper returns `attributes`, `dimensions` and `axes`. A boolean option
 such as `{ key: "lined", kind: "boolean", labels: { en: "Lined" } }` has this
 expanded form with the default display flags.

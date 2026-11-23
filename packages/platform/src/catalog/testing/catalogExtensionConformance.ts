@@ -1,4 +1,4 @@
-import { CATALOG_QUANTITY_UNITS, canonicalizeCatalogQuantity, convertCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
+import { CATALOG_QUANTITY_UNITS, CatalogQuantityError, canonicalizeCatalogQuantity, convertCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
 import { readCatalogCheckerPackageVersion } from "../catalogConformance.js";
 import {
   CATALOG_CONFORMANCE_RULES, catalogProductTypeRefIssues,
@@ -33,7 +33,7 @@ function atPointer(subject: unknown, path: string): unknown {
   }, subject) : subject;
 }
 
-function previewValue(value: unknown, remaining: number): string {
+function previewValue(value: unknown, remaining: number, preserveRootOrder = false): string {
   // Serialize only the prefix so deeply nested invalid input can still produce a finding.
   let preview = "";
   function json(input: unknown): string {
@@ -46,10 +46,10 @@ function previewValue(value: unknown, remaining: number): string {
     preview += points.join("");
     remaining -= points.length;
   }
-  function write(value: unknown): void {
+  function write(value: unknown, preserveOrder = false): void {
     if (value === null || typeof value !== "object") { append(json(value)); return; }
     const array = Array.isArray(value), keys = Object.keys(value);
-    if (!array) keys.sort(compare);
+    if (!array && !preserveOrder) keys.sort(compare);
     append(array ? "[" : "{");
     for (const [index, key] of keys.entries()) {
       if (!remaining) break;
@@ -59,7 +59,7 @@ function previewValue(value: unknown, remaining: number): string {
     }
     append(array ? "]" : "}");
   }
-  write(value);
+  write(value, preserveRootOrder);
   return preview;
 }
 
@@ -71,10 +71,17 @@ function observedAt(subject: unknown, path: string): string {
 function axisMismatchPreview(subject: unknown, path: string): string {
   const axis = atPointer(subject, path) as { key: string; attributeKey: string };
   const definition = atPointer(subject, path.slice(0, path.lastIndexOf("/axes/"))) as CatalogPackInput["types"][number];
-  const dimension = definition.dimensions.find(({ key }) => key === axis.key);
-  const attribute = definition.attributes?.find(({ key }) => key === axis.attributeKey);
   // Definition admission emits this issue only after it finds both sides.
-  return `dimension = ${previewValue(dimension, 68)}; attribute = ${previewValue(attribute!.valueType, 66)}`;
+  const dimension = definition.dimensions.find(({ key }) => key === axis.key)!;
+  const { key, kind } = dimension;
+  const dimensionFields = kind === "choice" ? { kind, values: dimension.values, key }
+    : kind === "quantity" ? { kind, dimension: dimension.dimension, units: dimension.units, key }
+    : { kind, key };
+  const { valueType } = definition.attributes!.find(({ key }) => key === axis.attributeKey)!;
+  const attributeFields = valueType.kind === "enum" ? { kind: valueType.kind, values: valueType.values.map(({ id }) => id) }
+    : valueType.kind === "quantity" ? { kind: valueType.kind, dimension: valueType.dimension, units: valueType.units }
+    : { kind: valueType.kind };
+  return `dimension = ${previewValue(dimensionFields, 68, true)}; attribute = ${previewValue(attributeFields, 66, true)}`;
 }
 
 const semverNumber = "(0|[1-9][0-9]*)";
@@ -104,6 +111,42 @@ function satisfiesPlatformRange(range: string): boolean | undefined {
 
 type CombinationFixtureInput = NonNullable<CatalogConformanceSubject["packs"][number]["combinations"]>[number]["input"];
 
+function combinationOptionPointer(input: CombinationFixtureInput, key: string | undefined, retainedIndex: number | undefined,
+  missing = false): string {
+  const field = retainedIndex === undefined ? "incoming" : "retained";
+  const hasKey = (row: CombinationFixtureInput[typeof field][number]) =>
+    key !== undefined && !!row.optionValues && Object.hasOwn(row.optionValues, key);
+  const candidates = input[field].flatMap((row, index) => hasKey(row) ? [index] : []);
+  if (missing) {
+    const index = retainedIndex ?? input.incoming.findIndex(row => row.optionValues && !hasKey(row));
+    return index >= 0 ? pointer([field, index]) : pointer([field]);
+  }
+  const other = field === "incoming" ? "retained" : "incoming";
+  if (key !== undefined && candidates.length === 1 && !input[other].some(hasKey))
+    return pointer([field, candidates[0], "optionValues", key]);
+  return pointer(retainedIndex === undefined ? [field] : [field, retainedIndex]);
+}
+
+// Core quantity errors have no option path. On refusal, replay only the selected
+// quantity options through the same owner, in its row and key order.
+function combinationQuantityPointer(input: CombinationFixtureInput, definition: CatalogPackInput["types"][number],
+  error: CatalogQuantityError, retainedIndex: number | undefined): string {
+  const rows = retainedIndex === undefined ? input.incoming : [input.retained[retainedIndex]];
+  const keys = [...input.axes].sort(compare);
+  for (const { optionValues } of rows) for (const key of keys) {
+    const value = optionValues?.[key];
+    if (value?.kind !== "quantity") continue;
+    try {
+      canonicalizeCatalogCombinationV2({ definition, axes: [key], options: { [key]: value } });
+    } catch (probe) {
+      if (probe instanceof CatalogQuantityError && probe.code === error.code)
+        return combinationOptionPointer(input, key, retainedIndex);
+      // Diagnostic replay preserves the original refusal if a probe fails for another reason.
+    }
+  }
+  return retainedIndex === undefined && rows.length === 1 ? "/incoming/0" : combinationOptionPointer(input, undefined, retainedIndex);
+}
+
 function combinationFixturePointer(input: CombinationFixtureInput, error: CatalogCombinationError, retainedIndex: number | undefined): string {
   if (!skuIdPathErrors.has(error)) {
     if (error.path.startsWith("axes.")) {
@@ -113,18 +156,7 @@ function combinationFixturePointer(input: CombinationFixtureInput, error: Catalo
     }
     if (error.path.startsWith("options.") || error.path === "options") {
       const key = error.path.startsWith("options.") ? error.path.slice("options.".length) : undefined;
-      const field = retainedIndex === undefined ? "incoming" : "retained";
-      const hasKey = (row: CombinationFixtureInput[typeof field][number]) =>
-        key !== undefined && !!row.optionValues && Object.hasOwn(row.optionValues, key);
-      const candidates = input[field].flatMap((row, index) => hasKey(row) ? [index] : []);
-      if (error.code === "option_missing") {
-        const index = retainedIndex ?? input.incoming.findIndex(row => row.optionValues && !hasKey(row));
-        return index >= 0 ? pointer([field, index]) : pointer([field]);
-      }
-      const other = field === "incoming" ? "retained" : "incoming";
-      if (key !== undefined && candidates.length === 1 && !input[other].some(hasKey))
-        return pointer([field, candidates[0], "optionValues", key]);
-      return pointer(retainedIndex === undefined ? [field] : [field, retainedIndex]);
+      return combinationOptionPointer(input, key, retainedIndex, error.code === "option_missing");
     }
     return pointer(error.path.split("."));
   }
@@ -232,13 +264,15 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
   }
   // Only shared owner calls enter this boundary; parsing, checker logic and CLI I/O remain outside.
   async function owner<T>(path: string, work: () => T | Promise<T>,
-    combinationPath = (error: CatalogCombinationError) => pointer(error.path.split("."))): Promise<T | undefined> {
+    combinationPath = (error: CatalogCombinationError) => pointer(error.path.split(".")),
+    quantityPath?: (error: CatalogQuantityError) => string): Promise<T | undefined> {
     try { return await work(); }
     catch (error) {
       if (error instanceof SyntaxError) throw error;
       const named = error instanceof Error ? "code" in error && typeof error.code === "string" ? error.code : error.message : "";
       if (!OWNER_INPUT_CODES.has(named)) throw error;
-      const suffix = error instanceof CatalogCombinationError ? combinationPath(error) : "";
+      const suffix = error instanceof CatalogCombinationError ? combinationPath(error)
+        : error instanceof CatalogQuantityError ? quantityPath?.(error) ?? "" : "";
       add(named, path + suffix);
       return undefined;
     }
@@ -483,7 +517,8 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
             });
             retainedIndex = undefined;
             return validateCatalogCombinationChangesV2({ ...input, definition, retained });
-          }, error => combinationFixturePointer(input, error, retainedIndex));
+          }, error => combinationFixturePointer(input, error, retainedIndex),
+          error => combinationQuantityPointer(input, definition, error, retainedIndex));
         }
       }
     }

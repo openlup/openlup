@@ -8,6 +8,7 @@ including registry construction and definition digest calculation, now refuses
 axes with mismatched declarations or repeated attribute assignments. This
 includes declarations with overlapping choice IDs or units. For example, an
 axis with `[a,b]` on its dimension and `[a,c]` on its attribute previously
-accepted `a` as an individual option. Align the two declarations before
-registering the pack. Follow the definition versioning procedure for changes to
-installed metadata.
+accepted `a` as an individual option. This release cannot register an installed
+type version with either issue. There is no in-place migration. A corrected
+new version still leaves the upgrade blocked while the affected version stays
+composed. If your pack is affected, stay on the previous release.
