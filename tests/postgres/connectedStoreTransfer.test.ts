@@ -34,7 +34,9 @@ import { fixture, openCase, replacement } from "../helpers/fulfillmentNative.js"
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { captureStoreJourney, storeJourneyResources, type JourneyTargetInstallation, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
 
-import { createDestinationReceiptPrivacyContributor } from "../../server/runtime/auth/destinationReceiptPrivacyContributor.js";
+import { createDestinationDocumentPrivacyContributor, createDestinationReceiptPrivacyContributor } from "@openlup/platform/identity";
+import { snapshotCommand, destinationContext, documentTable, reachDestinationCutoff, readSnapshot,
+  selectionTable, snapshot } from "./destinationDocumentFixture.js";
 import { awaitReceiptWait, backendPid, idempotencyConflict, receiptArgs, receiptCall, receiptClient, receiptOutcome,
   receiptTable } from "./destinationReceiptFixture.js";
 
@@ -1737,8 +1739,9 @@ it("destination_receipt_privacy_round_trip", async () => {
       owner: "clients", resource: `clients.${field}`, disposition: "retain", reasonCode: "CONTACT_LIFECYCLE_RETENTION", remote: false,
     }]),
   ) }, randomUUID);
-  const contributor = createDestinationReceiptPrivacyContributor();
-  const registry = createPersonalDataContributorRegistry([identityOwner, contributor], { requiredContributorIds: ["identity", contributor.id] });
+  const contributor = createDestinationReceiptPrivacyContributor(), documents = createDestinationDocumentPrivacyContributor();
+  const registry = createPersonalDataContributorRegistry([identityOwner, contributor, documents],
+    { requiredContributorIds: ["identity", "destination-receipts", "destination-documents"] });
   const unitOfWork = (onStart?: (pid: number) => void) => ({
     async run<T>(work: (db: PgQueryExecutor) => Promise<T>): Promise<T> {
       const db = await clean.runtime.connect();
@@ -1762,22 +1765,41 @@ it("destination_receipt_privacy_round_trip", async () => {
   const request = (id: string) => ({ subject: subject(id), idempotencyKey: randomUUID() });
   const payload = async (id: string) => (await operations().export(actor, subject(id))).documents.find(d => d.contributorId === contributor.id)?.data;
 
+  const documentPayload = async (id: string) => (await operations().export(actor, subject(id))).documents.find(d => d.contributorId === documents.id)?.data;
+  const [issuedCtx, erasedFirstCtx, retainedCtx] = await Promise.all(
+    [issued, erasedFirst, retained].map(id => destinationContext(clean.owner, id)));
+  const firstDocument = await snapshot(clean.runtime, issuedCtx), expired = await snapshot(clean.runtime, retainedCtx);
+  await reachDestinationCutoff(clean.owner, firstDocument.binding);
+  await reachDestinationCutoff(clean.owner, expired.binding);
+  expect((await clean.owner.query("SELECT public.commerce_destination_v2_expire(clock_timestamp(),1000) AS count")).rows)
+    .toEqual([{ count: 2 }]);
+  const live = await snapshot(clean.runtime, retainedCtx);
+  const liveRead = await readSnapshot(clean.runtime, retainedCtx, live.binding);
+  expect(await documentPayload(retained)).toEqual(expect.arrayContaining([
+    { snapshotRef: expired.binding.snapshotRef, issuedAt: expect.any(String), evidenceDisposition: "expired" },
+    { snapshotRef: live.binding.snapshotRef, issuedAt: expect.any(String), evidenceDisposition: "available",
+      scopeRef: retainedCtx.scopeRef, document: liveRead.document, documentDigest: liveRead.documentDigest, evidenceExpiresAt: live.evidenceExpiresAt },
+  ]));
+
   const issuedArgs = receiptArgs(issued), firstEraseArgs = receiptArgs(erasedFirst), retainedArgs = receiptArgs(retained);
   const outcome = await receiptOutcome(clean.owner);
   const available = await receiptCall(clean.owner, "commit", retainedArgs, outcome);
-  expect(await payload(retained)).toEqual([{
+  expect(await payload(retained)).toEqual(expect.arrayContaining([{
     owner: retainedArgs[0].owner, dialect: retainedArgs[1], requestKey: retainedArgs[2], requestDigest: retainedArgs[3], outcome,
     eventId: available.eventId, eventSchemaVersion: 1, createdAt: expect.stringMatching(/Z$/u), evidenceDisposition: "available",
-  }]);
-  expect(await payload(issued)).toEqual([]);
+  }]));
+  expect(await payload(issued)).toMatchObject([{ eventId: firstDocument.eventId, evidenceDisposition: "available" }]);
 
   const writer = await clean.owner.connect();
   let firstErasure: ReturnType<ReturnType<typeof operations>["erase"]> | undefined;
   const erasureRequest = request(issued);
   let issuedReceipt: { eventId: string };
+  const { command: issuedCommand } = snapshotCommand(issuedCtx);
+  let issuedDocument: Awaited<ReturnType<typeof snapshot>>;
   try {
     await writer.query("BEGIN");
     expect(await receiptCall(writer, "lock", issuedArgs)).toEqual({ kind: "absent" });
+    issuedDocument = await snapshot(writer, issuedCtx, issuedCommand);
     const erasurePid = deferred<number>();
     firstErasure = operations(store, erasurePid.resolve).erase(actor, erasureRequest);
     void firstErasure.catch(erasurePid.reject);
@@ -1787,12 +1809,23 @@ it("destination_receipt_privacy_round_trip", async () => {
   } finally { await writer.query("ROLLBACK"); writer.release(); }
   expect(await firstErasure).toMatchObject({ outcome: "ERASED" });
   expect(await operations().erase(actor, erasureRequest)).toMatchObject({ outcome: "ALREADY_ERASED" });
-  expect(await payload(issued)).toEqual([{
+  expect(await payload(issued)).toEqual(expect.arrayContaining([{
     eventId: issuedReceipt.eventId, eventSchemaVersion: 1, createdAt: expect.stringMatching(/Z$/u), evidenceDisposition: "erased",
-  }]);
+  }]));
+  expect(await documentPayload(issued)).toEqual(expect.arrayContaining([firstDocument, issuedDocument].map(result => ({
+    snapshotRef: result.binding.snapshotRef, issuedAt: expect.any(String), evidenceDisposition: "erased",
+  }))));
+  expect((await clean.owner.query(`SELECT owner_scope,scope_ref,binding,document_text,document_digest FROM ${documentTable}
+    WHERE client_id=$1`, [issued])).rows).toEqual(Array.from({ length: 2 }, () => ({
+    owner_scope: null, scope_ref: null, binding: null, document_text: null, document_digest: null,
+  })));
+  expect((await clean.owner.query(`SELECT snapshot_ref FROM ${selectionTable} WHERE scope_ref=$1`, [issuedCtx.scopeRef])).rows).toEqual([]);
+  expect(await snapshot(clean.runtime, issuedCtx, issuedCommand)).toEqual({ evidenceDisposition: "erased" });
+  await expect(readSnapshot(clean.runtime, issuedCtx, issuedDocument.binding)).rejects.toMatchObject({ message: "destination_evidence_unavailable" });
   await unitOfWork().run(async db => {
     await store.prepareErasure(db);
     expect((await db.query("SELECT public.commerce_destination_v2_receipts_erase($1) AS count", [issued])).rows).toEqual([{ count: 0 }]);
+    expect((await db.query("SELECT public.commerce_destination_v2_erase($1) AS count", [issued])).rows).toEqual([{ count: 0 }]);
   });
   const tombstone = { kind: "receipt", eventId: issuedReceipt.eventId, evidenceDisposition: "erased", outcome: null };
   expect(await receiptCall(clean.runtime, "read", issuedArgs)).toEqual(tombstone);
@@ -1812,7 +1845,7 @@ it("destination_receipt_privacy_round_trip", async () => {
   try {
     await prepared.promise;
     const pid = await backendPid(secondWriter);
-    fresh = receiptCall(secondWriter, "lock", firstEraseArgs);
+    fresh = snapshot(secondWriter, erasedFirstCtx);
     void fresh.catch(() => undefined);
     await awaitReceiptWait(clean.owner, pid, "relation", "ShareLock");
     release.resolve();
@@ -1836,9 +1869,16 @@ it("destination_receipt_privacy_round_trip", async () => {
 
   expect(await restore(transferred)).toMatchObject({ replayed: false, captureSha256: transferred.sha256 });
   const readback = await captureStoreJourney(target.owner, "destination-receipts-readback");
-  const table = (value: ConnectedNativeStoreCapture) => value.owned.find(rows => `public.${rows.table}` === receiptTable);
-  expect(table(transferred)?.rows).toHaveLength(2);
-  expect(table(readback)).toEqual(table(transferred));
+  const table = (value: ConnectedNativeStoreCapture, relation: string) => value.owned.find(rows => `public.${rows.table}` === relation);
+  for (const [relation, count] of [[receiptTable, 6], [documentTable, 4], [selectionTable, 1]] as const) {
+    expect(table(transferred, relation)?.rows).toHaveLength(count);
+    expect(table(readback, relation)).toEqual(table(transferred, relation));
+  }
+  expect(await readSnapshot(target.runtime, retainedCtx, live.binding)).toEqual(liveRead);
+  await expect(readSnapshot(target.runtime, retainedCtx, expired.binding)).rejects.toMatchObject({
+    message: "destination_version_changed", detail: "destination.snapshotRef",
+  });
+  expect(await snapshot(target.runtime, issuedCtx, issuedCommand)).toEqual({ evidenceDisposition: "erased" });
   expect(await receiptCall(target.runtime, "read", retainedArgs)).toEqual(available);
   expect(await receiptCall(target.runtime, "read", issuedArgs)).toEqual(tombstone);
   expect(await restore(transferred)).toMatchObject({ replayed: true, captureSha256: transferred.sha256 });

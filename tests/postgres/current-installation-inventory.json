@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 186,
-        "exactTailCount": 76,
-        "objectInventorySha256": "193e4e005cd728510b79ca53c748b68d6db371a7fdd19062cd0d3414c66664b4",
+        "count": 187,
+        "exactTailCount": 77,
+        "objectInventorySha256": "d6ce7a8b9015d433f7d66b35575f5a8559094cf7772f7057ee4aa8021a687946",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql",
+            "sha256": "131d97add1375184658be2ba41e269e30d477e3013596d82f48e05a2a8287566"
+          },
           {
             "file": "db/platform/migrations/20261125080000_commerce_destination_v2_receipts.sql",
             "sha256": "58b37e8d6b283c98960618be934891c92ef5188e1109936ae6b60d80d794a78f"
@@ -753,10 +757,14 @@
         ]
       },
       "bootstrap": {
-        "count": 192,
-        "exactTailCount": 77,
-        "objectInventorySha256": "dde15215a5b0c08a3071e04771fbe05e283c74c54ce67a577256c9e054b88db4",
+        "count": 193,
+        "exactTailCount": 78,
+        "objectInventorySha256": "6b427c09f7e4f42b29adf1ba57972d983a7ccafb71a265c7ed71fc4fe80e724e",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql",
+            "sha256": "131d97add1375184658be2ba41e269e30d477e3013596d82f48e05a2a8287566"
+          },
           {
             "file": "db/platform/migrations/20261125080000_commerce_destination_v2_receipts.sql",
             "sha256": "58b37e8d6b283c98960618be934891c92ef5188e1109936ae6b60d80d794a78f"
@@ -1528,10 +1536,14 @@
         ]
       },
       "separate": {
-        "count": 192,
-        "exactTailCount": 77,
-        "objectInventorySha256": "b69911917afefe98fafdb599c8565de2a9b30161408f1f4058c5e6efcc8cd215",
+        "count": 193,
+        "exactTailCount": 78,
+        "objectInventorySha256": "16a96a10592917d99cef79ea3ea67590beff74b5d2cb9a9cb24a59621b6d1a65",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql",
+            "sha256": "131d97add1375184658be2ba41e269e30d477e3013596d82f48e05a2a8287566"
+          },
           {
             "file": "db/platform/migrations/20261125080000_commerce_destination_v2_receipts.sql",
             "sha256": "58b37e8d6b283c98960618be934891c92ef5188e1109936ae6b60d80d794a78f"
@@ -2303,10 +2315,14 @@
         ]
       },
       "admin-managed": {
-        "count": 190,
-        "exactTailCount": 76,
-        "objectInventorySha256": "66187fd1bc8f9d044f037339ce84ff7160ce2528e527ded911ae7b5b45780671",
+        "count": 191,
+        "exactTailCount": 77,
+        "objectInventorySha256": "09a71349bea87d340a95d4500dfbd943a3bb11ff2a4c5c7acf31e72043e1140b",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql",
+            "sha256": "131d97add1375184658be2ba41e269e30d477e3013596d82f48e05a2a8287566"
+          },
           {
             "file": "db/platform/migrations/20261125080000_commerce_destination_v2_receipts.sql",
             "sha256": "58b37e8d6b283c98960618be934891c92ef5188e1109936ae6b60d80d794a78f"
@@ -3070,10 +3086,14 @@
         ]
       },
       "admin-operator": {
-        "count": 190,
-        "exactTailCount": 76,
-        "objectInventorySha256": "ad09703983ef55791dc865ce497f7b39da9131730acff85899eaecc07bac3940",
+        "count": 191,
+        "exactTailCount": 77,
+        "objectInventorySha256": "15899b4de4b3fd2b08757fa4ded7767315b4b597d0788fc34e4df235ed59f027",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql",
+            "sha256": "131d97add1375184658be2ba41e269e30d477e3013596d82f48e05a2a8287566"
+          },
           {
             "file": "db/platform/migrations/20261125080000_commerce_destination_v2_receipts.sql",
             "sha256": "58b37e8d6b283c98960618be934891c92ef5188e1109936ae6b60d80d794a78f"
@@ -3837,7 +3857,7 @@
         ]
       }
     },
-    "connectedTableCount": 171
+    "connectedTableCount": 173
   },
   "historical": {}
 }

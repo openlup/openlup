@@ -799,6 +799,16 @@ export declare function createCustomerVerifyOtpHandler(options: IdentityResponse
     resolveSession: typeof resolveCustomerSessionBinding;
 }): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
+## dist/identity/destinationPrivacy.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+import type { PersonalDataContributor } from "./privacyPorts.js";
+/** @experimental Compose native destination receipt export and erasure with the identity privacy transaction. */
+export declare function createDestinationReceiptPrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
+/** @experimental Compose native checkout destination export and erasure with the identity privacy transaction. */
+export declare function createDestinationDocumentPrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
+```
 ## dist/identity/directOperatorInvitationStore.d.ts
 
 ```ts
@@ -940,6 +950,7 @@ export { createFulfillmentParcelContactPrivacyContributor } from './parcelContac
 export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPrivacy.js";
 export { createCustomerPreferencePrivacyContributor } from './customerPreferencePrivacy.js';
 export { createCustomerBillingPrivacyContributor } from './billingProfilePrivacy.js';
+export { createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor } from "./destinationPrivacy.js";
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 

@@ -6987,6 +6987,44 @@
         "absorptionCensusTables": [
           "public.commerce_destination_v2_receipts"
         ]
+      },
+      {
+        "row": "destination-documents",
+        "path": "db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_destination_v2_canonical(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_read_destination_v2(jsonb,text,uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_export(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_erase(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_expire(timestamptz,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('commerce_destination_v2_documents', 'block', 'Destination document history prevents lead absorption.');"
+        ],
+        "absorptionCensusTables": [
+          "public.commerce_destination_v2_documents"
+        ]
       }
     ]
   },
@@ -10321,6 +10359,42 @@
           "signature": "public.commerce_destination_v2_receipts_export(uuid)",
           "beforeSha256": null,
           "afterSha256": "7cc5c9939ff20b7209c3c98b010dfcf6d0efca0200bc05480e157722dec1fef1"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql",
+      "sha256": "131d97add1375184658be2ba41e269e30d477e3013596d82f48e05a2a8287566",
+      "functions": [
+        {
+          "signature": "public.commerce_destination_v2_canonical(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "a304def5c16ebbbd93f77849458d8e0ca09dedbfd25905ff380fa647d41ee885"
+        },
+        {
+          "signature": "public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "d5ba452d38d2abef7a47581825d7c68766b59ced62938932ff24629d8a026e04"
+        },
+        {
+          "signature": "public.commerce_read_destination_v2(jsonb,text,uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "342b91a4882170c437202ced05c7f7b297272f3bde354567f81b9e32cd9b53ff"
+        },
+        {
+          "signature": "public.commerce_destination_v2_export(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "66e4a0ffca1b2b96672ff0ea409a022b9ce7410e27c2b96b4a57a61781a7112c"
+        },
+        {
+          "signature": "public.commerce_destination_v2_erase(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "d3709e44792d234b4946d6fd9ef859d5fe0ca81b928e36e6f6458e9e87c52149"
+        },
+        {
+          "signature": "public.commerce_destination_v2_expire(timestamptz,integer)",
+          "beforeSha256": null,
+          "afterSha256": "4673135baf70ca57fe2c02d81ab0654927d696ca6de21105bc76b0ba6c9c7923"
         }
       ]
     }

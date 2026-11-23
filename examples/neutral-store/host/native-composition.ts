@@ -1,7 +1,8 @@
 import { composeSandboxRecoveryPayments, composeExpiredRecovery } from './checkout-recovery.ts';
 import { readPostgresCustomerAccountClient, createPostgresCustomerAccountMutationPort, createCustomerAccountMutationSchemas, createAccountEventPrivacyContributor } from '@openlup/platform/account-support';
 import { createPersonalDataContributorRegistry, createCustomerBillingPrivacyContributor, createCustomerSavedAddressPrivacyContributor,
-  createCustomerPreferencePrivacyContributor, createFulfillmentParcelContactPrivacyContributor, type PersonalDataContributor } from '@openlup/platform/identity';
+  createCustomerPreferencePrivacyContributor, createFulfillmentParcelContactPrivacyContributor,
+  createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor, type PersonalDataContributor } from '@openlup/platform/identity';
 import type { PgQueryExecutor } from '@openlup/platform/data';
 import { customerAccountPolicy } from '../owned/acquisition-policy.ts';
 import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';
@@ -48,8 +49,10 @@ const uuid = (value: unknown): value is string => typeof value === 'string'
 export function createStarterPersonalDataRegistry(additional: readonly PersonalDataContributor<PgQueryExecutor>[] = []) {
   return createPersonalDataContributorRegistry<PgQueryExecutor>([...additional, createCustomerBillingPrivacyContributor(),
     createCustomerSavedAddressPrivacyContributor(), createCustomerPreferencePrivacyContributor(), createFulfillmentParcelContactPrivacyContributor(),
+    createDestinationReceiptPrivacyContributor(), createDestinationDocumentPrivacyContributor(),
     createAccountEventPrivacyContributor({ read: null, assess: null })], { requiredContributorIds: [
       'identity','subscriptions','account-support','fulfillment-parcel-contacts','customer-billing','customer-saved-addresses','customer-preferences',
+      'destination-receipts','destination-documents',
     ] });
 }
 
