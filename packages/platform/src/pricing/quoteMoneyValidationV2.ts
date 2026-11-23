@@ -1,10 +1,13 @@
+import { isDeepStrictEqual } from "node:util";
 import { isCatalogueMoneyV2RateDecimal } from "@openlup/core/pricing";
 import { z } from "zod";
+import { CATALOG_DRAFT_MAX_BYTES } from "../catalog/contracts/index.js";
 import { CATALOG_PRICE_SETUP_MAX_MINOR } from "./catalogPriceSetupSchemas.js";
 import { PROMOTION_ENGINE_V1, PROMOTION_ENGINE_V2 } from "./contracts/offerPolicy.js";
-import type { CommerceQuoteMoneyV2, CommerceQuoteV2, MoneyLineV2, TaxPositionV2 } from "./contracts/quoteV2.js";
+import type { CommerceQuoteMoneyV2, CommerceQuoteV2, MoneyLineV2 } from "./contracts/quoteV2.js";
 
-export const ref = z.string().min(1).max(256).refine(value => !value.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(value));
+const jsonText = (value: string) => !value.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(value);
+export const ref = z.string().min(1).max(256).refine(jsonText);
 export const moneyRef = ref.refine(value => value.length <= 128);
 export const minor = z.number().int().nonnegative().refine(value => !Object.is(value, -0));
 export const currency = z.string().length(3).regex(/^[A-Z]{3}$/u);
@@ -88,54 +91,96 @@ export const quoteShape: z.ZodType<CommerceQuoteV2> = z.discriminatedUnion("amou
 export const sumMinor = <T>(items: readonly T[], amount: (item: T) => number) =>
   items.reduce((sum, item) => sum + BigInt(amount(item)), 0n);
 
-type Component = DeliveryBucketPart | MoneyLineV2;
-type DeliveryBucketPart = CommerceQuoteMoneyV2["deliveryBuckets"][number]["parts"][number];
+type Component = CommerceQuoteMoneyV2["deliveryBuckets"][number]["parts"][number] | MoneyLineV2;
 type State = MoneyLineV2["discountAllocations"][number]["before"];
-type Path = (string | number)[];
-export type MoneyIssue = { path: Path; code: "money_input_invalid" | "money_tax_evidence_mismatch"
-  | "promotion_allocation_unsubstantiated" | "money_amount_out_of_range"; remedy: string };
-export const invalid = (path: Path): MoneyIssue => ({
-  path, code: "money_input_invalid", remedy: "Supply the documented value at this field.",
-});
-const taxMismatch = (path: Path): MoneyIssue => ({
-  path, code: "money_tax_evidence_mismatch", remedy: "Replay the original money and its matching tax evidence.",
-});
-const allocationMismatch = (path: Path): MoneyIssue => ({
-  path, code: "promotion_allocation_unsubstantiated", remedy: "Obtain a quote using a supported promotion combination.",
-});
-const outOfRange = (path: Path): MoneyIssue => ({
-  path, code: "money_amount_out_of_range", remedy: "Choose a supported amount and obtain a fresh quote.",
-});
-export function pointer(path: readonly PropertyKey[]): string {
-  return path.map(key => "/" + String(key).replaceAll("~", "~0").replaceAll("/", "~1")).join("");
+export type Path = (string | number)[];
+export const remedies = {
+  money_input_invalid: "Supply the documented value at this field.",
+  money_amount_basis_mixed: "Select a published list with the required basis and obtain a fresh quote.",
+  shipping_tax_basis_empty: "Select a supported delivery pricing policy.",
+  promotion_allocation_unsubstantiated: "Obtain a quote using a supported promotion combination.",
+  money_tax_evidence_mismatch: "Replay the original money and its matching tax evidence.",
+  money_amount_out_of_range: "Choose a supported amount and obtain a fresh quote.",
+};
+export type Code = keyof typeof remedies;
+export class MoneyIssue extends Error {
+  constructor(readonly code: Code, readonly path: Path, readonly remedy = remedies[code]) { super(remedy); }
+}
+const invalid = (path: Path) => new MoneyIssue("money_input_invalid", path);
+const taxMismatch = (path: Path) => new MoneyIssue("money_tax_evidence_mismatch", path);
+const allocationMismatch = (path: Path) => new MoneyIssue("promotion_allocation_unsubstantiated", path);
+
+export function shapePath(issue: z.ZodIssue): Path {
+  return (issue.code === "unrecognized_keys" ? [...issue.path, issue.keys[0]] : issue.path)
+    .map(key => typeof key === "symbol" ? String(key) : key);
+}
+export function inputField(input: unknown, path: Path, required: string): string {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return "";
+  const reached: Path = [];
+  let value: unknown = input;
+  for (const key of path) {
+    if (!value || typeof value !== "object") break;
+    reached.push(key);
+    value = Object.getOwnPropertyDescriptor(value, key)?.value;
+  }
+  return (reached.length ? reached : [required]).map(key => "/" + String(key).replaceAll("~", "~0").replaceAll("/", "~1")).join("");
 }
 
-function comparePositions(left: readonly TaxPositionV2[], right: readonly TaxPositionV2[]): boolean {
-  // Both inputs have passed the same strict shape and have the same property order.
-  return JSON.stringify(left) === JSON.stringify(right);
+// Validate and copy only the properties that are visible in JSON, without calling getters.
+export function inputData<T>(value: T, required: string, remaining = Infinity): T {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalid([]);
+  function copy(input: unknown, path: Path): unknown {
+    const at = path.length ? path : [required];
+    remaining -= typeof input === "string" ? Math.max(1, input.length) : 1;
+    if (remaining < 0 || path.length > 46) throw invalid(at);
+    if (input === null || typeof input === "boolean" || (typeof input === "string" && jsonText(input))
+      || (typeof input === "number" && Number.isFinite(input) && !Object.is(input, -0))) return input;
+    if (typeof input !== "object" || input === null) throw invalid(at);
+    const array = Array.isArray(input), keys = Object.keys(input), proto = Object.getPrototypeOf(input);
+    if (array ? proto !== Array.prototype || keys.length !== input.length : proto !== Object.prototype && proto !== null) throw invalid(at);
+    const entries = keys.map((key, index) => {
+      const child = [...path, key], descriptor = Object.getOwnPropertyDescriptor(input, key)!;
+      if (!("value" in descriptor) || !jsonText(key) || ["__proto__", "constructor", "prototype"].includes(key)
+        || (array && key !== String(index))) throw invalid(child);
+      return [key, copy(descriptor.value, child)] as const;
+    });
+    return array ? entries.map(([, entry]) => entry) : Object.fromEntries(entries);
+  }
+  return copy(value, []) as T;
 }
+export function checkDocumentSize(value: object, framingBytes = 0, prefix: Path = []): void {
+  let bytes = 2 + framingBytes;
+  for (const [key, entry] of Object.entries(value)) {
+    bytes += Buffer.byteLength(JSON.stringify(key) + ":" + JSON.stringify(entry)) + Number(bytes > 2 + framingBytes);
+    if (bytes > CATALOG_DRAFT_MAX_BYTES) throw invalid([...prefix, key]);
+  }
+}
+
+export const absentFeeBucket = (fees: CommerceQuoteMoneyV2["feeLines"], buckets: ReadonlySet<string>): number =>
+  fees.findIndex(({ scope }) => scope.kind === "delivery" && !buckets.has(scope.bucketKey));
 
 export function checkMoney(money: CommerceQuoteMoneyV2): MoneyIssue | undefined {
-  const ordinals = new Set<number>(), lineKeys = new Set<string>(), bucketKeys = new Set<string>(), feeKeys = new Set<string>();
+  const ordinals = new Set<number>(), lineKeys = new Set<string>(), bucketKeys = new Set<string>();
   const ids = new Set<string>(), adjustments = new Map<number, string>(), sequences = new Map<string, number>();
   const positionOwners = new Map<string, Component>();
   const isInclusive = money.amountBasis === "inclusive";
   let net = 0n, tax = 0n;
-  function checkState(owner: Component, value: State, path: Path): MoneyIssue | undefined {
+  function checkState(owner: Component, value: State, path: Path, shipping: boolean): MoneyIssue | undefined {
     const assessed = sumMinor(value.taxPositions, position => position.taxMinor);
     const basis = BigInt(value.netMinor) + (isInclusive ? assessed : 0n);
     if (basis !== BigInt(value.basisMinor) || assessed !== BigInt(value.taxMinor)) return taxMismatch(path);
-    if (isInclusive && (value.taxPositions.length > 1 || (value.basisMinor === 0 && value.taxPositions.length)
-      || value.taxPositions.some(position => position.taxableMinor !== value.netMinor))) return taxMismatch([...path, "taxPositions"]);
+    if ((shipping && value.basisMinor === 0 && value.taxPositions.length)
+      || (isInclusive && (value.taxPositions.length !== Number(value.basisMinor > 0)
+        || value.taxPositions.some(position => position.taxableMinor !== value.netMinor)))) return taxMismatch([...path, "taxPositions"]);
     const seen = new Set<string>();
-    for (const { positionRef } of value.taxPositions) {
+    for (const [index, { positionRef }] of value.taxPositions.entries()) {
       const prior = positionOwners.get(positionRef);
-      if (seen.has(positionRef) || (prior && prior !== owner)) return taxMismatch([...path, "taxPositions"]);
+      if (seen.has(positionRef) || (prior && prior !== owner)) return taxMismatch([...path, "taxPositions", index, "positionRef"]);
       seen.add(positionRef);
       positionOwners.set(positionRef, owner);
     }
   }
-  function checkComponent(item: Component, path: Path): MoneyIssue | undefined {
+  function checkComponent(item: Component, path: Path, shipping = false): MoneyIssue | undefined {
     let previous: State | undefined;
     let sequence = 0;
     for (const [index, share] of item.discountAllocations.entries()) {
@@ -147,11 +192,11 @@ export function checkMoney(money: CommerceQuoteMoneyV2): MoneyIssue | undefined 
         || (sequences.has(adjustmentRef) && sequences.get(adjustmentRef) !== share.sequence)
         || before.basisMinor !== (previous?.basisMinor ?? item.preDiscountMinor)
         || (previous && (previous.netMinor !== before.netMinor || previous.taxMinor !== before.taxMinor
-          || !comparePositions(previous.taxPositions, before.taxPositions)))
+          || !isDeepStrictEqual(previous.taxPositions, before.taxPositions)))
         || before.basisMinor - after.basisMinor !== share.basisReductionMinor
         || before.netMinor - after.netMinor !== share.netReductionMinor
         || before.taxMinor - after.taxMinor !== share.taxReductionMinor) return allocationMismatch(at);
-      const issue = checkState(item, before, [...at, "before"]) ?? checkState(item, after, [...at, "after"]);
+      const issue = checkState(item, before, [...at, "before"], shipping) ?? checkState(item, after, [...at, "after"], shipping);
       if (issue) return issue;
       ids.add(share.allocationId);
       adjustments.set(share.sequence, identity);
@@ -161,11 +206,11 @@ export function checkMoney(money: CommerceQuoteMoneyV2): MoneyIssue | undefined 
     }
     if (item.effectiveMinor !== (previous?.basisMinor ?? item.preDiscountMinor)
       || (previous && (previous.netMinor !== item.netMinor || previous.taxMinor !== item.taxMinor
-        || !comparePositions(previous.taxPositions, item.taxPositions)))) return allocationMismatch([...path, "effectiveMinor"]);
+        || !isDeepStrictEqual(previous.taxPositions, item.taxPositions)))) return allocationMismatch([...path, "effectiveMinor"]);
     if (BigInt(item.lineTotalMinor) !== BigInt(item.netMinor) + BigInt(item.taxMinor)) return invalid([...path, "lineTotalMinor"]);
     net += BigInt(item.netMinor);
     tax += BigInt(item.taxMinor);
-    return checkState(item, { ...item, basisMinor: item.effectiveMinor }, path);
+    return checkState(item, { ...item, basisMinor: item.effectiveMinor }, path, shipping);
   }
   for (const [index, item] of money.lines.entries()) {
     const path = ["lines", index];
@@ -193,14 +238,14 @@ export function checkMoney(money: CommerceQuoteMoneyV2): MoneyIssue | undefined 
       if (apportioned ? item.sourceOrdinal === undefined || !ordinals.has(item.sourceOrdinal) || partOrdinals.has(item.sourceOrdinal)
         : item.sourceOrdinal !== undefined) return invalid([...at, "sourceOrdinal"]);
       if (item.sourceOrdinal !== undefined) partOrdinals.add(item.sourceOrdinal);
-      const issue = checkComponent(item, at);
+      const issue = checkComponent(item, at, delivery.kind === "shipping");
       if (issue) return issue;
     }
   }
-  for (const [index, fee] of money.feeLines.entries()) {
-    if (feeKeys.has(fee.feeKey) || (fee.scope.kind === "delivery" && !bucketKeys.has(fee.scope.bucketKey))) return invalid(["feeLines", index]);
-    feeKeys.add(fee.feeKey);
-  }
+  const orphan = absentFeeBucket(money.feeLines, bucketKeys);
+  if (orphan !== -1) return invalid(["feeLines", orphan, "scope", "bucketKey"]);
+  const duplicateFee = money.feeLines.findIndex(({ feeKey }, index) => money.feeLines.findIndex(fee => fee.feeKey === feeKey) !== index);
+  if (duplicateFee !== -1) return invalid(["feeLines", duplicateFee, "feeKey"]);
   const fees = sumMinor(money.feeLines, fee => fee.amountMinor);
   if (net !== BigInt(money.netTotal)) return invalid(["netTotal"]);
   if (tax !== BigInt(money.taxTotal)) return invalid(["taxTotal"]);
@@ -209,6 +254,7 @@ export function checkMoney(money: CommerceQuoteMoneyV2): MoneyIssue | undefined 
   if ((money.mode === "subscription") !== (money.cadence !== undefined)) return invalid(["cadence"]);
   if (money.taxEvidence.expiresAt <= money.taxEvidence.taxDate) return taxMismatch(["taxEvidence", "expiresAt"]);
   const limits = money.paymentLimits;
-  if (limits.currency !== money.currency || limits.minMinor > limits.maxMinor) return invalid(["paymentLimits"]);
-  if (money.payableMinor <= 0 || money.payableMinor < limits.minMinor || money.payableMinor > limits.maxMinor) return outOfRange(["payableMinor"]);
+  if (limits.currency !== money.currency) return invalid(["paymentLimits", "currency"]);
+  if (limits.minMinor > limits.maxMinor) return invalid(["paymentLimits", "maxMinor"]);
+  if (money.payableMinor <= 0 || money.payableMinor < limits.minMinor || money.payableMinor > limits.maxMinor) return new MoneyIssue("money_amount_out_of_range", ["payableMinor"]);
 }

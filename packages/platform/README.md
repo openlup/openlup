@@ -1251,8 +1251,8 @@ evidence expiry through `taxEvidence.evidenceDigest` in both quote arms.
 Use `quoteDigest` with `commerce.quote-money.v2` for the shared money and
 `commerce.quote.v2` for the complete estimate or final quote without its
 `quoteDigest` field. `commerceQuoteV2Schema` checks both digests before evaluating
-totals and amount limits. The new types in `./pricing/contracts` and
-`./commerce/contracts` share the money shape through `@openlup/core/pricing`.
+totals and amount limits. Read the refusal code, field and remedy from the schema issue’s params.
+`./pricing/contracts` and `./commerce/contracts` types share the money shape through `@openlup/core/pricing`.
 The offline functions rely on their caller for evidence acquisition and issuance.
 
 ### Legacy quote foundation

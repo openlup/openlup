@@ -366,13 +366,14 @@ describe("strict quote v2", () => {
     expect(commerceQuoteV2Schema.safeParse(sealQuote(change(moneyGolden()) as CommerceQuoteMoneyV2)).success).toBe(false);
   });
 
-  it("rejects explicit undefined, negative zero, hidden keys and accessors", () => {
+  it("rejects lossy visible properties and ignores hidden keys", () => {
     const quote = sealQuote();
     expect(commerceQuoteV2Schema.safeParse({ ...quote, cadence: undefined }).success).toBe(false);
     expect(commerceQuoteV2Schema.safeParse({ ...quote, feeTotal: -0 }).success).toBe(false);
     expect(commerceQuoteV2Schema.safeParse({ ...quote, catalogueEvidenceRef: "λ".repeat(1_048_577) }).success).toBe(false);
     const hidden = Object.defineProperty({ ...quote.destination }, "hidden", { enumerable: false, value: 1 });
-    expect(commerceQuoteV2Schema.safeParse({ ...quote, destination: hidden }).success).toBe(false);
+    const hiddenRoot = Object.defineProperty({ ...quote, destination: hidden }, "ignored", { value: undefined });
+    expect(commerceQuoteV2Schema.parse(hiddenRoot)).toStrictEqual(quote);
     let reads = 0;
     const accessed: CommerceQuoteV2 = { ...quote, get payableMinor() { reads += 1; return quote.payableMinor; } };
     expect(commerceQuoteV2Schema.safeParse(accessed).success).toBe(false);

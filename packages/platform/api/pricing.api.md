@@ -922,7 +922,7 @@ type CodeDiagnostics = Readonly<{
 type RateRows = Extract<CatalogueMoneyV2Tax, {
     kind: "inclusive";
 }>["components"];
-/** @experimental Resolved list-basis prices, owner adjustments and delivery alternatives. Use submitted spellings for applied codes. */
+/** @experimental Resolved list-basis prices, owner adjustments and delivery alternatives. Supply the owner’s applied codes and the original submitted codes. */
 export type PlanCommerceQuoteMoneyV2Input = Readonly<{
     currency: string;
     listBasis: Body["amountBasis"] | null;
@@ -3641,7 +3641,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
 ```ts
 import { z } from "zod";
 import type { CommerceQuoteV2 } from "./contracts/quoteV2.js";
-/** @experimental Validate the original digest bindings before checking quote money. */
+/** @experimental Validate both digest bindings before checking money. Read code, field and remedy from the issue params. */
 export declare const commerceQuoteV2Schema: z.ZodType<CommerceQuoteV2>;
 ```
 ## dist/pricing/quoteShippingPromotions.d.ts

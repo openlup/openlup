@@ -2,15 +2,17 @@ import { calculateCatalogueMoneyV2, CatalogueMoneyV2Error, planCatalogueMoneyV2 
 import type { CatalogueMoneyV2ComponentRef, CatalogueMoneyV2Input, CatalogueMoneyV2Plan,
   CatalogueMoneyV2Result, CatalogueMoneyV2State, CatalogueMoneyV2Tax } from "@openlup/core/pricing";
 import { z } from "zod";
-import { canonicalCatalogDraftJson } from "../catalog/contracts/index.js";
+import { isDeepStrictEqual } from "node:util";
 import type { CommerceCodeRejectionDetail } from "./contracts/evidence.js";
 import type { PromotionEngineVersion } from "./contracts/offerPolicy.js";
 import type { CommerceCodeRejection, CommerceQuoteDiscount } from "./contracts/quote.js";
 import type { CommerceQuoteMoneyV2 as Body, DeliveryBucketV2, DiscountAllocationV2, FeeLineV2,
   MoneyLineV2, TaxPositionV2 } from "./contracts/quoteV2.js";
 import { quoteDigest } from "./quoteDigest.js";
-import { bucketSource, checkMoney, currency, engine, feeLine, lineSource, minor, moneyRef, moneyShape,
-  pointer, positionMetadata, price, ref, sumMinor, uuid } from "./quoteMoneyValidationV2.js";
+import { absentFeeBucket, bucketSource, checkDocumentSize, checkMoney, currency, engine, feeLine, inputData,
+  inputField, lineSource, minor, MoneyIssue, moneyRef, moneyShape, positionMetadata, price, ref, remedies,
+  shapePath, sumMinor, uuid } from "./quoteMoneyValidationV2.js";
+import type { Code, Path } from "./quoteMoneyValidationV2.js";
 
 const sourceShape = lineSource.extend({ amountKind: z.enum(["gross", "net"]) });
 const deliveryShape = bucketSource.extend({ amountMinor: minor,
@@ -40,7 +42,7 @@ type CodeDiagnostics = Readonly<{
 }>;
 type RateRows = Extract<CatalogueMoneyV2Tax, { kind: "inclusive" }>["components"];
 
-/** @experimental Resolved list-basis prices, owner adjustments and delivery alternatives. Use submitted spellings for applied codes. */
+/** @experimental Resolved list-basis prices, owner adjustments and delivery alternatives. Supply the owner’s applied codes and the original submitted codes. */
 export type PlanCommerceQuoteMoneyV2Input = Readonly<{
   currency: string; listBasis: Body["amountBasis"] | null; price: Body["price"]; engine: PromotionEngineVersion;
   lines: readonly Source[]; baseline: Omit<Candidate, "adjustments">; selected?: Candidate;
@@ -68,62 +70,60 @@ export type CommerceQuoteMoneyV2Refusal = Readonly<{
   field: string; remedy: string;
 }>;
 
-type Code = CommerceQuoteMoneyV2Refusal["code"];
-const remedies: Record<Code, string> = {
-  money_input_invalid: "Supply the documented value at this field.",
-  money_amount_basis_mixed: "Select a published list with the required basis and obtain a fresh quote.",
-  shipping_tax_basis_empty: "Select a supported delivery pricing policy.",
-  promotion_allocation_unsubstantiated: "Obtain a quote using a supported promotion combination.",
-  money_tax_evidence_mismatch: "Replay the original money and its matching tax evidence.",
-  money_amount_out_of_range: "Choose a supported amount and obtain a fresh quote.",
-};
-class MoneyRefusal extends Error {
-  readonly result: CommerceQuoteMoneyV2Refusal;
-  constructor(code: Code, field: string) {
-    super(remedies[code]);
-    this.result = { kind: "refused", code, field, remedy: remedies[code] };
-  }
-}
+const segments = (field: string) => field.split("/").slice(1);
 function fail(code: Code, field: string): never {
-  throw new MoneyRefusal(code, field);
+  throw new MoneyIssue(code, segments(field));
 }
 function read<T>(shape: z.ZodType<T>, value: unknown, field: string, code: Code = "money_input_invalid"): T {
   const parsed = shape.safeParse(value);
-  if (!parsed.success) fail(code, field + pointer(parsed.error.issues[0].path));
+  if (!parsed.success) throw new MoneyIssue(code, [...segments(field), ...shapePath(parsed.error.issues[0])]);
   return parsed.data;
 }
-function handle(error: unknown, taxField = "/verifiedMoney"): CommerceQuoteMoneyV2Refusal {
-  if (error instanceof MoneyRefusal) return error.result;
-  if (!(error instanceof CatalogueMoneyV2Error)) throw error;
-  const field = "/" + error.field.replace(/\[(\d+)\]/g, ".$1").replaceAll(".", "/")
-    .replace(/^sources(?=\/|$)/, "lines").replace(/^delivery(?=\/|$)/, "deliveryBuckets");
-  let code: Code = "money_input_invalid";
-  if (error.code in remedies) code = error.code as Code;
-  if (field.startsWith("/adjustments")) code = "promotion_allocation_unsubstantiated";
-  if (field.startsWith("/tax") || error.code === "money_payable_mismatch") code = "money_tax_evidence_mismatch";
-  if (/^\/tax\/components\/\d+\/states(?:$|\/\d+\/(?:afterSequence|amountMinor)$)/u.test(field)) {
-    code = "promotion_allocation_unsubstantiated";
+
+function coreIssue(error: CatalogueMoneyV2Error, scope: string, planning: boolean): MoneyIssue {
+  const [group, ...tail] = error.field.replace(/\[(\d+)\]/g, ".$1").split(".");
+  let code: Code = error.code in remedies ? error.code as Code : "money_input_invalid";
+  if (group === "adjustments") code = "promotion_allocation_unsubstantiated";
+  if (group === "tax") {
+    code = tail.includes("states") ? "promotion_allocation_unsubstantiated" : "money_tax_evidence_mismatch";
+    if (scope === "/fiscal") return new MoneyIssue(code, ["fiscal", ...tail.slice(tail[0] === "components" ? 1 : tail.length)]);
+    const [, component, , state, key, ...rest] = tail;
+    const at = ["verifiedMoney", "components", component].filter(key => key !== undefined);
+    if (!state) return new MoneyIssue(code, tail[0] === "payableMinor" ? ["verifiedMoney", "payableMinor"]
+      : [...at, ...tail.slice(2).map(key => key === "states" ? "allocations" : key)]);
+    const statePath = state === "0" ? ["initial"] : ["allocations", Number(state) - 1, "after"];
+    return new MoneyIssue(code, key === "afterSequence" ? [...at, "allocations", Number(state) - 1, "sequence"]
+      : [...at, ...statePath, ...(key ? [key, ...rest] : [])]);
   }
-  const affected = field.startsWith("/tax/") ? taxField : field;
-  return { kind: "refused", code, field: code === "shipping_tax_basis_empty" ? "/deliveryBuckets" : affected, remedy: remedies[code] };
+  const names: Record<string, string> = { sources: "lines", fees: "feeLines", deliveryKind: "kind",
+    preDiscountMinor: "unitBasisMinor", amountMinor: group === "adjustments" ? "amountOffMinor" : "amountMinor" };
+  const parts = [group, ...tail].map(key => planning ? names[key] ?? key : key);
+  if (planning) return new MoneyIssue(code, group === "sources" ? parts : group === "input" ? segments(scope) : [...segments(scope), ...parts]);
+  if (group.endsWith("Total") || group === "payableMinor") return new MoneyIssue(code, ["facts", "paymentLimits", "maxMinor"]);
+  const prefix = scope === "/verifiedMoney" && group === "fees" ? ["verifiedMoney"] : ["planned", "moneyInput"];
+  return new MoneyIssue(code, [...prefix, ...parts]);
 }
 
-function planCandidate(candidate: Candidate, currencyCode: string, lines: readonly Source[]) {
+function refusal(error: unknown, input: unknown, scope: string, planning = false): CommerceQuoteMoneyV2Refusal {
+  const issue = error instanceof MoneyIssue ? error : error instanceof CatalogueMoneyV2Error ? coreIssue(error, scope, planning)
+    : new MoneyIssue("money_input_invalid", segments(scope));
+  return { kind: "refused", code: issue.code, field: inputField(input, issue.path, planning ? "currency" : "planned"), remedy: issue.remedy };
+}
+
+function planCandidate(candidate: Candidate, currencyCode: string, lines: readonly Source[], path: string, listBasis: Body["amountBasis"]) {
   const { amountBasis, delivery, feeLines } = candidate;
-  if (!Array.isArray(candidate.adjustments) || candidate.adjustments.length > 20) {
-    fail("promotion_allocation_unsubstantiated", "/adjustments");
-  }
-  const adjustments = candidate.adjustments.map((adjustment, index) =>
-    read(adjustmentShape, adjustment, "/adjustments/" + index, "promotion_allocation_unsubstantiated"));
-  if (delivery.some(bucket => bucket.cost.currency !== currencyCode)) fail("money_input_invalid", "/deliveryBuckets");
-  if (amountBasis === "exclusive" && feeLines.length) fail("money_input_invalid", "/feeLines");
+  if (amountBasis !== listBasis) fail("money_amount_basis_mixed", path + "/amountBasis");
+  const { adjustments } = candidate;
+  if (amountBasis === "exclusive" && feeLines.length) fail("money_input_invalid", path + "/feeLines");
+  const orphan = absentFeeBucket(feeLines, new Set(delivery.map(bucket => bucket.bucketKey)));
+  if (orphan !== -1) fail("money_input_invalid", path + "/feeLines/" + orphan + "/scope/bucketKey");
   const adjustmentRefs = new Set<string>();
   const shippingKeys = new Set(delivery.filter(bucket => bucket.kind === "shipping").map(bucket => bucket.bucketKey));
   const moneyInput: CatalogueMoneyV2Input = {
     amountBasis, sources: lines.map(({ lineKey, sourceOrdinal, quantity, unitBasisMinor }) => ({ lineKey, sourceOrdinal, quantity, unitBasisMinor })),
     delivery: delivery.map(({ bucketKey, kind, amountMinor }) => ({ bucketKey, deliveryKind: kind, amountMinor })),
     adjustments: adjustments.map(({ amountOffMinor, appliesTo, adjustmentRef, target }, index) => {
-      const at = "/adjustments/" + index;
+      const at = path + "/adjustments/" + index;
       if (adjustmentRefs.has(adjustmentRef)) fail("promotion_allocation_unsubstantiated", at + "/adjustmentRef");
       adjustmentRefs.add(adjustmentRef);
       if (appliesTo === "shipping" ? !("bucketKey" in target) || !shippingKeys.has(target.bucketKey) : !("lineKeys" in target)) {
@@ -136,13 +136,14 @@ function planCandidate(candidate: Candidate, currencyCode: string, lines: readon
   const plan = planCatalogueMoneyV2(moneyInput);
   const merchandise = sumMinor(plan.components.filter(item => item.ref.kind === "merchandise"), item => item.effectiveMinor);
   for (const [index, bucket] of delivery.entries()) {
+    if (bucket.cost.currency !== currencyCode) fail("money_input_invalid", path + "/delivery/" + index + "/cost/currency");
     if (!bucket.threshold) continue;
     const { flatMinor, freeThresholdMinor } = bucket.threshold;
     const expected = merchandise >= BigInt(freeThresholdMinor) ? 0 : flatMinor;
-    if (bucket.kind !== "shipping" || bucket.amountMinor !== expected) fail("money_input_invalid", "/deliveryBuckets/" + index + "/amountMinor");
+    if (bucket.kind !== "shipping" || bucket.amountMinor !== expected) fail("money_input_invalid", path + "/delivery/" + index + "/amountMinor");
   }
   const fees = amountBasis === "inclusive" ? sumMinor(plan.fees, fee => fee.amountMinor) : 0n;
-  return { winner: { ...candidate, adjustments }, moneyInput, plan, score: sumMinor(plan.components, item => item.effectiveMinor) + fees };
+  return { winner: candidate, moneyInput, plan, score: sumMinor(plan.components, item => item.effectiveMinor) + fees };
 }
 
 function codeDiagnostics(input: PlanCommerceQuoteMoneyV2Input["codeDiagnostics"], baselineWins: boolean): CodeDiagnostics | undefined {
@@ -150,40 +151,39 @@ function codeDiagnostics(input: PlanCommerceQuoteMoneyV2Input["codeDiagnostics"]
   const { appliedCodes, submittedCodes, codeRejections, codeRejectionDetails } = input;
   if (!baselineWins || !appliedCodes.length) return { codeRejections, codeRejectionDetails };
   const rejected = new Set(codeRejections.map(row => row.code));
-  const displaced = [...new Set(appliedCodes)].filter(code => !rejected.has(code));
+  const identity = (code: string) => code.trim().toUpperCase();
+  const displaced = [...new Set(appliedCodes.map(code =>
+    submittedCodes.find(submitted => !rejected.has(submitted) && identity(submitted) === identity(code)) ?? code))]
+    .filter(code => !rejected.has(code));
   const ranks = new Map(submittedCodes.map((code, index) => [code, index] as const).reverse());
   const rank = (code: string) => ranks.get(code) ?? submittedCodes.length;
-  const pending = displaced.sort((left, right) => rank(left) - rank(right));
-  const amended: CommerceCodeRejection[] = [];
-  let next = 0;
-  for (const rejection of codeRejections) {
-    while (next < pending.length && rank(pending[next]) < rank(rejection.code)) {
-      amended.push({ code: pending[next++], reason: "better_price_exists" });
-    }
-    amended.push(rejection);
+  const amended = [...codeRejections];
+  for (const code of displaced.sort((left, right) => rank(left) - rank(right))) {
+    const next = amended.findIndex(row => rank(row.code) > rank(code));
+    amended.splice(next < 0 ? amended.length : next, 0, { code, reason: "better_price_exists" });
   }
-  for (const code of pending.slice(next)) amended.push({ code, reason: "better_price_exists" });
   return { codeRejections: amended, codeRejectionDetails };
 }
 
 /** @experimental Rank the supplied owner outcome and the no-adjustment baseline on their list basis. */
 export function planCommerceQuoteMoneyV2(input: PlanCommerceQuoteMoneyV2Input): CommerceQuoteMoneyV2Plan | CommerceQuoteMoneyV2Refusal {
+  let scope = "/baseline";
   try {
+    input = inputData(input, "currency");
     const currencyCode = read(currency, input.currency, "/currency");
-    read(engine, input.engine, "/promotion/engine");
+    read(engine, input.engine, "/engine");
     const priceFacts = read(price, input.price, "/price");
     const lines = read(z.array(sourceShape).min(1).max(50), input.lines, "/lines");
-    const amountBasis = read(basis.nullable(), input.listBasis, "/amountBasis") ?? "inclusive";
-    if (input.baseline.amountBasis !== amountBasis || (input.selected && input.selected.amountBasis !== amountBasis)
-      || lines.some(line => line.amountKind !== (amountBasis === "inclusive" ? "gross" : "net"))) {
-      fail("money_amount_basis_mixed", "/amountBasis");
-    }
-    const baseline = planCandidate({ ...read(candidateShape, input.baseline, "/baseline"), adjustments: [] }, currencyCode, lines);
+    const amountBasis = read(basis.nullable(), input.listBasis, "/listBasis") ?? "inclusive";
+    const mixed = lines.findIndex(line => line.amountKind !== (amountBasis === "inclusive" ? "gross" : "net"));
+    if (mixed !== -1) fail("money_amount_basis_mixed", "/lines/" + mixed + "/amountKind");
+    const baseline = planCandidate({ ...read(candidateShape, input.baseline, scope), adjustments: [] }, currencyCode, lines, scope, amountBasis);
     let winner = baseline;
-    if (input.selected) {
-      const { adjustments, ...candidate } = input.selected;
-      if (!adjustments?.length) fail("promotion_allocation_unsubstantiated", "/selected/adjustments");
-      const selected = planCandidate({ ...read(candidateShape, candidate, "/selected"), adjustments }, currencyCode, lines);
+    if (input.selected !== undefined) {
+      scope = "/selected";
+      const { adjustments, ...candidate } = read(candidateShape.extend({ adjustments: z.array(z.unknown()) }), input.selected, scope);
+      const applied = read(z.array(adjustmentShape).min(1).max(20), adjustments, "/selected/adjustments", "promotion_allocation_unsubstantiated");
+      const selected = planCandidate({ ...candidate, adjustments: applied }, currencyCode, lines, scope, amountBasis);
       if (selected.score <= baseline.score) winner = selected;
     }
     const diagnostics = codeDiagnostics(input.codeDiagnostics, winner === baseline);
@@ -191,7 +191,7 @@ export function planCommerceQuoteMoneyV2(input: PlanCommerceQuoteMoneyV2Input): 
       winner: winner.winner, moneyInput: winner.moneyInput, plan: winner.plan,
       promotion: { engine: input.engine, rankingRuleRef: amountBasis === "inclusive" ? "lowest_payable_gross" : "lowest_pre_tax.v1" },
       ...(diagnostics ? { codeDiagnostics: diagnostics } : {}) };
-  } catch (error) { return handle(error); }
+  } catch (error) { return refusal(error, input, scope, true); }
 }
 
 function componentKey(component: CatalogueMoneyV2ComponentRef): string {
@@ -203,9 +203,9 @@ function allocationKey(component: CatalogueMoneyV2ComponentRef, sequence: number
 }
 function uniqueMap<T>(entries: readonly T[], key: (item: T) => string, code: Code, field: string): Map<string, T> {
   const result = new Map<string, T>();
-  for (const item of entries) {
+  for (const [index, item] of entries.entries()) {
     const id = key(item);
-    if (result.has(id)) fail(code, field);
+    if (result.has(id)) fail(code, field + "/" + index);
     result.set(id, item);
   }
   return result;
@@ -213,11 +213,13 @@ function uniqueMap<T>(entries: readonly T[], key: (item: T) => string, code: Cod
 
 function exclusiveResult(input: Extract<ComposeCommerceQuoteMoneyV2Input, { verifiedMoney: CatalogueMoneyV2Result }>) {
   const { verifiedMoney, planned } = input;
+  checkDocumentSize(verifiedMoney, 0, ["verifiedMoney"]);
   const fees = uniqueMap(read(z.array(feeLine).max(256), input.feeLines, "/feeLines"), fee => fee.feeKey,
     "money_tax_evidence_mismatch", "/feeLines");
   const feeLines = verifiedMoney.fees.map(({ feeKey, amountMinor }) => {
     const fee = fees.get(feeKey);
-    if (!fee || fee.amountMinor !== amountMinor) fail("money_tax_evidence_mismatch", "/feeLines");
+    if (!fee) fail("money_tax_evidence_mismatch", "/feeLines");
+    if (fee.amountMinor !== amountMinor) fail("money_tax_evidence_mismatch", "/feeLines/" + input.feeLines.findIndex(row => row.feeKey === feeKey) + "/amountMinor");
     fees.delete(feeKey);
     return fee;
   });
@@ -229,40 +231,35 @@ function exclusiveResult(input: Extract<ComposeCommerceQuoteMoneyV2Input, { veri
       ref: item.ref, states: [state(item.initial, 0), ...item.allocations.map(row => state(row.after, row.sequence))],
     })),
   });
-  try {
-    if (canonicalCatalogDraftJson(result) !== canonicalCatalogDraftJson(verifiedMoney)) {
-      fail("money_tax_evidence_mismatch", "/verifiedMoney");
-    }
-  } catch (error) {
-    if (error instanceof MoneyRefusal) throw error;
-    fail("money_tax_evidence_mismatch", "/verifiedMoney");
-  }
+  if (!isDeepStrictEqual(result, verifiedMoney)) fail("money_tax_evidence_mismatch", "/verifiedMoney");
   return { result, feeLines };
 }
 
 type ResultComponent = CatalogueMoneyV2Result["components"][number];
 function positionReader(input: ComposeCommerceQuoteMoneyV2Input, result: CatalogueMoneyV2Result) {
-  const remaining = "fiscal" in input
-    ? uniqueMap(input.positions.map(({ ref, position }) => ({ key: componentKey(ref), position })),
-      item => item.key, "money_tax_evidence_mismatch", "/positions")
-    : uniqueMap(input.positions.map(position => ({ key: position.positionRef, position })),
-      item => item.key, "money_tax_evidence_mismatch", "/positions");
+  const entries = input.positions.map((row, index) => {
+    const position = "position" in row ? row.position : row;
+    const field = "/positions/" + index + ("position" in row ? "/position" : "");
+    return { index, key: "ref" in row ? componentKey(row.ref) : row.positionRef,
+      position: read(positionMetadata, position, field, "money_tax_evidence_mismatch") };
+  });
+  const remaining = uniqueMap(entries, entry => entry.key, "money_tax_evidence_mismatch", "/positions");
   const all = new Map(remaining);
   const fiscalRates = "fiscal" in input
     ? new Map(input.fiscal.map(row => [componentKey(row.ref), row.rateBps])) : undefined;
   const merchandise = new Map(result.components.flatMap(({ ref }) => ref.kind === "merchandise" ? [[ref.sourceOrdinal, ref] as const] : []));
-  function metadata(key: string): PositionMetadata {
+  function metadata(key: string) {
     const entry = all.get(key);
     if (!entry) fail("money_tax_evidence_mismatch", "/positions");
     remaining.delete(key);
-    return read(positionMetadata, entry.position, "/positions", "money_tax_evidence_mismatch");
+    return entry;
   }
   return {
     checkUsed() { if (remaining.size) fail("money_tax_evidence_mismatch", "/positions"); },
     read(component: CatalogueMoneyV2ComponentRef, state: CatalogueMoneyV2State): TaxPositionV2[] {
       if (!fiscalRates) return state.taxPositions.map(position => {
-        const facts = metadata(position.positionRef);
-        if (facts.jurisdictionRef !== position.jurisdictionRef) fail("money_tax_evidence_mismatch", "/positions");
+        const { position: facts, index } = metadata(position.positionRef);
+        if (facts.jurisdictionRef !== position.jurisdictionRef) fail("money_tax_evidence_mismatch", "/positions/" + index + "/jurisdictionRef");
         return { ...facts, ...position };
       });
       if (state.amountMinor === 0) return [];
@@ -270,7 +267,7 @@ function positionReader(input: ComposeCommerceQuoteMoneyV2Input, result: Catalog
         ? merchandise.get(component.sourceOrdinal)! : component;
       const rate = fiscalRates.get(componentKey(rateRef));
       if (rate === undefined) fail("money_tax_evidence_mismatch", "/fiscal");
-      return [{ ...metadata(componentKey(component)), rateDecimal: String(rate / 100),
+      return [{ ...metadata(componentKey(component)).position, rateDecimal: String(rate / 100),
         taxableMinor: state.netMinor, taxMinor: state.taxMinor }];
     },
   };
@@ -291,7 +288,7 @@ function projectComponents(input: ComposeCommerceQuoteMoneyV2Input, result: Cata
       const adjustment = input.planned.winner.adjustments[sequence - 1];
       if (!supplied || adjustment?.adjustmentRef !== adjustmentRef) fail("promotion_allocation_unsubstantiated", "/allocationIds");
       ids.delete(key);
-      return { allocationId: read(uuid, supplied.allocationId, "/allocationIds", "promotion_allocation_unsubstantiated"),
+      return { allocationId: read(uuid, supplied.allocationId, "/allocationIds/" + input.allocationIds.indexOf(supplied) + "/allocationId", "promotion_allocation_unsubstantiated"),
         adjustmentRef, sequence, basisReductionMinor, netReductionMinor, taxReductionMinor, source: "legacy_promotion",
         evidenceRef: adjustment.evidenceRef, before: state(share.before), after: state(share.after) };
     });
@@ -306,7 +303,7 @@ function projectComponents(input: ComposeCommerceQuoteMoneyV2Input, result: Cata
     const money = project(component);
     if (ref.kind === "merchandise") {
       const source = sources.get(ref.lineKey);
-      if (!source || source.sourceOrdinal !== ref.sourceOrdinal) fail("money_tax_evidence_mismatch", "/lines");
+      if (!source || source.sourceOrdinal !== ref.sourceOrdinal) fail("money_tax_evidence_mismatch", "/planned/lines");
       const { amountKind: _amountKind, ...line } = source;
       lines.push({ ...line, ...money });
     } else {
@@ -317,7 +314,7 @@ function projectComponents(input: ComposeCommerceQuoteMoneyV2Input, result: Cata
   }
   const deliveryBuckets = input.planned.winner.delivery.map(({ threshold: _threshold, amountMinor: _amount, ...bucket }) => {
     const found = parts.get(bucket.bucketKey);
-    if (!found) fail("money_tax_evidence_mismatch", "/deliveryBuckets");
+    if (!found) fail("money_tax_evidence_mismatch", "/planned/winner/delivery");
     return { ...bucket, parts: found };
   });
   positions.checkUsed();
@@ -325,27 +322,80 @@ function projectComponents(input: ComposeCommerceQuoteMoneyV2Input, result: Cata
   return { lines, deliveryBuckets };
 }
 
+function compositionPath(input: ComposeCommerceQuoteMoneyV2Input, money: Body, path: Path): Path {
+  const [root, index, ...tail] = path;
+  if (root === "price" || root === "currency" || root === "promotion") return ["planned", ...path];
+  if (root === "deliverySelectionRef") return ["planned", "winner", root];
+  if (root === "payableMinor") return ["facts", "paymentLimits", money.payableMinor > input.facts.paymentLimits.maxMinor ? "maxMinor" : "minMinor"];
+  if (root === "feeLines") {
+    if ("fiscal" in input) return ["planned", "winner", ...path];
+    const feeIndex = input.feeLines.findIndex(fee => fee.feeKey === money.feeLines[Number(index)]?.feeKey);
+    return feeIndex < 0 ? ["feeLines"] : ["feeLines", feeIndex, ...tail];
+  }
+  if (root !== "lines" && root !== "deliveryBuckets") return root === "taxEvidence" ? path : ["facts", ...path];
+  const line = root === "lines" ? money.lines[Number(index)] : undefined;
+  const bucket = root === "deliveryBuckets" ? money.deliveryBuckets[Number(index)] : undefined;
+  const component = line ?? bucket?.parts[Number(tail[1])];
+  const shareIndex = tail.indexOf("discountAllocations");
+  const share = shareIndex < 0 ? undefined : component?.discountAllocations[Number(tail[shareIndex + 1])];
+  const taxIndex = tail.indexOf("taxPositions");
+  const matches = (ref: CatalogueMoneyV2ComponentRef) => ref.kind === "merchandise" ? ref.lineKey === line?.lineKey
+    : ref.bucketKey === bucket?.bucketKey && ref.sourceOrdinal === (component && "sourceOrdinal" in component ? component.sourceOrdinal : undefined);
+  if (taxIndex >= 0) {
+    if ("fiscal" in input) {
+      const row = input.positions.findIndex(({ ref }) => matches(ref));
+      return row < 0 ? ["positions"] : ["positions", row, "position"];
+    }
+    const row = input.verifiedMoney.components.findIndex(({ ref }) => matches(ref));
+    const statePath = share ? ["allocations", Number(tail[shareIndex + 1]), tail[shareIndex + 2]] : ["final"];
+    return ["verifiedMoney", "components", row, ...statePath, ...tail.slice(taxIndex)];
+  }
+  if (shareIndex >= 0) {
+    const id = input.allocationIds.findIndex(row => row.allocationId === share?.allocationId && matches(row.ref));
+    return id < 0 ? ["allocationIds"] : ["allocationIds", id, "allocationId"];
+  }
+  return line ? ["planned", "lines", input.planned.lines.findIndex(source => source.lineKey === line.lineKey), ...tail]
+    : ["planned", "winner", "delivery", index, ...tail.slice(0, tail[0] === "parts" ? 0 : tail.length)];
+}
+
+const record = z.record(z.string(), z.unknown());
+const compositionShape = z.looseObject({
+  planned: z.looseObject({ moneyInput: record, winner: record }), facts: record,
+  taxEvidence: z.looseObject({ kind: z.enum(["fiscal_profile", "tax_calculation"]) }),
+  allocationIds: z.array(record), positions: z.array(record),
+});
 /** @experimental Assemble digest-bound money from a plan and its resolved tax evidence. */
 export function composeCommerceQuoteMoneyV2(input: ComposeCommerceQuoteMoneyV2Input):
   Readonly<{ kind: "composed"; money: Body; moneyDigest: string; codeDiagnostics?: CodeDiagnostics }> | CommerceQuoteMoneyV2Refusal {
+  let scope = "/planned";
   try {
-    const { planned, taxEvidence } = input;
-    if ((planned.moneyInput.amountBasis === "inclusive") !== ("fiscal" in input)
-      || (taxEvidence.kind === "fiscal_profile") !== ("fiscal" in input)) fail("money_amount_basis_mixed", "/amountBasis");
-    const { result, feeLines } = "fiscal" in input
-      ? { result: calculateCatalogueMoneyV2(planned.moneyInput, { kind: "inclusive", components: input.fiscal }),
+    const admitted = inputData(input, "planned");
+    read(compositionShape, admitted, "");
+    const { planned, taxEvidence } = admitted;
+    const fiscal = "fiscal" in admitted;
+    scope = fiscal ? "/fiscal" : "/verifiedMoney";
+    if (!fiscal && taxEvidence.kind === "fiscal_profile" && !("verifiedMoney" in admitted)) fail("money_input_invalid", "/fiscal");
+    read<unknown>(fiscal ? z.array(record) : record, fiscal ? admitted.fiscal : admitted.verifiedMoney, scope);
+    if ((planned.moneyInput.amountBasis === "inclusive") !== fiscal) fail("money_amount_basis_mixed", "/planned/moneyInput/amountBasis");
+    if ((taxEvidence.kind === "fiscal_profile") !== fiscal) fail("money_amount_basis_mixed", "/taxEvidence/kind");
+    const { result, feeLines } = fiscal
+      ? { result: calculateCatalogueMoneyV2(planned.moneyInput, { kind: "inclusive", components: admitted.fiscal }),
         feeLines: planned.winner.feeLines }
-      : exclusiveResult(input);
+      : exclusiveResult(admitted);
     const { amountBasis, netTotal, taxTotal, feeTotal, payableMinor } = result;
-    const money = read(moneyShape, { ...input.facts, ...projectComponents(input, result), feeLines, amountBasis,
+    const projected = { ...admitted.facts, ...projectComponents(admitted, result), feeLines, amountBasis,
       netTotal, taxTotal, feeTotal, payableMinor, taxEvidence, price: planned.price, currency: planned.currency,
-      deliverySelectionRef: planned.winner.deliverySelectionRef, promotion: planned.promotion }, "");
-    const issue = checkMoney(money);
-    if (issue) fail(issue.code, pointer(issue.path));
-    let moneyDigest: string;
-    try { moneyDigest = quoteDigest("commerce.quote-money.v2", money); }
-    catch { return fail("money_input_invalid", ""); }
-    return { kind: "composed", money, moneyDigest,
-      ...(planned.codeDiagnostics ? { codeDiagnostics: planned.codeDiagnostics } : {}) };
-  } catch (error) { return handle(error, "fiscal" in input ? "/fiscal" : "/verifiedMoney"); }
+      deliverySelectionRef: planned.winner.deliverySelectionRef, promotion: planned.promotion } as Body;
+    try {
+      const money = read(moneyShape, projected, "");
+      const issue = checkMoney(money);
+      if (issue) throw issue;
+      checkDocumentSize(money, 28);
+      return { kind: "composed", money, moneyDigest: quoteDigest("commerce.quote-money.v2", money),
+        ...(planned.codeDiagnostics ? { codeDiagnostics: planned.codeDiagnostics } : {}) };
+    } catch (error) {
+      if (!(error instanceof MoneyIssue)) throw error;
+      throw new MoneyIssue(error.code, compositionPath(admitted, projected, error.path), error.remedy);
+    }
+  } catch (error) { return refusal(error, input, scope); }
 }
