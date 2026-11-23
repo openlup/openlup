@@ -1,4 +1,5 @@
 import { randomInt } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 
 interface FenceLockWriter {
   query<Row extends Record<string, unknown>>(sql: string, values?: unknown[]): Promise<{ rows: Row[] }>;
@@ -47,9 +48,11 @@ function rejection() {
 function fenceRefusal(error: unknown, locks: boolean) {
   const code = (error as { code?: unknown } | null)?.code;
   if (locks && code === "40001") return Object.assign(visibilityChanged(), { hint: retry });
-  if (locks && error instanceof Error && ownerRefusals.has(error.message) &&
-    Reflect.ownKeys(error).every(key => key === "stack" || key === "message")) return error;
   const contention = locks && (code === "55P03" || code === "40P01");
+  if (locks && !contention && code !== "57014" && error instanceof Error && ownerRefusals.has(error.message)) {
+    return Object.getPrototypeOf(error) === Error.prototype &&
+      Reflect.ownKeys(error).every(key => key === "stack" || key === "message") ? error : new Error(error.message);
+  }
   return Object.assign(unavailable(), { hint: error === expired || contention ? retry : checklist });
 }
 
@@ -120,8 +123,8 @@ async function runPrelock(
   const aborted = rejection();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pending = false, closed = false;
-  function remaining(now = performance.now()) {
-    const ms = Math.ceil(deadline - now);
+  function remaining() {
+    const ms = Math.ceil(deadline - performance.now());
     if (ms <= 0) throw expired;
     return ms;
   }
@@ -132,28 +135,25 @@ async function runPrelock(
       aborted.reject(expired);
     } else timer = setTimeout(expireAtWall, Math.min(ms, maxTimeoutMs));
   }
-  const setTimeoutForStatement = (now?: number) => writer.query(`SET LOCAL statement_timeout = ${remaining(now)}`);
+  let originalLockMs = 0;
+  function setDispatchTimeouts() {
+    const ms = remaining();
+    const lockMs = originalLockMs > 0 ? Math.min(ms, originalLockMs) : ms;
+    return writer.query(`SET LOCAL lock_timeout = ${lockMs}; SET LOCAL statement_timeout = ${ms + wallMarginMs}`);
+  }
   const lockWriter: FenceLockWriter = {
     query<Row extends Record<string, unknown>>(text: string, values: unknown[] = []) {
       const work = (async () => {
         if (closed || pending) throw new Error("Prelock must await one statement at a time");
         pending = true;
         try {
-          let sentAt: number, readyAt: number;
-          do {
-            sentAt = performance.now();
-            await setTimeoutForStatement(sentAt);
-            if (closed) throw unfinished;
-            readyAt = performance.now();
-            remaining(readyAt);
-            // A slow SET round trip must not spend the wall margin for the next statement.
-          } while (readyAt - sentAt >= wallMarginMs);
+          await setDispatchTimeouts();
+          if (closed) throw unfinished;
+          if (performance.now() >= deadline) throw expired;
           // The extended protocol accepts exactly one SQL statement per request.
           return await writer.query<Row>({ text, values, queryMode: "extended" });
         } catch (error) {
-          const { code, message } = (error as { code?: unknown; message?: unknown } | null) ?? {};
-          const statementExpired = code === "57014" && message === "canceling statement due to statement timeout";
-          aborted.reject(statementExpired ? expired : error);
+          aborted.reject(error);
           throw error;
         } finally {
           pending = false;
@@ -167,11 +167,15 @@ async function runPrelock(
   try {
     await Promise.race([aborted.promise, abort, (async () => {
       remaining();
-      const { rows: [settings] } = await writer.query<{ statement: string }>(
-        "SELECT current_setting('statement_timeout') AS statement",
+      const { rows: [settings] } = await writer.query<{ statement: string; lock_ms: number }>(
+        "SELECT current_setting('statement_timeout') AS statement, setting::int AS lock_ms FROM pg_settings WHERE name='lock_timeout'",
       );
+      originalLockMs = settings!.lock_ms;
+      // At the input ceiling, wait inside the budget until PostgreSQL can represent the backstop.
+      const overflow = Math.ceil(deadline + wallMarginMs - performance.now() - maxTimeoutMs);
+      if (overflow > 0) await delay(overflow + 1);
       if (closed) throw expired;
-      await setTimeoutForStatement();
+      await setDispatchTimeouts();
       if (closed) throw expired;
       remaining();
       try {
@@ -182,7 +186,8 @@ async function runPrelock(
       }
       if (pending) throw unfinished;
       remaining();
-      await writer.query("SELECT set_config('statement_timeout',$1,true)", [settings!.statement]);
+      await writer.query("SELECT set_config('lock_timeout',$1,true), set_config('statement_timeout',$2,true)",
+        [`${originalLockMs}ms`, settings!.statement]);
     })()]);
   } finally {
     closed = true;
@@ -230,7 +235,7 @@ export async function withCatalogAdmissionFence<T, Connection extends FenceConne
     await writer.query("SELECT public.catalog_admission_lock_checkout_price($1,$2)", [input.priceListId, input.skuIds]);
     const frozen = (await writer.query<Visibility>(snapshotSql, scope)).rows[0]!;
     const current = (await probe.query<Visibility>({
-      text: snapshotSql, values: scope, query_timeout: timeoutMs,
+      text: snapshotSql, values: scope, query_timeout: prelock ? timeoutMs : input.timeoutMs,
     }).catch(error => {
       probeFailed = true;
       throw prelock ? error : unavailable();

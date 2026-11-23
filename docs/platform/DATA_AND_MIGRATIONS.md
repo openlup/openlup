@@ -471,7 +471,7 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
    `price_entries` in `SHARE`. Price apply takes the same advisory lock.
 3. After all locks, run the visibility probe. Start `read` with native
    authenticated replay, then evaluate fresh owner facts under the same locks.
-   `catalogAdmissionFence.ts:218–245`,
+   `catalogAdmissionFence.ts:223–250`,
    `20261125010000_catalog_purchase_admission.sql:2–24,58–94`.
 
 - **Erasure.** The privacy store takes the ledger in `SHARE ROW EXCLUSIVE`,
@@ -495,7 +495,11 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
   Later, the unrestricted path claims price receipts in key order and takes
   sorted exclusive list/SKU advisory locks before staging and applying prices.
   The restricted path uses the atomic price apply routine for each operation.
-  Both verify effective entries `FOR NO KEY UPDATE`. `catalogPublicationCommands.ts:133–172,214–221,249–258`,
+  Both verify effective entries `FOR NO KEY UPDATE`. After applying prices and
+  verifying entries, the restricted path takes sorted exclusive list/SKU
+  advisory locks before checking readiness. This includes effective-list
+  contexts for SKUs without a price operation.
+  `catalogPublicationCommands.ts:133–172,214–221,249–258`,
   `catalogPublicationProjection.ts:80–86,184–215,266–295,403–406,458–466`,
   `q2_20261123192500_catalog_publication_authority.sql:15–21,92–105`.
 - **Base price.** Apply claims the receipt by insert or existing-row

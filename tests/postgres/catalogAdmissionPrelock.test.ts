@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { setImmediate as yieldTurn } from "node:timers/promises";
-import type { PoolClient, QueryConfig } from "pg";
+import { setImmediate as yieldTurn, setTimeout as delay } from "node:timers/promises";
+import { Pool, type PoolClient, type QueryConfig } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { catalogDefinitionDigest, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV4,
   createPostgresCatalogPublicationCommands, withCatalogPublicationRules } from "@openlup/platform/catalog";
@@ -15,8 +15,11 @@ import { receiptArgs, receiptCall, receiptClient } from "./destinationReceiptFix
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
 
 let installation: LifecycleInstallation;
+let orderingPool: Pool;
 let clientId: string, skuId: string, priceListId: string, orderId: string;
 const setupTimeout = 6_000;
+const wallMarginMs = 50;
+const barrierTimeout = setupTimeout - 1_000;
 const sameKey = "Retry the same request with the same idempotency key.";
 const checklist = "Check the native binding, connection/TLS, privileges and migrations.";
 const unavailable = "catalog_admission_fence_unavailable";
@@ -36,13 +39,24 @@ const guard: Prelock = async db => {
 function latch() {
   let resolve!: () => void;
   const promise = new Promise<void>(ready => { resolve = ready; });
-  return { promise, resolve };
+  return { resolve, async wait(...operations: Promise<unknown>[]) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        promise,
+        ...operations.map(operation => operation.then(() => { throw new Error("Operation finished before its barrier"); })),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("Barrier did not open")), barrierTimeout); }),
+      ]);
+    } finally { clearTimeout(timer); }
+  } };
 }
 const pid = async (db: PoolClient) => Number((await db.query("SELECT pg_backend_pid() AS pid")).rows[0]!.pid);
 
 beforeAll(async () => {
   installation = await lifecycleInstallation("qualified-v2");
   const owner = installation.owner;
+  orderingPool = new Pool({ ...owner.options,
+    options: `-c deadlock_timeout=200ms -c lock_timeout=${setupTimeout}ms -c statement_timeout=${setupTimeout + wallMarginMs}ms` });
   clientId = (await owner.query("INSERT INTO public.clients(email) VALUES('prelock@example.invalid') RETURNING id")).rows[0]!.id;
   orderId = (await owner.query(`INSERT INTO public.commerce_orders(client_id,status,currency_code,total_amount_minor)
     VALUES($1,'pending_payment','XXX',0) RETURNING id`, [clientId])).rows[0]!.id;
@@ -55,20 +69,24 @@ beforeAll(async () => {
     ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`);
   await owner.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
 }, postgresSetupTimeoutMs);
-afterAll(() => installation?.close(), postgresTeardownTimeoutMs);
+afterAll(async () => {
+  try { await orderingPool?.end(); } finally { await installation?.close(); }
+}, postgresTeardownTimeoutMs);
 
 type ClientObserver = (index: number, db: PoolClient) => Promise<void> | void;
-type QueryObserver = (index: number, text: string) => Promise<void> | void;
-function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObserver = () => {}) {
+type QueryObserver = (index: number, text: string, request: string | QueryConfig, values?: unknown[]) => Promise<void> | void;
+function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObserver = () => {},
+  pool = installation.owner, observeError?: (error: unknown) => void) {
   let index = 0;
   return { async connect() {
     const number = index++;
-    const db = await installation.owner.connect();
-    await observeClient(number, db);
+    const db = await pool.connect();
+    try { await observeClient(number, db); } catch (error) { db.release(true); throw error; }
     return {
       query: async (request: string | QueryConfig, values?: unknown[]) => {
-        await observeQuery(number, typeof request === "string" ? request : request.text);
-        return typeof request === "string" ? db.query(request, values) : db.query(request);
+        await observeQuery(number, typeof request === "string" ? request : request.text, request, values);
+        try { return await (typeof request === "string" ? db.query(request, values) : db.query(request)); }
+        catch (error) { observeError?.(error); throw error; }
       },
       on: db.on.bind(db), removeListener: db.removeListener.bind(db), release: db.release.bind(db),
     } as PoolClient;
@@ -76,7 +94,7 @@ function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObser
 }
 
 async function waitForBlock(waiter: number, holder: number, locktype: string, relation?: string) {
-  const end = performance.now() + setupTimeout - 1000;
+  const end = performance.now() + barrierTimeout;
   do {
     const { rows } = await installation.owner.query(`SELECT 1 FROM pg_locks
       WHERE pid=$1 AND NOT granted AND locktype=$3 AND $2=ANY(pg_blocking_pids($1))
@@ -117,12 +135,45 @@ it("prelock runs once on the writer between the key advisory and receipt locks",
   ]);
 });
 
-it("omitted and empty options preserve the original statement trace", async () => {
+it("omitted and empty options preserve the complete base dispatch trace and probe-time timeout", async () => {
+  // Source: df890a419, catalogAdmissionFence.ts. Keep whitespace and dispatch shapes.
+  const snapshot = `WITH snap AS MATERIALIZED (SELECT pg_current_snapshot() AS value)
+  SELECT pg_snapshot_xmax(value)::text AS xmax,
+    ARRAY(SELECT xid::text FROM pg_snapshot_xip(value) xid WHERE xid <> $1::xid8 ORDER BY xid) AS xip,
+    NOT pg_is_in_recovery() AND EXISTS (
+      SELECT 1 FROM pg_locks WHERE locktype='advisory' AND mode='ExclusiveLock' AND granted AND pid=$2
+        AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+        AND classid=$3::oid AND objid=$4::oid AND objsubid=2
+    ) AS primary FROM snap`;
   for (const options of [undefined, {}]) {
-    const trace: string[] = [];
-    const pool = pair(undefined, (_, sql) => { trace.push(traceName(sql)); });
-    await withCatalogAdmissionFence(pool, scope(), async () => "accepted", options);
-    expect(trace).toEqual(lockTrace);
+    const input = scope(), probeTimeout = 9_000;
+    let writerPid = 0;
+    const trace: [number, string | QueryConfig, unknown[] | undefined][] = [];
+    const pool = pair(async (index, db) => {
+      if (index === 0) writerPid = await pid(db);
+      else input.timeoutMs = probeTimeout;
+    }, (index, _sql, request, values) => { trace.push([index, request, values]); });
+    await withCatalogAdmissionFence(pool, input, async () => "accepted", options);
+    const nonce = trace[1]?.[2];
+    expect(nonce).toEqual([expect.any(Number), expect.any(Number)]);
+    const snapshotArgs = [expect.stringMatching(/^\d+$/u), writerPid, ...nonce!];
+    expect(trace).toEqual([
+      [0, "BEGIN ISOLATION LEVEL REPEATABLE READ", undefined],
+      [0, `SELECT pg_current_xact_id()::text AS xid, pg_backend_pid() AS pid
+      FROM pg_advisory_xact_lock($1::integer,$2::integer)`, nonce],
+      [0, "SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))", [input.key]],
+      [0, "SELECT order_id FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1 FOR UPDATE", [input.key]],
+      [0, "SELECT id FROM public.clients WHERE id=$1 FOR KEY SHARE", [input.clientId]],
+      [0, "SELECT id FROM public.catalog_skus WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE", [input.skuIds]],
+      [0, "SELECT id FROM public.catalog_sku_revisions WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE", [input.revisionIds]],
+      [0, "SELECT public.catalog_admission_lock_shared()", undefined],
+      [0, "SELECT public.catalog_admission_lock_checkout_price($1,$2)", [input.priceListId, input.skuIds]],
+      [0, snapshot, snapshotArgs],
+      [1, { text: snapshot, values: snapshotArgs, query_timeout: probeTimeout }, undefined],
+      [0, "SELECT clock_timestamp()::text AS instant", undefined],
+      [0, "COMMIT", undefined],
+    ]);
+    expect((trace[10]?.[1] as QueryConfig).values).toEqual(trace[9]?.[2]);
   }
 });
 
@@ -144,7 +195,7 @@ it("a commit while the hook waits on an unchanged guard causes the visibility re
       await db.query(orderSql, [orderId]);
     } });
     void attempt.catch(() => {});
-    await Promise.race([started.promise, attempt]);
+    await started.wait(attempt);
     await waitForBlock(writerPid, holderPid, "transactionid");
     await holder.query("COMMIT");
     await expect(attempt).rejects.toMatchObject({ message: visibility, code: "40001" });
@@ -161,36 +212,56 @@ it("destroys the idle writer, releases the probe and fences late use while the f
   owner.on("release", release);
   const finish = latch(), late = latch();
   const read = vi.fn(async () => "unexpected");
-  const input = scope(650);
+  const input = scope(650), clients: PoolClient[] = [];
+  let writerPid = 0, pending = false;
+  const pool = pair(async (index, db) => {
+    clients[index] = db;
+    if (index === 0) writerPid = await pid(db);
+  });
   try {
-    await expect(withCatalogAdmissionFence(owner, input, read, { prelock: async db => {
+    await expect(withCatalogAdmissionFence(pool, input, read, { prelock: async db => {
       await guard(db);
-      await finish.promise;
+      pending = true;
+      await finish.wait();
+      pending = false;
       await expect(db.query(ledgerSql)).rejects.toThrow();
       late.resolve();
     } })).rejects.toMatchObject({ message: unavailable, hint: sameKey });
     expect(read).not.toHaveBeenCalled();
-    expect(release).toHaveBeenCalledTimes(2);
-    expect(release.mock.calls.some(([discard]) => Boolean(discard))).toBe(true);
-    expect(await withCatalogAdmissionFence(owner, { ...input, timeoutMs: setupTimeout }, async () => "retried", { prelock: guard })).toBe("retried");
+    expect(pending).toBe(true);
+    expect(release.mock.calls).toEqual([[true, clients[0]], [false, clients[1]]]);
+    const retryPid = await withCatalogAdmissionFence(owner, { ...input, timeoutMs: setupTimeout }, async db => {
+      const { rows } = await db.query(`SELECT pg_backend_pid() AS pid FROM pg_locks
+        WHERE pid=pg_backend_pid() AND locktype='advisory' AND mode='ExclusiveLock' AND granted AND objsubid=1
+          AND classid::bigint=(hashtextextended($1,0)>>32)&4294967295
+          AND objid::bigint=hashtextextended($1,0)&4294967295`, [input.key]);
+      expect(rows).toHaveLength(1);
+      return Number(rows[0]?.pid);
+    }, { prelock: guard });
+    expect(retryPid).not.toBe(writerPid);
+    expect(pending).toBe(true);
   } finally {
     owner.removeListener("release", release);
     finish.resolve();
   }
-  await late.promise;
+  await late.wait();
 });
 
-it("bounds a late blocked statement and lets the same key retry while its blocker and callback remain pending", async () => {
+it("gives a real 55P03 the same-key retry while its blocker and callback remain pending", async () => {
   const owner = installation.owner;
-  const holder = await owner.connect(), finish = latch(), blocked = latch();
+  const holder = await owner.connect(), finish = latch(), blocked = latch(), pgError = latch();
   const input = scope(1200);
   let writerPid = 0;
+  let lockFailure: unknown;
   let attempt: Promise<unknown> | undefined;
   try {
     await holder.query("BEGIN");
     const holderPid = await pid(holder);
     await holder.query(ownerSql, [clientId]);
-    const pool = pair(async (index, db) => { if (index === 0) writerPid = await pid(db); });
+    const pool = pair(async (index, db) => { if (index === 0) writerPid = await pid(db); }, undefined, owner, error => {
+      lockFailure = error;
+      pgError.resolve();
+    });
     const start = performance.now();
     attempt = withCatalogAdmissionFence(pool, { ...input, clientId: randomUUID() }, async () => "unexpected", { prelock: async db => {
       for (let n = 0; n < 6; n++) {
@@ -199,12 +270,14 @@ it("bounds a late blocked statement and lets the same key retry while its blocke
       }
       blocked.resolve();
       await db.query(clientSql, [clientId]).catch(() => {});
-      await finish.promise;
+      await finish.wait();
     } });
     void attempt.catch(() => {});
-    await Promise.race([blocked.promise, attempt]);
+    await blocked.wait(attempt);
     await waitForBlock(writerPid, holderPid, "transactionid");
     await expect(attempt).rejects.toMatchObject({ message: unavailable, hint: sameKey });
+    await pgError.wait();
+    expect(lockFailure).toMatchObject({ code: "55P03" });
     expect(await withCatalogAdmissionFence(owner, { ...input, clientId: randomUUID(), timeoutMs: setupTimeout },
       async () => "retried", { prelock: async db => { await db.query(ledgerSql); } })).toBe("retried");
     expect(performance.now() - start).toBeLessThan(input.timeoutMs + 400);
@@ -223,8 +296,62 @@ it("applies one wall budget to a stream of individually short lock queries", asy
   expect(read).not.toHaveBeenCalled();
 });
 
-it("preserves an exact owner refusal and rolls back before the same key retries", async () => {
-  const ownerRefusal = new Error("catalog_admission_line_ineligible");
+it.each(["before", "after"] as const)("uses the wall timer as provenance with a translated 57014 %s expiry", async when => {
+  const input = scope(450), sent = latch();
+  const sql = "SELECT pg_advisory_xact_lock(1917, 19)";
+  const message = vi.fn(() => "Anweisung wegen Zeitüberschreitung abgebrochen");
+  const translated = Object.defineProperty(Object.assign(new Error(), { code: "57014" }), "message", { get: message });
+  let cancel!: (reason: Error) => void;
+  const pending = new Promise<never>((_, reject) => { cancel = reject; });
+  let index = 0;
+  const release = vi.fn();
+  const pool = { async connect() {
+    const client = index++;
+    return {
+      async query(request: string | QueryConfig) {
+        const text = typeof request === "string" ? request : request.text;
+        if (text === sql) { sent.resolve(); return pending; }
+        if (text.includes("pg_current_xact_id()")) return { rows: [{ xid: "3", pid: 1 }] };
+        if (text.includes("current_setting('statement_timeout')")) return { rows: [{ statement: "0", lock_ms: 0 }] };
+        return { rows: [] };
+      },
+      release(discard: boolean) { release(client, discard); },
+    } as unknown as PoolClient;
+  } };
+  const result = withCatalogAdmissionFence(pool, input, async () => "unexpected", { prelock: async db => { await db.query(sql); } });
+  void result.catch(() => {});
+  try {
+    await sent.wait(result);
+    if (when === "before") cancel(translated);
+    await expect(result).rejects.toMatchObject({ message: unavailable, hint: when === "before" ? checklist : sameKey });
+    expect(release.mock.calls).toEqual([[0, when === "after"], [1, false]]);
+  } finally { cancel(translated); }
+  await yieldTurn();
+  expect(message).not.toHaveBeenCalled();
+});
+
+it("runs an uncontended hook statement once with a settings round trip over the wall margin", async () => {
+  const input = scope(1_500), settings: string[] = [];
+  let statements = 0;
+  const pool = pair(undefined, async (_, sql) => {
+    if (sql.startsWith("SET LOCAL lock_timeout")) {
+      settings.push(sql);
+      await delay(wallMarginMs + 25);
+    }
+    if (sql === ledgerSql) statements++;
+  });
+  await expect(withCatalogAdmissionFence(pool, input, async () => "accepted", {
+    prelock: async db => { await db.query(ledgerSql); },
+  })).resolves.toBe("accepted");
+  expect(statements).toBe(1);
+  expect(settings).toHaveLength(2);
+  const [, lock, statement] = /lock_timeout = (\d+); SET LOCAL statement_timeout = (\d+)/u.exec(settings[1]!)!;
+  expect(Number(statement) - Number(lock)).toBe(wallMarginMs);
+  expect(Number(lock)).toBeLessThan(input.timeoutMs);
+});
+
+it("preserves the owner identity and strips the native 22023 diagnostic fields", async () => {
+  const ownerRefusal = new Error("catalog_admission_price_context_required");
   const read = vi.fn(async () => "unexpected"), input = scope();
   const query: string[] = [];
   await expect(withCatalogAdmissionFence(pair(undefined, (_, text) => { query.push(text); }), input, read, {
@@ -232,30 +359,37 @@ it("preserves an exact owner refusal and rolls back before the same key retries"
   })).rejects.toBe(ownerRefusal);
   expect(read).not.toHaveBeenCalled();
   expect(query.at(-1)).toBe("ROLLBACK");
-  const withDiagnostics = new Error(ownerRefusal.message, { cause: new Error("Private diagnostic") });
-  const sanitized = await withCatalogAdmissionFence(installation.owner, input, read, {
-    prelock: async () => { throw withDiagnostics; },
-  }).catch(error => error);
-  expect(sanitized).toMatchObject({ message: unavailable, hint: checklist });
-  expect(sanitized).not.toHaveProperty("cause");
+  let native: unknown;
+  const nativePool = pair(undefined, undefined, installation.owner, error => { native = error; });
+  const sanitized = await withCatalogAdmissionFence(nativePool, { ...input, skuIds: [] }, read, { prelock: guard })
+    .catch(error => error);
+  expect(native).toMatchObject({ message: ownerRefusal.message, code: "22023" });
+  expect(sanitized.message).toBe(ownerRefusal.message);
+  expect(Object.getPrototypeOf(sanitized)).toBe(Object.getPrototypeOf(ownerRefusal));
+  const ownKeys = (error: Error) => Reflect.ownKeys(error).filter(key => key !== "stack");
+  expect(ownKeys(sanitized)).toEqual(ownKeys(ownerRefusal));
+  expect(read).not.toHaveBeenCalled();
   await expect(withCatalogAdmissionFence(installation.owner, input, async () => "retried", { prelock: guard })).resolves.toBe("retried");
 });
 
 it("captures and restores the original settings while retaining a stricter lock limit", async () => {
   const settings = "SELECT current_setting('statement_timeout') AS statement, current_setting('lock_timeout') AS lock, current_setting('idle_in_transaction_session_timeout') AS idle";
   const trace: string[] = [];
-  const pool = pair(async (index, db) => {
-    if (index === 0) await db.query("SET statement_timeout='19s'; SET lock_timeout='900ms'; SET idle_in_transaction_session_timeout='17s'");
-  }, (_, sql) => { trace.push(sql); });
-  await withCatalogAdmissionFence(pool, scope(), async db => {
-    expect((await db.query(settings)).rows).toEqual([{ statement: "19s", lock: "900ms", idle: "17s" }]);
-  }, { prelock: async db => {
-    await guard(db);
-    const { rows } = await db.query(settings);
-    expect(rows[0]).toMatchObject({ lock: "900ms" });
-    expect(String(rows[0]?.statement)).toMatch(/^(?:[1-5]?[0-9]{1,3}ms|[1-6]s)$/u);
-  } });
-  expect(trace.findIndex(sql => sql.includes("current_setting"))).toBeLessThan(trace.findIndex(sql => sql.startsWith("SET LOCAL statement_timeout")));
+  const isolated = new Pool({ ...installation.owner.options,
+    options: "-c statement_timeout=19s -c lock_timeout=900ms -c idle_in_transaction_session_timeout=17s" });
+  const pool = pair(undefined, (_, sql) => { trace.push(sql); }, isolated);
+  try {
+    await withCatalogAdmissionFence(pool, scope(), async db => {
+      expect((await db.query(settings)).rows).toEqual([{ statement: "19s", lock: "900ms", idle: "17s" }]);
+    }, { prelock: async db => {
+      await guard(db);
+      expect((await db.query(settings)).rows[0]).toMatchObject({ lock: "900ms", idle: "17s" });
+      const { rows } = await db.query("SELECT setting::int AS ms FROM pg_settings WHERE name='statement_timeout'");
+      expect(rows[0]?.ms).toBeGreaterThan(wallMarginMs);
+      expect(rows[0]?.ms).toBeLessThanOrEqual(setupTimeout + wallMarginMs);
+    } });
+    expect(trace.findIndex(sql => sql.includes("current_setting"))).toBeLessThan(trace.findIndex(sql => sql.startsWith("SET LOCAL lock_timeout")));
+  } finally { await isolated.end(); }
 });
 
 it.each([0, -1, 1.5, NaN, Infinity, 2147483648, "1000"])("refuses invalid hook timeout %s before reservation", async value => {
@@ -305,7 +439,7 @@ it("uses the checklist for a real external query cancellation and strips the dat
       await guard(db);
     } });
     void result.catch(() => {});
-    await Promise.race([result, starting.promise]);
+    await starting.wait(result);
     await waitForBlock(writerPid, blockerPid, "transactionid");
     expect((await owner.query("SELECT pg_cancel_backend($1) AS cancelled", [writerPid])).rows[0]!.cancelled).toBe(true);
     const failure = await result.catch(error => error);
@@ -343,11 +477,11 @@ it("retains the private client event for classification and returns both connect
   }), input, async () => "unexpected", { prelock: async db => {
     await guard(db);
     started.resolve();
-    await finish.promise;
+    await finish.wait();
   } });
   void first.catch(() => {});
   try {
-    await Promise.race([started.promise, first]);
+    await started.wait(first);
     await owner.query("SELECT pg_terminate_backend($1,$2)", [writerPid, 1000]);
     const error = await first.catch(failure => failure);
     expect(error).toMatchObject({ message: unavailable, hint: checklist });
@@ -388,7 +522,7 @@ it("sanitizes a lock-time serialization failure with the same-key remedy", async
         await db.query(orderSql, [orderId]);
       } });
     void result.catch(() => {});
-    await Promise.race([result, starting.promise]);
+    await starting.wait(result);
     await waitForBlock(buyerPid, holderPid, "transactionid");
     await holder.query("COMMIT");
     const error = await result.catch(failure => failure);
@@ -406,7 +540,7 @@ it.each(["order guard", "list:sku advisory"] as const)("serializes two fences on
     const actors = [scope(), scope()];
     const atRead = latch(), release = latch(), assigned = latch();
     const [first, second] = sequence;
-    const firstRead = vi.fn(async () => { atRead.resolve(); await release.promise; return first; });
+    const firstRead = vi.fn(async () => { atRead.resolve(); await release.wait(); return first; });
     const secondRead = vi.fn(async () => second);
     const pids: number[] = [];
     const makePair = (index: number) => pair(async (offset, db) => {
@@ -414,15 +548,15 @@ it.each(["order guard", "list:sku advisory"] as const)("serializes two fences on
         pids[index] = await pid(db);
         if (index === second) assigned.resolve();
       }
-    });
+    }, undefined, orderingPool);
     const options = { prelock: lane === "order guard" ? sameOrder : guard };
     const leader = withCatalogAdmissionFence(makePair(first), actors[first]!, firstRead, options);
     void leader.catch(() => {});
     let follower: Promise<number | Error> | undefined;
     try {
-      await Promise.race([atRead.promise, leader]);
+      await atRead.wait(leader);
       follower = withCatalogAdmissionFence(makePair(second), actors[second]!, secondRead, options).catch(error => error);
-      await assigned.promise;
+      await assigned.wait(follower);
       await waitForBlock(pids[second]!, pids[first]!, lane === "order guard" ? "transactionid" : "advisory");
       expect(secondRead).not.toHaveBeenCalled();
       release.resolve();
@@ -438,23 +572,26 @@ it.each(["order guard", "list:sku advisory"] as const)("serializes two fences on
 }, setupTimeout * 3);
 
 it("detects a reversed order cycle on incompatible owner and SKU row locks", async () => {
-  const owner = installation.owner;
-  const first = await owner.connect(), reverse = await owner.connect();
+  const first = await orderingPool.connect(), reverse = await orderingPool.connect();
   const skuLock = "SELECT id FROM public.catalog_skus WHERE id=$1 FOR UPDATE";
   let held: Promise<unknown> | undefined;
   let inverted: Promise<unknown> | undefined;
   const result = (error: { code?: string }) => ({ code: error.code });
   try {
     const [firstPid, reversePid] = await Promise.all([pid(first), pid(reverse)]);
-    for (const db of [first, reverse]) {
-      await db.query("BEGIN");
-      await db.query(`SET LOCAL lock_timeout='${setupTimeout}ms'; SET LOCAL deadlock_timeout='200ms'`);
+    const deadline = performance.now() + setupTimeout;
+    async function dispatch(db: PoolClient, sql: string, key: string) {
+      const ms = Math.ceil(deadline - performance.now());
+      if (ms <= 0) throw new Error("Negative control used its order budget");
+      await db.query(`SET LOCAL lock_timeout=${ms}; SET LOCAL statement_timeout=${ms + wallMarginMs}`);
+      return db.query(sql, [key]);
     }
-    await first.query(orderSql, [orderId]);
-    await reverse.query(skuLock, [skuId]);
-    held = first.query(skuLock, [skuId]).then(() => ({}), result);
+    await Promise.all([first.query("BEGIN"), reverse.query("BEGIN")]);
+    await dispatch(first, orderSql, orderId);
+    await dispatch(reverse, skuLock, skuId);
+    held = dispatch(first, skuLock, skuId).then(() => ({}), result);
     await waitForBlock(firstPid, reversePid, "transactionid");
-    inverted = reverse.query(orderSql, [orderId]).then(() => ({}), result);
+    inverted = dispatch(reverse, orderSql, orderId).then(() => ({}), result);
     const outcomes = await Promise.all([held, inverted]);
     expect(outcomes).toEqual(expect.arrayContaining([{ code: "40P01" }, {}]));
   } finally {
@@ -475,13 +612,13 @@ it.each(["erasure", "B0 receipt", "B1 issue", "B1 expiry"] as const)("orders %s 
     const ctx = await destinationContext(owner, subject);
     const evidence = otherLane === "B1 expiry" ? await snapshot(owner, ctx) : undefined;
     if (evidence) await reachDestinationCutoff(owner, evidence.binding);
-    const other = await owner.connect();
+    const other = await orderingPool.connect();
     const stopCheckout = latch(), atRead = latch(), writerAssigned = latch();
     let buyerPid = 0;
-    const read = vi.fn(async () => { atRead.resolve(); await stopCheckout.promise; return "checkout committed"; });
+    const read = vi.fn(async () => { atRead.resolve(); await stopCheckout.wait(); return "checkout committed"; });
     const checkout = () => withCatalogAdmissionFence(pair(async (index, db) => {
       if (index === 0) { buyerPid = await pid(db); writerAssigned.resolve(); }
-    }), { ...scope(), clientId: subject }, read, { prelock: async db => {
+    }, undefined, orderingPool), { ...scope(), clientId: subject }, read, { prelock: async db => {
       await db.query(ledgerSql);
       await db.query(clientSql, [subject]);
       if (evidence) {
@@ -500,12 +637,11 @@ it.each(["erasure", "B0 receipt", "B1 issue", "B1 expiry"] as const)("orders %s 
     let independent: Promise<unknown> | undefined;
     try {
       await other.query("BEGIN");
-      await other.query(`SET LOCAL lock_timeout='${setupTimeout}ms'`);
       const otherPid = await pid(other);
       if (checkoutFirst) {
         purchase = checkout();
         void purchase.catch(() => {});
-        await Promise.race([atRead.promise, purchase]);
+        await atRead.wait(purchase);
         independent = act();
         void independent.catch(() => {});
         await waitForBlock(otherPid, buyerPid, otherLane === "erasure" ? "relation" : "transactionid",
@@ -518,7 +654,7 @@ it.each(["erasure", "B0 receipt", "B1 issue", "B1 expiry"] as const)("orders %s 
         await act();
         purchase = checkout();
         void purchase.catch(() => {});
-        await writerAssigned.promise;
+        await writerAssigned.wait(purchase);
         await waitForBlock(buyerPid, otherPid, otherLane === "erasure" ? "relation" : "transactionid",
           otherLane === "erasure" ? ledgerTable : undefined);
         await other.query("COMMIT");
@@ -579,7 +715,7 @@ it("authenticates stored submit replay before checking an expired document and r
 
 it.each([true, false])("orders real base price apply and checkout, checkout first=%s", async checkoutFirst => {
   const owner = installation.owner;
-  const db = await owner.connect(), atRead = latch(), finish = latch(), buyerAssigned = latch();
+  const db = await orderingPool.connect(), atRead = latch(), finish = latch(), buyerAssigned = latch();
   const list = (await owner.query("INSERT INTO public.price_lists(name,region_code,currency) VALUES('Price apply','ZZ','XXX') RETURNING id")).rows[0]!.id;
   const input = { ...scope(), priceListId: list };
   const price = await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,mode,valid_from)
@@ -589,21 +725,21 @@ it.each([true, false])("orders real base price apply and checkout, checkout firs
   const handler = createCatalogPriceSetupHandler({ store: createPostgresCatalogPriceSetupStore(db),
     authorizeOperator: async () => ({ actorId }) });
   let writerPid = 0;
-  const read = vi.fn(async () => { atRead.resolve(); await finish.promise; return "checkout committed"; });
+  const read = vi.fn(async () => { atRead.resolve(); await finish.wait(); return "checkout committed"; });
   const checkout = () => withCatalogAdmissionFence(pair(async (index, writer) => {
     if (index === 0) { writerPid = await pid(writer); buyerAssigned.resolve(); }
-  }), input, read, { prelock: guard });
+  }, undefined, orderingPool), input, read, { prelock: guard });
   let purchase: Promise<string> | undefined;
   let apply: ReturnType<typeof handler.apply> | undefined;
   try {
     const pricePid = await pid(db);
     await db.query("BEGIN");
-    await db.query(`SET LOCAL lock_timeout='${setupTimeout}ms'; SET LOCAL ROLE authenticated`);
+    await db.query("SET LOCAL ROLE authenticated");
     await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actorId, role: "authenticated" })]);
     if (checkoutFirst) {
       purchase = checkout();
       void purchase.catch(() => {});
-      await Promise.race([atRead.promise, purchase]);
+      await atRead.wait(purchase);
       apply = handler.apply(command, null);
       await waitForBlock(pricePid, writerPid, "advisory");
       finish.resolve();
@@ -614,7 +750,7 @@ it.each([true, false])("orders real base price apply and checkout, checkout firs
       expect(await handler.apply(command, null)).toMatchObject({ outcome: "committed" });
       purchase = checkout();
       void purchase.catch(() => {});
-      await buyerAssigned.promise;
+      await buyerAssigned.wait(purchase);
       await waitForBlock(writerPid, pricePid, "advisory");
       await db.query("COMMIT");
       finish.resolve();
@@ -657,7 +793,7 @@ function publisher(afterRelation: (db: PoolClient) => Promise<void> = async () =
   return createPostgresCatalogPublicationCommands({
     authorizeHuman: async (userId: string) => ({ ok: true, userId, role: "admin", isMachineActor: false }),
     registry: publicationRules,
-    catalogPublicationOwner: { run: work => transaction(installation.owner, db => work({ async query(sql, args) {
+    catalogPublicationOwner: { run: work => transaction(orderingPool, db => work({ async query(sql, args) {
       const result = await db.query(sql, args);
       if (sql.startsWith("LOCK TABLE public.catalog_products")) await afterRelation(db);
       return result;
@@ -722,8 +858,8 @@ it.each([true, false])("orders the real Stage B publisher and checkout, checkout
   const { variantId, command } = await approvedPublication(checkoutFirst);
   const buyerAssigned = latch(), releasePublication = latch(), relationHeld = latch();
   let writerPid = 0, publisherPid = 0;
-  const pool = pair(async (index, db) => { if (index === 0) { writerPid = await pid(db); buyerAssigned.resolve(); } });
-  const api = publisher(async db => { publisherPid = await pid(db); relationHeld.resolve(); await releasePublication.promise; });
+  const pool = pair(async (index, db) => { if (index === 0) { writerPid = await pid(db); buyerAssigned.resolve(); } }, undefined, orderingPool);
+  const api = publisher(async db => { publisherPid = await pid(db); relationHeld.resolve(); await releasePublication.wait(); });
   const who = (await api.authorize(actorId))!;
   const input = { ...scope(), skuIds: [variantId] };
   async function grantedShare() {
@@ -741,12 +877,12 @@ it.each([true, false])("orders the real Stage B publisher and checkout, checkout
       }, { prelock: guard });
     } else {
       publish = api.execute(command, who);
-      await Promise.race([relationHeld.promise, publish]);
+      await relationHeld.wait(publish);
       expect(publisherPid).toBeGreaterThan(0);
       const write = vi.fn(async () => "unexpected");
       purchase = withCatalogAdmissionFence(pool, input, write, { prelock: guard });
       void purchase.catch(() => {});
-      await buyerAssigned.promise;
+      await buyerAssigned.wait(purchase);
       await waitForBlock(writerPid, publisherPid, "relation", productTable);
       releasePublication.resolve();
       expect(await publish).toMatchObject({ outcome: "committed" });
