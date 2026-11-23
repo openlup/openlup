@@ -1626,6 +1626,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125130000_fulfillment_stock_seed_outcome.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125140000_checkout_recovery_reminder_install_outcome.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5311,6 +5319,14 @@
     },
     {
       "path": "packages/platform/sql/20261125120000_catalog_legacy_draft_fixed_locks.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125130000_fulfillment_stock_seed_outcome.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125140000_checkout_recovery_reminder_install_outcome.sql",
       "class": "public-output"
     },
     {
