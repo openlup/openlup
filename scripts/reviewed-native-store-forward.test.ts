@@ -72,7 +72,7 @@ describe("checkout owner execute admission", () => {
   }
 
   it("reserves the path without registration and renders the exact UTF-8 bytes", () => {
-    const golden = "e56e35abec5bb509efee95d6f85d51441a1430c6122c34d59ef7e65ac4bfde7b";
+    const golden = "fc24419cf0dcc0be3434a2550b4e7ea1397925a97f0b2c8187005c90b96e1e9c";
     expect(isNativeStoreMigrationPath(grantPath, [])).toBe(true);
     expect(sqlSha256(renderCheckoutOwnerGrant(definitionPath, "0".repeat(64)))).toBe(golden);
     expect(checkGrant().checkoutPredecessor).toEqual({ slot: definitionSlot, pin: definitionPin() });
@@ -91,10 +91,20 @@ describe("checkout owner execute admission", () => {
     ["legacy guard", grantSql.replace("RETURN;", "NULL;")],
     ["rail guard", grantSql.replace("position OPERATOR(pg_catalog.=) 0 AND", "position OPERATOR(pg_catalog.>) 0 AND")],
     ["definition pin", grantSql.replace(sqlSha256(definitionSql), "1".repeat(64))],
-    ["role guard", grantSql.replace("rolinherit OR ", "")],
+    ["role guard", grantSql.replace("OR checkout_login.rolinherit ", "")],
     ["final LF", grantSql.trimEnd()],
   ])("refuses repinned %s without exposing repair values", (_name, text) => {
     expect(() => checkGrant(candidate(text), text)).toThrow(new RegExp(`^checkout_owner_forward_unverified: ${grantPath}\\. Replay the reviewed grant bytes after landing the rule and its definitions\\.$`, "u"));
+  });
+
+  it.each([
+    "GRANT EXECUTE ON FUNCTION public.catalog_admission_lock_shared() TO authenticated;",
+    "REVOKE EXECUTE ON ROUTINE public.catalog_admission_lock_shared() FROM PUBLIC;",
+    "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO service_role;",
+    "ALTER FUNCTION public.catalog_admission_lock_shared() SECURITY INVOKER;",
+  ])("identifies the drifting source for %s", drift => {
+    const path = "db/platform/migrations/20990101000001_fixture.sql";
+    expect(() => checkGrant(candidate(), grantSql, definitionSql, drift)).toThrow(`checkout_owner_predecessor_unverified: ${path}.`);
   });
 
   it.each(["row", "path", "order", "grantee", "extra field", "pin"])("refuses malformed %s before generic admission", kind => {

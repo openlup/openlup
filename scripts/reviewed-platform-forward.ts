@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath, checkoutOwnerDefinitionPath, checkoutOwnerGrantPath, checkoutOwnerLogin, checkoutOwnerRoutines, renderCheckoutOwnerGrant } from "./platform-migration-manifest.ts";
+import { PLATFORM_MIGRATION_MANIFEST, type PlatformMigrationManifest, PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath, checkoutOwnerDefinitionPath, checkoutOwnerGrantPath, checkoutOwnerLogin, checkoutOwnerRoutines, renderCheckoutOwnerGrant } from "./platform-migration-manifest.ts";
 import { documentationGit, readDocumentationObjects } from "./documentation-git.ts";
 import { DuplicateJsonKeyError, parseStrictJson } from "./oss-strict-json.mts";
 
@@ -1760,6 +1760,22 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
         const controlChanges = git(root, ["diff", "--name-only", approval, introduction, "--", ...checkoutOwnerControls]);
         if (controlChanges.length) throw checkoutForwardRefusal(path);
         const sourcePath = checkoutPredecessor.slot.path;
+        const manifestBytes = blob(root, head, PLATFORM_MIGRATION_MANIFEST);
+        const manifest = manifestBytes && JSON.parse(manifestBytes.toString("utf8")) as PlatformMigrationManifest;
+        if (manifest && manifest.schemaVersion !== 1) {
+          const sources = new Map(readPrecedingBlobs(root, head, "db/platform/migrations/", "db/platform/migrations/z", true)
+            .map(source => [source.path, source.bytes]));
+          for (const plan of [manifest.qualified, ...(manifest.schemaVersion === 3 ? [manifest.qualifiedAdmin] : [])]) {
+            const position = plan.forward.findIndex(unit => unit.file === path);
+            if (position < 0) throw checkoutPredecessorRefusal(PLATFORM_MIGRATION_MANIFEST);
+            const issued = [plan.baseline, ...plan.forward.slice(0, position)].map(unit => {
+              const source = sources.get(unit.file);
+              if (!source || sqlSha256(source) !== unit.sha256) throw checkoutPredecessorRefusal(unit.file);
+              return { path: unit.file, bytes: source };
+            });
+            assertExecutePredecessors(registry, [checkoutPredecessor.slot], issued, checkoutOwnerRoutines, true, prefix);
+          }
+        }
         const approved = blob(root, approval, REVIEWED_FORWARD_PATH);
         const registryAtApproval = approved && readForwardRegistry(approved, true);
         if (!registryAtApproval
@@ -3796,8 +3812,28 @@ function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earl
   return pin;
 }
 
+function checkoutRoutinePrivilege(tokens: PlatformSqlToken[], names: readonly string[]): boolean {
+  const targetsCheckout = (list: PlatformSqlToken[]) => {
+    const on = list.findIndex((_token, index) => nativeWord(list, index, "ON"));
+    if (on < 0) return false;
+    const kind = nativeIdentifier(list[on + 1]);
+    if (kind === "all" && ["functions", "routines"].includes(nativeIdentifier(list[on + 2]) ?? "")) {
+      return list.slice(on + 3).some(token => nativeIdentifier(token) === "public");
+    }
+    return ["function", "routine", "procedure"].includes(kind ?? "")
+      && list.slice(on + 2).some(token => names.includes(nativeIdentifier(token) ?? ""));
+  };
+  if (nativeWord(tokens, 0, "GRANT") || nativeWord(tokens, 0, "REVOKE")) return targetsCheckout(tokens);
+  if (!nativeWord(tokens, 0, "DO")) return false;
+  const body = tokens.find(token => token.kind === "string")?.value ?? "";
+  // Inspect the routine DDL/ACL discriminator in a migration DO block. This does
+  // not relax the existing admission rules for procedural SQL.
+  return /\b(?:grant|revoke)\b/iu.test(body)
+    && (names.some(name => body.toLowerCase().includes(name)) || /\bon\s+all\s+(?:functions|routines)\s+in\s+schema\s+"?public\b/iu.test(body));
+}
+
 function assertExecutePredecessors(registry: ReviewedForwardRegistry, earlierSlots: NativeStoreSlot[],
-  preceding: { path: string; bytes: Buffer }[], signatures: readonly string[], checkout = false): ForwardBinding[] {
+  preceding: { path: string; bytes: Buffer }[], signatures: readonly string[], checkout = false, legacyPrefix = preceding): ForwardBinding[] {
   const allowed = new Set<string>(signatures);
   const targets = signatures.map(signature => {
     const slot = earlierSlots.find(entry => entry.createdFunctions.some(fn => fn.signature === signature));
@@ -3811,19 +3847,34 @@ function assertExecutePredecessors(registry: ReviewedForwardRegistry, earlierSlo
   const files = [...new Set(targets.map(target => target.file))];
   const firstPath = files.map(file => file.path).sort()[0]!;
   const seen = new Set<string>();
-  for (const source of preceding) {
+  const introduction = preceding.findIndex(source => source.path === firstPath);
+  if (checkout && introduction === -1) throw checkoutPredecessorRefusal(firstPath);
+  for (const [position, source] of preceding.entries()) {
     const sql = source.bytes.toString("utf8"), lower = sql.toLowerCase();
-    const afterIntroduction = source.path >= firstPath;
+    const afterIntroduction = checkout ? position >= introduction : source.path >= firstPath;
     if (!afterIntroduction && !lower.includes('u&"') && !bareNames.some(name => lower.includes(name))) continue;
-    const drift = (reason: string) => new Error(`reviewed native store qualified price setup EXECUTE predecessor definition drifted: ${source.path}. ${reason}`);
+    const drift = (reason: string) => checkout ? checkoutPredecessorRefusal(source.path)
+      : new Error(`reviewed native store qualified price setup EXECUTE predecessor definition drifted: ${source.path}. ${reason}`);
+    const scan = <T>(parse: () => T): T => {
+      try { return scanNativeStoreSql(source.path, parse); }
+      catch (error) {
+        if (checkout) throw drift("Cannot completely tokenize the preceding file.");
+        throw error;
+      }
+    };
     if (!Buffer.from(sql, "utf8").equals(source.bytes) || source.bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) {
       throw drift("Cannot completely tokenize the preceding file.");
     }
-    for (const { statement, tokens, complete } of scanNativeStoreSql(source.path, () => cachedNativePrefixStatements(source.bytes))) {
+    for (const { statement, tokens, complete } of scan(() => cachedNativePrefixStatements(source.bytes))) {
       if (!complete) throw drift("Cannot completely tokenize the preceding file.");
       const word = (index: number, value: string) => nativeWord(tokens, index, value);
       const create = word(0, "CREATE"), alter = word(0, "ALTER"), drop = word(0, "DROP");
       const reassign = checkout && word(0, "REASSIGN") && word(1, "OWNED");
+      if (checkout && afterIntroduction && checkoutRoutinePrivilege(tokens, bareNames)) {
+        const introductionRevoke = source.path === firstPath && signatures.some(signature =>
+          statement.replace(/[ \t\n]+/gu, "").toLowerCase() === `revokeallonfunction${signature}frompublic;`);
+        if (!introductionRevoke) throw drift("Only the issued introduction may change the checkout routine privileges.");
+      }
       if (!create && !alter && !drop && !reassign) continue;
       const hasWord = (value: string) => tokens.some((_, index) => word(index, value));
       const escapedIdentifier = tokens.some((token, index) => token.kind === "quoted" && word(index - 2, "U")
@@ -3840,7 +3891,7 @@ function assertExecutePredecessors(registry: ReviewedForwardRegistry, earlierSlo
       if (escapedIdentifier) throw drift("An escaped identifier prevents checking routine DDL.");
       if (!tokens.some(token => bareNames.some(name => nativeIdentifier(token) === name))) continue;
       const definition = create && kind === 1
-        && scanNativeStoreSql(source.path, () => nativeStoreFunctionDefinitionFromTokens(statement, tokens, complete, allowed, names, true, source.path));
+        && scan(() => nativeStoreFunctionDefinitionFromTokens(statement, tokens, complete, allowed, names, true, source.path));
       const target = definition && targets.find(target => target.signature === definition[0]);
       if (!definition || !target || seen.has(target.signature) || target.file.path !== source.path || target.definition.afterSha256 !== definition[1]) {
         throw drift("Only the pinned CREATE of each target is allowed before the grant.");
@@ -3862,7 +3913,7 @@ function assertExecutePredecessors(registry: ReviewedForwardRegistry, earlierSlo
   if (seen.size !== targets.length) throw new Error("reviewed native store qualified price setup EXECUTE is missing a pinned predecessor CREATE");
   for (const file of files) {
     const source = preceding.find(source => source.path === file.path)!;
-    assertNativeStoreForward(registry, file.path, source.bytes, preceding.filter(source => source.path < file.path));
+    assertNativeStoreForward(registry, file.path, source.bytes, legacyPrefix.filter(source => source.path < file.path));
   }
   return files;
 }
@@ -3918,7 +3969,10 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   }
   for (const pin of [...registry.batchedForwards ?? [], ...registry.portableReplacementForwards ?? [], ...registry.portableCreationForwards ?? [], ...registry.channelIngestForwards ?? []].filter(pin => pin.path.startsWith("db/") && pin.path < path)) {
     const source = preceding.find(source => source.path === pin.path);
-    if (!source || sqlSha256(source.bytes) !== pin.sha256) throw new Error("reviewed native store prior issued file drifted");
+    if (!source || sqlSha256(source.bytes) !== pin.sha256) {
+      if (checkout) throw checkoutPredecessorRefusal(pin.path);
+      throw new Error("reviewed native store prior issued file drifted");
+    }
   }
   const grandfatheredSecurityDefiner = isGrandfatheredSecurityDefinerForward(path, bytes);
   const pins = (slot.createdTriggers ?? []).filter((entry): entry is NativeDeferredTrigger => entry.deferred === true);
@@ -3935,7 +3989,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       const [predecessor, ...other] = assertExecutePredecessors(registry, earlierSlots, preceding, checkoutOwnerRoutines, true);
       if (!predecessor || other.length || predecessor.path !== checkoutPredecessor.path) throw checkoutPredecessorRefusal(checkoutPredecessor.path);
       return { slot, ordinaryProof, checkoutPredecessor: { slot: checkoutPredecessor, pin: predecessor } };
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("checkout_owner_predecessor_unverified:")) throw error;
       throw checkoutPredecessorRefusal(checkoutPredecessor.path);
     }
   }
