@@ -10,6 +10,7 @@ import type { OrderDraftSummary } from "../../contracts/order.js";
 import { CommerceOrderDraftConflictError, CommerceOrderDraftInvalidResponseError, CommerceOrderDraftPersistenceError } from "../../errors.js";
 import { CommerceOrderDraftPriceChangedError, CommerceOrderDraftUnsupportedMoneyError } from "../../orderDraftErrors.js";
 import { catalogAdmissionRefusal } from "../catalogAdmissionRefusal.js";
+import { catalogAdmissionRefusalMessage } from "../catalogAdmissionRefusalMessage.js";
 
 export interface NativeCheckoutQuery {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -61,8 +62,13 @@ export function createPostgresNativeCheckoutPersistence(
 ): {
   createOrderDraft(request: NativeCheckoutDraftRequest, options?: { clientId?: string | null }): Promise<NativeCheckoutDraftResponse>;
 } {
+  return nativeCheckoutPersistence(executor);
+}
+
+function nativeCheckoutPersistence(executor: NativeCheckoutQuery,
+  checkAcquisition?: (input: z.infer<typeof requestSchema>, clientId: string | null) => Promise<void>) {
   return {
-    async createOrderDraft(request, options) {
+    async createOrderDraft(request: NativeCheckoutDraftRequest, options?: { clientId?: string | null }): Promise<NativeCheckoutDraftResponse> {
       const input = requestSchema.parse(request);
       const clientId = clientIdSchema.parse(options?.clientId ?? null);
       const { quote } = input.quoteSnapshot;
@@ -88,14 +94,23 @@ export function createPostgresNativeCheckoutPersistence(
       };
       let response: unknown;
       try {
-        // A historical command must reach the SQL writer's fingerprint and
-        // ownership checks. Receipt existence never authorizes replay by itself.
-        const cadenceDays = quote.context?.cadenceDays;
-        if (typeof cadenceDays === "number" && cadenceDays > MAX_CADENCE_DAYS) {
-          const prior = await executor.query("SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1", [input.idempotencyKey]);
-          if (!prior.rows.length) throw new CommerceOrderDraftPersistenceError(
-            `Choose a subscription cadence from 1..${MAX_CADENCE_DAYS} days for a new order draft`,
-            { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: MAX_CADENCE_DAYS });
+        // The writer authenticates original receipts against the exact snapshots and owner.
+        const prior = await executor.query("SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1", [input.idempotencyKey]);
+        if (!prior.rows.length) {
+          const admission = await executor.query(`SELECT public.catalog_admission_requires_quote_authority($1::text[],
+            coalesce($2::jsonb#>>'{offerVersion,version}',$2::jsonb->>'offerVersion')) AS governed`,
+            [quote.lines.map(line => line.sku), JSON.stringify(quote.context ?? null)]);
+          if (admission.rows[0]?.governed === true) {
+            const reason = "catalog_admission_quote_authority_required";
+            throw new CommerceOrderDraftPersistenceError(catalogAdmissionRefusalMessage(reason), { reason });
+          }
+          const cadenceDays = quote.context?.cadenceDays;
+          if (typeof cadenceDays === "number" && cadenceDays > MAX_CADENCE_DAYS) {
+            throw new CommerceOrderDraftPersistenceError(
+              `Choose a subscription cadence from 1..${MAX_CADENCE_DAYS} days for a new order draft`,
+              { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: MAX_CADENCE_DAYS });
+          }
+          await checkAcquisition?.(input, clientId);
         }
         // Serialize JSON explicitly: pg treats an unencoded JS array as a
         // PostgreSQL array, not JSON. No gateway or driver coercion is assumed.
@@ -104,9 +119,10 @@ export function createPostgresNativeCheckoutPersistence(
         [input.idempotencyKey, JSON.stringify(input.quoteSnapshot), JSON.stringify(draft), clientId]);
         response = result.rows[0]?.response;
       } catch (error) {
-        if (error instanceof CommerceOrderDraftPersistenceError) throw error;
+        if (error instanceof CommerceOrderDraftPersistenceError || error instanceof AcquisitionTermsError
+          || (error instanceof Error && error.message === "acquisition_terms_changed")) throw error;
         const reason = catalogAdmissionRefusal(error);
-        if (reason) throw new CommerceOrderDraftPersistenceError(reason, { reason });
+        if (reason) throw new CommerceOrderDraftPersistenceError(catalogAdmissionRefusalMessage(reason), { reason });
         const { code, message } = (error && typeof error === "object" ? error : {}) as { code?: string; message?: string };
         if (code === "23505" || code === "40001") {
           throw new CommerceOrderDraftConflictError(undefined, { code });
@@ -152,18 +168,9 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
         await db.query("BEGIN ISOLATION LEVEL READ COMMITTED");
         const key = commerceIdempotencyKeySchema.parse(request.idempotencyKey);
         await db.query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended($1::text, 0))", [key]);
-        const persistence = createPostgresNativeCheckoutPersistence(db);
-        // The existing writer owns replay, changed-input and ownership validation.
-        const replay = (await db.query("SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1", [key])).rows.length > 0;
-        const context = request.quoteSnapshot.quote.context as Record<string, unknown> | undefined;
-        const cadenceDays = context?.cadenceDays;
-        if (!replay && typeof cadenceDays === "number" && (!Number.isInteger(cadenceDays) || cadenceDays < 1 || cadenceDays > MAX_CADENCE_DAYS)) {
-          // Refuse before acquisition policy, eligibility or catalogue owners.
-          throw new CommerceOrderDraftPersistenceError(
-            `Choose a subscription cadence from 1..${MAX_CADENCE_DAYS} days for a new order draft`,
-            { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: MAX_CADENCE_DAYS });
-        }
-        if (!replay && context?.mode === "subscription") {
+        const persistence = nativeCheckoutPersistence(db, async (input, clientId) => {
+          const context = input.quoteSnapshot.quote.context;
+          if (context?.mode !== "subscription") return;
           const policy = options.financialPolicy;
           const read = async () => (await db.query("SELECT promotion_id,definition,active FROM public.commerce_promotion_definitions ORDER BY promotion_id")).rows;
           const scoped = (row: Record<string, unknown>) => {
@@ -176,12 +183,12 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
           const current = (await read()).filter(scoped);
           const changed = () => { throw new Error("acquisition_terms_changed"); };
           if (JSON.stringify(current.map(row => row.promotion_id)) !== JSON.stringify(before.map(row => row.promotion_id))) changed();
-          const { discounts } = request.quoteSnapshot.quote;
+          const { discounts } = input.quoteSnapshot.quote;
           const candidate = context.acquisitionTerms;
           const starter = context.starterPack as { delivery2?: { discountBps?: unknown } } | null | undefined;
           const hasGrant = discounts.some(discount => options.isAcquisitionDiscount(discount)
             || current.some(row => row.promotion_id === discount.promotionId));
-          const paid = await createPostgresQuoteCustomerEligibility(db).hasPaidSubscription(identity?.clientId ?? null);
+          const paid = await createPostgresQuoteCustomerEligibility(db).hasPaidSubscription(clientId);
           const configured = current.some(row => policy.facts(row.definition as PromotionRow).metadataPresent);
           if (!(candidate === undefined && (starter == null && !hasGrant && paid || !configured))) {
             const now = (await db.query("SELECT clock_timestamp()::text AS instant")).rows[0]!.instant;
@@ -203,7 +210,7 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
               if (starter != null && starter.delivery2?.discountBps !== selected.terms.delivery2DiscountBps) changed();
             } else if (candidate !== undefined || starter != null || hasGrant) changed();
           }
-        }
+        });
         const result = await persistence.createOrderDraft(request, identity);
         await db.query("COMMIT");
         return result;

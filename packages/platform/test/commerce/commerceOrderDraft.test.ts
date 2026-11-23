@@ -258,3 +258,15 @@ it("does not supersede again when the single retry conflicts", async () => {
   await expect(createCommerceOrderDraftRpcPort({ rpc }).createOrderDraft(orderDraftRequest())).rejects.toBeInstanceOf(CommerceOrderDraftConflictError);
   expect(rpc.mock.calls.map(([name]) => name)).toEqual([ORDER_DRAFT_RPC_NAME, ORDER_DRAFT_SUPERSEDE_RPC_NAME, ORDER_DRAFT_RPC_NAME]);
 });
+
+it("maps the closed admission reason before a conflicting SQLSTATE can supersede", async () => {
+  const reason = "catalog_admission_quote_authority_required";
+  const rpc = vi.fn(async (_name: string) => ({ data: null,
+    error: { code: "23505", message: reason, hint: "private fixture detail" } }));
+  await expect(createCommerceOrderDraftRpcPort({ rpc }).createOrderDraft(orderDraftRequest())).rejects.toMatchObject({
+    name: "CommerceOrderDraftConflictError",
+    message: "Governed checkout is unavailable for this selection. Use a supported offer or replay the original request.",
+    details: { reason, boundary: ORDER_DRAFT_RPC_NAME },
+  });
+  expect(rpc.mock.calls.map(([name]) => name)).toEqual([ORDER_DRAFT_RPC_NAME]);
+});

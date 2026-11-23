@@ -9,7 +9,8 @@ import { createPostgresPurchaseReservationPort } from '@openlup/platform/invento
 import { createPostgresBillingInvoiceStore } from '@openlup/platform/invoicing';
 import { lifecycleInstallation, lifecycleProfiles, call, lifecycleSubject, type LifecycleInstallation } from './subscriptionLifecycleClosureFixture.js';
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
-import { graph, insertGraph, installPublicationActors, transaction } from './catalogPublicationFixture.js';
+import { graph, insertGraph, installPublicationActors, projectOfferOnlyMembership, transaction } from './catalogPublicationFixture.js';
+import { proveRuntimeCheckout } from './catalogRuntimeCheckout.proof.js';
 
 const money=(amountMinor:number)=>({amountMinor,currency:'XXX'});
 function quote(sku:string,mode:'subscription'|'one_time'='subscription',unit=100){return{contractVersion:'commerce.v0' as const,quote:{
@@ -100,11 +101,27 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
    (SELECT count(*) FROM public.outbox_events) AS outbox`)).rows;
   const before=await effectCounts(),prepared=vi.fn();
   const admitted=service(f,{afterPrepare:prepared});
-  await expect(recreate(f,admitted)).rejects.toMatchObject({message:'catalog_admission_quote_authority_required',
+  await expect(recreate(f,admitted)).rejects.toMatchObject({
+   message:'Governed checkout is unavailable for this selection. Use a supported offer or replay the original request.',
    details:{reason:'catalog_admission_quote_authority_required'}});
   expect(admitted.quotePort.createQuote).toHaveBeenCalledTimes(1);
   expect(prepared).not.toHaveBeenCalled();
   expect(await effectCounts()).toEqual(before);
+ });
+ it('keeps an exact linked replay when a fresh direct link refuses the original offer',async()=>{
+  const f=await subject('one_time'), other=await subject('one_time',10,{sku:f.sku,skuId:f.skuId,client:f.client,stockSource:f.stockSource});
+  const command=(id:string)=>({idempotencyKey:`checkout-recovery-recreate:${id}`,sourceOrderId:id});
+  const linked={...command(f.id),replacementOrderId:await replacement(f)};
+  const candidate={...command(other.id),replacementOrderId:await replacement(other)};
+  await expect(prepare().prepareReplacement(linked)).resolves.toMatchObject({replayed:false});
+  await projectOfferOnlyMembership(env.owner,f.skuId,f.skuId,f.sku,'1');
+  const before=await sourceRows(other), draft=await read(candidate.replacementOrderId);
+  await expect(prepare().prepareReplacement(linked)).resolves.toMatchObject({replayed:true});
+  await expect(prepare().prepareReplacement({...linked,idempotencyKey:'unrelated-key'})).rejects.toMatchObject({reason:'unavailable'});
+  await expect(prepare().prepareReplacement(candidate)).rejects.toMatchObject({details:{reason:'catalog_admission_quote_authority_required'}});
+  expect(await sourceRows(other)).toEqual(before);
+  expect(await read(candidate.replacementOrderId)).toEqual(draft);
+  expect(await children(other.id)).toEqual([]);
  });
  it.each(['subscription','one_time'] as const)('starts one %s replacement under competition, replays through native owners and preserves the predecessor',async mode=>{
   const f=await subject(mode),before=await sourceRows(f),live=await lifecycleSubject(env.owner);
@@ -364,5 +381,8 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
   for(const role of ['anon','authenticated']){const db=await env.owner.connect();try{await db.query('BEGIN');await db.query(`SET LOCAL ROLE ${role}`);
    await expect(db.query('SELECT public.commerce_prepare_expired_checkout_recovery($1,$2,$3,1000,clock_timestamp())',[randomUUID(),randomUUID(),randomUUID()])).rejects.toMatchObject({code:'42501'});
   }finally{await db.query('ROLLBACK');db.release();}}
+ });
+ if (profile==='legacy') it('keeps the runtime checkout entry dark on the shared legacy owner',async()=>{
+  await proveRuntimeCheckout(env.owner,env.runtime,'postgres',[],false);
  });
 });

@@ -7,7 +7,7 @@ import { setTimeout } from 'node:timers/promises';
 import type { PostgresContactClientRegistrar } from '@openlup/platform/identity';
 import { createPostgresCheckoutRateLimit, createCheckoutAttemptBindings, admitCheckoutAttempt, type CheckoutRateLimit } from './checkout-attempts.ts';
 import { installedAcquisitionPredecessors, createInitialPurchaseActivation, createAcquisitionRenewalBinding, type AcquisitionPredecessors, type AcquisitionRenewalBinding } from './acquisition-predecessors.ts';
-import { createNativeQuoteService, quoteFailure } from './quote-composition.ts';
+import { createNativeQuoteService, governedCheckoutRefusal, quoteFailure } from './quote-composition.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
@@ -18,13 +18,13 @@ import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfil
 import { createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
 import { ACQUISITION_TERMS_CAPABILITY, type CreateQuoteResponse } from '@openlup/platform/pricing';
 import type { ApplicationBindings, ActionContext } from './bindings.ts';
-import { parseCart, isRecord } from '../shared/offer.ts';
+import { checkoutOfferContext, parseCart, isRecord } from '../shared/offer.ts';
 import { catalogAdmissionRefusal, generateCheckoutRecoveryToken } from '@openlup/platform/commerce/server';
 import { readCheckoutGuidance } from './checkout-recovery.ts';
 import type { PurchaseRecovery } from './checkout-recovery.ts';
 import { canonicalCatalogDraftJson } from '@openlup/platform/catalog';
 
-const refused = (code: string) => ({ ok: false as const, code });
+const refused = (code: string) => code === governedCheckoutRefusal.code ? governedCheckoutRefusal : { ok: false as const, code };
 const success = (value: unknown) => ({ ok: true as const, value });
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const uuid = (value: unknown): value is string => typeof value === 'string'
@@ -37,7 +37,6 @@ const present = (order: { id: string; status: string; total_amount_minor: number
   total: { amountMinor: Number(order.total_amount_minor), currency: order.currency_code } });
 
 const checkoutLane = 'starter-checkout';
-const admissionUnavailable = 'catalog_admission_quote_authority_required';
 const checkoutDigest = (document: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(document), 'utf8').digest('hex');
 function originalSubmit(payload: Record<string, unknown>, context: ActionContext, clientId: string, key: string, email: string) {
   const { quoteAcceptance, ...selection } = payload;
@@ -146,8 +145,6 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       || payload.configuration !== context.config.id || typeof payload.country !== 'string' || !/^[A-Z]{2}$/.test(payload.country)) return refused('starter_input_invalid');
     const offer = parseCart(context.config.id, payload.cart);
     if (!offer.ok) return refused(offer.issues[0]!.code);
-    if (offer.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) return refused('acquisition_terms_capability_required');
-    if (payload.termsAccepted !== true) return refused('starter_terms_required');
     if (!isConfiguredLocale(payload.locale, context.config.market)) return refused('starter_input_invalid');
     const email = context.actor.customerRef
       ? await checkoutHost.readClientEmail({ clientId: context.actor.customerRef, principalId: context.actor.principalRef! })
@@ -163,20 +160,30 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
         ? 'starter_attempt_limited' : 'starter_command_conflict');
     }
     const prior = priorOrder?.snapshot;
+    const offerContext = checkoutOfferContext(offer.cart.mode);
     let observed;
     try {
       if (priorOrder) {
         // Historical drafts carry the original starter request binding and the
         // native fingerprint. A stamped draft requires its exact submit digest.
         if (!prior) return refused('starter_command_conflict');
-        if (priorOrder.submit === null) observed = await boundQuotes.quote(payload, context, prior);
+        if (priorOrder.submit === null) {
+          if (payload.termsAccepted !== true || (offer.cart.mode === 'subscription'
+            && payload.acquisitionCapability !== undefined && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY)) {
+            return refused('starter_command_conflict');
+          }
+          observed = await boundQuotes.quote(payload, context, prior);
+        }
         const { submitDigest } = originalSubmit(payload, context, priorOrder.client_id, key, email);
         await draftSession.query('SELECT public.catalog_admission_replay_order_draft($1,$2,$3,$4)',
           [key, priorOrder.client_id, checkoutLane, priorOrder.submit === null ? priorOrder.fingerprint : submitDigest]);
       } else {
-        const { rows } = await draftSession.query('SELECT public.catalog_admission_requires_quote_authority($1,$2) AS governed',
-          [offer.cart.lines.map(line => line.sku), context.config.id]);
-        if (rows[0]?.governed) return refused(admissionUnavailable);
+        const { rows } = await draftSession.query(`SELECT public.catalog_admission_requires_quote_authority($1::text[],
+          coalesce($2::jsonb#>>'{offerVersion,version}',$2::jsonb->>'offerVersion')) AS governed`,
+          [offer.cart.lines.map(line => line.sku), JSON.stringify(offerContext)]);
+        if (rows[0]?.governed) return governedCheckoutRefusal;
+        if (offer.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) return refused('acquisition_terms_capability_required');
+        if (payload.termsAccepted !== true) return refused('starter_terms_required');
       }
       // The intent is opened after destination, stock hold and provisional activation.
       // Only a completed checkout can bypass resuming those installation-bound steps.
@@ -184,7 +191,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
         if (!['pending_payment','paid'].includes(priorOrder.status) || !await isInitialCheckoutOrder(draftSession,priorOrder.id)) return refused('starter_checkout_not_payable');
         return { ...success(present(priorOrder)),replayed: true };
       }
-      observed ??= await boundQuotes.quote(payload, context, prior);
+      observed ??= await boundQuotes.quote(payload, context, prior, undefined, offerContext);
       if (!prior && payload.termsRevision !== context.config.legal.revision) return refused('starter_terms_required');
       if (!prior && payload.country !== context.config.market.country) return refused('starter_input_invalid');
       if (!prior) boundQuotes.verify(observed, payload);

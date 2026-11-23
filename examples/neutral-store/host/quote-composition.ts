@@ -15,7 +15,7 @@ import { verifyProductDocument, type MixedProductRead } from './editor-catalogue
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import { createQuoteShipping } from '../owned/quote-shipping.ts';
 import { isQuoteRefusalCode } from '../owned/quote-copy.ts';
-import { isRecord, parseCart, validateCart, type OfferQuote } from '../shared/offer.ts';
+import { checkoutOfferContext, isRecord, parseCart, validateCart, type OfferQuote } from '../shared/offer.ts';
 import type { ActionContext } from './bindings.ts';
 import type { AcquisitionPredecessors } from './acquisition-predecessors.ts';
 
@@ -26,6 +26,10 @@ export function quoteDocumentVerifier(schemaId: string) {
 
 interface Request extends AcquisitionQuoteRequest { checkout: Record<string, unknown>; pricingPolicy: typeof pricingPolicy; pricePolicyBasis?: unknown; renewalPolicy?: unknown }
 export const pricingPolicy = { offerPolicyVersion: 'commerce.offer-policy.v2', promotionEngineVersion: 'promotion-engine.v2' } as const;
+export const governedCheckoutRefusal = {
+  ok: false, code: 'catalog_admission_quote_authority_required',
+  message: 'Governed checkout is unavailable for this selection. Use a supported offer or replay the original request.',
+} as const;
 const acceptance = createPromotionQuoteAcceptance<Request>({ projectRequest: request => request });
 const digest = (value: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(value)).digest('hex');
 // Preserve existing technical refusals without accepting arbitrary prefixed messages.
@@ -44,13 +48,11 @@ export function quoteFailure(error: unknown): string {
 }
 
 export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: AcquisitionPredecessors, keyring?: PromotionAcceptanceKeyring) {
-  async function quote(payload: Record<string, unknown>, context: ActionContext, replay?: CreateQuoteResponse, atTime = new Date().toISOString()) {
+  async function quote(payload: Record<string, unknown>, context: ActionContext, replay?: CreateQuoteResponse, atTime = new Date().toISOString(),
+    offerContext?: ReturnType<typeof checkoutOfferContext>) {
     const config = context.config;
     const selected = parseCart(config.id, payload.cart);
     if (!selected.ok) throw new Error(selected.issues[0]!.code);
-    if (selected.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) {
-      throw new AcquisitionTermsError('acquisition_terms_capability_required');
-    }
     if (payload.promoCodes !== undefined && (!Array.isArray(payload.promoCodes) || payload.promoCodes.length)) throw new Error('starter_promotion_codes_unsupported');
     const contactEmail = context.actor.customerRef
       ? (await db.query('SELECT email FROM public.clients WHERE id=$1 AND principal_id=$2', [context.actor.customerRef,context.actor.principalRef])).rows[0]?.email
@@ -69,6 +71,9 @@ export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: 
       return { request, snapshot: replay, token: null, terms: (replay.quote.context as { acquisitionTerms?: ResolvedAcquisitionTerms }).acquisitionTerms,
         projection: projectQuote(replay, config.quote.acquisition.minimumProductPayableMinor) };
     }
+    if (selected.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) {
+      throw new AcquisitionTermsError('acquisition_terms_capability_required');
+    }
     const admitted = validateCart(config,payload.cart);
     if (!admitted.ok) throw new Error(admitted.issues[0]!.code);
     const eligibility = selected.cart.mode === 'subscription' && email !== null
@@ -85,12 +90,13 @@ export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: 
       promoDataPort: createPostgresCommercePromoDataPort(db) });
     const taxProfile = { included: true as const, country: config.market.country, ...config.purchase.tax };
     const port = createDbBackedCommerceQuotePort<Request, import('@openlup/platform/pricing').CommerceQuoteCatalogItem, Record<string, never>,
-      { mode: Request['mode']; cadenceDays: number | null; promoCodes: string[]; starterRequest: string; acquisitionCapability?: typeof ACQUISITION_TERMS_CAPABILITY; starterRenewalTerms?: RenewalRetainedTerms }>({
+      ReturnType<typeof checkoutOfferContext> & { mode: Request['mode']; cadenceDays: number | null; promoCodes: string[]; starterRequest: string; acquisitionCapability?: typeof ACQUISITION_TERMS_CAPABILITY; starterRenewalTerms?: RenewalRetainedTerms }>({
       quoteCatalogReadPort: createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: quoteDocumentVerifier(config.quote.document.schemaId) }),
       isStrictD1Quote: true, commercePriceAuthorityPort: createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(db)),
       taxProfile, supportedTaxProfiles: [taxProfile], regionCode: config.market.country, currency: config.market.currency,
       now: () => atTime, hasPromotionCodePort: false, lineContext: () => ({}),
-      quoteContext: input => () => ({ mode: input.mode, cadenceDays: input.cadenceDays ?? null, promoCodes: input.promoCodes, starterRequest: requestIdentity,
+      quoteContext: input => () => ({ ...(offerContext ?? checkoutOfferContext(input.mode)),
+        mode: input.mode, cadenceDays: input.cadenceDays ?? null, promoCodes: input.promoCodes, starterRequest: requestIdentity,
         ...(input.acquisitionCapability ? { acquisitionCapability: input.acquisitionCapability } : {}) }),
       ...automatic, ...codes, ...shipping,
     });
