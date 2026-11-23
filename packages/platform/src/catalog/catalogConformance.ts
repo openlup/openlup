@@ -6,10 +6,17 @@ const rule = (text: string, fix: string, anchor: string, severity: CatalogConfor
   Object.freeze({ severity, rule: text, fix, recipe: recipe(anchor) });
 /** @experimental */
 export const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>> = Object.freeze({
-  advisory_net_content_not_publishable: rule("Publication accepts net content only as a whole number of grams.", "Add `openlup:g` to `netContentUnits` and author net content as the net mass in grams. Declare the labelled volume or count as a quantity variant option with `catalogVariantOptions`.", "publish-net-content-in-grams", "warning"),
+  advisory_net_content_not_publishable: rule("Publication accepts net content only as a whole number of grams.",
+    'Declare `{code: "openlup:g", dimension: "mass", integral: false, factor: {canonicalUnit: "openlup:g", unscaled: "1", scale: 0}}` in `units` and list `openlup:g` in `netContentUnits`. '
+    + 'Set `skus[].netContent` to whole grams with `dimension: "mass"`, `unit: "openlup:g"`, `scale: 0` and a positive integer string in `unscaled`. '
+    + 'For a labelled volume or count, add a quantity dimension with its allowed `units` and omit the `net_content` role. Select the dimension key in `product.dimensions` and set `skus[].options[key]` to `{kind: "quantity", value: {dimension, unit, unscaled, scale}}`. '
+    + 'For v2 and v3 fixtures, declare an attribute with `scope: "variant"` and `valueType: {kind: "quantity", dimension, units}`. Bind the dimension key to that attribute with `axes: [{key, attributeKey}]`.',
+    "publish-net-content-in-grams", "warning"),
   advisory_filter_flags_unused: rule("No listing or search reader consumes these flags in this version.", "Keep the flags for a later version or set them to false.", "review-filter-and-facet-flags", "warning"),
   advisory_unit_identifier_missing: rule("Prepare refuses a SKU without a valid unit trade identifier.", "Add a valid unit GTIN to the SKU.", "add-a-unit-gtin", "warning"),
-  advisory_draft_version_not_publishable: rule("Only schema version 3 drafts can be published.", "Author publishable fixtures as schema version 3.", "use-schema-version-3-for-publication", "warning"),
+  advisory_draft_version_not_publishable: rule("Publication requires a newer draft schema than versions 1 and 2.",
+    "Author offline pack fixtures as schema version 3, the newest draft schema this checker evaluates. Use the schema required by your publication workflow for saved drafts.",
+    "use-schema-version-3-for-offline-fixtures", "warning"),
   advisory_fixtures_skipped_definition_invalid: rule("Fixtures of an invalid type are not evaluated.", "Fix the definition findings first.", "rerun-fixtures-after-definition-repair", "warning"),
   attribute_projection_text_too_large: rule("Every projected text slot fits the unconditional composite B-tree index.", "Keep the UTF-8 text slot within 2048 bytes, including the full localized JSON map; facet/filter flags do not bypass this limit.", "add-attribute"),
   attribute_storage_too_large: rule("Each attribute object fits 1 MiB of PostgreSQL-rendered JSONB text.", "Reduce this product or SKU object's rendered UTF-8 size, including separator spaces.", "add-attribute"),

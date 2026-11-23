@@ -53,6 +53,35 @@ describe("catalogue conformance findings", () => {
     }));
   });
 
+  it("gram_recipe_removes_the_net_content_warning", async () => {
+    const subject = JSON.parse(fixture("volume-net-content"));
+    const { pack: { types: [type] }, drafts: [draft] } = subject.packs[0];
+    const before = await checkSubject(subject);
+    expect(before.findings.find(({ code }) => code === "advisory_net_content_not_publishable")?.fix)
+      .toContain('in `units` and list `openlup:g` in `netContentUnits`');
+    type.units.push({ code: "openlup:g", dimension: "mass", integral: false,
+      factor: { canonicalUnit: "openlup:g", unscaled: "1", scale: 0 } });
+    type.netContentUnits.push("openlup:g");
+    draft.skus[0].netContent = { dimension: "mass", unit: "openlup:g", unscaled: "110", scale: 0 };
+    const volume = { kind: "quantity", dimension: "volume", units: ["sample:ml"] };
+    type.dimensions.push({ key: "volume", ...volume });
+    draft.product.dimensions.push("volume");
+    draft.skus[0].options.volume = {
+      kind: "quantity", value: { dimension: "volume", unit: "sample:ml", unscaled: "100", scale: 0 },
+    };
+    const verify = async () => {
+      const report = await checkSubject(subject);
+      expect(report).toMatchObject({ state: "satisfied", exitCode: 0 });
+      expect(report.findings.map(({ code }) => code)).not.toContain("advisory_net_content_not_publishable");
+    };
+    await verify();
+    draft.schemaVersion = 2;
+    type.attributes.push({ key: "volume", scope: "variant", valueType: volume, required: false,
+      cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 1, labels: {} });
+    type.axes = [{ key: "volume", attributeKey: "volume" }];
+    await verify();
+  });
+
   it("six_injected_errors_reported_in_one_pass", async () => {
     const { packs: [outer, items] } = JSON.parse(fixture("six-errors"));
     const packs = Array.from({ length: 11 }, () => ({ pack: { ...pack(), types: [] } }));
@@ -69,8 +98,37 @@ describe("catalogue conformance findings", () => {
       [`${at}/pack/types/0/taxClass`, "definition_unknown_tax_class"],
       [`${at}/pack/types/1/promotions`, "definition_unknown_field"],
     ]);
+    const path = `${at}/pack/types/0`;
+    const value = '{"dimensions":[],"key":"items:invalid","netContentUnits":["openlup:g"],"subscriptionProfileRef":{"key":"items:repeat","version":1},"taxClass":"missing","units":';
     expect(report.findings.filter(finding => finding.code === "advisory_fixtures_skipped_definition_invalid")).toMatchObject([
-      { path: `${at}/pack/types/0`, severity: "warning", observed: `${at}/pack/types/0 has definition errors` },
+      { path, severity: "warning", observed: `${path} = ${value}`, cause: "Fixtures of an invalid type are not evaluated." },
+    ]);
+  });
+
+  it("keeps_trusted_content_findings_for_a_valid_sibling", async () => {
+    const { packs: [{ pack, drafts: [draft] }] } = JSON.parse(fixture("volume-net-content"));
+    const rules = Buffer.from(artifact + '\nmodule.exports.validateContent = () => [{ code: "title_required", path: "title" }];');
+    const bound = withCatalogPublicationRules(pack as CatalogPackInput, () => rules);
+    const invalid = { ...bound.types[0], key: "sample:invalid", taxClass: "missing", validateContent: vi.fn(() => []) };
+    const source = { ...bound, types: [invalid, bound.types[0]] };
+    draft.product.sharedContent = { title: "" };
+    const report = await project({ packs: [{ pack: source, drafts: [draft] }], requiredChecks: ["draft-content"] });
+    expect(report).toMatchObject({ state: "violated", exitCode: 1 });
+    expect(errors(report).map(({ code, path, observed }) => [code, path, observed])).toEqual([
+      ["title_required", "/packs/0/drafts/0/product/sharedContent/title", '/packs/0/drafts/0/product/sharedContent/title = ""'],
+      ["definition_unknown_tax_class", "/packs/0/pack/types/0/taxClass", '/packs/0/pack/types/0/taxClass = "missing"'],
+    ]);
+    expect(invalid.validateContent).not.toHaveBeenCalled();
+  });
+
+  it("trusted_observed_values_redact_host_paths", async () => {
+    const paths = ["/tmp/synthetic/source.mjs", "file:///tmp/synthetic/source.mjs", "C:\\synthetic\\source.mjs", "\\\\host\\share\\source.mjs"];
+    const report = await project({ packs: [{ pack: { ...pack(), direct: paths[0], nested: paths.slice(1) } }] });
+    expect(report.exitCode).toBe(1);
+    expect(paths.some(path => JSON.stringify(report).includes(JSON.stringify(path).slice(1, -1)))).toBe(false);
+    expect(errors(report).map(({ observed }) => observed)).toEqual([
+      '/packs/0/pack/direct = "<host path>"',
+      '/packs/0/pack/nested = ["<host path>","<host path>","<host path>"]',
     ]);
   });
 
@@ -84,12 +142,16 @@ describe("catalogue conformance findings", () => {
   it("advisory_only_report_is_satisfied", async () => {
     const report = await runCatalogExtensionConformance(fixture("volume-net-content"));
     expect(report).toMatchObject({ state: "satisfied", exitCode: 0 });
-    expect(report.findings.map(({ code, observed }) => [code, observed])).toEqual([
-      ["advisory_draft_version_not_publishable", "/packs/0/drafts/0/schemaVersion = 1"],
-      ["advisory_unit_identifier_missing", "/packs/0/drafts/0/skus/0/identifiers is absent"],
-      ["advisory_filter_flags_unused", "/packs/0/pack/types/0/attributes/0/filterable = true"],
-      ["advisory_net_content_not_publishable", '/packs/0/pack/types/0/netContentUnits = ["sample:ml"]'],
+    expect(report.findings.map(({ code, path, observed }) => [code, path, observed])).toEqual([
+      ["advisory_draft_version_not_publishable", "/packs/0/drafts/0/schemaVersion", "/packs/0/drafts/0/schemaVersion = 1"],
+      ["advisory_unit_identifier_missing", "/packs/0/drafts/0/skus/0/identifiers", "/packs/0/drafts/0/skus/0/identifiers is absent"],
+      ["advisory_filter_flags_unused", "/packs/0/pack/types/0/attributes/0/filterable", "/packs/0/pack/types/0/attributes/0/filterable = true"],
+      ["advisory_net_content_not_publishable", "/packs/0/pack/types/0/netContentUnits", '/packs/0/pack/types/0/netContentUnits = ["sample:ml"]'],
     ]);
+    expect(report.findings[0]).toMatchObject({
+      cause: "Publication requires a newer draft schema than versions 1 and 2.",
+      fix: "Author offline pack fixtures as schema version 3, the newest draft schema this checker evaluates. Use the schema required by your publication workflow for saved drafts.",
+    });
     for (const finding of report.findings) {
       expect(finding.severity).toBe("warning");
       expect(Reflect.ownKeys(finding).sort()).toEqual([
@@ -543,27 +605,21 @@ describe("offline catalogue conformance", () => {
       expect(prepared).toMatchObject({ prepared: true, rows: [expect.objectContaining({ canonical_unit: "openlup:g", canonical_value: "1000" })] });
     }
   });
-  it.each([
-    ["/same", "~1same"],
-    ["/~1same", "~1~01same"],
-    ["/a.b~1", "~1a.b~01"],
-    ["/same.part~end", "~1same.part~0end"],
-  ])("escapes the finding pointer for duplicate SKU ID %s", async (skuId, escaped) => {
+  it.each(["row/same", "row/~1same", "row/a.b~1", "row/same.part~end"])("reports the offending row for duplicate SKU ID %s", async skuId => {
     const p = pack(), type = { key: p.types[0].key, version: 1 };
     const input = { axes: [], typed: false, retained: [], incoming: [
       { skuId, state: "draft" }, { skuId, state: "withdrawn" },
     ] };
     const subject = { packs: [{ pack: p, combinations: [{ type, input }] }] };
     const text = JSON.stringify(subject), report = await runCatalogExtensionConformance(text);
-    const prefix = "/packs/0/combinations/0/input/";
+    const path = "/packs/0/combinations/0/input/incoming/1/skuId";
     expect(report.exitCode).toBe(1);
     expect(errors(report)).toEqual([expect.objectContaining({
       code: "duplicate_sku_id",
-      path: prefix + escaped,
+      path,
+      observed: `${path} = ${JSON.stringify(skuId)}`,
       fix: "Remove the repeated SKU entry while preserving authoritative identity.",
     })]);
-    const token = report.findings[0].path.split("/").at(-1);
-    expect(token?.replaceAll("~1", "/").replaceAll("~0", "~")).toBe(skuId);
   });
 
   it("conformance_reuses_row_validators S4 combinations", async () => {
@@ -591,11 +647,15 @@ describe("offline catalogue conformance", () => {
       ["invalid capacity", { ...base, capacity: 0 }],
       ["payload", { ...base, incoming: Array(10001).fill(row) }],
     ] as const;
+    const skuPaths: Record<string, string> = {
+      "retained duplicate": "retained/1/skuId", "identity change": "incoming/0/skuId",
+      "duplicate SKU": "incoming/1/skuId", "duplicate equivalent option": "incoming/1/skuId",
+    };
     for (const [name, input] of cases) {
       let expected: { code: string; path: string }[] = [];
       try { const retained = input.retained.map(row => ({ ...row, identity: canonicalizeCatalogCombinationV2({ definition: p.types[0], axes: input.axes, options: row.optionValues }) }));
         validateCatalogCombinationChangesV2({ ...input, definition: p.types[0], retained }); }
-      catch (error) { if (!(error instanceof CatalogCombinationError)) throw error; expected = [{ code: error.code, path: `/packs/0/combinations/0/input/${error.path.replaceAll(".", "/")}` }]; }
+      catch (error) { if (!(error instanceof CatalogCombinationError)) throw error; expected = [{ code: error.code, path: `/packs/0/combinations/0/input/${skuPaths[name] ?? error.path.replaceAll(".", "/")}` }]; }
       const report = await checkSubject({ packs: [{ pack: p, combinations: [{ type, input }] }], requiredChecks: ["variant-combinations"] });
       expect(errors(report).map(({ code, path }) => ({ code, path })), name).toEqual(expected);
       expect(report.exitCode, name).toBe(expected.length ? 1 : 0);

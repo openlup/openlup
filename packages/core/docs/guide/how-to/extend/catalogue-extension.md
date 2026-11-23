@@ -35,7 +35,8 @@ means required evidence is unavailable, 64 means invalid command or inert JSON
 syntax, and 74 means a load, I/O, integrity or unexpected validator failure.
 Violations take precedence over unavailable evidence. JSON stdout is one
 `formatVersion: 1` object. Findings retain owner codes, JSON pointers, cause, fix,
-recipe, recheck and evidence, ordered by path, code and fixture.
+recipe, recheck and evidence. Findings sort by numeric pack index, then by
+lexicographic path, then by code.
 An integrity failure such as `combination_identity_integrity_failed` exits 74.
 The CLI withholds raw errors when loading the module or running its validators.
 
@@ -245,9 +246,18 @@ Native cadence guards still decide whether a cadence can be written.
 ## Publish net content in grams
 
 Publication accepts net content only as a whole number of grams.
-Add `openlup:g` to `netContentUnits` and author net content as the net mass in
-grams. Declare the labelled volume or count as a quantity variant option with
-`catalogVariantOptions`.
+Declare `{code: "openlup:g", dimension: "mass", integral: false, factor: {canonicalUnit: "openlup:g", unscaled: "1", scale: 0}}`
+in `units` and list `openlup:g` in `netContentUnits`.
+Set `skus[].netContent` to whole grams with `dimension: "mass"`,
+`unit: "openlup:g"`, `scale: 0` and a positive integer string in `unscaled`.
+
+For a labelled volume or count, add a quantity dimension with its allowed
+`units` and omit the `net_content` role. Select the dimension key in
+`product.dimensions` and set `skus[].options[key]` to
+`{kind: "quantity", value: {dimension, unit, unscaled, scale}}`.
+For v2 and v3 fixtures, declare an attribute with `scope: "variant"` and
+`valueType: {kind: "quantity", dimension, units}`. Bind the dimension key to that
+attribute with `axes: [{key, attributeKey}]`.
 
 ## Review filter and facet flags
 
@@ -259,10 +269,12 @@ Keep the flags for a later version or set them to false.
 Prepare refuses a SKU without a valid unit trade identifier.
 Add a valid unit GTIN to the SKU.
 
-## Use schema version 3 for publication
+## Use schema version 3 for offline fixtures
 
-Only schema version 3 drafts can be published.
-Author publishable fixtures as schema version 3.
+Publication requires a newer draft schema than versions 1 and 2.
+Author offline pack fixtures as schema version 3, the newest draft schema this
+checker evaluates. Use the schema required by your publication workflow for
+saved drafts.
 
 ## Rerun fixtures after definition repair
 

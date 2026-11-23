@@ -2134,7 +2134,7 @@ const cases = [
    const prepared = prepareCatalogAttributeProjection(await validateCatalogAttributes(definition,input),"7"); assert.equal(prepared.prepared,false);
    const attributes = {packs:[{pack,attributes:[{type,input,publicationRevision:"7"}]}]};
    const definitionWarnings = [
-     {code:"advisory_filter_flags_unused",path:"/packs/0/pack/types/0/attributes/0",severity:"warning"},
+     {code:"advisory_filter_flags_unused",path:"/packs/0/pack/types/0/attributes/0/filterable",severity:"warning"},
      netContentWarning,
    ];
    for (const report of [await runCatalogExtensionConformance(JSON.stringify(attributes)),invoke(write("attributes.json",attributes))]) {
@@ -2151,7 +2151,7 @@ const cases = [
    for (const report of [await runCatalogExtensionConformance(JSON.stringify(combinations)),invoke(write("combinations.json",combinations))]) {
      assert.equal(report.state,"violated"); assert.equal(report.exitCode,1);
      assert.deepEqual(report.findings.map(findingIdentity),[
-       {code:issue.code,path:"/packs/0/combinations/0/input/"+issue.path.replaceAll(".","/"),severity:"error"},
+       {code:issue.code,path:"/packs/0/combinations/0/input/incoming/1/skuId",severity:"error"},
        ...definitionWarnings,
      ]);
    }
