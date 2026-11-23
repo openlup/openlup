@@ -171,9 +171,10 @@ checkpoint and stores the following message in `platform_job_runs.error`.
 > order and record it manually
 
 Failed pages return HTTP 502 with the original diagnostic. A checkpoint-read
-failure makes no provider call. The next acquired polling tick starts at page 0.
-Repeated ledger read errors can delay the repeated-failure bound for a page, but no exception is ever skipped.
-The native lease fence refuses stale finishes, and for checkpoints written under the fence the next enabled polling tick that acquires the lease resumes from the last accepted terminal checkpoint, or page 0 if the selected checkpoint is missing or unusable.
+failure makes no provider call. A finish from a run that no longer holds the lease is not accepted.
+For checkpoints written under this rule, the next polling tick that acquires the lease resumes from the last accepted terminal checkpoint, or from page 0 when none is usable, so a page with a failed item is polled again rather than passed over.
+Whether an exception is still listed when its page is polled again depends on the provider.
+Repeated ledger read errors can delay the repeated-failure bound for a page.
 Sequential cursor translation belongs to the adapter.
 
 Pass the selected adapter's `orderIdentity` mapping to native intake when its
