@@ -1,6 +1,6 @@
-import { canonicalizeCatalogQuantity, convertCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
+import { CATALOG_QUANTITY_UNITS, canonicalizeCatalogQuantity, convertCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
 import {
-  CATALOG_CONFORMANCE_RULES, catalogProductTypeIssues, catalogProductTypeRefIssues,
+  CATALOG_CONFORMANCE_RULES, catalogProductTypeRefIssues,
   validateCatalogAttributes, prepareCatalogAttributeProjection, canonicalizeCatalogCombinationV2,
   validateCatalogCombinationChangesV2, CatalogCombinationError,
   catalogDraftPayloadSchema, catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema,
@@ -11,6 +11,7 @@ import { prepareCatalogPackManifest } from "../catalogPackManifest.js";
 import { inspectCatalogPack } from "../productTypeIssues.js";
 import { validateDraftFacts } from "../draftFacts.js";
 import { validateDraftAttributes } from "../attributeValues.js";
+import { isValidGtin } from "../foundationSchemas.js";
 import { combinationFindingPointer as pointer, skuIdPathErrors, validateDraftCombinations } from "../combinationOptions.js";
 import { verifyCatalogRulesAtInstall } from "../publicationRules.js";
 import { renderPublicationIssue, type Issue } from "../publicationError.js";
@@ -22,6 +23,41 @@ const object = (value: unknown): value is Record<string, unknown> => value !== n
 const closed = (value: unknown, keys: readonly string[]): boolean => object(value) && Object.keys(value).every(key => keys.includes(key));
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 const referenceKey = (namespace: string, id: string): string => JSON.stringify([namespace, id]);
+
+function atPointer(subject: unknown, path: string): unknown {
+  return path ? path.slice(1).split("/").reduce<unknown>((node, token) => {
+    const key = token.replaceAll("~1", "/").replaceAll("~0", "~");
+    return node !== null && typeof node === "object" && Object.hasOwn(node, key) ? (node as Record<string, unknown>)[key] : undefined;
+  }, subject) : subject;
+}
+
+function observedAt(subject: unknown, path: string): string {
+  const value = atPointer(subject, path), label = path || "/";
+  if (value === undefined) return `${label} is absent`;
+  // Serialize only the prefix so deeply nested invalid input can still produce a finding.
+  let remaining = 160, preview = "";
+  const json = (input: unknown): string => JSON.stringify(typeof input === "string" ? input.slice(0, remaining * 2) : input);
+  function append(text: string): void {
+    const points = Array.from(text).slice(0, remaining);
+    preview += points.join("");
+    remaining -= points.length;
+  }
+  function write(value: unknown): void {
+    if (value === null || typeof value !== "object") { append(json(value)); return; }
+    const array = Array.isArray(value), keys = Object.keys(value);
+    if (!array) keys.sort(compare);
+    append(array ? "[" : "{");
+    for (const [index, key] of keys.entries()) {
+      if (!remaining) break;
+      if (index) append(",");
+      if (!array) append(`${json(key)}:`);
+      if (remaining) write((value as Record<string, unknown>)[key]);
+    }
+    append(array ? "]" : "}");
+  }
+  write(value);
+  return `${label} = ${preview}`;
+}
 
 type Validator = CatalogPackInput["types"][number]["validateContent"];
 
@@ -92,18 +128,25 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
 async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, Validator>): Promise<CatalogConformanceReport> {
   const findings: CatalogConformanceFinding[] = [];
   let unavailable = false, violated = false, recheck = command;
-  function add(issue: string | Issue | CatalogDefinitionIssue, path: string, fixture = "", requiredEvidence = false): void {
+  let parsed: unknown;
+  function add(issue: string | Issue | CatalogDefinitionIssue, path: string, fixture = "", requiredEvidence = false,
+    observed = observedAt(parsed, path)): void {
     const code = typeof issue === "string" ? issue : issue.code;
     const adopterIssue = typeof issue !== "string" && "kind" in issue && issue.kind === "adopterRule" ? issue : undefined;
     const rule = !adopterIssue && Object.hasOwn(CATALOG_CONFORMANCE_RULES, code)
       ? CATALOG_CONFORMANCE_RULES[code as CatalogConformanceCode] : CATALOG_CONFORMANCE_RULES.draft_payload_invalid;
     const fix = adopterIssue ? renderPublicationIssue({ ...adopterIssue, path }).message
       : (typeof issue !== "string" && "fix" in issue ? issue.fix : undefined) ?? rule.fix;
-    if (requiredEvidence) unavailable = true; else violated = true;
-    findings.push({ code, severity: rule.severity, path, fixture, observed: `Owner check reported ${code}.`,
+    if (rule.severity === "error") {
+      if (requiredEvidence) unavailable = true; else violated = true;
+    }
+    findings.push({ code, severity: rule.severity, path, fixture, observed,
       cause: rule.rule, fix, recipe: rule.recipe, recheck,
       evidence: { declared: "JSON fixture observations", bound: validators ? "Offline owners and registered content validators" : "Offline owner validators only", checked: path,
         unknown: ["Installed and runtime state; see boundary"] } });
+  }
+  function advise(code: Extract<CatalogConformanceCode, `advisory_${string}`>, path: string, fixture = "", observed?: string): void {
+    add(code, path, fixture, false, observed);
   }
   // Only shared owner calls enter this boundary; parsing, checker logic and CLI I/O remain outside.
   async function owner<T>(path: string, work: () => T | Promise<T>, combinationPath: "dot" | "pointer" = "dot"): Promise<T | undefined> {
@@ -132,14 +175,14 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     return valid;
   }
   function finish(): CatalogConformanceReport {
-    findings.sort((a, b) => compare(a.path, b.path) || compare(a.code, b.code) || compare(a.fixture, b.fixture));
+    const packIndex = (path: string) => Number(/^\/packs\/(\d+)(?:\/|$)/u.exec(path)?.[1] ?? Number.MAX_SAFE_INTEGER);
+    findings.sort((a, b) => packIndex(a.path) - packIndex(b.path) || compare(a.path, b.path) || compare(a.code, b.code));
     const content = validators ? "Trusted source runs registered content validators."
       : "Application content validation requires trusted projection.";
     return { state: violated ? "violated" : unavailable ? "unavailable" : "satisfied", exitCode: violated ? 1 : unavailable ? 2 : 0,
       boundary: `${boundary} ${content}`, findings };
   }
   if (typeof jsonText !== "string") { add("conformance_subject_invalid", ""); return finish(); }
-  let parsed: unknown;
   try { parsed = JSON.parse(jsonText); }
   catch (error) {
     if (error instanceof SyntaxError) Object.defineProperty(error, Symbol.for("openlup.catalogue.json.parse"), { value: true });
@@ -154,34 +197,41 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
   const subject = parsed as unknown as CatalogConformanceSubject;
   if (typeof subject.recheck === "string") recheck = subject.recheck;
   let attributesAvailable = true, combinationsAvailable = true, packsWithContent = 0;
-  const allTypes: unknown[] = [], typePaths: string[] = [];
+  const typeIdentities = new Set<string>();
+  const ready: { index: number; pack: CatalogPackInput; registry: ReturnType<typeof createCatalogProductTypeRegistry>;
+    definitionInvalid: boolean; invalidTypes: Map<string, string> }[] = [];
   for (const [index, entry] of subject.packs.entries()) {
     const at = `/packs/${index}`;
-    let contentChecked = false;
     if (!closed(entry, ["pack", "drafts", "quantities", "attributes", "combinations", "refusals"])
       || [entry.drafts, entry.quantities, entry.attributes, entry.combinations, entry.refusals].some(value => value !== undefined && !Array.isArray(value))) {
       add("conformance_subject_invalid", at); attributesAvailable = combinationsAvailable = false; continue;
     }
-    const { drafts, quantities, attributes, combinations, refusals } = entry;
-    attributesAvailable &&= !!attributes?.length;
-    combinationsAvailable &&= !!combinations?.length;
+    attributesAvailable &&= !!entry.attributes?.length;
+    combinationsAvailable &&= !!entry.combinations?.length;
     // Only this internal callback enters owner definitions. JSON never supplies executable code.
-    let executableField = false;
+    const invalid = new Set<number>();
     const pack = object(entry.pack) && Array.isArray(entry.pack.types) ? { ...entry.pack, types: entry.pack.types.map((type, i) => {
       if (!object(type)) return type;
       if (Object.hasOwn(type, "validateContent")) {
-        add("definition_unknown_field", `${at}/pack/types/${i}/validateContent`); executableField = true;
+        add("definition_unknown_field", `${at}/pack/types/${i}/validateContent`);
+        invalid.add(i);
       }
       const callback = validators?.get(`${at}/pack/types/${i}/validateContent`);
-      return { ...type, validateContent: validators ? callback : () => [] };
+      return { ...type, validateContent: validators && !invalid.has(i) ? callback : () => [] };
     }) } as CatalogPackInput : entry.pack as CatalogPackInput;
-    if (executableField) continue;
     const inspected = await owner(`${at}/pack`, () => inspectCatalogPack(pack));
     if (!inspected) continue;
     const { issues, profiles } = inspected;
-    issues.forEach(issue => add(issue, `${at}/pack${issue.path}`));
-    if (issues.length) continue;
-    if (profiles !== undefined) {
+    let packInvalid = false;
+    for (const issue of issues) {
+      add(issue, `${at}/pack${issue.path}`);
+      const typeIndex = /^\/types\/(\d+)(?:\/|$)/u.exec(issue.path)?.[1];
+      if (typeIndex === undefined) packInvalid = true;
+      else invalid.add(Number(typeIndex));
+    }
+    if (packInvalid) continue;
+    const definitionInvalid = invalid.size > 0;
+    if (!definitionInvalid && profiles !== undefined) {
       const prepared = await owner(`${at}/pack`, () => prepareCatalogPackManifest(pack, profiles));
       if (!prepared) continue;
       if ("issue" in prepared) {
@@ -189,20 +239,63 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
         continue;
       }
     }
-    if (validators) verifyCatalogRulesAtInstall(pack);
-    pack.types.forEach((type, i) => { allTypes.push(type); typePaths.push(`${at}/pack/types/${i}`); });
-    const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(pack.types));
-    if (!registry) continue;
+    if (validators && !definitionInvalid) verifyCatalogRulesAtInstall(pack);
+    const invalidTypes = new Map<string, string>();
+    const types = pack.types.filter((type, i) => {
+      const path = `${at}/pack/types/${i}`;
+      if (!object(type) || typeof type.key !== "string" || typeof type.version !== "number") return false;
+      const identity = referenceKey(type.key, String(type.version));
+      if (!invalid.has(i) && typeIdentities.has(identity)) {
+        add("definition_duplicate_identity", `${path}/key`);
+        invalid.add(i);
+      }
+      if (invalid.has(i)) { invalidTypes.set(identity, path); return false; }
+      typeIdentities.add(identity);
+      if (!type.units.some(unit => type.netContentUnits.includes(unit.code) && unit.dimension === "mass"
+        && (unit.factor?.canonicalUnit === "openlup:g" || CATALOG_QUANTITY_UNITS.some(builtIn => builtIn.code === unit.code && builtIn.dimension === "mass"))))
+        advise("advisory_net_content_not_publishable", `${path}/netContentUnits`);
+      type.attributes?.forEach((attribute, j) => {
+        if (attribute.filterable || attribute.facetable) {
+          const at = `${path}/attributes/${j}`, flag = attribute.filterable ? "filterable" : "facetable";
+          advise("advisory_filter_flags_unused", at, "", observedAt(parsed, `${at}/${flag}`));
+        }
+      });
+      return true;
+    });
+    const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(types));
+    if (registry) ready.push({ index, pack, registry, definitionInvalid, invalidTypes });
+  }
+  for (const { index, pack, registry, definitionInvalid, invalidTypes } of ready) {
+    const at = `/packs/${index}`, { drafts, quantities, attributes, combinations, refusals } = subject.packs[index];
+    let contentChecked = false;
+    const skipped = new Set<string>();
+    function skipInvalidType(ref: unknown): boolean {
+      if (!object(ref) || typeof ref.key !== "string" || typeof ref.version !== "number") return false;
+      const path = invalidTypes.get(referenceKey(ref.key, String(ref.version)));
+      if (path === undefined) return false;
+      if (!skipped.has(path)) advise("advisory_fixtures_skipped_definition_invalid", path, "", `${path} has definition errors`);
+      skipped.add(path);
+      return true;
+    }
     for (const [i, draft] of (drafts ?? []).entries()) {
       const path = `${at}/drafts/${i}`, version = object(draft) ? draft.schemaVersion : undefined;
+      if (object(draft) && object(draft.product) && skipInvalidType(draft.product.type)) continue;
       const schema = version === 3 ? catalogDraftPayloadV3Schema : version === 2 ? catalogDraftPayloadV2Schema : catalogDraftPayloadSchema;
       const admitted = await owner(path, () => schema.safeParse(draft));
       if (!admitted) continue;
       if (!admitted.success) { admitted.error.issues.forEach(issue => add("draft_input_invalid", `${path}${pointer(issue.path)}`)); continue; }
       const payload = admitted.data;
+      if (payload.schemaVersion === 1 || payload.schemaVersion === 2)
+        advise("advisory_draft_version_not_publishable", `${path}/schemaVersion`);
+      payload.skus.forEach((sku, j) => {
+        if (!sku.identifiers?.some(identifier => identifier.scheme === "gs1:gtin"
+          && identifier.packagingLevel === "unit" && isValidGtin(identifier.value)))
+          advise("advisory_unit_identifier_missing", `${path}/skus/${j}/identifiers`);
+      });
       const definition = registry.resolve(payload.product.type);
       const validation = validateDraftFacts(payload, { resolve: () => definition && { ...definition, validateContent: content => {
-        if (!validators) {
+        // A pack with definition errors has not passed trusted binding verification.
+        if (!validators || definitionInvalid) {
           add("conformance_owner_unavailable", `${path}/product/sharedContent`, "", true);
           return [];
         }
@@ -228,6 +321,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     if (contentChecked) packsWithContent++;
     for (const [i, fixture] of (quantities ?? []).entries()) {
       const path = `${at}/quantities/${i}`;
+      if (object(fixture) && skipInvalidType(fixture.type)) continue;
       if (!closed(fixture, ["type", "value", "targetUnit"])) { add("conformance_subject_invalid", path); continue; }
       if (!quantityShape(fixture.value, `${path}/value`)) continue;
       if (fixture.targetUnit !== undefined && typeof fixture.targetUnit !== "string") { add("quantity_invalid", `${path}/targetUnit`); continue; }
@@ -246,6 +340,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     for (const field of ["attributes", "combinations"] as const) {
       for (const [i, fixture] of (field === "attributes" ? attributes ?? [] : combinations ?? []).entries()) {
         const path = `${at}/${field}/${i}`;
+        if (object(fixture) && skipInvalidType(fixture.type)) continue;
         if (!closed(fixture, field === "attributes" ? ["type", "input", "publicationRevision", "references"] : ["type", "input"])) {
           add("conformance_subject_invalid", path); continue;
         }
@@ -276,10 +371,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
           if (!prepared.prepared) prepared.issues.forEach(issue => {
             let requiredEvidence = false;
             if (issue.code === "attribute_reference_unresolved") {
-              const target = issue.path.split("/").slice(1).reduce<unknown>((node, key) => {
-                const ownKey = key.replaceAll("~1", "/").replaceAll("~0", "~");
-                return node !== null && typeof node === "object" && Object.hasOwn(node, ownKey) ? (node as Record<string, unknown>)[ownKey] : undefined;
-              }, value.input);
+              const target = atPointer(value.input, issue.path);
               const matches = object(target) && typeof target.namespace === "string" && typeof target.id === "string"
                 ? statuses.get(referenceKey(target.namespace, target.id)) ?? [] : [];
               requiredEvidence = matches.length !== 1 || !["dangling", "private"].includes(matches[0]);
@@ -311,6 +403,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
         }
       }
     }
+    if (definitionInvalid) continue;
     const witnessed = new Set<string>();
     for (const [i, fixture] of (refusals ?? []).entries()) {
       const path = `${at}/refusals/${i}`;
@@ -330,11 +423,5 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     if (!(check === "attribute-values" ? attributesAvailable : check === "variant-combinations" ? combinationsAvailable
       : check === "draft-content" && packsWithContent === subject.packs.length))
       add("conformance_owner_unavailable", `/requiredChecks/${index}`, "", true);
-  const typeIssues = await owner("/packs", () => catalogProductTypeIssues(allTypes));
-  typeIssues?.filter(issue => issue.code === "definition_duplicate_identity").forEach(issue => {
-    const [, index, ...rest] = issue.path.split("/");
-    const path = `${typePaths[Number(index)]}/${rest.join("/")}`;
-    if (!findings.some(finding => finding.code === issue.code && finding.path === path)) add(issue.code, path);
-  });
   return finish();
 }

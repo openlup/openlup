@@ -15,7 +15,7 @@ import { catalogPackIssues, catalogPackManifest, installCatalogDefinitions, cata
 import { artifact } from "./fixtures/publicationInput.js";
 import { catalogDraftV3ValidationPayload } from "../../src/catalog/draftV3Schemas.js";
 import { inspectCatalogPack } from "../../src/catalog/productTypeIssues.js";
-import type { CatalogRefusalFixture } from "../../src/catalog/testing/index.js";
+import type { CatalogConformanceReport, CatalogRefusalFixture } from "../../src/catalog/testing/index.js";
 import type { CatalogPackInput, CatalogProductTypeRef, AttributeDefinition, CatalogAttributeInput, CatalogAttributeReferenceResolution } from "../../src/catalog/index.js";
 
 function pack(): CatalogPackInput {
@@ -25,12 +25,86 @@ function pack(): CatalogPackInput {
   }] };
 }
 const checkSubject = (value: unknown) => runCatalogExtensionConformance(JSON.stringify(value));
+const errors = (report: CatalogConformanceReport) => report.findings.filter(finding => finding.severity === "error");
 function check(value: CatalogPackInput) { return checkSubject({ packs: [{ pack: value }] }); }
 const draft = () => ({ schemaVersion: 1 as const, product: { id: "00000000-0000-4000-8000-000000000001", type: { key: "stationery:item", version: 1 }, dimensions: [] }, skus: [] });
 const project = (source: unknown) => {
   const projection = projectCatalogExtensionConformance(source);
   return projection.check(projection.subject);
 };
+
+describe("catalogue conformance findings", () => {
+  const fixture = (name: string) => readFileSync(new URL(`../fixtures/catalogue-conformance/${name}.json`, import.meta.url), "utf8");
+
+  it("observed_reports_value_not_template", async () => {
+    const report = await checkSubject({ packs: [{ pack: { ...pack(), "extra~/field": { z: 1, a: 2 } } }] });
+    expect(report.findings[0]).toMatchObject({
+      path: "/packs/0/pack/extra~0~1field",
+      observed: '/packs/0/pack/extra~0~1field = {"a":2,"z":1}',
+    });
+  });
+
+  it("non_mass_net_content_warns_and_exits_zero", async () => {
+    const report = await runCatalogExtensionConformance(fixture("volume-net-content"));
+    const path = "/packs/0/pack/types/0/netContentUnits";
+    expect(report.exitCode).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      code: "advisory_net_content_not_publishable", severity: "warning", path, observed: `${path} = ["sample:ml"]`,
+    }));
+  });
+
+  it("six_injected_errors_reported_in_one_pass", async () => {
+    const { packs: [outer, items] } = JSON.parse(fixture("six-errors"));
+    const packs = Array.from({ length: 11 }, () => ({ pack: { ...pack(), types: [] } }));
+    packs[2] = outer;
+    packs[10] = items;
+    const report = await checkSubject({ packs });
+    const at = "/packs/10";
+    expect(report.exitCode).toBe(1);
+    expect(errors(report).map(({ path, code }) => [path, code])).toEqual([
+      ["/packs/2/pack/categories", "definition_unknown_field"],
+      [`${at}/drafts/0/product/dimensions/1`, "dimension_not_installed"],
+      [`${at}/drafts/0/skus/0/options/choice`, "option_value_invalid"],
+      [`${at}/pack/types/0/subscriptionProfileRef`, "definition_unknown_profile_ref"],
+      [`${at}/pack/types/0/taxClass`, "definition_unknown_tax_class"],
+      [`${at}/pack/types/1/promotions`, "definition_unknown_field"],
+    ]);
+    expect(report.findings.filter(finding => finding.code === "advisory_fixtures_skipped_definition_invalid")).toMatchObject([
+      { path: `${at}/pack/types/0`, severity: "warning", observed: `${at}/pack/types/0 has definition errors` },
+    ]);
+  });
+
+  it("observed_truncation_keeps_code_points", async () => {
+    const prefix = '"' + "a".repeat(157) + "😀👍";
+    const report = await checkSubject({ packs: [{ pack: { ...pack(), extra: prefix.slice(1) + "🌿" } }] });
+    expect(report.findings[0].observed).toBe(`/packs/0/pack/extra = ${prefix}`);
+    expect(Array.from(prefix)).toHaveLength(160);
+  });
+
+  it("advisory_only_report_is_satisfied", async () => {
+    const report = await runCatalogExtensionConformance(fixture("volume-net-content"));
+    expect(report).toMatchObject({ state: "satisfied", exitCode: 0 });
+    expect(report.findings.map(({ code, observed }) => [code, observed])).toEqual([
+      ["advisory_draft_version_not_publishable", "/packs/0/drafts/0/schemaVersion = 1"],
+      ["advisory_unit_identifier_missing", "/packs/0/drafts/0/skus/0/identifiers is absent"],
+      ["advisory_filter_flags_unused", "/packs/0/pack/types/0/attributes/0/filterable = true"],
+      ["advisory_net_content_not_publishable", '/packs/0/pack/types/0/netContentUnits = ["sample:ml"]'],
+    ]);
+    for (const finding of report.findings) {
+      expect(finding.severity).toBe("warning");
+      expect(Reflect.ownKeys(finding).sort()).toEqual([
+        "cause", "code", "evidence", "fix", "fixture", "observed", "path", "recheck", "recipe", "severity",
+      ]);
+    }
+  });
+
+  it("unknown_required_check_still_unavailable", async () => {
+    const report = await checkSubject({ packs: [{ pack: { ...pack(), types: [] } }], requiredChecks: ["unknown"] });
+    expect(report).toMatchObject({ state: "unavailable", exitCode: 2, findings: [
+      { code: "conformance_owner_unavailable", severity: "error", path: "/requiredChecks/0" },
+    ] });
+  });
+});
 
 describe("subscription profile pack conformance", () => {
   const ref = { key: "stationery:repeat", version: 1 };
@@ -203,7 +277,7 @@ describe("trusted catalogue projection", () => {
       expect(owner).toEqual({ valid: false, issues: [{ code: "title_required", path: "product.sharedContent.title" }] });
       const report = await project({ packs: [{ pack: p, drafts: [input] }] });
       expect(report.exitCode).toBe(1);
-      expect(report.findings).toEqual([expect.objectContaining({ code: "title_required", path: "/packs/0/drafts/0/product/sharedContent/title" })]);
+      expect(errors(report)).toEqual([expect.objectContaining({ code: "title_required", path: "/packs/0/drafts/0/product/sharedContent/title" })]);
     }
     for (const broken of [
       { ...v3, publication: { ...v3.publication, operations: [{ ...op, name: 7 }] } },
@@ -212,7 +286,7 @@ describe("trusted catalogue projection", () => {
       const owner = catalogDraftPayloadV3Schema.safeParse(broken);
       expect(owner.success).toBe(false);
       if (owner.success) throw new Error("Invalid v3 admitted");
-      const findings = (await project({ packs: [{ pack: p, drafts: [broken] }] })).findings;
+      const findings = errors(await project({ packs: [{ pack: p, drafts: [broken] }] }));
       expect(findings.map(({ code, path }) => ({ code, path }))).toEqual(owner.error.issues.map(issue =>
         ({ code: "draft_input_invalid", path: "/packs/0/drafts/0/" + issue.path.join("/") })).sort((a, b) => a.path.localeCompare(b.path)));
     }
@@ -230,7 +304,7 @@ module.exports.validateContent = content => content.presentation.label === "Inva
     const report = await project({ packs: [{ pack: bound, drafts: [subject] }] });
     const path = "/packs/0/drafts/0/product/sharedContent/presentation/label";
     expect(report.exitCode).toBe(1);
-    expect(report.findings).toEqual([expect.objectContaining({
+    expect(errors(report)).toEqual([expect.objectContaining({
       code, path, fix: `Fix the rule violation ${code} reported by validateContent at ${path}.`,
       recipe: "how-to/extend/catalogue-extension.md#new-vertical",
     })]);
@@ -278,7 +352,7 @@ module.exports.validateContent = content => content.presentation.label === "Inva
     const fixture = { name: "local refusal", capability: "recurring", expectedCode: issue.code, observedCode: issue.code, zeroEffects: true };
     const report = await project({ packs: [{ pack: p, refusals: [fixture] }], requiredChecks: ["owner-refusals"] });
     expect(report.exitCode).toBe(2);
-    expect(report.findings).toEqual([expect.objectContaining({ code: "conformance_owner_unavailable", path: "/requiredChecks/0" })]);
+    expect(errors(report)).toEqual([expect.objectContaining({ code: "conformance_owner_unavailable", path: "/requiredChecks/0" })]);
     const apply = vi.fn();
     const handler = createCatalogDraftHandler({ registry: createCatalogProductTypeRegistry(p.types),
       store: { get: async () => null, list: async () => ({ items: [], nextCursor: null }), apply },
@@ -355,7 +429,7 @@ describe("offline catalogue conformance", () => {
     for (const [code, mutate] of cases) {
       const p = pack(); mutate(p);
       expect(catalogPackIssues(p).some(issue => issue.code === code)).toBe(true);
-      expect((await check(p)).findings.map(({ code, path }) => ({ code, path }))).toEqual(catalogPackIssues(p).map(({ code, path }) => ({ code, path: `/packs/0/pack${path}` })).sort((a, b) => a.path.localeCompare(b.path) || a.code.localeCompare(b.code)));
+      expect(errors(await check(p)).map(({ code, path }) => ({ code, path }))).toEqual(catalogPackIssues(p).map(({ code, path }) => ({ code, path: `/packs/0/pack${path}` })).sort((a, b) => a.path.localeCompare(b.path) || a.code.localeCompare(b.code)));
     }
     const p = pack();
     const d = draft(); d.product.type.key = "stationery:absent";
@@ -384,7 +458,7 @@ describe("offline catalogue conformance", () => {
       expect(ownerIssues.some(issue => issue.code === code)).toBe(true);
       const report = (await checkSubject({ packs: [{ pack: p, quantities: [{ type: reference as CatalogProductTypeRef, value: validQuantity }] }] }));
       expect(report.exitCode).toBe(1);
-      expect(report.findings.map(({ code, path }) => ({ code, path }))).toEqual(ownerIssues.map(issue => ({ ...issue, path: `/packs/0/quantities/0/type${issue.path}` })));
+      expect(errors(report).map(({ code, path }) => ({ code, path }))).toEqual(ownerIssues.map(issue => ({ ...issue, path: `/packs/0/quantities/0/type${issue.path}` })));
     }
     expect((await checkSubject({ packs: [{ pack: p, quantities: [{ type: typeRef, value: validQuantity }] }] })).exitCode).toBe(0);
     // Other subject identifiers already enter strict owners before lookup.
@@ -398,7 +472,7 @@ describe("offline catalogue conformance", () => {
       expect(report.exitCode).toBe(1); expect(report.findings[0].code).toBe("definition_version_invalid");
     }
     const quantity = { dimension: "count" as const, unit: "stationery:each", unscaled: "15", scale: 1 };
-    expect((await checkSubject({ packs: [{ pack: p, quantities: [{ type: typeRef, value: quantity }] }] })).findings[0].code).toBe("quantity_fractional_count");
+    expect(errors(await checkSubject({ packs: [{ pack: p, quantities: [{ type: typeRef, value: quantity }] }] }))[0].code).toBe("quantity_fractional_count");
     expect((await checkSubject({ packs: [{ pack: p }], requiredChecks: ["taxonomy", "tax-coverage", "profiles", "attribute-values", "variant-combinations"] })).exitCode).toBe(2);
   });
   it("conformance_reuses_row_validators S3b attributes and reference evidence", async () => {
@@ -427,7 +501,7 @@ describe("offline catalogue conformance", () => {
       const prepared = prepareCatalogAttributeProjection(await validateCatalogAttributes(p.types[0], input, { resolve: async () => references ?? [] }), publicationRevision);
       const report = await checkSubject({ packs: [{ pack: p, attributes: [{ type, input, publicationRevision, references }] }] });
       const issues = prepared.prepared ? [] : prepared.issues;
-      expect(report.findings.map(({ code, path }) => ({ code, path })), name).toEqual(issues.map(issue => ({ ...issue,
+      expect(errors(report).map(({ code, path }) => ({ code, path })), name).toEqual(issues.map(issue => ({ ...issue,
         path: `/packs/0/attributes/0${issue.code === "attribute_publication_revision_invalid" ? "" : "/input"}${issue.path}` })).sort((a,b) => a.path.localeCompare(b.path) || a.code.localeCompare(b.code)));
       if (exitCode !== undefined) expect(report.exitCode, name).toBe(exitCode);
       return prepared;
@@ -442,7 +516,7 @@ describe("offline catalogue conformance", () => {
     }
     const mixed = await checkSubject({ packs: [{ pack: p, attributes: [{ type, publicationRevision: "7",
       input: { productAttributes: { required: true, reference: ref, list: [{ ...ref, id: "other" }] }, skus: [{ id }] }, references: [{ ...ref, status: "private" }] }] }] });
-    expect(mixed.exitCode).toBe(1); expect(mixed.findings).toHaveLength(2);
+    expect(mixed.exitCode).toBe(1); expect(errors(mixed)).toHaveLength(2);
     expect(mixed.findings).toContainEqual(expect.objectContaining({
       code: "attribute_reference_unresolved", path: "/packs/0/attributes/0/input/productAttributes/reference",
       fix: "Resolve the allowlisted batch and remove dangling, private or unavailable references.",
@@ -483,7 +557,7 @@ describe("offline catalogue conformance", () => {
     const text = JSON.stringify(subject), report = await runCatalogExtensionConformance(text);
     const prefix = "/packs/0/combinations/0/input/";
     expect(report.exitCode).toBe(1);
-    expect(report.findings).toEqual([expect.objectContaining({
+    expect(errors(report)).toEqual([expect.objectContaining({
       code: "duplicate_sku_id",
       path: prefix + escaped,
       fix: "Remove the repeated SKU entry while preserving authoritative identity.",
@@ -523,7 +597,7 @@ describe("offline catalogue conformance", () => {
         validateCatalogCombinationChangesV2({ ...input, definition: p.types[0], retained }); }
       catch (error) { if (!(error instanceof CatalogCombinationError)) throw error; expected = [{ code: error.code, path: `/packs/0/combinations/0/input/${error.path.replaceAll(".", "/")}` }]; }
       const report = await checkSubject({ packs: [{ pack: p, combinations: [{ type, input }] }], requiredChecks: ["variant-combinations"] });
-      expect(report.findings.map(({ code, path }) => ({ code, path })), name).toEqual(expected);
+      expect(errors(report).map(({ code, path }) => ({ code, path })), name).toEqual(expected);
       expect(report.exitCode, name).toBe(expected.length ? 1 : 0);
     }
   });
@@ -592,7 +666,7 @@ describe("offline catalogue conformance", () => {
         const subject = { packs: [{ pack: p, combinations: [{ type, input: { axes: [], typed: true, retained: [], incoming: [], [name]: [row] } }] }] };
         const text = JSON.stringify(subject); writeFileSync(file, text);
         for (const report of [await runCatalogExtensionConformance(text), call(args)]) {
-          expect(report.exitCode).toBe(1); expect(report.findings).toEqual([expect.objectContaining({ code: "conformance_subject_invalid", path: `/packs/0/combinations/0/input/${name}/0` })]);
+          expect(report.exitCode).toBe(1); expect(errors(report)).toEqual([expect.objectContaining({ code: "conformance_subject_invalid", path: `/packs/0/combinations/0/input/${name}/0` })]);
         }
       }
       const quantity = { dimension: "count", unit: "stationery:each", unscaled: "1", scale: 0 };
@@ -631,7 +705,7 @@ describe("offline catalogue conformance", () => {
         const { formatVersion, command, ...cli } = call(args);
         expect(formatVersion).toBe(1); expect(command).toBe("catalogue check");
         expect(cli, name).toEqual(direct); expect(direct.exitCode, name).toBe(1);
-        expect(direct.findings, name).toEqual([expect.objectContaining({ code, path })]);
+        expect(errors(direct), name).toEqual([expect.objectContaining({ code, path })]);
       }
       const valid = { packs: [{ pack: p, combinations: [{ type, input: { typed: true, axes: [], retained: [], incoming: [{ skuId: "one", state: "active", optionValues: {} }] } }] }] };
       const validText = JSON.stringify(valid); writeFileSync(file, validText);
@@ -691,7 +765,7 @@ describe("offline catalogue conformance", () => {
       expect(JSON.stringify(operationalSyntax)).not.toContain("draft_json_invalid");
       const subject = { packs: [{ pack: p }], recheck: "identical command" }; p.types = [...p.types, p.types[0]];
       const report = await checkSubject(subject); expect(report).toEqual(await checkSubject(subject));
-      for (const finding of report.findings) expect(finding).toMatchObject({ recheck: subject.recheck, severity: "error", fix: expect.any(String), recipe: expect.any(String), evidence: expect.any(Object) });
+      for (const finding of report.findings) expect(finding).toMatchObject({ recheck: subject.recheck, fix: expect.any(String), recipe: expect.any(String), evidence: expect.any(Object) });
     } finally { rmSync(folder, { recursive: true, force: true }); }
   }, 30_000);
 });

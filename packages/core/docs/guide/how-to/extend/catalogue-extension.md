@@ -242,6 +242,33 @@ receipt.
 
 Native cadence guards still decide whether a cadence can be written.
 
+## Publish net content in grams
+
+Publication accepts net content only as a whole number of grams.
+Add `openlup:g` to `netContentUnits` and author net content as the net mass in
+grams. Declare the labelled volume or count as a quantity variant option with
+`catalogVariantOptions`.
+
+## Review filter and facet flags
+
+No listing or search reader consumes these flags in this version.
+Keep the flags for a later version or set them to false.
+
+## Add a unit GTIN
+
+Prepare refuses a SKU without a valid unit trade identifier.
+Add a valid unit GTIN to the SKU.
+
+## Use schema version 3 for publication
+
+Only schema version 3 drafts can be published.
+Author publishable fixtures as schema version 3.
+
+## Rerun fixtures after definition repair
+
+Fixtures of an invalid type are not evaluated.
+Fix the definition findings first.
+
 ## Upgrade a definition
 
 Edit `pack.ts`, keeping the old version composed. Example:
