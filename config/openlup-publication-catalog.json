@@ -2334,6 +2334,30 @@
       "class": "public-output"
     },
     {
+      "path": "examples/catalog-packs/cosmetics/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/cosmetics/pack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/pet-food/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/pet-food/pack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements/pack.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/.dockerignore",
       "class": "public-output"
     },
