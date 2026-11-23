@@ -153,9 +153,16 @@ export function storeJourneyResources() {
     const ownerUrl = cluster.urlFor(dbName, journeySelection.migrationLogin, true);
     const runtimeUrl = cluster.urlFor(dbName, journeySelection.runtimeLogin);
     const restoreUrl = cluster.urlFor(dbName, journeySelection.restoreLogin!);
+    const owner = pool(ownerUrl);
+    // Give each cloned database a fresh per-installation key, matching a newly
+    // migrated database rather than sharing template_migrated's key_bytes.
+    await owner.query(`UPDATE acquisition_private.installation_key
+      SET key_bytes = pg_catalog.decode(pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', '') || pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', ''), 'hex'),
+          created_at = pg_catalog.clock_timestamp()
+      WHERE singleton`);
     return {
       dbName,
-      owner: pool(ownerUrl),
+      owner,
       ownerUrl,
       runtime: pool(runtimeUrl),
       restore: prefix === "target" ? pool(restoreUrl) : undefined,

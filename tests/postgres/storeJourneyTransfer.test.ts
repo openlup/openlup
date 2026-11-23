@@ -90,6 +90,9 @@ it("isolates shared-template installations and targets, drops rotated target dat
     const dbInstall = (await installA.owner.query<{ name: string }>("SELECT current_database() AS name")).rows[0]!.name;
     const dbTarget1 = (await target1.owner.query<{ name: string }>("SELECT current_database() AS name")).rows[0]!.name;
     expect(dbInstall).not.toBe(dbTarget1);
+    const keyInstall = (await installA.owner.query<{ key: string }>("SELECT encode(key_bytes, 'hex') AS key FROM acquisition_private.installation_key WHERE singleton")).rows[0]!.key;
+    const keyTarget1 = (await target1.owner.query<{ key: string }>("SELECT encode(key_bytes, 'hex') AS key FROM acquisition_private.installation_key WHERE singleton")).rows[0]!.key;
+    expect(keyInstall).not.toBe(keyTarget1);
     const target2 = await template.nextTarget("second");
     const dbTarget2 = (await target2.owner.query<{ name: string }>("SELECT current_database() AS name")).rows[0]!.name;
     expect(dbTarget2).not.toBe(dbTarget1);
