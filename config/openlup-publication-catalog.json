@@ -12074,6 +12074,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/operations/settingsCandidateParity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/operations/settingsCommand.test.ts",
       "class": "public-output"
     },
@@ -14671,6 +14675,14 @@
     },
     {
       "path": "scripts/serverless-include-globs.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/settings-candidate-guard.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/settings-candidate-guard.ts",
       "class": "public-output"
     },
     {

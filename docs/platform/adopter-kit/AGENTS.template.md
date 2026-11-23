@@ -78,6 +78,7 @@ path, check loop and refusal guidance.
 
 After editing owned configuration, run `npx --no -- openlup settings check --app ./owned/settings-host.ts`
 (with `--configuration <id>` when applicable) and run your application's typecheck.
+Declare every new application business policy value in `owned/settings-host.ts` (or record an explicit exclusion).
 
 `npx --no -- openlup settings mcp --app ./owned/settings-host.ts` starts a read-only
 MCP server with the same operations.
