@@ -431,6 +431,7 @@ it("pins strict read-only schemas for the five binary tools", () => {
     const codeFields = [failure.properties.refusal];
     if (name === "settings_explain") codeFields.push(result.anyOf[1].properties.explanation);
     for (const { properties: { code } } of codeFields) {
+      expect(code.enum, name).toContain("tax_invalid_input");
       expect(code.enum, name).toEqual(codes);
       delete code.enum;
     }

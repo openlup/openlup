@@ -819,13 +819,17 @@ const checkKeys = (baselineKeys: Set<string>) => [
 ].sort();
 
 it.each(baseline.checks)("reports exactly the baseline and new starter check rows for $args", captured => {
+  const installedKeys = packagedCatalogue.entries.filter(({ kind }) => kind === "installed").map(({ key }) => key);
+  expect(installedKeys).toContain("tax.coverage");
   const { stdout, ...actual } = runStarterSettings(starter, captured.args);
   let existing: string;
   if (captured.args.includes("--json")) {
     const expected = JSON.parse(captured.stdout);
     const document = JSON.parse(stdout);
     const keys = new Set(expected.rows.map((row: { key: string }) => row.key));
-    expect(document.rows.map((row: { key: string }) => row.key)).toEqual(checkKeys(keys));
+    const actualKeys = document.rows.map((row: { key: string }) => row.key);
+    expect(actualKeys).toContain("tax.coverage");
+    expect(actualKeys).toEqual(checkKeys(keys));
     expect(JSON.stringify(document) + "\n").toBe(stdout);
     document.rows = document.rows.filter((row: { key: string }) => keys.has(row.key));
     existing = JSON.stringify(document) + "\n";
@@ -835,7 +839,9 @@ it.each(baseline.checks)("reports exactly the baseline and new starter check row
     const rowKeys = (parts: string[]) => parts.map(key).filter(value => value !== undefined);
     const keys = new Set(rowKeys(blocks(captured.stdout)));
     const actualBlocks = blocks(stdout);
-    expect(rowKeys(actualBlocks)).toEqual(checkKeys(keys));
+    const actualKeys = rowKeys(actualBlocks);
+    expect(actualKeys).toContain("tax.coverage");
+    expect(actualKeys).toEqual(checkKeys(keys));
     existing = actualBlocks.map(block => {
       const rowKey = key(block);
       // New code rows end at Effect, while new installed rows end at Store. Keep any text that follows them.
