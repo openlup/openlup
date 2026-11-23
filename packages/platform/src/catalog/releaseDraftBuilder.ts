@@ -9,7 +9,7 @@ import { catalogDraftPayloadV3Schema } from "./draftV3Schemas.js";
 import { isValidGtin } from "./foundationSchemas.js";
 import { z } from "./validation.js";
 
-/** An authored SKU and its intended sales eligibility.
+/** SKU description and sales modes.
  * @experimental
  */
 export interface CatalogProductSkuInput {
@@ -32,7 +32,7 @@ export interface CatalogProductSkuInput {
   logisticsRef?: string | null;
 }
 
-/** An application-owned product pinned to an installed type.
+/** Product input with an installed type.
  * @experimental
  */
 export interface CatalogProductInput {
@@ -61,7 +61,7 @@ const skuInput = z.strictObject({
   offerVersions: z.array(logisticsRef.unwrap()).length(1).optional(), logisticsRef: logisticsRef.nullable(),
 });
 
-/** The structural schema for the authored product description.
+/** Checks the product input shape.
  * @experimental
  */
 export const catalogProductInputSchema: z.ZodType<CatalogProductInput> = z.strictObject({
@@ -90,7 +90,7 @@ const fixes = {
   shape: "Correct the field named by path to match catalogProductInputSchema.",
 };
 
-/** An actionable refusal pointing to the authored field.
+/** Refusal with an input path and fix.
  * @experimental
  */
 export class CatalogReleaseDraftError extends Error {
@@ -213,7 +213,7 @@ function artifact(payload: CatalogDraftPayloadV3) {
   return { payload: checked.data, digest: hash(canonicalText) };
 }
 
-/** Compile a draft release and its fixed follow-up activation.
+/** Builds a draft release and fixed activation.
  * @experimental
  */
 export function buildCatalogReleaseDraftV3(input: CatalogProductInput): {

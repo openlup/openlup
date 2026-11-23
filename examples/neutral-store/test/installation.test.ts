@@ -175,7 +175,9 @@ test('local rules run before installation and derive an immutable product type o
   assert.notEqual((await installed(Buffer.concat([bytes, Buffer.from('// Changed rules asset')]))).version, first.version);
 });
 
-test('operator_example_uses_builder', async () => {
+test('operator_example_uses_builder', async context => {
+  const bytes = readStarterCatalogueRules();
+  if (!bytes) return context.skip('This starter has kept its existing draft validator.');
   const root = fileURLToPath(new URL('../', import.meta.url));
   await mkdir(resolve(root, '.context'), { recursive: true });
   const directory = await mkdtemp(resolve(root, '.context/operator-example-'));
@@ -186,7 +188,7 @@ test('operator_example_uses_builder', async () => {
     const config = Object.values(configurations)[0]!;
     const request = { commandKey: 'example', config, actor: { operatorRef: 'operator', customerRef: null } };
     const fixture = installation();
-    fixture.binding.catalogueRules = readStarterCatalogueRules()!;
+    fixture.binding.catalogueRules = bytes;
     fixture.binding.catalogueBuildDirectory = resolve(directory, '.context/catalogue-builds');
     const version = starterCatalogue(fixture.binding.catalogueBuildDirectory).current!.version;
     async function example() {

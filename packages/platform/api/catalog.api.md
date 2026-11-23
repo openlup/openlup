@@ -5460,7 +5460,7 @@ import type { CatalogAttributeValue } from "./contracts/draftV2.js";
 import type { CatalogDraftPayloadV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
 import type { CatalogOptionValue, CatalogProductTypeRef, CatalogQuantity } from "./contracts/productTypes.js";
 import { z } from "./validation.js";
-/** An authored SKU and its intended sales eligibility.
+/** SKU description and sales modes.
  * @experimental
  */
 export interface CatalogProductSkuInput {
@@ -5490,7 +5490,7 @@ export interface CatalogProductSkuInput {
     offerVersions?: readonly string[];
     logisticsRef?: string | null;
 }
-/** An application-owned product pinned to an installed type.
+/** Product input with an installed type.
  * @experimental
  */
 export interface CatalogProductInput {
@@ -5503,11 +5503,11 @@ export interface CatalogProductInput {
     document?: CatalogPublicationFacts;
     attributes?: Readonly<Record<string, CatalogAttributeValue>>;
 }
-/** The structural schema for the authored product description.
+/** Checks the product input shape.
  * @experimental
  */
 export declare const catalogProductInputSchema: z.ZodType<CatalogProductInput>;
-/** An actionable refusal pointing to the authored field.
+/** Refusal with an input path and fix.
  * @experimental
  */
 export declare class CatalogReleaseDraftError extends Error {
@@ -5515,7 +5515,7 @@ export declare class CatalogReleaseDraftError extends Error {
     readonly code = "release_draft_invalid";
     constructor(path: string, message: string);
 }
-/** Compile a draft release and its fixed follow-up activation.
+/** Builds a draft release and fixed activation.
  * @experimental
  */
 export declare function buildCatalogReleaseDraftV3(input: CatalogProductInput): {
