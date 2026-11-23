@@ -5706,6 +5706,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogOwnerQuoteEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogOwnerQuoteSubscription.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogPackManifest.ts",
       "class": "public-output"
     },
@@ -12387,6 +12395,14 @@
     },
     {
       "path": "packages/platform/test/pricing/dbBackedCommerceQuoteSnapshotVerifier.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/fixtures/catalog-owner-quote/one-time.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/fixtures/catalog-owner-quote/subscription.json",
       "class": "public-output"
     },
     {
