@@ -11,6 +11,8 @@ import { createPostgresCatalogAdmission } from "../../src/catalog/catalogAdmissi
 import { catalogAdmissionEvidenceSchema } from "../../src/catalog/catalogAdmissionSchema.js";
 import { withCatalogAdmissionFence } from "../../src/catalog/catalogAdmissionFence.js";
 
+import { id, moneyGolden, sealQuote } from "./quoteMoneyV2Fixtures.js";
+
 const TEST_CURRENCY = "XXX";
 
 it("pins the registered domain, canonical UTF-8 framing and encoder bounds", () => {
@@ -22,6 +24,36 @@ it("pins the registered domain, canonical UTF-8 framing and encoder bounds", () 
   expect(() => quoteDigest("catalog.owner-quote.v0", "λ".repeat(524_288))).toThrow("draft_payload_too_large");
   const deep = Array.from({ length: 49 }).reduce<unknown>(value => [value], null);
   expect(() => quoteDigest("catalog.owner-quote.v0", deep)).toThrow("draft_json_depth");
+});
+
+it("pins the canonical Unicode quote money and final quote digests", () => {
+  const body = moneyGolden();
+  const { quoteDigest: _digest, ...final } = sealQuote(body);
+  expect(quoteDigest("commerce.quote-money.v2", body)).toBe("6da5f2ae74154e53ce12da4b60cfccbe5b847a3e2bb88834a283ebf939479f0e");
+  expect(quoteDigest("commerce.quote.v2", final)).toBe("dc27ad4548ef9ccf0e34ac94d96e56beef822a5ddb2c1a1d60c6217a6241459d");
+  const { price, ...other } = body;
+  const { priceEvidenceRef, ...otherPrice } = price;
+  expect(quoteDigest("commerce.quote-money.v2", { price: { priceEvidenceRef, ...otherPrice }, ...other })).toBe(final.moneyDigest);
+  expect(quoteDigest("commerce.quote-money.v2", { ...body, lines: [...body.lines].reverse() })).not.toBe(final.moneyDigest);
+  expect(quoteDigest("commerce.quote.v2", { status: final.status, ...Object.fromEntries(Object.entries(final).filter(([key]) => key !== "status").reverse()) } as typeof final)).toBe(_digest);
+});
+
+it("commits status, allocations and destination even at equal payable", () => {
+  const original = sealQuote();
+  const { quoteDigest: digest, ...final } = original;
+  expect(quoteDigest("commerce.quote.v2", { ...final, status: "estimate" })).not.toBe(digest);
+  const body = moneyGolden();
+  const [first, ...rest] = body.lines;
+  const [share] = first.discountAllocations;
+  for (const altered of [
+    { ...body, lines: [{ ...first, discountAllocations: [{ ...share, allocationId: id(7) }] }, ...rest] },
+    { ...body, destination: { ...body.destination, snapshotRef: id(8) } },
+  ]) {
+    expect(altered.payableMinor).toBe(body.payableMinor);
+    const sealed = sealQuote(altered);
+    expect(sealed.moneyDigest).not.toBe(original.moneyDigest);
+    expect(sealed.quoteDigest).not.toBe(digest);
+  }
 });
 
 it("binds the full reviewed projection, distinct source lines and unselected owner dependencies", async () => {
