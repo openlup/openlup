@@ -1,5 +1,6 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync, type ChildProcess, type SpawnOptions, type SpawnSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,11 +9,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 vi.mock("node:child_process", async (original) => {
   const actual = await original<typeof import("node:child_process")>();
-  return { ...actual, execFileSync: vi.fn(actual.execFileSync), spawnSync: vi.fn(actual.spawnSync) };
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync), spawn: vi.fn(actual.spawn), spawnSync: vi.fn(actual.spawnSync) };
 });
 
 import {
-  addedLines, areaGuardTests, formatCheckLine, isTestEntry, isTestFile, missingFragments, nearDates,
+  addedLines, areaGuardTests, formatCheckLine, inventoryClosureDigest, isTestEntry, isTestFile, missingFragments, nearDates,
   parseNameStatus, main, neutralityVerdict, releasedPackageSource, separateTestFiles, shortExpiries,
   sqlTreeChanges, testDiscoveryVerdict, vitestFiles, type AddedLine, type Change,
 } from "./preflight.ts";
@@ -21,8 +22,33 @@ import {
 } from "./agent-review-landing.mjs";
 import { fixtureNpmCli, linkFixtureInstallation, localFixtureEnvironment } from "./fixtures/landing-test-environment.ts";
 
+type FakeSpawnResult = { status: number | null; stdout?: string; stderr?: string; error?: NodeJS.ErrnoException };
+function mockChildProcesses(handler: (bin: string, args: readonly string[] | undefined, options: SpawnSyncOptions | SpawnOptions | undefined) => FakeSpawnResult): void {
+  vi.mocked(spawnSync).mockImplementation(((bin: string, args?: readonly string[], options?: SpawnSyncOptions) => {
+    const res = handler(bin, args, options);
+    return { pid: 0, output: [], signal: null, status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "", error: res.error };
+  }) as typeof spawnSync);
+  vi.mocked(spawn).mockImplementation(((bin: string, args?: readonly string[], options?: SpawnOptions) => {
+    const res = handler(bin, args, options);
+    const child = new EventEmitter() as ChildProcess;
+    const stdout = new EventEmitter();
+    const stderr = new EventEmitter();
+    (child as unknown as { stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean }).stdout = stdout;
+    (child as unknown as { stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean }).stderr = stderr;
+    (child as unknown as { stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean }).kill = () => true;
+    queueMicrotask(() => {
+      if (res.stdout) stdout.emit("data", res.stdout);
+      if (res.stderr) stderr.emit("data", res.stderr);
+      if (res.error) child.emit("error", res.error);
+      else child.emit("close", res.status);
+    });
+    return child;
+  }) as typeof spawn);
+}
+
 afterEach(() => {
   vi.mocked(execFileSync).mockReset();
+  vi.mocked(spawn).mockReset();
   vi.mocked(spawnSync).mockReset();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -292,7 +318,7 @@ describe("fast preflight", () => {
     { name: "clean with Git stderr warnings", dirty: false, offline: false, warnings: true, failures: [], exit: 0 },
     { name: "dirty with a failed fetch", dirty: true, offline: true, warnings: false, failures: ["clean"], exit: 1 },
     { name: "multiple failures", dirty: false, offline: false, warnings: false, failures: ["merge-clean", "neutrality", "publication", "dco"], exit: 1 },
-  ])("reports every check and ends with JSON for a $name fixture", ({ dirty, offline, warnings, failures, exit, npmVersion = "11.19.1", versionProbe }) => {
+  ])("reports every check and ends with JSON for a $name fixture", async ({ dirty, offline, warnings, failures, exit, npmVersion = "11.19.1", versionProbe }) => {
     const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
     const increase = '"scripts/example.ts": brand increased 0 -> 1';
     const conflict = "CONFLICT (content): Merge conflict in example.ts";
@@ -322,7 +348,7 @@ describe("fast preflight", () => {
       [expected[4], conflict], [expected[5], fork], [expected[6], increase],
       [expected[11], "11.19.1\n"], [expected[12], `${mismatch}\n${closing}`], [expected[15], upstream],
     ]);
-    vi.mocked(spawnSync).mockImplementation(((bin, args, options) => {
+    mockChildProcesses((bin, args, options) => {
       const call = `${bin} ${(args ?? []).join(" ")}`;
       calls.push(call);
       if (bin === "git") expect(processEnvironment.GIT_OPTIONAL_LOCKS).toBe("0");
@@ -344,15 +370,15 @@ describe("fast preflight", () => {
       const stderr = warnings && [expected[0], expected[1], expected[3], expected[5], expected[13], expected[15]].includes(call)
         ? "warning: fixture Git warning\n" : "";
       return { status, stdout: outputs.get(call) ?? "", stderr };
-    }) as typeof spawnSync);
+    });
     const signed = "change\n\nSigned-off-by: Test Fixture <fixture@example.invalid>";
     const message = failures.includes("dco") ? "unsigned commit" : signed;
     vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1f${message}\0${upstream}\x1f${head} ${fork}\x1f${signed}\0`);
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    expect(main(now, ["--fast"])).toBe(exit);
-    expect(calls).toEqual(expected);
+    expect(await main(now, ["--fast"])).toBe(exit);
+    expect([...calls].sort()).toEqual([...expected].sort());
     expect(execFileSync).toHaveBeenCalledWith("git", expect.arrayContaining([`${upstream}..${head}`]), expect.anything());
     const lines = log.mock.calls.map(([value]) => String(value));
     expect(JSON.parse(lines.pop()!)).toEqual({ preflight: "fast", result: exit === 0 ? "pass" : "fail", head, failed: failures });
@@ -386,10 +412,10 @@ describe("fast preflight", () => {
     expect(stderr.mock.calls).toEqual(offline ? [["preflight: git fetch origin main failed. Using local origin/main."]] : []);
   });
 
-  it("checks merge commits for DCO and passes when HEAD equals origin/main (0 commits)", () => {
+  it("checks merge commits for DCO and passes when HEAD equals origin/main (0 commits)", async () => {
     const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
-    const setupMocks = (gitLogOutput: string, sameHead = false) => {
-      vi.mocked(spawnSync).mockImplementation(((bin, args) => {
+    const setupMocks = async (gitLogOutput: string, sameHead = false) => {
+      mockChildProcesses((bin, args) => {
         const call = `${bin} ${(args ?? []).join(" ")}`;
         if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
         if (call === "git rev-parse HEAD") return { status: 0, stdout: sameHead ? upstream : head, stderr: "" };
@@ -397,24 +423,24 @@ describe("fast preflight", () => {
         if (call === "git rev-parse origin/main") return { status: 0, stdout: upstream, stderr: "" };
         if (bin === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
         return { status: 0, stdout: "", stderr: "" };
-      }) as typeof spawnSync);
+      });
       vi.mocked(execFileSync).mockReturnValue(gitLogOutput);
       const lines: string[] = [];
       vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
       vi.spyOn(console, "error").mockImplementation(() => {});
-      return { exit: main(now, ["--fast"]), lines };
+      return { exit: await main(now, ["--fast"]), lines };
     };
 
     const mergeSha = "e".repeat(40);
     const signed = "change\n\nSigned-off-by: Test Fixture <fixture@example.invalid>";
-    const unsignedMerge = setupMocks(`${head}\x1f${fork}\x1f${signed}\0${mergeSha}\x1f${head} ${fork}\x1fMerge branch 'main'\0`);
+    const unsignedMerge = await setupMocks(`${head}\x1f${fork}\x1f${signed}\0${mergeSha}\x1f${head} ${fork}\x1fMerge branch 'main'\0`);
     expect(unsignedMerge.exit).toBe(1);
     expect(JSON.parse(unsignedMerge.lines.at(-1)!)).toEqual({
       preflight: "fast", result: "fail", head, failed: ["dco"],
     });
     expect(unsignedMerge.lines).toContain(`dco: FAIL missing Signed-off-by on ${mergeSha.slice(0, 12)}`);
 
-    const zeroCommits = setupMocks("", true);
+    const zeroCommits = await setupMocks("", true);
     expect(zeroCommits.exit).toBe(0);
     expect(JSON.parse(zeroCommits.lines.at(-1)!)).toEqual({
       preflight: "fast", result: "pass", head: upstream, failed: [],
@@ -422,12 +448,12 @@ describe("fast preflight", () => {
     expect(zeroCommits.lines).toContain("dco: ok");
   });
 
-  it("handles OPENLUP_STACK_BASE for publication and merge-clean ancestry", () => {
+  it("handles OPENLUP_STACK_BASE for publication and merge-clean ancestry", async () => {
     const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40), stackBase = "d".repeat(40);
-    const runWithStackBase = (value: string, headCode: number, mainCode: number) => {
+    const runWithStackBase = async (value: string, headCode: number, mainCode: number) => {
       vi.stubEnv("OPENLUP_STACK_BASE", value);
       const calls: string[] = [];
-      vi.mocked(spawnSync).mockImplementation(((bin, args) => {
+      mockChildProcesses((bin, args) => {
         const call = `${bin} ${(args ?? []).join(" ")}`;
         calls.push(call);
         if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
@@ -438,16 +464,16 @@ describe("fast preflight", () => {
         if (call === "git rev-parse origin/main") return { status: 0, stdout: upstream, stderr: "" };
         if (bin === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
         return { status: 0, stdout: "", stderr: "" };
-      }) as typeof spawnSync);
+      });
       vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1fchange\n\nSigned-off-by: Test Fixture <fixture@example.invalid>\0`);
       const lines: string[] = [];
       vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
       vi.spyOn(console, "error").mockImplementation(() => {});
-      const exit = main(now, ["--fast"]);
+      const exit = await main(now, ["--fast"]);
       return { exit, calls, lines };
     };
 
-    const unlanded = runWithStackBase(stackBase, 0, 1);
+    const unlanded = await runWithStackBase(stackBase, 0, 1);
     expect(unlanded.exit).toBe(0);
     expect(unlanded.calls).toContain(`git merge-base --is-ancestor ${stackBase} HEAD`);
     expect(unlanded.calls).toContain(`git merge-base --is-ancestor ${stackBase} origin/main`);
@@ -456,28 +482,28 @@ describe("fast preflight", () => {
     expect(unlanded.calls.some((call) => call.includes("--docs-base"))).toBe(false);
     expect(unlanded.lines).toContain("merge-clean: skip unlanded OPENLUP_STACK_BASE; merge-tree skipped");
 
-    const landed = runWithStackBase(stackBase, 0, 0);
+    const landed = await runWithStackBase(stackBase, 0, 0);
     expect(landed.exit).toBe(0);
     expect(landed.calls).toContain(`git merge-base --is-ancestor ${stackBase} origin/main`);
     expect(landed.calls).toContain("git merge-tree --write-tree origin/main HEAD");
 
-    const fatalMainCheck = runWithStackBase(stackBase, 0, 128);
+    const fatalMainCheck = await runWithStackBase(stackBase, 0, 128);
     expect(fatalMainCheck.exit).toBe(0);
     expect(fatalMainCheck.calls).toContain("git merge-tree --write-tree origin/main HEAD");
 
-    const notHeadAncestor = runWithStackBase(stackBase, 1, 1);
+    const notHeadAncestor = await runWithStackBase(stackBase, 1, 1);
     expect(notHeadAncestor.exit).toBe(0);
     expect(notHeadAncestor.calls).toContain("git merge-tree --write-tree origin/main HEAD");
 
     for (const bad of ["D".repeat(40), "not-a-sha"]) {
-      const rejected = runWithStackBase(bad, 0, 1);
+      const rejected = await runWithStackBase(bad, 0, 1);
       expect(rejected.exit).toBe(0);
       expect(rejected.calls.some((call) => call.includes("--is-ancestor"))).toBe(false);
       expect(rejected.calls).toContain("git merge-tree --write-tree origin/main HEAD");
     }
   });
 
-  it("surfaces WARN/SKIP without failing --fast and runs conditional guide/manifest checks", () => {
+  it("surfaces WARN/SKIP without failing --fast and runs conditional guide/manifest checks", async () => {
     const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
     const calls: string[] = [];
     const nameStatus = [
@@ -486,7 +512,7 @@ describe("fast preflight", () => {
       "M\0packages/core/docs/guide/README.md\0",
       "M\0packages/core/package.json\0",
     ].join("");
-    vi.mocked(spawnSync).mockImplementation(((bin, args, options) => {
+    mockChildProcesses((bin, args, options) => {
       const call = `${bin} ${(args ?? []).join(" ")}`;
       calls.push(call);
       if (call === "npm run packages:check -- --manifest-only") {
@@ -505,13 +531,13 @@ describe("fast preflight", () => {
       if (call === "git rev-list --count bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..HEAD") return { status: 0, stdout: "1\n", stderr: "" };
       if (call === "git rev-parse origin/main") return { status: 0, stdout: upstream, stderr: "" };
       return { status: 0, stdout: "", stderr: "" };
-    }) as typeof spawnSync);
+    });
     vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1fchange\n\nSigned-off-by: Test Fixture <fixture@example.invalid>\0`);
     const lines: string[] = [];
     vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    expect(main(now, ["--fast"])).toBe(0);
+    expect(await main(now, ["--fast"])).toBe(0);
     const owners = ["core", "outbox", "platform"];
     expect(calls.filter(call => call.startsWith(`${npm} run build --workspace=`) || call.startsWith(`${npm} run api:check --workspace=`))).toEqual(
       ["build", "api:check"].flatMap(command => owners.map(owner => `${npm} run ${command} --workspace=@openlup/${owner}`)),
@@ -575,16 +601,16 @@ describe("area preflight", () => {
     for (const heavy of excludedHeavyOrDocker) expect(sharedScriptGuards).not.toContain(heavy);
   });
 
-  it("rejects mutually exclusive --fast and --area with exit code 2", () => {
+  it("rejects mutually exclusive --fast and --area with exit code 2", async () => {
     const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(main(now, ["--fast", "--area"])).toBe(2);
+    expect(await main(now, ["--fast", "--area"])).toBe(2);
     expect(stderr).toHaveBeenCalledWith("preflight: --fast and --area are mutually exclusive");
   });
 
-  it("runs eslint, area tooling guards via test-hosted, and sql admit without Docker or typecheck", () => {
-    const runArea = (options: { nameStatus?: string; untracked?: string; guardCode?: number }) => {
+  it("runs eslint, area tooling guards via test-hosted, and sql admit without Docker or typecheck", async () => {
+    const runArea = async (options: { nameStatus?: string; untracked?: string; guardCode?: number }) => {
       const calls: string[] = [];
-      vi.mocked(spawnSync).mockImplementation(((command, args) => {
+      mockChildProcesses((command, args) => {
         const call = `${command} ${(args ?? []).join(" ")}`;
         calls.push(call);
         if (command === "git") {
@@ -596,20 +622,20 @@ describe("area preflight", () => {
         }
         if (args?.[0] === "scripts/test-hosted.mjs") return { status: options.guardCode ?? 0, stdout: "hosted ok", stderr: "" };
         return { status: 0, stdout: "", stderr: "" };
-      }) as typeof spawnSync);
+      });
       const lines: string[] = [];
       vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
       vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-      return { exit: main(now, ["--area"]), calls, lines };
+      return { exit: await main(now, ["--area"]), calls, lines };
     };
 
-    const skipped = runArea({ nameStatus: "M\0tests/unit/example.test.ts\0" });
+    const skipped = await runArea({ nameStatus: "M\0tests/unit/example.test.ts\0" });
     expect(skipped.exit).toBe(0);
     expect(skipped.lines).toContainEqual(expect.stringMatching(/^PASS eslint changed: 1 changed file\(s\) passed eslint/u));
     expect(skipped.lines).toContain("SKIP area guards: no area tooling guard tests triggered");
     expect(skipped.lines).toContain("SKIP sql admit: no SQL under db/ or packages/*/sql/ changed");
 
-    const triggered = runArea({ nameStatus: "A\0db/platform/migrations/20400101000000_example.sql\0M\0src/example.ts\0" });
+    const triggered = await runArea({ nameStatus: "A\0db/platform/migrations/20400101000000_example.sql\0M\0src/example.ts\0" });
     expect(triggered.exit).toBe(0);
     expect(triggered.calls).toContain("npx --no -- eslint -- src/example.ts");
     expect(triggered.calls).toContain(
@@ -618,7 +644,7 @@ describe("area preflight", () => {
     expect(triggered.calls).toContain("npm run sql:admit");
     expect(triggered.calls.some((call) => call.includes("prelint") || call.includes("docker") || call.includes("inventory"))).toBe(false);
 
-    const failed = runArea({ nameStatus: "M\0docs/platform/README.md\0", guardCode: 1 });
+    const failed = await runArea({ nameStatus: "M\0docs/platform/README.md\0", guardCode: 1 });
     expect(failed.exit).toBe(1);
     expect(failed.lines).toContainEqual(expect.stringMatching(/^FAIL area guards: npm run test:hosted -- scripts\/catalog-document-boundary\.test\.ts exited 1/u));
   });
@@ -633,9 +659,9 @@ describe("preflight report", () => {
     expect(vitestFiles(["packages/core/test/agent-context-cli.test.ts", "packages/core/test/agent-context-cli.test.tsx"], "packages/core/vitest.config.ts"))
       .toEqual(["packages/core/test/agent-context-cli.test.ts"]);
   });
-  it("reports cheap failures before package builds and still retains the build failure", () => {
+  it("reports cheap failures before package builds and still retains the build failure", async () => {
     const calls: string[] = [];
-    vi.mocked(spawnSync).mockImplementation(((command, args) => {
+    mockChildProcesses((command, args) => {
       const call = `${command} ${(args ?? []).join(" ")}`; calls.push(call);
       let stdout = ""; let status = 0;
       if (command === "git") {
@@ -646,10 +672,10 @@ describe("preflight report", () => {
       else if (call === "npm run prelint") { stdout = "broken package build"; status = 9; }
       else if (command === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
       return { status, stdout, stderr: "" };
-    }) as typeof spawnSync);
+    });
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    expect(main(now)).toBe(1);
+    expect(await main(now)).toBe(1);
     const build = calls.indexOf("npm run prelint");
     expect(build).toBeGreaterThan(calls.findIndex((call) => call.includes("ast-grep")));
     expect(build).toBeGreaterThan(calls.findIndex((call) => call.includes("public-ci-neutrality")));
@@ -657,10 +683,10 @@ describe("preflight report", () => {
     expect(calls.some((call) => call.includes("--typecheck"))).toBe(false);
   });
 
-  it("runs ast-grep hygiene, skips eslint/sql when inapplicable, and stops on hygiene failures", () => {
-    const runWith = (options: { filewideFail?: boolean; ruleTestsFail?: boolean; nameStatus?: string }) => {
+  it("runs ast-grep hygiene, skips eslint/sql when inapplicable, and stops on hygiene failures", async () => {
+    const runWith = async (options: { filewideFail?: boolean; ruleTestsFail?: boolean; nameStatus?: string }) => {
       const calls: string[] = [];
-      vi.mocked(spawnSync).mockImplementation(((command, args) => {
+      mockChildProcesses((command, args) => {
         const call = `${command} ${(args ?? []).join(" ")}`;
         calls.push(call);
         if (command === "git") {
@@ -677,15 +703,15 @@ describe("preflight report", () => {
         }
         if (command === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
         return { status: 0, stdout: "", stderr: "" };
-      }) as typeof spawnSync);
+      });
       const lines: string[] = [];
       vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
       vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-      const exit = main(now);
+      const exit = await main(now);
       return { exit, calls, lines };
     };
 
-    const clean = runWith({ nameStatus: "M\0README.md\0D\0scripts/removed.ts\0" });
+    const clean = await runWith({ nameStatus: "M\0README.md\0D\0scripts/removed.ts\0" });
     expect(clean.exit).toBe(0);
     expect(clean.calls).toContain(`${process.execPath} scripts/ast-grep/check-filewide-ignore.mjs`);
     expect(clean.calls).toContain("npx --no -- ast-grep test --skip-snapshot-tests");
@@ -695,20 +721,20 @@ describe("preflight report", () => {
     expect(clean.lines).toContainEqual("SKIP eslint changed: no changed JS/TS files");
     expect(clean.lines).toContainEqual("SKIP sql admit: no SQL under db/ or packages/*/sql/ changed");
 
-    const filewideFail = runWith({ filewideFail: true });
+    const filewideFail = await runWith({ filewideFail: true });
     expect(filewideFail.exit).toBe(1);
     expect(filewideFail.calls.some((call) => call.includes("ast-grep test"))).toBe(false);
     expect(filewideFail.lines).toContainEqual(expect.stringMatching(/^FAIL ast-grep hygiene: file-wide ast-grep-ignore check failed/u));
 
-    const ruleTestFail = runWith({ ruleTestsFail: true });
+    const ruleTestFail = await runWith({ ruleTestsFail: true });
     expect(ruleTestFail.exit).toBe(1);
     expect(ruleTestFail.lines).toContainEqual(expect.stringMatching(/^FAIL ast-grep hygiene: ast-grep rule tests failed/u));
   });
 
-  it("lints only changed non-deleted JS/TS files with eslint before typecheck", () => {
-    const runEslint = (eslintExit: number) => {
+  it("lints only changed non-deleted JS/TS files with eslint before typecheck", async () => {
+    const runEslint = async (eslintExit: number) => {
       const calls: string[] = [];
-      vi.mocked(spawnSync).mockImplementation(((command, args) => {
+      mockChildProcesses((command, args) => {
         const call = `${command} ${(args ?? []).join(" ")}`;
         calls.push(call);
         if (command === "git") {
@@ -721,30 +747,31 @@ describe("preflight report", () => {
         if (command === "npx" && args?.includes("eslint")) return { status: eslintExit, stdout: eslintExit === 0 ? "" : "lint error", stderr: "" };
         if (command === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
         return { status: 0, stdout: "", stderr: "" };
-      }) as typeof spawnSync);
+      });
       const lines: string[] = [];
       vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
       vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-      const exit = main(now);
+      const exit = await main(now);
       return { exit, calls, lines };
     };
 
-    const pass = runEslint(0);
+    const pass = await runEslint(0);
     expect(pass.exit).toBe(0);
     const eslintCall = pass.calls.indexOf("npx --no -- eslint -- scripts/a.ts src/b.tsx scripts/untracked.mjs");
     expect(eslintCall).toBeGreaterThan(-1);
     expect(eslintCall).toBeLessThan(pass.calls.indexOf("npm run prelint"));
     expect(pass.lines).toContainEqual(expect.stringMatching(/^PASS eslint changed: 3 changed file\(s\) passed eslint/u));
 
-    const fail = runEslint(1);
+    const fail = await runEslint(1);
     expect(fail.exit).toBe(1);
     expect(fail.lines).toContainEqual("FAIL eslint changed: eslint failed on 3 changed file(s)");
   });
 
-  it("handles sql admit across dirty, untracked, passing and failing SQL changes", () => {
-    const runSql = (options: { baseDiff: string; status?: string; untracked?: string; admitCode?: number }) => {
+  it("handles sql admit across dirty, untracked, passing and failing SQL changes", async () => {
+    const runSql = async (options: { baseDiff: string; status?: string; untracked?: string; admitCode?: number }) => {
+      vi.stubEnv("OPENLUP_PREFLIGHT_NO_CACHE", "1");
       const calls: string[] = [];
-      vi.mocked(spawnSync).mockImplementation(((command, args) => {
+      mockChildProcesses((command, args) => {
         const call = `${command} ${(args ?? []).join(" ")}`;
         calls.push(call);
         if (command === "git") {
@@ -759,38 +786,133 @@ describe("preflight report", () => {
         if (command === "docker") return { status: 1, stdout: "", stderr: "" };
         if (command === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
         return { status: 0, stdout: "", stderr: "" };
-      }) as typeof spawnSync);
+      });
       const lines: string[] = [];
       vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
       vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-      const exit = main(now);
+      const exit = await main(now);
       return { exit, calls, lines };
     };
 
     const sqlPath = "db/platform/migrations/20400101000000_example.sql";
-    const dirtyTracked = runSql({ baseDiff: `A\0${sqlPath}\0`, status: ` M ${sqlPath}\0` });
+    const dirtyTracked = await runSql({ baseDiff: `A\0${sqlPath}\0`, status: ` M ${sqlPath}\0` });
     expect(dirtyTracked.exit).toBe(0);
     expect(dirtyTracked.calls).not.toContain("npm run sql:admit");
     expect(dirtyTracked.lines).toContainEqual("WARN sql admit: commit or stash uncommitted changes to run npm run sql:admit");
 
-    const dirtyUntracked = runSql({ baseDiff: "", untracked: `${sqlPath}\0`, status: `?? ${sqlPath}\0` });
+    const dirtyUntracked = await runSql({ baseDiff: "", untracked: `${sqlPath}\0`, status: `?? ${sqlPath}\0` });
     expect(dirtyUntracked.exit).toBe(0);
     expect(dirtyUntracked.calls).not.toContain("npm run sql:admit");
     expect(dirtyUntracked.lines).toContainEqual("WARN sql admit: commit or stash uncommitted changes to run npm run sql:admit");
 
-    const dirtyNonSql = runSql({ baseDiff: `A\0${sqlPath}\0`, status: " M README.md\0" });
+    const dirtyNonSql = await runSql({ baseDiff: `A\0${sqlPath}\0`, status: " M README.md\0" });
     expect(dirtyNonSql.exit).toBe(0);
     expect(dirtyNonSql.calls).not.toContain("npm run sql:admit");
     expect(dirtyNonSql.lines).toContainEqual("WARN sql admit: commit or stash uncommitted changes to run npm run sql:admit");
 
-    const committedPass = runSql({ baseDiff: `A\0${sqlPath}\0`, admitCode: 0 });
+    const committedPass = await runSql({ baseDiff: `A\0${sqlPath}\0`, admitCode: 0 });
     expect(committedPass.exit).toBe(0);
     expect(committedPass.calls).toContain("npm run sql:admit");
     expect(committedPass.lines).toContainEqual(expect.stringMatching(/^PASS sql admit: SQL admission passed/u));
 
-    const committedFail = runSql({ baseDiff: `A\0${sqlPath}\0`, admitCode: 1 });
+    const committedFail = await runSql({ baseDiff: `A\0${sqlPath}\0`, admitCode: 1 });
     expect(committedFail.exit).toBe(1);
     expect(committedFail.lines).toContainEqual("FAIL sql admit: npm run sql:admit exited 1");
+  });
+
+  it("caches clean local inventory measurements, bypasses cache in CI, and preserves dirty WARN", async () => {
+    const cacheFile = join(process.cwd(), ".context/scratch/inventory-cache.json");
+    const priorCache = existsSync(cacheFile) ? readFileSync(cacheFile, "utf8") : null;
+    try {
+      rmSync(cacheFile, { force: true });
+      const runInventoryCase = async (options: { ci?: string; dirtyInventory?: boolean }) => {
+        if (options.ci !== undefined) vi.stubEnv("CI", options.ci);
+        else vi.stubEnv("CI", "");
+        const calls: string[] = [];
+        mockChildProcesses((command, args) => {
+          const call = `${command} ${(args ?? []).join(" ")}`;
+          calls.push(call);
+          if (command === "git") {
+            if (args?.includes("--show-toplevel")) return { status: 0, stdout: process.cwd(), stderr: "" };
+            if (args?.includes("merge-base")) return { status: 0, stdout: "a".repeat(40), stderr: "" };
+            if (args?.includes("--name-status")) return { status: 0, stdout: "A\0db/platform/migrations/20400101000000_example.sql\0", stderr: "" };
+            if (args?.[0] === "status" && args.includes("tests/postgres/current-installation-inventory.json")) {
+              return { status: 0, stdout: options.dirtyInventory ? " M tests/postgres/current-installation-inventory.json\n" : "", stderr: "" };
+            }
+            return { status: 0, stdout: "", stderr: "" };
+          }
+          if (command === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+          return { status: 0, stdout: "", stderr: "" };
+        });
+        const lines: string[] = [];
+        vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+        vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+        const exit = await main(now);
+        return { exit, calls, lines };
+      };
+
+      const first = await runInventoryCase({});
+      expect(first.exit).toBe(0);
+      expect(first.calls).toContain("npm run inventory:refresh");
+      expect(existsSync(cacheFile)).toBe(true);
+      expect(JSON.parse(readFileSync(cacheFile, "utf8"))).toEqual({ digest: inventoryClosureDigest() });
+
+      const cachedClean = await runInventoryCase({});
+      expect(cachedClean.exit).toBe(0);
+      expect(cachedClean.calls).not.toContain("npm run inventory:refresh");
+      expect(cachedClean.lines).toContainEqual(expect.stringMatching(/^PASS inventory: .*cached clean measurement/u));
+
+      const cachedDirty = await runInventoryCase({ dirtyInventory: true });
+      expect(cachedDirty.exit).toBe(0);
+      expect(cachedDirty.calls).not.toContain("npm run inventory:refresh");
+      expect(cachedDirty.lines).toContainEqual(expect.stringMatching(/^WARN inventory: .*not committed/u));
+
+      const ciBypass = await runInventoryCase({ ci: "true" });
+      expect(ciBypass.exit).toBe(0);
+      expect(ciBypass.calls).toContain("npm run inventory:refresh");
+    } finally {
+      if (priorCache === null) rmSync(cacheFile, { force: true });
+      else writeFileSync(cacheFile, priorCache, "utf8");
+    }
+  });
+
+  it("reports packages/platform release-gates headroom PASS, WARN (<10%) and FAIL (>cap)", async () => {
+    const gates = JSON.parse(readFileSync("packages/platform/release-gates.json", "utf8")) as {
+      pack: { maxFiles: number; maxUnpackedBytes: number };
+    };
+    const runHeadroom = async (entryCount: number, unpackedSize: number) => {
+      mockChildProcesses((command, args) => {
+        if (command === "git") {
+          if (args?.includes("--show-toplevel")) return { status: 0, stdout: process.cwd(), stderr: "" };
+          if (args?.includes("merge-base")) return { status: 0, stdout: "a".repeat(40), stderr: "" };
+          if (args?.includes("--name-status")) return { status: 0, stdout: "M\0packages/platform/sql/20400101000000_example.sql\0", stderr: "" };
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        if (command === "npm" && args?.[0] === "pack") {
+          return { status: 0, stdout: JSON.stringify([{ entryCount, unpackedSize }]), stderr: "" };
+        }
+        if (command === "docker") return { status: 1, stdout: "", stderr: "" };
+        if (command === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+        return { status: 0, stdout: "", stderr: "" };
+      });
+      const lines: string[] = [];
+      vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+      vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const exit = await main(now);
+      return { exit, lines };
+    };
+
+    const ok = await runHeadroom(Math.floor(gates.pack.maxFiles * 0.5), Math.floor(gates.pack.maxUnpackedBytes * 0.5));
+    expect(ok.exit).toBe(0);
+    expect(ok.lines).toContainEqual(expect.stringMatching(/^PASS release-gates headroom: /u));
+
+    const warn = await runHeadroom(Math.ceil(gates.pack.maxFiles * 0.95), Math.floor(gates.pack.maxUnpackedBytes * 0.5));
+    expect(warn.exit).toBe(0);
+    expect(warn.lines).toContainEqual(expect.stringMatching(/^WARN release-gates headroom: packages\/platform pack headroom under 10%/u));
+
+    const fail = await runHeadroom(gates.pack.maxFiles + 1, Math.floor(gates.pack.maxUnpackedBytes * 0.5));
+    expect(fail.exit).toBe(1);
+    expect(fail.lines).toContainEqual(expect.stringMatching(/^FAIL release-gates headroom: packages\/platform pack budget exceeded/u));
   });
 
   it("distinguishes undiscovered tests from confirmed separate suites and discovered files", () => {

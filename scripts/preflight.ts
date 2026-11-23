@@ -1,14 +1,15 @@
 // Local checks before review. The default checks the change since the fork
 // point plus working-tree edits; --fast runs the cheap readiness gate;
 // --area runs ESLint, Docker-free area tooling guards, and SQL admission.
-import { spawnSync, type SpawnSyncOptions } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { spawn, spawnSync, type SpawnOptions, type SpawnSyncOptions } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
-import { INVENTORY_PATH } from "./agent-review-derived.mjs";
+import { INVENTORY_PATH, MIGRATION_REGISTRIES } from "./agent-review-derived.mjs";
 import { carrierLocale, carrierNpmCli, carrierPlan, describeCarrierToolchain, readReportOwners } from "./agent-review-landing.mjs";
 import { TOOLING_INPUTS, excludedToolingTests } from "./ci-test-scope.mjs";
 import { readCommits, signOffVerdict } from "./dco-signoff-check.ts";
@@ -152,9 +153,47 @@ function execute(command: string, args: readonly string[], options: SpawnSyncOpt
   };
 }
 
-function npmVersionForToolchain(npmCli: string, options: SpawnSyncOptions): string {
+function executeAsync(command: string, args: readonly string[], options: SpawnOptions & { timeout?: number } = {}): Promise<Outcome> {
+  const started = Date.now();
+  const { timeout, ...spawnOptions } = options;
+  return new Promise((resolveOutcome) => {
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let timedOut = false;
+    const child = spawn(command, args, {
+      shell: process.platform === "win32",
+      stdio: ["ignore", "pipe", "pipe"],
+      ...(timeout !== undefined ? { timeout } : {}),
+      ...spawnOptions,
+    });
+    const timer = timeout ? setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeout) : undefined;
+    const finish = (code: number | null, missing = false, errorTimedOut = false) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolveOutcome({
+        code,
+        stdout,
+        output: `${stdout}${stderr}`,
+        missing,
+        timedOut: timedOut || errorTimedOut,
+        seconds: Math.round((Date.now() - started) / 1000),
+      });
+    };
+    child.stdout?.on("data", (chunk: Buffer | string) => { stdout += chunk.toString(); });
+    child.stderr?.on("data", (chunk: Buffer | string) => { stderr += chunk.toString(); });
+    child.on("error", (error: NodeJS.ErrnoException) => { finish(null, error.code === "ENOENT", error.code === "ETIMEDOUT"); });
+    child.on("close", (code) => { finish(code); });
+  });
+}
+
+async function npmVersionForToolchain(npmCli: string, options: SpawnOptions): Promise<string> {
   try {
-    const version = execute(process.execPath, [npmCli, "--version"], { ...options, timeout: 5_000 });
+    const version = await executeAsync(process.execPath, [npmCli, "--version"], { ...options, timeout: 5_000 });
     if (version.timedOut) return "unavailable (timed out after 5 s)";
     if (version.code === 0) return version.stdout.trim() || "unavailable (empty output)";
     if (version.code !== null) return `unavailable (exit status ${version.code})`;
@@ -186,72 +225,210 @@ export function neutralityVerdict(code: number | null, output: string, seconds: 
     : { check: "neutrality", status: "FAIL", detail: `the neutrality ratchet failed (${seconds} s)`, notes: tail(output) };
 }
 
-function typecheck(): CheckResult {
+async function typecheck(): Promise<CheckResult> {
   // The required typecheck job builds the packages through `npm run lint`'s prelint first.
-  const build = execute("npm", ["run", "prelint"]);
+  const build = await executeAsync("npm", ["run", "prelint"]);
   if (build.code !== 0) return { check: "typecheck", status: "FAIL", detail: "package build (npm run prelint) failed", notes: tail(build.output) };
-  const result = execute("npm", ["run", "oss:published-tree", "--", "--typecheck"]);
+  const result = await executeAsync("npm", ["run", "oss:published-tree", "--", "--typecheck"]);
   const detail = `${lastLine(result.output)} (${build.seconds + result.seconds} s)`;
   return result.code === 0 ? { check: "typecheck", status: "PASS", detail } : { check: "typecheck", status: "FAIL", detail, notes: tail(result.output) };
 }
 
-function astGrep(options?: SpawnSyncOptions): CheckResult {
-  const result = execute("npx", ["--no", "--", "ast-grep", "scan", "--error=no-suppress-all", "--error=unused-suppression"], options);
+async function astGrep(options?: SpawnOptions): Promise<CheckResult> {
+  const result = await executeAsync("npx", ["--no", "--", "ast-grep", "scan", "--error=no-suppress-all", "--error=unused-suppression"], options);
   return result.code === 0
     ? { check: "ast-grep", status: "PASS", detail: `no structural rule errors (${result.seconds} s)` }
     : { check: "ast-grep", status: "FAIL", detail: "structural rule errors", notes: tail(result.output) };
 }
 
-function astGrepHygiene(options?: SpawnSyncOptions): CheckResult {
-  const filewide = execute(process.execPath, ["scripts/ast-grep/check-filewide-ignore.mjs"]);
+async function astGrepHygiene(options?: SpawnOptions): Promise<CheckResult> {
+  const filewide = await executeAsync(process.execPath, ["scripts/ast-grep/check-filewide-ignore.mjs"]);
   if (filewide.code !== 0) {
     return { check: "ast-grep hygiene", status: "FAIL", detail: `file-wide ast-grep-ignore check failed (${filewide.seconds} s)`, notes: tail(filewide.output) };
   }
-  const tests = execute("npx", ["--no", "--", "ast-grep", "test", "--skip-snapshot-tests"], options);
+  const tests = await executeAsync("npx", ["--no", "--", "ast-grep", "test", "--skip-snapshot-tests"], options);
   const seconds = filewide.seconds + tests.seconds;
   return tests.code === 0
     ? { check: "ast-grep hygiene", status: "PASS", detail: `no file-wide ignores and rule tests pass (${seconds} s)` }
     : { check: "ast-grep hygiene", status: "FAIL", detail: `ast-grep rule tests failed (${seconds} s)`, notes: tail(tests.output) };
 }
 
-function eslintChanged(changes: readonly Change[]): CheckResult {
+async function eslintChanged(changes: readonly Change[]): Promise<CheckResult> {
   const files = changes.filter(({ path, deleted }) => !deleted && SCRIPT.test(path)).map(({ path }) => path);
   if (files.length === 0) return { check: "eslint changed", status: "SKIP", detail: "no changed JS/TS files" };
-  const result = execute("npx", ["--no", "--", "eslint", "--", ...files]);
+  const result = await executeAsync("npx", ["--no", "--", "eslint", "--", ...files]);
   return result.code === 0
     ? { check: "eslint changed", status: "PASS", detail: `${files.length} changed file(s) passed eslint (${result.seconds} s)` }
     : { check: "eslint changed", status: "FAIL", detail: `eslint failed on ${files.length} changed file(s)`, notes: tail(result.output) };
 }
 
-function sqlAdmit(changes: readonly Change[]): CheckResult {
+async function sqlAdmit(changes: readonly Change[]): Promise<CheckResult> {
   const triggers = sqlTreeChanges(changes);
   if (triggers.length === 0) return { check: "sql admit", status: "SKIP", detail: "no SQL under db/ or packages/*/sql/ changed" };
   if (git(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none"], "stdout") !== "") {
     return { check: "sql admit", status: "WARN", detail: "commit or stash uncommitted changes to run npm run sql:admit" };
   }
-  const result = execute("npm", ["run", "sql:admit"]);
+  const result = await executeAsync("npm", ["run", "sql:admit"]);
   return result.code === 0
     ? { check: "sql admit", status: "PASS", detail: `SQL admission passed (${result.seconds} s)` }
     : { check: "sql admit", status: "FAIL", detail: `npm run sql:admit exited ${result.code ?? "on a signal"}`, notes: tail(result.output) };
 }
 
-function inventory(changes: readonly Change[]): CheckResult {
+const INVENTORY_CACHE_PATH = ".context/scratch/inventory-cache.json";
+const INVENTORY_CLOSURE_FILES = [
+  ...MIGRATION_REGISTRIES,
+  INVENTORY_PATH,
+  "config/ci-images.json",
+  "scripts/agent-review-derived.mjs",
+  "scripts/ci-image-pull.mjs",
+  "scripts/ci-image-mirror.mjs",
+  "scripts/disposable-docker.mjs",
+  "scripts/platform-migration-manifest.ts",
+  "scripts/installation-inventory-refresh.ts",
+  "server/adapters/postgres/migrationRunner.ts",
+  "server/adapters/postgres/qualifiedInstall.ts",
+  "server/adapters/postgres/selectedCatalogProjection.ts",
+  "server/adapters/postgres/connectedStoreCapture.ts",
+  "tests/helpers/postgresContainer.ts",
+];
+const INVENTORY_CLOSURE_DIRS = [
+  "db",
+  "packages/platform/src/migrations",
+  "packages/platform/src/catalog",
+  "packages/platform/dist/migrations",
+  "packages/platform/dist/catalog",
+];
+
+function collectFilesRecursive(root: string, dir: string, filter?: (rel: string) => boolean): string[] {
+  const full = resolve(root, dir);
+  if (!existsSync(full)) return [];
+  const entries: string[] = [];
+  for (const name of readdirSync(full).sort()) {
+    const rel = `${dir}/${name}`;
+    const stat = statSync(resolve(root, rel));
+    if (stat.isDirectory()) entries.push(...collectFilesRecursive(root, rel, filter));
+    else if (stat.isFile() && (!filter || filter(rel))) entries.push(rel);
+  }
+  return entries;
+}
+
+/** Content-addressed digest over every file that can influence `inventory:refresh`. */
+export function inventoryClosureDigest(root = process.cwd()): string {
+  const paths = new Set<string>(INVENTORY_CLOSURE_FILES);
+  for (const dir of INVENTORY_CLOSURE_DIRS) {
+    const filter = dir === "db" ? (rel: string) => rel.endsWith(".sql") : undefined;
+    for (const rel of collectFilesRecursive(root, dir, filter)) paths.add(rel);
+  }
+  const hasher = createHash("sha256");
+  for (const rel of [...paths].sort()) {
+    const full = resolve(root, rel);
+    hasher.update(`${rel}\0`);
+    if (existsSync(full) && statSync(full).isFile()) {
+      hasher.update("1\0");
+      hasher.update(readFileSync(full));
+    } else {
+      hasher.update("0\0");
+    }
+    hasher.update("\0");
+  }
+  return hasher.digest("hex");
+}
+
+function readInventoryCache(root = process.cwd()): string | null {
+  try {
+    const parsed = JSON.parse(readFileSync(resolve(root, INVENTORY_CACHE_PATH), "utf8")) as { digest?: unknown };
+    return typeof parsed.digest === "string" ? parsed.digest : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeInventoryCache(digest: string, root = process.cwd()): void {
+  try {
+    const target = resolve(root, INVENTORY_CACHE_PATH);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, `${JSON.stringify({ digest })}\n`, "utf8");
+  } catch {
+    // Advisory local cache writes never fail preflight.
+  }
+}
+
+async function inventory(changes: readonly Change[]): Promise<CheckResult> {
   const triggers = sqlTreeChanges(changes);
   if (triggers.length === 0) return { check: "inventory", status: "SKIP", detail: "no SQL under db/ or packages/*/sql/ changed" };
-  if (execute("docker", ["info"], { timeout: 30_000 }).code !== 0) {
+  const useCache = processEnvironment.CI !== "true" && processEnvironment.OPENLUP_PREFLIGHT_NO_CACHE !== "1";
+  const closureDigest = useCache ? inventoryClosureDigest() : null;
+  if (useCache && closureDigest && readInventoryCache() === closureDigest) {
+    if (git(["status", "--porcelain", "--", INVENTORY_PATH]).trim()) {
+      return { check: "inventory", status: "WARN", detail: `${INVENTORY_PATH} matches the cached clean measurement but is not committed (0 s)` };
+    }
+    return { check: "inventory", status: "PASS", detail: `${INVENTORY_PATH} matches the cached clean measurement for unchanged SQL closure (0 s)` };
+  }
+  if ((await executeAsync("docker", ["info"], { timeout: 30_000 })).code !== 0) {
     return { check: "inventory", status: "WARN", detail: `${triggers.length} SQL file(s) changed but Docker is unavailable; run npm run inventory:refresh with Docker and commit ${INVENTORY_PATH}` };
   }
   // inventory:refresh has no check mode: it rewrites the file's `current` section.
   const before = readFileSync(INVENTORY_PATH, "utf8");
-  const result = execute("npm", ["run", "inventory:refresh"]);
+  const result = await executeAsync("npm", ["run", "inventory:refresh"]);
   if (result.code !== 0) return { check: "inventory", status: "FAIL", detail: "npm run inventory:refresh failed", notes: tail(result.output) };
   if (readFileSync(INVENTORY_PATH, "utf8") !== before) {
     return { check: "inventory", status: "FAIL", detail: `refresh rewrote ${INVENTORY_PATH} and left it in the working tree; review it with git diff and commit it (${result.seconds} s)` };
   }
+  if (useCache && closureDigest) writeInventoryCache(closureDigest);
   if (git(["status", "--porcelain", "--", INVENTORY_PATH]).trim()) {
     return { check: "inventory", status: "WARN", detail: `${INVENTORY_PATH} matches the measured installations but is not committed (${result.seconds} s)` };
   }
   return { check: "inventory", status: "PASS", detail: `${INVENTORY_PATH} matches the measured installations (${result.seconds} s)` };
+}
+
+const RELEASE_GATES_HEADROOM_WARN_RATIO = 0.10;
+
+async function releaseGatesHeadroom(changes: readonly Change[], typecheckPassed: boolean): Promise<CheckResult> {
+  if (!changes.some(({ path }) => path.startsWith("packages/platform/"))) {
+    return { check: "release-gates headroom", status: "SKIP", detail: "no packages/platform/ files changed" };
+  }
+  if (!typecheckPassed) {
+    return { check: "release-gates headroom", status: "SKIP", detail: "typecheck build did not complete" };
+  }
+  const gatesPath = "packages/platform/release-gates.json";
+  if (!existsSync(gatesPath)) return { check: "release-gates headroom", status: "SKIP", detail: `${gatesPath} absent` };
+  const budget = (JSON.parse(readFileSync(gatesPath, "utf8")) as { pack?: { maxFiles?: number; maxUnpackedBytes?: number } }).pack;
+  if (!budget?.maxFiles || !budget?.maxUnpackedBytes) {
+    return { check: "release-gates headroom", status: "SKIP", detail: "pack caps unavailable" };
+  }
+  const packDir = mkdtempSync(join(tmpdir(), "openlup-preflight-pack-"));
+  try {
+    const result = await executeAsync("npm", ["pack", "--json", "--dry-run", "--pack-destination", packDir], { cwd: resolve("packages/platform") });
+    if (result.code !== 0) {
+      return { check: "release-gates headroom", status: "WARN", detail: `npm pack --dry-run unavailable (${result.seconds} s)`, notes: tail(result.output) };
+    }
+    const reports = JSON.parse(result.stdout) as Array<{ entryCount?: number; unpackedSize?: number }>;
+    const report = reports[0];
+    if (!report || typeof report.entryCount !== "number" || typeof report.unpackedSize !== "number") {
+      return { check: "release-gates headroom", status: "WARN", detail: "npm pack --json --dry-run output unreadable" };
+    }
+    const checks: Array<[string, number, number]> = [
+      ["files", report.entryCount, budget.maxFiles],
+      ["unpacked bytes", report.unpackedSize, budget.maxUnpackedBytes],
+    ];
+    const exceeded: string[] = [];
+    const low: string[] = [];
+    for (const [label, value, limit] of checks) {
+      if (value > limit) exceeded.push(`${label} ${value} exceeds cap ${limit}`);
+      else if ((limit - value) / limit < RELEASE_GATES_HEADROOM_WARN_RATIO) {
+        low.push(`${label} ${value}/${limit} (${((limit - value) / limit * 100).toFixed(1)}% headroom)`);
+      }
+    }
+    if (exceeded.length > 0) {
+      return { check: "release-gates headroom", status: "FAIL", detail: `packages/platform pack budget exceeded (${result.seconds} s)`, notes: exceeded };
+    }
+    if (low.length > 0) {
+      return { check: "release-gates headroom", status: "WARN", detail: `packages/platform pack headroom under 10% (${result.seconds} s)`, notes: low };
+    }
+    return { check: "release-gates headroom", status: "PASS", detail: `packages/platform ${report.entryCount}/${budget.maxFiles} files, ${report.unpackedSize}/${budget.maxUnpackedBytes} unpacked bytes (${result.seconds} s)` };
+  } finally {
+    rmSync(packDir, { recursive: true, force: true });
+  }
 }
 
 function fragments(changes: readonly Change[]): CheckResult {
@@ -275,8 +452,8 @@ function testLineChecks(lines: readonly AddedLine[] | null, now: Date): CheckRes
   ];
 }
 
-function gitleaks(base: string, untracked: readonly string[]): CheckResult {
-  if (execute("gitleaks", ["version"]).missing) return { check: "gitleaks", status: "SKIP", detail: "gitleaks is not on PATH; the required gitleaks job still scans the pull request" };
+async function gitleaks(base: string, untracked: readonly string[]): Promise<CheckResult> {
+  if ((await executeAsync("gitleaks", ["version"])).missing) return { check: "gitleaks", status: "SKIP", detail: "gitleaks is not on PATH; the required gitleaks job still scans the pull request" };
   const options = ["--config", "config/gitleaks.toml", "--gitleaks-ignore-path", ".gitleaksignore", "--redact", "--no-banner", "--no-color"];
   const scans: string[][] = [];
   if (Number(git(["rev-list", "--count", `${base}..HEAD`], "stdout").trim()) > 0) scans.push(["git", ".", ...options, "--log-opts", `${base}..HEAD`]);
@@ -284,7 +461,7 @@ function gitleaks(base: string, untracked: readonly string[]): CheckResult {
   for (const path of untracked) scans.push(["dir", path, ...options]);
   let seconds = 0;
   for (const scan of scans) {
-    const result = execute("gitleaks", scan);
+    const result = await executeAsync("gitleaks", scan);
     seconds += result.seconds;
     if (result.code !== 0) return { check: "gitleaks", status: "FAIL", detail: `gitleaks ${scan[0]} reported findings or failed`, notes: tail(result.output) };
   }
@@ -358,19 +535,19 @@ function discoverTests(changes: readonly Change[]): TestSelection {
   return { files, separate, unknown: outside.filter((path) => !separate.some((entry) => entry.path === path)) };
 }
 
-function hostedTests(selection: TestSelection | undefined): CheckResult {
+async function hostedTests(selection: TestSelection | undefined): Promise<CheckResult> {
   if (!selection) return { check: "hosted tests", status: "FAIL", detail: "test discovery failed; restore discovery before running changed root tests" };
   const { files } = selection;
   if (files.length === 0) return { check: "hosted tests", status: "SKIP", detail: "no changed root Vitest file; see test discovery for separate runners and missing proof" };
-  const result = execute(process.execPath, ["scripts/test-hosted.mjs", ...files]);
+  const result = await executeAsync(process.execPath, ["scripts/test-hosted.mjs", ...files]);
   return result.code === 0
     ? { check: "hosted tests", status: "PASS", detail: `${files.length} file(s) passed in hosted parity (${result.seconds} s)` }
     : { check: "hosted tests", status: "FAIL", detail: `npm run test:hosted -- ${files.join(" ")} exited ${result.code ?? "on a signal"}`, notes: tail(result.output, 60) };
 }
 
-function neutrality(base: string): CheckResult {
+async function neutrality(base: string): Promise<CheckResult> {
   // The required self-check job's tree-wide ratchet; it scans the working tree, untracked files included.
-  const result = execute(process.execPath, ["scripts/public-ci-neutrality.mjs", "--base-commit", base]);
+  const result = await executeAsync(process.execPath, ["scripts/public-ci-neutrality.mjs", "--base-commit", base]);
   return neutralityVerdict(result.code, result.output, result.seconds);
 }
 
@@ -428,24 +605,39 @@ export function areaGuardTests(changedPaths: readonly string[]): string[] {
   return [...selected].sort();
 }
 
-function areaToolingGuards(changes: readonly Change[]): CheckResult {
+async function areaToolingGuards(changes: readonly Change[]): Promise<CheckResult> {
   const files = areaGuardTests([...new Set(changes.map(({ path }) => path))]);
   if (files.length === 0) return { check: "area guards", status: "SKIP", detail: "no area tooling guard tests triggered" };
-  const result = execute(process.execPath, ["scripts/test-hosted.mjs", ...files]);
+  const result = await executeAsync(process.execPath, ["scripts/test-hosted.mjs", ...files]);
   return result.code === 0
     ? { check: "area guards", status: "PASS", detail: `${files.length} area guard file(s) passed in hosted parity (${result.seconds} s)` }
     : { check: "area guards", status: "FAIL", detail: `npm run test:hosted -- ${files.join(" ")} exited ${result.code ?? "on a signal"}`, notes: tail(result.output, 60) };
 }
 
-function fastPreflight(now: Date): number {
+type FastEntry = { name: string; preamble?: string[]; outcome: CheckResult[] };
+
+async function runFastItem(name: string, work: () => Promise<CheckResult | CheckResult[] | { preamble?: string[]; outcome: CheckResult | CheckResult[] }> | CheckResult | CheckResult[]): Promise<FastEntry> {
+  try {
+    const raw = await work();
+    if (raw && !Array.isArray(raw) && "outcome" in raw) {
+      return { name, preamble: raw.preamble, outcome: [raw.outcome].flat() };
+    }
+    return { name, outcome: [raw as CheckResult | CheckResult[]].flat() };
+  } catch (error) {
+    const detail = (error as Error).message;
+    return { name, outcome: [{ check: name, status: "FAIL", detail, notes: tail(detail) }] };
+  }
+}
+
+async function fastPreflight(now: Date): Promise<number> {
   const head = git(["rev-parse", "HEAD"], "stdout").trim();
-  if (execute("git", ["fetch", "origin", "main"], { timeout: 5_000 }).code !== 0) {
+  if ((await executeAsync("git", ["fetch", "origin", "main"], { timeout: 5_000 })).code !== 0) {
     console.error("preflight: git fetch origin main failed. Using local origin/main.");
   }
   const offlineNpm = { env: { ...processEnvironment, ...carrierLocale, npm_config_offline: "true", npm_config_update_notifier: "false" } };
   const npmInvocation = "preflight -- --fast";
-  const command = (check: string, bin: string, args: string[], options?: SpawnSyncOptions): CheckResult => {
-    const { code, output } = execute(bin, args, options);
+  const command = async (check: string, bin: string, args: string[], options?: SpawnOptions): Promise<CheckResult> => {
+    const { code, output } = await executeAsync(bin, args, options);
     return { check, status: code === 0 ? "PASS" : "FAIL", detail: lastLine(output) || `${bin} did not complete successfully`,
       notes: code === 0 ? undefined : tail(output) };
   };
@@ -453,21 +645,25 @@ function fastPreflight(now: Date): number {
   const forkPoint = (): string => (fork ??= git(["merge-base", "HEAD", "origin/main"], "stdout").trim());
   let cachedChanges: Change[] | undefined;
   const fastChanges = (): Change[] => (cachedChanges ??= parseNameStatus(git(["diff", "--name-status", "--no-renames", "-z", forkPoint(), "HEAD"], "stdout")));
-  let clean = false;
-  const checkCarrier = (check: string, bin: string, args: string[], remedy?: string): CheckResult => {
-    const result = command(check, bin, args, offlineNpm);
+  const clean = !git(["status", "--porcelain", "--untracked-files=all"], "stdout").trim();
+  const cleanEntry: FastEntry = {
+    name: "clean",
+    outcome: [{ check: "clean", status: clean ? "PASS" : "FAIL", detail: "worktree has uncommitted changes. Commit or remove them." }],
+  };
+  const checkCarrier = async (check: string, bin: string, args: string[], remedy?: string): Promise<CheckResult> => {
+    const result = await command(check, bin, args, offlineNpm);
     if (result.status === "FAIL") {
       const message = result.notes?.find(line => line.startsWith("Error: "))?.slice("Error: ".length) ?? result.detail;
       result.detail = remedy ? `${message}. ${remedy}` : message;
     }
     return result;
   };
-  const carrierChecks = (): CheckResult[] => {
+  const carrierChecks = async (): Promise<CheckResult[]> => {
     if (!clean) return [{ check: "carriers", status: "SKIP", detail: "clean committed checkout required" }];
     const { builds, reports, settings } = carrierPlan(readReportOwners(process.cwd()), fastChanges().map(({ path }) => path));
     if (!builds.length) return [{ check: "carriers", status: "SKIP", detail: "no report or settings inputs changed" }];
     const buildDirectories = JSON.stringify(builds.map(({ directory }: { directory: string }) => directory));
-    const prerequisites = checkCarrier("carrier prerequisites", process.execPath, ["--input-type=module", "-e",
+    const prerequisites = await checkCarrier("carrier prerequisites", process.execPath, ["--input-type=module", "-e",
       `import { assertCarrierBuildOutputs, assertCarrierToolchain } from './scripts/agent-review-landing.mjs';
         await assertCarrierBuildOutputs(process.cwd(), ${buildDirectories});
         assertCarrierToolchain(process.cwd(), ${JSON.stringify(npmInvocation)});`],
@@ -476,80 +672,112 @@ function fastPreflight(now: Date): number {
     if (prerequisites.status === "FAIL") return results;
     const npmCli = carrierNpmCli(npmInvocation);
     for (const { name } of builds) {
-      const build = checkCarrier(`carrier build ${name}`, process.execPath, [npmCli, "run", "build", `--workspace=${name}`], "Fix the workspace build before checking carrier bytes.");
+      const build = await checkCarrier(`carrier build ${name}`, process.execPath, [npmCli, "run", "build", `--workspace=${name}`], "Fix the workspace build before checking carrier bytes.");
       results.push(build);
       if (build.status === "FAIL") return results;
     }
-    for (const { name } of reports) results.push(checkCarrier(`api:check ${name}`, process.execPath, [npmCli, "run", "api:check", `--workspace=${name}`]));
-    if (settings) results.push(checkCarrier("settings-catalogue", process.execPath, ["scripts/settings-catalogue.ts"], "Run node scripts/settings-catalogue.ts --write."));
+    for (const { name } of reports) results.push(await checkCarrier(`api:check ${name}`, process.execPath, [npmCli, "run", "api:check", `--workspace=${name}`]));
+    if (settings) results.push(await checkCarrier("settings-catalogue", process.execPath, ["scripts/settings-catalogue.ts"], "Run node scripts/settings-catalogue.ts --write."));
     return results;
   };
-  const checks: Array<[string, () => CheckResult | CheckResult[]]> = [
-    ["clean", () => {
-      clean = !git(["status", "--porcelain", "--untracked-files=all"], "stdout").trim();
-      return { check: "clean", status: clean ? "PASS" : "FAIL", detail: "worktree has uncommitted changes. Commit or remove them." };
-    }],
-    ["merge-clean", () => {
+  // Precompute shared fork-point and changed-paths before the parallel read-only wave.
+  let forkError: string | undefined;
+  try {
+    forkPoint();
+    fastChanges();
+  } catch (error) {
+    forkError = (error as Error).message;
+  }
+  const requireFork = (): string => {
+    if (forkError) throw new Error(forkError);
+    return forkPoint();
+  };
+  const requireChanges = (): Change[] => {
+    if (forkError) throw new Error(forkError);
+    return fastChanges();
+  };
+  // Wave 1: read-only checks run concurrently; buffered results emit in canonical order.
+  const [
+    mergeCleanEntry,
+    neutralityEntry,
+    uiNeutralityEntry,
+    astGrepEntry,
+    astGrepHygieneEntry,
+    publicationEntry,
+    migrationProjectionEntry,
+    fragmentsEntry,
+    testLinesEntry,
+    gitleaksEntry,
+    guideCheckEntry,
+    packageManifestEntry,
+    dcoEntry,
+  ] = await Promise.all([
+    runFastItem("merge-clean", async () => {
       const stackBase = processEnvironment.OPENLUP_STACK_BASE;
       if (stackBase !== undefined && STACK_BASE_SHA.test(stackBase)
-        && execute("git", ["merge-base", "--is-ancestor", stackBase, "HEAD"]).code === 0
-        && execute("git", ["merge-base", "--is-ancestor", stackBase, "origin/main"]).code === 1) {
+        && (await executeAsync("git", ["merge-base", "--is-ancestor", stackBase, "HEAD"])).code === 0
+        && (await executeAsync("git", ["merge-base", "--is-ancestor", stackBase, "origin/main"])).code === 1) {
         return { check: "merge-clean", status: "SKIP", detail: "unlanded OPENLUP_STACK_BASE; merge-tree skipped" };
       }
       return command("merge-clean", "git", ["merge-tree", "--write-tree", "origin/main", "HEAD"]);
-    }],
-    ["neutrality", () => neutrality(forkPoint())],
-    ["ui-neutrality", () => command("ui-neutrality", process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts"])],
-    ["ast-grep", () => astGrep(offlineNpm)],
-    ["ast-grep-hygiene", () => astGrepHygiene(offlineNpm)],
-    ["publication", () => {
+    }),
+    runFastItem("neutrality", () => neutrality(requireFork())),
+    runFastItem("ui-neutrality", () => command("ui-neutrality", process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts"])),
+    runFastItem("ast-grep", () => astGrep(offlineNpm)),
+    runFastItem("ast-grep-hygiene", () => astGrepHygiene(offlineNpm)),
+    runFastItem("publication", async () => {
       let npmCli: string;
       let npmVersion = "unavailable (npm CLI path missing or relative)";
+      const preamble: string[] = [];
       try {
         npmCli = carrierNpmCli(npmInvocation);
-        npmVersion = npmVersionForToolchain(npmCli, offlineNpm);
-      } finally {
-        console.log(describeCarrierToolchain(npmVersion));
+        npmVersion = await npmVersionForToolchain(npmCli, offlineNpm);
+      } catch (error) {
+        preamble.push(describeCarrierToolchain(npmVersion));
+        const detail = (error as Error).message;
+        return { preamble, outcome: { check: "publication", status: "FAIL", detail, notes: tail(detail) } };
       }
-      const result = command("publication", process.execPath, [npmCli, "run", "oss:published-tree", "--", "--self-check",
-        ...(processEnvironment.OPENLUP_STACK_BASE !== undefined ? [] : ["--docs-base", forkPoint()]),
+      preamble.push(describeCarrierToolchain(npmVersion));
+      const result = await command("publication", process.execPath, [npmCli, "run", "oss:published-tree", "--", "--self-check",
+        ...(processEnvironment.OPENLUP_STACK_BASE !== undefined ? [] : ["--docs-base", requireFork()]),
       ], offlineNpm);
       const missing = result.notes?.find(line => /materialized output inventory mismatch .*; extra (?!none\))/u.test(line));
       if (missing) result.detail = `${missing}. Add the reviewed classification in config/openlup-publication-catalog.json.`;
-      return result;
-    }],
-    ["carriers", carrierChecks],
-    ["migration projection", () => {
+      return { preamble, outcome: result };
+    }),
+    runFastItem("migration projection", () => {
       if (!clean) return { check: "migration projection", status: "SKIP", detail: "clean committed checkout required" };
       const errors = checkPlatformMigrationProjection(process.cwd());
       return { check: "migration projection", status: errors.length ? "FAIL" : "PASS", detail: errors[0] ?? "fresh", notes: errors };
-    }],
-    ["fragments", () => fragments(fastChanges())],
-    ["test-lines", () => testLineChecks(changedTestLines(forkPoint(), fastChanges(), new Set(), "HEAD"), now)],
-    ["gitleaks", () => gitleaks(forkPoint(), [])],
-    ["guide-check", () => fastChanges().some(({ path }) => GUIDE_TRIGGER.test(path))
+    }),
+    runFastItem("fragments", () => fragments(requireChanges())),
+    runFastItem("test-lines", () => testLineChecks(changedTestLines(requireFork(), requireChanges(), new Set(), "HEAD"), now)),
+    runFastItem("gitleaks", () => gitleaks(requireFork(), [])),
+    runFastItem("guide-check", () => requireChanges().some(({ path }) => GUIDE_TRIGGER.test(path))
       ? command("guide-check", process.execPath, ["--experimental-strip-types", "packages/core/scripts/documentation-contract.ts", "--check-guide", "packages/core"], offlineNpm)
-      : { check: "guide-check", status: "SKIP", detail: "no guide or rule files changed" }],
-    ["package-manifest", () => fastChanges().some(({ path }) => PACKAGE_MANIFEST_TRIGGER.test(path))
+      : { check: "guide-check", status: "SKIP", detail: "no guide or rule files changed" }),
+    runFastItem("package-manifest", () => requireChanges().some(({ path }) => PACKAGE_MANIFEST_TRIGGER.test(path))
       ? command("package-manifest", "npm", ["run", "packages:check", "--", "--manifest-only"], offlineNpm)
-      : { check: "package-manifest", status: "SKIP", detail: "no package manifests or config/openlup-packages.json changed" }],
-    ["dco", () => {
+      : { check: "package-manifest", status: "SKIP", detail: "no package manifests or config/openlup-packages.json changed" }),
+    runFastItem("dco", () => {
       const upstream = git(["rev-parse", "origin/main"], "stdout").trim();
       const commits = readCommits(process.cwd(), upstream, head);
       const { missing } = signOffVerdict(commits);
       return { check: "dco", status: missing.length ? "FAIL" : "PASS",
         detail: `missing Signed-off-by on ${missing.map(({ sha }) => sha.slice(0, 12)).join(", ")}` };
-    }],
+    }),
+  ]);
+  // Wave 2: carrier builds mutate packages/*/dist/, so run after Wave 1 finishes.
+  const carriersEntry = await runFastItem("carriers", carrierChecks);
+
+  const ordered: FastEntry[] = [
+    cleanEntry, mergeCleanEntry, neutralityEntry, uiNeutralityEntry, astGrepEntry, astGrepHygieneEntry,
+    publicationEntry, carriersEntry, migrationProjectionEntry, fragmentsEntry, testLinesEntry,
+    gitleaksEntry, guideCheckEntry, packageManifestEntry, dcoEntry,
   ];
   const failed: string[] = [];
-  for (const [name, check] of checks) {
-    let outcome: CheckResult[];
-    try {
-      outcome = [check()].flat();
-    } catch (error) {
-      const detail = (error as Error).message;
-      outcome = [{ check: name, status: "FAIL", detail, notes: tail(detail) }];
-    }
+  for (const { name, preamble, outcome } of ordered) {
+    for (const line of preamble ?? []) console.log(line);
     for (const result of outcome) {
       const label = outcome.length > 1 || name === "carriers" ? result.check : name;
       if (result.status === "PASS") {
@@ -592,25 +820,41 @@ function readForkChanges(): ForkChanges | { error: CheckResult } {
   return { base, untrackedPaths, changes };
 }
 
-function runChecks(started: number, checks: ReadonlyArray<readonly [string, () => CheckResult | CheckResult[]]>): number {
+type CheckSpec = readonly [string, () => Promise<CheckResult | CheckResult[]> | CheckResult | CheckResult[]];
+
+async function executeCheckSpec([name, check]: CheckSpec): Promise<CheckResult[]> {
+  try {
+    return [await check()].flat();
+  } catch (error) {
+    return [{ check: name, status: "FAIL", detail: (error as Error).message }];
+  }
+}
+
+async function runCheckWaves(started: number, waves: ReadonlyArray<{ parallel: boolean; checks: ReadonlyArray<CheckSpec> }>): Promise<number> {
   const results: CheckResult[] = [];
-  for (const [name, check] of checks) {
-    process.stderr.write(`preflight: running ${name}\n`);
-    let outcome: CheckResult[];
-    try {
-      outcome = [check()].flat();
-    } catch (error) {
-      outcome = [{ check: name, status: "FAIL", detail: (error as Error).message }];
+  for (const wave of waves) {
+    if (wave.parallel) {
+      process.stderr.write(`preflight: running ${wave.checks.map(([name]) => name).join(", ")} in parallel\n`);
+      const outcomes = await Promise.all(wave.checks.map(executeCheckSpec));
+      for (const outcome of outcomes) {
+        for (const result of outcome) print(result);
+        results.push(...outcome);
+      }
+    } else {
+      for (const spec of wave.checks) {
+        process.stderr.write(`preflight: running ${spec[0]}\n`);
+        const outcome = await executeCheckSpec(spec);
+        for (const result of outcome) print(result);
+        results.push(...outcome);
+      }
     }
-    for (const result of outcome) print(result);
-    results.push(...outcome);
   }
   const count = (status: Status) => results.filter((result) => result.status === status).length;
   console.log(`preflight: ${count("PASS")} PASS, ${count("WARN")} WARN, ${count("SKIP")} SKIP, ${count("FAIL")} FAIL in ${Math.round((Date.now() - started) / 1000)} s`);
   return count("FAIL") > 0 ? 1 : 0;
 }
 
-function areaPreflight(): number {
+async function areaPreflight(): Promise<number> {
   const started = Date.now();
   const fork = readForkChanges();
   if ("error" in fork) {
@@ -618,14 +862,17 @@ function areaPreflight(): number {
     return 1;
   }
   const { changes } = fork;
-  return runChecks(started, [
-    ["eslint changed", () => eslintChanged(changes)],
-    ["area guards", () => areaToolingGuards(changes)],
-    ["sql admit", () => sqlAdmit(changes)],
-  ]);
+  return runCheckWaves(started, [{
+    parallel: false,
+    checks: [
+      ["eslint changed", () => eslintChanged(changes)],
+      ["area guards", () => areaToolingGuards(changes)],
+      ["sql admit", () => sqlAdmit(changes)],
+    ],
+  }]);
 }
 
-export function main(now: Date, args: readonly string[] = []): number {
+export async function main(now: Date, args: readonly string[] = []): Promise<number> {
   const fast = args.includes("--fast");
   const area = args.includes("--area");
   if (fast && area) {
@@ -637,14 +884,14 @@ export function main(now: Date, args: readonly string[] = []): number {
     processEnvironment.GIT_OPTIONAL_LOCKS = "0";
     try {
       process.chdir(git(["rev-parse", "--show-toplevel"], "stdout").trim());
-      return fastPreflight(now);
+      return await fastPreflight(now);
     } finally {
       if (optionalLocks === undefined) delete processEnvironment.GIT_OPTIONAL_LOCKS;
       else processEnvironment.GIT_OPTIONAL_LOCKS = optionalLocks;
     }
   }
   process.chdir(git(["rev-parse", "--show-toplevel"], "stdout").trim());
-  if (area) return areaPreflight();
+  if (area) return await areaPreflight();
   const started = Date.now();
   const fork = readForkChanges();
   if ("error" in fork) {
@@ -653,20 +900,34 @@ export function main(now: Date, args: readonly string[] = []): number {
   }
   const { base, untrackedPaths, changes } = fork;
   let selection: TestSelection | undefined;
-  return runChecks(started, [
-    ["ast-grep", astGrep],
-    ["ast-grep hygiene", () => astGrepHygiene()],
-    ["neutrality", () => neutrality(base)],
-    ["fragments", () => fragments(changes)],
-    ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
-    ["gitleaks", () => gitleaks(base, untrackedPaths)],
-    ["test discovery", () => { selection = discoverTests(changes); return testDiscoveryVerdict(selection); }],
-    ["eslint changed", () => eslintChanged(changes)],
-    ["sql admit", () => sqlAdmit(changes)],
-    ["typecheck", typecheck],
-    ["inventory", () => inventory(changes)],
-    ["hosted tests", () => hostedTests(selection)],
+  let typecheckPassed = false;
+  return runCheckWaves(started, [
+    {
+      parallel: true,
+      checks: [
+        ["ast-grep", () => astGrep()],
+        ["ast-grep hygiene", () => astGrepHygiene()],
+        ["neutrality", () => neutrality(base)],
+        ["fragments", () => fragments(changes)],
+        ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
+        ["gitleaks", () => gitleaks(base, untrackedPaths)],
+        ["test discovery", () => { selection = discoverTests(changes); return testDiscoveryVerdict(selection); }],
+        ["eslint changed", () => eslintChanged(changes)],
+        ["sql admit", () => sqlAdmit(changes)],
+      ],
+    },
+    {
+      parallel: false,
+      checks: [
+        ["typecheck", async () => { const res = await typecheck(); typecheckPassed = res.status === "PASS"; return res; }],
+        ["release-gates headroom", () => releaseGatesHeadroom(changes, typecheckPassed)],
+        ["inventory", () => inventory(changes)],
+        ["hosted tests", () => hostedTests(selection)],
+      ],
+    },
   ]);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = main(new Date(), process.argv.slice(2));
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main(new Date(), process.argv.slice(2)).then((code) => { process.exitCode = code; });
+}
