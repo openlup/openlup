@@ -539,7 +539,7 @@ export async function restoreConnectedNativeStore(input: {
 
 function refuseSourceSchema(table?: TableName): never {
   const error = new PostgresTransferError("schema_conflict", table);
-  const remedy = "upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile";
+  const remedy = "capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older";
   error.message += ` (${remedy})`;
   throw Object.assign(error, { remedy });
 }

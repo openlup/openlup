@@ -525,7 +525,7 @@ policy.
 Connected-store restore admits only a packet captured on the target's exact
 current qualified inventory. Any other inventory, including earlier releases
 and unreleased states, refuses with `schema_conflict`. The remedy is
-`upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile`.
+`capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
 If no such target can be provisioned, connected-store restore is unavailable for that pair.
 Each release cut decides whether the previous release
 is admitted, with one general additive conversion keyed on that release's tables
@@ -2544,7 +2544,7 @@ moving `pg_temp` to the end. For a missing or empty path, review and set the
 trusted schema list before appending `pg_temp`. Eleven acquisition and partner
 acquisition definer functions now pin `pg_temp` last on their search path.
 If a retained-store packet has an unknown or mismatched inventory, the remedy is
-`upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile`.
+`capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
 If no such target can be provisioned, connected-store restore is unavailable for that pair.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted

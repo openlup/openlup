@@ -133,7 +133,7 @@ it.each([
     freshTarget,
   })).rejects.toMatchObject({
     code: "schema_conflict",
-    remedy: "upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile",
+    remedy: "capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older",
   });
   expect(connect).not.toHaveBeenCalled();
 });

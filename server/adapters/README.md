@@ -371,7 +371,7 @@ equality is a precondition inside the target transaction, not independent
 freshness evidence.
 Restore requires the target's exact current qualified inventory. An inventory
 mismatch refuses with `schema_conflict`. The remedy is
-`upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile`.
+`capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
 If no such target can be provisioned, connected-store restore is unavailable for that pair.
 The target rechecks the selected canonical catalogue and ledger. Its
 paths, checksums and positions follow the selected manifest.

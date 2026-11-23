@@ -549,11 +549,11 @@ it("refuses a retyped retained column and an unknown inventory with a recapture 
   await expect(restore(target.owner, capture)).rejects.toMatchObject({
     code: "schema_conflict",
     table: "catalog_sku_identifiers",
-    remedy: "upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile",
+    remedy: "capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older",
   });
   await expect(restore(target.owner, repin(packet, "a".repeat(64)))).rejects.toMatchObject({
     code: "schema_conflict",
-    remedy: "upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile",
+    remedy: "capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older",
   });
 }, 105_000);
 
