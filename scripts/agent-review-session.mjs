@@ -217,7 +217,7 @@ export async function collectRelocationPlan(cwd, base, head, main) {
   }
   const mainSqlBlobsByPath = new Map();
   for (const path of mainSql.added) {
-    if (!path.startsWith('packages/platform/sql/')) mainSqlBlobsByPath.set(path, await readRegularBlob(main, path));
+    mainSqlBlobsByPath.set(path, await readRegularBlob(main, path));
   }
   // Barrier 3: inspect every non-carrier file added or modified by the PR for stale filename/timestamp references.
   const prRaw = (await git(cwd, 'diff', '--name-status', '--no-renames', '-z', base, head)).split('\0').filter(Boolean);

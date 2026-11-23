@@ -853,53 +853,55 @@ describe('opt-in fail-closed derived-relocated slot relocation', () => {
     expect(() => assertNoStaleRelocationRefs(planned, [['docs/note.md', 'See migration 20990101010000']]))
       .toThrow('stale migration reference');
 
-    // Barrier 4a: unknown NativeStoreSlot key and overlapping metadata fields fail closed.
+    // Barrier 4a: metadata with any hidden object operand is refused.
     expect(() => extractSlotMetadataFootprint({ row: 'r1', path: 'db/platform/migrations/20990101010000_a.sql', unknownFutureFlag: true }))
-      .toThrow('unknown NativeStoreSlot key');
+      .toThrow('unsupported NativeStoreSlot metadata');
+    expect(() => extractSlotMetadataFootprint({ row: 'r1', path: 'db/platform/migrations/20990101010000_a.sql', replacedFunctions: [], createdFunctions: [], ownerWindowRole: 'custom_owner' }))
+      .toThrow('unsupported NativeStoreSlot metadata');
+    expect(() => extractSlotMetadataFootprint({ row: 'r1', path: 'db/platform/migrations/20990101010000_a.sql', replacedFunctions: ['public.shared()'], createdFunctions: [] }))
+      .toThrow('nonempty or malformed NativeStoreSlot metadata');
     expect(() => assertDisjointRelocationFootprints(
-      [{ row: 'r1', path: 'p1', ownerWindowRole: 'custom_owner', replacedFunctions: [], createdFunctions: [] }],
-      [{ row: 'r2', path: 'p2', ownerWindowRole: 'custom_owner', replacedFunctions: [], createdFunctions: [] }],
-      ['SELECT 1;'],
-      ['SELECT 1;'],
-    )).toThrow('overlapping roles footprint');
-    expect(() => assertDisjointRelocationFootprints(
-      [{ row: 'r1', path: 'p1', insertSelectTables: ['public.shared_t'], replacedFunctions: [], createdFunctions: [] }],
-      [{ row: 'r2', path: 'p2', absorptionCensusTables: ['public.shared_t'], replacedFunctions: [], createdFunctions: [] }],
-      ['SELECT 1;'],
-      ['SELECT 1;'],
-    )).toThrow('overlapping relations footprint');
+      [{ row: 'same-row', path: 'db/platform/migrations/20990101010000_a.sql', replacedFunctions: [], createdFunctions: [] }],
+      [{ row: 'same-row', path: 'db/platform/migrations/20990101020000_b.sql', replacedFunctions: [], createdFunctions: [] }],
+      ['SELECT 1;'], ['SELECT 1;'],
+    )).toThrow('overlapping rows footprint');
 
-    // Barrier 4b: overlapping SQL statement footprint and unsupported DDL / dynamic EXECUTE fail closed.
+    // Barrier 4b: the complete grammar records every table name or refuses the statement.
     expect(() => assertDisjointRelocationFootprints(
-      [{ row: 'r1', path: 'p1', replacedFunctions: [], createdFunctions: [] }],
-      [{ row: 'r2', path: 'p2', replacedFunctions: [], createdFunctions: [] }],
+      [{ row: 'r1', path: 'db/platform/migrations/20990101010000_a.sql', replacedFunctions: [], createdFunctions: [] }],
+      [{ row: 'r2', path: 'db/platform/migrations/20990101020000_b.sql', replacedFunctions: [], createdFunctions: [] }],
       ['CREATE TABLE public.shared_reloc_tbl (id uuid primary key);'],
       ['ALTER TABLE public.shared_reloc_tbl ADD COLUMN note text;'],
     )).toThrow('overlapping relations footprint');
-    expect(() => extractSqlFootprint('CREATE ROLE rogue_role NOLOGIN;')).toThrow('unsupported SQL statement shape');
-    expect(() => extractSqlFootprint('GRANT service_role TO authenticated;')).toThrow('role-membership or schema-wide');
+    expect(() => assertDisjointRelocationFootprints(
+      [], [], ['CREATE TABLE public.text (id uuid);'], ['ALTER TABLE public.text ADD COLUMN note text;'],
+    )).toThrow('overlapping relations footprint');
+    expect(() => extractSqlFootprint('CREATE TABLE public."text" (id uuid);'))
+      .toThrow('outside closed table grammar');
+    expect(() => extractSqlFootprint('CREATE ROLE rogue_role NOLOGIN;')).toThrow('outside closed table grammar');
+    expect(() => extractSqlFootprint('GRANT service_role TO authenticated;')).toThrow('outside closed table grammar');
     expect(() => extractSqlFootprint('CREATE FUNCTION public.dyn() RETURNS void LANGUAGE plpgsql AS $$ BEGIN EXECUTE \'SELECT 1\'; END; $$;'))
-      .toThrow('dynamic EXECUTE');
+      .toThrow('outside closed table grammar');
     expect(() => extractSqlFootprint("CREATE FUNCTION public.copy() RETURNS void LANGUAGE plpgsql AS 'BEGIN INSERT INTO public.shared_reloc_tbl VALUES (1); END;';"))
-      .toThrow('function body without one dollar-quoted body');
+      .toThrow('outside closed table grammar');
     expect(() => extractSqlFootprint('CREATE TABLE public.copy (LIKE public.shared_reloc_tbl INCLUDING ALL);'))
-      .toThrow('CREATE TABLE LIKE or INHERITS');
+      .toThrow('outside closed table grammar');
     expect(() => extractSqlFootprint('CREATE TABLE public.child (id uuid) INHERITS (public.shared_reloc_tbl);'))
-      .toThrow('CREATE TABLE LIKE or INHERITS');
+      .toThrow('outside closed table grammar');
 
     // Closed simple table shapes pass; function bodies and expressions cannot prove disjointness.
     expect(() => assertDisjointRelocationFootprints(
-      [{ row: 'r1', path: 'p1', replacedFunctions: [], createdFunctions: [] }],
-      [{ row: 'r2', path: 'p2', replacedFunctions: [], createdFunctions: [] }],
+      [{ row: 'r1', path: 'db/platform/migrations/20990101010000_a.sql', replacedFunctions: [], createdFunctions: [] }],
+      [{ row: 'r2', path: 'db/platform/migrations/20990101020000_b.sql', replacedFunctions: [], createdFunctions: [] }],
       ['CREATE TABLE public.reloc_alpha (id uuid primary key);'],
       ['CREATE TABLE public.reloc_beta (id uuid primary key);'],
     )).not.toThrow();
     expect(() => extractSqlFootprint('CREATE FUNCTION public.fn_alpha() RETURNS void LANGUAGE plpgsql AS $$ BEGIN TRUNCATE TABLE public.shared_t; END; $$;'))
-      .toThrow('outside simple table DDL');
+      .toThrow('outside closed table grammar');
     expect(() => extractSqlFootprint('CREATE FUNCTION public.fn_alpha() RETURNS void LANGUAGE plpgsql AS $$ BEGIN PERFORM shared_fn(); END; $$;'))
-      .toThrow('outside simple table DDL');
+      .toThrow('outside closed table grammar');
     expect(() => extractSqlFootprint('CREATE TABLE public.reloc_alpha (id uuid DEFAULT shared_fn());'))
-      .toThrow('outside simple table DDL');
+      .toThrow('outside closed table grammar');
   });
 
   it('lands disjoint inverted migrations with --relocate-slots as derived-relocated, replays economy session, and falls back to resolution on Barrier 2/3/4 tampering', async () => {
@@ -1045,6 +1047,22 @@ describe('opt-in fail-closed derived-relocated slot relocation', () => {
       await expect(landingMerge(root, { relocateSlots: true, runCommand: (_c, args) => { proseInvoked.push(args); } }))
         .rejects.toThrow('stale migration reference');
       expect(proseInvoked).toEqual([]);
+      expect(git('status', '--porcelain=v1')).toBe('');
+
+      // Both sides must carry byte-identical SQL mirrors before any merge or Docker work.
+      checkout(base);
+      appendCustom('20990201010000', 'mirror_pr', 'CREATE TABLE public.reloc_mirror_pr (id uuid PRIMARY KEY);\n');
+      const mirrorPr = commit();
+      checkout(base);
+      const mirrorMainFiles = appendCustom('20990201020000', 'mirror_main', 'CREATE TABLE public.reloc_mirror_main (id uuid PRIMARY KEY);\n');
+      write(mirrorMainFiles.mirror, 'CREATE TABLE public.reloc_mirror_main (id text PRIMARY KEY);\n');
+      const mirrorMain = commit();
+      setMain(mirrorMain);
+      checkout(mirrorPr);
+      const mirrorInvoked: string[][] = [];
+      await expect(landingMerge(root, { relocateSlots: true, runCommand: (_c, args) => { mirrorInvoked.push(args); } }))
+        .rejects.toThrow('main SQL/mirror bytes differ');
+      expect(mirrorInvoked).toEqual([]);
       expect(git('status', '--porcelain=v1')).toBe('');
     } finally {
       restoreDerivedFixture();

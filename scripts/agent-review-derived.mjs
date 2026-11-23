@@ -159,29 +159,7 @@ export function planRelocatedSlots(prAddedPaths, mainMigrationPaths, allExisting
   return relocations;
 }
 
-const KNOWN_NATIVE_STORE_SLOT_KEYS = new Set([
-  'row',
-  'path',
-  'replacedFunctions',
-  'createdFunctions',
-  'grantOnlyFunctions',
-  'dataStatements',
-  'settingsOnlyFunctions',
-  'qualifiedCatalogueStorageSelect',
-  'qualifiedPriceListBasisSelect',
-  'qualifiedPriceSetupExecute',
-  'ownerWindowRole',
-  'insertSelectTables',
-  'absorptionCensusTables',
-  'existingTableStatements',
-  'checkSupersets',
-  'uniqueSupersets',
-  'droppedIndexes',
-  'createdViews',
-  'createdTriggers',
-  'purposeCheck',
-  'previewNoopAcceptance',
-]);
+const CLOSED_SLOT_KEYS = new Set(['row', 'path', 'replacedFunctions', 'createdFunctions']);
 
 /** Strict top-level SQL splitter matching PostgreSQL comments, quotes and dollar bodies. */
 export function splitSqlStatements(sql) {
@@ -248,287 +226,51 @@ export function splitSqlStatements(sql) {
   return statements;
 }
 
-const SYSTEM_SCHEMAS = new Set(['pg_catalog', 'information_schema']);
-const IGNORED_IDENTIFIERS = new Set([
-  'select', 'where', 'set', 'values', 'default', 'null', 'true', 'false', 'and', 'or', 'not',
-  'as', 'in', 'is', 'on', 'using', 'only', 'if', 'exists', 'cascade', 'restrict', 'public',
-  'table', 'index', 'view', 'trigger', 'policy', 'function', 'procedure', 'schema', 'role',
-  'all', 'each', 'row', 'statement', 'before', 'after', 'instead', 'of', 'insert', 'update',
-  'delete', 'truncate', 'references', 'execute', 'for', 'to', 'from', 'with', 'check', 'return',
-  'returns', 'begin', 'end', 'declare', 'into', 'new', 'old', 'excluded', 'lateral', 'unnest',
-  'generate_series', 'jsonb_array_elements', 'jsonb_each', 'jsonb_to_recordset', 'coalesce',
-  'current_setting', 'now', 'clock_timestamp', 'gen_random_uuid', 'lower', 'upper', 'trim',
-  'length', 'substring', 'replace', 'format', 'raise', 'perform', 'found', 'record', 'void',
-  'text', 'uuid', 'integer', 'bigint', 'boolean', 'numeric', 'jsonb', 'json', 'timestamptz',
-  'timestamp', 'date', 'bytea', 'interval', 'smallint', 'varchar',
-]);
-
-function normalizeIdent(raw) {
-  const cleaned = raw.replaceAll('"', '').trim().toLowerCase();
-  if (!cleaned) return null;
-  const parts = cleaned.split('.');
-  if (parts.length === 2 && SYSTEM_SCHEMAS.has(parts[0])) return null;
-  const normalized = parts.length === 1 ? `public.${parts[0]}` : `${parts[0]}.${parts[1]}`;
-  if (IGNORED_IDENTIFIERS.has(parts.at(-1))) return null;
-  return normalized;
-}
-
-function normalizeFnName(signatureOrName) {
-  const head = String(signatureOrName ?? '').split('(')[0].trim();
-  return normalizeIdent(head);
-}
-
-function stripSqlCommentsAndStrings(statement) {
-  let out = '';
-  const dollarBodies = [];
-  for (let index = 0; index < statement.length;) {
-    if (statement.startsWith('--', index)) {
-      const end = statement.indexOf('\n', index);
-      out += ' ';
-      index = end < 0 ? statement.length : end + 1;
-      continue;
-    }
-    if (statement.startsWith('/*', index)) {
-      let depth = 1;
-      index += 2;
-      while (index < statement.length && depth > 0) {
-        if (statement.startsWith('/*', index)) { depth++; index += 2; }
-        else if (statement.startsWith('*/', index)) { depth--; index += 2; }
-        else index++;
-      }
-      out += ' ';
-      continue;
-    }
-    if (statement[index] === "'") {
-      index++;
-      while (index < statement.length) {
-        if (statement[index] === '\\') { index += 2; continue; }
-        if (statement[index++] === "'") {
-          if (statement[index] === "'") { index++; continue; }
-          break;
-        }
-      }
-      out += "''";
-      continue;
-    }
-    if (statement[index] === '$' && !/[A-Za-z0-9_$]/u.test(statement[index - 1] ?? '')) {
-      const tag = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/u.exec(statement.slice(index))?.[0];
-      if (tag) {
-        const end = statement.indexOf(tag, index + tag.length);
-        if (end >= 0) {
-          dollarBodies.push(statement.slice(index + tag.length, end));
-          out += ' $$ ';
-          index = end + tag.length;
-          continue;
-        }
-      }
-    }
-    out += statement[index++];
-  }
-  return { outer: out.replace(/\s+/gu, ' ').trim(), dollarBodies };
-}
-
-const IDENT = '(?:"[A-Za-z_][A-Za-z0-9_]*"|[A-Za-z_][A-Za-z0-9_]*)';
-const QUAL_IDENT = `(?:${IDENT}\\.)?${IDENT}`;
-// Only these closed shapes have a complete dependency footprint. Other SQL may
-// read objects through expressions, function bodies, triggers or broad DDL.
-const SIMPLE_COLUMN = `${IDENT}\\s+(?:uuid|text|integer|bigint|boolean|numeric|jsonb|bytea|timestamptz)(?:\\s+(?:NOT\\s+NULL|PRIMARY\\s+KEY))?`;
-const SIMPLE_TABLE_CREATE = new RegExp(`^CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${QUAL_IDENT}\\s*\\(\\s*${SIMPLE_COLUMN}(?:\\s*,\\s*${SIMPLE_COLUMN})*\\s*\\)$`, 'iu');
-const SIMPLE_TABLE_ADD_COLUMN = new RegExp(`^ALTER\\s+TABLE\\s+${QUAL_IDENT}\\s+ADD\\s+COLUMN\\s+${SIMPLE_COLUMN}$`, 'iu');
-
-const ALLOWED_SQL_HEAD = new RegExp(
-  '^(?:' +
-    'SELECT\\s+1$|' +
-    'CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\b|' +
-    'ALTER\\s+FUNCTION\\b|' +
-    'CREATE\\s+(?:UNLOGGED\\s+)?TABLE\\b|' +
-    'ALTER\\s+TABLE\\b|' +
-    'CREATE\\s+(?:UNIQUE\\s+)?INDEX\\b|' +
-    'DROP\\s+INDEX\\b|' +
-    'CREATE\\s+(?:OR\\s+REPLACE\\s+)?VIEW\\b|' +
-    'CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:CONSTRAINT\\s+)?TRIGGER\\b|' +
-    'CREATE\\s+POLICY\\b|' +
-    'ALTER\\s+POLICY\\b|' +
-    'DROP\\s+POLICY\\b|' +
-    'GRANT\\b|' +
-    'REVOKE\\b|' +
-    'INSERT\\s+INTO\\b|' +
-    'UPDATE\\b|' +
-    'DELETE\\s+FROM\\b|' +
-    'COMMENT\\s+ON\\b' +
-  ')',
-  'iu',
-);
+// The relocation proof recognizes complete statements only. Identifiers in this
+// grammar are unquoted and fully qualified in public, so every table operand has
+// one canonical PostgreSQL identity. Other SQL takes the reviewed resolution path.
+const CLOSED_IDENT = '[A-Za-z_][A-Za-z0-9_]*';
+const CLOSED_RELATION = `public\\.(${CLOSED_IDENT})`;
+const CLOSED_COLUMN = `${CLOSED_IDENT}\\s+(?:uuid|text|integer|bigint|boolean|numeric|jsonb|bytea|timestamptz)(?:\\s+(?:NOT\\s+NULL|PRIMARY\\s+KEY))?`;
+const CLOSED_CREATE_TABLE = new RegExp(`^CREATE\\s+TABLE\\s+${CLOSED_RELATION}\\s*\\(\\s*${CLOSED_COLUMN}(?:\\s*,\\s*${CLOSED_COLUMN})*\\s*\\)$`, 'iu');
+const CLOSED_ADD_COLUMN = new RegExp(`^ALTER\\s+TABLE\\s+${CLOSED_RELATION}\\s+ADD\\s+COLUMN\\s+${CLOSED_COLUMN}$`, 'iu');
 
 function emptyFootprint() {
   return {
-    rows: new Set(),
-    relations: new Set(),
-    functions: new Set(),
-    roles: new Set(),
-    indexes: new Set(),
-    triggers: new Set(),
-    views: new Set(),
-    policies: new Set(),
-    flags: new Set(),
+    rows: new Set(), relations: new Set(), functions: new Set(), roles: new Set(),
+    indexes: new Set(), triggers: new Set(), views: new Set(), policies: new Set(), flags: new Set(),
   };
 }
 
-function scanSqlReferences(text, fp) {
-  const relationRegexes = [
-    new RegExp(`\\b(?:FROM|JOIN|INTO|UPDATE|REFERENCES)\\s+(?:ONLY\\s+)?(${QUAL_IDENT})`, 'giu'),
-    new RegExp(`\\b(?:CREATE\\s+(?:UNLOGGED\\s+)?TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?|ALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?)(${QUAL_IDENT})`, 'giu'),
-    new RegExp(`\\bON\\s+(?:TABLE\\s+)?(${QUAL_IDENT})`, 'giu'),
-  ];
-  for (const regex of relationRegexes) {
-    for (const match of text.matchAll(regex)) {
-      const ident = normalizeIdent(match[1]);
-      if (ident) fp.relations.add(ident);
-    }
-  }
-  const fnDefRegex = new RegExp(`\\b(?:CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION|ALTER\\s+FUNCTION|FUNCTION)\\s+(${QUAL_IDENT})\\s*\\(`, 'giu');
-  for (const match of text.matchAll(fnDefRegex)) {
-    const fn = normalizeFnName(match[1]);
-    if (fn) fp.functions.add(fn);
-  }
-  const fnCallRegex = new RegExp(`\\b(${IDENT}\\.${IDENT})\\s*\\(`, 'giu');
-  for (const match of text.matchAll(fnCallRegex)) {
-    const fn = normalizeFnName(match[1]);
-    if (fn) fp.functions.add(fn);
-  }
-  const indexRegex = new RegExp(`\\b(?:CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+(?:CONCURRENTLY\\s+)?(?:IF\\s+NOT\\s+EXISTS\\s+)?|DROP\\s+INDEX\\s+(?:CONCURRENTLY\\s+)?(?:IF\\s+EXISTS\\s+)?)(${QUAL_IDENT})`, 'giu');
-  for (const match of text.matchAll(indexRegex)) {
-    const idx = normalizeIdent(match[1]);
-    if (idx) fp.indexes.add(idx);
-  }
-  const viewRegex = new RegExp(`\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?VIEW\\s+(${QUAL_IDENT})`, 'giu');
-  for (const match of text.matchAll(viewRegex)) {
-    const view = normalizeIdent(match[1]);
-    if (view) { fp.views.add(view); fp.relations.add(view); }
-  }
-  const triggerRegex = new RegExp(`\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:CONSTRAINT\\s+)?TRIGGER\\s+(${IDENT})\\b`, 'giu');
-  for (const match of text.matchAll(triggerRegex)) {
-    fp.triggers.add(match[1].replaceAll('"', '').toLowerCase());
-  }
-  const policyRegex = new RegExp(`\\b(?:CREATE|ALTER|DROP)\\s+POLICY\\s+(?:IF\\s+EXISTS\\s+)?(${IDENT})\\s+ON\\s+(${QUAL_IDENT})`, 'giu');
-  for (const match of text.matchAll(policyRegex)) {
-    const rel = normalizeIdent(match[2]);
-    if (rel) {
-      fp.relations.add(rel);
-      fp.policies.add(`${rel}:${match[1].replaceAll('"', '').toLowerCase()}`);
-    }
-  }
-  const roleRegex = new RegExp(`\\bOWNER\\s+TO\\s+(${IDENT})`, 'giu');
-  for (const match of text.matchAll(roleRegex)) {
-    const role = match[1].replaceAll('"', '').trim().toLowerCase();
-    if (role && role !== 'public') fp.roles.add(role);
-  }
-  const grantRoleRegex = new RegExp(`\\b(?:GRANT|REVOKE)\\s+[\\s\\S]*?\\bON\\s+(?:TABLE|FUNCTION|SEQUENCE|VIEW)\\b[\\s\\S]*?\\b(?:TO|FROM)\\s+(${IDENT}(?:\\s*,\\s*${IDENT})*)`, 'giu');
-  const standardRuntimeRoles = new Set(['public', 'service_role', 'authenticated', 'anon']);
-  for (const match of text.matchAll(grantRoleRegex)) {
-    for (const part of match[1].split(',')) {
-      const role = part.replaceAll('"', '').trim().toLowerCase();
-      if (role && !standardRuntimeRoles.has(role)) fp.roles.add(role);
-    }
-  }
-}
-
-/** Fail-closed SQL statement footprint extractor for disjointness verification. */
+/** Parse every admitted statement and record its sole table operand. */
 export function extractSqlFootprint(sqlText) {
   const fp = emptyFootprint();
   const statements = splitSqlStatements(sqlText);
+  check(statements.length > 0, 'relocation refuses empty SQL');
   for (const statement of statements) {
-    const { outer, dollarBodies } = stripSqlCommentsAndStrings(statement);
-    if (!outer) continue;
-    check(ALLOWED_SQL_HEAD.test(outer), `relocation refuses unsupported SQL statement shape: ${outer.slice(0, 64)}`);
-    // Single-quoted and SQL-standard function bodies are opaque after string stripping.
-    if (/^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b/iu.test(outer)) {
-      check(dollarBodies.length === 1, 'relocation refuses function body without one dollar-quoted body');
-    }
-    // LIKE and INHERITS read another relation outside the simple DDL footprint grammar.
-    if (/^CREATE\s+(?:UNLOGGED\s+)?TABLE\b/iu.test(outer)) {
-      check(!/\b(?:LIKE|INHERITS)\b/iu.test(outer), 'relocation refuses CREATE TABLE LIKE or INHERITS');
-    }
-    if (/^(?:GRANT|REVOKE)\b/iu.test(outer)) {
-      check(/\bON\s+(?:TABLE|FUNCTION|SEQUENCE|VIEW)\b/iu.test(outer), 'relocation refuses role-membership or schema-wide GRANT/REVOKE');
-    }
-    if (/^SELECT\s+1$/iu.test(outer)) continue;
-    // Refuse dynamic SQL execution inside function bodies because referenced relations cannot be proven disjoint.
-    for (const body of dollarBodies) {
-      const strippedBody = stripSqlCommentsAndStrings(body).outer;
-      check(!/\bEXECUTE\b/iu.test(strippedBody), 'relocation refuses dynamic EXECUTE in SQL function body');
-      scanSqlReferences(strippedBody, fp);
-    }
-    scanSqlReferences(outer, fp);
-    check(SIMPLE_TABLE_CREATE.test(outer) || SIMPLE_TABLE_ADD_COLUMN.test(outer),
-      'relocation refuses SQL outside simple table DDL');
+    if (/^SELECT\s+1$/iu.test(statement)) continue;
+    const match = CLOSED_CREATE_TABLE.exec(statement) ?? CLOSED_ADD_COLUMN.exec(statement);
+    check(match, 'relocation refuses SQL outside closed table grammar');
+    // A successful grammar match has exactly one captured relation operand.
+    check(typeof match[1] === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/u.test(match[1]),
+      'relocation refuses unrecognized relation operand');
+    fp.relations.add(`public.${match[1].toLowerCase()}`);
   }
   return fp;
 }
 
-/** Fail-closed NativeStoreSlot metadata footprint extractor (rejects any unknown key). */
+/** Only metadata with no hidden object operands is eligible for relocation. */
 export function extractSlotMetadataFootprint(slot) {
   check(slot && typeof slot === 'object' && !Array.isArray(slot), 'invalid nativeStoreForwardClass slot');
-  for (const key of Object.keys(slot)) {
-    check(KNOWN_NATIVE_STORE_SLOT_KEYS.has(key), `relocation refuses unknown NativeStoreSlot key: ${key}`);
-  }
+  check(Object.keys(slot).every(key => CLOSED_SLOT_KEYS.has(key)),
+    'relocation refuses unsupported NativeStoreSlot metadata');
+  check(typeof slot.row === 'string' && slot.row.length > 0 &&
+    typeof slot.path === 'string' && PLAIN_PLATFORM_FORWARD.test(slot.path) &&
+    Array.isArray(slot.replacedFunctions) && slot.replacedFunctions.length === 0 &&
+    Array.isArray(slot.createdFunctions) && slot.createdFunctions.length === 0,
+  'relocation refuses nonempty or malformed NativeStoreSlot metadata');
   const fp = emptyFootprint();
-  if (typeof slot.row === 'string' && slot.row) fp.rows.add(slot.row);
-  for (const entry of slot.replacedFunctions ?? []) {
-    const fn = normalizeFnName(entry?.signature ?? entry);
-    if (fn) fp.functions.add(fn);
-  }
-  for (const entry of slot.createdFunctions ?? []) {
-    const fn = normalizeFnName(entry?.signature ?? entry);
-    if (fn) fp.functions.add(fn);
-  }
-  for (const entry of slot.grantOnlyFunctions ?? []) {
-    const fn = normalizeFnName(entry?.signature ?? entry?.function ?? entry);
-    if (fn) fp.functions.add(fn);
-    for (const role of entry?.roles ?? []) fp.roles.add(String(role).toLowerCase());
-  }
-  for (const entry of slot.settingsOnlyFunctions ?? []) {
-    const fn = normalizeFnName(entry?.signature ?? entry);
-    if (fn) fp.functions.add(fn);
-  }
-  for (const table of [...(slot.insertSelectTables ?? []), ...(slot.absorptionCensusTables ?? [])]) {
-    const rel = normalizeIdent(table);
-    if (rel) fp.relations.add(rel);
-  }
-  for (const stmt of [...(slot.dataStatements ?? []), ...(slot.existingTableStatements ?? [])]) {
-    scanSqlReferences(String(stmt), fp);
-  }
-  for (const item of [...(slot.checkSupersets ?? []), ...(slot.uniqueSupersets ?? [])]) {
-    const rel = normalizeIdent(item?.table);
-    if (rel) fp.relations.add(rel);
-  }
-  for (const item of slot.droppedIndexes ?? []) {
-    const rel = normalizeIdent(item?.table);
-    if (rel) fp.relations.add(rel);
-    const idx = normalizeIdent(item?.name);
-    if (idx) fp.indexes.add(idx);
-  }
-  for (const item of slot.createdViews ?? []) {
-    const view = normalizeIdent(item?.name);
-    if (view) { fp.views.add(view); fp.relations.add(view); }
-  }
-  for (const item of slot.createdTriggers ?? []) {
-    const rel = normalizeIdent(item?.table);
-    if (rel) fp.relations.add(rel);
-    if (item?.name) fp.triggers.add(String(item.name).toLowerCase());
-  }
-  if (typeof slot.ownerWindowRole === 'string' && slot.ownerWindowRole) {
-    fp.roles.add(slot.ownerWindowRole.toLowerCase());
-  }
-  if (slot.purposeCheck !== undefined) fp.flags.add('purposeCheck');
-  for (const flag of [
-    'qualifiedCatalogueStorageSelect',
-    'qualifiedPriceListBasisSelect',
-    'qualifiedPriceSetupExecute',
-    'previewNoopAcceptance',
-  ]) {
-    if (slot[flag] !== undefined) fp.flags.add(flag);
-  }
+  fp.rows.add(slot.row);
   return fp;
 }
 
@@ -620,6 +362,14 @@ export function rewriteCatalogForRelocation(leftSource, relocations) {
 
 const sha256Hex = text => createHash('sha256').update(text, 'utf8').digest('hex');
 
+function assertClosedForwardRow(row, path, sqlText) {
+  check(row && typeof row === 'object' && !Array.isArray(row) &&
+    Object.keys(row).sort().join(',') === 'functions,path,sha256' &&
+    row.path === path && row.sha256 === sha256Hex(sqlText) &&
+    Array.isArray(row.functions) && row.functions.length === 0,
+  `relocation refused: nonempty or malformed native forward metadata for ${path}`);
+}
+
 /**
  * Shared fail-closed Barriers 1, 3, and 4 validator used by both `landingMerge --relocate-slots`
  * (pre-merge fail-fast) and `proveReviewIntegration` (`derived-relocated` proof).
@@ -651,6 +401,7 @@ export function validateRelocationPlan({
   const headAddedSlots = (headForwards.nativeStoreForwardClass?.slots ?? []).slice(baseSlotCount);
   const mainAddedSlots = (mainForwards.nativeStoreForwardClass?.slots ?? []).slice(baseSlotCount);
   const headForwardRows = new Map((headForwards.nativeStoreForwards ?? []).map(row => [row.path, row]));
+  const mainForwardRows = new Map((mainForwards.nativeStoreForwards ?? []).map(row => [row.path, row]));
   const headSlotByPath = new Map(headAddedSlots.map(slot => [slot.path, slot]));
   const mainSlotByPath = new Map(mainAddedSlots.map(slot => [slot.path, slot]));
 
@@ -667,8 +418,8 @@ export function validateRelocationPlan({
     const mirrorText = prMirrorBlobsByPath.get(mirrorPath);
     check(slot && forwardRow, `relocation refused: PR migration ${path} is not a nativeStoreForwardClass slot`);
     check(typeof sqlText === 'string' && typeof mirrorText === 'string', `relocation refused: missing SQL or mirror for ${path}`);
-    const digest = sha256Hex(sqlText);
-    check(forwardRow.sha256 === digest && sha256Hex(mirrorText) === digest, `relocation refused: SQL/mirror digest mismatch for ${path}`);
+    assertClosedForwardRow(forwardRow, path, sqlText);
+    check(mirrorText === sqlText, `relocation refused: SQL/mirror bytes differ for ${path}`);
     prSlots.push(slot);
     prSqlTexts.push(sqlText);
   }
@@ -690,8 +441,13 @@ export function validateRelocationPlan({
     check(match, `relocation refused: main added non-plain SQL ${path}`);
     const slot = mainSlotByPath.get(path);
     const sqlText = mainSqlBlobsByPath.get(path);
-    check(slot && typeof sqlText === 'string', `relocation refused: main SQL ${path} is not a nativeStoreForwardClass slot`);
-    expectedMainMirrors.add(`packages/platform/sql/${match[1]}_${match[2]}.sql`);
+    const mirrorPath = `packages/platform/sql/${match[1]}_${match[2]}.sql`;
+    const mirrorText = mainSqlBlobsByPath.get(mirrorPath);
+    check(slot && typeof sqlText === 'string' && typeof mirrorText === 'string',
+      `relocation refused: main SQL ${path} lacks a nativeStoreForwardClass slot or mirror`);
+    assertClosedForwardRow(mainForwardRows.get(path), path, sqlText);
+    check(mirrorText === sqlText, `relocation refused: main SQL/mirror bytes differ for ${path}`);
+    expectedMainMirrors.add(mirrorPath);
     mainSlots.push(slot);
     mainSqlTexts.push(sqlText);
   }
