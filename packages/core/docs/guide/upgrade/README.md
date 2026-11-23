@@ -37,8 +37,9 @@ apply SQL.
 
 Plan, reconcile and apply snapshot-managed application files with
 `openlup upgrade plan` and `openlup upgrade apply`, as described in
-[Upgrade application files](application-files.md). These commands run no SQL
-and do not observe the database.
+[Upgrade application files](application-files.md). Supply the applied migration
+count observed for the actual database and installation profile. These commands
+run no SQL and do not observe the database.
 
 After reconciling application files, validate owned business configuration
 offline with `./node_modules/.bin/openlup settings check --app ./owned/settings-host.ts`
@@ -75,8 +76,10 @@ observations after changing artifacts, configuration or schema.
 | `64` | Invalid invocation or JSON: `OPENLUP_E_CLI_INPUT`. Correct the syntax or input. |
 | `74` | Operation or application-loading failure: `OPENLUP_E_CLI_FAILURE`. Check snapshots, filesystem access or the trusted application module. |
 
-Upgrade conflicts report paths and reasons without a named refusal code.
-Snapshot validation failures after JSON parsing can return `74`.
+Upgrade JSON reports put conflicts in the top-level `conflicts` array. Findings
+name schema-range conflicts as `OPENLUP_E_UPGRADE_SCHEMA_RANGE` and managed-file
+conflicts as `OPENLUP_E_UPGRADE_FILE_CONFLICT`. Snapshot validation failures
+after JSON parsing can return `74`.
 Readiness findings use `OPENLUP_E_PORT_MISSING`, `OPENLUP_E_EVENT_UNHANDLED`,
 `OPENLUP_E_EVENT_DUPLICATE`, `OPENLUP_E_SCHEDULE_UNBOUND`,
 `OPENLUP_E_SCHEMA_BEHIND`, `OPENLUP_E_SET_MISMATCH`, `OPENLUP_E_ENV_MISSING`

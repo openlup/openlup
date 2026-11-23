@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Pool } from 'pg';
+import pg, { type Pool } from 'pg';
 import { composePortalCapabilities, composeE4Capabilities } from '../host/e4-composition.ts';
 import { configurations } from '../owned/store.config.ts';
 import { type ActionContext } from '../host/bindings.ts';
@@ -302,7 +302,41 @@ test('the selected scoped billing reader returns the real book and never hides a
 });
 
 
-import { createStarterPersonalDataRegistry } from '../host/native-composition.ts';
+import { composeNativeBindings, createStarterPersonalDataRegistry } from '../host/native-composition.ts';
+import { createOriginPolicy } from '../host/origin-policy.ts';
+
+test('native composition requires the selected StoreConfig before constructing a pool', async t => {
+  const message = [
+    'OPENLUP_E_STARTER_STORE_CONFIG_REQUIRED',
+    'Observed: The third argument is missing a starter StoreConfig.',
+    'Cause: Native composition needs the selected configuration for its installed-policy checks.',
+    'Fix: Pass the selected StoreConfig as argument three and the optional keyring as argument four.',
+    'Recheck: Rerun the same readiness check or startup after correcting the call.',
+  ].join('\n');
+  const reachedPool = new Error('pool constructor tripwire');
+  const pool = t.mock.method(pg, 'Pool', function () { throw reachedPool; });
+  const selected = context.config;
+  const origin = createOriginPolicy(selected, 4319);
+  const unusable = 'not a connection string';
+  const call = composeNativeBindings as (connection: string, policy: typeof origin, config?: unknown) => ReturnType<typeof composeNativeBindings>;
+  const keyring = { current: 'synthetic-acceptance-key' };
+  const missingConfig = (error: Error) => {
+    assert.equal(Object.getPrototypeOf(error), Error.prototype);
+    assert.equal(error.message, message);
+    assert.deepEqual(Reflect.ownKeys(error).filter(key => key !== 'stack'), ['message']);
+    return true;
+  };
+  await assert.rejects(call(unusable, origin), missingConfig);
+  for (const missing of [
+    keyring, { ...selected, inventory: undefined }, { ...selected, inventory: {} },
+    { ...selected, checkoutRecoveryReminders: undefined },
+  ]) await assert.rejects(call(unusable, origin, missing), missingConfig);
+  assert.equal(pool.mock.callCount(), 0);
+  await assert.rejects(composeNativeBindings(unusable, origin, selected), error => error === reachedPool);
+  await assert.rejects(composeNativeBindings(unusable, origin, selected, keyring), error => error === reachedPool);
+  assert.equal(pool.mock.callCount(), 2);
+});
+
 test('the host requires billing privacy coverage and exposes incomplete privacy owners without a browser workflow', () => {
   const registry=createStarterPersonalDataRegistry();
   assert.ok(registry.contributors.some(c=>c.id==='customer-billing'));
