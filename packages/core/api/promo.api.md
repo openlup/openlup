@@ -173,7 +173,11 @@ export type PromotionTriggerType = (typeof PROMOTION_TRIGGER_TYPES)[number];
 export declare const PROMOTION_DISCOUNT_TYPES: readonly ["percentage", "fixed_amount", "free_shipping"];
 /** @beta */
 export type PromotionDiscountType = (typeof PROMOTION_DISCOUNT_TYPES)[number];
-/** @beta */
+/**
+ * `line_with_variant` and `line_with_category` are stored. The evaluator
+ * calculates each kind as `order_total`.
+ * @beta
+ */
 export declare const PROMOTION_APPLIES_TO_KINDS: readonly ["order_total", "line_with_variant", "line_with_category"];
 /** @beta */
 export type PromotionAppliesToKind = (typeof PROMOTION_APPLIES_TO_KINDS)[number];

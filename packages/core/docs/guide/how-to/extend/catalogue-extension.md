@@ -22,8 +22,8 @@ runs the other draft owner checks. `requiredChecks: ["draft-content"]` requires
 at least one admitted fixture per pack that calls its content validator.
 
 Each pack accepts `drafts`, `quantities`, `attributes`, `combinations` and
-`refusals`. Drafts use the v1–v3 schemas and draft owners. Version 3 checks
-operation and price shape. Quantity fixtures use `{type, value, targetUnit?}`,
+`refusals`. Write fixtures as schema version 3 to check draft facts and the shape
+of publication and price operations. Quantity fixtures use `{type, value, targetUnit?}`,
 explicit conversion factors, and a type key and version. Request
 `attribute-values` or `variant-combinations` in `requiredChecks` to require their
 fixtures in each pack.
@@ -45,9 +45,8 @@ to prepare, approve, issue and read the exact saved facts.
 
 In an extracted starter, apply this check to all the recipes below.
 After each change, run `npm run typecheck` from the extracted application root.
-Check `owned/catalogue.ts` with `npm run --silent catalogue:check:source` and
-`owned/catalogue.json` with `npm run --silent catalogue:check`. For a pack at
-another path, use the projection command in the recipe.
+Check `owned/catalogue.ts` with `npm run --silent catalogue:check:source`.
+For a pack at another path, use the projection command in the recipe.
 
 ## New vertical
 
@@ -64,20 +63,13 @@ cp node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-pack-skeleton/*
 npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json
 ```
 
+`catalogue-pack-skeleton/catalogue.json` is input for `openlup catalogue check --packs`; an application started from the starter declares packs only in `owned/catalogue.ts`
+
 For inert checking, copy the [static JSON sample](./catalogue-pack-skeleton/catalogue.json)
-and run `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
-For a capability declared `false`, record a refusal observation such as
-
-```json
-{"name":"feature refusal","capability":"feature","expectedCode":"owner_unsupported","observedCode":"owner_unsupported","zeroEffects":true}
-```
-
-The checker compares the codes and requires zero effects in the record. Requesting
-`requiredChecks: ["owner-refusals"]` reports unavailable evidence until an owner
-can execute that refusal. Usual codes include `pack_type_namespace_mismatch`,
-`definition_unknown_field`, `draft_input_invalid`, `conformance_subject_invalid`,
-`conformance_refusal_fixture_missing`, `conformance_refusal_fixture_invalid` and
-`conformance_refusal_fixture_mismatch`.
+to `./catalogue.json` and run `npx --no -- openlup catalogue check --packs ./catalogue.json --json`.
+The sample reports unavailable content evidence (exit 2).
+Usual codes include `pack_type_namespace_mismatch`, `definition_unknown_field`,
+`draft_input_invalid` and `conformance_subject_invalid`.
 
 ## Add attribute
 
@@ -89,7 +81,7 @@ labels: {en: "Finish"}}]`. In `fixtures.ts`, `attributes` fixtures call `validat
 references?}`. `input` contains `productAttributes` and `skus: [{id, attributes?}]`.
 Missing required values/locales, scope, unknown keys, storage and projection-text
 bounds retain exact owner diagnostics. Successful rows preserve the owner's exact
-projection values; no projection is written. Attribute values stay outside v1 drafts.
+projection values; no projection is written.
 `references` is an optional array of `{namespace, id, status}` observations.
 One unique `resolved` row supports fixture PASS; absent, omitted, duplicate or
 `unavailable` evidence yields 2. Unique `dangling` or `private` yields 1.
@@ -177,30 +169,9 @@ Check: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/
 ## Add tax class
 
 Edit `pack.ts`: `taxClasses: [{key: "standard"}]` and
-`taxClass: "standard"` on the type. Default class references are checked now;
-market-owned dated rates in `owned/market-packs/<market>/tax-table.ts`, coverage,
-gaps/overlaps and tax publication await their owners. No fake rate data belongs
-in this skeleton. New attribute/dimension/promotion kinds remain upstream work.
+`taxClass: "standard"` on the type. The offline check verifies the class reference.
 Usual codes: `definition_tax_class_invalid`, `definition_unknown_tax_class`.
 Check references: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
-Requesting `requiredChecks: ["tax-coverage"]` returns 2 until its owner is available.
-
-## Add category or collection
-
-Request evidence in `catalogue.ts`. Set `requiredChecks:
-["taxonomy"]`. Graph/depth and collection-reference validation and publishing are
-pending; there is no admitted category field to paste into current pack metadata.
-Usual current code: `conformance_owner_unavailable`; future codes belong to the
-taxonomy owner. New closed grammar kinds require upstream work.
-Check availability: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
-
-## Promotion with existing grammar
-
-In `catalogue.ts`, set `requiredChecks:
-["promotions"]`. Target/currency validation and publishing are pending, including
-per-currency money maps; do not invent a campaign field here. New benefit/target
-kinds require upstream work. Usual current code: `conformance_owner_unavailable`.
-Check availability: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
 
 ## Subscription profile
 
@@ -261,8 +232,8 @@ Add a valid unit GTIN to the SKU.
 
 ## Use schema version 3 for publication
 
-Only schema version 3 drafts can be published.
-Author publishable fixtures as schema version 3.
+Stored version 1 and 2 drafts remain readable and cannot be published.
+Author new drafts and fixtures as schema version 3.
 
 ## Rerun fixtures after definition repair
 

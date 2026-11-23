@@ -10,8 +10,25 @@ const count = { dimension: "count", unit: "stationery:each", unscaled: "1", scal
 const options = { lined: { kind: "boolean", value: true } } as const;
 
 export const fixtures = {
-  drafts: [{ schemaVersion: 1, product: { id: productId, type, dimensions: ["lined"], sharedContent: { title: "Notebook" } },
-    skus: [{ id: skuId, productId, options, netContent: count }] }],
+  drafts: [{
+    schemaVersion: 3,
+    product: {
+      id: productId, type, slug: "notebook", dimensions: ["lined"], primarySkuId: skuId,
+      sharedContent: {
+        schemaVersion: 1, catalogAction: "create", presentation: { title: "Notebook" },
+        offerMemberships: [], requestedModes: [], publicationSkus: [],
+      },
+    },
+    skus: [{
+      id: skuId, productId, code: "NOTEBOOK", options, attributes: { lined: true },
+      netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 },
+      identifiers: [{ scheme: "gs1:gtin", issuer: "stationery", value: "5901234123457", packagingLevel: "unit" }],
+    }],
+    publication: {
+      kind: "release", evidence: {},
+      operations: [{ op: "create_product", productId, productSlug: "notebook", name: "Notebook" }],
+    },
+  }],
   quantities: [{ type, value: count }],
   attributes: [{ type, input: { skus: [{ id: skuId, attributes: { lined: true } }] }, publicationRevision: "1" }],
   combinations: [{ type, input: { axes: ["lined"], typed: true, retained: [],

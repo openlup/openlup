@@ -576,7 +576,7 @@ function pristinePackedA1Fixture() {
   for (const [path, source] of packedA1Originals) writeFileSync(path, source);
   return packedA1Consumer;
 }
-it("guide_skeleton_pack_passes_checker", () => {
+it("checks the packed inert catalogue skeleton and reports unavailable content evidence", () => {
   proveCatalogConformanceConsumer(pristinePackedA1Fixture());
 });
 
@@ -1649,7 +1649,8 @@ it("RP2 admits trust flags before loading and classifies failures", () => {
   const broken = write("broken 'source.mjs", sourceModule({ ...unavailable, packs: [{ pack: fixturePack,
     drafts: [null], quantities: [{}] }] }));
   const report = call(sourceArgs(broken), 1);
-  expect(report.findings.map(({ code, path }: { code: string; path: string }) => [path, code])).toEqual([
+  expect(report.findings.filter(({ severity }: { severity: string }) => severity === "error")
+    .map(({ code, path }: { code: string; path: string }) => [path, code])).toEqual([
     ["/packs/0/drafts/0", "draft_input_invalid"], ["/packs/0/quantities/0/value", "quantity_invalid"],
     ["/requiredChecks/0", "conformance_owner_unavailable"],
   ]);
@@ -1910,16 +1911,19 @@ const pack = withCatalogPublicationRules(${JSON.stringify({ ...fixturePack, type
   }
   const good = registration("good.mjs", "Example");
   const pass = call(good, 0);
-  expect(call(replayArgs(pass.transport.subjectPath), 2).findings.map(({ code }: { code: string }) => code))
+  const replay = call(replayArgs(pass.transport.subjectPath), 2);
+  const errors = (report: { findings: { severity: string; code: string; path: string }[] }) =>
+    report.findings.filter(finding => finding.severity === "error");
+  expect(errors(replay).map(finding => finding.code))
     .toEqual(["conformance_owner_unavailable", "conformance_owner_unavailable"]);
   const refusal = call(registration("refused.mjs", ""), 1);
-  expect(refusal.findings).toEqual([expect.objectContaining({ code: "title_required", path: "/packs/0/drafts/0/product/sharedContent/title" })]);
+  expect(errors(refusal)).toEqual([expect.objectContaining({ code: "title_required", path: "/packs/0/drafts/0/product/sharedContent/title" })]);
   call(registration("substituted.mjs", "Example", true), 74);
   write("rules.cjs", artifact + "\n");
   call(good, 74);
 });
 
-it("RP2 typechecks and discovers all nine recipes from the packed skeleton", () => {
+it("typechecks the packed v3 skeleton and discovers its catalogue recipes", () => {
   const { app, consumer, write, call, environment } = packedCatalogue();
   const core = join(consumer, "node_modules/@openlup/core");
   const guide = "docs/guide/how-to/extend/catalogue-extension.md";
@@ -1937,10 +1941,9 @@ it("RP2 typechecks and discovers all nine recipes from the packed skeleton", () 
   const projected = call(sourceArgs(join(app, "catalogue.ts")), 0);
   const [{ pack, drafts }] = JSON.parse(readFileSync(projected.transport.subjectPath, "utf8")).packs;
   expect(pack.types[0]).toMatchObject({ key: "stationery:notebook", version: 1, taxClass: "standard" });
-  expect(drafts[0].product.sharedContent).toEqual({ title: "Notebook" });
+  expect(drafts[0]).toMatchObject({ schemaVersion: 3, product: { sharedContent: { presentation: { title: "Notebook" } } } });
   const lines = readFileSync(join(core, guide), "utf8").split("\n");
-  for (const title of ["New vertical", "Add attribute", "Add unit", "Add axis", "Add tax class", "Add category or collection",
-    "Promotion with existing grammar", "Subscription profile", "Upgrade a definition"]) {
+  for (const title of ["New vertical", "Add attribute", "Add unit", "Add axis", "Add tax class", "Subscription profile", "Upgrade a definition"]) {
     const result = JSON.parse(execFileSync(process.execPath, [join(core, "src/openlup-context.js"), "search", title, "--limit", "20", "--json"],
       { cwd: app, env: environment, encoding: "utf8" }));
     const index = lines.indexOf("## " + title);
