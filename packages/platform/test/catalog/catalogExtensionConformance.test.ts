@@ -63,14 +63,21 @@ describe("catalogue conformance findings", () => {
     }));
   });
 
-  it("names the Prepare code until the SKU has a valid unit GTIN", async () => {
-    const entry = publicationFixture(), sku = entry.drafts[0]!.skus[0]!;
+  it("qualifies the unit GTIN warning by the draft schema and SKU code", async () => {
+    const entry = publicationFixture(), draft = entry.drafts[0]!, sku = draft.skus[0]!;
     const identifiers = sku.identifiers;
     delete sku.identifiers;
-    expect(await project({ packs: [entry] })).toMatchObject({ state: "satisfied", exitCode: 0, findings: [{
-      code: "advisory_unit_identifier_missing", severity: "warning",
-      cause: expect.stringContaining("`unit_trade_identifier_missing`"),
-    }] });
+    const missingCode = structuredClone(draft);
+    delete missingCode.skus[0]!.code;
+    for (const fixture of [draft, missingCode, catalogDraftV3ValidationPayload(draft)]) {
+      const report = await project({ packs: [{ ...entry, drafts: [fixture] }] });
+      expect(report).toMatchObject({ state: "satisfied", exitCode: 0 });
+      expect(report.findings).toContainEqual(expect.objectContaining({
+        code: "advisory_unit_identifier_missing", severity: "warning",
+        cause: "In a version 3 draft, Prepare reports `unit_trade_identifier_missing` when the SKU has a code but lacks a valid unit GTIN. "
+          + "A SKU without a code reports `sku_code_missing` first. The legacy version 1 and 2 preview reports `publication_preparation_unavailable`.",
+      }));
+    }
     sku.identifiers = identifiers;
     expect(await project({ packs: [entry] })).toMatchObject({ state: "satisfied", exitCode: 0, findings: [] });
   });

@@ -102,11 +102,19 @@ Usual metadata codes:
 
 ## Add unit
 
-Edit `pack.ts`: `units: [{code: "stationery:each", dimension:
-"count", integral: true, factor: {canonicalUnit: "openlup:piece", unscaled: "1",
-scale: 0}}]`. Add `{type: {key: pack.types[0].key, version: pack.types[0].version},
-value: {dimension: "count", unit:
-"stationery:each", unscaled: "2", scale: 0}}` to `quantities` in `fixtures.ts`.
+In `pack.ts`, append this entry to the existing `units` array. Keep the
+`openlup:g` and `stationery:each` entries and leave `netContentUnits` as it is.
+
+```json
+{"code":"stationery:pair","dimension":"count","integral":true,"factor":{"canonicalUnit":"openlup:piece","unscaled":"2","scale":0}}
+```
+
+In `fixtures.ts`, append this fixture to the existing `quantities` array.
+
+```json
+{"type":{"key":"stationery:notebook","version":1},"value":{"dimension":"count","unit":"stationery:pair","unscaled":"2","scale":0}}
+```
+
 Exact conversion is available; new dimensions require upstream grammar changes.
 Usual codes: `definition_unit_invalid`, `definition_unit_factor_invalid`,
 `definition_duplicate_unit`, `definition_net_content_invalid`,
@@ -227,7 +235,10 @@ Keep the flags for a later version or set them to false.
 
 ## Add a unit GTIN
 
-Prepare reports `unit_trade_identifier_missing` for a SKU without a valid unit trade identifier.
+In a version 3 draft, Prepare reports `unit_trade_identifier_missing` when
+the SKU has a code but lacks a valid unit GTIN. A SKU without a code reports
+`sku_code_missing` first. The legacy version 1 and 2 preview reports
+`publication_preparation_unavailable`.
 Add a valid unit GTIN to the SKU. A SKU holds at most 32 identifiers, so replace
 one when the list is full.
 
@@ -245,8 +256,10 @@ a registered `validateContent`. For an otherwise valid v3 fixture, inert
 
 ## Rerun fixtures after definition repair
 
-Fixtures of a pack with definition findings are not evaluated.
-Fix the definition findings first.
+The checker skips fixture evaluation and trusted validation for a pack with
+findings in its own definition. A cross-pack `definition_duplicate_identity`
+finding alone still allows fixtures and trusted validators to run.
+Fix the pack's definition findings first.
 
 ## Upgrade a definition
 

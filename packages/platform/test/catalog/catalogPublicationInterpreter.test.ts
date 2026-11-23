@@ -12,6 +12,7 @@ import { assertPublishedSkuDocumentExclusion, catalogPublicationManifestSchema, 
 import { assertTypedSkuAmounts, loadCatalogPublicationRules, resolvePublicationRules } from "../../src/catalog/publicationRules.js";
 import { loadCatalogRules, withCatalogPublicationRules } from "../../src/catalog/catalogPublicationRules.js";
 import type { CatalogCandidateIssue } from "../../src/catalog/contracts/candidate.js";
+import type { CatalogProductTypeInput } from "../../src/catalog/contracts/productTypes.js";
 import { installCatalogDefinitions } from "../../src/catalog/installCatalogDefinitions.js";
 import { catalogPackManifest } from "../../src/catalog/catalogPackManifest.js";
 import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
@@ -1428,28 +1429,50 @@ it("explains how to order primary SKU selection before activation", async () => 
 it("mass_required_fix_names_whole_grams", async () => {
   const data = input();
   const volume = { dimension: "volume", unit: "openlup:ml", unscaled: "100", scale: 0 } as const;
-  data.registry = createCatalogProductTypeRegistry([{
-    ...data.definition,
-    units: [...data.definition.units, { code: volume.unit, dimension: volume.dimension, integral: false }],
+  const size = { key: "size", kind: "quantity", dimension: volume.dimension, units: [volume.unit] } as const;
+  const nextType = {
+    ...data.definition, version: 2,
+    units: [...data.definition.units, { code: volume.unit, dimension: volume.dimension, integral: false,
+      factor: { canonicalUnit: volume.unit, unscaled: "1", scale: 0 } }],
     netContentUnits: [...data.definition.netContentUnits, volume.unit],
-  }]);
+    dimensions: [size],
+    axes: [{ key: size.key, attributeKey: size.key }],
+    attributes: [{ key: size.key, scope: "variant", valueType: { kind: "quantity", dimension: size.dimension, units: size.units },
+      required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }],
+  } satisfies CatalogProductTypeInput;
+  const pack = withCatalogPublicationRules({
+    id: "example:rules", namespace: "example", version: 1, openlupRange: "1.x", capabilities: {}, taxClasses: [],
+    types: [{ ...nextType, version: 1, dimensions: [{ ...size, role: "net_content" }] }, nextType],
+  }, () => Buffer.from(artifact));
+  data.registry = createCatalogProductTypeRegistry(pack.types);
   data.installedDefinitionDigest = catalogDefinitionDigest(data.registry.resolve(data.payload.product.type)!);
+  data.payload.product.dimensions = [size.key];
   const sku = data.payload.skus[0]!;
   const mass = sku.netContent;
+  const labelledOption = { kind: "quantity", value: volume } as const;
+  sku.options = { [size.key]: labelledOption };
   const query = { draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null };
   const service = facade(data);
 
   sku.netContent = volume;
   const refused = await service.prepareCandidate(query);
   sku.netContent = mass;
+  const gramsOnly = await service.prepareCandidate(query);
+  data.payload.product.type = { key: nextType.key, version: nextType.version };
+  data.installedDefinitionDigest = catalogDefinitionDigest(data.registry.resolve(data.payload.product.type)!);
   const recovered = await service.prepareCandidate(query);
 
+  expect(gramsOnly.preparation?.structural).toMatchObject({ outcome: "blocked-input", issues: [
+    expect.objectContaining({ code: "net_content_option_mismatch" }),
+  ] });
   expect(recovered.preparation?.structural).toEqual({ outcome: "staged", issues: [] });
+  expect(sku.options).toEqual({ [size.key]: labelledOption });
   expect(refused.preparation?.structural).toMatchObject({
     outcome: "blocked-input",
     issues: [expect.objectContaining({
       code: "catalog_publication_mass_required_until_mc5",
-      message: "Publish net content as the net mass in whole grams. Declare a labelled volume or count as a quantity variant option.",
+      message: "Publish net content as the net mass in whole grams. Declare a labelled volume or count as a quantity variant option. "
+        + 'If the option\'s dimension has role "net_content", remove that role in a new product type version, keep the option, and select the new version on the draft.',
     })],
   });
 });

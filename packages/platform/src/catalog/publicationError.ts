@@ -283,7 +283,7 @@ const publicationRefusals = {
   catalog_publication_quantity_definition_unqualified: { fix: "Select an eligible unit with an exact conversion in the pinned product type, or use an eligible product type." },
   catalog_publication_activation_membership_required: { fix: "Admit this SKU to an offer before enabling purchases." },
   catalog_publication_logistics_source_mismatch: { fix: "Use the SKU metadata saved in the selected draft." },
-  catalog_publication_mass_required_until_mc5: { fix: "Publish net content as the net mass in whole grams. Declare a labelled volume or count as a quantity variant option." },
+  catalog_publication_mass_required_until_mc5: { fix: "Publish net content as the net mass in whole grams. Declare a labelled volume or count as a quantity variant option. If the option's dimension has role \"net_content\", remove that role in a new product type version, keep the option, and select the new version on the draft." },
   catalog_publication_media_evidence_mismatch: { fix: "Bind the selected media reference and asset list to verified evidence for this SKU." },
   catalog_publication_media_readiness_unproven: { fix: "Bind the selected media reference and asset list to verified evidence for this SKU." },
   catalog_publication_media_validation_unavailable: { fix: "Verify the SKU media and retry once that evidence is available." },

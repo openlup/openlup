@@ -1986,6 +1986,22 @@ it("typechecks the packed v3 skeleton and discovers its catalogue recipes", () =
     const next = lines.findIndex((line, i) => i > index && line.startsWith("## "));
     expect(result.hits, title).toContainEqual(expect.objectContaining({ title, start: index + 1, end: next < 0 ? lines.length : next }));
   }
+  const unitStart = lines.indexOf("## Add unit");
+  const unitEnd = lines.findIndex((line, index) => index > unitStart && line.startsWith("## "));
+  const examples = [...lines.slice(unitStart, unitEnd).join("\n").matchAll(/^```json\n([^]*?)\n^```$/gm)];
+  expect(examples).toHaveLength(2);
+  const unit = JSON.parse(examples[0]![1]), quantity = JSON.parse(examples[1]![1]);
+  write("pack.ts", readFileSync(join(app, "pack.ts"), "utf8")
+    .replace("\n    ],\n    netContentUnits:", `\n      ${JSON.stringify(unit)},\n    ],\n    netContentUnits:`));
+  write("fixtures.ts", readFileSync(join(app, "fixtures.ts"), "utf8")
+    .replace("quantities: [{ type, value: count }]", `quantities: [{ type, value: count }, ${JSON.stringify(quantity)}]`));
+  const appended = call(sourceArgs(join(app, "catalogue.ts")), 0);
+  expect(appended.findings.map(({ code }: { code: string }) => code)).toEqual(["advisory_filter_flags_unused"]);
+  const [updated] = JSON.parse(readFileSync(appended.transport.subjectPath, "utf8")).packs;
+  expect(updated.pack.types[0].units).toEqual([...pack.types[0].units, unit]);
+  expect(updated.pack.types[0].netContentUnits).toEqual(["openlup:g"]);
+  expect(updated.quantities.at(-1)).toEqual(quantity);
+
   // Prove the application parser uses native, erasable TypeScript imports.
   call(sourceArgs(write("forward.ts", 'export { catalogueConformance } from "./catalogue.ts";')), 0);
 }, 30_000);
