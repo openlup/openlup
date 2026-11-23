@@ -34,6 +34,8 @@ const EXCLUDED_POLICY_TABLES: Readonly<Record<string, string>> = {
     'Infrastructure and background job pause/lease control table, not store-level business policy.',
   platform_operational_controls:
     'Infrastructure control-plane kill-switch table, not store-level business policy.',
+  settings:
+    'Legacy key-value counter/tester-cap display table (public.settings) outside the store-level business settings catalogue.',
   subscription_delivery_alignment_control:
     'Per-deployment fulfillment delivery-alignment operational cutover control table, not store-level business policy.',
 };
@@ -135,6 +137,18 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
+function catalogReferencesKey(
+  catalogKeys: ReadonlySet<string>,
+  catalogRaw: string,
+  key: string,
+): boolean {
+  return catalogKeys.has(key) || new RegExp(`\\b${escapeRegExp(key)}\\b`, 'u').test(catalogRaw);
+}
+
+function catalogReferencesTable(catalogRaw: string, table: string): boolean {
+  return new RegExp(`\\bpublic\\.${escapeRegExp(table)}\\b`, 'u').test(catalogRaw);
+}
+
 describe('settings candidate parity', () => {
   const catalogRaw = readFileSync(SETTINGS_CATALOG_PATH, 'utf8');
   const catalog = JSON.parse(catalogRaw) as { entries: Array<{ key: string }> };
@@ -146,7 +160,7 @@ describe('settings candidate parity', () => {
 
     const unaccounted = [...commerceSettingsKeys]
       .filter((key) => {
-        const inCatalog = catalogKeys.has(key) || catalogRaw.includes(key);
+        const inCatalog = catalogReferencesKey(catalogKeys, catalogRaw, key);
         return !inCatalog && !Object.hasOwn(EXCLUDED_COMMERCE_SETTINGS_KEYS, key);
       })
       .sort();
@@ -162,7 +176,7 @@ describe('settings candidate parity', () => {
     for (const [key, reason] of Object.entries(EXCLUDED_COMMERCE_SETTINGS_KEYS)) {
       if (reason.trim().length === 0) invalid.push(`${key}: empty exclusion reason`);
       if (!commerceSettingsKeys.has(key)) invalid.push(`${key}: not found in SQL migrations`);
-      if (catalogKeys.has(key) || catalogRaw.includes(key)) {
+      if (catalogReferencesKey(catalogKeys, catalogRaw, key)) {
         invalid.push(`${key}: already present or referenced in settings-catalog.json`);
       }
     }
@@ -173,7 +187,9 @@ describe('settings candidate parity', () => {
     expect(policyTables.size).toBeGreaterThan(0);
 
     const unaccounted = [...policyTables]
-      .filter((table) => !catalogRaw.includes(table) && !Object.hasOwn(EXCLUDED_POLICY_TABLES, table))
+      .filter(
+        (table) => !catalogReferencesTable(catalogRaw, table) && !Object.hasOwn(EXCLUDED_POLICY_TABLES, table),
+      )
       .sort();
 
     expect(
@@ -187,7 +203,7 @@ describe('settings candidate parity', () => {
     for (const [table, reason] of Object.entries(EXCLUDED_POLICY_TABLES)) {
       if (reason.trim().length === 0) invalid.push(`${table}: empty exclusion reason`);
       if (!policyTables.has(table)) invalid.push(`${table}: not found in SQL migrations`);
-      if (catalogRaw.includes(table)) {
+      if (catalogReferencesTable(catalogRaw, table)) {
         invalid.push(`${table}: already referenced in settings-catalog.json`);
       }
     }

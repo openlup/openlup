@@ -540,7 +540,7 @@ describe("fast preflight", () => {
         if (call === "git rev-parse HEAD") return { status: 0, stdout: head, stderr: "" };
         if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
         if (call === `git diff --name-status --no-renames -z ${fork} HEAD`) return { status: 0, stdout: `M\0${targetPath}\0`, stderr: "" };
-        if (call === `git diff --unified=2 --no-color --no-ext-diff ${fork} HEAD -- ${targetPath}`) {
+        if (call === `git diff --unified=2 --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ ${fork} HEAD -- ${targetPath}`) {
           return {
             status: 0,
             stdout: `diff --git a/${targetPath} b/${targetPath}\n+++ b/${targetPath}\n@@ -1,1 +1,3 @@\n${diffBody}\n`,

@@ -79,7 +79,7 @@ export function findUnaccountedSettingsCandidates(
       continue;
     }
 
-    if (raw.startsWith("+++ ")) {
+    if (currentLine === undefined && raw.startsWith("+++ ")) {
       const target = raw.slice(4).trim();
       if (target === "/dev/null" || !target.startsWith("b/")) {
         currentPath = undefined;
@@ -178,7 +178,17 @@ export function checkSettingsCandidates(
     const range = options.target ? [base, options.target] : [base];
     const result = spawnSync(
       "git",
-      ["diff", "--unified=2", "--no-color", "--no-ext-diff", ...range, "--", ...trackedEligible],
+      [
+        "diff",
+        "--unified=2",
+        "--no-color",
+        "--no-ext-diff",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        ...range,
+        "--",
+        ...trackedEligible,
+      ],
       { cwd: root, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
     );
     if (result.status !== 0) {
