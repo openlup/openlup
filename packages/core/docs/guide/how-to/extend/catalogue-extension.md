@@ -246,20 +246,7 @@ Native cadence guards still decide whether a cadence can be written.
 ## Publish net content in grams
 
 Publication accepts net content only as a whole number of grams.
-Declare `{code: "openlup:g", dimension: "mass", integral: false, factor: {canonicalUnit: "openlup:g", unscaled: "1", scale: 0}}`
-in `units` and list `openlup:g` in `netContentUnits`.
-Set `skus[].netContent` to whole grams with `dimension: "mass"`,
-`unit: "openlup:g"`, `scale: 0` and a positive integer string in `unscaled`.
-
-If a volume or count dimension already has `role: "net_content"`, remove that
-role and keep the dimension and its options. Otherwise, for a labelled volume
-or count, add a quantity dimension with its allowed
-`units` and omit the `net_content` role. Select the dimension key in
-`product.dimensions` and set `skus[].options[key]` to
-`{kind: "quantity", value: {dimension, unit, unscaled, scale}}`.
-For a new dimension in v2 and v3 fixtures, declare an attribute with `scope: "variant"` and
-`valueType: {kind: "quantity", dimension, units}`. Bind the dimension key to that
-attribute with `axes: [{key, attributeKey}]`.
+Make `units` contain exactly one `openlup:g` entry, `{code: "openlup:g", dimension: "mass", integral: false, factor: {canonicalUnit: "openlup:g", unscaled: "1", scale: 0}}`, include `openlup:g` exactly once in `netContentUnits`, set each `skus[].netContent` to whole grams (`dimension: "mass"`, `unit: "openlup:g"`, `scale: 0` and a positive integer string of at most 40 digits in `unscaled`), and remove `role: "net_content"` from any dimension that has it while keeping its definition and SKU options otherwise intact, making room within each 64-entry limit or replacing a different `openlup:g` declaration only when the change preserves every retained unit reference.
 
 ## Review filter and facet flags
 

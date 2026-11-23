@@ -38,7 +38,7 @@ function observedAt(subject: unknown, path: string): string {
   let remaining = 160, preview = "";
   function json(input: unknown): string {
     if (typeof input !== "string") return JSON.stringify(input);
-    const safe = input.replace(/(^|[\s"'(=,[])(?:file:\S*|(?:[a-z]:)?[\\/]+[^\\/\s]+[\\/]+[^\\/\s]+\S*)/giu, "$1<host path>");
+    const safe = /(?:^|[\s"'(=,[])(?:file:|[a-z]:[\\/]|[\\/].*[\\/])/isu.test(input) ? "<host path>" : input;
     return JSON.stringify(safe.slice(0, remaining * 2));
   }
   function append(text: string): void {
@@ -202,8 +202,8 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
   if (typeof subject.recheck === "string") recheck = subject.recheck;
   let attributesAvailable = true, combinationsAvailable = true, packsWithContent = 0;
   const typeIdentities = new Set<string>();
-  const ready: { index: number; pack: CatalogPackInput; registry: ReturnType<typeof createCatalogProductTypeRegistry>;
-    invalidTypes: Map<string, string> }[] = [];
+  const ready: { index: number; pack: CatalogPackInput; types: CatalogPackInput["types"];
+    invalidTypes: Map<string, string>; trusted: boolean }[] = [];
   for (const [index, entry] of subject.packs.entries()) {
     const at = `/packs/${index}`;
     if (!closed(entry, ["pack", "drafts", "quantities", "attributes", "combinations", "refusals"])
@@ -234,24 +234,19 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       else invalid.add(Number(typeIndex));
     }
     if (packInvalid) continue;
-    if (invalid.size === 0 && profiles !== undefined) {
+    let definitionsRefused = invalid.size > 0;
+    if (!definitionsRefused && profiles !== undefined) {
       const prepared = await owner(`${at}/pack`, () => prepareCatalogPackManifest(pack, profiles));
-      if (!prepared) continue;
-      if ("issue" in prepared) {
-        add(prepared.issue, `${at}/pack${prepared.issue.path}`);
-        continue;
-      }
+      definitionsRefused = !prepared || "issue" in prepared;
+      if (prepared && "issue" in prepared) add(prepared.issue, `${at}/pack${prepared.issue.path}`);
     }
     const invalidTypes = new Map<string, string>();
     const types = pack.types.filter((type, i) => {
       const path = `${at}/pack/types/${i}`;
       if (!object(type) || typeof type.key !== "string" || typeof type.version !== "number") return false;
       const identity = referenceKey(type.key, String(type.version));
-      if (!invalid.has(i) && typeIdentities.has(identity)) {
-        add("definition_duplicate_identity", `${path}/key`);
-        invalid.add(i);
-      }
       if (invalid.has(i)) { invalidTypes.set(identity, path); return false; }
+      if (typeIdentities.has(identity)) add("definition_duplicate_identity", `${path}/key`);
       typeIdentities.add(identity);
       if (!type.units.some(unit => type.netContentUnits.includes(unit.code) && unit.dimension === "mass"
         && (unit.factor?.canonicalUnit === "openlup:g" || CATALOG_QUANTITY_UNITS.some(builtIn => builtIn.code === unit.code && builtIn.dimension === "mass"))))
@@ -262,12 +257,13 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       });
       return true;
     });
-    if (validators) verifyCatalogRulesAtInstall({ ...pack, types });
-    const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(types));
-    if (registry) ready.push({ index, pack, registry, invalidTypes });
+    ready.push({ index, pack, types, invalidTypes, trusted: validators !== undefined && !definitionsRefused });
   }
-  for (const { index, pack, registry, invalidTypes } of ready) {
+  for (const { index, pack, types, invalidTypes, trusted } of ready) {
     const at = `/packs/${index}`, { drafts, quantities, attributes, combinations, refusals } = subject.packs[index];
+    if (trusted) verifyCatalogRulesAtInstall(pack);
+    const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(types));
+    if (!registry) continue;
     let contentChecked = false;
     const skipped = new Set<string>();
     function skipInvalidType(ref: unknown): boolean {
@@ -295,23 +291,18 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       });
       const definition = registry.resolve(payload.product.type);
       const validation = validateDraftFacts(payload, { resolve: () => definition && { ...definition, validateContent: content => {
-        if (validators) {
-          try {
-            const result = definition.validateContent(content);
-            const then = (result as unknown as PromiseLike<unknown> | undefined)?.then;
-            if (typeof then === "function") {
-              void then.call(result, undefined, () => undefined);
-              throw new TypeError("Catalogue validateContent must return synchronously");
-            }
-            contentChecked = true;
-            return result;
-          } catch (error) {
-            // A newly reached sibling validator must preserve the pack's existing refusal.
-            if (invalidTypes.size === 0) throw error;
-          }
+        if (!trusted) {
+          add("conformance_owner_unavailable", `${path}/product/sharedContent`, "", true);
+          return [];
         }
-        add("conformance_owner_unavailable", `${path}/product/sharedContent`, "", true);
-        return [];
+        const result = definition.validateContent(content);
+        const then = (result as unknown as PromiseLike<unknown> | undefined)?.then;
+        if (typeof then === "function") {
+          void then.call(result, undefined, () => undefined);
+          throw new TypeError("Catalogue validateContent must return synchronously");
+        }
+        contentChecked = true;
+        return result;
       } } }, true);
       if (!validation.valid) for (const issue of validation.issues) add(issue, path + issue.path);
       if (payload.schemaVersion === 1 || !definition) continue;

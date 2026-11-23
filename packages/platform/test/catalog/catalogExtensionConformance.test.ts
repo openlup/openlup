@@ -53,56 +53,48 @@ describe("catalogue conformance findings", () => {
     }));
   });
 
-  it("gram_recipe_removes_the_net_content_warning", async () => {
+  it.each([
+    { name: "millilitre fixture without dimensions" },
+    { name: "existing gram declaration", existingGram: true },
+    { name: "volume net-content dimension", dimension: "volume" },
+    { name: "factorless custom mass dimension", dimension: "mass" },
+    { name: "v2 axis bound to an attribute", dimension: "volume", axis: true },
+  ])("applies the gram recipe to $name", async ({ existingGram, dimension, axis }) => {
     const subject = JSON.parse(fixture("volume-net-content"));
     const { pack: { types: [type] }, drafts: [draft] } = subject.packs[0];
-    const before = await checkSubject(subject);
-    expect(before.findings.find(({ code }) => code === "advisory_net_content_not_publishable")?.fix)
-      .toContain('in `units` and list `openlup:g` in `netContentUnits`');
-    type.units.push({ code: "openlup:g", dimension: "mass", integral: false,
-      factor: { canonicalUnit: "openlup:g", unscaled: "1", scale: 0 } });
-    type.netContentUnits.push("openlup:g");
-    draft.skus[0].netContent = { dimension: "mass", unit: "openlup:g", unscaled: "110", scale: 0 };
-    const volume = { kind: "quantity", dimension: "volume", units: ["sample:ml"] };
-    type.dimensions.push({ key: "volume", ...volume });
-    draft.product.dimensions.push("volume");
-    draft.skus[0].options.volume = {
-      kind: "quantity", value: { dimension: "volume", unit: "sample:ml", unscaled: "100", scale: 0 },
-    };
-    const verify = async () => {
-      const report = await checkSubject(subject);
-      expect(report).toMatchObject({ state: "satisfied", exitCode: 0 });
-      expect(report.findings.map(({ code }) => code)).not.toContain("advisory_net_content_not_publishable");
-    };
-    await verify();
-    draft.schemaVersion = 2;
-    type.attributes.push({ key: "volume", scope: "variant", valueType: volume, required: false,
-      cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 1, labels: {} });
-    type.axes = [{ key: "volume", attributeKey: "volume" }];
-    await verify();
-  });
-
-  it("gram_recipe_reuses_a_dimension_previously_marked_as_net_content", async () => {
-    const subject = JSON.parse(fixture("volume-net-content"));
-    const { pack: { types: [type] }, drafts: [draft] } = subject.packs[0];
-    const volume = { key: "volume", kind: "quantity", dimension: "volume", units: ["sample:ml"], role: "net_content" };
-    const value = { dimension: "volume", unit: "sample:ml", unscaled: "100", scale: 0 };
-    const sku = draft.skus[0];
-    type.dimensions.push(volume);
-    draft.product.dimensions.push(volume.key);
-    sku.options.volume = { kind: "quantity", value };
-    sku.netContent = value;
+    const gram = { code: "openlup:g", dimension: "mass", integral: false,
+      factor: { canonicalUnit: "openlup:g", unscaled: "1", scale: 0 } };
+    if (existingGram) type.units.push(gram);
+    if (dimension) {
+      const unit = dimension === "mass" ? "sample:mass" : "sample:ml";
+      if (dimension === "mass") {
+        type.units = [{ code: unit, dimension, integral: false }];
+        type.netContentUnits = [unit];
+      }
+      const value = { dimension, unit, unscaled: "100", scale: 0 };
+      type.dimensions = [{ key: "size", kind: "quantity", dimension, units: [unit], role: "net_content" }];
+      draft.product.dimensions = ["size"];
+      draft.skus[0].options = { size: { kind: "quantity", value } };
+      draft.skus[0].netContent = value;
+      if (axis) {
+        draft.schemaVersion = 2;
+        type.axes = [{ key: "size", attributeKey: "size" }];
+        type.attributes.push({ key: "size", scope: "variant", valueType: { kind: "quantity", dimension, units: [unit] },
+          required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true,
+          displayOrder: 1, labels: {} });
+        draft.skus[0].attributes = { size: value };
+      }
+    }
 
     const before = await checkSubject(subject);
     expect(before.exitCode).toBe(0);
     expect(before.findings.find(({ code }) => code === "advisory_net_content_not_publishable")?.fix)
-      .toContain("remove that role and keep the dimension and its options");
-    type.units.push({ code: "openlup:g", dimension: "mass", integral: false,
-      factor: { canonicalUnit: "openlup:g", unscaled: "1", scale: 0 } });
-    type.netContentUnits.push("openlup:g");
-    sku.netContent = { dimension: "mass", unit: "openlup:g", unscaled: "110", scale: 0 };
-    const { role: _role, ...unmarked } = volume;
-    type.dimensions[0] = unmarked;
+      .toContain('remove `role: "net_content"` from any dimension that has it');
+
+    if (!type.units.some((unit: { code: string }) => unit.code === gram.code)) type.units.push(gram);
+    if (!type.netContentUnits.includes(gram.code)) type.netContentUnits.push(gram.code);
+    for (const sku of draft.skus) sku.netContent = { dimension: "mass", unit: gram.code, unscaled: "110", scale: 0 };
+    for (const definition of type.dimensions) delete definition.role;
 
     const report = await checkSubject(subject);
     expect(report).toMatchObject({ state: "satisfied", exitCode: 0 });
@@ -132,36 +124,66 @@ describe("catalogue conformance findings", () => {
     ]);
   });
 
-  it("keeps_trusted_content_findings_for_a_valid_sibling", async () => {
-    const { packs: [{ pack, drafts: [draft] }] } = JSON.parse(fixture("volume-net-content"));
-    const rules = Buffer.from(artifact + '\nmodule.exports.validateContent = () => [{ code: "title_required", path: "title" }];');
-    const bound = withCatalogPublicationRules(pack as CatalogPackInput, () => rules);
-    const invalid = { ...bound.types[0], key: "sample:invalid", taxClass: "missing", validateContent: vi.fn(() => []) };
-    const source = { ...bound, types: [invalid, bound.types[0]] };
-    draft.product.sharedContent = { title: "" };
-    const report = await project({ packs: [{ pack: source, drafts: [draft] }], requiredChecks: ["draft-content"] });
-    expect(report).toMatchObject({ state: "violated", exitCode: 1 });
-    expect(errors(report).map(({ code, path, observed }) => [code, path, observed])).toEqual([
-      ["title_required", "/packs/0/drafts/0/product/sharedContent/title", '/packs/0/drafts/0/product/sharedContent/title = ""'],
-      ["definition_unknown_tax_class", "/packs/0/pack/types/0/taxClass", '/packs/0/pack/types/0/taxClass = "missing"'],
-    ]);
-    expect(invalid.validateContent).not.toHaveBeenCalled();
-  });
-
-  it("keeps_the_definition_refusal_when_a_trusted_sibling_throws", async () => {
-    const p = pack(), [type] = p.types;
-    const failure = new Error("Synthetic content failure");
-    type.validateContent = () => { throw failure; };
+  it.each([
+    { name: "unknown tax class", change: { taxClass: "missing" },
+      finding: ["definition_unknown_tax_class", "/packs/0/pack/types/0/taxClass"] },
+    { name: "null type", change: null, finding: ["definition_invalid_shape", "/packs/0/pack/types/0"] },
+    { name: "own validateContent field", change: { validateContent: "untrusted" },
+      finding: ["definition_unknown_field", "/packs/0/pack/types/0/validateContent"] },
+  ])("skips trusted verification and callbacks for a pack with $name", async ({ change, finding }) => {
+    const p = pack(), [type] = withCatalogPublicationRules(p, () => artifact).types;
+    const validateContent = vi.fn(() => { throw new Error("Synthetic sibling failure"); });
+    // The substituted binding would refuse even before the callback ran.
+    const sibling = { ...type, validateContent };
+    const invalid = change === null ? null : { ...p.types[0], key: "stationery:invalid", ...change };
     const base = draft();
     const drafts = [{ ...base, product: { ...base.product, sharedContent: { title: "Sample" } } }];
-    const invalid = { ...type, key: "stationery:invalid", taxClass: "missing" };
-    const report = await project({ packs: [{ pack: { ...p, types: [invalid, type] }, drafts }] });
+    const report = await project({ packs: [{ pack: { ...p, types: [invalid, sibling] }, drafts }] });
     expect(report).toMatchObject({ state: "violated", exitCode: 1 });
     expect(errors(report).map(({ code, path }) => [code, path])).toEqual([
       ["conformance_owner_unavailable", "/packs/0/drafts/0/product/sharedContent"],
-      ["definition_unknown_tax_class", "/packs/0/pack/types/0/taxClass"],
+      finding,
     ]);
-    await expect(project({ packs: [{ pack: p, drafts }] })).rejects.toBe(failure);
+    expect(validateContent).not.toHaveBeenCalled();
+  });
+
+  it("propagates a trusted validator throw in a valid pack even with a cross-pack duplicate", async () => {
+    const p = pack(), [type] = p.types;
+    const failure = new Error("Synthetic content failure");
+    const validateContent = vi.fn(() => { throw failure; });
+    const sibling = { ...type, key: "stationery:other", validateContent };
+    const base = draft();
+    const drafts = [{ ...base, product: { ...base.product, type: { key: sibling.key, version: 1 }, sharedContent: {} } }];
+    const subject = { pack: { ...p, types: [type, sibling] }, drafts };
+    await expect(project({ packs: [subject] })).rejects.toBe(failure);
+    await expect(project({ packs: [{ pack: p }, subject] })).rejects.toBe(failure);
+    expect(validateContent).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a cross-pack duplicate without skipping its fixture", async () => {
+    const p = pack(), base = draft();
+    p.types[0].validateContent = () => [{ code: "title_review", path: "title" }];
+    const drafts = [{ ...base, product: { ...base.product, sharedContent: { title: "Sample" } } }];
+    const report = await project({ packs: [{ pack: p }, { pack: p, drafts }] });
+    expect(report.exitCode).toBe(1);
+    expect(errors(report).map(({ code, path }) => [code, path])).toEqual([
+      ["title_review", "/packs/1/drafts/0/product/sharedContent/title"],
+      ["definition_duplicate_identity", "/packs/1/pack/types/0/key"],
+    ]);
+    expect(report.findings.map(({ code }) => code)).not.toContain("advisory_fixtures_skipped_definition_invalid");
+  });
+
+  it("runs an earlier pack's validator before a later pack's binding verification", async () => {
+    const p = pack(), base = draft();
+    const failure = new Error("Synthetic first-pack failure");
+    const drafts = [{ ...base, product: { ...base.product, sharedContent: {} } }];
+    const bound = withCatalogPublicationRules(p, () => artifact);
+    const substituted = { ...bound, types: [{ ...bound.types[0], validateContent: () => [] }] };
+    await expect(project({ packs: [{ pack: substituted }] })).rejects.toMatchObject({
+      code: "catalog_publication_rules_binding_mismatch",
+    });
+    p.types[0].validateContent = () => { throw failure; };
+    await expect(project({ packs: [{ pack: p, drafts }, { pack: substituted }] })).rejects.toBe(failure);
   });
 
   it("observes_the_original_value_when_a_trusted_validator_mutates_its_input", async () => {
@@ -181,10 +203,12 @@ describe("catalogue conformance findings", () => {
   });
 
   it.each([
-    ["Loaded from file:///tmp/synthetic/source.mjs", "Loaded from <host path>"],
-    ["see /tmp/synthetic/source.mjs now", "see <host path> now"],
+    ["Loaded from file:///tmp/synthetic/source.mjs", "<host path>"],
+    ["see /tmp/synthetic/source.mjs now", "<host path>"],
     ["/Users/a/x.mjs", "<host path>"],
-    ["C:\\a\\b.mjs", "<host path>"],
+    ["C:\\Program Files\\Catalogue\\pack.mjs", "<host path>"],
+    ["C:\\pack.mjs", "<host path>"],
+    ["\\\\host\\share\\pack.mjs", "<host path>"],
     ["/same", "/same"],
     ["https://example.com/a/b", "https://example.com/a/b"],
     ["sample:ml", "sample:ml"],
@@ -204,7 +228,7 @@ describe("catalogue conformance findings", () => {
     expect(paths.some(path => JSON.stringify(report).includes(JSON.stringify(path).slice(1, -1)))).toBe(false);
     expect(errors(report).map(({ observed }) => observed)).toEqual([
       '/packs/0/pack/direct = "<host path>"',
-      '/packs/0/pack/nested = {"source=<host path>":["<host path>","<host path>","<host path>"]}',
+      '/packs/0/pack/nested = {"<host path>":["<host path>","<host path>","<host path>"]}',
     ]);
   });
 
