@@ -84,22 +84,6 @@ export async function checkAndRecordAdminMagicLinkAttempt(
   };
 }
 
-export function extractClientIp(
-  headers: Record<string, string | string[] | undefined>,
-): string {
-  const candidates = [
-    pickHeader(headers["x-forwarded-for"]),
-    pickHeader(headers["cf-connecting-ip"]),
-    pickHeader(headers["x-real-ip"]),
-  ];
-
-  for (const candidate of candidates) {
-    if (candidate) return candidate.split(",")[0]?.trim() ?? candidate;
-  }
-
-  return "unknown";
-}
-
 interface RpcRow {
   allowed?: unknown;
   reason?: unknown;
@@ -125,14 +109,6 @@ function pickReason(value: unknown): AdminMagicLinkRateLimitReason | undefined {
 
 function pickNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
-function pickHeader(value: string | string[] | undefined): string | null {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
-    return value[0];
-  }
-  return null;
 }
 
 function rpcErrorResult(): AdminMagicLinkRateLimitResult {

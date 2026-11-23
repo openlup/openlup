@@ -1,10 +1,10 @@
 import { withObservedRoute } from "../../_lib/observability/route.js";
 import { checkoutRiskBlockingEnabled, riskHashSecret } from "../../_lib/config/featureFlags.js";
 import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
+import { rateLimitClientAddress } from "../../_lib/rate-limit/clientAddress.js";
 import { sendBffError } from "../../_lib/bff/response.js";
 import {
   checkAndRecordCheckoutAttempt,
-  extractClientIp,
   type PublicCheckoutRateLimitClient,
 } from "../../_lib/rate-limit/publicCheckoutRateLimit.js";
 import {
@@ -42,7 +42,7 @@ async function handler(req: HttpRequest, res: HttpResponse): Promise<void> {
       }),
       checkRateLimit: (request, command) => checkAndRecordCheckoutAttempt({
         client: client as PublicCheckoutRateLimitClient,
-        ip: extractClientIp(request.headers),
+        ip: rateLimitClientAddress(request),
         email: command.customer.email,
         journeyIdempotencyKey: command.idempotencyKey,
         paymentAttemptSequence: 0,
@@ -52,7 +52,7 @@ async function handler(req: HttpRequest, res: HttpResponse): Promise<void> {
           .checkExactBlocklist({
             subjectRefs: [
               { subjectKind: "email", subjectHash: riskSubjectHash("email", command.customer.email, riskHashSecret()) },
-              { subjectKind: "ip", subjectHash: riskSubjectHash("ip", extractClientIp(request.headers), riskHashSecret()) },
+              { subjectKind: "ip", subjectHash: riskSubjectHash("ip", rateLimitClientAddress(request), riskHashSecret()) },
             ],
           })
         : undefined,

@@ -17,13 +17,15 @@ describe("stock notify domain handler", () => {
     });
     const res = response();
 
-    await handler(request("POST", validBody()), res);
+    const req = request("POST", validBody());
+    await handler(req, res);
 
     expect(check).toHaveBeenCalledWith({
-      headers: {},
+      request: req,
       email: "buyer@example.com",
       sku: "OPENLUP-LAMB-5KG",
     });
+    expect(check.mock.calls[0][0].request).toBe(req);
     expect(subscribe).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(429);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -70,7 +72,10 @@ function validBody() {
 }
 
 function request(method: string, body: unknown): VercelRequest {
-  return { method, body, query: {}, headers: {} } as unknown as VercelRequest;
+  return {
+    method, body, query: {}, headers: { "x-forwarded-for": "203.0.113.8" },
+    socket: { remoteAddress: "192.0.2.10" },
+  } as unknown as VercelRequest;
 }
 
 function response(): VercelResponse {

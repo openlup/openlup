@@ -1,10 +1,14 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as dataGateway from "../../adapters/supabase/dataGateway.js";
+import * as customerAuth from "../../_lib/customer-domain/auth.js";
+import { hashCustomerMagicLinkRateLimitKey } from "../../_lib/rate-limit/customerMagicLinkRateLimit.js";
 import { createPublicReferenceServer } from "./serve.ts";
 
 const scratch: string[] = [];
@@ -22,6 +26,9 @@ const temp = () => {
 };
 
 afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   for (const root of scratch.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -135,4 +142,69 @@ describe("public reference health", () => {
       await running.close();
     }
   });
+});
+
+it("uses the live Node transport peer after request adaptation and dispatch", async () => {
+  const root = temp();
+  const site = "http://127.0.0.1:56430";
+  const instanceId = "a9931d52-153f-49d4-a4ef-8d80f6dc56b8";
+  const config = `project_id = "openlup-reference-test"
+[api]
+port = 56421
+[auth]
+site_url = "${site}"
+[auth.email]
+enable_confirmations = true
+[inbucket]
+enabled = true
+`;
+  const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
+  const baseline = readFileSync(new URL("../../../supabase/migrations/00000000000000_platform_schema_baseline.sql", import.meta.url));
+  mkdirSync(join(root, "supabase"));
+  writeFileSync(join(root, "supabase", "config.toml"), config);
+  writeFileSync(join(root, "subscription-owner.json"), JSON.stringify({
+    version: 2, projectId: "openlup-reference-test", portBase: 56420, phase: "sealed",
+    boundContainerId: "a".repeat(64), instanceId, configSha256: hash(config), baselineSha256: hash(baseline),
+  }));
+  const localSettings = {
+    from: () => ({ select: () => ({ eq: () => ({ limit: async () => ({ data: [{ value_text: instanceId }] }) }) }) }),
+  };
+  vi.spyOn(dataGateway, "createSupabaseDataGateway").mockReturnValue({
+    asService: (work) => work(localSettings as never),
+  } as ReturnType<typeof dataGateway.createSupabaseDataGateway>);
+  const limit = vi.fn().mockResolvedValue({ data: { allowed: false, reason: "ip_quota" }, error: null });
+  vi.spyOn(customerAuth, "createCustomerServiceClient").mockReturnValue({ rpc: limit } as never);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    mailer_autoconfirm: false, external: { email: true },
+  }))));
+  vi.stubEnv("CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS", undefined);
+  const running = await live({ root, distDir: "dist", env: {
+    LOCAL_BFF: "1", OSS_REFERENCE_STORE_PROFILE: "local-supabase-demo-v1",
+    OPENLUP_REFERENCE_PROFILE: "subscription", OPENLUP_REFERENCE_DISPOSABLE: "1",
+    OPENLUP_REFERENCE_PROJECT_ID: "openlup-reference-test", OPENLUP_REFERENCE_SUPABASE_DIR: root,
+    APP_BASE_URL: site, SUPABASE_URL: "http://127.0.0.1:56421",
+    SUPABASE_ANON_KEY: "test-anon", SUPABASE_SERVICE_ROLE_KEY: "test-service", OSS_REFERENCE_PAYMENT_OUTCOME: "captured",
+  } });
+  try {
+    const status = await new Promise<number>((resolve, reject) => {
+      const outbound = request(`${running.origin}/api/bff/customers/magic-link`, {
+        method: "POST",
+        headers: {
+          host: new URL(site).host, origin: site, "content-type": "application/json",
+          "x-forwarded-for": "203.0.113.9",
+        },
+      }, (res) => {
+        res.resume();
+        res.once("end", () => resolve(res.statusCode ?? 0));
+      });
+      outbound.once("error", reject);
+      outbound.end(JSON.stringify({ email: "buyer@example.test" }));
+    });
+    expect(status).toBe(200);
+    expect(limit).toHaveBeenCalledExactlyOnceWith("public_record_customer_magic_link_attempt", expect.objectContaining({
+      p_ip_hash: hashCustomerMagicLinkRateLimitKey("127.0.0.1"),
+    }));
+  } finally {
+    await running.close();
+  }
 });

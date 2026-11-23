@@ -7,6 +7,7 @@ vi.mock("#deployment-route-policy", async (importOriginal) => ({
   ...(await importOriginal<typeof import("#deployment-route-policy")>()),
   enforceDeploymentRoutePolicy: () => true,
 }));
+import { hashRateLimitKey } from "../../_lib/rate-limit/publicSignupRateLimit.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 
 const { mockCreateClient, rpc } = vi.hoisted(() => {
@@ -23,6 +24,7 @@ vi.mock("@supabase/supabase-js", () => ({
 
 const ENV_KEYS = [
   "COMMERCE_BACK_IN_STOCK_ENABLED",
+  "CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS",
   "SUPABASE_URL",
   "VITE_SUPABASE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",
@@ -94,6 +96,7 @@ describe("commerce stock-notify BFF route", () => {
 
     expect(mockCreateClient).toHaveBeenCalledTimes(1);
     expect(rpc).toHaveBeenNthCalledWith(1, "commerce_record_stock_notify_attempt", expect.objectContaining({
+      p_ip_hash: hashRateLimitKey("192.0.2.10"),
       p_max_per_ip: 20,
       p_max_per_email_sku: 3,
     }));
@@ -170,7 +173,10 @@ function validBody() {
 }
 
 function request(method: string, body?: unknown): VercelRequest {
-  return { method, body, query: {}, headers: {} } as unknown as VercelRequest;
+  return {
+    method, body, query: {}, headers: { "x-forwarded-for": "203.0.113.8" },
+    socket: { remoteAddress: "192.0.2.10" },
+  } as unknown as VercelRequest;
 }
 
 function createResponse(): VercelResponse {

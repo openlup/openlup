@@ -4,6 +4,8 @@ import type { CheckoutCommandRuntimeResult } from "../../../src/domains/commerce
 import type { CheckoutCommandV1 } from "../../../src/domains/commerce/checkoutCommandContracts.js";
 import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
 import { LOCAL_REFERENCE_SUBSCRIPTION_PAYMENT_PROVIDER } from "../../adapters/localReferenceStoreAdapter.js";
+import { hashCheckoutRateLimitKey } from "../../_lib/rate-limit/publicCheckoutRateLimit.js";
+import { riskSubjectHash } from "../../domains/risk/riskFingerprint.js";
 import { createReferenceCheckoutHandler } from "../../domains/commerce/referenceCheckoutHandler.js";
 import { resolveSubscriptionPaymentMethodStatus } from "../../../src/domains/subscription/paymentMethodLifecycle.js";
 
@@ -186,6 +188,7 @@ describe("captured reference checkout", () => {
         gateway: db, outcome: configuredOutcome, assertDisposable: async () => {}, verifyAccessToken,
       })({
         method: "POST", body: { command }, headers: { authorization: "Bearer synthetic-session" }, query: {},
+        socket: { remoteAddress: "192.0.2.10" },
       } as HttpRequest, response);
 
       expect(response.status).toHaveBeenCalledWith(status);
@@ -205,6 +208,44 @@ describe("captured reference checkout", () => {
       } else {
         expect(readIssuedAttempt).not.toHaveBeenCalled();
       }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each([
+    { label: "direct", marker: undefined, forwarded: "203.0.113.5", expected: "192.0.2.10" },
+    { label: "hosted", marker: "1", forwarded: "198.51.100.9", expected: "198.51.100.9" },
+  ])("uses the same limiter and blocklist address on $label ingress", async ({ marker, forwarded, expected }) => {
+    const secret = "synthetic-risk-hash-key";
+    vi.stubEnv("OSS_REFERENCE_PAYMENT_OUTCOME", "captured");
+    vi.stubEnv("COMMERCE_RISK_EVALUATION_ENABLED", "true");
+    vi.stubEnv("COMMERCE_RISK_CHECKOUT_BLOCKLIST_BLOCKING_ENABLED", "true");
+    vi.stubEnv("COMMERCE_RISK_HASH_SECRET", secret);
+    vi.stubEnv("VERCEL", marker);
+    vi.stubEnv("CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS", undefined);
+    try {
+      const { db, rpc } = preparedCheckoutGateway(null);
+      rpc.mockResolvedValueOnce({ data: { allowed: true, attempts_by_ip: 1, attempts_by_email: 1 }, error: null });
+      // On hosted ingress the client-address header and the legacy first entry agree.
+      const blockedHash = riskSubjectHash("ip", expected, secret);
+      rpc.mockResolvedValueOnce({ data: { blocked: true }, error: null });
+      const response = { status: vi.fn().mockReturnThis(), json: vi.fn(), setHeader: vi.fn() } as unknown as HttpResponse;
+      await createCapturedReferenceCheckoutHandler({
+        gateway: db, outcome: "captured", assertDisposable: async () => {}, verifyAccessToken: vi.fn(),
+      })({
+        method: "POST", body: { command }, query: {},
+        headers: { "x-forwarded-for": `${forwarded}, 203.0.113.7`, "x-real-ip": "198.51.100.9" },
+        socket: { remoteAddress: "192.0.2.10" },
+      } as HttpRequest, response);
+
+      expect.soft(rpc).toHaveBeenNthCalledWith(1, "public_record_checkout_attempt", expect.objectContaining({
+        p_ip_hash: hashCheckoutRateLimitKey(expected),
+      }));
+      expect.soft(rpc).toHaveBeenNthCalledWith(2, "risk_check_exact_blocklist", {
+        p_subject_refs: expect.arrayContaining([{ subjectKind: "ip", subjectHash: blockedHash }]),
+      });
+      expect(response.status).toHaveBeenCalledWith(403);
     } finally {
       vi.unstubAllEnvs();
     }

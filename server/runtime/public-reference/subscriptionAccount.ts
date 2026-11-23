@@ -4,7 +4,8 @@ import { sendBffError, sendBffSuccess } from "../../_lib/bff/response.js";
 import { z } from "../../../src/lib/validation/zod.js";
 import { createCustomerClients, createCustomerClient, createCustomerServiceClient, authenticateCustomerUser, type CustomerSelfServiceEnv } from "../../_lib/customer-domain/auth.js";
 import { readBearerToken } from "../../_lib/admin-domain/auth.js";
-import { checkAndRecordCustomerMagicLinkAttempt, extractClientIp, type CustomerMagicLinkRateLimitClient } from "../../_lib/rate-limit/customerMagicLinkRateLimit.js";
+import { rateLimitClientAddress } from "../../_lib/rate-limit/clientAddress.js";
+import { checkAndRecordCustomerMagicLinkAttempt, type CustomerMagicLinkRateLimitClient } from "../../_lib/rate-limit/customerMagicLinkRateLimit.js";
 import { padResponseTime } from "../../_lib/timing.js";
 import { reconcileAccountForPrincipal } from "@openlup/platform/identity";
 import { createSupabaseAccountLinkStore } from "@openlup/platform/identity";
@@ -22,7 +23,11 @@ const requestSchema = z.object({
 }).strict();
 
 /** Mounted only by the validated disposable profile, never the static server. */
-export function createReferenceAccountHandlers(env: CustomerSelfServiceEnv, origin: string) {
+export function createReferenceAccountHandlers(
+  env: CustomerSelfServiceEnv,
+  origin: string,
+  addressEnv = process.env,
+) {
   const service = createCustomerServiceClient(env);
   return {
     requestSignIn: async (req: HttpRequest, res: HttpResponse) => {
@@ -31,7 +36,7 @@ export function createReferenceAccountHandlers(env: CustomerSelfServiceEnv, orig
       const started = Date.now();
       const decision = await checkAndRecordCustomerMagicLinkAttempt({
         client: service as unknown as CustomerMagicLinkRateLimitClient,
-        ip: extractClientIp(req.headers), email: request.data.email,
+        ip: rateLimitClientAddress(req, addressEnv), email: request.data.email,
       });
       if (!decision.allowed && decision.reason === "rpc_error") {
         await padResponseTime(started, 400);

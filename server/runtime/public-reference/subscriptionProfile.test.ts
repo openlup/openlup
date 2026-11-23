@@ -1,9 +1,14 @@
 import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { Readable } from "node:stream";
+import * as dataGateway from "../../adapters/supabase/dataGateway.js";
+import * as customerAuth from "../../_lib/customer-domain/auth.js";
+import { hashCustomerMagicLinkRateLimitKey } from "../../_lib/rate-limit/customerMagicLinkRateLimit.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OWNED_SUPABASE_CONFIG, validateSubscriptionProfile, subscriptionCsp, SUBSCRIPTION_CSP } from "./subscriptionProfile.js";
+import { createSubscriptionProfile, OWNED_SUPABASE_CONFIG, validateSubscriptionProfile, subscriptionCsp, SUBSCRIPTION_CSP } from "./subscriptionProfile.js";
 
 const scratch: string[] = [];
 const instanceId = "a9931d52-153f-49d4-a4ef-8d80f6dc56b8";
@@ -21,16 +26,16 @@ enabled = true
 // A stand-in for the flattened baseline, so admission is tested without the public tree's 2.8 MB artifact.
 const BASELINE_FIXTURE = "-- baseline fixture\n";
 const validate = (env: NodeJS.ProcessEnv) => validateSubscriptionProfile(env, join(env.OPENLUP_REFERENCE_SUPABASE_DIR!, "baseline.sql"));
-function setup(text = config): NodeJS.ProcessEnv {
+function setup(text = config, baseline = BASELINE_FIXTURE): NodeJS.ProcessEnv {
   const directory = mkdtempSync(join(tmpdir(), "reference-profile-test-"));
   scratch.push(directory);
   mkdirSync(join(directory, "supabase"));
   writeFileSync(join(directory, ...OWNED_SUPABASE_CONFIG), text);
-  writeFileSync(join(directory, "baseline.sql"), BASELINE_FIXTURE);
+  writeFileSync(join(directory, "baseline.sql"), baseline);
   writeFileSync(join(directory, "subscription-owner.json"), JSON.stringify({
     version: 2, projectId: "openlup-reference-test", portBase: 56420, phase: "sealed",
     boundContainerId: "a".repeat(64), instanceId, configSha256: sha256(text),
-    baselineSha256: sha256(BASELINE_FIXTURE),
+    baselineSha256: sha256(baseline),
   }));
   return {
     LOCAL_BFF: "1", OSS_REFERENCE_STORE_PROFILE: "local-supabase-demo-v1",
@@ -40,7 +45,12 @@ function setup(text = config): NodeJS.ProcessEnv {
     OSS_REFERENCE_PAYMENT_OUTCOME: "captured",
   };
 }
-afterEach(() => { vi.unstubAllGlobals(); for (const directory of scratch.splice(0)) rmSync(directory, { recursive: true }); });
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+  for (const directory of scratch.splice(0)) rmSync(directory, { recursive: true });
+});
 
 describe("disposable subscription admission", () => {
   it.each([
@@ -111,4 +121,40 @@ it("adds exactly the validated configured auth origin to connect-src", () => {
 });
 it.each([undefined, "", "https://external.invalid", "http://127.0.0.1:56421/path", "http://user@127.0.0.1:56421", "http://127.0.0.1:56421/?unsafe=1"])("unvalidated or missing origin %j adds nothing to CSP", (value) => {
   expect(subscriptionCsp(value)).toBe(SUBSCRIPTION_CSP);
+});
+
+it("uses the profile's selected hop count instead of the ambient count", async () => {
+  const baseline = readFileSync(new URL("../../../supabase/migrations/00000000000000_platform_schema_baseline.sql", import.meta.url), "utf8");
+  const env = { ...setup(config, baseline), CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS: "1" };
+  vi.stubEnv("CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS", "2");
+  const limit = vi.fn().mockResolvedValue({ data: { allowed: false, reason: "ip_quota" }, error: null });
+  const localSettings = {
+    from: () => ({ select: () => ({ eq: () => ({ limit: async () => ({ data: [{ value_text: instanceId }] }) }) }) }),
+  };
+  vi.spyOn(dataGateway, "createSupabaseDataGateway").mockReturnValue({
+    asService: (work) => work(localSettings as never),
+  } as ReturnType<typeof dataGateway.createSupabaseDataGateway>);
+  vi.spyOn(customerAuth, "createCustomerServiceClient").mockReturnValue({ rpc: limit } as never);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    mailer_autoconfirm: false, external: { email: true },
+  }))));
+  const profile = createSubscriptionProfile(env);
+  const req = Object.assign(Readable.from([Buffer.from(JSON.stringify({ email: "buyer@example.test" }))]), {
+    method: "POST",
+    headers: {
+      host: "127.0.0.1:56430", origin: env.APP_BASE_URL, "content-type": "application/json",
+      "x-forwarded-for": "203.0.113.8, 198.51.100.9",
+    },
+    socket: { remoteAddress: "192.0.2.10" },
+  }) as unknown as IncomingMessage;
+  const end = vi.fn();
+  const res = { setHeader: vi.fn(), hasHeader: () => false, end, statusCode: 200 } as unknown as ServerResponse;
+
+  await profile.handle(req, res, "/api/bff/customers/magic-link");
+
+  expect(limit).toHaveBeenCalledExactlyOnceWith("public_record_customer_magic_link_attempt", expect.objectContaining({
+    p_ip_hash: hashCustomerMagicLinkRateLimitKey("198.51.100.9"),
+  }));
+  expect(res.statusCode).toBe(200);
+  expect(end).toHaveBeenCalledOnce();
 });

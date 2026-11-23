@@ -1,4 +1,6 @@
-import { extractClientIp, hashRateLimitKey } from "./publicSignupRateLimit.js";
+import type { HttpRequest } from "../types/http.js";
+import { rateLimitClientAddress } from "./clientAddress.js";
+import { hashRateLimitKey } from "./publicSignupRateLimit.js";
 
 const RPC_NAME = "public_record_eligibility_lookup_attempt" as const;
 
@@ -36,7 +38,7 @@ export interface CustomerEligibilityRateLimitArgs {
 
 export interface CustomerEligibilityRateLimitPort {
   check(input: {
-    headers: Record<string, string | string[] | undefined>;
+    request: HttpRequest;
     email: string;
   }): Promise<CustomerEligibilityRateLimitResult>;
 }
@@ -48,7 +50,7 @@ export function createSupabaseCustomerEligibilityRateLimitPort(
     check(input) {
       return checkAndRecordEligibilityLookupAttempt({
         client,
-        ip: extractClientIp(input.headers),
+        ip: rateLimitClientAddress(input.request),
         email: input.email,
       });
     },

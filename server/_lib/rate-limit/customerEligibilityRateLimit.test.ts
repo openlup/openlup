@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HttpRequest } from "../types/http.js";
+import { hashRateLimitKey } from "./publicSignupRateLimit.js";
 import {
   checkAndRecordEligibilityLookupAttempt,
   createSupabaseCustomerEligibilityRateLimitPort,
 } from "./customerEligibilityRateLimit.js";
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("customer eligibility rate limit", () => {
   it("allows attempts returned by the durable limiter RPC", async () => {
@@ -62,7 +66,8 @@ describe("customer eligibility rate limit", () => {
     warn.mockRestore();
   });
 
-  it("derives the IP + lowercased email from request headers via the port", async () => {
+  it("keys the port on the socket peer and normalized email", async () => {
+    vi.stubEnv("CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS", undefined);
     const rpc = vi.fn().mockResolvedValue({
       data: { allowed: true, attempts_by_ip: 1, attempts_by_email: 1 },
       error: null,
@@ -70,10 +75,16 @@ describe("customer eligibility rate limit", () => {
     const port = createSupabaseCustomerEligibilityRateLimitPort({ rpc });
 
     await port.check({
-      headers: { "x-forwarded-for": "198.51.100.7" },
+      request: {
+        headers: { "x-forwarded-for": "198.51.100.7" },
+        socket: { remoteAddress: "192.0.2.10" },
+      } as HttpRequest,
       email: "Buyer@Example.com",
     });
 
-    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("public_record_eligibility_lookup_attempt", expect.objectContaining({
+      p_ip_hash: hashRateLimitKey("192.0.2.10"),
+      p_email_hash: hashRateLimitKey("buyer@example.com"),
+    }));
   });
 });
