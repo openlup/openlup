@@ -2081,9 +2081,18 @@ const registry = "./catalogue-skeleton/catalogue.json";
 const command = ["catalogue", "check", "--packs", registry];
 const text = readFileSync(join(owned, "catalogue.json"), "utf8"), subject = JSON.parse(text);
 const write = (name, value) => { const path = join(owned, name); writeFileSync(path, JSON.stringify(value)); return ["catalogue", "check", "--packs", path]; };
+const findingIdentity = ({code,path,severity}) => ({code,path,severity});
+const netContentWarning = {code:"advisory_net_content_not_publishable",path:"/packs/0/pack/types/0/netContentUnits",severity:"warning"};
 const cases = [
  { name: "guide_skeleton_pack_passes_checker", async run() {
-   assert.equal((await runCatalogExtensionConformance(text)).exitCode, 0); assert.equal(invoke(command).exitCode, 0);
+   for (const report of [await runCatalogExtensionConformance(text),invoke(command)]) {
+     assert.equal(report.state,"satisfied"); assert.equal(report.exitCode,0);
+     assert.deepEqual(report.findings.map(findingIdentity),[
+       {code:"advisory_draft_version_not_publishable",path:"/packs/0/drafts/0/schemaVersion",severity:"warning"},
+       {code:"advisory_unit_identifier_missing",path:"/packs/0/drafts/0/skus/0/identifiers",severity:"warning"},
+       netContentWarning,
+     ]);
+   }
  } },
  { name: "catalogue_check_cli_reports_stable_codes_and_exit", async run() {
    assert.equal(invoke([...command, "--app", "unused"]).exitCode, 64);
@@ -2124,15 +2133,27 @@ const cases = [
    const input = {productAttributes:{flag:true},skus:[{id:"00000000-0000-4000-8000-000000000002"}]};
    const prepared = prepareCatalogAttributeProjection(await validateCatalogAttributes(definition,input),"7"); assert.equal(prepared.prepared,false);
    const attributes = {packs:[{pack,attributes:[{type,input,publicationRevision:"7"}]}]};
+   const definitionWarnings = [
+     {code:"advisory_filter_flags_unused",path:"/packs/0/pack/types/0/attributes/0",severity:"warning"},
+     netContentWarning,
+   ];
    for (const report of [await runCatalogExtensionConformance(JSON.stringify(attributes)),invoke(write("attributes.json",attributes))]) {
-     assert.deepEqual(report.findings.map(({code,path})=>({code,path})),prepared.issues.map(issue=>({...issue,path:"/packs/0/attributes/0/input"+issue.path})));
+     assert.equal(report.state,"violated"); assert.equal(report.exitCode,1);
+     assert.deepEqual(report.findings.map(findingIdentity),[
+       ...prepared.issues.map(issue=>({...issue,path:"/packs/0/attributes/0/input"+issue.path,severity:"error"})),
+       ...definitionWarnings,
+     ]);
    }
    const changes = {axes:["flag"],typed:true,retained:[],incoming:[{skuId:"one",state:"active",optionValues:{flag:{kind:"boolean",value:true}}},{skuId:"two",state:"active",optionValues:{flag:{kind:"boolean",value:true}}}]};
    let issue; try {validateCatalogCombinationChangesV2({...changes,definition});} catch(error) {assert(error instanceof CatalogCombinationError);issue=error;}
    assert(issue);
    const combinations={packs:[{pack,combinations:[{type,input:changes}]}]};
    for (const report of [await runCatalogExtensionConformance(JSON.stringify(combinations)),invoke(write("combinations.json",combinations))]) {
-     assert.deepEqual(report.findings.map(({code,path})=>({code,path})),[{code:issue.code,path:"/packs/0/combinations/0/input/"+issue.path.replaceAll(".","/")}]);
+     assert.equal(report.state,"violated"); assert.equal(report.exitCode,1);
+     assert.deepEqual(report.findings.map(findingIdentity),[
+       {code:issue.code,path:"/packs/0/combinations/0/input/"+issue.path.replaceAll(".","/"),severity:"error"},
+       ...definitionWarnings,
+     ]);
    }
  } },
  { name: "catalogue_codes_link_existing_recipes", run() {
