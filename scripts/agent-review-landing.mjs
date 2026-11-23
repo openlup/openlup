@@ -10,11 +10,12 @@ import { isDeepStrictEqual } from 'node:util';
 import { git } from './agent-review-session.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
-import { generatedCarrier, SQL_REFERENCE } from './agent-review-generators.mjs';
+import * as carrierGenerators from './agent-review-generators.mjs';
 import { DEFAULT_INCREMENTAL_PACKAGES, TSBUILDINFO_FILENAME } from './build-packages-incremental.mjs';
 import { isGuidePage } from './oss-publication-policy.ts';
 import { isQualifiedPlatformMigrationPath } from './platform-migration-manifest.ts';
 
+const { generatedCarrier, ownerOutputCarrier, SQL_REFERENCE } = carrierGenerators;
 const PUBLICATION_CATALOGUE = REGISTRY_PATHS[0];
 const SETTINGS_GUIDE = 'packages/core/docs/guide/how-to/operate/settings-catalogue.md';
 const SETTINGS_OUTPUTS = ['packages/platform/settings-catalog.json', 'packages/platform/settings-refusals.json', SETTINGS_GUIDE];
@@ -91,17 +92,19 @@ function refuseAuthoredConflicts(paths) {
 const commandDiagnostic = error => error?.stderr?.toString().trim() || error?.message || String(error);
 const checkoutStatus = cwd => git(cwd, '--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all');
 
-async function abortLanding(cwd, { head, hasMerge, ignored, diagnostics }, error) {
+async function abortLanding(cwd, { head, hasMerge, ignored, diagnostics, writes }, error) {
   const cleanupFailures = [];
   const attempt = async action => {
     try { return await action(); }
     catch (failure) { cleanupFailures.push(failure); }
   };
   const active = await attempt(hasMerge);
-  // The clean preflight is the baseline for unstaged writes and untracked files.
-  // Restore from the merge index first so these writes cannot obstruct abort.
+  const owned = path => writes.paths.has(path) ||
+    (writes.generated && generatedCarrier(path) && !ownerOutputCarrier?.(path));
+  // Restore landing's writes from the merge index so they cannot obstruct abort.
   const cleanUntracked = async () => {
     const untracked = pathsFrom(await git(cwd, 'ls-files', '--others', '--exclude-standard', '-z')).filter(path => {
+      if (!owned(path)) return false;
       // A merged ignore rule can expose pre-existing local files or directories.
       for (let entry = path; entry !== '.'; entry = dirname(entry)) {
         if (ignored.has(entry) || ignored.has(`${entry}/`)) return false;
@@ -112,7 +115,7 @@ async function abortLanding(cwd, { head, hasMerge, ignored, diagnostics }, error
   };
   await attempt(cleanUntracked);
   await attempt(async () => {
-    const modified = pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z'));
+    const modified = pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z')).filter(owned);
     if (modified.length) await git(cwd, '--literal-pathspecs', 'restore', '--worktree', '--ignore-unmerged', '--', ...new Set(modified));
   });
   if (active) await attempt(async () => {
@@ -156,14 +159,15 @@ async function landingPreflight(cwd) {
 async function mergeWithRollback(cwd, { head, main, base, run, carrierEnv, diagnostics, hasMerge, requireNoMerge }) {
   const ignored = new Set(pathsFrom(await git(cwd, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z')));
   requireNoMerge();
+  const writes = { paths: new Set(), generated: false };
   let inventoryRefreshed;
   try {
     try { await git(cwd, '-c', 'core.hooksPath=/dev/null', 'merge', '--no-ff', '--no-commit', main); }
     catch (error) { if (error.code !== 1 || !hasMerge()) throw error; }
-    inventoryRefreshed = await landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diagnostics });
+    inventoryRefreshed = await landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diagnostics, writes });
   } catch (error) {
     if (error instanceof LandingConflict) throw error;
-    return abortLanding(cwd, { head, hasMerge, ignored, diagnostics }, error);
+    return abortLanding(cwd, { head, hasMerge, ignored, diagnostics, writes }, error);
   }
   return { head: (await git(cwd, 'rev-parse', 'HEAD')).trim(), main, inventoryRefreshed };
 }
@@ -376,7 +380,7 @@ async function runLanding(cwd, runCommand, diagnostics) {
   return mergeWithRollback(cwd, { head, main, base, run, carrierEnv, diagnostics, ...mergeState });
 }
 
-async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diagnostics }) {
+async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diagnostics, writes }) {
   if ((await git(cwd, 'rev-parse', '--verify', 'MERGE_HEAD')).trim() !== main) throw new Error('landing: exact main merge required');
   const conflicts = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=U', '-z'));
   const read = (revision, path) => git(cwd, 'show', `${revision}:${path}`);
@@ -422,6 +426,7 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
   }
   if (conflicts.includes(SQL_REFERENCE)) checkLandingSqlReference(runGenerators);
   for (const path of registryConflicts) {
+    writes.paths.add(path);
     writeFileSync(resolve(cwd, path), path === PUBLICATION_CATALOGUE ? catalogueUnion : await readUnion(path));
     await git(cwd, 'add', '--', path);
   }
@@ -429,10 +434,12 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
   for (const path of conflicts.filter(generatedCarrier)) {
     if (path !== SQL_REFERENCE && !REGISTRY_PATHS.includes(path)) await git(cwd, 'checkout', '--ours', '--', path);
   }
+  writes.paths.add(INVENTORY_PATH);
   if (needsInventoryRefresh) {
     writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[1]);
     for (const path of MIGRATION_REGISTRIES) {
       const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
+      writes.paths.add(path);
       writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventories[1]));
       await git(cwd, 'add', '--', path);
     }
@@ -450,6 +457,7 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
   const projection = 'packages/platform/src/migrations/catalog.ts';
   const projectionBefore = readFileSync(resolve(cwd, projection), 'utf8');
   // Only the migration projection feeds compilation. Validate selectors after the reports exist.
+  writes.generated = true;
   runGenerators(`const { checkPlatformMigrationProjection } = await import(${mergedModule('scripts/packages/platform-migration-projection.ts')});
     const errors = checkPlatformMigrationProjection(process.cwd(), true);
     if (errors.length) throw new Error(errors.join('; '));`);
@@ -465,6 +473,7 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
     if (extraBuilds.length) await assertCarrierBuildOutputs(cwd, extraBuilds.map(({ directory }) => directory));
     const npmCli = carrierNpmCli();
     const selectedOutputs = new Set(outputs);
+    for (const path of selectedOutputs) writes.paths.add(path);
     for (const owner of builds) {
       const build = () => run(process.execPath, [npmCli, 'run', 'build', `--workspace=${owner.name}`], { env: carrierEnv });
       if (reports.includes(owner)) build();

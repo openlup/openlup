@@ -1,6 +1,7 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import childProcess, { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -408,7 +409,7 @@ it.each([
 it('aborts landing after a carrier failure', async () => {
   const injected = new TypeError('fixture carrier failed after writing');
   const keys = Reflect.ownKeys(injected).filter(key => key !== 'stack');
-  const leftover = 'landing-fixture-untracked/partial.txt';
+  const leftover = 'packages/platform/sql/landing-rollback-fixture.sql';
   const ignored = 'landing-fixture-local.log';
   try {
     checkout(base); probeExport(); const left = commit();
@@ -441,6 +442,37 @@ it('aborts landing after a carrier failure', async () => {
   }
 }, 60000);
 
+it('preserves unrelated work saved during the brokered install', async () => {
+  const injected = new Error('fixture brokered npm ci failed');
+  const previousMarker = localFixtureEnvironment().AI_RESOURCE_GATE_ACTIVE;
+  const untracked = 'landing-concurrent-note.txt';
+  try {
+    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', undefined);
+    const { left } = startToolchainLanding('package-lock.json');
+    const readme = read('README.md') + '\nConcurrent tracked edit.\n';
+    const note = 'Concurrent untracked note.\n';
+    const runCommand = (command: string, args: string[]) => {
+      if (command !== 'ai-resource-gate') return fixtureCommand(command, args);
+      write('README.md', readme);
+      write(untracked, note);
+      throw injected;
+    };
+    const failure = await landingMerge(root, { runCommand }).catch(error => error);
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure.errors[0]).toBe(injected);
+    expect(failure.message).toContain('OPENLUP_E_LANDING_ABORT_FAILED').toContain('README.md').toContain(untracked);
+    expect(failure.message).not.toContain('the checkout is back at HEAD');
+    expect(git('rev-parse', 'HEAD')).toBe(left);
+    expect(existsSync(join(root, '.git/MERGE_HEAD'))).toBe(false);
+    expect(readFileSync(join(root, 'README.md'))).toEqual(Buffer.from(readme));
+    expect(readFileSync(join(root, untracked))).toEqual(Buffer.from(note));
+  } finally {
+    rmSync(join(root, untracked), { force: true });
+    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', previousMarker);
+    restoreDerivedFixture();
+  }
+}, 60000);
+
 it('refuses to take ownership of an existing merge with an empty porcelain status', async () => {
   try {
     checkout(base); const right = commit(); setMain(right); checkout(base);
@@ -462,6 +494,8 @@ it.each(['merged check', 'npm ci'])('aborts when the merged toolchain still fail
   const diagnostic = `carrier build: installed npm tree does not match package-lock.json (${lockedDependency}); run npm ci in this checkout`;
   const previousMarker = localFixtureEnvironment().AI_RESOURCE_GATE_ACTIVE;
   const npmShim = 'node_modules/.fixture-npm.cjs';
+  const direct = vi.spyOn(childProcess, 'execFileSync');
+  syncBuiltinESMExports();
   try {
     vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', '1');
     const { left } = startToolchainLanding('package-lock.json');
@@ -470,12 +504,17 @@ it.each(['merged check', 'npm ci'])('aborts when the merged toolchain still fail
       if (step === 'npm ci') throw installError;
       // Simulate a successful install that leaves the local install record mismatched.
     });
+    direct.mockClear();
     const failure = await landingMerge(root, { runCommand }).catch(error => error);
     const expectedCalls = [[process.execPath, toolchainCheck], [process.execPath, [npmCli, 'ci']]];
     if (step === 'merged check') expectedCalls.push([process.execPath, toolchainCheck]);
     expect(runCommand.mock.calls.map(([command, args]) => [command, args])).toEqual(expectedCalls);
     expectRestoredHead(left);
     if (step === 'npm ci') {
+      // The HEAD check is the only inline Node subprocess. The generator and projection bypass runCommand.
+      const inlineNode = direct.mock.calls.flatMap(([command, args]) =>
+        command === process.execPath && Array.isArray(args) && args[0] === '--input-type=module' ? [args] : []);
+      expect(inlineNode).toEqual([toolchainCheck]);
       expect(failure).toBe(installError);
       return;
     }
@@ -494,6 +533,8 @@ it.each(['merged check', 'npm ci'])('aborts when the merged toolchain still fail
     expectRestoredHead(left);
   } finally {
     vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', previousMarker);
+    direct.mockRestore();
+    syncBuiltinESMExports();
     rmSync(join(root, npmShim), { force: true });
     restoreDerivedFixture();
   }
