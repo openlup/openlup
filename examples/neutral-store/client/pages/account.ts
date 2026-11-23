@@ -188,7 +188,7 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
   type Row = PortalSubscription & { shippingSavedAddressId?: string };
   type Offer = SubscriptionSaveOfferPresentation;
   type Write = 'subscription.cancelDirect' | 'subscription.cancelFeedback' | 'subscription.acceptSaveOffer';
-  type Pending = { operation: Write; input: ActionInput; key: string; running: boolean };
+  type Pending = { operation: Write; input: ActionInput; key: string; running: boolean; interaction: Interaction | undefined };
   type Interaction = { generation: string | null; step: 'permission' | 'reading' | 'ready' | 'offer'; offer?: Offer; preset?: string };
   function makeCard(row: Row) {
     const evidence = el('div'), actions = el('div', { class: 'actions' }), slot = el('div');
@@ -199,6 +199,9 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
   }
   function cancellable(card: ReturnType<typeof makeCard>) {
     return card.present && ['active', 'paused'].includes(card.row.status);
+  }
+  function invalidateOffer(card: ReturnType<typeof makeCard>) {
+    if (card.interaction?.step === 'reading' || card.interaction?.step === 'offer') card.interaction = undefined;
   }
   function careRefusal(code: string) {
     const remedy = careRemedies.find(([codes]) => codes.split(' ').includes(code));
@@ -219,7 +222,7 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
       const invalidate = card.row.saveOfferGeneration !== row.saveOfferGeneration || !['active','paused'].includes(row.status);
       if (!existing || !card.present || JSON.stringify(card.row) !== JSON.stringify(row)) {
         card.row = row; card.present = true;
-        if (invalidate) card.interaction = undefined;
+        if (invalidate) invalidateOffer(card);
         patchCard(card);
       }
       if (existing) continue;
@@ -229,7 +232,7 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
     }
     for (const id of unseen) {
       const card = cards.get(id)!;
-      card.present = false; card.interaction = undefined;
+      card.present = false; invalidateOffer(card);
       if (card.pending.size || card.cancelKey) patchCard(card);
       else { card.card.remove(); cards.delete(id); }
     }
@@ -258,6 +261,7 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
   }
 
   async function ask(card: ReturnType<typeof makeCard>, interaction: Interaction) {
+    interaction.generation = card.row.saveOfferGeneration ?? null;
     interaction.step = 'reading'; renderCare(card);
     const result = await act('account.read', { saveOfferFor: card.row.subscriptionId }, crypto.randomUUID());
     if (card.interaction !== interaction || card.row.saveOfferGeneration !== interaction.generation || !cancellable(card)) return;
@@ -273,28 +277,35 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
   }
   async function write(card: ReturnType<typeof makeCard>, operation: Write, input: ActionInput) {
     if (card.pending.has(operation)) return;
-    const pending = { operation, input, key: crypto.randomUUID(), running: false };
+    if (operation === 'subscription.cancelDirect') invalidateOffer(card);
+    const pending = { operation, input, key: crypto.randomUUID(), running: false, interaction: card.interaction };
     card.pending.set(operation, pending);
     await send(card, pending);
   }
   async function send(card: ReturnType<typeof makeCard>, pending: Pending) {
     if (pending.running) return;
-    pending.running = true; card.message = undefined;
-    if (pending.operation === 'subscription.cancelDirect') card.interaction = undefined;
+    const ownsInteraction = () => card.interaction === pending.interaction;
+    pending.running = true;
+    if (ownsInteraction()) card.message = undefined;
     renderCare(card);
     const result = await act(pending.operation, pending.input, pending.key);
     pending.running = false;
-    if (!uncertainAction(result)) card.pending.delete(pending.operation);
-    if (result.ok) {
-      if (pending.operation === 'subscription.cancelDirect') card.cancelKey = pending.key;
-      if (pending.operation === 'subscription.acceptSaveOffer') card.interaction = undefined;
-      if (pending.operation === 'subscription.cancelFeedback') finishFeedback(card, 'careFeedbackRecorded');
-    } else if (uncertainAction(result)) {
-      card.message = el('p', { role: 'status' }, context.locale === 'pl'
+    const uncertain = uncertainAction(result);
+    if (!uncertain) card.pending.delete(pending.operation);
+    if (result.ok && pending.operation === 'subscription.cancelDirect' && (ownsInteraction() || !card.cancelKey)) {
+      card.cancelKey = pending.key; card.reason = '';
+    }
+    if (result.ok && pending.operation === 'subscription.cancelFeedback' && card.cancelKey === pending.input.cancelCommandKey) {
+      finishFeedback(card, 'careFeedbackRecorded');
+    }
+    if (ownsInteraction()) {
+      if (uncertain) card.message = el('p', { role: 'status' }, context.locale === 'pl'
         ? 'Wynik jest nieznany. Ponów tę samą akcję.' : 'The result is uncertain. Retry this same action.');
-    } else {
-      card.message = careRefusal(result.code);
-      if (pending.operation === 'subscription.acceptSaveOffer') card.interaction = undefined;
+      else {
+        if (!result.ok) card.message = careRefusal(result.code);
+        if (pending.operation === 'subscription.acceptSaveOffer'
+          || result.ok && pending.operation === 'subscription.cancelDirect') card.interaction = undefined;
+      }
     }
     renderCare(card);
     void refresh();
@@ -317,14 +328,15 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
         const input: SubscriptionCancelFeedbackInput = { subscriptionRef, cancelCommandKey: card.cancelKey, reasonCode: card.reason };
         return write(card, 'subscription.cancelFeedback', input);
       }), button(context.t('careFeedbackSkipped'), () => finishFeedback(card, 'careFeedbackSkipped'), 'secondary'));
-    } else if (cancellable(card) && !card.cancelKey && !pending.has('subscription.cancelDirect')) {
+    }
+    if (cancellable(card) && !pending.has('subscription.cancelDirect')) {
       append(slot, button(context.t('cancelSubscription'), () => {
-        if (interaction) return write(card, 'subscription.cancelDirect', { subscriptionRef });
+        if (interaction || !row.saveOfferGeneration) return write(card, 'subscription.cancelDirect', { subscriptionRef });
         card.message = undefined;
-        card.interaction = { generation: row.saveOfferGeneration ?? null, step: row.saveOfferGeneration && !pending.size ? 'permission' : 'ready' };
+        card.interaction = { generation: row.saveOfferGeneration, step: 'permission' };
         renderCare(card);
       }));
-      if (interaction?.step === 'permission') {
+      if (interaction?.step === 'permission' && row.saveOfferGeneration) {
         append(slot, el('p', {}, context.t('careOfferPermission')), button(context.t('careOfferYes'), () => ask(card, interaction)),
           button(context.t('careOfferNo'), () => { interaction.step = 'ready'; renderCare(card); }, 'secondary'));
       }
@@ -335,7 +347,7 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
         }, 'secondary'));
       }
       const offer = interaction?.offer;
-      if (offer && interaction.step === 'offer' && !pending.size) {
+      if (offer && interaction.step === 'offer') {
         const action = offer.kind === 'reschedule' ? 'slide' : offer.kind;
         append(slot, el('p', { 'data-save-offer': '' }, context.t(labels[action]),
           offer.kind === 'reschedule' ? ` — ${date(context, offer.newNextCycleAt.replace(/^(\d{5})-/u, '+0$1-'))}` : ''));
@@ -346,7 +358,7 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
           control.addEventListener('change', () => { interaction.preset = control.value; });
           append(slot, wrapper);
         }
-        append(slot, button(context.t('careAccept'), () => {
+        if (!pending.size) append(slot, button(context.t('careAccept'), () => {
           const terms = offer.kind === 'pause' ? offer.pausePresets.find(option => option.pausePreset === interaction.preset)
             : offer.kind === 'reschedule' ? { newNextCycleAt: offer.newNextCycleAt } : {};
           if (terms) return write(card, 'subscription.acceptSaveOffer', { subscriptionRef, generation: offer.generation, kind: offer.kind, ...terms });

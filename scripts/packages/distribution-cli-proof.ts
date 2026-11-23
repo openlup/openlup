@@ -400,6 +400,13 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       owned[starterCheckoutCopy] = Buffer.from(local);
       writeFileSync(copyPath, owned[starterCheckoutCopy]);
     }
+    if (careUpgrade) {
+      const path = join(app, careSettings), previous = readFileSync(path, "utf8");
+      const local = previous.replace("defaultOffer: 'pause'", "defaultOffer: 'skip'");
+      assert.notEqual(local, previous);
+      owned[careSettings] = Buffer.from(local);
+      writeFileSync(path, owned[careSettings]);
+    }
     pair.evidence.customizations = Object.fromEntries(Object.entries(owned).map(([path, bytes]) => [path, hash(bytes)]));
     assertCompleteStarter(app, from);
   });
@@ -583,7 +590,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     checkUpgradeFiles();
   });
   phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
-  if (previousEffect && nextEffect && previousEffect !== nextEffect) phase("checkout-attempt-effect-reconciliation", () => {
+  if (!pair.pristine && previousEffect && nextEffect && previousEffect !== nextEffect) phase("checkout-attempt-effect-reconciliation", () => {
     const current = readFileSync(settingsHost, "utf8");
     assert.equal(attemptLimitEffect.exec(current)?.[2], previousEffect);
     const reconciled = Buffer.from(current.replace(attemptLimitEffect, (_, prefix) => prefix + nextEffect));
@@ -621,15 +628,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       writeFileSync(installed, after); owned[path] = Buffer.from(after);
       if (pair.evidence.customizations?.[path]) pair.evidence.customizations[path] = hash(after);
     }
-    if (!pair.pristine) {
-      const path = join(app, careSettings), previous = readFileSync(path, "utf8");
-      const local = previous.replace("defaultOffer: 'pause'", "defaultOffer: 'skip'");
-      assert.notEqual(previous, local);
-      writeFileSync(path, local);
-      owned[careSettings] = Buffer.from(local);
-      pair.evidence.customizations![careCopy] = hash(copy);
-      pair.evidence.customizations![careSettings] = hash(local);
-    }
+    if (!pair.pristine) pair.evidence.customizations![careCopy] = hash(copy);
     assert.deepEqual(run("apply").applied, []); checkUpgradeFiles();
   });
   rmSync(workspace, { recursive: true, force: true });

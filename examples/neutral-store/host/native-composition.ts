@@ -400,36 +400,37 @@ function offerChoice(input: ActionInput): (Pick<OfferInput, 'generation'> & (
 }
 export function composeCareActions(pool: pg.Pool, now = () => new Date().toISOString()) {
   const direct = composeSubscriptionCare(pool, now, true);
-  const scoped = (work: (input: ActionInput, scope: { actor: CareActor; subscriptionId: string },
-    care: SubscriptionCareConfig, key: string) => Promise<ActionResult>): ActionBinding => async (input, context) => {
+  const scoped = async (subscriptionRef: string, context: Parameters<ActionBinding>[1],
+    work: (scope: { actor: CareActor; subscriptionId: string }, care: SubscriptionCareConfig) => Promise<ActionResult>): Promise<ActionResult> => {
     const actor = careActor(context.actor);
     if (!actor) return refused('customer_session_required');
-    if (!isUuid(input.subscriptionRef)) return invalidCareInput();
-    const subscriptionId = await ownedSubscription(pool, actor, input.subscriptionRef);
+    const subscriptionId = await ownedSubscription(pool, actor, subscriptionRef);
     if (!subscriptionId) return refused('starter_subscription_not_found');
-    return work(input, { actor, subscriptionId }, context.config.renewal.subscriptionCare, context.commandKey);
+    return work({ actor, subscriptionId }, context.config.renewal.subscriptionCare);
   };
   return {
     'subscription.cancelDirect': ((input, context) => closed(input, ['subscriptionRef'])
       ? direct({ action: 'cancel', subscriptionRef: input.subscriptionRef }, context)
       : Promise.resolve(invalidCareInput())) satisfies ActionBinding,
-    'subscription.acceptSaveOffer': scoped(async (input, scope, care, idempotencyKey) => {
+    'subscription.acceptSaveOffer': (async (input, context) => {
       const choice = offerChoice(input);
-      if (!choice) return invalidCareInput();
-      try {
-        const result = await offerAcceptor(pool, care).accept({ ...scope, ...choice, idempotencyKey, now: now() });
-        if (result.outcome !== 'refused') return { ...success(result), replayed: result.outcome === 'replayed' };
-        return refused(offerRefusals[result.reason as keyof typeof offerRefusals] ?? result.reason);
-      } catch (error) { return admissionRefusal(error); }
-    }),
-    'subscription.cancelFeedback': scoped(async (input, { actor, subscriptionId }, care) => {
-      if (!closed(input, ['subscriptionRef', 'cancelCommandKey', 'reasonCode'])
+      if (!choice || !isUuid(input.subscriptionRef)) return invalidCareInput();
+      return scoped(input.subscriptionRef, context, async (scope, care) => {
+        try {
+          const result = await offerAcceptor(pool, care).accept({ ...scope, ...choice, idempotencyKey: context.commandKey, now: now() });
+          if (result.outcome !== 'refused') return { ...success(result), replayed: result.outcome === 'replayed' };
+          return refused(offerRefusals[result.reason as keyof typeof offerRefusals] ?? result.reason);
+        } catch (error) { return admissionRefusal(error); }
+      });
+    }) satisfies ActionBinding,
+    'subscription.cancelFeedback': (async (input, context) => {
+      if (!isUuid(input.subscriptionRef) || !closed(input, ['subscriptionRef', 'cancelCommandKey', 'reasonCode'])
         || typeof input.cancelCommandKey !== 'string' || !/^[a-zA-Z0-9-]{16,100}$/u.test(input.cancelCommandKey)) return invalidCareInput();
       const { reasonCode, cancelCommandKey } = input;
       if (typeof reasonCode !== 'string' || !/^[a-z][a-z0-9_]{0,119}$/u.test(reasonCode)) {
         return { ...refused(feedbackRefusals.invalid_reason), status: 400 };
       }
-      return careTransaction(pool)(async db => {
+      return scoped(input.subscriptionRef, context, ({ actor, subscriptionId }, care) => careTransaction(pool)(async db => {
         const { rows: [setup] } = await db.query(`SELECT to_regclass('public.subscription_cancel_feedback') IS NOT NULL
           AND pg_catalog.has_function_privilege(current_user,
             to_regprocedure('public.subscription_cancel_feedback_submit(uuid,uuid,text,boolean)')::oid, 'EXECUTE') AS ready`);
@@ -448,8 +449,8 @@ export function composeCareActions(pool: pg.Pool, now = () => new Date().toISOSt
           return { ...refused(feedbackRefusals[status as keyof typeof feedbackRefusals]), status: status === 'invalid_reason' ? 400 : 409 };
         }
         throw Error('starter_cancel_feedback_response_invalid');
-      });
-    }),
+      }));
+    }) satisfies ActionBinding,
   };
 }
 

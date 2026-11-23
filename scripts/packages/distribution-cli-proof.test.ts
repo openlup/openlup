@@ -348,7 +348,7 @@ it("upgrades the starter document readers together and preserves reconciled cust
     expect(readFileSync(join(app, "owned/upgrade-notes", path.split("/").at(-1)!), "utf8")).toContain("Adopter document verification policy");
 });
 
-it("upgrades pristine checkout hosts and preserves customized checkout files", () => {
+it.each([true, false])("upgrades checkout with a changed quota descriptor, pristine=%s", pristine => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const released = (path: string) => execFileSync("git",
     ["show", `openlup-core-v1.3.0:examples/neutral-store/${path}`], { encoding: "utf8", timeout: 5_000 });
@@ -368,10 +368,11 @@ it("upgrades pristine checkout hosts and preserves customized checkout files", (
   const localSettings = releasedSettings.replace("const config = selectConfiguration(configuration);",
     "const config = selectConfiguration(configuration); // Keep the adopter's configuration binding.");
   expect(localSettings).not.toBe(releasedSettings);
-  write(starterSettingsHost, localSettings);
+  write(starterSettingsHost, pristine ? releasedSettings : localSettings);
   const targetSettings = next(starterSettingsHost);
   candidate(starterSettingsHost, targetSettings);
   expect(effect(targetSettings)).toContain("PostgreSQL");
+  expect(effect(targetSettings)).not.toBe(effect(releasedSettings));
 
   const releasedCopy = released(copyPath), targetCopy = next(copyPath);
   write(copyPath, releasedCopy);
@@ -385,10 +386,19 @@ it("upgrades pristine checkout hosts and preserves customized checkout files", (
   }
   mkdirSync(join(target, "node_modules/.bin"));
   symlinkSync(resolve("packages/platform/src/lifecycle/openlup.mjs"), join(target, "node_modules/.bin/openlup"));
-  const evidence = { phases: [] };
-  const finish = proveDistributionCliConsumer(target, { from: app, to: target, fromVersion: "1.3.0", toVersion: "999999.0.0", evidence });
+  const evidence = { phases: [] as { name: string; result: string }[] };
+  const finish = proveDistributionCliConsumer(target, { from: app, to: target, fromVersion: "1.3.0", toVersion: "999999.0.0", evidence, pristine });
   expect(typeof finish).toBe("function");
   if (finish) finish();
+  if (pristine) {
+    expect(evidence).not.toHaveProperty("customizations");
+    expect(evidence.phases.map(({ name }) => name)).toEqual([
+      "migrate-owned-contracts", "plan", "interrupt-and-refuse", "resume", "replay", "installed-application-and-owned-bytes",
+    ]);
+    expect(readFileSync(join(app, starterSettingsHost), "utf8")).toBe(releasedSettings);
+    expect(readFileSync(join(app, copyPath), "utf8")).toBe(releasedCopy);
+    return;
+  }
   expect(evidence.phases).toEqual([
     "migrate-owned-contracts", "customize-owned", "plan", "managed-conflict", "checkout-host-reconciliation",
     "interrupt-and-refuse", "resume", "replay", "checkout-attempt-effect-reconciliation", "checkout-attempt-copy-reconciliation",
