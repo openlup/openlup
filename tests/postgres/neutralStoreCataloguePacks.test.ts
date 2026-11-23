@@ -2,13 +2,15 @@ import { spawnSync, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { canonicalCatalogDraftJson, catalogPackManifest, withCatalogPublicationRules } from "@openlup/platform/catalog";
 import type { CatalogPackInput } from "@openlup/platform/catalog/contracts";
 import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } from "@openlup/platform/migrations";
-import { applyDemoSeed, installationReport } from "../../examples/neutral-store/installation/install.ts";
+import { applyDemoSeed } from "../../examples/neutral-store/installation/install.ts";
+import { installationReport } from "../../examples/neutral-store/installation/refusals.ts";
+import { reconcileStarterCatalogue130 } from "../../scripts/packages/distribution-cli-proof.ts";
 import { catalogueConformance } from "../../examples/neutral-store/owned/catalogue.ts";
 import { configurations } from "../../examples/neutral-store/owned/store.config.ts";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
@@ -74,7 +76,7 @@ const writes = (statements: string[]) => statements.filter(text => /\b(?:INSERT|
   && !/FOR UPDATE/iu.test(text));
 
 async function run(packs: unknown, options: { bytes?: Uint8Array | null; db?: Pool; role?: string;
-  statements?: string[]; builds?: string; after?: (text: string) => void; rulesFor?: () => Uint8Array | undefined } = {}) {
+  statements?: string[]; builds?: string; after?: (text: string, client: PoolClient, values?: unknown[]) => void | Promise<void>; rulesFor?: () => Uint8Array | undefined } = {}) {
   const client = await (options.db ?? owner).connect();
   const previous = catalogue.packs;
   catalogue.packs = packs;
@@ -83,7 +85,7 @@ async function run(packs: unknown, options: { bytes?: Uint8Array | null; db?: Po
     const connection = { async query(text: string, values?: unknown[]) {
       options.statements?.push(text);
       const result = await client.query(text, values);
-      options.after?.(text);
+      await options.after?.(text, client, values);
       return result;
     } };
     return await applyDemoSeed(config, { connection, catalogueRules: options.bytes === null ? undefined : options.bytes ?? rules,
@@ -149,7 +151,12 @@ it("second_install_is_idempotent", async () => {
 
 it("changed_pack_same_version_refuses_version_conflict and rolls back a late seed failure", async () => {
   const installed = pack("immutable");
-  await run([starter, entry(installed)]);
+  let productId: unknown;
+  await run([starter, entry(installed)], { after(sql, _client, values) {
+    if (!productId && sql.includes("INSERT INTO public.catalog_products")) productId = values?.[0];
+  } });
+  const priorName = "Existing demo name before retry";
+  expect((await owner.query("UPDATE public.catalog_products SET name=$2 WHERE id=$1", [productId, priorName])).rowCount).toBe(1);
   const before = await snapshot();
   const builds = mkdtempSync(join(scratch, "rollback-"));
   const inputs = [starter, entry(pack("new-first")), entry({ ...installed, capabilities: { publish: true } })];
@@ -159,7 +166,19 @@ it("changed_pack_same_version_refuses_version_conflict and rolls back a late see
     "Restore the installed declaration and matching rules. For an intentional change, issue a new pack version and new versions for changed types or profiles, and update their references.");
   expect(await snapshot()).toEqual(before);
   const failure = new Error("synthetic late seed failure");
-  await expect(run(inputs.slice(0, 2), { builds, after(sql) { if (sql.includes("INSERT INTO public.catalog_products")) throw failure; } })).rejects.toBe(failure);
+  let changed = false;
+  const result = await run(inputs.slice(0, 2), { builds, async after(sql, client, values) {
+    if (!sql.includes("INSERT INTO public.catalog_products")) return;
+    expect(values?.[0]).toBe(productId);
+    const { rows } = await client.query("SELECT name FROM public.catalog_products WHERE id=$1", [productId]);
+    expect(rows[0]?.name).toBe(values?.[3]);
+    expect(rows[0]?.name).not.toBe(priorName);
+    changed = true;
+    throw failure;
+  } }).catch(error => error);
+  expect(changed).toBe(true);
+  expect(result).toMatchObject({ code: "starter_installation_failed" });
+  expect(Object.getOwnPropertyDescriptor(result, "cause")?.value).toBe(failure);
   expect(await snapshot()).toEqual(before);
   expect(readdirSync(builds)).toEqual([]);
 });
@@ -230,6 +249,46 @@ it("packs_without_rules_refuse_before_any_write and distinguish bad declarations
   expect(readdirSync(builds)).toEqual([]);
 });
 
+it("starter_namespace_refuses_pack_invalid for the later duplicate, after earlier declaration findings", async () => {
+  const before = await snapshot();
+  const statements: string[] = [];
+  const builds = mkdtempSync(join(scratch, "duplicate-"));
+  const first = pack("duplicate");
+  const second = { ...first, id: "example:duplicate-second" };
+  for (const [declarations, finding, path] of [
+    [[starter, entry(first), entry(second)], "definition_duplicate_identity", "/packs/2/pack/types/0/key"],
+    [[starter, entry({ ...first, version: 0 }), entry(second), entry(first)], "definition_version_invalid", "/packs/1/pack/version"],
+  ] as const) {
+    const error = await run(declarations, { statements, builds }).catch(error => error);
+    refusal(error, "starter_catalogue_pack_invalid", path, `The adopter pack has finding ${finding} at ${path}.`,
+      "The declaration fails an offline catalogue definition check or an installation requirement identified by the finding.",
+      "Correct the declaration at the reported path. Use the source check for its definition findings, then run the installer to verify installation requirements.",
+      sourceCheck);
+  }
+  expect(writes(statements)).toEqual([]);
+  expect(await snapshot()).toEqual(before);
+  expect(readdirSync(builds)).toEqual([]);
+});
+
+it("packs_without_rules_refuse_before_any_write for an oversized type in both pack forms", async () => {
+  const before = await snapshot();
+  const statements: string[] = [];
+  const builds = mkdtempSync(join(scratch, "oversized-type-"));
+  const dimensions = Array.from({ length: 16 }, (_, index) => ({ key: `extra-${index}`, kind: "choice" as const,
+    values: Array.from({ length: 1000 }, (_, value) => `value-${value}-${"a".repeat(96)}`) }));
+  for (const input of [pack(), provider]) {
+    const path = "/packs/1/pack/types/0";
+    const error = await run([starter, entry({ ...input, types: [{ ...input.types[0]!, dimensions }] })], { statements, builds }).catch(error => error);
+    refusal(error, "starter_catalogue_pack_invalid", path, `The adopter pack has finding draft_payload_too_large at ${path}.`,
+      "The declaration fails an offline catalogue definition check or an installation requirement identified by the finding.",
+      "Correct the declaration at the reported path. Use the source check for its definition findings, then run the installer to verify installation requirements.",
+      sourceCheck);
+  }
+  expect(writes(statements)).toEqual([]);
+  expect(await snapshot()).toEqual(before);
+  expect(readdirSync(builds)).toEqual([]);
+});
+
 it.each(["starter", "starter:else", "starter:only-id", "starter-more", "starterish"])("starter_namespace_refuses_pack_invalid (%s)", async id => {
   const name = id === "starter" ? "elsewhere" : id;
   const statements: string[] = [];
@@ -284,8 +343,7 @@ it("packs_without_rules_refuse_before_any_write through the one-shot text entry,
   writeFileSync(join(app, "witness.mjs"), `
     import pg from "pg";
     import { appendFileSync, readFileSync } from "node:fs";
-    import { applyDemoSeed, installationReport } from "./installation/install.ts";
-    export { installationReport };
+    import { applyDemoSeed } from "./installation/install.ts";
     export const bootstrapDemonstration = null;
     export async function installDemonstration(config) {
       const client = new pg.Client({ connectionString: ${JSON.stringify(vars.db)} });
@@ -299,10 +357,11 @@ it("packs_without_rules_refuse_before_any_write through the one-shot text entry,
         });
       } finally { await client.end(); }
     }`);
-  const launch = () => spawnSync(process.execPath,
-    ["--import", "./preload.mjs", "lifecycle.mjs", "install", "--configuration", "coffee"], { cwd: app, encoding: "utf8", timeout: 30_000 });
+  const launch = (preload = "./preload.mjs") => spawnSync(process.execPath,
+    ["--import", preload, "lifecycle.mjs", "install", "--configuration", "coffee"], { cwd: app, encoding: "utf8", stdio: "pipe", timeout: 30_000 });
   const candidate = JSON.stringify(pack("cli-repair"));
-  const add = (bytes: string) => writeFileSync(declaration, baseline + bytes);
+  let declarationBase = baseline;
+  const add = (bytes: string) => writeFileSync(declaration, declarationBase + bytes);
   writeFileSync(join(app, "statements"), "");
   add("catalogueConformance.packs.length = 2;\n");
   let result = launch();
@@ -334,6 +393,24 @@ it("packs_without_rules_refuse_before_any_write through the one-shot text entry,
     + "Cause: The declaration fails an offline catalogue definition check or an installation requirement identified by the finding.\n"
     + "Fix: Correct the declaration at the reported path. Use the source check for its definition findings, then run the installer to verify installation requirements.\n"
     + "Recheck: " + sourceCheck + "\n");
+  const largeKey = "x".repeat(100_000);
+  appendPack(`adopter[${JSON.stringify(largeKey)}] = true;`);
+  result = launch();
+  expect(result.status).toBe(2);
+  expect(result.stderr).toBe("starter_catalogue_pack_invalid\nObserved: The adopter pack has finding definition_unknown_field at /packs/1/pack/" + largeKey + ".\n"
+    + "Cause: The declaration fails an offline catalogue definition check or an installation requirement identified by the finding.\n"
+    + "Fix: Correct the declaration at the reported path. Use the source check for its definition findings, then run the installer to verify installation requirements.\n"
+    + "Recheck: " + sourceCheck + "\n");
+  const predecessor = execFileSync("git", ["show", "openlup-core-v1.3.0:examples/neutral-store/owned/catalogue.ts"], { encoding: "utf8" })
+    .replace("title_required", "retained_title_required");
+  writeFileSync(declaration, predecessor);
+  result = launch();
+  expect(result.status).toBe(2);
+  expect(result.stderr).toBe("starter_catalogue_pack_invalid\nObserved: The owned catalogue module does not export catalogueConformance.\n"
+    + "Cause: The installer requires catalogueConformance.packs to read adopter pack declarations.\n"
+    + "Fix: Add the catalogueConformance export to owned/catalogue.ts as the upgrade guide's owned-module step describes, keeping your existing validator and drafts.\n"
+    + "Recheck: " + sourceCheck + "\n");
+  declarationBase = reconcileStarterCatalogue130(predecessor, baseline);
   expect(readFileSync(join(app, "statements"), "utf8")).toBe("");
   expect(readdirSync(vars.builds)).toEqual([]);
   expect(await snapshot()).toEqual(before);
@@ -345,6 +422,50 @@ it("packs_without_rules_refuse_before_any_write through the one-shot text entry,
   expect((await owner.query("SELECT pack_id FROM public.catalog_definition_installs WHERE pack_id='example:cli-repair'")).rows)
     .toEqual([{ pack_id: "example:cli-repair" }]);
 }, 90_000);
+
+it("packs_without_rules_refuse_before_any_write reports dependency loading and the missing migration binding", () => {
+  const app = materialize();
+  writeFileSync(join(app, "import-fails.mjs"), `import { registerHooks } from "node:module";
+    globalThis.knownImportFailure = new Error("private injected dependency diagnostic");
+    registerHooks({ resolve(specifier, ctx, next) {
+      if (ctx.parentURL?.endsWith("/lifecycle.mjs")) {
+        if (specifier === "./installation/install.ts") throw globalThis.knownImportFailure;
+        if (specifier === "./installation/refusals.ts") return next("./check-cause.mjs", ctx);
+      }
+      return next(specifier, ctx);
+    } });`);
+  writeFileSync(join(app, "check-cause.mjs"), `import assert from "node:assert/strict";
+    import { installationReport as render } from "./installation/refusals.ts";
+    export { installationFailure } from "./installation/refusals.ts";
+    export function installationReport(error) {
+      const descriptor = Object.getOwnPropertyDescriptor(error, "cause");
+      if (globalThis.knownImportFailure) {
+        assert.equal(descriptor?.value, globalThis.knownImportFailure);
+        assert.equal(descriptor?.enumerable, false);
+      } else assert.equal(descriptor, undefined);
+      return render(error);
+    }`);
+  writeFileSync(join(app, "missing-api.mjs"), `import { registerHooks } from "node:module";
+    registerHooks({ resolve(specifier, ctx, next) {
+      if (specifier === "./installation/refusals.ts" && ctx.parentURL?.endsWith("/lifecycle.mjs"))
+        return next("./check-cause.mjs", ctx);
+      return next(specifier === "@openlup/platform/migrations" ? "data:text/javascript,export{}" : specifier, ctx);
+    } });`);
+  const launch = (preload: string) => spawnSync(process.execPath, ["--import", preload, "lifecycle.mjs", "install",
+    "--configuration", "coffee"], { cwd: app, encoding: "utf8", stdio: "pipe", timeout: 30_000 });
+  const importFailure = launch("./import-fails.mjs");
+  expect(importFailure.status).toBe(2);
+  expect(importFailure.stderr).toBe("starter_installation_failed\nObserved: The demonstration installation did not complete.\n"
+    + "Cause: The starter did not receive a verified result from the installation boundary.\n"
+    + "Fix: Check image dependencies, rules-file access, database reachability, TLS and driver initialization, installer login and grants, and the complete qualified migration set. Use the starter's default transaction isolation. For a receipt integrity failure, verify the installed package and schema pair before replaying the same declaration.\n"
+    + "Recheck: Run `./lifecycle up` after correcting the failed prerequisite.\n");
+  const missing = launch("./missing-api.mjs");
+  expect(missing.status).toBe(2);
+  expect(missing.stderr).toBe("starter_installation_binding_required\nObserved: The installed @openlup/platform package does not provide the migration composition the demo installer needs.\n"
+    + "Cause: The demo installer requires the qualified platform migration runner from the pinned package.\n"
+    + "Fix: Install the exact @openlup/platform version pinned in the starter's package.json, then rebuild the demonstration image through the lifecycle command.\n"
+    + "Recheck: " + up + "\n");
+});
 
 it("app_with_only_starter_pack_installs_as_today including an empty list with no bundle", async () => {
   const baseline = materialize();

@@ -116,25 +116,24 @@ if (command === 'candidate') {
   }
 } else if (command === 'install') {
   // Internal one-shot Compose entry; no install connection reaches the HTTP host.
-  let installation;
-  try { installation = await import('./installation/install.ts'); }
-  catch { process.stderr.write('starter_installation_failed\n'); process.exit(2); }
-  const { selectConfiguration } = await import('./owned/store.config.ts');
+  const { installationFailure, installationReport } = await import('./installation/refusals.ts');
   const installEntry = Symbol.for('openlup.neutral-store.install-entry');
   // This one-shot process has its own catalogue admission before the host import.
   Reflect.set(globalThis, installEntry, true);
   try {
+    const [installation, { selectConfiguration }] = await Promise.all([
+      import('./installation/install.ts'), import('./owned/store.config.ts'),
+    ]).catch(error => { throw installationFailure(error); });
     await installation.installDemonstration(selectConfiguration(configurationArgument(args)), installation.bootstrapDemonstration);
   } catch (error) {
-    const report = installation.installationReport?.(error);
-    if (report) process.stderr.write(report);
-    else {
+    let report = installationReport(error);
+    if (!report) {
       const code = error instanceof Error ? error.message : 'starter_installation_failed';
-      process.stderr.write(`${code}\n`);
       const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
-      if (hint) process.stderr.write(`${hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit)}\n`);
+      report = `${code}\n${hint ? hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit) + '\n' : ''}`;
     }
     process.exitCode = 2;
+    await new Promise((resolve, reject) => process.stderr.write(report, error => error ? reject(error) : resolve()));
   } finally { Reflect.deleteProperty(globalThis, installEntry); }
   // The installed runner owns its pool; this one-shot process owns its lifetime.
   process.exit(process.exitCode ?? 0);

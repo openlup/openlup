@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { env } from "node:process";
 import { proveInstalledCareUpgrade, qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
-  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers, retiresStarterCatalogue,
+  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers, retiresStarterCatalogue, proveStarterCatalogue130,
   reminderInstallationTest, starterLifecycle, starterOptionalOwnedFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization, starterEditorPorts, starterDocumentFiles,
@@ -33,6 +33,7 @@ it("prints a bounded installation hint after the existing refusal and preserves 
   write("browser-groups.mjs", "export const browserJourneyGroups = [];");
   write("host/healthcheck.ts", "export const applicationHealthcheck = () => undefined;");
   write("owned/store.config.ts", "export const selectConfiguration = () => ({});");
+  write("installation/refusals.ts", readFileSync(resolve("examples/neutral-store/installation/refusals.ts"), "utf8"));
   const message = "checkout_recovery_schedule_change_blocked_open_episodes (2 blocking orders)";
   for (const [fields, expected] of [
     [{ hint: "  Retry after\n those orders\tclose.  " }, "Retry after those orders close.\n"],
@@ -486,6 +487,54 @@ it("migrates only the pristine retention contract from 1.0.0 to 1.1.0", () => {
   expect(readFileSync(join(app, "owned/renewal.config.ts"), "utf8")).toBe("candidate retention");
   expect(readFileSync(join(app, "owned.ts"), "utf8")).toBe("local bytes");
   expect(to.files).toEqual(from.files);
+});
+
+it("preserves the actual 1.3.0 catalogue and customized JSON through apply, then guides conversion", () => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  const ownedPath = "owned/catalogue.ts", jsonPath = "owned/catalogue.json", starter = resolve("examples/neutral-store");
+  const released = (file: string) => execFileSync("git", ["show", `openlup-core-v1.3.0:examples/neutral-store/${file}`], { encoding: "utf8" });
+  const prior = released(ownedPath).replace("title_required", "adopter_title_required");
+  const json = released(jsonPath) + "\n";
+  write(ownedPath, prior); write(jsonPath, json); candidate(ownedPath, readFileSync(join(starter, ownedPath), "utf8"));
+  write("package.json", released("package.json"));
+  candidate("package.json", readFileSync(join(starter, "package.json"), "utf8"));
+  for (const directory of ["installation", "host", "owned", "shared"])
+    cpSync(join(starter, directory), join(target, directory), { recursive: true, filter: path => !path.endsWith("/settings-host.ts") });
+  const ownership = JSON.parse(readFileSync(join(app, "ownership.json"), "utf8"));
+  const starterOwnership = JSON.parse(readFileSync(join(starter, "ownership.json"), "utf8")) as { managed: string[]; owned: string[] };
+  const installPaths = starterOwnership.managed.filter(path => path.startsWith("installation/") || path.startsWith("host/") || path.startsWith("shared/"));
+  candidate("ownership.json", { ...ownership, managed: [...ownership.managed, ...installPaths] });
+  for (const filename of starterOwnership.owned.filter(path => path.startsWith("owned/"))) {
+    if (existsSync(join(starter, filename)) && !existsSync(join(app, filename))) write(filename, readFileSync(join(starter, filename), "utf8"));
+  }
+  const from = starterUpgradeSnapshot(app, "1.3.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
+  migrateStarterOwned(app, target, from, to);
+  write("from.json", from); write("to.json", to);
+  const executable = resolve("packages/platform/src/lifecycle/openlup.mjs");
+  const applied = spawnSync(process.execPath, [executable, "upgrade", "apply", "--root", app, "--from", join(app, "from.json"),
+    "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { cwd: app, encoding: "utf8" });
+  expect(applied.status, applied.stdout).toBe(0);
+  expect(readFileSync(join(app, ownedPath), "utf8")).toBe(prior);
+  expect(readFileSync(join(app, jsonPath), "utf8")).toBe(json);
+  for (const link of ["@openlup/core", "@openlup/platform", "@openlup/outbox", "zod", "pg"]) {
+    const path = join(app, "node_modules", link);
+    mkdirSync(dirname(path), { recursive: true });
+    if (existsSync(path)) rmSync(path, { recursive: true });
+    symlinkSync(realpathSync(resolve("node_modules", link)), path, "dir");
+  }
+  mkdirSync(join(app, "node_modules/.bin"), { recursive: true });
+  symlinkSync(executable, join(app, "node_modules/.bin/openlup"));
+  proveStarterCatalogue130(app, target);
+  const validator = execFileSync(process.execPath, ["--input-type=module", "-e", `
+    import assert from 'node:assert/strict';
+    import { catalogDraftRegistry, catalogueConformance } from './owned/catalogue.ts';
+    const type = catalogueConformance.packs[0].pack.types[0];
+    assert.equal(catalogDraftRegistry.resolve(type).validateContent, type.validateContent);
+    console.log(JSON.stringify(type.validateContent({})));
+  `], { cwd: app, encoding: "utf8" });
+  expect(JSON.parse(validator)).toEqual([{ path: "title", code: "adopter_title_required" }]);
+  expect(readFileSync(join(app, jsonPath), "utf8")).toBe(json);
+  proveStarterCatalogueWrappers(app, target, to.files["package.json"]);
 });
 
 it("migrates the pristine catalogue after the 1.2.0 starter release", () => {

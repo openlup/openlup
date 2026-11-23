@@ -410,12 +410,18 @@ describe("subscription profile pack conformance", () => {
   it("uses the same typed declaration findings before SQL as in the preflight", async () => {
     const bound = withCatalogPublicationRules(optedIn as CatalogPackInput, () => artifact);
     const { subscriptionProfileDefinitions: _profiles, ...legacy } = bound;
+    const dimensions = Array.from({ length: 16 }, (_, index) => ({ key: `extra-${index}`, kind: "choice" as const,
+      values: Array.from({ length: 1000 }, (_, value) => `value-${value}-${"a".repeat(96)}`) }));
+    const definition = withCatalogPublicationRules(pack(), () => artifact).types[0]!;
+    const types = [definition, { ...definition, key: `${bound.namespace}:overflow`, dimensions }];
     const huge = { ["a".repeat(1_048_576)]: true };
     const query = vi.fn();
     for (const [input, code, path] of [
       [{ ...bound, taxClasses: [{ key: "example:standard" }, { key: "example:standard" }] }, "definition_duplicate_identity", "/taxClasses/1/key"],
       [{ ...bound, capabilities: huge }, "draft_payload_too_large", ""],
       [{ ...legacy, capabilities: huge }, "draft_payload_too_large", ""],
+      [{ ...bound, types }, "draft_payload_too_large", "/types/1"],
+      [{ ...legacy, types }, "draft_payload_too_large", "/types/1"],
     ] as const) {
       const [issue] = catalogPackInstallIssues(input);
       expect(issue).toMatchObject({ code, path });

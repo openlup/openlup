@@ -1136,7 +1136,7 @@ export interface CatalogPackManifest {
  */
 export declare function catalogPackManifest(pack: CatalogPackInput): CatalogPackManifest;
 /** @internal */
-export declare function prepareCatalogPackManifest(pack: CatalogPackInput, profiles: readonly CatalogSubscriptionProfileV1[] | undefined, reportLegacySize?: boolean): {
+export declare function prepareCatalogPackManifest(pack: CatalogPackInput, profiles: readonly CatalogSubscriptionProfileV1[] | undefined, reportAllSizeFindings?: boolean): {
     manifest: CatalogPackManifest;
     canonicalManifest: string;
     profileDeclarationBytes?: string[];

@@ -88,10 +88,10 @@ function missingRef(error: unknown, path: string, { key, version }: typeof ref) 
     "Declare the referenced profile version in its owning pack and install that pack before the consumer, or reference an already installed compatible version.");
 }
 
-async function expectLegacyInstallRefusals() {
-  const conflict = { ...legacyPack, capabilities: { publish: false } };
-  const redefinition = { ...legacyPack, id: "example:legacy-redefinition",
-    types: [{ ...legacyPack.types[0], dimensions: [{ key: "flag", kind: "boolean" as const }] }] };
+async function expectInstallRefusals(pack: CatalogPackInput = legacyPack) {
+  const conflict = { ...pack, capabilities: { publish: false } };
+  const redefinition = { ...pack, id: `${pack.id}-redefinition`,
+    types: [{ ...pack.types[0], dimensions: [{ key: "flag", kind: "boolean" as const }] }] };
   refusal(await installCatalogDefinitions(owner, conflict).catch(error => error),
     "catalog_definition_install_conflict", "/version", "The installed pack version has a different manifest.",
     "An installed pack identity is immutable.",
@@ -129,12 +129,26 @@ beforeAll(async () => {
   upgradeReceipt = await installCatalogDefinitions(owner, upgradePack);
   savedUpgradeRow = await packRow(upgradePack.id);
   await bootstrap.query("ALTER ROLE profile_owner NOSUPERUSER NOBYPASSRLS");
-  await expectLegacyInstallRefusals();
+  await expectInstallRefusals();
   await owner.query(readFileSync(forward, "utf8"));
 }, postgresSetupTimeoutMs);
 afterAll(() => closePostgres(container, pools), postgresTeardownTimeoutMs);
 
-it("preserves both pre-forward legacy 23505 refusals", expectLegacyInstallRefusals);
+it("preserves both pre-forward legacy 23505 refusals", () => expectInstallRefusals());
+
+it("maps opted-in pack conflicts and type redefinitions through the public installer", async () => {
+  const key = { key: "example:opted-in-refusal", version: 1 };
+  const input = { ...profilePack("opted-in-refusal", key, "example:opted-in-refusal"),
+    subscriptionProfileDefinitions: [declaration(key)] };
+  await installCatalogDefinitions(owner, input);
+  const before = await installCounts();
+  const receipt = await packRow(input.id);
+  const types = await typeBindings(input);
+  await expectInstallRefusals(input);
+  expect(await installCounts()).toEqual(before);
+  expect(await packRow(input.id)).toBe(receipt);
+  expect(await typeBindings(input)).toEqual(types);
+});
 
 it("C-2 preserves a pre-forward reference-only replay with duplicate refs and an installed type", async () => {
   expect(catalogPackManifest(legacyPack).subscriptionProfiles).toEqual([ref, ref]);

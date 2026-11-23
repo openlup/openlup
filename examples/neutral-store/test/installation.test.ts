@@ -229,7 +229,7 @@ test('a running reader exposes only committed rules builds across a failed commi
       }
       return result;
     };
-    await assert.rejects(installDemonstration(config, async () => fixture.binding), failure);
+    await assert.rejects(installDemonstration(config, async () => fixture.binding), infrastructureCause(failure));
     assert.equal(fixture.calls.at(-1)?.text, 'ROLLBACK');
     assert.ok(target);
     await assert.rejects(stat(target), { code: 'ENOENT' });
@@ -239,7 +239,7 @@ test('a running reader exposes only committed rules builds across a failed commi
     const installed = await readFile(target);
     committed = true;
     assert.ok(reader.readInstalled(ref));
-    await assert.rejects(installDemonstration(config, async () => fixture.binding), failure);
+    await assert.rejects(installDemonstration(config, async () => fixture.binding), infrastructureCause(failure));
     assert.deepEqual(await readFile(target), installed);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
@@ -316,10 +316,47 @@ for (const config of Object.values(configurations)) {
   });
 }
 
+function infrastructureCause(original: unknown) {
+  return (error: unknown) => {
+    assert.equal(Object.getPrototypeOf(error), Error.prototype);
+    assert.equal((error as Error).message, 'starter_installation_failed');
+    const descriptor = Object.getOwnPropertyDescriptor(error, 'cause');
+    assert.strictEqual(descriptor?.value, original);
+    assert.equal(descriptor?.enumerable, false);
+    return true;
+  };
+}
+
+test('rollback and close preserve the primary install failure and close-only errors are reported', async context => {
+  const rules = readStarterCatalogueRules();
+  if (!rules) return context.skip('This starter has kept its existing draft validator.');
+  const config = Object.values(configurations)[0]!, fixture = installation();
+  const primary = new Error('definition connection lost');
+  const cleanup = new Error('cleanup connection lost');
+  const query = fixture.binding.connection.query;
+  const close = fixture.binding.close;
+  fixture.binding.catalogueRules = rules;
+  fixture.binding.connection.query = async (sql, values) => {
+    const result = await query(sql, values);
+    if (sql.startsWith('SELECT public.catalog_definition_install')) throw primary;
+    if (sql === 'ROLLBACK') throw cleanup;
+    return result;
+  };
+  fixture.binding.close = async () => { await close(); throw cleanup; };
+  await assert.rejects(installDemonstration(config, async () => fixture.binding), infrastructureCause(primary));
+  assert.equal(fixture.calls.at(-1)?.text, 'ROLLBACK');
+  assert.equal(fixture.closed(), 1);
+
+  const success = installation();
+  success.binding.close = async () => { throw cleanup; };
+  await assert.rejects(installDemonstration(config, async () => success.binding), infrastructureCause(cleanup));
+  assert.equal(success.calls.at(-1)?.text, 'COMMIT');
+});
+
 test('bootstrap connection failure is preserved instead of claiming the installed API is absent', async () => {
   const failure = new Error('bootstrap_connection_failed');
   await assert.rejects(installDemonstration(Object.values(configurations)[0]!, async () => { throw failure; }),
-    error => error === failure);
+    infrastructureCause(failure));
 });
 
 for (const [name, identity, code] of [
@@ -347,11 +384,12 @@ test('equal install and runtime roles refuse before issuing SQL', async () => {
 test('failed seed write rolls back and closes rather than announcing an installation', async () => {
   const fixture = installation();
   const query = fixture.binding.connection.query;
+  const failure = new Error('write_failed');
   fixture.binding.connection.query = async (text, values) => {
-    if (text.startsWith('INSERT')) throw new Error('write_failed');
+    if (text.startsWith('INSERT')) throw failure;
     return query(text, values);
   };
-  await assert.rejects(installDemonstration(Object.values(configurations)[0]!, async () => fixture.binding), { message: 'write_failed' });
+  await assert.rejects(installDemonstration(Object.values(configurations)[0]!, async () => fixture.binding), infrastructureCause(failure));
   assert.equal(fixture.calls.at(-1)!.text, 'ROLLBACK');
   assert.equal(fixture.closed(), 1);
 });

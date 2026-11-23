@@ -28,16 +28,25 @@ export function catalogPackManifest(pack: CatalogPackInput): CatalogPackManifest
 }
 
 /** @internal */
-export function prepareCatalogPackManifest(pack: CatalogPackInput, profiles: readonly CatalogSubscriptionProfileV1[] | undefined, reportLegacySize = false):
+export function prepareCatalogPackManifest(pack: CatalogPackInput, profiles: readonly CatalogSubscriptionProfileV1[] | undefined, reportAllSizeFindings = false):
   { manifest: CatalogPackManifest; canonicalManifest: string; profileDeclarationBytes?: string[] } | { issue: CatalogDefinitionIssue } {
   const declarations = profiles?.map(profile => {
     const bytes = canonicalCatalogSubscriptionProfileJson(profile);
     return { bytes, definition: Object.freeze({ ...profile, profileDigest: createHash("sha256").update(bytes).digest("hex") }) };
   });
+  const types = [];
+  for (const [index, definition] of pack.types.entries()) {
+    try {
+      types.push(Object.freeze({ key: definition.key, version: definition.version, definitionDigest: catalogDefinitionDigest(definition) }));
+    } catch (error) {
+      if (!reportAllSizeFindings || !payloadTooLarge(error)) throw error;
+      return { issue: { code: "draft_payload_too_large", path: `/types/${index}`, fix: "Reduce the catalogue type definition to the supported size." } };
+    }
+  }
   const projection = {
     id: pack.id, namespace: pack.namespace, version: pack.version, openlupRange: pack.openlupRange,
     capabilities: Object.freeze({ ...pack.capabilities }),
-    types: Object.freeze(pack.types.map((definition) => Object.freeze({ key: definition.key, version: definition.version, definitionDigest: catalogDefinitionDigest(definition) }))),
+    types: Object.freeze(types),
     taxClasses: Object.freeze(pack.taxClasses.map(({ key }) => key)),
     subscriptionProfiles: Object.freeze((pack.subscriptionProfiles ?? []).map((ref) => Object.freeze({ key: ref.key, version: ref.version }))),
     ...(declarations === undefined ? {} : { subscriptionProfileDefinitions: Object.freeze(declarations.map(({ definition }) => definition)) }),
@@ -46,9 +55,13 @@ export function prepareCatalogPackManifest(pack: CatalogPackInput, profiles: rea
   try {
     canonicalManifest = canonicalCatalogDraftJson(projection);
   } catch (error) {
-    if (profiles === undefined && !reportLegacySize || !(error instanceof Error) || error.message !== "draft_payload_too_large") throw error;
+    if (profiles === undefined && !reportAllSizeFindings || !payloadTooLarge(error)) throw error;
     return { issue: { code: "draft_payload_too_large", path: "", fix: profiles === undefined ? "Split the catalogue definitions across packs." : "Split the profile declarations across pack versions or packs." } };
   }
   const digest = createHash("sha256").update(canonicalManifest).digest("hex");
   return { manifest: Object.freeze({ ...projection, digest }), canonicalManifest, profileDeclarationBytes: declarations?.map(({ bytes }) => bytes) };
+}
+
+function payloadTooLarge(error: unknown): boolean {
+  return error instanceof Error && error.message === "draft_payload_too_large";
 }

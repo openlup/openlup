@@ -7,6 +7,19 @@ Upgrade leaves the old owned JSON bytes in place. After verifying the migration,
 or remove a customized copy. Independent inert JSON fixtures can use
 `openlup catalogue check --packs` directly.
 
+#### Convert the owned module from 1.3.0
+
+The 1.3.0 starter exports only `catalogDraftRegistry`. Applying the upgrade
+preserves the owned TypeScript and JSON files. Before starting the demo, edit
+`owned/catalogue.ts` in your application. Keep your existing `types` array and
+its validators. Add the `CatalogPackInput` type import from
+`@openlup/platform/catalog`. Replace the single eager registry export with the
+target starter's pack declaration, `catalogueConformance` export and lazy
+registry block. Have the fixture pack use your retained `types` array. Move
+any still-used drafts into their pack entries and keep their type references.
+Run the source check and start the demo. Archive the retained JSON after
+verifying the conversion.
+
 Upgrade replaces a pristine `package.json` and removes the old
 `catalogue:check` script. For a customized manifest, use the upgrade-conflict
 workflow to reconcile the manifest, then switch local and CI calls to the

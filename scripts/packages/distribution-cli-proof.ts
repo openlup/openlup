@@ -353,6 +353,47 @@ export function retiresStarterCatalogue(from: string | undefined, to: string | u
     !Object.hasOwn(next, "catalogue:check") && next["catalogue:check:source"] === catalogueScripts["catalogue:check:source"];
 }
 
+const starterCatalogueFile = "owned/catalogue.ts";
+export function reconcileStarterCatalogue130(previous: string, target: string): string {
+  const registry = "export const catalogDraftRegistry = createCatalogProductTypeRegistry(types);";
+  const declarations = target.slice(target.indexOf("const pack = "));
+  assert(previous.includes(registry) && !previous.includes("export const catalogueConformance")
+    && declarations.startsWith("const pack = ") && declarations.includes("export const catalogueConformance"),
+    "starter_catalogue_owned_module_reconciliation_required");
+  return previous.replace(registry, `import type { CatalogPackInput } from '@openlup/platform/catalog';\n\n${declarations.trimEnd()}`);
+}
+
+function assertStarterCatalogueAdmission(app: string, code: string, expectedQueries: number): void {
+  execFileSync(process.execPath, ["--input-type=module", "-e", `
+    import assert from 'node:assert/strict';
+    import { applyDemoSeed } from './installation/install.ts';
+    import { configurations } from './owned/store.config.ts';
+    let queries = 0;
+    const connection = { async query(sql) {
+      queries++;
+      return { rows: sql.startsWith('SELECT session_user') ? [{ login: 'runtime', role: 'runtime' }] : [] };
+    } };
+    await assert.rejects(applyDemoSeed(Object.values(configurations)[0], {
+      connection, installRole: 'installer', runtimeRole: 'runtime',
+    }), { code: ${JSON.stringify(code)} });
+    assert.equal(queries, ${expectedQueries});
+  `], { cwd: app, env: isolatedConsumerEnv(), stdio: "pipe", timeout: 30_000 });
+}
+
+function convertStarterCatalogue130(app: string, target: string): Buffer {
+  const path = join(app, starterCatalogueFile);
+  const converted = Buffer.from(reconcileStarterCatalogue130(
+    readFileSync(path, "utf8"), readFileSync(join(target, starterCatalogueFile), "utf8")));
+  writeFileSync(path, converted);
+  return converted;
+}
+
+export function proveStarterCatalogue130(app: string, target: string): void {
+  assertStarterCatalogueAdmission(app, "starter_catalogue_pack_invalid", 0);
+  convertStarterCatalogue130(app, target);
+  assertStarterCatalogueAdmission(app, "starter_seed_runtime_role_forbidden", 3);
+}
+
 export const starterCareJourney = "browser/acquisition.spec.ts";
 export const starterCareWitness = "ask_first_offer_only_after_yes";
 const careAccount = "client/pages/account.ts";
@@ -394,6 +435,9 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     assert(!Object.hasOwn(from.files, retiredCatalogueFile) && !Object.hasOwn(to.files, retiredCatalogueFile));
     owned[retiredCatalogueFile] = readFileSync(join(app, retiredCatalogueFile));
   }
+  const catalogue130 = pair.fromVersion === "1.3.0" && retireCatalogue &&
+    !readFileSync(join(app, starterCatalogueFile), "utf8").includes("export const catalogueConformance");
+  if (catalogue130) owned[starterCatalogueFile] = readFileSync(join(app, starterCatalogueFile));
   const settingsHost = join(app, starterSettingsHost);
   if (existsSync(settingsHost)) owned[starterSettingsHost] = readFileSync(settingsHost);
   const targetSettings = join(pair.to, starterSettingsHost);
@@ -668,9 +712,17 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     if (!pair.pristine) pair.evidence.customizations![careCopy] = hash(copy);
     assert.deepEqual(run("apply").applied, []); checkUpgradeFiles();
   });
+  if (catalogue130) phase("starter-1.3.0-owned-catalogue-conversion", () => {
+    checkUpgradeFiles();
+    owned[starterCatalogueFile] = convertStarterCatalogue130(app, pair.to);
+  });
   rmSync(workspace, { recursive: true, force: true });
   return () => phase("installed-application-and-owned-bytes", () => {
     assertCompleteStarter(app, to); checkUpgradeFiles();
+    if (catalogue130) phase("starter-1.3.0-installer-admission", () => {
+      // Target packages are installed here. The role refusal witnesses a completed catalogue admission.
+      assertStarterCatalogueAdmission(app, "starter_seed_runtime_role_forbidden", 3);
+    });
     if (to.files["package.json"]?.includes('"catalogue:check:source"'))
       proveStarterCatalogueWrappers(app, dirname(app), to.files["package.json"]);
     if (retireCatalogue) phase("starter-catalogue-guided-consolidation", () => {

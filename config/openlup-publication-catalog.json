@@ -2722,6 +2722,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/installation/refusals.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/lifecycle",
       "class": "public-output"
     },
