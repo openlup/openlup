@@ -32570,6 +32570,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionActivationPermissions.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionAlignmentRollbackCases.ts",
       "class": "public-output"
     },
@@ -32667,6 +32671,14 @@
     },
     {
       "path": "tests/postgres/subscriptionRecoveryTruth.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRegistrationActivationLockOrder.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRegistrationFixture.ts",
       "class": "public-output"
     },
     {
