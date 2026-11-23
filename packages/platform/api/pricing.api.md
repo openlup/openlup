@@ -879,6 +879,122 @@ export interface CommerceQuoteHandlerDeps<Request extends CreateQuoteRequest = C
 }
 export declare function createCommerceQuoteHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({ responder, createQuoteRequestSchema, createQuoteResponseSchema, publicCreateQuoteRequestSchema, publicCreateQuoteResponseSchema, quotePort, acquisition, shipping, fallbackQuotePort, resolveCustomerEligibility, resolvePricingPolicy, createPromotionAcceptance, honorPromotionAcceptance, }: CommerceQuoteHandlerDeps<Request, Response>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
+## dist/pricing/commerceQuoteMoneyV2.d.ts
+
+```ts
+import type { CatalogueMoneyV2ComponentRef, CatalogueMoneyV2Input, CatalogueMoneyV2Plan, CatalogueMoneyV2Result, CatalogueMoneyV2Tax } from "@openlup/core/pricing";
+import type { CommerceCodeRejectionDetail } from "./contracts/evidence.js";
+import type { PromotionEngineVersion } from "./contracts/offerPolicy.js";
+import type { CommerceCodeRejection, CommerceQuoteDiscount } from "./contracts/quote.js";
+import type { CommerceQuoteMoneyV2 as Body, DeliveryBucketV2, FeeLineV2, MoneyLineV2, TaxPositionV2 } from "./contracts/quoteV2.js";
+type Source = Pick<MoneyLineV2, "lineKey" | "sourceOrdinal" | "sku" | "mode" | "quantity" | "unitBasisMinor" | "taxClassKey" | "assignmentRef"> & Readonly<{
+    amountKind: "gross" | "net";
+}>;
+type Candidate = Readonly<{
+    amountBasis: Body["amountBasis"];
+    deliverySelectionRef: string;
+    delivery: readonly (Omit<DeliveryBucketV2, "parts"> & {
+        amountMinor: number;
+        threshold?: {
+            flatMinor: number;
+            freeThresholdMinor: number;
+        };
+    })[];
+    feeLines: readonly FeeLineV2[];
+    adjustments: readonly Readonly<{
+        amountOffMinor: number;
+        appliesTo: CommerceQuoteDiscount["appliesTo"];
+        adjustmentRef: string;
+        evidenceRef: string;
+        target: Readonly<{
+            lineKeys: readonly string[];
+        }> | Readonly<{
+            bucketKey: string;
+        }>;
+    }>[];
+}>;
+type PositionMetadata = Omit<TaxPositionV2, "taxableMinor" | "taxMinor" | "rateDecimal">;
+type SharedFacts = Pick<Body, "catalogueEvidenceRef" | "mode" | "cadence" | "destination" | "paymentLimits" | "coverageDigest">;
+type CodeDiagnostics = Readonly<{
+    codeRejections: readonly CommerceCodeRejection[];
+    codeRejectionDetails: readonly CommerceCodeRejectionDetail[];
+}>;
+type PromotionDiagnostics = Readonly<{
+    codeDiagnostics?: CodeDiagnostics;
+    displacedCodes?: readonly (CommerceCodeRejection & {
+        reason: "better_price_exists";
+    })[];
+}>;
+type RateRows = Extract<CatalogueMoneyV2Tax, {
+    kind: "inclusive";
+}>["components"];
+/** @experimental Resolved list-basis prices, owner adjustments and delivery alternatives. Supply the promotion owner’s applied code values in order. */
+export type PlanCommerceQuoteMoneyV2Input = Readonly<{
+    currency: string;
+    listBasis: Body["amountBasis"] | null;
+    price: Body["price"];
+    engine: PromotionEngineVersion;
+    lines: readonly Source[];
+    baseline: Omit<Candidate, "adjustments">;
+    selected?: Candidate;
+    codeDiagnostics?: CodeDiagnostics & {
+        appliedCodes: readonly string[];
+    };
+}>;
+/** @experimental Winning basis plan for offline tax composition. */
+export type CommerceQuoteMoneyV2Plan = Readonly<{
+    kind: "planned";
+    currency: string;
+    price: Body["price"];
+    promotion: Body["promotion"];
+    lines: readonly Source[];
+    winner: Candidate;
+    moneyInput: CatalogueMoneyV2Input;
+    plan: CatalogueMoneyV2Plan;
+}> & PromotionDiagnostics;
+/** @experimental Planning input and evidence required to assemble money for the winning candidate. */
+export type ComposeCommerceQuoteMoneyV2Input = Readonly<{
+    planInput: PlanCommerceQuoteMoneyV2Input;
+    facts: SharedFacts;
+    allocationIds: readonly Readonly<{
+        ref: CatalogueMoneyV2ComponentRef;
+        sequence: number;
+        allocationId: string;
+    }>[];
+}> & (Readonly<{
+    taxEvidence: Extract<Body["taxEvidence"], {
+        kind: "fiscal_profile";
+    }>;
+    fiscal: RateRows;
+    positions: readonly Readonly<{
+        ref: CatalogueMoneyV2ComponentRef;
+        position: PositionMetadata;
+    }>[];
+}> | Readonly<{
+    taxEvidence: Extract<Body["taxEvidence"], {
+        kind: "tax_calculation";
+    }>;
+    verifiedMoney: CatalogueMoneyV2Result;
+    positions: readonly PositionMetadata[];
+    feeLines: readonly FeeLineV2[];
+}>);
+/** @experimental Fixed-prose refusal with a JSON-pointer field. */
+export type CommerceQuoteMoneyV2Refusal = Readonly<{
+    kind: "refused";
+    code: "money_input_invalid" | "money_amount_basis_mixed" | "shipping_tax_basis_empty" | "promotion_allocation_unsubstantiated" | "money_tax_evidence_mismatch" | "money_amount_out_of_range";
+    field: string;
+    remedy: string;
+}>;
+/** @experimental For exclusive tax, derive the request from the unmodified plan for one immutable planning input and call verifyTaxQuoteResult on that exact request and result before composition. */
+export declare function planCommerceQuoteMoneyV2(input: PlanCommerceQuoteMoneyV2Input): CommerceQuoteMoneyV2Plan | CommerceQuoteMoneyV2Refusal;
+/** @experimental For exclusive tax, reuse the immutable planning input and pass the result verified by verifyTaxQuoteResult against the exact request derived from the unmodified plan. */
+export declare function composeCommerceQuoteMoneyV2(input: ComposeCommerceQuoteMoneyV2Input): (Readonly<{
+    kind: "composed";
+    money: Body;
+    moneyDigest: string;
+}> & PromotionDiagnostics) | CommerceQuoteMoneyV2Refusal;
+export {};
+```
 ## dist/pricing/commerceQuoteSnapshotExpect.d.ts
 
 ```ts
@@ -1109,6 +1225,7 @@ export type { AcquisitionQuoteRequest, AcquisitionQuoteContext, AcquisitionQuote
 export { COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION } from "./offer.js";
 export type { AcquisitionOfferPricingResponse } from "./offer.js";
 export type { CatalogPriceSetupCommand, CatalogPriceSetupEntry, CatalogPriceSetupReadiness, CatalogPriceSetupPreviewQuery, CatalogPriceSetupSubscription, CatalogPriceSetupPreview, CatalogPriceSetupReceipt, CatalogPriceSetupRefusal, CatalogPriceSetupApplyResult } from "./catalogPriceSetup.js";
+export type { CommerceQuoteMoneyV2, CommerceQuoteV2, MoneyLineV2, DiscountAllocationV2, TaxPositionV2, DeliveryBucketV2, FeeLineV2 } from "./quoteV2.js";
 ```
 ## dist/pricing/contracts/money.d.ts
 
@@ -1380,6 +1497,32 @@ export interface CreateQuoteResponse {
     };
 }
 ```
+## dist/pricing/contracts/quoteV2.d.ts
+
+```ts
+import type { CommerceMoneyBodyV2 } from "@openlup/core/pricing";
+/** @experimental Shared quote money committed by the money digest. */
+export type CommerceQuoteMoneyV2 = CommerceMoneyBodyV2;
+/** @experimental Merchandise money for one source ordinal. */
+export type MoneyLineV2 = CommerceQuoteMoneyV2["lines"][number];
+/** @experimental One nonzero, evidenced adjustment share. */
+export type DiscountAllocationV2 = MoneyLineV2["discountAllocations"][number];
+/** @experimental One assessed position within a component state. */
+export type TaxPositionV2 = MoneyLineV2["taxPositions"][number];
+/** @experimental A delivery charge and its planned parts. */
+export type DeliveryBucketV2 = CommerceQuoteMoneyV2["deliveryBuckets"][number];
+/** @experimental One payable fee and its refund policy. */
+export type FeeLineV2 = CommerceQuoteMoneyV2["feeLines"][number];
+/** @experimental Estimate or final quote with separately committed money and quote digests. */
+export type CommerceQuoteV2 = CommerceQuoteMoneyV2 & Readonly<{
+    contractVersion: "commerce.v1";
+    schemaVersion: 2;
+    quoteId: string;
+    status: "estimate" | "final";
+    moneyDigest: string;
+    quoteDigest: string;
+}>;
+```
 ## dist/pricing/dbBackedCommerceQuoteHelpers.d.ts
 
 ```ts
@@ -1610,6 +1753,9 @@ export { createCatalogPriceSetupHandler } from "./catalogPriceSetupHandler.js";
 export type { CatalogPriceSetupStorePort, CatalogPriceSetupHandlerDeps, CatalogPriceSetupReadback } from "./catalogPriceSetupHandler.js";
 export { createPostgresCatalogPriceSetupStore, catalogPriceSetupRefusal, CATALOG_PRICE_SETUP_HARD_REFUSALS } from "./postgresCatalogPriceSetupStore.js";
 export type { CatalogPriceSetupQueryExecutor } from "./postgresCatalogPriceSetupStore.js";
+export { commerceQuoteV2Schema } from "./quoteSchemasV2.js";
+export { planCommerceQuoteMoneyV2, composeCommerceQuoteMoneyV2 } from "./commerceQuoteMoneyV2.js";
+export type { PlanCommerceQuoteMoneyV2Input, CommerceQuoteMoneyV2Plan, ComposeCommerceQuoteMoneyV2Input, CommerceQuoteMoneyV2Refusal } from "./commerceQuoteMoneyV2.js";
 ```
 ## dist/pricing/offerPolicyReadiness.d.ts
 
@@ -2128,10 +2274,15 @@ export declare const quoteCodeRejectionDetailSchema: z.ZodDiscriminatedUnion<[z.
 ## dist/pricing/quoteDigest.d.ts
 
 ```ts
+import type { CommerceQuoteMoneyV2, CommerceQuoteV2 } from "./contracts/quoteV2.js";
 /** Hash the canonical, domain-tagged owner quote document.
  * @experimental
  */
 export declare function quoteDigest(dialect: "catalog.owner-quote.v0", document: unknown): string;
+/** @experimental Hash an estimate or final quote excluding its own digest. */
+export declare function quoteDigest(dialect: "commerce.quote.v2", document: Omit<CommerceQuoteV2, "quoteDigest">): string;
+/** @experimental Hash the shared money before composing the full quote. */
+export declare function quoteDigest(dialect: "commerce.quote-money.v2", document: CommerceQuoteMoneyV2): string;
 ```
 ## dist/pricing/quotePorts.d.ts
 
@@ -3487,6 +3638,14 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
         }, z.core.$strip>>;
     }, z.core.$strip>;
 };
+```
+## dist/pricing/quoteSchemasV2.d.ts
+
+```ts
+import { z } from "zod";
+import type { CommerceQuoteV2 } from "./contracts/quoteV2.js";
+/** @experimental Validate plain JSON quotes, refusing hidden own keys. Read code, field and remedy from issue params. */
+export declare const commerceQuoteV2Schema: z.ZodType<CommerceQuoteV2>;
 ```
 ## dist/pricing/quoteShippingPromotions.d.ts
 

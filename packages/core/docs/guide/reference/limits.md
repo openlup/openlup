@@ -334,7 +334,7 @@ means an in-flight parcel keeps its current destination.
 | Quote subscription acquisition without a private acceptance key | The host refuses a subscription quote that needs signed acceptance. One-time checkout remains available. | `starter_quote_acceptance_key_required` |
 | Reuse a subscription quote after acceptance-key rotation or changed terms | Refresh the quote and accept its current terms. | `starter_quote_refresh_required` |
 | Reseed a different price under an existing price identity | The installation rolls back instead of overwriting that price. | `starter_price_seed_conflict` |
-| Exceed checkout attempt limits or reuse a command key with a different contact/requester | Admission stops before contact resolution. The limits and identity bindings are process-local and reset on restart. | `starter_attempt_limited` |
+| Exceed checkout attempt limits or reuse a command key with a different contact/requester | Admission stops before contact resolution. Default quotas persist in PostgreSQL across restarts. Command-identity bindings remain process-local and reset on restart. | `starter_attempt_limited` |
 | Submit an invalid or overlong purchase email | The configured input bound is checked before contact resolution. | `starter_email_invalid` |
 | Treat demonstration market inputs as real tax or compliance certification | The starter uses fictional market and test-currency inputs. Subscription quotes use the installed pricing and acquisition rules; demonstration prices are not a real-market certification. | —; demonstration inputs only |
 

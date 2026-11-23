@@ -24,8 +24,8 @@ Every directory under `recipes/<domain>/<provider>/` MUST be completely self-con
 # 1. Strict TypeScript check (standalone, repo-splittable)
 npx --no -- tsc -p recipes/tsconfig.json --noEmit
 
-# 2. Offline Stages 1–3 tests (conformance + canaries + negative controls + mount proof)
-npx vitest run recipes/payments/adyen/tests/ recipes/payments/mollie/tests/ recipes/fulfillment/amazon-mcf/tests/ recipes/fulfillment/shipbob/tests/ recipes/tax/avalara/tests/
+# 2. Offline Stages 1–3 tests (conformance + canaries + negative controls + mount proof across all 15 recipes + index generator)
+npx vitest run recipes/
 
 # 3. Deterministic index & manifest verification
 node --experimental-strip-types recipes/scripts/generate-index.ts --check   # drop --check to regenerate recipes/index.json from manifests
@@ -37,10 +37,35 @@ npx --no -- eslint recipes/
 
 ## Available Recipes
 
-See [index.json](index.json) for the machine-readable catalog:
+See [index.json](index.json) for the machine-readable catalog (**15 recipes across 8 domains**):
 
+### Payments
 - [`payments/adyen`](payments/adyen/recipe.json) — **Exemplar** zero-SDK Adyen Checkout v71 recipe (Drop-in sessions + `recipes/payments/adyen/browser/csp.json`, bank redirect, unattended `ContAuth` recurring, async cancels, canonical HMAC-SHA256 webhook verification).
 - [`payments/mollie`](payments/mollie/recipe.json) — **Verified** zero-SDK Mollie Payments API v2 recipe (hosted checkout redirects, unattended recurring mandates, synchronous readback and cancellation, refund/chargeback observation, readback-authenticated form-urlencoded webhooks).
+- [`payments/paypal`](payments/paypal/recipe.json) — **Verified** zero-SDK PayPal Orders v2 & Checkout recipe (`@openlup/platform/adapter-kit` OAuth2 client credentials, `PayPal-Request-Id` idempotency, hosted approval redirect, `/v1/notifications/verify-webhook-signature` + order readback webhooks).
+
+### Fulfillment
 - [`fulfillment/amazon-mcf`](fulfillment/amazon-mcf/recipe.json) — **Exemplar** zero-SDK Amazon Multi-Channel Fulfillment recipe (SP-API Outbound v2020-07-01 & FBA Inventory v1, pure `node:crypto` AWS SigV4 signing, single-flight LWA OAuth2, bridged HMAC-SHA256 notifications, `nextToken` reconciliation paging, snapshot-only stock sync).
 - [`fulfillment/shipbob`](fulfillment/shipbob/recipe.json) — **Verified** zero-SDK ShipBob 3PL recipe (REST API v1.0 / v2025, Bearer PAT auth with optional `shipbob_channel_id`, Standard Webhooks / Svix `whsec_` HMAC-SHA256 verification, 1-based page reconciliation, snapshot-only stock sync).
+
+### Tax
 - [`tax/avalara`](tax/avalara/recipe.json) — **Experimental** zero-SDK Avalara AvaTax REST v2 exclusive-tax recipe (`SalesOrder` quotes, `SalesInvoice` commits with readback recovery, `ReturnInvoice` partial/remainder reversals, `DocVoided` full voids, retail delivery fees, `compareTaxRecalculationProbe` support).
+
+### Shipping Rates
+- [`shipping/easypost`](shipping/easypost/recipe.json) — **Exemplar** zero-SDK EasyPost v2 multi-carrier live shipping rate recipe (Basic Auth, strict HTTPS origin pinning, integer minor-unit `BigInt` money parsing, deterministic rate sorting, `Retry-After` handling).
+- [`shipping/usps`](shipping/usps/recipe.json) — **Verified** zero-SDK USPS Domestic Prices v3 recipe (OAuth2 `client_credentials` token manager, 401 refresh invalidation, imperial unit conversion, deterministic USPS Ground Advantage / Priority Mail / Priority Mail Express quotes).
+- [`shipping/shipengine`](shipping/shipengine/recipe.json) — **Verified** zero-SDK ShipEngine v1 multi-carrier shipping rate recipe (`@openlup/platform/adapter-kit` hardened fetch, `API-Key` header auth, carrier/service filtering, exact integer minor-unit totals).
+
+### Communications
+- [`communications/postmark`](communications/postmark/recipe.json) — **Verified** zero-SDK Postmark transactional email recipe (`X-Postmark-Server-Token` auth, `createGuardedEmailTransport` egress-admission proof, fail-closed Basic Auth webhook normalizer, full-mode conformance).
+
+### Accounting
+- [`accounting/quickbooks-online`](accounting/quickbooks-online/recipe.json) — **Exemplar** zero-SDK QuickBooks Online Accounting v3 journal-entry export recipe (`@openlup/platform/adapter-kit` OAuth2 `refresh_token`, strict `realmId` pinning, balanced `BigInt` minor-unit conversion, `DocNumber` idempotent readback).
+- [`accounting/xero`](accounting/xero/recipe.json) — **Verified** zero-SDK Xero Accounting API 2.0 manual-journal export recipe (`@openlup/platform/adapter-kit` OAuth2 `refresh_token`, strict UUID `xero-tenant-id` header pinning, `Idempotency-Key`, signed `LineAmount` mapping, readback recovery).
+
+### Observability
+- [`observability/axiom`](observability/axiom/recipe.json) — **Exemplar** zero-SDK Axiom Dataset Ingest v1 telemetry sink recipe (`createSafeTelemetryPort` PII/secret scrubbing, fail-open batching, JSON array ingest over `@openlup/platform/adapter-kit`, full-mode 5-fault certification).
+- [`observability/otel-otlp`](observability/otel-otlp/recipe.json) — **Verified** zero-SDK OpenTelemetry OTLP/HTTP JSON (`v1/traces`, `v1/metrics`, `v1/logs`) telemetry sink recipe (strict collector origin pinning, custom headers, PII scrubbing, fail-open multi-signal export).
+
+### Sales Channels
+- [`channels/shopify`](channels/shopify/recipe.json) — **Exemplar** zero-SDK Shopify Admin REST & Webhooks sales-channel recipe (strict `shopDomain` pinning, auth-before-parse `X-Shopify-Hmac-Sha256` with key rotation, `Link` `page_info` cursor pagination, `Retry-After` 429 cooldown, B3 unmapped vocabulary preservation, full-mode conformance).

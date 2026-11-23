@@ -136,6 +136,21 @@ The [connected-store witness](../../tests/postgres/connectedStoreTransfer.test.t
 compares both preview states and repeats restore without changing their identity.
 These linked pricing records share the profile's existing erasure-coverage limit.
 
+Native owner capture carries restricted, customer-linked cancellation feedback.
+Restore places each feedback row after its cancellation event and preserves the
+original reason code and timestamp. The cancellation receipt transfers through
+its existing path. Use owner full-store transfer for these rows. The public
+compatible-row utility and managed transfer profile exclude them.
+
+Apply the native forward before binding a feedback writer. The qualified runtime
+inherits routine execution through `service_role`. For a separately bound native
+runtime, grant EXECUTE on
+`public.subscription_cancel_feedback_submit(uuid,uuid,text,boolean)` and keep
+direct table access owner-only. A missing forward or routine grant affects
+feedback submission independently of cancellation. The adopter owns its
+feedback retention policy and any subject export or deletion. Resolve subjects
+through the cancellation event's subscription. Feedback stores one reason code
+per event and has no free-text field.
 
 The finite profile also carries `fulfillment_parcel_contacts`: private parcel
 recipient/email/phone, address/instructions and delivery selection/pickup point,
@@ -203,8 +218,7 @@ context is carried with the same privacy boundary as the order's quote/draft
 metadata, not scrubbed into nonpersonal telemetry. The existing owner-only
 capture/restore path and row/byte limits apply; no runtime or browser grant is
 added. A fresh-process checkout replay after restore returns the same order.
-The unchanged exact-set guard expects the receipt table even when empty; this
-change does not convert packets from an earlier finite profile.
+The exact-set guard expects the receipt table even when empty.
 
 The purchase-hold draft adds observed current stock, reservation headers/lines
 and purchase command receipts, plus aggregate compensation history and provisional
@@ -370,10 +384,14 @@ and the retained-import owner transactionally after checking the sealed
 catalogue, then seals both edges before final catalogue comparison. Pristine-row
 equality is a precondition inside the target transaction, not independent
 freshness evidence.
-The target rechecks the selected canonical catalogue and ledger. The complete
-ledger path, checksum and position sequence follows the selected manifest rather
-than a fixed unit count or tail pin. It locks tables,
-uses the existing retained client/cycle routines and compatible-row admission,
+Restore requires the target's exact current qualified inventory. An inventory
+mismatch refuses with `schema_conflict`. The remedy is
+`capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
+If no such target can be provisioned, connected-store restore is unavailable for that pair.
+The target rechecks the selected canonical catalogue and ledger. Its
+paths, checksums and positions follow the selected manifest.
+Restore locks tables, uses the existing retained client/cycle routines and
+compatible-row admission,
 and restores exactly seven factory settings tables. It preserves deferred
 constraints and source alignment policy last. A named historical hold-trigger
 correction removes only the fully checked notification inserted in that

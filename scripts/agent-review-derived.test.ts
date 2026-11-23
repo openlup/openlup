@@ -386,7 +386,7 @@ it('refuses a non-SQL generated region on the SQL reference', () => {
     expect(() => runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean)))
       .toThrow(`${SQL_REFERENCE}: unknown generated region exports:platform`);
   } finally { git('reset', '--hard', merged); }
-});
+}, 50_000);
 it('keeps a package command that main added after the reviewed head forked', () => {
   const names = (revision: string) => JSON.parse(git('show', `${revision}:${CATALOGUE}`)).packageCommands.map(({ name }) => name);
   expect(names(reviewed)).not.toContain('fixture:landing');

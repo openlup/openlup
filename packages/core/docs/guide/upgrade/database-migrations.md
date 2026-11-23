@@ -81,6 +81,60 @@ Use those assets in your complete chain or use the catalogue that defines them.
 Applying both attempts to recreate functions and fails. Importing
 `@openlup/platform/job-ledger` applies no SQL.
 
+## Prepare the optional checkout owner
+
+Ordinary upgrades on the four qualified profiles require no new login.
+Connected-store restore keeps the target's verified grants and ledger.
+Legacy has no checkout opt-in. A regular legacy upgrade uses a cluster
+without the checkout login. If the login exists for another database,
+the grant unit records a no-op, but legacy inventory can refuse the extra
+cluster role. Use a qualified installation or a separate cluster.
+
+| Qualified profile | Who provisions the login outside migration | Who preserves TEMP and applies the grant |
+| --- | --- | --- |
+| Bootstrap migrator | The bootstrap host | The bootstrap database and definition owner |
+| Separate migrator | The bootstrap host | The separate database and definition owner |
+| Restricted installer-managed | The bootstrap host | The restricted database and definition owner |
+| Restricted operator-provisioned | The designated role operator under bootstrap control | The restricted database and definition owner |
+
+For qualified-v2 operator-provisioned installations, the designated host
+role operator provisions the login under bootstrap control. On PostgreSQL
+16, ask the membership grantor to remove the creator edge. Have the
+database owner preserve TEMP for the installation roles that use it
+before revoking TEMP from PUBLIC. Coordinate role changes across all
+affected databases.
+
+Once an installed catalogue includes the approved grant unit and the
+selected database has recorded it, run this operation with the same
+installation binding and direct definition-owner connection as the
+migration runner:
+
+```ts
+import {
+  applyPlatformCheckoutOwnerGrant,
+  type QualifiedAdminPostgresInstallation,
+  type QualifiedPostgresInstallation,
+} from "@openlup/platform/migrations";
+
+export function prepareCheckoutOwner(
+  connectionString: string,
+  installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation,
+) {
+  return applyPlatformCheckoutOwnerGrant({ connectionString }, installation);
+}
+```
+
+The operation serializes with migration and restore on the selected database.
+Keep host role, role-default, local DDL and ACL administration excluded until it
+returns. Repeating it returns the same `{ state: "granted" }` and preserves the
+ledger. Verify that result on the selected database before binding any
+checkout credential to a supported host. For `checkout_owner_login_unready`,
+ask the installation owner to prepare and verify the dedicated checkout
+login. For `checkout_owner_acl_mismatch`, ask the installation owner to
+verify the approved checkout access for this database. If connected-store
+restore refuses target access, ask the installation owner to verify the
+target installation.
+
 ## Inspect and apply
 
 1. Call `status()` to inspect the applied and pending canonical paths. It
@@ -170,6 +224,17 @@ undo committed SQL or durable effects.
 Verify the selected chain and application combination, including replay and refusal
 behavior. [Application file upgrades](./application-files.md) are a separate
 operation and execute no database work.
+
+For the native starter, apply `20261124200000_checkout_attempt_ledger` before
+updating application files or starting the updated host. Older hosts can run
+against the additive schema. The updated host begins counting in PostgreSQL
+without importing old in-process counts.
+
+| Startup diagnostic | Action |
+| --- | --- |
+| `starter_checkout_attempt_ledger_missing` | Apply the checkout attempt database forward and restart the starter. |
+| `starter_checkout_attempt_ledger_execute_required` | Restore the checkout attempt routine's EXECUTE grant for the runtime role and restart the starter. |
+| `starter_checkout_attempt_ledger_check_failed` | Check database connectivity and runtime credentials, then restart the starter. |
 
 The post-publication released-pair qualification
 uses both exact installed applications retained by the adjacent-set starter

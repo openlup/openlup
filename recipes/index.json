@@ -1,7 +1,75 @@
 {
   "schemaVersion": 1,
-  "platformVersion": "1.3.0",
+  "platformVersion": "1.4.0-dev",
   "recipes": [
+    {
+      "id": "accounting/quickbooks-online",
+      "domain": "accounting",
+      "providerKind": "quickbooks_online",
+      "displayName": "QuickBooks Online (Accounting REST v3)",
+      "status": "exemplar",
+      "regions": [
+        "global",
+        "US",
+        "NA",
+        "EU",
+        "APAC"
+      ],
+      "openlupPlatformRange": "^1.4.0",
+      "testedAgainstPlatformVersion": "1.4.0-dev",
+      "manifestPath": "accounting/quickbooks-online/recipe.json"
+    },
+    {
+      "id": "accounting/xero",
+      "domain": "accounting",
+      "providerKind": "xero",
+      "displayName": "Xero (Accounting API 2.0)",
+      "status": "verified",
+      "regions": [
+        "global",
+        "US",
+        "NA",
+        "EU",
+        "APAC"
+      ],
+      "openlupPlatformRange": "^1.4.0",
+      "testedAgainstPlatformVersion": "1.4.0-dev",
+      "manifestPath": "accounting/xero/recipe.json"
+    },
+    {
+      "id": "channels/shopify",
+      "domain": "channels",
+      "providerKind": "shopify",
+      "displayName": "Shopify Storefront Channel (Admin REST & Webhooks)",
+      "status": "exemplar",
+      "regions": [
+        "global",
+        "US",
+        "NA",
+        "EU",
+        "APAC"
+      ],
+      "openlupPlatformRange": "^1.4.0",
+      "testedAgainstPlatformVersion": "1.4.0-dev",
+      "manifestPath": "channels/shopify/recipe.json"
+    },
+    {
+      "id": "communications/postmark",
+      "domain": "communications",
+      "providerKind": "postmark",
+      "displayName": "Postmark Transactional Email (REST API)",
+      "status": "verified",
+      "regions": [
+        "global",
+        "US",
+        "NA",
+        "EU",
+        "APAC"
+      ],
+      "openlupPlatformRange": "^1.4.0",
+      "testedAgainstPlatformVersion": "1.4.0-dev",
+      "manifestPath": "communications/postmark/recipe.json"
+    },
     {
       "id": "fulfillment/amazon-mcf",
       "domain": "fulfillment",
@@ -37,6 +105,32 @@
       "manifestPath": "fulfillment/shipbob/recipe.json"
     },
     {
+      "id": "observability/axiom",
+      "domain": "observability",
+      "providerKind": "axiom",
+      "displayName": "Axiom (Ingest API v1)",
+      "status": "exemplar",
+      "regions": [
+        "global"
+      ],
+      "openlupPlatformRange": "^1.4.0",
+      "testedAgainstPlatformVersion": "1.4.0-dev",
+      "manifestPath": "observability/axiom/recipe.json"
+    },
+    {
+      "id": "observability/otel-otlp",
+      "domain": "observability",
+      "providerKind": "otel_otlp",
+      "displayName": "OpenTelemetry OTLP/HTTP (JSON)",
+      "status": "verified",
+      "regions": [
+        "global"
+      ],
+      "openlupPlatformRange": "^1.4.0",
+      "testedAgainstPlatformVersion": "1.4.0-dev",
+      "manifestPath": "observability/otel-otlp/recipe.json"
+    },
+    {
       "id": "payments/adyen",
       "domain": "payments",
       "providerKind": "adyen",
@@ -65,6 +159,71 @@
       "openlupPlatformRange": "^1.3.0",
       "testedAgainstPlatformVersion": "1.3.0",
       "manifestPath": "payments/mollie/recipe.json"
+    },
+    {
+      "id": "payments/paypal",
+      "domain": "payments",
+      "providerKind": "paypal",
+      "displayName": "PayPal Checkout (Orders API v2)",
+      "status": "verified",
+      "regions": [
+        "global",
+        "US",
+        "NA",
+        "EU",
+        "APAC"
+      ],
+      "openlupPlatformRange": "^1.4.0",
+      "testedAgainstPlatformVersion": "1.4.0-dev",
+      "manifestPath": "payments/paypal/recipe.json"
+    },
+    {
+      "id": "shipping/easypost",
+      "domain": "shipping",
+      "providerKind": "easypost",
+      "displayName": "EasyPost Multi-Carrier Rates (REST v2)",
+      "status": "exemplar",
+      "regions": [
+        "global",
+        "US",
+        "NA",
+        "EU",
+        "APAC"
+      ],
+      "openlupPlatformRange": "^1.4.0",
+      "testedAgainstPlatformVersion": "1.4.0-dev",
+      "manifestPath": "shipping/easypost/recipe.json"
+    },
+    {
+      "id": "shipping/shipengine",
+      "domain": "shipping",
+      "providerKind": "shipengine",
+      "displayName": "ShipEngine Multi-Carrier Rates (REST v1)",
+      "status": "verified",
+      "regions": [
+        "global",
+        "US",
+        "NA",
+        "EU",
+        "APAC"
+      ],
+      "openlupPlatformRange": "^1.4.0",
+      "testedAgainstPlatformVersion": "1.4.0-dev",
+      "manifestPath": "shipping/shipengine/recipe.json"
+    },
+    {
+      "id": "shipping/usps",
+      "domain": "shipping",
+      "providerKind": "usps",
+      "displayName": "USPS Domestic Prices (API v3)",
+      "status": "verified",
+      "regions": [
+        "US",
+        "NA"
+      ],
+      "openlupPlatformRange": "^1.4.0",
+      "testedAgainstPlatformVersion": "1.4.0-dev",
+      "manifestPath": "shipping/usps/recipe.json"
     },
     {
       "id": "tax/avalara",

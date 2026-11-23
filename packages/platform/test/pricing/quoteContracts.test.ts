@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/index.js";
 import {
+  commerceQuoteV2Schema,
   createCommerceQuoteSchemas,
   quoteDiscountSchema,
   quoteMoneyCurrenciesMatch,
@@ -9,8 +11,16 @@ import { catalogFactsProvenanceSchema } from "../../src/pricing/index.js";
 import { COMMERCE_CONTRACT_VERSION } from "../../src/pricing/contracts/index.js";
 import type { CommerceCurrency, CommerceMoney, CommerceQuote } from "../../src/pricing/contracts/index.js";
 
+import type { CommerceQuoteMoneyV2, CommerceQuoteV2 } from "../../src/pricing/index.js";
+import { id, moneyGolden, sealQuote } from "./quoteMoneyV2Fixtures.js";
+
 import { z } from "zod";
 import { slugSchema } from "@openlup/core/catalog";
+
+vi.mock("../../src/catalog/contracts/index.js", async importOriginal => {
+  const original = await importOriginal<typeof import("../../src/catalog/contracts/index.js")>();
+  return { ...original, canonicalCatalogDraftJson: vi.fn(original.canonicalCatalogDraftJson) };
+});
 
 const { commerceQuoteSchema, createQuoteRequestSchema, createQuoteResponseSchema, publicCreateQuoteBatchResponseSchema,
   publicCreateQuoteResponseSchema } = createCommerceQuoteSchemas({
@@ -297,4 +307,131 @@ it("preserves both shipping and discount tax lanes and their currency backstop",
   expect(commerceQuoteSchema.safeParse({ ...quote, shippingDiscountGross: money(55, "XXX") }).success).toBe(false);
   expect(quoteMoneyCurrenciesMatch({ ...quote, shippingGross: money(108, "XTS") })).toBe(false);
   expect(quoteMoneyCurrenciesMatch({ ...quote, shippingDiscountGross: money(54, "XTS") })).toBe(false);
+});
+
+describe("strict quote v2", () => {
+  function refusal(value: unknown) {
+    const result = commerceQuoteV2Schema.safeParse(value);
+    if (result.success) throw new Error("Expected a quote refusal");
+    return result.error.issues[0];
+  }
+
+  it.each(["final", "estimate"] as const)("validates the sealed %s quote", status => {
+    const quote = sealQuote(moneyGolden(), status);
+    expect(commerceQuoteV2Schema.parse(quote)).toStrictEqual(quote);
+  });
+
+  it("preserves the original v0 quote serialization through the v0 schema", () => {
+    const legacy = { contractVersion: COMMERCE_CONTRACT_VERSION, quote: validQuote() };
+    expect(JSON.stringify(createQuoteResponseSchema.parse(legacy))).toBe(JSON.stringify(legacy));
+  });
+
+  it("requires both original digests before amount or expiry advice", () => {
+    const original = sealQuote();
+    const [first, ...rest] = original.lines;
+    const [share] = first.discountAllocations;
+    const { payableMinor: _payable, ...withoutPayable } = original;
+    const { expiresAt: _expiry, ...withoutExpiry } = original.taxEvidence;
+    const altered = [
+      { ...original, lines: [{ ...first, discountAllocations: [{ ...share, allocationId: id(6) }] }, ...rest] },
+      { ...original, destination: { ...original.destination, snapshotRef: id(7) } },
+      { ...original, status: "estimate" },
+      withoutPayable,
+      { ...original, taxEvidence: withoutExpiry },
+      { ...original, paymentLimits: { ...original.paymentLimits, maxMinor: original.payableMinor - 1 },
+        taxEvidence: { ...original.taxEvidence, expiresAt: original.taxEvidence.taxDate } },
+    ];
+    altered.forEach((quote, index) => {
+      if ("payableMinor" in quote) expect(quote.payableMinor).toBe(original.payableMinor);
+      expect(refusal(quote)).toMatchObject({ params: {
+        code: "money_tax_evidence_mismatch", field: index === 2 ? "/quoteDigest" : "/moneyDigest",
+        remedy: "Replay the original document and its digest.",
+      } });
+      expect(JSON.stringify(refusal(quote))).not.toContain(original.quoteDigest);
+    });
+  });
+
+  it("checks the remaining seal before shape when its peer is missing or malformed", () => {
+    const original = sealQuote();
+    const { moneyDigest: _inner, ...withoutMoney } = original;
+    const { quoteDigest: _outer, ...withoutQuote } = original;
+    const encode = vi.mocked(canonicalCatalogDraftJson);
+    const rows = [
+      [withoutMoney, "/moneyDigest", "commerce.quote.v2"],
+      [withoutQuote, "/quoteDigest", "commerce.quote-money.v2"],
+      [{ ...original, quoteDigest: "malformed", payableMinor: -1 }, "/moneyDigest", "commerce.quote-money.v2"],
+      [{ ...original, moneyDigest: "malformed" }, "/quoteDigest", "commerce.quote.v2"],
+    ] as const;
+    for (const [input, field, dialect] of rows) {
+      encode.mockClear();
+      expect(refusal(input).params).toEqual({
+        code: "money_tax_evidence_mismatch", field, remedy: "Replay the original document and its digest.",
+      });
+      expect(encode.mock.calls.map(([preimage]) => (preimage as readonly unknown[])[0])).toEqual([dialect]);
+    }
+  });
+
+  it("refuses LC6-incompatible input before calling either seal encoder", () => {
+    const original = sealQuote();
+    const encode = vi.mocked(canonicalCatalogDraftJson);
+    const rows = [
+      [{ ...original, destination: { ...original.destination, policyRevision: "a\u0000b" } }, "/destination/policyRevision"],
+      [{ ...original, catalogueEvidenceRef: "λ".repeat(524_288) }, "/catalogueEvidenceRef"],
+    ] as const;
+    for (const [input, field] of rows) {
+      encode.mockClear();
+      expect(refusal(input).params).toMatchObject({ code: "money_input_invalid", field });
+      expect(encode).not.toHaveBeenCalled();
+    }
+  });
+
+  it("encodes each digest preimage once without encoding the whole quote first", () => {
+    const quote = sealQuote();
+    const encode = vi.mocked(canonicalCatalogDraftJson);
+    encode.mockClear();
+    expect(commerceQuoteV2Schema.safeParse(quote).success).toBe(true);
+    expect(encode.mock.calls.map(([preimage]) => (preimage as readonly unknown[])[0])).toEqual([
+      "commerce.quote-money.v2", "commerce.quote.v2",
+    ]);
+  });
+
+  it.each([
+    ["unknown nested key", (body: CommerceQuoteMoneyV2) => ({ ...body, destination: { ...body.destination, extra: "value" } })],
+    ["UUID casing", (body: CommerceQuoteMoneyV2) => ({ ...body, destination: { ...body.destination, snapshotRef: "A" + id(1).slice(1) } })],
+    ["digest width", (body: CommerceQuoteMoneyV2) => ({ ...body, coverageDigest: "a".repeat(63) })],
+    ["canonical instant", (body: CommerceQuoteMoneyV2) => ({ ...body, taxEvidence: { ...body.taxEvidence, taxDate: "2026-06-05T10:00:00Z" } })],
+    ["source count", (body: CommerceQuoteMoneyV2) => ({ ...body, lines: Array.from({ length: 51 }, () => body.lines[0]) })],
+    ["quantity upper bound", (body: CommerceQuoteMoneyV2) =>
+      ({ ...body, lines: [{ ...body.lines[0], quantity: 100 }, ...body.lines.slice(1)] })],
+    ["fractional amount", (body: CommerceQuoteMoneyV2) => ({ ...body, payableMinor: 5.5 })],
+    ["unsafe amount", (body: CommerceQuoteMoneyV2) => ({ ...body, payableMinor: Number.MAX_SAFE_INTEGER + 1 })],
+    ["wrong total", (body: CommerceQuoteMoneyV2) => ({ ...body, taxTotal: 1 })],
+    ["currency mismatch", (body: CommerceQuoteMoneyV2) => ({ ...body, paymentLimits: { ...body.paymentLimits, currency: "ZZZ" } })],
+    ["subscription without cadence", (body: CommerceQuoteMoneyV2) => ({ ...body, mode: "subscription" as const })],
+    ["one-time quote with cadence", (body: CommerceQuoteMoneyV2) => ({ ...body, cadence: { schemaVersion: 1 as const, kind: "fixed_days" as const, days: 17 } })],
+    ["wrong evidence arm", (body: CommerceQuoteMoneyV2) => ({ ...body, taxEvidence: { ...body.taxEvidence, kind: "tax_calculation" as const } })],
+    ["unreconciled tax state", (body: CommerceQuoteMoneyV2) => {
+      const [first, ...rest] = body.lines;
+      const [share] = first.discountAllocations;
+      const before = { ...share.before, taxPositions: [{ ...share.before.taxPositions[0], taxMinor: 0 }] };
+      return { ...body, lines: [{ ...first, discountAllocations: [{ ...share, before }] }, ...rest] };
+    }],
+  ] as const)("rejects %s even with matching digests", (_name, change) => {
+    expect(commerceQuoteV2Schema.safeParse(sealQuote(change(moneyGolden()) as CommerceQuoteMoneyV2)).success).toBe(false);
+  });
+
+  it("refuses lossy numbers and bounds the admitted quote size", () => {
+    const quote = sealQuote();
+    expect(refusal({ ...quote, feeTotal: -0 }).params).toMatchObject({ field: "/feeTotal" });
+    expect(refusal({ ...quote, catalogueEvidenceRef: "λ".repeat(1_048_577) }).params).toMatchObject({ field: "/catalogueEvidenceRef" });
+  });
+
+  it("admits independent line modes and checks range on an intact document", () => {
+    const body = moneyGolden();
+    const subscription = { ...body, mode: "subscription", cadence: { schemaVersion: 1, kind: "fixed_days", days: 3660 } } as const;
+    expect(commerceQuoteV2Schema.parse(sealQuote(subscription)).lines[0].mode).toBe("one_time");
+    expect(refusal(sealQuote({ ...body, paymentLimits: { ...body.paymentLimits, maxMinor: 4 } }))).toMatchObject({
+      params: { code: "money_amount_out_of_range", field: "/payableMinor" },
+    });
+  });
 });

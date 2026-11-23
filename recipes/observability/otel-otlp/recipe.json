@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "id": "observability/otel-otlp",
+  "domain": "observability",
+  "providerKind": "otel_otlp",
+  "displayName": "OpenTelemetry OTLP/HTTP (JSON)",
+  "summary": "Verified zero-SDK OpenTelemetry OTLP/HTTP JSON exporter recipe dispatching scrubbed spans, metrics, logs, and errors over a validated strict HTTPS collector origin with guaranteed fail-open semantics.",
+  "regions": [
+    "global"
+  ],
+  "status": "verified",
+  "openlupPlatformRange": "^1.4.0",
+  "testedAgainstPlatformVersion": "1.4.0-dev",
+  "contractImports": [
+    "@openlup/platform/observability",
+    "@openlup/platform/observability/contracts",
+    "@openlup/platform/adapter-kit"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/observability/testing",
+    "exportName": "runTelemetryAdapterConformance",
+    "mode": "full"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://{collectorHost}"
+  ],
+  "webhookAuth": "none",
+  "browserSurface": {
+    "kind": "none"
+  },
+  "supportedCurrenciesPolicy": "not-applicable",
+  "staticCapabilities": {
+    "contractVersion": "observability.telemetry.v1",
+    "providerKind": "otel_otlp",
+    "supportsSpans": true,
+    "supportsMetrics": true,
+    "supportsLogs": true,
+    "supportsErrors": true,
+    "maxBatchSize": 100,
+    "requiresCredentials": false
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "LIVE_QUALIFICATION.md",
+      "recipe.json",
+      "server/adapter.ts",
+      "server/client-contract.ts",
+      "server/index.ts",
+      "tests/conformance.test.ts",
+      "tests/fixtures.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/observability/otel-otlp/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/observability/otel-otlp/tests/mount-proof.test.ts"
+  }
+}

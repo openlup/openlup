@@ -528,7 +528,9 @@ is qualified.
 
 ## Compatible data transfer
 
-Checkout attempt ledger rows are authoritative, short-lived admission state.
+The native starter uses the checkout attempt ledger for default quotas across
+processes and restarts on the same store database. Ledger rows are authoritative,
+short-lived admission state.
 The native connected-store profile carries the three digests and original epoch
 milliseconds exactly in owner-only packets. Treat these as restricted
 pseudonymous abuse-control data and keep the packets private. The ledger holds
@@ -536,16 +538,20 @@ no raw email, IP address, idempotency key, headers or request payload, and has n
 client foreign key or absorption mapping.
 
 Restore the ledger before enabling checkout under the same limit and identity
-policy. Connected-store restore accepts the current qualified inventory and the
-admitted predecessor inventories from before publication commands, the checkout
-attempt ledger, governed catalogue lifecycle and catalogue accepted references.
-Conversion reproduces the retained rows an in-place upgrade would produce.
-It also accepts profile-free packets from the pinned inventories immediately
-before subscription profile receipts. Those packets use the current shape.
-Earlier captures report the edit quote table as empty because capture refused
-when it contained rows. New captures carry those quotes. A source schema change
-that cannot be reproduced by additive conversion, such as a dropped or retyped
-column, refuses with `schema_conflict`. Upgrade the source, then capture.
+policy.
+
+Connected-store restore admits only a packet captured on the target's exact
+current qualified inventory. Any other inventory, including earlier releases
+and unreleased states, refuses with `schema_conflict`. The remedy is
+`capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
+If no such target can be provisioned, connected-store restore is unavailable for that pair.
+Each release cut decides whether the previous release
+is admitted, with one general additive conversion keyed on that release's tables
+and columns, or documents its refusal. A migration adds no
+restore pin of its own. A migration that adds a captured table or a nullable
+column to one registers it in the capture roster and restore order, or in that
+table's additive columns, in the same change.
+
 Restored attempts age on their
 original timestamps. Admission prunes rows at the retention cutoff on each
 call. Idle databases keep bounded rows
@@ -1193,8 +1199,6 @@ reserves option combinations across all statuses for published SKUs. The
 identifier marker is nullable. Existing rows retain their issuer-scoped
 keys. New publication checks existing identifiers under the catalogue relation
 fence. A later unmarked legacy write may share a GTIN with another issuer.
-Connected restore preserves markers and recognizes the exact predecessor
-installation profile with its original identifier columns.
 
 A managed implementation can use the same relations, composite keys and
 deferred checks, with owner-only writes under row-level security and
@@ -2557,9 +2561,9 @@ installed non-system definer. Preserve the intended trusted schemas when
 moving `pg_temp` to the end. For a missing or empty path, review and set the
 trusted schema list before appending `pg_temp`. Eleven acquisition and partner
 acquisition definer functions now pin `pg_temp` last on their search path.
-If a retained-store packet has an unknown or mismatched inventory, use a
-verified capture from the matching installation profile or upgrade the source
-and capture it again.
+If a retained-store packet has an unknown or mismatched inventory, the remedy is
+`capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
+If no such target can be provisioned, connected-store restore is unavailable for that pair.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new
@@ -2811,13 +2815,17 @@ column and unrelated-constraint catalog protections still apply. This capability
 changes no installed CHECK by itself; feature SQL and its declarations land in a
 later change.
 
-A single later native slot may set `previewNoopAcceptance: true` and list just
-the nullable `accepted_noop_receipt_id` UUID column with its foreign key to
-`public.subscription_command_receipts(id)` in `existingTableStatements`.
-Use the exact three statements in [the admission rule](../../scripts/reviewed-platform-forward.ts),
-in order. They add the column and then drop and re-add
+The receipt-backed preview forward uses the single native slot with
+`previewNoopAcceptance: true`. The slot lists
+only the nullable `accepted_noop_receipt_id` UUID column and its foreign key to
+`public.subscription_command_receipts(id)` in `existingTableStatements`. The
+foreign key uses PostgreSQL's default `NO ACTION`. The forward uses the three
+exact admitted statements. They add the column and then drop and re-add
 `subscription_quote_previews_acceptance_check` on
 `public.subscription_quote_previews` as an adjacent, validated replacement.
+[Forward SQL](../../db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql) ·
+[Admission rule](../../scripts/reviewed-platform-forward.ts)
+
 Static admission checks the exact forward bytes and pins the issued
 package-editor migration by path and hash. Beyond the pinned package-editor and
 sized-editor migrations, a file mentioning `subscription_quote_previews` must
@@ -2845,6 +2853,12 @@ timestamp and idempotency key, a receipt and a NULL native event. The PostgreSQL
 proof exercises every combination of status and NULL values before and after
 replacement. Keep any other SQL in separate slots. Land admission changes
 separately before introducing the slot and its SQL.
+
+Connected-store capture reads the new UUID through the existing column census.
+Restore inserts subscription command receipts and native events after their
+client and subscription parents and before previews. A store transfer uses the
+current inventory for the same profile on both ends. The recovery steps cover
+packets from a different inventory. [Restore recovery steps](#compatible-data-transfer)
 
 `createdViews` entries declare a fresh qualified name and exact CREATE VIEW
 statement hash. Only plain unconditional creation is admitted, once per listed
@@ -2990,29 +3004,41 @@ three definitions must come from one earlier, issued catalogue purchase
 admission slot. Admission checks the approval base, definition hashes, definer
 attributes and intervening routine or schema changes before admitting the
 grant. The guarded unit returns on the exact legacy baseline ledger entry.
-On either qualified generation, the exact baseline and definition ledger
-entries and a ready login are required for the unit to commit.
+On either qualified generation, verify the exact baseline, issued definition
+ledger entry and the installed routines before the unit can commit. The unit
+records a zero-grant no-op if the role is absent. A present role must pass
+the qualified session check. The runner verifies the candidate ledger and
+permissions in the same transaction before commit.
 
 For either qualified generation and role mode, the host provisions
 `openlup_checkout_owner` outside the migration session. Use a dedicated login
 with `NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`,
-no owned objects, memberships, or role defaults. Give it effective database
-CONNECT and public schema USAGE. TEMP usually comes from the database owner's
-grant to PUBLIC. Inspect `pg_database` with `aclexplode(datacl)` (use the
-database default ACL if `datacl` is null) to identify the grantor. On PostgreSQL 16,
-a non-superuser who creates the login with `CREATEROLE` receives membership in
-it from the bootstrap authority. Use `pg_auth_members` to find the membership
-and its grantor, then have the grantor clear it. With the database owner's
-approval, grant TEMP directly to each supported role that needs it, then revoke
-TEMP from PUBLIC. Before the migration window, use `has_database_privilege` to
-verify each supported role's intended TEMP access and the checkout login's lack
-of TEMP. If the host or provider cannot provision this exact login or clear
-these edges, the installer refuses the grant with `checkout_owner_login_unready`.
+no owned objects, memberships, role defaults or expiry, and the default
+connection limit. Give it effective database CONNECT without grant option
+and public schema USAGE. On PostgreSQL 16, a non-superuser with `CREATEROLE`
+who creates the login receives a membership from the bootstrap authority.
+Inspect `pg_auth_members` and have the grantor remove that edge. The database
+owner must preserve TEMP for the selected installation roles that use it,
+then revoke TEMP from PUBLIC. Inspect `pg_database` with `aclexplode(datacl)`
+or the database default ACL if `datacl` is null. Verify the supported TEMP
+access and the checkout login's lack of it with `has_database_privilege`.
+Coordinate this handoff with each qualified database owner on the cluster.
 
-Either qualified projector omits the dormant login. After the guarded unit is
-recorded, readback requires the three non-grantable EXECUTE grants from the
-migration owner and projects the login and those grants. Keep checkout
-credentials unbound until qualification passes.
+A qualified readback admits zero local grants or the exact three issued,
+non-grantable grants from the definition owner. It verifies the routines
+and all stored ACLs before omitting the validated role and grant rows
+from the canonical inventory. The effective state comes from the live
+database. Connected-store restore keeps the target's qualifying state.
+
+Once the selected catalogue contains the grant and the ledger records it,
+the definition owner can apply or verify it through the installed package's
+`applyPlatformCheckoutOwnerGrant`. Exclude concurrent host role/default
+administration across the cluster and out-of-band local DDL and ACL changes
+until the operation completes. It uses the migration session lock, checks
+the recorded plan and live definitions, verifies the grants before commit
+and leaves the ledger intact. See the
+[upgrade handoff](../../packages/core/docs/guide/upgrade/database-migrations.md#prepare-the-optional-checkout-owner)
+for the profile roles and callable example.
 
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON

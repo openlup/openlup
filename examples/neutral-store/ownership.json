@@ -179,6 +179,15 @@
     "test/locales.test.ts",
     "test/subscription-creation.test.ts"
   ],
+  "providerQualification": {
+    "managed": [
+      "host/provider-portable.ts",
+      "host/provider-response.ts",
+      "host/provider-transport.ts",
+      "host/provider-qualification.ts",
+      "test/provider-qualification.test.ts"
+    ]
+  },
   "managedEditRoutes": {
     "host/editor-catalogue.ts": ["owned/catalogue.ts", "owned/catalogue-rules.cjs"],
     "installation/install.ts": ["owned/catalogue.ts", "owned/catalogue-rules.cjs"]

@@ -98,7 +98,11 @@ function packageFixture(consumer: string, name: string, exports: Record<string, 
 function fixture() {
   const consumer = scratch();
   writeFileSync(join(consumer, "package.json"), '{"type":"module"}');
-  packageFixture(consumer, "@openlup/core", { ".": "./index.js", "./payment": "./payment.js", "./readiness": { types: "./readiness.d.ts", default: "./readiness.js" } });
+  packageFixture(consumer, "@openlup/core", {
+    ".": "./index.js", "./payment": "./payment.js", "./pricing": { types: "./pricing.d.ts", default: "./index.js" },
+    "./readiness": { types: "./readiness.d.ts", default: "./readiness.js" },
+  });
+  cpSync(join(root, "packages/core/dist/pricing/commerceMoneyV2.d.ts"), join(consumer, "node_modules/@openlup/core/pricing.d.ts"));
   writeFileSync(join(consumer, "node_modules/@openlup/core/payment.js"), "export {};\n");
   writeFileSync(join(consumer, "node_modules/@openlup/core/payment.d.ts"), "export type PaymentIntentStatus = 'paid';\n");
   writeFileSync(join(consumer, "node_modules/@openlup/core/readiness.js"), 'export async function checkReadiness() { throw new Error("synthetic readiness is import-only"); }\n');
