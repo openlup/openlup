@@ -9,13 +9,16 @@ import { padResponseTime } from "../../server/_lib/timing.js";
 import { resolveCustomerSessionBinding } from "../../server/runtime/customers/customerSessionBinding.js";
 
 // Same package engine, schemas, SDK clients, quota and padding as the customer route.
-export function createEnvelopeCustomerMagicLink(env: { url: string; anonKey: string; serviceRoleKey: string; origin: string }) {
+export function createEnvelopeCustomerMagicLink(
+  env: { url: string; anonKey: string; serviceRoleKey: string; origin: string },
+  addressEnv: NodeJS.ProcessEnv,
+) {
   return (req: HttpRequest, res: HttpResponse) => createCustomerMagicLinkHandler({
     enabled: () => true, env: { PLATFORM_BUNDLE: "node-supabase" },
     requestSchema: customerMagicLinkRequestSchema, responseSchema: customerMagicLinkResponseSchema,
     readEnvironment: () => env, createCustomerClient, createCustomerServiceClient,
     checkAttempt: checkAndRecordCustomerMagicLinkAttempt,
-    extractClientIp: () => rateLimitClientAddress(req), padResponseTime,
+    extractClientIp: () => rateLimitClientAddress(req, addressEnv), padResponseTime,
     redirectOrigins: [env.origin], callbackPath: () => "/account/auth/callback", resolveSession: resolveCustomerSessionBinding,
   })(req, res);
 }

@@ -21,6 +21,7 @@ function response() {
 }
 const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
 const hashLimiterKey = (value: string) => createHash("sha256").update(value).digest("hex");
+const directIngressEnv: NodeJS.ProcessEnv = {};
 
 async function assertLimiterAddress(s: Setup, email: string, remoteAddress: string, route: "reference" | "managed") {
   const { service } = createEnvelopeClients(s);
@@ -36,7 +37,7 @@ async function assertLimiterAddress(s: Setup, email: string, remoteAddress: stri
 
 async function capturedSession(s: Setup, email: string, customerSignIn?: ReturnType<typeof createEnvelopeCustomerMagicLink>) {
   const res = response();
-  const requestSignIn = customerSignIn ?? createReferenceAccountHandlers(s, s.origin).requestSignIn;
+  const requestSignIn = customerSignIn ?? createReferenceAccountHandlers(s, s.origin, directIngressEnv).requestSignIn;
   const remoteAddress = customerSignIn ? "192.0.2.32" : "192.0.2.31";
   const forwardedAddress = customerSignIn ? "192.0.2.21" : "192.0.2.20";
   await requestSignIn({
@@ -228,7 +229,7 @@ async function softAccountFirstLogin(s: Setup) {
   }
   assert.deepEqual(authState(), { id, confirmed: null }, "provisioning replay confirmed the user");
 
-  const requestSignIn = createEnvelopeCustomerMagicLink(s);
+  const requestSignIn = createEnvelopeCustomerMagicLink(s, directIngressEnv);
   const session = await capturedSession(s, email, requestSignIn);
   const { data, error } = await actor.auth.getUser(session.access_token);
   assert.equal(error, null);
