@@ -173,6 +173,7 @@ checkpoint and stores the following message in `platform_job_runs.error`.
 Failed pages return HTTP 502 with the original diagnostic. A checkpoint-read
 failure makes no provider call. The next acquired polling tick starts at page 0.
 Repeated ledger read errors can delay the repeated-failure bound for a page, but no exception is ever skipped.
+A polling run that crashes after taking over from a stale one can leave a lower failure count, which delays the repeated-failure bound; nothing is skipped.
 Sequential cursor translation belongs to the adapter.
 
 Pass the selected adapter's `orderIdentity` mapping to native intake when its
