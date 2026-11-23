@@ -961,7 +961,7 @@ privacy contributor owns their export and erasure alongside parcel contacts.
 
 ### Native destination receipt authority
 
-The [destination receipt forward](../../db/platform/migrations/20261125040000_commerce_destination_v2_receipts.sql)
+The [destination receipt forward](../../db/platform/migrations/20261125080000_commerce_destination_v2_receipts.sql)
 adds a private receipt with the original scoped identity and success, an event
 UUID and schema version, and finite database creation time. Fresh work uses an
 owner transaction under READ COMMITTED. It takes the scoped advisory lock, the

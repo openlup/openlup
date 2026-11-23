@@ -6880,8 +6880,20 @@
         "dataStatements": []
       },
       {
+        "row": "preview-noop-acceptance",
+        "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "previewNoopAcceptance": true,
+        "existingTableStatements": [
+          "ALTER TABLE public.subscription_quote_previews ADD COLUMN accepted_noop_receipt_id uuid REFERENCES public.subscription_command_receipts(id);"
+        ]
+      },
+      {
         "row": "destination-receipts",
-        "path": "db/platform/migrations/20261125040000_commerce_destination_v2_receipts.sql",
+        "path": "db/platform/migrations/20261125080000_commerce_destination_v2_receipts.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -6915,18 +6927,6 @@
         ],
         "absorptionCensusTables": [
           "public.commerce_destination_v2_receipts"
-        ]
-      },
-      {
-        "row": "preview-noop-acceptance",
-        "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
-        "replacedFunctions": [],
-        "createdFunctions": [],
-        "grantOnlyFunctions": [],
-        "dataStatements": [],
-        "previewNoopAcceptance": true,
-        "existingTableStatements": [
-          "ALTER TABLE public.subscription_quote_previews ADD COLUMN accepted_noop_receipt_id uuid REFERENCES public.subscription_command_receipts(id);"
         ]
       }
     ]
@@ -10177,7 +10177,12 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261125040000_commerce_destination_v2_receipts.sql",
+      "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
+      "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049",
+      "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261125080000_commerce_destination_v2_receipts.sql",
       "sha256": "e95c8e81311c0258862bbbf506ae55972c9c6b7869e8c94a58e9e0e4e53ec8e1",
       "functions": [
         {
@@ -10211,11 +10216,6 @@
           "afterSha256": "7cc5c9939ff20b7209c3c98b010dfcf6d0efca0200bc05480e157722dec1fef1"
         }
       ]
-    },
-    {
-      "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
-      "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049",
-      "functions": []
     }
   ],
   "managedExactForwards": [
