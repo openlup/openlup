@@ -81,10 +81,7 @@ installation pins may change only `current`, preserving all historical bytes.
 SQL, size caps and every other resolution retain review. Run `npm run landing:merge`
 from a clean committed checkout to merge the fetched `origin/main`, refresh the
 carriers through their owners and local PostgreSQL, and make a DCO merge commit.
-It installs once and rechecks the toolchain when the merge changes its inputs.
-Authored conflicts stay open for resolution. Other failures trigger Git rollback.
-See [Derived landing carriers](CONTRIBUTING.md#derived-landing-carriers) for the
-install and recovery steps. The helper never pushes. Run
+It leaves authored conflicts for resolution and never pushes. Run
 `npm run inventory:refresh` to measure the five current installation profiles;
 it rewrites only `current` in the shared inventory data file.
 
