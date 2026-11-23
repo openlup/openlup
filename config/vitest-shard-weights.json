@@ -140,6 +140,7 @@
     "tests/postgres/connectedStoreCatalogRevisions.test.ts": 113411,
     "tests/postgres/connectedStorePaymentMethods.test.ts": 21327,
     "tests/postgres/connectedStorePromotionClaims.test.ts": 80859,
+    "tests/postgres/connectedStoreRestoreUpgrade.test.ts": 65659,
     "tests/postgres/connectedStoreStarterRelations.test.ts": 97331,
     "tests/postgres/connectedStoreTransfer.test.ts": 300296,
     "tests/postgres/contactClientRegistrar.test.ts": 9265,

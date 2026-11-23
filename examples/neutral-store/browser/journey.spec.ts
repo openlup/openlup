@@ -228,6 +228,15 @@ for (const locale of market.locales) {
     await expect(page.getByRole('button', { name: copy[locale].google, exact: true })).toBeVisible();
   });
 
+  test(`${locale}: limits page explains checkout quotas across restarts`, async ({ page }) => {
+    await page.goto(routes.limits[locale]);
+    const description = {
+      en: 'Default checkout attempt limits survive restarts on the same PostgreSQL database.',
+      pl: 'Domyślne limity prób złożenia zamówienia obowiązują po ponownym uruchomieniu na tej samej bazie PostgreSQL.',
+    };
+    await expect(page.locator('main').getByText(description[locale], { exact: true })).toBeVisible();
+  });
+
   test(`${locale}: method setup and saved account draft actions show their named refusals`, async ({ page }) => {
     for (const path of [routes.account[locale], routes.limits[locale]]) {
       await page.goto(path);

@@ -144,13 +144,20 @@ export or erasure workflow; implement your privacy policy around those files.
 
 ## Checkout admission limits
 
-Attempt quotas and command-identity bindings are process-local and reset on
-restart. Before resolving a contact, checkout checks configured email and
-requester quotas, retention and capacity. Exact replay keeps the same command
-key, normalized email and requester without another quota count. Changing the
-identity under a retained key refuses even with a replacement quota callback.
-Capacity failure closes admission; denied quota attempts add no quota count.
-Your host owns retention of unpurchased contacts.
+The default attempt quotas survive restarts on the same PostgreSQL database.
+Command-identity bindings remain process-local and reset on restart. Before
+resolving a contact, checkout checks configured email and requester quotas,
+retention and capacity. Exact replay keeps the same command key, normalized
+email and requester without another quota count. Changing the identity under
+a retained binding refuses even with a replacement quota callback. Denied quota
+attempts add no quota count. Your host owns retention of unpurchased contacts.
+
+For `starter_attempt_limited`, wait for the quota window or retained attempts
+to age out, or replay a bound key with its original contact and requester. For
+invalid input, use the normal checkout submit path. Correct invalid deployed
+limits and restart. If the database could not admit an attempt, verify the
+[database forward](../upgrade/database-migrations.md#check-application-compatibility)
+and restore database service before retrying.
 
 Purchase and sign-in share the bounded `purchase.inputLimits.email` setting;
 overlong purchase email

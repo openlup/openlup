@@ -4146,6 +4146,22 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/accounting-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/accounting-testing.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/accounting.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/adapter-kit.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/bff.api.md",
       "class": "public-output"
     },
@@ -4171,6 +4187,10 @@
     },
     {
       "path": "packages/platform/api/channels-server.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/channels-testing.api.md",
       "class": "public-output"
     },
     {
@@ -4211,6 +4231,10 @@
     },
     {
       "path": "packages/platform/api/communications-resend.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/communications-testing.api.md",
       "class": "public-output"
     },
     {
@@ -4323,6 +4347,18 @@
     },
     {
       "path": "packages/platform/api/migrations.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/observability-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/observability-testing.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/observability.api.md",
       "class": "public-output"
     },
     {
@@ -5414,6 +5450,34 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/accounting/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/accounting/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/accounting/testing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/adapter-kit/hardenedFetch.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/adapter-kit/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/adapter-kit/oauth2.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/adapter-kit/webhookCrypto.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/bff/dispatch.ts",
       "class": "public-output"
     },
@@ -6047,6 +6111,10 @@
     },
     {
       "path": "packages/platform/src/channels/server/quarantineClassifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/channels/testing/index.ts",
       "class": "public-output"
     },
     {
@@ -6818,6 +6886,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/adapterConformance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/authEmailError.ts",
       "class": "public-output"
     },
@@ -7198,6 +7270,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/scriptedCommunicationsFake.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/settings-data.json",
       "class": "public-output"
     },
@@ -7218,7 +7294,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/communications/testing/adapterConformance.ts",
+      "path": "packages/platform/src/communications/testing/index.ts",
       "class": "public-output"
     },
     {
@@ -8667,6 +8743,18 @@
     },
     {
       "path": "packages/platform/src/migrations/selectedCatalogProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/observability/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/observability/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/observability/testing/index.ts",
       "class": "public-output"
     },
     {
@@ -10206,6 +10294,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/accounting/accountingConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/adapter-kit/adapterKit.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/agentsWiringExample.ts",
       "class": "public-output"
     },
@@ -10411,6 +10507,10 @@
     },
     {
       "path": "packages/platform/test/catalog/variantCombination.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/channels/channelConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -10974,6 +11074,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/communicationsTestingConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/consentDefaults.test.ts",
       "class": "public-output"
     },
@@ -11063,6 +11167,10 @@
     },
     {
       "path": "packages/platform/test/communications/nativeSync.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/resend/conformance.test.ts",
       "class": "public-output"
     },
     {
@@ -11791,6 +11899,10 @@
     },
     {
       "path": "packages/platform/test/migrations/postgresRunner.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/observability/telemetryConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -12682,6 +12794,138 @@
       "class": "public-output"
     },
     {
+      "path": "recipes/accounting/quickbooks-online/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/quickbooks-online/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/quickbooks-online/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/quickbooks-online/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/quickbooks-online/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/quickbooks-online/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/quickbooks-online/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/quickbooks-online/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/xero/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/xero/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/xero/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/xero/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/xero/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/xero/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/xero/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/accounting/xero/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/channels/shopify/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/channels/shopify/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/channels/shopify/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/channels/shopify/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/channels/shopify/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/channels/shopify/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/channels/shopify/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/channels/shopify/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/communications/postmark/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/communications/postmark/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/communications/postmark/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/communications/postmark/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/communications/postmark/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/communications/postmark/server/webhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/communications/postmark/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/communications/postmark/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/communications/postmark/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "recipes/fulfillment/amazon-mcf/LIVE_QUALIFICATION.md",
       "class": "public-output"
     },
@@ -12766,6 +13010,70 @@
       "class": "public-output"
     },
     {
+      "path": "recipes/observability/axiom/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/axiom/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/axiom/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/axiom/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/axiom/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/axiom/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/axiom/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/axiom/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/otel-otlp/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/otel-otlp/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/otel-otlp/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/otel-otlp/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/otel-otlp/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/otel-otlp/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/otel-otlp/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/observability/otel-otlp/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "recipes/payments/adyen/LIVE_QUALIFICATION.md",
       "class": "public-output"
     },
@@ -12846,6 +13154,42 @@
       "class": "public-output"
     },
     {
+      "path": "recipes/payments/paypal/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/paypal/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/paypal/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/paypal/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/paypal/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/paypal/server/webhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/paypal/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/paypal/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/payments/paypal/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "recipes/schema/csp.schema.json",
       "class": "public-output"
     },
@@ -12859,6 +13203,106 @@
     },
     {
       "path": "recipes/scripts/tests/generate-index.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/easypost/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/easypost/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/easypost/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/easypost/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/easypost/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/easypost/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/easypost/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/easypost/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/shipengine/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/shipengine/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/shipengine/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/shipengine/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/shipengine/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/shipengine/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/shipengine/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/shipengine/tests/mount-proof.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/usps/LIVE_QUALIFICATION.md",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/usps/recipe.json",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/usps/server/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/usps/server/client-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/usps/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/usps/server/oauth.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/usps/tests/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/usps/tests/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "recipes/shipping/usps/tests/mount-proof.test.ts",
       "class": "public-output"
     },
     {
@@ -31027,10 +31471,6 @@
     },
     {
       "path": "tests/postgres/connectedStoreCatalogRevisions.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/postgres/connectedStoreHistoricalPacket.fixture.ts",
       "class": "public-output"
     },
     {

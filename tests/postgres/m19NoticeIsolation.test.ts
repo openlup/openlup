@@ -18,7 +18,6 @@ import { createPostgresDestinationPort } from "@openlup/platform/commerce/server
 import { createPostgresOperatorAuthority } from "@openlup/platform/account-support";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
-import { projectHistoricalCapture } from "./connectedStoreHistoricalPacket.fixture.js";
 import { readPlatformMigrationManifest, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
@@ -308,11 +307,7 @@ it("checks the complete existing-routine dispatch path after all eight approved 
   expect(blocked).toEqual([]);
 });
 
-it.each([
-  ["current", undefined],
-  ["before governed lifecycle", "25bc3a527c27eb205c60b26e388d475bc8532638e66537438e60659a77214f20"],
-  ["before subscription profiles", "ec9028a590334948606d160362e9363c50793284548c2b9c092a71632234724c"],
-] as const)("retains native notice sources and accepted receipts from the %s bootstrap inventory", async (_inventory, sourceCatalogueId) => {
+it("retains native notice sources, accepted receipts and edit quotes from the current bootstrap inventory", async () => {
   const target = await runPostgresContainer({ name: `m19-g8-transfer-${process.pid}`, password: "synthetic-conformance" });
   const pools: Pool[] = [];
   try {
@@ -340,10 +335,14 @@ it.each([
         finally { client.release(); }
       } },
     });
-    const current = await capture(admin, "native-notices");
-    const packet = sourceCatalogueId ? await projectHistoricalCapture(admin, current, sourceCatalogueId) : current;
+    await admin.query(`INSERT INTO public.subscription_edit_quotes(subscription_id,idempotency_key,request_fingerprint,
+      quote_hash,expected_template_version,proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,expires_at)
+      SELECT subscription_id,'fixture-quote',repeat('b',64),repeat('c',64),1,'[]',28,200,200,'XXX','2026-11-02'
+      FROM public.subscription_dunning_cases ORDER BY id LIMIT 1`);
+    const packet = await capture(admin, "native-notices");
     const freshTarget = await capture(owner, "new-target");
-    const tables = ["subscription_dunning_cases", "subscription_dunning_notifications", "subscription_reminder_ledger", "transactional_delivery_receipts"];
+    const tables = ["subscription_dunning_cases", "subscription_dunning_notifications", "subscription_reminder_ledger",
+      "transactional_delivery_receipts", "subscription_edit_quotes"];
     for (const table of tables) expect(packet.owned.find(rows => rows.table === table)!.rows.length).toBeGreaterThan(0);
     const input = { owner, installation: selection, packet, freshTarget };
     expect((await restoreConnectedNativeStore(input)).replayed).toBe(false);

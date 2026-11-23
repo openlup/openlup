@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "id": "shipping/usps",
+  "domain": "shipping",
+  "providerKind": "usps",
+  "displayName": "USPS Domestic Prices (API v3)",
+  "summary": "Zero-SDK USPS Domestic Prices API v3 recipe with single-flight OAuth2 client_credentials auth, pinned HTTPS egress, US 5-digit ZIP pre-flight, metric-to-imperial conversion, and exact BigInt rate parsing.",
+  "regions": [
+    "US",
+    "NA"
+  ],
+  "status": "verified",
+  "openlupPlatformRange": "^1.4.0",
+  "testedAgainstPlatformVersion": "1.4.0-dev",
+  "contractImports": [
+    "@openlup/platform/shipping",
+    "@openlup/platform/shipping/contracts"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/shipping/testing",
+    "exportName": "runShippingRateAdapterConformance",
+    "mode": "full"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://apis.usps.com",
+    "https://apis-tem.usps.com"
+  ],
+  "webhookAuth": "none",
+  "browserSurface": {
+    "kind": "none"
+  },
+  "supportedCurrenciesPolicy": "fixed",
+  "staticCapabilities": {
+    "contractVersion": "shipping.carrier_rate.v1",
+    "providerKind": "usps",
+    "multiParcel": false,
+    "dimensionsRequired": true,
+    "supportedOriginCountries": [
+      "US"
+    ],
+    "supportedDestinationCountries": [
+      "US"
+    ],
+    "supportedCurrencies": [
+      "USD"
+    ],
+    "deliveryKinds": [
+      "courier"
+    ],
+    "requiresCredentials": true
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "LIVE_QUALIFICATION.md",
+      "recipe.json",
+      "server/adapter.ts",
+      "server/client-contract.ts",
+      "server/index.ts",
+      "server/oauth.ts",
+      "tests/conformance.test.ts",
+      "tests/fixtures.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/shipping/usps/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/shipping/usps/tests/mount-proof.test.ts"
+  }
+}
