@@ -726,12 +726,12 @@
       "sha256": "700aab2616bff9c6049eb83af4efcea8596f36862a0de4c1dde1bca6647282a4"
     },
     {
-      "file": "db/platform/migrations/20261125030000_tax_coverage_revisions.sql",
-      "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3"
-    },
-    {
       "file": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
       "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049"
+    },
+    {
+      "file": "db/platform/migrations/20261125070000_tax_coverage_revisions.sql",
+      "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3"
     }
   ],
   "objectInventorySha256": "ad257320671af56ffb8c281ee3c87906bc7ec0bb145e8567bda82c5dd8ae3d7e",
@@ -1486,12 +1486,12 @@
         "sha256": "700aab2616bff9c6049eb83af4efcea8596f36862a0de4c1dde1bca6647282a4"
       },
       {
-        "file": "db/platform/migrations/20261125030000_tax_coverage_revisions.sql",
-        "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3"
-      },
-      {
         "file": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
         "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049"
+      },
+      {
+        "file": "db/platform/migrations/20261125070000_tax_coverage_revisions.sql",
+        "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3"
       }
     ],
     "objectInventorySha256": {
@@ -2246,12 +2246,12 @@
         "sha256": "700aab2616bff9c6049eb83af4efcea8596f36862a0de4c1dde1bca6647282a4"
       },
       {
-        "file": "db/platform/migrations/20261125030000_tax_coverage_revisions.sql",
-        "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3"
-      },
-      {
         "file": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
         "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049"
+      },
+      {
+        "file": "db/platform/migrations/20261125070000_tax_coverage_revisions.sql",
+        "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3"
       }
     ],
     "objectInventorySha256": {

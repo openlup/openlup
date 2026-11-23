@@ -6880,8 +6880,20 @@
         "dataStatements": []
       },
       {
+        "row": "preview-noop-acceptance",
+        "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "previewNoopAcceptance": true,
+        "existingTableStatements": [
+          "ALTER TABLE public.subscription_quote_previews ADD COLUMN accepted_noop_receipt_id uuid REFERENCES public.subscription_command_receipts(id);"
+        ]
+      },
+      {
         "row": "tax-coverage-revisions",
-        "path": "db/platform/migrations/20261125030000_tax_coverage_revisions.sql",
+        "path": "db/platform/migrations/20261125070000_tax_coverage_revisions.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -6909,18 +6921,6 @@
             "table": "public.tax_coverage_revisions",
             "sha256": "8f4a1963fafd18f444fb2ddc31e023d0421b3afcd352792c79f87cbc52746f27"
           }
-        ]
-      },
-      {
-        "row": "preview-noop-acceptance",
-        "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
-        "replacedFunctions": [],
-        "createdFunctions": [],
-        "grantOnlyFunctions": [],
-        "dataStatements": [],
-        "previewNoopAcceptance": true,
-        "existingTableStatements": [
-          "ALTER TABLE public.subscription_quote_previews ADD COLUMN accepted_noop_receipt_id uuid REFERENCES public.subscription_command_receipts(id);"
         ]
       }
     ]
@@ -10171,7 +10171,12 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261125030000_tax_coverage_revisions.sql",
+      "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
+      "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049",
+      "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261125070000_tax_coverage_revisions.sql",
       "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3",
       "functions": [
         {
@@ -10195,11 +10200,6 @@
           "afterSha256": "8366de3d0bcd66159f18e0077f0eb4ee429425b5c2e05ad3c1e469e59399e379"
         }
       ]
-    },
-    {
-      "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
-      "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049",
-      "functions": []
     }
   ],
   "managedExactForwards": [
