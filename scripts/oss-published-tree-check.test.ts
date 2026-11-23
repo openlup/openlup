@@ -810,7 +810,8 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(admission).toContain("github.event_name == 'pull_request' && github.event.pull_request.draft == false");
     expect(admission).toContain("github.event.pull_request.user.login != 'dependabot[bot]'");
     expect(admission).toContain("needs: [dco, typecheck, install-proof, test, self-check, gitleaks]");
-    expect(admission).toContain("timeout-minutes: 8");
+    expect(admission).toContain("timeout-minutes: 15");
+    expect(admission).toContain("npm ci --ignore-scripts --prefer-offline --no-audit --no-fund");
     expect(admission).toContain("issues: read\n      contents: read\n      pull-requests: read");
     expect(admission).not.toMatch(/(?:actions|contents|issues|pull-requests): write/u);
     expect(admission).toContain("ref: main\n          fetch-depth: 0\n          persist-credentials: false");

@@ -594,7 +594,7 @@ jobs:
           node-version: 24.21.0
           package-manager-cache: false
       - name: Install trusted review toolchain
-        run: npm ci --prefer-offline --no-audit --no-fund
+        run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
       - name: Await exact-candidate native review
         env:
           GH_TOKEN: ${{ github.token }}
