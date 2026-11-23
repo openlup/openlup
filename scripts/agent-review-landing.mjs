@@ -419,8 +419,7 @@ export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = p
   const projection = 'packages/platform/src/migrations/catalog.ts';
   const projectionBefore = readFileSync(resolve(cwd, projection), 'utf8');
   // Only the migration projection feeds compilation. Validate selectors after the reports exist.
-  runGenerators(`const { checkPlatformMigrationProjection } = await import(${mergedModule('scripts/packages/platform-migration-projection.ts')});
-    const errors = checkPlatformMigrationProjection(process.cwd(), true);
+  runGenerators(`const errors = owners.syncPlatformMigrationProjection(process.cwd());
     if (errors.length) throw new Error(errors.join('; '));`);
   if (readFileSync(resolve(cwd, projection), 'utf8') !== projectionBefore) inputs.push(projection);
   const { reports, builds, settings } = carrierPlan(owners, inputs);

@@ -1,6 +1,6 @@
 // Import the trusted owners here, never the predicted tree's executable files.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 // eslint-disable-next-line no-restricted-imports -- landing needs the trusted SQL inventory owner before workspace packages are installed
 import { renderSqlInventory } from '../packages/core/scripts/documentation-sql-inventory.ts';
@@ -38,15 +38,31 @@ export function generatedCarrier(path) {
     'config/openlup-publication-catalog.json', 'docs/platform/SOURCE_MAP.md', SQL_REFERENCE].includes(path) ||
     /^packages\/platform\/sql\/[A-Za-z0-9_-]+\.sql$/u.test(path);
 }
-export function runLandingGenerators(root, paths) {
+const mirrorManifest = root => JSON.parse(readFileSync(join(root, 'packages/platform/sql/manifest.json'), 'utf8'))
+  .migrations.map(({ file }) => {
+    if (!/^(?:(?:q2|qa|qb)_)?\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(file)) throw new Error(`invalid projected SQL mirror: ${file}`);
+    return `packages/platform/sql/${file}`;
+  });
+
+export function syncPlatformMigrationProjection(root) {
+  let prior;
+  try { prior = new Set(mirrorManifest(root)); }
+  catch { prior = new Set(); }
   const errors = checkPlatformMigrationProjection(root, true);
+  if (errors.length) return errors;
+  const current = new Set(mirrorManifest(root));
+  for (const path of prior) if (!current.has(path) && existsSync(join(root, path))) unlinkSync(join(root, path));
+  return errors;
+}
+
+export function runLandingGenerators(root, paths) {
+  const errors = syncPlatformMigrationProjection(root);
   if (errors.length) throw new Error(errors.join('; '));
   const catalogPath = join(root, 'config/openlup-publication-catalog.json');
   const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'));
-  const projection = JSON.parse(readFileSync(join(root, 'packages/platform/sql/manifest.json'), 'utf8'));
-  const mirrors = new Set(projection.migrations.map(({ file }) => `packages/platform/sql/${file}`));
+  const mirrors = new Set(mirrorManifest(root));
   const mirrorShape = /^packages\/platform\/sql\/(?:(?:q2|qa|qb)_)?\d{14}_[A-Za-z0-9_-]+\.sql$/u;
-  const rows = catalog.publicPaths.filter(row => !mirrorShape.test(row.path) || mirrors.has(row.path));
+  const rows = catalog.publicPaths.filter(row => !mirrorShape.test(row.path) || mirrors.has(row.path) || existsSync(join(root, row.path)));
   for (const path of mirrors) if (!rows.some(row => row.path === path)) rows.push({ path, class: 'public-output' });
   rows.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   catalog.publicPaths = rows;

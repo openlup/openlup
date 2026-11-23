@@ -756,10 +756,29 @@ it('does not auto-admit an authored SQL bystander as a generated mirror', () => 
     runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
     const paths = JSON.parse(read(CATALOGUE)).publicPaths.map(({ path }) => path);
     expect(paths).not.toContain('packages/platform/sql/rogue.sql');
+    expect(paths).toContain('packages/platform/sql/20260809150001_job_run_ledger_v3.sql');
   } finally {
     rmSync(join(root, 'packages/platform/sql/rogue.sql'), { force: true });
     restoreDerivedFixture();
   }
+});
+
+it('removes a stale generated SQL mirror and its catalogue row', () => {
+  const stale = 'packages/platform/sql/20990101040000_stale_fixture.sql';
+  try {
+    checkout(merged);
+    const projection = JSON.parse(read('packages/platform/sql/manifest.json'));
+    projection.migrations.push({ file: '20990101040000_stale_fixture.sql', source: 'db/platform/migrations/20990101040000_stale_fixture.sql', sha256: '0'.repeat(64) });
+    write('packages/platform/sql/manifest.json', json(projection));
+    write(stale, 'SELECT 1;\n');
+    const catalog = JSON.parse(read(CATALOGUE));
+    catalog.publicPaths.push({ path: stale, class: 'public-output' });
+    catalog.publicPaths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+    write(CATALOGUE, json(catalog));
+    runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
+    expect(existsSync(join(root, stale))).toBe(false);
+    expect(JSON.parse(read(CATALOGUE)).publicPaths.some(({ path }) => path === stale)).toBe(false);
+  } finally { rmSync(join(root, stale), { force: true }); restoreDerivedFixture(); }
 });
 
 it('classifies SQL and migration-inventory inputs conservatively', () => {
