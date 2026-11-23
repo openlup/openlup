@@ -47,13 +47,15 @@ function rejection() {
 
 function fenceRefusal(error: unknown, locks: boolean) {
   const code = (error as { code?: unknown } | null)?.code;
+  if (error === expired || (locks && (code === "55P03" || code === "40P01"))) {
+    return Object.assign(unavailable(), { hint: retry });
+  }
   if (locks && code === "40001") return Object.assign(visibilityChanged(), { hint: retry });
-  const contention = locks && (code === "55P03" || code === "40P01");
-  if (locks && !contention && code !== "57014" && error instanceof Error && ownerRefusals.has(error.message)) {
+  if (locks && code !== "57014" && error instanceof Error && ownerRefusals.has(error.message)) {
     return Object.getPrototypeOf(error) === Error.prototype &&
       Reflect.ownKeys(error).every(key => key === "stack" || key === "message") ? error : new Error(error.message);
   }
-  return Object.assign(unavailable(), { hint: error === expired || contention ? retry : checklist });
+  return Object.assign(unavailable(), { hint: checklist });
 }
 
 function monitorConnections() {
@@ -71,37 +73,49 @@ function monitorConnections() {
   };
 }
 
+function fenceBudget(timeoutMs: number) {
+  const deadline = performance.now() + timeoutMs;
+  const wall = rejection();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiredNow = () => performance.now() >= deadline;
+  function remaining() {
+    const ms = Math.ceil(deadline - performance.now());
+    if (ms <= 0) throw expired;
+    return ms;
+  }
+  function tick() {
+    const ms = Math.ceil(deadline - performance.now());
+    if (ms <= 0) wall.reject(expired);
+    else timer = setTimeout(tick, Math.min(ms, maxTimeoutMs));
+  }
+  tick();
+  return { remaining, expiredNow, wall: wall.promise, stop: () => clearTimeout(timer) };
+}
+
 async function reservePair<Connection extends FenceConnection>(
-  pool: FencePool<Connection>, timeoutMs: number, monitor?: ReturnType<typeof monitorConnections>,
+  pool: FencePool<Connection>, budget: ReturnType<typeof fenceBudget>,
+  monitor: ReturnType<typeof monitorConnections>, abort: Promise<never>,
 ): Promise<[Connection, Connection]> {
   const reserved: Connection[] = [];
-  let cancelled = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let closed = false;
   async function acquire() {
     const client = await pool.connect();
-    if (cancelled) {
+    if (closed || budget.expiredNow()) {
       client.release();
-      throw unavailable();
+      throw expired;
     }
     reserved.push(client);
-    monitor?.watch(client);
+    monitor.watch(client);
     return client;
   }
   try {
-    return await Promise.race([
-      Promise.all([acquire(), acquire()]),
-      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(expired), timeoutMs); }),
-      ...(monitor ? [monitor.abort] : []),
-    ]);
+    const pair = await Promise.race([abort, Promise.all([acquire(), acquire()])]);
+    budget.remaining();
+    return pair;
   } catch (error) {
-    cancelled = true;
-    for (const client of reserved) {
-      if (monitor) monitor.release(client, monitor.failed);
-      else client.release();
-    }
-    throw monitor ? fenceRefusal(error, false) : unavailable();
-  } finally {
-    clearTimeout(timer);
+    closed = true;
+    for (const client of reserved) monitor.release(client, monitor.failed);
+    throw fenceRefusal(budget.expiredNow() ? expired : error, false);
   }
 }
 
@@ -117,41 +131,20 @@ const snapshotSql = `WITH snap AS MATERIALIZED (SELECT pg_current_snapshot() AS 
 type Visibility = { xmax: string; xip: string[]; primary: boolean };
 
 async function runPrelock(
-  writer: FenceConnection, prelock: (writer: FenceLockWriter) => Promise<void>,
-  deadline: number, abort: Promise<never>,
+  dispatch: FenceLockWriter["query"], prelock: (writer: FenceLockWriter) => Promise<void>, abort: Promise<never>,
 ) {
   const aborted = rejection();
-  let timer: ReturnType<typeof setTimeout> | undefined;
   let pending = false, closed = false;
-  function remaining() {
-    const ms = Math.ceil(deadline - performance.now());
-    if (ms <= 0) throw expired;
-    return ms;
-  }
-  function expireAtWall() {
-    const ms = Math.ceil(deadline - performance.now());
-    if (ms <= 0) {
-      closed = true;
-      aborted.reject(expired);
-    } else timer = setTimeout(expireAtWall, Math.min(ms, maxTimeoutMs));
-  }
-  let originalLockMs = 0;
-  function setDispatchTimeouts() {
-    const ms = remaining();
-    const lockMs = originalLockMs > 0 ? Math.min(ms, originalLockMs) : ms;
-    return writer.query(`SET LOCAL lock_timeout = ${lockMs}; SET LOCAL statement_timeout = ${ms + wallMarginMs}`);
-  }
   const lockWriter: FenceLockWriter = {
     query<Row extends Record<string, unknown>>(text: string, values: unknown[] = []) {
       const work = (async () => {
-        if (closed || pending) throw new Error("Prelock must await one statement at a time");
+        if (closed || pending) {
+          if (pending && !closed) aborted.reject(unfinished);
+          throw new Error("Prelock must await one statement at a time");
+        }
         pending = true;
         try {
-          await setDispatchTimeouts();
-          if (closed) throw unfinished;
-          if (performance.now() >= deadline) throw expired;
-          // The extended protocol accepts exactly one SQL statement per request.
-          return await writer.query<Row>({ text, values, queryMode: "extended" });
+          return await dispatch<Row>(text, values);
         } catch (error) {
           aborted.reject(error);
           throw error;
@@ -163,35 +156,13 @@ async function runPrelock(
       return work;
     },
   };
-  expireAtWall();
   try {
     await Promise.race([aborted.promise, abort, (async () => {
-      remaining();
-      const { rows: [settings] } = await writer.query<{ statement: string; lock_ms: number }>(
-        "SELECT current_setting('statement_timeout') AS statement, setting::int AS lock_ms FROM pg_settings WHERE name='lock_timeout'",
-      );
-      originalLockMs = settings!.lock_ms;
-      // At the input ceiling, wait inside the budget until PostgreSQL can represent the backstop.
-      const overflow = Math.ceil(deadline + wallMarginMs - performance.now() - maxTimeoutMs);
-      if (overflow > 0) await delay(overflow + 1);
-      if (closed) throw expired;
-      await setDispatchTimeouts();
-      if (closed) throw expired;
-      remaining();
-      try {
-        await prelock(Object.freeze(lockWriter));
-      } finally {
-        closed = true;
-        if (pending) aborted.reject(unfinished);
-      }
+      await prelock(Object.freeze(lockWriter));
       if (pending) throw unfinished;
-      remaining();
-      await writer.query("SELECT set_config('lock_timeout',$1,true), set_config('statement_timeout',$2,true)",
-        [`${originalLockMs}ms`, settings!.statement]);
     })()]);
   } finally {
     closed = true;
-    clearTimeout(timer);
   }
 }
 
@@ -205,71 +176,128 @@ export async function withCatalogAdmissionFence<T, Connection extends FenceConne
     prelock?: (writer: FenceLockWriter) => Promise<void>;
   },
 ): Promise<T> {
-  const entry = { timeoutMs: input.timeoutMs, prelock: options?.prelock };
-  const { prelock, timeoutMs } = entry;
-  if (prelock !== undefined) {
-    if (typeof prelock !== "function") throw new TypeError("prelock must be a function");
-    if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > maxTimeoutMs) {
-      throw new TypeError("timeoutMs must be an integer from 1 to 2147483647");
-    }
+  const prelock = options?.prelock;
+  if (prelock !== undefined && typeof prelock !== "function") throw new TypeError("prelock must be a function");
+  const { timeoutMs, key, clientId, skuIds, revisionIds, priceListId } = input;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > maxTimeoutMs) {
+    throw new TypeError("timeoutMs must be an integer from 1 to 2147483647");
   }
-  const deadline = prelock ? performance.now() + timeoutMs : 0;
-  const monitor = prelock ? monitorConnections() : undefined;
-  const [writer, probe] = await reservePair(pool, timeoutMs, monitor);
-  let writerFailed = false;
-  let probeFailed = false;
-  let reading = false;
-  async function transact() {
-    await writer.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
-    const nonce = [randomInt(1, 2 ** 31), randomInt(1, 2 ** 31)];
-    const identity = (await writer.query<{ xid: string; pid: number }>(`SELECT pg_current_xact_id()::text AS xid, pg_backend_pid() AS pid
-      FROM pg_advisory_xact_lock($1::integer,$2::integer)`, nonce)).rows[0]!;
-    const scope = [identity.xid, identity.pid, ...nonce];
-    await writer.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))", [input.key]);
-    if (prelock && monitor) await runPrelock(writer, prelock, deadline, monitor.abort);
-    await writer.query("SELECT order_id FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1 FOR UPDATE", [input.key]);
-    await writer.query("SELECT id FROM public.clients WHERE id=$1 FOR KEY SHARE", [input.clientId]);
-    await writer.query("SELECT id FROM public.catalog_skus WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE", [input.skuIds]);
-    await writer.query("SELECT id FROM public.catalog_sku_revisions WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE", [input.revisionIds]);
-    await writer.query("SELECT public.catalog_admission_lock_shared()");
-    await writer.query("SELECT public.catalog_admission_lock_checkout_price($1,$2)", [input.priceListId, input.skuIds]);
-    const frozen = (await writer.query<Visibility>(snapshotSql, scope)).rows[0]!;
-    const current = (await probe.query<Visibility>({
-      text: snapshotSql, values: scope, query_timeout: prelock ? timeoutMs : input.timeoutMs,
-    }).catch(error => {
-      probeFailed = true;
-      throw prelock ? error : unavailable();
-    })).rows[0]!;
-    if (!frozen.primary || !current.primary) throw unavailable();
-    if (frozen.xmax !== current.xmax || frozen.xip.join(",") !== current.xip.join(",")) {
-      throw visibilityChanged();
-    }
-    const instant = (await writer.query<{ instant: string }>("SELECT clock_timestamp()::text AS instant")).rows[0]!.instant;
-    reading = true;
-    const result = await read(writer, instant);
-    await writer.query("COMMIT");
-    return result;
-  }
+  const entry = { key, clientId, skuIds: [...skuIds], revisionIds: [...revisionIds], priceListId };
+  const budget = fenceBudget(timeoutMs);
+  const monitor = monitorConnections();
+  const abort = Promise.race([budget.wall, monitor.abort]);
   try {
-    const work = transact();
-    return await (monitor ? Promise.race([work, monitor.abort]) : work);
-  } catch (error) {
-    writerFailed = error === expired || error === unfinished || monitor?.failed === true;
-    if (!writerFailed) {
-      try {
-        const rollback = writer.query("ROLLBACK");
-        await (monitor ? Promise.race([rollback, monitor.abort]) : rollback);
-      } catch { writerFailed = true; }
+    const [writer, probe] = await reservePair(pool, budget, monitor, abort);
+    let writerFailed = false, probeFailed = false, probePending = false;
+    let preparing = true, reading = false, writerPending = false;
+    let originalLockMs = 0;
+
+    function activeRemaining() {
+      const ms = budget.remaining();
+      if (!preparing || monitor.failed) throw unfinished;
+      return ms;
     }
-    throw prelock && (!reading || monitor?.failed)
-      ? fenceRefusal(error, !probeFailed && !monitor?.failed)
-      : error;
+
+    async function dispatch<Row extends Record<string, unknown>>(text: string, values: unknown[] = []) {
+      const ms = activeRemaining();
+      const lockMs = originalLockMs > 0 ? Math.min(ms, originalLockMs) : ms;
+      writerPending = true;
+      try {
+        await writer.query(`SET LOCAL lock_timeout = ${lockMs}; SET LOCAL statement_timeout = ${ms + wallMarginMs}`);
+        activeRemaining();
+        return await writer.query<Row>({ text, values, queryMode: "extended" });
+      } finally {
+        writerPending = false;
+      }
+    }
+
+    async function prepare() {
+      activeRemaining();
+      // Capture settings outside the transaction so the nonce still pins its snapshot.
+      const { rows: [settings] } = await writer.query<{ statement: string; lock_ms: number }>(
+        "SELECT current_setting('statement_timeout') AS statement, setting::int AS lock_ms FROM pg_settings WHERE name='lock_timeout'",
+      );
+      originalLockMs = settings!.lock_ms;
+      activeRemaining();
+      await writer.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      // At the input ceiling, wait inside the budget for a representable server timeout.
+      let overflow = activeRemaining() + wallMarginMs - maxTimeoutMs;
+      while (overflow > 0) {
+        await delay(overflow);
+        overflow = activeRemaining() + wallMarginMs - maxTimeoutMs;
+      }
+      const nonce = [randomInt(1, 2 ** 31), randomInt(1, 2 ** 31)];
+      const identity = (await dispatch<{ xid: string; pid: number }>(`SELECT pg_current_xact_id()::text AS xid, pg_backend_pid() AS pid
+      FROM pg_advisory_xact_lock($1::integer,$2::integer)`, nonce)).rows[0]!;
+      const scope = [identity.xid, identity.pid, ...nonce];
+      await dispatch("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))", [entry.key]);
+      if (prelock) {
+        activeRemaining();
+        await runPrelock(dispatch, prelock, abort);
+      }
+      await dispatch("SELECT order_id FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1 FOR UPDATE", [entry.key]);
+      await dispatch("SELECT id FROM public.clients WHERE id=$1 FOR KEY SHARE", [entry.clientId]);
+      await dispatch("SELECT id FROM public.catalog_skus WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE", [entry.skuIds]);
+      await dispatch("SELECT id FROM public.catalog_sku_revisions WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE", [entry.revisionIds]);
+      await dispatch("SELECT public.catalog_admission_lock_shared()");
+      await dispatch("SELECT public.catalog_admission_lock_checkout_price($1,$2)", [entry.priceListId, entry.skuIds]);
+      const frozen = (await dispatch<Visibility>(snapshotSql, scope)).rows[0]!;
+      const probeMs = activeRemaining();
+      probePending = true;
+      let current: Visibility | undefined;
+      try {
+        const result = await probe.query<Visibility>({ text: snapshotSql, values: scope, query_timeout: probeMs });
+        [current] = result.rows;
+      } catch (error) {
+        probeFailed = true;
+        throw error;
+      } finally {
+        probePending = false;
+      }
+      activeRemaining();
+      if (!frozen.primary || !current?.primary) throw unavailable();
+      if (frozen.xmax !== current.xmax || frozen.xip.join(",") !== current.xip.join(",")) throw visibilityChanged();
+      const instant = (await dispatch<{ instant: string }>("SELECT clock_timestamp()::text AS instant")).rows[0]!.instant;
+      await dispatch("SELECT set_config('lock_timeout',$1,true), set_config('statement_timeout',$2,true)",
+        [`${originalLockMs}ms`, settings!.statement]);
+      return instant;
+    }
+
+    async function finish(instant: string) {
+      const result = await read(writer, instant);
+      if (monitor.failed) return monitor.abort;
+      await writer.query("COMMIT");
+      return result;
+    }
+
+    try {
+      const instant = await Promise.race([abort, prepare()]);
+      activeRemaining();
+      preparing = false;
+      budget.stop();
+      reading = true;
+      return await Promise.race([monitor.abort, finish(instant)]);
+    } catch (error) {
+      preparing = false;
+      writerFailed = monitor.failed || writerPending || error === unfinished || (!reading && budget.expiredNow());
+      if (!writerFailed) {
+        try {
+          // ROLLBACK must also work in a failed transaction, where SET LOCAL is refused.
+          const rollback = writer.query("ROLLBACK");
+          await Promise.race([reading ? monitor.abort : abort, rollback]);
+        } catch { writerFailed = true; }
+      }
+      if (!reading && budget.expiredNow()) {
+        writerFailed = true;
+        throw fenceRefusal(expired, false);
+      }
+      if (!reading || monitor.failed) throw fenceRefusal(error, !probeFailed && !monitor.failed);
+      throw error;
+    } finally {
+      monitor.release(writer, writerFailed || monitor.failed);
+      monitor.release(probe, probePending || probeFailed || monitor.failed);
+    }
   } finally {
-    const release = (client: FenceConnection, discard: boolean) => {
-      if (monitor) monitor.release(client, discard || monitor.failed);
-      else client.release(discard);
-    };
-    release(writer, writerFailed);
-    release(probe, probeFailed);
+    budget.stop();
   }
 }

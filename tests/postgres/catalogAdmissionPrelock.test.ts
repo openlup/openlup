@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createConnection, createServer, type Socket } from "node:net";
 import { setImmediate as yieldTurn, setTimeout as delay } from "node:timers/promises";
-import { Pool, type PoolClient, type QueryConfig } from "pg";
+import { Client, Pool, type PoolClient, type QueryConfig } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { catalogDefinitionDigest, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV4,
   createPostgresCatalogPublicationCommands, withCatalogPublicationRules } from "@openlup/platform/catalog";
@@ -32,7 +32,7 @@ const ownerSql = "SELECT id FROM public.clients WHERE id=$1 FOR UPDATE";
 const orderSql = "SELECT id FROM public.commerce_orders WHERE id=$1 FOR NO KEY UPDATE";
 
 const scope = (timeoutMs = setupTimeout) => ({ key: randomUUID(), clientId, priceListId,
-  skuIds: [skuId], revisionIds: [], timeoutMs });
+  skuIds: [skuId], revisionIds: [] as string[], timeoutMs });
 type Prelock = NonNullable<NonNullable<Parameters<typeof withCatalogAdmissionFence>[3]>["prelock"]>;
 const guard: Prelock = async db => {
   await db.query(ledgerSql);
@@ -79,7 +79,7 @@ type ClientObserver = (index: number, db: PoolClient) => Promise<void> | void;
 type QueryObserver = (index: number, text: string, request: string | QueryConfig, values?: unknown[]) => Promise<void> | void;
 function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObserver = () => {},
   pool: { connect(): Promise<PoolClient> } = installation.owner, observeError?: (error: unknown) => void,
-  observeResult?: (text: string) => void) {
+  observeResult?: (text: string, index: number) => Promise<void> | void) {
   let index = 0;
   return { async connect() {
     const number = index++;
@@ -91,7 +91,7 @@ function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObser
         await observeQuery(number, text, request, values);
         try {
           const result = await (typeof request === "string" ? db.query(request, values) : db.query(request));
-          observeResult?.(text);
+          await observeResult?.(text, number);
           return result;
         }
         catch (error) { observeError?.(error); throw error; }
@@ -128,6 +128,16 @@ const lockTrace = [
   "SELECT clock_timestamp()",
   "COMMIT",
 ];
+const captureSql = "SELECT current_setting('statement_timeout') AS statement, setting::int AS lock_ms FROM pg_settings WHERE name='lock_timeout'";
+const restoreSql = "SELECT set_config('lock_timeout',$1,true), set_config('statement_timeout',$2,true)";
+const timeoutSettings = /^SET LOCAL lock_timeout = (\d+); SET LOCAL statement_timeout = (\d+)$/u;
+
+function expectFenceError(error: unknown, fields: { message: string; hint?: string; code?: string }) {
+  expect(error).toMatchObject(fields);
+  expect(Object.getPrototypeOf(error)).toBe(Error.prototype);
+  expect(Reflect.ownKeys(error as object).filter(key => key !== "stack").sort()).toEqual(Object.keys(fields).sort());
+}
+
 const traceName = (sql: string) => lockTrace.find(entry => sql.startsWith(entry)) ?? sql;
 
 it("prelock runs once on the writer between the key advisory and receipt locks", async () => {
@@ -143,8 +153,8 @@ it("prelock runs once on the writer between the key advisory and receipt locks",
   ]);
 });
 
-it("omitted and empty options preserve the complete base dispatch trace and probe-time timeout", async () => {
-  // Source: df890a419, catalogAdmissionFence.ts. Keep whitespace and dispatch shapes.
+it("omitted and empty options guard the original statement order and snapshot entry values", async () => {
+  // Preserve the exact snapshot SQL and nonce across both handles.
   const snapshot = `WITH snap AS MATERIALIZED (SELECT pg_current_snapshot() AS value)
   SELECT pg_snapshot_xmax(value)::text AS xmax,
     ARRAY(SELECT xid::text FROM pg_snapshot_xip(value) xid WHERE xid <> $1::xid8 ORDER BY xid) AS xip,
@@ -154,34 +164,283 @@ it("omitted and empty options preserve the complete base dispatch trace and prob
         AND classid=$3::oid AND objid=$4::oid AND objsubid=2
     ) AS primary FROM snap`;
   for (const options of [undefined, {}]) {
-    const input = scope(), probeTimeout = 9_000;
+    const input = scope(), entry = structuredClone(input);
+    const mutableOptions: { prelock?: Prelock } | undefined = options;
+    const lateHook = vi.fn<Prelock>();
     let writerPid = 0;
     const trace: [number, string | QueryConfig, unknown[] | undefined][] = [];
     const pool = pair(async (index, db) => {
       if (index === 0) writerPid = await pid(db);
-      else input.timeoutMs = probeTimeout;
+      else {
+        Object.assign(input, { key: randomUUID(), clientId: randomUUID(), priceListId: randomUUID(), timeoutMs: 9_000 });
+        input.skuIds.splice(0, 1, randomUUID());
+        input.revisionIds.push(randomUUID());
+        if (mutableOptions) mutableOptions.prelock = lateHook;
+      }
     }, (index, _sql, request, values) => { trace.push([index, request, values]); });
-    await withCatalogAdmissionFence(pool, input, async () => "accepted", options);
-    const nonce = trace[1]?.[2];
+    await withCatalogAdmissionFence(pool, input, async () => "accepted", mutableOptions);
+    const guarded = trace.filter(([, request]) => typeof request !== "string") as [number, QueryConfig, undefined][];
+    const nonce = guarded[0]?.[1].values;
     expect(nonce).toEqual([expect.any(Number), expect.any(Number)]);
     const snapshotArgs = [expect.stringMatching(/^\d+$/u), writerPid, ...nonce!];
-    expect(trace).toEqual([
-      [0, "BEGIN ISOLATION LEVEL REPEATABLE READ", undefined],
-      [0, `SELECT pg_current_xact_id()::text AS xid, pg_backend_pid() AS pid
+    const writerQueries = [
+      [`SELECT pg_current_xact_id()::text AS xid, pg_backend_pid() AS pid
       FROM pg_advisory_xact_lock($1::integer,$2::integer)`, nonce],
-      [0, "SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))", [input.key]],
-      [0, "SELECT order_id FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1 FOR UPDATE", [input.key]],
-      [0, "SELECT id FROM public.clients WHERE id=$1 FOR KEY SHARE", [input.clientId]],
-      [0, "SELECT id FROM public.catalog_skus WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE", [input.skuIds]],
-      [0, "SELECT id FROM public.catalog_sku_revisions WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE", [input.revisionIds]],
-      [0, "SELECT public.catalog_admission_lock_shared()", undefined],
-      [0, "SELECT public.catalog_admission_lock_checkout_price($1,$2)", [input.priceListId, input.skuIds]],
-      [0, snapshot, snapshotArgs],
-      [1, { text: snapshot, values: snapshotArgs, query_timeout: probeTimeout }, undefined],
-      [0, "SELECT clock_timestamp()::text AS instant", undefined],
+      ["SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))", [entry.key]],
+      ["SELECT order_id FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1 FOR UPDATE", [entry.key]],
+      [clientSql, [entry.clientId]],
+      ["SELECT id FROM public.catalog_skus WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE", [entry.skuIds]],
+      ["SELECT id FROM public.catalog_sku_revisions WHERE id=ANY($1::uuid[]) ORDER BY id FOR KEY SHARE", [entry.revisionIds]],
+      ["SELECT public.catalog_admission_lock_shared()", []],
+      ["SELECT public.catalog_admission_lock_checkout_price($1,$2)", [entry.priceListId, entry.skuIds]],
+      [snapshot, snapshotArgs],
+      ["SELECT clock_timestamp()::text AS instant", []],
+      [restoreSql, ["0ms", "0"]],
+    ];
+    const writerTrace = writerQueries.flatMap(([text, values]) => [
+      [0, expect.stringMatching(timeoutSettings), undefined],
+      [0, { text, values, queryMode: "extended" }, undefined],
+    ]);
+    expect(trace).toEqual([
+      [0, captureSql, undefined],
+      [0, "BEGIN ISOLATION LEVEL REPEATABLE READ", undefined],
+      ...writerTrace.slice(0, 18),
+      [1, { text: snapshot, values: snapshotArgs, query_timeout: expect.any(Number) }, undefined],
+      ...writerTrace.slice(18),
       [0, "COMMIT", undefined],
     ]);
-    expect((trace[10]?.[1] as QueryConfig).values).toEqual(trace[9]?.[2]);
+    const allowance = (guarded.find(([index]) => index === 1)![1] as QueryConfig & { query_timeout: number }).query_timeout;
+    expect(allowance).toBeGreaterThan(0);
+    expect(allowance).toBeLessThanOrEqual(entry.timeoutMs);
+    expect(lateHook).not.toHaveBeenCalled();
+  }
+});
+
+const keySql = "SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))";
+const refusalStages = [
+  { stage: "reservation" },
+  { stage: "nonce", prefix: "SELECT pg_current_xact_id()" },
+  { stage: "key", prefix: keySql },
+  { stage: "hook settlement" },
+  { stage: "receipt", prefix: "SELECT order_id FROM public.commerce_order_draft_receipts", table: "commerce_order_draft_receipts" },
+  { stage: "client", prefix: clientSql, table: "clients" },
+  { stage: "SKU", prefix: "SELECT id FROM public.catalog_skus ", table: "catalog_skus" },
+  { stage: "revision", prefix: "SELECT id FROM public.catalog_sku_revisions ", table: "catalog_sku_revisions" },
+  { stage: "shared helper", prefix: "SELECT public.catalog_admission_lock_shared()", table: "catalog_products" },
+  { stage: "price helper", prefix: "SELECT public.catalog_admission_lock_checkout_price(", table: "price_entries" },
+  { stage: "writer snapshot", prefix: "WITH snap AS MATERIALIZED" },
+  { stage: "probe", prefix: "WITH snap AS MATERIALIZED" },
+  { stage: "clock sample", prefix: "SELECT clock_timestamp()" },
+  { stage: "restore", prefix: restoreSql },
+  { stage: "rollback", prefix: "ROLLBACK" },
+];
+const stageCases = refusalStages.flatMap(stage => [true, false]
+  .filter(hooked => hooked || stage.stage !== "hook settlement")
+  .map(hooked => ({ ...stage, hooked })));
+
+it.each(stageCases)("bounds $stage with prelock=$hooked", async ({ stage, prefix, table, hooked }) => {
+  const owner = installation.owner;
+  const input = scope(400);
+  if (stage === "rollback") input.skuIds = []; // The price helper leaves the transaction failed.
+  const read = vi.fn(async () => "unexpected");
+  const resume = latch(), reached = latch(), settled = latch();
+  const clients: PoolClient[] = [];
+  const releases: [number, boolean][] = [];
+  const trace: { index: number; text: string; request: string | (QueryConfig & { query_timeout?: number }); at: number }[] = [];
+  const blocker = stage === "key" || table ? await owner.connect() : undefined;
+  const release = (discard: unknown, db: PoolClient) => {
+    const index = clients.indexOf(db);
+    if (index >= 0) releases.push([index, Boolean(discard)]);
+  };
+  owner.on("release", release);
+  let writerPid = 0;
+  const target = (index: number, text: string) => index === Number(stage === "probe") && !!prefix && text.startsWith(prefix);
+  const stall = async () => { reached.resolve(); await resume.wait(); settled.resolve(); };
+  const pool = pair(async (index, db) => {
+    clients[index] = db;
+    if (index === 0) writerPid = await pid(db);
+    if (index === 1 && stage === "reservation") await stall();
+    // This independent delay must also reduce the probe's allowance.
+    if (index === 1 && stage === "probe") await delay(45);
+  }, (index, text, request) => {
+    trace.push({ index, text, request, at: performance.now() });
+    if (target(index, text) && blocker) reached.resolve();
+  }, owner, undefined, async (text, index) => {
+    if (target(index, text) && !blocker) await stall();
+  });
+  const options = hooked ? { prelock: vi.fn<Prelock>(async db => {
+    if (stage === "hook settlement") {
+      await stall();
+      await expect(db.query(ledgerSql)).rejects.toBeDefined();
+    }
+  }) } : undefined;
+  let result: Promise<unknown> | undefined;
+  try {
+    if (blocker) {
+      await blocker.query("BEGIN");
+      if (table) await blocker.query(`LOCK TABLE public.${table} IN ACCESS EXCLUSIVE MODE`);
+      else await blocker.query(keySql, [input.key]);
+    }
+    const start = performance.now();
+    result = withCatalogAdmissionFence(pool, input, read, options).catch(error => error);
+    await reached.wait(result);
+    if (blocker) await waitForBlock(writerPid, await pid(blocker), table ? "relation" : "advisory", table && `public.${table}`);
+    const hits = trace.filter(({ index, text }) => target(index, text));
+    expect(hits).toHaveLength(prefix ? 1 : 0);
+    if (stage === "probe") {
+      const hit = hits[0]!;
+      const minRemainingProbe = input.timeoutMs - (hit.at - start);
+      const { query_timeout: allowance } = hit.request as QueryConfig & { query_timeout: number };
+      expect(allowance).toBeGreaterThanOrEqual(minRemainingProbe - 2);
+      expect(allowance).toBeLessThanOrEqual(minRemainingProbe + 3);
+      expect(allowance).toBeLessThanOrEqual(input.timeoutMs - 40);
+    }
+    if (stage === "rollback") {
+      expect(trace.at(-1)?.request).toBe("ROLLBACK");
+      expect(trace.at(-2)?.text).toBe("SELECT public.catalog_admission_lock_checkout_price($1,$2)");
+    }
+    expectFenceError(await result, { message: unavailable, hint: sameKey });
+    if (stage === "rollback") expect(performance.now() - start).toBeLessThanOrEqual(input.timeoutMs + wallMarginMs);
+    expect(read).not.toHaveBeenCalled();
+    expect(options?.prelock.mock.calls.length ?? 0).toBe(Number(hooked && !["reservation", "nonce", "key"].includes(stage)));
+    expect(trace.some(({ text }) => text.includes("pg_cancel_backend"))).toBe(false);
+
+    for (const [offset, record] of trace.entries()) {
+      if (record.index !== 0 || typeof record.request === "string") continue;
+      const setting = trace[offset - 1]!;
+      const [, lock, statement] = timeoutSettings.exec(setting.text) ?? [];
+      expect(setting.index).toBe(0);
+      expect(Number(statement) - Number(lock)).toBe(wallMarginMs);
+      const expectedMs = input.timeoutMs - (setting.at - start);
+      expect(Number(lock)).toBeGreaterThanOrEqual(expectedMs - 2);
+      expect(Number(lock)).toBeLessThanOrEqual(expectedMs + 3);
+      expect(record.request).toHaveProperty("queryMode", "extended");
+    }
+
+    expect(releases).toEqual(stage === "reservation" ? [[0, false]] : [[0, true], [1, stage === "probe"]]);
+    const refusedTrace = [...trace];
+    resume.resolve();
+    if (!blocker) await settled.wait();
+    await yieldTurn();
+    expect(trace).toEqual(refusedTrace);
+    expect(read).not.toHaveBeenCalled();
+    if (stage === "reservation") expect(releases).toEqual([[0, false], [1, false]]);
+
+    if (stage === "key") {
+      // Keep the blocker held until the expired backend has stopped waiting.
+      const until = performance.now() + barrierTimeout;
+      let waiting: unknown[];
+      do {
+        waiting = (await owner.query("SELECT 1 FROM pg_locks WHERE pid=$1 AND NOT granted", [writerPid])).rows;
+        if (waiting.length) await yieldTurn();
+      } while (waiting.length && performance.now() < until);
+      expect(waiting).toEqual([]);
+      await blocker!.query("ROLLBACK");
+    }
+    await transaction(orderingPool, async peer => {
+      expect(await pid(peer)).not.toBe(writerPid);
+      await peer.query(keySql, [input.key]);
+    });
+  } finally {
+    resume.resolve();
+    await blocker?.query("ROLLBACK").finally(() => blocker.release());
+    await result;
+    owner.removeListener("release", release);
+  }
+}, setupTimeout * 2);
+
+it.each(["writer", "restore", "callback", "probe", "read", "COMMIT"] as const)("preserves serialization provenance at %s", async stage => {
+  const failure = Object.assign(new Error("private serialization diagnostic"), { code: "40001", extra: "private" });
+  const read = vi.fn(async () => { if (stage === "read") throw failure; });
+  for (const hooked of stage === "callback" ? [true] : [true, false]) {
+    const pool = pair(undefined, (index, sql) => {
+      if ((stage === "writer" && sql === clientSql) || (stage === "restore" && sql === restoreSql) ||
+        (stage === "probe" && index === 1) || (stage === "COMMIT" && sql === "COMMIT")) {
+        throw failure;
+      }
+    });
+    const error = await withCatalogAdmissionFence(pool, scope(), read, hooked ? { prelock: async () => {
+      if (stage === "callback") throw failure;
+    } } : undefined).catch(error => error);
+    if (stage === "read" || stage === "COMMIT") expect(error).toBe(failure);
+    else if (stage === "probe") expectFenceError(error, { message: unavailable, hint: checklist });
+    else expectFenceError(error, { message: visibility, code: "40001", hint: sameKey });
+  }
+  expect(read).toHaveBeenCalledTimes(stage === "read" || stage === "COMMIT" ? 2 : 0);
+});
+
+it("ends the fence budget at the synchronous read handoff", async () => {
+  const input = scope(400), atRead = latch(), resume = latch();
+  const read = vi.fn(async () => {
+    atRead.resolve();
+    await resume.wait();
+    return "committed";
+  });
+  const result = withCatalogAdmissionFence(installation.owner, input, read);
+  void result.catch(() => {});
+  try {
+    await atRead.wait(result);
+    await delay(input.timeoutMs + wallMarginMs);
+    resume.resolve();
+    await expect(result).resolves.toBe("committed");
+    expect(read).toHaveBeenCalledTimes(1);
+  } finally {
+    resume.resolve();
+    await result.catch(() => {});
+  }
+});
+
+it.each([0, 0.25])("uses the same deadline at a remainder of %s ms", async remainder => {
+  const time = { now: 1000 };
+  const clock = vi.spyOn(performance, "now").mockImplementation(() => time.now);
+  const trace: string[] = [];
+  const read = vi.fn(async () => "unexpected");
+  const pool = { connect: async () => ({
+    async query(sql: string) {
+      trace.push(sql);
+      if (sql === captureSql) return { rows: [{ lock_ms: 0, statement: "0" }] };
+      if (sql.startsWith("BEGIN")) time.now = 2000 - remainder;
+      if (timeoutSettings.test(sql)) time.now = 2000;
+      return { rows: [] };
+    },
+    release: vi.fn(),
+  } as unknown as PoolClient) };
+  try {
+    expectFenceError(await withCatalogAdmissionFence(pool, scope(1000), read).catch(error => error),
+      { message: unavailable, hint: sameKey });
+    expect(trace).toEqual([captureSql, lockTrace[0], ...(remainder ? ["SET LOCAL lock_timeout = 1; SET LOCAL statement_timeout = 51"] : [])]);
+    expect(read).not.toHaveBeenCalled();
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+it("waits within the maximum budget before installing a representable server backstop", async () => {
+  const ceiling = 2147483647;
+  const now = performance.now.bind(performance);
+  let beginAt: number | undefined;
+  const clock = vi.spyOn(performance, "now").mockImplementation(() => beginAt === undefined ? 1000 : 1000 + now() - beginAt);
+  const settings = vi.fn<(sql: string) => void>();
+  const pool = { connect: async () => ({
+    async query(request: string | QueryConfig) {
+      if (request === captureSql) return { rows: [{ lock_ms: 0, statement: "0" }] };
+      if (request === lockTrace[0]) beginAt = now();
+      else if (typeof request === "string" && timeoutSettings.test(request)) settings(request);
+      else throw new Error("stop after the first guarded dispatch");
+      return { rows: [] };
+    },
+    release: vi.fn(),
+  } as unknown as PoolClient) };
+  try {
+    expectFenceError(await withCatalogAdmissionFence(pool, scope(ceiling), async () => "unexpected").catch(error => error),
+      { message: unavailable, hint: checklist });
+    expect(settings).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(timeoutSettings));
+    const [, lock, statement] = timeoutSettings.exec(settings.mock.calls[0]![0])!;
+    expect(Number(statement)).toBeLessThanOrEqual(ceiling);
+    expect(Number(statement) - Number(lock)).toBe(wallMarginMs);
+    expect(now() - beginAt!).toBeGreaterThanOrEqual(wallMarginMs);
+  } finally {
+    clock.mockRestore();
   }
 });
 
@@ -354,6 +613,8 @@ it.each([
   let writerPid = 0, settingsSentAt = 0, writerRoundTrip = 0, lockSentAt = 0, lockForwardedAt = 0;
   let link: Awaited<ReturnType<typeof delayedWriterLink>> | undefined;
   let attempt: Promise<unknown> | undefined, retry: Promise<unknown> | undefined;
+  const cancel = vi.spyOn(Client.prototype as unknown as { cancel(): void }, "cancel");
+  const queries: string[] = [];
   try {
     await holder.query("BEGIN");
     const holderPid = await pid(holder);
@@ -366,6 +627,7 @@ it.each([
     let connections = 0;
     const pool = pair(async (index, db) => { if (index === 0) writerPid = await pid(db); },
       (index, sql) => {
+        queries.push(sql);
         if (index !== 0) return;
         if (sql.startsWith("SET LOCAL lock_timeout")) settingsSentAt = performance.now();
         if (sql === clientSql) lockSentAt = performance.now();
@@ -385,12 +647,13 @@ it.each([
     retry = transaction(orderingPool, async db => {
       await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))", [input.key]);
       acquiredAt = performance.now();
+      await delay(2 * wallMarginMs);
       return pid(db);
     });
     void retry.catch(() => {});
     const blocked = waitForBlock(writerPid, holderPid, "transactionid");
     void blocked.catch(() => {});
-    await expect(attempt).rejects.toMatchObject({ message: unavailable, hint: sameKey });
+    expectFenceError(await attempt.catch(error => error), { message: unavailable, hint: sameKey });
     const expiredAt = performance.now();
     await blocked;
     const retryPid = await retry;
@@ -403,7 +666,10 @@ it.each([
     }
     expect(acquiredAt - start).toBeLessThanOrEqual(input.timeoutMs + wallMarginMs + (writerDelay ? 2 * writerRoundTrip : 0));
     expect(read).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(queries.some(sql => sql.includes("pg_cancel_backend"))).toBe(false);
   } finally {
+    cancel.mockRestore();
     finish.resolve();
     await holder.query("ROLLBACK").finally(() => holder.release());
     await attempt?.catch(() => {});
@@ -447,7 +713,7 @@ it.each(["before", "after"] as const)("uses the budget timer as provenance for a
   try {
     await sent.wait(result);
     if (when === "before") rejectStatement(translated);
-    await expect(result).rejects.toMatchObject({ message: unavailable, hint: when === "before" ? checklist : sameKey });
+    expectFenceError(await result.catch(error => error), { message: unavailable, hint: when === "before" ? checklist : sameKey });
     expect(release.mock.calls).toEqual([[0, when === "after"], [1, false]]);
   } finally { rejectStatement(translated); }
   await yieldTurn();
@@ -468,8 +734,8 @@ it("runs an uncontended hook statement once with a settings round trip over the 
     prelock: async db => { await db.query(ledgerSql); },
   })).resolves.toBe("accepted");
   expect(statements).toBe(1);
-  expect(settings).toHaveLength(2);
-  const [, lock, statement] = /lock_timeout = (\d+); SET LOCAL statement_timeout = (\d+)/u.exec(settings[1]!)!;
+  expect(settings).toHaveLength(12);
+  const [, lock, statement] = timeoutSettings.exec(settings[2]!)!;
   expect(Number(statement) - Number(lock)).toBe(wallMarginMs);
   expect(Number(lock)).toBeLessThan(input.timeoutMs);
 });
@@ -516,33 +782,33 @@ it("captures and restores the original settings while retaining a stricter lock 
   } finally { await isolated.end(); }
 });
 
-it.each([0, -1, 1.5, NaN, Infinity, 2147483648, "1000"])("refuses invalid hook timeout %s before reservation", async value => {
+it.each([0, -1, 1.5, NaN, Infinity, -Infinity, 2147483648, "1000"])("refuses invalid timeout %s before reservation", async value => {
+  for (const options of [undefined, { prelock: guard }]) {
+    const connect = vi.fn(() => installation.owner.connect());
+    await expect(withCatalogAdmissionFence({ connect }, scope(value as number), async () => {}, options))
+      .rejects.toThrow(new TypeError("timeoutMs must be an integer from 1 to 2147483647"));
+    expect(connect).not.toHaveBeenCalled();
+  }
+});
+
+it.each([null, false, 17, {}])("refuses non-function prelock %s before examining the timeout", async value => {
   const connect = vi.fn(() => installation.owner.connect());
-  const error = await withCatalogAdmissionFence({ connect }, scope(value as number), async () => {}, { prelock: guard }).catch(error => error);
-  expect(error).toBeInstanceOf(TypeError);
-  expect(error.message).toContain("timeoutMs");
+  const input = scope();
+  const timeout = vi.fn(() => NaN);
+  Object.defineProperty(input, "timeoutMs", { get: timeout });
+  await expect(withCatalogAdmissionFence({ connect }, input, async () => {}, { prelock: value as Prelock }))
+    .rejects.toThrow(new TypeError("prelock must be a function"));
+  expect(timeout).not.toHaveBeenCalled();
   expect(connect).not.toHaveBeenCalled();
 });
 
-it.each([null, false, 17, {}])("refuses non-function prelock %s before reservation", async value => {
-  const connect = vi.fn(() => installation.owner.connect());
-  const error = await withCatalogAdmissionFence({ connect }, scope(), async () => {}, { prelock: value as Prelock }).catch(error => error);
-  expect(error).toBeInstanceOf(TypeError);
-  expect(error.message).toContain("prelock");
-  expect(connect).not.toHaveBeenCalled();
-});
-
-it.each([1, 2147483647])("accepts the inclusive hook timeout edge %s before checking budget", async value => {
-  const connect = vi.fn(() => Promise.reject(new Error("synthetic connection refusal")));
-  await expect(withCatalogAdmissionFence({ connect }, scope(value), async () => {}, { prelock: guard }))
-    .rejects.toMatchObject({ message: unavailable, hint: checklist });
-  expect(connect).toHaveBeenCalled();
-});
-
-it("keeps the old timeout domain when the hook is absent", async () => {
-  const connect = vi.fn(() => Promise.reject(new Error("synthetic connection refusal")));
-  await expect(withCatalogAdmissionFence({ connect }, scope(NaN), async () => {})).rejects.toMatchObject({ message: unavailable });
-  expect(connect).toHaveBeenCalled();
+it.each([1, 2147483647])("accepts the inclusive timeout edge %s and starts both reservations", async value => {
+  for (const options of [undefined, { prelock: guard }]) {
+    const connect = vi.fn(() => Promise.reject(new Error("synthetic connection refusal")));
+    await expect(withCatalogAdmissionFence({ connect }, scope(value), async () => {}, options))
+      .rejects.toThrow(unavailable);
+    expect(connect).toHaveBeenCalledTimes(2);
+  }
 });
 
 it("uses the checklist for a real external query cancellation and strips the database error", async () => {
@@ -567,8 +833,7 @@ it("uses the checklist for a real external query cancellation and strips the dat
     await waitForBlock(writerPid, blockerPid, "transactionid");
     expect((await owner.query("SELECT pg_cancel_backend($1) AS cancelled", [writerPid])).rows[0]!.cancelled).toBe(true);
     const failure = await result.catch(error => error);
-    expect(failure).toMatchObject({ message: unavailable, hint: checklist });
-    expect(Object.keys(failure as object)).toEqual(["hint"]);
+    expectFenceError(failure, { message: unavailable, hint: checklist });
   } finally {
     await blocker.query("ROLLBACK").finally(() => blocker.release());
     await result?.catch(() => {});

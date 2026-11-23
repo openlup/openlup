@@ -6,7 +6,14 @@ after the visibility probe. Confirmed contention, visibility changes and budget
 expiry direct callers to retry with the same key. Infrastructure failures
 direct callers to the native binding, connection, privileges and migrations.
 
-On hook expiry, the fence discards the writer connection. The fence key is
-released within the hook budget plus the wall margin plus two writer round
-trips, allowing for writer connection latency before PostgreSQL starts the
-statement's timeout.
+On fence expiry the writer is discarded. The fence key is released within the
+fence budget plus 50 ms plus two writer round trips. Writer latency delays
+delivery of the timeout settings and the lock request. In the no-injected-latency
+witness the bound is budget plus 50 ms.
+
+When upgrading a call without a hook, pass an integer budget of 1 to
+2147483647 milliseconds covering the whole pre-read phase. Keep options
+unchanged in flight and update fake drivers and trace assertions for guarded
+writer queries, timeout capture and restoration, and the probe's remaining
+allowance. Handle the existing same-key retry and checklist hints and the
+`40001` visibility refusal.
