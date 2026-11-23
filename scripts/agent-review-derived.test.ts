@@ -770,6 +770,51 @@ it('lands an inverted migration only with explicit re-slot', async () => {
   } finally { git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged); setMain(main); }
 }, 60_000);
 
+it('keeps both SQL forwards when main added the same migration filename', async () => {
+  const oldPath = 'db/platform/migrations/20990101010000_landing_fixture.sql';
+  const target = 'db/platform/migrations/20990101010100_landing_fixture.sql';
+  const mainSql = '-- Distinct main forward\nSELECT 2;\n';
+  try {
+    checkout(base);
+    append('20990101010000');
+    const prSql = read(oldPath);
+    const pr = commit();
+    checkout(base);
+    append('20990101010000');
+    write(oldPath, mainSql);
+    const sha = createHash('sha256').update(mainSql).digest('hex');
+    const manifest = JSON.parse(read(MIGRATION_REGISTRIES[0]));
+    for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
+      plan.forward.find(row => row.file === oldPath).sha256 = sha;
+    }
+    write(MIGRATION_REGISTRIES[0], json(manifest));
+    const forwards = JSON.parse(read(MIGRATION_REGISTRIES[1]));
+    forwards.nativeStoreForwards.find(row => row.path === oldPath).sha256 = sha;
+    write(MIGRATION_REGISTRIES[1], json(forwards));
+    const upstream = commit();
+    setMain(upstream); checkout(pr);
+    const result = await landingMerge(root, { reSlot: true, runCommand: (command, args) => {
+      if (args.includes(join(root, 'scripts/installation-inventory-refresh.ts'))) return;
+      fixtureCommand(command, args);
+    } });
+    expect(result.head).toMatch(/^[a-f0-9]{40}$/u);
+    expect(read(oldPath)).toBe(mainSql);
+    expect(read(target)).toBe(prSql);
+    const landed = JSON.parse(read(MIGRATION_REGISTRIES[0]));
+    expect(landed.forward.map(row => row.file)).toEqual(expect.arrayContaining([oldPath, target]));
+    expect(JSON.parse(read(MIGRATION_REGISTRIES[1])).nativeStoreForwards.map(row => row.path))
+      .toEqual(expect.arrayContaining([oldPath, target]));
+    expect(checkPlatformMigrationProjection(root, false)).toEqual([]);
+    expect(git('status', '--porcelain=v1')).toBe('');
+    expect(git('show', '-s', '--format=%B', result.head)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
+    const integration = await proveReviewIntegration(root,
+      await captureCommittedReviewCandidate(root, base, pr),
+      await captureCommittedReviewCandidate(root, upstream, result.head));
+    expect(integration.kind).toBe('resolution');
+    expect(integration.resolution).toContain(target);
+  } finally { git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged); setMain(main); }
+}, 90_000);
+
 it('does not auto-admit an authored SQL bystander as a generated mirror', () => {
   const rogue = 'packages/platform/sql/20990101040000_rogue.sql';
   try {

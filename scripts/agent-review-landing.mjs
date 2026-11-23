@@ -261,7 +261,7 @@ export async function assertNoAuthoredSlotReferences(cwd, base, head, changes) {
   if (hits.length) throw new Error(`landing: --re-slot refuses authored migration references: ${hits.join(', ')}`);
 }
 
-export function applyMigrationReslot(cwd, changes, moveFiles = true) {
+function reslotRegistryContents(cwd, path, source, changes, remapPaths = true) {
   const targets = new Set(changes.map(({ target }) => target));
   const replace = (value, reorderRows = true) => {
     if (typeof value === 'string') return changes.reduce((text, { path, target }) => text === path ? target : text, value);
@@ -282,16 +282,7 @@ export function applyMigrationReslot(cwd, changes, moveFiles = true) {
     if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replace(item, reorderRows)]));
     return value;
   };
-  if (moveFiles) for (const { path, target } of changes) {
-    renameSync(resolve(cwd, path), resolve(cwd, target));
-    if (path.startsWith('db/platform/migrations/')) {
-      const mirror = resolve(cwd, `packages/platform/sql/${path.split('/').at(-1)}`);
-      if (existsSync(mirror)) unlinkSync(mirror);
-    }
-  }
-  for (const path of ['config/platform-migration-manifest.json', 'config/reviewed-platform-forwards.json', PUBLICATION_CATALOGUE]) {
-    const file = resolve(cwd, path);
-    const updated = replace(readJson(cwd, path), path !== PUBLICATION_CATALOGUE);
+    const updated = remapPaths ? replace(JSON.parse(source), path !== PUBLICATION_CATALOGUE) : JSON.parse(source);
     if (path === PUBLICATION_CATALOGUE) updated.publicPaths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
     if (path === 'config/reviewed-platform-forwards.json') {
       const directory = 'supabase/migrations/';
@@ -304,7 +295,20 @@ export function applyMigrationReslot(cwd, changes, moveFiles = true) {
         pin.prefixSha256 = createHash('sha256').update(JSON.stringify(prefix)).digest('hex');
       }
     }
-    writeFileSync(file, `${JSON.stringify(updated, null, 2)}\n`);
+    return `${JSON.stringify(updated, null, 2)}\n`;
+}
+
+export function applyMigrationReslot(cwd, changes, moveFiles = true, remapPaths = true) {
+  if (moveFiles) for (const { path, target } of changes) {
+    renameSync(resolve(cwd, path), resolve(cwd, target));
+    if (path.startsWith('db/platform/migrations/')) {
+      const mirror = resolve(cwd, `packages/platform/sql/${path.split('/').at(-1)}`);
+      if (existsSync(mirror)) unlinkSync(mirror);
+    }
+  }
+  for (const path of [...MIGRATION_REGISTRIES, PUBLICATION_CATALOGUE]) {
+    const file = resolve(cwd, path);
+    writeFileSync(file, reslotRegistryContents(cwd, path, readFileSync(file, 'utf8'), changes, remapPaths));
   }
 }
 
@@ -322,12 +326,13 @@ export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = p
   if (head === main) throw new Error('landing: already at origin/main');
   const prAdded = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=A', '--no-renames', '-z', base, head));
   let slotChanges = [];
+  let mainMigrations = [];
   if (prAdded.some(path => MIGRATION_RAILS.some(rail => path.startsWith(rail)))) {
     // Skip migrations already present byte-for-byte identically on origin/main (stacked PRs whose predecessor squash-merged).
     const differingFromMain = new Set(pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z', main, head, '--', 'db/platform/migrations', 'supabase/migrations')));
     const netAdded = prAdded.filter(path => differingFromMain.has(path));
     if (netAdded.length > 0) {
-      const mainMigrations = pathsFrom(await git(cwd, 'ls-tree', '-r', '--name-only', '-z', main, '--', 'db/platform/migrations', 'supabase/migrations'));
+      mainMigrations = pathsFrom(await git(cwd, 'ls-tree', '-r', '--name-only', '-z', main, '--', 'db/platform/migrations', 'supabase/migrations'));
       const plan = landingSlotPlan(netAdded, mainMigrations);
       if (plan.changes.length && !reSlot) assertAppendOnlyLandingSlots(netAdded, mainMigrations);
       slotChanges = plan.changes;
@@ -342,19 +347,40 @@ export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = p
   try { await git(cwd, '-c', 'core.hooksPath=/dev/null', 'merge', '--no-ff', '--no-commit', main); }
   catch (error) { if (error.code !== 1) throw error; }
   if ((await git(cwd, 'rev-parse', '--verify', 'MERGE_HEAD')).trim() !== main) throw new Error('landing: exact main merge required');
+  if (slotChanges.length) {
+    const unresolved = new Set(pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=U', '-z')));
+    for (const { path, target } of slotChanges) {
+      const collision = mainMigrations.includes(path);
+      if (collision && unresolved.has(path)) await git(cwd, 'checkout', '--ours', '--', path);
+      renameSync(resolve(cwd, path), resolve(cwd, target));
+      if (collision) await git(cwd, 'checkout', '--theirs', '--', path);
+      if (path.startsWith('db/platform/migrations/')) {
+        const mirror = `packages/platform/sql/${path.split('/').at(-1)}`;
+        if (collision) {
+          try { writeFileSync(resolve(cwd, mirror), await git(cwd, 'show', `${main}:${mirror}`)); }
+          catch (error) { if (error.code !== 128) throw error; if (existsSync(resolve(cwd, mirror))) unlinkSync(resolve(cwd, mirror)); }
+        } else if (existsSync(resolve(cwd, mirror))) unlinkSync(resolve(cwd, mirror));
+      }
+    }
+    await git(cwd, 'add', '-A', '--', 'db/platform/migrations', 'supabase/migrations', 'packages/platform/sql');
+  }
   const conflicts = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=U', '-z'));
   const read = (revision, path) => git(cwd, 'show', `${revision}:${path}`);
+  const reslottedHead = new Map();
+  for (const path of [...MIGRATION_REGISTRIES, PUBLICATION_CATALOGUE]) {
+    if (slotChanges.length) reslottedHead.set(path, reslotRegistryContents(cwd, path, await read(head, path), slotChanges));
+  }
   const registryConflicts = conflicts.filter(path => REGISTRY_PATHS.includes(path));
   if (registryConflicts.length && (await git(cwd, 'merge-base', '--all', head, main)).trim() !== base) {
     throw new Error(`landing: authored conflicts remain: ${registryConflicts.join(', ')}`);
   }
-  const readUnion = async path => registryUnion(path, ...await Promise.all([base, head, main].map(revision => read(revision, path))));
+  const readUnion = async path => registryUnion(path, await read(base, path), reslottedHead.get(path) ?? await read(head, path), await read(main, path));
   const index = await trackedIndex(cwd);
   const legacyConflict = path => [...REGISTRY_PATHS, ...MIGRATION_REGISTRIES, INVENTORY_PATH].includes(path) ||
     (generatedCarrier(path) && !path.endsWith('.sql') && !/^packages\/[^/]+\/api\/[^/]+\.api\.md$/u.test(path));
   const authoredInputs = conflicts.filter(path => /^(?:config\/openlup-packages\.json|packages\/[^/]+\/(?:package|release-gates)\.json)$/u.test(path));
   if (authoredInputs.length) throw new Error(`landing: authored conflicts remain: ${authoredInputs.join(', ')}`);
-  const catalogueUnion = conflicts.includes(PUBLICATION_CATALOGUE) ? await readUnion(PUBLICATION_CATALOGUE) : undefined;
+  const catalogueUnion = conflicts.includes(PUBLICATION_CATALOGUE) || slotChanges.length ? await readUnion(PUBLICATION_CATALOGUE) : undefined;
   const catalogue = catalogueUnion === undefined ? readJson(cwd, PUBLICATION_CATALOGUE) : JSON.parse(catalogueUnion);
   const owners = readReportOwners(cwd);
   const { admitted, replaceable } = ownerOutputs(owners, catalogue.publicPaths);
@@ -388,7 +414,7 @@ export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = p
     await assertCarrierBuildOutputs(cwd, preliminary.builds.map(({ directory }) => directory));
   }
   if (conflicts.includes(SQL_REFERENCE)) runGenerators('owners.syncSqlReference(process.cwd());');
-  for (const path of registryConflicts) {
+  for (const path of new Set([...registryConflicts, ...(slotChanges.length ? [PUBLICATION_CATALOGUE] : [])])) {
     writeFileSync(resolve(cwd, path), path === PUBLICATION_CATALOGUE ? catalogueUnion : await readUnion(path));
     await git(cwd, 'add', '--', path);
   }
@@ -400,12 +426,9 @@ export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = p
     writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[1]);
     for (const path of MIGRATION_REGISTRIES) {
       const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
+      if (reslottedHead.has(path)) inputs[1] = reslottedHead.get(path);
       writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventories[1]));
       await git(cwd, 'add', '--', path);
-    }
-    if (slotChanges.length) {
-      applyMigrationReslot(cwd, slotChanges);
-      await git(cwd, 'add', '-A', '--', 'db/platform/migrations', 'supabase/migrations', 'packages/platform/sql');
     }
     // Owners load from the merged tree; this process still holds pre-merge modules.
     run(process.execPath, [resolve(cwd, BUILD_SCRIPT)], { env: carrierEnv });
@@ -413,9 +436,10 @@ export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = p
     const inventory = readFileSync(resolve(cwd, INVENTORY_PATH), 'utf8');
     for (const path of MIGRATION_REGISTRIES) {
       const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
+      if (reslottedHead.has(path)) inputs[1] = reslottedHead.get(path);
       writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventory));
     }
-    if (slotChanges.length) applyMigrationReslot(cwd, slotChanges, false);
+    if (slotChanges.length) applyMigrationReslot(cwd, slotChanges, false, false);
   } else {
     writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[2]);
   }
