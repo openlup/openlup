@@ -263,10 +263,11 @@ export async function assertNoAuthoredSlotReferences(cwd, base, head, changes) {
 
 export function applyMigrationReslot(cwd, changes, moveFiles = true) {
   const targets = new Set(changes.map(({ target }) => target));
-  const replace = value => {
+  const replace = (value, reorderRows = true) => {
     if (typeof value === 'string') return changes.reduce((text, { path, target }) => text === path ? target : text, value);
     if (Array.isArray(value)) {
-      const items = value.map(replace);
+      const items = value.map(item => replace(item, reorderRows));
+      if (!reorderRows) return items;
       const key = entry => entry && typeof entry === 'object' ? entry.file ?? entry.path : undefined;
       const order = entry => MIGRATION_FORWARD.exec(key(entry) ?? '')?.[1] ?? key(entry);
       const moved = items.filter(entry => targets.has(key(entry)));
@@ -278,7 +279,7 @@ export function applyMigrationReslot(cwd, changes, moveFiles = true) {
       }
       return ordered;
     }
-    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replace(item)]));
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replace(item, reorderRows)]));
     return value;
   };
   if (moveFiles) for (const { path, target } of changes) {
@@ -288,7 +289,8 @@ export function applyMigrationReslot(cwd, changes, moveFiles = true) {
   }
   for (const path of ['config/platform-migration-manifest.json', 'config/reviewed-platform-forwards.json', PUBLICATION_CATALOGUE]) {
     const file = resolve(cwd, path);
-    const updated = replace(readJson(cwd, path));
+    const updated = replace(readJson(cwd, path), path !== PUBLICATION_CATALOGUE);
+    if (path === PUBLICATION_CATALOGUE) updated.publicPaths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
     if (path === 'config/reviewed-platform-forwards.json') {
       const directory = 'supabase/migrations/';
       const sql = readdirSync(resolve(cwd, directory)).filter(name => name.endsWith('.sql'))

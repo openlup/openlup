@@ -700,6 +700,10 @@ it('re-slots migration paths in the manifest, reviewed forwards and publication 
     append('20990101010000');
     const oldPath = 'db/platform/migrations/20990101010000_landing_fixture.sql';
     const newPath = 'db/platform/migrations/20990101030100_landing_fixture.sql';
+    const catalog = JSON.parse(read(CATALOGUE));
+    catalog.publicPaths.push({ path: oldPath, class: 'public-output' });
+    catalog.publicPaths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+    write(CATALOGUE, json(catalog));
     applyMigrationReslot(root, [{ path: oldPath, target: newPath }]);
     expect(existsSync(join(root, oldPath))).toBe(false);
     expect(existsSync(join(root, newPath))).toBe(true);
@@ -707,6 +711,10 @@ it('re-slots migration paths in the manifest, reviewed forwards and publication 
     expect(read(MIGRATION_REGISTRIES[1])).toContain(newPath);
     expect(read(MIGRATION_REGISTRIES[0])).not.toContain(oldPath);
     expect(read(MIGRATION_REGISTRIES[1])).not.toContain(oldPath);
+    const rows = JSON.parse(read(CATALOGUE)).publicPaths.map(({ path }) => path);
+    expect(rows).toContain(newPath);
+    expect(rows).not.toContain(oldPath);
+    expect(rows).toEqual([...rows].sort());
   } finally { restoreDerivedFixture(); }
 });
 
