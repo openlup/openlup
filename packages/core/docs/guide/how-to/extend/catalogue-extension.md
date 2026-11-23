@@ -66,7 +66,7 @@ npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogu
 `catalogue-pack-skeleton/catalogue.json` is input for `openlup catalogue check --packs`; an application started from the starter declares packs only in `owned/catalogue.ts`
 
 For inert checking, copy the [static JSON sample](./catalogue-pack-skeleton/catalogue.json)
-to `./catalogue.json` and run `npx --no -- openlup catalogue check --packs ./catalogue.json --json`.
+to your working directory and run `npx --no -- openlup catalogue check --packs ./catalogue.json --json`.
 The sample reports unavailable content evidence (exit 2).
 Usual codes include `pack_type_namespace_mismatch`, `definition_unknown_field`,
 `draft_input_invalid` and `conformance_subject_invalid`.
@@ -215,6 +215,7 @@ Native cadence guards still decide whether a cadence can be written.
 
 ## Publish net content in grams
 
+Prepare reports `catalog_publication_mass_required_until_mc5` for non-mass net content.
 Publication accepts net content only as a whole number of grams.
 Add `openlup:g` to `netContentUnits` and author net content as the net mass in
 grams. Declare the labelled volume or count as a quantity variant option with
@@ -227,12 +228,13 @@ Keep the flags for a later version or set them to false.
 
 ## Add a unit GTIN
 
-Prepare refuses a SKU without a valid unit trade identifier.
+Prepare reports `unit_trade_identifier_missing` for a SKU without a valid unit trade identifier.
 Add a valid unit GTIN to the SKU.
 
 ## Use schema version 3 for publication
 
 Stored version 1 and 2 drafts remain readable and cannot be published.
+Prepare reports `publication_preparation_unavailable` for these drafts.
 Author new drafts and fixtures as schema version 3.
 
 ## Rerun fixtures after definition repair

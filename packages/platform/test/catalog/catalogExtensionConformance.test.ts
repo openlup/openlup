@@ -12,7 +12,7 @@ import { projectCatalogExtensionConformance } from "../../src/catalog/testing/ca
 import { catalogPackIssues, catalogPackManifest, installCatalogDefinitions, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry,
   validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, canonicalizeCatalogCombinationV2, CatalogCombinationError,
   catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema, validateCatalogDraftV2, createCatalogDraftHandler, withCatalogPublicationRules } from "../../src/catalog/index.js";
-import { artifact } from "./fixtures/publicationInput.js";
+import { artifact, input } from "./fixtures/publicationInput.js";
 import { catalogDraftV3ValidationPayload } from "../../src/catalog/draftV3Schemas.js";
 import { inspectCatalogPack } from "../../src/catalog/productTypeIssues.js";
 import type { CatalogConformanceReport, CatalogRefusalFixture } from "../../src/catalog/testing/index.js";
@@ -35,6 +35,15 @@ const project = (source: unknown) => {
 
 describe("catalogue conformance findings", () => {
   const fixture = (name: string) => readFileSync(new URL(`../fixtures/catalogue-conformance/${name}.json`, import.meta.url), "utf8");
+  const grams = { code: "openlup:g", dimension: "mass", integral: false } as const;
+  function publicationFixture() {
+    const { payload } = input();
+    const declaration = pack(), type = declaration.types[0]!;
+    payload.product.type = { key: type.key, version: type.version };
+    type.units = [grams];
+    type.netContentUnits = [grams.code];
+    return { pack: declaration, drafts: [payload] };
+  }
 
   it("observed_reports_value_not_template", async () => {
     const report = await checkSubject({ packs: [{ pack: { ...pack(), "extra~/field": { z: 1, a: 2 } } }] });
@@ -45,12 +54,43 @@ describe("catalogue conformance findings", () => {
   });
 
   it("non_mass_net_content_warns_and_exits_zero", async () => {
-    const report = await runCatalogExtensionConformance(fixture("volume-net-content"));
+    const subject = JSON.parse(fixture("volume-net-content"));
+    const report = await checkSubject(subject);
     const path = "/packs/0/pack/types/0/netContentUnits";
     expect(report.exitCode).toBe(0);
     expect(report.findings).toContainEqual(expect.objectContaining({
       code: "advisory_net_content_not_publishable", severity: "warning", path, observed: `${path} = ["sample:ml"]`,
+      cause: expect.stringContaining("`catalog_publication_mass_required_until_mc5`"),
     }));
+    const { pack: { types: [type] }, drafts: [{ skus: [sku] }] } = subject.packs[0];
+    type.units.push(grams);
+    type.netContentUnits = [grams.code];
+    sku.netContent = { dimension: "mass", unit: grams.code, unscaled: "100", scale: 0 };
+    const repaired = await checkSubject(subject);
+    expect(repaired.exitCode).toBe(0);
+    expect(repaired.findings.map(({ code }) => code)).not.toContain("advisory_net_content_not_publishable");
+  });
+
+  it("names the Prepare code until the SKU has a valid unit GTIN", async () => {
+    const entry = publicationFixture(), sku = entry.drafts[0]!.skus[0]!;
+    const identifiers = sku.identifiers;
+    delete sku.identifiers;
+    expect(await project({ packs: [entry] })).toMatchObject({ state: "satisfied", exitCode: 0, findings: [{
+      code: "advisory_unit_identifier_missing", severity: "warning",
+      cause: expect.stringContaining("`unit_trade_identifier_missing`"),
+    }] });
+    sku.identifiers = identifiers;
+    expect(await project({ packs: [entry] })).toMatchObject({ state: "satisfied", exitCode: 0, findings: [] });
+  });
+
+  it("names the Prepare code for a legacy draft until the fixture uses v3", async () => {
+    const entry = publicationFixture();
+    const legacy = catalogDraftV3ValidationPayload(entry.drafts[0]!);
+    expect(await project({ packs: [{ ...entry, drafts: [legacy] }] })).toMatchObject({ state: "satisfied", exitCode: 0, findings: [{
+      code: "advisory_draft_version_not_publishable", severity: "warning",
+      cause: expect.stringContaining("`publication_preparation_unavailable`"),
+    }] });
+    expect(await project({ packs: [entry] })).toMatchObject({ state: "satisfied", exitCode: 0, findings: [] });
   });
 
   it("six_injected_errors_reported_in_one_pass", async () => {
@@ -82,13 +122,12 @@ describe("catalogue conformance findings", () => {
   });
 
   it("advisory_only_report_is_satisfied", async () => {
-    const report = await runCatalogExtensionConformance(fixture("volume-net-content"));
+    const entry = publicationFixture();
+    entry.pack.types[0]!.attributes = JSON.parse(fixture("volume-net-content")).packs[0].pack.types[0].attributes;
+    const report = await project({ packs: [entry] });
     expect(report).toMatchObject({ state: "satisfied", exitCode: 0 });
     expect(report.findings.map(({ code, observed }) => [code, observed])).toEqual([
-      ["advisory_draft_version_not_publishable", "/packs/0/drafts/0/schemaVersion = 1"],
-      ["advisory_unit_identifier_missing", "/packs/0/drafts/0/skus/0/identifiers is absent"],
       ["advisory_filter_flags_unused", "/packs/0/pack/types/0/attributes/0/filterable = true"],
-      ["advisory_net_content_not_publishable", '/packs/0/pack/types/0/netContentUnits = ["sample:ml"]'],
     ]);
     for (const finding of report.findings) {
       expect(finding.severity).toBe("warning");
