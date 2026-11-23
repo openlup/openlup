@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import type { HttpRequest } from "../../src/http/types.js";
 import { createNoopAdvisoryLock, type AdvisoryLock } from "../../src/scheduler/advisoryLock.js";
 import {
@@ -324,11 +324,21 @@ describe("Node scheduler", () => {
       'Fix: Pass a cluster AdvisoryLock as advisoryLock to serveNode or as lock to createNodeScheduler (for example, createPgAdvisoryLock with a dedicated PostgreSQL session), or set lockMode: "process" for an intentional single-instance host whose scheduler profile permits it.',
       'Recheck: Repeat the failed serveNode or createNodeScheduler call with the corrected options and verify that it completes.',
     ].join("\n");
-    expect(() => createNodeScheduler({ cron, jobs, env: {}, lockMode: "cluster" }))
-      .toThrow(new Error(`Observed: No AdvisoryLock resolved.\n${remedy}`));
-    expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: createNoopAdvisoryLock(), lockMode: "cluster" }))
-      .toThrow(new Error(`Observed: The resolved AdvisoryLock declares durability "process".\n${remedy}`));
-    expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: unlabelledLock, lockMode: "cluster" }))
-      .toThrow(new Error(`Observed: The resolved AdvisoryLock is unlabelled.\n${remedy}`));
+    const code = "OPENLUP_E_SCHEDULER_CLUSTER_LOCK_REQUIRED";
+    for (const [lock, observation] of [
+      [undefined, "No AdvisoryLock resolved."],
+      [createNoopAdvisoryLock(), 'The resolved AdvisoryLock declares durability "process".'],
+      [unlabelledLock, "The resolved AdvisoryLock is unlabelled."],
+    ] as const) {
+      let error: unknown;
+      try {
+        createNodeScheduler({ cron, jobs, env: {}, lock, lockMode: "cluster" });
+      } catch (reason) {
+        error = reason;
+      }
+      assert(error instanceof Error, "Expected cluster mode to refuse the resolved lock");
+      expect(error.message.split("\n")[0]).toBe(code);
+      expect(error.message).toBe([code, `Observed: ${observation}`, remedy].join("\n"));
+    }
   });
 });

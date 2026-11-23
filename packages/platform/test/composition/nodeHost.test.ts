@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { PassThrough } from "node:stream";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HttpRuntimePort } from "@openlup/core/platform-runtime";
 import { createNodeHost } from "../../src/composition/nodeHost.js";
 import type { PlatformBundle } from "../../src/composition/composeBundle.js";
@@ -256,13 +256,17 @@ describe("host scheduled execution", () => {
       if (!advisoryLock) bundle.descriptor = { ...bundle.descriptor, readReadiness: () => ({ ok: true }) };
       const { cron } = cronFixture();
       const startup = host.serveNode({ env: advisoryLock ? env : {}, cron, port: 0, advisoryLock, ...options });
-      await expect(startup).rejects.toHaveProperty("message", [
+      const error: unknown = await startup.catch((reason: unknown) => reason);
+      assert(error instanceof Error, "Expected cluster mode to refuse startup");
+      const code = "OPENLUP_E_SCHEDULER_CLUSTER_LOCK_REQUIRED";
+      expect(error.message.split("\n")[0]).toBe(code);
+      expect(error.message).toBe([
+        code,
         `Observed: ${observation}`,
         'Cause: A cluster-mode scheduler needs an AdvisoryLock that declares durability "cluster".',
         'Fix: Pass a cluster AdvisoryLock as advisoryLock to serveNode or as lock to createNodeScheduler (for example, createPgAdvisoryLock with a dedicated PostgreSQL session), or set lockMode: "process" for an intentional single-instance host whose scheduler profile permits it.',
         'Recheck: Repeat the failed serveNode or createNodeScheduler call with the corrected options and verify that it completes.',
       ].join("\n"));
-      const error = await startup.catch((reason: Error) => reason);
       expect(Object.getPrototypeOf(error)).toBe(Error.prototype);
       expect(Reflect.ownKeys(error).filter((key) => key !== "stack")).toEqual(["message"]);
       expect(cron.schedule).not.toHaveBeenCalled();

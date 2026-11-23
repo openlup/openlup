@@ -119,6 +119,7 @@ export function createNodeScheduler(options: CreateNodeSchedulerOptions): NodeSc
       if (!suppliedLock) observation = "No AdvisoryLock resolved.";
       else if (durability === "process") observation = 'The resolved AdvisoryLock declares durability "process".';
       throw new Error([
+        "OPENLUP_E_SCHEDULER_CLUSTER_LOCK_REQUIRED",
         `Observed: ${observation}`,
         'Cause: A cluster-mode scheduler needs an AdvisoryLock that declares durability "cluster".',
         'Fix: Pass a cluster AdvisoryLock as advisoryLock to serveNode or as lock to createNodeScheduler (for example, createPgAdvisoryLock with a dedicated PostgreSQL session), or set lockMode: "process" for an intentional single-instance host whose scheduler profile permits it.',

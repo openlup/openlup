@@ -145,8 +145,8 @@ When you supply `cron`, `createNodeHost().serveNode` defaults to
 Other scheduler capabilities default to `lockMode: "process"`.
 A configured `DATABASE_URL` supplies the default lock.
 To override it, pass a session-affine `AdvisoryLock` as `advisoryLock`.
-Cluster mode refuses before timer registration unless the resolved lock declares
-`durability: "cluster"`.
+Cluster mode refuses with `OPENLUP_E_SCHEDULER_CLUSTER_LOCK_REQUIRED`
+before timer registration unless the resolved lock declares `durability: "cluster"`.
 Set `lockMode: "process"` for an intentional single-instance host whose
 scheduler profile permits it.
 Built-in `node-cron` bundles require `DATABASE_URL` in either mode.
