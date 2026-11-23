@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Pool, type PoolClient } from "pg";
+import { Pool, type PoolClient, type QueryConfig } from "pg";
 import { checkoutOwnerDefinitionPath, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { checkoutOwnerLogin, checkoutOwnerRoutines, nativeStoreFunctionDefinitions, renderCheckoutOwnerGrant, sqlSha256, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
@@ -159,23 +159,42 @@ export async function proveCheckoutOwnerGrant(connectionString: string, ordinary
         assert.deepEqual((await client.query(`SELECT catalog_path,sha256,position FROM ${ledger} ORDER BY position`)).rows, prefix);
         assert.deepEqual((await acl(client)).map(row => row.grants), [[], [], []]);
       }
+      await client.query("SAVEPOINT before_issuance");
+      await client.query(`GRANT EXECUTE ON FUNCTION ${checkoutOwnerRoutines.join(", ")} TO ${checkoutOwnerLogin}`);
+      await assert.rejects(projected(client), /checkout_owner_acl_mismatch/u);
+      await client.query("ROLLBACK TO SAVEPOINT before_issuance");
       await append(client, grant);
       assert.deepEqual((await acl(client)).map(row => [row.owner, row.definer, row.settings, row.grants]),
         checkoutOwnerRoutines.map(() => [selection.migrationLogin, true, ["search_path=pg_catalog, pg_temp"], [`${selection.migrationLogin}:EXECUTE:false`]]));
       const payload = await projected(client);
-      assert.ok(payload.includes(checkoutOwnerLogin));
+      assert.equal(payload, prior);
       await client.query("ROLLBACK");
       await client.query("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,0))", [lockName]);
       await withPlatformCatalog(source, async root => {
         for (const plan of [source, source.qualified, source.qualifiedAdmin]) {
           plan.forward.push({ file: grant.file, sha256: grant.sha256 });
         }
-        if (admin) source.qualifiedAdmin.objectInventorySha256[selection.roleMode === "installer-managed" ? "installerManaged" : "operatorProvisioned"] = hash(payload);
-        else source.qualified.objectInventorySha256[selection.bootstrapLogin === selection.migrationLogin ? "bootstrapMigrator" : "separateMigrator"].withRestore = hash(payload);
         mkdirSync(dirname(join(root, grant.file)), { recursive: true });
         writeFileSync(join(root, grant.file), grant.sql);
         writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(source));
-        const fixtureRunner = createPostgresMigrationRunner({ connectionString }, { root, installation: selection, poolFactory: () => pool });
+        const partialPool = { async connect() {
+          const backend = await pool.connect();
+          return {
+            async query(command: string | QueryConfig, values?: unknown[]) {
+              if (typeof command !== "string") return backend.query(command);
+              const result = await backend.query(command, values);
+              if (command === grant.sql) await backend.query(`REVOKE EXECUTE ON FUNCTION ${checkoutOwnerRoutines[0]} FROM ${checkoutOwnerLogin}`);
+              return result;
+            },
+            release: () => backend.release(true),
+          } as unknown as PoolClient;
+        } } as Pool;
+        const applyFrom = (poolFactory: () => Pool) =>
+          createPostgresMigrationRunner({ connectionString }, { root, installation: selection, poolFactory });
+        await assert.rejects(applyFrom(() => partialPool).apply(), /checkout_owner_acl_mismatch/u);
+        assert.deepEqual((await acl(client)).map(row => row.grants), [[], [], []]);
+        assert.deepEqual((await client.query(`SELECT catalog_path,sha256,position FROM ${ledger} ORDER BY position`)).rows, prefix);
+        const fixtureRunner = applyFrom(() => pool);
         assert.deepEqual(await fixtureRunner.apply(), { applied: [grant.file] });
         assert.deepEqual(await fixtureRunner.apply(), { applied: [] });
         if (freshConnectionString && !admin) {

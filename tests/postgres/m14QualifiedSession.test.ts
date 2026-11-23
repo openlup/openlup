@@ -71,15 +71,19 @@ it("admits the actual restricted, fixed operator-provisioned graph under the hel
 
 it.each([
   ["TEMP", "", "", /effective database TEMP/u],
+  ["CONNECT grant option", "GRANT CONNECT ON DATABASE postgres TO openlup_checkout_owner WITH GRANT OPTION", "REVOKE CONNECT ON DATABASE postgres FROM openlup_checkout_owner", /CONNECT/u],
   ["flags", "ALTER ROLE openlup_checkout_owner INHERIT", "", /login flags/u],
   ["defaults", "ALTER ROLE openlup_checkout_owner SET search_path TO public", "", /startup defaults/u],
   ["ADMIN edge", "GRANT service_role TO openlup_checkout_owner WITH ADMIN TRUE, INHERIT FALSE, SET FALSE", "REVOKE service_role FROM openlup_checkout_owner", /membership/u],
   ["PUBLIC parameter", "GRANT SET ON PARAMETER session_replication_role TO PUBLIC", "REVOKE SET ON PARAMETER session_replication_role FROM PUBLIC", /privileged parameter/u],
+  ["PUBLIC definer", "CREATE FUNCTION public.checkout_other() RETURNS integer LANGUAGE sql SECURITY DEFINER AS 'SELECT 1'", "DROP FUNCTION public.checkout_other()", /effective EXECUTE/u],
+  ["PUBLIC explicit ACL", "CREATE FUNCTION public.checkout_other() RETURNS integer LANGUAGE sql AS 'SELECT 1'; GRANT EXECUTE ON FUNCTION public.checkout_other() TO PUBLIC", "DROP FUNCTION public.checkout_other()", /effective EXECUTE/u],
   ["PUBLIC column", "CREATE TABLE public.checkout_privilege_fixture(id int); GRANT SELECT(id) ON public.checkout_privilege_fixture TO PUBLIC", "DROP TABLE public.checkout_privilege_fixture", /effective data/u],
 ] as const)("refuses checkout-owner %s before approval", async (label, change, reset, reason) => {
   await admin.query("CREATE ROLE openlup_checkout_owner LOGIN NOINHERIT");
   try {
-    if (label !== "TEMP") await admin.query("REVOKE TEMP ON DATABASE postgres FROM PUBLIC");
+    if (label !== "TEMP") await admin.query(`REVOKE TEMP ON DATABASE postgres FROM PUBLIC;
+      GRANT TEMP ON DATABASE postgres TO qualified_runtime,qualified_restore,anon,authenticated,service_role,platform_acquisition_runtime`);
     if (change) await admin.query(change);
     await admittedSession(client => expect(assertQualifiedPostgresSession(client, [], selection, lockName))
       .rejects.toThrow(new RegExp(`checkout_owner_login_unready: openlup_checkout_owner.*${reason.source}`, "u")));
@@ -142,10 +146,10 @@ it.each(moments.flatMap(moment => methods.map(method => ({ moment, method }))))(
               factsAbsent = result.rows[0]?.ledger_exists === false;
               if (moment === "after-facts") await createLedger();
             }
-            if (typeof command !== "string" && command.name === "openlup-qualified-catalog-rows-v1") {
+            if (typeof command !== "string" && command.name === "openlup-qualified-checkout-observation-v1") {
               selectedReached = true;
-              selectedLedger = result.rows.some(row => row.kind === "relation" && row.name === "platform_schema_migrations");
-              selectedConstraint = result.rows.some(row => row.kind === "constraint" && row.name === "synthetic_race_check");
+              selectedLedger = result.rows[0].catalog.some((row: { kind: string; name: string }) => row.kind === "relation" && row.name === "platform_schema_migrations");
+              selectedConstraint = result.rows[0].catalog.some((row: { kind: string; name: string }) => row.kind === "constraint" && row.name === "synthetic_race_check");
             }
             return result;
           },
