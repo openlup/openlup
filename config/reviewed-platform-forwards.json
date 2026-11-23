@@ -6892,6 +6892,19 @@
         ]
       },
       {
+        "row": "subscription-cancel-feedback",
+        "path": "db/platform/migrations/20261125060000_subscription_cancel_feedback.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_cancel_feedback_submit(uuid,uuid,text,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "tax-coverage-revisions",
         "path": "db/platform/migrations/20261125070000_tax_coverage_revisions.sql",
         "replacedFunctions": [],
@@ -10174,6 +10187,17 @@
       "path": "db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql",
       "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049",
       "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261125060000_subscription_cancel_feedback.sql",
+      "sha256": "86ce776553a8e30f03738103b9b39756f82b08a1b43c470cdd76cb9cf8b8c3a1",
+      "functions": [
+        {
+          "signature": "public.subscription_cancel_feedback_submit(uuid,uuid,text,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "fde436cf46a80cbd5e0f64b30e8b949528214c4aa472197194b43e994aa673cd"
+        }
+      ]
     },
     {
       "path": "db/platform/migrations/20261125070000_tax_coverage_revisions.sql",

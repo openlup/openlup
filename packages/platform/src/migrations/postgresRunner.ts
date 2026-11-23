@@ -7,6 +7,7 @@
 import type { Pool, PoolClient } from "pg";
 import type { MigrationRunnerPort } from "@openlup/core/platform-runtime";
 import { attachPgErrorListener } from "./pgErrorListener.js";
+import { checkoutOwnerDefinitionPath, checkoutOwnerGrantPath, renderCheckoutOwnerGrant } from "./catalog.js";
 
 export interface PostgresMigrationRunnerEnv {
   connectionString: string;
@@ -167,6 +168,19 @@ export function createPostgresMigrationRunner(
   env: PostgresMigrationRunnerEnv,
   options: PostgresMigrationRunnerOptions,
 ): MigrationRunnerPort {
+  const { status, apply } = createBoundPostgresMigrationRunner(env, options);
+  return { status, apply };
+}
+
+type CheckoutOwnerVerifier = (
+  client: PoolClient, applied: readonly (PlatformMigrationManifestEntry & { position: number })[],
+  requirement: "present" | "granted",
+) => Promise<void>;
+
+/** @internal @experimental Configure the fixed platform checkout operation on the existing session. */
+export function createBoundPostgresMigrationRunner(env: PostgresMigrationRunnerEnv, options: PostgresMigrationRunnerOptions,
+  verifyCheckoutOwner?: CheckoutOwnerVerifier,
+) {
   if (options.pool && options.poolFactory) {
     throw new Error("postgres_pool_and_factory_mutually_exclusive");
   }
@@ -197,9 +211,8 @@ export function createPostgresMigrationRunner(
       const plan = loadPlan(root, options.source);
       return withMigrationSession(await getPool(), options.lockName, async (client) => {
         const assertSession = options.source.assertSession;
-        const { applied } = await readAppliedPrefix(client, plan.units, assertSession ? async (applied) => {
-          await assertSession(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
-        } : undefined);
+        const { applied } = await readAppliedPrefix(client, plan.units, assertSession
+          ? applied => assertSession(client, ledgerEntries(applied)) : undefined);
         if (applied.length === plan.units.length) await assertObjectInventory(client, plan, options);
         return {
           pending: plan.units.slice(applied.length).map((unit) => unit.catalogPath),
@@ -213,9 +226,8 @@ export function createPostgresMigrationRunner(
       const plan = loadPlan(root, options.source);
       return withMigrationSession(await getPool(), options.lockName, async (client) => {
         const assertSession = options.source.assertSession;
-        const initial = await readAppliedPrefix(client, plan.units, assertSession ? async (applied) => {
-          await assertSession(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
-        } : undefined);
+        const initial = await readAppliedPrefix(client, plan.units, assertSession
+          ? applied => assertSession(client, ledgerEntries(applied)) : undefined);
         const pending = plan.units.slice(initial.applied.length);
         if (opts?.dryRun) {
           if (pending.length === 0) await assertObjectInventory(client, plan, options);
@@ -224,6 +236,7 @@ export function createPostgresMigrationRunner(
         const appliedNow: string[] = [];
         let expectedOid = initial.oid;
         for (const unit of pending) {
+          const checkout = verifyCheckoutOwner !== undefined && checkoutOwnerGrantPath.test(unit.catalogPath);
           await client.query("BEGIN");
           try {
             if (expectedOid !== null) {
@@ -233,6 +246,10 @@ export function createPostgresMigrationRunner(
               const beforeSql = await readLockedPrefix(client, plan.units, "SHARE ROW EXCLUSIVE");
               if (beforeSql.oid !== expectedOid || beforeSql.applied.length !== unit.position) {
                 throw new Error("platform migration ledger changed before write");
+              }
+              if (checkout) {
+                assertCheckoutGrantUnit(plan.units, unit);
+                await assertSession!(client, ledgerEntries(beforeSql.applied));
               }
             }
             await client.query(unit.sql);
@@ -248,6 +265,11 @@ export function createPostgresMigrationRunner(
               `INSERT INTO ${LEDGER} (catalog_path, sha256, position) VALUES ($1, $2, $3)`,
               [unit.catalogPath, unit.sha256, unit.position],
             );
+            if (checkout) {
+              const candidate = [...beforeWrite.applied, unit];
+              await assertSession!(client, ledgerEntries(candidate));
+              if (candidate.length === plan.units.length) await verifyObjectInventory(client, plan, options);
+            }
             await client.query("COMMIT");
             appliedNow.push(unit.catalogPath);
           } catch (error) {
@@ -259,7 +281,52 @@ export function createPostgresMigrationRunner(
         return { applied: appliedNow };
       });
     },
+
+    async applyCheckoutOwnerGrant(): Promise<{ state: "granted" }> {
+      if (!verifyCheckoutOwner) throw new Error("checkout_owner_rail_unverified. Use a supported qualified installation.");
+      assertConnectionString(env);
+      const plan = loadPlan(root, options.source);
+      const grant = plan.units.find(unit => checkoutOwnerGrantPath.test(unit.catalogPath));
+      if (!grant) throw new Error("checkout_owner_slot_unverified. Use the approved checkout grant unit.");
+      assertCheckoutGrantUnit(plan.units, grant);
+      return withMigrationSession(await getPool(), options.lockName, async client => {
+        await client.query("BEGIN");
+        try {
+          const { applied } = await readLockedPrefix(client, plan.units, "SHARE ROW EXCLUSIVE");
+          if (applied.length !== plan.units.length) {
+            throw new Error("checkout_owner_slot_unverified. Apply the approved installation plan before retrying.");
+          }
+          const entries = ledgerEntries(applied);
+          await verifyCheckoutOwner(client, entries, "present");
+          await verifyObjectInventory(client, plan, options);
+          await client.query(grant.sql);
+          await verifyCheckoutOwner(client, entries, "granted");
+          await verifyObjectInventory(client, plan, options);
+          await client.query("COMMIT");
+          return { state: "granted" as const };
+        } catch (error) {
+          await client.query("ROLLBACK").catch(() => {});
+          throw error;
+        }
+      }).finally(async () => { if (ownedPoolPromise) await (await ownedPoolPromise).end(); });
+    },
   };
+}
+
+function ledgerEntries(units: readonly PlannedMigration[]) {
+  return units.map(({ catalogPath: file, sha256, position }) => ({ file, sha256, position }));
+}
+
+function assertCheckoutGrantUnit(units: readonly PlannedMigration[], grant: PlannedMigration): void {
+  const definitions = units.filter(unit => checkoutOwnerDefinitionPath.test(unit.catalogPath));
+  const [definition] = definitions;
+  if (!definition || definitions.length !== 1 || definition.position <= 0 || definition.position >= grant.position) {
+    throw new Error("checkout_owner_predecessor_unverified. Restore the approved checkout definition and verify the installation.");
+  }
+  if (units.filter(unit => checkoutOwnerGrantPath.test(unit.catalogPath)).length !== 1
+    || grant.sql !== renderCheckoutOwnerGrant(definition.catalogPath, definition.sha256)) {
+    throw new Error("checkout_owner_forward_unverified. Apply the issued checkout grant through the installation owner.");
+  }
 }
 
 async function withMigrationSession<T>(
@@ -402,14 +469,14 @@ async function assertObjectInventory(
   // until that complete-catalogue observation has finished.
   await readAppliedPrefix(client, plan.units, async (applied) => {
     if (applied.length !== plan.units.length) throw new Error("platform migration ledger is incomplete after apply");
-    const payload = await options.catalogProjectionPayload(client);
-    const errors = options.source.evaluate({
-      manifest: plan.manifest,
-      migrations: plan.migrations,
-      objectInventoryPayload: payload,
-    });
-    if (errors.length > 0) throw new Error(`platform migration inventory rejected: ${errors.join("; ")}`);
+    await verifyObjectInventory(client, plan, options);
   });
+}
+
+async function verifyObjectInventory(client: PoolClient, plan: LoadedPlan, options: PostgresMigrationRunnerOptions): Promise<void> {
+  const payload = await options.catalogProjectionPayload(client);
+  const errors = options.source.evaluate({ manifest: plan.manifest, migrations: plan.migrations, objectInventoryPayload: payload });
+  if (errors.length > 0) throw new Error(`platform migration inventory rejected: ${errors.join("; ")}`);
 }
 
 function errorMessage(error: unknown): string {

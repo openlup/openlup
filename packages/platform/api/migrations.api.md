@@ -116,9 +116,9 @@ export {};
 
 ```ts
 export { createPostgresMigrationRunner, resolvePostgresMigrationRunnerEnv, type PlatformMigrationFile, type PlatformMigrationManifest, type PlatformMigrationManifestEntry, type PlatformMigrationSource, type PostgresMigrationRunnerEnv, type PostgresMigrationRunnerOptions, } from "./postgresRunner.js";
-export { createPlatformPostgresMigrationRunner, type PlatformPostgresInstallation, type PlatformPostgresMigrationRunnerOptions, } from "./platformRunner.js";
-export * from "./qualifiedInstall.js";
-export * from "./selectedCatalogProjection.js";
+export { createPlatformPostgresMigrationRunner, applyPlatformCheckoutOwnerGrant, type PlatformPostgresInstallation, type PlatformPostgresMigrationRunnerOptions, } from "./platformRunner.js";
+export { ADMIN_FILES, assertQualifiedPostgresSelection, qualifiedPostgresStartupOptions, assertQualifiedPostgresSession, qualifiedPostgresCatalogPayload, assertQualifiedAdminPostgresSelection, qualifiedAdminPostgresStartupOptions, qualifiedAdminPrefixPhase, expectedQualifiedAdminMemberships, assertQualifiedAdminPostgresSession, qualifiedAdminPostgresCatalogPayload, type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation, type AdminPrefixPhase, type AdminObservedMembership, } from "./qualifiedInstall.js";
+export { readSelectedCatalogProjection, selectedCatalogProjectionPayload, readSelectedCatalogRowsForQualifiedInstall, selectedCatalogRowsPayloadForQualifiedInstall, type CatalogKind, type ObjectIdentity, type AclTargetClass, type AclGrant, type DefaultPrivilege, type RoleMembership, type RoleRecord, type ObjectOwnership, type ProjectedObject, type ValidatedProjection, } from "./selectedCatalogProjection.js";
 export * from "./rdsControlRoles.js";
 export { packagedPlatformMigrationPosition } from "./packagedCatalog.js";
 ```
@@ -174,6 +174,13 @@ export interface PlatformPostgresMigrationRunnerOptions {
     catalogProjectionPayload?: (client: PoolClient) => Promise<string>;
 }
 export declare function createPlatformPostgresMigrationRunner(env: PostgresMigrationRunnerEnv, options: PlatformPostgresMigrationRunnerOptions): MigrationRunnerPort;
+/**
+ * @experimental Verify and apply the recorded checkout-owner grant in the installed catalogue.
+ * The host excludes role and local DDL or ACL administration for the operation.
+ */
+export declare function applyPlatformCheckoutOwnerGrant(env: PostgresMigrationRunnerEnv, installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation): Promise<{
+    state: "granted";
+}>;
 ```
 ## dist/migrations/postgresRunner.d.ts
 
@@ -240,7 +247,26 @@ export interface PostgresMigrationRunnerOptions {
     onPoolError?: (error: Error) => void;
 }
 export declare function createPostgresMigrationRunner(env: PostgresMigrationRunnerEnv, options: PostgresMigrationRunnerOptions): MigrationRunnerPort;
+type CheckoutOwnerVerifier = (client: PoolClient, applied: readonly (PlatformMigrationManifestEntry & {
+    position: number;
+})[], requirement: "present" | "granted") => Promise<void>;
+/** @internal @experimental Configure the fixed platform checkout operation on the existing session. */
+export declare function createBoundPostgresMigrationRunner(env: PostgresMigrationRunnerEnv, options: PostgresMigrationRunnerOptions, verifyCheckoutOwner?: CheckoutOwnerVerifier): {
+    status(): Promise<{
+        pending: string[];
+        applied: string[];
+    }>;
+    apply(opts?: {
+        dryRun?: boolean;
+    }): Promise<{
+        applied: string[];
+    }>;
+    applyCheckoutOwnerGrant(): Promise<{
+        state: "granted";
+    }>;
+};
 export declare function resolvePostgresMigrationRunnerEnv(env: Record<string, string | undefined>): PostgresMigrationRunnerEnv;
+export {};
 ```
 ## dist/migrations/qualifiedInstall.d.ts
 
@@ -321,6 +347,8 @@ export declare function expectedQualifiedAdminMemberships(input: QualifiedAdminP
 export declare function assertQualifiedAdminPostgresSession(client: PoolClient, applied: readonly Applied[], selection: QualifiedAdminPostgresInstallation, lockName: string): Promise<void>;
 /** Distinct payload; checks above precede all principal field normalization. */
 export declare function qualifiedAdminPostgresCatalogPayload(client: PoolClient, selection: QualifiedAdminPostgresInstallation, lockName: string): Promise<string>;
+/** @internal @experimental Verify the fixed role on the selected migration session. */
+export declare function assertQualifiedCheckoutOwnerState(client: PoolClient, applied: readonly Applied[], selection: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation, lockName: string, requirement: "present" | "granted"): Promise<void>;
 export {};
 ```
 ## dist/migrations/rdsControlRoles.d.ts
@@ -421,5 +449,21 @@ export declare function selectedCatalogProjectionPayload(value: ValidatedProject
 export declare function readSelectedCatalogRowsForQualifiedInstall(client: ClientBase): Promise<readonly CatalogRow[]>;
 /** Reuse the existing row consistency checks after the qualified field-only transformation. */
 export declare function selectedCatalogRowsPayloadForQualifiedInstall(rows: readonly CatalogRow[]): string;
+type CheckoutAccess = {
+    owns_objects: boolean;
+    has_defaults: boolean;
+    can_connect: boolean;
+    has_ddl: boolean;
+    has_data: boolean;
+    has_parameter_access: boolean;
+    routines: string[];
+    missing_supported_temp: boolean;
+};
+/** @internal @experimental Observe checkout role capabilities and the raw catalogue in one statement snapshot. */
+export declare function readQualifiedCatalogWithCheckoutAccess(client: ClientBase, tempRoles: readonly string[]): Promise<{
+    catalog: CatalogRow[];
+    checkout: CheckoutAccess | null;
+    checkoutPaths: string[];
+}>;
 export {};
 ```

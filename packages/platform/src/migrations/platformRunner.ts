@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import type { MigrationRunnerPort } from "@openlup/core/platform-runtime";
 import {
-  createPostgresMigrationRunner as createPlatformMigrationRunner,
+  createBoundPostgresMigrationRunner,
   type PlatformMigrationSource,
   type PostgresMigrationRunnerEnv,
   type PostgresMigrationRunnerOptions as PlatformMigrationRunnerOptions,
@@ -16,7 +16,7 @@ import {
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "./selectedCatalogProjection.js";
 import { assertQualifiedPostgresSelection, assertQualifiedPostgresSession, qualifiedPostgresCatalogPayload,
   qualifiedPostgresStartupOptions, assertQualifiedAdminPostgresSelection, assertQualifiedAdminPostgresSession,
-  qualifiedAdminPostgresCatalogPayload, qualifiedAdminPostgresStartupOptions,
+  qualifiedAdminPostgresCatalogPayload, qualifiedAdminPostgresStartupOptions, assertQualifiedCheckoutOwnerState,
   type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "./qualifiedInstall.js";
 import { readPackagedPlatformCatalog } from "./packagedCatalog.js";
 import { attachPgErrorListener } from "./pgErrorListener.js";
@@ -72,6 +72,22 @@ export function createPlatformPostgresMigrationRunner(
   env: PostgresMigrationRunnerEnv,
   options: PlatformPostgresMigrationRunnerOptions,
 ): MigrationRunnerPort {
+  const { status, apply } = configuredPlatformMigrationRunner(env, options);
+  return { status, apply };
+}
+
+/**
+ * @experimental Verify and apply the recorded checkout-owner grant in the installed catalogue.
+ * The host excludes role and local DDL or ACL administration for the operation.
+ */
+export function applyPlatformCheckoutOwnerGrant(
+  env: PostgresMigrationRunnerEnv,
+  installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation,
+): Promise<{ state: "granted" }> {
+  return configuredPlatformMigrationRunner(env, { installation }).applyCheckoutOwnerGrant();
+}
+
+function configuredPlatformMigrationRunner(env: PostgresMigrationRunnerEnv, options: PlatformPostgresMigrationRunnerOptions) {
   const installation = options?.installation;
   if (installation === undefined) throw new Error("platform migration installation is required");
   if (!installation || typeof installation !== "object" || Array.isArray(installation)) throw new Error("invalid platform migration generation selection");
@@ -79,7 +95,7 @@ export function createPlatformPostgresMigrationRunner(
   if (installation.generation === "legacy" && Object.keys(installation).some(key => key !== "generation")) throw new Error("legacy migrations refuse qualified installation fields");
   if (installation.generation === "qualified-v2") assertQualifiedPostgresSelection(installation);
   if (installation.generation === "qualified-admin") assertQualifiedAdminPostgresSelection(installation);
-  return createPlatformMigrationRunner(env, {
+  return createBoundPostgresMigrationRunner(env, {
     lockName: MIGRATION_LOCK_NAME,
     source: platformMigrationSource(installation, options.catalog ?? {
       readMigrations: () => readPackagedPlatformCatalog(),
@@ -101,5 +117,6 @@ export function createPlatformPostgresMigrationRunner(
       const PoolCtor = pg.default?.Pool ?? pg.Pool;
       return attachPgErrorListener(new PoolCtor({ connectionString: url.toString() }), "platform-migration-runner", options.onPoolError);
     } : undefined),
-  });
+  }, installation.generation === "legacy" ? undefined : (client, applied, requirement) =>
+    assertQualifiedCheckoutOwnerState(client, applied, installation, MIGRATION_LOCK_NAME, requirement));
 }

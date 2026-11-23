@@ -1,3 +1,4 @@
+import { checkoutOwnerLogin, checkoutOwnerRoutines } from "./catalog.js";
 // Canonical `selected-catalog-v2` object projection for the public-platform
 // migration runner.
 //
@@ -271,4 +272,61 @@ export async function readSelectedCatalogRowsForQualifiedInstall(client: ClientB
 /** Reuse the existing row consistency checks after the qualified field-only transformation. */
 export function selectedCatalogRowsPayloadForQualifiedInstall(rows: readonly CatalogRow[]): string {
   return selectedCatalogProjectionPayload(projectionFromRows(rows));
+}
+
+const CHECKOUT_ACCESS_SQL = String.raw`
+WITH login AS (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = $1),
+  selected_db AS (SELECT oid FROM pg_catalog.pg_database WHERE datname = pg_catalog.current_database()),
+  protected_schemas AS (
+    SELECT oid,nspname FROM pg_catalog.pg_namespace
+    WHERE pg_catalog.left(nspname,3) <> 'pg_' AND nspname <> 'information_schema'
+  )
+SELECT
+  EXISTS (SELECT 1 FROM pg_catalog.pg_shdepend d WHERE d.refobjid = r.oid
+    AND d.refclassid = 'pg_catalog.pg_authid'::pg_catalog.regclass AND d.deptype = 'o') AS owns_objects,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting s WHERE s.setrole = r.oid) AS has_defaults,
+  pg_catalog.has_database_privilege(r.oid,db.oid,'CONNECT')
+    AND NOT pg_catalog.has_database_privilege(r.oid,db.oid,'CONNECT WITH GRANT OPTION')
+    AND pg_catalog.has_schema_privilege(r.oid,'public','USAGE') AS can_connect,
+  pg_catalog.has_database_privilege(r.oid,db.oid,'CREATE,TEMP')
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
+    OR EXISTS (SELECT 1 FROM protected_schemas n WHERE n.nspname <> 'public'
+      AND pg_catalog.has_schema_privilege(r.oid,n.oid,'USAGE')) AS has_ddl,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_parameter_acl a
+    WHERE pg_catalog.has_parameter_privilege(r.oid,a.parname,'SET,ALTER SYSTEM')) AS has_parameter_access,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN protected_schemas n ON n.oid = c.relnamespace
+    WHERE CASE WHEN c.relkind = 'S' THEN pg_catalog.has_sequence_privilege(r.oid,c.oid,'USAGE,SELECT,UPDATE')
+      WHEN c.relkind IN ('r','p','v','m','f') THEN
+        pg_catalog.has_table_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+        OR pg_catalog.has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') ELSE false END) AS has_data,
+  ARRAY(SELECT pg_catalog.format('%I.%I(%s)',n.nspname,p.proname,
+    pg_catalog.replace(pg_catalog.oidvectortypes(p.proargtypes),', ', ','))
+    FROM pg_catalog.pg_proc p JOIN protected_schemas n ON n.oid = p.pronamespace
+    WHERE (p.prosecdef OR p.proacl IS NOT NULL)
+      AND pg_catalog.has_function_privilege(r.oid,p.oid,'EXECUTE')
+      AND pg_catalog.has_schema_privilege(r.oid,n.oid,'USAGE')) AS routines,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_roles supported
+    WHERE supported.rolname = ANY($2::pg_catalog.name[])
+      AND NOT pg_catalog.has_database_privilege(supported.oid,db.oid,'TEMP')) AS missing_supported_temp
+FROM login r CROSS JOIN selected_db db`;
+
+type CheckoutAccess = { owns_objects: boolean; has_defaults: boolean; can_connect: boolean; has_ddl: boolean;
+  has_data: boolean; has_parameter_access: boolean; routines: string[]; missing_supported_temp: boolean };
+
+/** @internal @experimental Observe checkout role capabilities and the raw catalogue in one statement snapshot. */
+export async function readQualifiedCatalogWithCheckoutAccess(client: ClientBase, tempRoles: readonly string[]) {
+  const { rows: [result] } = await client.query<{
+    catalog: CatalogRow[]; checkout: CheckoutAccess | null; checkoutPaths: string[];
+  }>({
+    name: "openlup-qualified-checkout-observation-v1",
+    text: `WITH catalog AS (${CATALOG_SQL}), checkout AS (${CHECKOUT_ACCESS_SQL})
+      SELECT (SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(c)) FROM catalog c) AS catalog,
+        (SELECT pg_catalog.to_jsonb(a) FROM checkout a) AS checkout,
+        ARRAY(SELECT t.signature FROM pg_catalog.unnest($3::pg_catalog.text[]) t(signature)
+          JOIN pg_catalog.pg_proc p ON p.oid OPERATOR(pg_catalog.=) pg_catalog.to_regprocedure(t.signature)
+          WHERE p.proconfig OPERATOR(pg_catalog.=) ARRAY['search_path=pg_catalog, pg_temp']) AS "checkoutPaths"`,
+    values: [checkoutOwnerLogin, tempRoles, checkoutOwnerRoutines],
+  });
+  if (!result) throw new Error("qualified checkout catalogue observation is missing");
+  return result;
 }

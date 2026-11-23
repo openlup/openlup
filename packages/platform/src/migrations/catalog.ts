@@ -314,7 +314,15 @@ export function renderCheckoutOwnerGrant(path: string, sha256: string): string {
   if (!checkoutOwnerDefinitionPath.test(path) || !/^[0-9a-f]{64}$/u.test(sha256)) {
     throw new Error("checkout_owner_predecessor_unverified. Recover the issued checkout routine definition binding.");
   }
-  return `DO $$ BEGIN
+  return `DO $$
+DECLARE
+  checkout_login pg_catalog.pg_roles%ROWTYPE;
+  granted_count integer;
+  routine record;
+  acl record;
+  routine_grants integer;
+  owner_grants integer;
+BEGIN
   IF EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
     WHERE position OPERATOR(pg_catalog.=) 0
       AND catalog_path OPERATOR(pg_catalog.=) 'db/platform/migrations/${baseline}'
@@ -333,12 +341,47 @@ export function renderCheckoutOwnerGrant(path: string, sha256: string): string {
       AND sha256 OPERATOR(pg_catalog.=) '${sha256}') THEN
     RAISE EXCEPTION 'checkout_owner_predecessor_unverified';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
-    WHERE rolname OPERATOR(pg_catalog.=) '${checkoutOwnerLogin}'
-      AND rolcanlogin AND NOT (rolinherit OR rolsuper OR rolcreatedb
-        OR rolcreaterole OR rolreplication OR rolbypassrls)) THEN
-    RAISE EXCEPTION 'checkout_owner_login_unready';
+  SELECT * INTO checkout_login FROM pg_catalog.pg_roles
+    WHERE rolname OPERATOR(pg_catalog.=) '${checkoutOwnerLogin}';
+  granted_count := 0;
+  FOR routine IN SELECT target.signature, p.* FROM pg_catalog.unnest(
+    ARRAY[${checkoutOwnerRoutines.map(signature => `'${signature}'`).join(", ")}]
+  ) target(signature) LEFT JOIN pg_catalog.pg_proc p
+    ON p.oid OPERATOR(pg_catalog.=) pg_catalog.to_regprocedure(target.signature) LOOP
+    IF routine.oid IS NULL OR routine.prokind OPERATOR(pg_catalog.<>) 'f'
+      OR pg_catalog.pg_get_userbyid(routine.proowner) OPERATOR(pg_catalog.<>) current_user
+      OR NOT routine.prosecdef OR routine.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, pg_temp']
+      THEN RAISE EXCEPTION 'checkout_owner_predecessor_unverified';
+    END IF;
+    routine_grants := 0;
+    owner_grants := 0;
+    FOR acl IN SELECT * FROM pg_catalog.aclexplode(routine.proacl) LOOP
+      IF acl.grantor OPERATOR(pg_catalog.<>) routine.proowner
+        OR acl.privilege_type OPERATOR(pg_catalog.<>) 'EXECUTE' OR acl.is_grantable
+        THEN RAISE EXCEPTION 'checkout_owner_acl_mismatch';
+      END IF;
+      IF acl.grantee OPERATOR(pg_catalog.=) routine.proowner THEN
+        owner_grants := owner_grants + 1;
+      ELSIF acl.grantee OPERATOR(pg_catalog.=) checkout_login.oid THEN
+        routine_grants := routine_grants + 1;
+      ELSE RAISE EXCEPTION 'checkout_owner_acl_mismatch';
+      END IF;
+    END LOOP;
+    IF owner_grants OPERATOR(pg_catalog.<>) 1 OR routine_grants OPERATOR(pg_catalog.>) 1
+      THEN RAISE EXCEPTION 'checkout_owner_acl_mismatch';
+    END IF;
+    granted_count := granted_count + routine_grants;
+  END LOOP;
+  IF granted_count OPERATOR(pg_catalog.<>) ALL (ARRAY[0,3]) THEN
+    RAISE EXCEPTION 'checkout_owner_acl_mismatch';
   END IF;
+  IF checkout_login.oid IS NULL THEN RETURN; END IF;
+  IF NOT checkout_login.rolcanlogin OR checkout_login.rolinherit OR checkout_login.rolsuper
+    OR checkout_login.rolcreatedb OR checkout_login.rolcreaterole OR checkout_login.rolreplication
+    OR checkout_login.rolbypassrls OR checkout_login.rolconnlimit OPERATOR(pg_catalog.<>) -1
+    OR checkout_login.rolvaliduntil IS NOT NULL THEN RAISE EXCEPTION 'checkout_owner_login_unready';
+  END IF;
+  IF granted_count OPERATOR(pg_catalog.=) 3 THEN RETURN; END IF;
   EXECUTE 'GRANT EXECUTE ON FUNCTION ${checkoutOwnerRoutines.join(",\n    ")} TO ${checkoutOwnerLogin};';
 END; $$;
 `;
