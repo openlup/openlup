@@ -3010,6 +3010,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/quote-acceptance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/quote-shipping.test.ts",
       "class": "public-output"
     },
@@ -9643,6 +9647,10 @@
     },
     {
       "path": "packages/platform/src/promotions/promotionQuoteAcceptance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/promotionQuoteAcceptanceEnvelope.ts",
       "class": "public-output"
     },
     {
