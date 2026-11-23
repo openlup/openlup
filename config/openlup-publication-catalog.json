@@ -654,6 +654,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/ci-quarantine.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/customer-360-parity-expectation.json",
       "class": "public-output"
     },
@@ -13498,6 +13502,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/affected-tests.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/affected-tests.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/agent-ci-queued-diagnose.ts",
       "class": "public-output"
     },
@@ -13707,6 +13719,14 @@
     },
     {
       "path": "scripts/ci-image-pull.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-quarantine.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-quarantine.test.ts",
       "class": "public-output"
     },
     {
