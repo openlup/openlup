@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createPostgresPaymentMethodSetup, createPostgresPaymentWebhookControlPort, createPostgresPaymentWebhookMethodRefPort,
   createVerifiedPaymentIngress, consumePostgresPaymentMethodDelivery, createPostgresRecordedSubscriptionMethodReader,
   createPostgresPaymentMethodStore, paymentSchemaDescriptor } from "@openlup/platform/payments";
 import type { VerifiedMethodEvidence } from "@openlup/platform/payments/contracts";
 import { createSelfServiceCommandFacade } from "@openlup/platform/account-support";
-import { createPostgresPurchaseRenewalWriter, NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
+import { createPostgresPurchaseRenewalWriter, createPostgresRenewalStore, NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
+import type { RenewalPaymentRail } from "@openlup/platform/subscriptions/contracts";
 import { storeJourneyResources, assertJourneyRuntime } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { call, failure, prepareOriginal, renewal, request, retryDueAt } from "./subscriptionNativeFixture.js";
+import { abortAtSecondLock, codec, dueSubject, lifecycleInstallation, lifecycleProfiles,
+  scheduledRenewal, truth, witnessTimeout } from "./subscriptionLifecycleClosureFixture.js";
 
 const AT = "2026-11-13T12:00:00.000Z";
 
@@ -154,3 +157,93 @@ it.each(["admission", "freeze"] as const)("locks the token against concurrent re
     await Promise.all([pending, dispatchPending]); admission.release(); revocation.release(); methodBlocker.release();
   }
 });
+
+it.each(lifecycleProfiles)('LOCK-1R S/P on %s recovers setup-success redelivery and scheduled prepare after either abort', async profile => {
+  const h = await lifecycleInstallation(profile);
+  try {
+    const { owner, runtime } = h;
+    const provider = 'card_rail', f = await dueSubject(h, provider);
+    await call(owner, 'subscription_delivery_alignment_set_mode', ['off']);
+    const oldMethod = 'pm_original', replacement = 'pm_replacement', customer = 'cus_fixture';
+    const method = await createPostgresPaymentMethodStore(runtime).upsert({
+      key: `method:${f.subscription}`, clientId: f.client, subscriptionId: f.subscription,
+      provider, methodKind: 'card', customer, reference: oldMethod,
+      mandate: null, status: 'active', active: true, expiresAt: null, consent: {}, payload: {},
+    });
+    const store = createPostgresRenewalStore(runtime, codec);
+    const [due] = await store.listDue(1, f.at(0));
+    expect(due.subscriptionId).toBe(f.subscription);
+    const snapshot = await store.buildCycleSnapshots(due);
+    if (snapshot.cycle.status !== 'correlated') throw new Error('Fixture needs correlated paid history');
+    const claim = await store.claimDue({ snapshot, workerId: 'seed', now: f.at(0) });
+    const operation = claim.operationId;
+    await call(runtime, 'fulfillment_reserve_subscription_renewal', [operation, claim.claimToken, 900, f.at(0)]);
+    const original = await call(runtime, 'commerce_prepare_subscription_renewal', [operation, claim.claimToken, f.at(0)]);
+    await call(runtime, 'commerce_acknowledge_subscription_renewal_attempt', [operation, claim.operationFingerprint, 'declined-attempt', f.at(0)]);
+    await call(runtime, 'subscription_retry_apply_failure', [operation, `failure:${operation}`,
+      { ...failure(0, f.at(0)), logicalCycleNumber: snapshot.cycle.logicalCycleNumber }]);
+    await call(runtime, 'subscription_retry_open_case', [operation, truth.dunningTemplateSlug, truth.recoveryUrlPath]);
+
+    const eventId = randomUUID(), receiptKey = `provider-webhook:${provider}:${eventId}:method-ref`, at = f.at(25);
+    const evidence: VerifiedMethodEvidence = {
+      provider, providerEventId: eventId, fingerprint: 'b'.repeat(64), providerOccurredAt: at,
+      kind: 'method', outcome: 'registered', methodRef: replacement, setupRef: 'setup-replacement', intentRef: null,
+      reusableMethod: { providerCustomerRef: customer, providerMethodRef: replacement, methodKind: 'card', status: 'active' },
+    };
+    const delivery = { rawBody: Buffer.from(JSON.stringify({ eventId })), headers: {}, receivedAt: at };
+    const receive = (executor: typeof setupAbort.executor) => createVerifiedPaymentIngress({
+      provider, verifyPort: { verifyAndNormalize: async () => evidence },
+      paymentControlPort: createPostgresPaymentWebhookControlPort(executor, truth),
+      resolveMethodOwner: async () => ({ clientId: f.client, subscriptionId: f.subscription }),
+      methodRefPort: createPostgresPaymentWebhookMethodRefPort(executor),
+      afterProcessed: async ({ event }) => consumePostgresPaymentMethodDelivery(executor, event),
+    }).receive(delivery);
+    const subscription = ['SELECT id FROM public.subscriptions WHERE id=$1', f.subscription] as const;
+    const paymentMethod = ['SELECT id FROM public.payment_method_refs WHERE id=$1', method.id] as const;
+    const setupAbort = abortAtSecondLock(h, 'payment_method_ref_upsert', paymentMethod, subscription);
+    const prepareAbort = abortAtSecondLock(h, 'subscription_retry_prepare', subscription, paymentMethod);
+    const dispatch = vi.fn<RenewalPaymentRail['execute']>(async () => ({ status: 'pending', externalAttemptRef: 'retry-attempt' }));
+    const population = `lock1r:${f.subscription}`;
+    const tick = (executor: typeof prepareAbort.executor) => scheduledRenewal(h, executor, () => at, oldMethod, dispatch, population)();
+    const effects = async () => (await owner.query(`SELECT
+      (SELECT jsonb_agg(to_jsonb(m) ORDER BY m.provider_method_ref) FROM public.payment_method_refs m WHERE subscription_id=$1) AS methods,
+      (SELECT count(*)::int FROM public.payment_method_ref_receipts WHERE idempotency_key=$4) AS method_receipts,
+      (SELECT to_jsonb(o) FROM public.subscription_retry_obligations o WHERE renewal_operation_id=$2) AS obligation,
+      (SELECT count(*)::int FROM public.subscription_retry_receipts r JOIN public.subscription_retry_obligations o
+        ON o.id=r.obligation_id WHERE o.renewal_operation_id=$2 AND r.kind='prepare') AS prepares,
+      (SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM public.outbox_events e WHERE aggregate_id IN ($1,$3)) AS outbox,
+      (SELECT count(*)::int FROM public.commerce_order_holds WHERE order_id=$3) AS holds`,
+    [f.subscription, operation, original.orderId, receiptKey])).rows[0];
+    const storedEvidence = async () => (await owner.query(`SELECT id,processing_status,processed_at
+      FROM public.payment_provider_attempt_evidence WHERE provider_event_id=$1`, [eventId])).rows;
+
+    const before = await effects();
+    expect(before).toMatchObject({ method_receipts: 0, prepares: 0, holds: 0, obligation: { state: 'waiting' } });
+    expect(await receive(setupAbort.executor)).toMatchObject({ status: 503 });
+    expect(setupAbort.cancelled).toEqual(['payment_method_ref_upsert']);
+    expect(await storedEvidence()).toEqual([{ id: expect.any(String), processing_status: 'received', processed_at: null }]);
+    expect(await effects()).toEqual(before);
+
+    expect(await tick(prepareAbort.executor)).toMatchObject({ retries: [{ operationId: operation, status: 'error' }] });
+    expect(prepareAbort.cancelled).toEqual(['subscription_retry_prepare']);
+    expect(await effects()).toEqual(before);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect((await owner.query('SELECT status FROM public.platform_job_runs WHERE job_name=$1', [`subscription-renewal:demo:${population}`])).rows)
+      .toEqual([{ status: 'failed' }]);
+
+    expect(await tick(runtime)).toMatchObject({ retries: [{ operationId: operation, status: 'awaiting_provider' }] });
+    expect(await effects()).toMatchObject({ prepares: 1, method_receipts: 0, holds: 0, outbox: before.outbox, obligation: { state: 'prepared' } });
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ paymentMethodRef: oldMethod }));
+
+    expect(await receive(runtime)).toMatchObject({ status: 200 });
+    const committed = await effects(), processed = await storedEvidence();
+    expect(committed).toMatchObject({ prepares: 1, method_receipts: 1, holds: 0, outbox: before.outbox,
+      methods: [{ provider_method_ref: oldMethod, active: false }, { provider_method_ref: replacement, active: true }] });
+    expect(processed).toEqual([{ id: expect.any(String), processing_status: 'processed', processed_at: expect.any(Date) }]);
+    expect(await receive(runtime)).toMatchObject({ status: 200 });
+    await tick(runtime);
+    expect(await storedEvidence()).toEqual(processed);
+    expect(await effects()).toEqual(committed);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  } finally { await h.close(); }
+}, witnessTimeout);
