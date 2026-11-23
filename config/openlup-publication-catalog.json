@@ -1794,6 +1794,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/history/data-and-migrations-evidence-2026-11-13.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/history/managed-query-baseline-2026-11-19.md",
       "class": "public-output"
     },
@@ -13863,6 +13867,10 @@
     },
     {
       "path": "scripts/fixtures/20261022195100_invoicing_seller_revision.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/landing-test-environment.ts",
       "class": "public-output"
     },
     {
@@ -31143,6 +31151,10 @@
     },
     {
       "path": "tests/helpers/managedCompatPostgres.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/helpers/neutralStoreScenario.mjs",
       "class": "public-output"
     },
     {

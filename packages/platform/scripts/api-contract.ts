@@ -51,11 +51,13 @@ for (const [subpath, contract] of Object.entries(gates.packageSurface)) {
     continue;
   }
 
-  assert(existsSync(snapshotPath), `missing API snapshot ${contract.snapshot}; run node --experimental-strip-types ./scripts/api-contract.ts --update`);
+  const label = `packages/platform/${contract.snapshot}`;
+  const remedy = "run npm run api:update --workspace=@openlup/platform";
+  assert(existsSync(snapshotPath), `missing API snapshot ${label}; ${remedy}`);
   const expected = readFileSync(snapshotPath, "utf8");
   assert(
     expected === snapshot,
-    `${contract.maturity} package surface drift for ${subpath}; review declarations and run node --experimental-strip-types ./scripts/api-contract.ts --update intentionally`,
+    `${label}: ${contract.maturity} package surface drift for ${subpath}; ${remedy}`,
   );
   console.log(`${contract.maturity} package surface ok ${subpath}`);
 }

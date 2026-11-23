@@ -1,4 +1,5 @@
-import type { SubscriptionCommand, SubscriptionCommandAdmission, SubscriptionCommandPort, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
+import { createHash } from "node:crypto";
+import type { SubscriptionCommand, SubscriptionCommandAdmission, SubscriptionCommandContext, SubscriptionCommandPort, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionLifecycleTerms, SubscriptionSaveOfferPresentation } from "./contracts/commands.js";
 import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { lifecycleTerms, retentionFields } from "./lifecycleTerms.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
@@ -69,8 +70,56 @@ function refusalReason(reason: unknown): SubscriptionCommandRefusal["reason"] {
     ? reason as SubscriptionCommandRefusal["reason"] : "subscription_command_invalid_input";
 }
 function commandResult(result: Record<string, unknown>): Record<string, unknown> {
+  if (Object.hasOwn(result, "cx1rRequestSha256")) {
+    const { cx1rRequestSha256: _privateRequest, ...publicResult } = result;
+    result = publicResult;
+  }
   return result.status === "refused" || result.outcome === "refused"
     ? { ...result, reason: refusalReason(result.reason) } : result;
+}
+
+function lockCommandKey(executor: SubscriptionQueryExecutor, actorId: string, key: string) {
+  return executor.query("SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text||':'||$2::text,0))", [actorId, key]);
+}
+
+function commandValues(input: NativeSubscriptionCommand) {
+  return [input.actorId, input.clientId, input.idempotencyKey, input.subscriptionId, input.action, input.payload, input.now];
+}
+
+async function dispatchCommand(executor: SubscriptionQueryExecutor, values: unknown[], preview: boolean, terms?: SubscriptionLifecycleTerms) {
+  const name = preview ? "subscription_command_preview" : "subscription_command_apply";
+  const { rows } = await executor.query(`SELECT public.${name}($1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::jsonb,$7::timestamptz${terms ? ",$8::jsonb" : ""}) AS response`, terms ? [...values, terms] : values);
+  return commandResult(subscriptionRecord(rows[0]?.response));
+}
+
+function mappedReceipt(command: SubscriptionCommandContext, result: Record<string, unknown>): SubscriptionCommandReceipt | SubscriptionCommandRefusal {
+  if (result.status === "refused" || result.outcome === "refused") return { outcome: "refused", reason: refusalReason(result.reason) };
+  if (result.status !== "applied" && result.status !== "replayed" && result.status !== "noop") throw new Error("subscription_command_response_invalid");
+  return { actorId: command.actor.actorId, idempotencyKey: command.idempotencyKey,
+    commandFingerprint: String(result.commandFingerprint), outcome: result.status, subscriptionId: String(result.subscriptionId),
+    originalState: String(result.subscriptionStatus), nextCycleAt: result.nextCycleAt == null ? null : String(result.nextCycleAt),
+    revision: String(result.templateVersion), eventId: result.eventId == null ? null : String(result.eventId) };
+}
+
+const paymentBlockerSql = (subscription: "$1::uuid" | "s.id") => `COALESCE(
+  (SELECT CASE d.status WHEN 'open' THEN 'payment_blocked' ELSE 'payment_expired' END
+    FROM public.subscription_dunning_cases d WHERE d.subscription_id=${subscription} AND d.status IN ('open','expired')
+    ORDER BY (d.status='open') DESC,d.updated_at DESC,d.id DESC LIMIT 1),
+  (SELECT 'payment_failed' FROM public.subscription_cycles c WHERE c.subscription_id=${subscription}
+    AND c.status IN ('payment_failed','retry_scheduled') LIMIT 1))`;
+
+async function admitCommand(executor: SubscriptionQueryExecutor, admit: SubscriptionCommandAdmission, input: NativeSubscriptionCommand, status: string) {
+  const { rows: [row] } = await executor.query(`SELECT current_setting('transaction_isolation') AS isolation,
+    ${paymentBlockerSql("$1::uuid")} AS payment_blocker`, [input.subscriptionId]);
+  // Higher isolation retains a pre-lock transaction snapshot. PostgreSQL's
+  // READ UNCOMMITTED uses READ COMMITTED's statement snapshots as well.
+  if (row.isolation !== "read committed" && row.isolation !== "read uncommitted") {
+    throw new Error("subscription_command_admission_isolation_unsupported");
+  }
+  await admit({ action: admissionAction(input.action),
+    pausePreset: typeof input.payload.pausePreset === "string" ? input.payload.pausePreset : null,
+    reason: typeof input.payload.reason === "string" ? input.payload.reason : null,
+    subscriptionStatus: status, paymentBlocker: row.payment_blocker == null ? null : String(row.payment_blocker) });
 }
 
 /** N2 owns normalization, locking, quote acceptance, receipts and all writes.
@@ -89,11 +138,11 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
     status: "refused", reason: NATIVE_SUBSCRIPTION_CAPABILITIES.multiCyclePrepaid.refusalCode,
   };
   return binding.withTransaction(async executor => {
-    const values = [input.actorId, input.clientId, input.idempotencyKey, input.subscriptionId, input.action, input.payload, input.now];
+    const values = commandValues(input);
     // Share N2's actor/key lock so a concurrent preview/apply cannot change
     // the receipt between this read and native dispatch. Replay ends here,
     // before any lifecycle function or other potentially writing call.
-    await executor.query("SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text||':'||$2::text,0))", [input.actorId, input.idempotencyKey]);
+    await lockCommandKey(executor, input.actorId, input.idempotencyKey);
     const stored = await executor.query(`WITH stored AS (
       SELECT r.*, CASE WHEN $9::boolean THEN jsonb_set(r.command,'{payload}',
         (r.command->'payload')-ARRAY['coreLines','addonLines','compositionConstraint']) ELSE r.command END AS requested_command
@@ -121,22 +170,7 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
       const subscription = await executor.query(`SELECT status FROM public.subscriptions
         WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE`, [input.subscriptionId, input.clientId]);
       if (!subscription.rows[0]) throw new Error("subscription_command_forbidden");
-      const { rows } = await executor.query(`SELECT current_setting('transaction_isolation') AS isolation,
-        COALESCE((SELECT CASE d.status WHEN 'open' THEN 'payment_blocked' ELSE 'payment_expired' END
-          FROM public.subscription_dunning_cases d WHERE d.subscription_id=$1::uuid AND d.status IN ('open','expired')
-          ORDER BY (d.status='open') DESC,d.updated_at DESC,d.id DESC LIMIT 1),
-          (SELECT 'payment_failed' FROM public.subscription_cycles c WHERE c.subscription_id=$1::uuid
-            AND c.status IN ('payment_failed','retry_scheduled') LIMIT 1)) AS payment_blocker`, [input.subscriptionId]);
-      const row = rows[0];
-      // Higher isolation retains a pre-lock transaction snapshot. PostgreSQL's
-      // READ UNCOMMITTED uses READ COMMITTED's statement snapshots as well.
-      if (row.isolation !== "read committed" && row.isolation !== "read uncommitted") {
-        throw new Error("subscription_command_admission_isolation_unsupported");
-      }
-      await binding.admitSubscriptionCommand({ action: admissionAction(input.action),
-        pausePreset: typeof input.payload.pausePreset === "string" ? input.payload.pausePreset : null,
-        reason: typeof input.payload.reason === "string" ? input.payload.reason : null,
-        subscriptionStatus: String(subscription.rows[0].status), paymentBlocker: row.payment_blocker == null ? null : String(row.payment_blocker) });
+      await admitCommand(executor, binding.admitSubscriptionCommand, input, String(subscription.rows[0].status));
     }
     if (["update_package_template", "update_bundle", "resize_bundle", "update_plan_length"].includes(input.action)
       && [input.payload.cadenceDays, input.payload.planDays]
@@ -176,12 +210,10 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
       await executor.query("RELEASE SAVEPOINT subscription_command_noop");
     }
     if (!result) {
-      const name = preview ? "subscription_command_preview" : "subscription_command_apply";
       const terms = !preview && binding.lifecycleTerms !== undefined
         && ["pause", "resume", "cancel", "skip_next_cycle", "slide_next_cycle", "order_now", "reactivate"].includes(input.action)
         ? lifecycleTerms(binding.lifecycleTerms) : undefined;
-      const { rows } = await executor.query(`SELECT public.${name}($1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::jsonb,$7::timestamptz${terms ? ",$8::jsonb" : ""}) AS response`, terms ? [...values, terms] : values);
-      result = commandResult(subscriptionRecord(rows[0]?.response));
+      result = await dispatchCommand(executor, values, preview, terms);
     }
     if (preview || result.status === "refused") return result;
     const receipt = await executor.query(`SELECT command_fingerprint FROM public.subscription_command_receipts
@@ -244,12 +276,243 @@ export function createPostgresSubscriptionCommands(binding: NativeSubscriptionCo
       if ("outcome" in input) return input;
       const result = await invokeCommand(binding, input, false,
         command.action === "edit_future_terms" ? () => binding.futureTerms(command) : undefined);
-      if (result.status === "refused" || result.outcome === "refused") return { outcome: "refused", reason: refusalReason(result.reason) };
-      if (result.status !== "applied" && result.status !== "replayed" && result.status !== "noop") throw new Error("subscription_command_response_invalid");
-      return { actorId: command.actor.actorId, idempotencyKey: command.idempotencyKey,
-        commandFingerprint: String(result.commandFingerprint), outcome: result.status, subscriptionId: String(result.subscriptionId),
-        originalState: String(result.subscriptionStatus), nextCycleAt: result.nextCycleAt == null ? null : String(result.nextCycleAt),
-        revision: String(result.templateVersion), eventId: result.eventId == null ? null : String(result.eventId) } satisfies SubscriptionCommandReceipt;
+      return mappedReceipt(command, result);
+    },
+  };
+}
+
+type Presentation = SubscriptionSaveOfferPresentation;
+type OfferKind = Presentation["kind"];
+type PauseOption = Extract<Presentation, { kind: "pause" }>["pausePresets"][number];
+type OfferChoice = { kind: "skip" } | { kind: "reschedule"; newNextCycleAt: string } | ({ kind: "pause" } & PauseOption);
+type OfferAcceptance = SubscriptionCommandContext & { generation: string } & OfferChoice;
+type OfferBinding = Pick<NativeSubscriptionCommandBinding, "withTransaction" | "admitSubscriptionCommand"> & {
+  lifecycleTerms: SubscriptionLifecycleTerms;
+  offerPolicy: {
+    offerPresentation: "ask_permission_first" | "off";
+    defaultOffer: OfferKind;
+    allowedPausePresets: readonly PauseOption["pausePreset"][];
+    preselectedPausePreset: PauseOption["pausePreset"];
+    rescheduleOfferDays: number;
+  };
+};
+type OfferRefusal = { outcome: "refused"; reason:
+  "subscription_save_offer_unavailable" | "subscription_save_offer_stale" | "subscription_save_offer_consumed" };
+
+const offerDigest = (fields: readonly unknown[]) => createHash("sha256").update(JSON.stringify(fields)).digest("hex");
+
+function chosenTerms(choice: OfferChoice) {
+  if (choice.kind === "skip") return [];
+  if (choice.kind === "reschedule") return [choice.newNextCycleAt];
+  const { duration, pausePreset } = choice;
+  return duration.unit === "indefinite" ? [pausePreset, duration.unit] : [pausePreset, duration.unit, duration.value];
+}
+
+function offerCommand(input: SubscriptionCommandContext, choice: OfferChoice): NativeSubscriptionCommand {
+  const payload: Record<string, unknown> = { actorKind: input.actor.kind, reason: null };
+  if (choice.kind === "pause") Object.assign(payload, { pausePreset: choice.pausePreset, survey: null, saveOffer: null });
+  else {
+    payload.confirmedChargeTiming = false;
+    if (choice.kind === "reschedule") payload.newNextCycleAt = choice.newNextCycleAt;
+  }
+  return { actorId: input.actor.actorId, clientId: input.actor.clientId, subscriptionId: input.subscriptionId,
+    idempotencyKey: input.idempotencyKey, now: input.now, payload,
+    action: { skip: "skip_next_cycle", reschedule: "slide_next_cycle", pause: "pause" }[choice.kind] };
+}
+
+async function readOfferState(executor: SubscriptionQueryExecutor, actor: SubscriptionCommandContext["actor"],
+  ids: readonly string[], now: string, kind: OfferKind, binding: OfferBinding, presenting = false) {
+  const policy = binding.offerPolicy;
+  const { slideMinDays, slideMaxDays, pauseDays, pauseMonths } = binding.lifecycleTerms;
+  const configuredTimingInDomain = [policy.rescheduleOfferDays, slideMinDays, slideMaxDays, pauseDays]
+    .every(days => Number.isInteger(days) && days >= 0 && days <= 36_500)
+    && Number.isInteger(pauseMonths) && pauseMonths >= 0 && pauseMonths <= 1_200;
+  // Materialize the admitted operands so interval expressions can only see
+  // rows that passed the same gate used for presentation and fresh acceptance.
+  const { rows } = await executor.query(`WITH owned AS MATERIALIZED (
+      SELECT s.id, s.client_id, s.status, s.template_version, s.next_cycle_at, s.cadence_days, s.edit_window_hours,
+        rt.next_cycle_number, marker.key AS marker_key, event.id IS NOT NULL AS consumed,
+        CASE WHEN event.id IS NULL AND pg_input_is_valid($3::text,'timestamp with time zone')
+          THEN $3::text::timestamptz END AS requested_at
+      FROM public.subscriptions s
+      LEFT JOIN public.subscription_renewal_terms rt ON rt.subscription_id=s.id
+      CROSS JOIN LATERAL (SELECT CASE WHEN rt.next_cycle_number IS NOT NULL THEN
+        'save-offer:v1:' || encode(sha256(convert_to(
+          format('["cx1r-occurrence-v1","%s","%s","%s"]',s.id,$4::text,rt.next_cycle_number),'UTF8')),'hex') END AS key) marker
+      LEFT JOIN public.subscription_events event ON event.subscription_id=s.id AND event.idempotency_key=marker.key
+      WHERE s.client_id=$1::uuid AND s.id=ANY($2::uuid[])
+    ), admitted AS MATERIALIZED (
+      SELECT * FROM owned WHERE NOT consumed AND $10::boolean
+        AND next_cycle_at >= timestamptz '1970-01-01 00:00:00+00' AND next_cycle_at < timestamptz '10000-01-01 00:00:00+00'
+        AND requested_at >= timestamptz '1970-01-01 00:00:00+00' AND requested_at < timestamptz '10000-01-01 00:00:00+00'
+        AND cadence_days BETWEEN 1 AND 36500 AND edit_window_hours BETWEEN 0 AND 876000
+    ), offer AS (
+      SELECT s.id, to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS next_cycle_at,
+        CASE WHEN (target.at AT TIME ZONE 'UTC')
+          BETWEEN s.requested_at + make_interval(days=>$6::integer) AND s.requested_at + make_interval(days=>$7::integer)
+          THEN to_char(target.at,'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END AS slide_target,
+        s.requested_at <= s.next_cycle_at - make_interval(hours=>s.edit_window_hours) AS edit_open,
+        ${paymentBlockerSql("s.id")} AS payment_blocker,
+        CASE WHEN $9::boolean AND $4::text IN ('skip','reschedule') THEN
+          (CASE WHEN public.subscription_method_uses_recorded_refs(s.id)
+            THEN public.subscription_method_chargeable_unattended(s.id,now())
+            ELSE EXISTS (SELECT 1 FROM public.subscription_method_states m WHERE m.subscription_id=s.id AND m.health_state='healthy') END)
+          AND NOT EXISTS (SELECT 1 FROM public.subscription_cycles c
+            LEFT JOIN public.commerce_orders orders ON orders.subscription_cycle_id=c.id
+            WHERE c.subscription_id=s.id AND c.scheduled_at=s.next_cycle_at
+              AND (c.status IN ('payment_pending','paid') OR orders.status IN ('paid','fulfillment_pending','fulfilled')))
+          ELSE true END AS action_available
+      FROM admitted s
+      CROSS JOIN LATERAL (SELECT (s.next_cycle_at AT TIME ZONE 'UTC') + make_interval(days=>$5::integer) AS at) target
+    ) SELECT owned.id::text, owned.client_id::text, $8::uuid::text AS actor_id,
+      owned.status, owned.template_version::text, owned.next_cycle_number::text, owned.marker_key, owned.consumed,
+      offer.next_cycle_at, offer.slide_target, offer.edit_open, offer.payment_blocker, offer.action_available
+    FROM owned LEFT JOIN offer USING (id)`,
+  [actor.clientId, ids, now, kind,
+    configuredTimingInDomain && policy.defaultOffer === "reschedule" ? policy.rescheduleOfferDays : null,
+    configuredTimingInDomain ? slideMinDays : null, configuredTimingInDomain ? slideMaxDays : null,
+    actor.actorId, presenting, configuredTimingInDomain]);
+  return rows;
+}
+
+function snapshotOfferBinding(binding: OfferBinding): OfferBinding {
+  return { ...binding, offerPolicy: { ...binding.offerPolicy }, lifecycleTerms: { ...binding.lifecycleTerms } };
+}
+
+async function allowsPresentation(admit: SubscriptionCommandAdmission | undefined, row: Record<string, unknown>,
+  action: "skip" | "slide" | "pause", pausePreset: PauseOption["pausePreset"] | null): Promise<boolean> {
+  if (!admit) return true;
+  try {
+    await admit({ action, pausePreset, reason: null, subscriptionStatus: String(row.status),
+      paymentBlocker: row.payment_blocker == null ? null : String(row.payment_blocker) });
+    return true;
+  } catch (error) {
+    if (!(error instanceof Error) || !/^[a-z][a-z0-9_]*$/u.test(error.message)) throw error;
+    return false;
+  }
+}
+
+async function derivePresentation(row: Record<string, unknown> | undefined, binding: OfferBinding): Promise<Presentation | null> {
+  const policy = binding.offerPolicy;
+  if (!row || row.status !== "active" || row.next_cycle_number == null || typeof row.next_cycle_at !== "string"
+    || policy.offerPresentation !== "ask_permission_first") return null;
+  if (policy.defaultOffer !== "pause" && !row.edit_open) return null;
+  if (policy.defaultOffer === "reschedule" && typeof row.slide_target !== "string") return null;
+  const terms = lifecycleTerms(binding.lifecycleTerms);
+  let { allowedPausePresets, preselectedPausePreset } = policy;
+  if (policy.defaultOffer === "pause") {
+    if (!allowedPausePresets.includes(preselectedPausePreset)) return null;
+    const admitted: PauseOption["pausePreset"][] = [];
+    for (const preset of allowedPausePresets) {
+      if (await allowsPresentation(binding.admitSubscriptionCommand, row, "pause", preset)) admitted.push(preset);
+    }
+    if (!admitted.length) return null;
+    allowedPausePresets = admitted;
+    if (!admitted.includes(preselectedPausePreset)) preselectedPausePreset = admitted[0];
+  }
+  const generation = offerDigest(["cx1r-presentation-v1", row.actor_id, row.client_id, row.id, row.status,
+    row.next_cycle_number, row.template_version, row.next_cycle_at, policy.offerPresentation, policy.defaultOffer,
+    allowedPausePresets, preselectedPausePreset, policy.rescheduleOfferDays,
+    terms.pauseDays, terms.pauseMonths, terms.slideMinDays, terms.slideMaxDays]);
+  const base = { generation, subscriptionRef: String(row.id) };
+  if (policy.defaultOffer === "skip") return { ...base, kind: "skip" };
+  if (policy.defaultOffer === "reschedule") return { ...base, kind: "reschedule", newNextCycleAt: String(row.slide_target) };
+  const durations: Record<PauseOption["pausePreset"], PauseOption["duration"]> = {
+    "2_weeks": { unit: "days", value: terms.pauseDays },
+    "1_month": { unit: "months", value: terms.pauseMonths },
+    indefinite: { unit: "indefinite" },
+  };
+  return { ...base, kind: "pause", preselectedPausePreset,
+    pausePresets: allowedPausePresets.map(pausePreset => ({ pausePreset, duration: durations[pausePreset] })) };
+}
+
+function matchesPresentation(presentation: Presentation, input: OfferAcceptance) {
+  if (presentation.generation !== input.generation || presentation.kind !== input.kind) return false;
+  if (presentation.kind === "pause" && input.kind === "pause") return presentation.pausePresets.some(option =>
+    JSON.stringify(chosenTerms({ kind: "pause", ...option })) === JSON.stringify(chosenTerms(input)));
+  if (presentation.kind === "reschedule" && input.kind === "reschedule") return presentation.newNextCycleAt === input.newNextCycleAt;
+  return true;
+}
+
+/** @experimental Present and accept one native save offer per kind and logical renewal.
+ * Bind an authenticated actor and a READ COMMITTED transaction on one connection. */
+export function createPostgresSubscriptionSaveOfferAcceptor(binding: OfferBinding) {
+  return {
+    async readPresentations({ actor, subscriptionIds, now }: {
+      actor: SubscriptionCommandContext["actor"]; subscriptionIds: readonly string[]; now: string;
+    }): Promise<Map<string, Presentation | null>> {
+      const request = { actor: { ...actor }, subscriptionIds: [...subscriptionIds], now };
+      if (request.subscriptionIds.length === 0) return new Map();
+      const settings = snapshotOfferBinding(binding);
+      const rows = await binding.withTransaction(db => readOfferState(db, request.actor, request.subscriptionIds, request.now,
+        settings.offerPolicy.defaultOffer, settings, true));
+      const presentations = new Map<string, Presentation | null>();
+      for (const row of rows) {
+        let presentation = row.consumed || !row.action_available ? null : await derivePresentation(row, settings);
+        if (presentation && presentation.kind !== "pause") {
+          const action = presentation.kind === "reschedule" ? "slide" : "skip";
+          if (row.payment_blocker === "payment_blocked" || !await allowsPresentation(binding.admitSubscriptionCommand, row, action, null)) {
+            presentation = null;
+          }
+        }
+        presentations.set(String(row.id), presentation);
+      }
+      return presentations;
+    },
+    async accept(input: OfferAcceptance): Promise<SubscriptionCommandReceipt | SubscriptionCommandRefusal | OfferRefusal> {
+      const request = { ...input };
+      request.actor = { ...request.actor };
+      if (request.kind === "pause") request.duration = { ...request.duration };
+      const { actor, subscriptionId, now, generation, kind, idempotencyKey } = request;
+      if (!/^[a-zA-Z0-9-]{16,100}$/u.test(idempotencyKey)) return { outcome: "refused", reason: "subscription_command_invalid_input" };
+      return binding.withTransaction(async db => {
+        const key = `save-offer-accept:v1:${idempotencyKey}`;
+        await lockCommandKey(db, actor.actorId, key);
+        const { rows: [owned] } = await db.query(`SELECT id::text, client_id::text, status,
+          $3::uuid::text AS actor_id, current_setting('transaction_isolation') AS isolation
+          FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE`, [subscriptionId, actor.clientId, actor.actorId]);
+        const { rows: [stored] } = await db.query(`SELECT subscription_id::text, client_id::text, command_fingerprint, result, status
+          FROM public.subscription_command_receipts WHERE actor_id=$1::uuid AND idempotency_key=$2::text`, [actor.actorId, key]);
+        if (!owned) return { outcome: "refused", reason: stored
+          ? "subscription_command_idempotency_conflict" : "subscription_save_offer_unavailable" };
+        if (owned.isolation !== "read committed") throw new Error("subscription_command_admission_isolation_unsupported");
+        const digest = offerDigest(["cx1r-accept-v1", owned.actor_id, owned.client_id, owned.id, generation, kind, chosenTerms(request)]);
+        if (stored) {
+          const result = subscriptionRecord(stored.result);
+          if (stored.subscription_id !== owned.id || stored.client_id !== owned.client_id ||
+            result.cx1rRequestSha256 !== digest || stored.status === "previewed") {
+            return { outcome: "refused", reason: "subscription_command_idempotency_conflict" };
+          }
+          return mappedReceipt(request, { ...result, status: stored.status === "refused" ? "refused" : "replayed",
+            commandFingerprint: stored.command_fingerprint });
+        }
+        await db.query("SELECT 1 FROM public.subscription_renewal_terms WHERE subscription_id=$1::uuid FOR UPDATE", [subscriptionId]);
+        const settings = snapshotOfferBinding(binding);
+        const [row] = await readOfferState(db, actor, [subscriptionId], now, kind, settings);
+        if (row?.consumed) return { outcome: "refused", reason: "subscription_save_offer_consumed" };
+        const offer = await derivePresentation(row, settings);
+        if (!offer) return { outcome: "refused", reason: "subscription_save_offer_unavailable" };
+        if (!matchesPresentation(offer, request)) return { outcome: "refused", reason: "subscription_save_offer_stale" };
+
+        const terms = lifecycleTerms(settings.lifecycleTerms);
+        const native = offerCommand({ actor, subscriptionId, now, idempotencyKey: key }, request);
+        if (binding.admitSubscriptionCommand) await admitCommand(db, binding.admitSubscriptionCommand, native, String(owned.status));
+        // Direct N2 apply gives semantic no-ops the native payment fences too.
+        const result = await dispatchCommand(db, commandValues(native), false, terms);
+        const { rows: [receipt] } = await db.query(`UPDATE public.subscription_command_receipts
+          SET result=result || jsonb_build_object('cx1rRequestSha256',$3::text)
+          WHERE actor_id=$1::uuid AND idempotency_key=$2::text AND status=$4::text
+          RETURNING command_fingerprint`, [actor.actorId, key, digest, result.status]);
+        if (typeof receipt?.command_fingerprint !== "string") throw new Error("subscription_command_receipt_missing");
+        if (result.status === "applied" || result.status === "noop") {
+          const marker = await db.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,occurred_at)
+            VALUES($1::uuid,'subscription.save_offer_accepted',$2::text,
+              jsonb_build_object('kind',$3::text,'nextCycleNumber',$4::text),$5::timestamptz) RETURNING id`,
+          [subscriptionId, row.marker_key, kind, row.next_cycle_number, now]);
+          if (!marker.rows.length) throw new Error("subscription_save_offer_marker_missing");
+        }
+        return mappedReceipt(request, { ...result, commandFingerprint: receipt.command_fingerprint });
+      });
     },
   };
 }

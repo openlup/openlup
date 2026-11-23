@@ -1,9 +1,35 @@
 import { describe, expect, it, vi } from "vitest";
-import { createPostgresSubscriptionCommands, createPostgresSubscriptionCommandStore } from "../../src/subscriptions/postgresCommandStore.js";
+import { createPostgresSubscriptionCommands, createPostgresSubscriptionCommandStore, createPostgresSubscriptionSaveOfferAcceptor } from "../../src/subscriptions/postgresCommandStore.js";
 import type { SubscriptionCommand } from "../../src/subscriptions/contracts/commands.js";
 import type { SubscriptionQueryExecutor } from "../../src/subscriptions/postgresRenewalStore.js";
 
 const id = "11111111-1111-4111-8111-111111111111";
+
+it("batches owned save-offer presentations and applies effect-free admission", async () => {
+  const inactive = "22222222-2222-4222-8222-222222222222", foreign = "33333333-3333-4333-8333-333333333333";
+  const row = { id, actor_id: id, client_id: id, status: "active", template_version: "1", next_cycle_number: "2",
+    next_cycle_at: "2026-09-11T12:00:00.123456Z", edit_open: true, action_available: true };
+  const query = vi.fn<SubscriptionQueryExecutor["query"]>(async () => ({ rows: [row, { ...row, id: inactive, status: "paused" }] }));
+  const admitSubscriptionCommand = vi.fn<NonNullable<Parameters<typeof createPostgresSubscriptionSaveOfferAcceptor>[0]["admitSubscriptionCommand"]>>();
+  const service = createPostgresSubscriptionSaveOfferAcceptor({
+    withTransaction: work => work({ query }), admitSubscriptionCommand,
+    lifecycleTerms: { pauseDays: 9, pauseMonths: 2, slideMinDays: 4, slideMaxDays: 40, orderNowDelayMinutes: 17, reactivateDelayDays: 6 },
+    offerPolicy: { offerPresentation: "ask_permission_first", defaultOffer: "skip", allowedPausePresets: [],
+      preselectedPausePreset: "1_month", rescheduleOfferDays: 3 },
+  });
+  const input = { actor: { kind: "customer" as const, actorId: id, clientId: id },
+    subscriptionIds: [id, inactive, foreign], now: "2026-09-01T12:00:00.000Z" };
+  expect(await service.readPresentations(input)).toEqual(new Map([
+    [id, { kind: "skip", subscriptionRef: id, generation: expect.stringMatching(/^[0-9a-f]{64}$/u) }], [inactive, null],
+  ]));
+  expect(query).toHaveBeenCalledOnce();
+  expect(query.mock.calls[0][1]?.slice(0, 3)).toEqual([id, input.subscriptionIds, input.now]);
+  expect(admitSubscriptionCommand).toHaveBeenCalledExactlyOnceWith({
+    action: "skip", subscriptionStatus: "active", pausePreset: null, reason: null, paymentBlocker: null,
+  });
+  admitSubscriptionCommand.mockImplementation(() => { throw new Error("subscription_command_not_active"); });
+  expect(await service.readPresentations(input)).toEqual(new Map([[id, null], [inactive, null]]));
+});
 function fixture(response?: Record<string, unknown>) {
   const query = vi.fn<SubscriptionQueryExecutor["query"]>(async sql => {
     if (sql.includes("pg_advisory_xact_lock")) return { rows: [] };

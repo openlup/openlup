@@ -39,6 +39,30 @@ export interface SubscriptionSaveOffer {
     accepted: boolean;
     externalOfferRef?: string | null;
 }
+type SaveOfferPausePreset = "2_weeks" | "1_month" | "indefinite";
+type SaveOfferPauseDuration = {
+    unit: "days" | "months";
+    value: number;
+} | {
+    unit: "indefinite";
+};
+/** @experimental Server-derived terms to display and echo on acceptance. */
+export type SubscriptionSaveOfferPresentation = {
+    subscriptionRef: string;
+    generation: string;
+} & ({
+    kind: "skip";
+} | {
+    kind: "reschedule";
+    newNextCycleAt: string;
+} | {
+    kind: "pause";
+    pausePresets: readonly {
+        pausePreset: SaveOfferPausePreset;
+        duration: SaveOfferPauseDuration;
+    }[];
+    preselectedPausePreset: SaveOfferPausePreset;
+});
 export type SubscriptionCommand = SubscriptionCommandContext & ({
     action: "pause";
     pausePreset: string;
@@ -172,6 +196,7 @@ export interface SubscriptionActivationPort {
         replayed: boolean;
     }>;
 }
+export {};
 ```
 ## dist/subscriptions/contracts/dunning.d.ts
 
@@ -385,6 +410,7 @@ export type { DunningCaseOpenInput, DunningCaseOpened, DunningCaseAdvanced, Dunn
 export type { StockWaitReadState, StockWaitReadNotice, StockWaitReadProjection, StockWaitOperatorSummary, StockWaitAdminPage } from "./stockWaitReads.js";
 export type { StockWaitRecoveryBinding, StockWaitDeficit, StockWaitCase, StockWaitFrozenCase, StockWaitStorePort } from "./stockWait.js";
 export type { SubscriptionLifecycleTerms, SubscriptionCancelSurvey, SubscriptionSaveOffer, SubscriptionCommandContext, SubscriptionCommand, SubscriptionCommandAdmission, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, SubscriptionCommandPort, SubscriptionActivationPort } from "./commands.js";
+export type { SubscriptionSaveOfferPresentation } from "./commands.js";
 export type { SubscriptionLifecycleFact, SubscriptionLifecycleMessageDescriptor, SubscriptionLifecycleMessagePort } from "./messages.js";
 export type { SubscriptionRenewalOutcome, HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderInput, SubscriptionCycleOrderResult, SubscriptionReservationPreflightResult, SubscriptionRenewalPersistencePort, FailurePropagationKind, FailurePropagationContext, CycleRetryState, DunningCaseOpenOutcome, CycleChargeFailurePropagationPort, FailurePropagationResult, RenewalPrepareInput, RenewalAttemptResult, RenewalIntentResult, RenewalPaymentPort, RenewalExecutionPort, RenewalDeliveryAdmission, RenewalAllowedAdmission, RenewalDeliveryClient, RenewalFailureDeps, RenewalPreflightDeps, RenewalCycleDeps, RenewalExecutionContext, RenewalOutcomeContext, RenewalReplayContext, RenewalPreparedAttemptPrepareInput, RenewalPreparedAttemptPersistenceResult, RenewalPreparedAttemptFinalizeInput, RenewalPreparedAttemptPersistencePort } from "./renewal.js";
 export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEdit.js";
