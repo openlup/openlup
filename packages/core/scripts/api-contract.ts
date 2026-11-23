@@ -10,7 +10,9 @@ const distRoot = resolve(packageRoot, "dist");
 const gates = readJson("release-gates.json");
 const update = process.argv.includes("--update");
 const landing = process.argv.find((arg) => arg.startsWith("--landing="));
+const derivedProof = process.argv.includes("--derived-proof");
 if (landing && !update) throw new Error("--landing requires --update");
+if (derivedProof && (!update || landing)) throw new Error("--derived-proof requires --update without --landing");
 
 assertPackageSurfaceConfig({
   manifest: readJson("package.json"),
@@ -73,7 +75,7 @@ for (const { subpath, contract, snapshotPath, snapshot, previous } of reports) {
   console.log(`${contract.maturity} package surface ok ${subpath}`);
 }
 
-if (update && !landing && changed) assertChangelogChanged();
+if (update && !landing && !derivedProof && changed) assertChangelogChanged();
 
 function renderSnapshot(subpath, contract, declarations) {
   const sections = declarations.map((file) => {

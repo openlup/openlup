@@ -536,6 +536,46 @@ describe('native review decisions', () => {
     expect(body).toContain('Reviewer floor 1 · Scope repair-delta');
     expect(body.match(/^\| .* \| PASS \| .*$/gmu)).toEqual(['| r3 | PASS | delta | none |']);
   });
+  it('allows a cold reviewer to close their own earlier finding on a reviewed repair delta', () => {
+    const rules = { version: 3, base: '1'.repeat(64), head: '2'.repeat(64) };
+    let session = prepare({ changedPaths: ['config/settings.json'], rules });
+    session = recordReport(session, report({ reviewer: 'reviewer-a', verdict: 'FAIL', findings: [{ id: 'F1', summary: 'repair the setting', material: true }] }), time);
+    session = recordReport(session, report({ reviewer: 'reviewer-b' }), time);
+    const repaired = { ...observed, head: 'd'.repeat(40), tree: 'e'.repeat(40), changedPaths: ['config/settings.json'], rules,
+      coverage: { kind: 'repair', previous: digest(session.history),
+        from: { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree },
+        delta: '3'.repeat(64), proof: { paths: ['config/settings.json'], modeChanged: false } } };
+    session = prepareCandidate(session, { ...repaired, intent, authorSessionId: 'author' }, time + 1);
+    expect(explainSession(session, session.candidate, time + 1).requirements.floor).toBe(1);
+    session = recordReport(session, report({ reviewer: 'reviewer-a', tree: repaired.tree, ordinary: true,
+      delta: '3'.repeat(64), closes: ['F1'] }), time + 1);
+    expect(() => recordReport(session, report({ reviewer: 'reviewer-a', tree: repaired.tree }), time + 1)).toThrow('reviewer id already used in this round');
+    expect(verdict(session, session.candidate, time + 1).ok).toBe(true);
+    const receipt = receiptSummary(session, 12, time + 1);
+    expect(admit({ receipt, observed: { ...session.candidate, pr: 12, baseValid: true }, now: time + 1 }).ok).toBe(true);
+  });
+  it('requires two repair reviewers for a new protected path or mode change', () => {
+    const rules = { version: 3, base: '1'.repeat(64), head: '2'.repeat(64) };
+    let prior = prepare({ changedPaths: ['config/settings.json'], rules });
+    prior = recordReport(prior, report({ reviewer: 'a' }), time);
+    prior = recordReport(prior, report({ reviewer: 'b' }), time);
+    const candidate = { ...observed, head: 'd'.repeat(40), tree: 'e'.repeat(40),
+      changedPaths: ['config/settings.json', 'config/new.json'], rules };
+    const repair = (paths: string[], modeChanged = false) => prepareCandidate(prior, {
+      ...candidate, intent, authorSessionId: 'author',
+      coverage: { kind: 'repair', previous: digest(prior.history),
+        from: { base: prior.candidate.base, head: prior.candidate.head, tree: prior.candidate.tree },
+        delta: '3'.repeat(64), proof: { paths, modeChanged } },
+    }, time + 1);
+    const floor = (paths: string[], modeChanged = false) => {
+      const session = repair(paths, modeChanged);
+      return explainSession(session, session.candidate, time + 1).requirements.floor;
+    };
+    expect(floor(['config/settings.json'])).toBe(1);
+    expect(floor(['config/new.json'])).toBe(2);
+    expect(floor(['config/settings.json'], true)).toBe(2);
+    expect(floor(['docs/platform/ARCHITECTURE_AND_EXTENSIONS.md'])).toBe(0);
+  });
   it.each(['git', 'registry-union', 'derived', 'resolution'])('explains v3 %s integration requirements', kind => {
     const rules = { version: 3, base: '1'.repeat(64), head: '2'.repeat(64) };
     const prior = recordReport(prepare({ rules }), report({ reviewer: 'r1' }), time);

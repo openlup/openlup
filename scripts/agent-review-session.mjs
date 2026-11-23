@@ -1,6 +1,6 @@
 // Local Git and state adapters for native supervisor process evidence.
 import { execFile, spawn } from 'node:child_process';
-import { accessSync, constants } from 'node:fs';
+import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
 import { mkdir, open, rename, rm, writeFile } from 'node:fs/promises';
 import { delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,8 +10,7 @@ import { env as processEnvironment } from 'node:process';
 import { digest, explainSession, protectedCoveragePath, carryOver, cumulativeRepairPrefix, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordReport, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion } from './agent-review-derived.mjs';
-import { generatedCarrier, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
-import { readFileSync } from 'node:fs';
+import { generatedCarrier, ownerOutputCarrier, runDerivedOutputGenerators, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
 import { join as joinPath } from 'node:path';
 
 const execute = promisify(execFile);
@@ -123,7 +122,7 @@ export async function replaceTreeBlobs(cwd, tree, replacements) {
   demand([...replacements.keys()].every(path => rows.some(row => path === row.slice(row.indexOf('\t') + 1) || path.startsWith(row.slice(row.indexOf('\t') + 1) + '/'))), 'registry absent from merge tree');
   return objectInput(cwd, ['mktree', '-z'], output.join(''));
 }
-export async function proveReviewIntegration(cwd, previous, current, portable = false, { legacy = false } = {}) {
+export async function proveReviewIntegration(cwd, previous, current, portable = false, { legacy = false, resolvedOwnerOutputs = [] } = {}) {
   const parents = await integrationParents(cwd, current.head);
   demand(parents.length === 2 && parents[0] === previous.head && parents[1] === current.base, 'integration parents differ');
   demand(await ancestor(git, cwd, previous.base, current.base), 'integration base ancestry differs');
@@ -194,10 +193,25 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
       // A committed conflict-marker blob has no delta from merge-tree. It still
       // needs its own generator proof; another derived carrier proves nothing
       // about that blob. SQL conflicts, including mirrors, never take this lane.
-      const carrierPaths = [...new Set([...delta.changedPaths, ...conflicts].filter(path => generatedCarrier(path) && !path.endsWith('.sql')).concat(derivedBlobs.has(REGISTRY_PATHS[0]) ? [REGISTRY_PATHS[0]] : []))];
+      const ownerPaths = [...new Set([...delta.changedPaths, ...conflicts].filter(ownerOutputCarrier))];
+      const trustedPaths = ['scripts/agent-review-generators.mjs', 'scripts/agent-review-session.mjs',
+        'scripts/build-packages-incremental.mjs', 'scripts/settings-catalogue.ts',
+        'config/openlup-packages.json', 'package-lock.json',
+        ...ownerPaths.filter(path => /\/api\//u.test(path)).map(path => `packages/${path.split('/')[1]}/scripts/api-contract.ts`),
+        ...(ownerPaths.some(path => path.startsWith('packages/core/api/')) ? ['packages/core/scripts/public-api-config.ts'] : [])];
+      const trustedRows = ownerPaths.length ? await Promise.allSettled(trustedPaths.map(async path =>
+        [path, await read(current.base, path)])) : [];
+      const trusted = Object.fromEntries(trustedRows.filter(row => row.status === 'fulfilled').map(row => row.value));
+      const ownerReplayAvailable = existsSync(joinPath(cwd, 'node_modules')) && trustedRows.every(row => row.status === 'fulfilled') &&
+        trustedPaths.every(path => readFileSync(joinPath(cwd, path), 'utf8') === trusted[path]);
+      const carrierPaths = [...new Set([...delta.changedPaths, ...conflicts].filter(path => generatedCarrier(path) && !path.endsWith('.sql') &&
+        !resolvedOwnerOutputs.includes(path) && (ownerReplayAvailable || !ownerOutputCarrier(path)))
+        .concat(derivedBlobs.has(REGISTRY_PATHS[0]) ? [REGISTRY_PATHS[0]] : []))];
       if (carrierPaths.length) {
         const outputs = withPredictedTree(cwd, predicted, (root, paths) => {
           runLandingGenerators(root, paths);
+          if (carrierPaths.some(ownerOutputCarrier)) withPredictedTree(cwd, current.base, mainRoot =>
+            runDerivedOutputGenerators(root, mainRoot, cwd, carrierPaths, trusted));
           return carrierPaths.map(path => [path, readFileSync(joinPath(root, path), 'utf8')]);
         });
         for (const [path, output] of outputs) {
@@ -219,7 +233,9 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
   return { kind: portable ? 'portable-' + kind : kind, tree: current.tree, own, moved, ...(derived ? { derived: true } : {}), ...(resolution.length ? { resolution, prediction, modeChanged } : {}) };
 }
 
-export async function captureCoverageEdge(cwd, session, observed, now, historicalKind, { abbreviatedIndex = false, allowDerived = historicalKind === undefined } = {}) {
+export async function captureCoverageEdge(cwd, session, observed, now, historicalKind, {
+  abbreviatedIndex = false, allowDerived = historicalKind === undefined, resolvedOwnerOutputs = [],
+} = {}) {
   if (!session || !observed.rules ||
     digest(observed.intent) !== digest(session.history.findLast(event => event.type === 'prepare').intent) ||
     observed.authorSessionId !== session.history.findLast(event => event.type === 'prepare').authorSessionId) return undefined;
@@ -244,7 +260,7 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
       if ((historicalKind && historicalKind.startsWith('portable-') !== portable) || (!portable && session.candidate.rules?.version !== 3)) return undefined;
       const derivedEnabled = source.includes(`const DERIVED_REVIEW = '${DERIVED_REVIEW}';`);
       const historicalLegacy = !allowDerived && historicalKind && !['derived', 'portable-derived'].includes(historicalKind);
-      proof = await proveReviewIntegration(cwd, session.candidate, observed, portable, { legacy: !derivedEnabled || historicalLegacy });
+      proof = await proveReviewIntegration(cwd, session.candidate, observed, portable, { legacy: !derivedEnabled || historicalLegacy, resolvedOwnerOutputs });
       if (proof.prediction) { from = proof.prediction; to = observed.tree; }
     } catch { return undefined; }
   }
@@ -285,9 +301,12 @@ export async function validateEconomySession(cwd, session, runGit = git) {
         const before = { ...session, version, candidate: prior.candidate, history: prefix, preparedAt: prior.at };
         const observed = { ...actual, rules, intent: event.intent, authorSessionId: event.authorSessionId };
         const recorded = digest(event.candidate.coverage); const kind = event.candidate.coverage.proof?.kind;
-        const edge = await captureCoverageEdge(cwd, before, observed, event.at, kind, { allowDerived: event.candidate.coverage.proof?.derived === true });
+        const resolvedOwnerOutputs = (event.candidate.coverage.proof?.resolution ?? []).filter(ownerOutputCarrier);
+        const edge = await captureCoverageEdge(cwd, before, observed, event.at, kind,
+          { allowDerived: event.candidate.coverage.proof?.derived === true, resolvedOwnerOutputs });
         // An edge recorded before full-index digests replays through the abbreviated diff it was recorded with.
-        const legacy = edge && !edge.proof.cumulativeFrom && digest(edge) !== recorded ? await captureCoverageEdge(cwd, before, observed, event.at, kind, { abbreviatedIndex: true, allowDerived: event.candidate.coverage.proof?.derived === true }) : undefined;
+        const legacy = edge && !edge.proof.cumulativeFrom && digest(edge) !== recorded ? await captureCoverageEdge(cwd, before, observed, event.at, kind,
+          { abbreviatedIndex: true, allowDerived: event.candidate.coverage.proof?.derived === true, resolvedOwnerOutputs }) : undefined;
         demand(edge && (digest(edge) === recorded || (legacy && digest(legacy) === recorded)), 'recorded coverage proof differs');
       }
     }

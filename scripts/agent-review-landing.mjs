@@ -262,7 +262,8 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   }
   const readUnion = async path => registryUnion(path, ...await Promise.all([base, head, main].map(revision => read(revision, path))));
   const index = await trackedIndex(cwd);
-  const legacyConflict = path => [...REGISTRY_PATHS, ...MIGRATION_REGISTRIES, INVENTORY_PATH].includes(path) || (generatedCarrier(path) && !path.endsWith('.sql'));
+  const legacyConflict = path => [...REGISTRY_PATHS, ...MIGRATION_REGISTRIES, INVENTORY_PATH].includes(path) ||
+    (generatedCarrier(path) && !path.endsWith('.sql') && !/^packages\/[^/]+\/api\/[^/]+\.api\.md$/u.test(path));
   const authoredInputs = conflicts.filter(path => /^(?:config\/openlup-packages\.json|packages\/[^/]+\/(?:package|release-gates)\.json)$/u.test(path));
   if (authoredInputs.length) throw new Error(`landing: authored conflicts remain: ${authoredInputs.join(', ')}`);
   const catalogueUnion = conflicts.includes(PUBLICATION_CATALOGUE) ? await readUnion(PUBLICATION_CATALOGUE) : undefined;
@@ -304,7 +305,7 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
     await git(cwd, 'add', '--', path);
   }
   // Keep Git's merged prose in the SQL reference; discard conflicts in other generated carriers.
-  for (const path of conflicts.filter(generatedCarrier)) {
+  for (const path of conflicts.filter(path => generatedCarrier(path) && (legacyConflict(path) || (replaceable.has(path) && safeOutput(cwd, path, index))))) {
     if (path !== SQL_REFERENCE && !REGISTRY_PATHS.includes(path)) await git(cwd, 'checkout', '--ours', '--', path);
   }
   if (needsInventoryRefresh) {
