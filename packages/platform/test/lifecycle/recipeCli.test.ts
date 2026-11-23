@@ -350,7 +350,7 @@ describe("openlup recipe CLI (Agent-DX list|show|add|verify)", () => {
     expect(overlapBody.state).toBe("refused");
     expect(overlapBody.findings[0]?.code).toBe("OPENLUP_E_RECIPE_DEST_CONFLICT");
 
-    // 3. Positive control: valid export containing "from '...'" inside a string must NOT false-positive
+    // 3. Positive control: valid export containing "from '...'" and bracket-env text inside string literals must NOT false-positive
     const uspsDest = join(appDir, "owned/adapters/shipping/usps");
     const installUsps = await runCli(
       ["recipe", "add", "shipping/usps", "--catalog", CATALOG_DIR, "--json"],
@@ -359,19 +359,21 @@ describe("openlup recipe CLI (Agent-DX list|show|add|verify)", () => {
     expect(installUsps.exitCode).toBe(0);
     const adapterPath = join(uspsDest, "server/adapter.ts");
     const originalAdapter = await fs.readFile(adapterPath, "utf8");
+    const envDocString = `${"proc" + "ess"}["${"env"}"]`;
     await fs.writeFile(
       adapterPath,
-      `${originalAdapter}\nexport function describeSource() { return "Loaded from 'USPS' catalog"; }\n`,
+      `${originalAdapter}\nexport function describeSource() { return "Loaded from 'USPS' catalog without ${envDocString}"; }\n`,
       "utf8",
     );
     const positiveVerify = await runCli(["recipe", "verify", uspsDest, "--skip-tests", "--json"]);
     expect(positiveVerify.exitCode).toBe(0);
     expect((JSON.parse(positiveVerify.stdout) as { stages: { staticIsolation: { passed: boolean } } }).stages.staticIsolation.passed).toBe(true);
 
-    // 4. Negative control: multiline export + side-effect/whitespace-free import bypass is caught AND skips Vitest
+    // 4. Negative control: multiline export, optional-chain env/fetch, and compound dynamic import bypasses are caught AND skip Vitest
+    const optChainEnv = `${"proc" + "ess"}?.${"env"}`;
     await fs.writeFile(
       adapterPath,
-      `export const ok = 1;\nimport"vendor-sdk";\nimport{x}from"vendor-sdk-2";\nvoid ok; void x;\n${originalAdapter}`,
+      `export const ok = 1;\nimport"vendor-sdk";\nimport{x}from"vendor-sdk-2";\nconst e = ${optChainEnv};\nconst f = () => globalThis?.fetch("https://example.com");\nconst d = () => import("@openlup/core" + "/evil");\nvoid ok; void x; void e; void f; void d;\n${originalAdapter}`,
       "utf8",
     );
     const bypassVerify = await runCli(["recipe", "verify", uspsDest, "--json"]);
@@ -385,11 +387,39 @@ describe("openlup recipe CLI (Agent-DX list|show|add|verify)", () => {
     expect(bypassBody.stages.staticIsolation.passed).toBe(false);
     expect(bypassBody.stages.staticIsolation.violations.some((v) => v.includes("vendor-sdk"))).toBe(true);
     expect(bypassBody.stages.staticIsolation.violations.some((v) => v.includes("vendor-sdk-2"))).toBe(true);
+    expect(bypassBody.stages.staticIsolation.violations.some((v) => v.includes("ambient runtime environment read"))).toBe(true);
+    expect(bypassBody.stages.staticIsolation.violations.some((v) => v.includes("ambient global fetch()"))).toBe(true);
+    expect(bypassBody.stages.staticIsolation.violations.some((v) => v.includes("non-literal dynamic import"))).toBe(true);
     expect(bypassBody.stages.stages1to3Tests.state).toBe("skipped");
     expect(bypassBody.stages.stages1to3Tests.passed).toBe(false);
 
-    // Restore clean adapter, then verify manifest/disk inventory drift fails with OPENLUP_E_RECIPE_MANIFEST_INVALID
+    // Restore clean adapter, then verify manifest/disk inventory drift, JSON null manifest, and incompatible platform range
     await fs.writeFile(adapterPath, originalAdapter, "utf8");
+    const manifestPath = join(uspsDest, "recipe.json");
+    const originalManifestRaw = await fs.readFile(manifestPath, "utf8");
+
+    // 4b. Valid JSON `null` in recipe.json returns clean exit 1 OPENLUP_E_RECIPE_MANIFEST_INVALID (never TypeError/74)
+    await fs.writeFile(manifestPath, "null\n", "utf8");
+    const nullManifestVerify = await runCli(["recipe", "verify", uspsDest, "--skip-tests", "--json"]);
+    expect(nullManifestVerify.exitCode).toBe(1);
+    expect((JSON.parse(nullManifestVerify.stdout) as { findings: readonly { code: string }[] }).findings[0]?.code).toBe(
+      "OPENLUP_E_RECIPE_MANIFEST_INVALID",
+    );
+
+    // 4c. Incompatible openlupPlatformRange returns exit 1 OPENLUP_E_RECIPE_PLATFORM_RANGE
+    const parsedManifest = JSON.parse(originalManifestRaw) as Record<string, unknown>;
+    await fs.writeFile(
+      manifestPath,
+      `${JSON.stringify({ ...parsedManifest, openlupPlatformRange: "^9.0.0" }, null, 2)}\n`,
+      "utf8",
+    );
+    const badRangeVerify = await runCli(["recipe", "verify", uspsDest, "--skip-tests", "--json"]);
+    expect(badRangeVerify.exitCode).toBe(1);
+    expect((JSON.parse(badRangeVerify.stdout) as { findings: readonly { code: string }[] }).findings[0]?.code).toBe(
+      "OPENLUP_E_RECIPE_PLATFORM_RANGE",
+    );
+    await fs.writeFile(manifestPath, originalManifestRaw, "utf8");
+
     const extraFile = join(uspsDest, "server/undeclared.ts");
     await fs.writeFile(extraFile, "export const extra = 1;\n", "utf8");
     const driftVerify = await runCli(["recipe", "verify", uspsDest, "--skip-tests", "--json"]);

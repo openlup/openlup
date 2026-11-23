@@ -43,17 +43,11 @@ const VITEST_TIMEOUT_MS = 60_000;
 const PROC_IDENT = "proc" + "ess";
 const ENV_KEY = "env";
 const AMBIENT_ENV_DOT_PATTERN = new RegExp(
-  `\\b(?:${PROC_IDENT}\\s*(?:\\?\\.)?\\s*\\.|import\\s*\\.\\s*meta\\s*(?:\\?\\.)?\\s*\\.|Deno\\s*(?:\\?\\.)?\\s*\\.|Bun\\s*(?:\\?\\.)?\\s*\\.)${ENV_KEY}\\b`,
-  "u",
-);
-const AMBIENT_ENV_BRACKET_PATTERN = new RegExp(
-  `\\b(?:${PROC_IDENT}|import\\s*\\.\\s*meta|Deno|Bun)\\s*(?:\\?\\.)?\\s*\\[\\s*["'\`]${ENV_KEY}["'\`]\\s*\\]`,
+  `\\b(?:${PROC_IDENT}|import\\s*\\.\\s*meta|Deno|Bun)\\s*\\??\\.\\s*${ENV_KEY}\\b`,
   "u",
 );
 const AMBIENT_FETCH_PATTERN =
-  /(?:^|[^.\w$])(?:(?:globalThis|window|self)\s*(?:\?\.)?\s*\.\s*)?fetch\s*(?:\?\.\s*)?\(/u;
-const AMBIENT_FETCH_BRACKET_PATTERN =
-  /\b(?:globalThis|window|self)\s*(?:\?\.)?\s*\[\s*["'`]fetch["'`]\s*\]\s*(?:\?\.\s*)?\(/u;
+  /(?:^|[^.\w$])(?:(?:globalThis|window|self)\s*\??\.\s*)?fetch\s*(?:\?\.\s*)?\(/u;
 
 function asciiCompare(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -761,7 +755,13 @@ function extractModuleSpecifiers(tokens) {
       tokens[i + 1].value === "("
     ) {
       const arg = tokens[i + 2];
-      if (arg && (arg.kind === "string" || arg.kind === "template")) {
+      const afterArg = tokens[i + 3];
+      const isSimpleLiteralArg =
+        arg &&
+        (arg.kind === "string" || arg.kind === "template") &&
+        afterArg?.kind === "punct" &&
+        (afterArg.value === ")" || afterArg.value === ",");
+      if (isSimpleLiteralArg) {
         specifiers.add(arg.value);
       } else if (arg && !(arg.kind === "punct" && arg.value === ")")) {
         hasDynamicNonLiteralImport = true;
@@ -770,6 +770,68 @@ function extractModuleSpecifiers(tokens) {
   }
 
   return { specifiers, hasDynamicNonLiteralImport };
+}
+
+function hasAmbientBracketAccess(tokens) {
+  let hasEnvBracket = false;
+  let hasFetchBracket = false;
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const tok = tokens[i];
+    const prev = i > 0 ? tokens[i - 1] : null;
+    if (prev && prev.kind === "punct" && (prev.value === "." || prev.value === "?.")) continue;
+
+    // Match process["env"], Deno?.["env"], Bun["env"], or import.meta?.["env"]
+    let afterBase = -1;
+    if (tok.kind === "ident" && (tok.value === PROC_IDENT || tok.value === "Deno" || tok.value === "Bun")) {
+      afterBase = i + 1;
+    } else if (
+      tok.kind === "ident" &&
+      tok.value === "import" &&
+      tokens[i + 1]?.kind === "punct" &&
+      tokens[i + 1].value === "." &&
+      tokens[i + 2]?.kind === "ident" &&
+      tokens[i + 2].value === "meta"
+    ) {
+      afterBase = i + 3;
+    }
+    if (afterBase !== -1) {
+      let j = afterBase;
+      if (tokens[j]?.kind === "punct" && tokens[j].value === "?.") j += 1;
+      if (
+        tokens[j]?.kind === "punct" &&
+        tokens[j].value === "[" &&
+        (tokens[j + 1]?.kind === "string" || tokens[j + 1]?.kind === "template") &&
+        tokens[j + 1].value === ENV_KEY &&
+        tokens[j + 2]?.kind === "punct" &&
+        tokens[j + 2].value === "]"
+      ) {
+        hasEnvBracket = true;
+      }
+    }
+
+    // Match globalThis["fetch"](...), window?.["fetch"]?.(...), self["fetch"](...)
+    if (tok.kind === "ident" && (tok.value === "globalThis" || tok.value === "window" || tok.value === "self")) {
+      let j = i + 1;
+      if (tokens[j]?.kind === "punct" && tokens[j].value === "?.") j += 1;
+      if (
+        tokens[j]?.kind === "punct" &&
+        tokens[j].value === "[" &&
+        (tokens[j + 1]?.kind === "string" || tokens[j + 1]?.kind === "template") &&
+        tokens[j + 1].value === "fetch" &&
+        tokens[j + 2]?.kind === "punct" &&
+        tokens[j + 2].value === "]"
+      ) {
+        let k = j + 3;
+        if (tokens[k]?.kind === "punct" && tokens[k].value === "?.") k += 1;
+        if (tokens[k]?.kind === "punct" && tokens[k].value === "(") {
+          hasFetchBracket = true;
+        }
+      }
+    }
+  }
+
+  return { hasEnvBracket, hasFetchBracket };
 }
 
 async function runStaticIsolationScan(recipeDir, allFiles) {
@@ -781,12 +843,13 @@ async function runStaticIsolationScan(recipeDir, allFiles) {
     const isBrowser = rel.startsWith("browser/");
     const absFile = join(recipeDir, ...rel.split("/"));
     const raw = await fs.readFile(absFile, "utf8");
-    const { tokens, codeWithoutComments, codeWithMaskedLiterals } = lexSourceForStaticScan(raw);
+    const { tokens, codeWithMaskedLiterals } = lexSourceForStaticScan(raw);
+    const { hasEnvBracket, hasFetchBracket } = hasAmbientBracketAccess(tokens);
 
-    if (AMBIENT_ENV_DOT_PATTERN.test(codeWithMaskedLiterals) || AMBIENT_ENV_BRACKET_PATTERN.test(codeWithoutComments)) {
+    if (AMBIENT_ENV_DOT_PATTERN.test(codeWithMaskedLiterals) || hasEnvBracket) {
       violations.push(`${rel}: ambient runtime environment read is forbidden by ADR-001.`);
     }
-    if (AMBIENT_FETCH_PATTERN.test(codeWithMaskedLiterals) || AMBIENT_FETCH_BRACKET_PATTERN.test(codeWithoutComments)) {
+    if (AMBIENT_FETCH_PATTERN.test(codeWithMaskedLiterals) || hasFetchBracket) {
       violations.push(`${rel}: ambient global fetch() call is forbidden by ADR-001 (inject fetchImpl).`);
     }
 
@@ -866,27 +929,18 @@ function compareSemver(a, b) {
   return 0;
 }
 
-function satisfiesSingleComparator(installed, comparator) {
+function parseSingleComparator(comparator) {
   const trimmed = comparator.trim();
-  if (!trimmed) return true;
+  if (!trimmed) return null;
   const opMatch = /^(\^|~|>=|<=|>|<|=)?\s*(.+)$/u.exec(trimmed);
   if (!opMatch) return null;
   const op = opMatch[1] ?? "=";
   const base = parseSemverTuple(opMatch[2]);
   if (!base) return null;
+  return { op, base };
+}
 
-  // Per SemVer / npm semver: prerelease installed versions only match comparators on the same [M, m, p] tuple that also declare a prerelease.
-  if (installed.prerelease) {
-    if (
-      !base.prerelease ||
-      installed.major !== base.major ||
-      installed.minor !== base.minor ||
-      installed.patch !== base.patch
-    ) {
-      return false;
-    }
-  }
-
+function matchesComparator(installed, { op, base }) {
   if (op === "^") {
     if (compareSemver(installed, base) < 0) return false;
     if (base.major > 0) return installed.major === base.major;
@@ -915,23 +969,39 @@ function satisfiesSimpleRange(installedStr, rangeStr) {
     const parts = group.trim().split(/\s+/u).filter(Boolean);
     if (parts.length === 0) return null;
     // Rejoin operator tokens separated from version by space (e.g. ">= 1.3.0")
-    const comparators = [];
+    const rawComparators = [];
     for (let i = 0; i < parts.length; i += 1) {
       if (/^(?:\^|~|>=|<=|>|<|=)$/u.test(parts[i]) && i + 1 < parts.length) {
-        comparators.push(`${parts[i]}${parts[i + 1]}`);
+        rawComparators.push(`${parts[i]}${parts[i + 1]}`);
         i += 1;
       } else {
-        comparators.push(parts[i]);
+        rawComparators.push(parts[i]);
       }
     }
-    let groupMatch = true;
-    for (const comp of comparators) {
-      const ok = satisfiesSingleComparator(installed, comp);
-      if (ok === null) return null;
-      if (!ok) groupMatch = false;
+    const parsedComparators = [];
+    for (const comp of rawComparators) {
+      const parsed = parseSingleComparator(comp);
+      if (!parsed) return null;
+      parsedComparators.push(parsed);
     }
     sawValidGroup = true;
-    if (groupMatch) return true;
+
+    // Per SemVer / npm semver: an installed prerelease matches an AND group only if at least one comparator
+    // in that group explicitly specifies a prerelease on the same [major, minor, patch] tuple.
+    if (installed.prerelease) {
+      const hasMatchingPrereleaseTuple = parsedComparators.some(
+        ({ base }) =>
+          Boolean(base.prerelease) &&
+          base.major === installed.major &&
+          base.minor === installed.minor &&
+          base.patch === installed.patch,
+      );
+      if (!hasMatchingPrereleaseTuple) continue;
+    }
+
+    if (parsedComparators.every((parsed) => matchesComparator(installed, parsed))) {
+      return true;
+    }
   }
   return sawValidGroup ? false : null;
 }
@@ -1312,6 +1382,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
 
   const findings = [];
   const manifestErrors = validateManifestShape(manifest);
+  const manifestObj = manifest && typeof manifest === "object" && !Array.isArray(manifest) ? manifest : {};
   let diskFiles = [];
   let treeHash = null;
 
@@ -1326,7 +1397,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
   }
 
   if (manifestErrors.length === 0) {
-    const expectedFiles = [...manifest.files.allFiles];
+    const expectedFiles = [...manifestObj.files.allFiles];
     const missing = expectedFiles.filter((f) => !diskFiles.includes(f));
     const extra = diskFiles.filter((f) => !expectedFiles.includes(f));
     if (missing.length > 0) {
@@ -1349,7 +1420,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
       ),
     );
   } else {
-    treeHash = await hashRecipeTree(recipeDir, manifest.files.allFiles);
+    treeHash = await hashRecipeTree(recipeDir, manifestObj.files.allFiles);
   }
 
   // Provenance check (informational: adopters own installed recipes and may customize them).
@@ -1357,8 +1428,8 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
   let provenanceState = "untracked";
   const siblingProv = `${recipeDir}.provenance.json`;
   const provCandidates = [siblingProv];
-  if (typeof manifest.id === "string" && RECIPE_ID_PATTERN.test(manifest.id)) {
-    const canonicalSuffix = `${sep}${manifest.id.split("/").join(sep)}`;
+  if (typeof manifestObj.id === "string" && RECIPE_ID_PATTERN.test(manifestObj.id)) {
+    const canonicalSuffix = `${sep}${manifestObj.id.split("/").join(sep)}`;
     if (recipeDir.endsWith(canonicalSuffix)) {
       provCandidates.push(join(resolve(recipeDir, "../.."), PROVENANCE_FILENAME));
     }
@@ -1368,7 +1439,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
     if (!pStat || !pStat.isFile() || pStat.isSymbolicLink()) continue;
     try {
       const prov = JSON.parse(await fs.readFile(provPath, "utf8"));
-      const entry = prov?.recipes?.[manifest.id] ?? (prov?.recipeId === manifest.id ? prov : null);
+      const entry = prov?.recipes?.[manifestObj.id] ?? (prov?.recipeId === manifestObj.id ? prov : null);
       if (entry && treeHash) {
         provenanceState = entry.recipeTreeSha256 === treeHash.recipeTreeSha256 ? "pristine" : "locally-modified";
         break;
@@ -1380,7 +1451,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
 
   const staticIsolation =
     manifestErrors.length === 0
-      ? await runStaticIsolationScan(recipeDir, manifest.files.allFiles)
+      ? await runStaticIsolationScan(recipeDir, manifestObj.files.allFiles)
       : { passed: false, filesScanned: 0, violations: ["Skipped due to invalid manifest."] };
 
   if (manifestErrors.length === 0 && !staticIsolation.passed) {
@@ -1397,14 +1468,23 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
   }
 
   const workspace = await resolveWorkspaceContext(recipeDir, cwdReal);
-  const platformCompatibility = evaluatePlatformCompatibility(workspace, manifest);
-  if (!platformCompatibility.compatible) {
+  const platformCompatibility =
+    manifestErrors.length === 0
+      ? evaluatePlatformCompatibility(workspace, manifestObj)
+      : {
+          state: "unknown",
+          compatible: true,
+          installedVersion: workspace.platformVersion,
+          requiredRange: typeof manifestObj.openlupPlatformRange === "string" ? manifestObj.openlupPlatformRange : null,
+          note: "Skipped platform compatibility evaluation because recipe.json is invalid.",
+        };
+  if (manifestErrors.length === 0 && !platformCompatibility.compatible) {
     findings.push(
       makeFinding(
         "OPENLUP_E_RECIPE_PLATFORM_RANGE",
         platformCompatibility.note,
         "The host workspace's installed @openlup/platform version is outside this recipe's declared openlupPlatformRange.",
-        `Upgrade or align @openlup/platform to satisfy ${manifest.openlupPlatformRange}, or select a compatible recipe version.`,
+        `Upgrade or align @openlup/platform to satisfy ${manifestObj.openlupPlatformRange}, or select a compatible recipe version.`,
         recheck,
         { checked: "@openlup/platform SemVer compatibility" },
       ),
@@ -1437,7 +1517,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
           : "Skipped Vitest execution because ADR-001 static isolation failed (refusing to execute isolated code violations).",
     };
   } else {
-    stages1to3Tests = await runRecipeVitest(recipeDir, manifest, workspace);
+    stages1to3Tests = await runRecipeVitest(recipeDir, manifestObj, workspace);
     if (!stages1to3Tests.passed) {
       findings.push(
         makeFinding(
@@ -1460,9 +1540,9 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
     command: "recipe verify",
     state: ok ? "satisfied" : unavailable ? "failed" : "unsatisfied",
     exitCode: ok ? 0 : unavailable ? 74 : 1,
-    recipeId: typeof manifest.id === "string" ? manifest.id : null,
-    providerKind: typeof manifest.providerKind === "string" ? manifest.providerKind : null,
-    status: typeof manifest.status === "string" ? manifest.status : null,
+    recipeId: typeof manifestObj.id === "string" ? manifestObj.id : null,
+    providerKind: typeof manifestObj.providerKind === "string" ? manifestObj.providerKind : null,
+    status: typeof manifestObj.status === "string" ? manifestObj.status : null,
     path: displayPath(cwdReal, recipeDir),
     recipeTreeSha256: treeHash?.recipeTreeSha256 ?? null,
     provenanceState,
