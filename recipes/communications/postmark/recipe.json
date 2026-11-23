@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "id": "communications/postmark",
+  "domain": "communications",
+  "providerKind": "postmark",
+  "displayName": "Postmark Transactional Email (REST API)",
+  "summary": "Zero-SDK Postmark Transactional Email REST API recipe with pinned HTTPS egress, X-Postmark-Server-Token auth, streaming byte caps, MessageStream support, and constant-time Basic Auth webhook normalization.",
+  "regions": [
+    "global",
+    "US",
+    "NA",
+    "EU",
+    "APAC"
+  ],
+  "status": "verified",
+  "openlupPlatformRange": "^1.4.0",
+  "testedAgainstPlatformVersion": "1.4.0-dev",
+  "contractImports": [
+    "@openlup/platform/communications"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/communications/testing",
+    "exportName": "runCommunicationsAdapterConformance",
+    "mode": "full"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://api.postmarkapp.com"
+  ],
+  "webhookAuth": "basic-auth",
+  "browserSurface": {
+    "kind": "none"
+  },
+  "supportedCurrenciesPolicy": "not-applicable",
+  "staticCapabilities": {
+    "providerKind": "postmark",
+    "egressGuarded": true,
+    "webhookAuth": "basic-auth",
+    "supportsMessageStream": true,
+    "supportsObservationEvents": [
+      "Delivery",
+      "Bounce",
+      "SpamComplaint",
+      "Open",
+      "Click",
+      "SubscriptionChange"
+    ]
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "LIVE_QUALIFICATION.md",
+      "recipe.json",
+      "server/adapter.ts",
+      "server/client-contract.ts",
+      "server/index.ts",
+      "server/webhook.ts",
+      "tests/conformance.test.ts",
+      "tests/fixtures.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/communications/postmark/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/communications/postmark/tests/mount-proof.test.ts"
+  }
+}
