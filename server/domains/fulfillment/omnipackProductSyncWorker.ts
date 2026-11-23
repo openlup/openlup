@@ -177,7 +177,8 @@ async function runPull(
 ): Promise<void> {
   const skus = await input.provider.listStockedSkus();
   result.providerCalls += 1;
-  for (const sku of skus.filter((value) => value.trim())) {
+  // Independent SKU reads overlap; per-SKU ordering and error isolation stay intact.
+  await Promise.all(skus.filter((value) => value.trim()).map(async (sku) => {
     try {
       const providerPacks = await input.provider.getProductPacks(sku);
       result.providerCalls += 1;
@@ -221,5 +222,5 @@ async function runPull(
       result.failures += 1;
       result.reason = result.reason ?? safeReason(error);
     }
-  }
+  }));
 }
