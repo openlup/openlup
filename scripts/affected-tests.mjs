@@ -18,10 +18,10 @@ const IGNORED_DIRS = new Set([
   "test-results",
 ]);
 
-const DIRECT_TEST_PATTERN = /\.test\.(?:ts|tsx|js|mjs|cjs)$/;
-const PACKAGE_TEST_PATTERN = /\.test\.(?:ts|tsx|js|mjs)$/;
-const SCRIPT_TEST_PATTERN = /\.test\.(?:ts|mjs)$/;
-const TS_TEST_PATTERN = /\.test\.(?:ts|tsx)$/;
+const DIRECT_TEST_PATTERN = /\.(?:test|spec)\.(?:ts|tsx|js|mjs|cjs)$/;
+const PACKAGE_TEST_PATTERN = /\.(?:test|spec)\.(?:ts|tsx|js|mjs)$/;
+const SCRIPT_TEST_PATTERN = /\.(?:test|spec)\.(?:ts|mjs)$/;
+const TS_TEST_PATTERN = /\.(?:test|spec)\.(?:ts|tsx)$/;
 
 const CONTRACT_PIN_RULES = [
   {
@@ -177,22 +177,32 @@ export function extractStaticImports(sourceText) {
   const cleaned = stripCommentsForImportScan(sourceText);
   const specifiers = new Set();
 
-  // Matches `import ... from "specifier"` and `export ... from "specifier"` (including multi-line clauses).
-  const fromPattern = /(?:^|[;\r\n])\s*(?:import|export)\s+(?:type\s+)?[^;]*?\bfrom\s*["']([^"'\n]+)["']/g;
-  let match;
-  while ((match = fromPattern.exec(cleaned)) !== null) {
-    const specifier = match[1].trim();
-    if (specifier) {
-      specifiers.add(specifier);
-    }
-  }
+  // Linear scan over statement starts (no overlapping whitespace/newline quantifiers).
+  const statementStart = /(?:^|;|\n)[ \t]*(import|export)(?=[ \t{*'"])/g;
+  const fromClause = /\bfrom[ \t]*["']([^"'\r\n]+)["']/;
+  const sideEffectClause = /^import[ \t]*["']([^"'\r\n]+)["']/;
 
-  // Matches side-effect imports: `import "specifier"`
-  const sideEffectPattern = /(?:^|[;\r\n])\s*import\s*["']([^"'\n]+)["']/g;
-  while ((match = sideEffectPattern.exec(cleaned)) !== null) {
-    const specifier = match[1].trim();
-    if (specifier) {
-      specifiers.add(specifier);
+  let match;
+  while ((match = statementStart.exec(cleaned)) !== null) {
+    const keyword = match[1];
+    const keywordPos = match.index + match[0].length - keyword.length;
+    const semiPos = cleaned.indexOf(";", keywordPos);
+    const endPos = semiPos === -1 ? Math.min(cleaned.length, keywordPos + 1024) : Math.min(semiPos, keywordPos + 1024);
+    const statement = cleaned.slice(keywordPos, endPos);
+
+    if (keyword === "import") {
+      const sideEffect = sideEffectClause.exec(statement);
+      if (sideEffect) {
+        const specifier = sideEffect[1].trim();
+        if (specifier) specifiers.add(specifier);
+        continue;
+      }
+    }
+
+    const fromMatch = fromClause.exec(statement);
+    if (fromMatch) {
+      const specifier = fromMatch[1].trim();
+      if (specifier) specifiers.add(specifier);
     }
   }
 
@@ -445,11 +455,31 @@ export function collectTestFiles(rootDir = REPOSITORY_ROOT) {
   // scripts/**/*.test.{ts,mjs}
   walkMatchingFiles(rootDir, "scripts", (fileRel) => SCRIPT_TEST_PATTERN.test(fileRel), found);
 
-  // tests/**/*.test.{ts,tsx}
+  // tests/**/*.{test,spec}.{ts,tsx}
   walkMatchingFiles(rootDir, "tests", (fileRel) => TS_TEST_PATTERN.test(fileRel), found);
 
-  // src/**/*.test.{ts,tsx}
+  // src/**/*.{test,spec}.{ts,tsx}
   walkMatchingFiles(rootDir, "src", (fileRel) => TS_TEST_PATTERN.test(fileRel), found);
+
+  // api/**/*.{test,spec}.{ts,tsx}, server/**/*.{test,spec}.{ts,tsx}, mcp/**/*.{test,spec}.{ts,tsx}
+  walkMatchingFiles(rootDir, "api", (fileRel) => TS_TEST_PATTERN.test(fileRel), found);
+  walkMatchingFiles(rootDir, "server", (fileRel) => TS_TEST_PATTERN.test(fileRel), found);
+  walkMatchingFiles(rootDir, "mcp", (fileRel) => TS_TEST_PATTERN.test(fileRel), found);
+
+  // recipes/**/tests/**/*.{test,spec}.{ts,tsx}
+  const recipesAbs = resolve(rootDir, "recipes");
+  if (existsSync(recipesAbs)) {
+    for (const entry of readdirSync(recipesAbs, { withFileTypes: true })) {
+      if (entry.isDirectory() && !IGNORED_DIRS.has(entry.name)) {
+        walkMatchingFiles(
+          rootDir,
+          posix.join("recipes", entry.name, "tests"),
+          (fileRel) => TS_TEST_PATTERN.test(fileRel),
+          found,
+        );
+      }
+    }
+  }
 
   return [...found].sort(compareCodeUnits);
 }
