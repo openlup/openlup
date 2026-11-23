@@ -198,7 +198,7 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261124220000_catalog_governed_lifecycle.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124220000_catalog_governed_lifecycle.sql) |
 | [`20261124220001_catalog_accepted_references.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124220001_catalog_accepted_references.sql) |
 | [`20261124230000_subscription_profiles.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124230000_subscription_profiles.sql) |
-| [`20261124235000_tax_coverage_revisions.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124235000_tax_coverage_revisions.sql) |
+| [`20261125020000_tax_coverage_revisions.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125020000_tax_coverage_revisions.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

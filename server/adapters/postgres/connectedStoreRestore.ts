@@ -50,24 +50,16 @@ const beforeSubscriptionProfiles = {
   "installer-managed": "412caa25526d6ba70bb5bb761d5bed2336e7307811a879658295819ad5ab15f5",
   "operator-provisioned": "d413c04713b9fb5f5f9d8f01dc66c68c67d131f6cc94bcbf12becef47abd4f42",
 } satisfies Record<keyof typeof beforePublicationCommands, string>;
-const beforeTaxCoverageRevisions = {
-  bootstrap: "cffdddea783d1cdbc1460c6a9d6caf5bad4a94096eacd38938bdb6b6b28bc256",
-  separate: "d7a7452c78bc5d1b3fc3920d483a2465f8a64caf2198238d9e8e494f52e168c5",
-  "installer-managed": "beaa7e249a4a9966f48a6fe9a99c48900a7b228cc22e2178bdd42df5a56fc474",
-  "operator-provisioned": "5c43ca0f133bffc0d3e2eebf826c1932272a0309b45add51d21cfa97d430d673",
-} satisfies Record<keyof typeof beforePublicationCommands, string>;
-const taxCoverageRevisions = "tax_coverage_revisions";
-type SourceShape = "current" | "beforePublicationCommands" | "beforeCheckoutAttemptLedger" | "beforeAcceptedReferences"
-  | "beforeTaxCoverageRevisions" | "unsupported";
+type SourceShape = "current" | "beforePublicationCommands" | "beforeCheckoutAttemptLedger" | "beforeAcceptedReferences" | "unsupported";
 
 export function connectedStoreSourceShape(
   profile: keyof typeof beforePublicationCommands, catalogueId: string | undefined, currentCatalogueId: string,
 ): SourceShape {
   if (catalogueId === currentCatalogueId) return "current";
+  if (catalogueId === beforeSubscriptionProfiles[profile]) return "current";
   if (catalogueId === beforePublicationCommands[profile]) return "beforePublicationCommands";
   if (catalogueId === beforeCheckoutAttemptLedger[profile]) return "beforeCheckoutAttemptLedger";
   if (catalogueId === beforeGovernedLifecycle[profile] || catalogueId === beforeAcceptedReferences[profile]) return "beforeAcceptedReferences";
-  if (catalogueId === beforeSubscriptionProfiles[profile] || catalogueId === beforeTaxCoverageRevisions[profile]) return "beforeTaxCoverageRevisions";
   return "unsupported";
 }
 
@@ -302,7 +294,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
 
 // Explicit owner order, not schema discovery or a general FK/translation engine.
 const order = [
-  taxCoverageRevisions,
+  "tax_coverage_revisions",
   "platform_human_principals", "platform_control_operators", "commerce_operators", "clients",
   "platform_human_memberships", "platform_human_membership_audit_events", "platform_communication_operators",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
@@ -424,16 +416,15 @@ export async function restoreConnectedNativeStore(input: {
     // Inspect definitions after table locks, before any retained-data mutation.
     const lockedInventory = inventory ?? await catalogPayload(client, installation);
     if (digest(lockedInventory) !== manifest.objectInventorySha256) fail("schema_conflict");
-    const predatesAcceptedReferences = shape !== "current" && shape !== "beforeTaxCoverageRevisions";
     for (const table of connectedNativeStoreTables) {
       const actual = (await client.query<{ name: string; type: string }>(`SELECT a.attname AS name,
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
         WHERE a.attrelid=$1::pg_catalog.regclass AND a.attnum>0 AND NOT a.attisdropped
         AND a.attgenerated='' AND a.attidentity='' ORDER BY a.attnum`, [`public.${table}`])).rows;
       const stored = source.get(table) ?? { ...baseline.get(table)!, rows: [] };
-      // Admitted omissions restore empty. Earlier captures attest that the
-      // already-installed edit quote table was empty.
-      const added = !predatesAcceptedReferences ? undefined
+      // The pre-ledger migration creates an empty ledger. Historical captures
+      // also attest the already-installed edit quote table was empty.
+      const added = shape === "current" ? undefined
         : shape === "beforePublicationCommands" && table === "catalog_sku_identifiers"
           ? [{ name: "scheme", type: "text" }] : acceptedReferenceColumns[table];
       const columns = stored.columns.map(({ name, type }) => ({ name, type }));
@@ -638,9 +629,7 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }
     if (shape === "unsupported") refuseSourceSchema();
-    const predatesCoverage = shape !== "current";
-    const predatesAcceptedReferences = predatesCoverage && shape !== "beforeTaxCoverageRevisions";
-    if (predatesAcceptedReferences) {
+    if (shape !== "current") {
       const quotes = copy.outsideProfileCensus.filter(entry => entry.relation === "public.subscription_edit_quotes");
       if (quotes.length !== 1 || quotes[0]?.disposition !== "unsupported-empty"
         || !Array.isArray(copy.emptyOutsideProfile)
@@ -649,14 +638,11 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
     const all = tables(copy);
     const predatesLedger = shape === "beforePublicationCommands" || shape === "beforeCheckoutAttemptLedger";
     const expected = connectedNativeStoreTables.filter(table =>
-      !(predatesLedger && table === checkoutAttemptLedger)
-      && !(predatesAcceptedReferences && table === editQuotes)
-      && !(predatesCoverage && table === taxCoverageRevisions));
+      !(predatesLedger && table === checkoutAttemptLedger) && !(shape !== "current" && table === editQuotes));
     if (all.size !== expected.length || expected.some(table => !all.has(table))) {
       if (shape !== "current") refuseSourceSchema();
       fail("invalid_input");
     }
-    if (!predatesCoverage && !copy.owned.some(entry => entry.table === taxCoverageRevisions)) fail("invalid_input");
     let count = 0, bytes = 0;
     for (const table of all.values()) {
       for (const column of table.columns) quoted(column.name);

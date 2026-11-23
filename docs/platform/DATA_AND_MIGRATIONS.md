@@ -522,14 +522,14 @@ client foreign key or absorption mapping.
 Restore the ledger before enabling checkout under the same limit and identity
 policy. Connected-store restore accepts the current qualified inventory and the
 admitted predecessor inventories from before publication commands, the checkout
-attempt ledger, governed catalogue lifecycle, catalogue accepted references,
-subscription profile receipts and tax coverage revisions. Conversion reproduces
-the retained rows an in-place upgrade would produce. The last two predecessor
-inventories share a carried-row shape and restore with an empty coverage history.
-Captures from before catalogue accepted references report the edit quote table
-as empty because capture refused when it contained rows. Later captures carry
-those quotes. A dropped or retyped column cannot be reproduced by additive
-conversion and refuses with `schema_conflict`. Upgrade the source, then capture.
+attempt ledger, governed catalogue lifecycle and catalogue accepted references.
+Conversion reproduces the retained rows an in-place upgrade would produce.
+It also accepts profile-free packets from the pinned inventories immediately
+before subscription profile receipts. Those packets use the current shape.
+Earlier captures report the edit quote table as empty because capture refused
+when it contained rows. New captures carry those quotes. A source schema change
+that cannot be reproduced by additive conversion, such as a dropped or retyped
+column, refuses with `schema_conflict`. Upgrade the source, then capture.
 Restored attempts age on their
 original timestamps. Admission prunes rows at the retention cutoff on each
 call. Idle databases keep bounded rows
@@ -996,8 +996,7 @@ window and named refusal for unverifiable legacy originals on both rails.
 `tax_coverage_revisions` is authoritative installation configuration in the
 sensitive owner transfer stream. It has no parent relation. Connected restore
 copies the full history, including original actor references and recorded
-times. An admitted packet from before this table restores an empty history,
-matching an in-place upgrade. The owner appends through the
+times. The owner appends through the
 [installed coverage operation](../../packages/platform/README.md#install-and-inspect-tax-coverage).
 The runtime has execution access to the scoped reader alone. The reader's
 arguments filter a trusted host's query scope.

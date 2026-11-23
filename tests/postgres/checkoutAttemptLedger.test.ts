@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
-import { loadPreCoverageCapture, projectHistoricalCapture, sealConnectedCapture } from "./connectedStoreHistoricalPacket.fixture.js";
+import { projectHistoricalCapture, sealConnectedCapture } from "./connectedStoreHistoricalPacket.fixture.js";
 import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { beforeSubscriptionProfilesCatalog, beforeSubscriptionProfilesInventory, captureStoreJourney,
@@ -224,7 +224,7 @@ it("restores the pre-ledger packet shape with an empty ledger and requires it in
   });
   await expect(restore(sealConnectedCapture(missingLedger))).rejects.toMatchObject({ code: "invalid_input" });
   // Complete separate-migrator inventory immediately before HS-L.
-  const old = await projectHistoricalCapture(native.owner, capture, "0fca9c01fd08e76700cd55eaafb81ff1dd9f265ed9a672d3c9936812c8df1153", { predatesLedger: true });
+  const old = await projectHistoricalCapture(native.owner, capture, "0fca9c01fd08e76700cd55eaafb81ff1dd9f265ed9a672d3c9936812c8df1153", true);
   expect(await restore(old)).toMatchObject({ captureSha256: old.sha256, replayed: false });
   expect((await target.owner.query("SELECT name FROM public.catalog_products WHERE id=$1", [product])).rows)
     .toEqual([{ name: "Predecessor product" }]);
@@ -240,9 +240,7 @@ it("restores and replays a post-accepted-references capture with legacy catalogu
   });
   expect(await attempt(source.runtime)).toEqual(allowed);
   const savedLedger = await ledgerRows(source.owner);
-  const packet = await captureStoreJourney(source.owner, "before-profiles-source", {
-    catalogueId: beforeSubscriptionProfilesInventory, capture: await loadPreCoverageCapture(),
-  });
+  const packet = await captureStoreJourney(source.owner, "before-profiles-source", { catalogueId: beforeSubscriptionProfilesInventory });
   expect(packet.owned).toContainEqual(expect.objectContaining({ table: "subscription_edit_quotes" }));
   expect(packet.outsideProfileCensus).not.toContainEqual(expect.objectContaining({ relation: "public.catalog_subscription_profile_receipts" }));
   const capturedReceipts = packet.owned.find(entry => entry.table === "catalog_definition_installs")!.rows;
@@ -264,7 +262,6 @@ it("restores and replays a post-accepted-references capture with legacy catalogu
   expect(await ledgerRows(target.owner)).toEqual(savedLedger);
   expect(await restore()).toMatchObject({ replayed: true, captureSha256: packet.sha256 });
   const after = await captureStoreJourney(target.owner, "profiles-target-after");
-  expect(after.owned.find(entry => entry.table === "tax_coverage_revisions")?.rows).toEqual([]);
   expect(after.owned.find(entry => entry.table === "catalog_definition_installs")!.rows).toEqual(capturedReceipts);
 }, 105_000);
 

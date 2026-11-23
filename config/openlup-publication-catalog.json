@@ -1582,7 +1582,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261124235000_tax_coverage_revisions.sql",
+      "path": "db/platform/migrations/20261125020000_tax_coverage_revisions.sql",
       "class": "public-output"
     },
     {
@@ -5166,7 +5166,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261124235000_tax_coverage_revisions.sql",
+      "path": "packages/platform/sql/20261125020000_tax_coverage_revisions.sql",
       "class": "public-output"
     },
     {

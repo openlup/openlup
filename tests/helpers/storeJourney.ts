@@ -248,11 +248,9 @@ export type StoreJourney = Awaited<ReturnType<typeof captureAndActivateJourney>>
 
 export async function captureStoreJourney(owner: Pool, sourceId: string, options: {
   catalogueId?: string; maximumRows?: number; maximumBytes?: number; observeQuery?: (sql: string) => void;
-  capture?: typeof captureConnectedNativeStore;
 } = {}) {
-  const { catalogueId = manifest.objectInventorySha256, maximumRows = 10000, maximumBytes = 64 * 1024 * 1024,
-    observeQuery, capture = captureConnectedNativeStore } = options;
-  return capture({ sourceId, catalogueId, maximumRows, maximumBytes,
+  const { catalogueId = manifest.objectInventorySha256, maximumRows = 10000, maximumBytes = 64 * 1024 * 1024, observeQuery } = options;
+  return captureConnectedNativeStore({ sourceId, catalogueId, maximumRows, maximumBytes,
     source: { async withSnapshot(work) {
       const client = await owner.connect();
       try {

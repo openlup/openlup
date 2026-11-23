@@ -108,9 +108,9 @@ async function withAcquisitionOwnerWindow<T>(installed: Installed, work: (client
     client.release();
   }
 }
-async function capture(installed: Installed, sourceId: string) {
+async function capture(installed: Installed, sourceId: string, catalogueId = installed.inventory) {
   return withAcquisitionOwnerWindow(installed, client =>
-    captureConnectedNativeStore({ sourceId, catalogueId: installed.inventory, maximumRows: 10000,
+    captureConnectedNativeStore({ sourceId, catalogueId, maximumRows: 10000,
       maximumBytes: 64 * 1024 * 1024, source: { async withSnapshot(work) {
         await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
         try {
@@ -195,10 +195,9 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await source.owner.query("INSERT INTO public.clients(email,lifecycle_stage) VALUES('restricted@example.invalid','lead')");
       await source.owner.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
         VALUES('synthetic','10000000-0000-4000-8000-000000000001','synthetic.retained','restricted-ordinary-outbox','{}')`);
-      const current = await capture(source, "restricted-source");
-      const packet = sourceCatalogueId ? await projectHistoricalCapture(source.owner, current, sourceCatalogueId, {
-        predatesAcceptedReferences: sourceCatalogueId === beforeGovernedLifecycle[mode],
-      }) : current;
+      const current = await capture(source, "restricted-source", sourceCatalogueId);
+      const packet = sourceCatalogueId === beforeGovernedLifecycle[mode]
+        ? await projectHistoricalCapture(source.owner, current, sourceCatalogueId) : current;
       const freshTarget = await capture(target, "restricted-target");
       expect((await source.runner.status()).pending).toEqual([]);
       expect((await target.runner.status()).pending).toEqual([]);
