@@ -383,9 +383,6 @@ type CatalogueRefusal = SettingRefusal & {
         command: string;
     };
 };
-export declare function refuseCoverageRead(cause: unknown, hint?: string): {
-    refusal: SettingRefusal;
-};
 /** @experimental List matching entries from the installed package, offline. */
 export declare function listSettings(input: unknown): ListResult | {
     refusal: SettingRefusal;

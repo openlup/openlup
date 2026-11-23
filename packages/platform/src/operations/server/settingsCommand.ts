@@ -6,7 +6,7 @@ import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue,
 import { admitDatabaseUrl, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
 import { settingDescriptorSchema, toolInputSchema } from "./toolSchema.js";
 import {
-  explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseCoverageRead, refuseSettingsPreview, showSetting,
+  explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting,
   type SettingPreviewer, type SettingReader,
 } from "./settingsRead.js";
 
@@ -564,7 +564,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     }
   }
   const input = { key, proposed, skus: values.sku, asOf: values["as-of"] };
-  const unavailable = (detail?: string | Partial<Pick<SettingRefusal, "rule" | "hint" | "remediation">>) => {
+  const unavailable = (detail?: string | Partial<Pick<SettingRefusal, "path" | "rule" | "hint" | "remediation">>) => {
     const refusal = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;
     return {
       refusal: typeof detail === "string" ? { ...refusal, hint: detail } : detail ? { ...refusal, ...detail } : refusal,
@@ -652,11 +652,18 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   let outcome: [Result, number?];
   try { outcome = await dispatch(); }
   catch (error) {
+    if (!preview && key === "tax.coverage") {
+      return emit(unavailable({
+        path: ["app"],
+        rule: "Coverage reads require a working app binding.",
+        hint: "The installed app binding failed before the coverage reader ran.",
+        remediation: { retry: true, action: "Check the app factory and its configuration binding, then rerun the same command." },
+      }), 74);
+    }
     const hint = error instanceof Error && error.message === "NODE_PG_FORCE_NATIVE"
       ? "Unset NODE_PG_FORCE_NATIVE for this command to use the JavaScript PostgreSQL client, then retry."
       : "Check the read-capable database connection and that --app exports createSettingsBindings.";
-    outcome = [preview ? refuseSettingsPreview("commerce_setting_preview_unexpected", { path: [], hint })
-      : key === "tax.coverage" ? refuseCoverageRead(error, hint) : unavailable(hint), 74];
+    outcome = [preview ? refuseSettingsPreview("commerce_setting_preview_unexpected", { path: [], hint }) : unavailable(hint), 74];
   }
   return emit(...outcome);
 }

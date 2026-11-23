@@ -40,14 +40,14 @@ function refuseUnboundCoverageRead() {
       command: "openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json" } } };
 }
 
-export function refuseCoverageRead(cause: unknown, hint?: string): { refusal: SettingRefusal } {
+function refuseCoverageRead(cause: unknown): { refusal: SettingRefusal } {
   const code = cause !== null && typeof cause === "object" && "code" in cause ? cause.code : cause;
   if (code === "tax_coverage_reader_unbound") return refuseUnboundCoverageRead();
   const { refusal } = refuse("commerce_setting_read_unavailable");
   const action = code === "42501"
     ? "Grant EXECUTE on public.tax_coverage_read_v1(text,text) to the runtime role, then run the same command again"
     : "Restore the database connection, then run the same command again with the same --app and --configuration";
-  return { refusal: { ...refusal, hint: hint ?? refusal.hint, remediation: { retry: true, action } } };
+  return { refusal: { ...refusal, remediation: { retry: true, action } } };
 }
 
 /** @experimental List matching entries from the installed package, offline. */

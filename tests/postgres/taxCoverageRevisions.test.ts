@@ -197,14 +197,19 @@ it("gives words-only guidance for coverage connection and factory failures", asy
   const directory = await mkdtemp(join(scratch, "coverage-settings-"));
   try {
     const app = join(directory, "bound settings.mjs");
-    const failures = ["connection-reset", "factory-error"];
+    const failures = [
+      ["connection-reset", "Restore the database connection, then run the same command again with the same --app and --configuration"],
+      ["factory-error", "Check the app factory and its configuration binding, then rerun the same command."],
+    ];
     const configuration = "sample";
     await writeFile(app, `import { existsSync } from "node:fs";
 import { bindTaxCoverageReader } from "@openlup/platform/tax";
 export async function createSettingsBindings({ db, configuration }) {
   const expected = ${JSON.stringify(configuration)};
   if (configuration !== expected) return { configurationIds: [expected] };
-  if (existsSync(new URL("./factory-error", import.meta.url))) throw new Error("Factory could not connect");
+  if (existsSync(new URL("./factory-error", import.meta.url))) {
+    throw Object.assign(new Error("Factory permission denied"), { code: "42501" });
+  }
   const connection = { async query(text, values) {
     if (existsSync(new URL("./connection-reset", import.meta.url))) {
       throw Object.assign(new Error("Connection reset"), { code: "ECONNRESET" });
@@ -230,15 +235,12 @@ export async function createSettingsBindings({ db, configuration }) {
       remediation: { action: expect.stringContaining("Use a qualified native PostgreSQL installation") } } } });
     expect(await cli(...bound)).toMatchObject({ status: 0, body: { observation: { state: "absent" } } });
     await applyTaxCoverageRevision(source.owner, proposal("cli-first", null, [], { installationRef: "cli", accountRef }));
-    for (const failure of failures) {
+    for (const [failure, action] of failures) {
       const marker = join(directory, failure);
       await writeFile(marker, "");
       const result = await cli(...bound);
       expect(result).toMatchObject({ status: 74, body: { refusal: { code: "commerce_setting_read_unavailable" } } });
-      expect(result.body.refusal.remediation).toEqual({
-        retry: true,
-        action: "Restore the database connection, then run the same command again with the same --app and --configuration",
-      });
+      expect(result.body.refusal.remediation).toEqual({ retry: true, action });
       await rm(marker);
     }
     expect(await cli(...bound)).toMatchObject({ status: 0, body: { observation: { state: "override", revision: "cli-first" } } });
