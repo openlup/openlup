@@ -14,6 +14,7 @@ import { loadCatalogRules, withCatalogPublicationRules } from "../../src/catalog
 import type { CatalogCandidateIssue } from "../../src/catalog/contracts/candidate.js";
 import { installCatalogDefinitions } from "../../src/catalog/installCatalogDefinitions.js";
 import { catalogPackManifest } from "../../src/catalog/catalogPackManifest.js";
+import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
 import { assertCatalogPublicationGrossMass, assertCatalogPublicationPreparation, catalogPublicationClaim, compileCatalogPublication } from "../../src/catalog/publicationValidation.js";
 import type { PublicationDraftRecord, PublicationIntent } from "../../src/catalog/publicationIntent.js";
 import { compileCatalogPublicationDraft } from "../../src/catalog/publicationDraft.js";
@@ -1421,6 +1422,35 @@ it("explains how to order primary SKU selection before activation", async () => 
     code: "catalog_publication_v3_compile_product_incomplete",
     diagnostic: { path: `publication.operations.${activation}` },
     message: "Set the document and the primary SKU before activation. Select a primary SKU or move set_primary_sku before set_product_status.",
+  });
+});
+
+it("mass_required_fix_names_whole_grams", async () => {
+  const data = input();
+  const volume = { dimension: "volume", unit: "openlup:ml", unscaled: "100", scale: 0 } as const;
+  data.registry = createCatalogProductTypeRegistry([{
+    ...data.definition,
+    units: [...data.definition.units, { code: volume.unit, dimension: volume.dimension, integral: false }],
+    netContentUnits: [...data.definition.netContentUnits, volume.unit],
+  }]);
+  data.installedDefinitionDigest = catalogDefinitionDigest(data.registry.resolve(data.payload.product.type)!);
+  const sku = data.payload.skus[0]!;
+  const mass = sku.netContent;
+  const query = { draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null };
+  const service = facade(data);
+
+  sku.netContent = volume;
+  const refused = await service.prepareCandidate(query);
+  sku.netContent = mass;
+  const recovered = await service.prepareCandidate(query);
+
+  expect(recovered.preparation?.structural).toEqual({ outcome: "staged", issues: [] });
+  expect(refused.preparation?.structural).toMatchObject({
+    outcome: "blocked-input",
+    issues: [expect.objectContaining({
+      code: "catalog_publication_mass_required_until_mc5",
+      message: "Publish net content as the net mass in whole grams. Declare a labelled volume or count as a quantity variant option.",
+    })],
   });
 });
 
