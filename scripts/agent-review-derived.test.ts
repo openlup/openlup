@@ -620,6 +620,24 @@ it('refuses inverted or duplicate migration slots before starting merge or Docke
     expect(invoked).toEqual([]);
     expect(git('status', '--porcelain=v1')).toBe('');
     expect(existsSync(join(root, '.git/MERGE_HEAD'))).toBe(false);
+
+    // Stacked PR whose predecessor migration squash-merged byte-identically onto origin/main must not be falsely refused.
+    git('checkout', '-q', '--detach', base);
+    append('20990101010000');
+    write('README.md', `${read('README.md')}\n<!-- stacked-child -->\n`);
+    const stackedChild = commit();
+    git('checkout', '-q', '--detach', base);
+    append('20990101010000');
+    const squashMergedMain = commit();
+    setMain(squashMergedMain);
+    git('checkout', '-q', '--detach', stackedChild);
+    const stackedInvoked: string[][] = [];
+    const stackedLanded = await landingMerge(root, {
+      runCommand: (_command, args) => { stackedInvoked.push(args); },
+    });
+    expect(stackedLanded.head).toMatch(/^[0-9a-f]{40}$/u);
+    expect(stackedInvoked.length).toBeGreaterThan(0);
+    expect(git('status', '--porcelain=v1')).toBe('');
   } finally {
     git('reset', '--hard', merged);
     git('checkout', '-q', '--detach', merged);
