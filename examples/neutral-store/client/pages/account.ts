@@ -188,6 +188,11 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
   type Row = PortalSubscription & { shippingSavedAddressId?: string };
   type Offer = SubscriptionSaveOfferPresentation;
   type Write = 'subscription.cancelDirect' | 'subscription.cancelFeedback' | 'subscription.acceptSaveOffer';
+  const retryAction: Record<Write, CopyKey> = {
+    'subscription.cancelDirect': 'cancelSubscription',
+    'subscription.cancelFeedback': 'careFeedbackSubmit',
+    'subscription.acceptSaveOffer': 'careAccept',
+  };
   type Pending = { operation: Write; input: ActionInput; key: string; running: boolean; interaction: Interaction | undefined };
   type Interaction = { generation: string | null; step: 'permission' | 'reading' | 'ready' | 'offer'; offer?: Offer; preset?: string };
   function makeCard(row: Row) {
@@ -352,10 +357,15 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
         append(slot, el('p', { 'data-save-offer': '' }, context.t(labels[action]),
           offer.kind === 'reschedule' ? ` — ${date(context, offer.newNextCycleAt.replace(/^(\d{5})-/u, '+0$1-'))}` : ''));
         if (offer.kind === 'pause') {
-          const { wrapper, control } = field(context, { name: 'pausePreset', label: 'careDuration', type: 'select', value: interaction.preset ?? offer.preselectedPausePreset,
+          const accept = pending.get('subscription.acceptSaveOffer');
+          const submittedPreset = accept?.interaction === interaction ? accept.input.pausePreset : undefined;
+          const lockedPreset = typeof submittedPreset === 'string' ? submittedPreset : undefined;
+          const { wrapper, control } = field(context, { name: 'pausePreset', label: 'careDuration', type: 'select',
+            value: lockedPreset ?? interaction.preset ?? offer.preselectedPausePreset,
             options: offer.pausePresets.map(({ pausePreset, duration }) => ({ value: pausePreset, text: duration.unit === 'indefinite' ? context.t('careIndefinite')
               : new Intl.NumberFormat(context.locale, { style: 'unit', unit: duration.unit === 'days' ? 'day' : 'month', unitDisplay: 'long' }).format(duration.value) })) });
-          control.addEventListener('change', () => { interaction.preset = control.value; });
+          control.disabled = lockedPreset !== undefined;
+          if (!control.disabled) control.addEventListener('change', () => { interaction.preset = control.value; });
           append(slot, wrapper);
         }
         if (!pending.size) append(slot, button(context.t('careAccept'), () => {
@@ -367,7 +377,7 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
     }
     for (const operation of pending.values()) {
       append(slot, operation.running ? el('p', { role: 'status' }, context.t('loading'))
-        : button(context.t('retry'), () => send(card, operation), 'secondary'));
+        : button(`${context.t('retry')} — ${context.t(retryAction[operation.operation])}`, () => send(card, operation), 'secondary'));
     }
     if (card.message) append(slot, card.message);
   }

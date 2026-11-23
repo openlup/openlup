@@ -525,8 +525,8 @@ for (const locale of market.locales) {
     });
     await control(t.careAccept).click();
     await expect(control(t.careAccept)).toHaveCount(0);
-    await control(t.retry).click();
-    await expect(control(t.retry)).toHaveCount(0);
+    await control(`${t.retry} — ${t.careAccept}`).click();
+    await expect(control(`${t.retry} — ${t.careAccept}`)).toHaveCount(0);
     expect(attempts).toEqual([attempts[0], attempts[0]]);
     await expect.poll(async () => (await call(page, 'account.read', { saveOfferFor: subscriptionRef })).value.saveOffer).toBeNull();
     expect(await call(page, 'subscription.acceptSaveOffer', { subscriptionRef, generation, kind: offer.kind,
@@ -703,7 +703,7 @@ for (const locale of market.locales) {
     await expect(card.locator('[data-care-state]')).toHaveAttribute('data-care-state', 'cancelled');
     expect(await card.evaluate((element, original) => element === original, handle)).toBe(true);
     release();
-    await control(t.retry).click();
+    await control(`${t.retry} — ${t.cancelSubscription}`).click();
     await expect(card.getByLabel(t.cancelReason)).toBeVisible();
     expect(attempts).toEqual([attempts[0], attempts[0]]);
     await control(t.careFeedbackSubmit).click();
@@ -721,31 +721,41 @@ for (const locale of market.locales) {
       await route.continue();
     });
     await control(t.cancelSubscription).click(); await control(t.careOfferYes).click();
+    const duration = card.getByLabel(t.careDuration);
+    await expect(duration).toBeEnabled();
+    const preset = await duration.inputValue() === 'indefinite' ? '2_weeks' : 'indefinite';
+    await duration.selectOption(preset);
     await control(t.careAccept).click();
-    await expect(control(t.retry)).toBeVisible();
+    await expect(control(`${t.retry} — ${t.careAccept}`)).toBeVisible();
+    await expect(duration).toBeDisabled();
+    await expect(duration).toHaveValue(preset);
     const newNextCycleAt = new Date(Date.parse(f.nextCycleAt) + 4 * 86400000).toISOString();
     expect((await call(page, 'subscription.command', { action: 'slide', subscriptionRef: f.subscriptionId, newNextCycleAt })).ok).toBe(true);
     await page.getByRole('button', { name: t.careRead, exact: true }).click();
     await expect(card.locator('[data-save-offer]')).toHaveCount(0);
     await control(t.cancelSubscription).click(); await control(t.careOfferYes).click();
     await expect(card.locator('[data-save-offer]')).toBeVisible();
+    await expect(duration).toBeEnabled();
     const retry = page.waitForResponse(response => response.url().endsWith('/subscription.acceptSaveOffer'));
-    await control(t.retry).click();
+    await control(`${t.retry} — ${t.careAccept}`).click();
     expect(await (await retry).json()).toMatchObject({ code: 'starter_save_offer_stale' });
     await expect(control(t.careAccept)).toBeVisible();
     expect(attempts).toEqual([attempts[0], attempts[0]]);
+    expect(JSON.parse(attempts[0]!)[1]).toMatchObject({ kind: 'pause', pausePreset: preset });
   });
 
   test(`${locale}: cx1r_keyed_account_recovery keeps live Cancel beside historical feedback retry`, async ({ page }) => {
     const f = await openRecoveryCard(page, locale), t = copy[locale];
     const card = cardFor(page, f), control = (name: string) => card.getByRole('button', { name, exact: true });
-    const attempts: string[] = [];
-    for (const operation of ['cancelDirect', 'cancelFeedback']) {
-      let first = true;
+    const cancelRetry = control(`${t.retry} — ${t.cancelSubscription}`), feedbackRetry = control(`${t.retry} — ${t.careFeedbackSubmit}`);
+    const attempts = { cancelDirect: [] as string[], cancelFeedback: [] as string[] };
+    for (const operation of ['cancelDirect', 'cancelFeedback'] as const) {
       await page.route(`**/api/actions/subscription.${operation}`, async route => {
-        if (operation === 'cancelFeedback') attempts.push(JSON.stringify([route.request().headers()['idempotency-key'], route.request().postDataJSON()]));
+        const observed = attempts[operation];
+        observed.push(JSON.stringify([route.request().headers()['idempotency-key'], route.request().postDataJSON()]));
+        if (operation === 'cancelDirect' && observed.length === 3) return route.abort();
         const response = await route.fetch();
-        if (first) { first = false; return route.abort(); }
+        if (observed.length === 1) return route.abort();
         await route.fulfill({ response });
       });
     }
@@ -755,18 +765,30 @@ for (const locale of market.locales) {
     expect((await call(page, 'subscription.command', { action: 'reactivate', subscriptionRef: f.subscriptionId, confirmedChargeTiming: true })).ok).toBe(true);
     await page.getByRole('button', { name: t.careRead, exact: true }).click();
     await expect(card.locator('[data-care-state]')).toHaveAttribute('data-care-state', 'active');
-    await control(t.retry).click();
+    await cancelRetry.click();
     await expect(card.getByLabel(t.cancelReason)).toBeVisible();
     await expect(control(t.cancelSubscription)).toBeVisible();
     await card.getByLabel(t.cancelReason).selectOption('other');
     await control(t.careFeedbackSubmit).click();
-    await expect(control(t.retry)).toBeVisible();
+    await expect(feedbackRetry).toBeVisible();
     await expect(control(t.cancelSubscription)).toBeVisible();
-    await control(t.retry).click();
+    await control(t.cancelSubscription).click(); await control(t.careOfferNo).click();
+    await control(t.cancelSubscription).click();
+    await expect(cancelRetry).toBeVisible();
+    await expect(feedbackRetry).toBeVisible();
+    await feedbackRetry.click();
     await expect(card).toContainText(t.careFeedbackRecorded);
-    await expect(control(t.cancelSubscription)).toBeVisible();
-    expect(attempts).toEqual([attempts[0], attempts[0]]);
+    await expect(feedbackRetry).toHaveCount(0);
+    await expect(cancelRetry).toBeVisible();
+    expect(attempts.cancelFeedback).toEqual([attempts.cancelFeedback[0], attempts.cancelFeedback[0]]);
+    expect(attempts.cancelDirect).toHaveLength(3);
     expect((await state(f)).status).toBe('active');
+    await cancelRetry.click();
+    await expect(card.locator('[data-care-state]')).toHaveAttribute('data-care-state', 'cancelled');
+    await expect(card.getByLabel(t.cancelReason)).toBeVisible();
+    expect(attempts.cancelDirect).toEqual([attempts.cancelDirect[0], attempts.cancelDirect[0],
+      attempts.cancelDirect[2], attempts.cancelDirect[2]]);
+    expect(attempts.cancelDirect[2]).not.toBe(attempts.cancelDirect[0]);
   });
 
   for (const action of ['careOrderNow', 'careReactivate'] as const) test(`${locale}: ${action} requires explicit charge-timing confirmation`, async ({ page }) => {
