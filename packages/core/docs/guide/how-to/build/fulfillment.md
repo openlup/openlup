@@ -172,7 +172,6 @@ checkpoint and stores the following message in `platform_job_runs.error`.
 
 Failed pages return HTTP 502 with the original diagnostic. A checkpoint-read
 failure makes no provider call. A finish from a run that no longer holds the lease is not accepted.
-The next polling tick that acquires the lease resumes from the last accepted checkpoint, or from page 0 when that checkpoint records no page.
 Repeated ledger read errors can delay the repeated-failure bound for a page.
 Sequential cursor translation belongs to the adapter.
 
