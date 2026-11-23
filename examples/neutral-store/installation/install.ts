@@ -173,29 +173,48 @@ function admitPacks(rulesFor: () => Uint8Array | undefined) {
     `The rules file is absent for ${adopters.length} adopter packs.`, 'Installing an adopter pack requires a publication rules bundle.',
     "Add the rules module at `owned/catalogue-rules.cjs` using the starter's rules skeleton, then rebuild the demonstration image through the lifecycle command.");
   const artifact = bytes && Buffer.from(bytes);
-  const admittedTypes: CatalogProductTypeInput[] = [];
-  const packs = adopters.map(({ pack, path }) => {
-    const field = plainRecord(pack) && (pack.namespace === 'starter' ? 'namespace'
-      : typeof pack.id === 'string' && pack.id.startsWith('starter') ? 'id' : undefined);
-    if (field) throw packInvalid(`${path}/${field}`, 'starter_pack_identity_reserved');
-    const [finding] = catalogPackIssues(pack);
-    if (finding) throw packInvalid(path + finding.path, finding.code);
-    const declaration = pack as CatalogPackInput;
-    const firstType = admittedTypes.length;
-    for (const type of declaration.types) admittedTypes.push(type);
-    const duplicate = catalogProductTypeIssues(admittedTypes).find(issue => issue.code === 'definition_duplicate_identity');
-    if (duplicate) {
-      const [, index, field] = duplicate.path.split('/');
-      throw packInvalid(`${path}/types/${Number(index) - firstType}/${field}`, duplicate.code);
+  const types: CatalogProductTypeInput[] = [];
+  const typePaths: string[] = [];
+  const packs: { pack: CatalogPackInput; path: string }[] = [];
+  let failure: { error: unknown } | undefined;
+  try {
+    for (const { pack, path } of adopters) {
+      const field = plainRecord(pack) && (pack.namespace === 'starter' ? 'namespace'
+        : typeof pack.id === 'string' && pack.id.startsWith('starter') ? 'id' : undefined);
+      if (field) throw packInvalid(`${path}/${field}`, 'starter_pack_identity_reserved');
+      const [finding] = catalogPackIssues(pack);
+      if (finding) throw packInvalid(path + finding.path, finding.code);
+      const declaration = pack as CatalogPackInput;
+      declaration.types.forEach((type, index) => {
+        types.push(type);
+        typePaths.push(`${path}/types/${index}`);
+      });
+      let bound;
+      try { bound = withCatalogPublicationRules(declaration, () => artifact); }
+      catch (error) { throw installRefusal(error, path); }
+      const [installFinding] = catalogPackInstallIssues(bound);
+      if (installFinding) throw packInvalid(path + installFinding.path, installFinding.code);
+      packs.push({ pack: bound, path });
     }
-    let bound;
-    try { bound = withCatalogPublicationRules(declaration, () => artifact); }
-    catch (error) { throw installRefusal(error, path); }
-    const [installFinding] = catalogPackInstallIssues(bound);
-    if (installFinding) throw packInvalid(path + installFinding.path, installFinding.code);
-    return { pack: bound, path };
-  });
+  } catch (error) { failure = { error }; }
+  // The prefix ends before a reservation or source finding, and includes the failing entry for binding or install findings.
+  const duplicate = types.length && catalogProductTypeIssues(types).find(issue => issue.code === 'definition_duplicate_identity');
+  if (duplicate) {
+    const [, index, field] = duplicate.path.split('/');
+    throw packInvalid(`${typePaths[Number(index)]}/${field}`, duplicate.code);
+  }
+  if (failure) throw failure.error;
   return { artifact, fixtures, packs };
+}
+
+function seedConnection(connection: InstallConnection, preserveRefusal?: (error: unknown) => boolean): InstallConnection {
+  return { async query(text, values) {
+    try { return await connection.query(text, values); }
+    catch (error) {
+      if (preserveRefusal?.(error)) throw error;
+      throw installationFailure(error);
+    }
+  } };
 }
 
 async function withInstallationCleanup<T>(work: () => Promise<T>, cleanup: () => Promise<unknown>): Promise<T> {
@@ -234,10 +253,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     await Promise.all([import('../host/editor-catalogue.ts'), import('../owned/demo-seed.ts'), import('./quote-seed.ts')])
       .catch(error => { throw installationFailure(error); });
   const { installRole, runtimeRole } = installation;
-  const connection: InstallConnection = { async query(text, values) {
-    try { return await installation.connection.query(text, values); }
-    catch (error) { throw installationFailure(error); }
-  } };
+  const connection = seedConnection(installation.connection);
   if (!installRole || !runtimeRole || installRole === runtimeRole) throw installerRoleRequired();
   const seed = buildDemoSeed(config);
   await connection.query('BEGIN ISOLATION LEVEL READ COMMITTED');
@@ -283,14 +299,18 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     [row.id, row.product_id, row.sku, row.title, row.status, row.min_order_qty,
       row.is_addon, row.sellable_standalone, row.sellable_in_subscription,row.net_weight_g]);
     await installRenewalStockProtectionPolicy(connection, config.inventory.renewalProtection);
-    await installCheckoutRecoveryReminderSchedule(installation.connection, config.checkoutRecoveryReminders);
+    // Preserve the reminder owner's existing refusal and hint at this write boundary.
+    const reminderConnection = seedConnection(installation.connection, error =>
+      error instanceof Error && 'code' in error && error.code === '55000'
+      && /^checkout_recovery_schedule_change_blocked_open_episodes \([1-9][0-9]* blocking orders\)$/u.test(error.message));
+    await installCheckoutRecoveryReminderSchedule(reminderConnection, config.checkoutRecoveryReminders);
     const settlement = seed.priceLists[0]!;
     const settings = [...seed.settings, { key: 'settlement_region', value: settlement.region_code },
       { key: 'settlement_currency', value: settlement.currency }];
     for (const row of settings) await connection.query(`INSERT INTO public.commerce_settings(key,value_text)
       VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`, [row.key,row.value]);
     const stock = installation.stock ?? (await import('@openlup/platform/fulfillment').catch(error => { throw installationFailure(error); }))
-      .createPostgresFulfillmentStockSyncPort(installation.connection,
+      .createPostgresFulfillmentStockSyncPort(connection,
       { sourceKey: `starter-demo:${config.id}`,readLocalInventoryStock: async () => [] });
     for (const product of editorProducts(config)) await stock.recordProviderStockCurrent({ requestKey: `starter-stock:${product.sku}`,snapshot: {
       providerRef: config.purchase.stock.providerRef,collectedAt: config.purchase.stock.collectedAt,sourceRevision: null,revisionSource: 'collection',quantityKind: 'snapshot',
@@ -402,7 +422,7 @@ export async function bootstrapDemonstration(config: StoreConfig): Promise<Demon
   try {
     await connection.connect();
     const { createPostgresFulfillmentStockSyncPort } = await import('@openlup/platform/fulfillment');
-    const stock = createPostgresFulfillmentStockSyncPort(connection, { sourceKey: `starter-demo:${config.id}`, readLocalInventoryStock: async () => [] });
+    const stock = createPostgresFulfillmentStockSyncPort(seedConnection(connection), { sourceKey: `starter-demo:${config.id}`, readLocalInventoryStock: async () => [] });
     return { connection, stock, installRole, runtimeRole, close: () => connection.end() };
   } catch (error) {
     return withInstallationCleanup(async () => { throw error; }, () => connection.end());

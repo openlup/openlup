@@ -13,6 +13,7 @@ import { editorProducts, readStarterCatalogueRules, starterCatalogue } from '../
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { applyDemoSeed, demonstrationMarker, installDemonstration, provisionDemonstrationPublicationPassword,
   type DemonstrationInstallation } from '../installation/install.ts';
+import { installationReport } from '../installation/refusals.ts';
 
 test('publication provisioning sends a verifier and keeps the password in the private file', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'starter-publication-'));
@@ -448,7 +449,7 @@ test('a changed installed document refuses instead of reusing an incompatible re
 });
 
 
-test('an existing seed caller without a stock port uses the native writer and rolls back its refusal', async () => {
+test('an existing seed caller without a stock port uses the native writer', async () => {
   const config = Object.values(configurations)[0]!, fixture = installation();
   delete fixture.binding.stock;
   await applyDemoSeed(config,fixture.binding);
@@ -456,14 +457,53 @@ test('an existing seed caller without a stock port uses the native writer and ro
   assert.equal(stockCalls.length,editorProducts(config).length);
   assert.deepEqual(stockCalls.map(call => call.values?.[3]),editorProducts(config).map(product => product.sku));
   assert.ok(stockCalls.every(call => call.values?.[0] === `starter-demo:${config.id}`));
-  const failed = installation(),query = failed.binding.connection.query;
-  delete failed.binding.stock;
-  failed.binding.connection.query = async (text,values) => {
-    if (text.startsWith('SELECT public.fulfillment_record_stock_current')) throw new Error('native_stock_refused');
-    return query(text,values);
-  };
-  await assert.rejects(applyDemoSeed(config,failed.binding),{ message: 'native_stock_refused' });
-  assert.equal(failed.calls.at(-1)!.text,'ROLLBACK');
+});
+
+for (const [name, statement] of [
+  ['checkout reminder', installReminderSchedule],
+  ['native stock', 'SELECT public.fulfillment_record_stock_current'],
+] as const) {
+  test(`${name} write failures keep their infrastructure report through failed rollback and close`, async () => {
+    const fixture = installation();
+    delete fixture.binding.stock;
+    const failure = Object.assign(new Error('driver connection reset'), { code: 'ECONNRESET', hint: 'private driver diagnostic' });
+    const { query } = fixture.binding.connection, { close } = fixture.binding;
+    fixture.binding.connection.query = async (text, values) => {
+      const result = await query(text, values);
+      if (text.startsWith(statement)) throw failure;
+      if (text === 'ROLLBACK') throw new Error('rollback connection lost');
+      return result;
+    };
+    fixture.binding.close = async () => { await close(); throw new Error('close connection lost'); };
+    await assert.rejects(installDemonstration(Object.values(configurations)[0]!, async () => fixture.binding), error => {
+      infrastructureCause(failure)(error);
+      assert.equal(installationReport(error), [
+        'starter_installation_failed',
+        'Observed: The demonstration installation did not complete.',
+        'Cause: The starter did not receive a verified result from the installation boundary.',
+        "Fix: Check image dependencies, rules-file access, database reachability, TLS and driver initialization, installer login and grants, and the complete qualified migration set. Use the starter's default transaction isolation. For a receipt integrity failure, verify the installed package and schema pair before replaying the same declaration.",
+        'Recheck: Run `./lifecycle up` after correcting the failed prerequisite.',
+        '',
+      ].join('\n'));
+      return true;
+    });
+    assert.equal(fixture.calls.at(-1)?.text, 'ROLLBACK');
+    assert.equal(fixture.closed(), 1);
+  });
+}
+
+test('a blocked reminder schedule keeps the owner refusal and hint', async () => {
+  const fixture = installation();
+  const failure = Object.assign(new Error('checkout_recovery_schedule_change_blocked_open_episodes (2 blocking orders)'), {
+    code: '55000',
+    hint: 'The current schedule stays in effect. Retry after the blocking orders are paid, cancelled, or their carts are no longer eligible.',
+  });
+  const { query } = fixture.binding.connection;
+  fixture.binding.connection.query = (text, values) => text === installReminderSchedule ? Promise.reject(failure) : query(text, values);
+  await assert.rejects(installDemonstration(Object.values(configurations)[0]!, async () => fixture.binding), error => {
+    assert.equal(error, failure);
+    return true;
+  });
 });
 
 test('owned renewal priority validates before installation writes, independent of configuration ID', async () => {

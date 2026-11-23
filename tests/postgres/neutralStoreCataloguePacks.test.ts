@@ -3,8 +3,8 @@ import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Pool, type PoolClient } from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
-import { canonicalCatalogDraftJson, catalogPackManifest, withCatalogPublicationRules } from "@openlup/platform/catalog";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { canonicalCatalogDraftJson, catalogPackManifest, catalogProductTypeIssues, withCatalogPublicationRules } from "@openlup/platform/catalog";
 import type { CatalogPackInput } from "@openlup/platform/catalog/contracts";
 import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } from "@openlup/platform/migrations";
@@ -15,6 +15,11 @@ import { catalogueConformance } from "../../examples/neutral-store/owned/catalog
 import { configurations } from "../../examples/neutral-store/owned/store.config.ts";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+
+vi.mock("@openlup/platform/catalog", async importOriginal => {
+  const catalog = await importOriginal<typeof import("@openlup/platform/catalog")>();
+  return { ...catalog, catalogProductTypeIssues: vi.fn(catalog.catalogProductTypeIssues) };
+});
 
 const source = resolve("examples/neutral-store");
 const rules = readFileSync(join(source, "owned/catalogue-rules.cjs"));
@@ -258,6 +263,9 @@ it("starter_namespace_refuses_pack_invalid for the later duplicate, after earlie
   for (const [declarations, finding, path] of [
     [[starter, entry(first), entry(second)], "definition_duplicate_identity", "/packs/2/pack/types/0/key"],
     [[starter, entry({ ...first, version: 0 }), entry(second), entry(first)], "definition_version_invalid", "/packs/1/pack/version"],
+    [[starter, entry(first), entry({ ...second, version: 0 })], "definition_version_invalid", "/packs/2/pack/version"],
+    [[starter, entry(first), entry({ ...second, types: [{ ...second.types[0]!, validatorRef: `sha256:${"0".repeat(64)}` }] })],
+      "definition_duplicate_identity", "/packs/2/pack/types/0/key"],
   ] as const) {
     const error = await run(declarations, { statements, builds }).catch(error => error);
     refusal(error, "starter_catalogue_pack_invalid", path, `The adopter pack has finding ${finding} at ${path}.`,
@@ -265,9 +273,23 @@ it("starter_namespace_refuses_pack_invalid for the later duplicate, after earlie
       "Correct the declaration at the reported path. Use the source check for its definition findings, then run the installer to verify installation requirements.",
       sourceCheck);
   }
+  await expect(run([starter, entry(first), entry({ ...second, id: "starter-duplicate" })], { statements, builds }))
+    .rejects.toMatchObject({ code: "starter_catalogue_pack_invalid", path: "/packs/2/pack/id" });
   expect(writes(statements)).toEqual([]);
   expect(await snapshot()).toEqual(before);
   expect(readdirSync(builds)).toEqual([]);
+});
+
+it("starter_namespace_refuses_pack_invalid checks the 128-pack adopter list in one duplicate pass", async () => {
+  const packs = Array.from({ length: 128 }, (_, index) => entry(pack(`adopter-${index}`, 1,
+    Array.from({ length: 4 }, (_, type) => `adopter-${index}-type-${type}`))));
+  const duplicateCheck = vi.mocked(catalogProductTypeIssues);
+  duplicateCheck.mockClear();
+  const statements: string[] = [];
+  await expect(run([starter, ...packs], { db: runtime, statements }))
+    .rejects.toMatchObject({ code: "starter_seed_runtime_role_forbidden" });
+  expect(duplicateCheck.mock.calls.map(([types]) => types.length)).toEqual([512]);
+  expect(writes(statements)).toEqual([]);
 });
 
 it("packs_without_rules_refuse_before_any_write for an oversized type in both pack forms", async () => {
