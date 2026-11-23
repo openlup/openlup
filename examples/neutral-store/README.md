@@ -109,9 +109,9 @@ npm run provider:qualify -- --run --test-mode --account "$ACCOUNT_ID" --key-env 
 ```
 
 Open the local link when prompted and complete the provider challenge within
-five minutes. Use a test account set up for the tax fixtures. The command
-creates synthetic test objects and records observed tax layouts in a transcript
-with hashed identifiers.
+five minutes. This command qualifies card behavior using synthetic test objects
+and writes a transcript with hashed identifiers. Tax qualification runs in a
+separate step after the card qualification. The transcript records `tax: not_run`.
 If a write has an unknown outcome, use the original operation in the bound test
 account to reconcile it. Run the command again only for a new qualification.
 

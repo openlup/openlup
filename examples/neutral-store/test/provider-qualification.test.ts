@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isDeepStrictEqual } from 'node:util';
-import { launch, preflight, qualificationMessage, qualifyCard, qualifyTax, recoveryPrompt, runChild } from '../host/provider-qualification.ts';
+import { launch, preflight, qualifyCard, runChild } from '../host/provider-qualification.ts';
 import { CardRejection, credentialRefusal, integrityRefusal, openTestProvider, ProviderUnavailable, sdkVersion, TaxProviderRejection, transportStringBytes, type VerifiedTestProvider } from '../host/provider-transport.ts';
 
 const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
@@ -34,7 +34,7 @@ const health: Wire = async (_host, _port, path) => {
 const open = (http: Wire, options: Omit<NonNullable<Parameters<typeof openTestProvider>[1]>, 'http'> = {}) =>
   openTestProvider({ secretKey: sentinel, accountRef: account }, { ...options, http });
 
-test('owner tax bridge refuses invalid flag or execution context before reading credentials or launching', async () => {
+test('the qualification command refuses invalid flags or context before opening a transport', async () => {
   let reads = 0, launched = 0;
   const environment = new Proxy({ CI: 'true' }, { get(target, name, receiver) {
     if (name === keyName) { reads++; throw new Error(sentinel); }
@@ -214,23 +214,11 @@ test('tax errors expose structural fixed fields and remedies', async () => {
       : reply({ error: { code, param, type, message: sentinel } }, status));
     await assert.rejects(provider.tax.transactions.createFromCalculation({ calculation: 'taxcalc_fixture', reference: 'reference' },
       { idempotencyKey: 'fixed' }), error => {
-      assert.ok(error instanceof Error);
+      assert.ok(error instanceof TaxProviderRejection);
       assert.equal(error.name, 'TaxProviderRejection');
       assert.deepEqual([Reflect.get(error, 'code'), Reflect.get(error, 'field'), error.message], [result, field, remedy]);
       return true;
     });
-    const output: string[] = [];
-    await assert.rejects(runChild(args, { interactive: true, environment: { [keyName]: sentinel },
-      open: async () => {
-        await provider.tax.transactions.createFromCalculation({ calculation: 'taxcalc_fixture', reference: 'reference' },
-          { idempotencyKey: 'terminal-fixed' });
-        throw new Error('Unexpected reporting success.');
-      },
-      output: message => output.push(message) > 0,
-      persist: async () => {},
-    }), /qualification did not pass/);
-    assert.equal(output[0], remedy + '\n');
-    assert.doesNotMatch(output.join(''), /SyntheticDoNotLogFixture/u);
   }
 });
 
@@ -327,18 +315,22 @@ function cardFixture(fault?: 'uncertain-cancel' | 'invalid-receipt' | 'invalid-c
     },
   } as unknown as Card;
   const hash = (raw: string) => createHash('sha256').update(raw).digest('hex');
+  const returnFromChallenge = async () => {
+    hold(browserIntent!);
+    const url = new URL(String(browserIntent!.returnUrl));
+    assert.equal(url.hostname, '127.0.0.1');
+    const response = await fetch(url.href + '?discard=' + sentinel, { redirect: 'manual' });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), url.pathname.replace(/return$/u, 'done'));
+  };
   const run = (realLoopback = false) => {
     let callback: Promise<void> | undefined;
     return qualifyCard(card, { hash, note: row => notes.push(row) }, () => {
-      hold(browserIntent!);
-      if (realLoopback) {
-        const url = String(browserIntent!.returnUrl);
-        callback = fetch(url + '?discard=' + sentinel, { redirect: 'manual' }).then(response => {
-          assert.equal(response.status, 303);
-          const location = response.headers.get('location');
-          assert.equal(location, new URL(url).pathname.replace(/return$/u, 'done'));
-        });
-      } else if (fault !== 'no-return') returnedAt = clock;
+      if (realLoopback) callback = returnFromChallenge();
+      else {
+        hold(browserIntent!);
+        if (fault !== 'no-return') returnedAt = clock;
+      }
     }, new AbortController().signal, realLoopback ? undefined : async () => ({
       returnUrl: 'http://127.0.0.1/return', startUrl: 'http://127.0.0.1/start', returnedAt: () => returnedAt,
       approve: () => { returnedAt = undefined; }, close: async () => {},
@@ -347,7 +339,7 @@ function cardFixture(fault?: 'uncertain-cancel' | 'invalid-receipt' | 'invalid-c
       clock += fault === 'no-return' && clock > 1 ? 300_000 : 1;
     }, realLoopback ? undefined : () => clock);
   };
-  return { run, rows, sends, reads, notes, hash };
+  return { card, returnFromChallenge, run, rows, sends, reads, notes, hash };
 }
 
 test('the card matrix observes the loopback return and witnesses exact capture sends and keys', async () => {
@@ -431,115 +423,42 @@ test('a provider hold without the current browser return fails and is cleaned up
   assert.equal(fixture.rows.get('pi_previous')?.status, 'requires_capture');
 });
 
-test('tax observations reconcile returned totals and bind reporting effects', async () => {
-  type Tax = VerifiedTestProvider['tax'];
-  const scope = { accountRef: account, mode: 'test' } as const;
-  const successful = ['replay', 'quote-recovery', 'post-recovery', 'reverse-recovery', 'absent-shipping', 'varied-layout'];
-  const cases = [...successful, 'shipping-tax-mismatch', 'line-tax-mismatch', 'fractional-row', 'header-tax-mismatch', 'live', 'foreign-account', 'foreign-page',
-    'foreign-recovery', 'missing-recovery', 'wrong-original', 'different-replay', 'no-effect', 'quote-refusal', 'posting-refusal'];
-  for (const scenario of cases) {
-    const notes: Record<string, unknown>[] = [], prompts: string[] = [];
-    const sends: { ref: string; key: object; original?: string }[] = [];
-    const calculations = new Map<string, { result: object; lines: object[] }>();
-    const transactions = new Map<string, { receipt: object; lines: object[] }>();
-    const list = (path: string, data: object[]) => ({ url: '/v1/tax/' + path + '/line_items', data, has_more: false });
-    const store = (id: string, ref: string, original: string | null) => {
-      const type = original === null ? 'transaction' : 'reversal';
-      const receipt = { id, reference: ref, livemode: false, type, shipping_cost: { amount_tax: 0 },
-        reversal: original === null ? null : { original_transaction: scenario === 'wrong-original' ? 'tax_other' : original } };
-      const lines = [{ id: original === null ? 'taxline_sale' : 'taxline_reverse', reference: 'unused', livemode: false, type,
-        amount_tax: original === null ? 12 : -12, reversal: original === null ? null : { original_line_item: 'taxline_sale' } }];
-      transactions.set(id, { receipt, lines });
-      return receipt;
-    };
-    const tax = {
-      scope,
-      calculations: {
-        async create(params: Parameters<Tax['calculations']['create']>[0]) {
-          if (scenario === 'quote-refusal') throw new TaxProviderRejection('tax_invalid_input', '/input/taxDate');
-          const id = 'taxcalc_' + (calculations.size + 1), second = calculations.size === 1;
-          const taxability_reason = scenario === 'varied-layout' ? 'UnrecognizedProviderFixture' : 'standard_rated';
-          const detail = { amount: 12, taxable_amount: 1000, taxability_reason, tax_rate_details: { percentage_decimal: '1.2' } };
-          const lines = [{ reference: params.line_items[0]!.reference, livemode: false, amount_tax: 12, tax_breakdown: [detail] }];
-          const headers = [{ ...detail, inclusive: false, tax_rate_details: { rate_type: 'percentage' } }];
-          if (second && scenario === 'varied-layout') headers.push({ ...detail, amount: 2, inclusive: true,
-            tax_rate_details: { rate_type: 'UnrecognizedProviderFixture' } });
-          if (second && scenario === 'line-tax-mismatch') lines[0]!.amount_tax = 11;
-          if (second && scenario === 'fractional-row') detail.amount = 12.5;
-          const result = { id, livemode: scenario === 'live', account: scenario === 'foreign-account' ? 'acct_Foreign010' : account,
-            expires_at: Math.floor(Date.now() / 1000) + 3600, amount_total: 1012,
-            tax_amount_inclusive: second && scenario === 'varied-layout' ? 2 : 0,
-            tax_amount_exclusive: second && scenario === 'header-tax-mismatch' ? 13 : 12, tax_breakdown: headers,
-            shipping_cost: scenario === 'absent-shipping' ? null
-              : { amount_tax: second && scenario === 'shipping-tax-mismatch' ? 27 : 0, tax_breakdown: [] } };
-          calculations.set(id, { result, lines });
-          if (second && ['quote-recovery', 'no-effect'].includes(scenario)) throw new ProviderUnavailable();
-          return result;
-        },
-        async listLineItems(id: string) {
-          return { ...list('calculations/' + id, calculations.get(id)!.lines),
-            ...(scenario === 'foreign-page' ? { account: 'acct_Foreign010' } : {}) };
-        },
-        async retrieve(id: string) { return calculations.get(id)?.result; },
-      },
-      transactions: {
-        async createFromCalculation(data: Parameters<Tax['transactions']['createFromCalculation']>[0], key: object) {
-          sends.push({ ref: data.reference, key });
-          if (scenario === 'posting-refusal') throw new TaxProviderRejection('tax_calculation_expired', '/calculationRef');
-          const id = scenario === 'different-replay' && sends.length === 2 ? 'tax_other' : 'tax_sale';
-          const receipt = store(id, data.reference, null);
-          Reflect.set(transactions.get(id)!.lines[0]!, 'reference', Reflect.get(calculations.get(data.calculation)!.lines[0]!, 'reference'));
-          if (['post-recovery', 'foreign-recovery', 'missing-recovery'].includes(scenario)) throw new ProviderUnavailable();
-          return receipt;
-        },
-        async createReversal(data: Parameters<Tax['transactions']['createReversal']>[0], key: object) {
-          sends.push({ ref: data.reference, key, original: data.original_transaction });
-          const receipt = store('tax_reverse', data.reference, data.original_transaction);
-          if (scenario === 'reverse-recovery') throw new ProviderUnavailable();
-          return receipt;
-        },
-        async retrieve(id: string) { return transactions.get(id)?.receipt; },
-        async listLineItems(id: string) { return list('transactions/' + id, transactions.get(id)!.lines); },
-      },
-    } as unknown as Tax;
-    const run = () => qualifyTax({ scope, tax } as VerifiedTestProvider,
-      { hash: raw => createHash('sha256').update(raw).digest('hex'), note: row => notes.push(row) }, async (operation, ref) => {
-        prompts.push(operation);
-        assert.ok(recoveryPrompt(operation, ref).includes(ref));
-        assert.ok(!JSON.stringify(notes).includes(ref));
-        if (operation === 'quote') {
-          assert.equal(ref, Reflect.get(calculations.get('taxcalc_2')!.lines[0]!, 'reference'));
-          return scenario === 'quote-recovery' ? 'taxcalc_2' : undefined;
-        }
-        assert.equal(ref, sends.at(-1)?.ref);
-        if (operation === 'reverse') return 'tax_reverse';
-        return scenario === 'post-recovery' ? 'tax_sale' : scenario === 'foreign-recovery' ? 'tax_other' : undefined;
-      }, new AbortController().signal);
-    if (successful.includes(scenario)) {
-      await run();
-      const posts = sends.filter(send => send.original === undefined), reversals = sends.filter(send => send.original === 'tax_sale');
-      assert.deepEqual(posts, scenario === 'post-recovery' ? [posts[0]] : [posts[0], posts[0]]);
-      assert.deepEqual(reversals, scenario === 'reverse-recovery' ? [reversals[0]] : [reversals[0], reversals[0]]);
-      assert.notEqual(posts[0]?.ref, reversals[0]?.ref);
-      assert.deepEqual(prompts, scenario.endsWith('-recovery') ? [scenario.split('-')[0]] : []);
-      assert.ok(notes.some(row => row.operation === 'tax_reporting'));
-      assert.doesNotMatch(JSON.stringify(notes), /UnrecognizedProviderFixture|taxcalc_2|tax_sale|tax_reverse/);
-    } else {
-      const remedy = scenario === 'no-effect' ? 'No reporting effect was observed. Check tax configuration in the bound test account.'
-        : scenario === 'quote-refusal' ? 'Supply a whole-second instant within the calculation window.'
-          : scenario === 'posting-refusal' ? 'Reconcile the original obligation.' : integrityRefusal;
-      await assert.rejects(run(), error => qualificationMessage(error) === remedy, scenario);
-      const expectedSends: Record<string, number> = {
-        'wrong-original': 3, 'different-replay': 2, 'foreign-recovery': 1, 'missing-recovery': 1, 'posting-refusal': 1,
-      };
-      assert.equal(sends.length, expectedSends[scenario] ?? 0, scenario);
-      assert.ok(!notes.some(row => row.operation === 'tax_reporting'), scenario);
-    }
-  }
-});
-
 const installedOrigin = manifest.providerQualification === undefined
   ? JSON.parse(await readFile(new URL('../.starter-origin.json', import.meta.url), 'utf8')) : undefined;
+test('the installed command qualifies cards with zero Tax provider calls',
+  { skip: installedOrigin?.mode !== 'candidate' && 'Run this witness from the extracted opt-in candidate.' }, async () => {
+    const { card, returnFromChallenge, sends } = cardFixture();
+    const paths: string[] = [], output: string[] = [], returns: Promise<unknown>[] = [];
+    let transcript = '';
+    await runChild(args, {
+      interactive: true,
+      environment: { [keyName]: sentinel },
+      open: async (input, options) => ({
+        ...await openTestProvider(input, { ...options, http: async (...request) => {
+          paths.push(request[2]);
+          return health(...request);
+        } }),
+        card,
+      }),
+      output: text => {
+        output.push(text);
+        if (text.startsWith('Open ')) returns.push(returnFromChallenge().then(() => null, error => error));
+        return true;
+      },
+      persist: async (_path, contents) => { transcript = String(contents); },
+    });
+    assert.deepEqual(await Promise.all(returns), [null, null]);
+    assert.deepEqual(paths, ['/v1/account', '/v1/balance']);
+    assert.deepEqual(sends.map(send => send.operation),
+      ['capture', 'capture', 'capture', 'cancel', 'capture', 'cancel', 'capture', 'capture']);
+    assert.deepEqual(output.filter(text => text.startsWith('Tax ')),
+      ['Tax qualification runs in a separate step after the card qualification.\n']);
+    const result = JSON.parse(transcript);
+    assert.equal(result.result, 'pass');
+    assert.equal(result.tax, 'not_run');
+    assert.ok(result.records.every((row: { operation: string }) => !/^(tax_|quote$|post$|reverse$)/u.test(row.operation)));
+  });
+
 test('the installed npm entry passes control to the child and keeps both output streams clean',
   { skip: installedOrigin?.mode !== 'candidate' && 'Run this witness from the extracted opt-in candidate.' }, async () => {
     const fixture = await mkdtemp(join(tmpdir(), 'provider-entry-'));

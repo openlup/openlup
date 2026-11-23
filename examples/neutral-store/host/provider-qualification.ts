@@ -1,18 +1,15 @@
-import { isDeepStrictEqual } from 'node:util';
 import { spawnSync } from 'node:child_process';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { argv, env, execPath, stdin, stdout, stderr } from 'node:process';
-import { createInterface } from 'node:readline/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import {
-  accountId, CardRejection, credentialRefusal, fixedTaxRemedy, integrityRefusal, openTestProvider, ProviderUnavailable, sdkVersion, TaxProviderRejection,
+  accountId, CardRejection, credentialRefusal, integrityRefusal, openTestProvider, sdkVersion,
   type VerifiedTestProvider,
 } from './provider-transport.ts';
-import { declineCode, field, literal, readCalculation, readCharge, readCustomer, readIntent, readPage, readTaxLine,
-  readTaxTransaction, readTaxTransactionLine, reference, taxScopeMatches, text } from './provider-response.ts';
+import { declineCode, field, readCharge, readCustomer, readIntent, readPage, text } from './provider-response.ts';
 
 const usage = 'Run npm run provider:qualify -- --run --test-mode --account <id> --key-env <name> in an interactive session outside CI.';
 const launcherSetup = 'Install the 1Password CLI and make it available on your PATH, then retry.';
@@ -263,118 +260,8 @@ export async function qualifyCard(card: Card, witness: Witness, prompt: (url: st
   if (unresolved) throw new Error(cardRefusal);
 }
 
-const noReportingEffect = 'No reporting effect was observed. Check tax configuration in the bound test account.';
-const fixtures = [
-  { state: 'NY', city: 'New York', line1: '350 5th Ave', postal_code: '10118', shipping: 100 },
-  { state: 'CA', city: 'San Francisco', line1: '1 Market St', postal_code: '94105', shipping: 0 },
-] as const;
-
-type RecoveryOperation = 'quote' | 'post' | 'reverse';
-type EvidenceByRef = (operation: RecoveryOperation, reference: string) => Promise<string | undefined>;
-
-export const recoveryPrompt = (operation: RecoveryOperation, reference: string) =>
-  `Find the original tax ${operation} with reference ${reference} in the bound test dashboard. Enter its ${operation === 'quote' ? 'calculation' : 'transaction'} ID, or leave blank: `;
-
-export async function qualifyTax(provider: VerifiedTestProvider, witness: Witness, observeOriginal: EvidenceByRef, signal: AbortSignal) {
-  const { tax } = provider;
-  const accountRef = field(provider.scope, 'accountRef', reference('acct'));
-  function verify(condition: boolean): asserts condition {
-    if (condition !== true) throw new Error(integrityRefusal);
-  }
-  verify(accountRef !== undefined && field(provider.scope, 'mode', literal('test')) === 'test'
-    && field(tax.scope, 'mode', literal('test')) === 'test' && field(tax.scope, 'accountRef', reference('acct')) === accountRef);
-  const scope = (raw: unknown, requireMode = true) => { verify(taxScopeMatches(raw, accountRef, requireMode)); return raw; };
-  const runRef = 'qualification-' + randomUUID();
-  const sum = (rows: readonly { taxMinor: number | undefined }[]) => rows.reduce((total, row) => {
-    verify(row.taxMinor !== undefined);
-    return total + BigInt(row.taxMinor);
-  }, 0n);
-  async function observe<T>(operation: RecoveryOperation, ref: string, send: (options: { idempotencyKey: string }) => Promise<unknown>,
-    inspect: (raw: unknown, original?: string) => Promise<T>, retrieve: (id: string) => Promise<unknown>) {
-    signal.throwIfAborted();
-    const options = { idempotencyKey: randomUUID() };
-    let raw;
-    try { raw = await send(options); }
-    catch (error) {
-      if (!(error instanceof ProviderUnavailable)) throw error;
-      witness.note({ operation, effect: 'unknown', key: witness.hash(options.idempotencyKey), reference: witness.hash(ref) });
-      const original = reference(operation === 'quote' ? 'taxcalc' : 'tax')(await observeOriginal(operation, ref));
-      if (original === undefined) throw new Error(operation === 'quote' ? noReportingEffect : integrityRefusal);
-      return inspect(await retrieve(original), original);
-    }
-    const first = await inspect(raw);
-    if (operation !== 'quote') {
-      signal.throwIfAborted();
-      verify(isDeepStrictEqual(first, await inspect(await send(options))));
-    }
-    return first;
-  }
-  const calculate = (fixture: typeof fixtures[number]) => {
-    const { shipping, ...address } = fixture;
-    const destination = { ...address, country: 'US' };
-    const ref = runRef + '-' + fixture.state.toLowerCase();
-    return observe('quote', ref, key => tax.calculations.create({
-      currency: 'usd', customer_details: { address: destination, address_source: 'shipping' }, ship_from_details: { address: destination },
-      expand: ['shipping_cost.tax_breakdown'],
-      shipping_cost: { amount: shipping, tax_behavior: 'exclusive', tax_code: 'txcd_92010001' },
-      line_items: [{ amount: 1000, quantity: 1, reference: ref, tax_behavior: 'exclusive', tax_code: 'txcd_99999999' }],
-    }, key), async (raw, original) => {
-      const calculation = readCalculation(scope(raw));
-      const { ref: id, headers, shipping: cost, inclusive, exclusive, expires } = calculation;
-      verify(id !== undefined && (original === undefined || original === id) && headers !== undefined
-        && cost !== undefined && inclusive !== undefined && exclusive !== undefined);
-      const rawPage = await tax.calculations.listLineItems(id, { limit: 100, expand: ['data.tax_breakdown'] });
-      const page = readPage(scope(rawPage, false), row => readTaxLine(scope(row)));
-      const item = page.rows?.[0], lines = item?.breakdown, delivery = cost === null ? [] : cost.breakdown;
-      verify(page.more === false && page.path === '/v1/tax/calculations/' + id + '/line_items'
-        && page.rows?.length === 1 && item?.ref === ref && lines !== undefined && delivery !== undefined);
-      const lineTax = item.taxMinor, shippingTax = cost === null ? 0 : cost.taxMinor;
-      verify(lineTax !== undefined && shippingTax !== undefined && headers.every(row => row.inclusive !== undefined)
-        && sum(lines) === BigInt(lineTax) && sum(delivery) === BigInt(shippingTax)
-        && sum(headers.filter(row => row.inclusive === true)) === BigInt(inclusive)
-        && sum(headers.filter(row => row.inclusive === false)) === BigInt(exclusive));
-      witness.note({ operation: 'tax_quote', region: fixture.state, calculation: witness.hash(id), currency: 'usd',
-        payableMinor: calculation.payableMinor, shippingMinor: cost?.chargeMinor, shippingShape: cost === null ? 'absent' : delivery.length > 0 ? 'detail' : 'empty' });
-      for (const [shape, rows] of [['header', headers], ['line', lines], ['shipping', delivery]] as const) {
-        for (const row of rows) witness.note({ operation: 'tax_breakdown', region: fixture.state, shape, taxability: row.reason,
-          amountMinor: row.taxMinor, basisMinor: row.basisMinor, fee: row.rate?.fee, rateType: row.rate?.type, hasPercentage: row.rate?.hasPercentage,
-          hasRate: row.rate === undefined ? undefined : row.rate !== null });
-      }
-      return { id, expires, ref };
-    }, id => tax.calculations.retrieve(id));
-  };
-  const quote = await calculate(fixtures[0]);
-  await calculate(fixtures[1]);
-  verify(quote.expires !== undefined);
-  const before = quote.expires === null ? undefined : quote.expires * 1000;
-
-  const inspect = (ref: string, sale?: { id: string; line: string; lineTax: number; shippingTax: number }) => async (raw: unknown, original?: string) => {
-    const receipt = readTaxTransaction(scope(raw)), { id, shippingTax } = receipt;
-    const kind = sale === undefined ? 'transaction' : 'reversal';
-    verify(id !== undefined && id !== sale?.id && (original === undefined || original === id) && receipt.ref === ref
-      && receipt.kind === kind && receipt.original === (sale?.id ?? null) && shippingTax !== undefined);
-    const rawPage = await tax.transactions.listLineItems(id, { limit: 100 });
-    const page = readPage(scope(rawPage, false), row => readTaxTransactionLine(scope(row)));
-    const line = page.rows?.[0];
-    verify(page.more === false && page.path === '/v1/tax/transactions/' + id + '/line_items' && page.rows?.length === 1
-      && line?.id !== undefined && line.id !== sale?.line && line.kind === kind && line.taxMinor !== undefined
-      && line.original === (sale?.line ?? null) && (sale === undefined ? line.ref === quote.ref
-        : line.taxMinor === -sale.lineTax && shippingTax === -sale.shippingTax));
-    return { id, line: line.id, lineTax: line.taxMinor, shippingTax };
-  };
-  const readTransaction = (id: string) => tax.transactions.retrieve(id);
-  const postRef = runRef + '-post', reverseRef = runRef + '-reverse';
-  const posted = await observe('post', postRef, key => tax.transactions.createFromCalculation({ calculation: quote.id, reference: postRef }, key, before),
-    inspect(postRef), readTransaction);
-  const reversed = await observe('reverse', reverseRef,
-    key => tax.transactions.createReversal({ original_transaction: posted.id, reference: reverseRef, mode: 'full' }, key, before),
-    inspect(reverseRef, posted), readTransaction);
-  witness.note({ operation: 'tax_reporting', verdict: 'pass', currency: 'usd', sale: witness.hash(posted.id), reversal: witness.hash(reversed.id) });
-}
-
-export function qualificationMessage(error: unknown): string {
-  if (error instanceof TaxProviderRejection) return fixedTaxRemedy(error.code, error.field) ?? integrityRefusal;
-  if (error instanceof Error && [credentialRefusal, integrityRefusal, cardRefusal, noReportingEffect].includes(error.message)) return error.message;
+function qualificationMessage(error: unknown): string {
+  if (error instanceof Error && [credentialRefusal, integrityRefusal, cardRefusal].includes(error.message)) return error.message;
   return 'Qualification could not verify the original operation. Check the bound test account.';
 }
 
@@ -402,21 +289,15 @@ export async function runChild(args: string[], { interactive = stdin.isTTY === t
     requireCard(origin.mode === 'candidate' && /^\d+\.\d+\.\d+$/u.test(origin.setVersion));
     release = origin.setVersion;
     await qualifyCard(provider.card, witness, url => output('Open ' + url + ' in your browser.\n'), signal.signal);
-    await qualifyTax(provider, witness, async (operation, reference) => {
-      const input = createInterface({ input: stdin, output: stdout, terminal: false });
-      try {
-        return await input.question(recoveryPrompt(operation, reference),
-          { signal: AbortSignal.any([signal.signal, AbortSignal.timeout(60_000)]) });
-      } catch { return undefined; }
-      finally { input.close(); }
-    }, signal.signal);
     result = 'pass';
   } catch (error) {
     output(qualificationMessage(error) + '\n');
   } finally {
     process.off('SIGINT', stop);
     process.off('SIGTERM', stop);
+    output('Tax qualification runs in a separate step after the card qualification.\n');
     await persist(filename, JSON.stringify({ startedAt, endedAt: new Date().toISOString(), result, release, account: witness.hash(accountRef),
+      tax: 'not_run',
       apiVersion: version, sdk: 'stripe', sdkVersion, keyRetentionHours: 24, records }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
     output('Read ' + filename + ' for qualification results.\n');
   }
