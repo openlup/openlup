@@ -11,8 +11,8 @@ import { fixture as paidParcel } from "../helpers/fulfillmentNative.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { captureStoreJourney, journeySelection, storeJourneyResources } from "../helpers/storeJourney.js";
 import { request } from "./subscriptionNativeFixture.js";
-import { AT, call, later, lifecycleDeclined, lifecycleForward, lifecycleInstallation, lifecycleProfiles, lifecycleRows, lifecycleSubject, lifecycleTimeZone,
-  type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
+import { AT, call, later, lifecycleDeclined, lifecycleForward, lifecycleProfiles, lifecycleRows, lifecycleSubject, lifecycleTimeZone,
+  lifecycleUpgradeInstallation, type LifecycleUpgradeInstallation } from "./subscriptionLifecycleClosureFixture.js";
 
 const terms: SubscriptionLifecycleTerms = { pauseDays: 9, pauseMonths: 2, slideMinDays: 4, slideMaxDays: 40, orderNowDelayMinutes: 17, reactivateDelayDays: 6 };
 const offerPolicy = {
@@ -72,8 +72,8 @@ const signatures = ["public.subscription_terminalize_unpaid_artifacts(uuid,times
   "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz,jsonb)"];
 // One container per catalogue, serialized by Vitest; deadlines include slow hosted PostgreSQL.
 describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile => {
-  let env: LifecycleInstallation;
-  beforeAll(async () => { env = await lifecycleInstallation(profile); }, postgresSetupTimeoutMs);
+  let env: LifecycleUpgradeInstallation;
+  beforeAll(async () => { env = await lifecycleUpgradeInstallation(profile); }, postgresSetupTimeoutMs);
   afterAll(async () => { if (env) await env.close(); }, postgresTeardownTimeoutMs);
   const invoke = (f: { actor: string; client: string; subscription: string }, key: string, action: string,
     payload: Record<string, unknown> = {}, now = AT, policy?: SubscriptionLifecycleTerms) => call(env.runtime, "subscription_command_apply",
