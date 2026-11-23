@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { env as processEnvironment } from "node:process";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:child_process", async (original) => {
   const actual = await original<typeof import("node:child_process")>();
@@ -16,7 +16,8 @@ import {
   parseNameStatus, main, neutralityVerdict, releasedPackageSource, separateTestFiles, shortExpiries,
   sqlTreeChanges, testDiscoveryVerdict, vitestFiles, type AddedLine, type Change,
 } from "./preflight.ts";
-import { carrierLocale, carrierPlan, readReportOwners } from "./agent-review-landing.mjs";
+import { assertCarrierToolchain, carrierLocale, carrierPlan, readReportOwners } from "./agent-review-landing.mjs";
+import { fixtureNpmCli, localFixtureEnvironment } from "./fixtures/landing-test-environment.ts";
 
 afterEach(() => {
   vi.mocked(execFileSync).mockReset();
@@ -35,16 +36,19 @@ it("refuses stale carriers in warm and cold checkouts and names unregistered pub
   const source = process.cwd();
   const directory = mkdtempSync(join(tmpdir(), "openlup-fast-preflight-"));
   const root = join(directory, "fixture");
-  const options = { cwd: root, env: { ...processEnvironment, ...carrierLocale }, encoding: "utf8" as const, timeout: 180000, maxBuffer: 16 * 1024 * 1024 };
+  const npmCli = fixtureNpmCli();
+  const env = { ...localFixtureEnvironment(), ...carrierLocale, npm_execpath: npmCli };
+  const options = { cwd: root, env, encoding: "utf8" as const, timeout: 180000, maxBuffer: 16 * 1024 * 1024 };
   const run = (bin: string, ...args: string[]) => childProcess.execFileSync(bin, args, options).trim();
   const git = (...args: string[]) => run("git", ...args);
+  const npm = (...args: string[]) => run(process.execPath, npmCli, ...args);
   const path = (file: string) => join(root, file);
   const put = (file: string, bytes: string) => writeFileSync(path(file), bytes);
   const get = (file: string) => readFileSync(path(file), "utf8");
   const commit = (message: string) => { git("add", "-A"); git("commit", "-qs", "-m", message); return git("rev-parse", "HEAD"); };
   const seed = () => {
-    run("npm", "run", "build", "--workspace=@openlup/core");
-    run("npm", "run", "build", "--workspace=@openlup/platform");
+    npm("run", "build", "--workspace=@openlup/core");
+    npm("run", "build", "--workspace=@openlup/platform");
   };
   const cold = () => {
     for (const pkg of ["core", "outbox", "platform"]) for (const leaf of ["dist", ".tsbuildinfo-build"]) {
@@ -61,7 +65,7 @@ it("refuses stale carriers in warm and cold checkouts and names unregistered pub
   }
   function fast(expected: string[], message?: string, remedy?: string) {
     const state = snapshot();
-    const result = childProcess.spawnSync("npm", ["run", "preflight", "--", "--fast"], options);
+    const result = childProcess.spawnSync(process.execPath, [npmCli, "run", "preflight", "--", "--fast"], options);
     expect(result.error).toBeUndefined();
     expect(result.status, result.stdout + result.stderr).toBe(expected.length ? 1 : 0);
     const verdict = JSON.parse(result.stdout.trimEnd().split("\n").at(-1)!);
@@ -71,7 +75,7 @@ it("refuses stale carriers in warm and cold checkouts and names unregistered pub
     return verdict;
   }
   try {
-    childProcess.execFileSync("git", ["clone", "--shared", "--no-hardlinks", "-q", source, root], { timeout: 30000 });
+    childProcess.execFileSync("git", ["clone", "--shared", "--no-hardlinks", "-q", source, root], { env, timeout: 30000 });
     for (const file of ["scripts/preflight.ts", "scripts/agent-review-landing.mjs", ...["core", "outbox", "platform"].map(pkg => `packages/${pkg}/scripts/api-contract.ts`)]) {
       cpSync(join(source, file), path(file));
     }
@@ -81,7 +85,7 @@ it("refuses stale carriers in warm and cold checkouts and names unregistered pub
     const fork = git("rev-parse", "HEAD");
     git("branch", "-f", "main", fork); git("remote", "set-url", "origin", ".");
     git("update-ref", "refs/remotes/origin/main", fork);
-    run("npm", "ci", "--prefer-offline", "--no-audit", "--fund=false");
+    npm("ci", "--prefer-offline", "--no-audit", "--fund=false");
     const reset = () => { git("checkout", "-q", "--detach", fork); cold(); };
 
     reset();
@@ -98,7 +102,7 @@ it("refuses stale carriers in warm and cold checkouts and names unregistered pub
     expect(get("packages/platform/dist/portability/index.d.ts")).toContain("fixtureFreshness");
     cold(); expect(apiCheck()).toEqual(warmApi);
     expect(get("packages/platform/dist/portability/index.d.ts")).toContain("fixtureFreshness");
-    run("npm", "run", "api:update", "--workspace=@openlup/platform"); commit("Regenerate the API report"); fast([]);
+    npm("run", "api:update", "--workspace=@openlup/platform"); commit("Regenerate the API report"); fast([]);
 
     reset();
     seed();
@@ -127,6 +131,11 @@ it("refuses stale carriers in warm and cold checkouts and names unregistered pub
   }
 }, 600000);
 
+it.each([undefined, "npm-cli.js"])("refuses landing carrier checks with npm_execpath %s", npmCli => {
+  vi.stubEnv("npm_execpath", npmCli);
+  expect(() => assertCarrierToolchain(process.cwd())).toThrow("run through npm run landing:merge");
+});
+
 it.each([
   { path: "README.md", builds: [], reports: [], settings: false },
   { path: "packages/outbox/src/index.ts", builds: ["core", "outbox"], reports: ["outbox"], settings: false },
@@ -142,6 +151,11 @@ it.each([
 });
 
 describe("fast preflight", () => {
+  const npmCli = join(process.cwd(), "fixture-npm-cli.js");
+  const npm = `${process.execPath} ${npmCli}`;
+  const carrierNpmRun = (args: readonly string[] | undefined) =>
+    args?.[0] === npmCli && args[1] === "run" && ["build", "api:check"].includes(args[2]);
+  beforeEach(() => { vi.stubEnv("npm_execpath", npmCli); });
   it.each([
     { name: "clean", dirty: false, offline: false, warnings: false, failures: [], exit: 0 },
     { name: "clean with Git stderr warnings", dirty: false, offline: false, warnings: true, failures: [], exit: 0 },
@@ -165,7 +179,7 @@ describe("fast preflight", () => {
       "npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression",
       `${process.execPath} scripts/ast-grep/check-filewide-ignore.mjs`,
       "npx --no -- ast-grep test --skip-snapshot-tests",
-      `npm run oss:published-tree -- --self-check --docs-base ${fork}`,
+      `${npm} run oss:published-tree -- --self-check --docs-base ${fork}`,
       `git diff --name-status --no-renames -z ${fork} HEAD`,
       "gitleaks version",
       "git rev-parse origin/main",
@@ -300,7 +314,7 @@ describe("fast preflight", () => {
     expect(unlanded.calls).toContain(`git merge-base --is-ancestor ${stackBase} HEAD`);
     expect(unlanded.calls).toContain(`git merge-base --is-ancestor ${stackBase} origin/main`);
     expect(unlanded.calls).not.toContain("git merge-tree --write-tree origin/main HEAD");
-    expect(unlanded.calls).toContain("npm run oss:published-tree -- --self-check");
+    expect(unlanded.calls).toContain(`${npm} run oss:published-tree -- --self-check`);
     expect(unlanded.calls.some((call) => call.includes("--docs-base"))).toBe(false);
     expect(unlanded.lines).toContain("merge-clean: skip unlanded OPENLUP_STACK_BASE; merge-tree skipped");
 
@@ -340,7 +354,7 @@ describe("fast preflight", () => {
       if (call === "npm run packages:check -- --manifest-only") {
         expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
       }
-      if (/^npm run (?:build|api:check) --workspace=/u.test(call)) {
+      if (bin === process.execPath && carrierNpmRun(args)) {
         expect([options?.env?.GIT_OPTIONAL_LOCKS, options?.env?.LC_ALL, options?.env?.LANG]).toEqual(["0", "en_US.UTF-8", "en_US.UTF-8"]);
       }
       if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
@@ -361,8 +375,8 @@ describe("fast preflight", () => {
 
     expect(main(now, ["--fast"])).toBe(0);
     const owners = ["core", "outbox", "platform"];
-    expect(calls.filter(call => /^npm run (?:build|api:check) --workspace=/u.test(call))).toEqual(
-      ["build", "api:check"].flatMap(command => owners.map(owner => `npm run ${command} --workspace=@openlup/${owner}`)),
+    expect(calls.filter(call => call.startsWith(`${npm} run build --workspace=`) || call.startsWith(`${npm} run api:check --workspace=`))).toEqual(
+      ["build", "api:check"].flatMap(command => owners.map(owner => `${npm} run ${command} --workspace=@openlup/${owner}`)),
     );
     expect(calls).toContain(`${process.execPath} --experimental-strip-types packages/core/scripts/documentation-contract.ts --check-guide packages/core`);
     expect(calls).toContain("npm run packages:check -- --manifest-only");

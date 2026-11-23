@@ -13298,6 +13298,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/landing-test-environment.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql",
       "class": "public-output"
     },

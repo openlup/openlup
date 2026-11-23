@@ -3,20 +3,22 @@ import { createHash } from 'node:crypto';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { env as processEnvironment } from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { runLandingGenerators } from './agent-review-generators.mjs';
 import { carrierLocale, isInventoryInputPath, landingMerge } from './agent-review-landing.mjs';
 import { deltaFloor, prepareCandidate, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, validateEconomySession, proveReviewIntegration, git as sourceGit } from './agent-review-session.mjs';
+import { fixtureNpmCli, localFixtureEnvironment } from './fixtures/landing-test-environment.ts';
 
 const source = process.cwd();
+const npmCli = fixtureNpmCli();
+const fixtureEnvironment = { ...localFixtureEnvironment(), ...carrierLocale, npm_execpath: npmCli };
 let root: string, base: string, reviewed: string, main: string, merged: string;
 let initialLandingCommands: { command: string; args: string[] }[] = [];
 let initialLandingResult: { head: string; main: string; inventoryRefreshed: boolean };
-const git = (...args: string[]) => execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', root, '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgSign=false', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', timeout: 30000, maxBuffer: 128 * 1024 * 1024 }).trim();
+const git = (...args: string[]) => execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', root, '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgSign=false', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { env: fixtureEnvironment, encoding: 'utf8', timeout: 30000, maxBuffer: 128 * 1024 * 1024 }).trim();
 const read = (path: string) => readFileSync(join(root, path), 'utf8');
 const write = (path: string, value: string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), value); };
 const commit = () => { git('add', '-A'); git('commit', '--allow-empty', '-qm', 'Synthetic forward', '-s'); return git('rev-parse', 'HEAD'); };
@@ -46,13 +48,14 @@ const SETTING_GUIDE = 'packages/core/docs/guide/how-to/operate/settings-catalogu
 const PROBE_OUTPUTS = [PORTABILITY_REPORT, SETTING_CATALOGUE, SETTING_REFUSALS, SETTING_GUIDE];
 const PROBE_KEY = 'inventory.fixtureReservation';
 const fixtureCommand = (command: string, args: string[]) => execFileSync(command, args, {
-  cwd: root, env: { ...processEnvironment, ...carrierLocale }, encoding: 'utf8', timeout: 180000,
+  cwd: root, env: fixtureEnvironment, encoding: 'utf8', timeout: 180000,
   maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
 });
+const fixtureNpm = (...args: string[]) => fixtureCommand(process.execPath, [npmCli, ...args]);
 const coldBuild = (...owners: string[]) => {
-  for (const owner of owners) fixtureCommand('npm', ['run', 'build', `--workspace=@openlup/${owner}`]);
+  for (const owner of owners) fixtureNpm('run', 'build', `--workspace=@openlup/${owner}`);
 };
-const landingCli = () => fixtureCommand('npm', ['run', 'landing:merge']);
+const landingCli = () => fixtureNpm('run', 'landing:merge');
 const checkout = (rev: string) => { git('reset', '--hard'); git('checkout', '-q', '--detach', rev); };
 const setMain = (rev: string) => { git('branch', '-f', 'main', rev); git('update-ref', 'refs/remotes/origin/main', rev); };
 function probeExport() {
@@ -85,18 +88,19 @@ function addPackageCommand() {
   execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync, writeFileSync } from 'node:fs';
     const { createPublicPublicationCatalog } = await import(${JSON.stringify(owner)});
     const catalog = JSON.parse(readFileSync(${JSON.stringify(CATALOGUE)}, 'utf8'));
-    writeFileSync(${JSON.stringify(CATALOGUE)}, createPublicPublicationCatalog(catalog.publicPaths, catalog.guardViability).contents);`], { cwd: root, timeout: 30000 });
+    writeFileSync(${JSON.stringify(CATALOGUE)}, createPublicPublicationCatalog(catalog.publicPaths, catalog.guardViability).contents);`], { cwd: root, env: fixtureEnvironment, timeout: 30000 });
 }
 beforeAll(async () => {
+  vi.stubEnv('npm_execpath', npmCli);
   root = realpathSync(mkdtempSync(join(tmpdir(), 'openlup-derived-live-')));
-  execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, root], { timeout: 30000 });
+  execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, root], { env: fixtureEnvironment, timeout: 30000 });
   // Include the candidate's working bytes during development as well as at final HEAD.
-  const overlays = execFileSync('/usr/bin/git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: source, encoding: 'utf8' }).split('\0').filter(Boolean);
+  const overlays = execFileSync('/usr/bin/git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: source, env: fixtureEnvironment, encoding: 'utf8' }).split('\0').filter(Boolean);
   for (const path of new Set([...git('ls-files', '-z').split('\0').filter(Boolean), ...overlays])) {
     if (!existsSync(join(source, path))) { rmSync(join(root, path), { force: true }); continue; }
     mkdirSync(dirname(join(root, path)), { recursive: true }); cpSync(join(source, path), join(root, path));
   }
-  fixtureCommand('npm', ['ci', '--prefer-offline', '--no-audit', '--fund=false']);
+  fixtureNpm('ci', '--prefer-offline', '--no-audit', '--fund=false');
   git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
   base = commit();
   append('20990101010000'); reviewed = commit();
@@ -108,12 +112,15 @@ beforeAll(async () => {
   initialLandingResult = await landingMerge(root, {
     runCommand: (command, args) => {
       initialLandingCommands.push({ command, args });
-      execFileSync(command, args, { cwd: root, stdio: 'inherit', timeout: 900000 });
+      execFileSync(command, args, { cwd: root, env: fixtureEnvironment, stdio: 'inherit', timeout: 900000 });
     },
   });
   merged = initialLandingResult.head;
 }, 600000);
-afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
+afterAll(() => {
+  vi.unstubAllEnvs();
+  if (root) rmSync(root, { recursive: true, force: true });
+});
 async function proof(head = merged) {
   return proveReviewIntegration(root, await captureCommittedReviewCandidate(root, base, reviewed), await captureCommittedReviewCandidate(root, main, head));
 }
@@ -158,8 +165,8 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
     fixtureCommand(process.execPath, ['packages/platform/scripts/api-contract.ts', '--update']);
     fixtureCommand(process.execPath, ['scripts/settings-catalogue.ts', '--write']);
     expect(git('status', '--porcelain', '--untracked-files=all')).toBe('');
-    const fast = spawnSync('npm', ['run', 'preflight', '--', '--fast'], {
-      cwd: root, env: { ...processEnvironment, ...carrierLocale }, encoding: 'utf8', timeout: 180000,
+    const fast = spawnSync(process.execPath, [npmCli, 'run', 'preflight', '--', '--fast'], {
+      cwd: root, env: fixtureEnvironment, encoding: 'utf8', timeout: 180000,
     });
     expect(fast.status, fast.stdout + fast.stderr).toBe(0);
     expect(JSON.parse(fast.stdout.trimEnd().split('\n').at(-1)!)).toEqual({ preflight: 'fast', result: 'pass', head: landed, failed: [] });
@@ -223,7 +230,7 @@ it('lands cold owner bytes after an added Core export and version bump on a warm
     expect(landedDeclaration).not.toBe(warmDeclaration);
     coldBuild('core', 'outbox', 'platform');
     expect(read(declaration)).toBe(landedDeclaration);
-    for (const owner of ['core', 'outbox', 'platform']) fixtureCommand('npm', ['run', 'api:check', `--workspace=@openlup/${owner}`]);
+    for (const owner of ['core', 'outbox', 'platform']) fixtureNpm('run', 'api:check', `--workspace=@openlup/${owner}`);
     expect(git('status', '--porcelain')).toBe('');
   } finally { restoreDerivedFixture(); }
 }, 240000);
@@ -514,7 +521,7 @@ it.each(['clean', 'derived-carrier'])('skips Docker inventory refresh on non-SQL
     execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync } from 'node:fs';
       const owners = await import(${JSON.stringify(mergedGenerators)});
       owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));`],
-    { cwd: root, input: git('ls-files', '-z'), timeout: 30000 });
+    { cwd: root, env: fixtureEnvironment, input: git('ls-files', '-z'), timeout: 30000 });
     const mainWithInventory = commit();
     git('update-ref', 'refs/remotes/origin/main', mainWithInventory);
 
@@ -531,20 +538,22 @@ it.each(['clean', 'derived-carrier'])('skips Docker inventory refresh on non-SQL
       execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync } from 'node:fs';
         const owners = await import(${JSON.stringify(mergedGenerators)});
         owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));`],
-      { cwd: root, input: git('ls-files', '-z'), timeout: 30000 });
+      { cwd: root, env: fixtureEnvironment, input: git('ls-files', '-z'), timeout: 30000 });
     }
     const nonSqlHead = commit();
 
-    const invoked: string[][] = [];
+    const invoked: { command: string; args: string[] }[] = [];
     const landed = await landingMerge(root, {
       runCommand: (command, args, options) => {
-        invoked.push(args);
+        invoked.push({ command, args });
         expect(args).not.toContain(join(root, 'scripts/installation-inventory-refresh.ts'));
-        execFileSync(command, args, { cwd: root, stdio: 'ignore', ...options });
+        execFileSync(command, args, { cwd: root, stdio: 'ignore', ...options, env: fixtureEnvironment });
       },
     });
     if (mode === 'clean') expect(invoked).toEqual([]);
-    else expect(invoked.filter(([command]) => command === 'run')).toEqual(['core', 'outbox', 'platform'].map(owner => ['run', 'build', `--workspace=@openlup/${owner}`]));
+    else expect(invoked.filter(({ args }) => args[0] === npmCli)).toEqual(['core', 'outbox', 'platform'].map(owner => ({
+      command: process.execPath, args: [npmCli, 'run', 'build', `--workspace=@openlup/${owner}`],
+    })));
     expect(landed.inventoryRefreshed).toBe(false);
     expect(git('show', `${landed.head}:${INVENTORY_PATH}`)).toBe(git('show', `${mainWithInventory}:${INVENTORY_PATH}`));
     expect(git('show', `${landed.head}:${INVENTORY_PATH}`)).not.toBe(git('show', `${nonSqlHead}:${INVENTORY_PATH}`));

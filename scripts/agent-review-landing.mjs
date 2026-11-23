@@ -2,7 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { git } from './agent-review-session.mjs';
@@ -20,13 +20,20 @@ export const carrierLocale = { LC_ALL: 'en_US.UTF-8', LANG: 'en_US.UTF-8' };
 const readJson = (root, path) => JSON.parse(readFileSync(resolve(root, path), 'utf8'));
 const pathsFrom = output => output.split('\0').filter(Boolean);
 
-export function assertCarrierToolchain(root) {
+export function carrierNpmCli(script = 'landing:merge') {
+  const cli = processEnvironment.npm_execpath;
+  if (!cli || !isAbsolute(cli)) throw new Error(`carrier build requires npm's CLI path; run through npm run ${script}`);
+  return cli;
+}
+
+export function assertCarrierToolchain(root, script) {
+  const cli = carrierNpmCli(script);
   const node = readFileSync(resolve(root, '.nvmrc'), 'utf8').trim();
   const npm = readJson(root, 'package.json').packageManager;
   if (process.versions.node !== node || new Intl.Collator().resolvedOptions().locale !== 'en-US') {
     throw new Error(`carrier build requires Node ${node} and the en-US ICU profile`);
   }
-  const installedNpm = execFileSync('npm', ['--version'], { cwd: root, encoding: 'utf8' }).trim();
+  const installedNpm = execFileSync(process.execPath, [cli, '--version'], { cwd: root, encoding: 'utf8' }).trim();
   if (npm !== `npm@${installedNpm}`) throw new Error(`carrier build requires ${npm}; found npm@${installedNpm}`);
   const workspace = readJson(root, 'config/openlup-packages.json');
   const lock = readJson(root, 'package-lock.json');
@@ -218,7 +225,8 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
       if (!safeOutput(cwd, path, index)) throw new Error(`landing: ${path} must be a regular non-executable owner output`);
     }
     run(process.execPath, ['--input-type=module', '-e', `import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; assertCarrierToolchain(process.cwd());`], { env: carrierEnv });
-    for (const { name } of builds) run('npm', ['run', 'build', `--workspace=${name}`], { env: carrierEnv });
+    const npmCli = carrierNpmCli();
+    for (const { name } of builds) run(process.execPath, [npmCli, 'run', 'build', `--workspace=${name}`], { env: carrierEnv });
     for (const { directory, name } of reports) {
       const mergeContext = name === '@openlup/platform' ? [] : [`--landing=${head},${main}`];
       run(process.execPath, [resolve(cwd, directory, 'scripts/api-contract.ts'), '--update', ...mergeContext], { env: carrierEnv });

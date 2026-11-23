@@ -9,7 +9,7 @@ import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { INVENTORY_PATH } from "./agent-review-derived.mjs";
-import { carrierLocale, carrierPlan, readReportOwners } from "./agent-review-landing.mjs";
+import { carrierLocale, carrierNpmCli, carrierPlan, readReportOwners } from "./agent-review-landing.mjs";
 import { TOOLING_INPUTS, excludedToolingTests } from "./ci-test-scope.mjs";
 import { readCommits, signOffVerdict } from "./dco-signoff-check.ts";
 import { isChangelogFragment, isChangelogFragmentArea } from "./packages/changelog-fragments.ts";
@@ -429,6 +429,7 @@ function fastPreflight(now: Date): number {
     console.error("preflight: git fetch origin main failed. Using local origin/main.");
   }
   const offlineNpm = { env: { ...processEnvironment, ...carrierLocale, npm_config_offline: "true", npm_config_update_notifier: "false" } };
+  const npmInvocation = "preflight -- --fast";
   const command = (check: string, bin: string, args: string[], options?: SpawnSyncOptions): CheckResult => {
     const { code, output } = execute(bin, args, options);
     return { check, status: code === 0 ? "PASS" : "FAIL", detail: lastLine(output) || `${bin} did not complete successfully`,
@@ -452,16 +453,17 @@ function fastPreflight(now: Date): number {
     const { builds, reports, settings } = carrierPlan(readReportOwners(process.cwd()), fastChanges().map(({ path }) => path));
     if (!builds.length) return [{ check: "carriers", status: "SKIP", detail: "no report or settings inputs changed" }];
     const prerequisites = checkCarrier("carrier prerequisites", process.execPath, ["--input-type=module", "-e",
-      "import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; assertCarrierToolchain(process.cwd());"],
+      `import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; assertCarrierToolchain(process.cwd(), ${JSON.stringify(npmInvocation)});`],
     "Use the pinned Node and npm and run npm ci in this checkout.");
     const results = [prerequisites];
     if (prerequisites.status === "FAIL") return results;
+    const npmCli = carrierNpmCli(npmInvocation);
     for (const { name } of builds) {
-      const build = checkCarrier(`carrier build ${name}`, "npm", ["run", "build", `--workspace=${name}`], "Fix the workspace build before checking carrier bytes.");
+      const build = checkCarrier(`carrier build ${name}`, process.execPath, [npmCli, "run", "build", `--workspace=${name}`], "Fix the workspace build before checking carrier bytes.");
       results.push(build);
       if (build.status === "FAIL") return results;
     }
-    for (const { name } of reports) results.push(checkCarrier(`api:check ${name}`, "npm", ["run", "api:check", `--workspace=${name}`]));
+    for (const { name } of reports) results.push(checkCarrier(`api:check ${name}`, process.execPath, [npmCli, "run", "api:check", `--workspace=${name}`]));
     if (settings) results.push(checkCarrier("settings-catalogue", process.execPath, ["scripts/settings-catalogue.ts"], "Run node scripts/settings-catalogue.ts --write."));
     return results;
   };
@@ -484,7 +486,7 @@ function fastPreflight(now: Date): number {
     ["ast-grep", () => astGrep(offlineNpm)],
     ["ast-grep-hygiene", () => astGrepHygiene(offlineNpm)],
     ["publication", () => {
-      const result = command("publication", "npm", ["run", "oss:published-tree", "--", "--self-check",
+      const result = command("publication", process.execPath, [carrierNpmCli(npmInvocation), "run", "oss:published-tree", "--", "--self-check",
         ...(processEnvironment.OPENLUP_STACK_BASE !== undefined ? [] : ["--docs-base", forkPoint()]),
       ], offlineNpm);
       const missing = result.notes?.find(line => /materialized output inventory mismatch .*; extra (?!none\))/u.test(line));
