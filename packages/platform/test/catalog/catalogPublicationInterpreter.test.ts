@@ -13,7 +13,7 @@ import { assertTypedSkuAmounts, loadCatalogPublicationRules, resolvePublicationR
 import { loadCatalogRules, withCatalogPublicationRules } from "../../src/catalog/catalogPublicationRules.js";
 import type { CatalogCandidateIssue } from "../../src/catalog/contracts/candidate.js";
 import type { CatalogProductTypeInput } from "../../src/catalog/contracts/productTypes.js";
-import { installCatalogDefinitions } from "../../src/catalog/installCatalogDefinitions.js";
+import { CatalogDefinitionInstallError, installCatalogDefinitions } from "../../src/catalog/installCatalogDefinitions.js";
 import { catalogPackManifest } from "../../src/catalog/catalogPackManifest.js";
 import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
 import { assertCatalogPublicationGrossMass, assertCatalogPublicationPreparation, catalogPublicationClaim, compileCatalogPublication } from "../../src/catalog/publicationValidation.js";
@@ -1091,16 +1091,34 @@ it("Q-PRICE-READ-ALIASES-SEALED-EFFECT discards a price reader mutation", async 
   expect(data.payload.skus[0]?.priceOperations?.[0]?.unitPriceMinor).toBe(100);
 });
 
-it("a supplied invalid optional hook refuses before the installer executor", async () => {
-  const definition = { ...input().definition };
-  delete definition.validatorRef;
-  const malformed = Buffer.from(artifact + "\nmodule.exports.validateMembershipChange = false;");
+function rulesRefusal(error: unknown) {
+  const code = "catalog_definition_rules_binding_failed";
+  expect(Object.getPrototypeOf(error)).toBe(CatalogDefinitionInstallError.prototype);
+  expect(Object.getPrototypeOf(CatalogDefinitionInstallError.prototype)).toBe(Error.prototype);
+  expect(Reflect.ownKeys(error as object).filter(key => key !== "stack").sort())
+    .toEqual(["causeText", "code", "fix", "message", "observed", "path", "recheck"]);
+  expect(error).toMatchObject({ code, message: code, path: "/types/0/validatorRef",
+    observed: "The declared rules bundle could not be bound to the affected pack type.",
+    causeText: "The bundle fails the installed rules contract or disagrees with an existing declared validator binding.",
+    fix: "Supply the artifact to withCatalogPublicationRules for each affected type and install the returned pack. Restore the original artifact for an existing binding. For a new definition, correct the module exports and use a matching artifact. Give intentional rule changes a new pack and affected type version.",
+    recheck: "Run the owned rules tests, then retry binding and installation.",
+  });
+}
+
+it("refuses unbindable rules at their definition slot and preserves supplier failures", async () => {
+  const { validatorRef: _pin, validateContent: _legacy, ...definition } = input().definition;
+  const pack = { id: "example:rules", namespace: "example", version: 1, openlupRange: "1.x",
+    types: [definition], taxClasses: [], capabilities: {} };
   const query = vi.fn();
-  const install = async () => installCatalogDefinitions({ query }, withCatalogPublicationRules({
-    id: "example:rules", namespace: "example", version: 1, openlupRange: "1.x", types: [definition], taxClasses: [], capabilities: {},
-  }, () => malformed));
-  await expect(install()).rejects.toMatchObject({ code: "catalog_publication_rules_module_invalid",
-    diagnostic: { hook: "validateMembershipChange" }, message: expect.stringContaining("Export it as a function or omit it.") });
+  for (const bytes of [undefined, Buffer.from([255]), Buffer.from("module.exports = {};"),
+    Buffer.from(artifact + "\nmodule.exports.validateMembershipChange = false;")]) {
+    rulesRefusal(await Promise.resolve().then(() => installCatalogDefinitions({ query }, withCatalogPublicationRules(pack, () => bytes))).catch(error => error));
+  }
+  const pinned = { ...pack, types: [{ ...definition, validatorRef: `sha256:${"0".repeat(64)}` as const }] };
+  rulesRefusal(await Promise.resolve().then(() => withCatalogPublicationRules(pinned, () => Buffer.from(artifact))).catch(error => error));
+  const supplierError = await Promise.resolve().then(() => loadCatalogRules(Buffer.from(""))).catch(error => error);
+  const actual = await Promise.resolve().then(() => withCatalogPublicationRules(pack, () => { throw supplierError; })).catch(error => error);
+  expect(actual).toBe(supplierError);
   expect(query).not.toHaveBeenCalled();
 });
 
@@ -1112,7 +1130,7 @@ it("A-1 installation requires the verified bytes even after a pack is reconstruc
   const manifestDigest = catalogPackManifest(pack).digest;
   const query = vi.fn(async () => ({ rows: [{ receipt: { manifestDigest } }] }));
   const detached = { ...pack, types: [{ ...pack.types[0]!, validateContent: () => [] }] };
-  await expect(installCatalogDefinitions({ query }, detached)).rejects.toMatchObject({ code: "catalog_publication_rules_binding_mismatch" });
+  rulesRefusal(await installCatalogDefinitions({ query }, detached).catch(error => error));
   expect(query).not.toHaveBeenCalled();
   await expect(installCatalogDefinitions({ query }, { ...pack })).resolves.toMatchObject({ manifestDigest });
   expect(query).toHaveBeenCalledOnce();
@@ -1286,9 +1304,14 @@ it.each([
   ["module.exports.validateSkuAmounts = 4; module.exports.validateTypedSkuAmounts = 4;", "validateSkuAmounts"],
 ])("refuses the first invalid own export by descriptor only", (source, hook) => {
   if (hook === "validateTypedSkuAmounts") expect(amountRules(source).validateTypedSkuAmounts).toBeUndefined();
-  expect(() => amountRules(source, "typed")).toThrow(expect.objectContaining({
-    code: "catalog_publication_rules_module_invalid", diagnostic: expect.objectContaining({ hook, path: hook }),
-  }));
+  if (hook === "validateTypedSkuAmounts") {
+    expect(() => amountRules(source, "typed")).toThrow(expect.objectContaining({
+      code: "catalog_publication_rules_module_invalid", diagnostic: expect.objectContaining({ hook, path: hook }),
+    }));
+  } else {
+    const error = (() => { try { amountRules(source, "typed"); } catch (error) { return error; } })();
+    rulesRefusal(error);
+  }
 });
 
 it.each([

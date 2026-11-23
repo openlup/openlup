@@ -14,6 +14,7 @@ import type {
 } from "../../../src/domains/partners/ports.js";
 import { readBearerToken } from "../../_lib/admin-domain/auth.js";
 import { sendBffError, sendBffSuccess, sendMethodNotAllowed } from "../../_lib/bff/response.js";
+import { rateLimitClientAddress } from "../../_lib/rate-limit/clientAddress.js";
 import type * as HttpTypes from "../../_lib/types/vercel.js";
 import { getBundleDescriptor, resolveBundleId } from "../../domains/platform-runtime/platformKernel.js";
 import { resolveAdminAuthBinding, type AdminAuthBindingOptions } from "../../runtime/auth/adminAuthBinding.js";
@@ -41,8 +42,8 @@ export function createPartnerAcquisitionSubmitHandler(options: Options = {}) {
     if (refuseAcquisitionCommandDuringLegacyDrain(res, env)) return;
     const request = partnersB2BInquirySubmitRequestSchema.safeParse(req.body);
     const idempotencyKey = idempotency(req);
-    const requesterKey = requester(req);
-    if (!request.success || !idempotencyKey || !requesterKey) return badRequest(res, request.success ? undefined : request.error.flatten());
+    if (!request.success || !idempotencyKey) return badRequest(res, request.success ? undefined : request.error.flatten());
+    const requesterKey = rateLimitClientAddress(req, env).slice(0, 64);
     const port = await portOrError(res, options.resolvePort ?? (() => resolvePartnerAcquisitionBinding(env)));
     if (!port) return;
     const result = await operationOrError(res, () => port.submit({
@@ -163,11 +164,6 @@ function header(req: HttpRequest, name: string): string | null {
 function idempotency(req: HttpRequest): string | null {
   const parsed = partnerAcquisitionIdempotencyKeySchema.safeParse(header(req, "idempotency-key"));
   return parsed.success ? parsed.data : null;
-}
-function requester(req: HttpRequest): string | null {
-  const forwarded = header(req, "x-forwarded-for")?.split(",")[0]?.trim();
-  const value = forwarded || req.socket?.remoteAddress?.trim().toLowerCase();
-  return value ? value.slice(0, 64) : null;
 }
 function badRequest(res: HttpResponse, details?: unknown): void {
   sendBffError(res, "BAD_REQUEST", "Invalid partner acquisition request", { details });

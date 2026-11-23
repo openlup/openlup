@@ -114,18 +114,54 @@ export function assertTypedSkuAmounts(rules: Pick<CatalogPublicationRulesModule,
     publicationIssue("catalog_publication_authored_amounts_invalid", "structural", path, code));
 }
 
+/** A named refusal from catalogue definition binding or installation.
+ * @experimental
+ */
+export class CatalogDefinitionInstallError extends Error {
+  constructor(
+    readonly code: "catalog_definition_install_conflict" | "catalog_type_install_refuses_redefinition"
+      | "catalog_profile_install_refuses_redefinition" | "definition_unknown_profile_ref" | "catalog_definition_rules_binding_failed",
+    readonly path: string,
+    readonly observed: string,
+    readonly causeText: string,
+    readonly fix: string,
+    readonly recheck: string,
+  ) { super(code); }
+}
+
+function installRulesRefusal(index: number) {
+  return new CatalogDefinitionInstallError("catalog_definition_rules_binding_failed", `/types/${index}/validatorRef`,
+    "The declared rules bundle could not be bound to the affected pack type.",
+    "The bundle fails the installed rules contract or disagrees with an existing declared validator binding.",
+    "Supply the artifact to withCatalogPublicationRules for each affected type and install the returned pack. Restore the original artifact for an existing binding. For a new definition, correct the module exports and use a matching artifact. Give intentional rule changes a new pack and affected type version.",
+    "Run the owned rules tests, then retry binding and installation.");
+}
+
+function installRules<T>(index: number, operation: () => T): T {
+  try { return operation(); }
+  catch (error) {
+    if (error instanceof CatalogPublicationError && (
+      error.code === "catalog_publication_rules_module_invalid" || error.code === "catalog_publication_rules_digest_mismatch"
+      || error.code === "catalog_publication_rules_binding_mismatch"
+      || error.code === "catalog_publication_rule_failed" && error.diagnostic.hook === "module")) throw installRulesRefusal(index);
+    throw error;
+  }
+}
+
 export function bindCatalogPublicationRules(pack: CatalogPublicationRulesPack,
   rulesFor: (type: CatalogProductTypeRef) => Uint8Array | undefined): CatalogPackInput {
-  const types = pack.types.map(type => {
+  const types = pack.types.map((type, index) => {
     const artifact = rulesFor({ key: type.key, version: type.version });
     if (artifact === undefined) {
-      if (!type.validateContent) return publicationRefuse("catalog_publication_rules_module_invalid");
+      if (!type.validateContent) throw installRulesRefusal(index);
       return { ...type, validateContent: type.validateContent };
     }
-    const binding = loadCatalogPublicationRules(type.validatorRef, artifact);
-    const validateContent = binding.rules(localContext).validateContent;
-    boundValidators.set(validateContent, { ...binding, key: type.key, version: type.version });
-    return Object.freeze({ ...type, validatorRef: binding.validatorRef, publicationRules: true as const, validateContent });
+    return installRules(index, () => {
+      const binding = loadCatalogPublicationRules(type.validatorRef, artifact);
+      const validateContent = binding.rules(localContext).validateContent;
+      boundValidators.set(validateContent, { ...binding, key: type.key, version: type.version });
+      return Object.freeze({ ...type, validatorRef: binding.validatorRef, publicationRules: true as const, validateContent });
+    });
   });
   return Object.freeze({ ...pack, types: Object.freeze(types) });
 }
@@ -145,8 +181,12 @@ export function resolvePublicationRules(definition: CatalogProductTypeInput, eva
   return binding.rules(evaluation, mode);
 }
 
-export function verifyCatalogRulesAtInstall(pack: CatalogPackInput): void {
-  for (const type of pack.types) resolvePublicationRules(type, localContext, true);
+export function verifyCatalogRulesAtInstall(pack: CatalogPackInput, typedRefusal = false): void {
+  for (const [index, type] of pack.types.entries()) {
+    const verify = () => resolvePublicationRules(type, localContext, true);
+    if (typedRefusal) installRules(index, verify);
+    else verify();
+  }
 }
 
 /** @internal Load trusted JavaScript rules from the verified byte snapshot. */

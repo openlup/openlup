@@ -130,8 +130,8 @@ The native draft writer owns the command. The host supplies the command key
 and session actor outside the JSON payload.
 
 After each change, run `npm run typecheck` from the extracted application root.
-Check packs with `npm run --silent catalogue:check:source`, inert fixtures with
-`npm run --silent catalogue:check` and rules with `node --test owned/catalogue-rules.test.cjs`.
+Check packs and fixtures with `npm run --silent catalogue:check:source` and
+rules with `node --test owned/catalogue-rules.test.cjs`.
 
 Evidence (historical record, 2026-11-13):
 Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application’s storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.

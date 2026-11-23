@@ -1764,9 +1764,10 @@ authority. Review evidence grants no merge, release, settings or credential righ
    pass before the queue merges. Confirm the merge on `main`.
 8. **FAIL: one fix commit.** Commit the fix, then review the cumulative delta
    since the last candidate with its full floor of complete reviews, with the
-   open finding cards, at the delta floor, or take a full review if no such
+   open finding cards, with one cold reviewer (the prior reviewer may return), or take a full review if no such
    candidate exists, the base, intent, or author changed, or the repair history
-   is no longer linear and merge-free. Close every blocking finding explicitly
+   is no longer linear and merge-free. A new protected path or mode change keeps
+   the two-reviewer floor; ordinary Markdown alone needs no delta reviewer. Close every blocking finding explicitly
    and return to PASS when review succeeds.
 
    Count every review round. A repair cycle fails to converge if a finding of an
@@ -1829,12 +1830,21 @@ the publication catalogue, package boundary test and cold-consumer script. A
 removal can come from either side or both. Edits to base entries, reorders and
 moves between adapter classes need manual resolution and review.
 
+If `landing:merge` refuses a new migration because its UTC slot is no longer
+later than `origin/main`, rename the new, unlanded migration to a free UTC slot
+after the migration slots on `origin/main`. Preserve the order of any other
+new migrations on the branch. Update the migration registries, packaged SQL copy
+and references to the old path or version. Refresh the derived files and
+installation inventory, then submit the renamed migration and its resulting
+changes for review. An existing review does not cover the rename.
+
 Integration proof classifies an exact merge of the reviewed head and a commit
 on `origin/main` as `derived` only for a closed carrier set: migration registry
-unions, the package SQL manifest and selection mirror, publication catalogue,
-generated source map, generated SQL reference page, and the current installation
-data file. Trusted owner generators run on a temporary prediction, without
-executing candidate tooling or touching the checkout. Output must equal committed
+unions, package SQL projections, publication catalogue, generated source map,
+SQL reference, API snapshots, settings catalogue outputs, and current installation
+data. Trusted owner generators run on a temporary prediction; API scripts and
+their helpers must match main byte-for-byte before execution. Candidate-only
+tooling is never executed. Output must equal committed
 bytes. Every SQL byte and mode must equal the mechanical merge; other changes
 remain a `resolution` delta with its existing review floor. Size caps and release
 fragments stay reviewed. Generator errors fail closed.

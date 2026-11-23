@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
-import { canonicalCatalogDraftJson, catalogDefinitionDigest, catalogPackManifest, installCatalogDefinitions,
+import { CatalogDefinitionInstallError, canonicalCatalogDraftJson, catalogDefinitionDigest, catalogPackManifest, installCatalogDefinitions,
   readInstalledCatalogSubscriptionProfile, withCatalogPublicationRules } from "@openlup/platform/catalog";
 import type { CatalogPackInput } from "@openlup/platform/catalog/contracts";
 import { selectCatalogProfileCadence } from "@openlup/platform/subscriptions";
@@ -74,16 +74,32 @@ async function install(db: Pool | PoolClient, input: ReturnType<typeof request>)
   return rows[0].receipt;
 }
 
-async function expectLegacyInstallRefusals() {
-  const conflict = { ...legacyPack, capabilities: { publish: false } };
-  const redefinition = { ...legacyPack, id: "example:legacy-redefinition",
-    types: [{ ...legacyPack.types[0], dimensions: [{ key: "flag", kind: "boolean" as const }] }] };
-  for (const [input, message] of [[conflict, "catalog_definition_install_conflict"],
-    [redefinition, "catalog_type_install_refuses_redefinition"]] as const) {
-    const error = await installCatalogDefinitions(owner, input).catch((error: unknown) => error);
-    expect(error).toMatchObject({ code: "23505", message, detail: undefined });
-    expect(error).not.toHaveProperty("issue");
-  }
+function refusal(error: unknown, code: CatalogDefinitionInstallError["code"], path: string,
+  observed: string, causeText: string, fix: string) {
+  expect(Object.getPrototypeOf(error)).toBe(CatalogDefinitionInstallError.prototype);
+  expect(Reflect.ownKeys(error as object).filter(key => key !== "stack").sort())
+    .toEqual(["causeText", "code", "fix", "message", "observed", "path", "recheck"]);
+  expect(error).toMatchObject({ code, message: code, path, observed, causeText, fix, recheck: "Retry the installation." });
+}
+function missingRef(error: unknown, path: string, { key, version }: typeof ref) {
+  refusal(error, "definition_unknown_profile_ref", path,
+    `The declared profile reference ${key}@${version} is missing from the installed profile receipts.`,
+    "The exact profile version is absent from installed profile receipts.",
+    "Declare the referenced profile version in its owning pack and install that pack before the consumer, or reference an already installed compatible version.");
+}
+
+async function expectInstallRefusals(pack: CatalogPackInput = legacyPack) {
+  const conflict = { ...pack, capabilities: { publish: false } };
+  const redefinition = { ...pack, id: `${pack.id}-redefinition`,
+    types: [{ ...pack.types[0], dimensions: [{ key: "flag", kind: "boolean" as const }] }] };
+  refusal(await installCatalogDefinitions(owner, conflict).catch(error => error),
+    "catalog_definition_install_conflict", "/version", "The installed pack version has a different manifest.",
+    "An installed pack identity is immutable.",
+    "Restore the installed declaration and matching rules. For an intentional change, issue a new pack version and new versions for changed types or profiles, and update their references.");
+  refusal(await installCatalogDefinitions(owner, redefinition).catch(error => error),
+    "catalog_type_install_refuses_redefinition", "/types", "The pack attempts to change an installed type version.",
+    "An installed type version is immutable across packs.",
+    "Restore the installed type definition, or issue a new type version and update referencing declarations and the pack version as needed.");
 }
 
 beforeAll(async () => {
@@ -113,12 +129,26 @@ beforeAll(async () => {
   upgradeReceipt = await installCatalogDefinitions(owner, upgradePack);
   savedUpgradeRow = await packRow(upgradePack.id);
   await bootstrap.query("ALTER ROLE profile_owner NOSUPERUSER NOBYPASSRLS");
-  await expectLegacyInstallRefusals();
+  await expectInstallRefusals();
   await owner.query(readFileSync(forward, "utf8"));
 }, postgresSetupTimeoutMs);
 afterAll(() => closePostgres(container, pools), postgresTeardownTimeoutMs);
 
-it("preserves both pre-forward legacy 23505 refusals", expectLegacyInstallRefusals);
+it("preserves both pre-forward legacy 23505 refusals", () => expectInstallRefusals());
+
+it("maps opted-in pack conflicts and type redefinitions through the public installer", async () => {
+  const key = { key: "example:opted-in-refusal", version: 1 };
+  const input = { ...profilePack("opted-in-refusal", key, "example:opted-in-refusal"),
+    subscriptionProfileDefinitions: [declaration(key)] };
+  await installCatalogDefinitions(owner, input);
+  const before = await installCounts();
+  const receipt = await packRow(input.id);
+  const types = await typeBindings(input);
+  await expectInstallRefusals(input);
+  expect(await installCounts()).toEqual(before);
+  expect(await packRow(input.id)).toBe(receipt);
+  expect(await typeBindings(input)).toEqual(types);
+});
 
 it("C-2 preserves a pre-forward reference-only replay with duplicate refs and an installed type", async () => {
   expect(catalogPackManifest(legacyPack).subscriptionProfiles).toEqual([ref, ref]);
@@ -212,20 +242,12 @@ it.each(["both", "new-only"])("AM-1 installs and replays P@2 with %s declaration
   const changed = await installCatalogDefinitions(owner, {
     ...second, subscriptionProfileDefinitions: [v2, declaration(p1, 29)],
   }).catch((error: unknown) => error);
-  expect(changed).toMatchObject({ code: "23505", message: "catalog_profile_install_refuses_redefinition", detail: undefined });
-  expect((changed as { issue: unknown }).issue).toStrictEqual({
-    code: "catalog_profile_install_refuses_redefinition",
-    path: "",
-    fix: "Replay the original declaration bytes, digest and identity together. Issue a new version for an intentional change.",
-  });
-  expect(changed).not.toHaveProperty("value");
+  refusal(changed, "catalog_profile_install_refuses_redefinition", "/subscriptionProfileDefinitions",
+    "The pack attempts to change an installed profile version.", "An installed profile version is immutable across packs.",
+    "Restore the installed profile definition, or issue a new profile version and update referencing declarations and the pack version as needed.");
   expect(await installCounts()).toEqual(priorCounts);
   const missing = await installCatalogDefinitions(owner, { ...second, subscriptionProfileDefinitions: [v1] }).catch((error: unknown) => error);
-  expect(missing).toMatchObject({ code: "22023", message: "definition_unknown_profile_ref", issue: {
-    code: "definition_unknown_profile_ref", path: "/subscriptionProfiles/1", ref: p2,
-    fix: `Install or declare ${p2.key}@2.`,
-  } });
-  expect(missing).not.toHaveProperty("issue.value");
+  missingRef(missing, "/subscriptionProfiles/1", p2);
   expect(await installCounts()).toEqual(priorCounts);
   expect(await typeBindings(first)).toEqual(priorTypes);
   expect(await readInstalledCatalogSubscriptionProfile(owner, p2)).toBeNull();
@@ -285,8 +307,8 @@ it("C-3 installs first declarations after a legacy pack and resolves empty decla
       return pending;
     },
   };
-  await expect(installCatalogDefinitions(executor, { ...reuse, version: 4, subscriptionProfiles }))
-    .rejects.toMatchObject({ code: "22023", issue: { code: "definition_unknown_profile_ref", path: "/subscriptionProfiles/2", ref: p3 } });
+  missingRef(await installCatalogDefinitions(executor, { ...reuse, version: 4, subscriptionProfiles }).catch(error => error),
+    "/subscriptionProfiles/2", p3);
   expect(await installCounts()).toEqual(counts);
 });
 
@@ -380,4 +402,27 @@ it("resolves every exact ref under the install lock and rolls back a missing ref
     .toMatchObject({ subscriptionProfileDefinitions: [] });
   await expect(install(owner, request("example:missing", [missing], [])))
     .rejects.toMatchObject({ code: "22023", message: "definition_unknown_profile_ref" });
+});
+
+it("maps the owner's manifest mismatch and leaves isolation errors intact", async () => {
+  const counts = await installCounts();
+  const input = { ...profilePack("manifest-mismatch", ref, "example:manifest-mismatch"), subscriptionProfileDefinitions: [declaration()] };
+  const executor = { query(text: string, values?: unknown[]) {
+    const payload = JSON.parse(String(values![2]));
+    payload.profileDeclarationBytes = [];
+    return owner.query(text, [values![0], values![1], JSON.stringify(payload)]);
+  } };
+  refusal(await installCatalogDefinitions(executor, input).catch(error => error),
+    "catalog_definition_install_conflict", "/subscriptionProfileDefinitions",
+    "The submitted subscription profile manifest or its stored integrity evidence is inconsistent.",
+    "The installation could not verify the submitted or stored subscription profile manifest.",
+    "Verify the qualified package and schema pair. Correct the mismatch, then retry the unchanged declaration.");
+  const client = await owner.connect();
+  try {
+    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    const isolationError = await installCatalogDefinitions(client, input).catch(error => error);
+    expect(isolationError).toMatchObject({ code: "25000", message: "catalog_profile_install_requires_read_committed" });
+    expect(isolationError).not.toHaveProperty("issue");
+  } finally { await client.query("ROLLBACK"); client.release(); }
+  expect(await installCounts()).toEqual(counts);
 });
