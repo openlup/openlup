@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
@@ -194,10 +195,16 @@ async function databaseBrowserRecipe(argv) {
   const { default: pg } = await import('pg');
   const { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } = await import('@openlup/platform/migrations');
   const { configurations } = await import('./owned/store.config.ts');
+  const { market } = await import('./owned/market.config.ts');
   const { applyDemoSeed, demonstrationMarker, provisionDemonstrationPublicationPassword } = await import('./installation/install.ts');
   const { readStarterCatalogueRules } = await import('./host/editor-catalogue.ts');
   const application = root;
   const directory = resolve(application, '.context/care-browser');
+  const upgrade = await readFile(resolve(directory, 'upgrade.json'), 'utf8')
+    .then(JSON.parse, error => { if (error.code !== 'ENOENT') throw error; });
+  const previous = upgrade && createRequire(resolve(upgrade.predecessor, 'package.json'));
+  const previousMigrations = previous && await import(pathToFileURL(previous.resolve('@openlup/platform/migrations')).href);
+  const previousSubscriptions = previous && await import(pathToFileURL(previous.resolve('@openlup/platform/subscriptions')).href);
   const containers = [], hosts = [], pools = [];
   const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   const delay = (ms) => new Promise(done => setTimeout(done, ms));
@@ -206,6 +213,32 @@ async function databaseBrowserRecipe(argv) {
     const [code] = await once(process, 'exit');
     if (code !== 0)
       throw new Error('starter_database_browser_command_failed');
+  }
+  async function seedLegacyCancel(owner, runtime, terms) {
+    const email = `legacy-${randomUUID()}@example.test`;
+    const actorId = randomUUID(), clientId = randomUUID(), subscriptionRef = randomUUID(), key = randomUUID();
+    await owner.query('INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)', [actorId, email]);
+    await owner.query("INSERT INTO public.clients(id,email,principal_id,lifecycle_stage) VALUES($1,$2,$3,'customer')", [clientId, email, actorId]);
+    await owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,started_at,next_cycle_at) VALUES($1,$2,28,now()-interval '1 day',now()+interval '28 days')",
+      [subscriptionRef, clientId]);
+    const input = { action: 'cancel', reason: '  legacy retention  ', confirmedChargeTiming: false,
+      survey: { reasonCode: 'retired_reason', comment: '  prior feedback  ' }, saveOffer: null };
+    const receipt = await previousSubscriptions.createPostgresSubscriptionCommands({
+      retentionReasonCodes: ['retired_reason'], lifecycleTerms: terms,
+      async withTransaction(work) {
+        const db = await runtime.connect();
+        try { await db.query('BEGIN'); const value = await work(db); await db.query('COMMIT'); return value; }
+        catch (error) { await db.query('ROLLBACK'); throw error; } finally { db.release(); }
+      },
+      async futureTerms() { throw new Error('starter_legacy_cancel_does_not_use_future_terms'); },
+    }).apply({ ...input, actor: { kind: 'customer', clientId, actorId }, subscriptionId: subscriptionRef, idempotencyKey: key, now: new Date().toISOString() });
+    if (receipt.outcome !== 'applied') throw new Error(`starter_predecessor_cancel_failed: ${receipt.reason}`);
+    const { rows: [snapshot] } = await owner.query(`SELECT r.command->'payload' AS payload, r.command_fingerprint,
+      to_jsonb(event) AS event FROM public.subscription_command_receipts r
+      JOIN LATERAL (SELECT e.id,e.subscription_id,e.event_type,e.idempotency_key,e.payload,e.occurred_at,e.created_at,e.communication_subject_id
+        FROM public.subscription_events e WHERE e.id=(r.result->>'eventId')::uuid) event ON true
+      WHERE r.subscription_id=$1 AND r.idempotency_key=$2`, [subscriptionRef, key]);
+    return { email, subscriptionRef, input, key, receipt, snapshot };
   }
   try {
     await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -241,13 +274,25 @@ async function databaseBrowserRecipe(argv) {
       const migration = new pg.Pool({ connectionString: ownerUrl, options: qualifiedPostgresStartupOptions(selection) });
       pools.push(migration);
       const runner = createPlatformPostgresMigrationRunner({ connectionString: ownerUrl }, { installation: selection, poolFactory: () => migration });
-      await runner.apply();
+      const runtimeUrl = ownerUrl.replace('postgres@', 'starter_runtime@');
+      let legacy;
+      if (previousMigrations) {
+        const prior = previousMigrations.createPlatformPostgresMigrationRunner({ connectionString: ownerUrl }, { installation: selection, poolFactory: () => migration });
+        if (!(await prior.apply()).applied.length) throw new Error('starter_database_browser_predecessor_required');
+        const priorRuntime = new pg.Pool({ connectionString: runtimeUrl });
+        try {
+          legacy = await Promise.all(market.locales.map(async locale =>
+            [locale, await seedLegacyCancel(owner, priorRuntime, config.renewal.subscriptionCare.terms)]));
+          legacy = Object.fromEntries(legacy);
+        } finally { await priorRuntime.end(); }
+      }
+      const applied = await runner.apply();
+      if (previousMigrations && !applied.applied.length) throw new Error('starter_database_browser_upgrade_required');
       if ((await runner.status()).pending.length)
         throw new Error('starter_database_browser_installation_incomplete');
       await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
       await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime',
         catalogueRules: readStarterCatalogueRules(), close: async () => { } });
-      const runtimeUrl = ownerUrl.replace('postgres@', 'starter_runtime@');
       const state = resolve(directory, config.id);
       await mkdir(state, { recursive: true, mode: 0o700 });
       const publicationPasswordFile = resolve(state, 'publication-password');
@@ -285,7 +330,7 @@ async function databaseBrowserRecipe(argv) {
       await writeFile(resolve(state, 'host.private.log'), logs, { mode: 0o600 });
       if (!ready)
         throw new Error('starter_database_browser_host_unavailable');
-      entries.push({ id: config.id, baseURL, runtimeUrl, ownerUrl, state });
+      entries.push({ id: config.id, baseURL, runtimeUrl, ownerUrl, state, upgrade, legacy });
     }
     await writeFile(resolve(application, '.context/database-ui-hosts.json'), JSON.stringify(entries.map(({ id, baseURL }) => ({ id, baseURL }))), { mode: 0o600 });
     await writeFile(resolve(directory, 'fixtures.json'), JSON.stringify(entries), { mode: 0o600 });

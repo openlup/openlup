@@ -504,14 +504,16 @@ export function createSettingsBindings({ db, configuration }: {
       value: config.renewal?.subscriptionCare ? {
         reasons: config.renewal.subscriptionCare.retentionReasons,
         ...config.renewal.subscriptionCare.retention,
+        offerPresentation: config.renewal.subscriptionCare.retention.offerPresentation ?? 'ask_permission_first',
         rescheduleOfferDays: config.renewal.subscriptionCare.rescheduleOfferDays,
       } : undefined,
       location: { file: 'owned/renewal.config.ts', symbol: 'subscriptionCare.retention' },
       descriptor: {
         domain: 'subscriptions',
-        goal: "Configure cancellation reasons, save-offer mapping per reason, fallback offer, preselected pause preset, and reschedule offer days (retention flow, save offer, cancel reasons).",
+        goal: "Choose ask-first save offers or turn them off, and set optional post-cancellation feedback reasons.",
         schema: z.strictObject({
           reasons: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,119}$/)).min(1),
+          offerPresentation: z.enum(['ask_permission_first', 'off']),
           offerByReason: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,119}$/), z.enum(['skip', 'reschedule', 'pause'])),
           defaultOffer: z.enum(['skip', 'reschedule', 'pause']),
           pausePreset: z.enum(['2_weeks', '1_month', 'indefinite']).optional(),
@@ -520,7 +522,7 @@ export function createSettingsBindings({ db, configuration }: {
           "assertSubscriptionCare checks nonempty snake_case retention reasons and rescheduleOfferDays from 1 through 2147483647. assertRetention requires every offerByReason key to appear in reasons and any pausePreset to be allowed by renewal.subscriptionCare.pausePresets.",
         ),
         effect: {
-          appliesTo: "The subscriber cancellation flow presents the deployed reasons, per-reason and fallback save offers, preselected pause preset, and reschedule target offset when a customer starts a new cancellation.",
+          appliesTo: "Yes requests defaultOffer. The first admitted pause preset is used if the configured preset is unavailable. offerByReason serves legacy composition. Outside the Platform timing domain no offer is available. Feedback remains optional in either mode.",
           frozenOn: ["Completed skips, pauses, reschedules, and cancellations keep the actions already recorded."],
           impact: 'customer-promise',
         },
@@ -545,7 +547,7 @@ export function createSettingsBindings({ db, configuration }: {
           "assertSubscriptionCare checks distinct action names from skip, slide, pause, resume, cancel, order_now, and reactivate for active, paused, cancelled, whilePaymentBlocked, and whilePaymentExpired.",
         ),
         effect: {
-          appliesTo: "The account portal and starter command admission check the deployed status and payment-blocker action lists when authorizing new customer subscription commands.",
+          appliesTo: "The status and payment-blocker action lists govern ordinary commands and offer admission. Direct cancellation bypasses those lists and retains native lifecycle and payment fences.",
           frozenOn: ["Completed commands replay their stored outcome without re-evaluating changed action lists."],
           impact: 'customer-promise',
         },
