@@ -162,7 +162,7 @@ replacement links to `replaces_shipment_id`, and subscription identity through
 order → cycle → subscription. The effective cycle ordinal
 comes from renewal operation numbering or the explicit activation-order link.
 
-[The native translation decision](../plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment) maps donor activation cycle 1 ↔ native activation ordinal 0, and donor
+[The native translation decision](../plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment) maps managed activation cycle 1 ↔ native activation ordinal 0, and managed
 renewal n+1 ↔ native renewal n. The activation ordinal requires a cycle with no
 renewal operation whose linked order is the active `subscription_activations`
 row's order for the same subscription. Renewal operation numbers remain ≥1.
