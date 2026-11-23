@@ -2974,6 +2974,11 @@ export declare function withCheckoutRecoveryPaymentHold<Input extends {
 ```ts
 import type { CheckoutRecoveryWavePolicy } from "./checkoutRecoveryWaves.js";
 import type { CheckoutRecoveryReminderSchedule } from "../contracts/index.js";
+/** A schedule change was blocked by open orders with unpinned reminder waves. */
+export declare class CheckoutRecoveryScheduleChangeBlockedError extends Error {
+    readonly blockingOrders: string;
+    constructor(blockingOrders: string, cause: unknown);
+}
 interface Executor {
     query(text: string, values?: unknown[]): Promise<{
         rows: Record<string, unknown>[];
@@ -5388,7 +5393,7 @@ export { withCheckoutRecoveryPaymentHold } from './checkoutRecoveryPaymentHold.j
 export type { CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.js';
 export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, CheckoutInlineRecoveryError } from './checkoutInlineRecovery.js';
 export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';
-export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation } from "./checkoutRecoveryReminderSchedule.js";
+export { CheckoutRecoveryScheduleChangeBlockedError, installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation } from "./checkoutRecoveryReminderSchedule.js";
 export { catalogAdmissionRefusal } from "./catalogAdmissionRefusal.js";
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
@@ -6802,7 +6807,7 @@ export { createProductReconciliationEvidenceHandler } from "./productReconciliat
 export { runFulfillmentAdapterConformance } from "./adapterConformance.js";
 export { createPostgresFulfillmentShipmentSpinePort } from './postgresShipmentSpine.js';
 export { createPostgresFulfillmentLowStockEvidencePort } from './postgresEvidenceReadPort.js';
-export { createPostgresFulfillmentStockSyncPort } from './postgresStockSyncPort.js';
+export { createPostgresFulfillmentStockSyncPort, FulfillmentStockReplayConflictError } from './postgresStockSyncPort.js';
 export { createPostgresPaidFulfillmentRecoveryOpsPort } from './postgresPaidFulfillmentRecovery.js';
 export { createPostgresFulfillmentDispatchStore } from './postgresDispatchStore.js';
 export { createPostgresPaidFulfillmentHandoffStore } from './postgresPaidHandoffStore.js';
@@ -6950,6 +6955,11 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
     readonly position: 141;
     readonly catalogPath: "db/platform/migrations/20261121100000_order_delivery_contact_correction.sql";
     readonly sha256: "8a614c86d51742703b5f3f89d50ac9ec1f1b323ab33b2bd5ea9cd79d32a1f783";
+    readonly url: URL;
+}, {
+    readonly position: 189;
+    readonly catalogPath: "db/platform/migrations/20261125130000_fulfillment_stock_seed_outcome.sql";
+    readonly sha256: "b1a7209ec3537efb879a0b4fcf17e36a2c3108f5d89910d48f39acae0549bd7d";
     readonly url: URL;
 }];
 ```
@@ -7106,7 +7116,7 @@ export interface PgExecutor {
         rows: Record<string, unknown>[];
     }>;
 }
-export declare function nativeCall<T>(db: PgExecutor, name: string, values: unknown[]): Promise<T>;
+export declare function nativeCall<T>(db: PgExecutor, name: string, values: unknown[], queryRefusal?: (error: unknown) => Error | undefined): Promise<T>;
 export declare function createPostgresFulfillmentDispatchStore(db: PgExecutor, host: {
     /** Synchronize authoritative withholding/contact revision on prepare and every source edit. */
     prepare(fulfillmentRef: string): ReturnType<FulfillmentStorePort['prepare']>;
@@ -7266,6 +7276,10 @@ export {};
 ```ts
 import type { FulfillmentStockSyncPort } from './contracts/index.js';
 import { type PgExecutor } from './postgresDispatchStore.js';
+/** A stock-current request key was reused with different stock inputs. */
+export declare class FulfillmentStockReplayConflictError extends Error {
+    constructor(cause: unknown);
+}
 /** The native catalogue has observed stock, not adopter inventory balances. */
 export declare function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: {
     sourceKey: string;

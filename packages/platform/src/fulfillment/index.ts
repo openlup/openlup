@@ -18,7 +18,7 @@ export { createProductReconciliationEvidenceHandler } from "./productReconciliat
 export { runFulfillmentAdapterConformance } from "./adapterConformance.js";
 export { createPostgresFulfillmentShipmentSpinePort } from './postgresShipmentSpine.js';
 export { createPostgresFulfillmentLowStockEvidencePort } from './postgresEvidenceReadPort.js';
-export { createPostgresFulfillmentStockSyncPort } from './postgresStockSyncPort.js';
+export { createPostgresFulfillmentStockSyncPort, FulfillmentStockReplayConflictError } from './postgresStockSyncPort.js';
 export { createPostgresPaidFulfillmentRecoveryOpsPort } from './postgresPaidFulfillmentRecovery.js';
 export { createPostgresFulfillmentDispatchStore } from './postgresDispatchStore.js';
 export { createPostgresPaidFulfillmentHandoffStore } from './postgresPaidHandoffStore.js';

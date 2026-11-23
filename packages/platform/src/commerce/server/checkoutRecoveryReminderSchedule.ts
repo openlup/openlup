@@ -4,6 +4,16 @@ import type { CheckoutRecoveryWavePolicy } from "./checkoutRecoveryWaves.js";
 import type { CheckoutRecoveryReminderSchedule } from "../contracts/index.js";
 
 const key = "checkout_recovery_reminders";
+const blockedSchedule = "checkout_recovery_schedule_change_blocked_open_episodes";
+
+/** A schedule change was blocked by open orders with unpinned reminder waves. */
+export class CheckoutRecoveryScheduleChangeBlockedError extends Error {
+  constructor(readonly blockingOrders: string, cause: unknown) {
+    super(blockedSchedule, { cause });
+    this.name = "CheckoutRecoveryScheduleChangeBlockedError";
+  }
+}
+
 const fallback = {
   revision: "default",
   abandonedCart: [{ stage: "first", afterHours: 1 }, { stage: "gentle", afterHours: 24 }, { stage: "last", afterHours: 72 }],
@@ -70,7 +80,19 @@ interface Executor {
 const store = (db: Executor) => installedPolicy(db, key, validateCheckoutRecoveryReminderSchedule, structuredClone(fallback), code);
 /** Explicit installation on a host-owned write-capable connection. Reads never install. */
 export async function installCheckoutRecoveryReminderSchedule(db: Executor, schedule: CheckoutRecoveryReminderSchedule): Promise<void> {
-  await db.query("SELECT public.commerce_install_checkout_recovery_reminder_schedule($1::text, $2::jsonb)", [key, JSON.stringify(validateCheckoutRecoveryReminderSchedule(schedule))]);
+  const values = [key, JSON.stringify(validateCheckoutRecoveryReminderSchedule(schedule))];
+  try { await db.query("SELECT public.commerce_install_checkout_recovery_reminder_schedule($1::text, $2::jsonb)", values); }
+  catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "55000"
+      && "detail" in error && typeof error.detail === "string") {
+      const match = /^openlup:reminder_schedule:blocking_orders=([1-9][0-9]{0,18})$/u.exec(error.detail);
+      const count = match?.[1];
+      if (match?.[0] === error.detail && count && BigInt(count) <= 9223372036854775807n) {
+        throw new CheckoutRecoveryScheduleChangeBlockedError(count, error);
+      }
+    }
+    throw error;
+  }
 }
 /** Read the installed schedule or its nominal default. Requires settings SELECT. */
 export async function readCheckoutRecoveryReminderSchedule(db: Executor): Promise<CheckoutRecoveryReminderSchedule> {

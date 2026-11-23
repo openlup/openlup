@@ -13,6 +13,7 @@ import { editorProducts, readStarterCatalogueRules, starterCatalogue } from '../
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { applyDemoSeed, demonstrationMarker, installDemonstration, provisionDemonstrationPublicationPassword,
   type DemonstrationInstallation } from '../installation/install.ts';
+import { installationReport } from '../installation/refusals.ts';
 
 test('publication provisioning sends a verifier and keeps the password in the private file', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'starter-publication-'));
@@ -464,6 +465,63 @@ test('an existing seed caller without a stock port uses the native writer and ro
   };
   await assert.rejects(applyDemoSeed(config,failed.binding),{ message: 'native_stock_refused' });
   assert.equal(failed.calls.at(-1)!.text,'ROLLBACK');
+});
+
+test('stock replay reports the affected SKU and succeeds after restoring its original quantity', async () => {
+  const config = Object.values(configurations)[0]!, fixture = installation();
+  delete fixture.binding.stock;
+  const query = fixture.binding.connection.query;
+  const first = editorProducts(config)[0]!;
+  const code = 'fulfillment_stock_current_idempotency_conflict';
+  fixture.binding.connection.query = async (text, values) => {
+    if (text.startsWith('SELECT public.fulfillment_record_stock_current') && values?.[3] === first.sku
+      && values[4] !== first.stockQuantity) {
+      throw Object.assign(new Error(code), { code: '23505', detail: 'openlup:stock_current:replay_conflict' });
+    }
+    return query(text, values);
+  };
+  await applyDemoSeed(config, fixture.binding);
+  const changed = structuredClone(config);
+  changed.purchase.stock.quantities[first.sku] = first.stockQuantity + 1;
+  await assert.rejects(installDemonstration(changed, async () => fixture.binding), (error: unknown) => {
+    const report = installationReport(error);
+    assert.ok(report);
+    assert.equal(report.split('\n')[0], code);
+    assert.ok(report.includes(first.sku));
+    assert.match(report, /owned\/store.config.ts/u);
+    assert.match(report, /Fix: Restore the original stock inputs for this SKU, then rerun the demo installer\./u);
+    assert.match(report, /Recheck: Run `\.\/lifecycle up`\./u);
+    return true;
+  });
+  assert.equal(fixture.calls.at(-1)?.text, 'ROLLBACK');
+  await applyDemoSeed(config, fixture.binding);
+  assert.equal(fixture.calls.at(-1)?.text, 'COMMIT');
+});
+
+test('blocked reminders report the validated count and leave unknown failures on the existing path', async () => {
+  const config = Object.values(configurations)[0]!, fixture = installation();
+  const query = fixture.binding.connection.query;
+  const code = 'checkout_recovery_schedule_change_blocked_open_episodes';
+  const raw = Object.assign(new Error(`${code} (2 blocking orders)`), { code: '55000' });
+  let failure: unknown = Object.assign(new Error(raw.message), { code: raw.code, detail: 'openlup:reminder_schedule:blocking_orders=2' });
+  fixture.binding.connection.query = async (text, values) => {
+    if (text === installReminderSchedule && failure) throw failure;
+    return query(text, values);
+  };
+  await assert.rejects(applyDemoSeed(config, fixture.binding), (error: unknown) => {
+    const report = installationReport(error);
+    assert.ok(report);
+    assert.equal(report.split('\n')[0], code);
+    assert.match(report, /checkoutRecoveryReminders.*\b2\b.*blocking orders/u);
+    assert.match(report, /Fix: Keep the current schedule in effect\. Retry after the blocking orders are paid or cancelled\. For abandoned carts, retry once the blocking draft receipts are invalidated or the orders have a settlement intent\./u);
+    return true;
+  });
+  assert.equal(fixture.calls.at(-1)?.text, 'ROLLBACK');
+  failure = raw;
+  await assert.rejects(applyDemoSeed(config, fixture.binding), (error: unknown) => error === raw);
+  failure = undefined;
+  await applyDemoSeed(config, fixture.binding);
+  assert.equal(fixture.calls.at(-1)?.text, 'COMMIT');
 });
 
 test('owned renewal priority validates before installation writes, independent of configuration ID', async () => {

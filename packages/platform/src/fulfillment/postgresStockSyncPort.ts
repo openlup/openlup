@@ -2,6 +2,23 @@ import { createHash } from 'node:crypto';
 import type { FulfillmentStockSyncPort, SyncCursor } from './contracts/index.js';
 import { nativeCall, type PgExecutor } from './postgresDispatchStore.js';
 
+const stockReplayConflict = 'fulfillment_stock_current_idempotency_conflict';
+
+/** A stock-current request key was reused with different stock inputs. */
+export class FulfillmentStockReplayConflictError extends Error {
+  constructor(cause: unknown) {
+    super(stockReplayConflict, { cause });
+    this.name = 'FulfillmentStockReplayConflictError';
+  }
+}
+
+function stockCurrentRefusal(error: unknown): FulfillmentStockReplayConflictError | undefined {
+  if (error instanceof Error && error.message === stockReplayConflict && 'code' in error && error.code === '23505'
+    && 'detail' in error && error.detail === 'openlup:stock_current:replay_conflict') {
+    return new FulfillmentStockReplayConflictError(error);
+  }
+}
+
 /** The native catalogue has observed stock, not adopter inventory balances. */
 export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: {
   sourceKey: string;
@@ -86,8 +103,11 @@ export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: 
       return scatterBatchResponses<{ replayed: boolean; readBack: boolean }>(inputs.length, result.rows);
     },
     recordProviderStockCurrent(v) {
-      const s=v.snapshot;
-      return nativeCall(db,'fulfillment_record_stock_current',[source,v.requestKey,fingerprint(v),s.skuRef,s.totalQuantity,s.forSaleQuantity,s.reservedOrUnavailableQuantity,v.inventoryClass,v.lastSyncedAt,v.staleAfter,s.syncRunId]);
+      const input = structuredClone(v);
+      const { snapshot } = input;
+      const values = [source, input.requestKey, fingerprint(input), snapshot.skuRef, snapshot.totalQuantity, snapshot.forSaleQuantity,
+        snapshot.reservedOrUnavailableQuantity, input.inventoryClass, input.lastSyncedAt, input.staleAfter, snapshot.syncRunId];
+      return nativeCall(db, 'fulfillment_record_stock_current', values, stockCurrentRefusal);
     },
     async recordProviderStockCurrentBatch(inputs) {
       if (!inputs.length) return [];

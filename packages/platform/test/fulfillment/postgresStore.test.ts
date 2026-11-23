@@ -1,5 +1,49 @@
 import { expect,it,vi } from 'vitest';
 import { createPostgresFulfillmentDispatchStore,createPostgresDeliveryAlignmentPort,createPostgresFulfillmentStockSyncPort } from '../../src/fulfillment/index.js';
+import * as fulfillment from '../../src/fulfillment/index.js';
+
+const currentConflict = 'fulfillment_stock_current_idempotency_conflict';
+const currentDetail = 'openlup:stock_current:replay_conflict';
+const currentInput = {
+ requestKey: 'fixture-current', inventoryClass: 'sellable' as const,
+ lastSyncedAt: '1999-01-01T00:00:00Z', staleAfter: '1999-01-02T00:00:00Z',
+ snapshot: { providerRef: 'fixture', collectedAt: '1999-01-01T00:00:00Z', sourceRevision: null,
+  revisionSource: 'collection' as const, quantityKind: 'snapshot' as const, skuRef: 'sku-a',
+  totalQuantity: 1, forSaleQuantity: 1, reservedOrUnavailableQuantity: 0, syncRunId: 'run-a' },
+};
+
+it('decodes the exact stock replay conflict and preserves the driver cause by identity', async () => {
+ const driver = Object.assign(new Error(currentConflict), { code: '23505', detail: currentDetail });
+ const query = vi.fn().mockRejectedValueOnce(driver).mockResolvedValueOnce({ rows: [{ response: { replayed: true, readBack: true } }] });
+ const port = createPostgresFulfillmentStockSyncPort({ query }, { sourceKey: 'native-a', readLocalInventoryStock: async () => [] });
+ const error = await port.recordProviderStockCurrent(currentInput).catch((failure: unknown) => failure);
+ expect(error).toMatchObject({ name: 'FulfillmentStockReplayConflictError', message: currentConflict });
+ expect(Object.getPrototypeOf(error)).toBe(Reflect.get(fulfillment, 'FulfillmentStockReplayConflictError').prototype);
+ expect(Object.getOwnPropertyDescriptor(error, 'cause')).toMatchObject({ enumerable: false });
+ expect((error as Error).cause).toBe(driver);
+ expect(await port.recordProviderStockCurrent(currentInput)).toEqual({ replayed: true, readBack: true });
+ expect(query.mock.calls[0]).toEqual(query.mock.calls[1]);
+});
+
+it.each([
+ Object.assign(new Error(currentConflict), { code: '23505' }),
+ Object.assign(new Error(currentConflict), { code: '23505', detail: currentDetail + '\n' }),
+ Object.assign(new Error('another unique constraint'), { code: '23505', detail: currentDetail }),
+ Object.assign(new Error(currentConflict), { code: '22023', detail: currentDetail }),
+ Object.assign(new Error('connection lost'), { code: '08006' }),
+])('preserves an unrecognized stock rejection by identity: %s', async driver => {
+ const query = vi.fn().mockRejectedValue(driver);
+ const port = createPostgresFulfillmentStockSyncPort({ query }, { sourceKey: 'native-a', readLocalInventoryStock: async () => [] });
+ await expect(port.recordProviderStockCurrent(currentInput)).rejects.toBe(driver);
+});
+
+it('does not call the executor when stock input cannot be serialized', async () => {
+ const query = vi.fn();
+ const port = createPostgresFulfillmentStockSyncPort({ query }, { sourceKey: 'native-a', readLocalInventoryStock: async () => [] });
+ const invalid = { ...currentInput, snapshot: { ...currentInput.snapshot, totalQuantity: 1n as never } };
+ await expect(Promise.resolve().then(() => port.recordProviderStockCurrent(invalid))).rejects.toBeInstanceOf(TypeError);
+ expect(query).not.toHaveBeenCalled();
+});
 
 it('forwards durable operations through the injected executor, projects evidence, and preserves timed G16 host input',async()=>{
  const query=vi.fn(async(sql:string)=>({rows:[{response:sql.includes('record_provider_attempt')?{replayed:true}:{status:'confirmed',proofRecorded:true}}]}));
