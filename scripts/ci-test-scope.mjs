@@ -36,7 +36,7 @@ const ROOT_DOC_SET = new Set(ROOT_DOC_FILES);
 // Review each row against every actual repository read in its import closure;
 // see CONTRIBUTING.md#extend-tooling-selection-conservatively.
 // Keep scripts/packages/platform-agent-guide.test.ts unlisted: it always runs outbox/platform docs:check.
-// Keep scripts/agent-review-derived.test.ts unlisted: it clones the whole checkout and runs readDocumentationState over all tracked paths.
+// Keep scripts/agent-review-derived.test.ts unlisted: it runs Docker-free derived landing checks and readDocumentationState over all tracked paths.
 // Keep scripts/packages/generate-release-bom.test.ts unlisted: it scans every *.md file anywhere in the repository.
 const NATIVE_STORE_CATALOG_SHARED_INPUTS = [
   'tests/postgres/nativeStoreForwardCatalog.shared.ts',
@@ -47,12 +47,39 @@ const NATIVE_STORE_CATALOG_SHARED_INPUTS = [
   'config/platform-migration-manifest.json',
   'db/platform/migrations/',
 ];
+const PACKAGE_MANIFESTS = [
+  'packages/core/package.json',
+  'packages/outbox/package.json',
+  'packages/platform/package.json',
+  'packages/ui/package.json',
+];
+const PACKAGE_SRC_DIRS = [
+  'packages/core/src/',
+  'packages/outbox/src/',
+  'packages/platform/src/',
+  'packages/ui/src/',
+];
 export const TOOLING_INPUTS = {
+  'scripts/agent-review-derived-inventory.test.ts': [
+    'db/platform/migrations/',
+    'packages/',
+    'config/platform-migration-manifest.json',
+    'config/reviewed-platform-forwards.json',
+    'config/openlup-publication-catalog.json',
+    'config/openlup-packages.json',
+    'config/ci-images.json',
+    'config/doc-routing.json',
+    'docs/platform/SOURCE_MAP.md',
+    'src/lib/coreDomains.ts',
+    'tests/postgres/current-installation-inventory.json',
+    'tests/helpers/postgresContainer.ts',
+    'server/adapters/postgres/',
+  ], // Real Docker landing:merge + installation-inventory-refresh.ts witness (builds core/outbox/platform, syncs SQL/source-map, refreshes 5 PG inventories).
   'scripts/agent-review-queue.test.ts': [], // Synthetic Git repositories and recorded transport.
   'scripts/agent-review-gate.test.ts': [], // Real-Git witnesses of the session CLI and hosted admission.
   'scripts/agent-review-registry.test.ts': ['config/openlup-publication-catalog.json', 'packages/platform/test/packageBoundary.test.ts'], // Closed-registry union and review-economy fixtures reading REGISTRY_PATHS.
   'scripts/public-ci-reuse.test.ts': [], // Recorded workflow/job responses.
-  'scripts/documentation-cli.test.ts': ['packages/', ...ROOT_DOC_FILES], // Copies CLI closure, package manifests and validates root docs.
+  'scripts/documentation-cli.test.ts': ['examples/neutral-store/package.json', ...PACKAGE_MANIFESTS, 'packages/core/scripts/', ...ROOT_DOC_FILES], // Copies CLI closure, package execution surfaces and validates root docs.
   'scripts/pgtap-parity.test.ts': [], // Pure TAP/row-diff/sabotage/executable unit fixtures.
   'scripts/qualified-migration-admission.test.ts': ['config/reviewed-platform-forwards.json', 'db/platform/migrations/'], // Qualified installation admission pins and issued SQL preimages.
   'scripts/reviewed-batch-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'supabase/migrations/', 'packages/platform/sql/'], // Historical batch/M09-M12 forward pinning and co-located admission checks.
@@ -62,23 +89,23 @@ export const TOOLING_INPUTS = {
   'scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts': [], // Fixture source and rules.
   'scripts/packages/distribution-cli-proof.test.ts': ['packages/', 'examples/neutral-store/', 'config/openlup-packages.json', 'config/ci-images.json'], // Starter upgrade/extraction proof, CLI and candidate packs.
   'scripts/packages/distribution-cli-settings.test.ts': ['packages/', 'examples/neutral-store/', 'config/openlup-packages.json', 'config/ci-images.json'], // Starter settings discovery/upgrade/MCP proofs and packed platform binary.
-  'scripts/packages/eslint-import-map.test.ts': ['packages/', 'src/', 'server/'], // Config reads workspace exports and domain directories.
-  'scripts/packages/guide-tutorial.test.ts': ['packages/'], // Reads packages/core/docs/guide/start/tutorial.md plus temp fixtures.
+  'scripts/packages/eslint-import-map.test.ts': [...PACKAGE_MANIFESTS, ...PACKAGE_SRC_DIRS, 'src/', 'server/'], // Config reads workspace exports and domain directories.
+  'scripts/packages/guide-tutorial.test.ts': ['packages/core/docs/guide/start/tutorial.md'], // Reads packages/core/docs/guide/start/tutorial.md plus temp fixtures.
   'scripts/packages/outbox-consumer-proof.test.ts': ['packages/', 'server/runtime/outbox/', 'config/openlup-packages.json', 'config/ci-images.json'], // Actual config, image pins, packs, smoke scripts and reference wiring.
   'scripts/packages/package-manifest-policy.test.ts': ['packages/', 'config/openlup-packages.json'], // Actual config, core exports and root tsconfigs.
-  'scripts/packages/package-release.test.ts': ['packages/'], // Release module mutations and Git fixtures.
+  'scripts/packages/package-release.test.ts': ['packages/core/scripts/'], // Release module mutations and synthetic Git fixtures.
   'scripts/packages/package-size-policy.test.ts': ['packages/', 'config/openlup-packages.json'], // Actual config, npm packs/browser entries and budgets.
   'scripts/packages/package-tarball-gate.test.ts': ['packages/'], // Tarball and attestation fixtures.
   'scripts/packages/packages-check.test.ts': ['packages/', 'config/openlup-packages.json'], // Actual manifest-only check plus cold fixture builds.
-  'scripts/packages/pack-manifest-input.test.ts': ['packages/'], // Pack/hash and isolation fixtures.
+  'scripts/packages/pack-manifest-input.test.ts': [], // Pure synthetic pack/hash and isolation fixtures.
   'scripts/packages/platform-cold-consumer.test.ts': ['packages/'], // Actual wrapper, synthetic consumers and compiler.
   'scripts/packages/reference-delegation-consumer.test.ts': ['packages/'], // Packs core/platform tarballs and proves isolated delegation consumer.
-  'scripts/packages/release-bump.test.ts': ['packages/'], // Synthetic manifests/locks/changelogs.
-  'scripts/packages/release-docs-pass.test.ts': ['packages/'], // Synthetic Git fixtures, fixed release tags and core documentation-contract helper.
-  'scripts/packages/release-gate.test.ts': ['packages/'], // Gate mutations, Git and recorded API fixtures.
-  'scripts/packages/release-workflow-authenticity.test.ts': ['packages/'], // Actual workflow controls and scripted fixtures.
-  'scripts/packages/required-package-gates.test.ts': ['packages/'], // Cold build/API/consumer fixtures.
-  'scripts/packages/set-release.test.ts': ['packages/'], // Set-module mutations and release fixtures.
+  'scripts/packages/release-bump.test.ts': ['packages/'], // Reads packages/core/docs/guide/upgrade/v1-3-0.md plus synthetic manifests/locks/changelogs.
+  'scripts/packages/release-docs-pass.test.ts': ['packages/core/scripts/'], // Synthetic Git fixtures, fixed release tags and core documentation-contract/consumer-audit helpers.
+  'scripts/packages/release-gate.test.ts': ['packages/core/scripts/release-npm-checks.ts'], // Gate mutations, Git and recorded API fixtures.
+  'scripts/packages/release-workflow-authenticity.test.ts': [], // Workflow controls under .github/ (already global bailout) and scripted fixtures.
+  'scripts/packages/required-package-gates.test.ts': ['packages/core/package.json', 'packages/core/scripts/build-if-missing.ts'], // Cold build/API/consumer fixtures copying core build helper.
+  'scripts/packages/set-release.test.ts': ['packages/core/scripts/'], // Set-module mutations and synthetic release fixtures.
   'tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts': ['tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts', ...NATIVE_STORE_CATALOG_SHARED_INPUTS], // Real PostgreSQL native-store catalog witness (with service_role).
   'tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts': ['tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts', ...NATIVE_STORE_CATALOG_SHARED_INPUTS], // Real PostgreSQL native-store catalog witness (without service_role).
   'tests/postgres/reviewedBatchForwards.test.ts': [

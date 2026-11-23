@@ -13534,6 +13534,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/agent-review-derived-inventory.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/agent-review-derived.d.mts",
       "class": "public-output"
     },

@@ -110,14 +110,28 @@ beforeAll(async () => {
   main = commit();
   git('remote', 'set-url', 'origin', '.'); setMain(main); git('checkout', '-q', '--detach', reviewed);
   initialLandingCommands = [];
+  const inventoryScript = join(root, 'scripts/installation-inventory-refresh.ts');
   initialLandingResult = await landingMerge(root, {
     runCommand: (command, args) => {
       initialLandingCommands.push({ command, args });
+      if (args.includes(inventoryScript)) {
+        // Real Docker PostgreSQL measurement is witnessed in scripts/agent-review-derived-inventory.test.ts;
+        // keep this unlisted scanner suite Docker-free while preserving exact current-only envelope semantics.
+        const env = inventoryEnvelope(read(INVENTORY_PATH));
+        const nextCurrent = structuredClone(env.value.current);
+        for (const [profile, entry] of Object.entries(nextCurrent.profiles)) {
+          (entry as { objectInventorySha256: string }).objectInventorySha256 = createHash('sha256')
+            .update(`derived-fixture:${profile}:${read(MIGRATION_REGISTRIES[0])}`)
+            .digest('hex');
+        }
+        write(INVENTORY_PATH, env.before + JSON.stringify(nextCurrent, null, 2).replaceAll('\n', '\n  ') + env.after);
+        return;
+      }
       execFileSync(command, args, { cwd: root, env: fixtureEnvironment, stdio: 'inherit', timeout: 900000 });
     },
   });
   merged = initialLandingResult.head;
-}, 600000);
+}, 180000);
 afterAll(() => {
   vi.unstubAllEnvs();
   if (root) rmSync(root, { recursive: true, force: true });
