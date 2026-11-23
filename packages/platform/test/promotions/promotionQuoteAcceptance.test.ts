@@ -1,5 +1,7 @@
+import { createHash, createHmac } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPromotionQuoteAcceptance } from "../../src/promotions/index.js";
+import { verifySelectedPromotionQuoteAcceptance } from "../../src/promotions/promotionQuoteAcceptanceEnvelope.js";
 import { acceptanceRequest, quoteSnapshot } from "./acceptanceFixtures.js";
 import {
   issuePromotionQuoteAcceptance,
@@ -101,7 +103,7 @@ describe("promotion quote acceptance", () => {
       keyring: { current: OLD_SECRET }, now: new Date("2026-07-14T11:00:00.000Z"),
     })).toEqual({ accepted: false, reason: "expired", keySlot: "current", expiryBucket: "expired" });
     expect(verifyPromotionQuoteAcceptanceWithOutcome({
-      token: `${token.slice(0, -1)}x`, request, quote, expectedTotal: quote.totalGross,
+      token: token.replace(/(?<=\.)./, char => char === "A" ? "B" : "A"), request, quote, expectedTotal: quote.totalGross,
       keyring: { current: OLD_SECRET }, now: NOW,
     })).toEqual({ accepted: false, reason: "signature_invalid", keySlot: "none", expiryBucket: "none" });
   });
@@ -158,6 +160,87 @@ describe("promotion quote acceptance", () => {
       request, quote: withDetails, keyring: { current: OLD_SECRET }, now: NOW,
     })).toBe(token);
     expect(verify(token, request, withDetails, NOW)).toBe(true);
+  });
+});
+
+describe("compatible v1 envelopes", () => {
+  const projectedRequest = { actor: "demo-buyer", selection: "demo-offer" };
+  const ownerQuoteDigest = "a".repeat(64);
+  const purpose = "offer-review" as const;
+  const request = { promoCodes: ["save80"] };
+  const instances = [OLD_SECRET, NEW_SECRET].map((current, i) => ({
+    keyring: i ? { current, previous: OLD_SECRET } : { current },
+    reader: createPromotionQuoteAcceptance({ purpose, projectRequest: () => projectedRequest }),
+  }));
+  const { quote } = fixture();
+  const getInput = (keyring = instances[0]!.keyring) => ({
+    request, quote, expectedTotal: quote.totalGross, keyring, now: NOW,
+  });
+  const oldPayload = () => JSON.parse(Buffer.from(instances[0]!.reader.issuePromotionQuoteAcceptance(getInput())!.split(".")[0]!, "base64url").toString());
+  const seal = (data: unknown) => signed(Buffer.from(JSON.stringify(data)));
+  const signed = (bytes: Buffer) => {
+    const encoded = bytes.toString("base64url");
+    return `${encoded}.${createHmac("sha256", OLD_SECRET).update("openlup.offer-review.v1." + encoded).digest("base64url")}`;
+  };
+  const selectedInput = () => ({ ...getInput(), projectedRequest, promoCodes: ["  SAVE80 "], purpose, expectedOwnerQuoteDigest: ownerQuoteDigest });
+  const neutral = (reason: string) => ({ accepted: false, reason, keySlot: "none", expiryBucket: "none" });
+
+  it("preserves the exact issued legacy bytes and four factory methods", () => {
+    const token = issuePromotionQuoteAcceptance({ ...fixture(), keyring: { current: OLD_SECRET }, now: NOW })!;
+    expect(createHash("sha256").update(token).digest("hex")).toBe("e8af86e556af16c9440c13d423ca66c3c3a1b90f4a887ea507255306bc16c928");
+    expect(Object.keys(instances[0]!.reader)).toEqual([
+      "issuePromotionQuoteAcceptance", "issuePromotionQuoteAcceptanceWithOutcome",
+      "verifyPromotionQuoteAcceptance", "verifyPromotionQuoteAcceptanceWithOutcome",
+    ]);
+  });
+
+  it("reads independently signed v1 shapes across current and previous keys", () => {
+    const { sectionBindings: _sections, ...payload } = oldPayload();
+    const old = seal(payload), selected = seal({ ...payload, ownerQuoteDigest });
+    for (const [{ keyring, reader }, keySlot] of instances.map((item, i) => [item, i ? "previous" : "current"] as const)) {
+      const accepted = { accepted: true, reason: "accepted", keySlot, expiryBucket: "24_72h" };
+      expect(reader.verifyPromotionQuoteAcceptanceWithOutcome({ ...getInput(keyring), token: old })).toEqual(accepted);
+      expect(reader.verifyPromotionQuoteAcceptanceWithOutcome({ ...getInput(keyring), token: selected })).toEqual(neutral("malformed"));
+      expect(verifySelectedPromotionQuoteAcceptance({ ...selectedInput(), keyring, token: selected })).toEqual(accepted);
+      expect(verifySelectedPromotionQuoteAcceptance({ ...selectedInput(), keyring, token: old })).toEqual({ ...accepted, accepted: false, reason: "quote_mismatch" });
+    }
+  });
+
+  it("authenticates purpose and scope before selected expiry, digest and money", () => {
+    const payload = { ...oldPayload(), ownerQuoteDigest };
+    const token = seal(payload);
+    const expired = { ...selectedInput(), token, now: new Date(payload.exp) };
+    const authorized = { keySlot: "current", expiryBucket: "24_72h", accepted: false };
+    expect(verifySelectedPromotionQuoteAcceptance({ ...expired, purpose: undefined })).toEqual(neutral("signature_invalid"));
+    expect(verifySelectedPromotionQuoteAcceptance({ ...expired, keyring: { current: NEW_SECRET } })).toEqual(neutral("unknown_key"));
+    for (const changed of [{ ...projectedRequest, actor: "other-buyer" }, { ...projectedRequest, selection: "other-offer" }]) {
+      expect(verifySelectedPromotionQuoteAcceptance({ ...expired, projectedRequest: changed })).toEqual(neutral("request_mismatch"));
+    }
+    expect(verifySelectedPromotionQuoteAcceptance({ ...expired, token: seal(oldPayload()), projectedRequest: {} })).toEqual(neutral("request_mismatch"));
+    expect(verifySelectedPromotionQuoteAcceptance({ ...expired, promoCodes: ["DIFFERENT"] })).toEqual(neutral("code_mismatch"));
+    expect(verifySelectedPromotionQuoteAcceptance(expired)).toEqual({ ...authorized, reason: "expired", expiryBucket: "expired" });
+    expect(verifySelectedPromotionQuoteAcceptance({ ...selectedInput(), token, expectedOwnerQuoteDigest: "b".repeat(64) })).toEqual({ ...authorized, reason: "quote_mismatch" });
+    const wrongMoney = { ...quote, totalGross: { ...quote.totalGross, amountMinor: quote.totalGross.amountMinor + 1 } };
+    expect(verifySelectedPromotionQuoteAcceptance({ ...selectedInput(), token, quote: wrongMoney })).toEqual({ ...authorized, reason: "quote_mismatch", mismatchField: "totals" });
+    expect(verifySelectedPromotionQuoteAcceptance({ ...selectedInput(), token, expectedTotal: wrongMoney.totalGross })).toEqual({ ...authorized, reason: "total_mismatch" });
+    expect(verifySelectedPromotionQuoteAcceptance({ ...selectedInput(), token, expectedTotal: { ...quote.totalGross, currency: "XTS" } })).toEqual({ ...authorized, reason: "currency_mismatch" });
+    const altered = seal({ ...payload, ownerQuoteDigest: "b".repeat(64) }).split(".")[0] + "." + token.split(".")[1];
+    expect(verifySelectedPromotionQuoteAcceptance({ ...expired, token: altered })).toEqual(neutral("signature_invalid"));
+  });
+
+  it("rejects malformed envelopes in both readers without metadata", () => {
+    const payload = { ...oldPayload(), ownerQuoteDigest };
+    const token = seal(payload);
+    const invalidUtf8 = Buffer.from(JSON.stringify(payload).replace('"XXX"', '"ÿXX"'), "latin1");
+    const [encoded, signature] = token.split(".") as [string, string];
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const noncanonicalSignature = signature.slice(0, -1) + alphabet[alphabet.indexOf(signature.slice(-1)) + 1];
+    for (const malformed of ["", token + ".", token + "..anything", encoded + "=." + signature, encoded + "." + noncanonicalSignature,
+      "a".repeat(8_301), "a".repeat(8_193) + "." + signature, token + "é", signed(invalidUtf8), signed(Buffer.from(JSON.stringify(payload) + "{}")),
+      seal({ ...payload, ownerQuoteDigest: "A".repeat(64) }), seal({ ...payload, unexpected: true })]) {
+      expect(verifySelectedPromotionQuoteAcceptance({ ...selectedInput(), token: malformed })).toEqual(neutral("malformed"));
+      expect(instances[0]!.reader.verifyPromotionQuoteAcceptanceWithOutcome({ ...getInput(), token: malformed })).toEqual(neutral("malformed"));
+    }
   });
 });
 
