@@ -6905,6 +6905,20 @@
         "dataStatements": []
       },
       {
+        "row": "job-run-finish-lease-fence",
+        "path": "db/platform/migrations/20261125070000_job_run_finish_lease_fence.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.platform_finish_job_run_v2(text,uuid,text,integer,integer,text,text,jsonb)",
+            "beforeSha256": "4bdac6fcbc2c095d4ea65735bf2d9e285edd2f8198ec85563e6994d0450b44dd",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "tax-coverage-revisions",
         "path": "db/platform/migrations/20261125075000_tax_coverage_revisions.sql",
         "replacedFunctions": [],
@@ -10196,6 +10210,17 @@
           "signature": "public.subscription_cancel_feedback_submit(uuid,uuid,text,boolean)",
           "beforeSha256": null,
           "afterSha256": "fde436cf46a80cbd5e0f64b30e8b949528214c4aa472197194b43e994aa673cd"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125070000_job_run_finish_lease_fence.sql",
+      "sha256": "733abd4fc89c802ecc5020c2a8d4701f55f7cfc29379cf1f7a7649b48ecce005",
+      "functions": [
+        {
+          "signature": "public.platform_finish_job_run_v2(text,uuid,text,integer,integer,text,text,jsonb)",
+          "beforeSha256": "4bdac6fcbc2c095d4ea65735bf2d9e285edd2f8198ec85563e6994d0450b44dd",
+          "afterSha256": "d9dff63fad006e02658f9e9d27f5ee6abd7cc328b05e1d6890312159ecd895a8"
         }
       ]
     },

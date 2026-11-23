@@ -736,11 +736,15 @@
         "sha256": "86ce776553a8e30f03738103b9b39756f82b08a1b43c470cdd76cb9cf8b8c3a1"
       },
       {
+        "file": "db/platform/migrations/20261125070000_job_run_finish_lease_fence.sql",
+        "sha256": "733abd4fc89c802ecc5020c2a8d4701f55f7cfc29379cf1f7a7649b48ecce005"
+      },
+      {
         "file": "db/platform/migrations/20261125075000_tax_coverage_revisions.sql",
         "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3"
       }
     ],
-    "objectInventorySha256": "5e93563294b98468832e72396d1e1b2a92faec8d7737b6fe409383bc1b7cf1b0",
+    "objectInventorySha256": "22bc5a77782c08add773239aec4517989248c938e2a129fd7b4346d0bc776415",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1500,16 +1504,20 @@
           "sha256": "86ce776553a8e30f03738103b9b39756f82b08a1b43c470cdd76cb9cf8b8c3a1"
         },
         {
+          "file": "db/platform/migrations/20261125070000_job_run_finish_lease_fence.sql",
+          "sha256": "733abd4fc89c802ecc5020c2a8d4701f55f7cfc29379cf1f7a7649b48ecce005"
+        },
+        {
           "file": "db/platform/migrations/20261125075000_tax_coverage_revisions.sql",
           "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "46bc01c07b89562f4e4a06f3eb38c930b5328f5b3d1eed3ece4c33ff83d37544"
+          "withRestore": "058cd2943d90d68cd2fc4d07e0b45bfeb972ed3f16a0ab704b197087071dfe5a"
         },
         "separateMigrator": {
-          "withRestore": "2cb9eac801f08a751a9c54117e196b8e5ffaae1dc3a7d40b228182460e3be55a"
+          "withRestore": "2b0f270ffac035f731d7c7b9af23604079ac91b67d4c8039074fdd94ccbd9f8d"
         }
       }
     },
@@ -2264,13 +2272,17 @@
           "sha256": "86ce776553a8e30f03738103b9b39756f82b08a1b43c470cdd76cb9cf8b8c3a1"
         },
         {
+          "file": "db/platform/migrations/20261125070000_job_run_finish_lease_fence.sql",
+          "sha256": "733abd4fc89c802ecc5020c2a8d4701f55f7cfc29379cf1f7a7649b48ecce005"
+        },
+        {
           "file": "db/platform/migrations/20261125075000_tax_coverage_revisions.sql",
           "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "7646aa9cca950f1443c83f9df6d97b99681d5a1c7f779dc580632a16156dca59",
-        "operatorProvisioned": "dd37f47dcb023e482b9d4eb036a20f7ee9ae616046798788014af13e8915068c"
+        "installerManaged": "26e84e265e255aaf3bfe6f19304913d832cbed0351e520877ee030df73aab220",
+        "operatorProvisioned": "7c8840fbe32f82c4e5c5f4d65ce8428e025ef6b0a3293587b966888c68430201"
       }
     }
   },
@@ -3189,6 +3201,11 @@
       "file": "20261125060000_subscription_cancel_feedback.sql",
       "source": "db/platform/migrations/20261125060000_subscription_cancel_feedback.sql",
       "sha256": "86ce776553a8e30f03738103b9b39756f82b08a1b43c470cdd76cb9cf8b8c3a1"
+    },
+    {
+      "file": "20261125070000_job_run_finish_lease_fence.sql",
+      "source": "db/platform/migrations/20261125070000_job_run_finish_lease_fence.sql",
+      "sha256": "733abd4fc89c802ecc5020c2a8d4701f55f7cfc29379cf1f7a7649b48ecce005"
     },
     {
       "file": "20261125075000_tax_coverage_revisions.sql",

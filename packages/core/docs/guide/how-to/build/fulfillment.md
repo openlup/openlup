@@ -171,8 +171,8 @@ checkpoint and stores the following message in `platform_job_runs.error`.
 > order and record it manually
 
 Failed pages return HTTP 502 with the original diagnostic. A checkpoint-read
-failure makes no provider call. The next acquired polling tick starts at page 0.
-Repeated ledger read errors can delay the repeated-failure bound for a page, but no exception is ever skipped.
+failure makes no provider call. A finish from a run that no longer holds the lease is not accepted.
+Repeated ledger read errors can delay the repeated-failure bound for a page.
 Sequential cursor translation belongs to the adapter.
 
 Pass the selected adapter's `orderIdentity` mapping to native intake when its

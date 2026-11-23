@@ -1598,6 +1598,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125070000_job_run_finish_lease_fence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261125075000_tax_coverage_revisions.sql",
       "class": "public-output"
     },
@@ -5255,6 +5259,10 @@
     },
     {
       "path": "packages/platform/sql/20261125060000_subscription_cancel_feedback.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125070000_job_run_finish_lease_fence.sql",
       "class": "public-output"
     },
     {
