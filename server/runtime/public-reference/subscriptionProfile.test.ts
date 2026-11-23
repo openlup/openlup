@@ -125,7 +125,8 @@ it.each([undefined, "", "https://external.invalid", "http://127.0.0.1:56421/path
 
 it("uses the profile's selected hop count instead of the ambient count", async () => {
   const baseline = readFileSync(new URL("../../../supabase/migrations/00000000000000_platform_schema_baseline.sql", import.meta.url), "utf8");
-  const env = { ...setup(config, baseline), CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS: "1" };
+  const env = setup(config, baseline);
+  env.CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS = "1";
   vi.stubEnv("CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS", "2");
   const limit = vi.fn().mockResolvedValue({ data: { allowed: false, reason: "ip_quota" }, error: null });
   const localSettings = {

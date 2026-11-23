@@ -25,7 +25,7 @@ const request = {
   headers: { "x-forwarded-for": "203.0.113.8" },
   socket: { remoteAddress: "192.0.2.10" },
   body: { email: "buyer@example.test" },
-} as HttpRequest;
+} as unknown as HttpRequest;
 const response = () => ({ status: vi.fn().mockReturnThis(), json: vi.fn(), setHeader: vi.fn() }) as unknown as HttpResponse;
 
 beforeEach(() => {

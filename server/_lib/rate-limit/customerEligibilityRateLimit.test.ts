@@ -78,7 +78,7 @@ describe("customer eligibility rate limit", () => {
       request: {
         headers: { "x-forwarded-for": "198.51.100.7" },
         socket: { remoteAddress: "192.0.2.10" },
-      } as HttpRequest,
+      } as unknown as HttpRequest,
       email: "Buyer@Example.com",
     });
 

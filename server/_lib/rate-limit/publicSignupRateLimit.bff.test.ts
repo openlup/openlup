@@ -6,7 +6,7 @@ function request(method: string, body: unknown): HttpRequest {
   return {
     method, body, headers: { "x-forwarded-for": "203.0.113.8" },
     socket: { remoteAddress: "192.0.2.10" },
-  } as HttpRequest;
+  } as unknown as HttpRequest;
 }
 
 describe("maybeCheckPublicSignupRateLimit", () => {

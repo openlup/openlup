@@ -44,7 +44,10 @@ async function capturedSession(s: Setup, email: string, customerSignIn?: ReturnT
     body: customerSignIn ? { email, locale: "en" } : { email },
   } as never, res as never);
   assert.equal(res.statusCode, 200, "reference sign-in failed");
-  await assertLimiterAddress(s, email, remoteAddress, customerSignIn ? "managed" : "reference");
+  // The owned-stack runner always selects a phase. The policy test stubs sign-in and has no limiter ledger.
+  if (s.phase !== undefined) {
+    await assertLimiterAddress(s, email, remoteAddress, customerSignIn ? "managed" : "reference");
+  }
   for (let attempt = 0; attempt < 30; attempt++) {
     const list = await fetch(`${s.mail}/api/v1/messages`, { signal: AbortSignal.timeout(3000) });
     assert.equal(list.status, 200);

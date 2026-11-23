@@ -238,7 +238,7 @@ describe("captured reference checkout", () => {
         method: "POST", body: { command }, query: {},
         headers: { "x-forwarded-for": `${forwarded}, 203.0.113.7`, [HOSTED_CLIENT_ADDRESS_HEADER]: "198.51.100.9" },
         socket: { remoteAddress: "192.0.2.10" },
-      } as HttpRequest, response);
+      } as unknown as HttpRequest, response);
 
       expect.soft(rpc).toHaveBeenNthCalledWith(1, "public_record_checkout_attempt", expect.objectContaining({
         p_ip_hash: hashCheckoutRateLimitKey(expected),
