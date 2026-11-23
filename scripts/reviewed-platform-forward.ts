@@ -235,9 +235,22 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
   return readForwardRegistry(bytes, false);
 }
 
+const forwardRegistryCache = new Map<string, ReviewedForwardRegistry>();
+const MAX_FORWARD_REGISTRY_CACHE_ENTRIES = 64;
+
 // Only approval-history comparison may read the exact prior inventories.
 // Candidate admission always uses the strict public reader above.
 function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwardRegistry {
+  const cacheKey = `${historical ? "h" : "c"}:${sqlSha256(bytes)}`;
+  const cached = forwardRegistryCache.get(cacheKey);
+  if (cached) return structuredClone(cached);
+  const validated = parseAndValidateForwardRegistry(bytes, historical);
+  if (forwardRegistryCache.size >= MAX_FORWARD_REGISTRY_CACHE_ENTRIES) forwardRegistryCache.clear();
+  forwardRegistryCache.set(cacheKey, structuredClone(validated));
+  return validated;
+}
+
+function parseAndValidateForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwardRegistry {
   const raw = parseStrictJson(bytes.toString("utf8"), REVIEWED_FORWARD_PATH) as ReviewedForwardRegistry;
   if (raw.schemaVersion !== 1 || !hash(raw.baselineSha256) || !Array.isArray(raw.replacementForwards) || raw.replacementForwards.length !== 2 || !Array.isArray(raw.creationForwards) || raw.creationForwards.length !== 1) throw new Error("reviewed replacement registry requires one baseline, two replacement forwards and one creation forward");
   const paths = new Set<string>(), signatures = new Set<string>(), replaced = new Set<string>();
@@ -428,6 +441,44 @@ function cachedDumpSqlStatements(bytes: Buffer, asciiStructure = false): readonl
   return statements;
 }
 
+type CreateFunctionIndex = {
+  readonly allCreateFunctions: readonly string[];
+  readonly byName: ReadonlyMap<string, readonly string[]>;
+  readonly exactStatements: ReadonlySet<string>;
+};
+const createFunctionIndexCache = new WeakMap<Buffer, CreateFunctionIndex>();
+const createFunctionIndexByHash = new Map<string, CreateFunctionIndex>();
+function cachedCreateFunctionIndex(bytes: Buffer): CreateFunctionIndex {
+  let index = createFunctionIndexCache.get(bytes);
+  if (!index) {
+    const key = sqlSha256(bytes);
+    index = createFunctionIndexByHash.get(key);
+    if (!index) {
+      const statements = cachedDumpSqlStatements(bytes);
+      const allCreateFunctions: string[] = [];
+      const byName = new Map<string, string[]>();
+      const exactStatements = new Set<string>();
+      for (const statement of statements) {
+        exactStatements.add(statement);
+        if (!/^CREATE(?: OR REPLACE)? FUNCTION\s/iu.test(statement)) continue;
+        allCreateFunctions.push(statement);
+        const prefix = /^CREATE(?: OR REPLACE)? FUNCTION ((?:public|private)\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
+        if (prefix) {
+          const name = prefix[1]!.toLowerCase();
+          const list = byName.get(name);
+          if (list) list.push(statement);
+          else byName.set(name, [statement]);
+        }
+      }
+      index = { allCreateFunctions, byName, exactStatements };
+      if (createFunctionIndexByHash.size >= MAX_SQL_STATEMENT_CACHE_ENTRIES) createFunctionIndexByHash.clear();
+      createFunctionIndexByHash.set(key, index);
+    }
+    createFunctionIndexCache.set(bytes, index);
+  }
+  return index;
+}
+
 function qualifiedFunctionIdentity(statement: string): string | null {
   const header = /^CREATE(?: OR REPLACE)? FUNCTION ((?:public|acquisition_private)\.[a-z_][a-z0-9_]*)\(([\s\S]*?)\)\s+RETURNS\s/iu.exec(statement);
   if (!header) return null;
@@ -481,7 +532,10 @@ const identityHeaderSql = (statement: string) => statement.replace(/(public\.sub
 
 export function reviewedFunctionDefinitions(bytes: Buffer, names?: Set<string>): Map<string, string> {
   const result = new Map<string, string>();
-  for (const statement of names !== undefined ? cachedDumpSqlStatements(bytes) : sqlStatements(bytes.toString("utf8"), false)) {
+  const statements = names !== undefined
+    ? [...names].flatMap(name => cachedCreateFunctionIndex(bytes).byName.get(name.toLowerCase()) ?? [])
+    : sqlStatements(bytes.toString("utf8"), false);
+  for (const statement of statements) {
     const prefix = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(/iu.exec(statement);
     if (!prefix || (names && !names.has(prefix[1]!.toLowerCase()))) continue;
     const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\)\s+RETURNS\s+/iu.exec(identityHeaderSql(statement));
@@ -1967,7 +2021,11 @@ function batchedFunctionDefinitionFromStatement(statement: string, names?: Set<s
 /** Separate identity reader; raw CREATE bytes, including defaults, stay hashed. */
 export function batchedFunctionDefinitions(bytes: Buffer, names?: Set<string>): Map<string, string> {
   const result = new Map<string, string>();
-  for (const statement of cachedDumpSqlStatements(bytes)) {
+  const index = cachedCreateFunctionIndex(bytes);
+  const statements = names !== undefined
+    ? [...names].flatMap(name => index.byName.get(name.toLowerCase()) ?? [])
+    : index.allCreateFunctions;
+  for (const statement of statements) {
     const definition = batchedFunctionDefinitionFromStatement(statement, names);
     if (!definition) continue;
     const [signature, digest] = definition;
@@ -2087,8 +2145,9 @@ export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buff
   if (nativeReplacement) {
     const statement = statements[0]!;
     const name = forward.functions[0]!.signature;
+    const targetName = name.split("(")[0]!.toLowerCase();
     let previous: string | undefined;
-    for (const source of preceding) for (const sql of cachedDumpSqlStatements(source)) {
+    for (const source of preceding) for (const sql of cachedCreateFunctionIndex(source).byName.get(targetName) ?? []) {
       if (batchedFunctionDefinitionFromStatement(sql, names)?.[0] === name) previous = sql;
     }
     if (statements.length !== 1 || !/^CREATE OR REPLACE FUNCTION /u.test(statement) || !previous || headerAttributes(statement) !== headerAttributes(previous)) throw new Error("reviewed batch portable replacement attributes drifted");
@@ -2192,11 +2251,19 @@ export function assertManagedCommerceForward(registry: ReviewedForwardRegistry, 
   const names = new Set(forward.functions.map(fn => fn.signature.split("(")[0]!));
   const prior = new Map<string, string>();
   for (const source of preceding) {
+    if (source.path === MANAGED_BASELINE) {
+      const idx = cachedCreateFunctionIndex(source.bytes);
+      for (const name of names) for (const statement of idx.byName.get(name.toLowerCase()) ?? []) {
+        const definition = batchedFunctionDefinitionFromStatement(statement, names);
+        if (definition) prior.set(definition[0], definition[1]);
+      }
+      continue;
+    }
     for (const statement of cachedDumpSqlStatements(source.bytes)) {
       // The immutable dump is bound by its hash. Later function DDL must use the
       // existing reader's supported spelling, rather than silently hiding a
       // replacement behind comments, quoted names or keyword whitespace.
-      if (source.path !== MANAGED_BASELINE && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed M11 commerce refuses unsupported preceding function DDL");
+      if (/^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed M11 commerce refuses unsupported preceding function DDL");
       const definition = batchedFunctionDefinitionFromStatement(statement, names);
       if (definition) prior.set(definition[0], definition[1]);
     }
@@ -2388,17 +2455,30 @@ export function assertSupportAuthorityForward(registry: ReviewedForwardRegistry,
   const names = new Set(forward.functions.map(fn => fn.signature.split("(")[0]!));
   const prior = new Map<string, string>();
   const checks = new Map<string, string>();
-  for (const source of preceding) for (const statement of cachedDumpSqlStatements(source.bytes)) {
-    if (source.path !== baseline && [...names].some(name => statement.includes(name.split(".")[1]!)) && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: CONSTRAINT)? TRIGGER /iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed M12 support refuses unsupported preceding function DDL");
-    const definition = batchedFunctionDefinitionFromStatement(statement, names);
-    if (definition) prior.set(definition[0], definition[1]);
-    if (!portable) for (const binding of forward.constraints!) {
-      if (statement === binding.beforeSql) checks.set(binding.name, statement);
-      // The baseline is immutable. Outside it, only M11's exact audit pair
-      // may mutate these tables before M12. Comments/quoted syntax refuse too.
-      if (source.path !== baseline && /^(?:ALTER|DROP)\b/iu.test(statement) && statement.includes(binding.table.split(".")[1]!)) {
-        const m11 = registry.managedCommerceForwards![2]!;
-        if (source.path !== m11.path || !m11.statements.slice(1, 3).some(pin => pin.sql === statement)) throw new Error("reviewed M12 support CHECK preimage changed in the preceding rail");
+  for (const source of preceding) {
+    if (source.path === baseline) {
+      const idx = cachedCreateFunctionIndex(source.bytes);
+      for (const name of names) for (const statement of idx.byName.get(name.toLowerCase()) ?? []) {
+        const definition = batchedFunctionDefinitionFromStatement(statement, names);
+        if (definition) prior.set(definition[0], definition[1]);
+      }
+      if (!portable) for (const binding of forward.constraints!) {
+        if (idx.exactStatements.has(binding.beforeSql)) checks.set(binding.name, binding.beforeSql);
+      }
+      continue;
+    }
+    for (const statement of cachedDumpSqlStatements(source.bytes)) {
+      if ([...names].some(name => statement.includes(name.split(".")[1]!)) && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: CONSTRAINT)? TRIGGER /iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed M12 support refuses unsupported preceding function DDL");
+      const definition = batchedFunctionDefinitionFromStatement(statement, names);
+      if (definition) prior.set(definition[0], definition[1]);
+      if (!portable) for (const binding of forward.constraints!) {
+        if (statement === binding.beforeSql) checks.set(binding.name, statement);
+        // The baseline is immutable. Outside it, only M11's exact audit pair
+        // may mutate these tables before M12. Comments/quoted syntax refuse too.
+        if (/^(?:ALTER|DROP)\b/iu.test(statement) && statement.includes(binding.table.split(".")[1]!)) {
+          const m11 = registry.managedCommerceForwards![2]!;
+          if (source.path !== m11.path || !m11.statements.slice(1, 3).some(pin => pin.sql === statement)) throw new Error("reviewed M12 support CHECK preimage changed in the preceding rail");
+        }
       }
     }
   }
@@ -2705,10 +2785,20 @@ export function assertChannelIngestForward(registry: ReviewedForwardRegistry, pa
   }
   const names = new Set(forward.functions.map(fn => fn.signature.split("(")[0]!));
   const prior = new Map<string, string>();
-  for (const source of preceding) for (const statement of cachedDumpSqlStatements(source.bytes)) {
-    if (source.path !== baseline && [...names].some(name => statement.includes(name.split(".")[1]!)) && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: CONSTRAINT)? TRIGGER /iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed M17 channel refuses unsupported preceding function DDL");
-    const definition = batchedFunctionDefinitionFromStatement(statement, names);
-    if (definition) prior.set(definition[0], definition[1]);
+  for (const source of preceding) {
+    if (source.path === baseline) {
+      const idx = cachedCreateFunctionIndex(source.bytes);
+      for (const name of names) for (const statement of idx.byName.get(name.toLowerCase()) ?? []) {
+        const definition = batchedFunctionDefinitionFromStatement(statement, names);
+        if (definition) prior.set(definition[0], definition[1]);
+      }
+      continue;
+    }
+    for (const statement of cachedDumpSqlStatements(source.bytes)) {
+      if ([...names].some(name => statement.includes(name.split(".")[1]!)) && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: CONSTRAINT)? TRIGGER /iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed M17 channel refuses unsupported preceding function DDL");
+      const definition = batchedFunctionDefinitionFromStatement(statement, names);
+      if (definition) prior.set(definition[0], definition[1]);
+    }
   }
   for (const fn of forward.functions) if ((prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed M17 channel actual function preimage drifted");
 }
