@@ -204,7 +204,11 @@ describe("account mutations template isolation", () => {
       expect((await second.owner.query("SELECT datname FROM pg_catalog.pg_database WHERE datname=$1", [firstDb])).rows).toEqual([]);
       await second.owner.query("CREATE ROLE leaked_template_witness_role NOLOGIN");
       closedByAssertion = true;
-      await expect(template.close()).rejects.toThrow("account_mutations_template_cluster_role_mutation_leaked");
+      const [firstClose, secondClose] = await Promise.allSettled([template.close(), template.close()]);
+      expect(firstClose.status).toBe("rejected");
+      expect(secondClose.status).toBe("rejected");
+      if (firstClose.status === "rejected") expect(String(firstClose.reason)).toContain("account_mutations_template_cluster_role_mutation_leaked");
+      if (secondClose.status === "rejected") expect(String(secondClose.reason)).toContain("account_mutations_template_cluster_role_mutation_leaked");
       await expect(template.clone("after-close")).rejects.toThrow("account_mutations_template_closed");
     } finally {
       if (!closedByAssertion) await template.close();

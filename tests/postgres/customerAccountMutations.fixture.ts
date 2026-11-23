@@ -250,14 +250,19 @@ export async function installAccountMutations(profile: AccountProfile, measure =
 /**
  * Migrate one disposable PostgreSQL database per profile into a sealed template
  * database and clone isolated per-test/per-role databases in ~100 ms.
- * Callers must keep cluster-wide role grants balanced; `close()` verifies the
- * `pg_roles`/`pg_auth_members` digest matches the post-migration baseline.
+ * Callers must keep cluster-wide role grants balanced and avoid concurrent
+ * `qualified-admin` capture/restore across sibling clones of one template
+ * (those helpers temporarily GRANT/REVOKE `platform_acquisition_owner`
+ * cluster-wide). `close()` verifies the `pg_roles`/`pg_auth_members` digest
+ * matches the post-migration baseline and bounds every open clone pool through
+ * `closePostgres`.
  */
 export async function createAccountMutationsTemplate(profile: AccountProfile, label = "template", root?: string, upgradeRoot?: string): Promise<AccountMutationsTemplate> {
   const container = await runPostgresContainer({ name: `account-mutations-tpl-${profile}-${label}-${process.pid}`, password: "synthetic-conformance" });
   const bootstrap = new Pool({ connectionString: container.connectionString });
   const activeClones = new Set<{ dbName: string; pools: Pool[]; closed: boolean }>();
   let templateClosed = false;
+  let closePromise: Promise<void> | undefined;
   try {
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("account_mutations_postgres_unavailable");
     const password = randomUUID();
@@ -329,27 +334,33 @@ export async function createAccountMutationsTemplate(profile: AccountProfile, la
           };
         });
       },
-      close: async () => {
-        if (templateClosed) return;
+      close: () => {
+        if (closePromise) return closePromise;
         templateClosed = true;
-        await ddlChain;
-        const remainingPools: Pool[] = [bootstrap];
-        let roleMismatchError: Error | undefined;
-        try {
-          const openClones = [...activeClones];
-          activeClones.clear();
-          for (const entry of openClones) {
-            entry.closed = true;
-            await endPoolsSafely(entry.pools);
+        closePromise = (async () => {
+          await ddlChain;
+          const remainingPools: Pool[] = [bootstrap];
+          let roleMismatchError: Error | undefined;
+          try {
+            const openClones = [...activeClones];
+            activeClones.clear();
+            for (const entry of openClones) {
+              entry.closed = true;
+              for (const value of entry.pools) {
+                value.on("error", () => {});
+                remainingPools.push(value);
+              }
+            }
+            const finalRoleDigest = await readClusterRoleDigest(bootstrap);
+            if (finalRoleDigest !== baselineRoleDigest) {
+              roleMismatchError = new Error("account_mutations_template_cluster_role_mutation_leaked");
+            }
+          } finally {
+            await closePostgres(container, [...new Set(remainingPools)]);
           }
-          const finalRoleDigest = await readClusterRoleDigest(bootstrap);
-          if (finalRoleDigest !== baselineRoleDigest) {
-            roleMismatchError = new Error("account_mutations_template_cluster_role_mutation_leaked");
-          }
-        } finally {
-          await closePostgres(container, remainingPools);
-        }
-        if (roleMismatchError) throw roleMismatchError;
+          if (roleMismatchError) throw roleMismatchError;
+        })();
+        return closePromise;
       },
     };
   } catch (error) {
