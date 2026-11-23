@@ -141,21 +141,22 @@ describe("catalogue conformance findings", () => {
     const packs = Array.from({ length: 11 }, () => ({ pack: { ...pack(), types: [] } }));
     packs[2] = outer;
     packs[10] = items;
+    const sibling = { pack: { ...items.pack, types: [items.pack.types.pop()] }, drafts: [items.drafts.shift()] };
+    packs.push(sibling);
     const report = await checkSubject({ packs });
     const at = "/packs/10";
     expect(report.exitCode).toBe(1);
     expect(errors(report).map(({ path, code }) => [path, code])).toEqual([
       ["/packs/2/pack/categories", "definition_unknown_field"],
-      [`${at}/drafts/0/product/dimensions/1`, "dimension_not_installed"],
-      [`${at}/drafts/0/skus/0/options/choice`, "option_value_invalid"],
       [`${at}/pack/types/0/subscriptionProfileRef`, "definition_unknown_profile_ref"],
       [`${at}/pack/types/0/taxClass`, "definition_unknown_tax_class"],
       [`${at}/pack/types/1/promotions`, "definition_unknown_field"],
+      ["/packs/11/drafts/0/product/dimensions/1", "dimension_not_installed"],
+      ["/packs/11/drafts/0/skus/0/options/choice", "option_value_invalid"],
     ]);
-    const path = `${at}/pack/types/0`;
-    const value = '{"dimensions":[],"key":"items:invalid","netContentUnits":["openlup:g"],"subscriptionProfileRef":{"key":"items:repeat","version":1},"taxClass":"missing","units":';
     expect(report.findings.filter(finding => finding.code === "advisory_fixtures_skipped_definition_invalid")).toMatchObject([
-      { path, severity: "warning", observed: `${path} = ${value}`, cause: "Fixtures of an invalid type are not evaluated." },
+      { path: `${at}/pack`, severity: "warning", observed: expect.stringContaining(`${at}/pack = {"capabilities":{},"id":"items"`),
+        cause: "Fixtures of a pack with definition findings are not evaluated." },
     ]);
   });
 
@@ -175,9 +176,9 @@ describe("catalogue conformance findings", () => {
     const drafts = [{ ...base, product: { ...base.product, sharedContent: { title: "Sample" } } }];
     const report = await project({ packs: [{ pack: { ...p, types: [invalid, sibling] }, drafts }] });
     expect(report).toMatchObject({ state: "violated", exitCode: 1 });
-    expect(errors(report).map(({ code, path }) => [code, path])).toEqual([
-      ["conformance_owner_unavailable", "/packs/0/drafts/0/product/sharedContent"],
-      finding,
+    expect(errors(report).map(({ code, path }) => [code, path])).toEqual([finding]);
+    expect(report.findings.filter(({ code }) => code === "advisory_fixtures_skipped_definition_invalid")).toMatchObject([
+      { path: "/packs/0/pack", severity: "warning" },
     ]);
     expect(validateContent).not.toHaveBeenCalled();
   });
@@ -239,16 +240,19 @@ describe("catalogue conformance findings", () => {
 
   it.each([
     ["Loaded from file:///tmp/synthetic/source.mjs", "<host path>"],
+    ["Loaded from </tmp/synthetic/source.mjs>", "<host path>"],
+    ["Loaded from <file:sample>", "<host path>"],
     ["see /tmp/synthetic/source.mjs now", "<host path>"],
     ["/Users/a/x.mjs", "<host path>"],
     ["C:\\Program Files\\Catalogue\\pack.mjs", "<host path>"],
     ["C:\\pack.mjs", "<host path>"],
     ["\\\\host\\share\\pack.mjs", "<host path>"],
-    ["/same", "/same"],
-    ["https://example.com/a/b", "https://example.com/a/b"],
+    ["/same", "<host path>"],
+    ["https://example.com/a/b", "<host path>"],
+    ["profile:x", "<host path>"],
     ["sample:ml", "sample:ml"],
-    ["profile:x", "profile:x"],
-  ])("redacts only host paths in a trusted string value", async (input, expected) => {
+    ["sample.ml", "sample.ml"],
+  ])("redacts path-like trusted string values", async (input, expected) => {
     const report = await project({ packs: [{ pack: { ...pack(), extra: input } }] });
     expect(errors(report).map(({ observed }) => observed)).toEqual([
       "/packs/0/pack/extra = " + JSON.stringify(expected),
@@ -258,7 +262,7 @@ describe("catalogue conformance findings", () => {
   it("trusted_observed_values_redact_host_paths", async () => {
     const paths = ["/tmp/synthetic/source.mjs", "file:///tmp/synthetic/source.mjs", "C:\\synthetic\\source.mjs", "\\\\host\\share\\source.mjs"];
     const report = await project({ packs: [{ pack: { ...pack(), direct: paths[0],
-      nested: { ["source=" + paths[0]]: paths.slice(1) } } }] });
+      nested: { "source</same>": paths.slice(1) } } }] });
     expect(report.exitCode).toBe(1);
     expect(paths.some(path => JSON.stringify(report).includes(JSON.stringify(path).slice(1, -1)))).toBe(false);
     expect(errors(report).map(({ observed }) => observed)).toEqual([
@@ -779,7 +783,7 @@ describe("offline catalogue conformance", () => {
     expect(errors(report)).toEqual([expect.objectContaining({
       code: "duplicate_sku_id",
       path,
-      observed: `${path} = ${JSON.stringify(skuId)}`,
+      observed: `${path} = "<host path>"`,
       fix: "Remove the repeated SKU entry while preserving authoritative identity.",
     })]);
   });
@@ -947,6 +951,19 @@ describe("offline catalogue conformance", () => {
       expect(operational.exitCode).toBe(74);
       expect(operational.findings).toEqual([expect.objectContaining({ code: "OPENLUP_E_CLI_FAILURE" })]);
       expect(JSON.stringify(operational)).not.toMatch(/SENSITIVE_CRYPTO_FAILURE|ERR_OSSL_EVP_UNSUPPORTED/u);
+
+      const invalidType = { ...p.types[0], key: "stationery:invalid", taxClass: "absent" };
+      const mixed = { ...valid.packs[0], pack: { ...p, types: [invalidType, ...p.types] } };
+      writeFileSync(file, JSON.stringify({ packs: [mixed] }));
+      const skipped = call(args, ["--import", `data:text/javascript,${encodeURIComponent(preload)}`]);
+      expect(skipped).toMatchObject({ state: "violated", exitCode: 1 });
+      expect(skipped.findings.map(({ code, severity, path }: CatalogConformanceReport["findings"][number]) =>
+        [code, severity, path])).toEqual([
+        ["advisory_fixtures_skipped_definition_invalid", "warning", "/packs/0/pack"],
+        ["definition_unknown_tax_class", "error", "/packs/0/pack/types/0/taxClass"],
+        ["advisory_net_content_not_publishable", "warning", "/packs/0/pack/types/1/netContentUnits"],
+      ]);
+
       const collisionPack = pack(), definition = collisionPack.types[0];
       definition.dimensions = [{ key: "flag", kind: "boolean" }];
       definition.attributes = [{ key: "flag", scope: "variant", valueType: { kind: "boolean" }, required: false,

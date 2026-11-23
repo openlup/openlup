@@ -16,7 +16,7 @@ export const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, 
     + "Schema version 3 fixtures require `product.sharedContent`. Check them with `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue.ts` and a registered `validateContent`. "
     + "For an otherwise valid v3 fixture, inert `catalogue check` reports `conformance_owner_unavailable` and exits 2.",
     "use-schema-version-3-for-offline-fixtures", "warning"),
-  advisory_fixtures_skipped_definition_invalid: rule("Fixtures of an invalid type are not evaluated.", "Fix the definition findings first.", "rerun-fixtures-after-definition-repair", "warning"),
+  advisory_fixtures_skipped_definition_invalid: rule("Fixtures of a pack with definition findings are not evaluated.", "Fix the definition findings first.", "rerun-fixtures-after-definition-repair", "warning"),
   attribute_projection_text_too_large: rule("Every projected text slot fits the unconditional composite B-tree index.", "Keep the UTF-8 text slot within 2048 bytes, including the full localized JSON map; facet/filter flags do not bypass this limit.", "add-attribute"),
   attribute_storage_too_large: rule("Each attribute object fits 1 MiB of PostgreSQL-rendered JSONB text.", "Reduce this product or SKU object's rendered UTF-8 size, including separator spaces.", "add-attribute"),
   attribute_values_invalid: rule("Values use bounded canonical JSON objects and unique SKU identities.", "Correct the object shape, identity, JSON depth or byte bound.", "add-attribute"),

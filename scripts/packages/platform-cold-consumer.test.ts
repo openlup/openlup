@@ -1949,8 +1949,8 @@ const pack = withCatalogPublicationRules(${JSON.stringify({ ...fixturePack, type
   call(registration("substituted.mjs", "Example", true), 74);
   const mixed = call(registration("substituted-mixed.mjs", "Example", true, true), 1);
   expect(mixed.findings.map(findingIdentity)).toEqual([
-    ["/packs/0/drafts/0/product/sharedContent", "conformance_owner_unavailable", "error"],
-    ...warnings,
+    ["/packs/0/pack", "advisory_fixtures_skipped_definition_invalid", "warning"],
+    netContentWarning,
     ["/packs/0/pack/types/1/taxClass", "definition_unknown_tax_class", "error"],
     ["/requiredChecks/0", "conformance_owner_unavailable", "error"],
   ]);

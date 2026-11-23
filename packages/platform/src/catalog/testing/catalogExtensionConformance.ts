@@ -38,7 +38,7 @@ function observedAt(subject: unknown, path: string): string {
   let remaining = 160, preview = "";
   function json(input: unknown): string {
     if (typeof input !== "string") return JSON.stringify(input);
-    const safe = /(?:^|[\s"'(=,[])(?:file:|[a-z]:[\\/]|[\\/].*[\\/])/isu.test(input) ? "<host path>" : input;
+    const safe = /[\\/]|file:/iu.test(input) ? "<host path>" : input;
     return JSON.stringify(safe.slice(0, remaining * 2));
   }
   function append(text: string): void {
@@ -202,8 +202,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
   if (typeof subject.recheck === "string") recheck = subject.recheck;
   let attributesAvailable = true, combinationsAvailable = true, packsWithContent = 0;
   const typeIdentities = new Set<string>();
-  const ready: { index: number; pack: CatalogPackInput; types: CatalogPackInput["types"];
-    invalidTypes: Map<string, string>; trusted: boolean }[] = [];
+  const ready: { index: number; pack: CatalogPackInput; types: CatalogPackInput["types"] }[] = [];
   for (const [index, entry] of subject.packs.entries()) {
     const at = `/packs/${index}`;
     if (!closed(entry, ["pack", "drafts", "quantities", "attributes", "combinations", "refusals"])
@@ -212,6 +211,10 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     }
     attributesAvailable &&= !!entry.attributes?.length;
     combinationsAvailable &&= !!entry.combinations?.length;
+    const reportSkippedFixtures = () => {
+      if ([entry.drafts, entry.quantities, entry.attributes, entry.combinations, entry.refusals].some(fixtures => fixtures?.length))
+        advise("advisory_fixtures_skipped_definition_invalid", at + "/pack");
+    };
     // Only this internal callback enters owner definitions. JSON never supplies executable code.
     const invalid = new Set<number>();
     const pack = object(entry.pack) && Array.isArray(entry.pack.types) ? { ...entry.pack, types: entry.pack.types.map((type, i) => {
@@ -224,7 +227,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       return { ...type, validateContent: validators && !invalid.has(i) ? callback : () => [] };
     }) } as CatalogPackInput : entry.pack as CatalogPackInput;
     const inspected = await owner(`${at}/pack`, () => inspectCatalogPack(pack));
-    if (!inspected) continue;
+    if (!inspected) { reportSkippedFixtures(); continue; }
     const { issues, profiles } = inspected;
     let packInvalid = false;
     for (const issue of issues) {
@@ -233,19 +236,18 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       if (typeIndex === undefined) packInvalid = true;
       else invalid.add(Number(typeIndex));
     }
-    if (packInvalid) continue;
+    if (packInvalid) { reportSkippedFixtures(); continue; }
     let definitionsRefused = invalid.size > 0;
     if (!definitionsRefused && profiles !== undefined) {
       const prepared = await owner(`${at}/pack`, () => prepareCatalogPackManifest(pack, profiles));
       definitionsRefused = !prepared || "issue" in prepared;
       if (prepared && "issue" in prepared) add(prepared.issue, `${at}/pack${prepared.issue.path}`);
     }
-    const invalidTypes = new Map<string, string>();
     const types = pack.types.filter((type, i) => {
       const path = `${at}/pack/types/${i}`;
       if (!object(type) || typeof type.key !== "string" || typeof type.version !== "number") return false;
       const identity = referenceKey(type.key, String(type.version));
-      if (invalid.has(i)) { invalidTypes.set(identity, path); return false; }
+      if (invalid.has(i)) return false;
       if (typeIdentities.has(identity)) add("definition_duplicate_identity", `${path}/key`);
       typeIdentities.add(identity);
       if (!type.units.some(unit => type.netContentUnits.includes(unit.code) && unit.dimension === "mass"
@@ -257,26 +259,17 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       });
       return true;
     });
-    ready.push({ index, pack, types, invalidTypes, trusted: validators !== undefined && !definitionsRefused });
+    if (definitionsRefused) { reportSkippedFixtures(); continue; }
+    ready.push({ index, pack, types });
   }
-  for (const { index, pack, types, invalidTypes, trusted } of ready) {
+  for (const { index, pack, types } of ready) {
     const at = `/packs/${index}`, { drafts, quantities, attributes, combinations, refusals } = subject.packs[index];
-    if (trusted) verifyCatalogRulesAtInstall(pack);
+    if (validators) verifyCatalogRulesAtInstall(pack);
     const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(types));
     if (!registry) continue;
     let contentChecked = false;
-    const skipped = new Set<string>();
-    function skipInvalidType(ref: unknown): boolean {
-      if (!object(ref) || typeof ref.key !== "string" || typeof ref.version !== "number") return false;
-      const path = invalidTypes.get(referenceKey(ref.key, String(ref.version)));
-      if (path === undefined) return false;
-      if (!skipped.has(path)) advise("advisory_fixtures_skipped_definition_invalid", path);
-      skipped.add(path);
-      return true;
-    }
     for (const [i, draft] of (drafts ?? []).entries()) {
       const path = `${at}/drafts/${i}`, version = object(draft) ? draft.schemaVersion : undefined;
-      if (object(draft) && object(draft.product) && skipInvalidType(draft.product.type)) continue;
       const schema = version === 3 ? catalogDraftPayloadV3Schema : version === 2 ? catalogDraftPayloadV2Schema : catalogDraftPayloadSchema;
       const admitted = await owner(path, () => schema.safeParse(draft));
       if (!admitted) continue;
@@ -291,7 +284,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       });
       const definition = registry.resolve(payload.product.type);
       const validation = validateDraftFacts(payload, { resolve: () => definition && { ...definition, validateContent: content => {
-        if (!trusted) {
+        if (!validators) {
           add("conformance_owner_unavailable", `${path}/product/sharedContent`, "", true);
           return [];
         }
@@ -317,7 +310,6 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     if (contentChecked) packsWithContent++;
     for (const [i, fixture] of (quantities ?? []).entries()) {
       const path = `${at}/quantities/${i}`;
-      if (object(fixture) && skipInvalidType(fixture.type)) continue;
       if (!closed(fixture, ["type", "value", "targetUnit"])) { add("conformance_subject_invalid", path); continue; }
       if (!quantityShape(fixture.value, `${path}/value`)) continue;
       if (fixture.targetUnit !== undefined && typeof fixture.targetUnit !== "string") { add("quantity_invalid", `${path}/targetUnit`); continue; }
@@ -336,7 +328,6 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     for (const field of ["attributes", "combinations"] as const) {
       for (const [i, fixture] of (field === "attributes" ? attributes ?? [] : combinations ?? []).entries()) {
         const path = `${at}/${field}/${i}`;
-        if (object(fixture) && skipInvalidType(fixture.type)) continue;
         if (!closed(fixture, field === "attributes" ? ["type", "input", "publicationRevision", "references"] : ["type", "input"])) {
           add("conformance_subject_invalid", path); continue;
         }

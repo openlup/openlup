@@ -245,7 +245,7 @@ a registered `validateContent`. For an otherwise valid v3 fixture, inert
 
 ## Rerun fixtures after definition repair
 
-Fixtures of an invalid type are not evaluated.
+Fixtures of a pack with definition findings are not evaluated.
 Fix the definition findings first.
 
 ## Upgrade a definition
