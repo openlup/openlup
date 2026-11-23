@@ -1594,6 +1594,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125060000_subscription_cancel_feedback.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5239,6 +5243,10 @@
     },
     {
       "path": "packages/platform/sql/20261125050000_subscription_preview_noop_acceptance.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125060000_subscription_cancel_feedback.sql",
       "class": "public-output"
     },
     {

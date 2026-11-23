@@ -1,3 +1,7 @@
+import { captureCompatiblePostgresRows, restoreCompatiblePostgresRows, type CompatiblePostgresTable } from "@openlup/platform/portability";
+import { createPostgresSubscriptionCommands } from "@openlup/platform/subscriptions";
+import type { SubscriptionCommand } from "@openlup/platform/subscriptions/contracts";
+import { createHash, randomUUID } from "node:crypto";
 import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
@@ -114,6 +118,281 @@ async function keyIdentity(installed: Installed) {
   return withAcquisitionOwnerWindow(installed, async client =>
     (await client.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows);
 }
+
+const feedbackTable = "subscription_cancel_feedback";
+const feedbackRoutine = "public.subscription_cancel_feedback_submit(uuid,uuid,text,boolean)";
+const reason = "schedule";
+const alternateReason = "other";
+const packetDigest = (body: unknown) => createHash("sha256").update(JSON.stringify(body)).digest("hex");
+
+function feedbackRuntime(installed: Installed): Pool {
+  const url = new URL(installed.container.connectionString);
+  url.username = installed.selection.runtimeLogin;
+  const pool = new Pool({ connectionString: url.toString() });
+  installed.pools.push(pool);
+  return pool;
+}
+
+function commands(runtime: Pool) {
+  return createPostgresSubscriptionCommands({
+    lifecycleTerms: { pauseDays: 14, pauseMonths: 1, slideMinDays: 1, slideMaxDays: 30, orderNowDelayMinutes: 15, reactivateDelayDays: 1 },
+    futureTerms: async () => { throw new Error("cancel has no future terms"); },
+    async withTransaction(work) {
+      const db = await runtime.connect();
+      try {
+        await db.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+        const result = await work(db);
+        await db.query("COMMIT");
+        return result;
+      } catch (error) { await db.query("ROLLBACK"); throw error; }
+      finally { db.release(); }
+    },
+  });
+}
+
+async function cancelSubscription(owner: Pool, runtime: Pool) {
+  const actorId = randomUUID();
+  const { rows: [subject] } = await owner.query<{ id: string; client_id: string; requested_at: string }>(`WITH client AS (
+    INSERT INTO public.clients(email,lifecycle_stage) VALUES($1,'lead') RETURNING id
+  )
+  INSERT INTO public.subscriptions(client_id,cadence_days,next_cycle_at)
+    SELECT id,28,now()+interval '28 days' FROM client
+    RETURNING id,client_id,now()::text AS requested_at`, [`${actorId}@example.invalid`]);
+  const command = {
+    actor: { kind: "customer", actorId, clientId: subject!.client_id },
+    subscriptionId: subject!.id, idempotencyKey: randomUUID(), now: subject!.requested_at,
+    action: "cancel", reason: null, survey: null, saveOffer: null, confirmedChargeTiming: false,
+  } satisfies SubscriptionCommand;
+  const receipt = await commands(runtime).apply(command);
+  if (!("eventId" in receipt) || receipt.outcome !== "applied" || !receipt.eventId) {
+    throw new Error("Fixture cancellation did not commit");
+  }
+  return { command, receipt, event: receipt.eventId, client: subject!.client_id };
+}
+
+async function submitFeedback(db: Pool | PoolClient, event: string, client: string, code: string | null, offered: boolean | null) {
+  return (await db.query<{ status: string }>("SELECT public.subscription_cancel_feedback_submit($1,$2,$3,$4) AS status",
+    [event, client, code, offered])).rows[0]!.status;
+}
+
+async function cancellationRows(owner: Pool, subscriptionId: string) {
+  return (await owner.query(`SELECT to_jsonb(s)::text AS subscription,
+    (SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id)::text FROM public.subscription_events e WHERE e.subscription_id=s.id) AS events,
+    (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id)::text FROM public.subscription_command_receipts r WHERE r.subscription_id=s.id) AS receipts
+    FROM public.subscriptions s WHERE s.id=$1`, [subscriptionId])).rows;
+}
+
+it.each(["installer-managed", "operator-provisioned"] as const)("cx1r_feedback_native_admission_and_replay (%s)", async mode => {
+  const source = await install("neon", mode, "cancel-feedback");
+  try {
+    const runtime = feedbackRuntime(source);
+    const before = await cancelSubscription(source.owner, runtime);
+    const { event, client, command, receipt } = before;
+    const foreign = (await source.owner.query<{ id: string }>(
+      "INSERT INTO public.clients(email,lifecycle_stage) VALUES('foreign@example.invalid','lead') RETURNING id")).rows[0]!.id;
+    const wrongEvent = (await source.owner.query<{ id: string }>(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
+      VALUES($1,'synthetic.retained','feedback-wrong-event','{}') RETURNING id`, [command.subscriptionId])).rows[0]!.id;
+    const retained = await cancellationRows(source.owner, command.subscriptionId);
+
+    const { rows: [acl] } = await source.owner.query(`SELECT c.relrowsecurity AS rls, p.prosecdef AS definer, p.proconfig,
+      has_function_privilege($3::name,p.oid,'EXECUTE') AS runtime_execute,
+      has_function_privilege('service_role',p.oid,'EXECUTE') AS service_execute,
+      has_table_privilege($3::name,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS runtime_table,
+      has_table_privilege('service_role',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS service_table,
+      EXISTS (SELECT FROM aclexplode(p.proacl) WHERE grantee=0) AS public_execute,
+      EXISTS (SELECT FROM aclexplode(c.relacl) WHERE grantee=0) AS public_table
+      FROM pg_proc p, pg_class c WHERE p.oid=$1::regprocedure AND c.oid=$2::regclass`,
+    [feedbackRoutine, `public.${feedbackTable}`, source.selection.runtimeLogin]);
+    expect(acl).toEqual({ rls: true, definer: true, proconfig: ["search_path=pg_catalog, pg_temp"],
+      runtime_execute: true, service_execute: true, runtime_table: false, service_table: false, public_execute: false, public_table: false });
+    expect((await runtime.query("SELECT current_user AS role")).rows).toEqual([{ role: source.selection.runtimeLogin }]);
+    for (const statement of [
+      "SELECT * FROM public.subscription_cancel_feedback",
+      "INSERT INTO public.subscription_cancel_feedback (cancel_event_id,reason_code) VALUES (gen_random_uuid(),'schedule')",
+      "UPDATE public.subscription_cancel_feedback SET reason_code='other'",
+      "DELETE FROM public.subscription_cancel_feedback",
+    ]) {
+      await expect(runtime.query(statement)).rejects.toMatchObject({ code: "42501" });
+    }
+    const browser = await runtime.connect();
+    try {
+      for (const role of ["anon", "authenticated"]) {
+        await browser.query(`SET ROLE ${role}`);
+        await expect(submitFeedback(browser, event, client, reason, true)).rejects.toMatchObject({ code: "42501" });
+        await expect(browser.query("SELECT * FROM public.subscription_cancel_feedback")).rejects.toMatchObject({ code: "42501" });
+      }
+    } finally { await browser.query("RESET ROLE"); browser.release(); }
+
+    for (const code of [null, "", "a".repeat(121), "Mixed_case", "a-b", "a\n", "ä"]) {
+      expect(await submitFeedback(runtime, event, client, code, true)).toBe("invalid_reason");
+    }
+    const missingEvent = randomUUID();
+    for (const [cancelEvent, owner] of [[wrongEvent, client], [missingEvent, client], [event, foreign]] as const) {
+      expect(await submitFeedback(runtime, cancelEvent, owner, reason, true)).toBe("cancel_not_found");
+    }
+    expect(await submitFeedback(runtime, event, foreign, "Mixed_case", true)).toBe("invalid_reason");
+    expect(await submitFeedback(runtime, missingEvent, client, "Mixed_case", true)).toBe("invalid_reason");
+    for (const offered of [false, null]) {
+      expect(await submitFeedback(runtime, event, client, reason, offered)).toBe("reason_not_offered");
+    }
+    expect((await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows).toEqual([]);
+
+    await source.owner.query(`CREATE COLLATION public.feedback_loose
+      (provider = icu, locale = 'und-u-ka-shifted-ks-level1', deterministic = false)`);
+    const submitEquivalent = async (db: Pool | PoolClient, offered: boolean) => {
+      const { rows: [result] } = await db.query<{ equal: boolean; status: string }>(`SELECT
+        $3::text COLLATE public.feedback_loose = $4::text AS equal,
+        public.subscription_cancel_feedback_submit($1,$2,$3::text COLLATE public.feedback_loose,$5) AS status`,
+      [event, client, "sche_dule", reason, offered]);
+      expect(result!.equal).toBe(true);
+      return result!.status;
+    };
+
+    const writer = await runtime.connect();
+    const same = await runtime.connect();
+    const different = await runtime.connect();
+    let attempts: Promise<PromiseSettledResult<string>[]> | undefined;
+    try {
+      await writer.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+      expect(await submitFeedback(writer, event, client, reason, true)).toBe("recorded");
+      const pids = await Promise.all([same, different].map(async db => (await db.query("SELECT pg_backend_pid() AS pid")).rows[0].pid));
+      const { pid } = (await writer.query("SELECT pg_backend_pid() AS pid")).rows[0];
+      attempts = Promise.allSettled([submitFeedback(same, event, client, reason, true), submitEquivalent(different, true)]);
+      // An independent session can share both parent locks while the writer is open.
+      const parents = await source.owner.query(`SELECT e.id FROM public.subscriptions s
+        JOIN public.subscription_events e ON e.subscription_id=s.id
+        WHERE s.id=$1 AND e.id=$2 FOR SHARE OF s,e NOWAIT`, [command.subscriptionId, event]);
+      expect(parents.rows).toEqual([{ id: event }]);
+      // The rivals have reached INSERT on the sidecar before waiting for the writer.
+      await expect.poll(async () => (await source.owner.query(`SELECT count(*)::int AS waiting FROM unnest($1::int[]) waiting(pid)
+        WHERE $2::int=ANY(pg_blocking_pids(waiting.pid)) AND EXISTS (SELECT 1 FROM pg_locks l
+          WHERE l.pid=waiting.pid AND l.relation='public.subscription_cancel_feedback'::regclass
+          AND l.mode='RowExclusiveLock' AND l.granted)`, [pids, pid])).rows[0].waiting).toBe(2);
+      await writer.query("COMMIT");
+      expect(await attempts).toEqual([{ status: "fulfilled", value: "replayed" }, { status: "fulfilled", value: "reason_conflict" }]);
+    } finally {
+      await writer.query("ROLLBACK");
+      await attempts;
+      for (const db of [writer, same, different]) db.release();
+    }
+    const stored = (await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows;
+    expect(stored).toEqual([{ cancel_event_id: event, reason_code: reason, recorded_at: expect.any(Date) }]);
+    expect(await submitFeedback(runtime, event, client, reason, false)).toBe("replayed");
+    expect(await submitEquivalent(runtime, false)).toBe("reason_conflict");
+    expect(await submitFeedback(runtime, event, client, alternateReason, false)).toBe("reason_conflict");
+    expect(await submitFeedback(runtime, event, foreign, reason, true)).toBe("cancel_not_found");
+    expect((await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows).toEqual(stored);
+    expect(await commands(runtime).apply(command)).toEqual({ ...receipt, outcome: "replayed" });
+    expect(await cancellationRows(source.owner, command.subscriptionId)).toEqual(retained);
+  } finally { await closePostgres(source.container, source.pools); }
+}, postgresSetupTimeoutMs);
+
+it("cx1r_feedback_retries_when_winner_is_deleted", async () => {
+  const source = await install("neon", "operator-provisioned", "vanished-feedback");
+  try {
+    const runtime = feedbackRuntime(source);
+    const { event, client } = await cancelSubscription(source.owner, runtime);
+    // Test-only barrier after an INSERT that changed no rows.
+    await source.owner.query(`CREATE FUNCTION public.pause_skipped_feedback_insert() RETURNS trigger
+      LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM inserted_feedback) THEN
+          PERFORM pg_advisory_xact_lock(38145, 1);
+        END IF;
+        RETURN NULL;
+      END;
+      $$;
+      CREATE TRIGGER pause_skipped_feedback_insert AFTER INSERT ON public.subscription_cancel_feedback
+      REFERENCING NEW TABLE AS inserted_feedback FOR EACH STATEMENT
+      EXECUTE FUNCTION public.pause_skipped_feedback_insert()`);
+    const owner = await source.owner.connect();
+    const writer = await runtime.connect();
+    let pending: Promise<PromiseSettledResult<string>[]> | undefined;
+    try {
+      const { rows: [{ pid }] } = await writer.query("SELECT pg_backend_pid() AS pid");
+      await owner.query("SELECT pg_advisory_lock(38145, 1)");
+      await owner.query("BEGIN");
+      await owner.query("INSERT INTO public.subscription_cancel_feedback(cancel_event_id,reason_code) VALUES ($1,$2)", [event, reason]);
+      pending = Promise.allSettled([submitFeedback(writer, event, client, alternateReason, true)]);
+      await expect.poll(async () => (await owner.query("SELECT pg_backend_pid()=ANY(pg_blocking_pids($1)) AS waiting", [pid])).rows[0].waiting)
+        .toBe(true);
+      await owner.query("COMMIT");
+      await expect.poll(async () => (await owner.query(`SELECT EXISTS (SELECT 1 FROM pg_locks WHERE pid=$1
+        AND locktype='advisory' AND NOT granted) AS paused`, [pid])).rows[0].paused).toBe(true);
+      await owner.query("SET lock_timeout = '5s'");
+      const erased = await owner.query("DELETE FROM public.subscription_cancel_feedback WHERE cancel_event_id=$1 RETURNING reason_code", [event]);
+      expect(erased.rows).toEqual([{ reason_code: reason }]);
+      await owner.query("SELECT pg_advisory_unlock(38145, 1)");
+      expect(await pending).toEqual([{ status: "fulfilled", value: "recorded" }]);
+      expect(await submitFeedback(writer, event, client, alternateReason, false)).toBe("replayed");
+    } finally {
+      await owner.query("ROLLBACK");
+      await owner.query("SELECT pg_advisory_unlock(38145, 1)");
+      await owner.query("RESET lock_timeout");
+      await pending;
+      owner.release();
+      writer.release();
+    }
+  } finally { await closePostgres(source.container, source.pools); }
+}, postgresSetupTimeoutMs);
+
+it("cx1r_feedback_full_store_round_trip", async () => {
+  const source = await install("neon", "operator-provisioned", "feedback-source");
+  let target: Installed | undefined;
+  try {
+    const sourceRuntime = feedbackRuntime(source);
+    const { event, client, command, receipt } = await cancelSubscription(source.owner, sourceRuntime);
+    expect(await submitFeedback(sourceRuntime, event, client, reason, true)).toBe("recorded");
+    await source.owner.query(`UPDATE public.subscription_cancel_feedback
+      SET recorded_at=date_trunc('second',recorded_at)+interval '0.123456 seconds' WHERE cancel_event_id=$1`, [event]);
+    const packet = await capture(source, "cancel-feedback-source");
+    const sidecar = packet.owned.find(entry => entry.table === feedbackTable)!;
+    expect(sidecar.rows.map(row => JSON.parse(row))).toEqual([{
+      cancel_event_id: event, reason_code: reason, recorded_at: expect.stringMatching(/\.123456\+00:00$/u),
+    }]);
+    const sourceEvents = packet.compatible.tables.find(entry => entry.table === "subscription_events")!;
+    const sourceReceipts = packet.owned.find(entry => entry.table === "subscription_command_receipts")!;
+    expect(sourceEvents.rows.map(row => JSON.parse(row).id)).toEqual([event]);
+    expect(sourceReceipts.rows.map(row => JSON.parse(row).command_fingerprint)).toEqual([receipt.commandFingerprint]);
+
+    const privateName = feedbackTable as unknown as CompatiblePostgresTable;
+    const noDatabase = async () => { throw new Error("The public utility must refuse before connecting"); };
+    await expect(captureCompatiblePostgresRows({
+      source: { withSnapshot: noDatabase }, sourceId: packet.compatible.sourceId, catalogueId: source.inventory,
+      tables: [privateName], maximumRows: 10, maximumBytes: 1024,
+    })).rejects.toMatchObject({ code: "unsupported_table" });
+    const { sha256: _compatibleDigest, ...compatible } = packet.compatible;
+    const publicBody = { ...compatible, tables: [{
+      ...sidecar, table: privateName, columns: sidecar.columns.map(column => ({ ...column, key: column.name === "cancel_event_id" })),
+    }] };
+    await expect(restoreCompatiblePostgresRows({
+      target: { withTransaction: noDatabase }, catalogueId: source.inventory,
+      packet: { ...publicBody, sha256: packetDigest(publicBody) },
+    })).rejects.toMatchObject({ code: "unsupported_table" });
+
+    target = await install("neon", "operator-provisioned", "feedback-target");
+    const freshTarget = await capture(target, "cancel-feedback-fresh-target");
+    const input = { owner: target.owner, installation: target.selection, packet, freshTarget };
+    const changed = structuredClone(packet);
+    changed.owned.find(entry => entry.table === feedbackTable)!.rows[0] = sidecar.rows[0]!.replace(`"${reason}"`, `"${alternateReason}"`);
+    await expect(restoreConnectedNativeStore({ ...input, packet: changed })).rejects.toMatchObject({ code: "invalid_input" });
+    expect(await restoreConnectedNativeStore(input)).toMatchObject({ replayed: false });
+    const { sha256: _ownerDigest, ...changedBody } = changed;
+    await expect(restoreConnectedNativeStore({ ...input, packet: { ...changedBody, sha256: packetDigest(changedBody) } }))
+      .rejects.toMatchObject({ code: "target_conflict" });
+    const targetRuntime = feedbackRuntime(target);
+    expect(await submitFeedback(targetRuntime, event, client, reason, false)).toBe("replayed");
+    expect(await commands(targetRuntime).apply(command)).toEqual({ ...receipt, outcome: "replayed" });
+    expect(await restoreConnectedNativeStore(input)).toMatchObject({ replayed: true });
+    const restored = await capture(target, "cancel-feedback-restored-target");
+    expect(restored.owned.find(entry => entry.table === feedbackTable)).toEqual(sidecar);
+    expect(restored.owned.find(entry => entry.table === "subscription_command_receipts")).toEqual(sourceReceipts);
+    expect(restored.compatible.tables.find(entry => entry.table === "subscription_events")).toEqual(sourceEvents);
+  } finally {
+    if (target) await closePostgres(target.container, target.pools);
+    await closePostgres(source.container, source.pools);
+  }
+}, 245_000);
 
 it("keeps the elevated control-plane membership requirement for self-host selections", async () => {
   const fixture = await install("rds", "installer-managed", "self-host-scope", false);
