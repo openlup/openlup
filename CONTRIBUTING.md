@@ -1842,9 +1842,11 @@ check the measured data; review proof does not substitute a guessed measurement.
 The canonical manifest's current hashes must match that same data.
 
 A landing containing only these verified carriers needs no resolution review;
-a mixed landing reviews only its remaining delta. Existing `git` and
-`registry-union` evidence keeps its identity and protected-path vetoes are unchanged.
-Stack receipt rules are unchanged.
+a mixed landing reviews only its remaining delta. Existing `git` evidence keeps
+its identity. Earlier `registry-union` evidence no longer replays as
+`registry-union` if the reviewed base is anything other than the unique Git merge
+base. The affected session needs a refreshed review of that carrier's
+resolution. Protected-path vetoes and stack receipt rules are unchanged.
 
 ### Native review and accountability
 

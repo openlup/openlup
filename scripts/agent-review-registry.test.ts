@@ -2,12 +2,14 @@ import { execFileSync } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
+import * as registry from './agent-review-registry.mjs';
+import * as derivedReview from './agent-review-derived.mjs';
 import { admit, digest, coverageState, protectedCoveragePath, receiptBody, receiptSummary, verdict, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { landingMerge } from './agent-review-landing.mjs';
 import { carryOverSourceReview, captureReviewRules, captureSessionCandidate, sessionMain, validateEconomySession, git as sourceGit } from './agent-review-session.mjs';
 import { parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
 
+const { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } = registry;
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 const DAY = 86400000;
@@ -352,9 +354,16 @@ describe('real Git coverage histories', () => {
     expect((await f.state()).candidate.coverage.proof.kind).toBe('registry-union');
     await expect(f.cli('verify')).resolves.toBe(0);
   });
-  it('does not certify a registry union against a stale reviewed base', async () => {
+  it.each<[string, string[]]>([
+    ['does not certify a registry union against a stale reviewed base', []],
+    [
+      'does not certify a registry union against a stale reviewed base with derived proof enabled',
+      ['scripts/agent-review-session.mjs', derivedReview.INVENTORY_PATH, ...derivedReview.MIGRATION_REGISTRIES],
+    ],
+  ])('%s', async (_name, controls) => {
+    const derivedEnabled = controls.length > 0;
     const reviewedBase = catalogue('a', 'b', 'z');
-    const f = await fixture(true, [], { [cataloguePath]: reviewedBase });
+    const f = await fixture(true, controls, { [cataloguePath]: reviewedBase });
     await f.write(cataloguePath, catalogue('a', 'z')); const shared = f.commit();
     const headSource = catalogue('a', 'c', 'z');
     await f.write(cataloguePath, headSource); const head = f.commit(); const prior = await f.review();
@@ -366,8 +375,17 @@ describe('real Git coverage histories', () => {
     expect(f.git('diff', '--name-only', '--diff-filter=U')).toBe(cataloguePath);
     const staleUnion = catalogue('a', 'c', 'd', 'z');
     expect(registryUnion(cataloguePath, reviewedBase, headSource, mainSource)).toBe(staleUnion);
-    await f.write(cataloguePath, staleUnion); f.commit(); await f.cli('prepare', f.request);
-    expect((await f.state()).candidate.coverage.proof).toMatchObject({ kind: 'resolution', resolution: [cataloguePath] });
+    await f.write(cataloguePath, staleUnion); f.commit();
+    const catalogueUnion = vi.spyOn(registry, 'registryUnion');
+    const migrationUnion = vi.spyOn(derivedReview, 'migrationRegistryUnion');
+    await f.cli('prepare', f.request);
+    // Both migration unions must succeed before derived proof reaches the catalogue.
+    expect(migrationUnion).toHaveReturnedTimes(derivedEnabled ? derivedReview.MIGRATION_REGISTRIES.length : 0);
+    expect(catalogueUnion).not.toHaveBeenCalled();
+    expect((await f.state()).candidate.coverage.proof).toMatchObject({
+      kind: derivedEnabled ? 'portable-resolution' : 'resolution',
+      resolution: [cataloguePath],
+    });
   });
   it('leaves a registry conflict unresolved when the merge base is ambiguous', async () => {
     const f = await fixture(true, [], { [coldPath]: cold(['a', 'z']) });
