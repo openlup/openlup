@@ -36,13 +36,14 @@ function componentLabel(ref: CatalogueMoneyV2ComponentRef): string {
   if (ref.kind === "merchandise") return ref.lineKey;
   return ref.bucketKey + (ref.sourceOrdinal === undefined ? "" : "-" + ref.sourceOrdinal);
 }
-function fiscalInput(plan: CommerceQuoteMoneyV2Plan, rates: Readonly<Record<string, number>> = {}, quoteFacts = facts): FiscalInput {
+function fiscalInput(planInput: PlanCommerceQuoteMoneyV2Input, rates: Readonly<Record<string, number>> = {}, quoteFacts = facts): FiscalInput {
+  const plan = planned(planInput);
   const shipping = plan.winner.delivery.find(item => item.kind === "shipping")?.bucketKey;
   const fiscal = plan.plan.components.flatMap(({ ref }) => ref.kind === "delivery" && ref.bucketKey === shipping
     ? [] : [{ ref, rateBps: rates[componentLabel(ref)] ?? 0 }]);
   const positions = plan.plan.components.flatMap(({ ref, preDiscountMinor }) => preDiscountMinor === 0
     ? [] : [{ ref, position: metadata("position-" + componentLabel(ref)) }]);
-  return { planned: plan, facts: quoteFacts, fiscal, positions, taxEvidence: localEvidence, allocationIds: ids(plan) };
+  return { planInput, facts: quoteFacts, fiscal, positions, taxEvidence: localEvidence, allocationIds: ids(plan) };
 }
 function composed(input: ComposeCommerceQuoteMoneyV2Input) {
   const result = composeCommerceQuoteMoneyV2(input);
@@ -70,26 +71,26 @@ function readVector(key: string) {
     "bucketKey" in target ? { bucketKey: "shipping" } : target, "bucketKey" in target ? "shipping" : "order_total"));
   const rates = Object.fromEntries(tax.components.map(({ rateBps, ref }) => [componentLabel(ref), Number(rateBps)]));
   const plain = { ...baseline, delivery };
-  return { input: planInput({ lines, baseline: plain, selected: { ...plain, adjustments } }), rates, expected };
+  return { input: planInput({ lines, baseline: plain, ...(adjustments.length ? { selected: { ...plain, adjustments } } : {}) }), rates, expected };
 }
 
 describe("offline quote money v2", () => {
   it("one_cent_tie_source_ordinal with reversed sources and duplicate SKUs", () => {
     const { input, rates } = readVector("one_cent_tie_source_ordinal");
     const reversed = { ...input, lines: [...input.lines].reverse() };
-    const first = composed(fiscalInput(planned(input), rates));
+    const first = composed(fiscalInput(input, rates));
     expect(first.money).toStrictEqual(moneyGolden());
     expect(first.money.lines.map(line => [line.lineKey, line.sku])).toEqual([["z", "article:ż"], ["a", "article:ż"]]);
     const [share] = first.money.lines[0].discountAllocations;
     expect(share).toMatchObject({ netReductionMinor: 0, taxReductionMinor: 1,
       before: { basisMinor: 3, netMinor: 2, taxMinor: 1 }, after: { basisMinor: 2, netMinor: 2, taxMinor: 0 } });
     expect(first.money).toMatchObject({ netTotal: 5, taxTotal: 0, payableMinor: 5 });
-    expect(composed(fiscalInput(planned(reversed), rates))).toStrictEqual(first);
+    expect(composed(fiscalInput(reversed, rates))).toStrictEqual(first);
   });
 
   it("stitches mixed-rate merchandise and shipping states from the shared vector", () => {
     const { input, rates, expected } = readVector("mixed_tax_discount_shipping_golden");
-    const compose = fiscalInput(planned(input), rates);
+    const compose = fiscalInput(input, rates);
     const { money } = composed(compose);
     expect(money).toMatchObject({ netTotal: Number(expected.netTotal), taxTotal: Number(expected.taxTotal),
       payableMinor: Number(expected.payableMinor) });
@@ -124,13 +125,14 @@ describe("offline quote money v2", () => {
     expect(tie.winner.deliverySelectionRef).toBe("delivery:two");
   });
 
-  it("projects request-bound exclusive states and overlapping positions, and joins fees exactly once", () => {
+  it("replans the identical exclusive request, projects overlapping positions and joins fees once", () => {
     const original = { ...baseline, amountBasis: "exclusive", delivery: [bucket("shipping", 0)] } as const;
-    const plan = planned(planInput({ listBasis: "exclusive", baseline: original,
+    const planning = planInput({ listBasis: "exclusive", baseline: original,
       lines: [source("a", 1, 20, 1, "net"), source("z", 2, 100, 1, "net")],
       selected: { ...original, adjustments: [
         adjustment("first", 2, { lineKeys: ["a"] }, "line"), adjustment("second", 10, { lineKeys: ["z"] }),
-      ] } }));
+      ] } });
+    const plan = planned(planning);
     expect(plan.plan.fees).toEqual([]);
     expect(plan.moneyInput.fees).toEqual([]);
     const fees = [fee("later", 2), fee("earlier", 1)];
@@ -147,7 +149,7 @@ describe("offline quote money v2", () => {
             : [{ amountMinor: 0, afterSequence: 0, taxPositions: [] }];
         return { ref, states };
       }) });
-    const input = { planned: plan, facts, allocationIds: ids(plan), taxEvidence: { ...localEvidence, kind: "tax_calculation" as const },
+    const input = { planInput: planning, facts, allocationIds: ids(plan), taxEvidence: { ...localEvidence, kind: "tax_calculation" as const },
       verifiedMoney, positions: ["district-b", "district-a"].map(jurisdiction => metadata("position-" + jurisdiction, jurisdiction)),
       feeLines: [...fees].reverse() };
     const { money } = composed(input);
@@ -155,6 +157,11 @@ describe("offline quote money v2", () => {
     expect(money.feeLines).toEqual(fees);
     expect(money.deliveryBuckets[0].parts).toMatchObject([{ effectiveMinor: 0, taxPositions: [] }]);
     expect(money.lines[1].taxPositions.map(position => position.taxableMinor)).toEqual([90, 90]);
+    expect(money.lines.map(({ lineKey, sourceOrdinal, preDiscountMinor, effectiveMinor, discountAllocations }) => ({
+      ref: { kind: "merchandise", lineKey, sourceOrdinal }, preDiscountMinor, effectiveMinor,
+      allocations: discountAllocations.map(({ adjustmentRef, sequence, basisReductionMinor, before, after }) =>
+        ({ adjustmentRef, sequence, basisReductionMinor, beforeMinor: before.basisMinor, afterMinor: after.basisMinor })),
+    }))).toStrictEqual(plan.plan.components.filter(({ ref }) => ref.kind === "merchandise"));
     expect(money.lines[1].discountAllocations).toMatchObject([{ sequence: 2, before: { basisMinor: 100, netMinor: 100, taxMinor: 20 },
       after: { basisMinor: 90, netMinor: 90, taxMinor: 18 }, taxReductionMinor: 2 }]);
     expect(composeCommerceQuoteMoneyV2({ ...input, feeLines: fees.slice(1) })).toMatchObject({
@@ -170,10 +177,10 @@ describe("offline quote money v2", () => {
 
   it.each([10_000, 2_147_483_647])("checks the exact payable limit %i with a fee on free shipping", limit => {
     const run = (feeAmount: number) => {
-      const plan = planned(planInput({ lines: [source("a", 1, limit - 1)],
+      const planning = planInput({ lines: [source("a", 1, limit - 1)],
         baseline: { ...baseline, delivery: [{ ...bucket("shipping", 0), threshold: { flatMinor: 200, freeThresholdMinor: limit - 1 } }],
-          feeLines: [fee("fee", feeAmount)] } }));
-      return composeCommerceQuoteMoneyV2(fiscalInput(plan, {}, { ...facts, paymentLimits: { ...facts.paymentLimits, maxMinor: limit } }));
+          feeLines: [fee("fee", feeAmount)] } });
+      return composeCommerceQuoteMoneyV2(fiscalInput(planning, {}, { ...facts, paymentLimits: { ...facts.paymentLimits, maxMinor: limit } }));
     };
     expect(run(1)).toMatchObject({ kind: "composed", money: { feeTotal: 1, payableMinor: limit,
       deliveryBuckets: [{ parts: [{ taxPositions: [], effectiveMinor: 0 }] }],
@@ -223,16 +230,16 @@ async function owner(rows: PromotionRow[], codes: string[], engine: keyof typeof
     options: { pricingPolicy: engines[engine] }, regionCode: "ZZ", currency: "XXX", atTime: AT,
     referenceProductMinor: subtotal, subtotalGrossMinor: subtotal });
 }
-function ownerPlan(result: QuoteShippingPromotionResult, engine: keyof typeof engines, subtotal: number, codes: string[]) {
+function ownerPlan(result: QuoteShippingPromotionResult, engine: keyof typeof engines, subtotal: number) {
   const delivery = (amount: number) => [{ ...bucket("shipping", amount), threshold: { flatMinor: 200, freeThresholdMinor: 1_000 } }];
   const adjustments = result.discounts.map(row => adjustment(row.promotionId, row.amountOffMinor,
     row.appliesTo === "shipping" ? { bucketKey: "shipping" } : { lineKeys: ["a"] }, row.appliesTo));
-  return planned(planInput({ engine: engines[engine].promotionEngineVersion, lines: [source("a", 1, subtotal)],
+  return planInput({ engine: engines[engine].promotionEngineVersion, lines: [source("a", 1, subtotal)],
     baseline: { ...baseline, delivery: delivery(subtotal >= 1_000 ? 0 : 200) },
     ...(adjustments.length ? { selected: { ...baseline, deliverySelectionRef: "selected", delivery: delivery(result.shippingGrossMinor), adjustments } } : {}),
-    codeDiagnostics: { submittedCodes: codes, appliedCodes: result.discounts.flatMap(discount => discount.code ? [discount.code] : []),
+    codeDiagnostics: { appliedCodes: result.discounts.flatMap(discount => discount.code ? [discount.code] : []),
       codeRejections: result.codeRejections, codeRejectionDetails: result.codeRejectionDetails },
-  }));
+  });
 }
 
 describe("promotion owner parity with offline composition", () => {
@@ -246,7 +253,7 @@ describe("promotion owner parity with offline composition", () => {
     ];
     const result = await owner(rows, [], "v1", 900);
     expect(result.discounts.map(discount => discount.promotionId)).toEqual(["first-a", "free"]);
-    const { money } = composed(fiscalInput(ownerPlan(result, "v1", 900, [])));
+    const { money } = composed(fiscalInput(ownerPlan(result, "v1", 900)));
     expect(money.lines[0].discountAllocations).toMatchObject([{ sequence: 1, adjustmentRef: "first-a" }]);
     expect(money.deliveryBuckets[0].parts[0].discountAllocations).toMatchObject([{ sequence: 2, adjustmentRef: "free" }]);
   });
@@ -260,7 +267,7 @@ describe("promotion owner parity with offline composition", () => {
     const result = await owner([automatic("a-winner"), automatic("Z-winner")], codes, "v2", 900, tiedCodes);
     expect(result.discounts.map(discount => discount.promotionId)).toEqual(["Z-winner"]);
     expect(result.codeRejections).toEqual([{ code: " sAvE ", reason: "better_price_exists" }, { code: "Other", reason: "better_price_exists" }]);
-    const quote = composed(fiscalInput(ownerPlan(result, "v2", 900, codes)));
+    const quote = composed(fiscalInput(ownerPlan(result, "v2", 900)));
     expect(quote.money.lines[0].discountAllocations).toMatchObject([{ adjustmentRef: "Z-winner" }]);
     expect(quote.codeDiagnostics?.codeRejections).toEqual(result.codeRejections);
 
@@ -268,7 +275,7 @@ describe("promotion owner parity with offline composition", () => {
     expect(codeWinner.discounts).toMatchObject([{ promotionId: "a-code", code: "Other" }]);
     const first = await owner([], codes, "v2", 900, [candidates[0]]);
     expect(first.discounts).toMatchObject([{ promotionId: "z-code", code: " sAvE " }]);
-    expect(composed(fiscalInput(ownerPlan(first, "v2", 900, codes))).money.lines[0].discountAllocations)
+    expect(composed(fiscalInput(ownerPlan(first, "v2", 900))).money.lines[0].discountAllocations)
       .toMatchObject([{ adjustmentRef: "z-code" }]);
   });
 
@@ -278,26 +285,57 @@ describe("promotion owner parity with offline composition", () => {
     const code = ["SAVE"];
     const result = await owner([coupon("exact", "SAVE", 20), coupon("other", "save", 50)], code, "v1", 900);
     expect(result.discounts).toMatchObject([{ promotionId: "exact", amountOffMinor: 20 }]);
-    expect(composed(fiscalInput(ownerPlan(result, "v1", 900, code))).money.lines[0].discountAllocations)
+    expect(composed(fiscalInput(ownerPlan(result, "v1", 900))).money.lines[0].discountAllocations)
       .toMatchObject([{ adjustmentRef: "exact", basisReductionMinor: 20 }]);
   });
 
-  it.each(["v1", "v2"] as const)("keeps the submitted code slot when the %s owner emits its configured spelling", async engine => {
-    const codes = [" sAvE ", "Unknown"];
+  it.each([
+    { engine: "v1", codes: ["save", "Unknown", "SAVE"], collision: true },
+    { engine: "v1", codes: [" sAvE ", "Unknown"], collision: false },
+    { engine: "v2", codes: [" sAvE ", "Unknown"], collision: false },
+  ] as const)("appends the $engine owner's literal applied values after its unchanged diagnostics", async ({ engine, codes, collision }) => {
     const coupon = row("promo", { code: "SAVE", trigger_type: "coupon_code", discount_type: "fixed_amount", discount_value: 90 });
-    const result = await owner([coupon], codes, engine, 1_000);
+    const rows = collision ? [row("lower", { ...coupon, id: "lower", code: "save", discount_value: 10 }), coupon] : [coupon];
+    const result = await owner(rows, [...codes], engine, 1_000);
     expect(result.discounts).toMatchObject([{ code: "SAVE", amountOffMinor: 90 }]);
     expect(result.shippingGrossMinor).toBe(200);
-    expect(result.codeRejections).toEqual([{ code: "Unknown", reason: "not_recognized" }]);
-    const outcome = ownerPlan(result, engine, 1_000, codes);
-    expect(outcome.winner.adjustments).toEqual([]);
-    const quote = composed(fiscalInput(outcome));
-    expect(quote.money).toMatchObject({ payableMinor: 1_000, deliveryBuckets: [{ parts: [{ effectiveMinor: 0 }] }] });
-    expect(quote.codeDiagnostics?.codeRejections).toEqual([
-      { code: " sAvE ", reason: "better_price_exists" }, { code: "Unknown", reason: "not_recognized" },
-    ]);
+    expect(result.codeRejections).toContainEqual({ code: "Unknown", reason: "not_recognized" });
+    const planning = ownerPlan(result, engine, 1_000);
+    const outcome = composed(fiscalInput(planning));
+    expect(outcome.money).toMatchObject({ payableMinor: 1_000, deliveryBuckets: [{ parts: [{ effectiveMinor: 0 }] }] });
+    expect(outcome.codeDiagnostics).toStrictEqual({
+      codeRejections: [...result.codeRejections, { code: "SAVE", reason: "better_price_exists" }],
+      codeRejectionDetails: result.codeRejectionDetails,
+    });
+  });
+
+  it("retains the owner's applied order and exact values alongside unchanged rejection details", () => {
+    const codeRejections = [{ code: "   Not eligible ", reason: "not_eligible" }] as const;
+    const codeRejectionDetails = [{ code: "   Not eligible ", reason: "global_limit_reached" }] as const;
+    const planning = planInput({
+      selected: { ...baseline, delivery: [bucket("handling", 3)], adjustments: [adjustment("promotion", 1, { lineKeys: ["a"] })] },
+      codeDiagnostics: { appliedCodes: ["Z", " sAvE ", "SAVE"], codeRejections, codeRejectionDetails },
+    });
+    expect(composed(fiscalInput(planning)).codeDiagnostics).toStrictEqual({
+      codeRejectionDetails,
+      codeRejections: [...codeRejections, ...["Z", " sAvE ", "SAVE"].map(code => ({ code, reason: "better_price_exists" }))],
+    });
   });
 });
+
+function pointerParent(original: unknown, field: string) {
+  const keys = field.slice(1).split("/").map(part => part.replaceAll("~1", "/").replaceAll("~0", "~"));
+  let parent: unknown = original;
+  for (const key of keys.slice(0, -1)) {
+    expect(parent).not.toBeNull();
+    expect(typeof parent).toBe("object");
+    expect(Object.hasOwn(parent as object, key)).toBe(true);
+    parent = Object.getOwnPropertyDescriptor(parent, key)?.value;
+  }
+  expect(parent).not.toBeNull();
+  expect(typeof parent).toBe("object");
+  return { parent: parent as object, key: keys.at(-1)! };
+}
 
 describe("caller-relative quote money refusals", () => {
   const plan = (input: unknown) => planCommerceQuoteMoneyV2(input as PlanCommerceQuoteMoneyV2Input);
@@ -310,9 +348,9 @@ describe("caller-relative quote money refusals", () => {
   };
 
   const selected = { ...baseline, adjustments: [adjustment("promotion", 1, { lineKeys: ["a"] })] };
-  const composeWithFee = () => fiscalInput(planned(planInput({
+  const composeWithFee = () => fiscalInput(planInput({
     baseline: { ...baseline, delivery: [bucket("shipping", 0)], feeLines: [fee("fee-on-free-delivery", 2)] },
-  })));
+  }));
   const foreign = { ...bucket("shipping", 0), cost: { ...bucket("shipping", 0).cost, currency: "ALT" } };
   const exclusive = { ...baseline, amountBasis: "exclusive", delivery: [bucket("shipping", 0)] } as const;
   const netInput = { listBasis: "exclusive", lines: [source("a", 1, 100, 1, "net")] } as const;
@@ -351,7 +389,16 @@ describe("caller-relative quote money refusals", () => {
     }), field: "/selected/feeLines/0/scope/bucketKey" },
     { name: "explicit undefined candidate", run: plan, make: () => ({ ...planInput(), selected: undefined }), field: "/selected" },
     { name: "non-object composition", run: compose, make: () => 42, field: "" },
-    { name: "missing plan", run: compose, make: () => ({}), field: "/planned", missing: true },
+    { name: "missing planning input", run: compose, make: () => ({}), field: "/planInput", missing: true },
+    { name: "missing planning lines", run: compose, make: () => {
+      const valid = composeWithFee();
+      const { lines: _lines, ...planInput } = valid.planInput;
+      return { ...valid, planInput };
+    }, field: "/planInput/lines", missing: true },
+    { name: "malformed planning quantity", run: compose, make: () => {
+      const valid = composeWithFee();
+      return { ...valid, planInput: { ...valid.planInput, lines: [{ ...valid.planInput.lines[0], quantity: 0 }] } };
+    }, field: "/planInput/lines/0/quantity" },
     { name: "missing projected facts", run: compose, make: () => ({ ...composeWithFee(), facts: {} }),
       field: "/facts/catalogueEvidenceRef", missing: true },
     { name: "explicit undefined cadence", run: compose, make: () => ({
@@ -364,17 +411,18 @@ describe("caller-relative quote money refusals", () => {
     }, field: "/positions/0/position/providerLineRef" },
     { name: "explicit undefined fee provider position", run: compose, make: () => {
       const composeInput = composeWithFee();
-      const { planned } = composeInput;
-      return { ...composeInput, planned: { ...planned, winner: {
-        ...planned.winner, feeLines: [{ ...planned.winner.feeLines[0], providerPositionRef: undefined }],
+      const { planInput } = composeInput;
+      return { ...composeInput, planInput: { ...planInput, baseline: {
+        ...planInput.baseline, feeLines: [{ ...planInput.baseline.feeLines[0], providerPositionRef: undefined }],
       } } };
-    }, field: "/planned/winner/feeLines/0/providerPositionRef" },
+    }, field: "/planInput/baseline/feeLines/0/providerPositionRef" },
     { name: "explicit undefined provider fee position on the exclusive arm", run: compose, make: () => {
-      const plannedMoney = planned(planInput({ ...netInput, baseline: exclusive }));
+      const planning = planInput({ ...netInput, baseline: exclusive });
+      const plannedMoney = planned(planning);
       const feeLine = fee("fee-on-free-delivery", 2);
       const verifiedMoney = calculateCatalogueMoneyV2({ ...plannedMoney.moneyInput, fees: [{ feeKey: feeLine.feeKey, amountMinor: 2 }] },
         { kind: "local", components: plannedMoney.plan.components.map(({ ref }) => ({ ref, rates: [] })) });
-      return { planned: plannedMoney, facts, allocationIds: [], positions: [], verifiedMoney,
+      return { planInput: planning, facts, allocationIds: [], positions: [], verifiedMoney,
         taxEvidence: { ...localEvidence, kind: "tax_calculation" }, feeLines: [{ ...feeLine, providerPositionRef: undefined }] };
     }, field: "/feeLines/0/providerPositionRef" },
     { name: "unavailable fiscal rates", run: compose, make: () => ({ ...composeWithFee(), fiscal: [] }), field: "/fiscal" },
@@ -385,9 +433,9 @@ describe("caller-relative quote money refusals", () => {
     { name: "non-object quote", run: quote, make: () => undefined, field: "" },
     { name: "missing quote discriminator", run: quote, make: () => ({}), field: "/amountBasis", missing: true },
     { name: "missing quote evidence digest", run: quote, make: () => {
-      const valid = sealQuote();
+      const valid = moneyGolden();
       const { evidenceDigest: _digest, ...taxEvidence } = valid.taxEvidence;
-      return { ...valid, taxEvidence };
+      return sealQuote({ ...valid, taxEvidence } as typeof valid);
     }, field: "/taxEvidence/evidenceDigest", missing: true },
     { name: "explicit undefined quote cadence", run: quote, make: () => ({ ...sealQuote(), cadence: undefined }), field: "/cadence" },
     { name: "explicit undefined quote position provider line", run: quote, make: () => {
@@ -408,17 +456,63 @@ describe("caller-relative quote money refusals", () => {
       expect(original == null || typeof original !== "object" || Array.isArray(original)).toBe(true);
       return;
     }
-    const keys = field.slice(1).split("/").map(part => part.replaceAll("~1", "/").replaceAll("~0", "~"));
-    let parent: unknown = original;
-    for (const key of keys.slice(0, -1)) {
-      expect(parent).not.toBeNull();
-      expect(typeof parent).toBe("object");
-      expect(Object.hasOwn(parent as object, key)).toBe(true);
-      parent = Object.getOwnPropertyDescriptor(parent, key)?.value;
-    }
-    expect(parent).not.toBeNull();
-    expect(typeof parent).toBe("object");
-    expect(Object.hasOwn(parent as object, keys.at(-1)!)).toBe(!missing);
+    const { parent, key } = pointerParent(original, field);
+    expect(Object.hasOwn(parent, key)).toBe(!missing);
+  });
+
+  const entries = [
+    { name: "plan", run: plan, make: planInput, child: "baseline", field: "/baseline" },
+    { name: "compose", run: compose, make: composeWithFee, child: "planInput", field: "/planInput" },
+    { name: "quote", run: quote, make: sealQuote, child: "destination", field: "/destination" },
+  ] as const;
+  const trap = () => { throw new Error("must stay inside admission"); };
+  const accessor = { get defect() { throw new Error("getter must not be invoked"); } };
+  const cases = [
+    { name: "revoked root proxy", nested: false, make: (value: object) => {
+      const { proxy, revoke } = Proxy.revocable(value, {});
+      revoke();
+      return proxy;
+    }, suffix: "" },
+    { name: "throwing root reflection", nested: false, make: (value: object) => new Proxy(value, { ownKeys: trap }), suffix: "" },
+    { name: "throwing nested reflection", nested: true, make: (value: object) => new Proxy(value, { getPrototypeOf: trap }), suffix: "" },
+    { name: "accessor", nested: true, make: (value: object) => Object.defineProperties({ ...value }, Object.getOwnPropertyDescriptors(accessor)), suffix: "/defect" },
+    { name: "hidden own key", nested: true, make: (value: object) => Object.defineProperty({ ...value }, "defect", { value: 1 }), suffix: "/defect" },
+    { name: "symbol own key", nested: true, make: (value: object) => ({ ...value, [Symbol("defect")]: 1 }), suffix: "" },
+    { name: "non-plain prototype", nested: true, make: (value: object) => Object.assign(Object.create({ custom: true }), value) as object, suffix: "" },
+    { name: "explicit undefined", nested: true, make: (value: object) => ({ ...value, defect: undefined }), suffix: "/defect" },
+    { name: "infinite number", nested: true, make: (value: object) => ({ ...value, defect: Infinity }), suffix: "/defect" },
+    { name: "NaN", nested: true, make: (value: object) => ({ ...value, defect: NaN }), suffix: "/defect" },
+  ] as const;
+  it.each(entries.flatMap(entry => cases.map(test => ({ entry, test }))))(
+    "$entry.name refuses $test.name at its caller-relative pointer",
+    ({ entry, test }) => {
+      const original = entry.make();
+      const input = test.nested ? { ...original, [entry.child]: test.make(Object.getOwnPropertyDescriptor(original, entry.child)!.value) }
+        : test.make(original);
+      const field = test.nested ? entry.field + test.suffix : "";
+      expect(entry.run(input)).toMatchObject({ code: "money_input_invalid", field, remedy: "Supply plain JSON data at this field." });
+      if (field) {
+        const { parent, key } = pointerParent(input, field);
+        expect(Object.getOwnPropertyDescriptor(parent, key)).toBeDefined();
+      }
+    },
+  );
+  it.each(entries)("$name reads each descriptor once without proxy property access", entry => {
+    let calls = 0;
+    const original = entry.make();
+    const handler: ProxyHandler<object> = {
+      get: trap,
+      getOwnPropertyDescriptor(target, key) {
+        if (key === Object.keys(target)[0]) calls += 1;
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+    };
+    const input = entry.name === "compose"
+      ? { ...original, planInput: new Proxy(Object.getOwnPropertyDescriptor(original, "planInput")!.value as object, handler) }
+      : new Proxy(original, handler);
+    const success = { plan: { kind: "planned" }, compose: { kind: "composed" }, quote: { success: true } };
+    expect(entry.run(input)).toMatchObject(success[entry.name]);
+    expect(calls).toBe(1);
   });
 });
 
@@ -427,8 +521,9 @@ describe("position invariants in composition and sealed quotes", () => {
   it.each(["inclusive", "exclusive"] as const)("retains fees on free %s shipping and refuses zero-charge positions", amountBasis => {
     const exclusive = amountBasis === "exclusive";
     const feeLines = [fee("free-delivery-fee", 2)];
-    const plan = planned(planInput({ listBasis: amountBasis, lines: [source("a", 1, 100, 1, exclusive ? "net" : "gross")],
-      baseline: { ...baseline, amountBasis, delivery: [bucket("shipping", 0)], feeLines: exclusive ? [] : feeLines } }));
+    const planning = planInput({ listBasis: amountBasis, lines: [source("a", 1, 100, 1, exclusive ? "net" : "gross")],
+      baseline: { ...baseline, amountBasis, delivery: [bucket("shipping", 0)], feeLines: exclusive ? [] : feeLines } });
+    const plan = planned(planning);
     const evidence = (withPosition: boolean) => calculateCatalogueMoneyV2({
       ...plan.moneyInput, fees: [{ feeKey: feeLines[0].feeKey, amountMinor: 2 }],
     }, {
@@ -438,12 +533,12 @@ describe("position invariants in composition and sealed quotes", () => {
     });
     const composeInput = (withPosition: boolean): ComposeCommerceQuoteMoneyV2Input => {
       if (!exclusive) {
-        const base = fiscalInput(plan);
+        const base = fiscalInput(planning);
         return withPosition ? { ...base, positions: [...base.positions, { ref: { kind: "delivery", bucketKey: "shipping" },
           position: shipPosition }] } : base;
       }
       return {
-        planned: plan, facts, allocationIds: [], feeLines, positions: withPosition ? [shipPosition] : [],
+        planInput: planning, facts, allocationIds: [], feeLines, positions: withPosition ? [shipPosition] : [],
         taxEvidence: { ...localEvidence, kind: "tax_calculation" }, verifiedMoney: evidence(withPosition),
       };
     };
@@ -464,8 +559,17 @@ describe("position invariants in composition and sealed quotes", () => {
     expect(rejected).toMatchObject({ remedy: "Replay the original money and its matching tax evidence." });
   });
 
+  it("points to the repeated inclusive position identity in the caller's metadata", () => {
+    const input = fiscalInput(planInput({ lines: [source("a", 1, 100), source("b", 2, 100)] }));
+    const [first, second] = input.positions;
+    const positions = [first, { ...second, position: { ...second.position, positionRef: first.position.positionRef } }];
+    expect(composeCommerceQuoteMoneyV2({ ...input, positions })).toMatchObject({
+      kind: "refused", code: "money_tax_evidence_mismatch", field: "/positions/1/position/positionRef",
+    });
+  });
+
   it("requires one position for a positive inclusive state even at zero tax", () => {
-    const input = fiscalInput(planned(planInput()));
+    const input = fiscalInput(planInput());
     const { money } = composed(input);
     expect(money.lines[0].taxPositions).toHaveLength(1);
     expect(composeCommerceQuoteMoneyV2({ ...input, positions: [] })).toMatchObject({ kind: "refused", field: "/positions" });

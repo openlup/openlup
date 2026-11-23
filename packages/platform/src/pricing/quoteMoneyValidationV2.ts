@@ -36,9 +36,8 @@ const positionIdentity = {
   resolutionDigest: digest, providerLineRef: ref.optional(),
 };
 export const positionMetadata = z.strictObject(positionIdentity);
-const position = z.strictObject({
-  ...positionIdentity, rateDecimal: z.string().refine(isCatalogueMoneyV2RateDecimal).optional(), taxableMinor: minor, taxMinor: minor,
-});
+export const positionAmounts = { rateDecimal: z.string().refine(isCatalogueMoneyV2RateDecimal).optional(), taxableMinor: minor, taxMinor: minor };
+const position = z.strictObject({ ...positionIdentity, ...positionAmounts });
 const taxPositions = z.array(position).max(32);
 const state = z.strictObject({ basisMinor: minor, netMinor: minor, taxMinor: minor, taxPositions });
 const allocation = z.strictObject({
@@ -59,15 +58,17 @@ export const feeLine = z.strictObject({
   refundRule: z.strictObject({ ref, revision: ref }), providerPositionRef: ref.optional(),
 });
 export const price = z.strictObject({ priceListRef: ref, priceContextDigest: digest, priceEvidenceRef: ref, classMapRevision: ref });
-const evidence = { calculationId: uuid, evidenceDigest: digest, taxDate: instant, expiresAt: instant };
-const body = {
-  currency, price, catalogueEvidenceRef: ref, mode,
+export const evidence = { calculationId: uuid, evidenceDigest: digest, taxDate: instant, expiresAt: instant };
+export const factsShape = z.strictObject({
+  catalogueEvidenceRef: ref, mode,
   cadence: z.strictObject({ schemaVersion: z.literal(1), kind: z.literal("fixed_days"),
     days: minor.refine(value => value > 0 && value <= 3660) }).optional(),
   destination: z.strictObject({ snapshotRef: uuid, schemaVersion: z.literal(2), destinationDigest: digest, policyRevision: ref }),
-  deliverySelectionRef: ref, lines: z.array(line).min(1).max(50), deliveryBuckets: z.array(bucket).max(256),
-  feeLines: z.array(feeLine).max(256), netTotal: minor, taxTotal: minor, feeTotal: minor, payableMinor: minor, coverageDigest: digest,
+  coverageDigest: digest,
   paymentLimits: z.strictObject({ profileRef: ref, revision: ref, channelKey: ref, currency, minMinor: minor, maxMinor: minor }),
+});
+const body = { ...factsShape.shape, currency, price, deliverySelectionRef: ref, lines: z.array(line).min(1).max(50),
+  deliveryBuckets: z.array(bucket).max(256), feeLines: z.array(feeLine).max(256), netTotal: minor, taxTotal: minor, feeTotal: minor, payableMinor: minor,
 };
 const inclusive = {
   amountBasis: z.literal("inclusive"),
@@ -79,9 +80,6 @@ const exclusive = {
   promotion: z.strictObject({ engine, rankingRuleRef: z.literal("lowest_pre_tax.v1") }),
   taxEvidence: z.strictObject({ ...evidence, kind: z.literal("tax_calculation") }),
 };
-export const moneyShape: z.ZodType<CommerceQuoteMoneyV2> = z.discriminatedUnion("amountBasis", [
-  z.strictObject({ ...body, ...inclusive }), z.strictObject({ ...body, ...exclusive }),
-]);
 const seal = { contractVersion: z.literal("commerce.v1"), schemaVersion: z.literal(2), quoteId: uuid,
   status: z.enum(["estimate", "final"]), moneyDigest: digest, quoteDigest: digest };
 export const quoteShape: z.ZodType<CommerceQuoteV2> = z.discriminatedUnion("amountBasis", [
@@ -114,46 +112,55 @@ export function shapePath(issue: z.ZodIssue): Path {
   return (issue.code === "unrecognized_keys" ? [...issue.path, issue.keys[0]] : issue.path)
     .map(key => typeof key === "symbol" ? String(key) : key);
 }
-export function inputField(input: unknown, path: Path, required: string): string {
-  if (!input || typeof input !== "object" || Array.isArray(input)) return "";
-  const reached: Path = [];
-  let value: unknown = input;
-  for (const key of path) {
-    if (!value || typeof value !== "object") break;
-    reached.push(key);
-    value = Object.getOwnPropertyDescriptor(value, key)?.value;
-  }
-  return (reached.length ? reached : [required]).map(key => "/" + String(key).replaceAll("~", "~0").replaceAll("/", "~1")).join("");
-}
+export const pointer = (path: Path): string =>
+  path.map(key => "/" + String(key).replaceAll("~", "~0").replaceAll("/", "~1")).join("");
 
-// Validate and copy only the properties that are visible in JSON, without calling getters.
-export function inputData<T>(value: T, required: string, remaining = Infinity): T {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalid([]);
-  function copy(input: unknown, path: Path): unknown {
-    const at = path.length ? path : [required];
-    remaining -= typeof input === "string" ? Math.max(1, input.length) : 1;
-    if (remaining < 0 || path.length > 46) throw invalid(at);
-    if (input === null || typeof input === "boolean" || (typeof input === "string" && jsonText(input))
-      || (typeof input === "number" && Number.isFinite(input) && !Object.is(input, -0))) return input;
-    if (typeof input !== "object" || input === null) throw invalid(at);
-    const array = Array.isArray(input), keys = Object.keys(input), proto = Object.getPrototypeOf(input);
-    if (array ? proto !== Array.prototype || keys.length !== input.length : proto !== Object.prototype && proto !== null) throw invalid(at);
-    const entries = keys.map((key, index) => {
-      const child = [...path, key], descriptor = Object.getOwnPropertyDescriptor(input, key)!;
-      if (!("value" in descriptor) || !jsonText(key) || ["__proto__", "constructor", "prototype"].includes(key)
-        || (array && key !== String(index))) throw invalid(child);
-      return [key, copy(descriptor.value, child)] as const;
-    });
-    return array ? entries.map(([, entry]) => entry) : Object.fromEntries(entries);
+export function admit<T>(input: T, remaining = Infinity): T {
+  const ancestors = new Set<object>();
+  let path: Path = [];
+  const refusal = () => new MoneyIssue("money_input_invalid", path, "Supply plain JSON data at this field.");
+  function charge(value: string) {
+    remaining -= Buffer.byteLength(value);
+    if (remaining < 0) throw refusal();
   }
-  return copy(value, []) as T;
+  function visit(value: unknown, at: Path): unknown {
+    path = at;
+    if (at.length > 46) throw refusal();
+    if (at.length && (value === null || typeof value === "boolean" || (typeof value === "string" && jsonText(value))
+      || (typeof value === "number" && Number.isFinite(value) && !Object.is(value, -0)))) {
+      if (remaining !== Infinity) charge(JSON.stringify(value));
+      return value;
+    }
+    if (value === null || typeof value !== "object" || ancestors.has(value)) throw refusal();
+    const array = Array.isArray(value), prototype = Object.getPrototypeOf(value);
+    if (array ? !at.length || prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) throw refusal();
+    const keys = Reflect.ownKeys(value);
+    const length: unknown = array ? Object.getOwnPropertyDescriptor(value, "length")?.value : undefined;
+    const snapshot: Record<string, unknown> | unknown[] = array ? [] : {};
+    ancestors.add(value);
+    charge("[]");
+    let separator = "";
+    for (const key of keys) {
+      path = at; // A symbol can only be identified by its containing object in a JSON pointer.
+      if (typeof key !== "string") throw refusal();
+      if (array && key === "length") continue;
+      path = [...at, key];
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor?.enumerable || !("value" in descriptor) || !jsonText(key) || ["__proto__", "constructor", "prototype"].includes(key)
+        || (array && (!/^(0|[1-9][0-9]*)$/u.test(key) || typeof length !== "number" || Number(key) >= length))) throw refusal();
+      if (remaining !== Infinity) charge(separator + (array ? "" : JSON.stringify(key) + ":"));
+      (snapshot as Record<string, unknown>)[key] = visit(descriptor.value, path);
+      separator = ",";
+    }
+    if (array && length !== keys.length - 1) { path = at; throw refusal(); }
+    ancestors.delete(value);
+    return snapshot;
+  }
+  try { return visit(input, []) as T; }
+  catch { throw refusal(); }
 }
-export function checkDocumentSize(value: object, framingBytes = 0, prefix: Path = []): void {
-  let bytes = 2 + framingBytes;
-  for (const [key, entry] of Object.entries(value)) {
-    bytes += Buffer.byteLength(JSON.stringify(key) + ":" + JSON.stringify(entry)) + Number(bytes > 2 + framingBytes);
-    if (bytes > CATALOG_DRAFT_MAX_BYTES) throw invalid([...prefix, key]);
-  }
+export function checkDocumentSize(value: object, path: Path, framingBytes = 0): void {
+  if (Buffer.byteLength(JSON.stringify(value)) + framingBytes > CATALOG_DRAFT_MAX_BYTES) throw invalid(path);
 }
 
 export const absentFeeBucket = (fees: CommerceQuoteMoneyV2["feeLines"], buckets: ReadonlySet<string>): number =>

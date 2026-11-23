@@ -922,7 +922,7 @@ type CodeDiagnostics = Readonly<{
 type RateRows = Extract<CatalogueMoneyV2Tax, {
     kind: "inclusive";
 }>["components"];
-/** @experimental Resolved list-basis prices, owner adjustments and delivery alternatives. Supply the owner’s applied codes and the original submitted codes. */
+/** @experimental Resolved list-basis prices, owner adjustments and delivery alternatives. Supply the promotion owner’s applied code values in order. */
 export type PlanCommerceQuoteMoneyV2Input = Readonly<{
     currency: string;
     listBasis: Body["amountBasis"] | null;
@@ -932,7 +932,6 @@ export type PlanCommerceQuoteMoneyV2Input = Readonly<{
     baseline: Omit<Candidate, "adjustments">;
     selected?: Candidate;
     codeDiagnostics?: CodeDiagnostics & {
-        submittedCodes: readonly string[];
         appliedCodes: readonly string[];
     };
 }>;
@@ -948,9 +947,9 @@ export type CommerceQuoteMoneyV2Plan = Readonly<{
     plan: CatalogueMoneyV2Plan;
     codeDiagnostics?: CodeDiagnostics;
 }>;
-/** @experimental Evidence required to assemble money for the winning plan. */
+/** @experimental Planning input and evidence required to assemble money for the winning candidate. */
 export type ComposeCommerceQuoteMoneyV2Input = Readonly<{
-    planned: CommerceQuoteMoneyV2Plan;
+    planInput: PlanCommerceQuoteMoneyV2Input;
     facts: SharedFacts;
     allocationIds: readonly Readonly<{
         ref: CatalogueMoneyV2ComponentRef;
@@ -3641,7 +3640,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
 ```ts
 import { z } from "zod";
 import type { CommerceQuoteV2 } from "./contracts/quoteV2.js";
-/** @experimental Validate both digest bindings before checking money. Read code, field and remedy from the issue params. */
+/** @experimental Validate plain JSON quotes, refusing hidden own keys. Read code, field and remedy from issue params. */
 export declare const commerceQuoteV2Schema: z.ZodType<CommerceQuoteV2>;
 ```
 ## dist/pricing/quoteShippingPromotions.d.ts

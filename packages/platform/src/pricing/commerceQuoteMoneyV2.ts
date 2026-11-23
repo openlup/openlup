@@ -8,9 +8,10 @@ import type { PromotionEngineVersion } from "./contracts/offerPolicy.js";
 import type { CommerceCodeRejection, CommerceQuoteDiscount } from "./contracts/quote.js";
 import type { CommerceQuoteMoneyV2 as Body, DeliveryBucketV2, DiscountAllocationV2, FeeLineV2,
   MoneyLineV2, TaxPositionV2 } from "./contracts/quoteV2.js";
+import { quoteCodeRejectionDetailSchema } from "./quoteCodeRejectionDetails.js";
 import { quoteDigest } from "./quoteDigest.js";
-import { absentFeeBucket, bucketSource, checkDocumentSize, checkMoney, currency, engine, feeLine, inputData,
-  inputField, lineSource, minor, MoneyIssue, moneyRef, moneyShape, positionMetadata, price, ref, remedies,
+import { absentFeeBucket, admit, bucketSource, checkDocumentSize, checkMoney, currency, engine, evidence, factsShape, feeLine,
+  lineSource, minor, MoneyIssue, moneyRef, pointer, positionAmounts, positionMetadata, price, ref, remedies,
   shapePath, sumMinor, uuid } from "./quoteMoneyValidationV2.js";
 import type { Code, Path } from "./quoteMoneyValidationV2.js";
 
@@ -42,20 +43,20 @@ type CodeDiagnostics = Readonly<{
 }>;
 type RateRows = Extract<CatalogueMoneyV2Tax, { kind: "inclusive" }>["components"];
 
-/** @experimental Resolved list-basis prices, owner adjustments and delivery alternatives. Supply the owner’s applied codes and the original submitted codes. */
+/** @experimental Resolved list-basis prices, owner adjustments and delivery alternatives. Supply the promotion owner’s applied code values in order. */
 export type PlanCommerceQuoteMoneyV2Input = Readonly<{
   currency: string; listBasis: Body["amountBasis"] | null; price: Body["price"]; engine: PromotionEngineVersion;
   lines: readonly Source[]; baseline: Omit<Candidate, "adjustments">; selected?: Candidate;
-  codeDiagnostics?: CodeDiagnostics & { submittedCodes: readonly string[]; appliedCodes: readonly string[] };
+  codeDiagnostics?: CodeDiagnostics & { appliedCodes: readonly string[] };
 }>;
 /** @experimental Winning basis plan for offline tax composition. */
 export type CommerceQuoteMoneyV2Plan = Readonly<{
   kind: "planned"; currency: string; price: Body["price"]; promotion: Body["promotion"]; lines: readonly Source[];
   winner: Candidate; moneyInput: CatalogueMoneyV2Input; plan: CatalogueMoneyV2Plan; codeDiagnostics?: CodeDiagnostics;
 }>;
-/** @experimental Evidence required to assemble money for the winning plan. */
+/** @experimental Planning input and evidence required to assemble money for the winning candidate. */
 export type ComposeCommerceQuoteMoneyV2Input = Readonly<{
-  planned: CommerceQuoteMoneyV2Plan; facts: SharedFacts;
+  planInput: PlanCommerceQuoteMoneyV2Input; facts: SharedFacts;
   allocationIds: readonly Readonly<{ ref: CatalogueMoneyV2ComponentRef; sequence: number; allocationId: string }>[];
 }> & (
   | Readonly<{ taxEvidence: Extract<Body["taxEvidence"], { kind: "fiscal_profile" }>; fiscal: RateRows;
@@ -87,27 +88,24 @@ function coreIssue(error: CatalogueMoneyV2Error, scope: string, planning: boolea
   if (group === "tax") {
     code = tail.includes("states") ? "promotion_allocation_unsubstantiated" : "money_tax_evidence_mismatch";
     if (scope === "/fiscal") return new MoneyIssue(code, ["fiscal", ...tail.slice(tail[0] === "components" ? 1 : tail.length)]);
-    const [, component, , state, key, ...rest] = tail;
-    const at = ["verifiedMoney", "components", component].filter(key => key !== undefined);
-    if (!state) return new MoneyIssue(code, tail[0] === "payableMinor" ? ["verifiedMoney", "payableMinor"]
-      : [...at, ...tail.slice(2).map(key => key === "states" ? "allocations" : key)]);
-    const statePath = state === "0" ? ["initial"] : ["allocations", Number(state) - 1, "after"];
-    return new MoneyIssue(code, key === "afterSequence" ? [...at, "allocations", Number(state) - 1, "sequence"]
-      : [...at, ...statePath, ...(key ? [key, ...rest] : [])]);
+    const path = error.field.replace(/^tax/, "/verifiedMoney")
+      .replace(/\.states\[(\d+)\]\.afterSequence$/, (_match, index: string) => ".allocations/" + (Number(index) - 1) + "/sequence")
+      .replace(/\.states\[0\]/, ".initial").replace(/\.states\[(\d+)\]/, (_match, index: string) => ".allocations/" + (Number(index) - 1) + "/after")
+      .replace(/\.states$/, ".allocations").replace(/\[(\d+)\]/g, ".$1").replaceAll(".", "/");
+    return new MoneyIssue(code, segments(path));
   }
   const names: Record<string, string> = { sources: "lines", fees: "feeLines", deliveryKind: "kind",
     preDiscountMinor: "unitBasisMinor", amountMinor: group === "adjustments" ? "amountOffMinor" : "amountMinor" };
   const parts = [group, ...tail].map(key => planning ? names[key] ?? key : key);
   if (planning) return new MoneyIssue(code, group === "sources" ? parts : group === "input" ? segments(scope) : [...segments(scope), ...parts]);
   if (group.endsWith("Total") || group === "payableMinor") return new MoneyIssue(code, ["facts", "paymentLimits", "maxMinor"]);
-  const prefix = scope === "/verifiedMoney" && group === "fees" ? ["verifiedMoney"] : ["planned", "moneyInput"];
-  return new MoneyIssue(code, [...prefix, ...parts]);
+  return new MoneyIssue(code, [...segments(scope), ...(group === "fees" && scope === "/verifiedMoney" ? parts : [])]);
 }
 
-function refusal(error: unknown, input: unknown, scope: string, planning = false): CommerceQuoteMoneyV2Refusal {
+function refusal(error: unknown, scope: string, planning = false): CommerceQuoteMoneyV2Refusal {
   const issue = error instanceof MoneyIssue ? error : error instanceof CatalogueMoneyV2Error ? coreIssue(error, scope, planning)
     : new MoneyIssue("money_input_invalid", segments(scope));
-  return { kind: "refused", code: issue.code, field: inputField(input, issue.path, planning ? "currency" : "planned"), remedy: issue.remedy };
+  return { kind: "refused", code: issue.code, field: pointer(issue.path), remedy: issue.remedy };
 }
 
 function planCandidate(candidate: Candidate, currencyCode: string, lines: readonly Source[], path: string, listBasis: Body["amountBasis"]) {
@@ -146,52 +144,45 @@ function planCandidate(candidate: Candidate, currencyCode: string, lines: readon
   return { winner: candidate, moneyInput, plan, score: sumMinor(plan.components, item => item.effectiveMinor) + fees };
 }
 
-function codeDiagnostics(input: PlanCommerceQuoteMoneyV2Input["codeDiagnostics"], baselineWins: boolean): CodeDiagnostics | undefined {
-  if (!input) return undefined;
-  const { appliedCodes, submittedCodes, codeRejections, codeRejectionDetails } = input;
-  if (!baselineWins || !appliedCodes.length) return { codeRejections, codeRejectionDetails };
-  const rejected = new Set(codeRejections.map(row => row.code));
-  const identity = (code: string) => code.trim().toUpperCase();
-  const displaced = [...new Set(appliedCodes.map(code =>
-    submittedCodes.find(submitted => !rejected.has(submitted) && identity(submitted) === identity(code)) ?? code))]
-    .filter(code => !rejected.has(code));
-  const ranks = new Map(submittedCodes.map((code, index) => [code, index] as const).reverse());
-  const rank = (code: string) => ranks.get(code) ?? submittedCodes.length;
-  const amended = [...codeRejections];
-  for (const code of displaced.sort((left, right) => rank(left) - rank(right))) {
-    const next = amended.findIndex(row => rank(row.code) > rank(code));
-    amended.splice(next < 0 ? amended.length : next, 0, { code, reason: "better_price_exists" });
-  }
-  return { codeRejections: amended, codeRejectionDetails };
-}
+const diagnosticsShape = z.looseObject({ appliedCodes: z.array(z.string()),
+  codeRejections: z.array(z.looseObject({ code: z.string(), reason: z.enum([
+    "not_recognized", "already_used", "not_eligible", "expired", "better_price_exists", "scope_not_applicable",
+  ]) })), codeRejectionDetails: z.array(quoteCodeRejectionDetailSchema),
+});
 
-/** @experimental Rank the supplied owner outcome and the no-adjustment baseline on their list basis. */
-export function planCommerceQuoteMoneyV2(input: PlanCommerceQuoteMoneyV2Input): CommerceQuoteMoneyV2Plan | CommerceQuoteMoneyV2Refusal {
+function planAdmitted(input: PlanCommerceQuoteMoneyV2Input): CommerceQuoteMoneyV2Plan | CommerceQuoteMoneyV2Refusal {
   let scope = "/baseline";
   try {
-    input = inputData(input, "currency");
     const currencyCode = read(currency, input.currency, "/currency");
     read(engine, input.engine, "/engine");
     const priceFacts = read(price, input.price, "/price");
     const lines = read(z.array(sourceShape).min(1).max(50), input.lines, "/lines");
     const amountBasis = read(basis.nullable(), input.listBasis, "/listBasis") ?? "inclusive";
+    const baselineFacts = read(candidateShape, input.baseline, "/baseline");
+    const selectedFacts = read(candidateShape.extend({ adjustments: z.array(z.unknown()) }).optional(), input.selected, "/selected");
+    const adjustments = selectedFacts && read(z.array(adjustmentShape).min(1).max(20),
+      selectedFacts.adjustments, "/selected/adjustments", "promotion_allocation_unsubstantiated");
+    read(diagnosticsShape.optional(), input.codeDiagnostics, "/codeDiagnostics");
     const mixed = lines.findIndex(line => line.amountKind !== (amountBasis === "inclusive" ? "gross" : "net"));
     if (mixed !== -1) fail("money_amount_basis_mixed", "/lines/" + mixed + "/amountKind");
-    const baseline = planCandidate({ ...read(candidateShape, input.baseline, scope), adjustments: [] }, currencyCode, lines, scope, amountBasis);
-    let winner = baseline;
-    if (input.selected !== undefined) {
-      scope = "/selected";
-      const { adjustments, ...candidate } = read(candidateShape.extend({ adjustments: z.array(z.unknown()) }), input.selected, scope);
-      const applied = read(z.array(adjustmentShape).min(1).max(20), adjustments, "/selected/adjustments", "promotion_allocation_unsubstantiated");
-      const selected = planCandidate({ ...candidate, adjustments: applied }, currencyCode, lines, scope, amountBasis);
-      if (selected.score <= baseline.score) winner = selected;
-    }
-    const diagnostics = codeDiagnostics(input.codeDiagnostics, winner === baseline);
+    const baseline = planCandidate({ ...baselineFacts, adjustments: [] }, currencyCode, lines, scope, amountBasis);
+    scope = "/selected";
+    const selected = selectedFacts && adjustments && planCandidate({ ...selectedFacts, adjustments }, currencyCode, lines, scope, amountBasis);
+    const winner = selected && selected.score <= baseline.score ? selected : baseline;
+    const diagnostics = input.codeDiagnostics;
+    const displaced = winner === baseline ? diagnostics?.appliedCodes.map(code => ({ code, reason: "better_price_exists" as const })) : undefined;
     return { kind: "planned", currency: currencyCode, price: priceFacts, lines,
       winner: winner.winner, moneyInput: winner.moneyInput, plan: winner.plan,
       promotion: { engine: input.engine, rankingRuleRef: amountBasis === "inclusive" ? "lowest_payable_gross" : "lowest_pre_tax.v1" },
-      ...(diagnostics ? { codeDiagnostics: diagnostics } : {}) };
-  } catch (error) { return refusal(error, input, scope, true); }
+      ...(diagnostics ? { codeDiagnostics: { codeRejectionDetails: diagnostics.codeRejectionDetails,
+        codeRejections: displaced?.length ? [...diagnostics.codeRejections, ...displaced] : diagnostics.codeRejections } } : {}) };
+  } catch (error) { return refusal(error, scope, true); }
+}
+
+/** @experimental Rank the supplied owner outcome and the no-adjustment baseline on their list basis. */
+export function planCommerceQuoteMoneyV2(input: PlanCommerceQuoteMoneyV2Input): CommerceQuoteMoneyV2Plan | CommerceQuoteMoneyV2Refusal {
+  try { return planAdmitted(admit(input)); }
+  catch (error) { return refusal(error, "/currency"); }
 }
 
 function componentKey(component: CatalogueMoneyV2ComponentRef): string {
@@ -211,10 +202,9 @@ function uniqueMap<T>(entries: readonly T[], key: (item: T) => string, code: Cod
   return result;
 }
 
-function exclusiveResult(input: Extract<ComposeCommerceQuoteMoneyV2Input, { verifiedMoney: CatalogueMoneyV2Result }>) {
-  const { verifiedMoney, planned } = input;
-  checkDocumentSize(verifiedMoney, 0, ["verifiedMoney"]);
-  const fees = uniqueMap(read(z.array(feeLine).max(256), input.feeLines, "/feeLines"), fee => fee.feeKey,
+function exclusiveResult(input: Extract<ComposeCommerceQuoteMoneyV2Input, { verifiedMoney: CatalogueMoneyV2Result }>, planned: CommerceQuoteMoneyV2Plan) {
+  const { verifiedMoney } = input;
+  const fees = uniqueMap(input.feeLines, fee => fee.feeKey,
     "money_tax_evidence_mismatch", "/feeLines");
   const feeLines = verifiedMoney.fees.map(({ feeKey, amountMinor }) => {
     const fee = fees.get(feeKey);
@@ -237,13 +227,9 @@ function exclusiveResult(input: Extract<ComposeCommerceQuoteMoneyV2Input, { veri
 
 type ResultComponent = CatalogueMoneyV2Result["components"][number];
 function positionReader(input: ComposeCommerceQuoteMoneyV2Input, result: CatalogueMoneyV2Result) {
-  const entries = input.positions.map((row, index) => {
-    const position = "position" in row ? row.position : row;
-    const field = "/positions/" + index + ("position" in row ? "/position" : "");
-    return { index, key: "ref" in row ? componentKey(row.ref) : row.positionRef,
-      position: read(positionMetadata, position, field, "money_tax_evidence_mismatch") };
-  });
-  const remaining = uniqueMap(entries, entry => entry.key, "money_tax_evidence_mismatch", "/positions");
+  const remaining = uniqueMap(input.positions.map((row, index) => "ref" in row
+    ? { index, key: componentKey(row.ref), position: row.position } : { index, key: row.positionRef, position: row }),
+  entry => entry.key, "money_tax_evidence_mismatch", "/positions");
   const all = new Map(remaining);
   const fiscalRates = "fiscal" in input
     ? new Map(input.fiscal.map(row => [componentKey(row.ref), row.rateBps])) : undefined;
@@ -273,7 +259,7 @@ function positionReader(input: ComposeCommerceQuoteMoneyV2Input, result: Catalog
   };
 }
 
-function projectComponents(input: ComposeCommerceQuoteMoneyV2Input, result: CatalogueMoneyV2Result) {
+function projectComponents(input: ComposeCommerceQuoteMoneyV2Input, planned: CommerceQuoteMoneyV2Plan, result: CatalogueMoneyV2Result) {
   const positions = positionReader(input, result);
   const ids = uniqueMap(input.allocationIds, row => allocationKey(row.ref, row.sequence),
     "promotion_allocation_unsubstantiated", "/allocationIds");
@@ -285,10 +271,10 @@ function projectComponents(input: ComposeCommerceQuoteMoneyV2Input, result: Cata
       const { adjustmentRef, sequence, basisReductionMinor, netReductionMinor, taxReductionMinor } = share;
       const key = allocationKey(ref, sequence);
       const supplied = ids.get(key);
-      const adjustment = input.planned.winner.adjustments[sequence - 1];
-      if (!supplied || adjustment?.adjustmentRef !== adjustmentRef) fail("promotion_allocation_unsubstantiated", "/allocationIds");
+      const adjustment = planned.winner.adjustments[sequence - 1];
+      if (!supplied) fail("promotion_allocation_unsubstantiated", "/allocationIds");
       ids.delete(key);
-      return { allocationId: read(uuid, supplied.allocationId, "/allocationIds/" + input.allocationIds.indexOf(supplied) + "/allocationId", "promotion_allocation_unsubstantiated"),
+      return { allocationId: supplied.allocationId,
         adjustmentRef, sequence, basisReductionMinor, netReductionMinor, taxReductionMinor, source: "legacy_promotion",
         evidenceRef: adjustment.evidenceRef, before: state(share.before), after: state(share.after) };
     });
@@ -296,15 +282,13 @@ function projectComponents(input: ComposeCommerceQuoteMoneyV2Input, result: Cata
       netMinor: final.netMinor, taxMinor: final.taxMinor, lineTotalMinor: final.totalMinor, taxPositions: positions.read(ref, final) };
   }
   const lines: MoneyLineV2[] = [];
-  const sources = new Map(input.planned.lines.map(source => [source.lineKey, source]));
+  const sources = new Map(planned.lines.map(source => [source.lineKey, source]));
   const parts = new Map<string, DeliveryBucketV2["parts"][number][]>();
   for (const component of result.components) {
     const { ref } = component;
     const money = project(component);
     if (ref.kind === "merchandise") {
-      const source = sources.get(ref.lineKey);
-      if (!source || source.sourceOrdinal !== ref.sourceOrdinal) fail("money_tax_evidence_mismatch", "/planned/lines");
-      const { amountKind: _amountKind, ...line } = source;
+      const { amountKind: _amountKind, ...line } = sources.get(ref.lineKey)!;
       lines.push({ ...line, ...money });
     } else {
       const bucket = parts.get(ref.bucketKey) ?? [];
@@ -312,23 +296,19 @@ function projectComponents(input: ComposeCommerceQuoteMoneyV2Input, result: Cata
       parts.set(ref.bucketKey, bucket);
     }
   }
-  const deliveryBuckets = input.planned.winner.delivery.map(({ threshold: _threshold, amountMinor: _amount, ...bucket }) => {
-    const found = parts.get(bucket.bucketKey);
-    if (!found) fail("money_tax_evidence_mismatch", "/planned/winner/delivery");
-    return { ...bucket, parts: found };
-  });
+  const deliveryBuckets = planned.winner.delivery.map(({ threshold: _threshold, amountMinor: _amount, ...bucket }) =>
+    ({ ...bucket, parts: parts.get(bucket.bucketKey)! }));
   positions.checkUsed();
   if (ids.size) fail("promotion_allocation_unsubstantiated", "/allocationIds");
   return { lines, deliveryBuckets };
 }
 
-function compositionPath(input: ComposeCommerceQuoteMoneyV2Input, money: Body, path: Path): Path {
+function compositionPath(input: ComposeCommerceQuoteMoneyV2Input, selected: boolean, money: Body, path: Path): Path {
   const [root, index, ...tail] = path;
-  if (root === "price" || root === "currency" || root === "promotion") return ["planned", ...path];
-  if (root === "deliverySelectionRef") return ["planned", "winner", root];
+  const candidate = ["planInput", selected ? "selected" : "baseline"];
   if (root === "payableMinor") return ["facts", "paymentLimits", money.payableMinor > input.facts.paymentLimits.maxMinor ? "maxMinor" : "minMinor"];
   if (root === "feeLines") {
-    if ("fiscal" in input) return ["planned", "winner", ...path];
+    if ("fiscal" in input) return [...candidate, ...path];
     const feeIndex = input.feeLines.findIndex(fee => fee.feeKey === money.feeLines[Number(index)]?.feeKey);
     return feeIndex < 0 ? ["feeLines"] : ["feeLines", feeIndex, ...tail];
   }
@@ -337,65 +317,80 @@ function compositionPath(input: ComposeCommerceQuoteMoneyV2Input, money: Body, p
   const bucket = root === "deliveryBuckets" ? money.deliveryBuckets[Number(index)] : undefined;
   const component = line ?? bucket?.parts[Number(tail[1])];
   const shareIndex = tail.indexOf("discountAllocations");
-  const share = shareIndex < 0 ? undefined : component?.discountAllocations[Number(tail[shareIndex + 1])];
+  const allocation = Number(tail[shareIndex + 1]);
   const taxIndex = tail.indexOf("taxPositions");
   const matches = (ref: CatalogueMoneyV2ComponentRef) => ref.kind === "merchandise" ? ref.lineKey === line?.lineKey
     : ref.bucketKey === bucket?.bucketKey && ref.sourceOrdinal === (component && "sourceOrdinal" in component ? component.sourceOrdinal : undefined);
   if (taxIndex >= 0) {
-    if ("fiscal" in input) {
-      const row = input.positions.findIndex(({ ref }) => matches(ref));
-      return row < 0 ? ["positions"] : ["positions", row, "position"];
-    }
+    if ("fiscal" in input) return ["positions", input.positions.findIndex(({ ref }) => matches(ref)), "position", ...tail.slice(taxIndex + 2)];
     const row = input.verifiedMoney.components.findIndex(({ ref }) => matches(ref));
-    const statePath = share ? ["allocations", Number(tail[shareIndex + 1]), tail[shareIndex + 2]] : ["final"];
-    return ["verifiedMoney", "components", row, ...statePath, ...tail.slice(taxIndex)];
+    const state = shareIndex < 0 ? ["final"] : ["allocations", allocation, tail[shareIndex + 2]];
+    return ["verifiedMoney", "components", row, ...state, ...tail.slice(taxIndex)];
   }
   if (shareIndex >= 0) {
-    const id = input.allocationIds.findIndex(row => row.allocationId === share?.allocationId && matches(row.ref));
-    return id < 0 ? ["allocationIds"] : ["allocationIds", id, "allocationId"];
+    const id = input.allocationIds.findIndex(row => row.allocationId === component?.discountAllocations[allocation]?.allocationId && matches(row.ref));
+    return ["allocationIds", id, "allocationId"];
   }
-  return line ? ["planned", "lines", input.planned.lines.findIndex(source => source.lineKey === line.lineKey), ...tail]
-    : ["planned", "winner", "delivery", index, ...tail.slice(0, tail[0] === "parts" ? 0 : tail.length)];
+  return line ? ["planInput", "lines"] : [...candidate, "delivery", index];
 }
 
-const record = z.record(z.string(), z.unknown());
-const compositionShape = z.looseObject({
-  planned: z.looseObject({ moneyInput: record, winner: record }), facts: record,
-  taxEvidence: z.looseObject({ kind: z.enum(["fiscal_profile", "tax_calculation"]) }),
-  allocationIds: z.array(record), positions: z.array(record),
+const componentRef = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("merchandise"), lineKey: moneyRef, sourceOrdinal: minor }),
+  z.strictObject({ kind: z.literal("delivery"), bucketKey: moneyRef, sourceOrdinal: minor.optional() }),
+]);
+const coreState = z.strictObject({ amountMinor: minor, netMinor: minor, taxMinor: minor, totalMinor: minor,
+  taxPositions: z.array(z.strictObject({ positionRef: moneyRef, jurisdictionRef: ref, ...positionAmounts })),
 });
+const resultShape = z.strictObject({ amountBasis: basis, netTotal: minor, taxTotal: minor, feeTotal: minor, payableMinor: minor,
+  fees: z.array(feeLine.pick({ feeKey: true, amountMinor: true })),
+  components: z.array(z.strictObject({ ref: componentRef, initial: coreState, final: coreState, allocations: z.array(z.strictObject({
+    adjustmentRef: moneyRef, sequence: minor, basisReductionMinor: minor, beforeMinor: minor, afterMinor: minor,
+    before: coreState, after: coreState, netReductionMinor: minor, taxReductionMinor: minor,
+  })) })),
+});
+const compositionShape = z.looseObject({ planInput: z.looseObject({}), facts: factsShape,
+  taxEvidence: z.strictObject({ kind: z.enum(["fiscal_profile", "tax_calculation"]), ...evidence }),
+  allocationIds: z.array(z.strictObject({ ref: componentRef, sequence: minor, allocationId: uuid })),
+});
+const fiscalShape = z.array(z.strictObject({ ref: componentRef, rateBps: z.number() }));
+const fiscalPositions = z.array(z.strictObject({ ref: componentRef, position: positionMetadata }));
+
 /** @experimental Assemble digest-bound money from a plan and its resolved tax evidence. */
 export function composeCommerceQuoteMoneyV2(input: ComposeCommerceQuoteMoneyV2Input):
   Readonly<{ kind: "composed"; money: Body; moneyDigest: string; codeDiagnostics?: CodeDiagnostics }> | CommerceQuoteMoneyV2Refusal {
-  let scope = "/planned";
+  let scope = "/planInput";
   try {
-    const admitted = inputData(input, "planned");
+    const admitted = admit(input);
     read(compositionShape, admitted, "");
-    const { planned, taxEvidence } = admitted;
+    const { taxEvidence } = admitted;
+    if (!("fiscal" in admitted) && !("verifiedMoney" in admitted) && taxEvidence.kind === "fiscal_profile") fail("money_input_invalid", "/fiscal");
     const fiscal = "fiscal" in admitted;
-    scope = fiscal ? "/fiscal" : "/verifiedMoney";
-    if (!fiscal && taxEvidence.kind === "fiscal_profile" && !("verifiedMoney" in admitted)) fail("money_input_invalid", "/fiscal");
-    read<unknown>(fiscal ? z.array(record) : record, fiscal ? admitted.fiscal : admitted.verifiedMoney, scope);
-    if ((planned.moneyInput.amountBasis === "inclusive") !== fiscal) fail("money_amount_basis_mixed", "/planned/moneyInput/amountBasis");
+    if (fiscal) {
+      read(fiscalShape, admitted.fiscal, "/fiscal", "money_tax_evidence_mismatch");
+      read(fiscalPositions, admitted.positions, "/positions", "money_tax_evidence_mismatch");
+    } else {
+      read(resultShape, admitted.verifiedMoney, "/verifiedMoney");
+      checkDocumentSize(admitted.verifiedMoney, ["verifiedMoney"]);
+      read(z.array(positionMetadata), admitted.positions, "/positions", "money_tax_evidence_mismatch");
+      read(z.array(feeLine).max(256), admitted.feeLines, "/feeLines");
+    }
+    const planned = planAdmitted(admitted.planInput);
+    if (planned.kind === "refused") return { ...planned, field: "/planInput" + planned.field };
+    if ((planned.moneyInput.amountBasis === "inclusive") !== fiscal) fail("money_amount_basis_mixed", "/planInput/listBasis");
     if ((taxEvidence.kind === "fiscal_profile") !== fiscal) fail("money_amount_basis_mixed", "/taxEvidence/kind");
+    scope = fiscal ? "/fiscal" : "/verifiedMoney";
     const { result, feeLines } = fiscal
       ? { result: calculateCatalogueMoneyV2(planned.moneyInput, { kind: "inclusive", components: admitted.fiscal }),
         feeLines: planned.winner.feeLines }
-      : exclusiveResult(admitted);
+      : exclusiveResult(admitted, planned);
     const { amountBasis, netTotal, taxTotal, feeTotal, payableMinor } = result;
-    const projected = { ...admitted.facts, ...projectComponents(admitted, result), feeLines, amountBasis,
+    const projected = { ...admitted.facts, ...projectComponents(admitted, planned, result), feeLines, amountBasis,
       netTotal, taxTotal, feeTotal, payableMinor, taxEvidence, price: planned.price, currency: planned.currency,
       deliverySelectionRef: planned.winner.deliverySelectionRef, promotion: planned.promotion } as Body;
-    try {
-      const money = read(moneyShape, projected, "");
-      const issue = checkMoney(money);
-      if (issue) throw issue;
-      checkDocumentSize(money, 28);
-      return { kind: "composed", money, moneyDigest: quoteDigest("commerce.quote-money.v2", money),
-        ...(planned.codeDiagnostics ? { codeDiagnostics: planned.codeDiagnostics } : {}) };
-    } catch (error) {
-      if (!(error instanceof MoneyIssue)) throw error;
-      throw new MoneyIssue(error.code, compositionPath(admitted, projected, error.path), error.remedy);
-    }
-  } catch (error) { return refusal(error, input, scope); }
+    const issue = checkMoney(projected);
+    if (issue) throw new MoneyIssue(issue.code, compositionPath(admitted, planned.winner.adjustments.length > 0, projected, issue.path), issue.remedy);
+    checkDocumentSize(projected, ["planInput"], 28);
+    return { kind: "composed", money: projected, moneyDigest: quoteDigest("commerce.quote-money.v2", projected),
+      ...(planned.codeDiagnostics ? { codeDiagnostics: planned.codeDiagnostics } : {}) };
+  } catch (error) { return refusal(error, scope); }
 }

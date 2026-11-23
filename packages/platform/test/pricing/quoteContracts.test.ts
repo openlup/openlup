@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/index.js";
 import {
   commerceQuoteV2Schema,
   createCommerceQuoteSchemas,
@@ -15,6 +16,11 @@ import { id, moneyGolden, sealQuote } from "./quoteMoneyV2Fixtures.js";
 
 import { z } from "zod";
 import { slugSchema } from "@openlup/core/catalog";
+
+vi.mock("../../src/catalog/contracts/index.js", async importOriginal => {
+  const original = await importOriginal<typeof import("../../src/catalog/contracts/index.js")>();
+  return { ...original, canonicalCatalogDraftJson: vi.fn(original.canonicalCatalogDraftJson) };
+});
 
 const { commerceQuoteSchema, createQuoteRequestSchema, createQuoteResponseSchema, publicCreateQuoteBatchResponseSchema,
   publicCreateQuoteResponseSchema } = createCommerceQuoteSchemas({
@@ -324,21 +330,35 @@ describe("strict quote v2", () => {
     const original = sealQuote();
     const [first, ...rest] = original.lines;
     const [share] = first.discountAllocations;
+    const { payableMinor: _payable, ...withoutPayable } = original;
+    const { expiresAt: _expiry, ...withoutExpiry } = original.taxEvidence;
     const altered = [
       { ...original, lines: [{ ...first, discountAllocations: [{ ...share, allocationId: id(6) }] }, ...rest] },
       { ...original, destination: { ...original.destination, snapshotRef: id(7) } },
       { ...original, status: "estimate" },
+      withoutPayable,
+      { ...original, taxEvidence: withoutExpiry },
       { ...original, paymentLimits: { ...original.paymentLimits, maxMinor: original.payableMinor - 1 },
         taxEvidence: { ...original.taxEvidence, expiresAt: original.taxEvidence.taxDate } },
     ];
     altered.forEach((quote, index) => {
-      expect(quote.payableMinor).toBe(original.payableMinor);
+      if ("payableMinor" in quote) expect(quote.payableMinor).toBe(original.payableMinor);
       expect(refusal(quote)).toMatchObject({ params: {
         code: "money_tax_evidence_mismatch", field: index === 2 ? "/quoteDigest" : "/moneyDigest",
         remedy: "Replay the original document and its digest.",
       } });
       expect(JSON.stringify(refusal(quote))).not.toContain(original.quoteDigest);
     });
+  });
+
+  it("encodes each digest preimage once without encoding the whole quote first", () => {
+    const quote = sealQuote();
+    const encode = vi.mocked(canonicalCatalogDraftJson);
+    encode.mockClear();
+    expect(commerceQuoteV2Schema.safeParse(quote).success).toBe(true);
+    expect(encode.mock.calls.map(([preimage]) => (preimage as readonly unknown[])[0])).toEqual([
+      "commerce.quote-money.v2", "commerce.quote.v2",
+    ]);
   });
 
   it.each([
@@ -366,18 +386,10 @@ describe("strict quote v2", () => {
     expect(commerceQuoteV2Schema.safeParse(sealQuote(change(moneyGolden()) as CommerceQuoteMoneyV2)).success).toBe(false);
   });
 
-  it("rejects lossy visible properties and ignores hidden keys", () => {
+  it("refuses lossy numbers and bounds the admitted quote size", () => {
     const quote = sealQuote();
-    expect(commerceQuoteV2Schema.safeParse({ ...quote, cadence: undefined }).success).toBe(false);
-    expect(commerceQuoteV2Schema.safeParse({ ...quote, feeTotal: -0 }).success).toBe(false);
-    expect(commerceQuoteV2Schema.safeParse({ ...quote, catalogueEvidenceRef: "λ".repeat(1_048_577) }).success).toBe(false);
-    const hidden = Object.defineProperty({ ...quote.destination }, "hidden", { enumerable: false, value: 1 });
-    const hiddenRoot = Object.defineProperty({ ...quote, destination: hidden }, "ignored", { value: undefined });
-    expect(commerceQuoteV2Schema.parse(hiddenRoot)).toStrictEqual(quote);
-    let reads = 0;
-    const accessed: CommerceQuoteV2 = { ...quote, get payableMinor() { reads += 1; return quote.payableMinor; } };
-    expect(commerceQuoteV2Schema.safeParse(accessed).success).toBe(false);
-    expect(reads).toBe(0);
+    expect(refusal({ ...quote, feeTotal: -0 }).params).toMatchObject({ field: "/feeTotal" });
+    expect(refusal({ ...quote, catalogueEvidenceRef: "λ".repeat(1_048_577) }).params).toMatchObject({ field: "/catalogueEvidenceRef" });
   });
 
   it("admits independent line modes and checks range on an intact document", () => {

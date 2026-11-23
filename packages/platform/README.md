@@ -1241,17 +1241,18 @@ Each candidate carries its own delivery and threshold facts. Inclusive plans
 rank gross payable with fees. Exclusive plans rank merchandise, shipping and
 handling before tax and fees. Equal scores retain the promotion owner's choice.
 
-Pass that plan to `composeCommerceQuoteMoneyV2` with matching tax evidence and
-allocation IDs. Provide fiscal rates and position metadata separately for
-inclusive money. For exclusive money, supply the verified tax result and its
-position and fee metadata. Code diagnostics sit beside the money. The sealed
-evaluation commits the private destination binding, selection, service and
-evidence expiry through `taxEvidence.evidenceDigest` in both quote arms.
+Pass the same planning input as `planInput` to `composeCommerceQuoteMoneyV2`
+with matching tax evidence and allocation IDs. Composition reruns the planner.
+Provide separate fiscal rates and position metadata for inclusive money, or
+the verified tax result, position and fee metadata for exclusive money. Code
+diagnostics sit beside the money. The sealed evaluation commits the destination
+binding, selection, service and evidence expiry through `taxEvidence.evidenceDigest` in both arms.
 
 Use `quoteDigest` with `commerce.quote-money.v2` for the shared money and
 `commerce.quote.v2` for the complete estimate or final quote without its
 `quoteDigest` field. `commerceQuoteV2Schema` checks both digests before evaluating
-totals and amount limits. Read the refusal code, field and remedy from the schema issue’s params.
+totals and amount limits. The offline functions require plain JSON data and refuse hidden own keys.
+Read the schema refusal’s code, field and remedy from the issue params.
 `./pricing/contracts` and `./commerce/contracts` types share the money shape through `@openlup/core/pricing`.
 The offline functions rely on their caller for evidence acquisition and issuance.
 
