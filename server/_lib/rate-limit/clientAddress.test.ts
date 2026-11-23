@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { HOSTED_CLIENT_ADDRESS_HEADER, HOSTED_RUNTIME_MARKER_KEY } from "../../adapters/vercel/runtimeProvenance.js";
 import type { HttpRequest } from "../types/http.js";
 import { rateLimitClientAddress } from "./clientAddress.js";
 
@@ -20,7 +21,7 @@ describe("rate-limit client address", () => {
       expect(rateLimitClientAddress(request(peer, {
         "x-forwarded-for": `203.0.113.${first}`,
         "cf-connecting-ip": `203.0.113.${first + 1}`,
-        "x-real-ip": `203.0.113.${first + 2}`,
+        [HOSTED_CLIENT_ADDRESS_HEADER]: `203.0.113.${first + 2}`,
       }), {})).toBe(peer);
     }
   });
@@ -45,29 +46,29 @@ describe("rate-limit client address", () => {
   );
 
   it.each([undefined, "198.51.100.7"])("falls through a missing or short forwarded chain (%j)", (chain) => {
-    expect(rateLimitClientAddress(request(peer, { "x-forwarded-for": chain, "x-real-ip": hosted }), {
-      [key]: "2", VERCEL: "1",
+    expect(rateLimitClientAddress(request(peer, { "x-forwarded-for": chain, [HOSTED_CLIENT_ADDRESS_HEADER]: hosted }), {
+      [key]: "2", [HOSTED_RUNTIME_MARKER_KEY]: "1",
     })).toBe(hosted);
   });
 
   it("keeps a blank selected entry in the shared bucket", () => {
     expect(rateLimitClientAddress(request(peer, {
-      "x-forwarded-for": [", 198.51.100.7"], "x-real-ip": hosted,
-    }), { [key]: "2", VERCEL: "1" })).toBe("unknown");
+      "x-forwarded-for": [", 198.51.100.7"], [HOSTED_CLIENT_ADDRESS_HEADER]: hosted,
+    }), { [key]: "2", [HOSTED_RUNTIME_MARKER_KEY]: "1" })).toBe("unknown");
   });
 
   it("uses the hosted client-address header with the marker exposed", () => {
     expect(rateLimitClientAddress(request(peer, {
-      "x-forwarded-for": forwarded, "x-real-ip": hosted,
-    }), { VERCEL: "1" })).toBe(hosted);
+      "x-forwarded-for": forwarded, [HOSTED_CLIENT_ADDRESS_HEADER]: hosted,
+    }), { [HOSTED_RUNTIME_MARKER_KEY]: "1" })).toBe(hosted);
   });
 
   it("ignores the hosted header when the marker is absent", () => {
-    expect(rateLimitClientAddress(request(peer, { "x-real-ip": hosted }), {})).toBe(peer);
+    expect(rateLimitClientAddress(request(peer, { [HOSTED_CLIENT_ADDRESS_HEADER]: hosted }), {})).toBe(peer);
   });
 
   it("uses the peer when the hosted marker is present but its header is absent", () => {
-    expect(rateLimitClientAddress(request(peer, { "x-forwarded-for": forwarded }), { VERCEL: "1" }))
+    expect(rateLimitClientAddress(request(peer, { "x-forwarded-for": forwarded }), { [HOSTED_RUNTIME_MARKER_KEY]: "1" }))
       .toBe(peer);
   });
 
@@ -78,10 +79,10 @@ describe("rate-limit client address", () => {
   it("logs a malformed setting and uses one shared bucket for different peers and headers", () => {
     const value = "invalid-hop-count-fixture";
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    const env = { [key]: value, VERCEL: "1" };
-    expect(rateLimitClientAddress(request(peer, { "x-forwarded-for": forwarded, "x-real-ip": hosted }), env))
+    const env = { [key]: value, [HOSTED_RUNTIME_MARKER_KEY]: "1" };
+    expect(rateLimitClientAddress(request(peer, { "x-forwarded-for": forwarded, [HOSTED_CLIENT_ADDRESS_HEADER]: hosted }), env))
       .toBe("unknown");
-    expect(rateLimitClientAddress(request(otherPeer, { "x-forwarded-for": hosted, "x-real-ip": forwarded }), env))
+    expect(rateLimitClientAddress(request(otherPeer, { "x-forwarded-for": hosted, [HOSTED_CLIENT_ADDRESS_HEADER]: forwarded }), env))
       .toBe("unknown");
     expect(log).toHaveBeenCalledTimes(2);
     const message = expect.stringMatching(

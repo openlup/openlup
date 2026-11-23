@@ -17,6 +17,9 @@ vi.mock("./serviceDataGateway.js", () => ({
   readCommerceServiceDataGateway: mocks.readGateway,
 }));
 
+import { createLocalReferenceDemoSellableCatalogPort } from "../../adapters/localReferenceStoreAdapter.js";
+import { HOSTED_RUNTIME_MARKER_KEY } from "../../adapters/vercel/runtimeProvenance.js";
+import type { CheckoutCommandV1 } from "../../../src/domains/commerce/checkoutCommandContracts.js";
 import { hashCheckoutRateLimitKey } from "../../_lib/rate-limit/publicCheckoutRateLimit.js";
 import { riskSubjectHash } from "../../domains/risk/riskFingerprint.js";
 import handler from "./checkouts.js";
@@ -25,19 +28,11 @@ import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
 const clientA = "192.0.2.10";
 const clientB = "192.0.2.11";
 const secret = "synthetic-risk-hash-key";
-const command = {
-  version: "commerce.checkout_command.v1", idempotencyKey: "reference-checkout-001",
-  mode: "subscription", cadenceDays: 30, currency: "PLN",
-  lines: [{ sku: "NORTHSTAR-REFILL-001", quantity: 1 }],
-  customer: { firstName: "Alex", lastName: "Taylor", email: "alex@example.test", phone: "+12025550123" },
-  shippingAddress: { street: "1 Reference Way", postalCode: "10001", city: "Warsaw", country: "PL" },
-};
-
-function request(remoteAddress: string, headers: HttpRequest["headers"]): HttpRequest {
+function request(command: CheckoutCommandV1, remoteAddress: string, headers: HttpRequest["headers"]): HttpRequest {
   return { method: "POST", body: { command }, headers, query: {}, socket: { remoteAddress } } as HttpRequest;
 }
 
-function configureCheckout(blockedAddress: string) {
+function configureCheckout(blockedAddress: string, currency: string) {
   vi.stubEnv("OSS_REFERENCE_STORE_PROFILE", "local-supabase-demo-v1");
   vi.stubEnv("LOCAL_BFF", "1");
   vi.stubEnv("SUPABASE_URL", "http://127.0.0.1:54321");
@@ -60,7 +55,7 @@ function configureCheckout(blockedAddress: string) {
     persistence: { replayed: false }, settlement: null,
     runtime: { runtime: {
       clientId: "11111111-1111-4111-8111-111111111111", orderId: "22222222-2222-4222-8222-222222222222",
-      total: { amountMinor: 1490, currency: "PLN" },
+      total: { amountMinor: 1490, currency },
       payment: { paymentIntentId: "33333333-3333-4333-8333-333333333333", paymentAttemptId: null, status: "processing", attemptStatus: null },
     } },
   });
@@ -81,7 +76,7 @@ describe("local reference checkout BFF composition", () => {
     mocks.readGateway.mockReset();
     mocks.startCheckout.mockReset();
     vi.stubEnv("CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS", undefined);
-    vi.stubEnv("VERCEL", undefined);
+    vi.stubEnv(HOSTED_RUNTIME_MARKER_KEY, undefined);
     delete process.env.OSS_REFERENCE_STORE_PROFILE;
   });
 
@@ -100,11 +95,19 @@ describe("local reference checkout BFF composition", () => {
   });
 
   it("keys quota and blocklist on the peer, blocking only the listed client", async () => {
-    const rpc = configureCheckout(clientA);
+    const { currency, country } = await createLocalReferenceDemoSellableCatalogPort().getStorefrontProfile();
+    const command: CheckoutCommandV1 = {
+      version: "commerce.checkout_command.v1", idempotencyKey: "reference-checkout-001",
+      mode: "subscription", cadenceDays: 30, currency,
+      lines: [{ sku: "NORTHSTAR-REFILL-001", quantity: 1 }],
+      customer: { firstName: "Alex", lastName: "Taylor", email: "alex@example.test", phone: "+12025550123" },
+      shippingAddress: { street: "1 Reference Way", postalCode: "10001", city: "Reference City", country },
+    };
+    const rpc = configureCheckout(clientA, currency);
     const blocked = response();
     const admitted = response();
-    await handler(request(clientA, { "x-forwarded-for": clientB }), blocked);
-    await handler(request(clientB, { "x-forwarded-for": clientA }), admitted);
+    await handler(request(command, clientA, { "x-forwarded-for": clientB }), blocked);
+    await handler(request(command, clientB, { "x-forwarded-for": clientA }), admitted);
 
     for (const [index, address] of [clientA, clientB].entries()) {
       expect.soft(rpc).toHaveBeenNthCalledWith(2 * index + 1, "public_record_checkout_attempt", expect.objectContaining({

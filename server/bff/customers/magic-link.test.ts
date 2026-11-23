@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hashCustomerMagicLinkRateLimitKey } from "../../_lib/rate-limit/customerMagicLinkRateLimit.js";
+import { HOSTED_RUNTIME_MARKER_KEY } from "../../adapters/vercel/runtimeProvenance.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import {
   APPLICATION_ENVIRONMENT_KEY,
@@ -44,7 +45,7 @@ const ENV_KEYS = [
   "APP_BASE_URL",
   "PLATFORM_BUNDLE",
   "CUSTOMER_AUTH_REDIRECT_ORIGIN",
-  "VERCEL",
+  HOSTED_RUNTIME_MARKER_KEY,
   "CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS",
   "VERCEL_URL",
   APPLICATION_ENVIRONMENT_KEY,
@@ -79,6 +80,7 @@ describe("POST /api/bff/customers/magic-link", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     for (const key of ENV_KEYS) {
       const value = originalEnv.get(key);
       if (value === undefined) delete process.env[key];
@@ -110,7 +112,7 @@ describe("POST /api/bff/customers/magic-link", () => {
 
   it("uses a service client only for the limiter and an anonymous client only for OTP", async () => {
     enableEnv();
-    process.env.PLATFORM_BUNDLE = "node-supabase";
+    vi.stubEnv("PLATFORM_BUNDLE", "node-supabase");
     const { default: handler } = await import("./magic-link.js");
     const res = createResponse();
 

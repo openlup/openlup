@@ -1,3 +1,4 @@
+import { readProcessEnvironment } from "../observability/runtimeProvenance.js";
 import type { HttpRequest } from "../types/http.js";
 import {
   isInvalidTrustedProxyHopsError,
@@ -5,7 +6,7 @@ import {
   resolveClientAddress,
 } from "../../runtime/observability/clientAddressResolver.js";
 
-export function rateLimitClientAddress(req: HttpRequest, env = process.env): string {
+export function rateLimitClientAddress(req: HttpRequest, env = readProcessEnvironment()): string {
   let trustedProxyHops: number | null;
   try {
     trustedProxyHops = readTrustedProxyHops(env);

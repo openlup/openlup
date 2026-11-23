@@ -4,6 +4,7 @@ import { sendBffError, sendBffSuccess } from "../../_lib/bff/response.js";
 import { z } from "../../../src/lib/validation/zod.js";
 import { createCustomerClients, createCustomerClient, createCustomerServiceClient, authenticateCustomerUser, type CustomerSelfServiceEnv } from "../../_lib/customer-domain/auth.js";
 import { readBearerToken } from "../../_lib/admin-domain/auth.js";
+import { readProcessEnvironment } from "../../_lib/observability/runtimeProvenance.js";
 import { rateLimitClientAddress } from "../../_lib/rate-limit/clientAddress.js";
 import { checkAndRecordCustomerMagicLinkAttempt, type CustomerMagicLinkRateLimitClient } from "../../_lib/rate-limit/customerMagicLinkRateLimit.js";
 import { padResponseTime } from "../../_lib/timing.js";
@@ -26,7 +27,7 @@ const requestSchema = z.object({
 export function createReferenceAccountHandlers(
   env: CustomerSelfServiceEnv,
   origin: string,
-  addressEnv = process.env,
+  addressEnv = readProcessEnvironment(),
 ) {
   const service = createCustomerServiceClient(env);
   return {

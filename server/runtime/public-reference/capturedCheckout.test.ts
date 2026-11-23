@@ -4,6 +4,7 @@ import type { CheckoutCommandRuntimeResult } from "../../../src/domains/commerce
 import type { CheckoutCommandV1 } from "../../../src/domains/commerce/checkoutCommandContracts.js";
 import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
 import { LOCAL_REFERENCE_SUBSCRIPTION_PAYMENT_PROVIDER } from "../../adapters/localReferenceStoreAdapter.js";
+import { HOSTED_CLIENT_ADDRESS_HEADER, HOSTED_RUNTIME_MARKER_KEY } from "../../adapters/vercel/runtimeProvenance.js";
 import { hashCheckoutRateLimitKey } from "../../_lib/rate-limit/publicCheckoutRateLimit.js";
 import { riskSubjectHash } from "../../domains/risk/riskFingerprint.js";
 import { createReferenceCheckoutHandler } from "../../domains/commerce/referenceCheckoutHandler.js";
@@ -222,7 +223,7 @@ describe("captured reference checkout", () => {
     vi.stubEnv("COMMERCE_RISK_EVALUATION_ENABLED", "true");
     vi.stubEnv("COMMERCE_RISK_CHECKOUT_BLOCKLIST_BLOCKING_ENABLED", "true");
     vi.stubEnv("COMMERCE_RISK_HASH_SECRET", secret);
-    vi.stubEnv("VERCEL", marker);
+    vi.stubEnv(HOSTED_RUNTIME_MARKER_KEY, marker);
     vi.stubEnv("CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS", undefined);
     try {
       const { db, rpc } = preparedCheckoutGateway(null);
@@ -235,7 +236,7 @@ describe("captured reference checkout", () => {
         gateway: db, outcome: "captured", assertDisposable: async () => {}, verifyAccessToken: vi.fn(),
       })({
         method: "POST", body: { command }, query: {},
-        headers: { "x-forwarded-for": `${forwarded}, 203.0.113.7`, "x-real-ip": "198.51.100.9" },
+        headers: { "x-forwarded-for": `${forwarded}, 203.0.113.7`, [HOSTED_CLIENT_ADDRESS_HEADER]: "198.51.100.9" },
         socket: { remoteAddress: "192.0.2.10" },
       } as HttpRequest, response);
 
