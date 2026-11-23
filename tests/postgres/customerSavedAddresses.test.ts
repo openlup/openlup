@@ -7,21 +7,42 @@ import { createAccountEventPrivacyContributor } from '@openlup/platform/account-
 import type { PrivacyJson } from '@openlup/platform/identity/contracts';
 import { captureConnectedNativeStore } from '../../server/adapters/postgres/connectedStoreCapture.js';
 import { restoreConnectedNativeStore } from '../../server/adapters/postgres/connectedStoreRestore.js';
-import { installAccountMutations, type AccountProfile } from './customerAccountMutations.fixture.js';
+import { createAccountMutationsTemplate, installAccountMutations, type AccountMutationsStore, type AccountMutationsTemplate, type AccountProfile } from './customerAccountMutations.fixture.js';
 import { ADDRESS_AT as at, savedAddressPort, addressId } from './customerSavedAddresses.fixture.js';
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
 const input = () => ({ idempotencyKey: randomUUID(), kind: 'shipping' as const, line1: 'Example Street 1', city: 'Example City', postalCode: '12345', recipientName: 'Example Recipient' });
 for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-operator'] as AccountProfile[]) describe(`saved address ownership on ${profile}`, () => {
-  let db: Awaited<ReturnType<typeof installAccountMutations>>, transferSource: typeof db, transferTarget: typeof db;
-  // Provision independent transfer source and target under the existing setup deadline.
+  let template: AccountMutationsTemplate | undefined;
+  let db: AccountMutationsStore, transferSource: AccountMutationsStore, transferTarget: AccountMutationsStore;
+  // Provision independent databases per profile from one migrated template database
+  // (plus a bootstrap target container for legacy refusal tests).
   beforeAll(async () => {
-    db = await installAccountMutations(profile);
-    transferSource = await installAccountMutations(profile, false, 'address-source');
-    transferTarget = await installAccountMutations(profile === 'legacy' ? 'bootstrap' : profile, false, 'address-target');
+    if (profile === 'legacy') {
+      const [templateResult, targetResult] = await Promise.allSettled([
+        createAccountMutationsTemplate(profile, 'address'),
+        installAccountMutations('bootstrap', false, 'address-target'),
+      ]);
+      if (templateResult.status === 'fulfilled') template = templateResult.value;
+      if (targetResult.status === 'fulfilled') transferTarget = targetResult.value;
+      if (templateResult.status === 'rejected') throw templateResult.reason;
+      if (targetResult.status === 'rejected') throw targetResult.reason;
+      const legacyTemplate = templateResult.value;
+      [db, transferSource] = await Promise.all([
+        legacyTemplate.clone('main'),
+        legacyTemplate.clone('address-source'),
+      ]);
+      return;
+    }
+    template = await createAccountMutationsTemplate(profile, 'address');
+    [db, transferSource, transferTarget] = await Promise.all([
+      template.clone('main'),
+      template.clone('address-source'),
+      template.clone('address-target'),
+    ]);
   }, postgresSetupTimeoutMs);
   afterAll(async () => {
-    try { if (transferTarget) await transferTarget.close(); }
-    finally { try { if (transferSource) await transferSource.close(); } finally { if (db) await db.close(); } }
+    try { if (profile === 'legacy' && transferTarget) await transferTarget.close(); }
+    finally { if (template) await template.close(); }
   }, postgresTeardownTimeoutMs);
   async function customer(store = db) {
     const client = randomUUID(), principal = randomUUID();
