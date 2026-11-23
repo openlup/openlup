@@ -129,6 +129,38 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
   expect(await read(candidate.replacementOrderId)).toEqual(draft);
   expect(await children(other.id)).toEqual([]);
  });
+ it('waits at the catalogue fence before refusing promoted recovery draft money',async()=>{
+  const f=await subject('one_time'),before=await sourceRows(f);
+  const writes=async()=>(await env.owner.query(`SELECT (SELECT count(*) FROM public.commerce_orders) AS orders,
+   (SELECT count(*) FROM public.commerce_order_draft_receipts) AS receipts,(SELECT count(*) FROM public.commerce_settlement_intents) AS intents,
+   (SELECT count(*) FROM public.payment_simulator_attempts) AS attempts,(SELECT count(*) FROM public.outbox_events) AS outbox`)).rows,written=await writes();
+  const fence=await env.owner.connect(),buyer=await env.runtime.connect();
+  try{
+   // The same lock a publication's relation fence takes.
+   await fence.query('BEGIN');
+   await fence.query(`LOCK TABLE public.catalog_products,public.catalog_skus,public.catalog_sku_identifiers,
+    public.catalog_product_document_revisions,public.catalog_attribute_projection IN SHARE ROW EXCLUSIVE MODE NOWAIT`);
+   const fencePid=(await fence.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+   await buyer.query('BEGIN');await buyer.query("SET LOCAL lock_timeout='20s'; SET LOCAL statement_timeout='30s'");
+   const pid=(await buyer.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+   // Zero payable money passes the adapter schema; the promoted owner refuses it before any base re-entry.
+   const pending=createPostgresNativeCheckoutPersistence(buyer).createOrderDraft(
+    {idempotencyKey:`checkout-recovery-recreate:${f.id}`,quoteSnapshot:quote(f.sku,'one_time',0)},{clientId:f.client});
+   pending.catch(()=>undefined);
+   let wait;
+   for(let attempt=0;attempt<400&&!wait;attempt++){
+    wait=(await env.owner.query(`SELECT mode,pg_blocking_pids($1) AS blockers FROM pg_locks
+     WHERE pid=$1 AND NOT granted AND relation='public.catalog_products'::regclass`,[pid])).rows[0];
+    if(!wait)await new Promise(resolve=>setTimeout(resolve,25));
+   }
+   expect(wait).toEqual({mode:'ShareLock',blockers:[fencePid]});
+   await fence.query('ROLLBACK');
+   await expect(pending).rejects.toMatchObject({name:'CommerceOrderDraftUnsupportedMoneyError',reason:'zero_payable_unsupported'});
+  }finally{
+   await Promise.all([fence.query('ROLLBACK'),buyer.query('ROLLBACK')]);fence.release();buyer.release();
+  }
+  expect(await writes()).toEqual(written);expect(await sourceRows(f)).toEqual(before);expect(await children(f.id)).toEqual([]);
+ });
  it.each(['subscription','one_time'] as const)('starts one %s replacement under competition, replays through native owners and preserves the predecessor',async mode=>{
   const f=await subject(mode),before=await sourceRows(f),live=await lifecycleSubject(env.owner);
   const liveBefore=(await env.owner.query('SELECT to_jsonb(s) AS row FROM public.subscriptions s WHERE id=$1',[live.subscription])).rows;

@@ -455,14 +455,18 @@ for it. Fresh work then runs
 `catalog_admission_check_legacy_draft(text,jsonb,uuid,boolean)`, which takes
 the same locks whatever its last argument: the client row and the selected SKU
 rows `FOR KEY SHARE`, then `SHARE` on `public.catalog_products` until the
-transaction ends. At `REPEATABLE READ` or `SERIALIZABLE` it also locks the
-selected parent product rows `FOR NO KEY UPDATE`, so a publication committed
-after the caller's snapshot fails the draft with SQLSTATE `40001`; retry it in
-a new transaction. A publication fence refuses with `55P03` while a fresh draft
-is open. A promoted draft takes these locks before validating its money, so a
-contended or stale call returns the lock failure rather than the money refusal.
-A direct checker call with `false` or `NULL` now also takes these row locks and
-refuses in a read-only transaction with `25006`.
+transaction ends. A promoted draft takes these locks before validating its
+money. The `SHARE` lock waits while a publication holds the catalogue fence.
+If that wait exceeds the caller's `lock_timeout`, the draft returns `55P03`.
+After a completed wait at `READ COMMITTED`, a draft whose demand the
+publication made governed returns `55000` before any money validation. At
+`REPEATABLE READ` or `SERIALIZABLE` the checker also locks the selected parent
+product rows `FOR NO KEY UPDATE`. That guard returns `40001` when a publication
+changed the product row after the caller's snapshot; retry the draft in a new
+transaction. Only the publisher locks with `NOWAIT`, and its fence returns
+`55P03` while a fresh draft holds the `SHARE` lock. A direct checker call with
+`false` or `NULL` now also takes these row locks and refuses in a read-only
+transaction with `25006`.
 
 The private submit member binds the original authenticated request to the native
 draft receipt. The existing deferred order and receipt checks protect committed
