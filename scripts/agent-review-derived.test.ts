@@ -168,8 +168,12 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
       await captureCommittedReviewCandidate(root, base, left), await captureCommittedReviewCandidate(root, right, landed));
     expect(git('diff', '--raw', left, landed, '--', 'packages/core/api', 'packages/outbox')).toBe('');
     const changed = PROBE_OUTPUTS.filter(path => path !== SETTING_REFUSALS).sort();
-    expect(integration).toMatchObject({ kind: 'resolution', resolution: changed, modeChanged: false });
-    expect(deltaFloor(integration.resolution, integration.modeChanged)).toBe(1);
+    expect(integration).toMatchObject({ kind: 'derived', derived: true });
+    expect(integration.resolution).toBeUndefined();
+    const historical = await proveReviewIntegration(root,
+      await captureCommittedReviewCandidate(root, base, left), await captureCommittedReviewCandidate(root, right, landed),
+      false, { resolvedOwnerOutputs: changed });
+    expect(historical).toMatchObject({ kind: 'resolution', resolution: changed, modeChanged: false });
     expect(read(PORTABILITY_REPORT)).toContain('declare const fixturePortability = 1');
     expect(read(SETTING_GUIDE)).toContain(`## ${PROBE_KEY}`);
     expect(git('show', `${base}:${SETTING_REFUSALS}`)).toBe(read(SETTING_REFUSALS).trimEnd());
@@ -184,7 +188,7 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
     });
     expect(fast.status, fast.stdout + fast.stderr).toBe(0);
     expect(JSON.parse(fast.stdout.trimEnd().split('\n').at(-1)!)).toEqual({ preflight: 'fast', result: 'pass', head: landed, failed: [] });
-    console.info(`D3 landing: fork ${base}, parents ${left} ${right}, merge ${landed}; residual ${changed.join(', ')}; settings refusals already match`);
+    console.info(`D3 landing: fork ${base}, parents ${left} ${right}, merge ${landed}; derived ${changed.join(', ')}; settings refusals already match`);
   } finally { restoreDerivedFixture(); }
 }, 180000);
 
