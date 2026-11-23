@@ -170,15 +170,9 @@ checkpoint and stores the following message in `platform_job_runs.error`.
 > order and record it manually
 
 Failed pages return HTTP 502 with the original diagnostic. A checkpoint-read
-failure makes no provider call and leaves the last checkpoint available for the
-next tick. Native polling can recover the checkpoint through its SQL executor
-when that database holds the acquired job run. If a custom ledger uses a
-separate store, its polling reader skips finished failed runs whose reason is
-`reconciliation_checkpoint_read_failed` and whose pagination checkpoint is
-absent or null. Keep the existing ordering and eligibility for other runs.
-When finishing a polling attempt, give its supplied reason and checkpoint
-metadata precedence over deployment metadata. Sequential cursor translation
-belongs to the adapter.
+failure makes no provider call. The next acquired polling tick starts at page 0.
+Repeated ledger read errors can delay the repeated-failure bound for a page, but no exception is ever skipped.
+Sequential cursor translation belongs to the adapter.
 
 Pass the selected adapter's `orderIdentity` mapping to native intake when its
 outbound merchant identity differs from the stored number. This optional mapping translates an echoed outbound

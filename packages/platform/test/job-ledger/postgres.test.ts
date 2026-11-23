@@ -184,7 +184,7 @@ describe("PostgreSQL job-run ledger", () => {
   });
 
   it("reads the latest finished terminal metadata with exact parameterized ordering", async () => {
-    const metadata = { reason: "reconciliation_checkpoint_read_failed", checkpoint: "offset-9", nested: { count: 2 } };
+    const metadata = { checkpoint: "offset-9", nested: { count: 2 } };
     const { ledger, query } = fixture([{ metadata }, { metadata: { checkpoint: "older" } }]);
     const result = await ledger.readLatestTerminalRunMetadata("nightly-report");
     expect(result).toEqual(metadata);

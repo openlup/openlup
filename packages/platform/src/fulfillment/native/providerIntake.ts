@@ -10,23 +10,6 @@ import { createPostgresFulfillmentShipmentCommandPort } from './shipmentCommands
 
 const repeatedPageRemedy = 'an item on this page fails repeatedly; inspect the fulfilment exception for the order and record it manually';
 
-const checkpointReadFailed = 'reconciliation_checkpoint_read_failed';
-
-const previousCheckpointSql = `
-  SELECT prior.metadata
-  FROM public.platform_job_runs AS claimed
-  JOIN public.platform_job_runs AS prior ON prior.job_name = claimed.job_name
-  WHERE claimed.job_name = $1 AND claimed.id::text = $2
-    AND prior.status IN ('success', 'failed')
-    AND prior.finished_at IS NOT NULL
-    AND NOT (
-      prior.status = 'failed'
-      AND prior.metadata->>'reason' IS NOT DISTINCT FROM $3
-      AND prior.metadata->>'reconciliationPagination' IS NULL
-    )
-  ORDER BY prior.started_at DESC
-  LIMIT 1`;
-
 type Ingress = Parameters<typeof verifyAndNormalizeFulfillmentObservation>[0];
 type Poll = Parameters<typeof runFulfillmentReconciliationPage>[0];
 type Evidence = Parameters<Poll['lifecycle']['findDispatchRef']>[0];
@@ -221,15 +204,12 @@ export function createPostgresFulfillmentProviderIntake(input: NativeFulfillment
       const claim = await job.ledger.claimJobRun(job.jobName, job.invocation);
       if (!claim.acquired || !claim.runId) return { kind: 'skipped' as const, reason: claim.reason };
       let checkpoint: unknown;
-      try { checkpoint = await readPollingCheckpoint(db!, job, claim.runId); }
+      try { checkpoint = await job.ledger.readLatestTerminalRunMetadata(job.jobName); }
       catch {
-        const reason = checkpointReadFailed;
-        const summary = { checked: 0, updated: 0, failures: 1, skipped: false, reason } as const;
-        // Finish metadata has precedence over correlation and claim metadata.
-        const extraMetadata = { failures: summary.failures, skipped: summary.skipped, reason, reconciliationPagination: null };
-        const released = await job.ledger.finishJobRun(job.jobName, claim.runId, job.invocation, 'failed', summary, extraMetadata);
-        if (!released) throw new Error('reconciliation_job_lease_lost');
-        return { kind: 'failed' as const, status: 502 as const, reason };
+        await job.ledger.finishJobRun(job.jobName, claim.runId, job.invocation, 'failed', {
+          checked: 0, updated: 0, failures: 1, skipped: false, reason: 'reconciliation_checkpoint_read_failed',
+        });
+        return { kind: 'failed' as const, status: 502 as const, reason: 'reconciliation_checkpoint_read_failed' };
       }
       const page = await runFulfillmentReconciliationPage({ ...poll, provider: input.pages!, checkpoint, pageSize: job.pageSize });
       const pagination = page.metadata.reconciliationPagination;
@@ -245,16 +225,6 @@ export function createPostgresFulfillmentProviderIntake(input: NativeFulfillment
       return { kind: 'finished' as const, ...page };
     },
   };
-}
-
-async function readPollingCheckpoint(db: PgExecutor, job: NativeFulfillmentReconciliationJob, runId: string): Promise<unknown> {
-  const latest = await job.ledger.readLatestTerminalRunMetadata(job.jobName);
-  if (latest?.reason !== checkpointReadFailed || latest.reconciliationPagination != null) return latest;
-
-  // A forwarding ledger can return the failure marker. Recover only from the
-  // PostgreSQL store that recorded this invocation's claim.
-  const { rows } = await db.query(previousCheckpointSql, [job.jobName, runId, checkpointReadFailed]);
-  return rows[0]?.metadata ?? null;
 }
 
 function neutralObservation(observation: FulfillmentObservation): FulfillmentObservation {

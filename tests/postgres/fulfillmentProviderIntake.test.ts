@@ -306,84 +306,48 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect(await native.reconcile(observed)).toMatchObject({ status: 502 });
     expect(await read.mock.results[1]?.value).toMatchObject({ reconciliationPagination: { page: 0, nextPage: 0, failureStreak: 1 } });
     expect(await real.readLatestTerminalRunMetadata(request.jobName)).toMatchObject({ reconciliationPagination: { failureStreak: 2 } });
-    for (const failRead of [false, true]) {
-      const fresh = job();
-      const finish = vi.fn(async (...args: Parameters<PlatformJobRunLedgerPort['finishJobRun']>) => {
-        expect(await fresh.ledger.finishJobRun(...args)).toBe(true);
-        return false;
-      });
-      get.mockClear();
-      await expect(native.reconcile({ ...fresh, ledger: { ...fresh.ledger, finishJobRun: finish,
-        readLatestTerminalRunMetadata: failRead
-          ? async () => { throw new Error('synthetic_checkpoint_failure'); }
-          : fresh.ledger.readLatestTerminalRunMetadata,
-      } })).rejects.toThrow('reconciliation_job_lease_lost');
-      expect(finish).toHaveBeenCalledOnce();
-      expect(get).toHaveBeenCalledTimes(failRead ? 0 : 1);
-    }
-  });
-
-  it('poll_checkpoint_read_error_preserves_streak', async () => {
-    const time = fixtureInstant, obs = observation(await subject(), 'picking', time, [], time);
-    const real = createPostgresPlatformJobRunLedger(h.runtime, {
-      releaseCorrelation: () => ({ releaseSha: 'fixture-revision', reason: 'rolling_deployment', reconciliationPagination: 'release_checkpoint' }),
-      defaultFailureReason: 'offline_failed',
+    const fresh = job();
+    const finish = vi.fn(async (...args: Parameters<PlatformJobRunLedgerPort['finishJobRun']>) => {
+      expect(await fresh.ledger.finishJobRun(...args)).toBe(true);
+      return false;
     });
-    let failRead = false;
-    const forwardingRead = vi.fn((jobName: string) => {
-      if (failRead) throw new Error('synthetic_checkpoint_failure');
-      return real.readLatestTerminalRunMetadata(jobName);
-    });
-    const request = job({ ...real, readLatestTerminalRunMetadata: forwardingRead }, 1);
-    const legacy = { version: 1, page: 3, pageSize: 1, nextPage: 4 };
-    const claim = await real.claimJobRun(request.jobName, invocation);
-    expect(await real.finishJobRun(request.jobName, claim.runId!, invocation, 'success',
-      { checked: 1, updated: 0, failures: 0, skipped: false }, { reconciliationPagination: legacy })).toBe(true);
-    expect(await real.readLatestTerminalRunMetadata(request.jobName)).toMatchObject({ reconciliationPagination: legacy });
-
-    const get = vi.fn(async (_page: { page: number }) => ({
-      kind: 'failed' as const, refusal: { reason: 'malformed' as const, phase: 'readback' as const, retryable: true },
-    }));
-    const native = () => compose(obs, { pages: { readPage: get } });
-    for (const failureStreak of [1, 2]) {
-      expect(await native().reconcile(request)).toMatchObject({ status: 502 });
-      expect(await real.readLatestTerminalRunMetadata(request.jobName)).toMatchObject({
-        reconciliationPagination: { page: 4, nextPage: 4, failureStreak },
-      });
-    }
-    expect(get.mock.calls).toEqual([[{ page: 4, size: 1 }], [{ page: 4, size: 1 }]]);
     get.mockClear();
-    const readError = 'reconciliation_checkpoint_read_failed';
-    failRead = true;
-    expect(await native().reconcile(request)).toEqual({ kind: 'failed', status: 502, reason: readError });
-    failRead = false;
-    expect(get).not.toHaveBeenCalled();
-    const recorded = await jobRuns(request.jobName);
-    expect(recorded.at(-1)).toMatchObject({ status: 'failed', error: readError,
-      metadata: { reason: readError, failures: 1, reconciliationPagination: null, releaseSha: 'fixture-revision' },
-    });
-    expect(await real.readLatestTerminalRunMetadata(request.jobName)).toStrictEqual(recorded.at(-1)?.metadata);
-    expect(await native().reconcile(request)).toMatchObject({ status: 502, result: { reason: 'malformed' },
-      metadata: { reconciliationPagination: { page: 4, nextPage: 5 } } });
-    expect(get.mock.calls).toEqual([[{ page: 4, size: 1 }]]);
-    expect(forwardingRead.mock.calls).toEqual(Array.from({ length: 4 }, () => [request.jobName]));
-    const final = (await jobRuns(request.jobName)).at(-1);
-    expect(final).toMatchObject({ status: 'failed', error: repeatedPageRemedy, metadata: { reason: 'malformed', failures: 1 } });
-    expect(final?.metadata.reconciliationPagination).toEqual({ version: 1, page: 4, pageSize: 1, nextPage: 5 });
+    await expect(native.reconcile({ ...fresh, ledger: { ...fresh.ledger, finishJobRun: finish } }))
+      .rejects.toThrow('reconciliation_job_lease_lost');
+    expect(finish).toHaveBeenCalledOnce();
+    expect(get).toHaveBeenCalledOnce();
   });
 
-  it('non_native_terminal_reader_preserves_checkpoint', async () => {
-    const { ledger, jobName } = job();
-    const summary = { checked: 0, updated: 0, failures: 0, skipped: false };
-    const earlier = await ledger.claimJobRun(jobName, invocation);
-    expect(await ledger.finishJobRun(jobName, earlier.runId!, invocation, 'success', summary, { accountCheckpoint: 'earlier' })).toBe(true);
-    const latest = await ledger.claimJobRun(jobName, invocation);
-    const reason = 'reconciliation_checkpoint_read_failed';
-    const metadata = { accountCheckpoint: 'latest', reason };
-    expect(await ledger.finishJobRun(jobName, latest.runId!, invocation, 'failed', { ...summary, reason, failures: 1 }, metadata)).toBe(true);
-    const before = (await jobRuns(jobName)).at(-1)?.metadata;
-    expect(before).toMatchObject(metadata);
-    expect(await ledger.readLatestTerminalRunMetadata(jobName)).toStrictEqual(before);
+  it('poll_checkpoint_read_error_restarts_without_skipping_the_hold', async () => {
+    const first = observation(await subject(), 'picking', fixtureInstant, [], fixtureInstant);
+    const failed = await subject(), obs = observation(failed, 'exception', fixtureInstant, [], fixtureInstant);
+    const key = keys.exception(failed.shipment, obs.intake!.occurrenceKey);
+    const request = job(undefined, 1), real = request.ledger;
+    const read = vi.fn(real.readLatestTerminalRunMetadata);
+    const wrapped = { ...request, ledger: { ...real, readLatestTerminalRunMetadata: read } };
+    const pages: number[] = [];
+    const native = compose(obs, { pages: { readPage: async ({ page }) => {
+      pages.push(page);
+      return { kind: 'page', rows: page === 0 ? [row(first)] : [row(obs)] };
+    } } });
+    try {
+      await armHoldFault(key);
+      expect(await native.reconcile(wrapped)).toMatchObject({ status: 200 });
+      expect(await native.reconcile(wrapped)).toMatchObject({ status: 502, result: { reason: holdFailureReason } });
+      expect(await real.readLatestTerminalRunMetadata(request.jobName)).toMatchObject({
+        reconciliationPagination: { page: 1, nextPage: 1, failureStreak: 1 },
+      });
+      read.mockRejectedValueOnce(new Error('synthetic_checkpoint_failure'));
+      expect(await native.reconcile(wrapped)).toEqual({ kind: 'failed', status: 502, reason: 'reconciliation_checkpoint_read_failed' });
+      expect(pages).toEqual([0, 1]);
+      expect((await census(failed)).holds).toEqual([]);
+
+      await disarmHoldFault();
+      expect(await native.reconcile(wrapped)).toMatchObject({ status: 200, metadata: { reconciliationPagination: { page: 0, nextPage: 1 } } });
+      expect(await native.reconcile(wrapped)).toMatchObject({ status: 200, result: { exceptions: 1 } });
+      expect(pages).toEqual([0, 1, 0, 1]);
+      expect((await census(failed)).holds).toMatchObject([{ status: 'active', idempotency_key: key }]);
+    } finally { await disarmHoldFault(); }
   });
 
   it('verifies before parse/storage and gates disabled, polling-only and unbound selections without writes', async () => {
@@ -765,9 +729,6 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     for (const invalid of [null, {}, { reconciliationPagination: { version: 1, pageSize: 3, page: 1, nextPage: 2 } }, { reconciliationPagination: { version: 1, pageSize: 2, page: 1, nextPage: 99 } }]) {
       checkpoint = invalid; expect(await native.reconcile(job(ledger, 2))).toMatchObject({ metadata: { reconciliationPagination: { page: 0 } } });
     }
-    events.length = 0; finishes.length = 0;
-    ledger.readLatestTerminalRunMetadata = async () => { events.push('checkpoint'); throw new Error('synthetic_checkpoint_failure'); };
-    expect(await native.reconcile(job(ledger, 2))).toMatchObject({ kind: 'failed', reason: 'reconciliation_checkpoint_read_failed' }); expect(events).toEqual(['lease', 'checkpoint', 'finish']); expect(finishes[0]?.[5]).toEqual({ failures: 1, skipped: false, reason: 'reconciliation_checkpoint_read_failed', reconciliationPagination: null });
     ledger.claimJobRun = async () => ({ acquired: false, runId: null, reason: 'lease_busy' }); events.length = 0;
     expect(await native.reconcile(job(ledger))).toEqual({ kind: 'skipped', reason: 'lease_busy' }); expect(events).toEqual([]);
   });
