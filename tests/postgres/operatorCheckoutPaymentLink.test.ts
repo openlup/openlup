@@ -10,7 +10,7 @@ const policy={operatorLifetimeMs:7*DAY,recoveryWindowMs:30*DAY};
 describe.each(lifecycleProfiles)('operator checkout links on %s',profile=>{
  let env:LifecycleInstallation,operator:string;
  beforeAll(async()=>{
-  env=await lifecycleInstallation(profile);operator=randomUUID();
+  env=await lifecycleInstallation(profile,{freshCluster:profile==='legacy'});operator=randomUUID();
   if(profile==='legacy')await env.owner.query('CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS');
   await env.owner.query('INSERT INTO public.platform_communication_operators(principal_id,active)VALUES($1,true)',[operator]);
  },postgresSetupTimeoutMs);

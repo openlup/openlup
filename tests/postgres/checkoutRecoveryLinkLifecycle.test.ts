@@ -8,7 +8,7 @@ import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/po
 describe.each(lifecycleProfiles)("checkout recovery link lifecycle on %s", profile => {
   let env: LifecycleInstallation;
   beforeAll(async () => {
-    env = await lifecycleInstallation(profile);
+    env = await lifecycleInstallation(profile, { freshCluster: profile === "legacy" });
     // Legacy has no qualified runtime bootstrap; its installer is the execution lane.
     // The service capability name is fixture-only, added after inventory verification.
     if (profile === "legacy") await env.owner.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS");

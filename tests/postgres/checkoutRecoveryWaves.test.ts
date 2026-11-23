@@ -26,7 +26,7 @@ const unusedMailPort: TransactionalEmailPort = {
 describe.each(lifecycleProfiles)('checkout recovery waves on %s', profile => {
   let env: LifecycleInstallation;
   beforeAll(async () => {
-    env = await lifecycleInstallation(profile);
+    env = await lifecycleInstallation(profile, { freshCluster: profile === 'legacy' });
     if (profile === 'legacy') await env.owner.query('CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS');
   }, postgresSetupTimeoutMs);
   afterAll(async () => env?.close(), postgresTeardownTimeoutMs);
