@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import type { PoolClient } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createPostgresFulfillmentProviderIntake } from '@openlup/platform/fulfillment/native';
 import { createPostgresPlatformJobRunLedger } from '@openlup/platform/job-ledger';
@@ -32,6 +33,14 @@ const adapterOrderIdentity = {
 const invocation = { triggerKind: 'scheduler' as const, invocationSource: 'offline-native-witness' };
 const verification = { rawBody: new Uint8Array([123, 125]), headers: {}, receivedAt: at };
 type Intake = ReturnType<typeof createPostgresFulfillmentProviderIntake>;
+type FinishJobRunArgs = Parameters<PlatformJobRunLedgerPort['finishJobRun']>;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(settle => { resolve = settle; });
+  return { promise, resolve };
+}
+
 for (const profile of lifecycleProfiles) describe(`native provider intake on ${profile}`, () => {
   let h: LifecycleInstallation;
   let fixtureInstant: string;
@@ -98,14 +107,14 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     await h.owner.query('INSERT INTO public.fulfillment_parcel_line_reservations(line_id,reservation_id,quantity) VALUES($1,$2,1)', [line, reservation]);
     return reservation;
   }
-  async function armHoldFault(key: string) {
-    const { rows: [{ literal }] } = await h.owner.query<{ literal: string }>('SELECT quote_literal($1::text) AS literal', [key]);
-    await h.owner.query(`CREATE FUNCTION public.fixture_hold_fault() RETURNS trigger LANGUAGE plpgsql AS $$
+  async function armHoldFault(key: string, db: Pick<PoolClient, 'query'> = h.owner) {
+    const { rows: [{ literal }] } = await db.query<{ literal: string }>('SELECT quote_literal($1::text) AS literal', [key]);
+    await db.query(`CREATE FUNCTION public.fixture_hold_fault() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN RAISE EXCEPTION 'synthetic_hold_failure' USING ERRCODE='P0001'; END $$;
       CREATE TRIGGER fixture_hold_fault BEFORE INSERT ON public.commerce_order_holds FOR EACH ROW
       WHEN (NEW.idempotency_key=${literal}) EXECUTE FUNCTION public.fixture_hold_fault()`);
   }
-  const disarmHoldFault = () => h.owner.query(`DROP TRIGGER IF EXISTS fixture_hold_fault ON public.commerce_order_holds;
+  const disarmHoldFault = (db: Pick<PoolClient, 'query'> = h.owner) => db.query(`DROP TRIGGER IF EXISTS fixture_hold_fault ON public.commerce_order_holds;
     DROP FUNCTION IF EXISTS public.fixture_hold_fault()`);
   it('poll_hold_failure_retries_before_advancing', async () => {
     const before = await subject(), failed = await subject(), after = await subject();
@@ -317,6 +326,249 @@ for (const profile of lifecycleProfiles) describe(`native provider intake on ${p
     expect(finish).toHaveBeenCalledOnce();
     expect(get).toHaveBeenCalledOnce();
   });
+
+  async function pollLeaseFixture(db: PoolClient, jobName: string, ledger: PlatformJobRunLedgerPort) {
+    const { rows: [{ expired, observed, received, scheduled }] } = await db.query<{
+      expired: Date; observed: Date; received: Date; scheduled: Date;
+    }>(`
+      SELECT instant - interval '1 day' AS expired,
+             instant + interval '1 year' AS observed,
+             instant + interval '1 year 1 hour' AS received,
+             instant + interval '1 year 2 hours' AS scheduled
+      FROM (SELECT clock_timestamp() AS instant) AS fixture_clock
+    `);
+    let started = 0;
+    const sequenced: PlatformJobRunLedgerPort = {
+      ...ledger,
+      async claimJobRun(...args) {
+        const claim = await ledger.claimJobRun(...args);
+        if (claim.acquired) {
+          await db.query('UPDATE public.platform_job_runs SET started_at=$3 WHERE job_name=$1 AND id=$2',
+            [jobName, claim.runId, shiftHours(scheduled.toISOString(), started++)]);
+        }
+        return claim;
+      },
+    };
+    return {
+      observed: observed.toISOString(), received: received.toISOString(), ledger: sequenced,
+      async expire(runId: string) {
+        const expiry = await db.query(`UPDATE public.platform_job_controls SET lease_until=$3
+          WHERE job_name=$1 AND lease_token=$2`, [jobName, runId, expired]);
+        expect(expiry.rowCount).toBe(1);
+      },
+      async clear() {
+        await db.query('DELETE FROM public.platform_job_runs WHERE job_name=$1', [jobName]);
+        await db.query('DELETE FROM public.platform_job_controls WHERE job_name=$1', [jobName]);
+      },
+    };
+  }
+
+  async function withPollSessions(run: (owner: PoolClient, runtime: PoolClient) => Promise<void>) {
+    const owner = await h.owner.connect();
+    try {
+      const runtime = await h.runtime.connect();
+      try {
+        for (const db of [owner, runtime]) {
+          await db.query("SET lock_timeout = '3s'; SET statement_timeout = '5s'");
+        }
+        await run(owner, runtime);
+      } finally { runtime.release(true); }
+    } finally { owner.release(true); }
+  }
+
+  it('job_ledger_accepts_current_success_and_failure', async () => withPollSessions(async (owner, runtime) => {
+    const jobName = `intake-${randomUUID()}`;
+    const readControl = async () => (await owner.query(
+      'SELECT * FROM public.platform_job_controls WHERE job_name=$1', [jobName],
+    )).rows[0]!;
+    const readRun = async (id: string) => (await owner.query(
+      'SELECT * FROM public.platform_job_runs WHERE job_name=$1 AND id=$2', [jobName, id],
+    )).rows[0]!;
+    let lastSuccessAt: Date | null = null;
+    try {
+      for (const status of ['success', 'failed'] as const) {
+        const { rows: [claim] } = await runtime.query(`
+          SELECT * FROM public.platform_claim_job_run_v3($1,'scheduler','offline-native-witness',900,'{"claimOnly":1,"shared":"claim"}')
+        `, [jobName]);
+        const runId: string = claim.run_id;
+        expect(claim).toMatchObject({ acquired: true, reason: 'acquired' });
+        const running = await readRun(runId), control = await readControl();
+        expect(control.lease_token).toBe(runId);
+        const error = status === 'failed' ? 'fixture_failure' : null;
+        const supportCode = status === 'failed' ? 'fixture_support' : null;
+        const { rows } = await runtime.query(`
+          SELECT public.platform_finish_job_run_v3($1,$2,$3,3,2,$4,$5,'{"shared":"finish","finishOnly":2}') AS released
+        `, [jobName, runId, status, error, supportCode]);
+        expect(rows).toEqual([{ released: true }]);
+        const terminal = await readRun(runId);
+        expect(terminal).toEqual({
+          ...running, status, finished_at: expect.any(Date), checked: 3, updated: 2, error, support_code: supportCode,
+          metadata: { claimOnly: 1, shared: 'finish', finishOnly: 2, triggerKind: 'scheduler', invocationSource: 'offline-native-witness' },
+        });
+        if (status === 'success') lastSuccessAt = terminal.finished_at;
+        expect(await readControl()).toEqual({
+          ...control, updated_at: terminal.finished_at, lease_owner: null, lease_token: null, lease_until: null,
+          last_finished_at: terminal.finished_at, last_success_at: lastSuccessAt, last_status: status, last_run_id: runId,
+        });
+        const releasedControl = await readControl();
+        const duplicate = await runtime.query(`
+          SELECT public.platform_finish_job_run_v3($1,$2,'failed',0,0,'duplicate',NULL,'{"duplicate":true}') AS released
+        `, [jobName, runId]);
+        expect(duplicate.rows).toEqual([{ released: false }]);
+        expect(await readRun(runId)).toEqual(terminal);
+        expect(await readControl()).toEqual(releasedControl);
+      }
+    } finally {
+      await owner.query('DELETE FROM public.platform_job_runs WHERE job_name=$1', [jobName]);
+      await owner.query('DELETE FROM public.platform_job_controls WHERE job_name=$1', [jobName]);
+    }
+  }), 30_000);
+
+  it.each([0, 1])('poll_retries_after_the_successor_crashes (page %i)', async page => withPollSessions(async (owner, runtime) => {
+    const real = createPostgresPlatformJobRunLedger(runtime, { releaseCorrelation: () => ({}), defaultFailureReason: 'offline_failed' });
+    const request = job(real, 1);
+    const lease = await pollLeaseFixture(owner, request.jobName, real);
+    const failed = await subject();
+    const healthy = observation(await subject(), 'picking', lease.observed, [], lease.received);
+    const exception = observation(failed, 'exception', lease.observed, [], lease.received);
+    const key = keys.exception(failed.shipment, exception.intake!.occurrenceKey);
+    const holds = async () => (await owner.query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM public.commerce_order_holds WHERE idempotency_key=$1 AND status='active'", [key],
+    )).rows[0]!.count;
+    const requestPage = (rows: FulfillmentReconciliationObservation[]) => compose(healthy, {
+      db: runtime, pages: { readPage: async () => ({ kind: 'page', rows }) },
+    });
+    const entered = deferred<FinishJobRunArgs>();
+    const release = deferred<void>();
+    const finishA = vi.fn(real.finishJobRun);
+    const active = { ...request, ledger: lease.ledger };
+    let first: ReturnType<Intake['reconcile']> | undefined;
+    try {
+      if (page === 1) {
+        expect(await requestPage([row(healthy)]).reconcile(active)).toMatchObject({ status: 200 });
+        expect(await real.readLatestTerminalRunMetadata(request.jobName)).toMatchObject({
+          reconciliationPagination: { page: 0, nextPage: page },
+        });
+      } else {
+        expect(await real.readLatestTerminalRunMetadata(request.jobName)).toBeNull();
+      }
+
+      const pagesA: number[] = [], pagesB: number[] = [], pagesC: number[] = [];
+      const poll = (pages: number[], offered: FulfillmentObservation) => compose(healthy, {
+        db: runtime, pages: { readPage: async ({ page: requested }) => {
+          pages.push(requested);
+          return { kind: 'page', rows: requested === page ? [row(offered)] : [] };
+        } },
+      });
+      first = poll(pagesA, healthy).reconcile({ ...active, ledger: {
+        ...lease.ledger,
+        async finishJobRun(...args) {
+          entered.resolve(args);
+          await release.promise;
+          return finishA(...args);
+        },
+      } });
+      const [, runA, , statusA, , metadataA] = await Promise.race([
+        entered.promise,
+        first.then(() => { throw new Error('poll A completed before the finish barrier'); }),
+      ]);
+      expect({ pagesA, statusA, checkpoint: metadataA?.reconciliationPagination }).toEqual({
+        pagesA: [page], statusA: 'success', checkpoint: { version: 1, page, pageSize: 1, nextPage: page + 1 },
+      });
+      await lease.expire(runA);
+      await armHoldFault(key, owner);
+
+      const crash = new Error('poll B stopped before finishing');
+      const finishB = vi.fn(async (..._args: FinishJobRunArgs) => { throw crash; });
+      await expect(poll(pagesB, exception).reconcile({
+        ...active, ledger: { ...lease.ledger, finishJobRun: finishB },
+      })).rejects.toBe(crash);
+      expect(pagesB).toEqual([page]);
+      expect(finishB).toHaveBeenCalledExactlyOnceWith(request.jobName, expect.any(String), invocation, 'failed',
+        expect.objectContaining({ checked: 1, failures: 1, reason: holdFailureReason }),
+        expect.objectContaining({ reconciliationPagination: { version: 1, page, pageSize: 1, nextPage: page, failureStreak: 1 } }));
+      const runB = finishB.mock.calls[0]![1];
+      const readRunB = async () => (await owner.query(
+        'SELECT status, finished_at FROM public.platform_job_runs WHERE job_name=$1 AND id=$2', [request.jobName, runB],
+      )).rows[0];
+      const readControl = async () => (await owner.query(
+        'SELECT * FROM public.platform_job_controls WHERE job_name=$1', [request.jobName],
+      )).rows[0];
+      const controlB = await readControl();
+      expect(controlB.lease_token).toBe(runB);
+      expect(await readRunB()).toEqual({ status: 'running', finished_at: null });
+      expect(await holds()).toBe(0);
+
+      const stale = expect(first).rejects.toThrow('reconciliation_job_lease_lost');
+      release.resolve();
+      await stale;
+      expect(await finishA.mock.results[0]?.value).toBe(false);
+      expect(await readControl()).toEqual(controlB);
+      const { rows: [refused] } = await owner.query(`
+        SELECT status, finished_at, error, checked, updated, support_code, metadata
+        FROM public.platform_job_runs WHERE job_name=$1 AND id=$2
+      `, [request.jobName, runA]);
+      expect(refused).toEqual({
+        status: 'skipped', finished_at: expect.any(Date), error: 'job_lease_lost',
+        checked: null, updated: null, support_code: null, metadata: {},
+      });
+      expect(await readRunB()).toEqual({ status: 'running', finished_at: null });
+
+      await disarmHoldFault(owner);
+      await lease.expire(runB);
+      expect(await poll(pagesC, exception).reconcile(active)).toMatchObject({ status: 200 });
+      expect({ pagesC, activeHolds: await holds() }).toEqual({ pagesC: [page], activeHolds: 1 });
+    } finally {
+      release.resolve();
+      await Promise.allSettled(first ? [first] : []);
+      try { await disarmHoldFault(owner); }
+      finally { await lease.clear(); }
+    }
+  }), 30_000);
+
+  it('poll_keeps_the_successor_checkpoint_after_a_stale_finish', async () => withPollSessions(async (owner, runtime) => {
+    const real = createPostgresPlatformJobRunLedger(runtime, { releaseCorrelation: () => ({}), defaultFailureReason: 'offline_failed' });
+    const request = job(real, 1);
+    const { observed, received, ledger, expire, clear } = await pollLeaseFixture(owner, request.jobName, real);
+    const obs = observation(await subject(), 'picking', observed, [], received);
+    const entered = deferred<FinishJobRunArgs>();
+    const release = deferred<void>();
+    const first = compose(obs, { db: runtime }).reconcile({ ...request, ledger: {
+      ...ledger,
+      async finishJobRun(...args) {
+        entered.resolve(args);
+        await release.promise;
+        return ledger.finishJobRun(...args);
+      },
+    } });
+    try {
+      const [, runId, , , , metadata] = await Promise.race([
+        entered.promise,
+        first.then(() => { throw new Error('first poll completed before the finish barrier'); }),
+      ]);
+      expect(metadata?.reconciliationPagination).toEqual({ version: 1, page: 0, pageSize: 1, nextPage: 1 });
+      await expire(runId);
+
+      const successor = compose(obs, { db: runtime, pages: { readPage: async () => ({ kind: 'page', rows: [
+        { kind: 'unknown', refusal: { reason: 'malformed', phase: 'normalize', retryable: false } },
+      ] }) } });
+      expect(await successor.reconcile({ ...request, ledger })).toMatchObject({ kind: 'finished', status: 502 });
+      const checkpoint = { version: 1, page: 0, pageSize: 1, nextPage: 0, failureStreak: 1 };
+      const latest = async () => (await real.readLatestTerminalRunMetadata(request.jobName))?.reconciliationPagination;
+      expect(await latest()).toEqual(checkpoint);
+
+      const stale = expect(first).rejects.toThrow('reconciliation_job_lease_lost');
+      release.resolve();
+      await stale;
+      // This ordering covers a successor that commits its checkpoint before the stale finish.
+      expect(await latest()).toEqual(checkpoint);
+    } finally {
+      release.resolve();
+      await Promise.allSettled([first]);
+      // Separate autocommit statements leave cleanup usable after a cancelled query.
+      await clear();
+    }
+  }), 30_000);
 
   it('poll_checkpoint_read_error_restarts_without_skipping_the_hold', async () => {
     const first = observation(await subject(), 'picking', fixtureInstant, [], fixtureInstant);

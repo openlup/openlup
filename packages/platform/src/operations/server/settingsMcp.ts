@@ -35,7 +35,8 @@ export function settingsMcpTools(preview: ZodType) {
     check: ["Run the application's offline settings check. Reported values can be checked against a packaged schema or a schema the application supplies. The application's own validator runs when supplied and its declarations are accepted. The result marks rows whose values were not validated. Run it after editing a value.", z.strictObject({}), checkResultSchema],
     preview: ["Preview the effect of a proposed value without writing anything. Only settings whose runtime level is preview support it, and the server must have been started with --database-url and --app. Pass the proposed JSON value itself in value, not a string containing JSON.", z.strictObject({ key, value: z.json(), skus: z.array(z.string()).optional(), asOf: key.optional() }), preview],
   } satisfies Record<string, [string, ZodType, ZodType]>).map(([command, [description, input, result]]) => {
-    const output = z.union([result, z.strictObject({ schemaVersion: version, refusal })]);
+    const toolRefusal = command === "show" ? refusal.extend({ remediation: refusal.shape.remediation.partial({ command: true }) }) : refusal;
+    const output = z.union([result, z.strictObject({ schemaVersion: version, refusal: toolRefusal })]);
     return { command, input, output, definition: { name: `settings_${command}`, description,
       inputSchema: toolInputSchema(input), outputSchema: { type: "object", ...toolInputSchema(output, "output") },
       annotations: { readOnlyHint: true } } };

@@ -39,3 +39,5 @@ export interface CheckoutCommandV2 {
   currency: string;
   cadenceDays?: number;
 }
+
+export type { OrderMoneyV2, PaidOrderMoneyV2 } from "./orderMoneyV2.js";

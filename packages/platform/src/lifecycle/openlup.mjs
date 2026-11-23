@@ -84,6 +84,7 @@ async function bindSettings({ database, app, configuration }) {
     inventorySettingKey = inventory;
     return {
       readers: {
+        "tax.coverage": async () => ({ refusal: "tax_coverage_reader_unbound" }),
         [inventory]: async () => {
           const policy = await readRenewalStockProtectionOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };

@@ -74,3 +74,33 @@ it.each([
   await expect(assertQualifiedPostgresSession(client, applied, selection, "fixture"))
     .rejects.toThrow(diagnostic);
 });
+
+it.each([
+  { kind: "role-membership", schema: null, name: "service_role", args: [],
+    attributes: { grantedRole: "service_role", memberRole: "openlup_checkout_owner", grantorRole: "cluster_root" },
+    publicText: "Remove all membership and grantor edges for the checkout login.",
+    diagnostic: "Membership of openlup_checkout_owner in service_role issued by cluster_root." },
+  { kind: "role-membership", schema: null, name: "openlup_checkout_owner", args: [],
+    attributes: { grantedRole: "openlup_checkout_owner", memberRole: "fixture_member", grantorRole: "cluster_root" },
+    publicText: "Remove all membership and grantor edges for the checkout login.",
+    diagnostic: "Membership of fixture_member in openlup_checkout_owner issued by cluster_root." },
+  { kind: "acl-grant", schema: "public", name: "fixture_function",
+    args: ["routine", "uuid", "migration_login", "openlup_checkout_owner", "execute", "false", "stored"],
+    attributes: { targetClass: "routine", grantee: "openlup_checkout_owner" },
+    publicText: "Remove additional catalog access for the checkout login.",
+    diagnostic: "Additional catalog access on routine public.fixture_function(uuid)." },
+])("names the offending $kind in the maintainer diagnostic", async ({ kind, schema, name, args, attributes, publicText, diagnostic }) => {
+  const client = { async query(sql: string | object) { return typeof sql === "string" ? { rows: [{
+    effective_search_path: ["pg_catalog", "public"], current_user: selection.migrationLogin, session_user: selection.migrationLogin,
+    bootstrap_login: selection.bootstrapLogin, database_owner: selection.migrationLogin, server_version_num: 160014,
+    replication_role: "origin", session_lock_held: true, runtime_unsafe: false, restore_unsafe: false,
+    unsafe_replication_default: false, default_privileges_exist: false, runtime_setting: selection.runtimeLogin,
+    restore_setting: selection.restoreLogin, mode_setting: selection.roleMode, ledger_exists: false,
+  }] } : { rows: [{ checkout: null, checkoutPaths: [], catalog: [
+    { kind, schema, name, arguments: args, definition: null, attributes: JSON.stringify(attributes) },
+  ] }] }; } } as PoolClient;
+  await expect(assertQualifiedPostgresSession(client, [], selection, "fixture")).rejects.toMatchObject({
+    message: `qualified PostgreSQL installation refused: checkout_owner_login_unready: openlup_checkout_owner. ${publicText}`,
+    cause: { message: diagnostic },
+  });
+});

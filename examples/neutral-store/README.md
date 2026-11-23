@@ -589,12 +589,24 @@ then require refresh. The key is generated at runtime, never in the image.
 A host started without the key-file flag refuses subscription quotes with
 `starter_quote_acceptance_key_required`; one-time checkout still works.
 Acceptance binds the request, money,
-policy, second promise and delivery terms; changed terms clear consent and require
-refresh even if the total is unchanged. Expired observations withhold money.
+policy, second promise and delivery terms. An equivalent refresh keeps the
+customer's reviewed token, payable amount and original deadline. Changed terms
+or an expired deadline require fresh review and consent.
 After an uncertain checkout response, an unchanged retry retains the submitted
 acceptance proof and command key so the host can recover the saved receipt.
 Changing the input or explicitly starting a new action prepares a fresh quote;
 the server still validates acceptance before any new draft is admitted.
+
+Before enabling governed quote issuance, verify the compatible v1 reader and
+checkout controller on every serving and replay replica and each rollback
+image. Prove key and purpose isolation for the reference BFF, or deploy the
+compatible reader to it and every other verifier in the shared domain. The
+reference BFF continues to accept only incumbent quotes. Verify current and
+previous key overlap, cross-replica verification and exact receipt replay.
+For rollback, stop issuance across the fleet first. Keep both readers, the
+controller and key overlap until the last issued seal expires, up to the
+existing 72-hour token lifetime. Keep exact pending and completed receipt
+replay available after that window.
 
 The local predecessor seam loads the package eligibility and transactional
 admission factories. Missing exports refuse admission by name. All mounted checkout modes use the

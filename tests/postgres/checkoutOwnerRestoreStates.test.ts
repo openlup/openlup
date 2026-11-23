@@ -121,7 +121,8 @@ async function install(pkg: InstalledMigrations, label: string, selection: Retur
       const grant = () => pkg.applyPlatformCheckoutOwnerGrant(env, selection);
       const state = async (next: State) => {
         if (next === current) return;
-        if (current === "granted") await owner.query(revoke);
+        // A concurrent grant can commit before the fixture records it.
+        if (next === "absent" || current === "granted") await owner.query(revoke);
         if (current === "absent") await provisionCheckoutOwner(bootstrap, selection, database, password, operator);
         if (next === "absent") await bootstrap.query(`DROP ROLE ${checkoutOwnerLogin}`);
         if (next === "granted") expect(await grant()).toEqual({ state: "granted" });
@@ -158,6 +159,20 @@ async function install(pkg: InstalledMigrations, label: string, selection: Retur
 }
 
 type Installation = Awaited<ReturnType<typeof install>>["template"];
+
+async function withDisposal(fixture: { dispose(): Promise<void> }, work: () => Promise<void>) {
+  try {
+    await work();
+  } catch (error) {
+    try {
+      await fixture.dispose();
+    } catch (teardownError) {
+      throw new AggregateError([error, teardownError], "Fixture body and teardown both failed");
+    }
+    throw error;
+  }
+  await fixture.dispose();
+}
 
 async function capture(host: Installation, id: string, catalogueId: string) {
   const db = await host.owner.connect();
@@ -210,9 +225,15 @@ async function grantAlongsideRestore(target: Installation, restore: () => Return
     }
     return result;
   } as typeof originalQuery);
-  const deadline = AbortSignal.timeout(15_000);
-  const bounded = (event: Promise<void>) => Promise.race([event, delay(15_000, undefined, { signal: deadline, ref: false })
-    .then(() => { throw new Error("Fixture grant barrier was not reached"); })]);
+  const bounded = async (event: Promise<void>) => {
+    const timer = new AbortController();
+    try {
+      await Promise.race([event, delay(60_000, undefined, { signal: timer.signal, ref: false })
+        .then(() => { throw new Error("Fixture grant barrier was not reached"); })]);
+    } finally {
+      timer.abort();
+    }
+  };
   let operations: Promise<PromiseSettledResult<unknown>[]> | undefined;
   try {
     await expect(target.grant()).rejects.toThrow("Fixture interrupted after the grant");
@@ -241,6 +262,50 @@ async function grantAlongsideRestore(target: Installation, restore: () => Return
   }
   await target.state("granted");
   await target.state("dormant");
+}
+
+async function refusesConcurrentRoutineChange(target: Installation) {
+  const ledger = await target.ledger(), acl = await target.acl();
+  const database = "transfer_absent_dormant";
+  const routine = checkoutOwnerRoutines[0];
+  const writer = await target.owner.connect();
+  const originalQuery = Client.prototype.query;
+  let committed = false, attemptedGrant = false;
+  const query = vi.spyOn(Client.prototype, "query").mockImplementation(function (this: Client, ...args: unknown[]) {
+    const sql = args[0];
+    if (typeof sql === "string" && sql.startsWith("DO $$\nDECLARE\n  checkout_login")) attemptedGrant = true;
+    if (sql !== "LOCK TABLE ONLY public.platform_schema_migrations IN SHARE ROW EXCLUSIVE MODE") {
+      return Reflect.apply(originalQuery, this, args);
+    }
+    return (async () => {
+      const isolation = await Reflect.apply(originalQuery, this, [`SELECT
+        current_setting('default_transaction_isolation') AS session_default,
+        current_setting('transaction_isolation') AS active`]);
+      expect(isolation.rows).toEqual([{ session_default: "repeatable read", active: "read committed" }]);
+      // The runner has read ledger identity. Commit on the competing connection
+      // just before it acquires the ledger lock and checks the live definition.
+      await writer.query("COMMIT");
+      committed = true;
+      return Reflect.apply(originalQuery, this, args);
+    })();
+  } as typeof originalQuery);
+  try {
+    await target.bootstrap.query(`ALTER DATABASE ${database} SET default_transaction_isolation = 'repeatable read'`);
+    await writer.query("BEGIN; SET LOCAL statement_timeout = '60s'; SET LOCAL idle_in_transaction_session_timeout = '60s'");
+    await Reflect.apply(originalQuery, writer, ["LOCK TABLE ONLY public.platform_schema_migrations IN SHARE ROW EXCLUSIVE MODE"]);
+    await writer.query(`ALTER FUNCTION ${routine} SECURITY INVOKER`);
+    await expect(target.grant()).rejects.toThrow("checkout_owner_predecessor_unverified");
+    expect(committed).toBe(true);
+    expect(attemptedGrant).toBe(false);
+    expect(await target.ledger()).toEqual(ledger);
+    expect(await target.acl()).toEqual(acl);
+  } finally {
+    query.mockRestore();
+    if (!committed) await writer.query("ROLLBACK").catch(() => {});
+    writer.release(!committed);
+    await target.bootstrap.query(`ALTER DATABASE ${database} RESET default_transaction_isolation`);
+    if (committed) await target.owner.query(`ALTER FUNCTION ${routine} SECURITY DEFINER`);
+  }
 }
 
 const clients = (host: Installation) => host.owner.query("SELECT id,email FROM public.clients ORDER BY id").then(result => result.rows);
@@ -273,7 +338,7 @@ async function verifyLaterDefinition(source: Installation, root: string, manifes
   expect(await source.ledger()).toEqual(applied);
 }
 
-it.each(profiles)("restores the same nonempty graph across all checkout states on %s", async profile => {
+it.each(profiles)("restores the same nonempty checkout graph on %s", async profile => {
   await withGrantArtifact(async (pkg, root, manifest) => {
     const selection = select(profile);
     const expected = selectPlatformMigrationManifest(manifest, selection.generation, selection.generation === "qualified-admin"
@@ -306,10 +371,14 @@ it.each(profiles)("restores the same nonempty graph across all checkout states o
                 public.customer_support_search_digits('1') AS digits`)).rows).toEqual([{ value: "a", digits: "1" }]);
             } finally { await checkout.end(); }
           }
+          // All profiles observe every source state above. One absent-to-granted
+          // restore per additional profile exercises its login binding, checkout
+          // provisioning, partial-grant refusal and successful restore/replay.
+          if (profile !== "bootstrap" && from !== "absent") continue;
           const packet = await capture(source, "checkout-source", sha256(catalog));
-          for (const to of states) {
+          for (const to of profile === "bootstrap" ? states : ["granted"] as const) {
             const target = await targetFixture.clone(`transfer_${from}_${to}`);
-            try {
+            await withDisposal(target, async () => {
               await target.state(to);
               expect(await target.project()).toBe(original);
               const acl = await target.acl();
@@ -325,7 +394,7 @@ it.each(profiles)("restores the same nonempty graph across all checkout states o
               if (from === "absent" && to === "granted") {
                 if (profile === "bootstrap") {
                   const sibling = await targetFixture.clone("transfer_other_database");
-                  try {
+                  await withDisposal(sibling, async () => {
                     await target.bootstrap.query(`REVOKE TEMP ON DATABASE transfer_other_database FROM PUBLIC;
                       GRANT TEMP ON DATABASE transfer_other_database TO ${selection.runtimeLogin},${selection.restoreLogin}`);
                     const login = new Pool({ connectionString: sibling.url(checkoutOwnerLogin) });
@@ -334,7 +403,7 @@ it.each(profiles)("restores the same nonempty graph across all checkout states o
                         .toEqual([{ granted: false }]);
                     } finally { await login.end(); }
                     expect(await sibling.project()).toBe(original);
-                  } finally { await sibling.dispose(); }
+                  });
                 }
                 await target.owner.query(`REVOKE EXECUTE ON FUNCTION ${checkoutOwnerRoutines[0]} FROM ${checkoutOwnerLogin}`);
                 await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({ code: "database_unavailable" });
@@ -357,6 +426,7 @@ it.each(profiles)("restores the same nonempty graph across all checkout states o
                 await target.owner.query("REVOKE SELECT (id) ON public.clients FROM anon");
               }
               if (profile === "bootstrap" && from === "absent" && to === "dormant") {
+                await refusesConcurrentRoutineChange(target);
                 await grantAlongsideRestore(target, () => restoreConnectedNativeStore(input));
               } else expect((await restoreConnectedNativeStore(input)).replayed).toBe(false);
               expect(await clients(target)).toEqual(sourceClients);
@@ -364,7 +434,7 @@ it.each(profiles)("restores the same nonempty graph across all checkout states o
               expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
               expect(await target.acl()).toEqual(acl);
               expect(await target.ledger()).toEqual(targetLedger);
-            } finally { await target.dispose(); }
+            });
           }
         }
         expect(await source.ledger()).toEqual(sourceLedger);

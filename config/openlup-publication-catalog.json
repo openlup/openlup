@@ -1598,6 +1598,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125070000_job_run_finish_lease_fence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125075000_tax_coverage_revisions.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261125080000_commerce_destination_v2_receipts.sql",
       "class": "public-output"
     },
@@ -3014,6 +3022,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/quote-acceptance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/quote-shipping.test.ts",
       "class": "public-output"
     },
@@ -3695,6 +3707,10 @@
     },
     {
       "path": "packages/core/src/pricing/catalogueMoneyV2.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/pricing/commerceMoneyV2.ts",
       "class": "public-output"
     },
     {
@@ -5254,6 +5270,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125070000_job_run_finish_lease_fence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125075000_tax_coverage_revisions.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261125080000_commerce_destination_v2_receipts.sql",
       "class": "public-output"
     },
@@ -5707,6 +5731,14 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogOwnerQuote.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogOwnerQuoteEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogOwnerQuoteSubscription.ts",
       "class": "public-output"
     },
     {
@@ -6275,6 +6307,10 @@
     },
     {
       "path": "packages/platform/src/commerce/contracts/orderMoney.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/orderMoneyV2.ts",
       "class": "public-output"
     },
     {
@@ -9418,6 +9454,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/commerceQuoteMoneyV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/commerceQuoteSnapshotExpect.ts",
       "class": "public-output"
     },
@@ -9463,6 +9503,10 @@
     },
     {
       "path": "packages/platform/src/pricing/contracts/quote.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/contracts/quoteV2.ts",
       "class": "public-output"
     },
     {
@@ -9522,6 +9566,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/quoteMoneyValidationV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/quotePorts.ts",
       "class": "public-output"
     },
@@ -9535,6 +9583,10 @@
     },
     {
       "path": "packages/platform/src/pricing/quoteSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/quoteSchemasV2.ts",
       "class": "public-output"
     },
     {
@@ -9627,6 +9679,10 @@
     },
     {
       "path": "packages/platform/src/promotions/promotionQuoteAcceptance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/promotionQuoteAcceptanceEnvelope.ts",
       "class": "public-output"
     },
     {
@@ -10207,6 +10263,10 @@
     },
     {
       "path": "packages/platform/src/tax/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/installedCoverage.ts",
       "class": "public-output"
     },
     {
@@ -12346,6 +12406,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/pricing/commerceQuoteMoneyV2.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/pricing/commerceQuoteSnapshotExpect.test.ts",
       "class": "public-output"
     },
@@ -12367,6 +12431,14 @@
     },
     {
       "path": "packages/platform/test/pricing/dbBackedCommerceQuoteSnapshotVerifier.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/fixtures/catalog-owner-quote/one-time.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/fixtures/catalog-owner-quote/subscription.json",
       "class": "public-output"
     },
     {
@@ -12403,6 +12475,10 @@
     },
     {
       "path": "packages/platform/test/pricing/quoteEngineFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/quoteMoneyV2Fixtures.ts",
       "class": "public-output"
     },
     {
@@ -31718,6 +31794,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/taxCoverage/corpus.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/taxCoverage/revisions.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/taxCoverage/settings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fulfillmentAlignmentComposition.test.ts",
       "class": "public-output"
     },
@@ -32487,6 +32575,14 @@
     },
     {
       "path": "tests/postgres/subscriptionWinback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCoveragePgtap.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCoverageRevisions.test.ts",
       "class": "public-output"
     },
     {

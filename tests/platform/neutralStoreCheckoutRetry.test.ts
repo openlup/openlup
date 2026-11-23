@@ -27,7 +27,9 @@ function checkout() {
         lines: [{ sku: cart.lines[0]!.sku, quantity: 1, baseUnitMinor: 1000, unitMinor: 950, lineMinor: 950 }],
         subtotalMinor: 950, discountMinor: 190, modeDiscountMinor: 50, shippingMinor: 0, totalMinor: 760,
         quote: { promise: "unchanged" }, expectedTotal: { amountMinor: 760, currency: config.market.currency },
-        acquisitionTerms: {}, validUntil: new Date(Date.now() + 60_000).toISOString(), quoteAcceptance: `fresh-proof-${quotes}`,
+        acquisitionTerms: { schemaVersion: "subscription-acquisition.v1", revision: "offer-v1",
+          initialDiscountBps: 2000, delivery2DiscountBps: 1000, effectiveFrom: "2026-01-01T00:00:00Z", effectiveTo: null },
+        secondTotalMinor: 900, validUntil: new Date(Date.now() + 60_000).toISOString(), quoteAcceptance: `fresh-proof-${quotes}`,
       } }) };
     }
     const key = (init.headers as Record<string, string>)["Idempotency-Key"]!, body = String(init.body);

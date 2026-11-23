@@ -330,7 +330,7 @@ export interface SettingRefusal {
     readonly remediation: {
         retry: boolean;
         action: string;
-        command: string;
+        command?: string;
     };
 }
 export {};

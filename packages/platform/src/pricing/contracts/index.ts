@@ -17,3 +17,4 @@ export { COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION } from "./offer.js";
 export type { AcquisitionOfferPricingResponse } from "./offer.js";
 
 export type { CatalogPriceSetupCommand, CatalogPriceSetupEntry, CatalogPriceSetupReadiness, CatalogPriceSetupPreviewQuery, CatalogPriceSetupSubscription, CatalogPriceSetupPreview, CatalogPriceSetupReceipt, CatalogPriceSetupRefusal, CatalogPriceSetupApplyResult } from "./catalogPriceSetup.js";
+export type { CommerceQuoteMoneyV2, CommerceQuoteV2, MoneyLineV2, DiscountAllocationV2, TaxPositionV2, DeliveryBucketV2, FeeLineV2 } from "./quoteV2.js";

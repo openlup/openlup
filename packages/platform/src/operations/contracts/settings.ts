@@ -41,5 +41,5 @@ export interface SettingRefusal {
   readonly path: readonly string[];
   readonly rule: string;
   readonly hint: string;
-  readonly remediation: { retry: boolean; action: string; command: string };
+  readonly remediation: { retry: boolean; action: string; command?: string };
 }

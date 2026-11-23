@@ -3,10 +3,12 @@ import { readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
 import { z, type ZodType } from "zod";
 import { runSettingsCommand, type SettingsAppBindings } from "../../src/operations/server/settingsCommand.js";
+import * as settingsCommandSupport from "../../src/operations/server/settingsCommandSupport.js";
 import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
 
 import { callSettingsTool, settingsMcpContext, settingsMcpTools } from "../../src/operations/server/settingsMcp.js";
 import { renewalStockProtectionPreviewResult } from "../../src/inventory/renewalStockProtection.js";
+import { applyTaxCoverageRevision, bindTaxCoverageReader } from "../../src/tax/index.js";
 
 const key = "inventory_renewal_protection";
 const url = "postgresql://sample@read.invalid/shop";
@@ -324,6 +326,91 @@ it.each([
   else expect(output).toBe(document(await showSetting({ key: setting }, readers)));
   // A connected request only needs a binding for a known installed key.
   expect(bind).toHaveBeenCalledTimes(setting === "savedAddressValidation" || setting === "unknown" ? 0 : 1);
+});
+
+it.each([
+  ["factory permission denied", "bind", "42501"],
+  ["missing app module", "import", undefined],
+  ["reader permission denied", "read", "42501"],
+  ["CONNECT denied during startup", "read", "42501"],
+  ["reader function missing", "read", "42883"],
+  ["reader relation missing", "read", "42P01"],
+  ["connection reset", "read", "ECONNRESET"],
+  ["TLS certificate expired", "read", "CERT_HAS_EXPIRED"],
+  ["driver initialization", "bind", undefined],
+  ["cleanup hook threw", "close", undefined],
+  ["generic reader error", "read", undefined],
+  ["no reader registered", "missing", undefined],
+  ["factory throws an unbound code", "bind", "tax_coverage_reader_unbound"],
+  ["reader throws an unbound code", "read", "tax_coverage_reader_unbound"],
+  ["cleanup throws an unbound code", "close", "tax_coverage_reader_unbound"],
+  ["factory throws a throwing code getter", "bind", "throwing getter"],
+  ["reader throws a throwing code getter", "read", "throwing getter"],
+  ["cleanup throws a throwing code getter", "close", "throwing getter"],
+  ["managed or unbound reader", "unbound", undefined],
+] as const)("shows only the coverage remedy in text, JSON and MCP for %s", async (failure, stage, code) => {
+  const error = new Error(failure === "driver initialization" ? "NODE_PG_FORCE_NATIVE" : `Private fixture detail: ${failure}`);
+  const codeGetter = code === "throwing getter"
+    ? vi.fn(() => { throw new Error("Fixture code was inspected"); }) : undefined;
+  if (codeGetter) Object.defineProperty(error, "code", { get: codeGetter });
+  else if (code) Object.assign(error, { code });
+  const query = vi.fn(async () => {
+    if (stage === "read") throw error;
+    return { rows: [] };
+  });
+  const readCoverage = bindTaxCoverageReader({ query }, { installationRef: "store-a", accountRef: "account-a" });
+  const read = vi.fn(async () => stage === "unbound" ? { refusal: "tax_coverage_reader_unbound" } : readCoverage());
+  const close = vi.fn(async () => { if (stage === "close") throw error; });
+  const app = failure === "driver initialization" ? undefined
+    : stage === "import" ? "./missing-settings-app.mjs" : "./settings.mjs";
+  const bind = vi.fn(async ({ app }: { app?: string }) => {
+    if (stage === "bind") throw error;
+    if (stage === "import") return import(new URL(app!, import.meta.url).href);
+    return { readers: stage === "missing" ? {} : { "tax.coverage": read }, close };
+  });
+  const host = { bind };
+  const argv = ["show", "tax.coverage", "--database-url", url, ...(app ? ["--app", app, "--configuration", "sample"] : [])];
+  const unbound = stage === "unbound";
+  const action = unbound
+    ? "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation)."
+    : "The connected coverage read failed. Check the app binding, the database connection and its TLS settings, the role's connect and EXECUTE privileges, and that this release's migrations are installed on a native database; then run the same command again.";
+  const command = unbound ? { command: "openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json" } : {};
+  const refusal = {
+    code: "commerce_setting_read_unavailable", path: ["key"],
+    rule: "A connected read requires an accessible, valid settings row or confirmed absence.",
+    hint: unbound ? "Bind the native reader to the intended installation and account." : "Read with an authorized settings reader for the intended store.",
+    remediation: { retry: true, action, ...command },
+  };
+  const result = { schemaVersion: 1, refusal };
+  const buildRefusal = codeGetter ? vi.spyOn(settingsCommandSupport, "refuseCoverageRead") : undefined;
+  const json = await run([...argv, "--json"], { host }).then(output => {
+    if (buildRefusal) {
+      expect(buildRefusal).toHaveBeenCalledOnce();
+      const built = buildRefusal.mock.results[0];
+      if (built?.type !== "return") throw new Error("Expected an internal coverage refusal.");
+      const cause = Object.getOwnPropertyDescriptor(built.value.refusal, "cause");
+      expect(cause?.value).toBe(error);
+      expect(cause?.enumerable).toBe(false);
+    }
+    return output;
+  }).finally(() => buildRefusal?.mockRestore());
+  expect(json.exit).toBe(74);
+  expect(JSON.parse(json.output)).toEqual(result);
+
+  const text = await run(argv, { host });
+  expect(text.exit).toBe(74);
+  expect(text.output).toBe([refusal.code, refusal.rule, refusal.hint, action, ...Object.values(command), ""].join("\n"));
+
+  const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(row => row.command === "show")!;
+  const response = await callSettingsTool(tool, { key: "tax.coverage" }, {
+    "database-url": url, ...(app ? { app, configuration: "sample" } : {}),
+  }, host);
+  expect(response).toEqual({ isError: true, structuredContent: result, content: [{ type: "text", text: json.output.trimEnd() }] });
+  expect(bind).toHaveBeenCalledTimes(3);
+  expect(read).toHaveBeenCalledTimes(stage === "read" || stage === "close" || unbound ? 3 : 0);
+  expect(query).toHaveBeenCalledTimes(stage === "read" || stage === "close" ? 3 : 0);
+  if (stage === "close") expect(close).toHaveBeenCalledTimes(3);
+  if (codeGetter) expect(codeGetter).not.toHaveBeenCalled();
 });
 
 it("shows a recorded policy override and closes the connected reader", async () => {
@@ -667,6 +754,7 @@ it("checks every packaged schema against its default and valid examples", async 
     "shipping_flat_minor",
     "subscription_minimum_base_units",
     "subscription_sized_intro_phase",
+    "tax.coverage",
   ]);
   for (const entry of entries) {
     const values = [
@@ -681,6 +769,31 @@ it("checks every packaged schema against its default and valid examples", async 
       expect(JSON.parse(output).rows.find((row: { key: string }) => row.key === entry.key).validation).toEqual({ state: "valid" });
     }
   }
+});
+
+it("checks coverage overlap offline at the installer refusal pointer", async () => {
+  const setting = "tax.coverage";
+  const declaration = { jurisdiction: "district-a", taxKind: "sale", status: "registered", actorRef: "operator-a",
+    effective: { from: asOf }, recordedAt: asOf } as const;
+  const value = { schemaVersion: 1, accountRef: "account-a", revision: "overlap", declarations: [declaration, declaration] } as const;
+  const query = vi.fn();
+  const refused = await applyTaxCoverageRevision({ query }, {
+    expectedHead: null, document: { installationRef: "store-a", accountRef: value.accountRef, actorRef: declaration.actorRef, coverage: value },
+  });
+  const field = "/coverage/declarations/1/effective";
+  expect(refused).toMatchObject({ kind: "refused", code: "tax_invalid_input", field });
+  expect(query).not.toHaveBeenCalled();
+
+  const host = checks(async () => ({ file: { ...minimumFile, entries: { [setting]: { value } } } }));
+  const { exit, output } = await run(checkArgs, { host });
+  expect(exit).toBe(1);
+  expect(JSON.parse(output)).toMatchObject({ state: "invalid" });
+  expect(JSON.parse(output).rows.find((row: { key: string }) => row.key === setting)?.validation).toEqual({
+    state: "invalid", paths: [field.slice(1).split("/")],
+    messages: ["Use nonoverlapping declarations for this jurisdiction and tax kind."],
+  });
+  const text = await run(checkArgs.filter(arg => arg !== "--json"), { host });
+  expect(text.output).toContain(`${setting}: file present, schema invalid at ${field}`);
 });
 
 it("keeps the guide's app declaration identical to the typechecked binding", () => {
@@ -883,9 +996,9 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
   // "Default: none (see behavior below)" for null fallbacks (K6),
   // Stage 4 Wave 4B packaged callback and single-row installed entries,
   // Stage 4 Wave 4C packaged code (D1-D3, A16, E12) and multi-row installed entries (B3, B5),
-  // the market fiscal profile, tax adapter choices and tax class map, and the checkout address policy.
+  // the market fiscal profile, tax adapter choices, tax class map, installed tax coverage and checkout address policy.
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("3ac9935d1eda74c1bcff0ae5219b6a3cd22d18e2c0db5a170f4a3525e3718a02");
+    .toBe("18f75be66daccace6f25ba4040a82542f324c00d25bb2a29788bc16c371b578d");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {

@@ -1233,6 +1233,33 @@ feature flags and readiness remain reference composition responsibilities.
 Reference paths use named exports of the same functions and error classes;
 the browser keeps its existing policy schema binding locally.
 
+### Offline quote money v2
+
+Use experimental `planCommerceQuoteMoneyV2` from `./pricing` with resolved line
+prices, the promotion owner's selected outcome and the no-promotion baseline.
+Each candidate carries its own delivery and threshold facts. Inclusive plans
+rank gross payable with fees. Exclusive plans rank merchandise, shipping and
+handling before tax and fees. Equal scores retain the promotion owner's choice.
+
+Pass the same planning input as `planInput` to `composeCommerceQuoteMoneyV2`
+with matching tax evidence and allocation IDs. Composition reruns the planner.
+Provide separate fiscal rates and position metadata for inclusive money, or
+the verified tax result, position and fee metadata for exclusive money. Owner
+diagnostics and `displacedCodes` are separate. In both arms, `taxEvidence.evidenceDigest`
+commits the destination binding, selection, service and evidence expiry.
+If verified tax evidence disagrees with the plan, recalculate tax for the same
+planning input before composing again.
+
+Use `quoteDigest` with `commerce.quote-money.v2` for the shared money and
+`commerce.quote.v2` for the complete estimate or final quote without its
+`quoteDigest` field. `commerceQuoteV2Schema` checks both digests before evaluating
+totals and amount limits. The offline functions require plain JSON data and refuse hidden own keys.
+Read the schema refusal’s code, field and remedy from the issue params.
+`./pricing/contracts` and `./commerce/contracts` types share the money shape through `@openlup/core/pricing`.
+The offline functions rely on their caller for evidence acquisition and issuance.
+
+### Legacy quote foundation
+
 The quote foundation also owns neutral money/tax/quote DTOs, promotion evidence
 and rejection details, bounded catalog facts, provenance creation/public stripping
 and the supported-tax-profile guard. `createCommerceQuoteSchemas` requires the
@@ -2012,10 +2039,11 @@ hosts pass it in the store options. Snapshot-only stock workers take
 
 See [the ledger install-path constraint](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 
-`JOB_RUN_LEDGER_MIGRATIONS` lists the two files a fresh installation applies, in order, through its own migration chain:
+`JOB_RUN_LEDGER_MIGRATIONS` lists the files a fresh installation applies, in order, through its own migration chain:
 
 1. [`sql/20260809150000_job_run_ledger.sql`](sql/20260809150000_job_run_ledger.sql): the job controls, runs, and the v2 claim and finish; its bytes and migration identity equal the reference application's platform migration of that name.
 2. [`sql/20260809150001_job_run_ledger_v3.sql`](sql/20260809150001_job_run_ledger_v3.sql): the v3 claim and finish the PostgreSQL ledger calls, as `CREATE OR REPLACE`, with bodies byte-equal to the reference chain's definitions.
+3. [`sql/20261125070000_job_run_finish_lease_fence.sql`](sql/20261125070000_job_run_finish_lease_fence.sql) fences the finish by the current lease token. Apply the pending forward through your existing migration chain.
 
 The package SQL and the reference application's platform migration chain are alternative install paths, never applied together: the reference chain defines all four job-control functions itself, with plain `CREATE FUNCTION`, so it fails on a database where the package SQL already created them. The package file `20260809150001_job_run_ledger_v3` has a migration identity no reference migration uses. Importing the package never applies SQL.
 
@@ -3327,6 +3355,59 @@ adapter's coverage, money, validity and effect behavior offline. The caller owns
 durable quote replay, close recording and posting obligations. Discover the
 composition points under `tax.adapter` and `tax.localRateTable` in the settings
 catalogue.
+
+### Install and inspect tax coverage
+
+Discover `tax.coverage` in the settings catalogue. Apply the selected native
+PostgreSQL migration plan first. In your server-side installer, use the
+migration-owner executor in READ COMMITTED and pass the selected installation
+and account plus the authenticated operator's opaque reference.
+
+```ts
+import { applyTaxCoverageRevision, type TaxCoverageExecutor } from "@openlup/platform/tax";
+import type { TaxCoverageV1 } from "@openlup/platform/tax/contracts";
+
+declare const ownerExecutor: TaxCoverageExecutor;
+declare const installationRef: string, accountRef: string, actorRef: string;
+declare const declarations: TaxCoverageV1["declarations"];
+
+const result = await applyTaxCoverageRevision(ownerExecutor, {
+  expectedHead: null,
+  document: {
+    installationRef, accountRef, actorRef,
+    coverage: { schemaVersion: 1, accountRef, revision: "coverage-1", declarations },
+  },
+});
+```
+
+Use `null` for the first append and the last observed revision for a successor.
+A successful result carries `revision`, `previousRevision`, `sequenceNo`,
+`coverageDigest` and `recordedAt`. Use its `revision` as the next `expectedHead`.
+If the response is lost, replay the original document with its original expected
+head. On a conflict, read the current head and submit a new revision. To roll
+back, keep the current head as the expectation and choose a fresh revision.
+Copy the prior declarations to restore their effect, or use an empty declaration
+list to restore undeclared coverage. An empty revision still has a head and
+declares no jurisdiction covered.
+
+In your application's connected settings binding, return
+`readers: { "tax.coverage": bindTaxCoverageReader(db, { installationRef, accountRef }) }`
+from `createSettingsBindings`. Supply the scope from trusted app configuration.
+Use the runtime database URL and the selected app configuration.
+
+```sh
+./node_modules/.bin/openlup settings show tax.coverage --app ./settings.mjs \
+  --configuration sample --database-url "$database_url" --json
+```
+
+A successful bound read without revisions reports absence. After following the
+remedy for a failed read, rerun the same invocation with the same app and
+configuration. Offline `settings check` reports invalid coverage declarations
+at the same pointers as the installer.
+
+Use a qualified native PostgreSQL installation for connected inspection. Managed
+installations do not supply tax coverage history. The setting is read-only in the
+settings tool. Checkout consumption is qualified separately.
 
 ## Market packs
 
