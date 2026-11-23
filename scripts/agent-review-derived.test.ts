@@ -887,13 +887,19 @@ describe('opt-in fail-closed derived-relocated slot relocation', () => {
     expect(() => extractSqlFootprint('CREATE TABLE public.child (id uuid) INHERITS (public.shared_reloc_tbl);'))
       .toThrow('CREATE TABLE LIKE or INHERITS');
 
-    // Disjoint SQL statements pass cleanly (including standard runtime role grants on disjoint functions).
+    // Closed simple table shapes pass; function bodies and expressions cannot prove disjointness.
     expect(() => assertDisjointRelocationFootprints(
       [{ row: 'r1', path: 'p1', replacedFunctions: [], createdFunctions: [] }],
       [{ row: 'r2', path: 'p2', replacedFunctions: [], createdFunctions: [] }],
-      ['CREATE TABLE public.reloc_alpha (id uuid primary key); CREATE FUNCTION public.fn_alpha() RETURNS void LANGUAGE sql AS $$ SELECT 1; $$; GRANT EXECUTE ON FUNCTION public.fn_alpha() TO service_role;'],
-      ['CREATE TABLE public.reloc_beta (id uuid primary key); CREATE FUNCTION public.fn_beta() RETURNS void LANGUAGE sql AS $$ SELECT 1; $$; GRANT EXECUTE ON FUNCTION public.fn_beta() TO service_role;'],
+      ['CREATE TABLE public.reloc_alpha (id uuid primary key);'],
+      ['CREATE TABLE public.reloc_beta (id uuid primary key);'],
     )).not.toThrow();
+    expect(() => extractSqlFootprint('CREATE FUNCTION public.fn_alpha() RETURNS void LANGUAGE plpgsql AS $$ BEGIN TRUNCATE TABLE public.shared_t; END; $$;'))
+      .toThrow('outside simple table DDL');
+    expect(() => extractSqlFootprint('CREATE FUNCTION public.fn_alpha() RETURNS void LANGUAGE plpgsql AS $$ BEGIN PERFORM shared_fn(); END; $$;'))
+      .toThrow('outside simple table DDL');
+    expect(() => extractSqlFootprint('CREATE TABLE public.reloc_alpha (id uuid DEFAULT shared_fn());'))
+      .toThrow('outside simple table DDL');
   });
 
   it('lands disjoint inverted migrations with --relocate-slots as derived-relocated, replays economy session, and falls back to resolution on Barrier 2/3/4 tampering', async () => {

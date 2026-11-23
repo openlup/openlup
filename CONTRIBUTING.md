@@ -1809,8 +1809,10 @@ it: the merge uses that identity and `-s` for your personal
 For an inverted UTC slot involving only disjoint plain platform migrations, use
 `npm run landing:merge -- --relocate-slots`. This opt-in path relocates the PR's
 new slot after `origin/main` only when its SQL, mirrors, registry metadata and
-references pass the closed disjointness proof. An unsupported or ambiguous SQL
-shape refuses relocation; resolve it manually and review that resolution.
+references pass the closed disjointness proof. The proof currently admits only
+simple `CREATE TABLE` and `ALTER TABLE ... ADD COLUMN` statements with primitive
+column types (plus `SELECT 1`); other SQL refuses relocation. Resolve that case
+manually and review the resolution.
 The command without the flag still refuses an inverted slot before merging.
 It stops on an authored conflict, leaving the merge for a
 human or worker. It refreshes its carrier set with the merged tree's own

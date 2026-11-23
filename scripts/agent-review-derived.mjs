@@ -330,6 +330,11 @@ function stripSqlCommentsAndStrings(statement) {
 
 const IDENT = '(?:"[A-Za-z_][A-Za-z0-9_]*"|[A-Za-z_][A-Za-z0-9_]*)';
 const QUAL_IDENT = `(?:${IDENT}\\.)?${IDENT}`;
+// Only these closed shapes have a complete dependency footprint. Other SQL may
+// read objects through expressions, function bodies, triggers or broad DDL.
+const SIMPLE_COLUMN = `${IDENT}\\s+(?:uuid|text|integer|bigint|boolean|numeric|jsonb|bytea|timestamptz)(?:\\s+(?:NOT\\s+NULL|PRIMARY\\s+KEY))?`;
+const SIMPLE_TABLE_CREATE = new RegExp(`^CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${QUAL_IDENT}\\s*\\(\\s*${SIMPLE_COLUMN}(?:\\s*,\\s*${SIMPLE_COLUMN})*\\s*\\)$`, 'iu');
+const SIMPLE_TABLE_ADD_COLUMN = new RegExp(`^ALTER\\s+TABLE\\s+${QUAL_IDENT}\\s+ADD\\s+COLUMN\\s+${SIMPLE_COLUMN}$`, 'iu');
 
 const ALLOWED_SQL_HEAD = new RegExp(
   '^(?:' +
@@ -455,6 +460,8 @@ export function extractSqlFootprint(sqlText) {
       scanSqlReferences(strippedBody, fp);
     }
     scanSqlReferences(outer, fp);
+    check(SIMPLE_TABLE_CREATE.test(outer) || SIMPLE_TABLE_ADD_COLUMN.test(outer),
+      'relocation refuses SQL outside simple table DDL');
   }
   return fp;
 }
