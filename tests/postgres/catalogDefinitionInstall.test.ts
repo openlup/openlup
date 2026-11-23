@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { catalogDefinitionDigest, catalogPackManifest, canonicalCatalogDraftJson, createCatalogDefinitionWriteGuard,
+import { CatalogDefinitionInstallError, catalogDefinitionDigest, catalogPackManifest, canonicalCatalogDraftJson, createCatalogDefinitionWriteGuard,
   createCatalogProductTypeRegistry, createPostgresCatalogDraftStore, installCatalogDefinitions, observeCatalogDefinitionReadiness,
   withCatalogPublicationRules } from "@openlup/platform/catalog";
 import type { CatalogPackInput } from "@openlup/platform/catalog/contracts";
@@ -101,7 +101,7 @@ it("pack_install_is_idempotent_and_install_role_only", async () => {
     FROM pg_proc p WHERE p.oid='public.catalog_definition_install(text,integer,jsonb)'::regprocedure`)).rows)
     .toEqual([{ owned: true, prosecdef: false, runtime_execute: false }]);
   await expect(installCatalogDefinitions(runtime, input)).rejects.toMatchObject({ code: "42501" });
-  await expect(installCatalogDefinitions(owner, { ...input, capabilities: { publish: true } })).rejects.toMatchObject({ code: "23505" });
+  await expect(installCatalogDefinitions(owner, { ...input, capabilities: { publish: true } })).rejects.toBeInstanceOf(CatalogDefinitionInstallError);
   await owner.query("UPDATE public.catalog_tax_classes SET status='retired' WHERE key='example:standard'");
   await installCatalogDefinitions(owner, pack("retired"));
   expect((await owner.query("SELECT status FROM public.catalog_tax_classes WHERE key='example:standard'")).rows).toEqual([{ status: "retired" }]);
@@ -141,7 +141,7 @@ it("catalog_type_install_refuses_redefinition", async () => {
   const input = pack("immutable"); await installCatalogDefinitions(owner, input);
   for (const changed of [pack("other", 1, artifact + "\n// Updated rules").types[0]!,
     { ...installedDefinition(), dimensions: [{ key: "flag", kind: "boolean" as const }] }]) {
-    await expect(installCatalogDefinitions(owner, { ...input, id: `example:changed-${randomUUID()}`, types: [changed] })).rejects.toMatchObject({ code: "23505" });
+    await expect(installCatalogDefinitions(owner, { ...input, id: `example:changed-${randomUUID()}`, types: [changed] })).rejects.toBeInstanceOf(CatalogDefinitionInstallError);
   }
   await expect(owner.query("UPDATE public.catalog_type_versions SET validator_ref='changed' WHERE type_key='example:item' AND version=1")).rejects.toMatchObject({ code: "55000" });
   await expect(owner.query("DELETE FROM public.catalog_type_versions WHERE type_key='example:item' AND version=1")).rejects.toMatchObject({ code: "55000" });

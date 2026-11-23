@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import { syncBuiltinESMExports } from "node:module";
 import { runCatalogExtensionConformance } from "../../src/catalog/testing/index.js";
 import { projectCatalogExtensionConformance } from "../../src/catalog/testing/catalogExtensionConformance.js";
-import { catalogPackIssues, catalogPackManifest, installCatalogDefinitions, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry,
+import { catalogPackIssues, catalogPackInstallIssues, catalogPackManifest, installCatalogDefinitions, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry,
   validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, canonicalizeCatalogCombinationV2, CatalogCombinationError,
   catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema, validateCatalogDraftV2, createCatalogDraftHandler, withCatalogPublicationRules, catalogVariantOptions, catalogInternalGtin } from "../../src/catalog/index.js";
 import { artifact, input } from "./fixtures/publicationInput.js";
@@ -554,26 +554,40 @@ describe("subscription profile pack conformance", () => {
     expect(remedies.join(" ")).not.toMatch(/recalculate/i);
   });
 
-  const replayFix = "Replay the original declaration bytes, digest and identity together. Issue a new version for an intentional change.";
-  it.each(["catalog_definition_install_conflict", "catalog_type_install_refuses_redefinition"])("passes legacy %s through unchanged", async message => {
-    const error = Object.assign(new Error(message), { code: "23505" });
-    await expect(installCatalogDefinitions({ query: vi.fn().mockRejectedValue(error) }, { ...pack(), types: [] })).rejects.toBe(error);
-    expect(error).toMatchObject({ code: "23505", message });
+  it.each([
+    ["25000", "catalog_profile_install_requires_read_committed", undefined],
+    ["23505", "unrelated_uniqueness_failure", undefined],
+    ["22023", "definition_unknown_profile_ref", undefined],
+    ["22023", "definition_unknown_profile_ref", "malformed"],
+    ["22023", "definition_unknown_profile_ref", '{"key":"elsewhere:item","version":1}'],
+  ] as const)("preserves unrecognized SQL refusal %s %s (%s) by identity", async (code, message, detail) => {
+    const error = Object.assign(new Error(message), { code, detail });
+    const bound = withCatalogPublicationRules(optedIn as CatalogPackInput, () => artifact);
+    await expect(installCatalogDefinitions({ query: vi.fn().mockRejectedValue(error) }, bound)).rejects.toBe(error);
     expect(error).not.toHaveProperty("issue");
   });
 
-  it.each([
-    ["25000", "catalog_profile_install_requires_read_committed", "Retry in a READ COMMITTED transaction."],
-    ["23505", "catalog_profile_install_refuses_redefinition", replayFix],
-    ["22023", "catalog_profile_install_manifest_mismatch", replayFix],
-    ["23505", "catalog_type_install_refuses_redefinition", replayFix],
-    ["23505", "catalog_definition_install_conflict", replayFix],
-  ] as const)("adds a root installer fix to SQLSTATE %s %s", async (code, message, fix) => {
-    const error = Object.assign(new Error(message), { code });
-    const query = vi.fn().mockRejectedValue(error);
-    await expect(installCatalogDefinitions({ query }, optedIn as CatalogPackInput)).rejects.toBe(error);
-    expect(error).toMatchObject({ code, message });
-    expect(error).toHaveProperty("issue", { code: message, path: "", fix });
+  it("uses the same typed declaration findings before SQL as in the preflight", async () => {
+    const bound = withCatalogPublicationRules(optedIn as CatalogPackInput, () => artifact);
+    const { subscriptionProfileDefinitions: _profiles, ...legacy } = bound;
+    const dimensions = Array.from({ length: 16 }, (_, index) => ({ key: `extra-${index}`, kind: "choice" as const,
+      values: Array.from({ length: 1000 }, (_, value) => `value-${value}-${"a".repeat(96)}`) }));
+    const definition = withCatalogPublicationRules(pack(), () => artifact).types[0]!;
+    const types = [definition, { ...definition, key: `${bound.namespace}:overflow`, dimensions }];
+    const huge = { ["a".repeat(1_048_576)]: true };
+    const query = vi.fn();
+    for (const [input, code, path] of [
+      [{ ...bound, taxClasses: [{ key: "example:standard" }, { key: "example:standard" }] }, "definition_duplicate_identity", "/taxClasses/1/key"],
+      [{ ...bound, capabilities: huge }, "draft_payload_too_large", ""],
+      [{ ...legacy, capabilities: huge }, "draft_payload_too_large", ""],
+      [{ ...bound, types }, "draft_payload_too_large", "/types/1"],
+      [{ ...legacy, types }, "draft_payload_too_large", "/types/1"],
+    ] as const) {
+      const [issue] = catalogPackInstallIssues(input);
+      expect(issue).toMatchObject({ code, path });
+      await expect(installCatalogDefinitions({ query }, input)).rejects.toMatchObject({ message: "invalid_catalog_pack", issue });
+    }
+    expect(query).not.toHaveBeenCalled();
   });
 
   async function checkRefusal(input: unknown, issue: { code: string; path: string; fix: string }) {

@@ -2722,6 +2722,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/installation/refusals.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/lifecycle",
       "class": "public-output"
     },
@@ -2743,10 +2747,6 @@
     },
     {
       "path": "examples/neutral-store/owned/catalogue-rules.test.cjs",
-      "class": "public-output"
-    },
-    {
-      "path": "examples/neutral-store/owned/catalogue.json",
       "class": "public-output"
     },
     {
@@ -32270,6 +32270,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/neutralStoreCataloguePacks.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/neutralStorePaidMail.test.ts",
       "class": "public-output"
     },
@@ -33043,7 +33047,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-4685c4c04c06da2c965814610c1e5813780b332e57233b3dcd5e71c6f6e757d9"
+      "digest": "sha256-f13fb832ebc96fc06a087c8932f84194d5f51cf3b629a6a731f5410504611d45"
     },
     {
       "path": "package.json",

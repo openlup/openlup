@@ -52,7 +52,7 @@ export { catalogProductTypeIssues, catalogProductTypeRefIssues } from "./product
 export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
-export { installCatalogDefinitions } from "./installCatalogDefinitions.js";
+export { CatalogDefinitionInstallError, catalogPackInstallIssues, installCatalogDefinitions } from "./installCatalogDefinitions.js";
 export { catalogInternalGtin } from "./internalGtin.js";
 export { readInstalledCatalogSubscriptionProfile } from "./installedSubscriptionProfiles.js";
 export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } from "./catalogDefinitionReadiness.js";
