@@ -112,9 +112,9 @@ export interface ServeNodeOptions {
    */
   advisoryLock?: AdvisoryLock;
   /**
-   * Scheduler lock enforcement mode. Defaults to `"cluster"` for `node-cron` bundles so
-   * multi-instance hosts fail closed without a cluster-scoped lock (`durability: "cluster"`).
-   * Pass `"process"` only for deliberate single-instance or test hosts.
+   * Scheduler lock enforcement mode. Defaults to `"process"`.
+   * Use `"cluster"` with a session-affine lock that declares `durability: "cluster"`
+   * when multiple instances can overlap.
    */
   lockMode?: SchedulerLockMode;
   /** Skip binding the network listener (unit tests build the runtime without opening a socket). */
@@ -203,21 +203,18 @@ export function createNodeHost(deps: NodeHostDependencies): NodeHost {
     // Node cron invokes a direct binding where one exists. Every other job takes the HTTP
     // compatibility bridge to its own entrypoint, which the runtime mounts from the same registry,
     // so a routing miss cannot masquerade as a scheduler failure and a job without an entrypoint
-    // fails visibly. The scheduler holds the cluster mutex: without it every instance of a
-    // horizontally scaled host fires the same timer in the same minute.
+    // fails visibly.
     const registeredJobs: string[] = [];
     let scheduler: NodeSchedulerAdapter | null = null;
     let schedulerLock: AdvisoryLock | undefined;
     if (options.cron) {
       schedulerLock = options.advisoryLock ?? createEnvAdvisoryLock(env) ?? undefined;
-      const lockMode: SchedulerLockMode =
-        options.lockMode ?? (bundle.descriptor.capabilities.scheduler === "node-cron" ? "cluster" : "process");
       scheduler = createNodeScheduler({
         cron: options.cron,
         env,
         jobs: schedulerJobs,
         lock: schedulerLock,
-        lockMode,
+        lockMode: options.lockMode,
       });
       profile?.validateSchedule?.({
         lock: schedulerLock,
