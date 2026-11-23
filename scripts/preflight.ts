@@ -929,5 +929,8 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main(new Date(), process.argv.slice(2)).then((code) => { process.exitCode = code; });
+  main(new Date(), process.argv.slice(2)).then(
+    (code) => { process.exitCode = code; },
+    (error: unknown) => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; },
+  );
 }
