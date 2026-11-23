@@ -1,4 +1,5 @@
 import { withObservedRoute } from "../../../_lib/observability/route.js";
+import { rateLimitClientAddress } from "../../../_lib/rate-limit/clientAddress.js";
 import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.js";
 import { createResearchSurveySubmitHandler } from "../../../domains/marketing/research/surveyResponseSubmitHandler.js";
 import { createSupabaseResearchSurveySubmitPort } from "../../../adapters/supabase/researchSurveySubmitPort.js";
@@ -13,8 +14,9 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     if (isAcquisitionSurveyView(req)) return handleAcquisitionSurveySubmit(req, res);
     return sendDirectUnavailable(res);
   }
+  const env = process.env;
   return createResearchSurveySubmitHandler({
-    submitPort: createSupabaseResearchSurveySubmitPort(),
+    submitPort: createSupabaseResearchSurveySubmitPort(env, rateLimitClientAddress(req, env)),
   })(req, res);
 }
 
