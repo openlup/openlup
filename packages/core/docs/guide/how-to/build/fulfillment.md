@@ -131,6 +131,7 @@ Reuse the acceptance keys used by dispatch. The executor must commit each call
 before resolving; never wrap provider reads or invoicing in its transaction.
 Construction installs no route or schedule. Disabled or incomplete bindings
 refuse before provider access. Polling-only capabilities refuse webhook intake.
+At provider intake, map SQLSTATE `40P01` to a retryable 5xx response so the provider redelivers the webhook.
 
 Pass untouched request bytes, headers and receipt time to `ingest`. The selected
 adapter authenticates before parsing and translates status, occurrence identity
