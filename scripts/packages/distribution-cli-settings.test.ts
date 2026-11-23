@@ -99,7 +99,11 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
     const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
       "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
     expect(result.status, result.stderr || result.stdout).toBe(status);
-    return JSON.parse(result.stdout);
+    const report = JSON.parse(result.stdout);
+    expect(report.conflicts).toEqual(status === 0 ? [] : expect.any(Array));
+    if (status === 0) expect(report.plan).not.toHaveProperty("conflicts");
+    else expect(report).not.toHaveProperty("plan");
+    return report;
   };
   const local = "export function createSettingsBindings() { return { stockSourceKey: 'local' }; }";
   const hostFile = join(app, starterSettingsHost);
@@ -645,7 +649,11 @@ it.each([false, true])("replaces the managed editor through apply and replay, cu
     const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", command, "--root", app,
       "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
     expect(result.status, result.stderr || result.stdout).toBe(status);
-    return JSON.parse(result.stdout);
+    const report = JSON.parse(result.stdout);
+    expect(report.conflicts).toEqual(status === 0 ? [] : expect.any(Array));
+    if (status === 0) expect(report.plan).not.toHaveProperty("conflicts");
+    else expect(report).not.toHaveProperty("plan");
+    return report;
   };
   const local = customized ? reconcileEditorCustomization(app, from.files[editor]!, () => {
     const before = starterUpgradeSnapshot(app, from.version);
@@ -653,7 +661,7 @@ it.each([false, true])("replaces the managed editor through apply and replay, cu
     expect(starterUpgradeSnapshot(app, from.version)).toEqual(before);
     return report;
   }) : undefined;
-  if (local) expect(run("plan").plan.conflicts).toEqual([]);
+  if (local) expect(run("plan").conflicts).toEqual([]);
   expect(run("apply").applied).toEqual([catalogue, editor]);
   expect(readFileSync(join(app, editor), "utf8")).toBe(to.files[editor]);
   expect(run("apply").applied).toEqual([]);

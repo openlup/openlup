@@ -26,6 +26,18 @@ Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 2 unknown, 64 invalid
 ```
 <!-- /generated:cli:openlup -->
 
+For a parsed `upgrade plan` or `upgrade apply` report, read conflicts from
+the top-level `conflicts` array. It is empty when the command establishes no
+conflicts. Each entry retains its `path` and `reason`. Schema-range conflicts
+use an empty path. The report's findings give the code, observation, cause, fix
+and recheck. See [Upgrade application files](../upgrade/application-files.md)
+for the observed ordinal and recovery procedure.
+
+`verify --app` withholds application exception details. A failure assembling
+observations can include the fixed starter `OPENLUP_E_STARTER_STORE_CONFIG_REQUIRED`
+diagnostic in the finding's cause. Pass the selected `StoreConfig` as argument
+three of `composeNativeBindings` and the optional keyring as argument four.
+
 ## `openlup-context`
 
 `@openlup/core` installs the `openlup-context` bin.

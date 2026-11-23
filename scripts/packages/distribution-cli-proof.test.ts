@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -110,42 +110,331 @@ it("asserts the real CLI's named conflict before writes and the incomplete file/
   expect(() => assertCompleteStarter(directory, from)).toThrow("incomplete_application_upgrade");
 });
 
-it("distinguishes the three verify --app stages with constant messages while withholding private details", () => {
+const cli = resolve("packages/platform/src/lifecycle/openlup.mjs");
+const starterAssemblyMessage = [
+  "OPENLUP_E_STARTER_STORE_CONFIG_REQUIRED",
+  "Observed: The third argument is missing a starter StoreConfig.",
+  "Cause: Native composition needs the selected configuration for its installed-policy checks.",
+  "Fix: Pass the selected StoreConfig as argument three and the optional keyring as argument four.",
+  "Recheck: Rerun the same readiness check or startup after correcting the call.",
+].join("\n");
+
+function runCli(args: string[], expected: number, preload?: string) {
+  const result = spawnSync(process.execPath, [...(preload ? ["--import", preload] : []), cli, ...args], { encoding: "utf8" });
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr || result.stdout).toBe(expected);
+  expect(result.stderr).toBe("");
+  return result.stdout;
+}
+
+type FindingFacts = { code: string; observed: string; cause: string; fix: string; recheck: string };
+const recheckUpgrade = "Rerun upgrade plan after repair. Apply only after a clear plan.";
+const snapshot = (version: string, min: number, max: number, files: Record<string, string>) => ({ version, schema: { min, max }, files });
+const byteConflict = "current bytes match neither predecessor nor candidate";
+const structuralFix = "Preserve local data and move the obstruction without following it. Restore the exact predecessor or candidate state with ordinary components and the expected spelling, including absence where required.";
+const fileFacts = (path: string, reason: string): FindingFacts => ({
+  code: "OPENLUP_E_UPGRADE_FILE_CONFLICT", observed: path + ": " + reason,
+  cause: reason === byteConflict ? "A changed managed file diverged from both snapshots." : "A managed path has a spelling, symlink or file type obstruction.",
+  fix: reason === byteConflict ? "Save local changes and reconcile to exact predecessor or candidate bytes, including expected absence." : structuralFix,
+  recheck: recheckUpgrade,
+});
+const schemaFacts = (observed: string): FindingFacts => ({
+  code: "OPENLUP_E_UPGRADE_SCHEMA_RANGE", observed,
+  cause: "The supplied ordinal falls outside a snapshot's declared compatibility range.",
+  fix: "Read the verified applied migration count from the same database and installation profile. If status refuses, resolve catalogue or ledger admission there before using a count. Use the observed count and a compatible released snapshot pair. If the ranges do not overlap, stop this hop and use a documented intermediate hop only if one exists. If the database needs a forward migration, follow the application migration chain and observe again. Keep the original pair after apply has written files.",
+  recheck: recheckUpgrade,
+});
+const findingText = ({ code, observed, cause, fix, recheck }: FindingFacts) =>
+  `${code}\nObserved: ${observed}\nCause: ${cause}\nFix: ${fix}\nRecheck: ${recheck}\n`;
+
+function expectFindings(findings: FindingFacts[], facts: FindingFacts[], text: string) {
+  expect(findings.map(({ code, observed, cause, fix, recheck }) => ({ code, observed, cause, fix, recheck }))).toEqual(facts);
+  for (const finding of facts) expect(text).toContain(findingText(finding));
+}
+
+function upgradeFixture() {
   const { directory, write } = fixture();
-  const cli = resolve("packages/platform/src/lifecycle/openlup.mjs");
-  const runCli = (args: string[], expected: number) => {
-    const result = spawnSync(process.execPath, [cli, ...args], { encoding: "utf8" });
-    expect(result.status).toBe(expected);
-    expect(result.stderr).toBe("");
-    return result.stdout;
+  const app = join(directory, "app");
+  mkdirSync(app);
+  const args = (verb: "plan" | "apply", ordinal: string | number) =>
+    ["upgrade", verb, "--root", app, "--from", join(directory, "from.json"), "--to", join(directory, "to.json"), "--schema-version=" + ordinal];
+  const report = (options: string[], status = 0, preload?: string) => {
+    const value = JSON.parse(runCli([...options, "--json"], status, preload));
+    expect(value).toMatchObject({ formatVersion: 1, exitCode: status,
+      state: status === 0 ? "complete" : status === 74 ? "failed" : "refused", conflicts: expect.any(Array) });
+    if (value.plan) expect(Object.keys(value.plan).sort()).toEqual(["files", "fromVersion", "schemaVersion", "toVersion"]);
+    return value;
   };
+  return { directory, write, app, args, report };
+}
+
+it.each(["plan", "apply"] as const)("reports distinct and mixed conflicts for %s in both forms without writing", verb => {
+  const { write, app, args, report } = upgradeFixture();
+  const previous = { "a.txt": "a-old", "z.txt": "z-old" };
+  write("from.json", snapshot("before", 1, 2, previous));
+  write("to.json", snapshot("after", 2, 3, { "a.txt": "a-new", "z.txt": "z-new" }));
+  write("app/a.txt", previous["a.txt"]); write("app/z.txt", previous["z.txt"]);
+  const cases = [
+    { ordinal: 1, conflict: false, range: "schema 1 is outside after range 2..3" },
+    { ordinal: 3, conflict: false, range: "schema 3 is outside before range 1..2" },
+    { ordinal: 2, conflict: true, range: "" },
+    { ordinal: 0, conflict: true, range: "schema 0 is outside before range 1..2", second: "schema 0 is outside after range 2..3" },
+  ];
+  for (const { ordinal, conflict, range, second } of cases) {
+    const observed = conflict ? "local" : previous["z.txt"];
+    write("app/z.txt", observed);
+    const ranges = [range, second].filter((entry): entry is string => Boolean(entry));
+    const conflicts = ranges.map(reason => ({ path: "", reason }));
+    if (conflict) conflicts.push({ path: "z.txt", reason: byteConflict });
+    const output = report(args(verb, ordinal), 1);
+    expect(output.conflicts).toEqual(conflicts);
+    expect(output.applied).toEqual([]);
+    if (verb === "apply") expect(output).not.toHaveProperty("plan");
+    else expect(output.plan.files).toContainEqual({ path: "a.txt", action: "replace" });
+    expectFindings(output.findings, [...ranges.map(schemaFacts), ...(conflict ? [fileFacts("z.txt", byteConflict)] : [])], runCli(args(verb, ordinal), 1));
+    expect(readdirSync(app).sort()).toEqual(["a.txt", "z.txt"]);
+    expect(readFileSync(join(app, "a.txt"), "utf8")).toBe(previous["a.txt"]);
+    expect(readFileSync(join(app, "z.txt"), "utf8")).toBe(observed);
+  }
+  write("app/z.txt", previous["z.txt"]);
+  write("to.json", snapshot("after", 3, 4, previous));
+  const reason = "schema 2 is outside after range 3..4";
+  const output = report(args(verb, 2), 1);
+  expect(output.conflicts).toEqual([{ path: "", reason }]);
+  expectFindings(output.findings, [schemaFacts(reason)], runCli(args(verb, 2), 1));
+});
+
+it("admits inclusive bounds and gives equal actions, writes and no-op replays at different ordinals", () => {
+  const { write, app, args, report } = upgradeFixture();
+  const max = Number.MAX_SAFE_INTEGER;
+  write("from.json", snapshot("before", 0, max, { "a.txt": "old", "remove.txt": "remove" }));
+  write("to.json", snapshot("after", 0, max, { "a.txt": "new", "create.txt": "created" }));
+  const prepare = () => {
+    rmSync(app, { recursive: true, force: true });
+    write("app/a.txt", "old"); write("app/remove.txt", "remove");
+  };
+  let admitted: unknown;
+  for (const ordinal of [0, max]) {
+    prepare();
+    const plan = report(args("plan", ordinal));
+    expect(plan.conflicts).toEqual([]);
+    expect(plan.plan.schemaVersion).toBe(ordinal);
+    expect(plan.plan.files).toEqual([
+      { path: "a.txt", action: "replace" }, { path: "create.txt", action: "create" }, { path: "remove.txt", action: "remove" },
+    ]);
+    expect(runCli(args("plan", ordinal), 0)).toContain("a.txt: replace (upgrade-managed)\n");
+    expect(readFileSync(join(app, "a.txt"), "utf8")).toBe("old");
+    const completed = report(args("apply", ordinal));
+    expect(completed.conflicts).toEqual([]);
+    expect(completed.plan).toEqual(plan.plan);
+    expect(completed.applied).toEqual(["a.txt", "create.txt", "remove.txt"]);
+    const names = readdirSync(app).sort();
+    expect(names).toEqual(["a.txt", "create.txt"]);
+    const writes = names.map(path => readFileSync(join(app, path), "utf8"));
+    expect(writes).toEqual(["new", "created"]);
+    const transition = { actions: plan.files, applied: completed.applied, writes };
+    if (admitted) expect(transition).toEqual(admitted);
+    admitted = transition;
+    const replay = report(args("apply", ordinal));
+    expect(replay.conflicts).toEqual([]);
+    expect(replay.applied).toEqual([]);
+    expect(replay.files.every((file: { action: string }) => file.action === "already-applied")).toBe(true);
+    expect(runCli(args("apply", ordinal), 0)).toContain("a.txt: already-applied (upgrade-managed)\n");
+    expect(names.map(path => readFileSync(join(app, path), "utf8"))).toEqual(writes);
+  }
+  write("from.json", '{"version":"before","schema":{"min":1e0,"max":1.0},"files":{}}');
+  expect(report(args("plan", 1)).conflicts).toEqual([]);
+});
+
+it("names structural conflicts and repairs an obstructed target-only creation by preserving and moving the entry", () => {
+  const { directory, write, app, args, report } = upgradeFixture();
+  write("outside.txt", "preserved local data");
+  write("app/block", "parent bytes"); write("app/alias.txt", "alias bytes"); write("app/folder/child", "child bytes");
+  symlinkSync("../outside.txt", join(app, "link.txt"));
+  write("from.json", snapshot("before", 0, 0, {}));
+  write("to.json", snapshot("after", 0, 0, { "Alias.txt": "create", "block/item": "create", folder: "replace", "link.txt": "create" }));
+  // Reproduce the filesystem observation on case-sensitive runners too.
+  write("alias.mjs", `import { promises as fs } from "node:fs";
+    const lstat = fs.lstat.bind(fs);
+    fs.lstat = (path, ...args) => lstat(path.endsWith("/Alias.txt") ? path.replace(/Alias.txt$/, "alias.txt") : path, ...args);`);
+  const preload = join(directory, "alias.mjs");
+  const conflicts = [
+    { path: "Alias.txt", reason: "managed path spelling differs from directory entry" },
+    { path: "block/item", reason: "managed parent is not a directory" },
+    { path: "folder", reason: "managed path is not a regular file" },
+    { path: "link.txt", reason: "symlink in managed path" },
+  ];
+  for (const verb of ["plan", "apply"] as const) {
+    const output = report(args(verb, 0), 1, preload);
+    expect(output.conflicts).toEqual(conflicts);
+    expectFindings(output.findings, conflicts.map(({ path, reason }) => fileFacts(path, reason)), runCli(args(verb, 0), 1, preload));
+  }
+  write("to.json", snapshot("after", 0, 0, { "link.txt": "candidate bytes" }));
+  expect(report(args("apply", 0), 1).conflicts).toEqual([conflicts.at(-1)]);
+  renameSync(join(app, "link.txt"), join(app, "saved-link"));
+  expect(report(args("plan", 0)).conflicts).toEqual([]);
+  expect(report(args("apply", 0)).applied).toEqual(["link.txt"]);
+  expect(readFileSync(join(app, "link.txt"), "utf8")).toBe("candidate bytes");
+  expect(readlinkSync(join(app, "saved-link"))).toBe("../outside.txt");
+  expect(readFileSync(join(directory, "outside.txt"), "utf8")).toBe("preserved local data");
+  expect(report(args("apply", 0)).applied).toEqual([]);
+});
+
+const legacyEvidence = { declared: "Not established", bound: "Not established", checked: "The command could not complete",
+  unknown: ["Remaining application and filesystem state"] };
+const legacyRecheck = "Rerun the same command after repair.";
+
+function expectExactRefusal(options: string[], status: 64 | 74, facts: FindingFacts) {
+  const state = status === 64 ? "refused" : "failed";
+  const expected = { formatVersion: 1, command: "openlup", state, exitCode: status, findings: [{ ...facts, evidence: legacyEvidence }] };
+  expect(runCli([...options, "--json"], status)).toBe(JSON.stringify(expected) + "\n");
+  const docs = readFileSync(resolve("packages/core/docs/guide/reference/cli.md"), "utf8");
+  const help = docs.split("<!-- generated:cli:openlup -->\n```text\n")[1]!.split("```")[0]!;
+  expect(runCli(options, status)).toBe(findingText(facts)
+    + "Declared: Not established\nBound: Not established\nChecked: The command could not complete\nUnknown: Remaining application and filesystem state\n"
+    + help + "\n");
+}
+
+const inputFacts = (observed: string, fix = "Correct the invocation using an ordinary app directory, readable exact JSON snapshots and the observed schema ordinal."): FindingFacts => ({
+  code: "OPENLUP_E_CLI_INPUT", observed, cause: "Invalid command or input syntax.", fix, recheck: recheckUpgrade,
+});
+const upgradeFailure: FindingFacts = {
+  code: "OPENLUP_E_CLI_FAILURE", observed: "The upgrade operation could not complete; raw error details are withheld.",
+  cause: "Snapshot admission, installed lifecycle loading or a filesystem operation failed.",
+  fix: "Check the original snapshots' validity and identity, the app root and filesystem access, and availability of the installed target CLI. If apply failed after writes, restore access and resume with the identical snapshots under exclusive access.",
+  recheck: recheckUpgrade,
+};
+
+it("keeps strict parser errors generic and gives parsed upgrade commands their own trusted-packs fix", () => {
+  const generic = {
+    ...inputFacts("The operation could not complete; raw input and application errors are withheld.",
+      "Check the command, readable JSON snapshots and schema ordinal, the catalogue JSON, or the trusted --app module and its documented export. After a partial upgrade, rerun the identical snapshots under exclusive access."),
+    recheck: legacyRecheck,
+  };
+  for (const options of [["--unexpected", "upgrade", "plan"], ["upgrade", "plan", "--root"]]) {
+    expectExactRefusal(options, 64, generic);
+  }
+  const { report } = upgradeFixture();
+  const options = ["upgrade", "plan", "--trusted-packs", "x"];
+  const output = report(options, 64);
+  expect(output.conflicts).toEqual([]);
+  expectFindings(output.findings, [inputFacts("Trusted pack paths are exclusive to catalogue project.",
+    "Remove --trusted-packs, which applies only to catalogue commands, and rerun the same upgrade command.")], runCli(options, 64));
+});
+
+it.each(["plan", "apply"] as const)("distinguishes %s input gates from rejected snapshot and installed-entry failures", verb => {
+  const { directory, write, args, report } = upgradeFixture();
+  write("from.json", '{"version":"before","schema":{"min":1e0,"max":1.0},"files":{}}');
+  write("to.json", snapshot("after", 1, 1, {}));
+  const refusal = (options: string[], status: 64 | 74, facts: FindingFacts, preload?: string) => {
+    const output = report(options, status, preload);
+    expect(output.conflicts).toEqual([]);
+    expect(output).not.toHaveProperty("applied");
+    expectFindings(output.findings, [facts], runCli(options, status, preload));
+  };
+  expect(report(args(verb, 1)).conflicts).toEqual([]);
+  for (const ordinal of ["oops", "-1", "1.0", "1e0", "01", "9007199254740992"]) {
+    refusal(args(verb, ordinal), 64, inputFacts("Upgrade options do not match the public syntax."));
+  }
+  const inputError = inputFacts("Upgrade requires an ordinary app directory and valid snapshot JSON.");
+  write("bad-root", "regular file");
+  refusal(args(verb, 1).map((arg, index) => index === 3 ? join(directory, "bad-root") : arg), 64, inputError);
+  write("from.json", "{");
+  refusal(args(verb, 1), 64, inputError);
+  for (const [min, max] of [[2, 1], [0, Number.MAX_SAFE_INTEGER + 1]]) {
+    write("from.json", snapshot("before", min!, max!, {}));
+    refusal(args(verb, 1), 74, upgradeFailure);
+  }
+  rmSync(join(directory, "from.json"));
+  refusal(args(verb, 1), 74, upgradeFailure);
+  write("from.json", snapshot("before", 1, 1, {}));
+  write("unavailable.mjs", `import { registerHooks } from "node:module";
+    registerHooks({ resolve(specifier, context, next) {
+      if (specifier === "@openlup/platform/lifecycle") throw new Error("synthetic-private-detail");
+      return next(specifier, context);
+    } });`);
+  refusal(args(verb, 1), 74, upgradeFailure, join(directory, "unavailable.mjs"));
+});
+
+it("reports an I/O failure after one replacement and resumes with the identical pair", () => {
+  const { directory, write, app, args, report } = upgradeFixture();
+  write("from.json", snapshot("before", 0, 0, { a: "a-old", b: "b-old" }));
+  write("to.json", snapshot("after", 0, 0, { a: "a-new", b: "b-new" }));
+  write("fail.mjs", `import { promises as fs } from "node:fs";
+    const rename = fs.rename.bind(fs);
+    fs.rename = async (source, target) => {
+      if (target.endsWith("/b")) throw new Error("synthetic-private-detail");
+      await rename(source, target);
+    };`);
+  const preload = join(directory, "fail.mjs");
+  const bytes = () => ["a", "b"].map(path => readFileSync(join(app, path), "utf8"));
+  const apply = args("apply", 0);
+  for (const json of [true, false]) {
+    write("app/a", "a-old"); write("app/b", "b-old");
+    if (json) {
+      const output = report(apply, 74, preload);
+      expect(output.conflicts).toEqual([]);
+      expect(output).not.toHaveProperty("applied");
+      expect(output.findings).toEqual([{ ...upgradeFailure, evidence: legacyEvidence }]);
+    } else expect(runCli(apply, 74, preload)).toContain(findingText(upgradeFailure));
+    expect(bytes()).toEqual(["a-new", "b-old"]);
+    expect(readdirSync(app).sort()).toEqual(["a", "b"]);
+    expect(report(apply).applied).toEqual(["b"]);
+    expect(bytes()).toEqual(["a-new", "b-new"]);
+    expect(report(apply).applied).toEqual([]);
+  }
+});
+
+it("keeps legacy verify bytes and discloses only the exact stage-3 native Error message", () => {
+  const { directory, write } = fixture();
+  const stage3 = {
+    code: "OPENLUP_E_CLI_FAILURE",
+    observed: "createVerificationInput() failed while assembling observations; raw application errors are withheld.",
+    cause: "Executing createVerificationInput() in the trusted --app module failed before readiness evaluation.",
+    fix: "Ensure createVerificationInput() assembles read-only ReadinessInput observations and closes its own resources without throwing.",
+    recheck: legacyRecheck,
+  };
+  const stage1 = {
+    ...stage3, observed: "The --app module could not be loaded; raw application errors are withheld.",
+    cause: "Importing the trusted --app module failed before createVerificationInput() could be checked.",
+    fix: "Check that the --app path exists, resolves its imports and evaluates without top-level errors.",
+  };
+  const stage2 = {
+    ...stage3, observed: "The loaded --app module does not export a createVerificationInput() function.",
+    cause: "The trusted --app module loaded, but createVerificationInput was absent or not a function.",
+    fix: "Export a createVerificationInput() function returning ReadinessInput from the --app module.",
+  };
+  const allowed = {
+    ...stage3, observed: "createVerificationInput() failed while assembling observations.",
+    cause: stage3.cause + "\n" + starterAssemblyMessage,
+  };
+  const message = JSON.stringify(starterAssemblyMessage);
+  const factory = (body: string, async = "") => `export ${async} function createVerificationInput() { ${body} }`;
   expect(JSON.parse(runCli(["verify", "--json"], 2))).toMatchObject({
-    formatVersion: 1, command: "verify", state: "unknown", exitCode: 2,
-    findings: [{ code: "OPENLUP_E_APP_UNKNOWN" }],
+    formatVersion: 1, command: "verify", state: "unknown", exitCode: 2, findings: [{ code: "OPENLUP_E_APP_UNKNOWN" }],
   });
   expect(JSON.parse(runCli(["verify", "--app", "", "--json"], 64))).toMatchObject({
-    formatVersion: 1, state: "refused", exitCode: 64,
-    findings: [{ code: "OPENLUP_E_CLI_INPUT" }],
+    formatVersion: 1, state: "refused", exitCode: 64, findings: [{ code: "OPENLUP_E_CLI_INPUT" }],
   });
-  for (const [name, source, expectedObserved, expectedCause] of [
-    ["load-syntax.mjs", "export const = 1;", "The --app module could not be loaded; raw application errors are withheld.", "Importing the trusted --app module failed before createVerificationInput() could be checked."],
-    ["load-throw.mjs", 'throw new Error("synthetic-private-detail");', "The --app module could not be loaded; raw application errors are withheld.", "Importing the trusted --app module failed before createVerificationInput() could be checked."],
-    ["missing-export.mjs", 'export const createVerificationInput = "synthetic-private-detail";', "The loaded --app module does not export a createVerificationInput() function.", "The trusted --app module loaded, but createVerificationInput was absent or not a function."],
-    ["factory-throw.mjs", 'export function createVerificationInput() { throw new Error("synthetic-private-detail"); }', "createVerificationInput() failed while assembling observations; raw application errors are withheld.", "Executing createVerificationInput() in the trusted --app module failed before readiness evaluation."],
-    ["factory-reject.mjs", 'export async function createVerificationInput() { throw new TypeError("synthetic-private-detail"); }', "createVerificationInput() failed while assembling observations; raw application errors are withheld.", "Executing createVerificationInput() in the trusted --app module failed before readiness evaluation."],
+  for (const [source, facts] of [
+    ["export const = 1;", stage1],
+    [`throw new Error(${message});`, stage1],
+    ['export const createVerificationInput = "synthetic-private-detail";', stage2],
+    [factory('throw new Error("synthetic-private-detail");'), stage3],
+    [factory(`throw new Error("synthetic-private-prefix" + ${message});`), stage3],
+    [factory(`throw new Error(${message} + "synthetic-private-suffix");`, "async"), stage3],
+    [factory(`throw { message: ${message} };`), stage3],
+    [factory(`throw Object.create(new Error(${message}));`), stage3],
+    [factory(`const error = new Error(); delete error.message; throw error;`), stage3],
+    [factory(`const error = new Error(); Object.defineProperty(error, "message", { get() {
+      process.stdout.write("accessor invoked"); return ${message};
+    } }); throw error;`), stage3],
+    [factory(`throw new Proxy(new Error(${message}), { getOwnPropertyDescriptor() { process.stdout.write("proxy trap invoked"); } });`), stage3],
+    [factory(`const error = new Error(${message}, { cause: "synthetic-private-cause" }); error.stack = "synthetic-private-stack"; throw error;`), allowed],
+    [factory(`throw new Error(${message});`, "async"), allowed],
   ] as const) {
-    const appPath = join(directory, name);
-    write(name, source);
-    const jsonOut = runCli(["verify", "--app", appPath, "--json"], 74);
-    expect(jsonOut).not.toContain("synthetic-private-detail");
-    expect(JSON.parse(jsonOut)).toMatchObject({
-      formatVersion: 1, state: "failed", exitCode: 74,
-      findings: [{ code: "OPENLUP_E_CLI_FAILURE", observed: expectedObserved, cause: expectedCause }],
-    });
-    const textOut = runCli(["verify", "--app", appPath], 74);
-    expect(textOut).toContain(expectedObserved);
-    expect(textOut).toContain(expectedCause);
-    expect(textOut).not.toContain("synthetic-private-detail");
+    write("verify.mjs", source);
+    expectExactRefusal(["verify", "--app", join(directory, "verify.mjs")], 74, facts);
   }
 });
 

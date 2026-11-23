@@ -160,7 +160,7 @@ export function migrateStarterOwned(app: string, target: string, from: ReturnTyp
   }
 }
 
-export function assertUpgradeConflict(report: { state: string; applied: string[]; conflicts: { path: string; reason: string }[] }, path: string): void {
+export function assertUpgradeConflict(report: Pick<CliReport, "state" | "applied" | "conflicts">, path: string): void {
   assert.equal(report.state, "refused"); assert.deepEqual(report.applied, []);
   assert.deepEqual(report.conflicts, [{ path, reason: "current bytes match neither predecessor nor candidate" }]);
 }
@@ -421,7 +421,15 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const run = (command: string, expected = 0) => {
     const result = spawnSync(executable, ["upgrade", command, ...options], { cwd: app, env: isolatedConsumerEnv(), encoding: "utf8" });
     assert.ifError(result.error); assert.equal(result.status, expected, result.stderr || result.stdout); assert.equal(result.stderr, "");
-    const report = JSON.parse(result.stdout); assert.equal(report.exitCode, expected); return report;
+    const report = JSON.parse(result.stdout); assert.equal(report.exitCode, expected);
+    if (Object.hasOwn(report, "conflicts")) {
+      assert(Array.isArray(report.conflicts));
+      if (report.plan) assert(!Object.hasOwn(report.plan, "conflicts"));
+    } else if (report.plan) {
+      // Released targets predating UG-140 put plan conflicts inside the projection.
+      assert(Array.isArray(report.plan.conflicts));
+    }
+    return report;
   };
   const paths = new Set<string>([...Object.keys(from.files), ...Object.keys(to.files), ...ownership.owned]);
   const readFiles = () => [...paths].map(path => existsSync(join(app, path)) ? readFileSync(join(app, path)) : null);
@@ -649,6 +657,8 @@ type CliReport = {
   files?: readonly (AppUpgradePlan["files"][number] & { ownership: string })[];
   ownership?: { unlisted: string };
   applied?: readonly string[];
+  plan?: Omit<AppUpgradePlan, "conflicts">;
+  conflicts?: AppUpgradePlan["conflicts"];
 };
 
 export function proveDistributionCliConsumer(consumer: string, pair?: UpgradePair): void | (() => void) {
@@ -780,16 +790,22 @@ console.log(JSON.stringify({installedVersion:installed.version,coreVersion:core.
     writeFileSync(join(root, "to.json"), JSON.stringify(to));
     const options = ["--root", app, "--from", "from.json", "--to", "to.json", "--schema-version", "1"];
     writeFileSync(join(root, "malformed.json"), "{");
-    assert.equal(json(["upgrade", "plan", ...options.map(value => value === "from.json" ? "malformed.json" : value)], 64).state, "refused");
+    const malformed = json(["upgrade", "plan", ...options.map(value => value === "from.json" ? "malformed.json" : value)], 64);
+    assert.equal(malformed.state, "refused");
+    assert.deepEqual(malformed.conflicts, []);
     const before = () => Object.fromEntries(readdirSync(app).sort().map(name => [name, readFileSync(join(app, name), "utf8")]));
     const original = before();
     const plan = json(["upgrade", "plan", ...options], 0);
     assert.deepEqual(before(), original);
+    assert.deepEqual(plan.conflicts, []);
+    assert(plan.plan && !Object.hasOwn(plan.plan, "conflicts"));
     assert.equal(plan.files?.find(item => item.path === "theme.css")?.ownership, "locally-customizable");
     assert.equal(plan.ownership?.unlisted, "application-owned");
     writeFileSync(join(app, "b.json"), "divergent");
     const divergent = before();
-    assert.equal(json(["upgrade", "apply", ...options], 1).applied?.length, 0);
+    const refused = json(["upgrade", "apply", ...options], 1);
+    assertUpgradeConflict(refused, "b.json");
+    assert(!Object.hasOwn(refused, "plan"));
     assert.deepEqual(before(), divergent, "a later sorted conflict must prevent the earlier write");
     writeFileSync(join(app, "b.json"), from.files["b.json"]);
     const preload = join(root, "interrupt.mjs");
@@ -801,7 +817,12 @@ console.log(JSON.stringify({installedVersion:installed.version,coreVersion:core.
     assert.throws(executeApp, /incomplete_application_upgrade/);
     const resumed = json(["upgrade", "apply", ...options], 0);
     assert.deepEqual(resumed.applied, ["b.json"]);
-    assert.deepEqual(json(["upgrade", "apply", ...options], 0).applied, []);
+    const replay = json(["upgrade", "apply", ...options], 0);
+    for (const completed of [resumed, replay]) {
+      assert.deepEqual(completed.conflicts, []);
+      assert(completed.plan && !Object.hasOwn(completed.plan, "conflicts"));
+    }
+    assert.deepEqual(replay.applied, []);
     assert.equal(readFileSync(join(app, "theme.css"), "utf8"), "local-theme");
     assert.equal(readFileSync(join(app, "owned.txt"), "utf8"), "local-policy");
     assert.deepEqual(executeApp(), { installedVersion: "0.36.0", coreVersion: "0.36.0", executedVersion: "0.36.0" });

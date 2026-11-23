@@ -3220,12 +3220,16 @@ presence does not establish SQL behavior, authorization or provider delivery.
 `ready` means the supplied readiness observations agree, with those limits.
 
 Text and JSON share the same findings. JSON is one stdout object with
-`formatVersion: 1`, `command`, `state` and `exitCode`; diagnosis adds its boundary
-and findings, upgrade adds its plan/applied paths or conflicts. Exit codes are
+`formatVersion: 1`, `command`, `state` and `exitCode`. Diagnosis adds its boundary
+and findings. Parsed upgrade reports carry one top-level `conflicts` array and
+include the plan or applied paths where available. Refusals name schema-range
+or managed-file conflicts. Exit codes are
 `0` for satisfied/completed, `1` for unsatisfied/conflict, `2` for unknown, `64`
 for invalid invocation/JSON and `74` for operation or application-loading failure.
-Raw application exceptions are withheld. An I/O failure during apply may follow
-completed writes; rerun the identical snapshots under exclusive access.
+The verify assembly stage can report an exact allowlisted public diagnostic in
+the cause. Other exception details are withheld. An I/O failure during apply may
+follow completed writes. Resume with the identical snapshots under exclusive
+access.
 
 The [diagnosis witnesses](../../packages/platform/test/lifecycle/appVerification.test.ts)
 and [installed CLI witness](../../scripts/packages/distribution-cli-proof.ts)
