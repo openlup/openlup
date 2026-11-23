@@ -16,7 +16,8 @@
     "test:browser": "playwright test",
     "settings": "openlup settings --app ./owned/settings-host.ts",
     "catalogue:check": "openlup catalogue check --packs ./owned/catalogue.json --json",
-    "catalogue:check:source": "openlup catalogue project --trusted-packs ./owned/catalogue.ts --json"
+    "catalogue:check:source": "openlup catalogue project --trusted-packs ./owned/catalogue.ts --json",
+    "provider:qualify": "node --experimental-strip-types host/provider-qualification.ts"
   },
   "dependencies": {
     "@openlup/core": "file:artifacts/openlup-core.tgz",
@@ -31,5 +32,10 @@
     "@types/pg": "8.20.0",
     "typescript": "6.0.3",
     "vite": "8.1.6"
+  },
+  "providerQualification": {
+    "dependencies": {
+      "stripe": "22.5.0"
+    }
   }
 }
