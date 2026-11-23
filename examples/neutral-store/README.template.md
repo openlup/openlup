@@ -53,16 +53,13 @@ version="$(node -p "require('./packages/core/package.json').version")"
 npm --prefix . run packages:check -- --out "$candidate_dir/packs" --release-set "$version"
 manifest="$candidate_dir/packs/packages-manifest.json"
 
-QUALIFICATION_DIRECTORY="$candidate_dir" QUALIFICATION_REVISION="$revision" QUALIFICATION_MANIFEST="$manifest" \
-  node --experimental-strip-types --input-type=module <<'NODE'
+node --experimental-strip-types --input-type=module --eval "$(cat <<'NODE'
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readCurrentPackManifest } from './scripts/packages/pack-manifest-input.ts';
 
-const candidate = process.env.QUALIFICATION_DIRECTORY;
-const revision = process.env.QUALIFICATION_REVISION;
-const manifest = process.env.QUALIFICATION_MANIFEST;
+const [candidate, revision, manifest] = process.argv.slice(1);
 const packs = readCurrentPackManifest(process.cwd(), manifest, revision);
 const read = path => JSON.parse(readFileSync(path, 'utf8'));
 const { providerQualification, ...app } = read('examples/neutral-store/package.json');
@@ -87,6 +84,7 @@ for (const section of sections) {
 for (const [name, pack] of packs) lock.packages['node_modules/' + name].resolved = 'file:' + pack.path;
 writeFileSync(path, JSON.stringify(lock, null, 2) + '\n');
 NODE
+)" "$candidate_dir" "$revision" "$manifest"
 
 node examples/neutral-store/extract.mjs "$candidate_dir/application" \
   --mode candidate --set-version "$version" --source-revision "$revision" \
