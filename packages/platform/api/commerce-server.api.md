@@ -2974,7 +2974,7 @@ export declare function withCheckoutRecoveryPaymentHold<Input extends {
 ```ts
 import type { CheckoutRecoveryWavePolicy } from "./checkoutRecoveryWaves.js";
 import type { CheckoutRecoveryReminderSchedule } from "../contracts/index.js";
-/** A schedule change was blocked by open orders with unpinned reminder waves. */
+/** Open orders with unpinned waves block the schedule change. */
 export declare class CheckoutRecoveryScheduleChangeBlockedError extends Error {
     readonly blockingOrders: string;
     constructor(blockingOrders: string, cause: unknown);
@@ -7278,7 +7278,7 @@ export {};
 ```ts
 import type { FulfillmentStockSyncPort } from './contracts/index.js';
 import { type PgExecutor } from './postgresDispatchStore.js';
-/** A stock-current request key was reused with different stock inputs. */
+/** Stock replay with different inputs. */
 export declare class FulfillmentStockReplayConflictError extends Error {
     constructor(cause: unknown);
 }

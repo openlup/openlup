@@ -1956,7 +1956,7 @@ export {};
 ```ts
 import type { FulfillmentStockSyncPort } from './contracts/index.js';
 import { type PgExecutor } from './postgresDispatchStore.js';
-/** A stock-current request key was reused with different stock inputs. */
+/** Stock replay with different inputs. */
 export declare class FulfillmentStockReplayConflictError extends Error {
     constructor(cause: unknown);
 }

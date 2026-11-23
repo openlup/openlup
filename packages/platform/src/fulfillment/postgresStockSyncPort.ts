@@ -4,7 +4,7 @@ import { nativeCall, type PgExecutor } from './postgresDispatchStore.js';
 
 const stockReplayConflict = 'fulfillment_stock_current_idempotency_conflict';
 
-/** A stock-current request key was reused with different stock inputs. */
+/** Stock replay with different inputs. */
 export class FulfillmentStockReplayConflictError extends Error {
   constructor(cause: unknown) {
     super(stockReplayConflict, { cause });

@@ -2,6 +2,4 @@
 type: fix
 ---
 
-Stock replay conflicts and blocked reminder schedule changes now reject with owner classes.
-
-Migration: apply both SQL forwards. Branch with `instanceof FulfillmentStockReplayConflictError` or `CheckoutRecoveryScheduleChangeBlockedError` (`blockingOrders`); the driver error is `cause`. Checkout treats raw stock `23505` as operational.
+Migration: Apply `20261125130000_fulfillment_stock_seed_outcome.sql` then `20261125140000_checkout_recovery_reminder_install_outcome.sql`. Match `FulfillmentStockReplayConflictError` or `CheckoutRecoveryScheduleChangeBlockedError` (`blockingOrders`) via `instanceof`. Read driver `cause`. Raw stock `23505` is operational in checkout.

@@ -6,7 +6,7 @@ import type { CheckoutRecoveryReminderSchedule } from "../contracts/index.js";
 const key = "checkout_recovery_reminders";
 const blockedSchedule = "checkout_recovery_schedule_change_blocked_open_episodes";
 
-/** A schedule change was blocked by open orders with unpinned reminder waves. */
+/** Open orders with unpinned waves block the schedule change. */
 export class CheckoutRecoveryScheduleChangeBlockedError extends Error {
   constructor(readonly blockingOrders: string, cause: unknown) {
     super(blockedSchedule, { cause });
