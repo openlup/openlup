@@ -113,12 +113,18 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
   const command=(id:string)=>({idempotencyKey:`checkout-recovery-recreate:${id}`,sourceOrderId:id});
   const linked={...command(f.id),replacementOrderId:await replacement(f)};
   const candidate={...command(other.id),replacementOrderId:await replacement(other)};
+  const stranger=randomUUID();await env.owner.query('INSERT INTO public.clients(id,email)VALUES($1,$2)',[stranger,`${stranger}@example.invalid`]);
+  const foreign=(await persistence().createOrderDraft({idempotencyKey:`foreign:${other.id}`,quoteSnapshot:other.frozen},{clientId:stranger})).orderDraft.orderId.slice(6);
   await expect(prepare().prepareReplacement(linked)).resolves.toMatchObject({replayed:false});
   await projectOfferOnlyMembership(env.owner,f.skuId,f.skuId,f.sku,'1');
   const before=await sourceRows(other), draft=await read(candidate.replacementOrderId);
+  const payments=async()=>(await env.owner.query(`SELECT (SELECT count(*) FROM public.commerce_settlement_intents) AS intents,
+   (SELECT count(*) FROM public.payment_simulator_attempts) AS attempts`)).rows,paid=await payments();
   await expect(prepare().prepareReplacement(linked)).resolves.toMatchObject({replayed:true});
   await expect(prepare().prepareReplacement({...linked,idempotencyKey:'unrelated-key'})).rejects.toMatchObject({reason:'unavailable'});
+  await expect(prepare().prepareReplacement({...candidate,idempotencyKey:`foreign:${other.id}`,replacementOrderId:foreign})).rejects.toMatchObject({reason:'unavailable'});
   await expect(prepare().prepareReplacement(candidate)).rejects.toMatchObject({details:{reason:'catalog_admission_quote_authority_required'}});
+  expect(await payments()).toEqual(paid);
   expect(await sourceRows(other)).toEqual(before);
   expect(await read(candidate.replacementOrderId)).toEqual(draft);
   expect(await children(other.id)).toEqual([]);

@@ -1614,6 +1614,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125120000_catalog_legacy_draft_fixed_locks.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5291,6 +5295,10 @@
     },
     {
       "path": "packages/platform/sql/20261125090000_catalog_runtime_checkout_dark.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125120000_catalog_legacy_draft_fixed_locks.sql",
       "class": "public-output"
     },
     {

@@ -7016,6 +7016,20 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "catalog-legacy-draft-fixed-locks",
+        "path": "db/platform/migrations/20261125120000_catalog_legacy_draft_fixed_locks.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_admission_check_legacy_draft(text,jsonb,uuid,boolean)",
+            "beforeSha256": "ffacafdd851dd1e7d87eca830e8b880087e59a32deec952649add8c5bfe0137d",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -10376,6 +10390,17 @@
           "signature": "public.catalog_admission_runtime_checkout(text,text,uuid,jsonb)",
           "beforeSha256": null,
           "afterSha256": "dc5ede81e7e66af056f93756823590ee16f9a80674600c95764245be0528ab6a"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125120000_catalog_legacy_draft_fixed_locks.sql",
+      "sha256": "1a47110e7fc8f998d089d0befdcb0c3993909950dcf69825bce45378e56344f9",
+      "functions": [
+        {
+          "signature": "public.catalog_admission_check_legacy_draft(text,jsonb,uuid,boolean)",
+          "beforeSha256": "ffacafdd851dd1e7d87eca830e8b880087e59a32deec952649add8c5bfe0137d",
+          "afterSha256": "f1ede9dae81ec658aea6697241f357cbfa4b4135d647c5677777b1d3cbdea56e"
         }
       ]
     }

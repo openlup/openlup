@@ -436,16 +436,33 @@ returns `catalog_admission_quote_authority_required`. The component assertion
 checks current owner evidence and provides no purchase authority. The three
 checkout-owner definitions are owned by the migration principal, pin
 `pg_catalog, pg_temp` and grant no application role execution. The private
-draft entry keeps fresh governed purchase unavailable. The ordinary runtime
-uses `service_role` for
-`catalog_admission_runtime_checkout(text,text,uuid,jsonb)` when that role
-exists. The routine refuses every invocation with SQLSTATE `55000` and
+draft entry keeps fresh governed purchase unavailable.
+`catalog_admission_runtime_checkout(text,text,uuid,jsonb)` grants EXECUTE only
+to `service_role`, and only when that role exists. Nothing calls the routine
+yet. It refuses every invocation with SQLSTATE `55000` and
 `catalog_admission_quote_authority_required` before reading or writing purchase
 data. The existing checkout-owner controls supply no governed checkout authority.
 Draft replay checks the original owner and receipt before fresh admission
-advice. Fresh recovery checks the original order's retained acceptance at the
-lineage writer.
+advice. Fresh recovery refuses at the lineage writer when the original order
+retains an acceptance or when live classification finds governed demand in its
+lines; either condition alone refuses.
+
 The managed rail does not supply governed purchase admission, and its drafts remain legacy-only.
+
+Both draft routines replay a saved receipt first, under the request key's
+transaction advisory lock and the receipt row lock, and take no catalogue lock
+for it. Fresh work then runs
+`catalog_admission_check_legacy_draft(text,jsonb,uuid,boolean)`, which takes
+the same locks whatever its last argument: the client row and the selected SKU
+rows `FOR KEY SHARE`, then `SHARE` on `public.catalog_products` until the
+transaction ends. At `REPEATABLE READ` or `SERIALIZABLE` it also locks the
+selected parent product rows `FOR NO KEY UPDATE`, so a publication committed
+after the caller's snapshot fails the draft with SQLSTATE `40001`; retry it in
+a new transaction. A publication fence refuses with `55P03` while a fresh draft
+is open. A promoted draft takes these locks before validating its money, so a
+contended or stale call returns the lock failure rather than the money refusal.
+A direct checker call with `false` or `NULL` now also takes these row locks and
+refuses in a read-only transaction with `25006`.
 
 The private submit member binds the original authenticated request to the native
 draft receipt. The existing deferred order and receipt checks protect committed

@@ -7,7 +7,7 @@ import { createPostgresCommercePriceAuthorityReadPort } from "@openlup/platform/
 import { createPostgresCatalogAdmission } from "@openlup/platform/catalog";
 import * as pricing from "@openlup/platform/pricing";
 import { buildCatalogOwnerQuote, withCatalogAdmissionFence } from "@openlup/platform/catalog/testing";
-import { actorId, fixture, graph, hash, insertGraph, installPublicationActors, projectOfferOnlyMembership, transaction, type Graph } from "./catalogPublicationFixture.js";
+import { actorId, fixture, graph, hash, insertGraph, installPublicationActors, projectOfferOnlyMembership, stageProductRows, transaction, type Graph } from "./catalogPublicationFixture.js";
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { checkoutOwnerRoutines, selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -27,6 +27,10 @@ const closed = {
   code: "55000", message: "catalog_admission_quote_authority_required",
   hint: "Governed checkout is unavailable for this selection. Use a supported offer or replay the original request.",
 };
+const checkLegacy = "SELECT public.catalog_admission_check_legacy_draft($1,$2,$3,$4)";
+const legacyLocks = [true, false, null];
+const levels = ["READ COMMITTED", "REPEATABLE READ"] as const;
+const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
 
 beforeAll(async () => {
   env = await lifecycleInstallation("qualified-v2");
@@ -151,6 +155,11 @@ it("preserves an original receipt before fresh offer-only admission on both nati
           .rejects.toMatchObject({ message: closed.hint, details: { reason: closed.message } });
       }
     }
+    for (const lock of legacyLocks) for (const offerVersion of ["example:checkout@1", { version: "example:checkout@1" }]) {
+      const fresh = quote(legacySku);
+      Object.assign(fresh.quote.context!, { offerVersion });
+      await expect(env.runtime.query(checkLegacy, [randomUUID(), draft(fresh), clientId, lock])).rejects.toMatchObject(closed);
+    }
     expect(await counts()).toEqual(before);
   } finally {
     await env.owner.query("UPDATE public.catalog_skus SET publication_facts=NULL WHERE id=$1", [legacyId]);
@@ -175,6 +184,11 @@ it("refuses a fresh recovery link using retained owner acceptance without live d
   const request = { idempotencyKey: `recovery:${source}`, quoteSnapshot: quote(legacySku) };
   const replacement = (await createPostgresNativeCheckoutPersistence(env.runtime).createOrderDraft(request, { clientId })).orderDraft.orderId.slice(6);
   const before = await counts();
+  for (const lock of legacyLocks) {
+    await expect(env.runtime.query(checkLegacy, [`checkout-recovery-recreate:${source}`, draft(quote(legacySku)), clientId, lock]))
+      .rejects.toMatchObject(closed);
+    await env.runtime.query(checkLegacy, [`checkout-recovery-recreate:${source}`, draft(quote(legacySku)), null, lock]);
+  }
   await expect(env.runtime.query("SELECT public.commerce_prepare_expired_checkout_recovery($1,$2,$3,1000,now())",
     [request.idempotencyKey, source, replacement])).rejects.toMatchObject(closed);
   expect(await counts()).toEqual(before);
@@ -345,5 +359,160 @@ it.each(["publication", "unrelated commit"] as const)("rejects an early purchase
     await publisher.query("ROLLBACK");
     publisher.release();
     await purchase?.catch(() => undefined);
+  }
+});
+
+// Another session's NOWAIT probe reports a conflicting lock without waiting for it.
+const conflicts = (sql: string, values: unknown[] = []) => transaction(env.owner, db => db.query(sql, values))
+  .then(() => false, (error: { code?: string }) => { if (error.code === "55P03") return true; throw error; });
+const draftEntry = (db: Pick<Pool, "query">, routine: string, key: string, snapshot: pricing.CreateQuoteResponse, client = clientId) =>
+  db.query(`SELECT public.${routine}($1,$2,$3,$4) AS result`, [key, snapshot, draft(snapshot), client]).then(({ rows }) => rows[0]!.result);
+const replayed = (saved: { orderDraft: object }) => ({ ...saved, orderDraft: { ...saved.orderDraft, replayed: true } });
+const entries = ["commerce_create_order_draft_with_outbox", "commerce_create_promoted_order_draft_with_outbox"];
+
+it.each(levels)("takes one lock scope for direct true, false and NULL legacy checks at %s", async level => {
+  for (const lock of legacyLocks) {
+    const db = await env.runtime.connect();
+    try {
+      await db.query(`BEGIN ISOLATION LEVEL ${level}`);
+      // Guest, missing or non-array lines and a malformed recovery key are admitted unchanged.
+      for (const value of [{}, { lines: { sku: issued.facts.code } }, draft(quote(legacySku))]) {
+        await db.query(checkLegacy, [`checkout-recovery-recreate:${"g".repeat(36)}`, value, null, lock]);
+      }
+      await db.query(checkLegacy, [randomUUID(), draft(quote(legacySku)), clientId, lock]);
+      expect(await Promise.all([
+        conflicts("SELECT 1 FROM public.clients WHERE id=$1 FOR UPDATE NOWAIT", [clientId]),
+        conflicts("SELECT 1 FROM public.catalog_skus WHERE id=$1 FOR UPDATE NOWAIT", [legacyId]),
+        conflicts("SELECT 1 FROM public.catalog_skus WHERE id=$1 FOR UPDATE NOWAIT", [issued.skuId]),
+        conflicts("SELECT 1 FROM public.catalog_products WHERE id=$1 FOR SHARE NOWAIT", [legacyId]),
+        conflicts("LOCK TABLE public.catalog_products IN SHARE ROW EXCLUSIVE MODE NOWAIT"),
+      ])).toEqual([true, true, false, level === "REPEATABLE READ", true]);
+      await expect(db.query(checkLegacy, [randomUUID(), draft(quote(issued.facts.code)), clientId, lock])).rejects.toMatchObject(closed);
+    } finally {
+      await db.query("ROLLBACK");
+      db.release();
+    }
+    await expect(transaction(env.runtime, async db => {
+      await db.query(`SET TRANSACTION ISOLATION LEVEL ${level}, READ ONLY`);
+      return db.query(checkLegacy, [randomUUID(), draft(quote(legacySku)), clientId, lock]);
+    })).rejects.toMatchObject({ code: "25006" });
+  }
+});
+
+it("commits base and discounted promoted drafts and replays both ahead of a held products lock", async () => {
+  const otherClient = (await env.owner.query("INSERT INTO public.clients(email) VALUES('other@example.invalid') RETURNING id")).rows[0]!.id;
+  const promoted = quote(legacySku);
+  Object.assign(promoted.quote, { discounts: [{ appliesTo: "order_total", amountOffMinor: 25 }], discountTotalGross: money(25), totalGross: money(100) });
+  const saved: { routine: string; key: string; snapshot: pricing.CreateQuoteResponse; response: { orderDraft: object } }[] = [];
+  for (const [routine, snapshot, payable] of [[entries[0]!, quote(legacySku), 125], [entries[1]!, promoted, 100]] as const) {
+    const key = randomUUID(), response = await draftEntry(env.runtime, routine, key, snapshot);
+    expect((await env.owner.query(`SELECT o.total_amount_minor::int AS payable,
+      (SELECT jsonb_agg(jsonb_build_array(quantity,unit_amount_minor::int,line_amount_minor::int)) FROM public.commerce_order_items WHERE order_id=o.id) AS items,
+      (SELECT count(*)::int FROM public.commerce_order_adjustments WHERE order_id=o.id) AS adjustments,
+      (SELECT jsonb_agg(response_payload) FROM public.commerce_order_draft_receipts WHERE order_id=o.id) AS receipts,
+      (SELECT count(*)::int FROM public.outbox_events WHERE aggregate_id=o.id AND event_type='commerce.order_draft.created') AS events
+      FROM public.commerce_orders o WHERE o.id=$1`, [response.orderDraft.orderId.slice(6)])).rows)
+      .toEqual([{ payable, items: [[1, payable, payable]], adjustments: 0, receipts: [response], events: 1 }]);
+    saved.push({ routine, key, snapshot, response });
+  }
+  const before = await counts(), fence = await env.owner.connect();
+  try {
+    await fence.query("BEGIN");
+    await fence.query("LOCK TABLE public.catalog_products IN SHARE ROW EXCLUSIVE MODE");
+    const invalid = quote(legacySku);
+    invalid.quote.totalGross = money(124);
+    for (const expired of [false, true]) for (const level of levels) {
+      const at = <T>(work: (db: PoolClient) => Promise<T>) => transaction(env.runtime, async db => {
+        await db.query(`SET TRANSACTION ISOLATION LEVEL ${level}`);
+        await db.query("SET LOCAL lock_timeout='500ms'");
+        return work(db);
+      });
+      for (const { routine, key, snapshot, response } of saved) {
+        if (expired) {
+          await expect(at(db => draftEntry(db, routine, key, snapshot))).rejects.toMatchObject({ code: "40001", message: "commerce_order_draft_expired" });
+          continue;
+        }
+        // Replay holds the key and receipt locks, not the catalogue fence.
+        expect(await at(async db => [await draftEntry(db, routine, key, snapshot),
+          await conflicts("SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1 FOR UPDATE NOWAIT", [key]),
+          (await env.owner.query("SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS free", [key])).rows[0]!.free,
+        ])).toEqual([replayed(response), true, false]);
+        await expect(at(db => draftEntry(db, routine, key, snapshot, otherClient))).rejects.toMatchObject({ code: "23505" });
+        await expect(at(db => draftEntry(db, routine, key, { ...snapshot, quote: { ...snapshot.quote, lines: [{ ...snapshot.quote.lines[0]!, productSlug: "changed-article" }] } })))
+          .rejects.toMatchObject({ code: "23505" });
+      }
+      // Fresh promoted work waits at the outer checker before money validation.
+      if (!expired) await expect(at(db => draftEntry(db, entries[1]!, randomUUID(), invalid)))
+        .rejects.toMatchObject({ code: "55P03", where: expect.stringContaining("catalog_admission_lock_shared") });
+      if (!expired && level === levels[1]) await env.owner.query(`UPDATE public.commerce_order_draft_receipts
+        SET invalidated_at=now(),invalidation_reason='fixture' WHERE idempotency_key=ANY($1)`, [saved.map(({ key }) => key)]);
+    }
+    expect(await counts()).toEqual(before);
+  } finally {
+    await fence.query("ROLLBACK");
+    fence.release();
+  }
+});
+
+async function classicArticle() {
+  const data = fixture();
+  await transaction(env.owner, async db => {
+    await stageProductRows(db, data);
+    await db.query("UPDATE public.catalog_products SET status='active' WHERE id=$1", [data.productId]);
+    await db.query("UPDATE public.catalog_skus SET status='active',sellable_standalone=true WHERE id=$1", [data.skuId]);
+    await db.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,mode) VALUES($1,$2,125,'one_time')", [priceListId, data.skuId]);
+  });
+  return { data, snapshot: quote(`sku-${data.skuId}`) };
+}
+async function publicationFence(db: PoolClient) {
+  await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actorId, role: "authenticated" })]);
+  return db.query("SELECT public.catalog_publication_lock_projection()");
+}
+// The publication preserves the SKU identity and updates the product row from classic to governed.
+const governArticle = async (db: PoolClient, data: ReturnType<typeof fixture>) => insertGraph(db, await graph(db, data, null, false, { lifecycle: "active" }));
+async function productFenceWait(pid: number) {
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const { rows } = await env.owner.query(`SELECT mode,pg_blocking_pids($1) AS blockers FROM pg_locks
+      WHERE pid=$1 AND NOT granted AND relation='public.catalog_products'::regclass`, [pid]);
+    if (rows.length) return rows[0];
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  throw new Error("The checkout did not reach the products fence");
+}
+
+it.each(levels.flatMap(level => entries.map(routine => [routine, level] as const)))("orders %s against publication at %s", async (routine, level) => {
+  const before = await counts(), first = await classicArticle(), second = await classicArticle();
+  const buyer = await env.runtime.connect(), publisher = await env.owner.connect();
+  try {
+    await publisher.query("BEGIN");
+    const publisherPid = (await publisher.query("SELECT pg_backend_pid() AS pid")).rows[0]!.pid;
+    await publicationFence(publisher);
+    await buyer.query(`BEGIN ISOLATION LEVEL ${level}`);
+    await buyer.query("SET LOCAL lock_timeout='20s'; SET LOCAL statement_timeout='30s'");
+    const pid = (await buyer.query("SELECT pg_backend_pid() AS pid")).rows[0]!.pid;
+    // Promoted money is invalid: the catalogue lock outcome must precede its validation.
+    if (routine === entries[1]) first.snapshot.quote.totalGross = money(124);
+    const pending = draftEntry(buyer, routine, randomUUID(), first.snapshot);
+    pending.catch(() => undefined);
+    expect(await productFenceWait(pid)).toEqual({ mode: "ShareLock", blockers: [publisherPid] });
+    expect(await conflicts("SELECT 1 FROM public.catalog_skus WHERE id=$1 FOR UPDATE NOWAIT", [first.data.skuId])).toBe(true);
+    await governArticle(publisher, first.data);
+    await publisher.query("COMMIT");
+    await expect(pending).rejects.toMatchObject(level === "READ COMMITTED" ? closed : { code: "40001",
+      where: expect.stringContaining("catalog_admission_check_legacy_draft(text,jsonb,uuid,boolean) line 11 at PERFORM") });
+    await buyer.query("ROLLBACK");
+    expect(await counts()).toEqual(before);
+    const key = randomUUID();
+    await buyer.query(`BEGIN ISOLATION LEVEL ${level}`);
+    const saved = await draftEntry(buyer, routine, key, second.snapshot);
+    await expect(transaction(env.owner, publicationFence)).rejects.toMatchObject({ code: "55P03" });
+    await buyer.query("COMMIT");
+    await transaction(env.owner, async db => { await publicationFence(db); await governArticle(db, second.data); });
+    expect(await draftEntry(env.runtime, routine, key, second.snapshot)).toEqual(replayed(saved));
+    await expect(draftEntry(env.runtime, routine, randomUUID(), second.snapshot)).rejects.toMatchObject(closed);
+  } finally {
+    await Promise.all([buyer.query("ROLLBACK"), publisher.query("ROLLBACK")]);
+    buyer.release();
+    publisher.release();
   }
 });
