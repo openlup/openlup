@@ -10,3 +10,4 @@ export * from "./targetPriceAllocation.js";
 export * from "./catalogueMoney.js";
 /** @beta @experimental */
 export * from "./catalogueMoneyV2.js";
+export type { CommerceMoneyBodyV2 } from "./commerceMoneyV2.js";

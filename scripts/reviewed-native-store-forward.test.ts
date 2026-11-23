@@ -133,6 +133,29 @@ describe("checkout owner execute admission", () => {
     const text = renderCheckoutOwnerGrant(definitionPath, sqlSha256(definitions));
     expect(() => checkGrant(candidate(text, definitions), text, definitions)).toThrow(/^checkout_owner_predecessor_unverified:/u);
   });
+
+  it.each(["before", "unissued", "after", "unlisted"] as const)("checks the checkout writer replacement %s the grant", order => {
+    const value = candidate();
+    const binding = definitionPin().functions.at(-1)!;
+    const statement = sqlStatements(definitionSql).find(sql => sql.startsWith(`CREATE FUNCTION ${binding.signature}`))!;
+    const replacement = statement.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")
+      .replace("fixture_checkout_writer_dark", "fixture_checkout_writer_replacement");
+    const path = `db/platform/migrations/20990101000${order === "after" || order === "unissued" ? "200" : "050"}_checkout_writer_fixture.sql`;
+    const slot = emptySlot(path);
+    if (order !== "unlisted") slot.replacedFunctions.push({ signature: binding.signature,
+      searchPath: "pg_catalog, pg_temp", beforeSha256: binding.afterSha256 });
+    const slots = value.nativeStoreForwardClass!.slots;
+    slots.push(slot);
+    slots.sort((left, right) => left.path.localeCompare(right.path));
+    if (order === "unlisted") value.nativeStoreForwards!.push({ path, sha256: sqlSha256(replacement), functions: [] });
+    else bind(value, slots.indexOf(slot), replacement);
+    value.nativeStoreForwards!.sort((left, right) => left.path.localeCompare(right.path));
+    const prefix = [{ path: PLATFORM_BASELINE_FILE, bytes: before }, { path: definitionPath, bytes: Buffer.from(definitionSql) }];
+    if (order === "after") prefix.push({ path: grantPath, bytes: Buffer.from(grantSql) });
+    const admit = () => assertNativeStoreForward(value, path, Buffer.from(replacement), prefix);
+    if (order === "after") expect(admit).not.toThrow();
+    else expect(admit).toThrow(`checkout_owner_predecessor_unverified: ${path}. Issue the checkout grant unit before replacing a checkout routine.`);
+  });
 });
 
 const catalogueReadTargets = ["public.catalog_offer_memberships_page(text,jsonb,integer,text)", "public.catalog_publication_activation_readiness(text[],text)"];

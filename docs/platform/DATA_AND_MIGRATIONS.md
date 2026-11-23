@@ -3027,6 +3027,7 @@ ledger entry and the installed routines before the unit can commit. The unit
 records a zero-grant no-op if the role is absent. A present role must pass
 the qualified session check. The runner verifies the candidate ledger and
 permissions in the same transaction before commit.
+Replacements of these three routines must follow the issued checkout grant unit.
 
 For either qualified generation and role mode, the host provisions
 `openlup_checkout_owner` outside the migration session. Use a dedicated login

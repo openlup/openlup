@@ -3698,6 +3698,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/pricing/commerceMoneyV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/pricing/index.ts",
       "class": "public-output"
     },
@@ -6275,6 +6279,10 @@
     },
     {
       "path": "packages/platform/src/commerce/contracts/orderMoney.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/orderMoneyV2.ts",
       "class": "public-output"
     },
     {
@@ -9418,6 +9426,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/commerceQuoteMoneyV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/commerceQuoteSnapshotExpect.ts",
       "class": "public-output"
     },
@@ -9463,6 +9475,10 @@
     },
     {
       "path": "packages/platform/src/pricing/contracts/quote.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/contracts/quoteV2.ts",
       "class": "public-output"
     },
     {
@@ -9522,6 +9538,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/quoteMoneyValidationV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/quotePorts.ts",
       "class": "public-output"
     },
@@ -9535,6 +9555,10 @@
     },
     {
       "path": "packages/platform/src/pricing/quoteSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/quoteSchemasV2.ts",
       "class": "public-output"
     },
     {
@@ -12350,6 +12374,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/pricing/commerceQuoteMoneyV2.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/pricing/commerceQuoteSnapshotExpect.test.ts",
       "class": "public-output"
     },
@@ -12407,6 +12435,10 @@
     },
     {
       "path": "packages/platform/test/pricing/quoteEngineFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/quoteMoneyV2Fixtures.ts",
       "class": "public-output"
     },
     {
