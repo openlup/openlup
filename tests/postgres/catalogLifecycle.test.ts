@@ -588,7 +588,7 @@ async function call(db: Pool | PoolClient, name: string, values: unknown[]) {
   return (await db.query(`SELECT public.${name}(${args}) AS result`, values)).rows[0]!.result;
 }
 
-it.each(["first attempt", "pending retry"])("completes an accepted native purchase on %s and claims its bound renewal", async attempt => {
+it.each(["first attempt", "pending retry"])("completes a previously accepted native purchase on %s and claims its bound renewal", async attempt => {
   const issued = await issueActiveAcceptance(), reference = issued.lines[0]!;
   const at = new Date(Date.now() - 29 * 86_400_000).toISOString(), key = randomUUID();
   const { client } = await transaction(pool, db => subscription(db));
@@ -600,9 +600,25 @@ it.each(["first attempt", "pending retry"])("completes an accepted native purcha
     { sku: reference.skuCode, quantity: 2, unitPriceGross: money(100), lineSubtotalGross: money(200) }], totalGross: money(200) };
   const draft = { contractVersion: "commerce.v0", source: "commerce.order_draft.bff.v0", status: "draft", paymentStatus: "not_started",
     currency: "XXX", context: quote.context, lines: quote.lines, totals: { totalGross: money(200) } };
-  const created = await call(runtime, "commerce_create_order_draft_with_outbox", [key, { quote }, draft, client]);
-  const orderId = String(created.orderDraft.orderId).replace(/^order_/, "");
+  await expect(call(runtime, "commerce_create_order_draft_with_outbox", [key, { quote }, draft, client]))
+    .rejects.toMatchObject(refusal("catalog_admission_quote_authority_required"));
+  const orderId = randomUUID(), quoteSnapshot = { quote };
+  const saved = { contractVersion: "commerce.v0", orderDraft: {
+    orderId: `order_${orderId}`, status: "draft", paymentStatus: "not_started", idempotencyKey: key, quoteSnapshot, replayed: false,
+  } };
+  await transaction(pool, async db => {
+    await db.query(`INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor,metadata)
+      VALUES($1,$2,'pending_payment','XXX',200,$3)`,
+    [orderId, client, { paymentStatus: "not_started", quoteSnapshot, orderDraftSnapshot: draft }]);
+    await db.query(`INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+      VALUES($1,$2,1,2,100,200)`, [orderId, reference.skuId]);
+    await db.query(`INSERT INTO public.commerce_order_draft_receipts(idempotency_key,request_fingerprint,order_id,response_payload)
+      VALUES($1,md5($2::jsonb::text||'|'||$3::jsonb::text||'|'||$4::uuid::text),$5,$6)`,
+    [key, quoteSnapshot, draft, client, orderId, saved]);
+  });
   await call(runtime, "catalog_attach_order_acceptance", [orderId, issued, key, { [reference.skuCode]: 2 }]);
+  await expect(call(runtime, "commerce_create_order_draft_with_outbox", [key, quoteSnapshot, draft, client]))
+    .resolves.toEqual({ ...saved, orderDraft: { ...saved.orderDraft, replayed: true } });
   const opened = await call(runtime, "commerce_open_settlement_intent", [`open:${key}`, orderId, "sandbox", 200, "XXX", {}, at]);
   const simulator = createPostgresSandboxPaymentSimulator(runtime, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover",
     recoveryTemplateSlug: "recovered" });

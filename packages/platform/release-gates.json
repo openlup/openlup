@@ -1056,6 +1056,106 @@
       ],
       "entrypoint": "dist/catalog/testing/index.d.ts",
       "snapshot": "api/catalog-testing.api.md"
+    },
+    "./shipping/testing": {
+      "role": "capability",
+      "maturity": "testing",
+      "compatibilityPolicy": "testing",
+      "packageSmokeEvidence": [
+        "test/shipping/carrierRateConformance.test.ts"
+      ],
+      "entrypoint": "dist/shipping/testing/index.d.ts",
+      "snapshot": "api/shipping-testing.api.md"
+    },
+    "./communications/testing": {
+      "role": "capability",
+      "maturity": "testing",
+      "compatibilityPolicy": "testing",
+      "packageSmokeEvidence": [
+        "test/communications/communicationsTestingConformance.test.ts"
+      ],
+      "entrypoint": "dist/communications/testing/index.d.ts",
+      "snapshot": "api/communications-testing.api.md"
+    },
+    "./adapter-kit": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "experimental",
+      "packageSmokeEvidence": [
+        "test/adapter-kit/adapterKit.test.ts"
+      ],
+      "entrypoint": "dist/adapter-kit/index.d.ts",
+      "snapshot": "api/adapter-kit.api.md"
+    },
+    "./accounting": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "experimental",
+      "packageSmokeEvidence": [
+        "test/accounting/accountingConformance.test.ts"
+      ],
+      "entrypoint": "dist/accounting/index.d.ts",
+      "snapshot": "api/accounting.api.md"
+    },
+    "./accounting/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "experimental",
+      "packageSmokeEvidence": [
+        "test/accounting/accountingConformance.test.ts"
+      ],
+      "entrypoint": "dist/accounting/contracts/index.d.ts",
+      "snapshot": "api/accounting-contracts.api.md"
+    },
+    "./accounting/testing": {
+      "role": "capability",
+      "maturity": "testing",
+      "compatibilityPolicy": "testing",
+      "packageSmokeEvidence": [
+        "test/accounting/accountingConformance.test.ts"
+      ],
+      "entrypoint": "dist/accounting/testing/index.d.ts",
+      "snapshot": "api/accounting-testing.api.md"
+    },
+    "./observability": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "experimental",
+      "packageSmokeEvidence": [
+        "test/observability/telemetryConformance.test.ts"
+      ],
+      "entrypoint": "dist/observability/index.d.ts",
+      "snapshot": "api/observability.api.md"
+    },
+    "./observability/contracts": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "experimental",
+      "packageSmokeEvidence": [
+        "test/observability/telemetryConformance.test.ts"
+      ],
+      "entrypoint": "dist/observability/contracts/index.d.ts",
+      "snapshot": "api/observability-contracts.api.md"
+    },
+    "./observability/testing": {
+      "role": "rail",
+      "maturity": "testing",
+      "compatibilityPolicy": "testing",
+      "packageSmokeEvidence": [
+        "test/observability/telemetryConformance.test.ts"
+      ],
+      "entrypoint": "dist/observability/testing/index.d.ts",
+      "snapshot": "api/observability-testing.api.md"
+    },
+    "./channels/testing": {
+      "role": "capability",
+      "maturity": "testing",
+      "compatibilityPolicy": "testing",
+      "packageSmokeEvidence": [
+        "test/channels/channelConformance.test.ts"
+      ],
+      "entrypoint": "dist/channels/testing/index.d.ts",
+      "snapshot": "api/channels-testing.api.md"
     }
   },
   "pack": {
@@ -1093,6 +1193,8 @@
       "./account-support/contracts": 32,
       "./operations/contracts": 32,
       "./operations": 30720,
+      "./accounting/contracts": 32,
+      "./observability/contracts": 32,
       "./marketing/contracts": 32,
       "./risk/contracts": 32,
       "./company-identity/contracts": 23,

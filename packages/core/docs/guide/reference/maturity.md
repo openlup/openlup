@@ -57,6 +57,10 @@ for package policy definitions and release boundaries.
 | `./account-support/contracts` | capability | experimental |
 | `./account-support/postgres` | capability | stable |
 | `./account-support/read-contracts` | capability | experimental |
+| `./accounting` | capability | experimental |
+| `./accounting/contracts` | capability | experimental |
+| `./accounting/testing` | capability | testing |
+| `./adapter-kit` | rail | experimental |
 | `./bff` | rail | stable |
 | `./blob` | rail | stable |
 | `./catalog` | capability | stable |
@@ -65,6 +69,7 @@ for package policy definitions and release boundaries.
 | `./channels` | capability | stable |
 | `./channels/contracts` | capability | stable |
 | `./channels/server` | capability | stable |
+| `./channels/testing` | capability | testing |
 | `./commerce` | capability | stable |
 | `./commerce/contracts` | capability | stable |
 | `./commerce/server` | capability | stable |
@@ -74,6 +79,7 @@ for package policy definitions and release boundaries.
 | `./communications` | capability | stable |
 | `./communications/contracts` | capability | stable |
 | `./communications/klaviyo` | capability | experimental |
+| `./communications/testing` | capability | testing |
 | `./company-identity` | capability | stable |
 | `./company-identity/contracts` | capability | stable |
 | `./company-identity/server` | capability | stable |
@@ -100,6 +106,9 @@ for package policy definitions and release boundaries.
 | `./marketing/server` | capability | stable |
 | `./marketing/server/postgres` | capability | stable |
 | `./migrations` | rail | stable |
+| `./observability` | rail | experimental |
+| `./observability/contracts` | rail | experimental |
+| `./observability/testing` | rail | testing |
 | `./operations` | capability | stable |
 | `./operations/contracts` | capability | stable |
 | `./operations/server` | capability | stable |
@@ -118,6 +127,7 @@ for package policy definitions and release boundaries.
 | `./scheduler` | rail | stable |
 | `./shipping` | capability | stable |
 | `./shipping/contracts` | capability | stable |
+| `./shipping/testing` | capability | testing |
 | `./subscriptions` | capability | stable |
 | `./subscriptions/contracts` | capability | stable |
 | `./tax` | capability | experimental |

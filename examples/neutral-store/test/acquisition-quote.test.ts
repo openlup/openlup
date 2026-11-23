@@ -3,13 +3,15 @@ import { dispatchAction, pendingBindings } from '../host/bindings.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Pool } from 'pg';
-import { ACQUISITION_TERMS_CAPABILITY, selectAcquisitionTerms, AcquisitionTermsError, CommerceQuoteError } from '@openlup/platform/pricing';
+import { ACQUISITION_TERMS_CAPABILITY, selectAcquisitionTerms, AcquisitionTermsError, CommerceQuoteError, CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { createPromotionQuoteAcceptance } from '@openlup/platform/promotions';
 import type { PromotionRow } from '@openlup/core/promo';
+import type { NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
+import { documentDigest, editorDocuments, verifySizedProductDocument, type MixedProductRead } from '../host/editor-catalogue.ts';
 import { configurations } from '../owned/store.config.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import { composePurchaseCapabilities } from '../host/purchase-composition.ts';
-import { createNativeQuoteService, quoteFailure } from '../host/quote-composition.ts';
+import { createNativeQuoteService, quoteDocumentVerifier, quoteFailure } from '../host/quote-composition.ts';
 import { quoteRefusalCopy, isQuoteRefusalCode } from '../owned/quote-copy.ts';
 import { createAcquisitionRenewalBinding, type AcquisitionPredecessors } from '../host/acquisition-predecessors.ts';
 import { validateCart } from '../shared/offer.ts';
@@ -155,10 +157,11 @@ test('configured native shipping reaches the installed graph rather than an inte
 
 test('forged fresh cadence/SKU/quantity refuse quote and checkout with zero writes', async () => {
   let writes = 0;
-  const db = { query: async (sql: string) => {
+  const query = async (sql: string) => {
     if (!sql.trimStart().startsWith('SELECT')) writes++;
     return { rows: [] };
-  } } as unknown as Pool;
+  };
+  const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
   const quotes = createNativeQuoteService(db,unavailable);
   const actions = composePurchaseCapabilities(db,{} as never,undefined,{} as never,{ predecessors: unavailable });
   const bindings = { ...pendingBindings(),actions };
@@ -173,6 +176,22 @@ test('forged fresh cadence/SKU/quantity refuse quote and checkout with zero writ
     assert.deepEqual(result,{ ok: false,code });
   }
   assert.equal(writes,0);
+});
+
+test('fresh governed selection refuses before the quote, contact or draft owner', async () => {
+  const calls: string[] = [];
+  const query = async (sql: string) => {
+    calls.push(sql);
+    if (sql.includes('catalog_admission_requires_quote_authority')) return { rows: [{ governed: true }] };
+    if (sql.includes('pg_advisory') || sql.includes('commerce_order_draft_receipts')) return { rows: [] };
+    throw new Error('A fresh quote cannot be read on this path');
+  };
+  const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
+  const contacts = { async ensureContactClient() { throw new Error('Contact must not be provisioned'); } };
+  const actions = composePurchaseCapabilities(db,contacts as never,undefined,{} as never,{ predecessors: unavailable });
+  const result = await actions['checkout.create']!({ ...payload, quoteAcceptance: 'opaque', acquisitionCapability: ACQUISITION_TERMS_CAPABILITY },context);
+  assert.deepEqual(result,{ ok: false,code: 'catalog_admission_quote_authority_required' });
+  assert.equal(calls.length,4);
 });
 
 for (const narrowing of ['withdrawn offers', 'lowered quantity and line limits']) {
@@ -203,18 +222,19 @@ test(`authenticated completed order read and receipt replay survive ${narrowing}
   const money = { amountMinor: 1000,currency: 'XTS' };
   const snapshot = { quote: { lines: [],subtotalGross: money,totalGross: money,discountTotalGross: { ...money,amountMinor: 0 },currency: 'XTS',
     context: { mode: 'subscription',cadenceDays: acceptedCart.cadenceDays,starterRequest: identity } } };
-  const storedOrder = { snapshot,completed: true,id: '00000000-0000-4000-8000-000000000003',client_id: actor.customerRef,
+  const storedOrder = { snapshot,completed: true,owned: true,submit: null,fingerprint:'a'.repeat(32),id: '00000000-0000-4000-8000-000000000003',client_id: actor.customerRef,
     status: 'paid',total_amount_minor: 1000,currency_code: 'XTS' };
   let writes = 0;
   let receiptAvailable = true;
-  const db = { query: async (sql: string) => {
+  const query = async (sql: string) => {
     if (!sql.trimStart().startsWith('SELECT')) writes++;
     if (sql.includes('SELECT email')) return { rows: [{ email: payload.email }] };
     if (sql.includes('commerce_order_draft_receipts')) return { rows: receiptAvailable ? [storedOrder] : [] };
     if (sql.includes('FROM public.commerce_orders WHERE id=$1')) return { rows: [storedOrder] };
     // isInitialCheckoutOrder's canonical kind fence.
     return { rows: [{ initial_checkout: true }] };
-  } } as unknown as Pool;
+  };
+  const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
   const actions = composePurchaseCapabilities(db,{} as never,undefined,{} as never,{ predecessors: unavailable });
   const bindings = { ...pendingBindings(),actions };
   const result = await dispatchAction(bindings,'checkout.create',input,{ ...context,config: changed,actor });
@@ -264,4 +284,119 @@ test('full-result admission covers exact/frozen unchanged base and add-ons, iden
     minimum = String(configured.subscriptionOffers.classic.minimumBaseUnits);
   }
   assert.equal(writes,0);
+});
+
+function exactCatalogRefusal(refusal: { code: string; path?: string; fix?: string }) {
+  return (error: unknown) => {
+    assert.ok(error instanceof Error);
+    const proto = Object.getPrototypeOf(error);
+    if ('path' in refusal) {
+      assert.deepStrictEqual(Reflect.ownKeys(proto), ['constructor']);
+      assert.equal(proto.constructor.name, 'MixedProductDocumentError');
+      assert.equal(Object.getPrototypeOf(proto), CommerceQuoteCatalogReadError.prototype);
+    } else {
+      assert.equal(proto, CommerceQuoteCatalogReadError.prototype);
+    }
+    const actual = Object.fromEntries(Reflect.ownKeys(error)
+      .filter(key => key !== 'stack')
+      .map(key => [key, Reflect.get(error, key)]));
+    assert.deepStrictEqual(actual, { message: refusal.code, name: 'CommerceQuoteCatalogReadError', ...refusal });
+    return true;
+  };
+}
+
+function documentFixture() {
+  const config = Object.values(configurations)[0]!;
+  const { id: revisionId, document: gramDocument } = editorDocuments(config)[0]!;
+  const gram = gramDocument.variants[0]!;
+  const sibling = { ...gram, skuId: 'f0000000-0000-4000-8000-000000000001', sku: 'LIQUID',
+    physical: { netContent: { dimension: 'volume' as const, unit: 'openlup:ml', unscaled: '295735295625', scale: 12 },
+      issuer: 'example:gtin', unitGtin: '5901234123457' } };
+  const document = { ...gramDocument, variants: [gram, sibling] };
+  const documentRevision = { id: revisionId, digest: documentDigest(document), productId: document.productId,
+    schemaId: document.schemaVersion, revisionNo: document.revisionNo, sourceRef: document.sourceRef, documentRef: 'example:document' };
+  const envelope: NeutralSkuEnvelopeV1 = { contractVersion: 'catalog.foundation.v1',
+    product: { id: document.productId, slug: document.productSlug, primarySkuId: gram.skuId },
+    sku: { id: gram.skuId, productId: document.productId, code: gram.sku, isAddon: false, assetRef: null,
+      netContent: { unscaled: gram.physical.netWeightG, scale: 0, unit: 'openlup:g' },
+      sellability: { status: 'active', subscription: true, oneTime: true } },
+    documentRevision, identifiers: [{ issuer: gram.physical.issuer, normalizedValue: gram.physical.unitGtin,
+      isPrimary: true, kind: 'gtin', packKind: 'unit', packQuantity: 1 }] };
+  const operation = {};
+  const mixed: MixedProductRead & { primaryUnitGtin: typeof gram.physical } = {
+    operation, primaryUnitGtin: gram.physical,
+    evidence: { operation, productId: document.productId, documentRevisionId: revisionId, documentDigest: documentRevision.digest,
+      siblings: [{ skuId: sibling.skuId, sku: sibling.sku, netContent: structuredClone(sibling.physical.netContent),
+        primaryUnitGtin: { issuer: sibling.physical.issuer, unitGtin: sibling.physical.unitGtin }, issuingDraft: {
+        draftId: 'f0000000-0000-4000-8000-000000000002', revision: 1, commandKey: 'example:bottle', fingerprint: 'a'.repeat(64),
+      } }] },
+  };
+  const quote = quoteDocumentVerifier(document.schemaVersion);
+  const sized = (value: unknown, read?: typeof mixed) => verifySizedProductDocument(value, document.schemaVersion, {
+    skuId: gram.skuId, sku: gram.sku, productId: document.productId, netWeightG: gram.physical.netWeightG,
+    documentRevisionId: revisionId, documentDigest: documentRevision.digest,
+  }, read);
+  return { gram, gramDocument, sibling, document, documentRevision, envelope, mixed, quote, sized };
+}
+
+test('quote and sized verify the same mixed document for its gram selection', async () => {
+  const { gram, document, envelope, mixed, quote, sized } = documentFixture();
+  await quote(document, envelope, mixed);
+  assert.deepEqual(sized(document, mixed), gram);
+  const refusal = exactCatalogRefusal({ code: 'catalog_document_schema_invalid' });
+  await assert.rejects(quote(document, envelope), refusal);
+  assert.throws(() => sized(document), refusal);
+});
+
+type Fixture = ReturnType<typeof documentFixture>;
+const badEvidence: Record<string, (fixture: Fixture) => void> = {
+  operation: ({ mixed }) => { mixed.evidence.operation = {}; },
+  product: ({ mixed }) => { mixed.evidence.productId = 'other'; },
+  revision: ({ mixed }) => { mixed.evidence.documentRevisionId = 'other'; },
+  id: ({ mixed }) => { mixed.evidence.siblings[0]!.skuId = 'other'; },
+  code: ({ mixed }) => { mixed.evidence.siblings[0]!.sku = 'OTHER'; },
+  duplicateId: ({ mixed }) => { mixed.evidence.siblings = [...mixed.evidence.siblings, { ...mixed.evidence.siblings[0]! }]; },
+  duplicateCode: ({ sibling, document, documentRevision, mixed }) => {
+    const skuId = 'f0000000-0000-4000-8000-000000000003';
+    document.variants.push({ ...sibling, skuId });
+    mixed.evidence.siblings = [...mixed.evidence.siblings, { ...mixed.evidence.siblings[0]!, skuId }];
+    mixed.evidence.documentDigest = documentRevision.digest = documentDigest(document);
+  },
+  malformedRow: ({ mixed }) => { Reflect.deleteProperty(mixed.evidence.siblings[0]!, 'skuId'); },
+  missing: ({ mixed }) => { mixed.evidence.siblings = []; },
+  extra: ({ mixed }) => { mixed.evidence.siblings = [...mixed.evidence.siblings, { ...mixed.evidence.siblings[0]!, skuId: 'other', sku: 'OTHER' }]; },
+  term: ({ mixed }) => { mixed.evidence.siblings[0]!.netContent.unscaled = '295735295626'; },
+  gtin: ({ mixed }) => { mixed.evidence.siblings[0]!.primaryUnitGtin.unitGtin = '5901234123464'; },
+  issuer: ({ mixed }) => { mixed.evidence.siblings[0]!.primaryUnitGtin.issuer = 'example:other'; },
+  openArm: ({ sibling, document, documentRevision, mixed }) => {
+    Object.assign(sibling.physical, { netWeightG: 1 });
+    mixed.evidence.documentDigest = documentRevision.digest = documentDigest(document);
+  },
+};
+for (const [name, mutate] of Object.entries(badEvidence)) test(`quote and sized refuse mixed document ${name}`, async () => {
+  const fixture = documentFixture();
+  mutate(fixture);
+  const { document, envelope, mixed, quote, sized } = fixture;
+  const refusal = exactCatalogRefusal({ code: 'catalog_document_schema_invalid', path: 'documentRevision',
+    fix: 'Recover the admitted document and its revision.' });
+  await assert.rejects(quote(document, envelope, mixed), refusal);
+  assert.throws(() => sized(document, mixed), refusal);
+});
+
+test('both readers preserve their legacy refusal order and verify the original mixed digest first', async () => {
+  const { gram, gramDocument, sibling, document, documentRevision, envelope, mixed, quote, sized } = documentFixture();
+  Object.assign(sibling.physical, { extra: true });
+  const digestRefusal = exactCatalogRefusal({ code: 'catalog_document_digest_mismatch', path: 'documentRevision.digest',
+    fix: 'Replay the original document bytes and digest.' });
+  await assert.rejects(quote(document, envelope, mixed), digestRefusal);
+  assert.throws(() => sized(document, mixed), digestRefusal);
+  const malformed = { ...gramDocument, variants: [{ ...gram, demandPerUnit: 0 }] };
+  const legacySchemaRefusal = exactCatalogRefusal({ code: 'catalog_document_schema_invalid' });
+  await assert.rejects(quote(malformed, envelope), legacySchemaRefusal);
+  assert.throws(() => sized(malformed), legacySchemaRefusal);
+  await assert.rejects(quote(gramDocument, envelope), exactCatalogRefusal({ code: 'catalog_document_digest_mismatch' }));
+  assert.throws(() => sized(gramDocument), /subscription_reprice_sized_catalog_facts_unreadable/u);
+  documentRevision.digest = documentDigest(gramDocument);
+  await quote(gramDocument, envelope);
+  assert.deepEqual(sized(gramDocument), gram);
 });

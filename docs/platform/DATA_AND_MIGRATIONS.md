@@ -458,6 +458,22 @@ The managed rail does not supply this feature. Its twin needs separate SQL
 admission and equivalent administrator/RLS, input-provenance and receipt controls
 over incumbent managed tables; it must not infer historical evidence from a
 current catalogue head. Industry-specific managed catalogue columns are unaffected.
+
+## Native catalogue purchase admission
+
+The base and promoted draft routines share scoped receipt verification and
+classify fresh demand using installed catalogue facts. Fresh governed demand
+returns `catalog_admission_quote_authority_required`. The component assertion
+checks current owner evidence and provides no purchase authority. The three
+checkout-owner definitions are owned by the migration principal, pin
+`pg_catalog, pg_temp` and grant no application role execution. The private
+draft entry keeps fresh governed purchase unavailable.
+The managed rail does not supply governed purchase admission, and its drafts remain legacy-only.
+
+The private submit member binds the original authenticated request to the native
+draft receipt. The existing deferred order and receipt checks protect committed
+evidence and preserve nullable historical acceptance. A restore preserves both
+the original proof and historical absence.
 Unbind callers to roll back use; retain committed receipts/history and correct a
 price with a subsequent expected-base command.
 
@@ -512,7 +528,9 @@ is qualified.
 
 ## Compatible data transfer
 
-Checkout attempt ledger rows are authoritative, short-lived admission state.
+The native starter uses the checkout attempt ledger for default quotas across
+processes and restarts on the same store database. Ledger rows are authoritative,
+short-lived admission state.
 The native connected-store profile carries the three digests and original epoch
 milliseconds exactly in owner-only packets. Treat these as restricted
 pseudonymous abuse-control data and keep the packets private. The ledger holds
@@ -520,16 +538,20 @@ no raw email, IP address, idempotency key, headers or request payload, and has n
 client foreign key or absorption mapping.
 
 Restore the ledger before enabling checkout under the same limit and identity
-policy. Connected-store restore accepts the current qualified inventory and the
-admitted predecessor inventories from before publication commands, the checkout
-attempt ledger, governed catalogue lifecycle and catalogue accepted references.
-Conversion reproduces the retained rows an in-place upgrade would produce.
-It also accepts profile-free packets from the pinned inventories immediately
-before subscription profile receipts. Those packets use the current shape.
-Earlier captures report the edit quote table as empty because capture refused
-when it contained rows. New captures carry those quotes. A source schema change
-that cannot be reproduced by additive conversion, such as a dropped or retyped
-column, refuses with `schema_conflict`. Upgrade the source, then capture.
+policy.
+
+Connected-store restore admits only a packet captured on the target's exact
+current qualified inventory. Any other inventory, including earlier releases
+and unreleased states, refuses with `schema_conflict`. The remedy is
+`capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
+If no such target can be provisioned, connected-store restore is unavailable for that pair.
+Each release cut decides whether the previous release
+is admitted, with one general additive conversion keyed on that release's tables
+and columns, or documents its refusal. A migration adds no
+restore pin of its own. A migration that adds a captured table or a nullable
+column to one registers it in the capture roster and restore order, or in that
+table's additive columns, in the same change.
+
 Restored attempts age on their
 original timestamps. Admission prunes rows at the retention cutoff on each
 call. Idle databases keep bounded rows
@@ -1195,8 +1217,6 @@ reserves option combinations across all statuses for published SKUs. The
 identifier marker is nullable. Existing rows retain their issuer-scoped
 keys. New publication checks existing identifiers under the catalogue relation
 fence. A later unmarked legacy write may share a GTIN with another issuer.
-Connected restore preserves markers and recognizes the exact predecessor
-installation profile with its original identifier columns.
 
 A managed implementation can use the same relations, composite keys and
 deferred checks, with owner-only writes under row-level security and
@@ -2530,6 +2550,22 @@ statement, the ordered `ALTER FUNCTION` statements, and the rendered close
 statement. A restricted installer inherits the owner role's privileges only
 within the migration transaction, a superuser installer skips the window, and
 the open statement refuses a pre-existing self-granted membership.
+If role preflight reports `protected_membership_graph_differs` or the migration
+reports a pre-existing self-grant, verify the role, installer and grantor
+against the declared role mode. During controlled maintenance, revoke only the
+unexpected self-grant through its granting installer and preserve the
+bootstrap or operator grant. For other membership drift, restore the declared
+role graph. If an ALTER reports that the installer must be the function owner,
+check the declared login and restore the documented owner and role grants.
+Retry after restoring that configuration.
+
+For a path, digest or issued-prefix mismatch, recover the original approved SQL
+and its binding together, then verify the complete prefix. For an unissued
+forward with a verified binding and a rendered-form mismatch, regenerate the
+file with `renderNativeStoreSettingsOwnerWindow` in
+`scripts/reviewed-platform-forward.ts`. The admission refusal prints the first
+differing line. If admission rejects its order or a target, check the
+introduction base for the first available slot and the exact function signature.
 A later ordinary slot treats a landed settings-only slot's exact pinned
 `ALTER FUNCTION` statements as known DDL, so it can still replace a hardened
 function or grant privileges on it. A replacement may tighten a single
@@ -2539,7 +2575,13 @@ top-level `SET search_path` list of unquoted ASCII identifiers, using `=` or
 tokens normalized and literal and quoted identifier tokens kept byte-exact.
 The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
 requires `pg_temp` last, with no earlier `pg_temp` or `pg_temp_<N>` entry, for every
-installed definer outside the shrink-only `DEFINER_SEARCH_PATH_PENDING` list.
+installed non-system definer. Preserve the intended trusted schemas when
+moving `pg_temp` to the end. For a missing or empty path, review and set the
+trusted schema list before appending `pg_temp`. Eleven acquisition and partner
+acquisition definer functions now pin `pg_temp` last on their search path.
+If a retained-store packet has an unknown or mismatched inventory, the remedy is
+`capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
+If no such target can be provisioned, connected-store restore is unavailable for that pair.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new
@@ -2937,21 +2979,26 @@ This excludes index creation and attaching a constraint using an index. The
 feature lands the column forward first and introduces the dedicated grant-only
 forward after the column is issued.
 
-At most one native-store slot per registry may declare
+At most one native-store slot per guarded `EXECUTE` entry may declare
 `qualifiedPriceSetupExecute: true`. Its function and data lists are empty,
 and it declares no other capabilities. The whole file, including its final LF,
 must match the frozen role- and authority-ledger-guarded `DO` block. That block
 grants `EXECUTE` on `public.catalog_price_setup_apply_v2(text,text,uuid)` and
 `public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)`, in
 that order, to `openlup_catalog_publication` without grant option.
+Those two signatures are the default for the flag. The reserved row
+`catalog-publication-subscription-profile-identity-execute` selects only
+`public.catalog_publication_subscription_profile_identity(text,integer,text)`.
+The authority ledger guard limits both entries to qualified v2.
 
 Admission resolves each function's initial `createdFunctions` entry from an
 earlier native slot. The registry pins the definition file's path, its whole-file
 SHA-256 and the exact `CREATE FUNCTION` statement's after-hash. The grant's
 approval base must already contain the same definition bytes and bindings.
 The predecessor files and intervening native files must tokenize completely.
-Admission refuses a later static change to either definition. PB-1's PostgreSQL
-witness covers changes reached through dynamic SQL in earlier admitted routines
+Admission requires the issued `PUBLIC` revoke and refuses later static changes
+to any target definition. For price setup, PB-1's PostgreSQL witness covers
+changes reached through dynamic SQL in earlier admitted routines
 and verifies the effective owner, function attributes and privileges under the
 installed profiles.
 

@@ -8,7 +8,7 @@ import type { CompositionRulesPort } from '@openlup/core/bundle';
 import type { SizedCatalogFact, SizedHostPorts, SubscriptionQueryExecutor, PackageEditConstraintMapper } from '@openlup/platform/subscriptions';
 import type { StoreConfig } from '../shared/config.ts';
 import { isRecord } from '../shared/offer.ts';
-import { documentDigest, editorProducts, demoIdentifier, productDocument, verifyProductDocument } from './editor-catalogue.ts';
+import { documentDigest, editorProducts, demoIdentifier, verifyProductDocument, verifySizedProductDocument } from './editor-catalogue.ts';
 
 const instant = (value: unknown) => value instanceof Date ? value.toISOString() : String(value);
 /** Exact effective-list selection and amount policy stay in the public pricing authority. */
@@ -91,8 +91,10 @@ export function sizedHostPorts(config: StoreConfig, now: () => string, connectio
     const stock = await createPostgresStockAvailability(db, { sourceKey: `starter-demo:${config.id}`,now })
       .readInstalled(rows.map(row => String(row.sku)));
     return rows.map((row): SizedCatalogFact => {
-      const parsed = productDocument(row.document_payload,config.quote.document.schemaId), variant = parsed.variants.find(item => item.skuId === row.id && item.sku === row.sku);
-      if (!variant || parsed.productId !== row.product_id || variant.physical.netWeightG !== row.net_weight_g || documentDigest(parsed) !== row.digest) throw new Error('subscription_reprice_sized_catalog_facts_unreadable');
+      const variant = verifySizedProductDocument(row.document_payload,config.quote.document.schemaId, {
+        skuId: row.id, sku: row.sku, productId: row.product_id, netWeightG: row.net_weight_g,
+        documentRevisionId: row.current_document_revision_id, documentDigest: row.digest,
+      });
       const availability = stock.get(String(row.sku));
       return { variantId: String(row.id).toLowerCase(),sku: String(row.sku),groupId: String(row.product_id),isAddon: row.is_addon === true,
         sellable: row.status === 'active' && row.product_status === 'active' && row.sellable_in_subscription === true,physicalSize: variant.physical.netWeightG,demandPerUnit: variant.demandPerUnit,

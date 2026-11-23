@@ -44,6 +44,7 @@ const publicationCodes = [
   "catalog_publication_identifier_key_reused", "catalog_publication_identifier_primary_invalid",
   "catalog_publication_identifier_requires_created_sku", "catalog_publication_identifier_source_mismatch",
   "catalog_publication_identity_conflict", "catalog_publication_integral_grams_required",
+  "catalog_publication_net_content_invalid", "catalog_publication_quantity_definition_unqualified",
   "catalog_publication_issue_sealed", "catalog_publication_lifecycle_assertion_changed",
   "catalog_publication_lineage_invalid", "catalog_publication_lineage_unknown", "catalog_publication_live_drift",
   "catalog_publication_activation_membership_required", "catalog_publication_logistics_source_mismatch",
@@ -278,6 +279,8 @@ const publicationRefusals = {
   catalog_publication_identifier_requires_created_sku: { fix: "Create the SKU before adding its identifier." },
   catalog_publication_identifier_source_mismatch: { fix: "Match the identifier operation to the identifier saved for this SKU." },
   catalog_publication_integral_grams_required: { fix: "Supply net content that converts to a supported positive whole number of grams." },
+  catalog_publication_net_content_invalid: { fix: "Supply a positive exact net quantity in an eligible unit of the pinned product type." },
+  catalog_publication_quantity_definition_unqualified: { fix: "Select an eligible unit with an exact conversion in the pinned product type, or use an eligible product type." },
   catalog_publication_activation_membership_required: { fix: "Admit this SKU to an offer before enabling purchases." },
   catalog_publication_logistics_source_mismatch: { fix: "Use the SKU metadata saved in the selected draft." },
   catalog_publication_mass_required_until_mc5: { fix: "Supply net content in a unit admitted for this product type." },
@@ -378,7 +381,7 @@ export function publicationRemedy(code: PlatformCode): string {
   const remedy = publicationRefusals[code];
   return "fix" in remedy ? remedy.fix : remedy[1];
 }
-type AdmissionRefusal = { outcome: "validation_issue"; reason: string; message: string; path?: string };
+type AdmissionRefusal = CatalogPublicationFailure & { outcome: "validation_issue"; message: string };
 
 const acceptedReferenceRefusals = {
   catalog_accepted_reference_invalid: "Supply a schema-2 accepted reference with exactly the supported fields.",
@@ -442,7 +445,8 @@ function publicationFailure(error: CatalogPublicationError): CatalogPublicationF
   const issue = error.diagnostic;
   const remedy = issue.kind === "platform" ? publicationRefusals[issue.code] : undefined;
   return { outcome: error.outcome, reason: remedy && !("fix" in remedy) ? remedy[0] : issue.code,
-    message: error.message, ...(issue.path ? { path: issue.path } : {}), ...(issue.subject ? { subject: issue.subject } : {}) };
+    message: error.message, ...(issue.path ? { path: issue.path } : {}), ...(issue.subject ? { subject: issue.subject } : {}),
+    ...(issue.quantityCause === undefined ? {} : { quantityCause: issue.quantityCause }) };
 }
 
 export function publicationReadFailure(error: unknown): CatalogPublicationFailure & { message: string } {

@@ -1,4 +1,5 @@
 export * from "./contracts/index.js";
+export { quoteDigest } from "./quoteDigest.js";
 export { CommercePriceAuthorityError } from "./ports.js";
 export type { CommercePriceAuthorityPort } from "./ports.js";
 export { createCommercePriceAuthorityPort, createConcurrentCommercePriceAuthorityPort, selectUniqueEffectivePriceList } from "./commercePriceAuthority.js";

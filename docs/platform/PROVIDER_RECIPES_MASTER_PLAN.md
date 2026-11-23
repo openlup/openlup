@@ -125,6 +125,86 @@ Recipes incubate in top-level `recipes/` inside this monorepo so contract evolut
 - **Zero** third-party vendor SDK dependencies by default (`zero-dep-fetch` or `injected-structural-client`).
 - **Zero** impact on `@openlup/platform` npm tarball size caps or lockstep SemVer releases.
 
+### 4.1. Monorepo vs. Standalone `openlup/recipes`: Scaling Impact, Split Triggers & Cross-Repo Consistency
+
+Incubating the first 5–15 recipes inside `openlup/openlup` is intentionally optimal while Tier 1 ports, conformance kits, and DX enablers are warming up (Wave 1B proved how tightly recipe dogfooding feeds back into `@openlup/platform`). Beyond that incubation window, empirical Wave 1C measurements establish clear scaling limits for both core OpenLup CI and recipe delivery velocity.
+
+#### Measured Impact on OpenLup Core CI & Test Suite
+Measured baseline on `main` at 5 shipped recipes (`payments/adyen`, `payments/mollie`, `fulfillment/amazon-mcf`, `fulfillment/shipbob`, `tax/avalara`): **54 files, ~24.4k LOC, 10 Vitest files (63 tests running in 0.77s offline)** — averaging ~9 files, ~4.8k LOC, and 2 Vitest files per recipe:
+
+| Catalog Scale | Files / LOC in `recipes/` | Added Root Vitest Load (`test-full-shard`) | Added Static / Catalog Overhead (`eslint .`, `ast-grep`, `gitleaks`, `oss:published-tree`) | Impact on OpenLup Core |
+| --- | --- | --- | --- | --- |
+| **5 recipes (Wave 1C baseline)** | 54 files / ~24.4k LOC | 10 files / ~0.8s | Negligible (~1–2s); +45 paths in `config/openlup-publication-catalog.json` (~0.5% of 8,002 entries) | **Negligible** — optimal incubation range |
+| **15–25 recipes** | ~150–240 files / ~75k–120k LOC | 30–50 files / ~3–5s | Noticeable in root `eslint .` (+5–10s) and catalog/inventory scans | **Warning threshold** — begin split preparation |
+| **100 recipes** | ~900+ files / ~480k LOC | 200 files / ~15–25s on every core PR | `eslint .`, `ast-grep`, `gitleaks`, neutrality scans, SonarCloud, and `config/openlup-publication-catalog.json` grow substantially on every core PR | **High core tax** — degrades core developer DX |
+| **1,000 recipes** | ~9,000+ files / ~4.8M LOC | 2,000 files (+2–4 min on every core PR across shards) | Publication catalog more than doubles (~8k → ~17k paths); git history and Merge Queue become dominated by recipe churn | **Unacceptable** — stalls monorepo |
+
+#### Measured Impact on Recipe Development Velocity
+Empirical Wave 1C execution (shipping 3 recipes in parallel) showed that monorepo coupling slows **recipe velocity** far earlier than it slows core tests:
+1. **30-Minute Core CI for a 0.3-Second Recipe (~50×–100× Overhead):** Every recipe-only PR in `openlup/openlup` runs the full `published-tree-ci.yml` pipeline (workspace package build, 8 Vitest shards with PostgreSQL containers, `pgtap`, 4 Playwright `install-browser` groups, `install-packages`, `self-check`, `SonarCloud`) twice (PR + Merge Queue) — ~25–30 wall-clock minutes per recipe vs. **<45–60 seconds** in a standalone `openlup/recipes` repository with path-filtered CI.
+2. **Merge Queue Serialization & Hot-File Contention:** Because every Wave 1C recipe PR touched 4 shared files (`recipes/index.json`, `recipes/README.md`, `docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md`, and `config/openlup-publication-catalog.json`), parallel recipe PRs collided in GitHub Merge Queue, forcing sequential landing, manual conflict merges, and extra integration-review cycles. In a monorepo, throughput caps at ~2–3 recipes/hour regardless of how many Tier B fast workers or community contributors run in parallel.
+3. **Coupling to Unrelated Core Flakes & Policies:** Unrelated core test flakes (e.g., transient shard timeouts in root script tests) or unrelated core queue backlogs directly block and evict independent recipe PRs.
+4. **Heavy External Contributor Onboarding:** External payment/3PL/tax vendors contributing a recipe should not need to clone OpenLup's database migrations, storefront, PostgreSQL harnesses, and 8,000-file publication catalog.
+
+#### Pre-Split & Post-Split Structural Mitigation: Eliminate Hot Files
+Before scaling past ~10 recipes (and mandatory in `openlup/recipes`):
+- **Single Source of Truth per Recipe Directory:** A recipe PR modifies **only** `recipes/<domain>/<provider>/**` (zero edits to `recipes/index.json`, `recipes/README.md`, or a shared retro table).
+- **Deterministic Post-Merge Index Generation:** A deterministic generator script/workflow compiles `recipes/index.json` (and the catalog summary) automatically from all `recipes/*/*/recipe.json` manifests after merge, eliminating cross-PR merge conflicts completely.
+
+#### Quantitative Split Triggers & Exit Criteria (When to Split into `openlup/recipes`)
+Execute the mechanical `git subtree split --prefix=recipes` into standalone `openlup/recipes` as soon as **any** trigger is reached:
+- **Scale Trigger:** `>= 15` recipes in `recipes/` (or `> 150` files / `> 75k` LOC under `recipes/`).
+- **Throughput Trigger:** `>= 3` concurrent recipe PRs per week (or initiating batch Tier B worker runs of `>= 5` recipes per wave).
+- **Ecosystem Trigger:** Onboarding the first external partner/community recipe contributor or shipping `openlup recipe add` backed by a remote registry index.
+
+**Mandatory Exit Criteria Before Executing the Split:**
+1. At least one certified `exemplar` recipe exists per active Wave 1 domain (`payments`, `fulfillment`, `tax`, and `shipping` once `CarrierRateQuotePort` lands).
+2. `@openlup/platform@1.4.0` is published on npm (so standalone recipes consume Wave 1B DX enablers directly from npm without monorepo workspace links).
+3. Deterministic `recipes/index.json` generation from per-recipe `recipe.json` files is in place.
+
+#### Six-Pillar Cross-Repo Consistency Architecture (After Splitting to `openlup/recipes`)
+Moving recipes out of the monorepo must **never** re-create the broken-plugin ecosystem of traditional commerce platforms. Consistency between `openlup/openlup` and `openlup/recipes` is enforced mechanically through six mechanisms:
+
+```mermaid
+flowchart LR
+    subgraph CORE["openlup/openlup (Tier 1 & Tier 2)"]
+        C1["@openlup/core, @openlup/platform, @openlup/outbox"]
+        C2["Conformance Kits (@openlup/platform/*/testing)"]
+        C3["Versioned Schemas & ast-grep Guardrails"]
+        C4["Release Candidate / npm Publish"]
+    end
+
+    subgraph RECIPES["openlup/recipes (Tier 3 Registry)"]
+        R1["Directory-Scoped Recipe PRs (<60s path-filtered CI)"]
+        R2["Canary Exemplar Gate (blocks breaking 1.x RC)"]
+        R3["Nightly Compatibility Matrix (latest, next, supported 1.x)"]
+        R4["Generated index.json + compatibility-matrix.json"]
+    end
+
+    subgraph MERCHANT["Merchant Store"]
+        M1["openlup recipe add / openlup-context"]
+        M2["Offline Stages 1–3 against INSTALLED @openlup/*"]
+    end
+
+    C1 -->|"Published npm SemVer"| R1
+    C2 -->|"Tamper-Resistant Conformance"| R1
+    C3 -->|"Versioned DevDependency"| R1
+    C4 -->|"repository_dispatch (RC)"| R2
+    R2 -->|"Pass / Fail Gate on exemplars"| C4
+    R3 --> R4
+    R4 -->|"Version-checked discovery"| M1
+    M1 --> M2
+```
+
+1. **Cold-Consumer npm Contract Spine:** `openlup/recipes` installs `@openlup/core`, `@openlup/platform`, and `@openlup/outbox` strictly from npm (never workspace source links). Every recipe CI run is automatically a genuine **cold-consumer proof**, preventing accidental imports of unreleased symbols.
+2. **Bidirectional CI Loop (RC Exemplar Gate + Nightly Matrix):**
+   - **Pre-Release Canary Gate (`openlup/openlup` → `openlup/recipes`):** Before promoting a new `@openlup/platform` `1.x` release candidate to `latest`, `openlup/openlup` dispatches a `repository_dispatch` event with the candidate version/tarball to `openlup/recipes`, which runs all `status: "exemplar"` recipes (1–2 per domain). Any regression on an `exemplar` blocks the `1.x` promotion until resolved in core or explicitly scoped to a major version. Non-exemplar (`verified`/`community`) failures generate non-blocking compatibility reports so third-party churn can never block core releases.
+   - **Nightly Compatibility Matrix (`compatibility-matrix.json`):** Scheduled sharded CI runs every recipe against `@openlup/platform@latest`, `@next`, and the active supported `1.x` window, emitting a machine-readable `compatibility-matrix.json` artifact (`recipeId`, `recipeTreeSha256`, `verifiedAgainst[]`, `status: "verified" | "unverified-for-<version>" | "deprecated"`). Both `openlup recipe add` and `openlup-context` filter/warn against the merchant's **installed** `@openlup/platform` version.
+3. **Zero-Contention Directory-Scoped PRs & Path-Filtered CI:** Each recipe PR touches only its own directory (`recipes/<domain>/<provider>/**`), runs strict `tsc`, domain conformance + Stage 3 mount proofs, `ast-grep`, `eslint`, and manifest schema checks **only for changed recipe directories** (<60s), and triggers post-merge generation of `index.json`. Dozens of Tier B agents or external contributors can merge in parallel with zero Merge Queue conflicts.
+4. **Versioned Guardrails & Schemas Distributed from Core:** `recipe.schema.json`, `csp.schema.json`, manifest validator helpers, and the recipe `ast-grep` / ESLint rule pack are versioned and published from `openlup/openlup` (either as a compact subpath or lightweight companion package) and consumed by `openlup/recipes` as a pinned devDependency — ensuring new security rules propagate mechanically without copy-paste drift.
+5. **Two-Step Tier 1 Port Evolution:** When a new integration domain requires a new Tier 1 port (e.g., `CarrierRateQuotePort`, `AccountingLedgerExportPort`), (a) land the port, its `./<domain>/testing` conformance kit, and one minimal synthetic witness in `openlup/openlup` and release minor `1.x`; then (b) bump `@openlup/platform` in `openlup/recipes` and fan out dozens of provider recipes via Tier B workers without touching core.
+6. **Automated Upstream Provider API Drift Maintenance:** Scheduled maintenance agents operate solely inside `openlup/recipes` (monitoring provider OpenAPI/webhook changelogs and opening recipe PRs verified by the 5 anti-slop gates), keeping high-frequency vendor churn completely isolated from `openlup/openlup` history.
+
 ---
 
 ## 5. Canonical Recipe Anatomy (v1)
@@ -290,10 +370,10 @@ Not every step in the Recipe Factory requires frontier reasoning. Route work exp
 - `payments/paypal` / `payments/braintree`, `shipping/shipengine`, `channels/shopify`.
 
 ### Wave 3: Standalone `openlup/recipes` Split & Mass Recipe Factory (100s–1,000s)
-- **Wave 3 Spec Required First:** Specify standalone `openlup/recipes` repository layout, federated `index.json` verification CI, and `openlup recipe add|scaffold|verify` CLI/MCP contract.
-- Mechanical `git subtree split --prefix=recipes` into public `openlup/recipes` repository with federated `index.json`.
-- Ship `openlup recipe add|scaffold|verify` CLI & MCP commands.
-- Open community, partner, and Tier B agent-worker PR pipeline governed automatically by the 5 anti-slop gates and nightly cold-consumer compatibility CI.
+- **Wave 3 Spec Required First:** Specify standalone `openlup/recipes` repository layout, deterministic `index.json` + `compatibility-matrix.json` generation, RC exemplar `repository_dispatch` gate (§4.1), versioned guardrail distribution, and `openlup recipe add|scaffold|verify` CLI/MCP contract.
+- **Execute Split at §4.1 Quantitative Triggers:** Mechanical `git subtree split --prefix=recipes` into public `openlup/recipes` once the §4.1 scale (`>= 15` recipes), throughput (`>= 3` concurrent recipe PRs/week), or ecosystem triggers fire and all exit criteria are met.
+- Ship `openlup recipe add|scaffold|verify` CLI & MCP commands consuming `index.json` + `compatibility-matrix.json` against the merchant's installed `@openlup/platform` version.
+- Open community, partner, and Tier B agent-worker PR pipeline governed automatically by the 5 anti-slop gates, directory-scoped zero-contention PRs (<60s path-filtered CI), and bidirectional cross-repo compatibility CI (§4.1).
 - Migrate Track C regional reference adapters (national carrier SOAP, locker pickup, regional fiscal/invoicing, and national business registries) into the registry as regional packs.
 
 ---
@@ -311,3 +391,5 @@ Not every step in the Recipe Factory requires frontier reasoning. Route work exp
 | 2026-11-22 | Wave 1C `payments/mollie` recipe retro | Implementing `recipes/payments/mollie` against `@openlup/platform@^1.3.0` (`runPaymentAdapterConformance` safety suite) surfaced 3 reusable patterns for readback-authenticated redirect providers: (1) webhooks with `webhookAuth: "none"` (`application/x-www-form-urlencoded` `id=tr_...`) must refuse malformed/traversal IDs at 0 I/O and verify authenticity via `GET /v2/payments/{id}` over pinned HTTPS (`404`/`401`/`403` and confused-deputy `payment.id !== id` map to `refusal: "signature"`); (2) integer minor-unit conversion (`minorToMajorString` / `majorStringToMinor`) resolves ISO-4217 exponents dynamically via `Intl.supportedValuesOf("currency")` + `Intl.NumberFormat` and `BigInt` arithmetic, avoiding both IEEE-754 float drift and hardcoded currency literals; (3) when a provider exposes refunds via its client API (`createRefund`) while OpenLup's `PaymentAdapterCapabilities.refundCreate` remains `"unsupported"`, keeping `createRefund` strictly on `MollieClient` preserves capability parity without leaking port properties. | Shipped `recipes/payments/mollie` (`status: "verified"`, 9 files, zero browser surface) with eager and per-call `mode` ↔ `test_`/`live_` key-prefix validation, streaming response byte cap, synchronous `readPayment` + `close`, `cumulative-snapshot` refund observation, and full Stages 1–3 conformance + PostgreSQL rail mount proofs. |
 | 2026-11-22 | Wave 1C `tax/avalara` recipe retro | Implementing `recipes/tax/avalara` against `runTaxAdapterConformance` (16 isolated cases) confirmed zero `recipe.schema.json` changes are required for `domain: "tax"` and surfaced 4 reusable tax-recipe patterns: (1) `@openlup/platform/tax` does not export `taxDigest`/`taxFiscalDigest`, so external recipes compute canonical SHA-256 digests via `canonicalCatalogDraftJson` from `@openlup/platform/catalog/contracts` + `node:crypto` using the documented `platform.tax.*.v1` tags; (2) `CatalogueMoneyV2Tax` (`kind: "provider"`) passes per-component discount `states` (`afterSequence`, `amountMinor`, `taxPositions`) plus `payableMinor`, while provider-assessed fees are passed via `{ ...input.money, fees }` to `calculateCatalogueMoneyV2`; (3) `closeCalculation` is strictly local/idempotent (`providerCloses: 0`, never invoking AvaTax `/void`), while `reverse` dispatches `DocVoided` (`/api/v2/companies/{companyCode}/transactions/{transactionCode}/void`) only on clean full reversal (`fromMinor === 0 && toMinor === payableMinor`) and `ReturnInvoice` with `taxOverride` on partial (`mode: "lines"`) or remainder (`fromMinor > 0`) reversals; (4) `intent: "recover"` performs authenticated `GET /api/v2/companies/{companyCode}/transactions/{transactionCode}` readback before re-POSTing or voiding, and exact decimal-string parsing avoids IEEE-754 half-cent drift. | Shipped `recipes/tax/avalara/` (`status: "experimental"`, matching `@openlup/platform/tax` maturity) passing all 16 official conformance cases, `compareTaxRecalculationProbe`, `localRateTable` parity, streaming body bounds, path-traversal guards, recovery readback proofs, and case-targeted planted-defect & mount negative controls in <0.4s. |
 | 2026-11-22 | Wave 1C `fulfillment/shipbob` recipe retro | Implementing `recipes/fulfillment/shipbob` against `runFulfillmentAdapterConformance(..., { mode: "full" })` and Stage 3 mount proof confirmed 3 ShipBob-specific invariants: (1) Standard Webhooks (`whsec_<base64>`, `webhook-id`, `webhook-timestamp`, `webhook-signature` with `v1,<base64>` multi-signature rotation) require strict base64 canonical round-trip validation and auth-before-parse verification before `JSON.parse`; (2) 1-based `Page`/`Limit` reconciliation must mark `exhaustedAtPage = page` strictly on empty `[]` responses (never on short pages) so subsequent pages return `page_exhausted` at zero I/O while `page === 0` resets pagination state cleanly; (3) keeping `capabilities.operations.cancel` as `{ supported: false, reason: "not_exposed" }` satisfies full-mode fulfillment capability certification while still exposing `cancelOrder` safely on `ShipBobClient`. | Shipped `recipes/fulfillment/shipbob` (9 files) with zero-SDK Bearer PAT + optional `shipbob_channel_id`, streaming body caps, non-2xx body cancellation, Standard Webhooks verifier, full-mode conformance, Stage 3 mount proof, and updated `recipes/index.json` and `config/openlup-publication-catalog.json`. |
+| 2026-11-22 | Post-Wave 1C monorepo scaling & split-architecture retro | Landing 5 recipes (54 files, ~24.4k LOC, 63 tests in 0.77s) revealed that monorepo incubation adds negligible core test overhead (<1s) at small scale, but already creates 3 concrete recipe-velocity bottlenecks when running parallel recipe PRs: (1) ~25–30 min full monorepo CI + Merge Queue runs for 0.3s recipe tests; (2) Merge Queue serialization & hot-file conflicts on shared `recipes/index.json`, `recipes/README.md`, `PROVIDER_RECIPES_MASTER_PLAN.md`, and `config/openlup-publication-catalog.json`; (3) coupling to unrelated core test flakes. | Added §4.1 to this Master Plan codifying measured core CI scaling tables (5 → 1,000 recipes), pre-split hot-file elimination (auto-generated `index.json` from per-recipe manifests), quantitative split triggers & exit criteria, and the 6-pillar cross-repo consistency architecture (cold-consumer npm spine, RC exemplar `repository_dispatch` gate, nightly `compatibility-matrix.json`, directory-scoped <60s CI, versioned guardrails, and two-step Tier 1 port evolution). |
+| 2026-11-23 | Wave 1D–1G + Wave 2A–2D completion retro (15 recipes across 8 domains) | Shipped `recipes/scripts/generate-index.ts` (#1023), `CarrierRateQuotePort` + `./shipping/testing` (#1024), and the consolidated Tier 1 kits (`./communications/testing`, `./adapter-kit`, `./accounting*`, `./observability*`, `./channels/testing`, #1027) without raising `@openlup/platform` pack caps (5,046 / 5,330 files, 4.23% packed headroom). Cold Tier A review caught subtle security and conformance edge cases (`OAuth2` `invalidate()` epoch race, case-insensitive `Headers` merging in `createHardenedFetch`, raw `ArrayBuffer`/`SharedArrayBuffer` telemetry leak scanning, and `channels/testing` `try/catch` fault-swallow isolation) before any recipe shipped against them. All 10 new recipes (`easypost`, `usps`, `postmark`, `quickbooks-online`, `xero`, `axiom`, `otel-otlp`, `paypal`, `shipengine`, `shopify`) were produced via Tier B fast workers from locked Tier A specs, lifting the catalog to **15 certified recipes across 8 domains** (168 Vitest tests in ~2.1s). | Reaching 15 recipes meets the §4.1 quantitative monorepo-split trigger (`>= 15` recipes) with deterministic `generate-index.ts` and `@openlup/platform/adapter-kit` already live. Pause cleanly at the Wave 2 → Wave 3 boundary pending explicit authorization to extract `openlup/recipes` and publish the `@openlup/recipes-cli` scaffolding/installation tooling. |

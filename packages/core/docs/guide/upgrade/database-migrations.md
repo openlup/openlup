@@ -171,6 +171,17 @@ Verify the selected chain and application combination, including replay and refu
 behavior. [Application file upgrades](./application-files.md) are a separate
 operation and execute no database work.
 
+For the native starter, apply `20261124200000_checkout_attempt_ledger` before
+updating application files or starting the updated host. Older hosts can run
+against the additive schema. The updated host begins counting in PostgreSQL
+without importing old in-process counts.
+
+| Startup diagnostic | Action |
+| --- | --- |
+| `starter_checkout_attempt_ledger_missing` | Apply the checkout attempt database forward and restart the starter. |
+| `starter_checkout_attempt_ledger_execute_required` | Restore the checkout attempt routine's EXECUTE grant for the runtime role and restart the starter. |
+| `starter_checkout_attempt_ledger_check_failed` | Check database connectivity and runtime credentials, then restart the starter. |
+
 The post-publication released-pair qualification
 uses both exact installed applications retained by the adjacent-set starter
 proof. Their shipped runners use the starter bootstrap's `qualified-v2`,

@@ -224,6 +224,14 @@ export function reconcileEditorCustomization(app: string, predecessor: string, a
     "owned/editor-customization.ts", "\nexport const localEditorNote = 'Adopter editor customization';\n");
 }
 
+export const starterDocumentFiles = ["host/editor-catalogue.ts", "host/quote-composition.ts"] as const;
+
+export function reconcileDocumentCustomization(app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0],
+  path: typeof starterDocumentFiles[number]) {
+  return reconcileManagedCustomization(app, predecessor, applyRefused, path,
+    `owned/upgrade-notes/${path.split("/").at(-1)}`, "\n// Adopter document verification policy.\n");
+}
+
 function reconcileManagedCustomization(
   app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0],
   managedPath: string, path: string, edit: string,
@@ -251,6 +259,39 @@ export function reconcileDisplayCustomization(
   return reconcileManagedCustomization(app, predecessor, applyRefused, path,
     `owned/upgrade-notes/${path.split("/").at(-1)}`, "\n// Adopter display customization.\n");
 }
+
+export const starterCheckoutFiles = [
+  "host/checkout-attempts.ts", "host/native-composition.ts", "host/purchase-composition.ts",
+  "test/checkout-attempts.test.ts", "test/locales.test.ts", "browser/journey.spec.ts",
+] as const;
+
+const starterCheckoutCopy = "owned/copy.ts";
+const checkoutQuotaJourney = "browser/journey.spec.ts";
+const checkoutQuotaWitness = "limits page explains checkout quotas across restarts";
+const checkoutQuotaEntry = /^ {4}attemptLimitsInterim: ("(?:[^"\\\n]|\\.)*"),$/gmu;
+
+function reconcileCheckoutQuotaCopy(current: string, predecessor: string, candidate: string, journey: string): Buffer {
+  const before = [...predecessor.matchAll(checkoutQuotaEntry)];
+  const after = [...candidate.matchAll(checkoutQuotaEntry)];
+  const expected = journey.split(checkoutQuotaWitness)[1]?.match(/^ {6}en: '([^'\n]+)',\n {6}pl: '([^'\n]+)',/mu);
+  assert(expected, "checkout quota journey must specify English and Polish copy");
+  assert.equal(before.length, 2);
+  assert.equal(after.length, 2);
+  let index = 0;
+  const reconciled = current.replace(checkoutQuotaEntry, entry => {
+    const replacement = after[index]![0];
+    assert.equal(entry, before[index++]![0], "checkout quota entry differs from its released bytes");
+    assert.notEqual(entry, replacement);
+    return replacement;
+  });
+  assert.equal(index, 2);
+  assert.deepEqual([...reconciled.matchAll(checkoutQuotaEntry)].map(match => JSON.parse(match[1]!)),
+    expected.slice(1), "reconciled copy must match the journey in both locales");
+  assert.equal(reconciled.replace(checkoutQuotaEntry, ""), current.replace(checkoutQuotaEntry, ""));
+  return Buffer.from(reconciled);
+}
+
+const attemptLimitEffect = /(^ {4}'purchase\.attemptLimits': \{\n(?:(?!^ {4}\},).)*?^ {10}appliesTo: )([^\n]+)/msu;
 
 export const starterSubscriptionOffer = "shared/subscription-offer.ts";
 
@@ -306,6 +347,14 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const owned: Record<string, Buffer> = {};
   const settingsHost = join(app, starterSettingsHost);
   if (existsSync(settingsHost)) owned[starterSettingsHost] = readFileSync(settingsHost);
+  const targetSettings = join(pair.to, starterSettingsHost);
+  const previousEffect = attemptLimitEffect.exec(owned[starterSettingsHost]?.toString("utf8") ?? "")?.[2];
+  const nextEffect = existsSync(targetSettings) ? attemptLimitEffect.exec(readFileSync(targetSettings, "utf8"))?.[2] : undefined;
+  const nextQuotaJourney = to.files[checkoutQuotaJourney];
+  const reconcileQuotaCopy = pair.fromVersion === "1.3.0" && nextQuotaJourney?.includes(checkoutQuotaWitness)
+    && !from.files[checkoutQuotaJourney]?.includes(checkoutQuotaWitness);
+  const copyPath = join(app, starterCheckoutCopy);
+  const previousQuotaCopy = reconcileQuotaCopy ? readFileSync(copyPath, "utf8") : undefined;
   phase("migrate-owned-contracts", () => { migrateStarterOwned(app, pair.to, from, to); });
   phase("customize-owned", () => {
     for (const [path, before, after] of [
@@ -315,6 +364,14 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert(ownership.owned.includes(path) && !Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path));
       const original = readFileSync(join(app, path), "utf8"); assert(original.includes(before));
       writeFileSync(join(app, path), original.replaceAll(before, after)); owned[path] = readFileSync(join(app, path));
+    }
+    if (previousQuotaCopy !== undefined) {
+      assert(ownership.owned.includes(starterCheckoutCopy));
+      assert(!Object.hasOwn(from.files, starterCheckoutCopy) && !Object.hasOwn(to.files, starterCheckoutCopy));
+      const local = previousQuotaCopy.replace('    cart: "Cart",', '    cart: "Your local basket",');
+      assert.notEqual(local, previousQuotaCopy);
+      owned[starterCheckoutCopy] = Buffer.from(local);
+      writeFileSync(copyPath, owned[starterCheckoutCopy]);
     }
     pair.evidence.customizations = Object.fromEntries(Object.entries(owned).map(([path, bytes]) => [path, hash(bytes)]));
     assertCompleteStarter(app, from);
@@ -351,6 +408,11 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     file.path === starterLifecycle && file.action === "replace");
   const displayReplacements = starterDisplayFiles.filter(path =>
     changed.some((file: { path: string; action: string }) => file.path === path && file.action === "replace"));
+  const documentReplacements = starterDocumentFiles.filter(path =>
+    changed.some((file: { path: string; action: string }) => file.path === path && file.action === "replace"));
+  const checkoutChanges = starterCheckoutFiles.filter(path =>
+    changed.some((file: { path: string }) => file.path === path));
+  const checkoutHostReplacement = checkoutChanges.find(path => path.startsWith("host/") && Object.hasOwn(from.files, path));
   const offerReplaced = changed.some((file: { path: string; action: string }) =>
     file.path === starterSubscriptionOffer && file.action === "replace");
   const { path: conflict, action } = editorReplacement ?? changed.findLast((file: { action: string }) => file.action === "create") ?? changed.at(-1);
@@ -383,6 +445,19 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   });
   for (const path of displayReplacements) phase(`display-reconciliation:${path}`, () => {
     const local = reconcileDisplayCustomization(app, from.files[path]!, applyRefused, path);
+    owned[local.path] = local.bytes;
+    pair.evidence.customizations![local.path] = hash(local.bytes);
+    assert.deepEqual(run("plan"), plan);
+  });
+  for (const path of documentReplacements) phase(`document-reconciliation:${path}`, () => {
+    const local = reconcileDocumentCustomization(app, from.files[path]!, applyRefused, path);
+    owned[local.path] = local.bytes;
+    pair.evidence.customizations![local.path] = hash(local.bytes);
+    assert.deepEqual(run("plan"), plan);
+  });
+  if (checkoutHostReplacement) phase("checkout-host-reconciliation", () => {
+    const local = reconcileManagedCustomization(app, from.files[checkoutHostReplacement]!, applyRefused,
+      checkoutHostReplacement, "owned/upgrade-notes/checkout.ts", "\n// Adopter checkout policy.\n");
     owned[local.path] = local.bytes;
     pair.evidence.customizations![local.path] = hash(local.bytes);
     assert.deepEqual(run("plan"), plan);
@@ -446,6 +521,10 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert.equal(readFileSync(join(app, starterSubscriptionOffer), "utf8"), to.files[starterSubscriptionOffer]);
     for (const path of displayReplacements)
       assert.equal(readFileSync(join(app, path), "utf8"), to.files[path]);
+    for (const path of checkoutChanges)
+      assert.equal(readFileSync(join(app, path), "utf8"), to.files[path]);
+    for (const path of documentReplacements)
+      assert.equal(readFileSync(join(app, path), "utf8"), to.files[path]);
   };
   phase("resume", () => {
     const resumed = run("apply");
@@ -453,6 +532,26 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     checkUpgradeFiles();
   });
   phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
+  if (previousEffect && nextEffect && previousEffect !== nextEffect) phase("checkout-attempt-effect-reconciliation", () => {
+    const current = readFileSync(settingsHost, "utf8");
+    assert.equal(attemptLimitEffect.exec(current)?.[2], previousEffect);
+    const reconciled = Buffer.from(current.replace(attemptLimitEffect, (_, prefix) => prefix + nextEffect));
+    writeFileSync(settingsHost, reconciled);
+    owned[starterSettingsHost] = reconciled;
+    pair.evidence.customizations![starterSettingsHost] = hash(reconciled);
+    assert.deepEqual(run("apply").applied, []);
+    checkUpgradeFiles();
+  });
+  if (previousQuotaCopy !== undefined && nextQuotaJourney) phase("checkout-attempt-copy-reconciliation", () => {
+    const current = readFileSync(copyPath, "utf8");
+    const target = readFileSync(join(pair.to, starterCheckoutCopy), "utf8");
+    const reconciled = reconcileCheckoutQuotaCopy(current, previousQuotaCopy, target, nextQuotaJourney);
+    writeFileSync(copyPath, reconciled);
+    owned[starterCheckoutCopy] = reconciled;
+    pair.evidence.customizations![starterCheckoutCopy] = hash(reconciled);
+    assert.deepEqual(run("apply").applied, []);
+    checkUpgradeFiles();
+  });
   rmSync(workspace, { recursive: true, force: true });
   return () => phase("installed-application-and-owned-bytes", () => {
     assertCompleteStarter(app, to); checkUpgradeFiles();

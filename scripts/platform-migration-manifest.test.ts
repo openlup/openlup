@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   ADMIN_BASELINE_FILE,
@@ -29,6 +29,14 @@ import {
 const raw = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
 const current = raw;
 const publicationAuthorityFile = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+
+it("keeps the managed purchase rail legacy-only", () => {
+  const managed = "supabase/migrations";
+  const sql = readdirSync(managed).filter(file => file.endsWith(".sql"))
+    .map(file => readFileSync(`${managed}/${file}`, "utf8")).join("\n");
+  expect(sql, "the managed chain now has governed catalogue facts: add managed purchase admission closure before enabling them")
+    .not.toMatch(/\b(?:catalog_sku_revisions|catalog_publication_heads)\b/iu);
+});
 // Structural generation-introduction fixtures stop at their named issued tails;
 // the live shared suffix is exercised separately below.
 const historical = structuredClone(raw);

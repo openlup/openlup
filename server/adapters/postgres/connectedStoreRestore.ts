@@ -17,64 +17,15 @@ const { catalogPublicationAdmissionRefusal, decodePublicationPacket, requireDeco
 type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
 const migrationLock = "openlup:public-platform-migrations:v1";
-// Complete sealed-history installation inventories before the nullable GTIN scheme column.
-const beforePublicationCommands = {
-  bootstrap: "1c9190ad0520e6ce8229a81ed9ba756da528986d19cad09fc1716d72dadd70c0",
-  separate: "c19175002e39e2b4100841e7138759a4dd07fe3158ebd3ce5f7283a5e8d538a9",
-  "installer-managed": "10be382792deaf1cb8f7c1620984d3c47a5c7e8b1cb1634aa7e44374370d2c00",
-  "operator-provisioned": "9979a84636b80febb605161e2df5fe14b59ad975781b697bd42fee0dcd9dc71c",
-} as const;
-// Sealed installation inventories immediately before the checkout attempt ledger.
-const beforeCheckoutAttemptLedger = {
-  bootstrap: "df04bdf1590aae92df0fe1885a90a6f7d8c25075a38b3e57a5a66f9bb358eadb",
-  separate: "0fca9c01fd08e76700cd55eaafb81ff1dd9f265ed9a672d3c9936812c8df1153",
-  "installer-managed": "955596b9524fa304df1240b3e170d920c1ba27aefc366fb436c78bf7abb326b5",
-  "operator-provisioned": "443cb07abc88ad43dd3c712310b31204f242b50793fc40d0a5e5ba8765995017",
-} satisfies Record<keyof typeof beforePublicationCommands, string>;
-// Sealed installation inventories immediately before governed catalogue lifecycle.
-const beforeGovernedLifecycle = {
-  bootstrap: "25bc3a527c27eb205c60b26e388d475bc8532638e66537438e60659a77214f20",
-  separate: "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385",
-  "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
-  "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
-} satisfies Record<keyof typeof beforePublicationCommands, string>;
-const beforeAcceptedReferences = {
-  bootstrap: "ec9028a590334948606d160362e9363c50793284548c2b9c092a71632234724c",
-  separate: "1feea98acf1cd7cdf1de399cdf8ab8c9ff6a30cec67168a274428f05f4722638",
-  "installer-managed": "02c68db9202830bd08f574130d3a3de19345a4050b8879d3338824b379474195",
-  "operator-provisioned": "a05e24a7dcdc6cb4394907be818520a33fa89e9a269a7c01853cd656ecfcf91b",
-} satisfies Record<keyof typeof beforePublicationCommands, string>;
-const beforeSubscriptionProfiles = {
-  bootstrap: "c6fea6b7fe85a7963f952994c34e1dfbca87045952e3dadbbf947c4b89aab5f6",
-  separate: "d0a803fd96d5fe048179cff18181c437ede56daa3a8dc14b2ee0a62381753619",
-  "installer-managed": "412caa25526d6ba70bb5bb761d5bed2336e7307811a879658295819ad5ab15f5",
-  "operator-provisioned": "d413c04713b9fb5f5f9d8f01dc66c68c67d131f6cc94bcbf12becef47abd4f42",
-} satisfies Record<keyof typeof beforePublicationCommands, string>;
-type SourceShape = "current" | "beforePublicationCommands" | "beforeCheckoutAttemptLedger" | "beforeAcceptedReferences" | "unsupported";
+type SourceShape = "current" | "unsupported";
 
 export function connectedStoreSourceShape(
-  profile: keyof typeof beforePublicationCommands, catalogueId: string | undefined, currentCatalogueId: string,
+  _profile: "bootstrap" | "separate" | QualifiedAdminPostgresInstallation["roleMode"],
+  catalogueId: string | undefined, currentCatalogueId: string,
 ): SourceShape {
-  if (catalogueId === currentCatalogueId) return "current";
-  if (catalogueId === beforeSubscriptionProfiles[profile]) return "current";
-  if (catalogueId === beforePublicationCommands[profile]) return "beforePublicationCommands";
-  if (catalogueId === beforeCheckoutAttemptLedger[profile]) return "beforeCheckoutAttemptLedger";
-  if (catalogueId === beforeGovernedLifecycle[profile] || catalogueId === beforeAcceptedReferences[profile]) return "beforeAcceptedReferences";
-  return "unsupported";
+  return catalogueId === currentCatalogueId ? "current" : "unsupported";
 }
 
-const checkoutAttemptLedger = "commerce_checkout_attempt_ledger";
-const editQuotes = "subscription_edit_quotes";
-const acceptance = { name: "catalog_acceptance", type: "jsonb" };
-const basket = { name: "catalog_basket", type: "jsonb" };
-// Migration 20261124220001 appends these columns in this order without defaults or backfills.
-const acceptedReferenceColumns: Partial<Record<TableName, Rows["columns"]>> = {
-  subscription_lines: [{ name: "catalog_sku_revision_id", type: "uuid" }],
-  commerce_orders: [acceptance, basket, { name: "catalog_receipt_key", type: "text" }],
-  subscription_events: [acceptance, basket],
-  subscription_renewal_terms: [acceptance],
-  subscription_renewal_operations: [acceptance, { name: "catalog_acceptance_fingerprint", type: "text" }],
-};
 const settings = ["fulfillment_provider_archetypes", "sales_channels", "commerce_settings", "client_absorption_policy",
   "platform_job_controls", "subscriber_retention_activation_watermarks", "subscription_delivery_alignment_control",
   "commerce_offer_policy_cohort_marking"] as const;
@@ -349,7 +300,7 @@ const order = [
  * newly installed target, its pristine capture and exclusion of every target
  * writer/dispatcher. A supplied capture binds expected data; it does not certify
  * that host prerequisite. No user route, role grant or target activation exists.
- * Source and target must use the same qualified catalogue binding shape.
+ * Source and target must use the same current qualified inventory.
  */
 export async function restoreConnectedNativeStore(input: {
   owner: Pool;
@@ -421,22 +372,8 @@ export async function restoreConnectedNativeStore(input: {
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
         WHERE a.attrelid=$1::pg_catalog.regclass AND a.attnum>0 AND NOT a.attisdropped
         AND a.attgenerated='' AND a.attidentity='' ORDER BY a.attnum`, [`public.${table}`])).rows;
-      const stored = source.get(table) ?? { ...baseline.get(table)!, rows: [] };
-      // The pre-ledger migration creates an empty ledger. Historical captures
-      // also attest the already-installed edit quote table was empty.
-      const added = shape === "current" ? undefined
-        : shape === "beforePublicationCommands" && table === "catalog_sku_identifiers"
-          ? [{ name: "scheme", type: "text" }] : acceptedReferenceColumns[table];
-      const columns = stored.columns.map(({ name, type }) => ({ name, type }));
-      if (JSON.stringify(actual) !== JSON.stringify(added ? [...columns, ...added] : columns)) refuseSourceSchema(table);
-      if (added && stored.rows.length) {
-        const nulls = JSON.stringify(Object.fromEntries(added.map(({ name }) => [name, null])));
-        const converted = await client.query<{ row: string }>(`SELECT (value::pg_catalog.jsonb || $2::pg_catalog.jsonb)::pg_catalog.text AS row
-          FROM pg_catalog.unnest($1::pg_catalog.text[]) WITH ORDINALITY AS retained(value, ordinal) ORDER BY ordinal`, [stored.rows, nulls]);
-        source.set(table, { table, columns: actual, rows: converted.rows.map(({ row }) => row) });
-      } else if (added || !source.has(table)) {
-        source.set(table, { table, columns: actual, rows: stored.rows });
-      }
+      const columns = source.get(table)!.columns.map(({ name, type }) => ({ name, type }));
+      if (JSON.stringify(actual) !== JSON.stringify(columns)) refuseSourceSchema(table);
     }
     await assertInsertTriggers(client);
     await assertOutsideEmpty(client, relations);
@@ -603,7 +540,7 @@ export async function restoreConnectedNativeStore(input: {
 
 function refuseSourceSchema(table?: TableName): never {
   const error = new PostgresTransferError("schema_conflict", table);
-  const remedy = "upgrade the source, then capture";
+  const remedy = "capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older";
   error.message += ` (${remedy})`;
   throw Object.assign(error, { remedy });
 }
@@ -629,20 +566,8 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }
     if (shape === "unsupported") refuseSourceSchema();
-    if (shape !== "current") {
-      const quotes = copy.outsideProfileCensus.filter(entry => entry.relation === "public.subscription_edit_quotes");
-      if (quotes.length !== 1 || quotes[0]?.disposition !== "unsupported-empty"
-        || !Array.isArray(copy.emptyOutsideProfile)
-        || !copy.emptyOutsideProfile.includes("public.subscription_edit_quotes")) refuseSourceSchema(editQuotes);
-    }
     const all = tables(copy);
-    const predatesLedger = shape === "beforePublicationCommands" || shape === "beforeCheckoutAttemptLedger";
-    const expected = connectedNativeStoreTables.filter(table =>
-      !(predatesLedger && table === checkoutAttemptLedger) && !(shape !== "current" && table === editQuotes));
-    if (all.size !== expected.length || expected.some(table => !all.has(table))) {
-      if (shape !== "current") refuseSourceSchema();
-      fail("invalid_input");
-    }
+    if (all.size !== connectedNativeStoreTables.length || connectedNativeStoreTables.some(table => !all.has(table))) fail("invalid_input");
     let count = 0, bytes = 0;
     for (const table of all.values()) {
       for (const column of table.columns) quoted(column.name);

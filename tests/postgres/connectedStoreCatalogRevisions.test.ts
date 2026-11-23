@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
 import { actorId, catalogQuantityCharacterization, decisionReceipt, decisionRow, documentRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
 import { PostgresTransferError } from "@openlup/platform/portability";
+import { quoteDigest } from "@openlup/platform/pricing";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeySelection, storeJourneyResources,
@@ -547,17 +548,13 @@ it("refuses a retyped retained column and an unknown inventory with a recapture 
   table.columns.find(column => column.name === "normalized_value")!.type = "character varying";
   rehash(capture);
   await expect(restore(target.owner, capture)).rejects.toMatchObject({
-    code: "schema_conflict", table: "catalog_sku_identifiers", remedy: "upgrade the source, then capture",
+    code: "schema_conflict",
+    table: "catalog_sku_identifiers",
+    remedy: "capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older",
   });
   await expect(restore(target.owner, repin(packet, "a".repeat(64)))).rejects.toMatchObject({
-    code: "schema_conflict", remedy: "upgrade the source, then capture",
-  });
-}, 105_000);
-
-it("does not treat an inventory label as evidence of a predecessor packet", async () => {
-  const predecessor = repin(packet, "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385");
-  await expect(restore(target.owner, predecessor)).rejects.toMatchObject({
-    code: "schema_conflict", table: "subscription_edit_quotes", remedy: "upgrade the source, then capture",
+    code: "schema_conflict",
+    remedy: "capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older",
   });
 }, 105_000);
 
@@ -578,6 +575,17 @@ it("transfers same-SKU governed bindings and preserves legacy NULL facts", async
   const acceptance = { schemaVersion: 2, lines: [{ schemaVersion: 2, skuId: data.skuId, skuCode: facts.code,
     skuRevisionId: first.skuRevisionId, publicationHead: first.head, typeRef: product.type,
     netContent: facts.netContent, optionDigest: facts.optionDigest, definitionDigest: product.definitionDigest }] };
+  const scopedOrder = randomUUID(), scopedKey = `receipt:${scopedOrder}`;
+  const quoteSnapshot = { quote: { lines: [{ sku: facts.code, quantity: 2 }] } };
+  const orderDraftSnapshot = { lines: quoteSnapshot.quote.lines };
+  const document = { reviewedProjection: quoteSnapshot, consultedHeads: [{ productId: data.productId, ...first.head }],
+    lineBindings: [{ sourceOrdinal: 1, skuId: data.skuId, skuCode: facts.code, skuRevisionId: first.skuRevisionId,
+      mode: "one_time", quantity: 2, role: "core", source: "fresh" }],
+    priceEvidenceRef: `price.v1:${"b".repeat(64)}`, policyEvidenceRef: `policy.v1:${"c".repeat(64)}` };
+  const { reviewedProjection: _projection, ...retained } = document;
+  const scopedAcceptance = { ...acceptance, admission: { ...retained, moneyVersion: "v0", quoteDigest: quoteDigest("catalog.owner-quote.v0", document) } };
+  const submit = { schemaVersion: 1, ownerNamespace: "example:store", clientId: client, lane: "example-checkout",
+    requestKey: scopedKey, submitDigest: "d".repeat(64), acceptanceTokenDigest: null };
   await transaction(source.owner, async db => {
     await db.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
     await db.query("INSERT INTO public.subscriptions(id,client_id,cadence_days) VALUES($1,$2,28)", [subscription, client]);
@@ -591,7 +599,21 @@ it("transfers same-SKU governed bindings and preserves legacy NULL facts", async
     await db.query(`INSERT INTO public.commerce_order_draft_receipts(idempotency_key,request_fingerprint,order_id,response_payload)
       VALUES($1,$2,$3,$4)`, [key, "a".repeat(32), order, json({ orderDraft: { orderId: `order_${order}`,
       quoteSnapshot: { quote: { lines: [{ sku: facts.code, quantity: 1 }] } } } })]);
+    await db.query(`INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor,metadata)
+      VALUES($1,$2,'cancelled','XXX',200,$3)`,
+    [scopedOrder,client,{ quoteSnapshot,orderDraftSnapshot,catalogAdmissionSubmit:submit }]);
+    await db.query(`INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor,
+      source_line_ordinal,catalog_unit_amount_minor,catalog_line_amount_minor,promotion_discount_allocated_minor,promotion_allocation_fingerprint)
+      VALUES($1,$2,1,1,100,100,1,100,100,0,repeat('e',64)),($1,$2,2,1,100,100,1,100,100,0,repeat('e',64))`,
+    [scopedOrder,data.skuId]);
+    await db.query("SELECT public.catalog_attach_order_acceptance($1,$2,$3,$4)", [scopedOrder,json(scopedAcceptance),scopedKey,json({ [facts.code]:2 })]);
+    await db.query(`INSERT INTO public.commerce_order_draft_receipts(idempotency_key,request_fingerprint,order_id,response_payload)
+      VALUES($1,md5($2::jsonb::text||'|'||$3::jsonb::text||'|'||$4::uuid::text),$5,$6)`,
+    [scopedKey,quoteSnapshot,orderDraftSnapshot,client,scopedOrder,{ orderDraft: { orderId: `order_${scopedOrder}`,
+      idempotencyKey: scopedKey, quoteSnapshot, replayed: false } }]);
   });
+  await expect(source.owner.query("UPDATE public.commerce_order_items SET source_line_ordinal=2 WHERE order_id=$1 AND line_ordinal=2", [scopedOrder]))
+    .rejects.toMatchObject({ message: "catalog_acceptance_line_mismatch" });
   const captured = await captureStoreJourney(source.owner, "governed-lifecycle-source");
   await expect(restore(target.owner, captured)).resolves.toMatchObject({ replayed: false });
   const rows = await target.owner.query(`SELECT id,revision,sku_id,full_facts FROM public.catalog_sku_revisions
@@ -607,4 +629,8 @@ it("transfers same-SKU governed bindings and preserves legacy NULL facts", async
   ]);
   expect((await target.owner.query("SELECT catalog_acceptance FROM public.commerce_orders WHERE id=$1", [order])).rows)
     .toEqual([{ catalog_acceptance: acceptance }]);
+  expect((await target.owner.query("SELECT catalog_acceptance,metadata->'catalogAdmissionSubmit' AS submit FROM public.commerce_orders WHERE id=$1",
+    [scopedOrder])).rows).toEqual([{ catalog_acceptance: scopedAcceptance, submit }]);
+  expect((await target.runtime.query("SELECT public.catalog_admission_replay_order_draft($1,$2,$3,$4) AS response",
+    [scopedKey,client,submit.lane,submit.submitDigest])).rows).toMatchObject([{ response: { orderDraft: { replayed: true } } }]);
 });

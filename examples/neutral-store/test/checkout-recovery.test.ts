@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { configurations } from '../owned/store.config.ts';
 import { assertConfig } from '../shared/config.ts';
-import { createCheckoutRecoveryDelivery, type CheckoutRecoveryMessage } from '../host/checkout-recovery.ts';
+import { composeExpiredRecovery, createCheckoutRecoveryDelivery, type CheckoutRecoveryMessage } from '../host/checkout-recovery.ts';
 import { captureCompletionEntry, currentPurchase, rememberPurchase, visiblePurchase } from '../client/purchase.ts';
 
 test('recovery message values are typed configuration in both configurations and locales', async () => {
@@ -165,6 +165,28 @@ test('the application content-loss fence refuses only the unsupported bound star
 import { readFrozenCheckoutEmail } from '../host/checkout-recovery.ts';
 import type { CaptureValue } from '../host/private-capture.ts';
 const orderId = '11111111-1111-4111-8111-111111111111';
+test('expired checkout checks owned draft evidence before disclosing the closed catalogue lane', async () => {
+  const source = { orderId, orderRef: `order_${orderId}`, orderNumber: 'EXAMPLE-1', clientId: orderId,
+    status: 'expired', mode: 'one_time_order', totalMinor: 100, currency: 'XXX', createdAt: '2026-11-20T00:00:00Z',
+    cadenceDays: null, customerEmail: null, customerName: null, paymentIntentId: null, paymentIntentStatus: null,
+    subscriptionId: null, subscriptionCycleId: null, shippingAddressId: orderId, initialDeclarationId: null,
+    initialActivationState: null, quoteSnapshot: { quote: {} }, runtimeMetadata: {}, invoiceBuyerSnapshot: {},
+    recoveryRootOrderId: orderId, recreatedFromOrderId: null, technicallyExpired: true };
+  let exactReceipt = true;
+  const pool = { async query(sql: string) {
+    if (sql.includes('checkout_recovery_latest_order_snapshot') || sql.includes('checkout_recovery_order_snapshot'))
+      return { rows: [{ result: source }] };
+    if (sql.includes('commerce_order_draft_receipts')) return { rows: exactReceipt ? [{ governed: true }] : [] };
+    throw new Error('the route must stop before any re-quote');
+  } } as unknown as Pool;
+  const tokens = { async inspect() { return { orderId, clientId: orderId, tokenState: 'expired' }; } } as unknown as import('../host/checkout-recovery.ts').PurchaseRecovery['tokens'];
+  const action = composeExpiredRecovery(pool, {} as never, tokens)['checkout.recovery']!;
+  const context = { config: Object.values(configurations)[0]!, commandKey: 'test-command-identity', actor: { customerRef: null, operatorRef: null } };
+  const request = { token: `rcv_${'a'.repeat(43)}`, action: 'pay' };
+  assert.deepEqual(await action(request, context), { ok: false, code: 'catalog_admission_quote_authority_required' });
+  exactReceipt = false;
+  assert.deepEqual(await action(request, context), { ok: false, code: 'starter_recovery_unavailable' });
+});
 const frozen = { kind: 'checkout-recovery', orderRef: orderId, email: 'original@example.test' };
 const capture = (value: CaptureValue) => ({ read: async () => value, writeOnce: async () => { throw new Error('frozen_capture_write_forbidden'); } });
 test('re-quote email uses the original immutable capture and canonical order identity', async () => {

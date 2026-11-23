@@ -50,7 +50,7 @@ beforeEach(() => {
 
 describe("PostgreSQL container pinned image adoption", () => {
   it("uses the JSON default and pulls once before container creation with --pull=never", async () => {
-    const { defaultPostgresImage, runPostgresContainer } = await import("../helpers/postgresContainer.js");
+    const { DEFAULT_FAST_TMPFS_SIZE_MB, FAST_POSTGRES_SERVER_FLAGS, defaultPostgresImage, runPostgresContainer } = await import("../helpers/postgresContainer.js");
     expect(defaultPostgresImage).toBe(`postgres:${pin.tag}@${pin.digest}`);
     await Promise.all([runPostgresContainer(spec), runPostgresContainer({ ...spec, name: "second" })]);
     expect(mocks.pull).toHaveBeenCalledExactlyOnceWith(pin);
@@ -59,18 +59,50 @@ describe("PostgreSQL container pinned image adoption", () => {
     expect(runs).toHaveLength(2);
     for (const [, args] of runs) {
       expect(args).toContain("--pull=never");
-      expect(args.at(-1)).toBe(imageReference(pin, pin.sources[1]));
+      expect(args.slice(args.indexOf("--tmpfs"), args.indexOf("--tmpfs") + 2)).toEqual([
+        "--tmpfs", `/var/lib/postgresql/data:rw,noexec,nosuid,size=${DEFAULT_FAST_TMPFS_SIZE_MB}m`,
+      ]);
+      const imageIndex = args.indexOf(imageReference(pin, pin.sources[1]));
+      expect(imageIndex).toBeGreaterThan(0);
+      expect(args.slice(imageIndex + 1)).toEqual(["postgres", ...FAST_POSTGRES_SERVER_FLAGS]);
     }
   });
   it("preserves explicit unpinned/unknown image behaviour", async () => {
-    const { runPostgresContainer } = await import("../helpers/postgresContainer.js");
+    const { FAST_POSTGRES_SERVER_FLAGS, runPostgresContainer } = await import("../helpers/postgresContainer.js");
     for (const image of ["postgres:16", "custom/postgres:17"]) {
       await runPostgresContainer({ ...spec, image });
-      const args = mocks.exec.mock.calls.at(-1)![1];
-      expect(args.at(-1)).toBe(image);
+      const args = mocks.exec.mock.calls.at(-1)![1] as string[];
+      const imageIndex = args.indexOf(image);
+      expect(imageIndex).toBeGreaterThan(0);
+      expect(args.slice(imageIndex + 1)).toEqual(["postgres", ...FAST_POSTGRES_SERVER_FLAGS]);
       expect(args).not.toContain("--pull=never");
     }
     expect(mocks.pull).not.toHaveBeenCalled();
+  });
+  it("supports durability='default', custom tmpfsSizeMb, caller postgres flags and refuses invalid tuning options", async () => {
+    const { FAST_POSTGRES_SERVER_FLAGS, runPostgresContainer } = await import("../helpers/postgresContainer.js");
+    await runPostgresContainer({ ...spec, durability: "default" });
+    let args = mocks.exec.mock.calls.at(-1)![1] as string[];
+    expect(args.slice(args.indexOf("--tmpfs"), args.indexOf("--tmpfs") + 2)).toEqual(["--tmpfs", "/var/lib/postgresql/data"]);
+    expect(args.at(-1)).toBe(imageReference(pin, pin.sources[1]));
+
+    await runPostgresContainer({ ...spec, tmpfsSizeMb: 256, command: ["postgres", "-c", "timezone=Etc/GMT-9", "-c", "shared_buffers=64MB"] });
+    args = mocks.exec.mock.calls.at(-1)![1] as string[];
+    expect(args.slice(args.indexOf("--tmpfs"), args.indexOf("--tmpfs") + 2)).toEqual(["--tmpfs", "/var/lib/postgresql/data:rw,noexec,nosuid,size=256m"]);
+    const imageIndex = args.indexOf(imageReference(pin, pin.sources[1]));
+    expect(args.slice(imageIndex + 1)).toEqual(["postgres", ...FAST_POSTGRES_SERVER_FLAGS, "-c", "timezone=Etc/GMT-9", "-c", "shared_buffers=64MB"]);
+
+    await runPostgresContainer({ ...spec, command: ["-c", "timezone=UTC"] });
+    args = mocks.exec.mock.calls.at(-1)![1] as string[];
+    expect(args.slice(args.indexOf(imageReference(pin, pin.sources[1])) + 1)).toEqual(["postgres", ...FAST_POSTGRES_SERVER_FLAGS, "-c", "timezone=UTC"]);
+
+    await runPostgresContainer({ ...spec, command: ["sleep", "30"] });
+    args = mocks.exec.mock.calls.at(-1)![1] as string[];
+    expect(args.slice(args.indexOf(imageReference(pin, pin.sources[1])) + 1)).toEqual(["sleep", "30"]);
+
+    await expect(runPostgresContainer({ ...spec, tmpfsSizeMb: 32 })).rejects.toThrow("PostgreSQL tmpfsSizeMb must be an integer between 64 and 16384.");
+    await expect(runPostgresContainer({ ...spec, tmpfsSizeMb: 256.5 })).rejects.toThrow("PostgreSQL tmpfsSizeMb must be an integer between 64 and 16384.");
+    await expect(runPostgresContainer({ ...spec, durability: "unsafe" as "fast" })).rejects.toThrow("PostgreSQL durability must be 'fast' or 'default'.");
   });
   it("recognizes exact JSON pins passed explicitly and caches by exact input ref", async () => {
     const { defaultPostgresImage, runPostgresContainer } = await import("../helpers/postgresContainer.js");
@@ -359,7 +391,8 @@ describe("PostgreSQL owned Docker volume cleanup", () => {
       if (args[0] !== "run") return exec(command, args, options);
       // An extra anonymous mount makes the -v cleanup assertion non-vacuous,
       // while the data mount separately proves prevention before startup.
-      const actual = [...args.slice(0, -1), "--mount", "type=volume,destination=/openlup-cleanup-witness", args.at(-1)];
+      const imageIndex = args.indexOf(image);
+      const actual = [...args.slice(0, imageIndex), "--mount", "type=volume,destination=/openlup-cleanup-witness", ...args.slice(imageIndex)];
       try { return await exec(command, actual, options); }
       finally {
         const { stdout } = await exec("docker", ["inspect", name]);
@@ -398,4 +431,54 @@ describe("PostgreSQL owned Docker volume cleanup", () => {
       for (const id of volumes) await exec("docker", ["volume", "rm", id]).catch(() => {});
     }
   }, 600_000);
+
+  it("applies fast low-memory server settings on real PostgreSQL by default and allows caller overrides", async () => {
+    const { execFile } = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+    const { promisify } = await import("node:util");
+    const exec = promisify(execFile);
+    const { createServer } = await vi.importActual<typeof import("node:net")>("node:net");
+    const { randomUUID } = await import("node:crypto");
+    const { closePostgres, runPostgresContainer, waitForPostgresTcpReady } = await import("../helpers/postgresContainer.js");
+    const pgActual = await vi.importActual<typeof import("pg")>("pg");
+    await exec("docker", ["version", "--format", "{{.Server.Version}}"]);
+    const { pullWithRetry } = await vi.importActual<typeof import("../../scripts/ci-image-pull.mjs")>("../../scripts/ci-image-pull.mjs");
+    const reference = await pullWithRetry(pin, {
+      exec: async (args, timeout = 5_000) => (await exec("docker", args, { timeout })).stdout,
+      sleep: ms => new Promise(resolve => setTimeout(resolve, ms)), now: () => performance.now(),
+    });
+    const image = (await exec("docker", ["image", "inspect", reference, "--format", "{{.Id}}"])).stdout.trim();
+    const server = createServer();
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    mocks.port = (server.address() as import("node:net").AddressInfo).port;
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    mocks.realPg = true;
+    mocks.exec.mockImplementation((command, args, options) => exec(command, args, options));
+    const container = await runPostgresContainer({
+      name: `openlup-fast-settings-${randomUUID()}`,
+      password: "disposable",
+      image,
+      command: ["postgres", "-c", "timezone=Etc/GMT-9", "-c", "work_mem=8MB"],
+    });
+    const pool = new pgActual.Pool({ connectionString: container.connectionString });
+    try {
+      expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+      const settings = (await pool.query(
+        "SELECT name, setting FROM pg_settings WHERE name = ANY($1::text[]) ORDER BY name",
+        [["autovacuum", "fsync", "full_page_writes", "max_connections", "shared_buffers", "synchronous_commit", "TimeZone", "wal_level", "work_mem"]],
+      )).rows as Array<{ name: string; setting: string }>;
+      expect(Object.fromEntries(settings.map(row => [row.name, row.setting]))).toEqual({
+        TimeZone: "Etc/GMT-9",
+        autovacuum: "off",
+        fsync: "off",
+        full_page_writes: "off",
+        max_connections: "100",
+        shared_buffers: "4096",
+        synchronous_commit: "off",
+        wal_level: "minimal",
+        work_mem: "8192",
+      });
+    } finally {
+      await closePostgres(container, pool);
+    }
+  }, 120_000);
 });

@@ -182,7 +182,10 @@ const sourceFiles = (prefix = "") => [`${prefix}**/*.${SOURCE_EXTENSIONS}`];
 // Optional `contracts: true` declares exactly one browser-safe sub-entry at
 // <module>/contracts/index.ts; it has no module edges, including to its server entry.
 export const PLATFORM_MODULE_GRAPH = {
+  accounting: { contracts: true, values: [], types: [] },
+  "adapter-kit": { values: ["http"], types: [] },
   channels: { contracts: true, values: [], types: [] },
+  observability: { contracts: true, values: [], types: [] },
   "channels/server": { values: ["channels", "bff", "inventory"], types: ["http"] },
   "company-identity": { contracts: true, values: [], types: [] },
   "company-identity/server": { values: ["company-identity"], types: ["company-identity/contracts", "http", "bff"] },
@@ -204,7 +207,7 @@ export const PLATFORM_MODULE_GRAPH = {
   payments: { contracts: true, values: [], types: ["http", "bff"] },
   shipping: { contracts: true, values: [], types: ["bff", "http", "commerce/contracts"] },
   promotions: { contracts: true, values: ["pricing", "shipping"], types: ["data", "http", "bff"] },
-  pricing: { contracts: true, values: [], types: ["bff", "http", "shipping"] },
+  pricing: { contracts: true, values: ["catalog/contracts"], types: ["bff", "http", "shipping"] },
   // Bundle factories bind host schemas/admin kit; native reads use the data executor type, writes its transaction lane.
   // The catalog-to-pricing value edge lets the effective bundle store reuse pricing's
   // effective-window authority via selectEffectiveBundleTargetPrice.

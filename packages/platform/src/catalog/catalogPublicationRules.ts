@@ -1,3 +1,4 @@
+import type { CatalogQuantity } from "@openlup/core/catalog";
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
 import type { CatalogProductTypeInput, CatalogProductTypeRef, CatalogDraftIssue } from "./contracts/productTypes.js";
 import type { RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
@@ -34,6 +35,8 @@ export interface CatalogPublicationRulesModule {
   identifyDocument(document: unknown, evaluation?: CatalogRulesContext): { schemaId: string; documentRef: string; productSlug: string; revisionNo: number; name?: string } | null;
   /** Apply the installed net-amount rule to the SKU and positive integer grams. */
   validateSkuAmounts?(sku: { code: string; netGrams: string }, evaluation?: CatalogRulesContext): boolean;
+  /** Apply the installed rule to an authored count or volume term on the typed publication path. */
+  validateTypedSkuAmounts?(sku: { code: string; netContent: CatalogQuantity }, evaluation?: CatalogRulesContext): boolean;
   /** Return scalar published SKU facts derived from the selected document and SKU. */
   deriveSkuFacts(canonicalText: string, sku: RulesSku, evaluation?: CatalogRulesContext): CatalogPublicationFacts;
   /** Classify a change to an existing SKU using the before and after product and document. */

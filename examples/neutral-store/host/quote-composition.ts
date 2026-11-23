@@ -1,9 +1,9 @@
 import { resolveThresholdShipping } from '@openlup/platform/shipping';
 import type { RenewalRetainedTerms } from '@openlup/platform/subscriptions/contracts';
 import { evaluatePromotionAdjustmentsV2 } from '@openlup/core/promo';
-import type { Pool } from 'pg';
+import type { NativeCheckoutQuery } from '@openlup/platform/commerce/server/native-checkout';
 import { createHash } from 'node:crypto';
-import { createPostgresCommerceQuoteCatalogReadPort, canonicalCatalogDraftJson } from '@openlup/platform/catalog';
+import { createPostgresCommerceQuoteCatalogReadPort, canonicalCatalogDraftJson, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
 import { createPostgresCommercePriceAuthorityReadPort } from '@openlup/platform/commerce/server/postgres';
 import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort, AcquisitionTermsError, CommerceQuoteError,
   ACQUISITION_TERMS_CAPABILITY, projectPublicQuoteSnapshot, acquisitionProjectionFreshness, projectAcquisitionTerms,
@@ -11,13 +11,18 @@ import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort, Acqu
 import { createPostgresCommercePromoDataPort, createQuotePromoDiscounts, createQuotePromotionV2,
   createQuoteAutomaticPromotions, createQuotePromotionCodeAdjustments,
   createPromotionQuoteAcceptance, type PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
-import { verifyProductDocument } from './editor-catalogue.ts';
+import { verifyProductDocument, type MixedProductRead } from './editor-catalogue.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import { createQuoteShipping } from '../owned/quote-shipping.ts';
 import { isQuoteRefusalCode } from '../owned/quote-copy.ts';
 import { isRecord, parseCart, validateCart, type OfferQuote } from '../shared/offer.ts';
 import type { ActionContext } from './bindings.ts';
 import type { AcquisitionPredecessors } from './acquisition-predecessors.ts';
+
+export function quoteDocumentVerifier(schemaId: string) {
+  return async (value: unknown, envelope: NeutralSkuEnvelopeV1, mixed?: MixedProductRead) =>
+    verifyProductDocument(value, envelope, schemaId, mixed);
+}
 
 interface Request extends AcquisitionQuoteRequest { checkout: Record<string, unknown>; pricingPolicy: typeof pricingPolicy; pricePolicyBasis?: unknown; renewalPolicy?: unknown }
 export const pricingPolicy = { offerPolicyVersion: 'commerce.offer-policy.v2', promotionEngineVersion: 'promotion-engine.v2' } as const;
@@ -38,7 +43,7 @@ export function quoteFailure(error: unknown): string {
   return 'starter_quote_unavailable';
 }
 
-export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPredecessors, keyring?: PromotionAcceptanceKeyring) {
+export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: AcquisitionPredecessors, keyring?: PromotionAcceptanceKeyring) {
   async function quote(payload: Record<string, unknown>, context: ActionContext, replay?: CreateQuoteResponse, atTime = new Date().toISOString()) {
     const config = context.config;
     const selected = parseCart(config.id, payload.cart);
@@ -47,9 +52,12 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
       throw new AcquisitionTermsError('acquisition_terms_capability_required');
     }
     if (payload.promoCodes !== undefined && (!Array.isArray(payload.promoCodes) || payload.promoCodes.length)) throw new Error('starter_promotion_codes_unsupported');
-    const email = context.actor.customerRef
+    const contactEmail = context.actor.customerRef
       ? (await db.query('SELECT email FROM public.clients WHERE id=$1 AND principal_id=$2', [context.actor.customerRef,context.actor.principalRef])).rows[0]?.email
-      : typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : null;
+      : payload.email;
+    const email = typeof contactEmail === 'string'
+      ? context.actor.customerRef ? contactEmail : contactEmail.trim().toLowerCase()
+      : null;
     const request: Request = { mode: selected.cart.mode, cadenceDays: selected.cart.cadenceDays,
       lines: selected.cart.lines, promoCodes: [], pricingPolicy,
       ...(payload.acquisitionCapability === ACQUISITION_TERMS_CAPABILITY ? { acquisitionCapability: ACQUISITION_TERMS_CAPABILITY } : {}),
@@ -78,9 +86,7 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
     const taxProfile = { included: true as const, country: config.market.country, ...config.purchase.tax };
     const port = createDbBackedCommerceQuotePort<Request, import('@openlup/platform/pricing').CommerceQuoteCatalogItem, Record<string, never>,
       { mode: Request['mode']; cadenceDays: number | null; promoCodes: string[]; starterRequest: string; acquisitionCapability?: typeof ACQUISITION_TERMS_CAPABILITY; starterRenewalTerms?: RenewalRetainedTerms }>({
-      quoteCatalogReadPort: createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: async (input,envelope) => {
-        verifyProductDocument(input, envelope, config.quote.document.schemaId);
-      } }),
+      quoteCatalogReadPort: createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: quoteDocumentVerifier(config.quote.document.schemaId) }),
       isStrictD1Quote: true, commercePriceAuthorityPort: createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(db)),
       taxProfile, supportedTaxProfiles: [taxProfile], regionCode: config.market.country, currency: config.market.currency,
       now: () => atTime, hasPromotionCodePort: false, lineContext: () => ({}),

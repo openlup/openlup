@@ -59,6 +59,10 @@ Find the machine-readable code identifying why an operation was refused; see the
 
 ## Codes without a closed list
 
+`catalog_admission_quote_authority_required` means fresh governed catalogue
+purchase is unavailable on the installation. Use an eligible legacy offer or
+replay the original authorized request with its key.
+
 <!-- generated:refusal-codes-open -->
 | Package | Type | Report | Open because |
 | --- | --- | --- | --- |

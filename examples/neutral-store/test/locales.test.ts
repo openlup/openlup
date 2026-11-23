@@ -73,7 +73,7 @@ test('R: startup names the absent localized key and configured locale', () => {
 
 test('R: required UI/editor/quote keys refuse even when absent from every translation', () => {
   for (const [registry, key, path] of [
-    [copy, 'cart', 'copy.cart'], [editorCopy, 'close', 'editorCopy.close'],
+    [copy, 'cart', 'copy.cart'], [copy, 'attemptLimitsInterim', 'copy.attemptLimitsInterim'], [editorCopy, 'close', 'editorCopy.close'],
     [quoteCopy, 'loading', 'quoteCopy.loading'], [quoteRefusalCopy, 'cadence_unavailable', 'quoteRefusalCopy.cadence_unavailable'],
   ] as const) {
     // Include inactive translations: no surviving translation can supply the required key.

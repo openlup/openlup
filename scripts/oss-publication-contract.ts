@@ -73,6 +73,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "src/pages/account/v2/sections/PaymentCardSetup.test.tsx",
   "scripts/generate-outcome-projection-cli.ts",
   "scripts/packages/generate-release-bom-cli.ts",
+  "recipes/scripts/generate-index.ts",
   "vitest.config.ts",
 ] as const;
 

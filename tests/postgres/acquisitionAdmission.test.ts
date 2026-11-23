@@ -280,7 +280,7 @@ it("routes mounted checkout through the acquisition adapter without a lower pers
   };
   inspect(source);
   expect(declarations.get("quoteSnapshot")?.getText(source)).toBe("observed.snapshot");
-  expect(declarations.get("drafts")?.getText(source)).toMatch(/^predecessors\.checkout\(db,/);
+  expect(declarations.get("drafts")?.getText(source)).toMatch(/^predecessors\.checkout\(\{ async connect\(\)/);
   expect(drafts).toHaveLength(1);
   expect(drafts[0]!.expression.getText(source)).toBe("drafts.createOrderDraft");
   expect(drafts[0]!.arguments[0]!.getText(source)).toBe("{ idempotencyKey: key, quoteSnapshot }");
