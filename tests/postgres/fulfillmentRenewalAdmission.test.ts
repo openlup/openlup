@@ -368,7 +368,7 @@ it.each(['protect', 'auto_align'] as const)('G23 static block wins over a captur
   } finally { db.release(); }
 });
 
-it.each(lifecycleProfiles)('LOCK-1R S/O on %s recovers renewal admission and the same operator hold after either abort', async profile => {
+it.each(lifecycleProfiles)('subscription and order second-lock rollback on %s recovers renewal admission and the same operator hold after either abort', async profile => {
   const h = await lifecycleInstallation(profile);
   try {
     const { owner, runtime } = h;

@@ -158,7 +158,7 @@ it.each(["admission", "freeze"] as const)("locks the token against concurrent re
   }
 });
 
-it.each(lifecycleProfiles)('LOCK-1R S/P on %s recovers setup-success redelivery and scheduled prepare after either abort', async profile => {
+it.each(lifecycleProfiles)('subscription and payment method second-lock rollback on %s recovers setup-success redelivery and scheduled prepare after either abort', async profile => {
   const h = await lifecycleInstallation(profile);
   try {
     const { owner, runtime } = h;
