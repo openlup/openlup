@@ -2,8 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { createServer } from 'node:net';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createPostgresContactClientRegistrar } from '@openlup/platform/identity';
 import { env as processEnvironment } from 'node:process';
 import { Pool } from 'pg';
@@ -40,7 +40,6 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
   let migration: Pool | undefined;
   let host: ChildProcess | undefined;
   let base: string;
-  let port: number;
   let state: string;
   let cookie: string | undefined;
   let runtimeConnection: string;
@@ -110,8 +109,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
   }
 
   async function startHost(stopAtContact = false) {
-    // The starter owns its strict compiler profile; exercise its actual CLI and
-    // HTTP host instead of importing its whole graph into the root test profile.
+    // Keep the real HTTP host and its strict compiler profile in the child.
     const entry = resolve('examples/neutral-store/host/server.ts');
     // Child-only composition uses the real HTTP host and restricted native ports.
     // IPC configures the existing callback and registrar seams.
@@ -121,8 +119,10 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       import { createPostgresContactClientRegistrar } from '@openlup/platform/identity';
       import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
       import { createPostgresCheckoutRecoveryTokenPort } from '@openlup/platform/commerce/server';
+      import { bindScenarioServer } from ${JSON.stringify(pathToFileURL(resolve('tests/helpers/neutralStoreScenario.mjs')).href)};
       const entry = ${JSON.stringify(entry)};
       const load = relative => import(new URL(relative, pathToFileURL(entry)).href);
+      const { server, port, base } = await bindScenarioServer();
       const { createApplication } = await load('./server.ts');
       const { composeNativeBindings } = await load('./native-composition.ts');
       const { composePurchaseCapabilities } = await load('./purchase-composition.ts');
@@ -130,9 +130,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       const { createOriginPolicy } = await load('./origin-policy.ts');
       const { selectConfiguration } = await load('../owned/store.config.ts');
       const config = selectConfiguration(${JSON.stringify(config.id)});
-      const port = ${port};
       const connectionString = ${JSON.stringify(runtimeConnection)};
-      const base = 'http://127.0.0.1:' + port;
       process.chdir(${JSON.stringify(state)});
       const keyring = { current: 'fixture-only-acceptance-key-00000000000000' };
       const bindings = await composeNativeBindings(connectionString, createOriginPolicy(config, port), config, keyring);
@@ -161,15 +159,15 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
         if (message.permissive !== null) configureCheckout(message.permissive);
         process.send({ registrations });
       });
-      const server = createApplication(bindings);
-      server.listen(port, '127.0.0.1', () => process.stdout.write('Neutral store local candidate: ' + base + '\n'));
+      server.on('request', createApplication(bindings).listeners('request')[0]);
+      process.stdout.write('Neutral store local candidate: ' + base + '\n');
       process.once('SIGTERM', () => server.close(async () => {
         await Promise.all([bindings.close(), pool.end(), registrar.close(), lane.close()]);
         process.disconnect();
       }));
     `;
     host = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', bootstrap,
-      'starter-host-proof', '--configuration', config.id, '--port', String(port), '--database-url', runtimeConnection],
+      'starter-host-proof', '--configuration', config.id, '--database-url', runtimeConnection],
     { cwd: resolve('.'), env: { ...processEnvironment, PGPASSWORD: 'synthetic-conformance' },
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
     await new Promise<void>((resolve, reject) => {
@@ -187,7 +185,9 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       let output = '';
       host!.stdout?.on('data', (chunk: Buffer) => {
         output += chunk.toString();
-        if (output.includes(`Neutral store local candidate: ${base}\n`)) {
+        const origin = /Neutral store local candidate: (http:\/\/127\.0\.0\.1:\d+)\n/.exec(output)?.[1];
+        if (origin) {
+          base = origin;
           clearTimeout(timer);
           host!.removeListener('error', fail);
           resolve();
@@ -236,13 +236,6 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     runtimeUrl.username = 'starter_runtime';
     runtimeUrl.protocol = 'postgresql:';
     runtimeUrl.password = '';
-    const probe = createServer().listen(0, '127.0.0.1');
-    await once(probe, 'listening');
-    const address = probe.address();
-    if (!address || typeof address === 'string') throw new Error('uuid_host_port_required');
-    port = address.port;
-    await new Promise<void>(resolve => probe.close(() => resolve()));
-    base = `http://127.0.0.1:${port}`;
     runtimeConnection = runtimeUrl.toString();
     await startHost();
     pending = await createOrder();

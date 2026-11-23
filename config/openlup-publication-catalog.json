@@ -654,6 +654,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/ci-quarantine.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/customer-360-parity-expectation.json",
       "class": "public-output"
     },
@@ -1610,6 +1614,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125090000_catalog_runtime_checkout_dark.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -1792,6 +1800,10 @@
     {
       "path": "docs/platform/communications-conformance.mjs",
       "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/history/data-and-migrations-evidence-2026-11-13.md",
+      "class": "public-output"
     },
     {
       "path": "docs/platform/history/managed-query-baseline-2026-11-19.md",
@@ -5282,6 +5294,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125090000_catalog_runtime_checkout_dark.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -6551,6 +6567,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/catalogAdmissionRefusal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/catalogAdmissionRefusalMessage.ts",
       "class": "public-output"
     },
     {
@@ -12078,6 +12098,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/operations/settingsCandidateParity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/operations/settingsCommand.test.ts",
       "class": "public-output"
     },
@@ -13478,6 +13502,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/affected-tests.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/affected-tests.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/agent-ci-queued-diagnose.ts",
       "class": "public-output"
     },
@@ -13690,6 +13722,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ci-quarantine.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-quarantine.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ci-receipt-rerun.mjs",
       "class": "public-output"
     },
@@ -13863,6 +13903,10 @@
     },
     {
       "path": "scripts/fixtures/20261022195100_invoicing_seller_revision.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/landing-test-environment.ts",
       "class": "public-output"
     },
     {
@@ -14671,6 +14715,14 @@
     },
     {
       "path": "scripts/serverless-include-globs.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/settings-candidate-guard.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/settings-candidate-guard.ts",
       "class": "public-output"
     },
     {
@@ -31146,6 +31198,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/neutralStoreScenario.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/helpers/pgTemplateBroker.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/postgresContainer.ts",
       "class": "public-output"
     },
@@ -31459,6 +31519,14 @@
     },
     {
       "path": "tests/postgres/catalogQuantities.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogRuntimeCheckout.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogRuntimeCheckout.test.ts",
       "class": "public-output"
     },
     {
@@ -32283,6 +32351,10 @@
     },
     {
       "path": "tests/postgres/paymentsNativeConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/pgTemplateBroker.test.ts",
       "class": "public-output"
     },
     {

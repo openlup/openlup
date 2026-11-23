@@ -111,10 +111,25 @@ export function createNodeScheduler(options: CreateNodeSchedulerOptions): NodeSc
   const env = options.env;
   const jobs = options.jobs;
   const lockMode = options.lockMode ?? "process";
-  if (lockMode === "cluster" && options.lock?.durability !== "cluster") {
-    throw new Error('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+  const suppliedLock = options.lock;
+  if (lockMode === "cluster") {
+    const durability = suppliedLock?.durability;
+    if (durability !== "cluster") {
+      let observation: string;
+      if (!suppliedLock) observation = "No AdvisoryLock resolved.";
+      else if (durability === undefined) observation = "The resolved AdvisoryLock is unlabelled.";
+      else if (durability === "process") observation = 'The resolved AdvisoryLock declares durability "process".';
+      else observation = "The resolved AdvisoryLock declares an unsupported durability.";
+      throw new Error([
+        "OPENLUP_E_SCHEDULER_CLUSTER_LOCK_REQUIRED",
+        `Observed: ${observation}`,
+        'Cause: A cluster-mode scheduler needs an AdvisoryLock that declares durability "cluster".',
+        'Fix: Pass a cluster AdvisoryLock as advisoryLock to serveNode or as lock to createNodeScheduler (for example, createPgAdvisoryLock with a dedicated PostgreSQL session), or set lockMode: "process" for an intentional single-instance host whose scheduler profile permits it.',
+        'Recheck: Repeat the failed serveNode or createNodeScheduler call with the corrected options and verify that it completes.',
+      ].join("\n"));
+    }
   }
-  const lock = options.lock ?? createNoopAdvisoryLock();
+  const lock = suppliedLock ?? createNoopAdvisoryLock();
   const onError =
     options.onError ??
     ((jobId: string, error: unknown) => {

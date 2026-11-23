@@ -1528,6 +1528,19 @@ assert.deepEqual(await configured.verifyPort.verifyAndNormalize({rawBody:Buffer.
 `);
 }
 
+// Observe built bytes in a separate process from the installed-artifact proof.
+const namespaceKinds = '(entry) => Object.fromEntries(Object.entries(entry).map(([name, value]) => [name, typeof value]))';
+function builtNamespaceKinds(subpath: string): string {
+  return loadedNamespaceKinds(`const entry = await import(${JSON.stringify("@openlup/platform/" + subpath)});`, "entry");
+}
+
+function loadedNamespaceKinds(load: string, namespace: string): string {
+  const observed = command(process.execPath, ["--input-type=module", "-e",
+    `${load}\nprocess.stdout.write(JSON.stringify((${namespaceKinds})(${namespace})));`,
+  ], root);
+  return `JSON.parse(${JSON.stringify(observed)})`;
+}
+
 /** Opt-in warehouse proof with absent SDK/peers and exclusively injected I/O. */
 export function proveWarehouseAdapterConsumer(consumer: string): void {
   consumerNode(consumer, `
@@ -1545,7 +1558,7 @@ syncBuiltinESMExports();
 const entry = await import("@openlup/platform/" + subpath);
 const factory = "create" + provider[0].toUpperCase() + provider.slice(1) + "FulfillmentAdapter";
 const descriptor = provider + "FulfillmentCapabilities";
-assert.deepEqual(Object.keys(entry).sort(), [factory, descriptor].sort());
+assert.deepEqual((${namespaceKinds})(entry), ${builtNamespaceKinds("fulfillment/omnipack")});
 assert.equal(entry[descriptor].defaultOff, true); assert.equal(entry[descriptor].selected, false);
 assert.equal(entry[descriptor].readiness.ready, false);
 let calls = 0, credentials = 0;
@@ -1576,12 +1589,15 @@ assert.equal(calls,1);
 
 /** Same installed-artifact harness; no vendor SDK, ambient fetch or provider access. */
 export function proveResendConsumer(consumer: string): void {
+  const loadAdapter = `
+const adapter = await import("@openlup/platform/communications/resend");
+`;
   consumerNode(consumer, `
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 globalThis.fetch = () => { throw Error("ambient network forbidden"); };
-const adapter = await import("@openlup/platform/communications/resend");
-assert.deepEqual(Object.keys(adapter).sort(), ["createResendTransport", "createResendWebhookHandler", "runResendDeliveryReconciliation"], "I02 exact three-export surface");
+${loadAdapter}
+assert.deepEqual((${namespaceKinds})(adapter), ${loadedNamespaceKinds(loadAdapter, "adapter")}, "I02 packed/built export parity");
 for (const value of Object.values(adapter)) assert.equal(typeof value, "function");
 for (const entry of ["communications", "communications/contracts"]) {
  const neutral = await import("@openlup/platform/" + entry);
@@ -1621,7 +1637,7 @@ export function proveMarketingSyncConsumer(consumer: string): void {
 import assert from "node:assert/strict";
 globalThis.fetch = () => { throw Error("ambient network forbidden"); };
 const adapter = await import("@openlup/platform/communications/klaviyo");
-assert.equal(Object.keys(adapter).length,1,"P2 installed exact one-export surface");
+assert.deepEqual((${namespaceKinds})(adapter), ${builtNamespaceKinds("communications/klaviyo")}, "P2 packed/built export parity");
 const factory = Object.values(adapter)[0]; assert.equal(typeof factory,"function");
 const binding={account:"synthetic",environment:"test",namespace:"host",mappingVersion:"1"},audience={kind:"account-wide"};
 const subject={binding,subjectReference:"opaque:1",generation:1,erased:false,id:"profile_1",email:"reader@example.invalid",externalReference:"local:1",ownedFields:[],ownedProperties:[]};
@@ -1649,7 +1665,7 @@ import assert from "node:assert/strict";
 import { createInMemoryEmailTransport, createPostgresTransactionalDeliveryStore, resolveCapturedDocumentDelivery } from "@openlup/platform/communications";
 import * as contracts from "@openlup/platform/communications/contracts";
 import { timingSafeStringEqual } from "@openlup/platform/http";
-assert.deepEqual(Object.keys(contracts).sort(), ["accentBox","button","createAbandonedCartContentFactory","createBackInStockContentFactory","createCheckoutExpiredContentFactory","createCheckoutRecoveryContentFactory","createInquiryContentFactory","createInvoiceDocumentContentFactory","createOptOutContentFactory","createOrderCanceledContentFactory","createOrderDraftContentFactory","createOrderPaidContentFactory","createOrderRefundedContentFactory","createPaymentFailedContentFactory","createReorderReminderContentFactory","createReturnEmailsContentFactory","createReviewEffectsContentFactory","createReviewRequestContentFactory","createRoleNotificationContentFactory","createShipmentDeliveredContentFactory","createShipmentDispatchedContentFactory","createShipmentExceptionContentFactory","createSubscriptionActivationActionRequiredContentFactory","createSubscriptionAddressChangedContentFactory","createSubscriptionCancelledContentFactory","createSubscriptionCycleSkippedContentFactory","createSubscriptionDeliveryRescheduledContentFactory","createSubscriptionPackageChangedContentFactory","createSubscriptionPauseReminderContentFactory","createSubscriptionPausedContentFactory","createSubscriptionPaymentExpiredContentFactory","createSubscriptionPaymentFailedContentFactory","createSubscriptionPaymentRecoveredContentFactory","createSubscriptionRenewalAtRiskContentFactory","createSubscriptionRenewalUpcomingContentFactory","createSubscriptionResumedContentFactory","createSubscriptionWelcomeContentFactory","createSubscriptionWinbackContentFactory","dataTable","divider","featureCard","guideCardBlock","heading","linkParagraph","list","paragraph","renderEmail"]);
+assert.deepEqual((${namespaceKinds})(contracts), ${builtNamespaceKinds("communications/contracts")});
 // Optional peers are physically absent in this phase. Rendering must be pure.
 const previousFetch = globalThis.fetch;
 globalThis.fetch = () => { throw new Error("contracts rendering must never fetch"); };
@@ -2134,7 +2150,7 @@ const cases = [
    const prepared = prepareCatalogAttributeProjection(await validateCatalogAttributes(definition,input),"7"); assert.equal(prepared.prepared,false);
    const attributes = {packs:[{pack,attributes:[{type,input,publicationRevision:"7"}]}]};
    const definitionWarnings = [
-     {code:"advisory_filter_flags_unused",path:"/packs/0/pack/types/0/attributes/0",severity:"warning"},
+     {code:"advisory_filter_flags_unused",path:"/packs/0/pack/types/0/attributes/0/filterable",severity:"warning"},
    ];
    for (const report of [await runCatalogExtensionConformance(JSON.stringify(attributes)),invoke(write("attributes.json",attributes))]) {
      assert.equal(report.state,"violated"); assert.equal(report.exitCode,1);
@@ -2150,7 +2166,7 @@ const cases = [
    for (const report of [await runCatalogExtensionConformance(JSON.stringify(combinations)),invoke(write("combinations.json",combinations))]) {
      assert.equal(report.state,"violated"); assert.equal(report.exitCode,1);
      assert.deepEqual(report.findings.map(findingIdentity),[
-       {code:issue.code,path:"/packs/0/combinations/0/input/"+issue.path.replaceAll(".","/"),severity:"error"},
+       {code:issue.code,path:"/packs/0/combinations/0/input/incoming/1/skuId",severity:"error"},
        ...definitionWarnings,
      ]);
    }

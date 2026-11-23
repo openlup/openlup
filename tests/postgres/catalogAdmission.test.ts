@@ -1,25 +1,32 @@
 import { randomUUID } from "node:crypto";
-import type { PoolClient } from "pg";
+import { readFileSync } from "node:fs";
+import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { createPostgresNativeCheckoutPersistence } from "@openlup/platform/commerce/server/native-checkout";
+import { createPostgresAcquisitionCheckoutPersistence, createPostgresNativeCheckoutPersistence } from "@openlup/platform/commerce/server/native-checkout";
 import { createPostgresCommercePriceAuthorityReadPort } from "@openlup/platform/commerce/server/postgres";
 import { createPostgresCatalogAdmission } from "@openlup/platform/catalog";
 import * as pricing from "@openlup/platform/pricing";
 import { buildCatalogOwnerQuote, withCatalogAdmissionFence } from "@openlup/platform/catalog/testing";
-import { actorId, fixture, graph, hash, insertGraph, installPublicationActors, transaction, type Graph } from "./catalogPublicationFixture.js";
+import { actorId, fixture, graph, hash, insertGraph, installPublicationActors, projectOfferOnlyMembership, transaction, type Graph } from "./catalogPublicationFixture.js";
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
-import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { checkoutOwnerRoutines } from "../../scripts/platform-migration-manifest.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { checkoutOwnerRoutines, selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
+import { proveRuntimeCheckout, watchRuntimeCheckoutAclDelta } from "./catalogRuntimeCheckout.proof.js";
 
 let env: LifecycleInstallation;
 let issued: Graph;
 let clientId: string;
 let priceListId: string;
 let inactivePriceListId: string;
-let legacyId: string;
+let legacyId: ReturnType<typeof randomUUID>;
 let archivedId: string;
 const legacySku = "ARTICLE-LEGACY";
 const archivedSku = "ARTICLE-ARCHIVED";
+const closed = {
+  code: "55000", message: "catalog_admission_quote_authority_required",
+  hint: "Governed checkout is unavailable for this selection. Use a supported offer or replay the original request.",
+};
 
 beforeAll(async () => {
   env = await lifecycleInstallation("qualified-v2");
@@ -44,6 +51,30 @@ beforeAll(async () => {
     SELECT $1,id,125,'one_time' FROM public.catalog_skus WHERE id=ANY($2::uuid[])`, [priceListId, [legacyId, issued.skuId]]);
 }, postgresSetupTimeoutMs);
 afterAll(() => env?.close(), postgresTeardownTimeoutMs);
+
+it.each([false, true])("installs the native checkout ACL with service group present: %s", async serviceRole => {
+  const container = await runPostgresContainer({ name: `catalog-legacy-acl-${serviceRole}-${process.pid}`, password: "synthetic-conformance" });
+  const owner = new Pool({ connectionString: container.connectionString });
+  const assertAclDelta = watchRuntimeCheckoutAclDelta(owner);
+  try {
+    if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Native catalogue PostgreSQL unavailable");
+    if (serviceRole) {
+      // The optional cluster role is outside the canonical legacy inventory.
+      await owner.query("CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS");
+      const plan = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
+      const db = await owner.connect();
+      try {
+        for (const { file } of [plan.baseline, ...plan.forward]) await db.query(readFileSync(file, "utf8"));
+      } finally { db.release(); }
+    } else {
+      await createPostgresMigrationRunner({ connectionString: container.connectionString }, {
+        installation: { generation: "legacy" }, poolFactory: () => owner,
+      }).apply();
+    }
+    assertAclDelta();
+    await proveRuntimeCheckout(owner, owner, "postgres", [], serviceRole);
+  } finally { await closePostgres(container, owner); }
+}, postgresSetupTimeoutMs);
 
 const quote = (sku: string): pricing.CreateQuoteResponse => {
   const amount = { amountMinor: 125, currency: "XXX" };
@@ -83,7 +114,7 @@ it("keeps the restricted definitions dark and closes ordinary draft and raw item
   const snapshot = quote(issued.facts.code);
   for (const operation of ["commerce_create_order_draft_with_outbox", "commerce_create_promoted_order_draft_with_outbox"]) {
     await expect(env.runtime.query(`SELECT public.${operation}($1,$2,$3,$4)`,
-      [randomUUID(), snapshot, draft(snapshot), clientId])).rejects.toMatchObject({ message: "catalog_admission_quote_authority_required" });
+      [randomUUID(), snapshot, draft(snapshot), clientId])).rejects.toMatchObject(closed);
   }
   await expect(createPostgresNativeCheckoutPersistence(env.runtime).createOrderDraft({
     idempotencyKey: randomUUID(), quoteSnapshot: snapshot,
@@ -93,8 +124,62 @@ it("keeps the restricted definitions dark and closes ordinary draft and raw item
       VALUES($1,'pending_payment','XXX',125) RETURNING id`, [clientId])).rows[0]!.id;
     await db.query(`INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
       VALUES($1,$2,1,1,125,125)`, [orderId, issued.skuId]);
-  })).rejects.toMatchObject({ message: "catalog_admission_quote_authority_required" });
+  })).rejects.toMatchObject(closed);
   expect(await counts()).toEqual(before);
+});
+
+it("preserves an original receipt before fresh offer-only admission on both native adapters", async () => {
+  const plain = createPostgresNativeCheckoutPersistence(env.runtime);
+  const acquisition = createPostgresAcquisitionCheckoutPersistence(env.runtime, {
+    regionCode: "ZZ", financialPolicy: {} as never, isAcquisitionDiscount() { throw new Error("Policy must not run"); },
+  });
+  const snapshot = quote(legacySku);
+  Object.assign(snapshot.quote.context!, { offerVersion: "example:checkout@1" });
+  const request = { idempotencyKey: randomUUID(), quoteSnapshot: snapshot };
+  const saved = await plain.createOrderDraft(request, { clientId });
+  const before = await counts();
+  await projectOfferOnlyMembership(env.owner, legacyId, legacyId, legacySku, "example:checkout@1");
+  try {
+    for (const port of [plain, acquisition]) {
+      await expect(port.createOrderDraft(request, { clientId })).resolves.toMatchObject({
+        orderDraft: { orderId: saved.orderDraft.orderId, replayed: true },
+      });
+      for (const offerVersion of ["example:checkout@1", { version: "example:checkout@1" }]) {
+        const fresh = quote(legacySku);
+        Object.assign(fresh.quote.context!, { offerVersion, mode: "subscription", cadenceDays: 3661 });
+        await expect(port.createOrderDraft({ idempotencyKey: randomUUID(), quoteSnapshot: fresh }, { clientId }))
+          .rejects.toMatchObject({ message: closed.hint, details: { reason: closed.message } });
+      }
+    }
+    expect(await counts()).toEqual(before);
+  } finally {
+    await env.owner.query("UPDATE public.catalog_skus SET publication_facts=NULL WHERE id=$1", [legacyId]);
+  }
+});
+
+it("refuses a fresh recovery link using retained owner acceptance without live demand", async () => {
+  const source = randomUUID(), key = `receipt:${source}`;
+  const facts = issued.facts as typeof issued.facts & { optionDigest: string };
+  const product = issued.product as typeof issued.product & { definitionDigest: string };
+  const acceptance = { schemaVersion: 2, lines: [{ schemaVersion: 2, skuId: issued.skuId, skuCode: facts.code,
+    skuRevisionId: issued.skuRevisionId, publicationHead: issued.head, typeRef: product.type,
+    netContent: facts.netContent, optionDigest: facts.optionDigest, definitionDigest: product.definitionDigest }] };
+  await transaction(env.owner, async db => {
+    await db.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,'cancelled','XXX',0)",
+      [source, clientId]);
+    await db.query("SELECT public.catalog_attach_order_acceptance($1,$2,$3,$4)", [source, acceptance, key, { [facts.code]: 1 }]);
+    await db.query(`INSERT INTO public.commerce_order_draft_receipts(idempotency_key,request_fingerprint,order_id,response_payload)
+      VALUES($1,$2,$3,$4)`, [key, "a".repeat(32), source, { orderDraft: { orderId: `order_${source}`,
+       quoteSnapshot: { quote: { lines: [{ sku: facts.code, quantity: 1 }] } } } }]);
+  });
+  const request = { idempotencyKey: `recovery:${source}`, quoteSnapshot: quote(legacySku) };
+  const replacement = (await createPostgresNativeCheckoutPersistence(env.runtime).createOrderDraft(request, { clientId })).orderDraft.orderId.slice(6);
+  const before = await counts();
+  await expect(env.runtime.query("SELECT public.commerce_prepare_expired_checkout_recovery($1,$2,$3,1000,now())",
+    [request.idempotencyKey, source, replacement])).rejects.toMatchObject(closed);
+  expect(await counts()).toEqual(before);
+  expect((await env.owner.query("SELECT recreated_from_order_id FROM public.commerce_orders WHERE id=$1", [replacement])).rows)
+    .toEqual([{ recreated_from_order_id: null }]);
 });
 
 it("authenticates exact receipts, preserves historical replay and rejects changes to committed submit evidence", async () => {

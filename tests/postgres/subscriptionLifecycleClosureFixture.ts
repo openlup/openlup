@@ -17,6 +17,7 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions,
   type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { tryLeaseTemplateDatabase } from "../helpers/pgTemplateBroker.js";
 import { fixture } from "../helpers/fulfillmentNative.js";
 import { AT, call, failure, later, prepareOriginal, sandboxRenewal as renewal } from "./subscriptionNativeFixture.js";
 
@@ -30,9 +31,8 @@ const priorInventories = {
   "qualified-v2": "110468fa4e15f48e27a8bf2f22ccc4021d03ec0986f9cbb677643a322ae870ae",
   "qualified-admin": "67f5e319f3724f45e1136ad939b11150a07e64d79bfacf746e05c9e28de46fdf"
 } as const;
-export async function lifecycleInstallation(profile: LifecycleProfile) {
+async function prepareLifecycleCluster(profile: LifecycleProfile) {
   const container = await runPostgresContainer({ name: `lifecycle-closure-${profile}-${process.pid}`, password: "synthetic-conformance" });
-  const root = mkdtempSync(join(tmpdir(), `lifecycle-prefix-${profile}-`));
   const pools: Pool[] = [];
   const pool = (connectionString: string, options?: string) => { const p = new Pool({ connectionString, options: `${options ?? ""} -c timezone=${lifecycleTimeZone}` }); pools.push(p); return p; };
   try {
@@ -50,6 +50,98 @@ export async function lifecycleInstallation(profile: LifecycleProfile) {
     const url = login(installation.generation === "legacy" ? "postgres" : installation.migrationLogin);
     const migration = pool(url, installation.generation === "qualified-v2" ? qualifiedPostgresStartupOptions(installation)
       : installation.generation === "qualified-admin" ? qualifiedAdminPostgresStartupOptions(installation) : undefined);
+    const runner = (sourceRoot = process.cwd()) => createPostgresMigrationRunner({ connectionString: url }, { root: sourceRoot, installation, poolFactory: () => migration });
+    const makeHandle = (cleanupExtra?: () => void) => {
+      const runtime = profile === "legacy" ? owner : pool(login(r), "-c role=service_role");
+      return {
+        owner, migration, runtime, runner: runner(), profile,
+        close: async () => { try { await closePostgres(container, pools); } finally { cleanupExtra?.(); } },
+        async actor<T>(principal: string, work: (client: PoolClient) => Promise<T>) {
+          // Owner is fixture setup only until SET ROLE; the operation has exactly actor privileges.
+          const db = await owner.connect();
+          try { await db.query("BEGIN"); await db.query("SET LOCAL ROLE authenticated");
+            await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal, role: "authenticated" })]);
+            const value = await work(db); await db.query("COMMIT"); return value;
+          } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+        },
+      };
+    };
+    return { container, pools, owner, runner, makeHandle };
+  } catch (error) { await closePostgres(container, pools); throw error; }
+}
+
+/** Direct current-manifest installation for tests that do not witness the prefix-to-current upgrade diff. */
+export async function lifecycleInstallation(profile: LifecycleProfile, options?: { freshCluster?: boolean }) {
+  if (!options?.freshCluster) {
+    const lease = await tryLeaseTemplateDatabase(profile, "lifecycle");
+    if (lease) {
+      const pools: Pool[] = [];
+      const pool = (connectionString: string, pgOptions?: string) => {
+        const p = new Pool({ connectionString, options: `${pgOptions ?? ""} -c timezone=${lifecycleTimeZone}` });
+        pools.push(p);
+        return p;
+      };
+      try {
+        const m = "lifecycle_m", r = "lifecycle_r", s = "lifecycle_s";
+        const installation: { generation: "legacy" } | QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation =
+          profile === "legacy"
+            ? { generation: "legacy" }
+            : {
+              generation: profile,
+              roleMode: "installer-managed",
+              bootstrapLogin: "postgres",
+              migrationLogin: profile === "qualified-admin" ? m : "postgres",
+              runtimeLogin: r,
+              restoreLogin: s,
+            };
+        const owner = pool(lease.ownerUrl);
+        const startupOptions = installation.generation === "qualified-v2"
+          ? qualifiedPostgresStartupOptions(installation)
+          : installation.generation === "qualified-admin"
+            ? qualifiedAdminPostgresStartupOptions(installation)
+            : undefined;
+        const migration = pool(lease.migrationUrl, startupOptions);
+        const runtime = profile === "legacy" ? owner : pool(lease.runtimeUrl, "-c role=service_role");
+        const runner = createPostgresMigrationRunner({ connectionString: lease.migrationUrl }, { root: process.cwd(), installation, poolFactory: () => migration });
+        const closeLeased = async () => {
+          // Suppress expected 57P01 errors if teardown races with a backend exiting after Pool.end().
+          for (const value of pools) value.on("error", () => {});
+          let closeError: unknown;
+          try { await closePostgres([], pools); } catch (error) { closeError = error; }
+          await lease.release();
+          if (closeError) throw closeError;
+        };
+        return {
+          owner, migration, runtime, runner, profile,
+          close: closeLeased,
+          async actor<T>(principal: string, work: (client: PoolClient) => Promise<T>) {
+            // Owner is fixture setup only until SET ROLE; the operation has exactly actor privileges.
+            const db = await owner.connect();
+            try { await db.query("BEGIN"); await db.query("SET LOCAL ROLE authenticated");
+              await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal, role: "authenticated" })]);
+              const value = await work(db); await db.query("COMMIT"); return value;
+            } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+          },
+        };
+      } catch (error) {
+        for (const value of pools) value.on("error", () => {});
+        try { await closePostgres([], pools); } finally { await lease.release(); }
+        throw error;
+      }
+    }
+  }
+  const cluster = await prepareLifecycleCluster(profile);
+  try {
+    await cluster.runner().apply();
+    return cluster.makeHandle();
+  } catch (error) { await closePostgres(cluster.container, cluster.pools); throw error; }
+}
+
+/** Prefix-to-current upgrade installation witnessing before/after catalog, guard and function bodies. */
+export async function lifecycleUpgradeInstallation(profile: LifecycleProfile) {
+  const cluster = await prepareLifecycleCluster(profile);
+  const root = mkdtempSync(join(tmpdir(), `lifecycle-prefix-${profile}-`));
+  try {
     const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
     const prefix = structuredClone(manifest);
     prefix.objectInventorySha256 = priorInventories.legacy;
@@ -65,41 +157,34 @@ export async function lifecycleInstallation(profile: LifecycleProfile) {
       }
     }
     mkdirSync(resolve(root, "config"), { recursive: true }); writeFileSync(resolve(root, "config/platform-migration-manifest.json"), JSON.stringify(prefix));
-    const runner = (sourceRoot = process.cwd()) => createPostgresMigrationRunner({ connectionString: url }, { root: sourceRoot, installation, poolFactory: () => migration });
-    await runner(root).apply();
-    const catalog = async () => (await owner.query(`SELECT oid::regprocedure::text AS signature,proowner,proacl::text,prosecdef,proconfig,provolatile,proparallel
+    await cluster.runner(root).apply();
+    const catalog = async () => (await cluster.owner.query(`SELECT oid::regprocedure::text AS signature,proowner,proacl::text,prosecdef,proconfig,provolatile,proparallel
       FROM pg_proc WHERE oid=ANY($1::regprocedure[]) ORDER BY oid`, [[
       "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
       "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz)",
       "public.customer_subscription_pause_as_actor(uuid,text,text,text)"]])).rows;
     const guard = async () => ({
-      function: (await owner.query<{ definition: string; body: string }>(`SELECT pg_get_functiondef(oid) AS definition, prosrc AS body
+      function: (await cluster.owner.query<{ definition: string; body: string }>(`SELECT pg_get_functiondef(oid) AS definition, prosrc AS body
         FROM pg_catalog.pg_proc WHERE oid='public.commerce_order_assert_line_sum()'::regprocedure`)).rows,
-      triggers: (await owner.query(`SELECT tgname,pg_get_triggerdef(oid) AS definition FROM pg_trigger
+      triggers: (await cluster.owner.query(`SELECT tgname,pg_get_triggerdef(oid) AS definition FROM pg_trigger
         WHERE tgname IN ('trg_commerce_orders_line_sum','trg_commerce_order_items_line_sum') ORDER BY tgname`)).rows,
     });
-    const bodies = async () => (await owner.query(`SELECT oid::regprocedure::text AS signature,prosrc AS body,
+    const bodies = async () => (await cluster.owner.query(`SELECT oid::regprocedure::text AS signature,prosrc AS body,
       encode(sha256(convert_to(prosrc,'UTF8')),'hex') AS body_sha256,pg_get_functiondef(oid) AS installed_definition
       FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname=ANY($1::text[]) ORDER BY oid::regprocedure::text`, [[
       "subscription_command_apply", "subscription_apply_lifecycle_action", "customer_subscription_pause_as_actor",
       "subscription_pause_close_recovery", "subscription_terminalize_unpaid_artifacts"]])).rows;
     const before = await catalog(), guardBefore = await guard(), bodiesBefore = await bodies();
-    await runner().apply();
+    await cluster.runner().apply();
     const after = await catalog(), guardAfter = await guard(), bodiesAfter = await bodies();
-    const runtime = profile === "legacy" ? owner : pool(login(r), "-c role=service_role");
-    return { owner, migration, runtime, before, after, guardBefore, guardAfter, bodiesBefore, bodiesAfter, runner: runner(), profile,
-      close: async () => { try { await closePostgres(container, pools); } finally { rmSync(root, { recursive: true, force: true }); } },
-      async actor<T>(principal: string, work: (client: PoolClient) => Promise<T>) {
-        // Owner is fixture setup only until SET ROLE; the operation has exactly actor privileges.
-        const db = await owner.connect();
-        try { await db.query("BEGIN"); await db.query("SET LOCAL ROLE authenticated");
-          await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal, role: "authenticated" })]);
-          const value = await work(db); await db.query("COMMIT"); return value;
-        } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
-      } };
-  } catch (error) { try { await closePostgres(container, pools); } finally { rmSync(root, { recursive: true, force: true }); } throw error; }
+    return {
+      ...cluster.makeHandle(() => rmSync(root, { recursive: true, force: true })),
+      before, after, guardBefore, guardAfter, bodiesBefore, bodiesAfter,
+    };
+  } catch (error) { try { await closePostgres(cluster.container, cluster.pools); } finally { rmSync(root, { recursive: true, force: true }); } throw error; }
 }
 export type LifecycleInstallation = Awaited<ReturnType<typeof lifecycleInstallation>>;
+export type LifecycleUpgradeInstallation = Awaited<ReturnType<typeof lifecycleUpgradeInstallation>>;
 export async function lifecycleSubject(owner: Pool) {
   const f = await renewal(owner);
   await owner.query("DELETE FROM public.subscription_renewal_operations WHERE id=$1", [f.operation]);

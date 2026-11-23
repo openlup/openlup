@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { reviewedBatchBytes, reviewedBatchPaths } from "./reviewed-batch-rail.ts";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertChannelIngestForward, assertBatchedForward, assertManagedCommerceForward, assertSupportAuthorityForward, assertCoLocatedForwardApproval, assertForwardApproval, assertReviewedPlatformForward, assertUnchangedForwardApproval, batchedFunctionDefinitions, changedForwardApprovals, readReviewedForwardRegistry, reviewedFunctionDefinitions, sqlSha256, sqlStatements, type BatchedForwardBinding, type ManagedCommerceForwardBinding, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { resolveDocumentationBase } from "./documentation-git.ts";
@@ -248,9 +248,13 @@ it("preserves N1 historical 14-pin approval through the re-pin and separately ap
   const registryPath = "config/reviewed-platform-forwards.json";
   try {
     git("init", "--quiet");
-    for (const directory of ["db/platform/migrations", "supabase/migrations"]) for (const file of readdirSync(directory)) {
-      const path = `${directory}/${file}`;
-      if (!pins.some(pin => pin.path === path)) put(path, readFileSync(path));
+    const maxHistoricalPath = (dir: string) => pins.filter(pin => pin.path.startsWith(`${dir}/`)).map(pin => pin.path).sort().at(-1) ?? "";
+    for (const directory of ["db/platform/migrations", "supabase/migrations"]) {
+      const limit = maxHistoricalPath(directory);
+      for (const file of readdirSync(directory)) {
+        const path = `${directory}/${file}`;
+        if (path <= limit && !pins.some(pin => pin.path === path)) put(path, readFileSync(path));
+      }
     }
     expect(historical.batchedForwards).toHaveLength(14);
     // A historical set must never become a valid current-candidate inventory.
@@ -298,10 +302,17 @@ it("retains separate prior approval in CI and release, and refuses incorrect pin
   const commit = (message: string) => { git("add", "."); git("-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", message); return git("rev-parse", "HEAD"); };
   try {
     git("init", "--quiet");
+    const relevantControlPins = [
+      ...pins,
+      ...registry.portableReplacementForwards!,
+      ...registry.portableCreationForwards!,
+      ...registry.managedInvoicingForwards!,
+    ];
     for (const folderName of ["db/platform/migrations", "supabase/migrations"]) {
+      const limit = relevantControlPins.filter(pin => pin.path.startsWith(`${folderName}/`)).map(pin => pin.path).sort().at(-1) ?? "";
       for (const file of readdirSync(folderName)) {
         const path = `${folderName}/${file}`;
-        if (!pins.some(pin => pin.path === path)) put(path, readFileSync(path));
+        if (path <= limit && !pins.some(pin => pin.path === path)) put(path, readFileSync(path));
       }
     }
     put("config/reviewed-platform-forwards.json", registryBytes);
@@ -1791,17 +1802,30 @@ describe("M17 channel ingest approval", () => {
     return waitNativeAdmission({ cwd: root, event, env, api, runGit, now: () => 1000, deadlineMs: 1 });
   }
 
-  describe.each(["PR", "release", "approval", "co-location", "pull_request", "merge_group"])("fixed M17 missing binding at %s caller", caller => {
-    it.each(sources)("refuses expand-only SQL at reserved path $path with an unchanged empty marker", async source => {
-      const root = mkdtempSync(join(tmpdir(), "openlup-m17-unbound-"));
-      const git = (...args: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
-      const put = (path: string, bytes: Buffer | string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), bytes); };
-      const commit = () => { git("add", "."); git("commit", "-qm", "Unbound reserved path fixture"); return git("rev-parse", "HEAD"); };
-      try {
-        git("init", "-q", "-b", "main"); put(registryPath, encode(marker)); const base = commit();
-        git("update-ref", "refs/remotes/origin/main", base);
+  describe("fixed M17 missing binding across all callers", () => {
+    let root = "";
+    let base = "";
+    const git = (...args: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
+    const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), value); };
+    beforeAll(() => {
+      root = mkdtempSync(join(tmpdir(), "openlup-m17-unbound-"));
+      git("init", "-q", "-b", "main");
+      put(registryPath, encode(marker));
+      git("add", ".");
+      git("commit", "-qm", "Unbound reserved path fixture");
+      base = git("rev-parse", "HEAD");
+      git("update-ref", "refs/remotes/origin/main", base);
+    });
+    afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
+    describe.each(["PR", "release", "approval", "co-location", "pull_request", "merge_group"])("fixed M17 missing binding at %s caller", caller => {
+      it.each(sources)("refuses expand-only SQL at reserved path $path with an unchanged empty marker", async source => {
+        git("checkout", "-qf", base);
+        git("clean", "-fdq");
         const sql = Buffer.from("CREATE TABLE public.m17_unbound(id uuid);");
-        put(source.path, sql); const head = commit();
+        put(source.path, sql);
+        git("add", ".");
+        git("commit", "-qm", "Unbound reserved path fixture");
+        const head = git("rev-parse", "HEAD");
         expect(git("diff", "--name-only", base, head)).toBe(source.path);
         if (caller === "PR" || caller === "release") {
           expect(() => assertAdmittedPlatformForward(root, base, head, source.path, sql, caller === "release")).toThrow(/reviewed.*path or bytes|binding/u);
@@ -1809,7 +1833,7 @@ describe("M17 channel ingest approval", () => {
         } else if (caller === "approval") expect(() => assertForwardApproval(root, base, head)).toThrow(/binding/u);
         else if (caller === "co-location") expect(() => assertCoLocatedForwardApproval(root, base, head)).toThrow(/binding/u);
         else await expect(nativeAdmission(root, base, head, caller)).rejects.toThrow(/binding/u);
-      } finally { rmSync(root, { recursive: true, force: true }); }
+      });
     });
   });
 
@@ -1869,4 +1893,23 @@ describe("M17 channel ingest approval", () => {
       expect(() => assertForwardApproval(root, control, lateApproval)).toThrow(/SQL is introduced/u);
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 300_000); // Measured 2026-11-04: hosted censored at 61.504 s, local max 29.845 s; 4x observed lower bound rounded up.
+});
+
+describe("memoized SQL and registry readers", () => {
+  it("isolates cached readReviewedForwardRegistry clones from caller mutations", () => {
+    const first = readReviewedForwardRegistry(registryBytes);
+    const originalSha = first.baselineSha256;
+    first.baselineSha256 = "0".repeat(64);
+    const second = readReviewedForwardRegistry(registryBytes);
+    expect(second.baselineSha256).toBe(originalSha);
+  });
+
+  it("preserves exact statement-order error precedence in batchedFunctionDefinitions when names are omitted", () => {
+    const fn = "CREATE FUNCTION public.demo_a(p_id uuid) RETURNS void LANGUAGE sql AS $$ SELECT 1; $$;";
+    const malformed = "CREATE FUNCTION other_schema.demo_b() RETURNS void LANGUAGE sql AS $$ SELECT 1; $$;";
+    expect(() => batchedFunctionDefinitions(Buffer.from(`${fn}\n${fn}\n${malformed}`)))
+      .toThrow("reviewed batch duplicate signature: public.demo_a(uuid)");
+    expect(() => batchedFunctionDefinitions(Buffer.from(`${malformed}\n${fn}\n${fn}`)))
+      .toThrow("reviewed batch refuses unsupported function header");
+  });
 });

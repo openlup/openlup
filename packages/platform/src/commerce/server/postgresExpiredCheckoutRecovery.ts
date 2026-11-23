@@ -1,5 +1,8 @@
 import type { ExpiredCheckoutRecoveryWritePort } from './expiredCheckoutRecovery.js';
 import { ExpiredCheckoutRecoveryError } from './expiredCheckoutRecovery.js';
+import { catalogAdmissionRefusal } from './catalogAdmissionRefusal.js';
+import { catalogAdmissionRefusalMessage } from './catalogAdmissionRefusalMessage.js';
+import { CommerceOrderDraftPersistenceError } from '../errors.js';
 export interface CheckoutRecoveryWriteExecutor { query(sql: string,values?: unknown[]): Promise<{rows:Record<string,unknown>[]}> }
 /** Service executor only. No raw mutation or authority-bearing result is exposed. */
 export function createPostgresExpiredCheckoutRecoveryPort(db: CheckoutRecoveryWriteExecutor,policy:{recoveryWindowMs:number;now?:()=>Date}): ExpiredCheckoutRecoveryWritePort {
@@ -11,6 +14,8 @@ export function createPostgresExpiredCheckoutRecoveryPort(db: CheckoutRecoveryWr
    if(typeof value!=='object'||value===null||!('replacementOrderId'in value)||typeof value.replacementOrderId!=='string'||!('replayed'in value)||typeof value.replayed!=='boolean')throw new Error('invalid');
    return{replacementOrderId:value.replacementOrderId,replayed:value.replayed};
   }catch(error){const message=error instanceof Error?error.message:'';
+   const admission=catalogAdmissionRefusal(error);
+   if(admission==='catalog_admission_quote_authority_required')throw new CommerceOrderDraftPersistenceError(catalogAdmissionRefusalMessage(admission),{reason:admission});
    if(message==='native_prepared_attempt_store_unsupported')throw new ExpiredCheckoutRecoveryError('unavailable','native_prepared_attempt_store_unsupported');
    if(message==='commerce_expired_recovery_order_changed')throw new ExpiredCheckoutRecoveryError('order_changed');
    throw new ExpiredCheckoutRecoveryError('unavailable');

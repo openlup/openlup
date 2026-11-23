@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -118,19 +118,21 @@ describe("ci-vitest-sequencer", () => {
   it("instantiates WeightedSequencer against the repository manifest and sorts heaviest files first", async () => {
     const rootDir = process.cwd();
     const sequencer = new WeightedSequencer({ config: { root: rootDir } } as unknown as Vitest);
-    const heavyFile = "tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts";
-    const mediumFile = "scripts/ci-vitest-shard.test.ts";
-    const lightFile = "scripts/preflight.test.ts";
-
     const manifest = loadSequencerWeights(DEFAULT_WEIGHTS_PATH, rootDir);
-    expect(manifest.durationsMs[heavyFile]).toBeGreaterThan(manifest.durationsMs[lightFile]);
+    const ranked = Object.entries(manifest.durationsMs ?? {})
+      .filter(([path, ms]) => Number.isFinite(ms) && ms > 0 && statSync(resolve(rootDir, path), { throwIfNoEntry: false })?.isFile())
+      .sort(([, left], [, right]) => left - right);
+    const [light] = ranked;
+    const heavy = ranked.at(-1);
+    const medium = light && heavy && ranked.find(([, ms]) => light[1] < ms && ms < heavy[1]);
+    if (!light || !medium || !heavy) throw new Error("The repository weights need three distinct durations for existing files");
 
     const sorted = await sequencer.sort([
-      makeSpec(rootDir, lightFile),
-      makeSpec(rootDir, mediumFile),
-      makeSpec(rootDir, heavyFile),
+      makeSpec(rootDir, light[0]),
+      makeSpec(rootDir, medium[0]),
+      makeSpec(rootDir, heavy[0]),
     ]);
 
-    expect(sorted[0].moduleId).toBe(resolve(rootDir, heavyFile));
+    expect(sorted[0].moduleId).toBe(resolve(rootDir, heavy[0]));
   });
 });

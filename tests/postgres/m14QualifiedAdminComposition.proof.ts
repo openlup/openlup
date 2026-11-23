@@ -12,6 +12,7 @@ import { qualifiedAdminPostgresCatalogPayload, qualifiedAdminPostgresStartupOpti
 import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { runReleasedSchemaUpgradeProof } from "./m14ReleasedSchemaUpgrade.proof.js";
+import { proveRuntimeCheckout, watchRuntimeCheckoutAclDelta } from "./catalogRuntimeCheckout.proof.js";
 import { proveCheckoutOwnerGrant, provisionCheckoutOwner, readIssuedPlatformManifest, withIssuedPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 
 const lockName = "openlup:public-platform-migrations:v1";
@@ -20,7 +21,7 @@ const identifier = (name: string): string => { assert.match(name, /^[a-z_][a-z0-
 
 export async function runQualifiedAdminCompositionProof(input: { roleMode: "installer-managed" | "operator-provisioned"; inventory: string; database?: PoolConfig;
  trustedControlPlane?: { roleNames: readonly string[] }; target?: "rds"; layout?: "serial-cluster";
- rolePrefix?: string; schemaProof?: { previousApplicationPath: string } }) {
+ rolePrefix?: string; schemaProof?: { previousApplicationPath: string }; freshRuntimeCheckout?: boolean }) {
  const pools: Pool[] = [];
  let container;
  try {
@@ -76,8 +77,17 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
     connectionString: loginUrl(m), options: qualifiedAdminPostgresStartupOptions(selection) }, installation: selection,
     previousApplicationPath: input.schemaProof.previousApplicationPath, requirePreviousApplication: true, rolePrefix: prefix });
   if (!input.database) await provisionCheckoutOwner(bootstrap, selection, databaseName, password, operatorPool);
+  const assertAclDelta = !input.database ? watchRuntimeCheckoutAclDelta(migrationPool) : undefined;
   const before = await runner.status();
   assert.deepEqual(before, { applied: [], pending: expected.map(entry => entry.file) });
+  const runtime = pool(loginUrl(r)), restore = pool(loginUrl(s));
+  const deniedCheckout = input.database ? [] : [restore, pool(loginUrl("openlup_checkout_owner")), ...(operatorPool ? [operatorPool] : [])];
+  if (input.freshRuntimeCheckout) {
+    assert.deepEqual(await runner.apply(), { applied: expected.map(entry => entry.file) });
+    assertAclDelta?.();
+    await proveRuntimeCheckout(bootstrap, runtime, m, deniedCheckout);
+    return { freshRuntimeCheckout: true, ledgerRows: expected.length };
+  }
   assert.deepEqual((await migrationPool.query("SELECT current_user,session_user")).rows, [{ current_user: m, session_user: m }]);
   const roleFacts = (await migrationPool.query("SELECT rolsuper,rolcreaterole FROM pg_catalog.pg_roles WHERE rolname=current_user")).rows[0];
   assert.deepEqual(roleFacts, { rolsuper: false, rolcreaterole: input.roleMode === "installer-managed" });
@@ -115,6 +125,7 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   assert.deepEqual(await runner.status(), { applied: issuedExpected.map(entry => entry.file),
     pending: expected.slice(issuedExpected.length).map(entry => entry.file) });
   const suffix = await runner.apply();
+  assertAclDelta?.();
   assert.deepEqual(suffix.applied, expected.slice(issuedExpected.length).map(entry => entry.file));
   const installed = (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
   assert.deepEqual(installed.map(({ executed_at: _time, ...row }) => row), expected.map((entry, position) => ({ catalog_path: entry.file, sha256: entry.sha256, position })));
@@ -128,6 +139,7 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   finally { await switchedSession.query("RESET ROLE"); }
   const inventory = await observeInventory(manifest.objectInventorySha256);
   if (!input.database) {
+    await proveRuntimeCheckout(bootstrap, runtime, m, deniedCheckout);
     await proveCheckoutOwnerGrant(loginUrl(m), loginUrl(r), selection, password);
     await bootstrap.query("DROP ROLE openlup_checkout_owner");
   }
@@ -138,7 +150,6 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
     JOIN pg_catalog.pg_roles member ON member.oid=a.member WHERE member.rolname=$1 ORDER BY granted`, [m])).rows;
   assert.deepEqual(edges.map(row => [row.granted, row.admin_option]),
     ["anon", "authenticated", "openlup_retained_import_owner", "platform_acquisition_owner", "platform_acquisition_runtime", "service_role"].sort().map(name => [name, true]));
-  const runtime = pool(loginUrl(r)), restore = pool(loginUrl(s));
   for (const [actor, name] of [[runtime, r], [restore, s]] as const) {
     assert.deepEqual((await actor.query("SELECT current_user,session_user")).rows, [{ current_user: name, session_user: name }]);
     await assert.rejects(actor.query("CREATE TABLE public.forbidden_qualified_object(id integer)"), { code: "42501" });

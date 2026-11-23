@@ -14,8 +14,9 @@ beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error("Restricted bootstrap qualification requires Docker PostgreSQL 16");
 }, postgresSetupTimeoutMs);
 
+// Exactly two independent single-container modes (max 2 containers concurrently).
 for (const mode of modes) {
-  it(`qualifies the restricted issued prefix and current production suffix in ${mode.roleMode} mode`, async () => {
+  it.concurrent(`qualifies the restricted issued prefix and current production suffix in ${mode.roleMode} mode`, async () => {
     const current = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-admin", { roleMode: mode.roleMode });
     const count = 1 + current.forward.length;
     expect(count).toBe(installationInventory.current.profiles[mode.roleMode === "installer-managed" ? "admin-managed" : "admin-operator"].count);

@@ -36,7 +36,11 @@ function observedAt(subject: unknown, path: string): string {
   if (value === undefined) return `${label} is absent`;
   // Serialize only the prefix so deeply nested invalid input can still produce a finding.
   let remaining = 160, preview = "";
-  const json = (input: unknown): string => JSON.stringify(typeof input === "string" ? input.slice(0, remaining * 2) : input);
+  function json(input: unknown): string {
+    if (typeof input !== "string") return JSON.stringify(input);
+    const safe = /(?:^|[\s"'(=,[])(?:file:|[a-z]:[\\/]|[\\/].*[\\/])/isu.test(input) ? "<host path>" : input;
+    return JSON.stringify(safe.slice(0, remaining * 2));
+  }
   function append(text: string): void {
     const points = Array.from(text).slice(0, remaining);
     preview += points.join("");
@@ -128,9 +132,8 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
 async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, Validator>): Promise<CatalogConformanceReport> {
   const findings: CatalogConformanceFinding[] = [];
   let unavailable = false, violated = false, recheck = command;
-  let parsed: unknown;
-  function add(issue: string | Issue | CatalogDefinitionIssue, path: string, fixture = "", requiredEvidence = false,
-    observed = observedAt(parsed, path)): void {
+  let parsed: unknown, observedSubject: unknown;
+  function add(issue: string | Issue | CatalogDefinitionIssue, path: string, fixture = "", requiredEvidence = false): void {
     const code = typeof issue === "string" ? issue : issue.code;
     const adopterIssue = typeof issue !== "string" && "kind" in issue && issue.kind === "adopterRule" ? issue : undefined;
     const rule = !adopterIssue && Object.hasOwn(CATALOG_CONFORMANCE_RULES, code)
@@ -140,25 +143,23 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     if (rule.severity === "error") {
       if (requiredEvidence) unavailable = true; else violated = true;
     }
-    findings.push({ code, severity: rule.severity, path, fixture, observed,
+    findings.push({ code, severity: rule.severity, path, fixture, observed: observedAt(observedSubject, path),
       cause: rule.rule, fix, recipe: rule.recipe, recheck,
       evidence: { declared: "JSON fixture observations", bound: validators ? "Offline owners and registered content validators" : "Offline owner validators only", checked: path,
         unknown: ["Installed and runtime state; see boundary"] } });
   }
-  function advise(code: Extract<CatalogConformanceCode, `advisory_${string}`>, path: string, fixture = "", observed?: string): void {
-    add(code, path, fixture, false, observed);
+  function advise(code: Extract<CatalogConformanceCode, `advisory_${string}`>, path: string, fixture = ""): void {
+    add(code, path, fixture);
   }
   // Only shared owner calls enter this boundary; parsing, checker logic and CLI I/O remain outside.
-  async function owner<T>(path: string, work: () => T | Promise<T>, combinationPath: "dot" | "pointer" = "dot"): Promise<T | undefined> {
+  async function owner<T>(path: string, work: () => T | Promise<T>,
+    combinationPath = (error: CatalogCombinationError) => pointer(error.path.split("."))): Promise<T | undefined> {
     try { return await work(); }
     catch (error) {
       if (error instanceof SyntaxError) throw error;
       const named = error instanceof Error ? "code" in error && typeof error.code === "string" ? error.code : error.message : "";
       if (!OWNER_INPUT_CODES.has(named)) throw error;
-      const suffix = error instanceof CatalogCombinationError
-        ? combinationPath === "pointer" ? error.path
-          : pointer(skuIdPathErrors.has(error) ? [error.path] : error.path.split("."))
-        : "";
+      const suffix = error instanceof CatalogCombinationError ? combinationPath(error) : "";
       add(named, path + suffix);
       return undefined;
     }
@@ -183,7 +184,10 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       boundary: `${boundary} ${content}`, findings };
   }
   if (typeof jsonText !== "string") { add("conformance_subject_invalid", ""); return finish(); }
-  try { parsed = JSON.parse(jsonText); }
+  try {
+    parsed = JSON.parse(jsonText);
+    observedSubject = JSON.parse(jsonText);
+  }
   catch (error) {
     if (error instanceof SyntaxError) Object.defineProperty(error, Symbol.for("openlup.catalogue.json.parse"), { value: true });
     throw error;
@@ -198,8 +202,8 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
   if (typeof subject.recheck === "string") recheck = subject.recheck;
   let attributesAvailable = true, combinationsAvailable = true, packsWithContent = 0;
   const typeIdentities = new Set<string>();
-  const ready: { index: number; pack: CatalogPackInput; registry: ReturnType<typeof createCatalogProductTypeRegistry>;
-    definitionInvalid: boolean; invalidTypes: Map<string, string> }[] = [];
+  const ready: { index: number; pack: CatalogPackInput; types: CatalogPackInput["types"];
+    invalidTypes: Map<string, string>; trusted: boolean }[] = [];
   for (const [index, entry] of subject.packs.entries()) {
     const at = `/packs/${index}`;
     if (!closed(entry, ["pack", "drafts", "quantities", "attributes", "combinations", "refusals"])
@@ -230,50 +234,43 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       else invalid.add(Number(typeIndex));
     }
     if (packInvalid) continue;
-    const definitionInvalid = invalid.size > 0;
-    if (!definitionInvalid && profiles !== undefined) {
+    let definitionsRefused = invalid.size > 0;
+    if (!definitionsRefused && profiles !== undefined) {
       const prepared = await owner(`${at}/pack`, () => prepareCatalogPackManifest(pack, profiles));
-      if (!prepared) continue;
-      if ("issue" in prepared) {
-        add(prepared.issue, `${at}/pack${prepared.issue.path}`);
-        continue;
-      }
+      definitionsRefused = !prepared || "issue" in prepared;
+      if (prepared && "issue" in prepared) add(prepared.issue, `${at}/pack${prepared.issue.path}`);
     }
-    if (validators && !definitionInvalid) verifyCatalogRulesAtInstall(pack);
     const invalidTypes = new Map<string, string>();
     const types = pack.types.filter((type, i) => {
       const path = `${at}/pack/types/${i}`;
       if (!object(type) || typeof type.key !== "string" || typeof type.version !== "number") return false;
       const identity = referenceKey(type.key, String(type.version));
-      if (!invalid.has(i) && typeIdentities.has(identity)) {
-        add("definition_duplicate_identity", `${path}/key`);
-        invalid.add(i);
-      }
       if (invalid.has(i)) { invalidTypes.set(identity, path); return false; }
+      if (typeIdentities.has(identity)) add("definition_duplicate_identity", `${path}/key`);
       typeIdentities.add(identity);
       if (!type.units.some(unit => type.netContentUnits.includes(unit.code) && unit.dimension === "mass"
         && (unit.factor?.canonicalUnit === "openlup:g" || CATALOG_QUANTITY_UNITS.some(builtIn => builtIn.code === unit.code && builtIn.dimension === "mass"))))
         advise("advisory_net_content_not_publishable", `${path}/netContentUnits`);
       type.attributes?.forEach((attribute, j) => {
-        if (attribute.filterable || attribute.facetable) {
-          const at = `${path}/attributes/${j}`, flag = attribute.filterable ? "filterable" : "facetable";
-          advise("advisory_filter_flags_unused", at, "", observedAt(parsed, `${at}/${flag}`));
-        }
+        if (attribute.filterable || attribute.facetable)
+          advise("advisory_filter_flags_unused", `${path}/attributes/${j}/${attribute.filterable ? "filterable" : "facetable"}`);
       });
       return true;
     });
-    const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(types));
-    if (registry) ready.push({ index, pack, registry, definitionInvalid, invalidTypes });
+    ready.push({ index, pack, types, invalidTypes, trusted: validators !== undefined && !definitionsRefused });
   }
-  for (const { index, pack, registry, definitionInvalid, invalidTypes } of ready) {
+  for (const { index, pack, types, invalidTypes, trusted } of ready) {
     const at = `/packs/${index}`, { drafts, quantities, attributes, combinations, refusals } = subject.packs[index];
+    if (trusted) verifyCatalogRulesAtInstall(pack);
+    const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(types));
+    if (!registry) continue;
     let contentChecked = false;
     const skipped = new Set<string>();
     function skipInvalidType(ref: unknown): boolean {
       if (!object(ref) || typeof ref.key !== "string" || typeof ref.version !== "number") return false;
       const path = invalidTypes.get(referenceKey(ref.key, String(ref.version)));
       if (path === undefined) return false;
-      if (!skipped.has(path)) advise("advisory_fixtures_skipped_definition_invalid", path, "", `${path} has definition errors`);
+      if (!skipped.has(path)) advise("advisory_fixtures_skipped_definition_invalid", path);
       skipped.add(path);
       return true;
     }
@@ -294,8 +291,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       });
       const definition = registry.resolve(payload.product.type);
       const validation = validateDraftFacts(payload, { resolve: () => definition && { ...definition, validateContent: content => {
-        // A pack with definition errors has not passed trusted binding verification.
-        if (!validators || definitionInvalid) {
+        if (!trusted) {
           add("conformance_owner_unavailable", `${path}/product/sharedContent`, "", true);
           return [];
         }
@@ -316,7 +312,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
         add(issue.code, path + issue.path, "", issue.code === "attribute_reference_unresolved");
       await owner(path, () => validateDraftCombinations(definition, payload, (code, suffix) => {
         throw new CatalogCombinationError(code, suffix);
-      }, true), "pointer");
+      }, true), error => error.path);
     }
     if (contentChecked) packsWithContent++;
     for (const [i, fixture] of (quantities ?? []).entries()) {
@@ -399,11 +395,23 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
             const retained = input.retained.map(row => ({ ...row, identity: row.optionValues === null ? null
               : canonicalizeCatalogCombinationV2({ definition, axes: input.axes, options: row.optionValues }) }));
             return validateCatalogCombinationChangesV2({ ...input, definition, retained });
+          }, error => {
+            if (!skuIdPathErrors.has(error)) return pointer(error.path.split("."));
+            const duplicate = error.code === "duplicate_sku_id";
+            // The owner checks retained duplicates first and uses the incoming row for an updated SKU.
+            const fields = duplicate ? ["retained", "incoming"] as const : ["incoming", "retained"] as const;
+            for (const field of fields) {
+              const rows = input[field];
+              const first = rows.findIndex(row => row.skuId === error.path);
+              if (first < 0) continue;
+              const index = duplicate ? rows.findIndex((row, i) => i > first && row.skuId === error.path) : first;
+              if (index >= 0) return pointer([field, index, "skuId"]);
+            }
+            return "";
           });
         }
       }
     }
-    if (definitionInvalid) continue;
     const witnessed = new Set<string>();
     for (const [i, fixture] of (refusals ?? []).entries()) {
       const path = `${at}/refusals/${i}`;

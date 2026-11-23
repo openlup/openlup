@@ -46,6 +46,7 @@ import {
   proveNativeCommunicationsOperations,
   proveResendConsumer,
   proveMarketingSyncConsumer,
+  proveCommunicationsConsumer,
   catalogMigrationExpectations,
   proveCatalogCompositionConsumer,
   proveCatalogConformanceConsumer,
@@ -543,11 +544,11 @@ it("proves the installed Resend surface with no SDK/optional peers and only inje
 it("refuses extra exports and raw bypass in the installed Resend adapter", () => {
   for (const mode of ["extra-export", "unverified"] as const) {
     expect(() => proveMarketingSyncConsumer(marketingFixture(mode)), `P2 installed ${mode}`)
-      .toThrow(mode === "extra-export" ? /P2 installed exact one-export surface/ : /P2 installed pending account evidence/);
+      .toThrow(mode === "extra-export" ? /P2 packed\/built export parity/ : /P2 installed pending account evidence/);
   }
   for (const mode of ["extra-export", "raw-bypass"] as const) {
     expect(() => proveResendConsumer(resendFixture(mode)), `I02 ${mode}: named invariant assertion`)
-      .toThrow(mode === "raw-bypass" ? /AssertionError.*I02 blocked\/drop zero POST/s : /AssertionError.*I02 exact three-export surface/s);
+      .toThrow(mode === "raw-bypass" ? /AssertionError.*I02 blocked\/drop zero POST/s : /AssertionError.*I02 packed\/built export parity/s);
   }
 });
 
@@ -1110,6 +1111,12 @@ it("proves the opt-in fulfillment/omnipack entry default-off without SDK, peers 
   proveWarehouseAdapterConsumer(consumer);
 });
 
+it("keeps the packed communications contracts surface and pure rendering", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  proveCommunicationsConsumer(consumer);
+});
+
 it("M10 installed facades and composition prove positive selection, readiness refusal and lifecycle identity", () => {
   const consumer = pristinePackedA1Fixture();
   assertConsumerIsolation(consumer, root);
@@ -1644,6 +1651,9 @@ it("RP2 admits trust flags before loading and classifies failures", () => {
     const file = write("throws.mjs", sourceModule(data, `() => { throw ${failure}; }`));
     expect(call(sourceArgs(file), 74).findings[0].code).toBe("OPENLUP_E_CLI_FAILURE");
   }
+  const crossPackDuplicate = write("cross-pack-duplicate.mjs", sourceModule({ packs: [{ pack: fixturePack }, ...data.packs] })
+    + 'catalogueConformance.packs[1].pack.types[0].validateContent = () => { throw new Error("SYNTHETIC_PRIVATE_DETAIL"); };');
+  expect(call(sourceArgs(crossPackDuplicate), 74).findings[0].code).toBe("OPENLUP_E_CLI_FAILURE");
   const valid = write("valid.mjs", sourceModule(data));
   call(sourceArgs(valid), 74, [], join(temp, "missing"));
   const unavailable = { ...data, requiredChecks: ["taxonomy"] };
@@ -1906,9 +1916,11 @@ import { withCatalogPublicationRules } from "@openlup/platform/catalog";
 const pack = withCatalogPublicationRules(${JSON.stringify({ ...fixturePack, types: [{ ...fixturePack.types[0], validatorRef }] })},
   () => readFileSync(new URL("./rules.cjs", import.meta.url)));
 `;
-  function registration(name: string, title: string, replace = false) {
+  function registration(name: string, title: string, replace = false, invalidSibling = false) {
     const content = { ...contentDraft, product: { ...contentDraft.product, sharedContent: { title } } };
-    const projectedPack = replace ? '{ ...pack, types: [{ ...pack.types[0], validateContent: () => [] }] }' : "pack";
+    const types = [replace ? "{ ...pack.types[0], validateContent: () => [] }" : "pack.types[0]"];
+    if (invalidSibling) types.push('{ ...pack.types[0], key: "sample:invalid", taxClass: "missing" }');
+    const projectedPack = `{ ...pack, types: [${types.join(", ")}] }`;
     return sourceArgs(write(name, binding + `export const catalogueConformance = {
       packs: [{ pack: ${projectedPack}, drafts: [${JSON.stringify(content)}] }], requiredChecks: ["draft-content"] };
     `));
@@ -1935,6 +1947,13 @@ const pack = withCatalogPublicationRules(${JSON.stringify({ ...fixturePack, type
     ...warnings,
   ]);
   call(registration("substituted.mjs", "Example", true), 74);
+  const mixed = call(registration("substituted-mixed.mjs", "Example", true, true), 1);
+  expect(mixed.findings.map(findingIdentity)).toEqual([
+    ["/packs/0/drafts/0/product/sharedContent", "conformance_owner_unavailable", "error"],
+    ...warnings,
+    ["/packs/0/pack/types/1/taxClass", "definition_unknown_tax_class", "error"],
+    ["/requiredChecks/0", "conformance_owner_unavailable", "error"],
+  ]);
   write("rules.cjs", artifact + "\n");
   call(good, 74);
 });

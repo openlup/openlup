@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import type { HttpRequest } from "../../src/http/types.js";
 import { createNoopAdvisoryLock, type AdvisoryLock } from "../../src/scheduler/advisoryLock.js";
 import {
@@ -319,11 +319,31 @@ describe("Node scheduler", () => {
     expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: createNoopAdvisoryLock(), lockMode: "process" })).not.toThrow();
     expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: clusterLock, lockMode: "cluster" })).not.toThrow();
 
-    expect(() => createNodeScheduler({ cron, jobs, env: {}, lockMode: "cluster" }))
-      .toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
-    expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: createNoopAdvisoryLock(), lockMode: "cluster" }))
-      .toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
-    expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: unlabelledLock, lockMode: "cluster" }))
-      .toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+    const remedy = [
+      'Cause: A cluster-mode scheduler needs an AdvisoryLock that declares durability "cluster".',
+      'Fix: Pass a cluster AdvisoryLock as advisoryLock to serveNode or as lock to createNodeScheduler (for example, createPgAdvisoryLock with a dedicated PostgreSQL session), or set lockMode: "process" for an intentional single-instance host whose scheduler profile permits it.',
+      'Recheck: Repeat the failed serveNode or createNodeScheduler call with the corrected options and verify that it completes.',
+    ].join("\n");
+    const code = "OPENLUP_E_SCHEDULER_CLUSTER_LOCK_REQUIRED";
+    for (const [lock, observation] of [
+      [undefined, "No AdvisoryLock resolved."],
+      [createNoopAdvisoryLock(), 'The resolved AdvisoryLock declares durability "process".'],
+      [unlabelledLock, "The resolved AdvisoryLock is unlabelled."],
+      [
+        { ...mutex(), durability: "cluser" } as unknown as AdvisoryLock,
+        "The resolved AdvisoryLock declares an unsupported durability.",
+      ],
+    ] as const) {
+      let error: unknown;
+      try {
+        createNodeScheduler({ cron, jobs, env: {}, lock, lockMode: "cluster" });
+      } catch (reason) {
+        error = reason;
+      }
+      assert(error instanceof Error, "Expected cluster mode to refuse the resolved lock");
+      expect(error.message.split("\n")[0]).toBe(code);
+      expect(error.message).toBe([code, `Observed: ${observation}`, remedy].join("\n"));
+      expect(cron.schedule).not.toHaveBeenCalled();
+    }
   });
 });
