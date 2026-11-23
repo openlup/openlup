@@ -30,8 +30,11 @@ export function nativeHarness(label:string) {
   },
   async stop(extraContainers:PostgresContainer[]=[],extraPools:Pool[]=[]){
    const activeLease=lease; lease=undefined;
+   const allPools=[pool,...extraPools];
+   // Suppress expected 57P01 errors if teardown races with a backend exiting after Pool.end().
+   for (const value of allPools) value?.on("error", () => {});
    let closeError:unknown;
-   try { await closePostgres([container,...extraContainers], [pool,...extraPools]); } catch(error){ closeError=error; }
+   try { await closePostgres([container,...extraContainers], allPools); } catch(error){ closeError=error; }
    if (activeLease) await activeLease.release();
    if (closeError) throw closeError;
   },

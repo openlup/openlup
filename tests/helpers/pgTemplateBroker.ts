@@ -286,7 +286,29 @@ export async function startPgTemplateBroker(): Promise<PgTemplateBroker> {
           return;
         }
         const roleDigestOk = await enqueueDdl(cluster, async () => {
-          await cluster.bootstrap.query(`DROP DATABASE IF EXISTS "${lease.dbName}" WITH (FORCE)`);
+          // Wait briefly for closed pg-pool backends to finish exiting before dropping,
+          // avoiding gratuitous SIGTERM / 57P01 races on half-closed sockets.
+          const drainDeadline = Date.now() + 500;
+          let activeBackends = 1;
+          while (Date.now() < drainDeadline) {
+            const { rows } = await cluster.bootstrap.query<{ active: number }>(
+              "SELECT count(*)::int AS active FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
+              [lease.dbName],
+            );
+            activeBackends = rows[0]?.active ?? 0;
+            if (activeBackends === 0) break;
+            await new Promise((wake) => setTimeout(wake, 10));
+          }
+          if (activeBackends === 0) {
+            try {
+              await cluster.bootstrap.query(`DROP DATABASE IF EXISTS "${lease.dbName}"`);
+            } catch (dropError) {
+              if ((dropError as { code?: string })?.code !== "55006") throw dropError;
+              await cluster.bootstrap.query(`DROP DATABASE IF EXISTS "${lease.dbName}" WITH (FORCE)`);
+            }
+          } else {
+            await cluster.bootstrap.query(`DROP DATABASE IF EXISTS "${lease.dbName}" WITH (FORCE)`);
+          }
           const currentDigest = await readClusterRoleDigest(cluster.bootstrap);
           return currentDigest === cluster.baselineRoleDigest;
         });
@@ -337,6 +359,7 @@ export async function startPgTemplateBroker(): Promise<PgTemplateBroker> {
       await Promise.allSettled(clusters.map((cluster) => cluster.ddlChain));
       const containers = clusters.map((cluster) => cluster.container);
       const pools = clusters.map((cluster) => cluster.bootstrap);
+      for (const value of pools) value.on("error", () => {});
       readyClusters.clear();
       clusterPromises.clear();
       leases.clear();

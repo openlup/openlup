@@ -104,6 +104,8 @@ export async function lifecycleInstallation(profile: LifecycleProfile, options?:
         const runtime = profile === "legacy" ? owner : pool(lease.runtimeUrl, "-c role=service_role");
         const runner = createPostgresMigrationRunner({ connectionString: lease.migrationUrl }, { root: process.cwd(), installation, poolFactory: () => migration });
         const closeLeased = async () => {
+          // Suppress expected 57P01 errors if teardown races with a backend exiting after Pool.end().
+          for (const value of pools) value.on("error", () => {});
           let closeError: unknown;
           try { await closePostgres([], pools); } catch (error) { closeError = error; }
           await lease.release();
@@ -122,6 +124,7 @@ export async function lifecycleInstallation(profile: LifecycleProfile, options?:
           },
         };
       } catch (error) {
+        for (const value of pools) value.on("error", () => {});
         try { await closePostgres([], pools); } finally { await lease.release(); }
         throw error;
       }

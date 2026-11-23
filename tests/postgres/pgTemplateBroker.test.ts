@@ -95,6 +95,16 @@ describeIfDocker("PostgreSQL template broker (cloning, isolation, ownership & dr
           await adminPool.end();
         }
         await adminLease.release();
+
+        // 3. Releasing immediately after Pool.end() (with zero extra sleep) drains backends cleanly without 57P01.
+        const drainLease = await leaseFromEndpoint(broker, "qualified-admin", "drainCheck");
+        const drainPool = new Pool({ connectionString: drainLease.runtimeUrl });
+        const poolErrors: unknown[] = [];
+        drainPool.on("error", (err) => { poolErrors.push(err); });
+        await drainPool.query("SELECT 1");
+        await drainPool.end();
+        await drainLease.release();
+        expect(poolErrors).toEqual([]);
       } finally {
         await broker.close();
       }
