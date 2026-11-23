@@ -158,7 +158,10 @@ it.each(["admission", "freeze"] as const)("locks the token against concurrent re
   }
 });
 
-it.each(lifecycleProfiles)('subscription and payment method second-lock rollback on %s recovers setup-success redelivery and scheduled prepare after either abort', async profile => {
+it.each(lifecycleProfiles.flatMap(profile => [
+  ['prepare first', profile], ['setup first', profile],
+] as const))('subscription and payment method second-lock rollback with %s on %s', async (order, profile) => {
+  const setupFirst = order === 'setup first';
   const h = await lifecycleInstallation(profile);
   try {
     const { owner, runtime } = h;
@@ -219,10 +222,12 @@ it.each(lifecycleProfiles)('subscription and payment method second-lock rollback
 
     const before = await effects();
     expect(before).toMatchObject({ method_receipts: 0, prepares: 0, holds: 0, obligation: { state: 'waiting' } });
-    expect(await receive(setupAbort.executor)).toMatchObject({ status: 503 });
-    expect(setupAbort.cancelled).toEqual(['payment_method_ref_upsert']);
-    expect(await storedEvidence()).toEqual([{ id: expect.any(String), processing_status: 'received', processed_at: null }]);
-    expect(await effects()).toEqual(before);
+    if (!setupFirst) {
+      expect(await receive(setupAbort.executor)).toMatchObject({ status: 503 });
+      expect(setupAbort.cancelled).toEqual(['payment_method_ref_upsert']);
+      expect(await storedEvidence()).toEqual([{ id: expect.any(String), processing_status: 'received', processed_at: null }]);
+      expect(await effects()).toEqual(before);
+    }
 
     expect(await tick(prepareAbort.executor)).toMatchObject({ retries: [{ operationId: operation, status: 'error' }] });
     expect(prepareAbort.cancelled).toEqual(['subscription_retry_prepare']);
@@ -231,19 +236,28 @@ it.each(lifecycleProfiles)('subscription and payment method second-lock rollback
     expect((await owner.query('SELECT status FROM public.platform_job_runs WHERE job_name=$1', [`subscription-renewal:demo:${population}`])).rows)
       .toEqual([{ status: 'failed' }]);
 
-    expect(await tick(runtime)).toMatchObject({ retries: [{ operationId: operation, status: 'awaiting_provider' }] });
-    expect(await effects()).toMatchObject({ prepares: 1, method_receipts: 0, holds: 0, outbox: before.outbox, obligation: { state: 'prepared' } });
-    expect(dispatch).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ paymentMethodRef: oldMethod }));
+    if (!setupFirst) {
+      expect(await tick(runtime)).toMatchObject({ retries: [{ operationId: operation, status: 'awaiting_provider' }] });
+      expect(await effects()).toMatchObject({ prepares: 1, method_receipts: 0, holds: 0, outbox: before.outbox, obligation: { state: 'prepared' } });
+      expect(dispatch).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ paymentMethodRef: oldMethod }));
+    }
 
     expect(await receive(runtime)).toMatchObject({ status: 200 });
     const committed = await effects(), processed = await storedEvidence();
-    expect(committed).toMatchObject({ prepares: 1, method_receipts: 1, holds: 0, outbox: before.outbox,
+    const prepares = setupFirst ? 0 : 1;
+    expect(committed).toMatchObject({ prepares, method_receipts: 1, holds: 0, outbox: before.outbox,
       methods: [{ provider_method_ref: oldMethod, active: false }, { provider_method_ref: replacement, active: true }] });
     expect(processed).toEqual([{ id: expect.any(String), processing_status: 'processed', processed_at: expect.any(Date) }]);
+    if (setupFirst) {
+      // Main's nativeRetryDriver.ts:116–139,167–168 rejects the superseded method before prepare or dispatch.
+      expect(await tick(runtime)).toMatchObject({ retries: [{ operationId: operation, status: 'frozen_mandate_mismatch' }] });
+      expect(await effects()).toEqual(committed);
+      expect(committed.obligation).toMatchObject({ state: 'waiting' });
+    }
     expect(await receive(runtime)).toMatchObject({ status: 200 });
-    await tick(runtime);
+    if (!setupFirst) await tick(runtime);
     expect(await storedEvidence()).toEqual(processed);
     expect(await effects()).toEqual(committed);
-    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledTimes(prepares);
   } finally { await h.close(); }
 }, witnessTimeout);

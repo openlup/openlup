@@ -368,7 +368,10 @@ it.each(['protect', 'auto_align'] as const)('G23 static block wins over a captur
   } finally { db.release(); }
 });
 
-it.each(lifecycleProfiles)('subscription and order second-lock rollback on %s recovers renewal admission and the same operator hold after either abort', async profile => {
+it.each(lifecycleProfiles.flatMap(profile => [
+  ['renewal first', profile], ['operator first', profile],
+] as const))('subscription and order second-lock rollback with %s on %s', async (order, profile) => {
+  const holdFirst = order === 'operator first';
   const h = await lifecycleInstallation(profile);
   try {
     const { owner, runtime } = h;
@@ -407,25 +410,35 @@ it.each(lifecycleProfiles)('subscription and order second-lock rollback on %s re
     const [firstClaim] = await claim();
     expect(firstClaim).toMatchObject({ scheduled_at: new Date(f.at(0)) });
 
-    await expect(submit(holdAbort.executor)).rejects.toMatchObject({ details: { code: '57014' } });
-    expect(holdAbort.cancelled).toEqual(['oms_create_hold']);
-    expect(await effects()).toEqual(before);
-    expect(dispatch).not.toHaveBeenCalled();
-
-    expect(await tick(runtime, f.at(1))).toMatchObject({
-      renewals: [{ operationId: firstClaim.id, status: 'deferred', reason: 'delivery_alignment_protected' }],
-    });
-    expect(await claim()).toEqual([{ ...firstClaim, claim_generation: firstClaim.claim_generation + 1 }]);
-    const admitted = await effects();
-    expect(admitted).toEqual({ ...before, cases: [{ id: expect.any(String), state: 'protected' }] });
+    const recoverAdmission = async () => {
+      expect(await tick(runtime, f.at(1))).toMatchObject({
+        renewals: [{ operationId: firstClaim.id, status: 'deferred', reason: 'delivery_alignment_protected' }],
+      });
+      expect(await claim()).toEqual([{ ...firstClaim, claim_generation: firstClaim.claim_generation + 1 }]);
+    };
+    if (!holdFirst) {
+      await expect(submit(holdAbort.executor)).rejects.toMatchObject({ details: { code: '57014' } });
+      expect(holdAbort.cancelled).toEqual(['oms_create_hold']);
+      expect(await effects()).toEqual(before);
+      expect(dispatch).not.toHaveBeenCalled();
+      await recoverAdmission();
+    }
+    const oneProtectedCase = [{ id: expect.any(String), state: 'protected' }];
+    const beforeHold = await effects();
+    expect(beforeHold).toEqual(holdFirst ? before : { ...before, cases: oneProtectedCase });
 
     const hold = await submit(runtime);
     expect(hold.replayed).toBe(false);
     const committed = await effects();
-    expect(committed).toEqual({ ...admitted,
+    expect(committed).toEqual({ ...beforeHold, cases: holdFirst ? oneProtectedCase : beforeHold.cases,
       holds: [expect.objectContaining({ id: hold.hold.id, idempotency_key: key, reason: 'fulfillment_exception', status: 'active' })],
       operations: [expect.objectContaining({ id: hold.operationId, hold_id: hold.hold.id, idempotency_key: `${key}:operation` })],
     });
+    if (holdFirst) {
+      await recoverAdmission();
+      expect(await effects()).toEqual(committed);
+      expect(dispatch).not.toHaveBeenCalled();
+    }
     expect(await submit(runtime)).toMatchObject({ replayed: true });
     expect(await tick(runtime, f.at(2))).toMatchObject({ renewals: [{ operationId: firstClaim.id, status: 'deferred' }] });
     expect(await effects()).toEqual(committed);
