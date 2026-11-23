@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "id": "payments/paypal",
+  "domain": "payments",
+  "providerKind": "paypal",
+  "displayName": "PayPal Checkout (Orders API v2)",
+  "summary": "Zero-SDK PayPal Orders API v2 recipe supporting hosted approve redirects, OAuth2 client_credentials token management, synchronous readback, refund/dispute observation, and readback-authenticated webhooks.",
+  "regions": [
+    "global",
+    "US",
+    "NA",
+    "EU",
+    "APAC"
+  ],
+  "status": "verified",
+  "openlupPlatformRange": "^1.4.0",
+  "testedAgainstPlatformVersion": "1.4.0-dev",
+  "contractImports": [
+    "@openlup/core/payment",
+    "@openlup/platform/payments",
+    "@openlup/platform/payments/contracts",
+    "@openlup/platform/adapter-kit"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/payments/testing",
+    "exportName": "runPaymentAdapterConformance",
+    "mode": "safety"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://api-m.paypal.com",
+    "https://api-m.sandbox.paypal.com"
+  ],
+  "webhookAuth": "none",
+  "browserSurface": {
+    "kind": "none"
+  },
+  "supportedCurrenciesPolicy": "host-configured",
+  "staticCapabilities": {
+    "providerKind": "paypal",
+    "captureFlows": [
+      {
+        "kind": "hosted_checkout",
+        "handoff": "redirect",
+        "methodFamilies": [
+          "wallet",
+          "card"
+        ]
+      }
+    ],
+    "requiresStoredMandateEvidence": false,
+    "unattendedChargeFlow": "unsupported",
+    "payerContext": {
+      "requiresPayerBlock": false,
+      "customerRefFallsBackToContactEmail": false
+    },
+    "methodHealth": {
+      "requiresCustomerRef": false,
+      "requiredMethodKind": null,
+      "requiresPayerContact": false
+    },
+    "terminalOutcomeReporting": {
+      "kind": "status_field",
+      "silenceBecomesSuspectAfterMinutes": 360
+    },
+    "mandateUpsertIsSubscriptionScoped": false,
+    "supportedCurrencies": [],
+    "unattended": "unsupported",
+    "readback": "supported",
+    "close": "unsupported",
+    "exactAbsence": "unsupported",
+    "refundObservation": "supported",
+    "refundCreate": "unsupported",
+    "authorizationCaptureSplit": "unsupported"
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "LIVE_QUALIFICATION.md",
+      "recipe.json",
+      "server/adapter.ts",
+      "server/client-contract.ts",
+      "server/index.ts",
+      "server/webhook.ts",
+      "tests/conformance.test.ts",
+      "tests/fixtures.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/payments/paypal/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/payments/paypal/tests/mount-proof.test.ts"
+  }
+}

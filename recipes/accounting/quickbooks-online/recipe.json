@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "id": "accounting/quickbooks-online",
+  "domain": "accounting",
+  "providerKind": "quickbooks_online",
+  "displayName": "QuickBooks Online (Accounting REST v3)",
+  "summary": "Zero-SDK QuickBooks Online Accounting v3 ledger-export recipe with OAuth2 refresh-token auth, strict numeric realmId pinning, exact BigInt minor-unit conversion, Request-Id idempotency, and DocNumber readback.",
+  "regions": [
+    "global",
+    "US",
+    "NA",
+    "EU",
+    "APAC"
+  ],
+  "status": "exemplar",
+  "openlupPlatformRange": "^1.4.0",
+  "testedAgainstPlatformVersion": "1.4.0-dev",
+  "contractImports": [
+    "@openlup/platform/accounting",
+    "@openlup/platform/accounting/contracts",
+    "@openlup/platform/adapter-kit"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/accounting/testing",
+    "exportName": "runAccountingAdapterConformance",
+    "mode": "full"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://quickbooks.api.intuit.com",
+    "https://sandbox-quickbooks.api.intuit.com",
+    "https://oauth.platform.intuit.com"
+  ],
+  "webhookAuth": "none",
+  "browserSurface": {
+    "kind": "none"
+  },
+  "supportedCurrenciesPolicy": "host-configured",
+  "staticCapabilities": {
+    "contractVersion": "accounting.ledger_export.v1",
+    "providerKind": "quickbooks_online",
+    "supportedEntryKinds": [
+      "adjustment",
+      "fee",
+      "payout",
+      "refund",
+      "sale",
+      "tax_liability"
+    ],
+    "supportedCurrencies": [],
+    "supportsReadback": true,
+    "supportsIdempotencyKey": true,
+    "requiresCredentials": true
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "LIVE_QUALIFICATION.md",
+      "recipe.json",
+      "server/adapter.ts",
+      "server/client-contract.ts",
+      "server/index.ts",
+      "tests/conformance.test.ts",
+      "tests/fixtures.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/accounting/quickbooks-online/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/accounting/quickbooks-online/tests/mount-proof.test.ts"
+  }
+}
