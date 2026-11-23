@@ -277,13 +277,20 @@ describe("fast preflight", () => {
   const npm = `${process.execPath} ${npmCli}`;
   const carrierNpmRun = (args: readonly string[] | undefined) =>
     args?.[0] === npmCli && args[1] === "run" && ["build", "api:check"].includes(args[2]);
+  const clean = { dirty: false, offline: false, warnings: false, failures: [], exit: 0 };
   beforeEach(() => { vi.stubEnv("npm_execpath", npmCli); });
   it.each([
-    { name: "clean", dirty: false, offline: false, warnings: false, failures: [], exit: 0 },
+    { ...clean, name: "clean" },
+    { ...clean, name: "clean with an npm version timeout", npmVersion: "unavailable (timed out after 5 s)",
+      versionProbe: { status: null, stdout: "", error: Object.assign(new Error("npm version timed out"), { code: "ETIMEDOUT" }) } },
+    { ...clean, name: "clean with a non-zero npm version exit", npmVersion: "unavailable (exit status 1)",
+      versionProbe: { status: 1, stdout: "11.19.1\n" } },
+    { ...clean, name: "clean with empty npm version output", npmVersion: "unavailable (empty output)",
+      versionProbe: { status: 0, stdout: " \n" } },
     { name: "clean with Git stderr warnings", dirty: false, offline: false, warnings: true, failures: [], exit: 0 },
     { name: "dirty with a failed fetch", dirty: true, offline: true, warnings: false, failures: ["clean"], exit: 1 },
     { name: "multiple failures", dirty: false, offline: false, warnings: false, failures: ["merge-clean", "neutrality", "publication", "dco"], exit: 1 },
-  ])("reports every check and ends with JSON for a $name fixture", ({ dirty, offline, warnings, failures, exit }) => {
+  ])("reports every check and ends with JSON for a $name fixture", ({ dirty, offline, warnings, failures, exit, npmVersion = "11.19.1", versionProbe }) => {
     const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
     const increase = '"scripts/example.ts": brand increased 0 -> 1';
     const conflict = "CONFLICT (content): Merge conflict in example.ts";
@@ -320,6 +327,10 @@ describe("fast preflight", () => {
       if (bin === "npx") {
         expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
       }
+      if (call === expected[11] && versionProbe) {
+        expect(options?.timeout).toBe(5_000);
+        return { ...versionProbe, stderr: "" };
+      }
       if (bin === "gitleaks") {
         return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
       }
@@ -350,7 +361,7 @@ describe("fast preflight", () => {
       dco: `missing Signed-off-by on ${head.slice(0, 12)}`,
     };
     const skipLines: Record<string, string> = {
-      "carrier toolchain": `carrier toolchain: Node ${process.versions.node}, npm 11.19.1, ICU ${process.versions.icu}`,
+      "carrier toolchain": `carrier toolchain: Node ${process.versions.node}, npm ${npmVersion}, ICU ${process.versions.icu}`,
       fragments: "fragments: skip no released package source changed",
       "test dates": "test dates: skip no new or changed test files",
       "test expiries": "test expiries: skip no new or changed test files",

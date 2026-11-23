@@ -136,18 +136,32 @@ export function shortExpiries(lines: readonly AddedLine[]): Finding[] {
   });
 }
 
-type Outcome = { code: number | null; stdout: string; output: string; missing: boolean; seconds: number };
+type Outcome = { code: number | null; stdout: string; output: string; missing: boolean; timedOut: boolean; seconds: number };
 
 function execute(command: string, args: readonly string[], options: SpawnSyncOptions = {}): Outcome {
   const started = Date.now();
   const result = spawnSync(command, args, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, shell: process.platform === "win32", ...options });
+  const errorCode = (result.error as NodeJS.ErrnoException | undefined)?.code;
   return {
     code: result.status,
     stdout: result.stdout?.toString() ?? "",
     output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
-    missing: (result.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT",
+    missing: errorCode === "ENOENT",
+    timedOut: errorCode === "ETIMEDOUT",
     seconds: Math.round((Date.now() - started) / 1000),
   };
+}
+
+function npmVersionForToolchain(npmCli: string, options: SpawnSyncOptions): string {
+  try {
+    const version = execute(process.execPath, [npmCli, "--version"], { ...options, timeout: 5_000 });
+    if (version.timedOut) return "unavailable (timed out after 5 s)";
+    if (version.code === 0) return version.stdout.trim() || "unavailable (empty output)";
+    if (version.code !== null) return `unavailable (exit status ${version.code})`;
+  } catch {
+    // Toolchain reporting is advisory even if the launch throws.
+  }
+  return "unavailable (probe failed)";
 }
 
 function git(args: readonly string[], output: "output" | "stdout" = "output"): string {
@@ -489,9 +503,14 @@ function fastPreflight(now: Date): number {
     ["ast-grep", () => astGrep(offlineNpm)],
     ["ast-grep-hygiene", () => astGrepHygiene(offlineNpm)],
     ["publication", () => {
-      const npmCli = carrierNpmCli(npmInvocation);
-      const version = execute(process.execPath, [npmCli, "--version"], { ...offlineNpm, timeout: 5_000 });
-      if (version.code === 0 && version.stdout.trim()) console.log(describeCarrierToolchain(version.stdout.trim()));
+      let npmCli: string;
+      let npmVersion = "unavailable (npm CLI path missing or relative)";
+      try {
+        npmCli = carrierNpmCli(npmInvocation);
+        npmVersion = npmVersionForToolchain(npmCli, offlineNpm);
+      } finally {
+        console.log(describeCarrierToolchain(npmVersion));
+      }
       const result = command("publication", process.execPath, [npmCli, "run", "oss:published-tree", "--", "--self-check",
         ...(processEnvironment.OPENLUP_STACK_BASE !== undefined ? [] : ["--docs-base", forkPoint()]),
       ], offlineNpm);
