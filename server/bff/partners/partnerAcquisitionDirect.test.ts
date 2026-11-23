@@ -168,17 +168,15 @@ describe("partner acquisition direct BFF", () => {
   it("keys port commands by the socket peer across different forwarding values", async () => {
     const adapter = port();
     const submit = createPartnerAcquisitionSubmitHandler({ env: ENV, resolvePort: async () => adapter });
-    const req = request("POST", SUBMISSION);
     for (const [peer, forwarded] of [
       ["192.0.2.7", "198.51.100.7"],
       ["192.0.2.7", "198.51.100.8"],
       ["192.0.2.8", "198.51.100.7"],
     ] as const) {
-      await submit({
-        ...req,
-        headers: { ...req.headers, "x-forwarded-for": forwarded },
-        socket: { remoteAddress: peer } as HttpRequest["socket"],
-      }, response());
+      const req = request("POST", SUBMISSION);
+      req.headers["x-forwarded-for"] = forwarded;
+      req.socket = { remoteAddress: peer } as HttpRequest["socket"];
+      await submit(req, response());
     }
     expect(vi.mocked(adapter.submit).mock.calls.map(([command]) => command.requesterKey))
       .toEqual(["192.0.2.7", "192.0.2.7", "192.0.2.8"]);

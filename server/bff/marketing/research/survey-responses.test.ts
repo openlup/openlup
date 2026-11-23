@@ -115,6 +115,7 @@ describe("managed survey response quota and storage", () => {
       dispatch,
       security: { globalHeaders: [], assetCachePrefixes: [], noindexFamilies: [], noindexExacts: [], isProductionHost: () => false },
     });
+    if (!runtime.listen) throw new Error("Expected a Node HTTP listener");
     await runtime.listen({ port: 0, host: "127.0.0.1" });
     const server = runtime.server;
     if (!server) throw new Error("Expected a loopback listener");
