@@ -13,6 +13,7 @@ import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegis
 import { generatedCarrier, SQL_REFERENCE } from './agent-review-generators.mjs';
 import { DEFAULT_INCREMENTAL_PACKAGES, TSBUILDINFO_FILENAME } from './build-packages-incremental.mjs';
 import { isGuidePage } from './oss-publication-policy.ts';
+import { isQualifiedPlatformMigrationPath } from './platform-migration-manifest.ts';
 
 const PUBLICATION_CATALOGUE = REGISTRY_PATHS[0];
 const SETTINGS_GUIDE = 'packages/core/docs/guide/how-to/operate/settings-catalogue.md';
@@ -199,6 +200,30 @@ export function isInventoryInputPath(path) {
     /^packages\/platform\/src\/migrations\//u.test(path);
 }
 
+const MIGRATION_FORWARD = /^(?:db\/platform|supabase)\/migrations\/(\d{14})_[A-Za-z0-9_-]+\.sql$/u;
+const MIGRATION_RAILS = ['db/platform/migrations/', 'supabase/migrations/'];
+
+export function assertAppendOnlyLandingSlots(prAddedPaths, mainMigrationPaths) {
+  for (const rail of MIGRATION_RAILS) {
+    let version = '';
+    for (const path of mainMigrationPaths) {
+      if (!path.startsWith(rail) || isQualifiedPlatformMigrationPath(path)) continue;
+      const slot = MIGRATION_FORWARD.exec(path)?.[1];
+      if (slot && slot > version) version = slot;
+    }
+    const additions = prAddedPaths
+      .filter(path => path.startsWith(rail) && !isQualifiedPlatformMigrationPath(path) && MIGRATION_FORWARD.test(path))
+      .sort();
+    for (const path of additions) {
+      const next = MIGRATION_FORWARD.exec(path)[1];
+      if (next <= version) {
+        throw new Error('landing: migration slot is not strictly later than origin/main; rename the new migration to a later UTC timestamp and refresh derived files');
+      }
+      version = next;
+    }
+  }
+}
+
 export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   if ((await git(cwd, '--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all')).trim()) throw new Error('landing: clean committed checkout required');
   for (const key of ['user.name', 'user.email']) {
@@ -211,6 +236,16 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   const main = (await git(cwd, 'rev-parse', 'origin/main')).trim();
   const base = (await git(cwd, 'merge-base', head, main)).trim();
   if (head === main) throw new Error('landing: already at origin/main');
+  const prAdded = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=A', '--no-renames', '-z', base, head));
+  if (prAdded.some(path => MIGRATION_RAILS.some(rail => path.startsWith(rail)))) {
+    // Skip migrations already present byte-for-byte identically on origin/main (stacked PRs whose predecessor squash-merged).
+    const differingFromMain = new Set(pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z', main, head, '--', 'db/platform/migrations', 'supabase/migrations')));
+    const netAdded = prAdded.filter(path => differingFromMain.has(path));
+    if (netAdded.length > 0) {
+      const mainMigrations = pathsFrom(await git(cwd, 'ls-tree', '-r', '--name-only', '-z', main, '--', 'db/platform/migrations', 'supabase/migrations'));
+      assertAppendOnlyLandingSlots(netAdded, mainMigrations);
+    }
+  }
   const carrierEnv = { ...processEnvironment, ...carrierLocale };
   const run = runCommand ?? ((command, args, options) => execFileSync(command, args, { cwd, stdio: 'inherit', timeout: 900000, ...options }));
   const checkToolchain = () => run(process.execPath, ['--input-type=module', '-e',
