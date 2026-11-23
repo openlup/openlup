@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql } from "../tests/helpers/issuedPlatformCatalog.ts";
+import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql, NATIVE_STORE_GUARD_CATALOGS } from "../tests/helpers/issuedPlatformCatalog.ts";
 import { renderCheckoutOwnerGrant, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
@@ -1267,6 +1267,10 @@ describe("real Git introduction, release and co-location", () => {
   it("names exactly the protected catalog test files in the documentation", () => {
     const named = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8").split("catalog test and these named files:")[1]?.split("Code those files run")[0] ?? "";
     expect([...named.matchAll(/`([^`]+)`/gu)].map(match => match[1]).sort()).toEqual([...NATIVE_CATALOG_CONTROLS, "tests/setup/"].sort());
+  });
+  it("names exactly the guard catalogs in the documentation", () => {
+    const section = readFileSync("docs/platform/DATA_AND_MIGRATIONS.md", "utf8").split("- The guard catalogs")[1]?.split(/\n(?:- |\n)/u)[0] ?? "";
+    expect([...new Set([...section.matchAll(/`(pg_[a-z_]+)`/gu)].map(match => match[1]))].sort()).toEqual([...NATIVE_STORE_GUARD_CATALOGS].sort());
   });
   // Measured 8.3 s alone and 12.1 s at load average 7 exceed Vitest's 5 s default.
   it("accepts class, slot, pins and SQL together while preserving machinery and issued immutability", () => {

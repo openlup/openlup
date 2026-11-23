@@ -144,8 +144,8 @@ describe('conservative tooling scope', () => {
 
     const dataDoc = excludedToolingTests(['docs/platform/DATA_AND_MIGRATIONS.md']);
     expect(dataDoc).not.toContain('scripts/reviewed-native-store-forward.test.ts');
-    expect(dataDoc).not.toContain('tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts');
-    expect(dataDoc).not.toContain('tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts');
+    expect(dataDoc).toContain('tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts');
+    expect(dataDoc).toContain('tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts');
 
     expect(excludedToolingTests(['config/openlup-publication-catalog.json'])).not.toContain('scripts/agent-review-registry.test.ts');
     expect(excludedToolingTests(['packages/platform/test/packageBoundary.test.ts'])).not.toContain('scripts/agent-review-registry.test.ts');
