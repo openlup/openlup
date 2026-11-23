@@ -1140,7 +1140,7 @@ export interface CatalogPackManifest {
  */
 export declare function catalogPackManifest(pack: CatalogPackInput): CatalogPackManifest;
 /** @internal */
-export declare function prepareCatalogPackManifest(pack: CatalogPackInput, profiles: readonly CatalogSubscriptionProfileV1[] | undefined): {
+export declare function prepareCatalogPackManifest(pack: CatalogPackInput, profiles: readonly CatalogSubscriptionProfileV1[] | undefined, reportAllSizeFindings?: boolean): {
     manifest: CatalogPackManifest;
     canonicalManifest: string;
     profileDeclarationBytes?: string[];
@@ -4240,7 +4240,7 @@ export { catalogProductTypeIssues, catalogProductTypeRefIssues } from "./product
 export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
-export { installCatalogDefinitions } from "./installCatalogDefinitions.js";
+export { CatalogDefinitionInstallError, catalogPackInstallIssues, installCatalogDefinitions } from "./installCatalogDefinitions.js";
 export { readInstalledCatalogSubscriptionProfile } from "./installedSubscriptionProfiles.js";
 export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } from "./catalogDefinitionReadiness.js";
 export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
@@ -4287,6 +4287,12 @@ export type { CatalogActivationReadinessInput, CatalogActivationReadinessItem, C
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
 import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
+import type { CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
+export { CatalogDefinitionInstallError } from "./publicationRules.js";
+/** Check a bound declaration before invoking the definition installer.
+ * @experimental
+ */
+export declare function catalogPackInstallIssues(pack: CatalogPackInput): CatalogDefinitionIssue[];
 /** Supply the native migration-owner executor explicitly. No runtime binding or hook is created.
  * @experimental
  */
@@ -5318,6 +5324,48 @@ export interface CatalogCapabilityDescriptor {
     publish: boolean;
     lifecycleWrite: boolean;
 }
+export {};
+```
+## dist/catalog/publicationRules.d.ts
+
+```ts
+import type { CatalogQuantity } from "@openlup/core/catalog";
+import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publicationContracts.js";
+import type { CatalogProductTypeInput, CatalogProductTypeRef } from "./contracts/productTypes.js";
+import type { CatalogPackInput } from "./contracts/catalogPack.js";
+import type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, CatalogRulesContext } from "./catalogPublicationRules.js";
+import type { RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
+type Binding = {
+    validatorRef: `sha256:${string}`;
+    bytes: Buffer;
+    rules(evaluation: CatalogRulesContext, mode?: "typed"): CatalogPublicationRulesModule;
+};
+export declare function ruleProduct({ source: _source, document: _document, content: _content, ...product }: CatalogPublishedProduct): RulesProduct;
+export declare function ruleSku({ source: _source, ...sku }: CatalogPublishedSku): RulesSku;
+/** Check the selected authored term after physical validation on the typed path. */
+export declare function assertTypedSkuAmounts(rules: Pick<CatalogPublicationRulesModule, "validateTypedSkuAmounts" | "validateSkuAmounts"> | undefined, { code, netContent }: {
+    code: string;
+    netContent: CatalogQuantity;
+}, path: string): void;
+/** A named refusal from catalogue definition binding or installation.
+ * @experimental
+ */
+export declare class CatalogDefinitionInstallError extends Error {
+    readonly code: "catalog_definition_install_conflict" | "catalog_type_install_refuses_redefinition" | "catalog_profile_install_refuses_redefinition" | "definition_unknown_profile_ref" | "catalog_definition_rules_binding_failed";
+    readonly path: string;
+    readonly observed: string;
+    readonly causeText: string;
+    readonly fix: string;
+    readonly recheck: string;
+    constructor(code: "catalog_definition_install_conflict" | "catalog_type_install_refuses_redefinition" | "catalog_profile_install_refuses_redefinition" | "definition_unknown_profile_ref" | "catalog_definition_rules_binding_failed", path: string, observed: string, causeText: string, fix: string, recheck: string);
+}
+export declare function bindCatalogPublicationRules(pack: CatalogPublicationRulesPack, rulesFor: (type: CatalogProductTypeRef) => Uint8Array | undefined): CatalogPackInput;
+export declare function readPublicationRulesAsset(artifact: Uint8Array, evaluation?: CatalogRulesContext): Readonly<CatalogPublicationRulesModule>;
+/** @internal Only the selected definition can resolve its installed executable. */
+export declare function resolvePublicationRules(definition: CatalogProductTypeInput, evaluation: CatalogRulesContext, recheck?: boolean, mode?: "typed"): CatalogPublicationRulesModule | undefined;
+export declare function verifyCatalogRulesAtInstall(pack: CatalogPackInput, typedRefusal?: boolean): void;
+/** @internal Load trusted JavaScript rules from the verified byte snapshot. */
+export declare function loadCatalogPublicationRules(expectedRef: string | undefined, artifact: Uint8Array): Binding;
 export {};
 ```
 ## dist/catalog/publicationSkuIdentity.d.ts

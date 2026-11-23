@@ -373,8 +373,7 @@ Move your existing content checks into the bundle, run
 
 After each change, run `npm run typecheck` from the extracted application root.
 Run `npm run --silent catalogue:check:source` to check the packs and fixtures in
-`owned/catalogue.ts` with their registered content validators. Use
-`npm run --silent catalogue:check` for inert `owned/catalogue.json` fixtures.
+`owned/catalogue.ts` with their registered content validators.
 The installed recipes in `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md`
 describe the evidence each check supplies.
 

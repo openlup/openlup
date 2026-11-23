@@ -314,7 +314,7 @@ test('extract creates an independent repository and refuses to overwrite an exis
         assert.deepEqual(bytes.subarray(0, annotation.length), annotation, file);
         bytes = Buffer.concat([Buffer.from(prefix), bytes.subarray(annotation.length)]);
       } else assert.ok(!bytes.includes('Managed by OpenLup.'), file);
-      if (file === 'package.json') assert.equal(sha256(bytes), '46a49644402662cc3292b2b03fcc9293676acb5721e50b7058ce97bc2fbfd278');
+      if (file === 'package.json') assert.equal(sha256(bytes), 'e062d0bdf9f553293f8f18627126a68ea9431996bab21e69c6219604fed1cfc5');
       else if (file === 'ownership.json') {
         const { providerQualification: _profile, ...projected } = ownership;
         assert.deepEqual(JSON.parse(bytes.toString()), projected);
@@ -881,19 +881,20 @@ test('RP2 source wrapper checks the independent registry from packed dependencie
     };
     const path = resolve(target, 'owned/catalogue.ts');
     const owned = await readFile(path, 'utf8');
-    assert.equal(invoke('catalogue:check', 0).command, 'catalogue check');
+    await assert.rejects(readFile(resolve(target, 'owned/catalogue.json')), { code: 'ENOENT' });
     assert.equal(invoke('catalogue:check:source', 0).command, 'catalogue project');
 
     const manifestPath = resolve(target, 'package.json');
     const manifestBytes = await readFile(manifestPath);
     const manifest = JSON.parse(manifestBytes.toString('utf8'));
+    assert.equal(Object.hasOwn(manifest.scripts, 'catalogue:check'), false);
     try {
       for (const [script, wrong] of [
         ['catalogue:check', manifest.scripts['catalogue:check:source']],
         ['catalogue:check:source', manifest.scripts['catalogue:check:source'] + ';'],
       ]) {
         await writeFile(manifestPath, JSON.stringify({ ...manifest, scripts: { ...manifest.scripts, [script]: wrong } }));
-        assert.throws(() => proveStarterCatalogueWrappers(target, directory),
+        assert.throws(() => proveStarterCatalogueWrappers(target, directory, manifestBytes.toString('utf8')),
           { message: `unexpected starter catalogue script: ${script}` });
       }
     } finally { await writeFile(manifestPath, manifestBytes); }
