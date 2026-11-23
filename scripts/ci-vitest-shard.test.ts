@@ -5,12 +5,17 @@ import { env as processEnvironment } from "node:process";
 import { describe, expect, it } from "vitest";
 import { digestKeyForPath } from "./ci-vitest-duration-keys.ts";
 import {
+  DEFAULT_QUARANTINE_PATH,
   DEFAULT_WEIGHTS_PATH,
+  buildQuarantineRetryArgs,
   buildShardCommand,
+  buildShardExecutionPlan,
+  formatQuarantineBanner,
   listVitestFiles,
   loadShardWeights,
   parseShardArgs,
   partitionShards,
+  runShardInvocations,
 } from "./ci-vitest-shard.mjs";
 
 describe("ci-vitest-shard", () => {
@@ -19,14 +24,25 @@ describe("ci-vitest-shard", () => {
       shard: 4,
       total: 8,
       weightsPath: DEFAULT_WEIGHTS_PATH,
+      quarantinePath: DEFAULT_QUARANTINE_PATH,
       printFiles: false,
       skipPretest: false,
       extraArgs: [],
     });
-    expect(parseShardArgs(["--shard=2", "--total=8", "--weights=custom.json", "--print-files", "--skip-pretest", "--", "--reporter=dot"])).toEqual({
+    expect(parseShardArgs([
+      "--shard=2",
+      "--total=8",
+      "--weights=custom.json",
+      "--quarantine=custom-q.json",
+      "--print-files",
+      "--skip-pretest",
+      "--",
+      "--reporter=dot",
+    ])).toEqual({
       shard: 2,
       total: 8,
       weightsPath: "custom.json",
+      quarantinePath: "custom-q.json",
       printFiles: true,
       skipPretest: true,
       extraArgs: ["--reporter=dot"],
@@ -35,6 +51,7 @@ describe("ci-vitest-shard", () => {
     expect(() => parseShardArgs(["--shard", "0", "--total", "8"])).toThrow(/between 1 and 8/);
     expect(() => parseShardArgs(["--shard", "9", "--total", "8"])).toThrow(/between 1 and 8/);
     expect(() => parseShardArgs(["--shard", "1", "--total", "0"])).toThrow(/Usage:/);
+    expect(() => parseShardArgs(["--shard", "1", "--total", "8", "--quarantine="])).toThrow(/--quarantine/);
     expect(() => parseShardArgs(["--shard", "1", "--total", "8", "--unknown"])).toThrow(/Unknown option/);
   });
 
@@ -143,5 +160,94 @@ describe("ci-vitest-shard", () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("keeps a single Vitest invocation when quarantine entries are empty (INV-1)", () => {
+    const emptyManifest = { version: 1, maxDurationDays: 7, entries: [] };
+    const plan = buildShardExecutionPlan(["a.test.ts", "b.test.ts"], emptyManifest, {
+      skipPretest: true,
+      extraArgs: ["--reporter=dot"],
+      platform: "linux",
+      execPath: "/usr/bin/node",
+    });
+    expect(plan.quarantinedEntries).toEqual([]);
+    expect(plan.invocations).toEqual([
+      {
+        kind: "normal",
+        files: ["a.test.ts", "b.test.ts"],
+        command: "/usr/bin/node",
+        args: ["scripts/run-vitest.mjs", "run", "a.test.ts", "b.test.ts", "--reporter=dot"],
+      },
+    ]);
+  });
+
+  it("splits active quarantined files into a second pass with --retry=2 and banner metadata", () => {
+    const manifest = {
+      version: 1,
+      maxDurationDays: 7,
+      entries: [
+        {
+          testPath: "b.test.ts",
+          owner: "platform-ci",
+          reason: "Socket race",
+          trackingRef: "#404",
+          addedAt: "2026-11-20T00:00:00Z",
+          expiresAt: "2026-11-26T00:00:00Z",
+        },
+      ],
+    };
+
+    const plan = buildShardExecutionPlan(["a.test.ts", "b.test.ts", "c.test.ts"], manifest, {
+      skipPretest: true,
+      extraArgs: ["--reporter=dot"],
+      platform: "linux",
+      execPath: "/usr/bin/node",
+    });
+    expect(plan.quarantinedEntries).toHaveLength(1);
+    expect(plan.invocations).toEqual([
+      {
+        kind: "normal",
+        files: ["a.test.ts", "c.test.ts"],
+        command: "/usr/bin/node",
+        args: ["scripts/run-vitest.mjs", "run", "a.test.ts", "c.test.ts", "--reporter=dot"],
+      },
+      {
+        kind: "quarantined",
+        files: ["b.test.ts"],
+        command: "/usr/bin/node",
+        args: ["scripts/run-vitest.mjs", "run", "b.test.ts", "--reporter=dot", "--retry=2"],
+      },
+    ]);
+
+    expect(buildQuarantineRetryArgs(["--retry=5"])).toEqual(["--retry=5"]);
+    expect(buildQuarantineRetryArgs(["--retry", "3"])).toEqual(["--retry", "3"]);
+    expect(buildQuarantineRetryArgs(["--reporter=dot"])).toEqual(["--reporter=dot", "--retry=2"]);
+
+    const banner = formatQuarantineBanner(plan.quarantinedEntries);
+    expect(banner).toContain("[ci-quarantine]");
+    expect(banner).toContain("b.test.ts");
+    expect(banner).toContain("platform-ci");
+    expect(banner).toContain("#404");
+    expect(banner).toContain("2026-11-26T00:00:00Z");
+
+    const calls: string[][] = [];
+    const passBoth = runShardInvocations(plan.invocations, {
+      spawnImpl: (_cmd, args) => {
+        calls.push(args);
+        return { status: 0 };
+      },
+    });
+    expect(passBoth).toBe(0);
+    expect(calls).toHaveLength(2);
+
+    const failNormal = runShardInvocations(plan.invocations, {
+      spawnImpl: (_cmd, args) => ({ status: args.includes("--retry=2") ? 0 : 1 }),
+    });
+    expect(failNormal).toBe(1);
+
+    const failQuarantined = runShardInvocations(plan.invocations, {
+      spawnImpl: (_cmd, args) => ({ status: args.includes("--retry=2") ? 2 : 0 }),
+    });
+    expect(failQuarantined).toBe(2);
   });
 });

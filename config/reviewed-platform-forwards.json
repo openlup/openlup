@@ -7018,6 +7018,48 @@
         "dataStatements": []
       },
       {
+        "row": "destination-documents",
+        "path": "db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_destination_v2_canonical(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_verified_document(public.commerce_destination_v2_documents)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_read_destination_v2(jsonb,text,uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_export(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_erase(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_expire(timestamptz,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES ('commerce_destination_v2_documents', 'block', 'Destination document history prevents lead absorption.');"
+        ],
+        "absorptionCensusTables": [
+          "public.commerce_destination_v2_documents"
+        ]
+      },
+      {
         "row": "catalog-legacy-draft-fixed-locks",
         "path": "db/platform/migrations/20261125120000_catalog_legacy_draft_fixed_locks.sql",
         "replacedFunctions": [
@@ -10390,6 +10432,47 @@
           "signature": "public.catalog_admission_runtime_checkout(text,text,uuid,jsonb)",
           "beforeSha256": null,
           "afterSha256": "dc5ede81e7e66af056f93756823590ee16f9a80674600c95764245be0528ab6a"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql",
+      "sha256": "e04fe2a729425f5cc4bdcdd271c785dd10d239bce5b1a9c9c17dfc578549944c",
+      "functions": [
+        {
+          "signature": "public.commerce_destination_v2_canonical(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "a304def5c16ebbbd93f77849458d8e0ca09dedbfd25905ff380fa647d41ee885"
+        },
+        {
+          "signature": "public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "dc9147e8ec047e06c9434f461183f80745362b6f368679dba2c74c966ef28832"
+        },
+        {
+          "signature": "public.commerce_destination_v2_verified_document(public.commerce_destination_v2_documents)",
+          "beforeSha256": null,
+          "afterSha256": "74f90be2f37a1ac9706c15e141a6490f43fbf2caeb8a6660b29f51e923ed2cab"
+        },
+        {
+          "signature": "public.commerce_read_destination_v2(jsonb,text,uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "0acbe7923a1518eda39cbf696d8e1e038802847192998ff1689b4ddc9b753086"
+        },
+        {
+          "signature": "public.commerce_destination_v2_export(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "287ee5fa436486f1f79ada2705cd3c146289938e5b967a5b7240332d835ed995"
+        },
+        {
+          "signature": "public.commerce_destination_v2_erase(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "d3709e44792d234b4946d6fd9ef859d5fe0ca81b928e36e6f6458e9e87c52149"
+        },
+        {
+          "signature": "public.commerce_destination_v2_expire(timestamptz,integer)",
+          "beforeSha256": null,
+          "afterSha256": "4673135baf70ca57fe2c02d81ab0654927d696ca6de21105bc76b0ba6c9c7923"
         }
       ]
     },

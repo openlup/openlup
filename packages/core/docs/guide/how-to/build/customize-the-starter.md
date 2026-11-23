@@ -361,10 +361,15 @@ does not establish zero database reads for the whole checkout request.
 ## Validate a checkout destination
 
 Use `destinationV2Capabilities` from `@openlup/platform/commerce/server/destinations`
-with the host rail and actual installation and issuance state. The experimental
-schema and policy validator run offline. Fresh v2 destination issuance requires
+with the host rail and actual installation and issuance state. Readiness
+discovery must use the same registry that runs privacy operations: set up the
+[personal-data contributor registry](../../concepts/personal-data.md#personal-data-coverage)
+with `destination-receipts` and `destination-documents` as required contributors
+and pass it as `privacyRegistry`. The experimental schema and policy validator
+run offline. Fresh v2 destination issuance requires
 an installed native writer. A native host reports `destination_v2_unavailable`
-for `destinationAddressV2` until the writer is installed and issuance is enabled.
+for `destinationAddressV2` until the writer is installed, issuance is enabled
+and both required destination contributors are registered.
 Managed hosts continue to support v1 checkout and saved addresses. They report
 `destination_v2_unsupported_rail` for `destinationAddressV2`. Keep installed
 readers and exact replay available when disabling fresh issuance.

@@ -654,6 +654,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/ci-quarantine.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/customer-360-parity-expectation.json",
       "class": "public-output"
     },
@@ -1611,6 +1615,10 @@
     },
     {
       "path": "db/platform/migrations/20261125090000_catalog_runtime_checkout_dark.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125100000_commerce_destination_v2_checkout.sql",
       "class": "public-output"
     },
     {
@@ -5298,6 +5306,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125100000_commerce_destination_v2_checkout.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261125120000_catalog_legacy_draft_fixed_locks.sql",
       "class": "public-output"
     },
@@ -8099,6 +8111,10 @@
     },
     {
       "path": "packages/platform/src/identity/customerVerifyOtpHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/destinationPrivacy.ts",
       "class": "public-output"
     },
     {
@@ -11386,6 +11402,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fixtures/catalogue-conformance/six-errors.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fixtures/catalogue-conformance/volume-net-content.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/adapterConformance.test.ts",
       "class": "public-output"
     },
@@ -12091,6 +12115,10 @@
     },
     {
       "path": "packages/platform/test/operations/settingsBoundParity.main.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/settingsCandidateParity.test.ts",
       "class": "public-output"
     },
     {
@@ -13494,6 +13522,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/affected-tests.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/affected-tests.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/agent-ci-queued-diagnose.ts",
       "class": "public-output"
     },
@@ -13703,6 +13739,14 @@
     },
     {
       "path": "scripts/ci-image-pull.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-quarantine.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-quarantine.test.ts",
       "class": "public-output"
     },
     {
@@ -14691,6 +14735,14 @@
     },
     {
       "path": "scripts/serverless-include-globs.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/settings-candidate-guard.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/settings-candidate-guard.ts",
       "class": "public-output"
     },
     {
@@ -22755,10 +22807,6 @@
     },
     {
       "path": "server/runtime/auth/capturedIdentityMailbox.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/runtime/auth/destinationReceiptPrivacyContributor.ts",
       "class": "public-output"
     },
     {
@@ -31170,6 +31218,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/pgTemplateBroker.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/postgresContainer.ts",
       "class": "public-output"
     },
@@ -31714,7 +31766,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationDocumentFixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/destinationReceiptFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/destinationV2Checkout.test.ts",
       "class": "public-output"
     },
     {
@@ -32315,6 +32375,10 @@
     },
     {
       "path": "tests/postgres/paymentsNativeConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/pgTemplateBroker.test.ts",
       "class": "public-output"
     },
     {

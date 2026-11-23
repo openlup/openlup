@@ -6,9 +6,16 @@ import { delimiter, dirname, relative, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { fileURLToPath } from "node:url";
 import { pinnedDurationMs } from "./ci-vitest-duration-keys.ts";
+import {
+  DEFAULT_QUARANTINE_PATH,
+  loadCiQuarantine,
+  splitQuarantinedFiles,
+} from "./ci-quarantine.mjs";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const DEFAULT_WEIGHTS_PATH = "config/vitest-shard-weights.json";
+export { DEFAULT_QUARANTINE_PATH };
+const DEFAULT_QUARANTINE_RETRY = 2;
 
 function compareCodeUnits(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -108,6 +115,7 @@ export function parseShardArgs(argv) {
   let shard;
   let total;
   let weightsPath = DEFAULT_WEIGHTS_PATH;
+  let quarantinePath = DEFAULT_QUARANTINE_PATH;
   let printFiles = false;
   let skipPretest = false;
   const extraArgs = [];
@@ -130,6 +138,10 @@ export function parseShardArgs(argv) {
       weightsPath = argv[++index] ?? "";
     } else if (arg.startsWith("--weights=")) {
       weightsPath = arg.slice("--weights=".length);
+    } else if (arg === "--quarantine") {
+      quarantinePath = argv[++index] ?? "";
+    } else if (arg.startsWith("--quarantine=")) {
+      quarantinePath = arg.slice("--quarantine=".length);
     } else if (arg === "--print-files") {
       printFiles = true;
     } else if (arg === "--skip-pretest") {
@@ -140,7 +152,9 @@ export function parseShardArgs(argv) {
   }
 
   if (!Number.isInteger(total) || total < 1) {
-    throw new Error("Usage: node scripts/ci-vitest-shard.mjs --shard <1..N> --total <N> [--weights <path>] [--print-files] [--skip-pretest] [-- <vitest-args...>]");
+    throw new Error(
+      "Usage: node scripts/ci-vitest-shard.mjs --shard <1..N> --total <N> [--weights <path>] [--quarantine <path>] [--print-files] [--skip-pretest] [-- <vitest-args...>]",
+    );
   }
   if (!Number.isInteger(shard) || shard < 1 || shard > total) {
     throw new Error(`--shard must be an integer between 1 and ${total}, received: ${String(shard)}`);
@@ -148,8 +162,34 @@ export function parseShardArgs(argv) {
   if (!weightsPath) {
     throw new Error("--weights requires a non-empty file path");
   }
+  if (!quarantinePath) {
+    throw new Error("--quarantine requires a non-empty file path");
+  }
 
-  return { shard, total, weightsPath, printFiles, skipPretest, extraArgs };
+  return { shard, total, weightsPath, quarantinePath, printFiles, skipPretest, extraArgs };
+}
+
+export function hasRetryArg(extraArgs = []) {
+  return extraArgs.some((arg) => arg === "--retry" || arg.startsWith("--retry="));
+}
+
+export function buildQuarantineRetryArgs(extraArgs = [], retryCount = DEFAULT_QUARANTINE_RETRY) {
+  if (hasRetryArg(extraArgs)) {
+    return [...extraArgs];
+  }
+  return [...extraArgs, `--retry=${retryCount}`];
+}
+
+export function formatQuarantineBanner(quarantinedEntries) {
+  const lines = [
+    `[ci-quarantine] Running ${quarantinedEntries.length} quarantined test file(s) with retry isolation:`,
+  ];
+  for (const entry of quarantinedEntries) {
+    lines.push(
+      `[ci-quarantine]   - ${entry.testPath} (owner=${entry.owner}, trackingRef=${entry.trackingRef}, expiresAt=${entry.expiresAt})`,
+    );
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 export function buildShardCommand(files, { skipPretest = false, extraArgs = [], platform = process.platform, execPath = process.execPath } = {}) {
@@ -166,6 +206,77 @@ export function buildShardCommand(files, { skipPretest = false, extraArgs = [], 
   };
 }
 
+export function buildShardExecutionPlan(
+  selectedFiles,
+  quarantineManifest,
+  { skipPretest = false, extraArgs = [], platform = process.platform, execPath = process.execPath } = {},
+) {
+  const { normalFiles, quarantinedEntries } = splitQuarantinedFiles(selectedFiles, quarantineManifest);
+  if (quarantinedEntries.length === 0) {
+    return {
+      quarantinedEntries: [],
+      invocations: [
+        {
+          kind: "normal",
+          files: selectedFiles,
+          ...buildShardCommand(selectedFiles, { skipPretest, extraArgs, platform, execPath }),
+        },
+      ],
+    };
+  }
+
+  const invocations = [];
+  if (normalFiles.length > 0) {
+    invocations.push({
+      kind: "normal",
+      files: normalFiles,
+      ...buildShardCommand(normalFiles, { skipPretest, extraArgs, platform, execPath }),
+    });
+  }
+  const quarantinedFiles = quarantinedEntries.map((entry) => entry.testPath);
+  invocations.push({
+    kind: "quarantined",
+    files: quarantinedFiles,
+    ...buildShardCommand(quarantinedFiles, {
+      skipPretest,
+      extraArgs: buildQuarantineRetryArgs(extraArgs, DEFAULT_QUARANTINE_RETRY),
+      platform,
+      execPath,
+    }),
+  });
+
+  return {
+    quarantinedEntries,
+    invocations,
+  };
+}
+
+export function runShardInvocations(
+  invocations,
+  { cwd = REPOSITORY_ROOT, env = processEnvironment, spawnImpl = spawnSync } = {},
+) {
+  let exitCode = 0;
+  for (const invocation of invocations) {
+    const result = spawnImpl(invocation.command, invocation.args, {
+      cwd,
+      stdio: "inherit",
+      env,
+    });
+    if (result.error) {
+      throw result.error;
+    }
+    if (result.signal) {
+      process.kill(process.pid, result.signal);
+      return 1;
+    }
+    const status = result.status ?? 1;
+    if (status !== 0 && exitCode === 0) {
+      exitCode = status;
+    }
+  }
+  return exitCode;
+}
+
 function withLocalBinOnPath(env, rootDir = REPOSITORY_ROOT) {
   const localBin = resolve(rootDir, "node_modules", ".bin");
   const currentPath = env.PATH ?? "";
@@ -180,8 +291,9 @@ function withLocalBinOnPath(env, rootDir = REPOSITORY_ROOT) {
 }
 
 function main(argv = process.argv.slice(2)) {
-  const { shard, total, weightsPath, printFiles, skipPretest, extraArgs } = parseShardArgs(argv);
+  const { shard, total, weightsPath, quarantinePath, printFiles, skipPretest, extraArgs } = parseShardArgs(argv);
   const manifest = loadShardWeights(weightsPath, REPOSITORY_ROOT);
+  const quarantineManifest = loadCiQuarantine(quarantinePath, REPOSITORY_ROOT);
   const files = listVitestFiles(REPOSITORY_ROOT, processEnvironment);
   const shards = partitionShards(files, total, manifest);
   const selected = shards[shard - 1];
@@ -203,21 +315,13 @@ function main(argv = process.argv.slice(2)) {
     `Weighted Vitest shard ${shard}/${total}: ${selected.files.length} files (estimated ${estimatedSeconds}s)\n`,
   );
 
-  const { command, args } = buildShardCommand(selected.files, { skipPretest, extraArgs });
+  const plan = buildShardExecutionPlan(selected.files, quarantineManifest, { skipPretest, extraArgs });
+  if (plan.quarantinedEntries.length > 0) {
+    process.stderr.write(formatQuarantineBanner(plan.quarantinedEntries));
+  }
+
   const env = skipPretest ? withLocalBinOnPath(processEnvironment, REPOSITORY_ROOT) : processEnvironment;
-  const result = spawnSync(command, args, {
-    cwd: REPOSITORY_ROOT,
-    stdio: "inherit",
-    env,
-  });
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.signal) {
-    process.kill(process.pid, result.signal);
-    return 1;
-  }
-  return result.status ?? 1;
+  return runShardInvocations(plan.invocations, { cwd: REPOSITORY_ROOT, env });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

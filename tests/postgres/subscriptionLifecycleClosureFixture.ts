@@ -17,6 +17,7 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions,
   type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { tryLeaseTemplateDatabase } from "../helpers/pgTemplateBroker.js";
 import { fixture } from "../helpers/fulfillmentNative.js";
 import { AT, call, failure, later, prepareOriginal, sandboxRenewal as renewal } from "./subscriptionNativeFixture.js";
 
@@ -70,7 +71,65 @@ async function prepareLifecycleCluster(profile: LifecycleProfile) {
 }
 
 /** Direct current-manifest installation for tests that do not witness the prefix-to-current upgrade diff. */
-export async function lifecycleInstallation(profile: LifecycleProfile) {
+export async function lifecycleInstallation(profile: LifecycleProfile, options?: { freshCluster?: boolean }) {
+  if (!options?.freshCluster) {
+    const lease = await tryLeaseTemplateDatabase(profile, "lifecycle");
+    if (lease) {
+      const pools: Pool[] = [];
+      const pool = (connectionString: string, pgOptions?: string) => {
+        const p = new Pool({ connectionString, options: `${pgOptions ?? ""} -c timezone=${lifecycleTimeZone}` });
+        pools.push(p);
+        return p;
+      };
+      try {
+        const m = "lifecycle_m", r = "lifecycle_r", s = "lifecycle_s";
+        const installation: { generation: "legacy" } | QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation =
+          profile === "legacy"
+            ? { generation: "legacy" }
+            : {
+              generation: profile,
+              roleMode: "installer-managed",
+              bootstrapLogin: "postgres",
+              migrationLogin: profile === "qualified-admin" ? m : "postgres",
+              runtimeLogin: r,
+              restoreLogin: s,
+            };
+        const owner = pool(lease.ownerUrl);
+        const startupOptions = installation.generation === "qualified-v2"
+          ? qualifiedPostgresStartupOptions(installation)
+          : installation.generation === "qualified-admin"
+            ? qualifiedAdminPostgresStartupOptions(installation)
+            : undefined;
+        const migration = pool(lease.migrationUrl, startupOptions);
+        const runtime = profile === "legacy" ? owner : pool(lease.runtimeUrl, "-c role=service_role");
+        const runner = createPostgresMigrationRunner({ connectionString: lease.migrationUrl }, { root: process.cwd(), installation, poolFactory: () => migration });
+        const closeLeased = async () => {
+          // Suppress expected 57P01 errors if teardown races with a backend exiting after Pool.end().
+          for (const value of pools) value.on("error", () => {});
+          let closeError: unknown;
+          try { await closePostgres([], pools); } catch (error) { closeError = error; }
+          await lease.release();
+          if (closeError) throw closeError;
+        };
+        return {
+          owner, migration, runtime, runner, profile,
+          close: closeLeased,
+          async actor<T>(principal: string, work: (client: PoolClient) => Promise<T>) {
+            // Owner is fixture setup only until SET ROLE; the operation has exactly actor privileges.
+            const db = await owner.connect();
+            try { await db.query("BEGIN"); await db.query("SET LOCAL ROLE authenticated");
+              await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal, role: "authenticated" })]);
+              const value = await work(db); await db.query("COMMIT"); return value;
+            } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+          },
+        };
+      } catch (error) {
+        for (const value of pools) value.on("error", () => {});
+        try { await closePostgres([], pools); } finally { await lease.release(); }
+        throw error;
+      }
+    }
+  }
   const cluster = await prepareLifecycleCluster(profile);
   try {
     await cluster.runner().apply();

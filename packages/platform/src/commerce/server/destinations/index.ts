@@ -104,9 +104,16 @@ type CapabilityStatus = { supported: boolean; available: boolean; refusalCode?:
 /** @experimental Discover v2 destination issuance and saved-address support. Keep installed readers and replay when disabling issuance. */
 export function destinationV2Capabilities(input: {
   rail: "native" | "managed"; installed?: boolean; issuanceEnabled?: boolean;
+  privacyRegistry?: {
+    readonly contributors: readonly { readonly id: string }[];
+    readonly missingContributors: readonly string[];
+  };
 }): { [K in "destinationAddressV2" | "savedAddressV2"]: CapabilityStatus & { capability: K } } {
   const supported = input.rail === "native";
-  const available = supported && input.installed === true && input.issuanceEnabled === true;
+  const registry = input.privacyRegistry;
+  const privacyReady = registry?.missingContributors.length === 0 && ["destination-receipts", "destination-documents"]
+    .every(id => registry.contributors.some(contributor => contributor.id === id));
+  const available = supported && input.installed === true && input.issuanceEnabled === true && privacyReady;
   const refusalCode = supported ? "destination_v2_unavailable" : "destination_v2_unsupported_rail";
   return {
     destinationAddressV2: { capability: "destinationAddressV2", supported, available, ...(available ? {} : { refusalCode }) },

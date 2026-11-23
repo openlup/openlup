@@ -1,0 +1,22 @@
+{
+  "packs": [{
+    "pack": {
+      "id": "sample", "namespace": "sample", "version": 1, "openlupRange": "1.x", "capabilities": {}, "taxClasses": [],
+      "types": [{
+        "key": "sample:item", "version": 1,
+        "units": [{ "code": "sample:ml", "dimension": "volume", "integral": false, "factor": { "canonicalUnit": "openlup:ml", "unscaled": "1", "scale": 0 } }],
+        "netContentUnits": ["sample:ml"], "dimensions": [],
+        "attributes": [{
+          "key": "label", "scope": "product", "valueType": { "kind": "text", "maxLength": 32 },
+          "required": false, "cardinality": { "min": 0, "max": 1 },
+          "filterable": true, "facetable": true, "public": true, "displayOrder": 0, "labels": { "en": "Label" }
+        }]
+      }]
+    },
+    "drafts": [{
+      "schemaVersion": 1,
+      "product": { "id": "00000000-0000-4000-8000-000000000001", "type": { "key": "sample:item", "version": 1 }, "dimensions": [] },
+      "skus": [{ "id": "00000000-0000-4000-8000-000000000002", "productId": "00000000-0000-4000-8000-000000000001", "options": {} }]
+    }]
+  }]
+}

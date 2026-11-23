@@ -308,6 +308,9 @@ test('the host requires billing privacy coverage and exposes incomplete privacy 
   assert.ok(registry.contributors.some(c=>c.id==='customer-billing'));
   assert.deepEqual(registry.missingContributors,['identity','subscriptions']);
   assert.ok(registry.contributors.some(c=>c.id==='account-support'));
+  for (const id of ['destination-receipts', 'destination-documents']) {
+    assert.ok(registry.contributors.some(c => c.id === id));
+  }
 });
 for(const operation of ['account.billing','account.defaults'] as const)test(`${operation} refuses caller-supplied identity before native storage`,async()=>{
   const ref='abcdefab-cdef-4abc-8def-abcdefabcdef';

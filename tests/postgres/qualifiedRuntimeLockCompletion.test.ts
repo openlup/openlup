@@ -1,3 +1,4 @@
+import { destinationContext, documentTable, reachDestinationCutoff, selectionTable, snapshot } from "./destinationDocumentFixture.js";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
@@ -355,6 +356,53 @@ for (const generation of ["qualified-v2", "qualified-admin"] as const) describe(
     await expect(receiptCall(runtime, "lock", receiptArgs(unrelated))).rejects.toMatchObject({ code: "42501" });
     await expect(receiptCall(runtime, "commit", receiptArgs(unrelated), await receiptOutcome(owner))).rejects.toMatchObject({ code: "42501" });
   }, 20_000);
+
+  it("blocks absorption on available and retired destination documents with only the runtime census column", async () => {
+    const { operatorId } = await operatorFixture(), customer = await receiptClient(owner);
+    const lead = () => receiptClient(owner, "lead");
+    const absorb = (id: string, key = randomUUID()) => runtime.query(
+      "SELECT public.customer_support_absorb_lead_v1($1,$2,$3,$4,$5,clock_timestamp()) AS value",
+      [operatorId, customer, id, `${id}@example.invalid`, key],
+    ).then(result => result.rows[0].value);
+    expect((await runtime.query(`SELECT count(client_id)::int AS count FROM ${documentTable}`)).rows).toEqual([{ count: 0 }]);
+    expect(await absorb(await lead())).toMatchObject({ outcome: "applied" });
+    expect((await owner.query("SELECT table_name,disposition FROM public.client_absorption_policy WHERE table_name=ANY($1)",
+      [[documentTable.split(".")[1], selectionTable.split(".")[1]]])).rows)
+      .toEqual([{ table_name: "commerce_destination_v2_documents", disposition: "block" }]);
+    for (const disposition of ["available", "expired", "erased"]) {
+      const id = await lead(), ctx = await destinationContext(owner, id);
+      const issued = await snapshot(runtime, ctx);
+      if (disposition === "expired") {
+        await reachDestinationCutoff(owner, issued.binding);
+        await owner.query("SELECT public.commerce_destination_v2_expire(clock_timestamp(),1)");
+      } else if (disposition === "erased") {
+        const db = await owner.connect();
+        try {
+          await db.query("BEGIN");
+          await db.query("LOCK TABLE public.identity_privacy_erasures IN SHARE ROW EXCLUSIVE MODE");
+          await db.query("SELECT public.commerce_destination_v2_erase($1)", [id]);
+          await db.query("COMMIT");
+        } finally { await db.query("ROLLBACK"); db.release(); }
+      }
+      expect((await owner.query(`SELECT evidence_disposition FROM ${documentTable} WHERE client_id=$1`, [id])).rows)
+        .toEqual([{ evidence_disposition: disposition }]);
+      // Absorption checks identity before its commercial footprint. Use a formerly linked lead.
+      await owner.query("UPDATE public.clients SET principal_id=NULL WHERE id=$1", [id]);
+      const key = randomUUID(), refusal = await absorb(id, key);
+      expect(refusal).toMatchObject({ outcome: "refused", refusalCode: "lead_has_commercial_footprint",
+        blockingTables: expect.arrayContaining(["commerce_destination_v2_documents"]) });
+      expect(await absorb(id, key)).toEqual(refusal);
+      expect((await runtime.query(`SELECT count(client_id)::int AS count FROM ${documentTable} WHERE client_id=$1`, [id])).rows)
+        .toEqual([{ count: 1 }]);
+    }
+    expect(await absorb(await lead())).toMatchObject({ outcome: "applied" });
+    for (const sql of [
+      `SELECT document_text FROM ${documentTable}`, `SELECT * FROM ${documentTable}`,
+      `SELECT client_id FROM ${documentTable} FOR UPDATE`, `INSERT INTO ${documentTable}(client_id) VALUES(gen_random_uuid())`,
+      `UPDATE ${documentTable} SET document_text=NULL`, `DELETE FROM ${documentTable}`, `SELECT * FROM ${selectionTable}`,
+      `DELETE FROM ${selectionTable}`,
+    ]) await expect(runtime.query(sql)).rejects.toMatchObject({ code: "42501" });
+  });
 
   it("absorbs a destination-free lead and refuses a lead destination as the runtime, reading only the client column", async () => {
     // Existing approved classifications that land with an earlier change; each insert is a no-op once present.

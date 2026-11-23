@@ -11,6 +11,7 @@ declare module "vitest" {
   interface ProvidedContext {
     coverageRun: boolean;
     durationManifest: DurationSections;
+    pgTemplateBroker?: { url: string; token: string };
     repositoryRoot: string;
   }
 }

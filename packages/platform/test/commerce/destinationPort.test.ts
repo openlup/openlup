@@ -1,3 +1,4 @@
+import { createDestinationDocumentPrivacyContributor, createDestinationReceiptPrivacyContributor, createPersonalDataContributorRegistry } from "@openlup/platform/identity";
 import { expect, it } from "vitest";
 import { z } from "zod";
 import { createCheckoutCommandSchemas } from "@openlup/platform/commerce";
@@ -105,11 +106,15 @@ it.each([["item", true], ["other", false]] as const)("matches v1 async SKU admis
 });
 
 it("discovers fresh destination issuance and saved address support independently", () => {
-  expect(destinationV2Capabilities({ rail: "native", installed: true, issuanceEnabled: true })).toEqual({
+  const privacyRegistry = createPersonalDataContributorRegistry(
+    [createDestinationReceiptPrivacyContributor(), createDestinationDocumentPrivacyContributor()],
+    { requiredContributorIds: ["destination-receipts", "destination-documents"] },
+  );
+  expect(destinationV2Capabilities({ rail: "native", installed: true, issuanceEnabled: true, privacyRegistry })).toEqual({
     destinationAddressV2: { capability: "destinationAddressV2", supported: true, available: true },
     savedAddressV2: { capability: "savedAddressV2", supported: false, available: false, refusalCode: "destination_v2_unsupported_rail" },
   });
-  for (const state of [{}, { installed: true }, { installed: true, issuanceEnabled: false }, { issuanceEnabled: true }]) {
+  for (const state of [{}, { installed: true }, { installed: true, issuanceEnabled: false }, { issuanceEnabled: true }, { installed: true, issuanceEnabled: true }]) {
     expect(destinationV2Capabilities({ rail: "native", ...state }).destinationAddressV2).toEqual({
       capability: "destinationAddressV2", supported: true, available: false, refusalCode: "destination_v2_unavailable",
     });

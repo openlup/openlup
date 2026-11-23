@@ -7,7 +7,7 @@ import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/po
 
 describe.each(lifecycleProfiles)('checkout recovery inspection on %s', profile => {
  let env: LifecycleInstallation;
- beforeAll(async()=>{env=await lifecycleInstallation(profile);if(profile==='legacy')await env.owner.query('CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS');},postgresSetupTimeoutMs);
+ beforeAll(async()=>{env=await lifecycleInstallation(profile,{freshCluster:profile==='legacy'});if(profile==='legacy')await env.owner.query('CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS');},postgresSetupTimeoutMs);
  afterAll(async()=>env?.close(),postgresTeardownTimeoutMs);
  async function order(client=randomUUID(),initial=false){
   const id=randomUUID(),db=await env.owner.connect();
