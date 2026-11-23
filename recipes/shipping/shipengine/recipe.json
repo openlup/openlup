@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "shipping/shipengine",
+  "domain": "shipping",
+  "providerKind": "shipengine",
+  "displayName": "ShipEngine Multi-Carrier Rates (REST v1)",
+  "summary": "Zero-SDK ShipEngine REST v1 multi-carrier rate shopping recipe with pinned HTTPS egress, API-Key auth, BigInt/Intl money normalization, retryAfterSeconds 429 preservation, and zero-I/O capability validation.",
+  "regions": [
+    "global",
+    "US",
+    "NA",
+    "EU",
+    "APAC"
+  ],
+  "status": "verified",
+  "openlupPlatformRange": "^1.4.0",
+  "testedAgainstPlatformVersion": "1.4.0-dev",
+  "contractImports": [
+    "@openlup/platform/shipping",
+    "@openlup/platform/adapter-kit"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/shipping/testing",
+    "exportName": "runShippingRateAdapterConformance",
+    "mode": "full"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://api.shipengine.com"
+  ],
+  "webhookAuth": "none",
+  "browserSurface": {
+    "kind": "none"
+  },
+  "supportedCurrenciesPolicy": "host-configured",
+  "staticCapabilities": {
+    "contractVersion": "shipping.carrier_rate.v1",
+    "providerKind": "shipengine",
+    "multiParcel": true,
+    "dimensionsRequired": false,
+    "supportedOriginCountries": "any",
+    "supportedDestinationCountries": "any",
+    "supportedCurrencies": [],
+    "deliveryKinds": [
+      "courier"
+    ],
+    "requiresCredentials": true
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "LIVE_QUALIFICATION.md",
+      "recipe.json",
+      "server/adapter.ts",
+      "server/client-contract.ts",
+      "server/index.ts",
+      "tests/conformance.test.ts",
+      "tests/fixtures.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/shipping/shipengine/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/shipping/shipengine/tests/mount-proof.test.ts"
+  }
+}

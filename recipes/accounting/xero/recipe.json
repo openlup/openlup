@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "id": "accounting/xero",
+  "domain": "accounting",
+  "providerKind": "xero",
+  "displayName": "Xero (Accounting API 2.0)",
+  "summary": "Zero-SDK Xero Accounting API 2.0 ledger-export recipe with OAuth2 refresh-token auth, strict UUID tenantId pinning, exact BigInt minor-unit conversion, Idempotency-Key support, and ManualJournals readback.",
+  "regions": [
+    "global",
+    "US",
+    "NA",
+    "EU",
+    "APAC"
+  ],
+  "status": "verified",
+  "openlupPlatformRange": "^1.4.0",
+  "testedAgainstPlatformVersion": "1.4.0-dev",
+  "contractImports": [
+    "@openlup/platform/accounting",
+    "@openlup/platform/accounting/contracts",
+    "@openlup/platform/adapter-kit"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/accounting/testing",
+    "exportName": "runAccountingAdapterConformance",
+    "mode": "full"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://api.xero.com",
+    "https://identity.xero.com"
+  ],
+  "webhookAuth": "none",
+  "browserSurface": {
+    "kind": "none"
+  },
+  "supportedCurrenciesPolicy": "host-configured",
+  "staticCapabilities": {
+    "contractVersion": "accounting.ledger_export.v1",
+    "providerKind": "xero",
+    "supportedEntryKinds": [
+      "adjustment",
+      "fee",
+      "payout",
+      "refund",
+      "sale",
+      "tax_liability"
+    ],
+    "supportedCurrencies": [],
+    "supportsReadback": true,
+    "supportsIdempotencyKey": true,
+    "requiresCredentials": true
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "LIVE_QUALIFICATION.md",
+      "recipe.json",
+      "server/adapter.ts",
+      "server/client-contract.ts",
+      "server/index.ts",
+      "tests/conformance.test.ts",
+      "tests/fixtures.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/accounting/xero/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/accounting/xero/tests/mount-proof.test.ts"
+  }
+}

@@ -46,6 +46,10 @@ Find an import subpath and its API report. API reports list every exported symbo
 | `./account-support/contracts` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/account-support-contracts.api.md) |
 | `./account-support/postgres` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/account-support-postgres.api.md) |
 | `./account-support/read-contracts` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/account-support-read-contracts.api.md) |
+| `./accounting` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/accounting.api.md) |
+| `./accounting/contracts` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/accounting-contracts.api.md) |
+| `./accounting/testing` | capability | testing | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/accounting-testing.api.md) |
+| `./adapter-kit` | rail | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/adapter-kit.api.md) |
 | `./bff` | rail | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/bff.api.md) |
 | `./blob` | rail | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/blob.api.md) |
 | `./catalog` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/catalog.api.md) |
@@ -54,6 +58,7 @@ Find an import subpath and its API report. API reports list every exported symbo
 | `./channels` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/channels.api.md) |
 | `./channels/contracts` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/channels-contracts.api.md) |
 | `./channels/server` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/channels-server.api.md) |
+| `./channels/testing` | capability | testing | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/channels-testing.api.md) |
 | `./commerce` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/commerce.api.md) |
 | `./commerce/contracts` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/commerce-contracts.api.md) |
 | `./commerce/server` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/commerce-server.api.md) |
@@ -63,6 +68,7 @@ Find an import subpath and its API report. API reports list every exported symbo
 | `./communications` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/communications.api.md) |
 | `./communications/contracts` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/communications-contracts.api.md) |
 | `./communications/klaviyo` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/communications-klaviyo.api.md) |
+| `./communications/testing` | capability | testing | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/communications-testing.api.md) |
 | `./company-identity` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/company-identity.api.md) |
 | `./company-identity/contracts` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/company-identity-contracts.api.md) |
 | `./company-identity/server` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/company-identity-server.api.md) |
@@ -89,6 +95,9 @@ Find an import subpath and its API report. API reports list every exported symbo
 | `./marketing/server` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/marketing-server.api.md) |
 | `./marketing/server/postgres` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/marketing-server-postgres.api.md) |
 | `./migrations` | rail | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/migrations.api.md) |
+| `./observability` | rail | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/observability.api.md) |
+| `./observability/contracts` | rail | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/observability-contracts.api.md) |
+| `./observability/testing` | rail | testing | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/observability-testing.api.md) |
 | `./operations` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/operations.api.md) |
 | `./operations/contracts` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/operations-contracts.api.md) |
 | `./operations/server` | capability | stable | [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/operations-server.api.md) |

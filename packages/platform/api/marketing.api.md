@@ -188,9 +188,9 @@ export declare const acquisitionNewsletterConsentEventSchema: z.ZodObject<{
     eventType: z.ZodEnum<{
         suppress: "suppress";
         update: "update";
-        subscribe: "subscribe";
         unsubscribe: "unsubscribe";
         complaint: "complaint";
+        subscribe: "subscribe";
     }>;
     purpose: z.ZodEnum<{
         marketing_newsletter: "marketing_newsletter";

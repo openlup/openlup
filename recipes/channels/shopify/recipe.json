@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "id": "channels/shopify",
+  "domain": "channels",
+  "providerKind": "shopify",
+  "displayName": "Shopify Storefront Channel (Admin REST & Webhooks)",
+  "summary": "Exemplar zero-SDK Shopify Admin REST & Webhooks channel connector with strict shopDomain pinning, auth-before-parse HMAC-SHA256 verification, page_info cursor pagination, Retry-After cooldowns, and B3 unmapped signal preservation.",
+  "regions": [
+    "global",
+    "US",
+    "NA",
+    "EU",
+    "APAC"
+  ],
+  "status": "exemplar",
+  "openlupPlatformRange": "^1.4.0",
+  "testedAgainstPlatformVersion": "1.4.0-dev",
+  "contractImports": [
+    "@openlup/platform/channels",
+    "@openlup/platform/channels/contracts",
+    "@openlup/platform/adapter-kit"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/channels/testing",
+    "exportName": "runChannelAdapterConformance",
+    "mode": "full"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://{shopDomain}.myshopify.com"
+  ],
+  "webhookAuth": "hmac-sha256-raw",
+  "browserSurface": {
+    "kind": "none"
+  },
+  "supportedCurrenciesPolicy": "host-configured",
+  "staticCapabilities": {
+    "connectorKind": "shopify",
+    "connectorShape": "direct",
+    "supportsChannelDiscovery": false,
+    "supportsOrderPull": true,
+    "supportsOrderWebhook": true,
+    "supportsOrderAck": false,
+    "supportsListingLink": false,
+    "supportsStockPush": false,
+    "supportsPricePush": false,
+    "supportsShipmentPush": false,
+    "correlation": {
+      "orderRefField": "id",
+      "customerRefField": "customer.id",
+      "customerRefNullMeans": "per_order_identity",
+      "emailIsAlwaysMasked": false
+    }
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "LIVE_QUALIFICATION.md",
+      "recipe.json",
+      "server/adapter.ts",
+      "server/client-contract.ts",
+      "server/index.ts",
+      "tests/conformance.test.ts",
+      "tests/fixtures.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/channels/shopify/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/channels/shopify/tests/mount-proof.test.ts"
+  }
+}

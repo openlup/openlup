@@ -1816,7 +1816,10 @@ remain a `resolution` delta with its existing review floor. Size caps and releas
 fragments stay reviewed. Generator errors fail closed.
 
 `npm run inventory:refresh` installs all five profiles in disposable local
-PostgreSQL through the production migration runner and catalog projectors. It
+PostgreSQL through the production migration runner and catalog projectors,
+running up to three profiles concurrently by default (set
+`OPENLUP_INVENTORY_CONCURRENCY` to `1`–`5` to override, and local non-CI runs
+use host-local `ai-resource-gate` on the `docker-heavy` lane when present). It
 measures complete hashes, counts, ledger tails and the connected handover count,
 and rewrites only `current` in
 [the inventory data](tests/postgres/current-installation-inventory.json).

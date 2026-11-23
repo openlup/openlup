@@ -528,7 +528,9 @@ is qualified.
 
 ## Compatible data transfer
 
-Checkout attempt ledger rows are authoritative, short-lived admission state.
+The native starter uses the checkout attempt ledger for default quotas across
+processes and restarts on the same store database. Ledger rows are authoritative,
+short-lived admission state.
 The native connected-store profile carries the three digests and original epoch
 milliseconds exactly in owner-only packets. Treat these as restricted
 pseudonymous abuse-control data and keep the packets private. The ledger holds
@@ -536,16 +538,20 @@ no raw email, IP address, idempotency key, headers or request payload, and has n
 client foreign key or absorption mapping.
 
 Restore the ledger before enabling checkout under the same limit and identity
-policy. Connected-store restore accepts the current qualified inventory and the
-admitted predecessor inventories from before publication commands, the checkout
-attempt ledger, governed catalogue lifecycle and catalogue accepted references.
-Conversion reproduces the retained rows an in-place upgrade would produce.
-It also accepts profile-free packets from the pinned inventories immediately
-before subscription profile receipts. Those packets use the current shape.
-Earlier captures report the edit quote table as empty because capture refused
-when it contained rows. New captures carry those quotes. A source schema change
-that cannot be reproduced by additive conversion, such as a dropped or retyped
-column, refuses with `schema_conflict`. Upgrade the source, then capture.
+policy.
+
+Connected-store restore admits only a packet captured on the target's exact
+current qualified inventory. Any other inventory, including earlier releases
+and unreleased states, refuses with `schema_conflict`. The remedy is
+`capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
+If no such target can be provisioned, connected-store restore is unavailable for that pair.
+Each release cut decides whether the previous release
+is admitted, with one general additive conversion keyed on that release's tables
+and columns, or documents its refusal. A migration adds no
+restore pin of its own. A migration that adds a captured table or a nullable
+column to one registers it in the capture roster and restore order, or in that
+table's additive columns, in the same change.
+
 Restored attempts age on their
 original timestamps. Admission prunes rows at the retention cutoff on each
 call. Idle databases keep bounded rows
@@ -1218,8 +1224,6 @@ reserves option combinations across all statuses for published SKUs. The
 identifier marker is nullable. Existing rows retain their issuer-scoped
 keys. New publication checks existing identifiers under the catalogue relation
 fence. A later unmarked legacy write may share a GTIN with another issuer.
-Connected restore preserves markers and recognizes the exact predecessor
-installation profile with its original identifier columns.
 
 A managed implementation can use the same relations, composite keys and
 deferred checks, with owner-only writes under row-level security and
@@ -2582,9 +2586,9 @@ installed non-system definer. Preserve the intended trusted schemas when
 moving `pg_temp` to the end. For a missing or empty path, review and set the
 trusted schema list before appending `pg_temp`. Eleven acquisition and partner
 acquisition definer functions now pin `pg_temp` last on their search path.
-If a retained-store packet has an unknown or mismatched inventory, use a
-verified capture from the matching installation profile or upgrade the source
-and capture it again.
+If a retained-store packet has an unknown or mismatched inventory, the remedy is
+`capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
+If no such target can be provisioned, connected-store restore is unavailable for that pair.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new

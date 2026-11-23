@@ -1,0 +1,26 @@
+export {
+  XERO_PROVIDER_KIND,
+  createXeroAdapter,
+  getCurrencyExponent,
+  minorUnitsToMajorDecimalString,
+  projectXeroStaticCapabilities,
+  xeroDefaultCapabilities,
+  type CreateXeroAdapterOptions,
+} from "./adapter.js";
+export {
+  XERO_API_ORIGIN,
+  XERO_EGRESS_ORIGINS,
+  XERO_IDENTITY_ORIGIN,
+  XERO_OAUTH_TOKEN_URL,
+  XeroClientError,
+  assertSafeXeroExportKey,
+  assertSafeXeroTenantId,
+  createXeroHttpClient,
+  escapeXeroWhereLiteral,
+  type XeroClient,
+  type XeroClientErrorKind,
+  type XeroCreateManualJournalPayload,
+  type XeroHttpClientOptions,
+  type XeroManualJournalLine,
+  type XeroManualJournalRef,
+} from "./client-contract.js";

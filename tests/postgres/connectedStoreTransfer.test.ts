@@ -381,6 +381,9 @@ beforeAll(async () => {
   consent = await consentFixture();
 
   retainedRenewal = await renewalPurchase(true);
+  await source.owner.query(`INSERT INTO public.subscription_edit_quotes(subscription_id,idempotency_key,request_fingerprint,
+    quote_hash,expected_template_version,proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,expires_at)
+    VALUES($1,'fixture-quote',repeat('b',64),repeat('c',64),1,'[]',28,200,200,'XXX','2026-09-02')`, [retainedRenewal.subscriptionId]);
   pendingRenewal = await renewalPurchase(false);
 
   payments = await paymentTransferFixture();
@@ -456,6 +459,7 @@ beforeAll(async () => {
   }
   await source.owner.query("DELETE FROM public.outbox_events WHERE event_type='commerce.shipment.dispatched' AND idempotency_key=$1", [`shipment_dispatched:${historicalReferences.pruned}`]);
   packet = await capture(source.owner, "owned-existing-source");
+  expect(packet.owned.find(entry => entry.table === "subscription_edit_quotes")!.rows).toHaveLength(1);
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
 beforeEach(async () => {
