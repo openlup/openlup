@@ -22,7 +22,7 @@ import { buildDemoSeed } from '../owned/demo-seed.ts';
 import type { Locale } from '../shared/config.ts';
 import { createPrivateCapture } from '../host/private-capture.ts';
 import { runScheduledCare } from '../host/scheduled-renewal.ts';
-import { test, expect, type Page, type Locator } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page, type Locator } from '@playwright/test';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
 
@@ -68,6 +68,8 @@ interface Material { id: string; baseURL: string; ownerUrl: string; runtimeUrl: 
   upgrade?: { customized: boolean }; legacy?: Record<Locale, LegacyCancel> }
 interface Purchase { orderRef: string; email: string; subscriptionId: string; clientId: string; nextCycleAt: string; cadenceDays: number }
 let material: Material, owner: pg.Pool, runtime: pg.Pool;
+let recoveryPurchase: Purchase | undefined, secondRecoveryPurchase: Purchase | undefined;
+let recoveryCookies: Awaited<ReturnType<BrowserContext['cookies']>> | undefined;
 test.beforeAll(async ({ baseURL }, info) => {
   const entries: Material[] = JSON.parse(await readFile('.context/care-browser/fixtures.json', 'utf8'));
   const found = entries.find(row => row.id === info.project.name);
@@ -270,6 +272,38 @@ async function signIn(page: Page, email: string, locale: Locale, landing?: strin
 }
 const cardFor = (page: Page, f: Purchase) => page.locator(`[data-subscription="${f.subscriptionId}"]`);
 async function state(f: Purchase) { return (await runtime.query('SELECT status,next_cycle_at FROM public.subscriptions WHERE id=$1::uuid', [f.subscriptionId])).rows[0]; }
+async function resetCareFixture(page: Page, f: Purchase, baseURL = material.baseURL) {
+  const live = await state(f);
+  if (live.status !== 'active') {
+    expect(['paused', 'cancelled']).toContain(live.status);
+    const action = live.status === 'paused' ? 'resume' : 'reactivate';
+    const response = await post(page, 'subscription.command', {
+      subscriptionRef: f.subscriptionId, action, ...(action === 'reactivate' ? { confirmedChargeTiming: true } : {}),
+    }, undefined, baseURL);
+    expect(await response.json()).toMatchObject({ ok: true });
+  }
+  // Restore the purchased fixture's original schedule so another journey starts
+  // with an open edit window, including after the near-term reactivation.
+  if (live.status !== 'active' || live.next_cycle_at.toISOString() !== f.nextCycleAt) {
+    await owner.query('UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1', [f.subscriptionId, f.nextCycleAt]);
+  }
+  await page.reload();
+}
+async function openRecoveryCard(page: Page, locale: Locale) {
+  // Reuse the ownership witness's foreign purchase when selected. Each recovery
+  // case gets a fresh page on the same authenticated customer session.
+  const f = recoveryPurchase ??= await purchase(page);
+  if (recoveryCookies) {
+    await page.context().addCookies(recoveryCookies);
+    await page.goto(routes.account[locale]);
+  } else {
+    await signIn(page, f.email, locale);
+    recoveryCookies = await page.context().cookies(`${material.baseURL}/api/actions`);
+    expect(recoveryCookies.length).toBeGreaterThan(0);
+  }
+  await resetCareFixture(page, f);
+  return f;
+}
 async function open(page: Page, f: Purchase, locale: Locale, label: string) {
   const card = cardFor(page, f); await expect(card).toBeVisible();
   await card.getByRole('button', { name: label, exact: true }).click();
@@ -445,7 +479,7 @@ for (const locale of market.locales) {
     expect((await state(f)).next_cycle_at.toISOString().slice(0, 10)).toBe(target);
   });
   test(`${locale}: ask_first_offer_only_after_yes and cancel_never_requires_offer_or_reason`, async ({ page }) => {
-    const f = await purchase(page), foreign = await purchase(page);
+    const f = await purchase(page), foreign = recoveryPurchase ??= await purchase(page);
     await signIn(page, f.email, locale);
     const card = cardFor(page, f), t = copy[locale], subscriptionRef = f.subscriptionId;
     if (material.upgrade?.customized) {
@@ -580,27 +614,23 @@ for (const locale of market.locales) {
       await control(t.cancelSubscription).click();
       await expect(card.locator('[data-care-state]')).toHaveAttribute('data-care-state', 'cancelled');
       await careRefused(page, 'subscription.acceptSaveOffer', accept, 409, 'starter_save_offer_unavailable', baseURL);
-      const next = await purchase(page);
-      await signIn(page, next.email, locale, undefined, false, baseURL);
-      const newer = cardFor(page, next);
-      await newer.getByRole('button', { name: t.cancelSubscription, exact: true }).click();
-      await newer.getByRole('button', { name: t.careOfferNo, exact: true }).click();
-      const newNextCycleAt = new Date(Date.parse(next.nextCycleAt) + 4 * 86400000).toISOString();
-      expect((await request('subscription.command', { action: 'slide', subscriptionRef: next.subscriptionId, newNextCycleAt })).ok).toBe(true);
+      await resetCareFixture(page, f, baseURL);
+      await control(t.cancelSubscription).click();
+      await control(t.careOfferNo).click();
+      const newNextCycleAt = new Date(Date.parse(f.nextCycleAt) + 4 * 86400000).toISOString();
+      expect((await request('subscription.command', { action: 'slide', subscriptionRef, newNextCycleAt })).ok).toBe(true);
       await page.getByRole('button', { name: t.careRead, exact: true }).click();
       const updated = new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeZone: configurations[material.id]!.market.timezone }).format(new Date(newNextCycleAt));
-      await expect(newer).toContainText(updated);
-      await newer.getByRole('button', { name: t.cancelSubscription, exact: true }).click();
-      await expect(newer.locator('[data-care-state]')).toHaveAttribute('data-care-state', 'cancelled');
-      expect((await state(next)).status).toBe('cancelled');
+      await expect(card).toContainText(updated);
+      await control(t.cancelSubscription).click();
+      await expect(card.locator('[data-care-state]')).toHaveAttribute('data-care-state', 'cancelled');
     }
     expect((await state(f)).status).toBe('cancelled');
   }));
 
   for (const discard of ['generation', 'cancel', 'dismiss', 'removal'] as const) {
     test(`${locale}: cx1r_keyed_account_recovery drops a held Yes after ${discard}`, async ({ page }) => {
-      const f = await purchase(page), t = copy[locale];
-      await signIn(page, f.email, locale);
+      const f = await openRecoveryCard(page, locale), t = copy[locale];
       const card = cardFor(page, f);
       const control = (name: string) => card.getByRole('button', { name, exact: true });
       const read = page.getByRole('button', { name: t.careRead, exact: true });
@@ -641,8 +671,9 @@ for (const locale of market.locales) {
   }
 
   test(`${locale}: cx1r_keyed_account_recovery preserves card A while card B and account reads move ahead`, async ({ page }) => {
-    const f = await purchase(page), other = await purchase(page, f.email), t = copy[locale];
-    await signIn(page, f.email, locale);
+    const f = await openRecoveryCard(page, locale), t = copy[locale];
+    const other = secondRecoveryPurchase ??= await purchase(page, f.email);
+    await resetCareFixture(page, other);
     const card = cardFor(page, f), otherCard = cardFor(page, other);
     const handle = await card.elementHandle();
     const read = page.getByRole('button', { name: t.careRead, exact: true });
@@ -680,8 +711,7 @@ for (const locale of market.locales) {
   });
 
   test(`${locale}: cx1r_keyed_account_recovery keeps a new offer during an older Accept refusal`, async ({ page }) => {
-    const f = await purchase(page), t = copy[locale];
-    await signIn(page, f.email, locale);
+    const f = await openRecoveryCard(page, locale), t = copy[locale];
     const card = cardFor(page, f);
     const control = (name: string) => card.getByRole('button', { name, exact: true });
     const attempts: string[] = [];
@@ -707,8 +737,7 @@ for (const locale of market.locales) {
   });
 
   test(`${locale}: cx1r_keyed_account_recovery keeps live Cancel beside historical feedback retry`, async ({ page }) => {
-    const f = await purchase(page), t = copy[locale];
-    await signIn(page, f.email, locale);
+    const f = await openRecoveryCard(page, locale), t = copy[locale];
     const card = cardFor(page, f), control = (name: string) => card.getByRole('button', { name, exact: true });
     const attempts: string[] = [];
     for (const operation of ['cancelDirect', 'cancelFeedback']) {
