@@ -1806,16 +1806,6 @@ The helper merges the exact fetched `origin/main` with DCO sign-off; it never
 rebases or pushes. Configure your Git `user.name` and `user.email` before running
 it: the merge uses that identity and `-s` for your personal
 [DCO certification](#developer-certificate-of-origin).
-For an inverted UTC slot involving only disjoint plain platform migrations, use
-`npm run landing:merge -- --relocate-slots`. This opt-in path relocates the PR's
-new slot after `origin/main` only when its SQL, mirrors, registry metadata and
-references pass the closed disjointness proof. The proof currently admits only
-simple `CREATE TABLE public.<name>` and `ALTER TABLE public.<name> ADD COLUMN`
-statements with unquoted identifiers and primitive column types (plus `SELECT 1`).
-Slot metadata must contain no additional object operands. Other SQL refuses
-relocation. Resolve that case
-manually and review the resolution.
-The command without the flag still refuses an inverted slot before merging.
 It stops on an authored conflict, leaving the merge for a
 human or worker. It refreshes its carrier set with the merged tree's own
 inventory refresh and generators, run in new processes, not the code it loaded
@@ -1826,6 +1816,14 @@ registry union admits additions and base-entry removals in the named arrays of
 the publication catalogue, package boundary test and cold-consumer script. A
 removal can come from either side or both. Edits to base entries, reorders and
 moves between adapter classes need manual resolution and review.
+
+If `landing:merge` refuses a new migration because its UTC slot is no longer
+later than `origin/main`, rename the new, unlanded migration to a free UTC slot
+after the migration slots on `origin/main`. Preserve the order of any other
+new migrations on the branch. Update the migration registries, packaged SQL copy
+and references to the old path or version. Refresh the derived files and
+installation inventory, then submit the renamed migration and its resulting
+changes for review. An existing review does not cover the rename.
 
 Integration proof classifies an exact merge of the reviewed head and a commit
 on `origin/main` as `derived` only for a closed carrier set: migration registry
