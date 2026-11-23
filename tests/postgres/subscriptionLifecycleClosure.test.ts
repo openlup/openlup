@@ -54,6 +54,14 @@ async function presented<Kind extends SubscriptionSaveOfferPresentation["kind"]>
 function acceptInput(f: { actor: string; client: string; subscription: string }, generation: string, now = AT) {
   return { actor: offerActor(f), subscriptionId: f.subscription, idempotencyKey: randomUUID(), now, generation };
 }
+function acceptPresentation(f: { actor: string; client: string; subscription: string }, offer: SubscriptionSaveOfferPresentation, now = AT): Accept {
+  const input = acceptInput(f, offer.generation, now);
+  if (offer.kind === "pause") {
+    return { ...input, kind: offer.kind, ...offer.pausePresets.find(option => option.pausePreset === offer.preselectedPausePreset)! };
+  }
+  if (offer.kind === "reschedule") return { ...input, kind: offer.kind, newNextCycleAt: offer.newNextCycleAt };
+  return { ...input, kind: offer.kind };
+}
 const offerEvents = (db: Pool, id: string) => db.query(`SELECT event_type,payload,communication_subject_id FROM public.subscription_events
   WHERE subscription_id=$1 ORDER BY event_type`, [id]).then(result => result.rows);
 const offerReceipts = (db: Pool, id: string) => db.query(`SELECT idempotency_key,command,command_fingerprint,result,status
@@ -215,24 +223,122 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     const offer = await presented(service, f, "reschedule");
     const read = { actor: offerActor(f), subscriptionIds: [f.subscription], now: AT };
     const input = { ...acceptInput(f, offer.generation), kind: offer.kind, newNextCycleAt: offer.newNextCycleAt };
+    const skip = acceptor(env.runtime), pause = acceptor(env.runtime, { defaultOffer: "pause", preselectedPausePreset: "2_weeks" });
+    const skipInput = acceptPresentation(f, await presented(skip, f, "skip"));
+    const pauseInput = acceptPresentation(f, await presented(pause, f, "pause"));
     const extremes = ["4714-11-24 00:00:00+00 BC", "294276-12-31 23:59:59.999999+00", "-infinity", "infinity"];
     for (const now of [...extremes, "294277-01-01 00:00:00+00"]) {
       expect(await service.readPresentations({ ...read, now })).toEqual(new Map([[f.subscription, null]]));
       expect(await service.accept({ ...input, now })).toEqual(refused("subscription_save_offer_unavailable"));
     }
+    expect(await pause.readPresentations({ ...read, now: extremes[1] })).toEqual(new Map([[f.subscription, null]]));
+    expect(await pause.accept({ ...pauseInput, now: extremes[1] })).toEqual(refused("subscription_save_offer_unavailable"));
     const schedule = (at: string) => env.owner.query("UPDATE public.subscriptions SET next_cycle_at=$2::timestamptz WHERE id=$1", [f.subscription, at]);
     for (const at of extremes) {
       await schedule(at);
       expect(await service.readPresentations(read)).toEqual(new Map([[f.subscription, null]]));
       expect(await service.accept(input)).toEqual(refused("subscription_save_offer_unavailable"));
     }
+    await schedule(extremes[1]);
+    expect(await skip.readPresentations(read)).toEqual(new Map([[f.subscription, null]]));
+    expect(await skip.accept(skipInput)).toEqual(refused("subscription_save_offer_unavailable"));
     await schedule(later(240));
-    expect(await service.accept(input)).toMatchObject({ outcome: "applied" });
+    const original = await service.accept(input);
+    expect(original).toMatchObject({ outcome: "applied" });
     for (const at of extremes) {
       await schedule(at);
       expect(await service.readPresentations(read)).toEqual(new Map([[f.subscription, null]]));
       expect(await service.accept({ ...input, idempotencyKey: randomUUID() })).toEqual(refused("subscription_save_offer_consumed"));
     }
+    const disabled = acceptor(env.runtime, { defaultOffer: "reschedule", rescheduleOfferDays: 36_501 });
+    expect(await disabled.accept({ ...input, now: extremes[1], idempotencyKey: randomUUID() })).toEqual(refused("subscription_save_offer_consumed"));
+    expect(await disabled.accept({ ...input, now: extremes[1] })).toEqual({ ...original, outcome: "replayed" });
+  }, 30_000);
+
+  it.each([
+    ["next_cycle_at lower edge", "next_cycle_at", "1970-01-01T00:00:00Z", "1969-12-31T23:59:59.999999Z"],
+    ["next_cycle_at upper edge", "next_cycle_at", "9999-12-31T23:59:59.999999Z", "10000-01-01T00:00:00Z"],
+    ["now lower edge", "now", "1970-01-01T00:00:00Z", "1969-12-31T23:59:59.999999Z"],
+    ["now upper edge", "now", "9999-12-31T23:59:59.999999Z", "10000-01-01T00:00:00Z"],
+  ] as const)("cx1r_accept_once_and_recover: %s gates reads and fresh acceptance", async (_edge, field, inside, outside) => {
+    const f = await lifecycleSubject(env.owner);
+    const service = acceptor(env.runtime, { defaultOffer: "pause", preselectedPausePreset: "indefinite" });
+    const at = async (value: string) => {
+      if (field === "now") return value;
+      await env.owner.query("UPDATE public.subscriptions SET next_cycle_at=$2::timestamptz WHERE id=$1", [f.subscription, value]);
+      return AT;
+    };
+    const nowInside = await at(inside);
+    const input = acceptPresentation(f, await presented(service, f, "pause", nowInside), nowInside);
+    const nowOutside = await at(outside);
+    expect(await service.readPresentations({ actor: offerActor(f), subscriptionIds: [f.subscription], now: nowOutside }))
+      .toEqual(new Map([[f.subscription, null]]));
+    expect(await service.accept({ ...input, now: nowOutside })).toEqual(refused("subscription_save_offer_unavailable"));
+    await at(inside);
+    expect(await service.accept(input)).toMatchObject({ outcome: "applied" });
+  }, 30_000);
+
+  it.each([
+    ["rescheduleOfferDays", "skip", 36_500],
+    ["slideMinDays", "skip", 36_500],
+    ["slideMaxDays", "reschedule", 36_500],
+    ["pauseDays", "pause", 36_500],
+    ["pauseMonths", "pause", 1_200],
+  ] as const)("cx1r_accept_once_and_recover: %s gates reads and fresh acceptance", async (field, kind, cap) => {
+    const f = await lifecycleSubject(env.owner);
+    const bound = (value: number) => createPostgresSubscriptionSaveOfferAcceptor({
+      ...offerBinding(env.runtime),
+      offerPolicy: { ...offerPolicy, defaultOffer: kind, preselectedPausePreset: field === "pauseDays" ? "2_weeks" : "1_month",
+        rescheduleOfferDays: field === "rescheduleOfferDays" ? value : offerPolicy.rescheduleOfferDays },
+      lifecycleTerms: field === "rescheduleOfferDays" ? terms : {
+        ...terms, ...(field === "slideMinDays" ? { slideMaxDays: cap } : {}), [field]: value,
+      },
+    });
+    const service = bound(cap), input = acceptPresentation(f, await presented(service, f, kind));
+    const outside = field === "slideMaxDays" || field === "pauseMonths" ? [cap + 1, 2_147_483_647] : [cap + 1];
+    for (const value of outside) {
+      expect(await bound(value).readPresentations({ actor: offerActor(f), subscriptionIds: [f.subscription], now: AT }))
+        .toEqual(new Map([[f.subscription, null]]));
+      expect(await bound(value).accept(input)).toEqual(refused("subscription_save_offer_unavailable"));
+    }
+    expect(await service.accept(input)).toMatchObject({ outcome: "applied" });
+  }, 30_000);
+
+  it.each([["cadence_days", 36_500], ["edit_window_hours", 876_000]] as const)(
+    "cx1r_accept_once_and_recover: %s gates reads and fresh acceptance", async (field, cap) => {
+      const f = await lifecycleSubject(env.owner), db = await env.owner.connect();
+      try {
+        await db.query("BEGIN");
+        // The installed edit-window cap is lower. Relax it only in this
+        // rolled-back fixture so the offer boundary is exercised directly.
+        if (field === "edit_window_hours") await db.query("ALTER TABLE public.subscriptions DROP CONSTRAINT subscriptions_edit_window_hours_check");
+        await db.query("UPDATE public.subscriptions SET next_cycle_at='2200-01-01T00:00:00Z' WHERE id=$1", [f.subscription]);
+        const set = (value: number) => db.query(`UPDATE public.subscriptions SET ${field}=$2 WHERE id=$1`, [f.subscription, value]);
+        const service = createPostgresSubscriptionSaveOfferAcceptor({ withTransaction: work => work(db), offerPolicy, lifecycleTerms: terms });
+        await set(cap);
+        const input = acceptPresentation(f, await presented(service, f, "skip"));
+        await set(cap + 1);
+        expect(await service.readPresentations({ actor: offerActor(f), subscriptionIds: [f.subscription], now: AT }))
+          .toEqual(new Map([[f.subscription, null]]));
+        expect(await service.accept(input)).toEqual(refused("subscription_save_offer_unavailable"));
+        await set(cap);
+        expect(await service.accept(input)).toMatchObject({ outcome: "applied" });
+      } finally {
+        await db.query("ROLLBACK");
+        db.release();
+      }
+    }, 30_000);
+
+  it("cx1r_accept_once_and_recover: December 9999 reschedule is offered and accepted", async () => {
+    const f = await lifecycleSubject(env.owner);
+    const now = "9999-12-10T12:00:00Z", target = "9999-12-23T12:00:00.123456Z";
+    await env.owner.query("UPDATE public.subscriptions SET next_cycle_at='9999-12-20T12:00:00.123456Z' WHERE id=$1", [f.subscription]);
+    const service = acceptor(env.runtime, { defaultOffer: "reschedule" });
+    const offer = await presented(service, f, "reschedule", now);
+    expect(offer.newNextCycleAt).toBe(target);
+    expect(await service.accept(acceptPresentation(f, offer, now))).toMatchObject({ outcome: "applied" });
+    expect((await env.owner.query("SELECT next_cycle_at=$2::timestamptz AS exact FROM public.subscriptions WHERE id=$1",
+      [f.subscription, target])).rows).toEqual([{ exact: true }]);
   }, 30_000);
 
   it("cx1r_accept_once_and_recover: admission filters individual presets and fences fresh dispatch", async () => {

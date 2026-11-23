@@ -323,57 +323,60 @@ function offerCommand(input: SubscriptionCommandContext, choice: OfferChoice): N
 async function readOfferState(executor: SubscriptionQueryExecutor, actor: SubscriptionCommandContext["actor"],
   ids: readonly string[], now: string, kind: OfferKind, binding: OfferBinding, presenting = false) {
   const policy = binding.offerPolicy;
-  const { slideMinDays, slideMaxDays } = binding.lifecycleTerms;
-  const { rows } = await executor.query(`SELECT s.id::text, s.client_id::text, $8::uuid::text AS actor_id,
-      s.status, s.template_version::text, rt.next_cycle_number::text,
-      CASE WHEN dates.retained IS NOT NULL
-        THEN to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END AS next_cycle_at,
-      -- Check the UTC target and both native calendar-day bounds as numbers
-      -- before constructing timestamps. A session zone can use week-scale
-      -- POSIX offsets, so reserve space for conversion in both directions.
-      CASE WHEN shifted.target BETWEEN finite.first_at AND finite.last_at
-        AND dates.requested BETWEEN finite.clock_first AND finite.clock_last
-        AND dates.requested + $6::numeric * 86400 BETWEEN finite.clock_first AND finite.clock_last
-        AND dates.requested + $7::numeric * 86400 BETWEEN finite.clock_first AND finite.clock_last
-      THEN CASE WHEN shifted.target
-        BETWEEN extract(epoch FROM clock.at + make_interval(days=>$6::integer))
-            AND extract(epoch FROM clock.at + make_interval(days=>$7::integer))
-        THEN to_char((s.next_cycle_at AT TIME ZONE 'UTC') + make_interval(days=>$5::integer),'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END
-      END AS slide_target,
-      shifted.cutoff BETWEEN finite.first_at AND finite.last_at AND dates.requested <= shifted.cutoff AS edit_open,
-      ${paymentBlockerSql("s.id")} AS payment_blocker,
-      CASE WHEN $9::boolean AND $4::text IN ('skip','reschedule') THEN
-        (CASE WHEN public.subscription_method_uses_recorded_refs(s.id)
-          THEN public.subscription_method_chargeable_unattended(s.id,now())
-          ELSE EXISTS (SELECT 1 FROM public.subscription_method_states m WHERE m.subscription_id=s.id AND m.health_state='healthy') END)
-        AND NOT EXISTS (SELECT 1 FROM public.subscription_cycles c
-          LEFT JOIN public.commerce_orders orders ON orders.subscription_cycle_id=c.id
-          WHERE c.subscription_id=s.id AND c.scheduled_at=s.next_cycle_at
-            AND (c.status IN ('payment_pending','paid') OR orders.status IN ('paid','fulfillment_pending','fulfilled')))
-        ELSE true END AS action_available,
-      marker.key AS marker_key, event.id IS NOT NULL AS consumed
-    FROM public.subscriptions s
-    LEFT JOIN public.subscription_renewal_terms rt ON rt.subscription_id=s.id
-    CROSS JOIN LATERAL (SELECT CASE WHEN rt.next_cycle_number IS NOT NULL THEN
-      'save-offer:v1:' || encode(sha256(convert_to(
-        format('["cx1r-occurrence-v1","%s","%s","%s"]',s.id,$4::text,rt.next_cycle_number),'UTF8')),'hex') END AS key) marker
-    LEFT JOIN public.subscription_events event ON event.subscription_id=s.id AND event.idempotency_key=marker.key
-    -- Unix seconds of PostgreSQL's first and last finite timestamps.
-    CROSS JOIN (SELECT first_at, last_at, first_at + zone_margin AS clock_first, last_at - zone_margin AS clock_last
-      FROM (SELECT -210866803200::numeric AS first_at, 9224318015999.999999::numeric AS last_at,
-        CASE WHEN current_setting('TimeZone') = 'UTC' THEN 0 ELSE 15 * 86400 END AS zone_margin) limits) finite
-    CROSS JOIN LATERAL (SELECT CASE WHEN event.id IS NULL AND pg_input_is_valid($3::text,'timestamp with time zone')
-      THEN $3::text::timestamptz END AS at) clock
-    LEFT JOIN LATERAL (
-      SELECT extract(epoch FROM s.next_cycle_at) AS retained, extract(epoch FROM clock.at) AS requested
-      WHERE isfinite(s.next_cycle_at) AND isfinite(clock.at)
-    ) dates ON true
-    CROSS JOIN LATERAL (SELECT dates.retained - s.edit_window_hours::numeric * 3600 AS cutoff,
-      dates.retained + $5::numeric * 86400 AS target) shifted
-    WHERE s.client_id=$1::uuid AND s.id=ANY($2::uuid[])`,
-  [actor.clientId, ids, now, kind, policy.defaultOffer === "reschedule" ? policy.rescheduleOfferDays : null,
-    slideMinDays, slideMaxDays, actor.actorId, presenting]);
+  const { slideMinDays, slideMaxDays, pauseDays, pauseMonths } = binding.lifecycleTerms;
+  const configuredTimingInDomain = [policy.rescheduleOfferDays, slideMinDays, slideMaxDays, pauseDays]
+    .every(days => Number.isInteger(days) && days >= 0 && days <= 36_500)
+    && Number.isInteger(pauseMonths) && pauseMonths >= 0 && pauseMonths <= 1_200;
+  // Materialize the admitted operands so interval expressions can only see
+  // rows that passed the same gate used for presentation and fresh acceptance.
+  const { rows } = await executor.query(`WITH owned AS MATERIALIZED (
+      SELECT s.id, s.client_id, s.status, s.template_version, s.next_cycle_at, s.cadence_days, s.edit_window_hours,
+        rt.next_cycle_number, marker.key AS marker_key, event.id IS NOT NULL AS consumed,
+        CASE WHEN event.id IS NULL AND pg_input_is_valid($3::text,'timestamp with time zone')
+          THEN $3::text::timestamptz END AS requested_at
+      FROM public.subscriptions s
+      LEFT JOIN public.subscription_renewal_terms rt ON rt.subscription_id=s.id
+      CROSS JOIN LATERAL (SELECT CASE WHEN rt.next_cycle_number IS NOT NULL THEN
+        'save-offer:v1:' || encode(sha256(convert_to(
+          format('["cx1r-occurrence-v1","%s","%s","%s"]',s.id,$4::text,rt.next_cycle_number),'UTF8')),'hex') END AS key) marker
+      LEFT JOIN public.subscription_events event ON event.subscription_id=s.id AND event.idempotency_key=marker.key
+      WHERE s.client_id=$1::uuid AND s.id=ANY($2::uuid[])
+    ), admitted AS MATERIALIZED (
+      SELECT * FROM owned WHERE NOT consumed AND $10::boolean
+        AND next_cycle_at >= timestamptz '1970-01-01 00:00:00+00' AND next_cycle_at < timestamptz '10000-01-01 00:00:00+00'
+        AND requested_at >= timestamptz '1970-01-01 00:00:00+00' AND requested_at < timestamptz '10000-01-01 00:00:00+00'
+        AND cadence_days BETWEEN 1 AND 36500 AND edit_window_hours BETWEEN 0 AND 876000
+    ), offer AS (
+      SELECT s.id, to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS next_cycle_at,
+        CASE WHEN (target.at AT TIME ZONE 'UTC')
+          BETWEEN s.requested_at + make_interval(days=>$6::integer) AND s.requested_at + make_interval(days=>$7::integer)
+          THEN to_char(target.at,'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END AS slide_target,
+        s.requested_at <= s.next_cycle_at - make_interval(hours=>s.edit_window_hours) AS edit_open,
+        ${paymentBlockerSql("s.id")} AS payment_blocker,
+        CASE WHEN $9::boolean AND $4::text IN ('skip','reschedule') THEN
+          (CASE WHEN public.subscription_method_uses_recorded_refs(s.id)
+            THEN public.subscription_method_chargeable_unattended(s.id,now())
+            ELSE EXISTS (SELECT 1 FROM public.subscription_method_states m WHERE m.subscription_id=s.id AND m.health_state='healthy') END)
+          AND NOT EXISTS (SELECT 1 FROM public.subscription_cycles c
+            LEFT JOIN public.commerce_orders orders ON orders.subscription_cycle_id=c.id
+            WHERE c.subscription_id=s.id AND c.scheduled_at=s.next_cycle_at
+              AND (c.status IN ('payment_pending','paid') OR orders.status IN ('paid','fulfillment_pending','fulfilled')))
+          ELSE true END AS action_available
+      FROM admitted s
+      CROSS JOIN LATERAL (SELECT (s.next_cycle_at AT TIME ZONE 'UTC') + make_interval(days=>$5::integer) AS at) target
+    ) SELECT owned.id::text, owned.client_id::text, $8::uuid::text AS actor_id,
+      owned.status, owned.template_version::text, owned.next_cycle_number::text, owned.marker_key, owned.consumed,
+      offer.next_cycle_at, offer.slide_target, offer.edit_open, offer.payment_blocker, offer.action_available
+    FROM owned LEFT JOIN offer USING (id)`,
+  [actor.clientId, ids, now, kind,
+    configuredTimingInDomain && policy.defaultOffer === "reschedule" ? policy.rescheduleOfferDays : null,
+    configuredTimingInDomain ? slideMinDays : null, configuredTimingInDomain ? slideMaxDays : null,
+    actor.actorId, presenting, configuredTimingInDomain]);
   return rows;
+}
+
+function snapshotOfferBinding(binding: OfferBinding): OfferBinding {
+  return { ...binding, offerPolicy: { ...binding.offerPolicy }, lifecycleTerms: { ...binding.lifecycleTerms } };
 }
 
 async function allowsPresentation(admit: SubscriptionCommandAdmission | undefined, row: Record<string, unknown>,
@@ -439,10 +442,11 @@ export function createPostgresSubscriptionSaveOfferAcceptor(binding: OfferBindin
       actor: SubscriptionCommandContext["actor"]; subscriptionIds: readonly string[]; now: string;
     }): Promise<Map<string, Presentation | null>> {
       if (subscriptionIds.length === 0) return new Map();
-      const rows = await binding.withTransaction(db => readOfferState(db, actor, subscriptionIds, now, binding.offerPolicy.defaultOffer, binding, true));
+      const settings = snapshotOfferBinding(binding);
+      const rows = await binding.withTransaction(db => readOfferState(db, actor, subscriptionIds, now, settings.offerPolicy.defaultOffer, settings, true));
       const presentations = new Map<string, Presentation | null>();
       for (const row of rows) {
-        let presentation = row.consumed || !row.action_available ? null : await derivePresentation(row, binding);
+        let presentation = row.consumed || !row.action_available ? null : await derivePresentation(row, settings);
         if (presentation && presentation.kind !== "pause") {
           const action = presentation.kind === "reschedule" ? "slide" : "skip";
           if (row.payment_blocker === "payment_blocked" || !await allowsPresentation(binding.admitSubscriptionCommand, row, action, null)) {
@@ -478,13 +482,14 @@ export function createPostgresSubscriptionSaveOfferAcceptor(binding: OfferBindin
             commandFingerprint: stored.command_fingerprint });
         }
         await db.query("SELECT 1 FROM public.subscription_renewal_terms WHERE subscription_id=$1::uuid FOR UPDATE", [subscriptionId]);
-        const [row] = await readOfferState(db, actor, [subscriptionId], now, kind, binding);
+        const settings = snapshotOfferBinding(binding);
+        const [row] = await readOfferState(db, actor, [subscriptionId], now, kind, settings);
         if (row?.consumed) return { outcome: "refused", reason: "subscription_save_offer_consumed" };
-        const offer = await derivePresentation(row, binding);
+        const offer = await derivePresentation(row, settings);
         if (!offer) return { outcome: "refused", reason: "subscription_save_offer_unavailable" };
         if (!matchesPresentation(offer, input)) return { outcome: "refused", reason: "subscription_save_offer_stale" };
 
-        const terms = lifecycleTerms(binding.lifecycleTerms);
+        const terms = lifecycleTerms(settings.lifecycleTerms);
         const native = offerCommand({ ...input, idempotencyKey: key }, input);
         if (binding.admitSubscriptionCommand) await admitCommand(db, binding.admitSubscriptionCommand, native, String(owned.status));
         // Direct N2 apply gives semantic no-ops the native payment fences too.
