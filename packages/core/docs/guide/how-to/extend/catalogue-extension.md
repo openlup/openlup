@@ -29,7 +29,8 @@ explicit conversion factors, and a type key and version. Request
 fixtures in each pack.
 
 Refusal and reference records and retained options describe fixture observations.
-Installed state, price execution and publication require separate evidence and
+The pack range compares the checker's Platform package version. Application and
+database runtime state, price execution and publication require separate evidence and
 authority. Exit 0 means supplied checks passed, 1 means an input violation, 2
 means required evidence is unavailable, 64 means invalid command or inert JSON
 syntax, and 74 means a load, I/O, integrity or unexpected validator failure.
@@ -74,10 +75,9 @@ Usual codes include `pack_type_namespace_mismatch`, `definition_unknown_field`,
 
 ## Add attribute
 
-Edit `pack.ts`. Metadata example: `attributes: [{key: "finish",
-scope: "variant", valueType: {kind: "boolean"}, required: false, cardinality:
-{min: 0, max: 1}, filterable: true, facetable: true, public: true, displayOrder: 0,
-labels: {en: "Finish"}}]`. In `fixtures.ts`, `attributes` fixtures call `validateCatalogAttributes` and
+Edit `pack.ts`. Add product attributes to `attributes` with `scope: "product"`.
+For options that select a variant, use [Add axis](#add-axis).
+In `fixtures.ts`, `attributes` fixtures call `validateCatalogAttributes` and
 `prepareCatalogAttributeProjection` with `{type, input, publicationRevision,
 references?}`. `input` contains `productAttributes` and `skus: [{id, attributes?}]`.
 Missing required values/locales, scope, unknown keys, storage and projection-text
@@ -99,6 +99,14 @@ Usual metadata codes:
 `definition_facetable_not_filterable`, `definition_unknown_attribute_unit`,
 `definition_duplicate_enum_value`. Check:
 `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
+
+For `advisory_variant_attribute_without_axis`, bind the attribute with an axis
+if it varies by SKU and there are fewer than 16 axes. Reuse an unused compatible
+dimension or add a valid one if there is room. A type holds up to 16 dimensions,
+and a quantity dimension must match the attribute and use at most 32 units.
+If the attribute describes the whole product, set its scope to `product` and
+move the supplied values into product attributes. Otherwise keep it as a variant
+attribute. This advisory is informational.
 
 ## Add unit
 
@@ -152,9 +160,53 @@ using integral grams for publication on the current installation.
 
 ## Add axis
 
-Edit `pack.ts`: `dimensions: [{key: "finish", kind:
-"boolean"}], axes: [{key: "finish", attributeKey: "finish"}]`, referencing a
-variant attribute in the same type. In `fixtures.ts`, `combinations` fixtures call `canonicalizeCatalogCombinationV2` and
+In `pack.ts`, import `catalogVariantOptions` from `@openlup/platform/catalog`
+and declare each option once. For example, add this entry to the skeleton's
+`catalogVariantOptions` list.
+
+```ts nocheck
+// This entry goes inside the skeleton's catalogVariantOptions list.
+{ key: "finish", kind: "choice", values: [{ id: "matte" }, { id: "gloss", labels: { en: "Gloss" } }], labels: { en: "Finish" } },
+```
+
+In `fixtures.ts`, replace the existing `options` binding with these bindings.
+
+```ts nocheck
+// These bindings replace the skeleton's options declaration.
+const finish = "matte";
+const selectedAxes = ["lined", "finish"] as const;
+const options = { lined: { kind: "boolean", value: true }, finish: { kind: "choice", value: finish } } as const;
+const skuAttributes = { lined: true, finish } as const;
+```
+
+Set the draft's `product.dimensions` and the combination fixture's `input.axes`
+to `selectedAxes`. Use `attributes: skuAttributes` for the draft SKU and for
+the SKU in the attribute projection fixture. The draft SKU's `options` and the
+incoming combination row's `optionValues` both use the updated `options` binding.
+
+The helper returns `attributes`, `dimensions` and `axes`. A boolean option
+such as `{ key: "lined", kind: "boolean", labels: { en: "Lined" } }` has this
+expanded form with the default display flags.
+
+```ts nocheck
+// These three fields show the declaration returned by the helper.
+{
+  attributes: [{ key: "lined", scope: "variant", valueType: { kind: "boolean" }, required: true,
+    cardinality: { min: 1, max: 1 }, filterable: false, facetable: false, public: true,
+    displayOrder: 0, labels: { en: "Lined" } }],
+  dimensions: [{ key: "lined", kind: "boolean" }],
+  axes: [{ key: "lined", attributeKey: "lined" }],
+}
+```
+
+For quantity options, supply `dimension` and `units`. Keep the explicit unit
+factors in the type's `units` array. If you need a distinct axis key and attribute
+key, use the expanded form. For `definition_axis_mismatch`, make the two sides
+match in kind and choice IDs or quantity dimension and units, or declare the
+option once with the helper. For `definition_duplicate_axis_attribute`, remove
+the duplicate axis assignment.
+
+In `fixtures.ts`, `combinations` fixtures call `canonicalizeCatalogCombinationV2` and
 `validateCatalogCombinationChangesV2` with `{type, input}`. Input contains
 `axes`, `typed`, `retained`, `incoming` and optional `capacity`. Each row has a
 nonempty string `skuId`, `state: "draft" | "active" | "withdrawn"` and
@@ -187,6 +239,15 @@ configured retained product capacity (default 50,000), reported by
 `product_capacity_exceeded` or `product_capacity_invalid`. Persisted incremental
 publication and its authority/races remain with the publisher.
 Check: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
+
+## Set the Platform version range
+
+In `pack.ts`, set `openlupRange` to the Platform versions the pack supports.
+The checker evaluates `N.x`, `^N.M.P` and `>=N.M.P <N+1.0.0`, where `N+1` is
+the next major version. For `advisory_openlup_range_unrecognised`, use `1.x`.
+For `advisory_openlup_range_unsatisfied`, update `openlupRange` to include the
+reported Platform version, or install a compatible Platform version. Rerun
+the command in Recheck. Both advisories keep exit 0 when all supplied checks pass.
 
 ## Add tax class
 

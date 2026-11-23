@@ -6078,6 +6078,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/variantOptions.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/channels/bundleLineExpansion.ts",
       "class": "public-output"
     },
@@ -11403,6 +11407,10 @@
     },
     {
       "path": "packages/platform/test/data/supabaseGateway.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fixtures/catalogue-conformance/axis-mismatch.json",
       "class": "public-output"
     },
     {

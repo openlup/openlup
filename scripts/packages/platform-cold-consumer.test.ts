@@ -1958,7 +1958,7 @@ const pack = withCatalogPublicationRules(${JSON.stringify({ ...fixturePack, type
   call(good, 74);
 });
 
-it("typechecks the packed v3 skeleton and discovers its catalogue recipes", () => {
+it("skeleton_pack_projects_clean", () => {
   const { app, consumer, write, call, environment } = packedCatalogue();
   const core = join(consumer, "node_modules/@openlup/core");
   const guide = "docs/guide/how-to/extend/catalogue-extension.md";
@@ -1972,12 +1972,15 @@ it("typechecks the packed v3 skeleton and discovers its catalogue recipes", () =
       verbatimModuleSyntax: true, allowImportingTsExtensions: true, module: "nodenext", types: [] },
     files: ["catalogue.ts"],
   }));
-  const projected = call(sourceArgs(join(app, "catalogue.ts")), 0);
+  const projected = call(sourceArgs("./catalogue.ts"), 0);
   const [{ pack, drafts }] = JSON.parse(readFileSync(projected.transport.subjectPath, "utf8")).packs;
-  expect(pack.types[0]).toMatchObject({ key: `${namespace}:notebook`, version: 1, taxClass: "standard" });
+  expect(pack.types[0]).toMatchObject({ key: `${namespace}:notebook`, version: 1, taxClass: "standard",
+    attributes: [{ key: "lined", scope: "variant", valueType: { kind: "boolean" } }],
+    dimensions: [{ key: "lined", kind: "boolean" }], axes: [{ key: "lined", attributeKey: "lined" }],
+  });
   expect(drafts[0]).toMatchObject({ schemaVersion: 3, product: { sharedContent: { presentation: { title: "Notebook" } } } });
   const lines = readFileSync(join(core, guide), "utf8").split("\n");
-  for (const title of ["New vertical", "Add attribute", "Add unit", "Add axis", "Add tax class", "Subscription profile", "Upgrade a definition"]) {
+  for (const title of ["New vertical", "Add attribute", "Add unit", "Add axis", "Set the Platform version range", "Add tax class", "Subscription profile", "Upgrade a definition"]) {
     const result = JSON.parse(execFileSync(process.execPath, [join(core, "src/openlup-context.js"), "search", title, "--limit", "20", "--json"],
       { cwd: app, env: environment, encoding: "utf8" }));
     const index = lines.indexOf("## " + title);
@@ -1990,11 +1993,22 @@ it("typechecks the packed v3 skeleton and discovers its catalogue recipes", () =
   const examples = [...lines.slice(unitStart, unitEnd).join("\n").matchAll(/^```ts nocheck\n([^]*?)\n^```$/gm)];
   expect(examples).toHaveLength(2);
   const unit = examples[0]![1], quantity = examples[1]![1];
+  const axisStart = lines.indexOf("## Add axis");
+  const axisEnd = lines.findIndex((line, index) => index > axisStart && line.startsWith("## "));
+  const axisExamples = [...lines.slice(axisStart, axisEnd).join("\n").matchAll(/^```ts nocheck\n([^]*?)\n^```$/gm)];
+  expect(axisExamples).toHaveLength(3);
+  const [, option] = axisExamples[0]!;
+  const [, bindings] = axisExamples[1]!;
   write("pack.ts", readFileSync(join(app, "pack.ts"), "utf8")
+    .replace("filterable: true, facetable: true }]),", `filterable: true, facetable: true },\n${option}\n    ]),`)
     .replace("export const pack =", `const namespace = ${JSON.stringify(namespace)};\n\nexport const pack =`)
     .replace(`namespace: "${namespace}"`, "namespace")
     .replace("\n    ],\n    netContentUnits:", `\n${unit}\n    ],\n    netContentUnits:`));
   write("fixtures.ts", readFileSync(join(app, "fixtures.ts"), "utf8")
+    .replace(/^const options = .*$/m, bindings)
+    .replace('dimensions: ["lined"]', "dimensions: selectedAxes")
+    .replace('axes: ["lined"]', "axes: selectedAxes")
+    .replaceAll("attributes: { lined: true }", "attributes: skuAttributes")
     .replace("quantities: [{ type, value: count }]", `quantities: [{ type, value: count },\n${quantity}\n  ]`));
   const compiled = spawnSync(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "--project", tsconfig],
     { cwd: app, env: environment, encoding: "utf8" });
@@ -2004,6 +2018,13 @@ it("typechecks the packed v3 skeleton and discovers its catalogue recipes", () =
   const [updated] = JSON.parse(readFileSync(appended.transport.subjectPath, "utf8")).packs;
   expect(updated.pack.types[0].units).toEqual([...pack.types[0].units, expect.objectContaining({ code: `${namespace}:pair` })]);
   expect(updated.pack.types[0].netContentUnits).toEqual(["openlup:g"]);
+  const finish = { kind: "choice", value: "matte" };
+  expect(updated).toMatchObject({
+    pack: { types: [{ axes: [{ key: "lined" }, { key: "finish", attributeKey: "finish" }] }] },
+    drafts: [{ product: { dimensions: ["lined", "finish"] }, skus: [{ options: { finish }, attributes: { finish: "matte" } }] }],
+    attributes: [{ input: { skus: [{ attributes: { finish: "matte" } }] } }],
+    combinations: [{ input: { axes: ["lined", "finish"], incoming: [{ optionValues: { finish } }] } }],
+  });
   expect(updated.quantities.at(-1)).toEqual({
     type: drafts[0].product.type,
     value: { dimension: "count", unit: `${namespace}:pair`, unscaled: "2", scale: 0 },

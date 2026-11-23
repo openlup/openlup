@@ -1,0 +1,19 @@
+{
+  "packs": [{
+    "pack": {
+      "id": "sample", "namespace": "sample", "version": 1, "openlupRange": "1.x", "capabilities": {}, "taxClasses": [],
+      "types": [{
+        "key": "sample:item", "version": 1,
+        "units": [{ "code": "openlup:g", "dimension": "mass", "integral": false }],
+        "netContentUnits": ["openlup:g"],
+        "attributes": [{
+          "key": "finish", "scope": "variant", "valueType": { "kind": "boolean" }, "required": true,
+          "cardinality": { "min": 1, "max": 1 }, "filterable": false, "facetable": false,
+          "public": true, "displayOrder": 0, "labels": { "en": "Finish" }
+        }],
+        "dimensions": [{ "key": "finish", "kind": "choice", "values": ["matte", "gloss"] }],
+        "axes": [{ "key": "finish", "attributeKey": "finish" }]
+      }]
+    }
+  }]
+}

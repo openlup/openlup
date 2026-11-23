@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { catalogProductTypeIssues, createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
-import { CATALOG_CONFORMANCE_RULES } from "../../src/catalog/index.js";
+import { CATALOG_CONFORMANCE_RULES, catalogVariantOptions } from "../../src/catalog/index.js";
 import { inspectCatalogPack, invalidCatalogPack } from "../../src/catalog/productTypeIssues.js";
 import * as browserContracts from "../../src/catalog/contracts/index.js";
 import type { CatalogProductTypeDefinition } from "../../src/catalog/contracts/productTypes.js";
@@ -9,6 +9,43 @@ const definition: CatalogProductTypeDefinition = {
   netContentUnits: ["openlup:piece"], dimensions: [], validateContent: () => [],
 };
 describe("shared definition issues", () => {
+  it("axis_values_and_units_mismatch_refuse_axis_mismatch", () => {
+    const options = catalogVariantOptions([
+      { key: "finish", kind: "choice", values: [{ id: "a" }, { id: "b" }], labels: {} },
+      { key: "amount", kind: "quantity", dimension: "count", units: ["openlup:piece", "example:each"], labels: {} },
+    ]);
+    const units = [...definition.units, { code: "example:each", dimension: "count", integral: true },
+      { code: "example:pair", dimension: "count", integral: true }];
+    const type = { ...definition, units, ...options };
+    expect(catalogProductTypeIssues([{ ...type, dimensions: [
+      { key: "finish", kind: "choice", values: ["a", "c"] },
+      { key: "amount", kind: "quantity", dimension: "count", units: ["openlup:piece", "example:pair"] },
+    ] }])).toEqual([
+      { code: "definition_axis_mismatch", path: "/0/axes/0" },
+      { code: "definition_axis_mismatch", path: "/0/axes/1" },
+    ]);
+    expect(catalogProductTypeIssues([{ ...type, dimensions: [
+      { key: "finish", kind: "choice", values: ["b", "a"] },
+      { key: "amount", kind: "quantity", dimension: "count", units: ["example:each", "openlup:piece"] },
+    ] }])).toEqual([]);
+  });
+  it("duplicate_axis_attribute_refuses", () => {
+    const options = catalogVariantOptions([{ key: "lined", kind: "boolean", labels: {} }]);
+    const duplicate = { key: "printed", attributeKey: "lined" };
+    expect(catalogProductTypeIssues([{ ...definition, ...options, dimensions: [...options.dimensions, { key: "printed", kind: "boolean" }],
+      axes: [...options.axes, duplicate] }])).toEqual([{ code: "definition_duplicate_axis_attribute", path: "/0/axes/1/attributeKey" }]);
+  });
+  it("type_without_axes_is_byte_identical", () => {
+    const input = { ...definition, units: [...definition.units, ...definition.units], netContentUnits: ["example:unknown"],
+      dimensions: [{ key: "finish", kind: "choice", values: ["matte", "matte"] }] };
+    // Snapshot of the definition owner's output at e18695316.
+    expect(JSON.stringify(catalogProductTypeIssues([definition, input]))).toBe(
+      '[{"code":"definition_duplicate_identity","path":"/1/key"},'
+      + '{"code":"definition_duplicate_unit","path":"/1/units/1/code","fix":"Remove the duplicate unit code."},'
+      + '{"code":"definition_unknown_net_content_unit","path":"/1/netContentUnits/0","fix":"Declare the unit or remove its reference."},'
+      + '{"code":"definition_duplicate_choice","path":"/1/dimensions/0/values/1"}]',
+    );
+  });
   it("keeps conformance guidance in the server entry", () => {
     expect(browserContracts).not.toHaveProperty("CATALOG_CONFORMANCE_RULES");
     expect(CATALOG_CONFORMANCE_RULES.quantity_not_exactly_representable).toMatchObject({
