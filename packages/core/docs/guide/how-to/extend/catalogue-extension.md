@@ -251,11 +251,13 @@ in `units` and list `openlup:g` in `netContentUnits`.
 Set `skus[].netContent` to whole grams with `dimension: "mass"`,
 `unit: "openlup:g"`, `scale: 0` and a positive integer string in `unscaled`.
 
-For a labelled volume or count, add a quantity dimension with its allowed
+If a volume or count dimension already has `role: "net_content"`, remove that
+role and keep the dimension and its options. Otherwise, for a labelled volume
+or count, add a quantity dimension with its allowed
 `units` and omit the `net_content` role. Select the dimension key in
 `product.dimensions` and set `skus[].options[key]` to
 `{kind: "quantity", value: {dimension, unit, unscaled, scale}}`.
-For v2 and v3 fixtures, declare an attribute with `scope: "variant"` and
+For a new dimension in v2 and v3 fixtures, declare an attribute with `scope: "variant"` and
 `valueType: {kind: "quantity", dimension, units}`. Bind the dimension key to that
 attribute with `axes: [{key, attributeKey}]`.
 
@@ -267,14 +269,19 @@ Keep the flags for a later version or set them to false.
 ## Add a unit GTIN
 
 Prepare refuses a SKU without a valid unit trade identifier.
-Add a valid unit GTIN to the SKU.
+Add a valid unit GTIN to the SKU. A SKU holds at most 32 identifiers, so replace
+one when the list is full.
 
 ## Use schema version 3 for offline fixtures
 
 Publication requires a newer draft schema than versions 1 and 2.
 Author offline pack fixtures as schema version 3, the newest draft schema this
 checker evaluates. Use the schema required by your publication workflow for
-saved drafts.
+saved drafts. Schema version 3 fixtures require `product.sharedContent`.
+Check them with
+`npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue.ts` and
+a registered `validateContent`. For an otherwise valid v3 fixture, inert
+`catalogue check` reports `conformance_owner_unavailable` and exits 2.
 
 ## Rerun fixtures after definition repair
 

@@ -38,8 +38,7 @@ function observedAt(subject: unknown, path: string): string {
   let remaining = 160, preview = "";
   function json(input: unknown): string {
     if (typeof input !== "string") return JSON.stringify(input);
-    // Match file URLs, slash-rooted paths and drive-absolute paths on every host.
-    const safe = /^(?:file:|[\\/]|[a-z]:[\\/])/iu.test(input) ? "<host path>" : input;
+    const safe = input.replace(/(^|[\s"'(=,[])(?:file:\S*|(?:[a-z]:)?[\\/]+[^\\/\s]+[\\/]+[^\\/\s]+\S*)/giu, "$1<host path>");
     return JSON.stringify(safe.slice(0, remaining * 2));
   }
   function append(text: string): void {
@@ -133,7 +132,7 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
 async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, Validator>): Promise<CatalogConformanceReport> {
   const findings: CatalogConformanceFinding[] = [];
   let unavailable = false, violated = false, recheck = command;
-  let parsed: unknown;
+  let parsed: unknown, observedSubject: unknown;
   function add(issue: string | Issue | CatalogDefinitionIssue, path: string, fixture = "", requiredEvidence = false): void {
     const code = typeof issue === "string" ? issue : issue.code;
     const adopterIssue = typeof issue !== "string" && "kind" in issue && issue.kind === "adopterRule" ? issue : undefined;
@@ -144,7 +143,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     if (rule.severity === "error") {
       if (requiredEvidence) unavailable = true; else violated = true;
     }
-    findings.push({ code, severity: rule.severity, path, fixture, observed: observedAt(parsed, path),
+    findings.push({ code, severity: rule.severity, path, fixture, observed: observedAt(observedSubject, path),
       cause: rule.rule, fix, recipe: rule.recipe, recheck,
       evidence: { declared: "JSON fixture observations", bound: validators ? "Offline owners and registered content validators" : "Offline owner validators only", checked: path,
         unknown: ["Installed and runtime state; see boundary"] } });
@@ -185,7 +184,10 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       boundary: `${boundary} ${content}`, findings };
   }
   if (typeof jsonText !== "string") { add("conformance_subject_invalid", ""); return finish(); }
-  try { parsed = JSON.parse(jsonText); }
+  try {
+    parsed = JSON.parse(jsonText);
+    observedSubject = JSON.parse(jsonText);
+  }
   catch (error) {
     if (error instanceof SyntaxError) Object.defineProperty(error, Symbol.for("openlup.catalogue.json.parse"), { value: true });
     throw error;
@@ -293,18 +295,23 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       });
       const definition = registry.resolve(payload.product.type);
       const validation = validateDraftFacts(payload, { resolve: () => definition && { ...definition, validateContent: content => {
-        if (!validators) {
-          add("conformance_owner_unavailable", `${path}/product/sharedContent`, "", true);
-          return [];
+        if (validators) {
+          try {
+            const result = definition.validateContent(content);
+            const then = (result as unknown as PromiseLike<unknown> | undefined)?.then;
+            if (typeof then === "function") {
+              void then.call(result, undefined, () => undefined);
+              throw new TypeError("Catalogue validateContent must return synchronously");
+            }
+            contentChecked = true;
+            return result;
+          } catch (error) {
+            // A newly reached sibling validator must preserve the pack's existing refusal.
+            if (invalidTypes.size === 0) throw error;
+          }
         }
-        const result = definition.validateContent(content);
-        const then = (result as unknown as PromiseLike<unknown> | undefined)?.then;
-        if (typeof then === "function") {
-          void then.call(result, undefined, () => undefined);
-          throw new TypeError("Catalogue validateContent must return synchronously");
-        }
-        contentChecked = true;
-        return result;
+        add("conformance_owner_unavailable", `${path}/product/sharedContent`, "", true);
+        return [];
       } } }, true);
       if (!validation.valid) for (const issue of validation.issues) add(issue, path + issue.path);
       if (payload.schemaVersion === 1 || !definition) continue;

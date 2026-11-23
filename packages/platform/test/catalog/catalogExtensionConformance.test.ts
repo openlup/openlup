@@ -82,6 +82,33 @@ describe("catalogue conformance findings", () => {
     await verify();
   });
 
+  it("gram_recipe_reuses_a_dimension_previously_marked_as_net_content", async () => {
+    const subject = JSON.parse(fixture("volume-net-content"));
+    const { pack: { types: [type] }, drafts: [draft] } = subject.packs[0];
+    const volume = { key: "volume", kind: "quantity", dimension: "volume", units: ["sample:ml"], role: "net_content" };
+    const value = { dimension: "volume", unit: "sample:ml", unscaled: "100", scale: 0 };
+    const sku = draft.skus[0];
+    type.dimensions.push(volume);
+    draft.product.dimensions.push(volume.key);
+    sku.options.volume = { kind: "quantity", value };
+    sku.netContent = value;
+
+    const before = await checkSubject(subject);
+    expect(before.exitCode).toBe(0);
+    expect(before.findings.find(({ code }) => code === "advisory_net_content_not_publishable")?.fix)
+      .toContain("remove that role and keep the dimension and its options");
+    type.units.push({ code: "openlup:g", dimension: "mass", integral: false,
+      factor: { canonicalUnit: "openlup:g", unscaled: "1", scale: 0 } });
+    type.netContentUnits.push("openlup:g");
+    sku.netContent = { dimension: "mass", unit: "openlup:g", unscaled: "110", scale: 0 };
+    const { role: _role, ...unmarked } = volume;
+    type.dimensions[0] = unmarked;
+
+    const report = await checkSubject(subject);
+    expect(report).toMatchObject({ state: "satisfied", exitCode: 0 });
+    expect(report.findings.map(({ code }) => code)).not.toContain("advisory_net_content_not_publishable");
+  });
+
   it("six_injected_errors_reported_in_one_pass", async () => {
     const { packs: [outer, items] } = JSON.parse(fixture("six-errors"));
     const packs = Array.from({ length: 11 }, () => ({ pack: { ...pack(), types: [] } }));
@@ -121,14 +148,63 @@ describe("catalogue conformance findings", () => {
     expect(invalid.validateContent).not.toHaveBeenCalled();
   });
 
+  it("keeps_the_definition_refusal_when_a_trusted_sibling_throws", async () => {
+    const p = pack(), [type] = p.types;
+    const failure = new Error("Synthetic content failure");
+    type.validateContent = () => { throw failure; };
+    const base = draft();
+    const drafts = [{ ...base, product: { ...base.product, sharedContent: { title: "Sample" } } }];
+    const invalid = { ...type, key: "stationery:invalid", taxClass: "missing" };
+    const report = await project({ packs: [{ pack: { ...p, types: [invalid, type] }, drafts }] });
+    expect(report).toMatchObject({ state: "violated", exitCode: 1 });
+    expect(errors(report).map(({ code, path }) => [code, path])).toEqual([
+      ["conformance_owner_unavailable", "/packs/0/drafts/0/product/sharedContent"],
+      ["definition_unknown_tax_class", "/packs/0/pack/types/0/taxClass"],
+    ]);
+    await expect(project({ packs: [{ pack: p, drafts }] })).rejects.toBe(failure);
+  });
+
+  it("observes_the_original_value_when_a_trusted_validator_mutates_its_input", async () => {
+    const p = pack(), base = draft();
+    p.types[0].validateContent = content => {
+      const value = content as { title: string };
+      value.title = value.title.trim();
+      return [{ code: "title_review", path: "title" }];
+    };
+    const drafts = [{ ...base, product: { ...base.product, sharedContent: { title: "  Sample  " } } }];
+    const report = await project({ packs: [{ pack: p, drafts }] });
+    expect(report.exitCode).toBe(1);
+    expect(errors(report)).toMatchObject([{
+      code: "title_review", path: "/packs/0/drafts/0/product/sharedContent/title",
+      observed: '/packs/0/drafts/0/product/sharedContent/title = "  Sample  "',
+    }]);
+  });
+
+  it.each([
+    ["Loaded from file:///tmp/synthetic/source.mjs", "Loaded from <host path>"],
+    ["see /tmp/synthetic/source.mjs now", "see <host path> now"],
+    ["/Users/a/x.mjs", "<host path>"],
+    ["C:\\a\\b.mjs", "<host path>"],
+    ["/same", "/same"],
+    ["https://example.com/a/b", "https://example.com/a/b"],
+    ["sample:ml", "sample:ml"],
+    ["profile:x", "profile:x"],
+  ])("redacts only host paths in a trusted string value", async (input, expected) => {
+    const report = await project({ packs: [{ pack: { ...pack(), extra: input } }] });
+    expect(errors(report).map(({ observed }) => observed)).toEqual([
+      "/packs/0/pack/extra = " + JSON.stringify(expected),
+    ]);
+  });
+
   it("trusted_observed_values_redact_host_paths", async () => {
     const paths = ["/tmp/synthetic/source.mjs", "file:///tmp/synthetic/source.mjs", "C:\\synthetic\\source.mjs", "\\\\host\\share\\source.mjs"];
-    const report = await project({ packs: [{ pack: { ...pack(), direct: paths[0], nested: paths.slice(1) } }] });
+    const report = await project({ packs: [{ pack: { ...pack(), direct: paths[0],
+      nested: { ["source=" + paths[0]]: paths.slice(1) } } }] });
     expect(report.exitCode).toBe(1);
     expect(paths.some(path => JSON.stringify(report).includes(JSON.stringify(path).slice(1, -1)))).toBe(false);
     expect(errors(report).map(({ observed }) => observed)).toEqual([
       '/packs/0/pack/direct = "<host path>"',
-      '/packs/0/pack/nested = ["<host path>","<host path>","<host path>"]',
+      '/packs/0/pack/nested = {"source=<host path>":["<host path>","<host path>","<host path>"]}',
     ]);
   });
 
@@ -150,7 +226,9 @@ describe("catalogue conformance findings", () => {
     ]);
     expect(report.findings[0]).toMatchObject({
       cause: "Publication requires a newer draft schema than versions 1 and 2.",
-      fix: "Author offline pack fixtures as schema version 3, the newest draft schema this checker evaluates. Use the schema required by your publication workflow for saved drafts.",
+      fix: "Author offline pack fixtures as schema version 3, the newest draft schema this checker evaluates. Use the schema required by your publication workflow for saved drafts. "
+        + "Schema version 3 fixtures require `product.sharedContent`. Check them with `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue.ts` and a registered `validateContent`. "
+        + "For an otherwise valid v3 fixture, inert `catalogue check` reports `conformance_owner_unavailable` and exits 2.",
     });
     for (const finding of report.findings) {
       expect(finding.severity).toBe("warning");
@@ -158,6 +236,37 @@ describe("catalogue conformance findings", () => {
         "cause", "code", "evidence", "fix", "fixture", "observed", "path", "recheck", "recipe", "severity",
       ]);
     }
+  });
+
+  it("v3_fixture_passes_with_trusted_content_and_needs_evidence_when_inert", async () => {
+    const base = draft();
+    const v3 = { ...base, schemaVersion: 3, product: { ...base.product, sharedContent: {
+      schemaVersion: 1, catalogAction: "create", presentation: {}, offerMemberships: [], requestedModes: [], publicationSkus: [],
+    } }, publication: { kind: "release", operations: [], evidence: {} } };
+    const projection = projectCatalogExtensionConformance({ packs: [{ pack: pack(), drafts: [v3] }] });
+    const trusted = await projection.check(projection.subject);
+    expect(trusted).toMatchObject({ state: "satisfied", exitCode: 0 });
+    expect(trusted.findings.map(({ code }) => code)).not.toContain("advisory_draft_version_not_publishable");
+    const inert = await runCatalogExtensionConformance(projection.subject);
+    expect(inert).toMatchObject({ state: "unavailable", exitCode: 2 });
+    expect(errors(inert)).toMatchObject([{
+      code: "conformance_owner_unavailable", path: "/packs/0/drafts/0/product/sharedContent",
+    }]);
+  });
+
+  it("gtin_recipe_replaces_an_identifier_when_the_list_is_full", async () => {
+    const subject = JSON.parse(fixture("volume-net-content"));
+    const sku = subject.packs[0].drafts[0].skus[0];
+    sku.identifiers = Array.from({ length: 32 }, (_, i) =>
+      ({ scheme: "sample:label", issuer: "sample", value: String(i), packagingLevel: "unit" }));
+    const before = await checkSubject(subject);
+    expect(before.exitCode).toBe(0);
+    expect(before.findings.find(({ code }) => code === "advisory_unit_identifier_missing")?.fix)
+      .toBe("Add a valid unit GTIN to the SKU. A SKU holds at most 32 identifiers, so replace one when the list is full.");
+    sku.identifiers[0] = { scheme: "gs1:gtin", issuer: "sample", value: "4006381333931", packagingLevel: "unit" };
+    const report = await checkSubject(subject);
+    expect(report).toMatchObject({ state: "satisfied", exitCode: 0 });
+    expect(report.findings.map(({ code }) => code)).not.toContain("advisory_unit_identifier_missing");
   });
 
   it("unknown_required_check_still_unavailable", async () => {
@@ -605,7 +714,7 @@ describe("offline catalogue conformance", () => {
       expect(prepared).toMatchObject({ prepared: true, rows: [expect.objectContaining({ canonical_unit: "openlup:g", canonical_value: "1000" })] });
     }
   });
-  it.each(["row/same", "row/~1same", "row/a.b~1", "row/same.part~end"])("reports the offending row for duplicate SKU ID %s", async skuId => {
+  it.each(["/same", "/~1same", "/a.b~1", "/same.part~end"])("reports the offending row for duplicate SKU ID %s", async skuId => {
     const p = pack(), type = { key: p.types[0].key, version: 1 };
     const input = { axes: [], typed: false, retained: [], incoming: [
       { skuId, state: "draft" }, { skuId, state: "withdrawn" },
