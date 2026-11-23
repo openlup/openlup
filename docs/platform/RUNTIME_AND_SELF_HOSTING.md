@@ -517,6 +517,8 @@ opt-in selector mounts no live route feeding them.
 
 ## Self-host boundary
 
+Request rate limits and diagnostic admission use the socket peer on a directly exposed Node host. Behind reverse proxies, `CUSTOMER_DIAGNOSTIC_TRUSTED_PROXY_HOPS` counts from the right of `x-forwarded-for`. That entry is trustworthy only when every request reaches the host through those proxies and each proxy appends its peer. The hosted platform uses its client-address header when its system environment variables are exposed. A malformed hop count puts all clients in one shared rate-limit bucket and logs `OPENLUP_E_TRUSTED_PROXY_HOPS_INVALID`. Diagnostic admission refuses a malformed hop count.
+
 Application-file lifecycle maintenance belongs to the
 [snapshot owner](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades);
 database compatibility and runtime admission remain separate checks. The
