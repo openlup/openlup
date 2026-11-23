@@ -50,19 +50,22 @@ To create one, install the source checkout's dependencies with `npm ci`, then
 run the following commands from the root of the clean candidate checkout.
 
 ```sh
-candidate_dir="$(mktemp -d)"
+candidate_dir="$(mktemp -d "${TMPDIR:-/tmp}/provider-qualify-XXXXXX")"
 revision="$(git rev-parse HEAD)"
 version="$(node -p "require('./packages/core/package.json').version")"
 npm --prefix . run packages:check -- --out "$candidate_dir/packs" --release-set "$version"
 manifest="$candidate_dir/packs/packages-manifest.json"
 
-node --experimental-strip-types --input-type=module - "$candidate_dir" "$revision" "$manifest" <<'NODE'
+QUALIFICATION_DIRECTORY="$candidate_dir" QUALIFICATION_REVISION="$revision" QUALIFICATION_MANIFEST="$manifest" \
+  node --experimental-strip-types --input-type=module <<'NODE'
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readCurrentPackManifest } from './scripts/packages/pack-manifest-input.ts';
 
-const [candidate, revision, manifest] = process.argv.slice(2);
+const candidate = process.env.QUALIFICATION_DIRECTORY;
+const revision = process.env.QUALIFICATION_REVISION;
+const manifest = process.env.QUALIFICATION_MANIFEST;
 const packs = readCurrentPackManifest(process.cwd(), manifest, revision);
 const read = path => JSON.parse(readFileSync(path, 'utf8'));
 const { providerQualification, ...app } = read('examples/neutral-store/package.json');
