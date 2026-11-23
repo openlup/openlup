@@ -6878,6 +6878,18 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "preview-noop-acceptance",
+        "path": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "previewNoopAcceptance": true,
+        "existingTableStatements": [
+          "ALTER TABLE public.subscription_quote_previews ADD COLUMN accepted_noop_receipt_id uuid REFERENCES public.subscription_command_receipts(id);"
+        ]
       }
     ]
   },
@@ -10125,6 +10137,11 @@
           "afterSha256": "1ee7c46e95017d18b7d0e4f3d60e89b00ddb98ae8abc560cbbe5395417320eeb"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261125010001_subscription_preview_noop_acceptance.sql",
+      "sha256": "ad82c387d9bd242f85383ab449c8b034251a9d3b45aa1f08d858affa11136049",
+      "functions": []
     }
   ],
   "managedExactForwards": [
