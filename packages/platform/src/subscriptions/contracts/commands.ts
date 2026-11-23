@@ -14,6 +14,16 @@ export interface SubscriptionSaveOffer {
   offerId: string; kind: "pause" | "skip" | "reschedule" | "plan_length" | "recipe_mix" | "support_callback";
   accepted: boolean; externalOfferRef?: string | null;
 }
+type SaveOfferPausePreset = "2_weeks" | "1_month" | "indefinite";
+type SaveOfferPauseDuration = { unit: "days" | "months"; value: number } | { unit: "indefinite" };
+
+/** @experimental Server-derived terms to display and echo on acceptance. */
+export type SubscriptionSaveOfferPresentation = { subscriptionRef: string; generation: string } & (
+  | { kind: "skip" }
+  | { kind: "reschedule"; newNextCycleAt: string }
+  | { kind: "pause"; pausePresets: readonly { pausePreset: SaveOfferPausePreset; duration: SaveOfferPauseDuration }[];
+      preselectedPausePreset: SaveOfferPausePreset }
+);
 export type SubscriptionCommand = SubscriptionCommandContext & (
   | { action: "pause"; pausePreset: string; reason: string | null; survey: SubscriptionCancelSurvey | string | null; saveOffer: SubscriptionSaveOffer | string | null }
   | { action: "resume" | "skip"; reason: string | null; confirmedChargeTiming: boolean }
