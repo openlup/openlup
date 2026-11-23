@@ -313,8 +313,9 @@ In a version 3 draft, Prepare reports `unit_trade_identifier_missing` when
 the SKU has a code but lacks a valid unit GTIN. A SKU without a code reports
 `sku_code_missing` first. The legacy version 1 and 2 preview reports
 `publication_preparation_unavailable`.
-Add a valid unit GTIN to the SKU. A SKU holds at most 32 identifiers, so replace
-one when the list is full.
+Add a valid unit GTIN to the SKU. For a product without a globally assigned GTIN,
+[assign an internal number](../../concepts/catalogue-and-prices.md#products-and-trade-items).
+A SKU holds at most 32 identifiers, so replace one when the list is full.
 
 ## Use schema version 3 for offline fixtures
 

@@ -1426,6 +1426,18 @@ it("explains how to order primary SKU selection before activation", async () => 
   });
 });
 
+it("missing_unit_trade_identifier_fix_names_the_internal_number_helper", async () => {
+  const data = input();
+  data.payload.skus[0]!.identifiers = [];
+  const preview = await facade(data).prepareCandidate({
+    draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null,
+  });
+  expect(preview.preparation?.structural.issues).toContainEqual({
+    code: "unit_trade_identifier_missing", path: "skus.0.identifiers", phase: "structural", subject: "ARTICLE",
+    message: "Add a valid unit trade identifier to the SKU, then prepare the draft again. For a product without a GS1 barcode, mint one with catalogInternalGtin.",
+  });
+});
+
 it("mass_required_fix_names_whole_grams", async () => {
   const data = input();
   const volume = { dimension: "volume", unit: "openlup:ml", unscaled: "100", scale: 0 } as const;

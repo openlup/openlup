@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { catalogInternalGtin } from "@openlup/platform/catalog";
 import { CatalogSkuAuthorityError } from "../../../src/domains/catalog/catalogFoundationContracts.js";
 import type { CatalogActiveSkuEnvelopeListQuery } from "../../../src/domains/catalog/ports.js";
 import {
@@ -71,6 +72,18 @@ function executor(options: ExecutorOptions = {}): { calls: Array<{ text: string;
 }
 
 describe("Postgres catalog SKU envelope adapter", () => {
+  it("internal_gtin_travels_as_gtin_kind_with_internal_issuer", async () => {
+    const normalizedValue = catalogInternalGtin(1).padStart(14, "0");
+    const issuer = "example:internal";
+    const identifiers = catalogSkuEnvelopeFixture.postgresIdentifiers.map((row) =>
+      row.catalog_sku_id === DETAIL_SKU_ID && row.is_primary ? { ...row, issuer, normalized_value: normalizedValue } : row);
+    const port = createPostgresCatalogSkuEnvelopeReadPort(executor({ identifiers }).client);
+
+    await expect(port.getSkuEnvelopeById(DETAIL_SKU_ID)).resolves.toMatchObject({
+      identifiers: expect.arrayContaining([{ kind: "gtin", issuer, normalizedValue, isPrimary: true, packKind: "unit", packQuantity: 1 }]),
+    });
+  });
+
   it("binds selected codes before pagination and excludes malformed unrelated rows from mapping and identifiers", async () => {
     const unrelated = Array.from({ length: 20 }, (_, index) => ({
       ...catalogSkuEnvelopeFixture.postgresRows[0],

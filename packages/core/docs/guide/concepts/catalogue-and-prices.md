@@ -11,6 +11,20 @@ code, net content, identifiers and purchase-mode sellability. The quote reader
 uses the SKU's identifier as `variantId`; a storefront item is a projection
 with display and purchase facts, rather than another product identity.
 
+For a SKU without a globally assigned GTIN, choose an unused integer from `0` to
+`9_999_999_999` in your store and call the experimental
+`catalogInternalGtin(sequence)` from `@openlup/platform/catalog`. Use the result
+as `value` in the SKU's identifier record with `scheme: "gs1:gtin"`,
+`issuer: "<namespace>:internal"` using your namespace, and
+`packagingLevel: "unit"`. Set `isPrimary: true` on the matching
+`create_identifier` publication operation. Save and prepare the draft again.
+If the SKU already has 32 identifiers, replace an entry.
+
+The number is for internal use within one store. Keep it out of external
+channels that require a global GTIN. Product JSON-LD omits `gtin13` for the
+internal number. The version 1 SKU envelope carries it as `kind: "gtin"` with the
+`<namespace>:internal` issuer.
+
 The neutral SKU envelope carries product-scoped document references, not the
 document payload. Looking up a product slug follows its declared primary SKU;
 it does not infer a default from row order. An invalid primary relationship
