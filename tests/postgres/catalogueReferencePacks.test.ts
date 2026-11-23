@@ -132,8 +132,7 @@ function readRecipe(name: string) {
   const importEntry = `import { referenceEntry as ${binding} } from './${filename}';`;
   const append = `catalogueConformance.packs.push(${binding});`;
   for (const literal of [copy, target, "byte-for-byte identical", importEntry, ownedList, explicitList, append,
-    sourceCheck, satisfied, ...excludedAdvisories, up, health, "`200`", "exit 0", "npm run catalogue:apply -- --json",
-    "./lifecycle browser browser/catalogue-products.spec.ts"]) {
+    sourceCheck, satisfied, ...excludedAdvisories, up, health, "`200`", "exit 0"]) {
     expect(readme, name).toContain(literal);
   }
   return { copy, target, importEntry, append };

@@ -27,5 +27,4 @@ using its candidate extraction recipe. Keep the existing `owned/catalogue-rules.
    `curl --fail --silent --output /dev/null --write-out '%{http_code}\n' http://127.0.0.1:4319/api/config`
    and expect `200`.
 
-Later product application and browser verification will use
-`npm run catalogue:apply -- --json` and `./lifecycle browser browser/catalogue-products.spec.ts`.
+Applying products to the storefront and checking them in a browser follow in a later release.
