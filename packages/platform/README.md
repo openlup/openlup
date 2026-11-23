@@ -2039,10 +2039,11 @@ hosts pass it in the store options. Snapshot-only stock workers take
 
 See [the ledger install-path constraint](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 
-`JOB_RUN_LEDGER_MIGRATIONS` lists the two files a fresh installation applies, in order, through its own migration chain:
+`JOB_RUN_LEDGER_MIGRATIONS` lists the files a fresh installation applies, in order, through its own migration chain:
 
 1. [`sql/20260809150000_job_run_ledger.sql`](sql/20260809150000_job_run_ledger.sql): the job controls, runs, and the v2 claim and finish; its bytes and migration identity equal the reference application's platform migration of that name.
 2. [`sql/20260809150001_job_run_ledger_v3.sql`](sql/20260809150001_job_run_ledger_v3.sql): the v3 claim and finish the PostgreSQL ledger calls, as `CREATE OR REPLACE`, with bodies byte-equal to the reference chain's definitions.
+3. [`sql/20261125070000_job_run_finish_lease_fence.sql`](sql/20261125070000_job_run_finish_lease_fence.sql) fences the finish by the current lease token. Apply the pending forward through your existing migration chain.
 
 The package SQL and the reference application's platform migration chain are alternative install paths, never applied together: the reference chain defines all four job-control functions itself, with plain `CREATE FUNCTION`, so it fails on a database where the package SQL already created them. The package file `20260809150001_job_run_ledger_v3` has a migration identity no reference migration uses. Importing the package never applies SQL.
 
