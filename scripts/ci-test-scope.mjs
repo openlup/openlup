@@ -40,12 +40,12 @@ const ROOT_DOC_SET = new Set(ROOT_DOC_FILES);
 // Keep scripts/packages/generate-release-bom.test.ts unlisted: it scans every *.md file anywhere in the repository.
 const NATIVE_STORE_CATALOG_SHARED_INPUTS = [
   'tests/postgres/nativeStoreForwardCatalog.shared.ts',
+  'tests/helpers/issuedPlatformCatalog.ts',
   'tests/helpers/postgresContainer.ts',
   'config/ci-images.json',
   'config/reviewed-platform-forwards.json',
   'config/platform-migration-manifest.json',
   'db/platform/migrations/',
-  'docs/platform/DATA_AND_MIGRATIONS.md',
 ];
 export const TOOLING_INPUTS = {
   'scripts/agent-review-queue.test.ts': [], // Synthetic Git repositories and recorded transport.
@@ -56,7 +56,7 @@ export const TOOLING_INPUTS = {
   'scripts/pgtap-parity.test.ts': [], // Pure TAP/row-diff/sabotage/executable unit fixtures.
   'scripts/qualified-migration-admission.test.ts': ['config/reviewed-platform-forwards.json', 'db/platform/migrations/'], // Qualified installation admission pins and issued SQL preimages.
   'scripts/reviewed-batch-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'supabase/migrations/', 'packages/platform/sql/'], // Historical batch/M09-M12 forward pinning and co-located admission checks.
-  'scripts/reviewed-native-store-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'docs/platform/DATA_AND_MIGRATIONS.md'], // Native-store forward classifier, issued prefix pins and control-list doc check.
+  'scripts/reviewed-native-store-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'docs/platform/DATA_AND_MIGRATIONS.md', 'tests/helpers/issuedPlatformCatalog.ts'], // Native-store forward classifier, issued prefix pins and control/guard-catalog doc checks.
   'scripts/sql-admit.test.ts': ['config/reviewed-platform-forwards.json'], // Synthetic Git fixtures reading the committed forward registry and scripts/ admission rules.
   'scripts/ast-grep/check-filewide-ignore.test.ts': [], // Fixture source; actual rules under scripts/.
   'scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts': [], // Fixture source and rules.
