@@ -13,9 +13,37 @@ your installed and target releases. Use the [per-release notes](#per-release-not
 as the starting point; older entries may be in the package's
 `CHANGELOG-HISTORY.md` at that release tag.
 
+## Starter upgrade order
+
+For each adjacent release hop in a starter application:
+
+1. Stop the application and keep exclusive access to its files.
+2. Install the exact target release's `openlup` CLI in a separate scratch
+   directory or pristine target extraction. Use that CLI for this hop.
+3. Reconcile owned files as directed by the [target release notes](#per-release-notes)
+   and prepare the exact predecessor and target snapshots. Follow the
+   [snapshot instructions for a customized inventory](#reconcile-a-customized-ownership-inventory)
+   if you changed `ownership.json`.
+4. Apply any documented pre-file SQL through your migration chain, including
+   the [native checkout-attempt ledger prerequisite](database-migrations.md#check-application-compatibility)
+   when applicable. If range admission needs a supported forward, apply it
+   through the same chain. Observe the applied migration count after any
+   such forward, using the actual database and installation profile.
+5. [Reconcile application files](#reconcile-application-files) using the target
+   CLI. Plan, resolve the reported conflicts and replan. Apply the final
+   snapshot pair and confirm replay makes no further changes. Finish any
+   [ownership inventory reconciliation](#reconcile-a-customized-ownership-inventory)
+   before refreshing dependencies.
+6. Refresh the application's package pins, lockfile and installation to match
+   the reconciled manifest. Pin every `@openlup/*` package in use to the same
+   exact target version.
+7. Complete the remaining documented SQL and explicit policy installation
+   steps. [Check readiness](#check-readiness) before restarting the application.
+
 ## Upgrade the packages together
 
-Pin every `@openlup/*` package your application uses to the same exact version.
+For an npm-only upgrade, pin every `@openlup/*` package your application uses to
+the same exact version.
 Choose the target release explicitly. With `OPENLUP_VERSION` set to that
 version, an application using all the packages runs:
 
@@ -41,13 +69,35 @@ Plan, reconcile and apply snapshot-managed application files with
 count observed for the actual database and installation profile. These commands
 run no SQL and do not observe the database.
 
-After reconciling application files, validate owned business configuration
-offline with `./node_modules/.bin/openlup settings check --app ./owned/settings-host.ts`
-(or pass `check` to your starter's `settings` script)
-before running full tests and starting the application. See
-[Configure settings](../how-to/operate/configure-settings.md).
+Use `--json` for a structured report.
+For a target CLI up to and including 1.3.0, read `plan.conflicts` from `upgrade plan`
+and top-level `conflicts` from a refused `upgrade apply`; from 1.4.0, read the
+top-level `conflicts` key from both.
+
+### Reconcile a customized ownership inventory
+
+1. When preparing snapshots, save your application's `ownership.json`. Build them from
+   the exact predecessor and target extractions. Exclude generated and locally
+   owned paths, including ejected copies. Include new owned files only as
+   documented target-only creations in the [target release notes](#per-release-notes).
+2. During file preflight, restore the exact predecessor `ownership.json` in the
+   app. Resolve the reported conflicts, including an
+   [occupied settings binding path](v1-3-0.md#discover-and-check-the-starters-owned-settings)
+   when applicable, and replan before apply writes any files. Keep the final
+   pair identical for apply, resume and replay.
+3. After replay, reattach the saved app-owned entries and exclusions to the
+   resulting inventory. Check that the app's owned and generated paths stay
+   out of its managed list. Use fresh predecessor and target evidence for each hop.
 
 ## Check readiness
+
+If your app has an owned settings binding, validate its business configuration
+offline with `./node_modules/.bin/openlup settings check --app ./owned/settings-host.ts`
+or pass `check` to your starter's `settings` script. Do this before running full
+tests and starting the application. See [Configure settings](../how-to/operate/configure-settings.md).
+
+If your custom readiness observer calls the starter's native composition,
+see the [1.2.0 argument order](v1-2-0.md#update-custom-native-readiness-observers).
 
 Create an application-owned module exporting `createVerificationInput()` that
 returns your actual `ReadinessInput`: selected contributions, complete installed
@@ -76,10 +126,10 @@ observations after changing artifacts, configuration or schema.
 | `64` | Invalid invocation or JSON: `OPENLUP_E_CLI_INPUT`. Correct the syntax or input. |
 | `74` | Operation or application-loading failure: `OPENLUP_E_CLI_FAILURE`. Check snapshots, filesystem access or the trusted application module. |
 
-Upgrade JSON reports put conflicts in the top-level `conflicts` array. Findings
-name schema-range conflicts as `OPENLUP_E_UPGRADE_SCHEMA_RANGE` and managed-file
-conflicts as `OPENLUP_E_UPGRADE_FILE_CONFLICT`. Snapshot validation failures
-after JSON parsing can return `74`.
+From 1.4.0, upgrade findings name schema-range conflicts as
+`OPENLUP_E_UPGRADE_SCHEMA_RANGE` and managed-file conflicts as
+`OPENLUP_E_UPGRADE_FILE_CONFLICT`. Snapshot validation failures after JSON
+parsing can return `74`.
 Readiness findings use `OPENLUP_E_PORT_MISSING`, `OPENLUP_E_EVENT_UNHANDLED`,
 `OPENLUP_E_EVENT_DUPLICATE`, `OPENLUP_E_SCHEDULE_UNBOUND`,
 `OPENLUP_E_SCHEMA_BEHIND`, `OPENLUP_E_SET_MISMATCH`, `OPENLUP_E_ENV_MISSING`
