@@ -80,3 +80,28 @@ it("transfers one purchased store to a pristine database and continues its open 
     .toEqual([{ orders: 1, cycles: 1, shipments: 0, activations: 1 }]);
   expect(await journeyCensus(source.owner)).toEqual(before);
 }, 60_000);
+
+it("isolates shared-template installations and targets, drops rotated target databases and detects leaked cluster roles", async () => {
+  const isolated = storeJourneyResources();
+  let closedByAssertion = false;
+  try {
+    const [installA, template] = await Promise.all([isolated.installation("alpha"), isolated.targetTemplate("beta")]);
+    const target1 = await template.nextTarget("first");
+    const dbInstall = (await installA.owner.query<{ name: string }>("SELECT current_database() AS name")).rows[0]!.name;
+    const dbTarget1 = (await target1.owner.query<{ name: string }>("SELECT current_database() AS name")).rows[0]!.name;
+    expect(dbInstall).not.toBe(dbTarget1);
+    const keyInstall = (await installA.owner.query<{ key: string }>("SELECT encode(key_bytes, 'hex') AS key FROM acquisition_private.installation_key WHERE singleton")).rows[0]!.key;
+    const keyTarget1 = (await target1.owner.query<{ key: string }>("SELECT encode(key_bytes, 'hex') AS key FROM acquisition_private.installation_key WHERE singleton")).rows[0]!.key;
+    expect(keyInstall).not.toBe(keyTarget1);
+    const target2 = await template.nextTarget("second");
+    const dbTarget2 = (await target2.owner.query<{ name: string }>("SELECT current_database() AS name")).rows[0]!.name;
+    expect(dbTarget2).not.toBe(dbTarget1);
+    expect((await installA.owner.query("SELECT datname FROM pg_catalog.pg_database WHERE datname=$1", [dbTarget1])).rows).toEqual([]);
+    await installA.owner.query("CREATE ROLE leaked_journey_witness_role NOLOGIN");
+    closedByAssertion = true;
+    await expect(isolated.close()).rejects.toThrow("store_journey_cluster_role_mutation_leaked");
+    await expect(isolated.installation("after-close")).rejects.toThrow("store_journey_resources_closed");
+  } finally {
+    if (!closedByAssertion) await isolated.close();
+  }
+}, postgresSetupTimeoutMs);
