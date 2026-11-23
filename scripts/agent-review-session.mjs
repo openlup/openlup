@@ -137,11 +137,12 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
     demand(conflicts.length > 0, 'integration conflict list missing');
   }
   demand(SHA.test(prediction), 'merge prediction missing'); const replacements = new Map();
+  const registryConflicts = conflicts.filter(path => REGISTRY_PATHS.includes(path));
+  const registryBaseMatches = registryConflicts.length > 0 && (await git(cwd, 'merge-base', '--all', ...parents)).trim() === previous.base;
   // Git's clean merge stands for every carrier it merged. A conflicting carrier
-  // takes the deterministic union of its named arrays; if that union does not
-  // apply (a change outside the arrays, an overlap or another mode), the carrier
-  // is reviewed as part of the resolution.
-  for (const path of conflicts.filter(path => REGISTRY_PATHS.includes(path))) {
+  // can take the deterministic union of its named arrays from the reviewed
+  // merge base. Other carrier resolutions retain their review.
+  for (const path of registryBaseMatches ? registryConflicts : []) {
     const blobs = [];
     for (const revision of [previous.base, previous.head, current.base]) {
       if ((await git(cwd, 'ls-tree', revision, '--', path)).trim().startsWith('100644 blob ')) blobs.push(await git(cwd, 'show', `${revision}:${path}`));
@@ -183,6 +184,7 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
       // Its generated command inventory may then be reproduced by the owner.
       const catalogue = REGISTRY_PATHS[0];
       if (conflicts.includes(catalogue) && !replacements.has(catalogue)) {
+        demand(registryBaseMatches, 'registry union requires the reviewed merge base');
         const inputs = await Promise.all([previous.base, previous.head, current.base].map(revision => read(revision, catalogue)));
         derivedBlobs.set(catalogue, await objectInput(cwd, ['hash-object', '-w', '--stdin'], registryUnion(catalogue, ...inputs)));
       }

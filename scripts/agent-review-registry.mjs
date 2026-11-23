@@ -1,4 +1,4 @@
-// Closed registry syntax and exact insertion-only unions. Candidate code is data.
+// Closed registry syntax and exact three-way unions. Candidate code is data.
 export const REGISTRY_PATHS = [
   'config/openlup-publication-catalog.json',
   'packages/platform/test/packageBoundary.test.ts',
@@ -103,29 +103,66 @@ export function readRegistry(path, source) {
   outside += source.slice(at);
   return { source, outside, ranges, lists };
 }
-function gaps(base, side) {
-  const result = Array.from({ length: base.length + 1 }, () => []); let cursor = 0;
+function partitionEntries(basePositions, side, catalogue) {
+  const gaps = new Map();
+  const retained = new Map();
+  let previous = -1;
+  let pending = [];
   for (const value of side) {
-    if (cursor < base.length && key(value) === key(base[cursor])) {
-      check(JSON.stringify(value) === JSON.stringify(base[cursor]), 'changed base entry'); cursor++;
-    } else {
-      check(!base.some(old => key(old) === key(value)), 'removed or reordered base entry'); result[cursor].push(value);
+    const entryKey = key(value);
+    const position = basePositions.get(entryKey);
+    if (position === undefined) {
+      pending.push(value);
+      continue;
+    }
+    check(position > previous, 'removed or reordered base entry');
+    previous = position;
+    retained.set(entryKey, JSON.stringify(value));
+    // Catalogue additions share one slot because their paths determine output order.
+    if (!catalogue && pending.length) {
+      gaps.set(position, pending);
+      pending = [];
     }
   }
-  check(cursor === base.length, 'removed base entry'); return result;
+  gaps.set(basePositions.size, pending);
+  return { gaps, retained };
+}
+function retainBaseEntry(entry, left, right) {
+  const original = JSON.stringify(entry);
+  if (left !== undefined && right !== undefined) {
+    check(left === original && right === original, 'changed base entry');
+    return true;
+  }
+  check((left ?? right ?? original) === original, `modify/delete conflict
+Observed. The union stopped.
+Cause. One side removed a base entry and the other edited it.
+Fix. Resolve the carrier manually and obtain resolution review.
+Recheck. Run \`node scripts/agent-review-session.mjs status --explain\` on the committed resolution.`);
+  return false;
 }
 export function registryUnion(path, baseSource, leftSource, rightSource) {
   const [base, left, right] = [baseSource, leftSource, rightSource].map(source => readRegistry(path, source));
   check(base.outside === left.outside && base.outside === right.outside, 'changed carrier outside named arrays');
+  const catalogue = path === REGISTRY_PATHS[0];
+  const positions = base.lists.map(entries => new Map(entries.map((value, index) => [key(value), index])));
+  if (path === REGISTRY_PATHS[2]) {
+    for (const side of [left, right]) {
+      for (const [index, entries] of side.lists.entries()) {
+        check(!entries.some(value => positions[1 - index].has(value)), 'entry moved between adapter classes');
+      }
+    }
+  }
   const allLeft = new Set(); const allRight = new Set();
   const unions = base.lists.map((entries, index) => {
-    const a = gaps(entries, left.lists[index]); const b = gaps(entries, right.lists[index]);
+    const a = partitionEntries(positions[index], left.lists[index], catalogue);
+    const b = partitionEntries(positions[index], right.lists[index], catalogue);
+    const retained = entries.map(entry => retainBaseEntry(entry, a.retained.get(key(entry)), b.retained.get(key(entry))));
     const result = [];
     for (let gap = 0; gap <= entries.length; gap++) {
-      const x = [...a[gap]];
+      const x = [...(a.gaps.get(gap) ?? [])];
       const xByKey = new Map(x.map(value => [key(value), JSON.stringify(value)]));
       const y = [];
-      for (const value of b[gap]) {
+      for (const value of b.gaps.get(gap) ?? []) {
         const entryKey = key(value);
         if (xByKey.has(entryKey)) {
           check(xByKey.get(entryKey) === JSON.stringify(value), 'overlapping additions');
@@ -136,8 +173,9 @@ export function registryUnion(path, baseSource, leftSource, rightSource) {
       x.forEach(value => allLeft.add(key(value)));
       y.forEach(value => allRight.add(key(value)));
       while (x.length || y.length) result.push(!y.length || (x.length && compare(key(x[0]), key(y[0])) < 0) ? x.shift() : y.shift());
-      if (gap < entries.length) result.push(entries[gap]);
+      if (retained[gap]) result.push(entries[gap]);
     }
+    if (catalogue) result.sort((left, right) => compare(key(left), key(right)));
     return result;
   });
   check(![...allLeft].some(value => allRight.has(value)), 'overlapping additions');
@@ -145,7 +183,7 @@ export function registryUnion(path, baseSource, leftSource, rightSource) {
   let result = base.source;
   for (const { range: [start, end], index } of base.ranges.map((range, index) => ({ range, index })).sort((a, b) => b.range[0] - a.range[0])) {
     const original = base.source.slice(start, end); const values = unions[index];
-    const replacement = path === REGISTRY_PATHS[0] ? JSON.stringify(values, null, 2).replaceAll('\n', '\n  ')
+    const replacement = catalogue ? JSON.stringify(values, null, 2).replaceAll('\n', '\n  ')
       : original.includes('\n') ? `[\n${values.map(value => `  ${JSON.stringify(value)},`).join('\n')}\n]` : `[${values.map(value => JSON.stringify(value)).join(', ')}]`;
     result = result.slice(0, start) + replacement + result.slice(end);
   }
