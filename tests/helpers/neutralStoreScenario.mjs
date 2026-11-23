@@ -8,14 +8,14 @@ export async function bindScenarioServer() {
   await once(server, 'listening');
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('starter_scenario_port_required');
-  // The starter reads its origin policy from the arguments when server.ts loads.
-  process.argv.push('--port', String(address.port));
+  // Recovery already supplies its bound forwarding port. The other scenarios
+  // give the starter the port of this listener before server.ts loads.
+  if (!process.argv.includes('--port')) process.argv.push('--port', String(address.port));
   return { server, port: address.port, base: `http://${address.address}:${address.port}` };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  // Recovery keeps its listener across child restarts and hands us the sockets.
-  const endpoint = process.connected ? undefined : await bindScenarioServer();
+  const { server, base } = await bindScenarioServer();
   const { parseHostArguments } = await import('../../examples/neutral-store/shared/config.ts');
   const { selectConfiguration } = await import('../../examples/neutral-store/owned/store.config.ts');
   const { composeNativeBindings } = await import('../../examples/neutral-store/host/native-composition.ts');
@@ -26,37 +26,18 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const config = selectConfiguration(options.configuration);
   const keyring = await readQuoteAcceptanceKeyring(options.quoteAcceptanceKeyFile);
   const bindings = await composeNativeBindings(options.databaseUrl, createOriginPolicy(config, options.port), config, keyring);
-  const application = createApplication(bindings);
-  const server = endpoint?.server ?? application;
+  server.on('request', createApplication(bindings).listeners('request')[0]);
   server.requestTimeout = 25000;
   server.headersTimeout = 10000;
 
-  const sockets = new Set();
-  if (endpoint) {
-    server.on('request', application.listeners('request')[0]);
-  } else {
-    process.on('message', (_message, socket) => {
-      sockets.add(socket);
-      socket.once('close', () => sockets.delete(socket));
-      server.emit('connection', socket);
-      socket.resume();
-    });
-  }
   let closing = false;
   const stop = () => {
     if (closing) return;
     closing = true;
-    const closeBindings = () => { void bindings.close().finally(() => { process.exitCode = 0; }); };
-    if (endpoint) {
-      server.close(closeBindings);
-      server.closeIdleConnections();
-    } else {
-      process.disconnect();
-      for (const socket of sockets) socket.destroy();
-      closeBindings();
-    }
+    server.close(() => { void bindings.close().finally(() => { process.exitCode = 0; }); });
+    server.closeIdleConnections();
   };
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
-  process.stdout.write(`Neutral store local candidate: ${endpoint?.base ?? `http://127.0.0.1:${options.port}`}\n`);
+  process.stdout.write(`Neutral store local candidate: ${base}\n`);
 }
