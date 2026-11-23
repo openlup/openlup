@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
 import { admit, digest, coverageState, protectedCoveragePath, receiptBody, receiptSummary, verdict, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { landingMerge } from './agent-review-landing.mjs';
 import { carryOverSourceReview, captureReviewRules, captureSessionCandidate, sessionMain, validateEconomySession, git as sourceGit } from './agent-review-session.mjs';
 import { parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
 
@@ -66,6 +67,12 @@ function addRegistry(path: string, source: string, entry: string) {
   const list = [...registry.lists[0], entry]; const replacement = path === REGISTRY_PATHS[1] ? JSON.stringify(list) : `[\n${list.map(value => `  ${JSON.stringify(value)},`).join('\n')}\n]`;
   return source.slice(0, start) + replacement + source.slice(end);
 }
+const [cataloguePath, , coldPath] = REGISTRY_PATHS;
+const catalogue = (...paths: string[]) => JSON.stringify({ schemaVersion: 3, publicPaths: paths.map(path => ({ path, class: 'policy' })) }, null, 2) + '\n';
+const cold = (nonAdapters: string[], adapters: string[] = []) => [
+  `export const NON_ADAPTER_ENTRIES = [${nonAdapters.map(value => JSON.stringify(value)).join(', ')}] as const;`,
+  `export const ADAPTER_ENTRIES = [${adapters.map(value => JSON.stringify(value)).join(', ')}] as const;`,
+].join('\n') + '\n';
 
 describe('closed registry grammar', () => {
   it('rejects duplicate JSON keys and unsupported syntax', () => {
@@ -73,12 +80,11 @@ describe('closed registry grammar', () => {
     expect(() => strictRegistryJson('{"a":1,}')).toThrow();
     expect(() => readRegistry(REGISTRY_PATHS[2], 'export const ADAPTER_ENTRIES = [...other] as const;')).toThrow();
   });
-  it.each(['class', 'removal', 'reorder', 'duplicate', 'overlap', 'outside'])('refuses %s rather than silently normalize', async kind => {
+  it.each(['class', 'reorder', 'duplicate', 'overlap', 'outside'])('refuses %s rather than silently normalize', async kind => {
     const path = REGISTRY_PATHS[0]; const source = await readFile(path, 'utf8');
     const a = JSON.parse(addRegistry(path, source, 'zz-a'));
     let right = addRegistry(path, source, 'zz-b');
     if (kind === 'class') a.publicPaths[0].class = 'entrypoint';
-    if (kind === 'removal') a.publicPaths.shift();
     if (kind === 'reorder') a.publicPaths.reverse();
     if (kind === 'duplicate') a.publicPaths.push(a.publicPaths[0]);
     if (kind === 'overlap') {
@@ -88,6 +94,62 @@ describe('closed registry grammar', () => {
     }
     if (kind === 'outside') a.schemaVersion = 4;
     expect(() => registryUnion(path, source, JSON.stringify(a, null, 2) + '\n', right)).toThrow();
+  });
+  it('admits a main-side removal', () => {
+    const base = catalogue('a', 'b', 'c'); const removed = catalogue('a', 'c');
+    expect(registryUnion(cataloguePath, base, base, removed)).toBe(removed);
+  });
+  it('admits a candidate-side removal', () => {
+    const base = catalogue('a', 'b', 'c'); const removed = catalogue('a', 'c');
+    expect(registryUnion(cataloguePath, base, removed, base)).toBe(removed);
+  });
+  it('refuses modify/delete in either direction', () => {
+    const base = catalogue('a'); const removed = catalogue(); const edited = base.replace('"policy"', '"entrypoint"');
+    for (const [left, right] of [[removed, edited], [edited, removed]]) {
+      let error: unknown;
+      try { registryUnion(cataloguePath, base, left, right); } catch (caught) { error = caught; }
+      expect(error).toBeInstanceOf(Error);
+      expect(Object.getPrototypeOf(error)).toBe(Error.prototype);
+      expect(Reflect.ownKeys(error as Error).filter(key => key !== 'stack')).toEqual(['message']);
+      expect((error as Error).message).toBe([
+        'registry: modify/delete conflict',
+        'Observed. The union stopped.',
+        'Cause. One side removed a base entry and the other edited it.',
+        'Fix. Resolve the carrier manually and obtain resolution review.',
+        'Recheck. Run `node scripts/agent-review-session.mjs status --explain` on the committed resolution.',
+      ].join('\n'));
+    }
+  });
+  it('refuses matching and divergent edits on both sides', () => {
+    const base = catalogue('a'); const edited = base.replace('"policy"', '"entrypoint"');
+    for (const right of [edited, base.replace('"policy"', '"public-output"')]) {
+      expect(() => registryUnion(cataloguePath, base, edited, right)).toThrow('registry: changed base entry');
+    }
+  });
+  it('admits the same removal on both sides', () => {
+    const base = catalogue('a', 'b', 'c'); const removed = catalogue('a', 'c');
+    expect(registryUnion(cataloguePath, base, removed, removed)).toBe(removed);
+  });
+  it('refuses a cold-consumer entry moved between adapter classes', () => {
+    for (const [base, moved] of [[cold(['a']), cold([], ['a'])], [cold([], ['a']), cold(['a'])]]) {
+      for (const other of [base, cold([])]) {
+        expect(() => registryUnion(coldPath, base, moved, other)).toThrow('registry: entry moved between adapter classes');
+        expect(() => registryUnion(coldPath, base, other, moved)).toThrow('registry: entry moved between adapter classes');
+      }
+    }
+  });
+  it('keeps an addition in the gap beside a base entry removed by the other side', () => {
+    const base = cold(['a', 'b', 'c']); const left = cold(['a', 'z', 'b', 'c']);
+    expect(registryUnion(coldPath, base, left, cold(['a', 'm', 'c']))).toBe(cold(['a', 'z', 'm', 'c']));
+    expect(() => registryUnion(coldPath, base, left, cold(['a', 'z', 'c']))).toThrow('registry: overlapping additions');
+  });
+  it('orders catalogue additions around a removed base path', () => {
+    expect(registryUnion(cataloguePath, catalogue('a', 'm', 'z'), catalogue('a', 'b', 'z'), catalogue('a', 'c', 'm', 'z')))
+      .toBe(catalogue('a', 'b', 'c', 'z'));
+  });
+  it('refuses a string-array reorder beside a removal', () => {
+    const base = cold(['a', 'b', 'c']);
+    expect(() => registryUnion(coldPath, base, cold(['c', 'a']), base)).toThrow('registry: removed or reordered base entry');
   });
   it.each(REGISTRY_PATHS)('deduplicates byte-for-byte identical stacked additions in the same gap for %s', async path => {
     const source = await readFile(path, 'utf8');
@@ -279,6 +341,48 @@ describe('real Git coverage histories', () => {
     expect(next.candidate.coverage.proof.kind).toBe('registry-union');
     await expect(f.cli('verify')).resolves.toBe(0);
   }, 15_000);
+  it('records registry-union proof for an exact merge with an admitted removal', async () => {
+    const f = await fixture(true, [], { [coldPath]: cold(['a', 'b', 'z']) });
+    await f.write(coldPath, cold(['a', 'z'])); f.commit(); await f.review();
+    const main = await f.mainMove(() => f.write(coldPath, cold(['a', 'b', 'c', 'z'])));
+    expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+    expect(f.git('diff', '--name-only', '--diff-filter=U')).toBe(coldPath);
+    await f.write(coldPath, cold(['a', 'c', 'z'])); f.commit();
+    await f.cli('prepare', f.request);
+    expect((await f.state()).candidate.coverage.proof.kind).toBe('registry-union');
+    await expect(f.cli('verify')).resolves.toBe(0);
+  });
+  it('does not certify a registry union against a stale reviewed base', async () => {
+    const reviewedBase = catalogue('a', 'b', 'z');
+    const f = await fixture(true, [], { [cataloguePath]: reviewedBase });
+    await f.write(cataloguePath, catalogue('a', 'z')); const shared = f.commit();
+    const headSource = catalogue('a', 'c', 'z');
+    await f.write(cataloguePath, headSource); const head = f.commit(); const prior = await f.review();
+    const mainSource = catalogue('a', 'b', 'd', 'z');
+    const main = await f.mainMove(() => f.write(cataloguePath, mainSource), shared);
+    expect(prior.candidate.base).toBe(f.base);
+    expect(f.git('merge-base', '--all', head, main)).toBe(shared);
+    expect(() => f.git('merge', '--no-ff', '--no-commit', main)).toThrow();
+    expect(f.git('diff', '--name-only', '--diff-filter=U')).toBe(cataloguePath);
+    const staleUnion = catalogue('a', 'c', 'd', 'z');
+    expect(registryUnion(cataloguePath, reviewedBase, headSource, mainSource)).toBe(staleUnion);
+    await f.write(cataloguePath, staleUnion); f.commit(); await f.cli('prepare', f.request);
+    expect((await f.state()).candidate.coverage.proof).toMatchObject({ kind: 'resolution', resolution: [cataloguePath] });
+  });
+  it('leaves a registry conflict unresolved when the merge base is ambiguous', async () => {
+    const f = await fixture(true, [], { [coldPath]: cold(['a', 'z']) });
+    await f.write(coldPath, cold(['a', 'b', 'z'])); const left = f.commit();
+    const right = await f.mainMove(() => f.write(coldPath, cold(['a', 'c', 'z'])));
+    const head = f.git('commit-tree', `${left}^{tree}`, '-p', left, '-p', right, '-m', 'keep left');
+    const main = f.git('commit-tree', `${right}^{tree}`, '-p', right, '-p', left, '-m', 'keep right');
+    f.git('checkout', '-q', '--detach', head); f.git('update-ref', 'refs/remotes/origin/main', main);
+    f.git('config', 'user.name', 'Fixture'); f.git('config', 'user.email', 'fixture@example.invalid');
+    expect(f.git('merge-base', '--all', head, main).split('\n').sort()).toEqual([left, right].sort());
+    await expect(landingMerge(f.cwd, { runCommand: vi.fn() })).rejects.toThrow(`landing: authored conflicts remain: ${coldPath}`);
+    expect(f.git('rev-parse', 'HEAD')).toBe(head);
+    expect(f.git('rev-parse', 'MERGE_HEAD')).toBe(main);
+    expect(f.git('diff', '--name-only', '--diff-filter=U')).toBe(coldPath);
+  });
   it('reviews a hand edit made in a clean merge as the resolution', async () => {
     const f = await fixture(); await f.review();
     const main = await f.mainMove(() => f.write('other.ts', 'main delta\n'));

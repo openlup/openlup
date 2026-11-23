@@ -1811,8 +1811,11 @@ human or worker. It refreshes its carrier set with the merged tree's own
 inventory refresh and generators, run in new processes, not the code it loaded
 before the merge. Append-only migration entries are unioned in slot order;
 existing entries cannot be edited and new duplicate slots refuse. Issued
-prefixes retain their original order. The publication catalogue's authored path
-rows retain the existing closed registry union.
+prefixes retain their original order. With a unique merge base, the closed
+registry union admits additions and base-entry removals in the named arrays of
+the publication catalogue, package boundary test and cold-consumer script. A
+removal can come from either side or both. Edits to base entries, reorders and
+moves between adapter classes need manual resolution and review.
 
 Integration proof classifies an exact merge of the reviewed head and a commit
 on `origin/main` as `derived` only for a closed carrier set: migration registry
