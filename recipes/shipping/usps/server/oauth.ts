@@ -250,7 +250,7 @@ export function createUspsOAuth2TokenManager(
       : DEFAULT_MAX_RESPONSE_BYTES;
 
   let cached: CachedUspsToken | null = null;
-  let inFlight: Promise<CachedUspsToken> | null = null;
+  let inFlight: { readonly epoch: number; readonly promise: Promise<CachedUspsToken> } | null = null;
   let cacheEpoch = 0;
 
   const fetchFreshToken = async (): Promise<CachedUspsToken> => {
@@ -373,25 +373,31 @@ export function createUspsOAuth2TokenManager(
       if (cached && cached.expiresAtMs - refreshSkewMs > nowMs) {
         return cached.accessToken;
       }
-      if (!inFlight) {
-        const requestEpoch = cacheEpoch;
-        inFlight = fetchFreshToken()
-          .then((fresh) => {
-            if (cacheEpoch === requestEpoch) {
-              cached = fresh;
-            }
-            return fresh;
-          })
-          .finally(() => {
-            inFlight = null;
-          });
+      if (inFlight && inFlight.epoch === cacheEpoch) {
+        const token = await raceWithAbortSignal(inFlight.promise, signal);
+        return token.accessToken;
       }
-      const token = await raceWithAbortSignal(inFlight, signal);
+      const requestEpoch = cacheEpoch;
+      const promise = fetchFreshToken()
+        .then((fresh) => {
+          if (cacheEpoch === requestEpoch) {
+            cached = fresh;
+          }
+          return fresh;
+        })
+        .finally(() => {
+          if (inFlight?.promise === promise) {
+            inFlight = null;
+          }
+        });
+      inFlight = { epoch: requestEpoch, promise };
+      const token = await raceWithAbortSignal(promise, signal);
       return token.accessToken;
     },
     invalidate(): void {
       cacheEpoch += 1;
       cached = null;
+      inFlight = null;
     },
   };
 }

@@ -15,6 +15,7 @@ import {
   PAYPAL_TEST_CANCEL_URL,
   PAYPAL_TEST_OCCURRED_AT,
   PAYPAL_TEST_RETURN_URL,
+  PAYPAL_TEST_WEBHOOK_ID,
 } from "./fixtures.js";
 
 /**
@@ -23,11 +24,19 @@ import {
  */
 describe("recipes/payments/paypal — Stage 3 real-flow mount proof (+ negative controls)", () => {
   it("mounts PayPal into PaymentProviderRegistry and settles via createVerifiedPaymentIngress with readback auth and replay dedupe", async () => {
-    const fetchSpy = vi.fn(async (url: string | URL) => {
+    const fetchSpy = vi.fn(async (url: string | URL, init?: RequestInit) => {
       const target = String(url);
       if (target === `${PAYPAL_API_ORIGINS.test}/v1/oauth2/token`) {
         return new Response(
           JSON.stringify({ access_token: "mount-oauth-tok", token_type: "Bearer", expires_in: 3600 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (target === `${PAYPAL_API_ORIGINS.test}/v1/notifications/verify-webhook-signature`) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { transmission_sig?: string; webhook_id?: string };
+        const ok = body.webhook_id === PAYPAL_TEST_WEBHOOK_ID && body.transmission_sig === "valid-paypal-sig";
+        return new Response(
+          JSON.stringify({ verification_status: ok ? "SUCCESS" : "FAILURE" }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
       }
@@ -73,6 +82,7 @@ describe("recipes/payments/paypal — Stage 3 real-flow mount proof (+ negative 
         },
         fetchImpl: fetchSpy,
       }),
+      webhookId: PAYPAL_TEST_WEBHOOK_ID,
       returnUrl: PAYPAL_TEST_RETURN_URL,
       cancelUrl: PAYPAL_TEST_CANCEL_URL,
       mode: "test",
@@ -188,6 +198,7 @@ describe("recipes/payments/paypal — Stage 3 real-flow mount proof (+ negative 
         },
         fetchImpl: fetchSpy,
       }),
+      webhookId: PAYPAL_TEST_WEBHOOK_ID,
       returnUrl: PAYPAL_TEST_RETURN_URL,
       cancelUrl: PAYPAL_TEST_CANCEL_URL,
       mode: "test",

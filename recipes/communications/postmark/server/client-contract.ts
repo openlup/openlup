@@ -118,7 +118,7 @@ export function sanitizePostmarkText(
   return normalized;
 }
 
-/** Parses an HTTP `Retry-After` header into non-negative whole seconds. */
+/** Parses an HTTP `Retry-After` header into non-negative whole seconds (clamped to 86,400s). */
 export function parseRetryAfterSeconds(
   headerValue: string | null,
   nowMs: number = Date.now(),
@@ -128,11 +128,11 @@ export function parseRetryAfterSeconds(
   if (!trimmed) return null;
   if (/^\d+$/u.test(trimmed)) {
     const seconds = Number(trimmed);
-    return Number.isSafeInteger(seconds) && seconds >= 0 ? seconds : null;
+    return Number.isSafeInteger(seconds) && seconds >= 0 ? Math.min(seconds, 86_400) : null;
   }
   const dateMs = Date.parse(trimmed);
   if (!Number.isFinite(dateMs)) return null;
-  return Math.max(0, Math.ceil((dateMs - nowMs) / 1000));
+  return Math.min(86_400, Math.max(0, Math.ceil((dateMs - nowMs) / 1000)));
 }
 
 function assertValidTokenOrStream(value: unknown, kind: "token" | "stream"): string {

@@ -264,21 +264,7 @@ function normalizeShopifyOrder(input: {
 
     const lineGrossBig = BigInt(unitGrossMinor) * BigInt(item.quantity);
     let lineDiscountBig = 0n;
-    if (typeof item.total_discount === "string" && item.total_discount.trim().length > 0) {
-      const parsedDisc = parseShopifyDecimalToMinor(item.total_discount, currency);
-      if (parsedDisc === null) {
-        return {
-          kind: "unmapped",
-          signal: buildUnmappedSignal({
-            vocabulary: "invalid_line_discount",
-            externalOrderRef,
-            detail: "Invalid line item total_discount",
-            payload: { lineId: lineRef },
-          }),
-        };
-      }
-      lineDiscountBig = BigInt(parsedDisc);
-    } else if (Array.isArray(item.discount_allocations)) {
+    if (Array.isArray(item.discount_allocations) && item.discount_allocations.length > 0) {
       for (const alloc of item.discount_allocations) {
         const parsedAlloc = parseShopifyDecimalToMinor(alloc?.amount, currency);
         if (parsedAlloc === null) {
@@ -294,6 +280,20 @@ function normalizeShopifyOrder(input: {
         }
         lineDiscountBig += BigInt(parsedAlloc);
       }
+    } else if (typeof item.total_discount === "string" && item.total_discount.trim().length > 0) {
+      const parsedDisc = parseShopifyDecimalToMinor(item.total_discount, currency);
+      if (parsedDisc === null) {
+        return {
+          kind: "unmapped",
+          signal: buildUnmappedSignal({
+            vocabulary: "invalid_line_discount",
+            externalOrderRef,
+            detail: "Invalid line item total_discount",
+            payload: { lineId: lineRef },
+          }),
+        };
+      }
+      lineDiscountBig = BigInt(parsedDisc);
     }
 
     if (
@@ -614,7 +614,7 @@ export function createShopifyChannelAdapter(
       }
 
       const shopHeader = headers["x-shopify-shop-domain"];
-      if (shopHeader && shopHeader.trim().toLowerCase() !== expectedShopHeader) {
+      if (!shopHeader || shopHeader.trim().toLowerCase() !== expectedShopHeader) {
         return { kind: "rejected", reason: "signature" };
       }
 

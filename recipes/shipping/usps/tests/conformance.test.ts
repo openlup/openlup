@@ -836,4 +836,35 @@ describe("recipes/shipping/usps — Stage 1 & 2 Conformance", () => {
       /SHIPPING_RATE_CONFORMANCE:secret_leak/,
     );
   });
+
+  it("prevents invalidate() from returning a stale in-flight OAuth2 token to subsequent callers", async () => {
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((r) => {
+      releaseFirst = r;
+    });
+    let calls = 0;
+    const manager = createUspsOAuth2TokenManager({
+      environment: "tem",
+      clientId: FIXTURE_CANARIES.clientId,
+      clientSecret: FIXTURE_CANARIES.clientSecret,
+      clock: () => 1_700_000_000_000,
+      fetchImpl: async () => {
+        calls += 1;
+        const callNum = calls;
+        if (callNum === 1) await firstGate;
+        return new Response(
+          JSON.stringify({ access_token: `usps-token-${callNum}`, expires_in: 3600 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    });
+    const stalePromise = manager.getAccessToken();
+    manager.invalidate();
+    const freshPromise = manager.getAccessToken();
+    expect(await freshPromise).toBe("usps-token-2");
+    releaseFirst();
+    expect(await stalePromise).toBe("usps-token-1");
+    expect(calls).toBe(2);
+    expect(await manager.getAccessToken()).toBe("usps-token-2");
+  });
 });

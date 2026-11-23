@@ -16,8 +16,7 @@
   "openlupPlatformRange": "^1.4.0",
   "testedAgainstPlatformVersion": "1.4.0-dev",
   "contractImports": [
-    "@openlup/platform/communications",
-    "@openlup/platform/communications/contracts"
+    "@openlup/platform/communications"
   ],
   "conformanceRunner": {
     "importPath": "@openlup/platform/communications/testing",

@@ -31,6 +31,7 @@ export const PAYPAL_TEST_CANARIES = Object.freeze({
 
 export const PAYPAL_TEST_RETURN_URL = "https://store.example.test/checkout/paypal/return";
 export const PAYPAL_TEST_CANCEL_URL = "https://store.example.test/checkout/paypal/cancel";
+export const PAYPAL_TEST_WEBHOOK_ID = "WH-TEST-0001";
 export const PAYPAL_TEST_OCCURRED_AT = "2030-06-15T12:00:00.000Z";
 
 export function buildPayPalWebhookInput(
@@ -39,6 +40,9 @@ export function buildPayPalWebhookInput(
     eventType?: string;
     webhookId?: string;
     useSupplementaryOrderId?: boolean;
+    signatureHeader?: string;
+    certUrl?: string;
+    omitSignatureHeaders?: boolean;
   },
   receivedAt = PAYPAL_TEST_OCCURRED_AT,
 ): {
@@ -69,9 +73,18 @@ export function buildPayPalWebhookInput(
         },
       };
 
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (!input.omitSignatureHeaders) {
+    headers["paypal-auth-algo"] = "SHA256withRSA";
+    headers["paypal-cert-url"] = input.certUrl ?? "https://api.sandbox.paypal.com/v1/notifications/certs/CERT-TEST-001";
+    headers["paypal-transmission-id"] = `tx-${input.orderId}`;
+    headers["paypal-transmission-sig"] = input.signatureHeader ?? "valid-paypal-sig";
+    headers["paypal-transmission-time"] = PAYPAL_TEST_OCCURRED_AT;
+  }
+
   return {
     rawBody: new TextEncoder().encode(JSON.stringify(payload)),
-    headers: { "content-type": "application/json" },
+    headers,
     receivedAt,
   };
 }
@@ -348,10 +361,19 @@ export function createPayPalSafetyFixture(): {
         update_time: PAYPAL_TEST_OCCURRED_AT,
       };
     },
+
+    async verifyWebhookSignature(request) {
+      providerRequestCount += 1;
+      if (request.webhook_id !== PAYPAL_TEST_WEBHOOK_ID || request.transmission_sig !== "valid-paypal-sig") {
+        return { verification_status: "FAILURE" };
+      }
+      return { verification_status: "SUCCESS" };
+    },
   };
 
   const adapter = createPayPalPaymentAdapter({
     client,
+    webhookId: PAYPAL_TEST_WEBHOOK_ID,
     returnUrl: PAYPAL_TEST_RETURN_URL,
     cancelUrl: PAYPAL_TEST_CANCEL_URL,
     mode: "test",
@@ -410,7 +432,7 @@ export function createPayPalSafetyFixture(): {
     };
 
     const signatureMismatch: PaymentWebhookFixture = {
-      input: buildPayPalWebhookInput({ orderId: `PP_MISSING_${seed.suffix}` }),
+      input: buildPayPalWebhookInput({ orderId: seed.remote, signatureHeader: "forged-paypal-sig" }),
       expected: { kind: "refusal", reason: "signature" },
     };
 

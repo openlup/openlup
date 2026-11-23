@@ -117,6 +117,20 @@ export interface PayPalRequestOptions {
   signal?: AbortSignal;
 }
 
+export interface PayPalWebhookSignatureVerificationRequest {
+  auth_algo: string;
+  cert_url: string;
+  transmission_id: string;
+  transmission_sig: string;
+  transmission_time: string;
+  webhook_id: string;
+  webhook_event: Record<string, unknown>;
+}
+
+export interface PayPalWebhookSignatureVerificationResponse {
+  verification_status: "SUCCESS" | "FAILURE" | string;
+}
+
 /** Narrow structural client contract consumed by createPayPalPaymentAdapter. */
 export interface PayPalClient {
   createOrder(
@@ -127,6 +141,10 @@ export interface PayPalClient {
     orderId: string,
     options?: { signal?: AbortSignal },
   ): Promise<PayPalOrderResource>;
+  verifyWebhookSignature(
+    request: PayPalWebhookSignatureVerificationRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<PayPalWebhookSignatureVerificationResponse>;
   captureOrder?(
     orderId: string,
     options: PayPalRequestOptions,
@@ -553,6 +571,14 @@ export function createPayPalHttpClient(config: PayPalHttpClientConfig): Required
       return requestJson<PayPalOrderResource>({
         method: "GET",
         path: `/v2/checkout/orders/${encodeURIComponent(safeId)}`,
+        signal: options?.signal,
+      });
+    },
+    async verifyWebhookSignature(request, options) {
+      return requestJson<PayPalWebhookSignatureVerificationResponse>({
+        method: "POST",
+        path: "/v1/notifications/verify-webhook-signature",
+        body: request,
         signal: options?.signal,
       });
     },

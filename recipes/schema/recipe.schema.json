@@ -149,6 +149,7 @@
         "jws-x5u",
         "ed25519",
         "basic-auth",
+        "provider-verify-api",
         "none"
       ]
     },

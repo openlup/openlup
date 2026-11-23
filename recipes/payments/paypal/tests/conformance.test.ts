@@ -24,6 +24,7 @@ import {
   PAYPAL_TEST_CANCEL_URL,
   PAYPAL_TEST_OCCURRED_AT,
   PAYPAL_TEST_RETURN_URL,
+  PAYPAL_TEST_WEBHOOK_ID,
 } from "./fixtures.js";
 
 const RECIPE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -275,6 +276,7 @@ describe("recipes/payments/paypal — Stage 1 & Stage 2 conformance + security i
     });
     const lazyAdapter = createPayPalPaymentAdapter({
       client: lazyClient,
+      webhookId: PAYPAL_TEST_WEBHOOK_ID,
       returnUrl: PAYPAL_TEST_RETURN_URL,
       cancelUrl: PAYPAL_TEST_CANCEL_URL,
       mode: "test",
@@ -383,6 +385,7 @@ describe("recipes/payments/paypal — Stage 1 & Stage 2 conformance + security i
     });
     const wiredAdapter = createPayPalPaymentAdapter({
       client: wiredClient,
+      webhookId: PAYPAL_TEST_WEBHOOK_ID,
       returnUrl: PAYPAL_TEST_RETURN_URL,
       cancelUrl: PAYPAL_TEST_CANCEL_URL,
       mode: "test",
@@ -475,7 +478,11 @@ describe("recipes/payments/paypal — Stage 1 & Stage 2 conformance + security i
             phase: "unknown",
           });
         },
+        async verifyWebhookSignature() {
+          return { verification_status: "SUCCESS" };
+        },
       },
+      webhookId: PAYPAL_TEST_WEBHOOK_ID,
       returnUrl: PAYPAL_TEST_RETURN_URL,
       cancelUrl: PAYPAL_TEST_CANCEL_URL,
       mode: "test",
@@ -501,8 +508,21 @@ describe("recipes/payments/paypal — Stage 1 & Stage 2 conformance + security i
     });
     expect(readTimeout).toMatchObject({ kind: "unknown", reason: "timeout" });
 
-    // Malformed webhooks fail at zero I/O.
+    // Auth-before-parse: missing PayPal signature headers or non-paypal cert URLs fail closed at ZERO I/O.
     const beforeMalformed = getCalls;
+    expect(
+      await faultAdapter.verifyPort.verifyAndNormalize(
+        buildPayPalWebhookInput({ orderId: "5O190127TN364715T", eventType: "CUSTOMER.DISPUTE.CREATED", omitSignatureHeaders: true }),
+      ),
+    ).toEqual({ kind: "refusal", reason: "signature" });
+    expect(
+      await faultAdapter.verifyPort.verifyAndNormalize(
+        buildPayPalWebhookInput({ orderId: "5O190127TN364715T", certUrl: "https://evil.example.test/cert.pem" }),
+      ),
+    ).toEqual({ kind: "refusal", reason: "signature" });
+
+    // Malformed payloads with valid header shape fail at zero getOrder calls.
+    const validHeaders = buildPayPalWebhookInput({ orderId: "ORDER_A" }).headers;
     for (const rawBody of [
       new Uint8Array(0),
       new TextEncoder().encode("not-json"),
@@ -513,18 +533,157 @@ describe("recipes/payments/paypal — Stage 1 & Stage 2 conformance + security i
       expect(
         await faultAdapter.verifyPort.verifyAndNormalize({
           rawBody,
-          headers: {},
+          headers: validHeaders,
           receivedAt: PAYPAL_TEST_OCCURRED_AT,
         }),
       ).toEqual({ kind: "refusal", reason: "malformed" });
     }
     expect(getCalls).toBe(beforeMalformed);
 
+    // Forged dispute signature fails before firing getOrder, and CUSTOMER.DISPUTE.RESOLVED is never blindly disputed.
+    let disputeGetCalls = 0;
+    const strictAdapter = createPayPalPaymentAdapter({
+      client: {
+        async createOrder() {
+          throw new Error("unused");
+        },
+        async verifyWebhookSignature(req) {
+          return {
+            verification_status: req.transmission_sig === "valid-paypal-sig" ? "SUCCESS" : "FAILURE",
+          };
+        },
+        async getOrder(orderId) {
+          disputeGetCalls += 1;
+          if (orderId === "ORDER_PENDING_CAP") {
+            return {
+              id: orderId,
+              status: "COMPLETED",
+              purchase_units: [
+                {
+                  reference_id: "att-p",
+                  custom_id: "int-p",
+                  amount: { currency_code: "EUR", value: "25.00" },
+                  payments: {
+                    captures: [
+                      {
+                        id: "CAP-PENDING",
+                        status: "PENDING",
+                        amount: { currency_code: "EUR", value: "25.00" },
+                        update_time: PAYPAL_TEST_OCCURRED_AT,
+                      },
+                    ],
+                  },
+                },
+              ],
+            };
+          }
+          if (orderId === "ORDER_PARTIAL_CAP") {
+            return {
+              id: orderId,
+              status: "COMPLETED",
+              purchase_units: [
+                {
+                  reference_id: "att-part",
+                  custom_id: "int-part",
+                  amount: { currency_code: "EUR", value: "25.00" },
+                  payments: {
+                    captures: [
+                      {
+                        id: "CAP-PARTIAL",
+                        status: "COMPLETED",
+                        amount: { currency_code: "EUR", value: "10.00" },
+                        update_time: PAYPAL_TEST_OCCURRED_AT,
+                      },
+                    ],
+                  },
+                },
+              ],
+            };
+          }
+          return {
+            id: orderId,
+            status: "COMPLETED",
+            purchase_units: [
+              {
+                reference_id: "att-1",
+                custom_id: "int-1",
+                amount: { currency_code: "EUR", value: "25.00" },
+                payments: {
+                  captures: [
+                    {
+                      id: "CAP-1",
+                      status: "COMPLETED",
+                      amount: { currency_code: "EUR", value: "25.00" },
+                      update_time: PAYPAL_TEST_OCCURRED_AT,
+                    },
+                  ],
+                },
+              },
+            ],
+          };
+        },
+      },
+      webhookId: PAYPAL_TEST_WEBHOOK_ID,
+      returnUrl: PAYPAL_TEST_RETURN_URL,
+      cancelUrl: PAYPAL_TEST_CANCEL_URL,
+      mode: "test",
+      supportedCurrencies: ["EUR"],
+    });
+    expect(
+      await strictAdapter.verifyPort.verifyAndNormalize(
+        buildPayPalWebhookInput({
+          orderId: "ORDER_COMPLETED_01",
+          eventType: "CUSTOMER.DISPUTE.CREATED",
+          signatureHeader: "forged-sig",
+        }),
+      ),
+    ).toEqual({ kind: "refusal", reason: "signature" });
+    expect(disputeGetCalls).toBe(0);
+
+    expect(
+      await strictAdapter.verifyPort.verifyAndNormalize(
+        buildPayPalWebhookInput({
+          orderId: "ORDER_COMPLETED_01",
+          eventType: "CUSTOMER.DISPUTE.RESOLVED",
+        }),
+      ),
+    ).toEqual({ kind: "refusal", reason: "unsupported-event" });
+
+    // PENDING capture must stay pending (never settle as succeeded) in both webhook and readback.
+    const pendingWh = await strictAdapter.verifyPort.verifyAndNormalize(
+      buildPayPalWebhookInput({ orderId: "ORDER_PENDING_CAP" }),
+    );
+    expect(pendingWh).toMatchObject({ kind: "money", outcome: "pending" });
+    expect(
+      await strictAdapter.readbackPort.readPayment({
+        identity: { provider: "paypal", providerPaymentRef: "ORDER_PENDING_CAP", intentRef: "int-p", attemptRef: "att-p" },
+        expectedMoney: { amountMinor: 2500, currency: "EUR" },
+        purpose: "active_checkout",
+      }),
+    ).toMatchObject({ kind: "pending" });
+
+    // Partial capture amount mismatch must fail closed (never settle full order amount).
+    expect(
+      await strictAdapter.verifyPort.verifyAndNormalize(
+        buildPayPalWebhookInput({ orderId: "ORDER_PARTIAL_CAP" }),
+      ),
+    ).toEqual({ kind: "refusal", reason: "malformed" });
+    expect(
+      await strictAdapter.readbackPort.readPayment({
+        identity: { provider: "paypal", providerPaymentRef: "ORDER_PARTIAL_CAP", intentRef: "int-part", attemptRef: "att-part" },
+        expectedMoney: { amountMinor: 2500, currency: "EUR" },
+        purpose: "active_checkout",
+      }),
+    ).toMatchObject({ kind: "unknown", reason: "indeterminate" });
+
     // Confused deputy check: webhook asks for Order A, readback returns Order B -> signature refusal.
     const confusedAdapter = createPayPalPaymentAdapter({
       client: {
         async createOrder() {
           throw new Error("unused");
+        },
+        async verifyWebhookSignature() {
+          return { verification_status: "SUCCESS" };
         },
         async getOrder() {
           return {
@@ -534,6 +693,7 @@ describe("recipes/payments/paypal — Stage 1 & Stage 2 conformance + security i
           };
         },
       },
+      webhookId: PAYPAL_TEST_WEBHOOK_ID,
       returnUrl: PAYPAL_TEST_RETURN_URL,
       cancelUrl: PAYPAL_TEST_CANCEL_URL,
       mode: "test",

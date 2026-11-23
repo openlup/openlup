@@ -42,7 +42,7 @@ See [index.json](index.json) for the machine-readable catalog (**15 recipes acro
 ### Payments
 - [`payments/adyen`](payments/adyen/recipe.json) — **Exemplar** zero-SDK Adyen Checkout v71 recipe (Drop-in sessions + `recipes/payments/adyen/browser/csp.json`, bank redirect, unattended `ContAuth` recurring, async cancels, canonical HMAC-SHA256 webhook verification).
 - [`payments/mollie`](payments/mollie/recipe.json) — **Verified** zero-SDK Mollie Payments API v2 recipe (hosted checkout redirects, unattended recurring mandates, synchronous readback and cancellation, refund/chargeback observation, readback-authenticated form-urlencoded webhooks).
-- [`payments/paypal`](payments/paypal/recipe.json) — **Verified** zero-SDK PayPal Orders v2 & Checkout recipe (`@openlup/platform/adapter-kit` OAuth2 client credentials, `PayPal-Request-Id` idempotency, hosted approval redirect, `verify-webhook-signature` webhooks).
+- [`payments/paypal`](payments/paypal/recipe.json) — **Verified** zero-SDK PayPal Orders v2 & Checkout recipe (`@openlup/platform/adapter-kit` OAuth2 client credentials, `PayPal-Request-Id` idempotency, hosted approval redirect, `/v1/notifications/verify-webhook-signature` + order readback webhooks).
 
 ### Fulfillment
 - [`fulfillment/amazon-mcf`](fulfillment/amazon-mcf/recipe.json) — **Exemplar** zero-SDK Amazon Multi-Channel Fulfillment recipe (SP-API Outbound v2020-07-01 & FBA Inventory v1, pure `node:crypto` AWS SigV4 signing, single-flight LWA OAuth2, bridged HMAC-SHA256 notifications, `nextToken` reconciliation paging, snapshot-only stock sync).
@@ -64,7 +64,7 @@ See [index.json](index.json) for the machine-readable catalog (**15 recipes acro
 - [`accounting/xero`](accounting/xero/recipe.json) — **Verified** zero-SDK Xero Accounting API 2.0 manual-journal export recipe (`@openlup/platform/adapter-kit` OAuth2 `refresh_token`, strict UUID `xero-tenant-id` header pinning, `Idempotency-Key`, signed `LineAmount` mapping, readback recovery).
 
 ### Observability
-- [`observability/axiom`](observability/axiom/recipe.json) — **Exemplar** zero-SDK Axiom Dataset Ingest v1 telemetry sink recipe (`createSafeTelemetryPort` PII/secret scrubbing, fail-open batching, NDJSON/JSON ingest over `@openlup/platform/adapter-kit`, full-mode 5-fault certification).
+- [`observability/axiom`](observability/axiom/recipe.json) — **Exemplar** zero-SDK Axiom Dataset Ingest v1 telemetry sink recipe (`createSafeTelemetryPort` PII/secret scrubbing, fail-open batching, JSON array ingest over `@openlup/platform/adapter-kit`, full-mode 5-fault certification).
 - [`observability/otel-otlp`](observability/otel-otlp/recipe.json) — **Verified** zero-SDK OpenTelemetry OTLP/HTTP JSON (`v1/traces`, `v1/metrics`, `v1/logs`) telemetry sink recipe (strict collector origin pinning, custom headers, PII scrubbing, fail-open multi-signal export).
 
 ### Sales Channels

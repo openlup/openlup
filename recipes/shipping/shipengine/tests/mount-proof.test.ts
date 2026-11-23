@@ -23,7 +23,7 @@ import { SHIPENGINE_HAPPY_PAYLOAD, SHIPENGINE_TEST_CANARIES } from "./fixtures.j
 const AT = "2030-06-15T12:00:00.000Z";
 
 function createMountedCommerceQuotePort(options: {
-  rateAdapter: ReturnType<typeof createShipEngineRateAdapter>;
+  rateAdapter: ReturnType<typeof createShipEngineRateAdapter> | null;
   freeThresholdMinor: number;
   promoCodePort?: PromotionCodeQuotePort;
 }) {
@@ -50,6 +50,20 @@ function createMountedCommerceQuotePort(options: {
     promotionCodeQuotePort: options.promoCodePort,
     commerceSettingsPort: {
       async getShippingSettings(): Promise<ShippingSettings> {
+        if (!options.rateAdapter) {
+          return {
+            legacyFlatMinor: 0,
+            policy: {
+              version: "shipping-policy.v1",
+              current: {
+                enabled: false,
+                flatMinor: 0,
+                freeThresholdMinor: options.freeThresholdMinor,
+                effectiveFrom: AT,
+              },
+            },
+          };
+        }
         const quoted = await options.rateAdapter.quoteRates({
           contractVersion: CARRIER_RATE_QUOTE_CONTRACT_VERSION,
           requestKey: "commerce-quote-shipping-1",
@@ -243,5 +257,19 @@ describe("recipes/shipping/shipengine — Stage 3 real-flow mount proof (+ negat
       diagnosticCode: "UNSUPPORTED_CURRENCY",
     });
     expect(spyFetch).not.toHaveBeenCalled();
+
+    // Negative control #3 (ADR-001 §5): Detaching/unmounting ShipEngine from the commerce quote port
+    // fails the live carrier shipping-rate propagation proof (no 1095 minor ShipEngine rate applied).
+    const detachedPort = createMountedCommerceQuotePort({
+      rateAdapter: null,
+      freeThresholdMinor: 5000,
+    });
+    const detachedQuote = await detachedPort.createServerAuthoritativeQuote({
+      mode: "one_time",
+      lines: [{ sku: "STARTER-BOX", quantity: 1 }],
+      promoCodes: [],
+    });
+    expect(detachedQuote.quote.shippingGross?.amountMinor ?? 0).not.toBe(1095);
+    expect(detachedQuote.quote.totalGross.amountMinor).toBe(2500);
   });
 });

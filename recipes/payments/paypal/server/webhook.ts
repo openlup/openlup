@@ -18,7 +18,9 @@ import {
 
 export interface PayPalWebhookVerifierConfig {
   mode: "live" | "test";
-  client: Pick<PayPalClient, "getOrder">;
+  /** PayPal Webhook ID registered in the PayPal Developer Dashboard for signature verification. */
+  webhookId: string;
+  client: Pick<PayPalClient, "getOrder" | "verifyWebhookSignature">;
   supportedCurrencies: readonly string[];
   maxBodyBytes?: number;
 }
@@ -26,6 +28,7 @@ export interface PayPalWebhookVerifierConfig {
 type VerificationResult = Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>>;
 
 const CURRENCY_PATTERN = /^[A-Z]{3}$/u;
+const SAFE_EVENT_TYPE_PATTERN = /^[A-Z0-9._-]{1,64}$/u;
 
 const refusal = (
   reason: Extract<VerificationResult, { kind: "refusal" }>["reason"],
@@ -46,6 +49,64 @@ function readNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeHeaders(
+  headers: Readonly<Record<string, string | readonly string[] | undefined>>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (typeof value === "string") {
+      out[key.toLowerCase()] = value.trim();
+    } else if (Array.isArray(value) && typeof value[0] === "string") {
+      out[key.toLowerCase()] = value[0].trim();
+    }
+  }
+  return out;
+}
+
+function isPinnedPayPalCertUrl(rawUrl: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") {
+    return false;
+  }
+  const host = parsed.hostname.toLowerCase();
+  return host === "api.paypal.com" || host === "api.sandbox.paypal.com" || host.endsWith(".paypal.com");
+}
+
+interface PayPalSignatureHeaders {
+  authAlgo: string;
+  certUrl: string;
+  transmissionId: string;
+  transmissionSig: string;
+  transmissionTime: string;
+}
+
+function extractPayPalSignatureHeaders(
+  headers: Readonly<Record<string, string | readonly string[] | undefined>>,
+): PayPalSignatureHeaders | null {
+  const lower = normalizeHeaders(headers);
+  const authAlgo = readNonEmptyString(lower["paypal-auth-algo"]);
+  const certUrl = readNonEmptyString(lower["paypal-cert-url"]);
+  const transmissionId = readNonEmptyString(lower["paypal-transmission-id"]);
+  const transmissionSig = readNonEmptyString(lower["paypal-transmission-sig"]);
+  const transmissionTime = readNonEmptyString(lower["paypal-transmission-time"]);
+
+  if (!authAlgo || !certUrl || !transmissionId || !transmissionSig || !transmissionTime) {
+    return null;
+  }
+  if (!isPinnedPayPalCertUrl(certUrl)) {
+    return null;
+  }
+  if (!normalizeIsoTimestamp(transmissionTime)) {
+    return null;
+  }
+  return { authAlgo, certUrl, transmissionId, transmissionSig, transmissionTime };
 }
 
 export function derivePayPalFailureHints(
@@ -105,6 +166,7 @@ interface ParsedWebhookEnvelope {
   orderId: string;
   eventType: string | null;
   providerWebhookId: string | null;
+  rawEvent: Record<string, unknown>;
 }
 
 function parseWebhookEnvelope(
@@ -128,7 +190,9 @@ function parseWebhookEnvelope(
     return null;
   }
   const record = parsed as Record<string, unknown>;
-  const eventType = readNonEmptyString(record.event_type);
+  const rawEventType = readNonEmptyString(record.event_type);
+  const eventType =
+    rawEventType && SAFE_EVENT_TYPE_PATTERN.test(rawEventType) ? rawEventType : null;
   const providerWebhookId = readNonEmptyString(record.id);
   const resource =
     record.resource && typeof record.resource === "object" && !Array.isArray(record.resource)
@@ -159,7 +223,7 @@ function parseWebhookEnvelope(
 
   try {
     const orderId = assertSafePayPalOrderId(rawOrderId);
-    return { orderId, eventType, providerWebhookId };
+    return { orderId, eventType, providerWebhookId, rawEvent: record };
   } catch {
     return null;
   }
@@ -199,16 +263,23 @@ function sumCompletedRefunds(
 }
 
 /**
- * Readback-authenticated PayPal webhook verifier.
- * Extracts the PayPal order ID from the webhook envelope and verifies the
- * authoritative state directly against `GET /v2/checkout/orders/{id}` on the
- * pinned PayPal origin before emitting money or dispute evidence.
+ * Cryptographically authenticated + readback-verified PayPal webhook verifier.
+ * 1. Validates required PayPal transmission headers and pinned `*.paypal.com` cert URL
+ *    at zero I/O before parsing untrusted payload fields.
+ * 2. Authenticates the webhook signature via `POST /v1/notifications/verify-webhook-signature`
+ *    requiring `verification_status === "SUCCESS"`.
+ * 3. Reads authoritative order/capture/refund state via `GET /v2/checkout/orders/{id}`
+ *    and enforces exact capture status and integer minor-unit amount parity.
  */
 export function createPayPalWebhookVerifier(
   config: PayPalWebhookVerifierConfig,
 ): PaymentVerifyNormalizePort {
   if (config.mode !== "live" && config.mode !== "test") {
     throw new Error("Invalid PayPal webhook mode");
+  }
+  const webhookId = readNonEmptyString(config.webhookId);
+  if (!webhookId) {
+    throw new Error("Invalid PayPal webhookId");
   }
   const supportedCurrencies = Object.freeze([...config.supportedCurrencies]);
   const maxBodyBytes = config.maxBodyBytes ?? MAX_WEBHOOK_BODY_BYTES;
@@ -218,9 +289,43 @@ export function createPayPalWebhookVerifier(
 
   return {
     async verifyAndNormalize(input) {
+      if (input.rawBody.byteLength === 0 || input.rawBody.byteLength > maxBodyBytes) {
+        return refusal("malformed");
+      }
+
+      // Auth-before-parse: require all 5 PayPal signature headers + pinned paypal.com cert URL at 0 I/O.
+      const sigHeaders = extractPayPalSignatureHeaders(input.headers);
+      if (!sigHeaders) {
+        return refusal("signature");
+      }
+
       const envelope = parseWebhookEnvelope(input.rawBody, maxBodyBytes);
       if (!envelope) {
         return refusal("malformed");
+      }
+
+      // Cryptographically verify the webhook with PayPal BEFORE firing any order readback or trusting event_type.
+      try {
+        const verification = await config.client.verifyWebhookSignature({
+          auth_algo: sigHeaders.authAlgo,
+          cert_url: sigHeaders.certUrl,
+          transmission_id: sigHeaders.transmissionId,
+          transmission_sig: sigHeaders.transmissionSig,
+          transmission_time: sigHeaders.transmissionTime,
+          webhook_id: webhookId,
+          webhook_event: envelope.rawEvent,
+        });
+        if (!verification || verification.verification_status !== "SUCCESS") {
+          return refusal("signature");
+        }
+      } catch (error) {
+        if (
+          error instanceof PayPalTransportError
+          && (error.httpStatus === 400 || error.httpStatus === 401 || error.httpStatus === 403 || error.httpStatus === 404)
+        ) {
+          return refusal("signature");
+        }
+        throw error;
       }
 
       let order: PayPalOrderResource;
@@ -262,11 +367,12 @@ export function createPayPalWebhookVerifier(
       let refusalEnvelope: PaymentRefusalEnvelope | undefined;
       let refundObservation: PaymentRefundObservation | undefined;
 
-      const isDisputeEvent =
-        envelope.eventType === "CUSTOMER.DISPUTE.CREATED"
-        || envelope.eventType === "CUSTOMER.DISPUTE.RESOLVED";
+      if (envelope.eventType === "CUSTOMER.DISPUTE.RESOLVED") {
+        // Dispute resolution can favor either party; do not blindly assert a chargeback reversal.
+        return refusal("unsupported-event");
+      }
 
-      if (isDisputeEvent) {
+      if (envelope.eventType === "CUSTOMER.DISPUTE.CREATED") {
         if (order.status !== "COMPLETED" || !capture || capture.status !== "COMPLETED") {
           return refusal("unsupported-event");
         }
@@ -300,26 +406,39 @@ export function createPayPalWebhookVerifier(
           },
         };
       } else if (order.status === "COMPLETED") {
-        if (capture && (capture.status === "DECLINED" || capture.status === "FAILED")) {
+        if (!capture) {
+          return refusal("malformed");
+        }
+        if (capture.status === "DECLINED" || capture.status === "FAILED") {
           outcome = "failed";
           providerEventId = `paypal:${envelope.orderId}:${capture.status.toLowerCase()}:failed`;
           providerOccurredAt = normalizeIsoTimestamp(
             capture.update_time ?? capture.create_time ?? order.update_time,
           );
           refusalEnvelope = mapPayPalRefusal(capture.status, capture.status_details?.reason);
-        } else {
-          if (capture?.amount) {
-            const capturedMoney = parseStrictPayPalMoney(capture.amount, supportedCurrencies);
-            if (!capturedMoney || capturedMoney.currency !== originalAmount.currency) {
-              return refusal("malformed");
-            }
+        } else if (capture.status === "PENDING") {
+          outcome = "pending";
+          providerEventId = `paypal:${envelope.orderId}:capture_pending:pending`;
+          providerOccurredAt = normalizeIsoTimestamp(
+            capture.update_time ?? capture.create_time ?? order.update_time ?? order.create_time,
+          );
+        } else if (capture.status === "COMPLETED") {
+          const capturedMoney = parseStrictPayPalMoney(capture.amount, supportedCurrencies);
+          if (
+            !capturedMoney
+            || capturedMoney.currency !== originalAmount.currency
+            || capturedMoney.amountMinor !== originalAmount.amountMinor
+          ) {
+            return refusal("malformed");
           }
           outcome = "succeeded";
           providerEventId = `paypal:${envelope.orderId}:completed:succeeded`;
           providerOccurredAt = normalizeIsoTimestamp(
-            capture?.update_time ?? capture?.create_time ?? order.update_time ?? order.create_time,
+            capture.update_time ?? capture.create_time ?? order.update_time ?? order.create_time,
           );
           capturedAmountBasis = "provider_capture_v1";
+        } else {
+          return refusal("unsupported-event");
         }
       } else if (order.status === "VOIDED") {
         outcome = "failed";

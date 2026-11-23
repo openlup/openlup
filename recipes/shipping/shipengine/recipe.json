@@ -17,7 +17,6 @@
   "testedAgainstPlatformVersion": "1.4.0-dev",
   "contractImports": [
     "@openlup/platform/shipping",
-    "@openlup/platform/shipping/contracts",
     "@openlup/platform/adapter-kit"
   ],
   "conformanceRunner": {

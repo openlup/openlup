@@ -25,6 +25,8 @@ import { createPayPalWebhookVerifier, mapPayPalRefusal } from "./webhook.js";
 export interface PayPalPaymentAdapterConfig {
   /** Narrow structural client (use createPayPalHttpClient for zero-SDK REST v2). */
   client: PayPalClient;
+  /** PayPal Webhook ID registered in the PayPal Developer Dashboard for signature verification. */
+  webhookId: string;
   /** Valid HTTPS return URL after PayPal approval. */
   returnUrl: string;
   /** Valid HTTPS cancel URL if the payer cancels in PayPal checkout. */
@@ -175,7 +177,10 @@ function mapReadbackOrder(
 
   const capture = unit.payments?.captures?.[0];
   if (order.status === "COMPLETED") {
-    if (capture && (capture.status === "DECLINED" || capture.status === "FAILED")) {
+    if (!capture) {
+      return { ...base, kind: "unknown", reason: "indeterminate" };
+    }
+    if (capture.status === "DECLINED" || capture.status === "FAILED") {
       return {
         ...base,
         kind: "failed",
@@ -186,12 +191,32 @@ function mapReadbackOrder(
         refusal: mapPayPalRefusal(capture.status, capture.status_details?.reason),
       };
     }
+    if (capture.status === "PENDING") {
+      return {
+        ...base,
+        kind: "pending",
+        observedMoney: input.expectedMoney,
+        providerOccurredAt: normalizeIsoTimestamp(
+          capture.update_time ?? capture.create_time ?? order.update_time ?? order.create_time,
+        ),
+      };
+    }
+    if (capture.status !== "COMPLETED") {
+      return { ...base, kind: "unknown", reason: "indeterminate" };
+    }
+    if (!capture.amount || capture.amount.currency_code !== input.expectedMoney.currency) {
+      return { ...base, kind: "unknown", reason: "indeterminate" };
+    }
+    const capturedMinor = majorStringToMinor(capture.amount.value, input.expectedMoney.currency);
+    if (capturedMinor === null || capturedMinor !== input.expectedMoney.amountMinor) {
+      return { ...base, kind: "unknown", reason: "indeterminate" };
+    }
     return {
       ...base,
       kind: "succeeded",
       observedMoney: input.expectedMoney,
       providerOccurredAt: normalizeIsoTimestamp(
-        capture?.update_time ?? capture?.create_time ?? order.update_time ?? order.create_time,
+        capture.update_time ?? capture.create_time ?? order.update_time ?? order.create_time,
       ),
       capturedAmountBasis: "provider_capture_v1",
     };
@@ -335,6 +360,7 @@ export function createPayPalPaymentAdapter(config: PayPalPaymentAdapterConfig): 
 
   const verifyPort = createPayPalWebhookVerifier({
     mode: config.mode,
+    webhookId: config.webhookId,
     client: config.client,
     supportedCurrencies,
     maxBodyBytes: config.maxWebhookBodyBytes,

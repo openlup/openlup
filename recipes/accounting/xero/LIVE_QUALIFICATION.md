@@ -8,7 +8,7 @@ This recipe has passed offline full-mode conformance (`runAccountingAdapterConfo
 
 - [ ] Provision a Xero OAuth2 app with the `accounting.journals.read` and `accounting.transactions` (or `accounting.settings`) scopes required for `ManualJournals`.
 - [ ] Complete the OAuth2 authorization-code exchange (`offline_access` scope) for the target Xero organisation and record its `xero-tenant-id` UUID (36 characters matching `/^[0-9a-fA-F-]{36}$/u`, validated strictly at client construction time).
-- [ ] Store `clientId`, `clientSecret`, and the rotating `refreshToken` in the host secret manager and inject them into `createXeroHttpClient` (with `tokenCache` persisted across restarts because Xero rotates refresh tokens on refresh).
+- [ ] Store `clientId`, `clientSecret`, and the rotating `refreshToken` in the host secret manager and manage Xero's rotating refresh-token lifecycle in the host auth layer; optionally pass `tokenCache` to `createXeroHttpClient` to cache short-lived OAuth2 access tokens (`{ accessToken, expiresAtMs }`) across requests.
 - [ ] Allowlist egress in host network policy strictly to the pinned HTTPS origins declared in `recipe.json#egressOrigins`:
   - `https://api.xero.com` (`PUT` / `GET /api.xro/2.0/ManualJournals`)
   - `https://identity.xero.com` (OAuth2 token endpoint `/connect/token`)

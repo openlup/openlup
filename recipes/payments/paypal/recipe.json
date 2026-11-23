@@ -4,7 +4,7 @@
   "domain": "payments",
   "providerKind": "paypal",
   "displayName": "PayPal Checkout (Orders API v2)",
-  "summary": "Zero-SDK PayPal Orders API v2 recipe supporting hosted approve redirects, OAuth2 client_credentials token management, synchronous readback, refund/dispute observation, and readback-authenticated webhooks.",
+  "summary": "Zero-SDK PayPal Orders API v2 recipe supporting hosted approve redirects, OAuth2 client_credentials token management, synchronous readback, refund/dispute observation, and verify-webhook-signature + readback webhooks.",
   "regions": [
     "global",
     "US",
@@ -31,7 +31,7 @@
     "https://api-m.paypal.com",
     "https://api-m.sandbox.paypal.com"
   ],
-  "webhookAuth": "none",
+  "webhookAuth": "provider-verify-api",
   "browserSurface": {
     "kind": "none"
   },

@@ -8,7 +8,7 @@ This recipe has passed offline full-mode conformance (`runAccountingAdapterConfo
 
 - [ ] Provision an Intuit Developer app with the `com.intuit.quickbooks.accounting` scope in the target environment (`sandbox` or `production`).
 - [ ] Complete the OAuth2 authorization-code exchange for the target company and record its numeric `realmId` (1–32 ASCII digits, validated strictly at client construction time).
-- [ ] Store `clientId`, `clientSecret`, and the rotating `refreshToken` in the host secret manager and inject them into `createQuickBooksOnlineHttpClient` (with optional `tokenCache` persisted across restarts so refreshed tokens remain durable).
+- [ ] Store `clientId`, `clientSecret`, and the rotating `refreshToken` in the host secret manager and manage Intuit's refresh-token rotation lifecycle in the host auth layer; optionally pass `tokenCache` to `createQuickBooksOnlineHttpClient` to cache short-lived OAuth2 access tokens (`{ accessToken, expiresAtMs }`) across requests.
 - [ ] Allowlist egress in host network policy strictly to the pinned HTTPS origins declared in `recipe.json#egressOrigins`:
   - `https://quickbooks.api.intuit.com` (`production`)
   - `https://sandbox-quickbooks.api.intuit.com` (`sandbox`)

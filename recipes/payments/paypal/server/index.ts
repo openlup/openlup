@@ -39,6 +39,8 @@ export type {
   PayPalRefundResource,
   PayPalRefundStatus,
   PayPalRequestOptions,
+  PayPalWebhookSignatureVerificationRequest,
+  PayPalWebhookSignatureVerificationResponse,
 } from "./client-contract.js";
 
 export {
