@@ -126,15 +126,17 @@ it("reference_packs_check_offline", () => {
 function readRecipe(name: string) {
   const readme = readFileSync(join(example(name), "README.md"), "utf8");
   const binding = name.replace(/-([a-z])/gu, (_match, letter: string) => letter.toUpperCase());
-  const copy = `cp "$REFERENCE_PACK_DIR/pack.ts" owned/${name}-pack.ts`;
-  const importEntry = `import { referenceEntry as ${binding} } from './${name}-pack.ts';`;
+  const filename = name === "pet-food" ? "petfood-pack.ts" : `${name}-pack.ts`;
+  const target = `owned/${filename}`;
+  const copy = `cp "$REFERENCE_PACK_DIR/pack.ts" ${target}`;
+  const importEntry = `import { referenceEntry as ${binding} } from './${filename}';`;
   const append = `catalogueConformance.packs.push(${binding});`;
-  for (const literal of [copy, `owned/${name}-pack.ts`, "byte-for-byte identical", importEntry, ownedList, explicitList, append,
+  for (const literal of [copy, target, "byte-for-byte identical", importEntry, ownedList, explicitList, append,
     sourceCheck, satisfied, ...excludedAdvisories, up, health, "`200`", "exit 0", "npm run catalogue:apply -- --json",
     "./lifecycle browser browser/catalogue-products.spec.ts"]) {
     expect(readme, name).toContain(literal);
   }
-  return { copy, importEntry, append };
+  return { copy, target, importEntry, append };
 }
 
 function materialize() {
@@ -226,9 +228,9 @@ async function installRecipes() {
   const entries = new Map<string, Entry>();
   let previous: Awaited<ReturnType<typeof installedState>> | undefined;
   let db: Pool | undefined;
-  for (const { name, copy, importEntry, append } of recipes) {
+  for (const { name, copy, target, importEntry, append } of recipes) {
     recipe(copy, { REFERENCE_PACK_DIR: example(name) });
-    const copied = join(app, "owned", `${name}-pack.ts`);
+    const copied = join(app, target);
     expect(readFileSync(copied)).toEqual(readFileSync(join(example(name), "pack.ts")));
     const owned = readFileSync(declaration, "utf8");
     expect(owned).toContain(entries.size === 0 ? ownedList : explicitList);
