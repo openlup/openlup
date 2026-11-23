@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, readlinkSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { isAbsolute, resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
@@ -224,8 +224,71 @@ export function assertAppendOnlyLandingSlots(prAddedPaths, mainMigrationPaths) {
   }
 }
 
+class LandingConflict extends Error {}
+
+function refuseAuthoredConflicts(paths) {
+  if (paths.length) throw new LandingConflict(`landing: authored conflicts remain: ${paths.join(', ')}`);
+}
+
+const commandDiagnostic = error => error?.stderr?.toString().trim() || error?.message || String(error);
+const checkoutStatus = cwd => git(cwd, '--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all');
+
+async function abortLanding(cwd, { head, hasMerge, ignored, diagnostics }, error) {
+  const cleanupFailures = [];
+  const attempt = async action => {
+    try { return await action(); }
+    catch (failure) { cleanupFailures.push(failure); }
+  };
+  const active = await attempt(hasMerge);
+  // The clean preflight is the baseline for unstaged writes and untracked files.
+  // Restore from the merge index first so these writes cannot obstruct abort.
+  const cleanUntracked = async () => {
+    const untracked = pathsFrom(await git(cwd, 'ls-files', '--others', '--exclude-standard', '-z')).filter(path => {
+      // A merged ignore rule can expose pre-existing local files or directories.
+      for (let entry = path; entry !== '.'; entry = dirname(entry)) {
+        if (ignored.has(entry) || ignored.has(`${entry}/`)) return false;
+      }
+      return true;
+    });
+    if (untracked.length) await git(cwd, '--literal-pathspecs', 'clean', '-f', '--', ...untracked);
+  };
+  await attempt(cleanUntracked);
+  await attempt(async () => {
+    const modified = pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z'));
+    if (modified.length) await git(cwd, '--literal-pathspecs', 'restore', '--worktree', '--ignore-unmerged', '--', ...new Set(modified));
+  });
+  if (active) await attempt(async () => {
+    await git(cwd, 'merge', '--abort');
+    await cleanUntracked();
+  });
+  await attempt(async () => {
+    const actualHead = (await git(cwd, 'rev-parse', 'HEAD')).trim();
+    const merging = hasMerge();
+    const status = (await checkoutStatus(cwd)).trimEnd();
+    if (actualHead === head && !merging && !status) return;
+    throw new Error(`landing: expected clean HEAD ${head}, found HEAD ${actualHead}, MERGE_HEAD ${merging ? 'present' : 'absent'}, porcelain status ${JSON.stringify(status)}`);
+  });
+  const diagnostic = diagnostics.toolchain ?? commandDiagnostic(error);
+  if (cleanupFailures.length) {
+    throw new AggregateError([error, ...cleanupFailures], `${diagnostic}\nOPENLUP_E_LANDING_ABORT_FAILED: ${cleanupFailures.map(commandDiagnostic).join('\n')}`, { cause: error });
+  }
+  const restored = active ? 'merge aborted; the checkout is back at HEAD' : 'the checkout is still at the original clean HEAD';
+  diagnostics.aborted = `${diagnostic}\nOPENLUP_E_LANDING_ABORTED: ${restored}`;
+  throw error;
+}
+
 export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
-  if ((await git(cwd, '--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all')).trim()) throw new Error('landing: clean committed checkout required');
+  return runLanding(cwd, runCommand, {});
+}
+
+async function runLanding(cwd, runCommand, diagnostics) {
+  if ((await checkoutStatus(cwd)).trim()) throw new Error('landing: clean committed checkout required');
+  const mergeHead = resolve(cwd, (await git(cwd, 'rev-parse', '--git-path', 'MERGE_HEAD')).trimEnd());
+  const hasMerge = () => lstatSync(mergeHead, { throwIfNoEntry: false }) !== undefined;
+  const requireNoMerge = () => {
+    if (hasMerge()) throw new Error('landing: a merge is already in progress; finish or abort it before retrying');
+  };
+  requireNoMerge();
   for (const key of ['user.name', 'user.email']) {
     let configured;
     try { configured = (await git(cwd, 'config', '--get', key)).trim(); }
@@ -248,29 +311,47 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   }
   const carrierEnv = { ...processEnvironment, ...carrierLocale };
   const run = runCommand ?? ((command, args, options) => execFileSync(command, args, { cwd, stdio: 'inherit', timeout: 900000, ...options }));
-  const checkToolchain = () => run(process.execPath, ['--input-type=module', '-e',
-    `import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; console.log(assertCarrierToolchain(process.cwd()));`], { env: carrierEnv });
-  checkToolchain();
-  try { await git(cwd, '-c', 'core.hooksPath=/dev/null', 'merge', '--no-ff', '--no-commit', main); }
-  catch (error) { if (error.code !== 1) throw error; }
+  checkLandingToolchain(run, carrierEnv);
+  const ignored = new Set(pathsFrom(await git(cwd, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z')));
+  requireNoMerge();
+  let inventoryRefreshed;
+  try {
+    try { await git(cwd, '-c', 'core.hooksPath=/dev/null', 'merge', '--no-ff', '--no-commit', main); }
+    catch (error) { if (error.code !== 1 || !hasMerge()) throw error; }
+    inventoryRefreshed = await landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diagnostics });
+  } catch (error) {
+    if (error instanceof LandingConflict) throw error;
+    return abortLanding(cwd, { head, hasMerge, ignored, diagnostics }, error);
+  }
+  return { head: (await git(cwd, 'rev-parse', 'HEAD')).trim(), main, inventoryRefreshed };
+}
+
+function checkLandingToolchain(run, env, merged = false) {
+  const check = 'console.log(assertCarrierToolchain(process.cwd()));';
+  const script = merged ? `try { ${check} } catch (error) { console.error(error.message); process.exitCode = 1; }` : check;
+  const options = merged ? { env, stdio: ['ignore', 'inherit', 'pipe'], encoding: 'utf8' } : { env };
+  run(process.execPath, ['--input-type=module', '-e', `import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; ${script}`], options);
+}
+
+async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diagnostics }) {
   if ((await git(cwd, 'rev-parse', '--verify', 'MERGE_HEAD')).trim() !== main) throw new Error('landing: exact main merge required');
   const conflicts = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=U', '-z'));
   const read = (revision, path) => git(cwd, 'show', `${revision}:${path}`);
   const registryConflicts = conflicts.filter(path => REGISTRY_PATHS.includes(path));
   if (registryConflicts.length && (await git(cwd, 'merge-base', '--all', head, main)).trim() !== base) {
-    throw new Error(`landing: authored conflicts remain: ${registryConflicts.join(', ')}`);
+    refuseAuthoredConflicts(registryConflicts);
   }
   const readUnion = async path => registryUnion(path, ...await Promise.all([base, head, main].map(revision => read(revision, path))));
   const index = await trackedIndex(cwd);
   const legacyConflict = path => [...REGISTRY_PATHS, ...MIGRATION_REGISTRIES, INVENTORY_PATH].includes(path) || (generatedCarrier(path) && !path.endsWith('.sql'));
   const authoredInputs = conflicts.filter(path => /^(?:config\/openlup-packages\.json|packages\/[^/]+\/(?:package|release-gates)\.json)$/u.test(path));
-  if (authoredInputs.length) throw new Error(`landing: authored conflicts remain: ${authoredInputs.join(', ')}`);
+  refuseAuthoredConflicts(authoredInputs);
   const catalogueUnion = conflicts.includes(PUBLICATION_CATALOGUE) ? await readUnion(PUBLICATION_CATALOGUE) : undefined;
   const catalogue = catalogueUnion === undefined ? readJson(cwd, PUBLICATION_CATALOGUE) : JSON.parse(catalogueUnion);
   const owners = readReportOwners(cwd);
   const { admitted, replaceable } = ownerOutputs(owners, catalogue.publicPaths);
   const other = conflicts.filter(path => !legacyConflict(path) && !(replaceable.has(path) && safeOutput(cwd, path, index)));
-  if (other.length) throw new Error(`landing: authored conflicts remain: ${other.join(', ')}`);
+  refuseAuthoredConflicts(other);
   const mergedModule = path => JSON.stringify(pathToFileURL(resolve(cwd, path)).href);
   const generators = mergedModule('scripts/agent-review-generators.mjs');
   // Load the merged owners in a fresh process, including the early authored-conflict check.
@@ -290,15 +371,31 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   const envelopes = inventories.map(inventoryEnvelope);
   if (needsInventoryRefresh && !envelopes.every(value => value.before === envelopes[0].before && value.after === envelopes[0].after)) throw new Error('landing: historical inventory conflict');
   // Main can change the requirements after the initial checkout passes validation.
-  const toolchainInputs = ['.nvmrc', 'package.json', 'package-lock.json', 'config/openlup-packages.json', 'scripts/agent-review-landing.mjs',
+  const toolchainInputs = ['.nvmrc', '.npmrc', 'package.json', 'package-lock.json', 'config/openlup-packages.json', 'scripts/agent-review-landing.mjs',
     ...DEFAULT_INCREMENTAL_PACKAGES.map(directory => `${directory}/package.json`)];
-  if (await git(cwd, '--literal-pathspecs', 'diff', '--name-only', '-z', head, '--', ...toolchainInputs)) checkToolchain();
+  if (await git(cwd, '--literal-pathspecs', 'diff', '--name-only', '-z', head, '--', ...toolchainInputs)) {
+    const install = [process.execPath, carrierNpmCli(), 'ci'];
+    const [command, ...args] = Object.hasOwn(carrierEnv, 'AI_RESOURCE_GATE_ACTIVE') ? install
+      : ['ai-resource-gate', 'run', '--wait', 'openlup:landing-build', '--', ...install];
+    run(command, args, { env: carrierEnv });
+    try { checkLandingToolchain(run, carrierEnv, true); }
+    catch (error) {
+      diagnostics.toolchain = `OPENLUP_E_LANDING_TOOLCHAIN: ${commandDiagnostic(error)}\nafter npm ci from the merged lock`;
+      throw error;
+    }
+  }
   if (needsInventoryRefresh) await assertCarrierBuildOutputs(cwd, DEFAULT_INCREMENTAL_PACKAGES, true);
   const preliminary = carrierPlan(owners, inputs);
   if (preliminary.builds.length) {
     await assertCarrierBuildOutputs(cwd, preliminary.builds.map(({ directory }) => directory));
   }
-  if (conflicts.includes(SQL_REFERENCE)) runGenerators('owners.syncSqlReference(process.cwd());');
+  if (conflicts.includes(SQL_REFERENCE)) {
+    try { runGenerators('owners.syncSqlReference(process.cwd());'); }
+    catch (error) {
+      if (error.message !== `landing: authored conflicts remain: ${SQL_REFERENCE}`) throw error;
+      refuseAuthoredConflicts([SQL_REFERENCE]);
+    }
+  }
   for (const path of registryConflicts) {
     writeFileSync(resolve(cwd, path), path === PUBLICATION_CATALOGUE ? catalogueUnion : await readUnion(path));
     await git(cwd, 'add', '--', path);
@@ -361,8 +458,14 @@ export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   runGenerators("owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));", paths.join('\0'));
   const staged = [...new Set([...MIGRATION_REGISTRIES, INVENTORY_PATH, ...paths.filter(generatedCarrier), ...outputs])];
   await git(cwd, '--literal-pathspecs', 'add', '--', ...staged);
-  if ((await git(cwd, 'diff', '--name-only', '--diff-filter=U')).trim()) throw new Error('landing: unresolved conflicts remain');
+  if ((await git(cwd, 'diff', '--name-only', '--diff-filter=U')).trim()) throw new LandingConflict('landing: unresolved conflicts remain');
   await git(cwd, 'commit', '-s', '-m', 'Merge origin/main and refresh derived carriers');
-  return { head: (await git(cwd, 'rev-parse', 'HEAD')).trim(), main, inventoryRefreshed: needsInventoryRefresh };
+  return needsInventoryRefresh;
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) landingMerge().then(result => console.log(JSON.stringify(result))).catch(error => { console.error(error.message); process.exitCode = 1; });
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const diagnostics = {};
+  runLanding(process.cwd(), undefined, diagnostics).then(result => console.log(JSON.stringify(result))).catch(error => {
+    console.error(diagnostics.aborted ?? error.message);
+    process.exitCode = 1;
+  });
+}

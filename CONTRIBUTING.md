@@ -1806,11 +1806,24 @@ The helper merges the exact fetched `origin/main` with DCO sign-off; it never
 rebases or pushes. Configure your Git `user.name` and `user.email` before running
 it: the merge uses that identity and `-s` for your personal
 [DCO certification](#developer-certificate-of-origin).
-It stops on an authored conflict, leaving the merge for a
-human or worker. It refreshes its carrier set with the merged tree's own
-inventory refresh and generators, run in new processes, not the code it loaded
-before the merge. Append-only migration entries are unioned in slot order;
-existing entries cannot be edited and new duplicate slots refuse. Issued
+The helper checks the installed toolchain against HEAD before merging. If the
+merge changes a toolchain input such as `package-lock.json` or `.npmrc`, it runs
+`npm ci` once in the merged checkout and rechecks the toolchain once before
+refreshing carriers. That install uses the host build broker
+(`ai-resource-gate run --wait openlup:landing-build --`) unless
+`AI_RESOURCE_GATE_ACTIVE` is already set. The broker is required only for an
+unwrapped install. Matching inputs skip the install and the second check.
+
+Authored conflicts leave the merge open for resolution. On other failures the
+helper restores landing writes, aborts its merge and verifies the original HEAD,
+an empty Git status and the absence of `MERGE_HEAD`. If rollback fails, inspect
+`git status` and resolve the reported cleanup failure before retrying. Ignored
+install and build outputs are outside Git rollback. If an install ran, you may
+need `npm ci` at the restored HEAD before retrying.
+
+The helper refreshes its carrier set with the merged tree's inventory refresh
+and generators in new processes. Append-only migration entries are unioned in
+slot order. Existing entries cannot be edited and new duplicate slots refuse. Issued
 prefixes retain their original order. With a unique merge base, the closed
 registry union admits additions and base-entry removals in the named arrays of
 the publication catalogue, package boundary test and cold-consumer script. A
