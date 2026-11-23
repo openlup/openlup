@@ -287,6 +287,8 @@ describe("fast preflight", () => {
       versionProbe: { status: 1, stdout: "11.19.1\n" } },
     { ...clean, name: "clean with empty npm version output", npmVersion: "unavailable (empty output)",
       versionProbe: { status: 0, stdout: " \n" } },
+    { ...clean, name: "clean when launching the npm version probe throws", npmVersion: "unavailable (probe failed)",
+      versionProbe: new Error("npm version probe could not launch") },
     { name: "clean with Git stderr warnings", dirty: false, offline: false, warnings: true, failures: [], exit: 0 },
     { name: "dirty with a failed fetch", dirty: true, offline: true, warnings: false, failures: ["clean"], exit: 1 },
     { name: "multiple failures", dirty: false, offline: false, warnings: false, failures: ["merge-clean", "neutrality", "publication", "dco"], exit: 1 },
@@ -329,6 +331,7 @@ describe("fast preflight", () => {
       }
       if (call === expected[11] && versionProbe) {
         expect(options?.timeout).toBe(5_000);
+        if (versionProbe instanceof Error) throw versionProbe;
         return { ...versionProbe, stderr: "" };
       }
       if (bin === "gitleaks") {
