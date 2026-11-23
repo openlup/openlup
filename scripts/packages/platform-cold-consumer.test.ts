@@ -1615,6 +1615,8 @@ catalogueConformance.packs[0].pack.types[0].validateContent = ${callback};
 `;
 const sourceArgs = (path: string) => ["catalogue", "project", "--trusted-packs", path];
 const replayArgs = (path: string) => ["catalogue", "check", "--packs", path];
+const findingIdentity = ({ path, code, severity }: { path: string; code: string; severity: string }) => [path, code, severity];
+const netContentWarning = ["/packs/0/pack/types/0/netContentUnits", "advisory_net_content_not_publishable", "warning"];
 
 it("RP2 keeps executable suffixes inert", () => {
   const { app, write, call } = packedCatalogue();
@@ -1649,10 +1651,12 @@ it("RP2 admits trust flags before loading and classifies failures", () => {
   const broken = write("broken 'source.mjs", sourceModule({ ...unavailable, packs: [{ pack: fixturePack,
     drafts: [null], quantities: [{}] }] }));
   const report = call(sourceArgs(broken), 1);
-  expect(report.findings.filter(({ severity }: { severity: string }) => severity === "error")
-    .map(({ code, path }: { code: string; path: string }) => [path, code])).toEqual([
-    ["/packs/0/drafts/0", "draft_input_invalid"], ["/packs/0/quantities/0/value", "quantity_invalid"],
-    ["/requiredChecks/0", "conformance_owner_unavailable"],
+  expect(report.state).toBe("violated");
+  expect(report.findings.map(findingIdentity)).toEqual([
+    ["/packs/0/drafts/0", "draft_input_invalid", "error"],
+    netContentWarning,
+    ["/packs/0/quantities/0/value", "quantity_invalid", "error"],
+    ["/requiredChecks/0", "conformance_owner_unavailable", "error"],
   ]);
   expect(report.transport.recheck).toContain("'\"'\"'");
   expect(report.findings.every(({ recheck }: { recheck: string }) => recheck === report.transport.recheck)).toBe(true);
@@ -1911,13 +1915,25 @@ const pack = withCatalogPublicationRules(${JSON.stringify({ ...fixturePack, type
   }
   const good = registration("good.mjs", "Example");
   const pass = call(good, 0);
+  const warnings = [
+    ["/packs/0/drafts/0/schemaVersion", "advisory_draft_version_not_publishable", "warning"],
+    netContentWarning,
+  ];
+  expect(pass.state).toBe("satisfied");
+  expect(pass.findings.map(findingIdentity)).toEqual(warnings);
   const replay = call(replayArgs(pass.transport.subjectPath), 2);
-  const errors = (report: { findings: { severity: string; code: string; path: string }[] }) =>
-    report.findings.filter(finding => finding.severity === "error");
-  expect(errors(replay).map(finding => finding.code))
-    .toEqual(["conformance_owner_unavailable", "conformance_owner_unavailable"]);
+  expect(replay.state).toBe("unavailable");
+  expect(replay.findings.map(findingIdentity)).toEqual([
+    ["/packs/0/drafts/0/product/sharedContent", "conformance_owner_unavailable", "error"],
+    ...warnings,
+    ["/requiredChecks/0", "conformance_owner_unavailable", "error"],
+  ]);
   const refusal = call(registration("refused.mjs", ""), 1);
-  expect(errors(refusal)).toEqual([expect.objectContaining({ code: "title_required", path: "/packs/0/drafts/0/product/sharedContent/title" })]);
+  expect(refusal.state).toBe("violated");
+  expect(refusal.findings.map(findingIdentity)).toEqual([
+    ["/packs/0/drafts/0/product/sharedContent/title", "title_required", "error"],
+    ...warnings,
+  ]);
   call(registration("substituted.mjs", "Example", true), 74);
   write("rules.cjs", artifact + "\n");
   call(good, 74);

@@ -2081,13 +2081,14 @@ const registry = "./catalogue-skeleton/catalogue.json";
 const command = ["catalogue", "check", "--packs", registry];
 const text = readFileSync(join(owned, "catalogue.json"), "utf8"), subject = JSON.parse(text);
 const write = (name, value) => { const path = join(owned, name); writeFileSync(path, JSON.stringify(value)); return ["catalogue", "check", "--packs", path]; };
+const findingIdentity = ({code,path,severity}) => ({code,path,severity});
 const cases = [
  { name: "guide_skeleton_reports_unavailable_content_evidence", async run() {
    assert.equal(subject.packs[0].drafts[0].schemaVersion, 3);
    for (const report of [await runCatalogExtensionConformance(text), invoke(command)]) {
-     assert.equal(report.exitCode, 2);
-     assert.deepEqual(report.findings.map(({code,path})=>({code,path})), [
-       {code:"conformance_owner_unavailable",path:"/packs/0/drafts/0/product/sharedContent"},
+     assert.equal(report.state,"unavailable"); assert.equal(report.exitCode,2);
+     assert.deepEqual(report.findings.map(findingIdentity), [
+       {code:"conformance_owner_unavailable",path:"/packs/0/drafts/0/product/sharedContent",severity:"error"},
      ]);
    }
  } },
@@ -2126,21 +2127,32 @@ const cases = [
  } },
  { name: "conformance_reuses_row_validators", async run() {
    const pack = structuredClone(subject.packs[0].pack), type = {key:pack.types[0].key,version:1};
-   pack.types[0].attributes = [{key:"flag",scope:"variant",valueType:{kind:"boolean"},required:false,cardinality:{min:0,max:1},filterable:false,facetable:false,public:true,displayOrder:0,labels:{}}];
+   pack.types[0].attributes = [{key:"flag",scope:"variant",valueType:{kind:"boolean"},required:false,cardinality:{min:0,max:1},filterable:true,facetable:true,public:true,displayOrder:0,labels:{}}];
    pack.types[0].dimensions = [{key:"flag",kind:"boolean"}]; pack.types[0].axes = [{key:"flag",attributeKey:"flag"}];
    const definition = {...pack.types[0],validateContent:()=>[{code:"conformance_owner_unavailable",path:""}]};
    const input = {productAttributes:{flag:true},skus:[{id:"00000000-0000-4000-8000-000000000002"}]};
    const prepared = prepareCatalogAttributeProjection(await validateCatalogAttributes(definition,input),"7"); assert.equal(prepared.prepared,false);
    const attributes = {packs:[{pack,attributes:[{type,input,publicationRevision:"7"}]}]};
+   const definitionWarnings = [
+     {code:"advisory_filter_flags_unused",path:"/packs/0/pack/types/0/attributes/0",severity:"warning"},
+   ];
    for (const report of [await runCatalogExtensionConformance(JSON.stringify(attributes)),invoke(write("attributes.json",attributes))]) {
-     assert.deepEqual(report.findings.map(({code,path})=>({code,path})),prepared.issues.map(issue=>({...issue,path:"/packs/0/attributes/0/input"+issue.path})));
+     assert.equal(report.state,"violated"); assert.equal(report.exitCode,1);
+     assert.deepEqual(report.findings.map(findingIdentity),[
+       ...prepared.issues.map(issue=>({...issue,path:"/packs/0/attributes/0/input"+issue.path,severity:"error"})),
+       ...definitionWarnings,
+     ]);
    }
    const changes = {axes:["flag"],typed:true,retained:[],incoming:[{skuId:"one",state:"active",optionValues:{flag:{kind:"boolean",value:true}}},{skuId:"two",state:"active",optionValues:{flag:{kind:"boolean",value:true}}}]};
    let issue; try {validateCatalogCombinationChangesV2({...changes,definition});} catch(error) {assert(error instanceof CatalogCombinationError);issue=error;}
    assert(issue);
    const combinations={packs:[{pack,combinations:[{type,input:changes}]}]};
    for (const report of [await runCatalogExtensionConformance(JSON.stringify(combinations)),invoke(write("combinations.json",combinations))]) {
-     assert.deepEqual(report.findings.map(({code,path})=>({code,path})),[{code:issue.code,path:"/packs/0/combinations/0/input/"+issue.path.replaceAll(".","/")}]);
+     assert.equal(report.state,"violated"); assert.equal(report.exitCode,1);
+     assert.deepEqual(report.findings.map(findingIdentity),[
+       {code:issue.code,path:"/packs/0/combinations/0/input/"+issue.path.replaceAll(".","/"),severity:"error"},
+       ...definitionWarnings,
+     ]);
    }
  } },
  { name: "catalogue_codes_link_existing_recipes", run() {

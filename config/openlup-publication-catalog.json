@@ -11362,6 +11362,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fixtures/catalogue-conformance/six-errors.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fixtures/catalogue-conformance/volume-net-content.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/adapterConformance.test.ts",
       "class": "public-output"
     },
