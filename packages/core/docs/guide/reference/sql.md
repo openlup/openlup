@@ -204,6 +204,7 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261125060000_subscription_cancel_feedback.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125060000_subscription_cancel_feedback.sql) |
 | [`20261125070000_job_run_finish_lease_fence.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125070000_job_run_finish_lease_fence.sql) |
 | [`20261125075000_tax_coverage_revisions.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125075000_tax_coverage_revisions.sql) |
+| [`20261125080000_commerce_destination_v2_receipts.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125080000_commerce_destination_v2_receipts.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

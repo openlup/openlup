@@ -14,10 +14,10 @@ import type { RenewalPreparedSettlement, RenewalReservationResult, RenewalSettle
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery, createPostgresDeliveryReconciliationPort } from "@openlup/platform/communications";
 import { refusedNoticeSources, noticeSessionWithRecipientFault } from "./m19NoticeFixture.js";
-import { createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
+import { createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPrivacyOperations, createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { createPostgresPaymentTruthPort, createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import type { SandboxPaymentAttempt, SandboxPaymentOutcome } from "@openlup/platform/payments/contracts";
-import { createPostgresDataGateway, type PgGatewayClient } from "@openlup/platform/data";
+import { createPostgresDataGateway, type PgGatewayClient, type PgQueryExecutor } from "@openlup/platform/data";
 import { createPostgresOrderReviewLifecyclePort, createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore, connectedNativeStoreTables, connectedStoreClusterIdentitySql, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
@@ -32,7 +32,11 @@ import { createOrderReviewMediaTransferReader } from "../../server/adapters/file
 import { restoreOrderReviewMediaFilesystem } from "../../server/adapters/filesystem/orderReviewMediaTransferRestore.js";
 import { fixture, openCase, replacement } from "../helpers/fulfillmentNative.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { storeJourneyResources, type JourneyTargetInstallation, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
+import { captureStoreJourney, storeJourneyResources, type JourneyTargetInstallation, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
+
+import { createDestinationReceiptPrivacyContributor } from "../../server/runtime/auth/destinationReceiptPrivacyContributor.js";
+import { awaitReceiptWait, backendPid, idempotencyConflict, receiptArgs, receiptCall, receiptClient, receiptOutcome,
+  receiptTable } from "./destinationReceiptFixture.js";
 
 const resources = storeJourneyResources();
 const ports: { close(): Promise<void> }[] = [];
@@ -1706,3 +1710,136 @@ it("round-trips an actually recreated checkout and its root with complete row eq
   expect((await restore(carried)).replayed).toBe(true);
   expect(await census(target.owner)).toEqual(before);
 }, 160_000);
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((onResolve, onReject) => {
+    resolve = onResolve;
+    reject = onReject;
+  });
+  return { promise, resolve, reject };
+}
+
+it("destination_receipt_privacy_round_trip", async () => {
+  const clean = await sourceTemplates.clone("destination-receipts");
+  const operator = randomUUID();
+  const [issued, erasedFirst, retained] = await Promise.all([
+    receiptClient(clean.owner), receiptClient(clean.owner), receiptClient(clean.owner),
+  ]);
+  const now = (await clean.owner.query<{ now: Date }>("SELECT clock_timestamp() AS now")).rows[0]!.now;
+  await clean.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [operator, `${operator}@example.invalid`]);
+  await clean.owner.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',$2)", [operator, now]);
+
+  const store = createPostgresPrivacyStore();
+  const identityOwner = createIdentityPersonalDataContributor(store, { retainedContactFields: Object.fromEntries(
+    ["lifecycle_stage", "acquisition_source"].map(field => [field, {
+      owner: "clients", resource: `clients.${field}`, disposition: "retain", reasonCode: "CONTACT_LIFECYCLE_RETENTION", remote: false,
+    }]),
+  ) }, randomUUID);
+  const contributor = createDestinationReceiptPrivacyContributor();
+  const registry = createPersonalDataContributorRegistry([identityOwner, contributor], { requiredContributorIds: ["identity", contributor.id] });
+  const unitOfWork = (onStart?: (pid: number) => void) => ({
+    async run<T>(work: (db: PgQueryExecutor) => Promise<T>): Promise<T> {
+      const db = await clean.runtime.connect();
+      try {
+        await db.query("BEGIN");
+        onStart?.(await backendPid(db));
+        const result = await work(db);
+        await db.query("COMMIT");
+        return result;
+      } catch (error) {
+        await db.query("ROLLBACK");
+        throw error;
+      } finally { db.release(); }
+    },
+  });
+  const operations = (privacyStore = store, onStart?: (pid: number) => void) => createPrivacyOperations({
+    store: privacyStore, registry, now: () => now, randomId: randomUUID, unitOfWork: unitOfWork(onStart),
+  });
+  const actor = { principalId: operator };
+  const subject = (contactId: string) => ({ kind: "contact" as const, contactId });
+  const request = (id: string) => ({ subject: subject(id), idempotencyKey: randomUUID() });
+  const payload = async (id: string) => (await operations().export(actor, subject(id))).documents.find(d => d.contributorId === contributor.id)?.data;
+
+  const issuedArgs = receiptArgs(issued), firstEraseArgs = receiptArgs(erasedFirst), retainedArgs = receiptArgs(retained);
+  const outcome = await receiptOutcome(clean.owner);
+  const available = await receiptCall(clean.owner, "commit", retainedArgs, outcome);
+  expect(await payload(retained)).toEqual([{
+    owner: retainedArgs[0].owner, dialect: retainedArgs[1], requestKey: retainedArgs[2], requestDigest: retainedArgs[3], outcome,
+    eventId: available.eventId, eventSchemaVersion: 1, createdAt: expect.stringMatching(/Z$/u), evidenceDisposition: "available",
+  }]);
+  expect(await payload(issued)).toEqual([]);
+
+  const writer = await clean.owner.connect();
+  let firstErasure: ReturnType<ReturnType<typeof operations>["erase"]> | undefined;
+  const erasureRequest = request(issued);
+  let issuedReceipt: { eventId: string };
+  try {
+    await writer.query("BEGIN");
+    expect(await receiptCall(writer, "lock", issuedArgs)).toEqual({ kind: "absent" });
+    const erasurePid = deferred<number>();
+    firstErasure = operations(store, erasurePid.resolve).erase(actor, erasureRequest);
+    void firstErasure.catch(erasurePid.reject);
+    await awaitReceiptWait(clean.owner, await erasurePid.promise, "relation", "ShareRowExclusiveLock");
+    issuedReceipt = await receiptCall(writer, "commit", issuedArgs, outcome);
+    await writer.query("COMMIT");
+  } finally { await writer.query("ROLLBACK"); writer.release(); }
+  expect(await firstErasure).toMatchObject({ outcome: "ERASED" });
+  expect(await operations().erase(actor, erasureRequest)).toMatchObject({ outcome: "ALREADY_ERASED" });
+  expect(await payload(issued)).toEqual([{
+    eventId: issuedReceipt.eventId, eventSchemaVersion: 1, createdAt: expect.stringMatching(/Z$/u), evidenceDisposition: "erased",
+  }]);
+  await unitOfWork().run(async db => {
+    await store.prepareErasure(db);
+    expect((await db.query("SELECT public.commerce_destination_v2_receipts_erase($1) AS count", [issued])).rows).toEqual([{ count: 0 }]);
+  });
+  const tombstone = { kind: "receipt", eventId: issuedReceipt.eventId, evidenceDisposition: "erased", outcome: null };
+  expect(await receiptCall(clean.runtime, "read", issuedArgs)).toEqual(tombstone);
+  expect(await receiptCall(clean.owner, "lock", issuedArgs)).toEqual(tombstone);
+  await expect(receiptCall(clean.runtime, "read", [issuedArgs[0], issuedArgs[1], issuedArgs[2], "e".repeat(64)]))
+    .rejects.toMatchObject(idempotencyConflict);
+
+  const prepared = deferred<void>(), release = deferred<void>();
+  const erasure = operations({ ...store, async prepareErasure(db) {
+    await store.prepareErasure(db);
+    prepared.resolve();
+    await release.promise;
+  } }).erase(actor, request(erasedFirst));
+  void erasure.catch(prepared.reject);
+  const secondWriter = await clean.owner.connect();
+  let fresh: Promise<unknown> | undefined;
+  try {
+    await prepared.promise;
+    const pid = await backendPid(secondWriter);
+    fresh = receiptCall(secondWriter, "lock", firstEraseArgs);
+    void fresh.catch(() => undefined);
+    await awaitReceiptWait(clean.owner, pid, "relation", "ShareLock");
+    release.resolve();
+    expect(await erasure).toMatchObject({ outcome: "ERASED" });
+    await expect(fresh).rejects.toMatchObject({ code: "55000", message: "destination_evidence_erased", detail: "owner",
+      hint: "Re-obtain evidence through the authenticated owner or review the privacy disposition." });
+  } finally {
+    release.resolve();
+    await Promise.allSettled([erasure, fresh]);
+    secondWriter.release();
+  }
+  expect(await receiptCall(clean.runtime, "read", firstEraseArgs)).toEqual({ kind: "absent" });
+
+  const transferred = await captureStoreJourney(clean.owner, "destination-receipts-source");
+  const invalid = structuredClone(transferred);
+  invalid.compatible.catalogueId = "0".repeat(64);
+  const untouched = { connect: vi.fn() };
+  await expect(restoreConnectedNativeStore({ owner: untouched as unknown as Pool, installation: selection,
+    packet: sealLineageCapture(invalid), freshTarget: pristine })).rejects.toMatchObject({ code: "schema_conflict" });
+  expect(untouched.connect).not.toHaveBeenCalled();
+
+  expect(await restore(transferred)).toMatchObject({ replayed: false, captureSha256: transferred.sha256 });
+  const readback = await captureStoreJourney(target.owner, "destination-receipts-readback");
+  const table = (value: ConnectedNativeStoreCapture) => value.owned.find(rows => `public.${rows.table}` === receiptTable);
+  expect(table(transferred)?.rows).toHaveLength(2);
+  expect(table(readback)).toEqual(table(transferred));
+  expect(await receiptCall(target.runtime, "read", retainedArgs)).toEqual(available);
+  expect(await receiptCall(target.runtime, "read", issuedArgs)).toEqual(tombstone);
+  expect(await restore(transferred)).toMatchObject({ replayed: true, captureSha256: transferred.sha256 });
+}, 30_000);

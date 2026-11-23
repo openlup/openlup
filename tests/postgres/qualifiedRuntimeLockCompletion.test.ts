@@ -13,6 +13,7 @@ import {
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { AT, later, renewal } from "./subscriptionNativeFixture.js";
 import { nativeHarness } from "../helpers/fulfillmentNative.js";
+import { awaitReceiptWait, backendPid, ownerUnlinked, receiptArgs, receiptCall, receiptClient, receiptOutcome, receiptTable } from "./destinationReceiptFixture.js";
 
 // One generation per installer shape: superuser installer and operator-provisioned non-superuser M.
 // The shared inventory witness measures every qualified role mode's grants, policies and row security.
@@ -266,6 +267,94 @@ for (const generation of ["qualified-v2", "qualified-admin"] as const) describe(
       await expect(runtime.query(sql, [setKey]), sql).rejects.toMatchObject({ code: "42501" });
     }
   });
+
+  it("destination_receipt_absorption_restricted_role", async () => {
+    expect((await runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+      .toEqual([{ current_user: "lock_runtime", session_user: "lock_runtime", rolsuper: false, rolbypassrls: false }]);
+    expect((await owner.query("SELECT disposition FROM public.client_absorption_policy WHERE table_name=$1", [receiptTable.split(".")[1]])).rows)
+      .toEqual([{ disposition: "block" }]);
+    const { operatorId } = await operatorFixture();
+    const customer = await receiptClient(owner);
+    const empty = await receiptClient(owner, "lead"), unrelated = await receiptClient(owner, "lead");
+    const available = await receiptClient(owner, "lead"), erased = await receiptClient(owner, "lead");
+    const now = (await owner.query("SELECT clock_timestamp() AS value")).rows[0].value;
+    const keys = new Map<string, string>([empty, unrelated, available, erased].map(id => [id, `absorb-${randomUUID()}`]));
+    const absorb = (lead: string, db = runtime as Pick<Pool, "query">) => db.query(
+      "SELECT public.customer_support_absorb_lead_v1($1,$2,$3,$4,$5,$6) AS value",
+      [operatorId, customer, lead, `${lead}@example.invalid`, keys.get(lead), now],
+    ).then(result => result.rows[0].value);
+    const count = async (id: string) => (await runtime.query(
+      `SELECT count(*)::int AS count FROM ${receiptTable} WHERE client_id=$1`, [id],
+    )).rows[0].count;
+
+    // The absorber owns the client first and the waiting issuer must observe its new state.
+    const absorber = await runtime.connect(), issuer = await owner.connect();
+    let waiting: Promise<unknown> | undefined;
+    try {
+      expect((await runtime.query(`SELECT count(*)::int AS count FROM ${receiptTable} WHERE client_id IS NOT NULL`)).rows)
+        .toEqual([{ count: 0 }]);
+      await absorber.query("BEGIN");
+      const applied = await absorb(empty, absorber);
+      expect(applied).toMatchObject({ outcome: "applied", leadId: empty, customerId: customer });
+      const issuerPid = await backendPid(issuer);
+      waiting = receiptCall(issuer, "lock", receiptArgs(empty));
+      void waiting.catch(() => undefined);
+      await awaitReceiptWait(owner, issuerPid, "transactionid", "ShareLock");
+      await absorber.query("COMMIT");
+      await expect(waiting).rejects.toMatchObject(ownerUnlinked);
+      expect(await absorb(empty)).toEqual({ ...applied, outcome: "replayed" });
+      expect(await count(empty)).toBe(0);
+
+      // The issuer owns the client first. A waiting absorber must see its committed receipt.
+      await issuer.query("BEGIN");
+      const args = receiptArgs(available);
+      expect(await receiptCall(issuer, "lock", args)).toEqual({ kind: "absent" });
+      const absorberPid = await backendPid(absorber);
+      waiting = absorb(available, absorber);
+      void waiting.catch(() => undefined);
+      await awaitReceiptWait(owner, absorberPid, "transactionid", "ShareLock");
+      await receiptCall(issuer, "commit", args, await receiptOutcome(issuer));
+      await issuer.query("COMMIT");
+      const blocked = { outcome: "refused", action: "absorb_lead", leadId: available,
+        refusalCode: "lead_has_commercial_footprint", blockingTables: ["commerce_destination_v2_receipts"] };
+      expect(await waiting).toEqual(blocked);
+      expect(await absorb(available)).toEqual(blocked);
+      expect(await count(available)).toBe(1);
+    } finally {
+      await Promise.all([issuer.query("ROLLBACK"), absorber.query("ROLLBACK")]);
+      await waiting?.catch(() => undefined);
+      absorber.release(); issuer.release();
+    }
+
+    const erasedArgs = receiptArgs(erased);
+    await receiptCall(owner, "commit", erasedArgs, await receiptOutcome(owner));
+    const eraser = await owner.connect();
+    try {
+      await eraser.query("BEGIN");
+      await eraser.query("LOCK TABLE public.identity_privacy_erasures IN SHARE ROW EXCLUSIVE MODE");
+      expect((await eraser.query("SELECT public.commerce_destination_v2_receipts_erase($1) AS count", [erased])).rows).toEqual([{ count: 1 }]);
+      await eraser.query("COMMIT");
+    } finally { await eraser.query("ROLLBACK"); eraser.release(); }
+    expect(await receiptCall(runtime, "read", erasedArgs)).toMatchObject({ evidenceDisposition: "erased", outcome: null });
+    const blocked = { outcome: "refused", action: "absorb_lead", leadId: erased,
+      refusalCode: "lead_has_commercial_footprint", blockingTables: ["commerce_destination_v2_receipts"] };
+    expect(await absorb(erased)).toEqual(blocked);
+    expect(await absorb(erased)).toEqual(blocked);
+    expect(await count(erased)).toBe(1);
+    const applied = await absorb(unrelated);
+    expect(applied).toMatchObject({ outcome: "applied", leadId: unrelated, customerId: customer });
+    expect(await absorb(unrelated)).toEqual({ ...applied, outcome: "replayed" });
+    for (const sql of [
+      `SELECT outcome FROM ${receiptTable} WHERE client_id=$1`,
+      `SELECT * FROM ${receiptTable} WHERE client_id=$1`,
+      `SELECT client_id FROM ${receiptTable} WHERE client_id=$1 FOR UPDATE`,
+      `UPDATE ${receiptTable} SET client_id=client_id WHERE client_id=$1`,
+      `DELETE FROM ${receiptTable} WHERE client_id=$1`,
+      `INSERT INTO ${receiptTable}(client_id) VALUES($1)`,
+    ]) await expect(runtime.query(sql, [available])).rejects.toMatchObject({ code: "42501" });
+    await expect(receiptCall(runtime, "lock", receiptArgs(unrelated))).rejects.toMatchObject({ code: "42501" });
+    await expect(receiptCall(runtime, "commit", receiptArgs(unrelated), await receiptOutcome(owner))).rejects.toMatchObject({ code: "42501" });
+  }, 20_000);
 
   it("absorbs a destination-free lead and refuses a lead destination as the runtime, reading only the client column", async () => {
     // Existing approved classifications that land with an earlier change; each insert is a no-op once present.
