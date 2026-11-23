@@ -31150,6 +31150,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/pgTemplateBroker.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/postgresContainer.ts",
       "class": "public-output"
     },
@@ -32287,6 +32291,10 @@
     },
     {
       "path": "tests/postgres/paymentsNativeConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/pgTemplateBroker.test.ts",
       "class": "public-output"
     },
     {

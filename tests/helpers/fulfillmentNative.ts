@@ -4,22 +4,37 @@ import { readFileSync } from 'node:fs';
 import { Pool, type PoolClient } from 'pg';
 import { createPostgresMigrationRunner } from '../../server/adapters/postgres/migrationRunner.js';
 import { closePostgres, dockerAvailable,runPostgresContainer,waitForPostgresTcpReady,type PostgresContainer } from './postgresContainer.js';
+import { tryLeaseTemplateDatabase, type PgTemplateLease } from './pgTemplateBroker.js';
 export const manifest=selectPlatformMigrationManifest(JSON.parse(readFileSync('config/platform-migration-manifest.json','utf8')), 'legacy');
 export const units: { file:string;sha256:string }[]=[manifest.baseline,...manifest.forward];
 export const executor=(db: Pool | PoolClient) => ({query:(sql:string,values?:unknown[]) => db.query(sql,values)});
 export function nativeHarness(label:string) {
- let container:PostgresContainer|undefined; let pool:Pool;
+ let container:PostgresContainer|undefined; let lease:PgTemplateLease|undefined; let connectionString=''; let pool:Pool;
  return {
   get pool(){return pool;},
-  runner(db=pool,root=process.cwd()){return createPostgresMigrationRunner({connectionString:container!.connectionString},{root,poolFactory:()=>db});},
+  runner(db=pool,root=process.cwd()){return createPostgresMigrationRunner({connectionString},{root,poolFactory:()=>db});},
   async start(){
+   const at=Date.now();
+   const leased=await tryLeaseTemplateDatabase('legacy',label);
+   if (leased) {
+    lease=leased; connectionString=leased.ownerUrl; pool=new Pool({connectionString});
+    console.log(`P4 ${label} template clone ms=${Date.now()-at}`);
+    return;
+   }
    if (!await dockerAvailable()) throw new Error('P4 native proof requires Docker PostgreSQL');
-   const at=Date.now();container=await runPostgresContainer({name:`m08-p4-${label}-${process.pid}`,password:'synthetic-conformance'});
+   container=await runPostgresContainer({name:`m08-p4-${label}-${process.pid}`,password:'synthetic-conformance'});
    if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('P4 PostgreSQL unavailable');
+   connectionString=container.connectionString;
    console.log(`P4 ${label} Docker setup ms=${Date.now()-at}`);
-   pool=new Pool({connectionString:container.connectionString});await this.runner().apply();
+   pool=new Pool({connectionString});await this.runner().apply();
   },
-  async stop(extraContainers:PostgresContainer[]=[],extraPools:Pool[]=[]){await closePostgres([container,...extraContainers], [pool,...extraPools]);},
+  async stop(extraContainers:PostgresContainer[]=[],extraPools:Pool[]=[]){
+   const activeLease=lease; lease=undefined;
+   let closeError:unknown;
+   try { await closePostgres([container,...extraContainers], [pool,...extraPools]); } catch(error){ closeError=error; }
+   if (activeLease) await activeLease.release();
+   if (closeError) throw closeError;
+  },
  };
 }
 async function paidOrder(pool:Pool,order:string,client:string,cycle:string|null) {

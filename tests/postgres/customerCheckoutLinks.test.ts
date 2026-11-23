@@ -8,7 +8,7 @@ import{postgresSetupTimeoutMs,postgresTeardownTimeoutMs}from'../helpers/postgres
 const DAY=86400000,policy={lifetimeMs:DAY,sendBucketMs:600000};
 describe.each(lifecycleProfiles)('customer checkout links on %s',profile=>{
  let env:LifecycleInstallation;
- beforeAll(async()=>{env=await lifecycleInstallation(profile);if(profile==='legacy')await env.owner.query('CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS');},postgresSetupTimeoutMs);
+ beforeAll(async()=>{env=await lifecycleInstallation(profile,{freshCluster:profile==='legacy'});if(profile==='legacy')await env.owner.query('CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS');},postgresSetupTimeoutMs);
  afterAll(async()=>env?.close(),postgresTeardownTimeoutMs);
  async function order(initial=false){
   const id=randomUUID(),client=randomUUID(),principal=randomUUID(),db=await env.owner.connect();
