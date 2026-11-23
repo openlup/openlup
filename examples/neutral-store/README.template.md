@@ -40,29 +40,61 @@ starting the application.
 
 ## Qualify a provider test account
 
-The qualification command is available in a locked candidate application. It
-requires Node 24.21.0, npm 11.19.0, and the 1Password CLI (`op` on your PATH).
-Run these commands from a clean OpenLup source checkout at the candidate
-revision. The adjacent upgrade check needs an earlier published package set.
+The qualification command requires a candidate extraction with the optional
+provider profile, Node 24.21.0, npm 11.19.0, and the 1Password CLI (`op` on your
+PATH). If you already have that extraction, open its directory and run `npm ci`.
+To create one, install the source checkout's dependencies with `npm ci`, then
+run the following commands from the root of the clean candidate checkout.
 
 ```sh
-npm ci
 candidate_dir="$(mktemp -d)"
-version="$(node -p "require('./packages/core/package.json').version")"
 revision="$(git rev-parse HEAD)"
+version="$(node -p "require('./packages/core/package.json').version")"
 npm --prefix . run packages:check -- --out "$candidate_dir/packs" --release-set "$version"
 manifest="$candidate_dir/packs/packages-manifest.json"
-receipt="$candidate_dir/candidate-upgrade.json"
-node --experimental-strip-types scripts/packages/exact-set-qualification.mjs \
-  "openlup-core-v$version" "$revision" "$receipt" --candidate "$manifest"
-cd "${receipt}.applications/1/application"
+
+node --experimental-strip-types --input-type=module - "$candidate_dir" "$revision" "$manifest" <<'NODE'
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { readCurrentPackManifest } from './scripts/packages/pack-manifest-input.ts';
+
+const [candidate, revision, manifest] = process.argv.slice(2);
+const packs = readCurrentPackManifest(process.cwd(), manifest, revision);
+const read = path => JSON.parse(readFileSync(path, 'utf8'));
+const { providerQualification, ...app } = read('examples/neutral-store/package.json');
+Object.assign(app.dependencies, providerQualification.dependencies);
+const sections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+for (const section of sections) {
+  for (const name of Object.keys(app[section] ?? {})) {
+    if (packs.has(name)) app[section][name] = 'file:' + packs.get(name).path;
+  }
+}
+const input = join(candidate, 'input');
+mkdirSync(input);
+writeFileSync(join(input, 'package.json'), JSON.stringify(app));
+execFileSync('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--fund=false'],
+  { cwd: input, stdio: 'inherit' });
+const path = join(input, 'package-lock.json'), lock = read(path);
+for (const section of sections) {
+  for (const name of Object.keys(lock.packages[''][section] ?? {})) {
+    if (packs.has(name)) lock.packages[''][section][name] = packs.get(name).version;
+  }
+}
+for (const [name, pack] of packs) lock.packages['node_modules/' + name].resolved = 'file:' + pack.path;
+writeFileSync(path, JSON.stringify(lock, null, 2) + '\n');
+NODE
+
+node examples/neutral-store/extract.mjs "$candidate_dir/application" \
+  --mode candidate --set-version "$version" --source-revision "$revision" \
+  --manifest "$manifest" --lockfile "$candidate_dir/input/package-lock.json" \
+  --provider-qualification enabled
+cd "$candidate_dir/application"
 npm ci
 ```
 
-The producer uses the exact pack manifest and generates the opt-in lock at
-`${receipt}.applications/1/input/package-lock.json`. It passes those inputs
-to the extractor with `--mode candidate --provider-qualification enabled`.
-Keep the pack directory available for `npm ci`.
+Keep the candidate's `packs` directory available for `npm ci`. The generated
+opt-in lock is at `$candidate_dir/input/package-lock.json`.
 
 In an interactive terminal, configure the named variable with a private
 1Password reference for the test account's secret key. Set `ACCOUNT_ID` to
@@ -74,7 +106,8 @@ npm run provider:qualify -- --run --test-mode --account "$ACCOUNT_ID" --key-env 
 
 Open the local link when prompted and complete the provider challenge within
 five minutes. Use a test account set up for the tax fixtures. The command
-creates synthetic test objects and writes a transcript with hashed identifiers.
+creates synthetic test objects and records observed tax layouts in a transcript
+with hashed identifiers.
 If a write has an unknown outcome, use the original operation in the bound test
 account to reconcile it. Run the command again only for a new qualification.
 
