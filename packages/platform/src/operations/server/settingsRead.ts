@@ -40,13 +40,24 @@ function refuseUnboundCoverageRead() {
       command: "openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json" } } };
 }
 
+const coverageConnectionCodes = new Set([
+  "57P01", "57P02", "57P03", "53300",
+  "ECONNREFUSED", "ECONNRESET", "ECONNABORTED", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN",
+  "EHOSTUNREACH", "EHOSTDOWN", "ENETUNREACH", "ENETDOWN", "ENETRESET", "EPIPE",
+]);
+
 function refuseCoverageRead(cause: unknown): { refusal: SettingRefusal } {
   const code = cause !== null && typeof cause === "object" && "code" in cause ? cause.code : cause;
   if (code === "tax_coverage_reader_unbound") return refuseUnboundCoverageRead();
   const { refusal } = refuse("commerce_setting_read_unavailable");
-  const action = code === "42501"
-    ? "Grant EXECUTE on public.tax_coverage_read_v1(text,text) to the runtime role, then run the same command again"
-    : "Restore the database connection, then run the same command again with the same --app and --configuration";
+  let action = "The coverage reader failed. Check the database log for this read, then run the same command again.";
+  if (code === "42501") {
+    action = "Grant EXECUTE on public.tax_coverage_read_v1(text,text) to the runtime role, then run the same command again";
+  } else if (code === "42883" || code === "42P01") {
+    action = "The coverage reader is not installed in this database. Apply this release's platform migrations, then run the same command again.";
+  } else if (typeof code === "string" && (/^08[A-Z0-9]{3}$/u.test(code) || coverageConnectionCodes.has(code))) {
+    action = "Restore the database connection, then run the same command again with the same --app and --configuration";
+  }
   return { refusal: { ...refusal, remediation: { retry: true, action } } };
 }
 
@@ -68,9 +79,7 @@ function absentObservation(setting: ValueEntry, effective?: JsonValue): Observat
 async function observe(setting: ReturnType<typeof loadSettingsCatalogue>["entries"][number], read?: SettingReader): Promise<Observation | { refusal: SettingRefusal }> {
   if (!read || setting.kind !== "installed") return { state: "offline" };
   const observed = await read();
-  if ("refusal" in observed) return setting.key === "tax.coverage"
-    && (observed.refusal === "tax_coverage_reader_unbound" || observed.refusal === "commerce_setting_read_unavailable")
-    ? refuseCoverageRead(observed.refusal) : refuse(observed.refusal);
+  if ("refusal" in observed) return setting.key === "tax.coverage" ? refuseCoverageRead(observed.refusal) : refuse(observed.refusal);
   if (!observed.present) return absentObservation(setting, observed.effective);
   return { state: "override", value: observed.value, revision: observed.revision };
 }

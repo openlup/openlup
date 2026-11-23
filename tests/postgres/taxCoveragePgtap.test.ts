@@ -54,10 +54,15 @@ it("refuses connected coverage on the managed chain and names the native remedy"
       setting: { runtime: { level: "read-only", reason: expect.stringContaining("Managed installations do not supply this capability.") } },
       observation: { state: "offline" },
     } });
+    expect(await showCoverageSetting(managed.connectionString, async () => ({ refusal: "tax_coverage_reader_unbound" }))).toMatchObject({
+      status: 74, body: { refusal: { code: "commerce_setting_read_unavailable", remediation: {
+        action: "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation).",
+      } } },
+    });
     const read = bindTaxCoverageReader(runtime, { installationRef: "store-a", accountRef: "account-a" });
     expect(await showCoverageSetting(managed.connectionString, read)).toMatchObject({
       status: 74, body: { refusal: { code: "commerce_setting_read_unavailable", remediation: {
-        action: "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation).",
+        action: "The coverage reader is not installed in this database. Apply this release's platform migrations, then run the same command again.",
       } } },
     });
   } finally { await closePostgres(managed, [owner, runtime]); }

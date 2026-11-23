@@ -332,15 +332,23 @@ const bindingAction = "Check the app factory and its configuration binding, then
 const readerGrant = "Grant EXECUTE on public.tax_coverage_read_v1(text,text) to the runtime role, then run the same command again";
 
 it.each([
-  ["factory 42501", bindingAction],
-  ["missing app module", bindingAction],
-  ["reader 42501", readerGrant],
-] as const)("keeps %s guidance in text, JSON and MCP", async (failure, action) => {
-  const denied = Object.assign(new Error("Fixture permission denied"), { code: "42501" });
-  const read = vi.fn(async () => { throw denied; });
+  ["factory 42501", "42501", bindingAction],
+  ["missing app module", "ERR_MODULE_NOT_FOUND", bindingAction],
+  ["unbound reader", "tax_coverage_reader_unbound", "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation)."],
+  ["reader permission denied", "42501", readerGrant],
+  ["reader function missing", "42883", "The coverage reader is not installed in this database. Apply this release's platform migrations, then run the same command again."],
+  ["reader connection reset", "ECONNRESET", "Restore the database connection, then run the same command again with the same --app and --configuration"],
+  ["reader unexpected error", "XX000", "The coverage reader failed. Check the database log for this read, then run the same command again."],
+] as const)("keeps %s guidance in text, JSON and MCP", async (failure, code, action) => {
+  const bindingFailure = failure === "factory 42501" || failure === "missing app module";
+  const rejected = Object.assign(new Error("Fixture refusal"), { code });
+  const read = vi.fn(async () => {
+    if (code === "tax_coverage_reader_unbound") return { refusal: code };
+    throw rejected;
+  });
   const app = failure === "missing app module" ? "./missing-settings-app.mjs" : "./settings.mjs";
   const bind = vi.fn(async ({ app }: { app?: string }) => {
-    if (failure === "factory 42501") throw denied;
+    if (failure === "factory 42501") throw rejected;
     if (failure === "missing app module") return import(new URL(app!, import.meta.url).href);
     return { readers: { "tax.coverage": read } };
   });
@@ -350,12 +358,14 @@ it.each([
   const result = JSON.parse(json.output);
   expect(json.exit).toBe(74);
   expect(result.refusal.code).toBe("commerce_setting_read_unavailable");
-  if (failure !== "reader 42501") expect(result.refusal).toMatchObject({ path: ["app"], hint: bindingCause });
-  expect(result.refusal.remediation).toEqual({ retry: true, action });
+  if (bindingFailure) expect(result.refusal).toMatchObject({ path: ["app"], hint: bindingCause });
+  const command = code === "tax_coverage_reader_unbound"
+    ? ["openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json"] : [];
+  expect(result.refusal.remediation).toEqual({ retry: true, action, ...(command.length ? { command: command[0] } : {}) });
 
   const text = await run(argv, { host });
   expect(text.exit).toBe(74);
-  expect(text.output).toBe([result.refusal.code, result.refusal.rule, result.refusal.hint, action, ""].join("\n"));
+  expect(text.output).toBe([result.refusal.code, result.refusal.rule, result.refusal.hint, action, ...command, ""].join("\n"));
 
   const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(row => row.command === "show")!;
   const response = await callSettingsTool(tool, { key: "tax.coverage" }, {
@@ -363,7 +373,7 @@ it.each([
   }, host);
   expect(response).toMatchObject({ isError: true, structuredContent: result });
   expect(bind).toHaveBeenCalledTimes(3);
-  expect(read).toHaveBeenCalledTimes(failure === "reader 42501" ? 3 : 0);
+  expect(read).toHaveBeenCalledTimes(bindingFailure ? 0 : 3);
 });
 
 it("shows a recorded policy override and closes the connected reader", async () => {

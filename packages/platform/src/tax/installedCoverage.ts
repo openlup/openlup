@@ -79,12 +79,7 @@ export function bindTaxCoverageReader(db: TaxCoverageExecutor, scope: Scope) {
   const accountRef = ref(scope.accountRef, "/accountRef");
   return async () => {
     const { rows } = await db.query(`SELECT * FROM public.tax_coverage_read_v1($1::text,$2::text)
-      ORDER BY sequence_no DESC LIMIT 1`, [installationRef, accountRef]).catch((error: unknown) => {
-      if (error instanceof Error && "code" in error && (error.code === "42883" || error.code === "42P01")) {
-        throw Object.assign(new Error("Install the native tax coverage reader.", { cause: error }), { code: "tax_coverage_reader_unbound" });
-      }
-      throw error;
-    });
+      ORDER BY sequence_no DESC LIMIT 1`, [installationRef, accountRef]);
     const row = rows[0];
     if (!row) return { present: false } as const;
     const coverage = taxCoverageV1Schema.parse(row.coverage);

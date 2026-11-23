@@ -170,40 +170,49 @@ it("finds inventory buffer in the packaged settings list", () => {
   expect(entries[0]?.key).toBe("inventory_renewal_protection");
 });
 
-it("gives a bound native coverage reader connection guidance", async () => {
+const restoreConnection = "Restore the database connection, then run the same command again with the same --app and --configuration";
+const applyMigrations = "The coverage reader is not installed in this database. Apply this release's platform migrations, then run the same command again.";
+const checkDatabaseLog = "The coverage reader failed. Check the database log for this read, then run the same command again.";
+
+it.each([
+  ["42501", "Grant EXECUTE on public.tax_coverage_read_v1(text,text) to the runtime role, then run the same command again"],
+  ["42883", applyMigrations],
+  ["42P01", applyMigrations],
+  ["08006", restoreConnection],
+  ["57P01", restoreConnection],
+  ["57P02", restoreConnection],
+  ["57P03", restoreConnection],
+  ["53300", restoreConnection],
+  ["ECONNREFUSED", restoreConnection],
+  ["ECONNRESET", restoreConnection],
+  ["ETIMEDOUT", restoreConnection],
+  ["ENOTFOUND", restoreConnection],
+  ["EHOSTUNREACH", restoreConnection],
+  ["28P01", checkDatabaseLog],
+  ["XX000", checkDatabaseLog],
+  [undefined, checkDatabaseLog],
+] as const)("classifies coverage reader error %s without forwarding diagnostics", async (code, action) => {
   const key = "tax.coverage";
-  const code = "commerce_setting_read_unavailable";
-  const query = vi.fn().mockRejectedValue(Object.assign(new Error("Connection reset"), { code: "ECONNRESET" }));
+  const query = vi.fn().mockRejectedValue(Object.assign(new Error("Fixture database error"), { code, where: "fixture routine" }));
   const reader = bindTaxCoverageReader({ query }, { installationRef: "store-a", accountRef: "account-a" });
-  const refusal = loadSettingsCatalogue().byCode.get(code)!;
-  const connectionRefusal = { refusal: { ...refusal, remediation: {
-    retry: true,
-    action: "Restore the database connection, then run the same command again with the same --app and --configuration",
-  } } };
-  expect(await showSetting({ key }, { [key]: reader })).toEqual(connectionRefusal);
-  expect(await showSetting({ key }, { [key]: async () => ({ refusal: code }) })).toEqual(connectionRefusal);
+  const refusal = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;
+  expect(await showSetting({ key }, { [key]: reader })).toEqual({ refusal: { ...refusal, remediation: { retry: true, action } } });
   expect(query).toHaveBeenCalledOnce();
-  query.mockRejectedValueOnce(Object.assign(new Error("Reader authentication failure"), { code: "28P01" }));
-  expect(await showSetting({ key }, { [key]: reader })).toEqual(connectionRefusal);
-  query.mockRejectedValueOnce(Object.assign(new Error("Reader access failure"), { code: "42501" }));
-  expect(await showSetting({ key }, { [key]: reader })).toEqual({ refusal: { ...refusal, remediation: {
+});
+
+it.each([
+  ["tax_coverage_reader_unbound", {
     retry: true,
-    action: "Grant EXECUTE on public.tax_coverage_read_v1(text,text) to the runtime role, then run the same command again",
-  } } });
-  const missingCapability = {
-    refusal: { code, remediation: {
-      action: "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation).",
-      command: "openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json",
-    } },
-  };
-  for (const sqlstate of ["42883", "42P01"]) {
-    query.mockRejectedValueOnce(Object.assign(new Error("Missing database object in the installed reader"), {
-      code: sqlstate, where: "synthetic reader routine",
-    }));
-    expect(await showSetting({ key }, { [key]: reader })).toMatchObject(missingCapability);
-  }
-  expect(await showSetting({ key }, { [key]: async () => ({ refusal: "tax_coverage_reader_unbound" }) }))
-    .toMatchObject(missingCapability);
+    action: "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation).",
+    command: "openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json",
+  }],
+  ["commerce_setting_read_unavailable", { retry: true, action: checkDatabaseLog }],
+  ["commerce_setting_unknown", { retry: true, action: checkDatabaseLog }],
+] as const)("classifies coverage reader refusal %s", async (code, remediation) => {
+  const key = "tax.coverage";
+  expect(await showSetting({ key }, { [key]: async () => ({ refusal: code }) })).toMatchObject({
+    refusal: { code: "commerce_setting_read_unavailable", remediation },
+  });
 });
 
 describe("settings goal search", () => {
