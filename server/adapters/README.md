@@ -136,6 +136,21 @@ The [connected-store witness](../../tests/postgres/connectedStoreTransfer.test.t
 compares both preview states and repeats restore without changing their identity.
 These linked pricing records share the profile's existing erasure-coverage limit.
 
+Native owner capture carries restricted, customer-linked cancellation feedback.
+Restore places each feedback row after its cancellation event and preserves the
+original reason code and timestamp. The cancellation receipt transfers through
+its existing path. Use owner full-store transfer for these rows. The public
+compatible-row utility and managed transfer profile exclude them.
+
+Apply the native forward before binding a feedback writer. The qualified runtime
+inherits routine execution through `service_role`. For a separately bound native
+runtime, grant EXECUTE on
+`public.subscription_cancel_feedback_submit(uuid,uuid,text,boolean)` and keep
+direct table access owner-only. A missing forward or routine grant affects
+feedback submission independently of cancellation. The adopter owns its
+feedback retention policy and any subject export or deletion. Resolve subjects
+through the cancellation event's subscription. Feedback stores one reason code
+per event and has no free-text field.
 
 The finite profile also carries `fulfillment_parcel_contacts`: private parcel
 recipient/email/phone, address/instructions and delivery selection/pickup point,

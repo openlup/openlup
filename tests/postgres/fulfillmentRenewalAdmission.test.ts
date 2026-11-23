@@ -2,6 +2,7 @@ import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/po
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { createPostgresCommerceOmsPort } from '@openlup/platform/commerce/server/postgres';
 import { createPostgresDeliveryAlignmentPort } from '@openlup/platform/fulfillment';
 import { createPostgresRenewalReservationPort } from '@openlup/platform/inventory';
 import {
@@ -16,6 +17,8 @@ import {
 } from '@openlup/platform/subscriptions';
 import type { RenewalExecutionRequest, RenewalPreparedSettlement, RenewalReadback } from '@openlup/platform/subscriptions/contracts';
 import { executor, fixture, nativeHarness, openCase, schedule } from '../helpers/fulfillmentNative.js';
+import { abortAtSecondLock, call, dueSubject, lifecycleInstallation, lifecycleProfiles,
+  scheduledRenewal, witnessTimeout } from './subscriptionLifecycleClosureFixture.js';
 
 const h = nativeHarness('g23');
 const NOW = '2026-10-21T12:00:00.000Z';
@@ -364,3 +367,81 @@ it.each(['protect', 'auto_align'] as const)('G23 static block wins over a captur
     expect(await runOneAutomaticSubscriptionRenewal(r.deps, due, afterExpiry)).toMatchObject({ status: 'terminal_replay' });
   } finally { db.release(); }
 });
+
+it.each(lifecycleProfiles.flatMap(profile => [
+  ['renewal first', profile], ['operator first', profile],
+] as const))('subscription and order second-lock rollback with %s on %s', async (order, profile) => {
+  const holdFirst = order === 'operator first';
+  const h = await lifecycleInstallation(profile);
+  try {
+    const { owner, runtime } = h;
+    const f = await dueSubject(h, 'sandbox'), actor = randomUUID(), key = `operator-hold:${f.order}`;
+    await call(owner, 'subscription_delivery_alignment_set_mode', ['protect']);
+    await owner.query("INSERT INTO public.commerce_operators(id,label) VALUES($1,'Operator')", [actor]);
+    const subscription = ['SELECT id FROM public.subscriptions WHERE id=$1', f.subscription] as const;
+    const order = ['SELECT id FROM public.commerce_orders WHERE id=$1', f.order] as const;
+    const admissionAbort = abortAtSecondLock(h, 'subscription_delivery_alignment_admit_renewal', subscription, order);
+    const holdAbort = abortAtSecondLock(h, 'oms_create_hold', order, subscription);
+    const dispatch = vi.fn(async () => { throw new Error('Unexpected protected renewal dispatch'); });
+    const tick = (executor: typeof admissionAbort.executor, at: string) =>
+      scheduledRenewal(h, executor, () => at, 'pm_fixture', dispatch, `lock1r:${f.subscription}`)();
+    const submit = (executor: typeof holdAbort.executor) => createPostgresCommerceOmsPort(executor).createHold({
+      actorUserId: actor, orderId: f.order, idempotencyKey: key, reason: 'fulfillment_exception',
+    });
+    const effects = async () => (await owner.query(`SELECT
+      (SELECT jsonb_agg(jsonb_build_object('id',id,'state',state) ORDER BY id)
+        FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1 AND predecessor_order_id=$2) AS cases,
+      (SELECT count(*)::int FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1) AS receipts,
+      (SELECT count(*)::int FROM public.subscription_cycles WHERE subscription_id=$1 AND scheduled_at=$3) AS cycles,
+      (SELECT jsonb_agg(to_jsonb(h) ORDER BY id) FROM public.commerce_order_holds h WHERE order_id=$2) AS holds,
+      (SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM public.commerce_order_operations o WHERE order_id=$2 AND operation_type='hold_created') AS operations,
+      (SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM public.outbox_events e WHERE aggregate_id IN ($1,$2)) AS outbox`,
+    [f.subscription, f.order, f.at(0)])).rows[0];
+    const claim = async () => (await owner.query(`SELECT id,scheduled_at,operation_fingerprint,claim_generation::int
+      FROM public.subscription_renewal_operations WHERE subscription_id=$1`, [f.subscription])).rows;
+
+    const before = await effects();
+    expect(before).toMatchObject({ cases: null, holds: null, operations: null, receipts: 0, cycles: 0 });
+    expect(await tick(admissionAbort.executor, f.at(0))).toMatchObject({
+      renewals: [{ subscriptionId: f.subscription, status: 'error', reason: 'renewal_processing_failed' }],
+    });
+    expect(admissionAbort.cancelled).toEqual(['subscription_delivery_alignment_admit_renewal']);
+    expect(await effects()).toEqual(before);
+    const [firstClaim] = await claim();
+    expect(firstClaim).toMatchObject({ scheduled_at: new Date(f.at(0)) });
+
+    const recoverAdmission = async () => {
+      expect(await tick(runtime, f.at(1))).toMatchObject({
+        renewals: [{ operationId: firstClaim.id, status: 'deferred', reason: 'delivery_alignment_protected' }],
+      });
+      expect(await claim()).toEqual([{ ...firstClaim, claim_generation: firstClaim.claim_generation + 1 }]);
+    };
+    if (!holdFirst) {
+      await expect(submit(holdAbort.executor)).rejects.toMatchObject({ details: { code: '57014' } });
+      expect(holdAbort.cancelled).toEqual(['oms_create_hold']);
+      expect(await effects()).toEqual(before);
+      expect(dispatch).not.toHaveBeenCalled();
+      await recoverAdmission();
+    }
+    const oneProtectedCase = [{ id: expect.any(String), state: 'protected' }];
+    const beforeHold = await effects();
+    expect(beforeHold).toEqual(holdFirst ? before : { ...before, cases: oneProtectedCase });
+
+    const hold = await submit(runtime);
+    expect(hold.replayed).toBe(false);
+    const committed = await effects();
+    expect(committed).toEqual({ ...beforeHold, cases: holdFirst ? oneProtectedCase : beforeHold.cases,
+      holds: [expect.objectContaining({ id: hold.hold.id, idempotency_key: key, reason: 'fulfillment_exception', status: 'active' })],
+      operations: [expect.objectContaining({ id: hold.operationId, hold_id: hold.hold.id, idempotency_key: `${key}:operation` })],
+    });
+    if (holdFirst) {
+      await recoverAdmission();
+      expect(await effects()).toEqual(committed);
+      expect(dispatch).not.toHaveBeenCalled();
+    }
+    expect(await submit(runtime)).toMatchObject({ replayed: true });
+    expect(await tick(runtime, f.at(2))).toMatchObject({ renewals: [{ operationId: firstClaim.id, status: 'deferred' }] });
+    expect(await effects()).toEqual(committed);
+    expect(dispatch).not.toHaveBeenCalled();
+  } finally { await h.close(); }
+}, witnessTimeout);

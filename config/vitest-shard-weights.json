@@ -113,6 +113,7 @@
     "tests/postgres/channelMigrationInventory.test.ts": 46354,
     "tests/postgres/channelPurchase.conformance.test.ts": 16397,
     "tests/postgres/checkoutInlineRecovery.test.ts": 25129,
+    "tests/postgres/checkoutOwnerRestoreStates.test.ts": 384000,
     "tests/postgres/checkoutPaymentGuidance.test.ts": 19544,
     "tests/postgres/checkoutRecoveryInspection.test.ts": 18531,
     "tests/postgres/checkoutRecoveryInspectionUpgrade.test.ts": 40597,

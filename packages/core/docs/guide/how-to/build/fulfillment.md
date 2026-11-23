@@ -131,6 +131,7 @@ Reuse the acceptance keys used by dispatch. The executor must commit each call
 before resolving; never wrap provider reads or invoicing in its transaction.
 Construction installs no route or schedule. Disabled or incomplete bindings
 refuse before provider access. Polling-only capabilities refuse webhook intake.
+At provider intake, map SQLSTATE `40P01` to a retryable 5xx response so the provider redelivers the webhook.
 
 Pass untouched request bytes, headers and receipt time to `ingest`. The selected
 adapter authenticates before parsing and translates status, occurrence identity
@@ -160,12 +161,19 @@ notice; a handoff with zero references creates no dispatched notice key.
 
 Call `reconcile` from your existing scheduler with its job ledger, job name,
 invocation and page size. It claims the lease, reads the latest terminal
-checkpoint, then calls the provider. Full pages advance even when an item fails;
-short and empty pages reset to zero. Missing, malformed or resized checkpoint
-metadata starts at zero. A checkpoint-read failure makes no provider call and
-finishes without replacing pagination metadata. This native composition resets
-a fatal zero-scan failure to zero; the generic page helper retains its existing
-pre-traversal retry rule. Sequential cursor translation belongs to the adapter.
+checkpoint, then calls the provider. A successful full page advances. Successful
+short, empty or exhausted pages reset to zero. Missing, malformed or resized
+checkpoint metadata starts at zero. The next two scheduled ticks can retry the
+same failed page. A third consecutive failure on that page advances the
+checkpoint and stores the following message in `platform_job_runs.error`.
+
+> an item on this page fails repeatedly; inspect the fulfilment exception for the
+> order and record it manually
+
+Failed pages return HTTP 502 with the original diagnostic. A checkpoint-read
+failure makes no provider call. The next acquired polling tick starts at page 0.
+Repeated ledger read errors can delay the repeated-failure bound for a page, but no exception is ever skipped.
+Sequential cursor translation belongs to the adapter.
 
 Pass the selected adapter's `orderIdentity` mapping to native intake when its
 outbound merchant identity differs from the stored number. This optional mapping translates an echoed outbound

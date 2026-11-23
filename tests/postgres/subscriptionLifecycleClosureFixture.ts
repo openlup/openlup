@@ -3,10 +3,21 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { Pool, type PoolClient } from "pg";
+import { expect } from "vitest";
+import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
+import { createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
+import {
+  createNativeRenewalCodec, createPostgresRenewalSettlementPort, createSandboxRenewalPolicy,
+  type SubscriptionQueryExecutor,
+} from "@openlup/platform/subscriptions";
+import type { RenewalPaymentEvidence, RenewalPaymentRail } from "@openlup/platform/subscriptions/contracts";
+import { createRenewalJob } from "../../examples/neutral-store/host/renewal-job.ts";
+import { demoRenewalConfig } from "../../examples/neutral-store/owned/renewal.config.ts";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions,
   type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
-import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { fixture } from "../helpers/fulfillmentNative.js";
 import { AT, call, failure, later, prepareOriginal, sandboxRenewal as renewal } from "./subscriptionNativeFixture.js";
 
 export const lifecycleForward = "db/platform/migrations/20261106100000_subscription_lifecycle_closure.sql";
@@ -121,3 +132,130 @@ export async function lifecycleRows(owner: Pool, omitReceipt = false) {
   return output;
 }
 export { AT, call, later };
+
+export const witnessTimeout = postgresSetupTimeoutMs + postgresTeardownTimeoutMs;
+export const codec = createNativeRenewalCodec();
+export const truth = { dunningTemplateSlug: 'failed', recoveryUrlPath: '/recover', recoveryTemplateSlug: 'recovered' };
+type LockRow = readonly [select: string, id: string];
+
+async function rollback(db: PoolClient | undefined) {
+  if (!db) return;
+  try { await db.query('ROLLBACK'); }
+  catch (error) { db.release(true); throw error; }
+  db.release();
+}
+
+export function abortAtSecondLock(h: LifecycleInstallation, rpc: string, first: LockRow, second: LockRow) {
+  const cancelled: string[] = [];
+  const executor: SubscriptionQueryExecutor = {
+    async query(sql, values) {
+      if (!sql.includes(`${rpc}(`)) return h.runtime.query(sql, values);
+      const blocker = await h.owner.connect();
+      let victim: PoolClient | undefined, pending: Promise<unknown> | undefined;
+      try {
+        victim = await h.runtime.connect();
+        for (const db of [blocker, victim]) {
+          await db.query('BEGIN');
+          await db.query("SET LOCAL lock_timeout = '10s'; SET LOCAL statement_timeout = '15s'");
+        }
+        expect((await blocker.query(`${second[0]} FOR UPDATE`, [second[1]])).rowCount).toBe(1);
+        const pid = (await victim.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+        let finished = false, blocked = false;
+        pending = victim.query(sql, values).then(() => null, (error: unknown) => error)
+          .finally(() => { finished = true; });
+        for (let probe = 0; probe < 1_000 && !finished && !blocked; probe++) {
+          blocked = (await blocker.query('SELECT pg_backend_pid() = ANY(pg_blocking_pids($1)) AS blocked', [pid])).rows[0].blocked;
+        }
+        expect(blocked, `${rpc} waits on the opposing row`).toBe(true);
+        await blocker.query('SAVEPOINT check_first_lock');
+        await expect(blocker.query(`${first[0]} FOR UPDATE NOWAIT`, [first[1]])).rejects.toMatchObject({ code: '55P03' });
+        await blocker.query('ROLLBACK TO SAVEPOINT check_first_lock');
+        expect((await blocker.query('SELECT pg_cancel_backend($1) AS cancelled', [pid])).rows[0].cancelled).toBe(true);
+        const error = await pending;
+        expect(error).toMatchObject({ code: '57014' });
+        cancelled.push(rpc);
+        throw error;
+      } finally {
+        // Release the barrier before draining, then roll back even if the RPC completed.
+        try { await rollback(blocker); }
+        finally { try { await pending; } finally { await rollback(victim); } }
+      }
+    },
+  };
+  return { executor, cancelled };
+}
+
+export async function dueSubject(h: LifecycleInstallation, channel: string) {
+  const { owner, runtime } = h;
+  const { slot } = (await owner.query<{ slot: Date }>(`SELECT
+    (date_trunc('day', now() AT TIME ZONE 'UTC') + interval '5 years 12 hours') AT TIME ZONE 'UTC' AS slot`)).rows[0];
+  const at = (hours: number) => new Date(slot.getTime() + hours * 3_600_000).toISOString();
+  const f = await fixture(owner, 1, true, true);
+  const sku = randomUUID();
+  await owner.query('UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1', [f.subscription, at(0)]);
+  await owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Fixture')", [sku, sku]);
+  await owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,$2,'Fixture')", [sku, sku]);
+  await owner.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,next_cycle_number,currency_code,stock_source_key,
+    settlement_channel_key,unattended_charge_authorized_at,authorization_ref) VALUES($1,1,'XXX',$2,$3,$4,'fixture')`,
+  [f.subscription, sku, channel, at(-24)]);
+  await owner.query('INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,1,$2,1,900)', [f.subscription, sku]);
+  await owner.query(`INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at)
+    VALUES($1,$2,'{"templateId":"fixture","shippingAmountMinor":0}',$3)
+    ON CONFLICT (order_id) DO UPDATE SET purchase_facts=excluded.purchase_facts,completed_at=excluded.completed_at`, [f.order, f.subscription, at(-24)]);
+  await owner.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
+    inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
+    VALUES($1,$1,10,10,0,'sellable',$2,$3,'fixture',$1,$4)`, [sku, at(0), at(24 * 365), 'a'.repeat(64)]);
+  await createPostgresDestinationPort(runtime).registerOrder({
+    idempotencyKey: `destination:${f.order}`, orderId: f.order, now: at(-24),
+    address: { recipientName: 'Fixture', line1: '1 Example Street', city: 'Example', postalCode: '00000', country: 'ZZ' },
+  });
+  return { ...f, at };
+}
+
+export function scheduledRenewal(h: LifecycleInstallation, executor: SubscriptionQueryExecutor, now: () => string,
+  method: string, execute: RenewalPaymentRail['execute'], population: string) {
+  const readOutcome = async (): Promise<RenewalPaymentEvidence> => ({
+    status: 'pending', disposition: 'ambiguous', operationId: '', eventKey: '', requestFingerprint: '', verifiedEvidenceRef: '',
+    externalAttemptRef: null, occurredAt: null, observedAt: now(), firstRecordedAt: now(), reason: null, amountMinor: null, currency: null,
+  });
+  return createRenewalJob({
+    config: { ...demoRenewalConfig(population), enabled: true },
+    beforeRun: async () => {}, afterRun: async () => {},
+    async withSession(work) {
+      const db = await h.runtime.connect();
+      try { return await work(db); } finally { db.release(); }
+    },
+    native: {
+      executor, codec, now, workerId: population,
+      async withTransaction(work) {
+        const db = await h.runtime.connect();
+        try {
+          await db.query('BEGIN');
+          const result = await work(db);
+          await db.query('COMMIT');
+          return result;
+        } finally { await rollback(db); }
+      },
+      settlement: db => createPostgresRenewalSettlementPort(db, codec),
+      inventory: createPostgresRenewalReservationPort(executor),
+      paymentRails: { resolve: () => ({ execute, readOutcome, findExternalAttempt: async () => null }) },
+      policy: createSandboxRenewalPolicy(method),
+      retry: {
+        readFrozenMandate: async snapshot => ({ authorized: true, authorizationRef: snapshot.authorizationRef, paymentMethodRef: method }),
+        retryInput: (snapshot, row) => ({
+          cycleIdempotencyKey: row.identityKey, executionIdempotencyKey: `${row.identityKey}:retry:${row.retryAttempt}`,
+          externalIdempotencyKey: `${row.identityKey}:retry-provider:${row.retryAttempt}`, requestFingerprint: row.requestFingerprint,
+          paymentIntentId: row.settlementIntentId, orderRef: row.orderId, orderId: row.orderId,
+          amountMinor: snapshot.pricingSnapshot.totalAmountMinor, currency: snapshot.pricingSnapshot.currency,
+          mode: 'subscription', flow: 'off_session', clientId: snapshot.clientId, customerRef: snapshot.payerAccountRef,
+          paymentMethodRef: method, recurringModel: 'sandbox', payer: null,
+        }),
+        payments: { execute, readOutcome }, recoveredTemplate: truth.recoveryTemplateSlug,
+      },
+      failureTemplate: truth.dunningTemplateSlug, recoveryPath: truth.recoveryUrlPath,
+      catalogue: { version: 'fixture', migration: 'fixture' },
+      readiness: async () => ({ state: 'ready', candidate: { artifact: 'fixture', configuration: 'fixture',
+        environment: 'disposable', database: 'fixture', schema: 'fixture' }, loadedPackages: [], issues: [] }),
+    },
+  }).services.run;
+}

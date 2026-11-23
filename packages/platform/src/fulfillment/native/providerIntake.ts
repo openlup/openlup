@@ -8,6 +8,8 @@ import { runFulfillmentReconciliationPage } from '../providerReconciliationWorke
 import { projectObservation } from '../observationProjection.js';
 import { createPostgresFulfillmentShipmentCommandPort } from './shipmentCommands.js';
 
+const repeatedPageRemedy = 'an item on this page fails repeatedly; inspect the fulfilment exception for the order and record it manually';
+
 type Ingress = Parameters<typeof verifyAndNormalizeFulfillmentObservation>[0];
 type Poll = Parameters<typeof runFulfillmentReconciliationPage>[0];
 type Evidence = Parameters<Poll['lifecycle']['findDispatchRef']>[0];
@@ -204,13 +206,21 @@ export function createPostgresFulfillmentProviderIntake(input: NativeFulfillment
       let checkpoint: unknown;
       try { checkpoint = await job.ledger.readLatestTerminalRunMetadata(job.jobName); }
       catch {
-        await job.ledger.finishJobRun(job.jobName, claim.runId, job.invocation, 'failed', { checked: 0, updated: 0, failures: 1, skipped: false, reason: 'reconciliation_checkpoint_read_failed' });
+        await job.ledger.finishJobRun(job.jobName, claim.runId, job.invocation, 'failed', {
+          checked: 0, updated: 0, failures: 1, skipped: false, reason: 'reconciliation_checkpoint_read_failed',
+        });
         return { kind: 'failed' as const, status: 502 as const, reason: 'reconciliation_checkpoint_read_failed' };
       }
       const page = await runFulfillmentReconciliationPage({ ...poll, provider: input.pages!, checkpoint, pageSize: job.pageSize });
-      // This host follows the donor's zero-scan reset. The generic page helper retains its own contract.
-      if (!page.result.ok && page.result.checked === 0) page.metadata.reconciliationPagination.nextPage = 0;
-      const released = await job.ledger.finishJobRun(job.jobName, claim.runId, job.invocation, page.result.ok ? 'success' : 'failed', page.result, { ...page.result, ...page.metadata });
+      const pagination = page.metadata.reconciliationPagination;
+      const { nextPage, failureStreak, repeatedFailure } = projectNativeReconciliationPagination(pagination, page.result.failures, checkpoint);
+      pagination.nextPage = nextPage;
+      const summary = repeatedFailure ? { ...page.result, reason: repeatedPageRemedy } : page.result;
+      const extraMetadata = {
+        ...page.result,
+        reconciliationPagination: { ...pagination, ...(failureStreak === undefined ? {} : { failureStreak }) },
+      };
+      const released = await job.ledger.finishJobRun(job.jobName, claim.runId, job.invocation, page.result.ok ? 'success' : 'failed', summary, extraMetadata);
       if (!released) throw new Error('reconciliation_job_lease_lost');
       return { kind: 'finished' as const, ...page };
     },
@@ -220,4 +230,24 @@ export function createPostgresFulfillmentProviderIntake(input: NativeFulfillment
 function neutralObservation(observation: FulfillmentObservation): FulfillmentObservation {
   const { providerStatus: _privateStatus, ...neutral } = observation;
   return neutral;
+}
+
+type SavedReconciliationCheckpoint = {
+  reconciliationPagination?: { version?: unknown; pageSize?: unknown; page?: unknown; nextPage?: unknown; failureStreak?: unknown };
+} | null;
+
+/** Native intake projects its retry policy separately from the host-owned page result. */
+function projectNativeReconciliationPagination(
+  { page, pageSize, nextPage }: { page: number; pageSize: number; nextPage: number },
+  failures: number,
+  checkpoint: unknown,
+): { nextPage: number; failureStreak?: 1 | 2; repeatedFailure?: true } {
+  if (failures === 0) return { nextPage };
+  const saved = (checkpoint as SavedReconciliationCheckpoint)?.reconciliationPagination;
+  const prior = saved?.version === 1 && saved.pageSize === pageSize && saved.page === page && saved.nextPage === page
+    ? saved.failureStreak : undefined;
+  if (prior === 2) {
+    return { nextPage: page < Number.MAX_SAFE_INTEGER ? page + 1 : 0, repeatedFailure: true };
+  }
+  return { nextPage: page, failureStreak: prior === 1 ? 2 : 1 };
 }

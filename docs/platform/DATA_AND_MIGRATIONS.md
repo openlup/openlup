@@ -3033,29 +3033,41 @@ three definitions must come from one earlier, issued catalogue purchase
 admission slot. Admission checks the approval base, definition hashes, definer
 attributes and intervening routine or schema changes before admitting the
 grant. The guarded unit returns on the exact legacy baseline ledger entry.
-On either qualified generation, the exact baseline and definition ledger
-entries and a ready login are required for the unit to commit.
+On either qualified generation, verify the exact baseline, issued definition
+ledger entry and the installed routines before the unit can commit. The unit
+records a zero-grant no-op if the role is absent. A present role must pass
+the qualified session check. The runner verifies the candidate ledger and
+permissions in the same transaction before commit.
 
 For either qualified generation and role mode, the host provisions
 `openlup_checkout_owner` outside the migration session. Use a dedicated login
 with `NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`,
-no owned objects, memberships, or role defaults. Give it effective database
-CONNECT and public schema USAGE. TEMP usually comes from the database owner's
-grant to PUBLIC. Inspect `pg_database` with `aclexplode(datacl)` (use the
-database default ACL if `datacl` is null) to identify the grantor. On PostgreSQL 16,
-a non-superuser who creates the login with `CREATEROLE` receives membership in
-it from the bootstrap authority. Use `pg_auth_members` to find the membership
-and its grantor, then have the grantor clear it. With the database owner's
-approval, grant TEMP directly to each supported role that needs it, then revoke
-TEMP from PUBLIC. Before the migration window, use `has_database_privilege` to
-verify each supported role's intended TEMP access and the checkout login's lack
-of TEMP. If the host or provider cannot provision this exact login or clear
-these edges, the installer refuses the grant with `checkout_owner_login_unready`.
+no owned objects, memberships, role defaults or expiry, and the default
+connection limit. Give it effective database CONNECT without grant option
+and public schema USAGE. On PostgreSQL 16, a non-superuser with `CREATEROLE`
+who creates the login receives a membership from the bootstrap authority.
+Inspect `pg_auth_members` and have the grantor remove that edge. The database
+owner must preserve TEMP for the selected installation roles that use it,
+then revoke TEMP from PUBLIC. Inspect `pg_database` with `aclexplode(datacl)`
+or the database default ACL if `datacl` is null. Verify the supported TEMP
+access and the checkout login's lack of it with `has_database_privilege`.
+Coordinate this handoff with each qualified database owner on the cluster.
 
-Either qualified projector omits the dormant login. After the guarded unit is
-recorded, readback requires the three non-grantable EXECUTE grants from the
-migration owner and projects the login and those grants. Keep checkout
-credentials unbound until qualification passes.
+A qualified readback admits zero local grants or the exact three issued,
+non-grantable grants from the definition owner. It verifies the routines
+and all stored ACLs before omitting the validated role and grant rows
+from the canonical inventory. The effective state comes from the live
+database. Connected-store restore keeps the target's qualifying state.
+
+Once the selected catalogue contains the grant and the ledger records it,
+the definition owner can apply or verify it through the installed package's
+`applyPlatformCheckoutOwnerGrant`. Exclude concurrent host role/default
+administration across the cluster and out-of-band local DDL and ACL changes
+until the operation completes. It uses the migration session lock, checks
+the recorded plan and live definitions, verifies the grants before commit
+and leaves the ledger intact. See the
+[upgrade handoff](../../packages/core/docs/guide/upgrade/database-migrations.md#prepare-the-optional-checkout-owner)
+for the profile roles and callable example.
 
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
