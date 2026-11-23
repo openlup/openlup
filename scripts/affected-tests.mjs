@@ -639,13 +639,29 @@ export function parseAffectedArgs(argv) {
   return { base, files, json };
 }
 
+const FIXED_GIT_PATHS = [
+  "/usr/bin/git",
+  "/opt/homebrew/bin/git",
+  "/usr/local/bin/git",
+];
+
+function resolveFixedGitBinary() {
+  for (const candidate of FIXED_GIT_PATHS) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  throw new Error("Unable to locate git binary in fixed system directories.");
+}
+
 export function collectChangedFilesFromGit(baseRef, rootDir = REPOSITORY_ROOT) {
-  const diffOutput = execFileSync("git", ["diff", "--name-only", baseRef], {
+  const gitBin = resolveFixedGitBinary();
+  const diffOutput = execFileSync(gitBin, ["diff", "--name-only", baseRef], {
     cwd: rootDir,
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
   });
-  const untrackedOutput = execFileSync("git", ["ls-files", "--others", "--exclude-standard"], {
+  const untrackedOutput = execFileSync(gitBin, ["ls-files", "--others", "--exclude-standard"], {
     cwd: rootDir,
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
