@@ -314,7 +314,11 @@ test('extract creates an independent repository and refuses to overwrite an exis
         assert.deepEqual(bytes.subarray(0, annotation.length), annotation, file);
         bytes = Buffer.concat([Buffer.from(prefix), bytes.subarray(annotation.length)]);
       } else assert.ok(!bytes.includes('Managed by OpenLup.'), file);
-      assert.deepEqual(bytes, await readFile(source), file);
+      if (file === 'package.json') assert.equal(sha256(bytes), '46a49644402662cc3292b2b03fcc9293676acb5721e50b7058ce97bc2fbfd278');
+      else if (file === 'ownership.json') {
+        const { providerQualification: _profile, ...projected } = ownership;
+        assert.deepEqual(JSON.parse(bytes.toString()), projected);
+      } else assert.deepEqual(bytes, await readFile(source), file);
     }
     for (const [name, specifier] of Object.entries(manifest.dependencies)) {
       if (name.startsWith('@openlup/')) assert.match(specifier as string, /^file:artifacts\/.+\.tgz$/);
@@ -377,7 +381,8 @@ test('extract creates an independent repository and refuses to overwrite an exis
     await assert.rejects(access(resolve(target, 'packages')));
     assert.ok((await stat(resolve(target, 'lifecycle'))).mode & 0o100);
     const displayed = execFileSync(process.execPath, ['lifecycle.mjs', 'ownership'], { cwd: target, encoding: 'utf8' });
-    assert.deepEqual(JSON.parse(displayed), ownership);
+    const { providerQualification: _profile, ...installed } = ownership;
+    assert.deepEqual(JSON.parse(displayed), installed);
     await writeFile(resolve(target, 'owner.txt'), 'keep me');
     assert.throws(() => execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, stdio: 'pipe' }));
     assert.equal(await readFile(resolve(target, 'owner.txt'), 'utf8'), 'keep me');
@@ -921,4 +926,79 @@ test('RP2 source wrapper checks the independent registry from packed dependencie
     assert.equal(host.status, 1);
     assert.match(host.stderr, /invalid_catalog_type_definition/);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('candidate extraction admits only the pinned optional SDK and managed qualification files', async () => {
+  const fixture = await releasedFixture();
+  try {
+    const source = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
+    const inventory = JSON.parse(await readFile(resolve(root, 'ownership.json'), 'utf8'));
+    const pins = Object.entries(source.providerQualification.dependencies) as [string, string][];
+    assert.equal(pins.length, 1);
+    const [sdk, version] = pins[0]!;
+    const packagePath = 'node_modules/' + sdk;
+    const rootLock = JSON.parse(await readFile(resolve(root, '../../package-lock.json'), 'utf8'));
+    const pinned = rootLock.packages[packagePath];
+    assert.equal(pinned.version, version);
+    const app = { ...fixture.application, scripts: source.scripts, providerQualification: source.providerQualification };
+    const base = { ...app, dependencies: Object.fromEntries(fixture.names.map(name => [name, fixture.version])) };
+    delete base.providerQualification;
+    base.scripts = { ...base.scripts };
+    delete base.scripts['provider:qualify'];
+    await fixture.put('examples/neutral-store/package.json', app);
+    await fixture.put('examples/neutral-store/ownership.json', { ...fixture.ownership, providerQualification: inventory.providerQualification, managedEditRoutes: {} });
+    const optInPaths = inventory.providerQualification.managed as string[];
+    for (const path of optInPaths) await fixture.put('examples/neutral-store/' + path, await readFile(resolve(root, path), 'utf8'));
+    const configuredCommand = source.scripts['provider:qualify'];
+    const command = configuredCommand.split(' ').at(-1);
+    assert.ok(optInPaths.includes(command));
+    await fixture.put('package-lock.json', { packages: { [packagePath]: pinned } });
+    await fixture.put('config/openlup-packages.json', { schemaVersion: 2, unreleased: [],
+      packages: fixture.names.map(name => ({ name, directory: `packages/${name.slice(9)}`, publish: true })) });
+    const packs = resolve(fixture.directory, 'packs');
+    for (const entry of fixture.manifest.packages) {
+      const path = 'packs/' + entry.filename;
+      await fixture.put(path, entry.name);
+      fixture.lock.packages['node_modules/' + entry.name]!.resolved = 'file:' + resolve(fixture.directory, path);
+    }
+    await fixture.put('packs/manifest.json', fixture.manifest);
+    const inputs = fixture.args.map(value => value === 'released' ? 'candidate' : value === resolve(fixture.directory, 'manifest.json') ? resolve(packs, 'manifest.json') : value);
+    await fixture.put('lock.json', fixture.lock);
+    const defaultLock = await readFile(resolve(fixture.directory, 'lock.json'));
+    const ordinary = fixture.run('ordinary', inputs);
+    assert.equal(await readFile(resolve(ordinary, 'package.json'), 'utf8'), JSON.stringify(base, null, 2) + '\n');
+    assert.deepEqual(await readFile(resolve(ordinary, 'package-lock.json')), defaultLock);
+    await assert.rejects(access(resolve(ordinary, command)));
+
+    fixture.lock.packages['']!.dependencies = { ...base.dependencies, [sdk]: version };
+    fixture.lock.packages[packagePath] = pinned;
+    await fixture.put('lock.json', fixture.lock);
+    const flags = [...inputs, '--provider-qualification', 'enabled'];
+    const target = fixture.run('qualified', flags);
+    const installed = JSON.parse(await readFile(resolve(target, 'package.json'), 'utf8'));
+    assert.equal(installed.providerQualification, undefined);
+    assert.equal(installed.scripts['provider:qualify'], configuredCommand);
+    assert.equal(installed.dependencies[sdk], version);
+    assert.deepEqual(JSON.parse(await readFile(resolve(target, 'ownership.json'), 'utf8')).managed,
+      [...fixture.ownership.managed, ...optInPaths]);
+    for (const path of optInPaths) await access(resolve(target, path));
+    assert.deepEqual(await readFile(resolve(target, 'package-lock.json')), await readFile(resolve(fixture.directory, 'lock.json')));
+    for (const field of ['version', 'resolved', 'integrity']) {
+      fixture.lock.packages[packagePath] = { ...pinned, [field]: 'wrong' };
+      await fixture.put('lock.json', fixture.lock);
+      assert.throws(() => fixture.run('bad-' + field, flags), /provider_qualification_lock_mismatch/);
+    }
+    assert.throws(() => fixture.run('released-opt-in', [...fixture.args, '--provider-qualification', 'enabled']),
+      /starter_provider_qualification_requires_candidate/);
+  } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test('default sandbox composition retains the pinned extraction bytes', async () => {
+  await mkdir(dirname(scratch), { recursive: true });
+  const target = await mkdtemp(scratch);
+  try {
+    execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, stdio: 'pipe' });
+    assert.equal(sha256(await readFile(resolve(target, 'host/renewal-sandbox.ts'))),
+      'fc40caeaee0b879c45e665bc38ec4b565e59031d1f7f0cf5cc9f3609174cb275');
+  } finally { await rm(target, { recursive: true, force: true }); }
 });

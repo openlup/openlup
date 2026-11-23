@@ -38,6 +38,80 @@ remain generic, and a failed refresh withholds the previous price.
 After a successful candidate import prints `next: npm ci`, run `npm ci` before
 starting the application.
 
+## Qualify a provider test account
+
+The qualification command requires a candidate extraction with the optional
+provider profile, Node 24.21.0, npm 11.19.0, and the 1Password CLI (`op` on your
+PATH). If you already have that extraction, open its directory and run `npm ci`.
+To create one, install the source checkout's dependencies with `npm ci`, then
+run the following commands from the root of the clean candidate checkout.
+
+```sh
+candidate_dir="$(mktemp -d "${TMPDIR:-/tmp}/provider-qualify-XXXXXX")"
+revision="$(git rev-parse HEAD)"
+version="$(node -p "require('./packages/core/package.json').version")"
+npm --prefix . run packages:check -- --out "$candidate_dir/packs" --release-set "$version"
+manifest="$candidate_dir/packs/packages-manifest.json"
+
+node --experimental-strip-types --input-type=module --eval "$(cat <<'NODE'
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { readCurrentPackManifest } from './scripts/packages/pack-manifest-input.ts';
+
+const [candidate, revision, manifest] = process.argv.slice(1);
+const packs = readCurrentPackManifest(process.cwd(), manifest, revision);
+const read = path => JSON.parse(readFileSync(path, 'utf8'));
+const { providerQualification, ...app } = read('examples/neutral-store/package.json');
+Object.assign(app.dependencies, providerQualification.dependencies);
+const sections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+for (const section of sections) {
+  for (const name of Object.keys(app[section] ?? {})) {
+    if (packs.has(name)) app[section][name] = 'file:' + packs.get(name).path;
+  }
+}
+const input = join(candidate, 'input');
+mkdirSync(input);
+writeFileSync(join(input, 'package.json'), JSON.stringify(app));
+execFileSync('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--fund=false'],
+  { cwd: input, stdio: 'inherit' });
+const path = join(input, 'package-lock.json'), lock = read(path);
+for (const section of sections) {
+  for (const name of Object.keys(lock.packages[''][section] ?? {})) {
+    if (packs.has(name)) lock.packages[''][section][name] = packs.get(name).version;
+  }
+}
+for (const [name, pack] of packs) lock.packages['node_modules/' + name].resolved = 'file:' + pack.path;
+writeFileSync(path, JSON.stringify(lock, null, 2) + '\n');
+NODE
+)" "$candidate_dir" "$revision" "$manifest"
+
+node examples/neutral-store/extract.mjs "$candidate_dir/application" \
+  --mode candidate --set-version "$version" --source-revision "$revision" \
+  --manifest "$manifest" --lockfile "$candidate_dir/input/package-lock.json" \
+  --provider-qualification enabled
+cd "$candidate_dir/application"
+npm ci
+```
+
+Keep the candidate's `packs` directory available for `npm ci`. The generated
+opt-in lock is at `$candidate_dir/input/package-lock.json`.
+
+In an interactive terminal, configure the named variable with a private
+1Password reference for the test account's secret key. Set `ACCOUNT_ID` to
+the expected test account ID and `KEY_ENV` to the variable's name.
+
+```sh
+npm run provider:qualify -- --run --test-mode --account "$ACCOUNT_ID" --key-env "$KEY_ENV"
+```
+
+Open the local link when prompted and complete the provider challenge within
+five minutes. This command qualifies card behavior using synthetic test objects
+and writes a transcript with hashed identifiers. Tax qualification runs in a
+separate step after the card qualification. The transcript records `tax: not_run`.
+If a write has an unknown outcome, use the original operation in the bound test
+account to reconcile it. Run the command again only for a new qualification.
+
 ## Change a product rule
 
 If you upgraded an existing store, its draft validator still runs from

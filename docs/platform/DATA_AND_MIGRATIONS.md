@@ -2833,13 +2833,17 @@ column and unrelated-constraint catalog protections still apply. This capability
 changes no installed CHECK by itself; feature SQL and its declarations land in a
 later change.
 
-A single later native slot may set `previewNoopAcceptance: true` and list just
-the nullable `accepted_noop_receipt_id` UUID column with its foreign key to
-`public.subscription_command_receipts(id)` in `existingTableStatements`.
-Use the exact three statements in [the admission rule](../../scripts/reviewed-platform-forward.ts),
-in order. They add the column and then drop and re-add
+The receipt-backed preview forward uses the single native slot with
+`previewNoopAcceptance: true`. The slot lists
+only the nullable `accepted_noop_receipt_id` UUID column and its foreign key to
+`public.subscription_command_receipts(id)` in `existingTableStatements`. The
+foreign key uses PostgreSQL's default `NO ACTION`. The forward uses the three
+exact admitted statements. They add the column and then drop and re-add
 `subscription_quote_previews_acceptance_check` on
 `public.subscription_quote_previews` as an adjacent, validated replacement.
+[Forward SQL](../../db/platform/migrations/20261125050000_subscription_preview_noop_acceptance.sql) ·
+[Admission rule](../../scripts/reviewed-platform-forward.ts)
+
 Static admission checks the exact forward bytes and pins the issued
 package-editor migration by path and hash. Beyond the pinned package-editor and
 sized-editor migrations, a file mentioning `subscription_quote_previews` must
@@ -2867,6 +2871,12 @@ timestamp and idempotency key, a receipt and a NULL native event. The PostgreSQL
 proof exercises every combination of status and NULL values before and after
 replacement. Keep any other SQL in separate slots. Land admission changes
 separately before introducing the slot and its SQL.
+
+Connected-store capture reads the new UUID through the existing column census.
+Restore inserts subscription command receipts and native events after their
+client and subscription parents and before previews. A store transfer uses the
+current inventory for the same profile on both ends. The recovery steps cover
+packets from a different inventory. [Restore recovery steps](#compatible-data-transfer)
 
 `createdViews` entries declare a fresh qualified name and exact CREATE VIEW
 statement hash. Only plain unconditional creation is admitted, once per listed
