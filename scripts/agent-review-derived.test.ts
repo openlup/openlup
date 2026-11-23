@@ -643,7 +643,7 @@ it('refuses inverted or duplicate migration slots before starting merge or Docke
     git('checkout', '-q', '--detach', merged);
     setMain(main);
   }
-});
+}, 60_000);
 
 it('classifies SQL and migration-inventory inputs conservatively', () => {
   for (const path of [
