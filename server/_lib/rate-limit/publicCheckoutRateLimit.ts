@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { resolveClientAddress } from "../../runtime/observability/clientAddressResolver.js";
 
 /**
  * Fail-CLOSED rate limiter for the hidden public one-time checkout (Faza A — W11.1).
@@ -134,19 +135,11 @@ export function formatPublicCheckoutRateLimitMessage(
 export function extractClientIp(
   headers: Record<string, string | string[] | undefined>,
 ): string {
-  const candidates = [
-    pickHeader(headers["x-forwarded-for"]),
-    pickHeader(headers["cf-connecting-ip"]),
-    pickHeader(headers["x-real-ip"]),
-  ];
-
-  for (const candidate of candidates) {
-    if (candidate) {
-      return candidate.split(",")[0]?.trim() ?? candidate;
-    }
-  }
-
-  return "unknown";
+  // Caller-supplied proxy headers are untrusted, so only the platform resolver decides.
+  return resolveClientAddress(
+    { headers } as unknown as Parameters<typeof resolveClientAddress>[0],
+    { trustedProxyHops: null, env: process.env },
+  );
 }
 
 interface RpcRow {
@@ -217,14 +210,6 @@ function isAttemptSequence(value: unknown): value is number {
     Number.isSafeInteger(value) &&
     value >= 0 &&
     value <= 50;
-}
-
-function pickHeader(value: string | string[] | undefined): string | null {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
-    return value[0];
-  }
-  return null;
 }
 
 /** Fail-CLOSED: deny on any limiter failure. */

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { resolveClientAddress } from "../../runtime/observability/clientAddressResolver.js";
 
 const RPC_NAME = "public_record_customer_magic_link_attempt" as const;
 const GLOBAL_COUNT_RPC_NAME = "public_count_customer_magic_link_attempts_global" as const;
@@ -112,17 +113,11 @@ export async function checkAndRecordCustomerMagicLinkAttempt(
 export function extractClientIp(
   headers: Record<string, string | string[] | undefined>,
 ): string {
-  const candidates = [
-    pickHeader(headers["x-forwarded-for"]),
-    pickHeader(headers["cf-connecting-ip"]),
-    pickHeader(headers["x-real-ip"]),
-  ];
-
-  for (const candidate of candidates) {
-    if (candidate) return candidate.split(",")[0]?.trim() ?? candidate;
-  }
-
-  return "unknown";
+  // Caller-supplied proxy headers are untrusted, so only the platform resolver decides.
+  return resolveClientAddress(
+    { headers } as unknown as Parameters<typeof resolveClientAddress>[0],
+    { trustedProxyHops: null, env: process.env },
+  );
 }
 
 interface RpcRow {
@@ -188,14 +183,6 @@ function pickGlobalCount(data: unknown): number | null {
   if (isRecord(data)) {
     const value = data.public_count_customer_magic_link_attempts_global ?? data.count ?? data.attempts_global;
     return typeof value === "number" && Number.isFinite(value) ? value : null;
-  }
-  return null;
-}
-
-function pickHeader(value: string | string[] | undefined): string | null {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
-    return value[0];
   }
   return null;
 }
