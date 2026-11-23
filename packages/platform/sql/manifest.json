@@ -734,6 +734,10 @@
       {
         "file": "db/platform/migrations/20261125060000_subscription_cancel_feedback.sql",
         "sha256": "86ce776553a8e30f03738103b9b39756f82b08a1b43c470cdd76cb9cf8b8c3a1"
+      },
+      {
+        "file": "db/platform/migrations/20261125070000_catalog_checkout_owner_execute.sql",
+        "sha256": "8b8ed02503ef87ac13ac36fde01c7dff2f1bfba399122b5013fd251359ed692e"
       }
     ],
     "objectInventorySha256": "28b58431d4ac1813a45e43c8c94c5ed91115a568bb7772cf32839e167fb1d136",
@@ -1494,6 +1498,10 @@
         {
           "file": "db/platform/migrations/20261125060000_subscription_cancel_feedback.sql",
           "sha256": "86ce776553a8e30f03738103b9b39756f82b08a1b43c470cdd76cb9cf8b8c3a1"
+        },
+        {
+          "file": "db/platform/migrations/20261125070000_catalog_checkout_owner_execute.sql",
+          "sha256": "8b8ed02503ef87ac13ac36fde01c7dff2f1bfba399122b5013fd251359ed692e"
         }
       ],
       "objectInventorySha256": {
@@ -2254,6 +2262,10 @@
         {
           "file": "db/platform/migrations/20261125060000_subscription_cancel_feedback.sql",
           "sha256": "86ce776553a8e30f03738103b9b39756f82b08a1b43c470cdd76cb9cf8b8c3a1"
+        },
+        {
+          "file": "db/platform/migrations/20261125070000_catalog_checkout_owner_execute.sql",
+          "sha256": "8b8ed02503ef87ac13ac36fde01c7dff2f1bfba399122b5013fd251359ed692e"
         }
       ],
       "objectInventorySha256": {
@@ -3177,6 +3189,11 @@
       "file": "20261125060000_subscription_cancel_feedback.sql",
       "source": "db/platform/migrations/20261125060000_subscription_cancel_feedback.sql",
       "sha256": "86ce776553a8e30f03738103b9b39756f82b08a1b43c470cdd76cb9cf8b8c3a1"
+    },
+    {
+      "file": "20261125070000_catalog_checkout_owner_execute.sql",
+      "source": "db/platform/migrations/20261125070000_catalog_checkout_owner_execute.sql",
+      "sha256": "8b8ed02503ef87ac13ac36fde01c7dff2f1bfba399122b5013fd251359ed692e"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

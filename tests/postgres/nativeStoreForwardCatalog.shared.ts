@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { checkoutOwnerGrantPath, PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { qualifiedCatalogueStorageSelectSql, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, previewNoopAcceptanceSql, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { definitionPath, definitionSql, grantPath, grantSql } from "../helpers/issuedPlatformCatalog.js";
 import { readSelectedCatalogProjection } from "../../server/adapters/postgres/selectedCatalogProjection.js";
@@ -1514,6 +1514,14 @@ async function replayChain(connectionString: string, probePreimage: boolean) {
       if ("unit" in step) { await chainDb.query(bytes.toString("utf8")); applied += 1; }
       else {
         if (step.entry.slot.previewNoopAcceptance) await provePreview();
+        if (checkoutOwnerGrantPath.test(path)) {
+          // This raw SQL replay bypasses the runner. Bind the exact legacy
+          // baseline that the runner would have recorded before the grant.
+          const baseline = prefix[0]!;
+          expect(baseline.path).toBe(PLATFORM_BASELINE_FILE);
+          await chainDb.query("INSERT INTO public.platform_schema_migrations (catalog_path,sha256,position) VALUES ($1,$2,0)",
+            [baseline.path, sqlSha256(baseline.bytes)]);
+        }
         const error = await verifyForward(chainDb, registry, path, bytes, prefix, true).then(() => null, (error: Error) => error);
         outcomes.set(path, error);
         if (error) continue;

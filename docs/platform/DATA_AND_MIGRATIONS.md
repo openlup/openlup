@@ -2994,8 +2994,10 @@ changes reached through dynamic SQL in earlier admitted routines
 and verifies the effective owner, function attributes and privileges under the
 installed profiles.
 
-The checkout-owner grant-only forward has one reserved
-`*_catalog_checkout_owner_execute.sql` slot. Its ordered routine inventory is
+The checkout-owner grant-only forward issues the reserved
+`*_catalog_checkout_owner_execute.sql` slot ahead of the governed checkout
+forwards. The installed draft routine still refuses fresh governed checkout.
+The grant covers three routines in order.
 `public.catalog_admission_lock_shared()`,
 `public.catalog_admission_lock_checkout_price(uuid,uuid[])` and
 `public.catalog_admission_create_order_draft(text,jsonb,jsonb,uuid,jsonb)`.
@@ -3019,9 +3021,9 @@ connection limit. Give it effective database CONNECT without grant option
 and public schema USAGE. On PostgreSQL 16, a non-superuser with `CREATEROLE`
 who creates the login receives a membership from the bootstrap authority.
 Inspect `pg_auth_members` and have the grantor remove that edge. The database
-owner must preserve TEMP for the selected installation roles that use it,
-then revoke TEMP from PUBLIC. Inspect `pg_database` with `aclexplode(datacl)`
-or the database default ACL if `datacl` is null. Verify the supported TEMP
+owner must preserve TEMP for the selected migration, runtime and restore
+logins, then revoke TEMP from PUBLIC. Inspect `pg_database` with
+`aclexplode(datacl)` or the database default ACL if `datacl` is null. Verify the supported TEMP
 access and the checkout login's lack of it with `has_database_privilege`.
 Coordinate this handoff with each qualified database owner on the cluster.
 
@@ -3029,11 +3031,12 @@ A qualified readback admits zero local grants or the exact three issued,
 non-grantable grants from the definition owner. It verifies the routines
 and all stored ACLs before omitting the validated role and grant rows
 from the canonical inventory. The effective state comes from the live
-database. Connected-store restore keeps the target's qualifying state.
+database. Connected-store restore keeps the target's qualifying state and
+reports rejected target checkout access as `database_unavailable`.
 
-Once the selected catalogue contains the grant and the ledger records it,
-the definition owner can apply or verify it through the installed package's
-`applyPlatformCheckoutOwnerGrant`. Exclude concurrent host role/default
+Apply the complete installed migration plan, including the grant unit. The
+definition owner can then apply or verify the grant through the installed
+package's `applyPlatformCheckoutOwnerGrant`. Exclude concurrent host role/default
 administration across the cluster and out-of-band local DDL and ACL changes
 until the operation completes. It uses the migration session lock, checks
 the recorded plan and live definitions, verifies the grants before commit

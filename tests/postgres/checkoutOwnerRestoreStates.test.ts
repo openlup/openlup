@@ -7,11 +7,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import { expect, it, vi } from "vitest";
 import type { QualifiedAdminPostgresInstallation, QualifiedPostgresInstallation } from "@openlup/platform/migrations";
 import { checkPlatformMigrationProjection } from "../../scripts/packages/platform-migration-projection.js";
-import { checkoutOwnerDefinitionPath, checkoutOwnerLogin, checkoutOwnerRoutines,
-  renderCheckoutOwnerGrant, selectPlatformMigrationManifest, sha256 } from "../../scripts/platform-migration-manifest.js";
+import { checkoutOwnerGrantPath, checkoutOwnerLogin, checkoutOwnerRoutines,
+  selectPlatformMigrationManifest, sha256 } from "../../scripts/platform-migration-manifest.js";
+import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
-import { grantPath, provisionCheckoutOwner, withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
+import { provisionCheckoutOwner, withCheckoutOwnerGrantPending, withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 
 const states = ["absent", "dormant", "granted"] as const;
@@ -26,24 +27,19 @@ const groups = ["anon", "authenticated", "service_role", "platform_acquisition_o
   "platform_acquisition_runtime", "openlup_retained_import_owner"];
 const revoke = `REVOKE EXECUTE ON FUNCTION ${checkoutOwnerRoutines.join(", ")} FROM ${checkoutOwnerLogin}`;
 
+const issuedManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as Parameters<typeof withPlatformCatalog>[0];
+const grantPath = issuedManifest.forward.find(unit => checkoutOwnerGrantPath.test(unit.file))!.file;
+
 async function withGrantArtifact<T>(work: (pkg: InstalledMigrations, root: string, inventory: Parameters<typeof withPlatformCatalog>[0]) => Promise<T>) {
-  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as Parameters<typeof withPlatformCatalog>[0];
+  const manifest = structuredClone(issuedManifest);
   return withPlatformCatalog(manifest, async root => {
-    const definition = manifest.forward.find(unit => checkoutOwnerDefinitionPath.test(unit.file))!;
-    const sql = renderCheckoutOwnerGrant(definition.file, definition.sha256);
-    for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
-      plan.forward.push({ file: grantPath, sha256: sha256(sql) });
-    }
-    writeFileSync(join(root, grantPath), sql);
-    writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(manifest));
     mkdirSync(join(root, "scripts"));
     mkdirSync(join(root, "packages/platform/src/migrations"), { recursive: true });
-    mkdirSync(join(root, "packages/platform/sql"));
     cpSync("scripts/platform-migration-manifest.ts", join(root, "scripts/platform-migration-manifest.ts"));
     cpSync("packages/platform/package.json", join(root, "packages/platform/package.json"));
     cpSync("packages/platform/dist/migrations", join(root, "packages/platform/dist/migrations"), { recursive: true });
     symlinkSync(resolve("node_modules"), join(root, "node_modules"), "dir");
-    expect(checkPlatformMigrationProjection(root, true)).toEqual([]);
+    cpSync("packages/platform/sql", join(root, "packages/platform/sql"), { recursive: true });
     const pkg = await import(pathToFileURL(join(root, "packages/platform/dist/migrations/index.js")).href) as InstalledMigrations;
     return work(pkg, root, manifest);
   });
@@ -262,7 +258,7 @@ async function refusesConcurrentRoutineChange(target: Installation) {
         current_setting('transaction_isolation') AS active`]);
       expect(isolation.rows).toEqual([{ session_default: "repeatable read", active: "read committed" }]);
       // The runner has read ledger identity. Commit on the competing connection
-      // just before it acquires the ledger lock and checks the live definition.
+      // just before it acquires the ledger lock and reads the MVCC catalog ACL.
       await writer.query("COMMIT");
       committed = true;
       return Reflect.apply(originalQuery, this, args);
@@ -272,18 +268,20 @@ async function refusesConcurrentRoutineChange(target: Installation) {
     await target.bootstrap.query(`ALTER DATABASE ${database} SET default_transaction_isolation = 'repeatable read'`);
     await writer.query("BEGIN; SET LOCAL statement_timeout = '15s'; SET LOCAL idle_in_transaction_session_timeout = '15s'");
     await Reflect.apply(originalQuery, writer, ["LOCK TABLE ONLY public.platform_schema_migrations IN SHARE ROW EXCLUSIVE MODE"]);
-    await writer.query(`ALTER FUNCTION ${routine} SECURITY INVOKER`);
-    await expect(target.grant()).rejects.toThrow("checkout_owner_predecessor_unverified");
+    await writer.query(`GRANT EXECUTE ON FUNCTION ${routine} TO service_role`);
+    const updatedAcl = (await writer.query("SELECT proacl::text AS acl FROM pg_catalog.pg_proc WHERE oid=to_regprocedure($1)", [routine])).rows[0]!.acl;
+    await expect(target.grant()).rejects.toThrow("checkout_owner_acl_mismatch");
     expect(committed).toBe(true);
     expect(attemptedGrant).toBe(false);
     expect(await target.ledger()).toEqual(ledger);
-    expect(await target.acl()).toEqual(acl);
+    expect(await target.acl()).toEqual(acl.map(row => row.routine.endsWith("catalog_admission_lock_shared()")
+      ? { ...row, acl: updatedAcl } : row));
   } finally {
     query.mockRestore();
     if (!committed) await writer.query("ROLLBACK").catch(() => {});
     writer.release(!committed);
     await target.bootstrap.query(`ALTER DATABASE ${database} RESET default_transaction_isolation`);
-    if (committed) await target.owner.query(`ALTER FUNCTION ${routine} SECURITY DEFINER`);
+    if (committed) await target.owner.query(`REVOKE EXECUTE ON FUNCTION ${routine} FROM service_role`);
   }
 }
 
@@ -343,6 +341,21 @@ it.each(profiles)("restores the same nonempty checkout graph on %s", async profi
           await source.state(from);
           const catalog = await source.project();
           expect(catalog).toBe(original);
+          if (from === "granted" && profile === "bootstrap") {
+            const checkout = new Pool({ connectionString: source.url(checkoutOwnerLogin) });
+            try {
+              expect((await checkout.query("SELECT session_user AS login")).rows).toEqual([{ login: checkoutOwnerLogin }]);
+              const draftCounts = async () => (await source.owner.query(`SELECT
+                (SELECT count(*) FROM public.commerce_orders) AS orders,
+                (SELECT count(*) FROM public.commerce_order_draft_receipts) AS receipts,
+                (SELECT count(*) FROM public.outbox_events) AS events`)).rows;
+              const before = await draftCounts();
+              await expect(checkout.query("SELECT public.catalog_admission_create_order_draft($1,NULL,NULL,$2,NULL)", [randomUUID(), clientId]))
+                .rejects.toMatchObject({ message: "catalog_admission_quote_authority_required" });
+              expect(await draftCounts()).toEqual(before);
+              expect(await source.ledger()).toEqual(sourceLedger);
+            } finally { await checkout.end(); }
+          }
           if (from === "dormant" && profile === "bootstrap") {
             const checkout = new Pool({ connectionString: source.url(checkoutOwnerLogin) });
             try {
@@ -434,9 +447,20 @@ it.each(["absent", "present"] as const)("records the legacy no-op with the clust
     const options = { installation: { generation: "legacy" as const }, poolFactory: () => owner };
     try {
       expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
-      const before = await import("@openlup/platform/migrations");
-      await before.createPlatformPostgresMigrationRunner(env, options).apply();
-      if (state === "present") await owner.query(`CREATE ROLE ${checkoutOwnerLogin} LOGIN NOINHERIT`);
+      await withCheckoutOwnerGrantPending(root => createPostgresMigrationRunner(env, { ...options, root }).apply());
+      if (state === "present") {
+        await owner.query("CREATE DATABASE checkout_elsewhere");
+        await owner.query(`CREATE ROLE ${checkoutOwnerLogin} LOGIN NOINHERIT PASSWORD '${password}';
+          REVOKE CONNECT,TEMP ON DATABASE checkout_elsewhere FROM PUBLIC;
+          GRANT CONNECT ON DATABASE checkout_elsewhere TO ${checkoutOwnerLogin}`);
+        const siblingUrl = new URL(container.connectionStringFor("checkout_elsewhere"));
+        siblingUrl.username = checkoutOwnerLogin;
+        const sibling = new Pool({ connectionString: siblingUrl.href });
+        try {
+          expect((await sibling.query("SELECT current_database() AS database, session_user AS login")).rows)
+            .toEqual([{ database: "checkout_elsewhere", login: checkoutOwnerLogin }]);
+        } finally { await sibling.end(); }
+      }
       const ledger = async () => (await owner.query("SELECT catalog_path,sha256,position,executed_at::text FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
       const applied = await ledger();
       const runner = pkg.createPlatformPostgresMigrationRunner(env, options);
@@ -445,6 +469,7 @@ it.each(["absent", "present"] as const)("records the legacy no-op with the clust
         expect((await owner.query(`SELECT pg_catalog.count(*)::int AS grants FROM pg_catalog.pg_proc p
           WHERE p.proname LIKE 'catalog_admission_%' AND pg_catalog.has_function_privilege($1,p.oid,'EXECUTE')
             AND (p.prosecdef OR p.proacl IS NOT NULL)`, [checkoutOwnerLogin])).rows).toEqual([{ grants: 0 }]);
+        await owner.query("DROP DATABASE checkout_elsewhere");
         await owner.query(`DROP ROLE ${checkoutOwnerLogin}`);
       } else expect(await runner.apply()).toEqual({ applied: [grantPath] });
       const after = await ledger();

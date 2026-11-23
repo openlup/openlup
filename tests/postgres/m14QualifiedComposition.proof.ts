@@ -21,7 +21,7 @@ import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions, type 
 import { createM08FulfillmentReferenceBinding } from "../../server/runtime/public-reference/m08FulfillmentBinding.js";
 import { createNativeFulfillmentBinding } from "@openlup/platform/fulfillment/native";
 import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { proveCheckoutOwnerGrant, provisionCheckoutOwner, readIssuedPlatformManifest, withIssuedPlatformCatalog, withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
+import { proveCheckoutOwnerGrant, provisionCheckoutOwner, readIssuedPlatformManifest, withCheckoutOwnerGrantPending, withIssuedPlatformCatalog, withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { profile, request } from "../helpers/fulfillmentComposition.js";
 import { fixture, openCase } from "../helpers/fulfillmentNative.js";
 import { cataloguePublicationAuthority, catalogueReadGrant, fixture as catalogueFixture, graph, insertGraph,
@@ -856,9 +856,13 @@ async function prove() {
       },
     }).apply());
   assert.deepEqual(grantApplied.applied, [catalogueReadGrant]);
-  const suffixApplied = await runner.apply();
-  assert.deepEqual(suffixApplied.applied, expected.slice(grantPosition + 1).map(entry => entry.file));
-  const appliedNow = { applied: [...prefixApplied, ...beforeGrant.applied, ...grantApplied.applied, ...suffixApplied.applied] };
+  const suffixApplied = await withCheckoutOwnerGrantPending(root =>
+    createPostgresMigrationRunner({ connectionString }, { root, installation: selection }).apply());
+  assert.deepEqual(suffixApplied.applied, expected.slice(grantPosition + 1, -1).map(entry => entry.file));
+  const fresh = input.freshConnectionString && await prepareFixtureCluster(input.freshConnectionString);
+  const checkoutGrant = await proveCheckoutOwnerGrant(connectionString, loginUrl(selection.runtimeLogin), selection, password,
+    fresh ? fresh.connectionString : undefined);
+  const appliedNow = { applied: [...prefixApplied, ...beforeGrant.applied, ...grantApplied.applied, ...suffixApplied.applied, ...checkoutGrant.applied] };
   assert.deepEqual(appliedNow, { applied: expected.map(entry => entry.file) });
   const ledger = async () => (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM public.platform_schema_migrations ORDER BY position")).rows;
   const installed = await ledger();
@@ -874,9 +878,6 @@ async function prove() {
   assert.deepEqual(await publisherFunctionAcl(bootstrap), publisherAcl);
   assert.deepEqual(await ledger(), installed);
   const inventorySha256 = await observeInventory(manifest.objectInventorySha256);
-  const fresh = input.freshConnectionString && await prepareFixtureCluster(input.freshConnectionString);
-  await proveCheckoutOwnerGrant(connectionString, loginUrl(selection.runtimeLogin), selection, password,
-    fresh ? fresh.connectionString : undefined);
   await bootstrap.query("DROP ROLE openlup_checkout_owner");
   await proveRetainedRuntime(bootstrap);
   await proveOwnerPathResolution(bootstrap);

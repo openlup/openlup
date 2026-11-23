@@ -4,7 +4,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
-import { checkoutOwnerDefinitionPath, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { checkoutOwnerDefinitionPath, checkoutOwnerGrantPath, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { checkoutOwnerLogin, checkoutOwnerRoutines, nativeStoreFunctionDefinitions, renderCheckoutOwnerGrant, sqlSha256, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import {
@@ -35,6 +35,15 @@ export function readIssuedPlatformManifest() {
     operatorProvisioned: "807ea0c9b303c04c4ad3e9892ab16ee7e89acaea8b7641d1cedd4c79949fab7d",
   };
   return issued;
+}
+
+/** Use the issued catalogue before its final checkout grant unit. */
+export function withCheckoutOwnerGrantPending<T>(work: (root: string) => Promise<T>): Promise<T> {
+  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as ReturnType<typeof readIssuedPlatformManifest>;
+  for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
+    assert.match(plan.forward.pop()!.file, checkoutOwnerGrantPath);
+  }
+  return withPlatformCatalog(manifest, work);
 }
 
 /** Existing runner root seam: install the fixed issued prefix, then the live suffix. */
@@ -128,15 +137,19 @@ async function append(client: PoolClient, entry: SqlUnit): Promise<void> {
 }
 
 export async function proveCheckoutOwnerGrant(connectionString: string, ordinaryConnectionString: string, selection: QualifiedSelection, password: string,
-  freshConnectionString?: string): Promise<void> {
+  freshConnectionString?: string): Promise<{ applied: string[] }> {
   const admin = selection.generation === "qualified-admin";
   const projected = admin ? (client: PoolClient) => qualifiedAdminPostgresCatalogPayload(client, selection, lockName)
     : (client: PoolClient) => qualifiedPostgresCatalogPayload(client, selection, lockName);
   const source = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as Parameters<typeof withPlatformCatalog>[0];
   const definition = source.qualified.forward.find(unit => checkoutOwnerDefinitionPath.test(unit.file));
   assert.ok(definition, "the installed checkout definitions are required before the grant fixture");
-  const sql = renderCheckoutOwnerGrant(definition.file, definition.sha256);
-  const grant = { file: grantPath, sha256: hash(sql), sql };
+  const unit = source.forward.find(entry => checkoutOwnerGrantPath.test(entry.file));
+  assert.ok(unit, "the checkout grant must be issued");
+  const sql = readFileSync(unit.file, "utf8");
+  assert.equal(sql, renderCheckoutOwnerGrant(definition.file, definition.sha256));
+  assert.equal(hash(sql), unit.sha256);
+  const grant = { ...unit, sql };
   const url = new URL(connectionString);
   url.searchParams.set("options", admin ? qualifiedAdminPostgresStartupOptions(selection) : qualifiedPostgresStartupOptions(selection));
   const pool = new Pool({ connectionString: url.href });
@@ -170,56 +183,49 @@ export async function proveCheckoutOwnerGrant(connectionString: string, ordinary
       assert.equal(payload, prior);
       await client.query("ROLLBACK");
       await client.query("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,0))", [lockName]);
-      await withPlatformCatalog(source, async root => {
-        for (const plan of [source, source.qualified, source.qualifiedAdmin]) {
-          plan.forward.push({ file: grant.file, sha256: grant.sha256 });
-        }
-        mkdirSync(dirname(join(root, grant.file)), { recursive: true });
-        writeFileSync(join(root, grant.file), grant.sql);
-        writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(source));
-        const partialPool = { async connect() {
-          const backend = await pool.connect();
-          return {
-            async query(command: string | QueryConfig, values?: unknown[]) {
-              if (typeof command !== "string") return backend.query(command);
-              const result = await backend.query(command, values);
-              if (command === grant.sql) await backend.query(`REVOKE EXECUTE ON FUNCTION ${checkoutOwnerRoutines[0]} FROM ${checkoutOwnerLogin}`);
-              return result;
-            },
-            release: () => backend.release(true),
-          } as unknown as PoolClient;
-        } } as Pool;
-        const applyFrom = (poolFactory: () => Pool) =>
-          createPostgresMigrationRunner({ connectionString }, { root, installation: selection, poolFactory });
-        await assert.rejects(applyFrom(() => partialPool).apply(), /checkout_owner_acl_mismatch/u);
-        assert.deepEqual((await acl(client)).map(row => row.grants), [[], [], []]);
-        assert.deepEqual((await client.query(`SELECT catalog_path,sha256,position FROM ${ledger} ORDER BY position`)).rows, prefix);
-        const fixtureRunner = applyFrom(() => pool);
-        assert.deepEqual(await fixtureRunner.apply(), { applied: [grant.file] });
-        assert.deepEqual(await fixtureRunner.apply(), { applied: [] });
-        if (freshConnectionString && !admin) {
-          const freshUrl = new URL(freshConnectionString);
-          freshUrl.searchParams.set("options", qualifiedPostgresStartupOptions(selection));
-          const freshPool = new Pool({ connectionString: freshUrl.href });
+      const partialPool = { async connect() {
+        const backend = await pool.connect();
+        return {
+          async query(command: string | QueryConfig, values?: unknown[]) {
+            if (typeof command !== "string") return backend.query(command);
+            const result = await backend.query(command, values);
+            if (command === grant.sql) await backend.query(`REVOKE EXECUTE ON FUNCTION ${checkoutOwnerRoutines[0]} FROM ${checkoutOwnerLogin}`);
+            return result;
+          },
+          release: () => backend.release(true),
+        } as unknown as PoolClient;
+      } } as Pool;
+      const applyFrom = (poolFactory: () => Pool) =>
+        createPostgresMigrationRunner({ connectionString }, { installation: selection, poolFactory });
+      await assert.rejects(applyFrom(() => partialPool).apply(), /checkout_owner_acl_mismatch/u);
+      assert.deepEqual((await acl(client)).map(row => row.grants), [[], [], []]);
+      assert.deepEqual((await client.query(`SELECT catalog_path,sha256,position FROM ${ledger} ORDER BY position`)).rows, prefix);
+      const fixtureRunner = applyFrom(() => pool);
+      const applied = await fixtureRunner.apply();
+      assert.deepEqual(applied, { applied: [grant.file] });
+      assert.deepEqual(await fixtureRunner.apply(), { applied: [] });
+      if (freshConnectionString && !admin) {
+        const freshUrl = new URL(freshConnectionString);
+        freshUrl.searchParams.set("options", qualifiedPostgresStartupOptions(selection));
+        const freshPool = new Pool({ connectionString: freshUrl.href });
+        try {
+          const freshRunner = createPostgresMigrationRunner({ connectionString: freshConnectionString },
+            { installation: selection, poolFactory: () => freshPool });
+          const expected = [source.qualified.baseline, ...source.qualified.forward].map(entry => entry.file);
+          assert.deepEqual(await freshRunner.status(), { pending: expected, applied: [] });
+          assert.deepEqual(await freshRunner.apply(), { applied: expected });
+          const observer = await freshPool.connect();
           try {
-            const freshRunner = createPostgresMigrationRunner({ connectionString: freshConnectionString },
-              { root, installation: selection, poolFactory: () => freshPool });
-            const expected = [source.qualified.baseline, ...source.qualified.forward].map(entry => entry.file);
-            assert.deepEqual(await freshRunner.status(), { pending: expected, applied: [] });
-            assert.deepEqual(await freshRunner.apply(), { applied: expected });
-            const observer = await freshPool.connect();
-            try {
-              await observer.query("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1,0))", [lockName]);
-              assert.equal(await projected(observer), payload);
-            } finally {
-              await observer.query("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,0))", [lockName]);
-              observer.release();
-            }
+            await observer.query("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1,0))", [lockName]);
+            assert.equal(await projected(observer), payload);
           } finally {
-            await freshPool.end();
+            await observer.query("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,0))", [lockName]);
+            observer.release();
           }
+        } finally {
+          await freshPool.end();
         }
-      });
+      }
       await client.query("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1,0))", [lockName]);
       assert.equal(await projected(client), payload);
       const after = await client.query(`SELECT catalog_path,sha256,position FROM ${ledger} ORDER BY position`);
@@ -252,10 +258,10 @@ export async function proveCheckoutOwnerGrant(connectionString: string, ordinary
         await Promise.all([owner.end(), ordinary.end()]);
       }
       await client.query("BEGIN");
-      await client.query(`DELETE FROM public.platform_schema_migrations WHERE catalog_path = $1`, [grant.file]);
       await client.query(`REVOKE EXECUTE ON FUNCTION ${checkoutOwnerRoutines.join(", ")} FROM ${checkoutOwnerLogin}`);
       assert.equal(await projected(client), prior);
       await client.query("COMMIT");
+      return applied;
     } finally { await client.query("ROLLBACK"); }
   } finally {
     await client.query("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,0))", [lockName]);

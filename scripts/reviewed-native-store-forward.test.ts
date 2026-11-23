@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { PLATFORM_BASELINE_FILE } from "./platform-migration-manifest.ts";
+import { PLATFORM_BASELINE_FILE, PLATFORM_MIGRATION_MANIFEST } from "./platform-migration-manifest.ts";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
@@ -156,6 +156,66 @@ describe("checkout owner execute admission", () => {
     if (order === "after") expect(admit).not.toThrow();
     else expect(admit).toThrow(`checkout_owner_predecessor_unverified: ${path}. Issue the checkout grant unit before replacing a checkout routine.`);
   });
+
+  it("admits the issued checkout grant and matches the packaged bytes", () => {
+    const manifest = JSON.parse(readFileSync(PLATFORM_MIGRATION_MANIFEST, "utf8")) as {
+      baseline: { file: string }; forward: { file: string }[];
+    };
+    const slot = production.nativeStoreForwardClass!.slots.find(entry => entry.row === grantSlot.row)!;
+    const bytes = readFileSync(slot.path);
+    const prefix = [manifest.baseline, ...manifest.forward]
+      .filter(entry => entry.file < slot.path)
+      .map(entry => ({ path: entry.file, bytes: readFileSync(entry.file) }));
+    expect(readFileSync(slot.path.replace("db/platform/migrations/", "packages/platform/sql/"))).toEqual(bytes);
+    const approved = assertNativeStoreForward(production, slot.path, bytes, prefix).checkoutPredecessor!;
+    expect(Buffer.from(renderCheckoutOwnerGrant(approved.pin.path, approved.pin.sha256))).toEqual(bytes);
+  });
+
+  it.each(["co-introduced grant", "base-issued grant", "no earlier grant"] as const)(
+    "checks the manifest before admitting a checkout replacement with %s", issuance => {
+      nativeGitFixture(({ folder, put, commit }) => {
+        const value = candidate();
+        const binding = definitionPin().functions.at(-1)!;
+        const statement = sqlStatements(definitionSql).find(sql => sql.startsWith(`CREATE FUNCTION ${binding.signature}`))!;
+        const replacement = statement.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")
+          .replace("fixture_checkout_writer_dark", "fixture_checkout_writer_replacement");
+        const path = "db/platform/migrations/20990101000200_checkout_writer_fixture.sql";
+        const slot = emptySlot(path);
+        slot.replacedFunctions.push({ signature: binding.signature, searchPath: "pg_catalog, pg_temp", beforeSha256: binding.afterSha256 });
+        const grant = { file: grantPath, sha256: sqlSha256(grantSql) };
+        const definition = { file: definitionPath, sha256: sqlSha256(definitionSql) };
+        const baseline = { file: PLATFORM_BASELINE_FILE, sha256: sqlSha256(before) };
+        const writeManifest = (forward: { file: string; sha256: string }[]) =>
+          put(PLATFORM_MIGRATION_MANIFEST, JSON.stringify({ schemaVersion: 1, baseline, forward }));
+        const writeRegistry = () => put("config/reviewed-platform-forwards.json", encode(value));
+        put(baseline.file, before);
+        put(definition.file, definitionSql);
+        // Keep the grant in the registry only when the file has been introduced.
+        const reservedSlot = value.nativeStoreForwardClass!.slots.pop()!;
+        const reservedPin = value.nativeStoreForwards!.pop()!;
+        const publishGrant = () => {
+          put(grant.file, grantSql);
+          value.nativeStoreForwardClass!.slots.push(reservedSlot);
+          value.nativeStoreForwards!.push(reservedPin);
+        };
+        if (issuance !== "co-introduced grant") publishGrant();
+        writeRegistry();
+        writeManifest(issuance === "base-issued grant" ? [definition, grant] : [definition]);
+        const base = commit();
+
+        if (issuance === "co-introduced grant") publishGrant();
+        value.nativeStoreForwardClass!.slots.push(slot);
+        const pin = bind(value, value.nativeStoreForwardClass!.slots.indexOf(slot), replacement);
+        put(path, replacement);
+        writeRegistry();
+        // An issued grant blob outside the selected plan cannot authorize the replacement.
+        writeManifest([definition, ...(issuance === "no earlier grant" ? [] : [grant]), { file: path, sha256: pin.sha256 }]);
+        const head = commit();
+        const admit = () => assertReviewedPlatformForward(folder, base, head, path, Buffer.from(replacement));
+        if (issuance === "base-issued grant") expect(admit).not.toThrow();
+        else expect(admit).toThrow(`checkout_owner_predecessor_unverified: ${path}. Issue the checkout grant unit before replacing a checkout routine.`);
+      });
+    });
 });
 
 const catalogueReadTargets = ["public.catalog_offer_memberships_page(text,jsonb,integer,text)", "public.catalog_publication_activation_readiness(text[],text)"];

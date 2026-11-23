@@ -100,12 +100,12 @@ cluster role. Use a qualified installation or a separate cluster.
 For qualified-v2 operator-provisioned installations, the designated host
 role operator provisions the login under bootstrap control. On PostgreSQL
 16, ask the membership grantor to remove the creator edge. Have the
-database owner preserve TEMP for the installation roles that use it
+database owner preserve TEMP for the migration, runtime and restore logins
 before revoking TEMP from PUBLIC. Coordinate role changes across all
 affected databases.
 
-Once an installed catalogue includes the approved grant unit and the
-selected database has recorded it, run this operation with the same
+Apply the complete installed migration plan, including the approved grant
+unit, before running the late operation. Use the same
 installation binding and direct definition-owner connection as the
 migration runner:
 
@@ -131,9 +131,9 @@ ledger. Verify that result on the selected database before binding any
 checkout credential to a supported host. For `checkout_owner_login_unready`,
 ask the installation owner to prepare and verify the dedicated checkout
 login. For `checkout_owner_acl_mismatch`, ask the installation owner to
-verify the approved checkout access for this database. If connected-store
-restore refuses target access, ask the installation owner to verify the
-target installation.
+verify the approved checkout access for this database. Connected-store
+restore reports rejected target checkout access as `database_unavailable`.
+Ask the installation owner to verify the target installation.
 
 ## Inspect and apply
 

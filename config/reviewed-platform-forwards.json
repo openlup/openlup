@@ -6903,6 +6903,36 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "catalog-checkout-owner-execute",
+        "path": "db/platform/migrations/20261125070000_catalog_checkout_owner_execute.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [
+          {
+            "signature": "public.catalog_admission_lock_shared()",
+            "grantTo": [
+              "openlup_checkout_owner"
+            ],
+            "revokeFrom": []
+          },
+          {
+            "signature": "public.catalog_admission_lock_checkout_price(uuid,uuid[])",
+            "grantTo": [
+              "openlup_checkout_owner"
+            ],
+            "revokeFrom": []
+          },
+          {
+            "signature": "public.catalog_admission_create_order_draft(text,jsonb,jsonb,uuid,jsonb)",
+            "grantTo": [
+              "openlup_checkout_owner"
+            ],
+            "revokeFrom": []
+          }
+        ],
+        "dataStatements": []
       }
     ]
   },
@@ -10166,6 +10196,11 @@
           "afterSha256": "fde436cf46a80cbd5e0f64b30e8b949528214c4aa472197194b43e994aa673cd"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261125070000_catalog_checkout_owner_execute.sql",
+      "sha256": "8b8ed02503ef87ac13ac36fde01c7dff2f1bfba399122b5013fd251359ed692e",
+      "functions": []
     }
   ],
   "managedExactForwards": [

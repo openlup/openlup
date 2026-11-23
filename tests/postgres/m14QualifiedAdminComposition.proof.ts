@@ -12,7 +12,7 @@ import { qualifiedAdminPostgresCatalogPayload, qualifiedAdminPostgresStartupOpti
 import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { runReleasedSchemaUpgradeProof } from "./m14ReleasedSchemaUpgrade.proof.js";
-import { proveCheckoutOwnerGrant, provisionCheckoutOwner, readIssuedPlatformManifest, withIssuedPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
+import { proveCheckoutOwnerGrant, provisionCheckoutOwner, readIssuedPlatformManifest, withCheckoutOwnerGrantPending, withIssuedPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 
 const lockName = "openlup:public-platform-migrations:v1";
 const hash = (s: string): string => createHash("sha256").update(s).digest("hex");
@@ -114,8 +114,12 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   });
   assert.deepEqual(await runner.status(), { applied: issuedExpected.map(entry => entry.file),
     pending: expected.slice(issuedExpected.length).map(entry => entry.file) });
-  const suffix = await runner.apply();
-  assert.deepEqual(suffix.applied, expected.slice(issuedExpected.length).map(entry => entry.file));
+  const suffix = input.database ? await runner.apply()
+    : await withCheckoutOwnerGrantPending(root => makeRunner(() => migrationPool, root).apply());
+  const checkoutGrant = input.database ? { applied: [] } : await proveCheckoutOwnerGrant(loginUrl(m), loginUrl(r), selection, password);
+  const suffixApplied = [...suffix.applied, ...checkoutGrant.applied];
+  assert.deepEqual(suffixApplied, expected.slice(issuedExpected.length).map(entry => entry.file));
+  if (!input.database) await bootstrap.query("DROP ROLE openlup_checkout_owner");
   const installed = (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
   assert.deepEqual(installed.map(({ executed_at: _time, ...row }) => row), expected.map((entry, position) => ({ catalog_path: entry.file, sha256: entry.sha256, position })));
   assert.deepEqual(await runner.status(), { applied: expected.map(entry => entry.file), pending: [] });
@@ -127,11 +131,6 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   try { await assert.rejects(makeRunner(() => switchedSession).status(), /actual_login_or_owner_mismatch/u); }
   finally { await switchedSession.query("RESET ROLE"); }
   const inventory = await observeInventory(manifest.objectInventorySha256);
-  if (!input.database) {
-    await proveCheckoutOwnerGrant(loginUrl(m), loginUrl(r), selection, password);
-    await bootstrap.query("DROP ROLE openlup_checkout_owner");
-  }
-
   // The trusted migrator retains fixed ADMIN edges; runtime and restore cannot create objects.
   const edges = (await bootstrap.query(`SELECT role.rolname AS granted, member.rolname AS member, a.admin_option
     FROM pg_catalog.pg_auth_members a JOIN pg_catalog.pg_roles role ON role.oid=a.roleid
@@ -306,7 +305,7 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
   const finalLedger = (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
   assert.deepEqual(finalLedger, installed);
   return { identities: { migration: m, runtime: r, restore: s, bootstrap: bootstrapLogin, operator: input.roleMode === "operator-provisioned" ? o : null }, mode: input.roleMode, inventory, issuedInventory, issuedLedgerRows: issuedExpected.length, pendingBefore: before.pending.length, interruptedPrefix: prefixStatus.applied.length,
-    appliedAfterResume: resumed.applied.length + suffix.applied.length, ledgerRows: installed.length, replayApplied: 0,
+    appliedAfterResume: resumed.applied.length + suffixApplied.length, ledgerRows: installed.length, replayApplied: 0,
     runtimeProved: true, restoreProved: true, connectionRecipeProved: true,
     shadowMatrixProved: true, refusalsProved: true };
  } finally { await closePostgres(container, pools); }
