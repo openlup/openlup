@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCustomerOrderHistoryReadStore } from "@openlup/platform/account-support";
 import { createPostgresRetryStore, createPostgresSubscriptionCommandStore, createPostgresSubscriptionCommands,
@@ -24,7 +24,7 @@ type Accept = Parameters<Acceptor["accept"]>[0];
 type OfferPolicy = Parameters<typeof createPostgresSubscriptionSaveOfferAcceptor>[0]["offerPolicy"];
 const refused = (reason: string) => ({ outcome: "refused", reason });
 const offerActor = (f: { actor: string; client: string }) => ({ kind: "customer" as const, actorId: f.actor, clientId: f.client });
-function offerBinding(runtime: Pool, failBefore?: RegExp) {
+function offerBinding(runtime: Pool, failBefore?: RegExp, beforeCommit?: (db: PoolClient) => Promise<void>) {
   return { lifecycleTerms: terms,
     async withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) {
       const db = await runtime.connect();
@@ -34,6 +34,7 @@ function offerBinding(runtime: Pool, failBefore?: RegExp) {
           if (failBefore?.test(sql)) await db.query("SELECT 1/0");
           return db.query(sql, values);
         } });
+        await beforeCommit?.(db);
         await db.query("COMMIT");
         return result;
       } catch (error) { await db.query("ROLLBACK"); throw error; }
@@ -73,15 +74,39 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
   it("cx1r_accept_once_and_recover: one concurrent skip, then the next real renewal occurrence", async () => {
     const f = await lifecycleSubject(env.owner), other = await lifecycleSubject(env.owner);
     const service = acceptor(env.runtime), offer = await presented(service, f, "skip");
-    const requests = [1, 2].map(() => ({ ...acceptInput(f, offer.generation), kind: offer.kind }));
-    const outcomes = await Promise.allSettled(requests.map(async input => {
-      const result = await service.accept(input);
-      if (result.outcome === "applied") throw new Error("response lost after commit");
-      return result;
-    }));
-    const winner = requests[outcomes.findIndex(result => result.status === "rejected")];
-    expect(outcomes).toContainEqual({ status: "rejected", reason: new Error("response lost after commit") });
-    expect(outcomes).toContainEqual({ status: "fulfilled", value: refused("subscription_save_offer_consumed") });
+    const mixed = await service.readPresentations({ actor: offerActor(f),
+      subscriptionIds: [f.subscription.toUpperCase(), other.subscription, randomUUID()], now: AT });
+    expect(mixed).toEqual(new Map([[f.subscription, offer]]));
+    const winner = { ...acceptInput({ actor: f.actor.toUpperCase(), client: f.client.toUpperCase(),
+      subscription: f.subscription.toUpperCase() }, offer.generation), kind: offer.kind };
+    expect([winner.actor.actorId, winner.actor.clientId, winner.subscriptionId]).not.toEqual([f.actor, f.client, f.subscription]);
+    let reportHolder!: (pid: number) => void;
+    let releaseHolder!: () => void;
+    const held = new Promise<number>(resolve => { reportHolder = resolve; });
+    const release = new Promise<void>(resolve => { releaseHolder = resolve; });
+    const holding = createPostgresSubscriptionSaveOfferAcceptor({ ...offerBinding(env.runtime, undefined, async db => {
+      reportHolder((await db.query("SELECT pg_backend_pid() AS pid")).rows[0].pid);
+      await release;
+    }), offerPolicy });
+    const applied = holding.accept(winner);
+    const lostReply = applied.then(() => { throw new Error("response lost after commit"); });
+    const delivery = Promise.allSettled([lostReply]);
+    let contender: ReturnType<Acceptor["accept"]> | undefined;
+    try {
+      const pid = await Promise.race([held, applied.then(() => { throw new Error("winner committed before the barrier"); })]);
+      contender = service.accept({ ...winner, idempotencyKey: randomUUID() });
+      void contender.catch(() => undefined);
+      await expect.poll(async () => (await env.owner.query(`SELECT EXISTS (
+        SELECT 1 FROM pg_stat_activity WHERE $1::integer=ANY(pg_blocking_pids(pid)) AND query LIKE '%FOR UPDATE%'
+      ) AS blocked`, [pid])).rows[0].blocked, { timeout: 5000 }).toBe(true);
+    } finally {
+      releaseHolder();
+      await Promise.allSettled([applied, contender]);
+    }
+    const original = await applied;
+    expect(original).toMatchObject({ outcome: "applied" });
+    expect(await delivery).toEqual([{ status: "rejected", reason: new Error("response lost after commit") }]);
+    expect(await contender).toEqual(refused("subscription_save_offer_consumed"));
     const [receipt] = await offerReceipts(env.owner, f.subscription);
     expect(await offerReceipts(env.owner, f.subscription)).toHaveLength(1);
     const digest = createHash("sha256").update(JSON.stringify(["cx1r-accept-v1", f.actor, f.client, f.subscription, offer.generation, "skip", []])).digest("hex");
@@ -93,15 +118,11 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
       { event_type: "subscription.save_offer_accepted", communication_subject_id: null, payload: { kind: "skip", nextCycleNumber: "2" } },
     ]);
     const off = acceptor(env.runtime, { offerPresentation: "off" });
-    const replay = await off.accept({ ...winner, now: later(1) });
-    expect(replay).toMatchObject({ outcome: "replayed", idempotencyKey: winner.idempotencyKey, eventId: receipt.result.eventId,
-      commandFingerprint: receipt.command_fingerprint });
-    expect(replay).not.toHaveProperty("cx1rRequestSha256");
     expect(await createPostgresSubscriptionCommandStore(offerBinding(env.runtime)).apply({
       actorId: f.actor, clientId: f.client, subscriptionId: f.subscription, idempotencyKey: receipt.idempotency_key,
       action: "skip_next_cycle", now: AT, payload: receipt.command.payload,
     })).not.toHaveProperty("cx1rRequestSha256");
-    expect(new Date("nextCycleAt" in replay ? replay.nextCycleAt! : "").toISOString()).toBe(later(240 + 28 * 24));
+    expect(new Date("nextCycleAt" in original ? original.nextCycleAt! : "").toISOString()).toBe(later(240 + 28 * 24));
     expect(await off.accept({ ...winner, actor: { ...winner.actor, clientId: other.client }, subscriptionId: other.subscription }))
       .toEqual(refused("subscription_command_idempotency_conflict"));
     const fresh = { ...winner, idempotencyKey: randomUUID() };
@@ -111,6 +132,18 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     expect(await invoke(f, `offer-cancel:${f.subscription}`, "cancel")).toMatchObject({ status: "applied" });
     expect(await invoke(f, `offer-reactivate:${f.subscription}`, "reactivate", { confirmedChargeTiming: true }, AT, terms)).toMatchObject({ status: "applied" });
     expect(await service.accept(fresh)).toEqual(refused("subscription_save_offer_consumed"));
+    const replay = await off.accept({ ...winner, now: later(1) });
+    expect(replay).toEqual({ ...original, outcome: "replayed" });
+    expect(replay).not.toHaveProperty("cx1rRequestSha256");
+    for (const [column, retained, mismatched] of [
+      ["client_id", f.client, other.client], ["subscription_id", f.subscription, other.subscription],
+    ] as const) {
+      const changeBinding = (value: string) => env.owner.query(`UPDATE public.subscription_command_receipts SET ${column}=$3
+        WHERE actor_id=$1 AND idempotency_key=$2 RETURNING result->>'cx1rRequestSha256' AS digest`, [f.actor, receipt.idempotency_key, value]);
+      expect((await changeBinding(mismatched)).rows).toEqual([{ digest }]);
+      expect(await off.accept(winner)).toEqual(refused("subscription_command_idempotency_conflict"));
+      await changeBinding(retained);
+    }
 
     const due = later(terms.reactivateDelayDays * 24);
     const identity = await call(env.runtime, "subscription_renewal_identity", [f.subscription, due]);
@@ -133,14 +166,30 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     const f = await lifecycleSubject(env.owner);
     await env.owner.query("UPDATE public.subscriptions SET next_cycle_at=next_cycle_at+interval '0.123456 seconds' WHERE id=$1", [f.subscription]);
     const service = acceptor(env.runtime, { defaultOffer: "reschedule" });
+    const obsolete = await presented(service, f, "reschedule");
+    await env.owner.query("UPDATE public.subscriptions SET template_version=template_version+1 WHERE id=$1", [f.subscription]);
     const offer = await presented(service, f, "reschedule");
-    expect(offer.newNextCycleAt).toBe("2026-09-14T12:00:00.123456Z");
-    const unavailable = acceptor(env.runtime, { defaultOffer: "reschedule", rescheduleOfferDays: 100 });
+    const exactTarget = later(13 * 24).replace(".000Z", ".123456Z");
+    expect(offer.newNextCycleAt).toBe(exactTarget);
+    const unavailable = acceptor(env.runtime, { defaultOffer: "reschedule", rescheduleOfferDays: 2_147_483_647 });
+    const read = { actor: offerActor(f), subscriptionIds: [f.subscription], now: AT };
+    expect(await unavailable.readPresentations(read)).toEqual(new Map([[f.subscription, null]]));
     const input = { ...acceptInput(f, offer.generation), kind: offer.kind, newNextCycleAt: offer.newNextCycleAt };
     expect(await unavailable.accept(input)).toEqual(refused("subscription_save_offer_unavailable"));
-    expect(await service.accept({ ...input, newNextCycleAt: "2026-09-14T12:00:00.123457Z" })).toEqual(refused("subscription_save_offer_stale"));
+    expect(obsolete.newNextCycleAt).toBe(offer.newNextCycleAt);
+    expect(await service.accept({ ...input, generation: obsolete.generation })).toEqual(refused("subscription_save_offer_stale"));
+    expect(await service.accept({ ...input, newNextCycleAt: exactTarget.replace(".123456Z", ".123457Z") })).toEqual(refused("subscription_save_offer_stale"));
     expect(await offerReceipts(env.owner, f.subscription)).toEqual([]);
     expect(await service.accept(input)).toMatchObject({ outcome: "applied" });
+    expect((await env.owner.query("SELECT next_cycle_at=$2::timestamptz AS exact FROM public.subscriptions WHERE id=$1",
+      [f.subscription, exactTarget])).rows).toEqual([{ exact: true }]);
+    expect(await unavailable.accept({ ...input, idempotencyKey: randomUUID() })).toEqual(refused("subscription_save_offer_consumed"));
+    const skip = acceptor(env.runtime), skipOffer = await presented(skip, f, "skip");
+    expect(await skip.accept({ ...acceptInput(f, skipOffer.generation), kind: "skip" })).toMatchObject({ outcome: "applied" });
+    expect((await offerEvents(env.owner, f.subscription)).filter(event => event.event_type === "subscription.save_offer_accepted")
+      .map(event => event.payload).sort((a, b) => a.kind.localeCompare(b.kind))).toEqual([
+      { kind: "reschedule", nextCycleNumber: "2" }, { kind: "skip", nextCycleNumber: "2" },
+    ]);
 
     const second = await lifecycleSubject(env.owner);
     const noopService = acceptor(env.runtime, { defaultOffer: "reschedule", rescheduleOfferDays: 0 });
@@ -158,6 +207,40 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     expect(await offerEvents(env.owner, second.subscription)).toEqual([
       { event_type: "subscription.save_offer_accepted", communication_subject_id: null, payload: { kind: "reschedule", nextCycleNumber: "2" } },
     ]);
+  }, 30_000);
+
+  it("cx1r_accept_once_and_recover: admission filters individual presets and fences fresh dispatch", async () => {
+    const f = await lifecycleSubject(env.owner);
+    let allowMonth = true;
+    const pause = createPostgresSubscriptionSaveOfferAcceptor({ ...offerBinding(env.runtime),
+      offerPolicy: { ...offerPolicy, defaultOffer: "pause", allowedPausePresets: ["2_weeks", "1_month"] },
+      admitSubscriptionCommand({ pausePreset }) {
+        if (!allowMonth || pausePreset !== "1_month") throw new Error("starter_pause_preset_not_admitted");
+      },
+    });
+    const offered = await presented(pause, f, "pause");
+    expect(offered.pausePresets).toEqual([{ pausePreset: "1_month", duration: { unit: "months", value: terms.pauseMonths } }]);
+    expect(offered.preselectedPausePreset).toBe("1_month");
+    const before = await lifecycleRows(env.owner);
+    expect(await pause.accept({ ...acceptInput(f, offered.generation), kind: "pause",
+      pausePreset: "2_weeks", duration: { unit: "days", value: terms.pauseDays } })).toEqual(refused("subscription_save_offer_stale"));
+    allowMonth = false;
+    expect(await pause.readPresentations({ actor: offerActor(f), subscriptionIds: [f.subscription], now: AT }))
+      .toEqual(new Map([[f.subscription, null]]));
+    expect(await lifecycleRows(env.owner)).toEqual(before);
+    let deny = false;
+    const skip = createPostgresSubscriptionSaveOfferAcceptor({ ...offerBinding(env.runtime), offerPolicy,
+      admitSubscriptionCommand() {
+        if (deny) throw new Error("starter_subscription_action_not_admitted");
+      },
+    });
+    const skipOffer = await presented(skip, f, "skip");
+    const input = { ...acceptInput(f, skipOffer.generation), kind: skipOffer.kind };
+    deny = true;
+    await expect(skip.accept(input)).rejects.toThrow("starter_subscription_action_not_admitted");
+    expect(await lifecycleRows(env.owner)).toEqual(before);
+    deny = false;
+    expect(await skip.accept(input)).toMatchObject({ outcome: "applied" });
   }, 30_000);
 
   it("cx1r_accept_once_and_recover: pause presets share one occurrence and both private writes roll back", async () => {

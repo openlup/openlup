@@ -328,9 +328,16 @@ async function readOfferState(executor: SubscriptionQueryExecutor, actor: Subscr
       s.status, s.template_version::text, rt.next_cycle_number::text,
       CASE WHEN isfinite(s.next_cycle_at)
         THEN to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END AS next_cycle_at,
-      CASE WHEN target.at BETWEEN $3::timestamptz + make_interval(days=>$6::integer)
-                              AND $3::timestamptz + make_interval(days=>$7::integer)
-        THEN to_char(target.at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END AS slide_target,
+      -- The marker wins before any date arithmetic. Leave one day for
+      -- session-zone conversion at the native timestamp ceiling.
+      CASE WHEN event.id IS NULL AND $5::integer IS NOT NULL AND isfinite(s.next_cycle_at) AND isfinite($3::timestamptz) THEN
+        CASE WHEN $7::integer <= date '294276-12-30' - $3::timestamptz::date THEN
+          CASE WHEN (extract(epoch FROM s.next_cycle_at) + $5::numeric * 86400)
+            BETWEEN extract(epoch FROM $3::timestamptz + make_interval(days=>$6::integer))
+                AND extract(epoch FROM $3::timestamptz + make_interval(days=>$7::integer))
+            THEN to_char((s.next_cycle_at AT TIME ZONE 'UTC') + make_interval(days=>$5::integer),'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END
+        END
+      END AS slide_target,
       $3::timestamptz <= s.next_cycle_at - make_interval(hours=>s.edit_window_hours) AS edit_open,
       ${paymentBlockerSql("s.id")} AS payment_blocker,
       CASE WHEN $9::boolean AND $4::text IN ('skip','reschedule') THEN
@@ -345,8 +352,6 @@ async function readOfferState(executor: SubscriptionQueryExecutor, actor: Subscr
       marker.key AS marker_key, event.id IS NOT NULL AS consumed
     FROM public.subscriptions s
     LEFT JOIN public.subscription_renewal_terms rt ON rt.subscription_id=s.id
-    CROSS JOIN LATERAL (SELECT CASE WHEN isfinite(s.next_cycle_at)
-      THEN s.next_cycle_at + $5::integer * interval '24 hours' END AS at) target
     CROSS JOIN LATERAL (SELECT CASE WHEN rt.next_cycle_number IS NOT NULL THEN
       'save-offer:v1:' || encode(sha256(convert_to(
         format('["cx1r-occurrence-v1","%s","%s","%s"]',s.id,$4::text,rt.next_cycle_number),'UTF8')),'hex') END AS key) marker
@@ -357,28 +362,51 @@ async function readOfferState(executor: SubscriptionQueryExecutor, actor: Subscr
   return rows;
 }
 
-function derivePresentation(row: Record<string, unknown> | undefined, binding: OfferBinding): Presentation | null {
+async function allowsPresentation(admit: SubscriptionCommandAdmission | undefined, row: Record<string, unknown>,
+  action: "skip" | "slide" | "pause", pausePreset: PauseOption["pausePreset"] | null): Promise<boolean> {
+  if (!admit) return true;
+  try {
+    await admit({ action, pausePreset, reason: null, subscriptionStatus: String(row.status),
+      paymentBlocker: row.payment_blocker == null ? null : String(row.payment_blocker) });
+    return true;
+  } catch (error) {
+    if (!(error instanceof Error) || !/^[a-z][a-z0-9_]*$/u.test(error.message)) throw error;
+    return false;
+  }
+}
+
+async function derivePresentation(row: Record<string, unknown> | undefined, binding: OfferBinding): Promise<Presentation | null> {
   const policy = binding.offerPolicy;
   if (!row || row.status !== "active" || row.next_cycle_number == null || typeof row.next_cycle_at !== "string"
     || policy.offerPresentation !== "ask_permission_first") return null;
   if (policy.defaultOffer !== "pause" && !row.edit_open) return null;
   if (policy.defaultOffer === "reschedule" && typeof row.slide_target !== "string") return null;
   const terms = lifecycleTerms(binding.lifecycleTerms);
+  let { allowedPausePresets, preselectedPausePreset } = policy;
+  if (policy.defaultOffer === "pause") {
+    if (!allowedPausePresets.includes(preselectedPausePreset)) return null;
+    const admitted: PauseOption["pausePreset"][] = [];
+    for (const preset of allowedPausePresets) {
+      if (await allowsPresentation(binding.admitSubscriptionCommand, row, "pause", preset)) admitted.push(preset);
+    }
+    if (!admitted.length) return null;
+    allowedPausePresets = admitted;
+    if (!admitted.includes(preselectedPausePreset)) preselectedPausePreset = admitted[0];
+  }
   const generation = offerDigest(["cx1r-presentation-v1", row.actor_id, row.client_id, row.id, row.status,
     row.next_cycle_number, row.template_version, row.next_cycle_at, policy.offerPresentation, policy.defaultOffer,
-    policy.allowedPausePresets, policy.preselectedPausePreset, policy.rescheduleOfferDays,
+    allowedPausePresets, preselectedPausePreset, policy.rescheduleOfferDays,
     terms.pauseDays, terms.pauseMonths, terms.slideMinDays, terms.slideMaxDays]);
   const base = { generation, subscriptionRef: String(row.id) };
   if (policy.defaultOffer === "skip") return { ...base, kind: "skip" };
   if (policy.defaultOffer === "reschedule") return { ...base, kind: "reschedule", newNextCycleAt: String(row.slide_target) };
-  if (!policy.allowedPausePresets.includes(policy.preselectedPausePreset)) return null;
   const durations: Record<PauseOption["pausePreset"], PauseOption["duration"]> = {
     "2_weeks": { unit: "days", value: terms.pauseDays },
     "1_month": { unit: "months", value: terms.pauseMonths },
     indefinite: { unit: "indefinite" },
   };
-  return { ...base, kind: "pause", preselectedPausePreset: policy.preselectedPausePreset,
-    pausePresets: policy.allowedPausePresets.map(pausePreset => ({ pausePreset, duration: durations[pausePreset] })) };
+  return { ...base, kind: "pause", preselectedPausePreset,
+    pausePresets: allowedPausePresets.map(pausePreset => ({ pausePreset, duration: durations[pausePreset] })) };
 }
 
 function matchesPresentation(presentation: Presentation, input: OfferAcceptance) {
@@ -400,18 +428,10 @@ export function createPostgresSubscriptionSaveOfferAcceptor(binding: OfferBindin
       const rows = await binding.withTransaction(db => readOfferState(db, actor, subscriptionIds, now, binding.offerPolicy.defaultOffer, binding, true));
       const presentations = new Map<string, Presentation | null>();
       for (const row of rows) {
-        let presentation = row.consumed || !row.action_available ? null : derivePresentation(row, binding);
-        if (presentation && presentation.kind !== "pause" && row.payment_blocker === "payment_blocked") presentation = null;
-        if (presentation && binding.admitSubscriptionCommand) {
-          try {
-            await binding.admitSubscriptionCommand({
-              action: presentation.kind === "reschedule" ? "slide" : presentation.kind,
-              pausePreset: presentation.kind === "pause" ? presentation.preselectedPausePreset : null,
-              reason: null, subscriptionStatus: String(row.status),
-              paymentBlocker: row.payment_blocker == null ? null : String(row.payment_blocker),
-            });
-          } catch (error) {
-            if (!(error instanceof Error) || !/^[a-z][a-z0-9_]*$/u.test(error.message)) throw error;
+        let presentation = row.consumed || !row.action_available ? null : await derivePresentation(row, binding);
+        if (presentation && presentation.kind !== "pause") {
+          const action = presentation.kind === "reschedule" ? "slide" : "skip";
+          if (row.payment_blocker === "payment_blocked" || !await allowsPresentation(binding.admitSubscriptionCommand, row, action, null)) {
             presentation = null;
           }
         }
@@ -446,7 +466,7 @@ export function createPostgresSubscriptionSaveOfferAcceptor(binding: OfferBindin
         await db.query("SELECT 1 FROM public.subscription_renewal_terms WHERE subscription_id=$1::uuid FOR UPDATE", [subscriptionId]);
         const [row] = await readOfferState(db, actor, [subscriptionId], now, kind, binding);
         if (row?.consumed) return { outcome: "refused", reason: "subscription_save_offer_consumed" };
-        const offer = derivePresentation(row, binding);
+        const offer = await derivePresentation(row, binding);
         if (!offer) return { outcome: "refused", reason: "subscription_save_offer_unavailable" };
         if (!matchesPresentation(offer, input)) return { outcome: "refused", reason: "subscription_save_offer_stale" };
 
