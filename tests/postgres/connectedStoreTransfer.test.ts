@@ -1863,7 +1863,8 @@ it("destination_receipt_privacy_round_trip", async () => {
   const withheld = (ref: string) => ({ snapshotRef: ref, issuedAt: expect.stringMatching(/Z$/u), evidenceDisposition: "available",
     verification: { status: "failed", code: "destination_digest_mismatch", field: "documentDigest" } });
   const included = ["private checkout destination documents", "destination document expiry and erasure metadata",
-    "verified order binding pins", "order binding erasure markers"];
+    "verified order binding pins", "order binding erasure markers",
+    "verified subscription selection pins", "subscription selection erasure markers"];
   await alterStoredBytes(firstDocument.binding.snapshotRef);
   const recovery = await documentExport(issued);
   expect(recovery).toEqual({ contributorId: documents.id, version: "commerce.destination-documents.v1",
