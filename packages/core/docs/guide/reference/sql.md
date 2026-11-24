@@ -220,7 +220,7 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261125310000_function_search_path_pg_temp.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125310000_function_search_path_pg_temp.sql) |
 | [`20261126010000_settings_wave1_method_expiry_and_claim_hold.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql) |
 | [`20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql) |
-| [`20261126023000_catalog_admission_issue_reader.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261126023000_catalog_admission_issue_reader.sql) |
+| [`20261126040000_catalog_admission_issue_reader.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261126040000_catalog_admission_issue_reader.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

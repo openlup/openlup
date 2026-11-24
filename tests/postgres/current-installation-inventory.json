@@ -7,7 +7,7 @@
         "objectInventorySha256": "1c6848ca616c1026adc3295b27bf8c227d9a8b30d60482bceb334796772ae512",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
+            "file": "db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql",
             "sha256": "1ca64162c40c8ef19a6146e0ea703cc427d473ac4d10275b1f50567ffbc8009e"
           },
           {
@@ -822,7 +822,7 @@
         "objectInventorySha256": "b56472cafe54d8051a46cd7b083c794196ee3c31140a5b38ab66d5fae21ef727",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
+            "file": "db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql",
             "sha256": "1ca64162c40c8ef19a6146e0ea703cc427d473ac4d10275b1f50567ffbc8009e"
           },
           {
@@ -1661,7 +1661,7 @@
         "objectInventorySha256": "3711f3447beaebdfdb53496f799f11f898576377286c076b0dc66493f2b55077",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
+            "file": "db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql",
             "sha256": "1ca64162c40c8ef19a6146e0ea703cc427d473ac4d10275b1f50567ffbc8009e"
           },
           {
@@ -2500,7 +2500,7 @@
         "objectInventorySha256": "5f530a960112e8e3107a1a43ba5f0d570519e5fe79cb84ede5a7bf5b8bb10350",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
+            "file": "db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql",
             "sha256": "1ca64162c40c8ef19a6146e0ea703cc427d473ac4d10275b1f50567ffbc8009e"
           },
           {
@@ -3331,7 +3331,7 @@
         "objectInventorySha256": "6752e66d88fcce62fe950a90beb91e402c6eb433c84ab8623ab258f7bd714f48",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
+            "file": "db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql",
             "sha256": "1ca64162c40c8ef19a6146e0ea703cc427d473ac4d10275b1f50567ffbc8009e"
           },
           {

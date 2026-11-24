@@ -808,7 +808,7 @@
         "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"
       },
       {
-        "file": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
+        "file": "db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql",
         "sha256": "1ca64162c40c8ef19a6146e0ea703cc427d473ac4d10275b1f50567ffbc8009e"
       }
     ],
@@ -1644,7 +1644,7 @@
           "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"
         },
         {
-          "file": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
+          "file": "db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql",
           "sha256": "1ca64162c40c8ef19a6146e0ea703cc427d473ac4d10275b1f50567ffbc8009e"
         }
       ],
@@ -2480,7 +2480,7 @@
           "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"
         },
         {
-          "file": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
+          "file": "db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql",
           "sha256": "1ca64162c40c8ef19a6146e0ea703cc427d473ac4d10275b1f50567ffbc8009e"
         }
       ],
@@ -3497,8 +3497,8 @@
       "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"
     },
     {
-      "file": "20261126023000_catalog_admission_issue_reader.sql",
-      "source": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
+      "file": "20261126040000_catalog_admission_issue_reader.sql",
+      "source": "db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql",
       "sha256": "1ca64162c40c8ef19a6146e0ea703cc427d473ac4d10275b1f50567ffbc8009e"
     },
     {
