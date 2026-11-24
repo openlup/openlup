@@ -4151,6 +4151,148 @@ export declare function checkoutOrchestrationFailureDetails(reason: string | nul
     diagnosticReason?: string;
 };
 ```
+## dist/commerce/server/commerceMoneyLimitsV2.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../../data/index.js";
+/** @experimental Coordinates of one installed payment rail. */
+export interface LimitsTuple {
+    installationRef: string;
+    channelKey: string;
+    methodKey: string;
+    providerKey: string;
+    accountRef: string;
+    mode: string;
+    currency: string;
+}
+/** @experimental Installation-owned terms in currency minor units. */
+export interface CommerceMoneyLimitsV2 extends LimitsTuple {
+    schemaVersion: 2;
+    profileRef: string;
+    minMinor: number;
+    maxMinor: number;
+    active: boolean;
+}
+/** @experimental Use null for the initial insert or the inspected revision to update. */
+export interface InstallLimitsInput {
+    value: CommerceMoneyLimitsV2;
+    expectedRevision: number | null;
+}
+declare const remedies: {
+    readonly money_limits_invalid_input: "Correct the indicated field using the documented payment limits input.";
+    readonly money_limits_revision_conflict: "Inspect the tuple with the owner binding. Retry the initial insert if absent, or deliberately resubmit the intended change with the observed revision.";
+    readonly money_limits_revision_exhausted: "Have the installation owner qualify a replacement rail.";
+};
+declare const refused: (code: keyof typeof remedies, field: string) => {
+    kind: "refused";
+    code: string;
+    field: string;
+    remedy: "Correct the indicated field using the documented payment limits input." | "Inspect the tuple with the owner binding. Retry the initial insert if absent, or deliberately resubmit the intended change with the observed revision." | "Have the installation owner qualify a replacement rail.";
+};
+/** @experimental An installed revision or a refusal without a repair value. */
+export type InstallLimitsResult = {
+    kind: "installed";
+    value: CommerceMoneyLimitsV2;
+    revision: number;
+} | ReturnType<typeof refused>;
+/** @experimental Runtime observation of active terms for the bound rail. */
+export type LimitsReadResult = {
+    present: false;
+} | {
+    present: true;
+    value: CommerceMoneyLimitsV2 & {
+        active: true;
+    };
+    revision: number;
+};
+/** @experimental Owner observation, including inactive terms and their revision. */
+export type LimitsInspectionResult = {
+    present: false;
+    active: null;
+    revision: null;
+    value: null;
+} | {
+    present: true;
+    active: boolean;
+    revision: number;
+    value: CommerceMoneyLimitsV2;
+};
+/** @experimental Install one set of payment limits with the migration-owner executor. */
+export declare function installCommerceMoneyLimitsV2(owner: PgQueryExecutor, input: InstallLimitsInput): Promise<InstallLimitsResult>;
+/** @experimental Inspect the active or inactive revision using the migration owner. */
+export declare function inspectCommerceMoneyLimitsV2(owner: PgQueryExecutor, scope: LimitsTuple): Promise<LimitsInspectionResult>;
+/** @experimental Bind a restricted reader to the intended installation and rail. */
+export declare function bindCommerceMoneyLimitsV2Reader(db: PgQueryExecutor, scope: LimitsTuple): () => Promise<LimitsReadResult>;
+/** @experimental Describe the installed limits for settings discovery. */
+export declare function describeCommerceMoneyLimitsV2Setting(): {
+    readonly schemaVersion: 1;
+    readonly key: "commerce.money_limits.v2";
+    readonly domain: "pricing";
+    readonly kind: "installed";
+    readonly goal: "Install and inspect payment amount limits for a qualified rail.";
+    readonly schema: Record<string, unknown>;
+    readonly rules: readonly [{
+        readonly code: "money_limits_invalid_input";
+        readonly path: readonly [];
+        readonly description: "Correct the indicated field using the documented payment limits input.";
+    }];
+    readonly examples: readonly [{
+        readonly value: {
+            readonly schemaVersion: 2;
+            readonly installationRef: "store-a";
+            readonly channelKey: "online";
+            readonly methodKey: "card";
+            readonly providerKey: "processor-a";
+            readonly accountRef: "merchant-a";
+            readonly mode: "test";
+            readonly currency: "EUR";
+            readonly profileRef: "standard";
+            readonly minMinor: 1;
+            readonly maxMinor: 10000;
+            readonly active: true;
+        };
+    }, {
+        readonly value: {
+            readonly maxMinor: 0;
+            readonly schemaVersion: 2;
+            readonly installationRef: "store-a";
+            readonly channelKey: "online";
+            readonly methodKey: "card";
+            readonly providerKey: "processor-a";
+            readonly accountRef: "merchant-a";
+            readonly mode: "test";
+            readonly currency: "EUR";
+            readonly profileRef: "standard";
+            readonly minMinor: 1;
+            readonly active: true;
+        };
+        readonly code: "money_limits_invalid_input";
+    }];
+    readonly fallback: null;
+    readonly defaultBasis: {
+        readonly kind: "neutral";
+    };
+    readonly whyThisDefault: "The installation owner supplies the allowed interval for an opted-in rail.";
+    readonly absentMeans: {
+        readonly description: "No payment limits are installed for the selected rail.";
+        readonly source: "Native owner inspection";
+        readonly value: null;
+    };
+    readonly runtime: {
+        readonly level: "read-only";
+        readonly reason: "Connected show requires a native owner inspection binding.";
+    };
+    readonly change: {
+        readonly reference: "OpenLup guide, Quote prices, Install and inspect payment limits";
+    };
+    readonly effect: {
+        readonly appliesTo: "Fresh opted-in quotes for the selected rail";
+        readonly frozenOn: readonly ["Sealed quotes retain their terms."];
+        readonly impact: "money";
+    };
+};
+export {};
+```
 ## dist/commerce/server/commerceOmsCancelOrderHandler.d.ts
 
 ```ts
@@ -5396,6 +5538,8 @@ export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, Ch
 export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation } from "./checkoutRecoveryReminderSchedule.js";
 export { CheckoutRecoveryScheduleChangeBlockedError } from "./checkoutRecoveryReminderSchedule.js";
 export { catalogAdmissionRefusal } from "./catalogAdmissionRefusal.js";
+export { bindCommerceMoneyLimitsV2Reader, describeCommerceMoneyLimitsV2Setting, inspectCommerceMoneyLimitsV2, installCommerceMoneyLimitsV2, } from "./commerceMoneyLimitsV2.js";
+export type { CommerceMoneyLimitsV2, InstallLimitsInput, InstallLimitsResult, LimitsInspectionResult, LimitsReadResult, LimitsTuple, } from "./commerceMoneyLimitsV2.js";
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 

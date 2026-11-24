@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "@openlup/platform/operations/contracts";
 import { describeRenewalStockProtectionSetting, renewalStockProtectionPreviewResult } from "@openlup/platform/inventory";
+import { describeCommerceMoneyLimitsV2Setting } from "@openlup/platform/commerce/server";
 import { describeTaxCoverageSetting } from "@openlup/platform/tax";
 import { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "@openlup/platform/operations/server";
 
@@ -38,7 +39,8 @@ function readSettingDescriptors(root: string): readonly SourceDescriptor[] {
       throw new Error(`Invalid settings data in ${path}`, { cause });
     }
   });
-  return [describeRenewalStockProtectionSetting(), describeTaxCoverageSetting(), ...data];
+  const moneyLimits: SettingDescriptor = describeCommerceMoneyLimitsV2Setting();
+  return [describeRenewalStockProtectionSetting(), describeTaxCoverageSetting(), moneyLimits, ...data];
 }
 
 function settingCommand(key: string, connected = false): string {
@@ -80,6 +82,7 @@ const searchTerms: Record<string, string> = {
   "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
   "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",
   "tax.adapter": "exclusive tax, tax calculation port, tax adapter binding, tax scope",
+  "commerce.money_limits.v2": "payment limits, rail bounds, payment amount, minor units",
   "tax.coverage": "tax coverage, merchant registration, jurisdiction, tax kind, effective dates, acknowledgement, coverage history",
   "tax.classMap": "tax class map, provider tax code, market pack, class-map revision",
   "tax.localRateTable": "local tax rules, jurisdiction, tax class, effective interval, rate, exemption, fixed fee, legal basis, rounding, digest",
@@ -160,6 +163,20 @@ const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly Set
     },
   },
   {
+    code: "money_limits_reader_unbound",
+    path: ["paymentLimits"],
+    rule: "Connected show requires owner inspection for the intended installation and rail.",
+    hint: "Supply the native owner inspection in the app's settings binding.",
+    remediation: { retry: true, action: "Bind the native owner inspection to the intended installation and rail, then retry connected show." },
+  },
+  {
+    code: "money_limits_operation_unavailable",
+    path: ["inspection"],
+    rule: "The native payment limits inspection could not complete.",
+    hint: "Check the installation and its owner connection.",
+    remediation: { retry: true, action: "Check the native app binding, driver setup, database connection and TLS, operation-role privileges, and installed migrations. Then retry the same operation." },
+  },
+  {
     code: "commerce_setting_runtime_not_ready",
     path: ["key"],
     rule: "Live settings changes require a qualified runtime consumer.",
@@ -212,7 +229,7 @@ export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<s
   const descriptors = readSettingDescriptors(root);
   const refusals = settingRefusals(descriptors);
   const previewOutputSchema = settingsToolOutputSchema(renewalStockProtectionPreviewResult,
-    settingRefusalSchema(refusals.map(({ code }) => code)), settingsVersion);
+    settingRefusalSchema(refusals.filter(({ remediation }) => remediation.command !== undefined).map(({ code }) => code)), settingsVersion);
   const settingsCatalogue = [...descriptors]
     .sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
     .map(describeSetting);
@@ -243,6 +260,7 @@ export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<s
       ] : [`- ${entry.runtime.reason}`]),
       "",
       `Show offline: \`show ${entry.key} --json\`.`,
+      ...(entry.key === "commerce.money_limits.v2" ? ["", "[Install, inspect and roll back payment limits](../build/quote-prices.md#install-and-inspect-payment-limits)."] : []),
       "",
     ]),
   ].join("\n");

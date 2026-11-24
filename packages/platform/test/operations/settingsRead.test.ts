@@ -564,27 +564,50 @@ it("passes exact SKU identifiers through and deduplicates only exact matches", a
   expect(run).toHaveBeenCalledExactlyOnceWith(proposed, expect.objectContaining({ skus: ["SKU-1", " SKU-1 "] }));
 });
 
+it("returns a command-free limits refusal with the original non-enumerable cause", async () => {
+  const key = "commerce.money_limits.v2";
+  const original = new Error("synthetic connection failure");
+  const unavailable = Object.assign(new Error("money_limits_operation_unavailable", { cause: original }), {
+    code: "money_limits_operation_unavailable", field: "/inspection",
+  });
+  const result = await showSetting({ key }, { [key]: async () => { throw unavailable; } });
+  if (!("refusal" in result)) throw new Error("Expected a settings refusal");
+  expect(Reflect.ownKeys(result.refusal).filter(key => key !== "stack").sort()).toEqual(["cause", "code", "hint", "path", "remediation", "rule"]);
+  expect(Object.getPrototypeOf(result.refusal)).toBe(Object.prototype);
+  expect(Object.getOwnPropertyDescriptor(result.refusal, "cause")).toMatchObject({ enumerable: false, value: original });
+  expect(result.refusal).toEqual({
+    code: "money_limits_operation_unavailable", path: ["inspection"], rule: "The native payment limits inspection could not complete.",
+    hint: "Check the installation and its owner connection.",
+    remediation: { retry: true, action: "Check the native app binding, driver setup, database connection and TLS, operation-role privileges, and installed migrations. Then retry the same operation." },
+  });
+});
+
 it("pins strict read-only schemas for the five binary tools", () => {
   const expected = readFileSync(new URL("./settingsReadToolSchemas.main.json", import.meta.url), "utf8");
   const tools = settingsMcpTools(renewalStockProtectionPreviewResult);
   const { refusals } = JSON.parse(readFileSync(new URL("../../settings-refusals.json", import.meta.url), "utf8")) as {
     refusals: { code: string }[];
   };
-  const codes = refusals.map(({ code }) => code);
-  type CodeField = { properties: { code: { enum?: string[] } } };
+  const commandFree = ["money_limits_reader_unbound", "money_limits_operation_unavailable"];
+  const codes = refusals.map(({ code }) => code).filter(code => !commandFree.includes(code));
   const definitions = structuredClone(tools.map(({ definition }) => definition));
-  for (const { name, outputSchema } of definitions) {
-    const [result, failure] = (outputSchema as { anyOf: [
-      { anyOf: [unknown, { properties: { explanation: CodeField } }] },
-      { properties: { refusal: CodeField } },
-    ] }).anyOf;
-    const codeFields = [failure.properties.refusal];
-    if (name === "settings_explain") codeFields.push(result.anyOf[1].properties.explanation);
-    for (const { properties: { code } } of codeFields) {
-      expect(code.enum, name).toContain("tax_invalid_input");
-      expect(code.enum, name).toEqual(codes);
-      delete code.enum;
+  function collectCodes(node: unknown): string[][] {
+    if (!node || typeof node !== "object") return [];
+    if ("properties" in node) {
+      const fields = node.properties as { code?: { enum?: string[] } };
+      if (fields.code?.enum) {
+        const values = fields.code.enum;
+        delete fields.code.enum;
+        return [values];
+      }
     }
+    return Object.values(node).flatMap(collectCodes);
+  }
+  for (const { name, outputSchema } of definitions) {
+    const found = collectCodes(outputSchema);
+    expect(found, name).toContainEqual(codes);
+    if (name === "settings_show" || name === "settings_explain") expect(found, name).toContainEqual(commandFree);
+    else expect(found, name).not.toContainEqual(commandFree);
   }
   expect(JSON.stringify(definitions) + "\n").toBe(expected);
   const refusal = refuseSettingsPreview("commerce_setting_unknown");

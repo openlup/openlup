@@ -283,6 +283,7 @@ const order = [
   "commerce_destinations", "commerce_destination_bindings", "commerce_destination_v2_receipts",
   "commerce_destination_v2_documents", "commerce_destination_v2_checkout_selections", "commerce_destination_v2_order_bindings",
   "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts",
+  "commerce_money_limits_v2",
   "tax_calculations",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "fulfillment_dispatch_refs", "fulfillment_paid_handoffs", "fulfillment_observations", "fulfillment_stock_movements",

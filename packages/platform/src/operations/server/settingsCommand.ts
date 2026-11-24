@@ -2,8 +2,8 @@ import { parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
 import { taxCoverageV1Schema } from "../../tax/contracts/index.js";
-import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue, settingsEntriesWithAppSettings } from "./settingsCatalog.js";
-import { admitDatabaseUrl, refuseCoverageRead, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
+import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue, moneyLimitsOwnerReaderKey, moneyLimitsSettingKey, moneyLimitsUnbound, moneyLimitsUnavailable, settingsEntriesWithAppSettings } from "./settingsCatalog.js";
+import { admitDatabaseUrl, refuseCoverageRead, refuseMoneyLimitsRead, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
 import { settingDescriptorSchema, toolInputSchema } from "./toolSchema.js";
 import {
   explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting,
@@ -626,7 +626,10 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
         return [result];
       }
       const readers = bindings?.readers;
-      if (!readers || !Object.hasOwn(readers, key!) || typeof readers[key!] !== "function") {
+      const limitsShow = key === moneyLimitsSettingKey;
+      const readerKey = limitsShow ? moneyLimitsOwnerReaderKey : key!;
+      if (!readers || !Object.hasOwn(readers, readerKey) || typeof readers[readerKey] !== "function") {
+        if (limitsShow) return [refuseMoneyLimitsRead(undefined, true), 74];
         if (key === "tax.coverage") return [refuseCoverageRead(undefined), 74];
         return [unavailable(host && !values.app ? {
           rule: "A connected read requires an application settings reader for this key.",
@@ -646,13 +649,15 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
           },
         })];
       }
-      const result = await showSetting({ key }, readers);
-      return [result, "refusal" in result && result.refusal.code === "commerce_setting_read_unavailable" ? 74 : undefined];
+      const result = await showSetting({ key }, limitsShow ? { [moneyLimitsSettingKey]: readers[readerKey]! } : readers);
+      const failed = "refusal" in result && ["commerce_setting_read_unavailable", moneyLimitsUnbound, moneyLimitsUnavailable].includes(result.refusal.code);
+      return [result, failed ? 74 : undefined];
     } finally { await bindings?.close?.(); }
   }
   let outcome: [Result, number?];
   try { outcome = await dispatch(); }
   catch (error) {
+    if (!preview && key === moneyLimitsSettingKey) return emit(refuseMoneyLimitsRead(error), 74);
     if (!preview && key === "tax.coverage") return emit(refuseCoverageRead(error), 74);
     const hint = error instanceof Error && error.message === "NODE_PG_FORCE_NATIVE"
       ? "Unset NODE_PG_FORCE_NATIVE for this command to use the JavaScript PostgreSQL client, then retry."

@@ -9173,6 +9173,34 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "commerce-money-limits",
+        "path": "db/platform/migrations/20261126600000_commerce_money_limits_v2.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_money_limits_v2_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_money_limits_read_v2(text,text,text,text,text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_money_limits_v2_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "commerce_money_limits_v2_guard",
+            "table": "public.commerce_money_limits_v2",
+            "sha256": "2bed7ee2ff74a8e8d6a728d6615258589d7798bad0e8a919eabcce2cd1b22cab"
+          }
+        ]
       }
     ]
   },
@@ -13078,6 +13106,27 @@
           "signature": "public.tax_calculation_complete_v1(jsonb)",
           "beforeSha256": null,
           "afterSha256": "ed2705af4b71a473b5d91625b04d33363391153dc21874bc0a2b949c4a1f6bbc"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261126600000_commerce_money_limits_v2.sql",
+      "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5",
+      "functions": [
+        {
+          "signature": "public.commerce_money_limits_v2_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "fdfef8ba8a81017d456eed603eb84eb63f5a732caf81855625e6adf709cddcc0"
+        },
+        {
+          "signature": "public.commerce_money_limits_read_v2(text,text,text,text,text,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "0c3477ad09b3ff96cab74e13cb9fbd8b3552fce3296a540277becd364fad705e"
+        },
+        {
+          "signature": "public.commerce_money_limits_v2_guard()",
+          "beforeSha256": null,
+          "afterSha256": "bc32c98ace7773f53449459fccc3bda40d563ca33a0a5447cc6b6a4dcad20df3"
         }
       ]
     }

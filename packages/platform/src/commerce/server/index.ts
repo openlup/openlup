@@ -215,3 +215,11 @@ export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSc
 export { CheckoutRecoveryScheduleChangeBlockedError } from "./checkoutRecoveryReminderSchedule.js";
 
 export { catalogAdmissionRefusal } from "./catalogAdmissionRefusal.js";
+
+export {
+  bindCommerceMoneyLimitsV2Reader, describeCommerceMoneyLimitsV2Setting,
+  inspectCommerceMoneyLimitsV2, installCommerceMoneyLimitsV2,
+} from "./commerceMoneyLimitsV2.js";
+export type {
+  CommerceMoneyLimitsV2, InstallLimitsInput, InstallLimitsResult, LimitsInspectionResult, LimitsReadResult, LimitsTuple,
+} from "./commerceMoneyLimitsV2.js";
