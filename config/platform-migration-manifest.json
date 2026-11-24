@@ -798,7 +798,7 @@
       "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
     },
     {
-      "file": "db/platform/migrations/20261125340000_tax_calculation_claim_seal.sql",
+      "file": "db/platform/migrations/20261126021000_tax_calculation_claim_seal.sql",
       "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
     }
   ],
@@ -1626,7 +1626,7 @@
         "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
       },
       {
-        "file": "db/platform/migrations/20261125340000_tax_calculation_claim_seal.sql",
+        "file": "db/platform/migrations/20261126021000_tax_calculation_claim_seal.sql",
         "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
       }
     ],
@@ -2454,7 +2454,7 @@
         "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
       },
       {
-        "file": "db/platform/migrations/20261125340000_tax_calculation_claim_seal.sql",
+        "file": "db/platform/migrations/20261126021000_tax_calculation_claim_seal.sql",
         "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
       }
     ],
