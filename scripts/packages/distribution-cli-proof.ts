@@ -725,6 +725,12 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     });
     if (to.files["package.json"]?.includes('"catalogue:check:source"'))
       proveStarterCatalogueWrappers(app, dirname(app), to.files["package.json"]);
+    if (Object.hasOwn(to.files, "lifecycle-refusals.mjs")) {
+      assert(!Object.keys(to.files).some(path => path.startsWith(".context/catalogue-builds/")));
+      const table = JSON.parse(execFileSync(process.execPath, [starterLifecycle, "refusals", "--json"],
+        { cwd: app, env: isolatedConsumerEnv(), encoding: "utf8" }));
+      assert.equal(typeof table.starter_catalogue_build_missing?.fix, "string");
+    }
     if (retireCatalogue) phase("starter-catalogue-guided-consolidation", () => {
       if (!pair.pristine) renameSync(join(app, retiredCatalogueFile), join(app, "owned/catalogue-archive.json"));
       else rmSync(join(app, retiredCatalogueFile));

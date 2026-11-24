@@ -3,19 +3,21 @@ import { copyFile, mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
+import { starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
+import { installationFailure, installationFinding, refusal } from './installation/refusals.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const [command, ...args] = process.argv.slice(2);
 const packageNames = ['core', 'outbox', 'platform'];
 const installationHintLimit = 240;
-const knownStarterRefusal = /^(?:starter_[a-z_]+|inventory_renewal_protection_policy_invalid|checkout_recovery_reminder_schedule_invalid|saved_address_policy_invalid|starter_locale_unsupported: [A-Za-z0-9_-]{1,32}|starter_locale_copy_missing: [A-Za-z0-9_.\[\]-]{1,120} \([a-z]{2}\))$/;
+const json = args.includes('--json');
 
-function run(executable, argv, input) {
+function run(executable, argv, input, toStderr = false) {
   execFileSync(executable, argv, { cwd: root,
-    stdio: input === undefined ? 'inherit' : ['pipe', 'inherit', 'inherit'],
+    stdio: [input === undefined ? 'inherit' : 'pipe', toStderr ? 2 : 'inherit', 'inherit'],
     ...(input === undefined ? {} : { input }) });
 }
 
@@ -25,19 +27,95 @@ function delegate(executable, argv) {
   process.exitCode = result.status ?? 1;
 }
 
-function configurationArgument(argv) {
+function lifecycleOptions(argv, allowConfiguration = true) {
   let configuration;
-  for (let index = 0; index < argv.length; index += 2) {
-    if (argv[index] !== '--configuration') throw new Error('starter_argument_unknown');
+  let jsonSeen = false;
+  for (let index = 0; index < argv.length; index++) {
+    if (argv[index] === '--json') {
+      if (jsonSeen) throw new Error('starter_argument_duplicate');
+      jsonSeen = true;
+      continue;
+    }
+    if (!allowConfiguration || argv[index] !== '--configuration') throw new Error('starter_argument_unknown');
     if (configuration !== undefined) throw new Error('starter_argument_duplicate');
-    const value = argv[index + 1];
+    const value = argv[++index];
     if (!value || value.startsWith('--')) throw new Error('starter_argument_value_required');
     configuration = value;
   }
   return configuration;
 }
 
-if (command === 'candidate') {
+const argumentObserved = {
+  starter_argument_unknown: 'The lifecycle command received an unsupported option.',
+  starter_argument_duplicate: 'The lifecycle command received the same option more than once.',
+  starter_argument_value_required: 'The configuration option has no value.',
+};
+function commandRefusal(error, stage, allowLegacy = false) {
+  const known = installationFinding(error);
+  if (known) return known;
+  const code = error instanceof Error && error.message;
+  const guidance = allowLegacy && code && starterGuidance(code);
+  if (!guidance) return installationFinding(installationFailure(error, stage, 'launch'));
+  const { cause = 'The selected configuration failed a starter prerequisite.', fix, recheck } = guidance;
+  const observed = Object.hasOwn(argumentObserved, code) ? argumentObserved[code] : 'The starter refused the selected configuration.';
+  return installationFinding(refusal(code, stage, observed, cause,
+    command === 'refusals' ? 'Use `./lifecycle refusals` with at most one `--json` option.' : fix,
+    command === 'refusals' ? 'Repeat the refusals command with the corrected options.' : recheck));
+}
+
+function installReport(configuration, packs, finding) {
+  return { formatVersion: 1, state: finding ? 'violated' : 'satisfied', exitCode: finding ? 2 : 0,
+    configuration, packs, findings: finding ? [finding] : [] };
+}
+
+function emit(report) {
+  process.exitCode = report.exitCode;
+  return new Promise((done, fail) => process.stdout.write(JSON.stringify(report) + '\n', error => error ? fail(error) : done()));
+}
+
+const fields = (row, keys) => row && typeof row === 'object' && !Array.isArray(row)
+  && Object.keys(row).length === keys.length && keys.every(key => Object.hasOwn(row, key));
+async function readInstallReport(argv, configuration) {
+  const child = spawn('docker', argv, { cwd: root, stdio: ['ignore', 'pipe', 'inherit'] });
+  const chunks = [];
+  let failed = false;
+  child.stdout.on('data', bytes => chunks.push(bytes));
+  child.stdout.on('error', () => { failed = true; });
+  child.on('error', () => { failed = true; });
+  const [status, signal] = await new Promise(done => child.once('close', (...result) => done(result)));
+  const line = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(Buffer.concat(chunks));
+  if (failed || signal || !line.endsWith('\n') || line.indexOf('\n') !== line.length - 1 || line.includes('\r'))
+    throw new Error('starter_installation_failed');
+  const report = JSON.parse(line);
+  const { catalogProductTypeRefSchema } = await import('@openlup/platform/catalog');
+  const version = catalogProductTypeRefSchema.shape.version;
+  if (!fields(report, ['formatVersion', 'state', 'exitCode', 'configuration', 'packs', 'findings'])
+    || report.formatVersion !== 1 || report.exitCode !== status || report.configuration !== configuration
+    || !Array.isArray(report.packs) || !Array.isArray(report.findings)) throw new Error('starter_installation_failed');
+  if (report.state === 'satisfied' && status === 0 && report.findings.length === 0 && report.packs.every(pack =>
+    fields(pack, ['id', 'version', 'outcome', 'types', 'taxClasses']) && typeof pack.id === 'string'
+    && version.safeParse(pack.version).success && ['installed', 'unchanged'].includes(pack.outcome)
+    && Array.isArray(pack.types) && pack.types.every(type => catalogProductTypeRefSchema.safeParse(type).success)
+    && Array.isArray(pack.taxClasses) && pack.taxClasses.every(key => typeof key === 'string'))) return report;
+  const findingFields = ['code', 'path', 'observed', 'cause', 'fix', 'recheck'];
+  const finding = report.findings[0];
+  if (report.state === 'violated' && status === 2 && report.packs.length === 0 && report.findings.length === 1
+    && fields(finding, findingFields) && findingFields.every(key => typeof finding[key] === 'string')
+    && starterGuidance(finding.code)) return report;
+  throw new Error('starter_installation_failed');
+}
+
+if (command === 'refusals') {
+  try {
+    lifecycleOptions(args, false);
+    process.stdout.write(json ? JSON.stringify(starterRefusals) + '\n' : Object.entries(starterRefusals)
+      .map(([code, { cause, fix, recheck }]) => [code, cause ?? '', fix, recheck].join('\t')).join('\n') + '\n');
+  } catch (error) {
+    const { code, fix } = commandRefusal(error, '/arguments', true);
+    process.stderr.write(`${code}\nFix: ${fix}\n`);
+    process.exitCode = 2;
+  }
+} else if (command === 'candidate') {
   if (args.length !== 3) throw new Error('starter_candidate_requires_three_tarballs');
   const artifacts = [];
   for (let index = 0; index < packageNames.length; index++) {
@@ -63,34 +141,52 @@ if (command === 'candidate') {
   run('npm', ['install', '--package-lock-only', '--ignore-scripts']);
   process.stdout.write('next: npm ci\n');
 } else if (command === 'up') {
-  const { selectConfiguration } = await import('./owned/store.config.ts');
-  const { assertConfig } = await import('./shared/config.ts');
+  let configuration = '', packs = [], stage = '/arguments';
+  let final;
   try {
-    const config = selectConfiguration(configurationArgument(args));
+    const selected = lifecycleOptions(args);
+    stage = '/configuration';
+    const { selectConfiguration } = await import('./owned/store.config.ts');
+    const { assertConfig } = await import('./shared/config.ts');
+    const config = selectConfiguration(selected);
+    configuration = config.id;
     assertConfig(config);
-    run('docker', ['compose', 'build']);
-    run('docker', ['compose', 'up', '--wait', 'database']);
-    const installer = spawnSync('docker', ['compose', 'run', '--rm', '--no-deps', 'installation',
-      'node', 'lifecycle.mjs', 'install', '--configuration', config.id], { cwd: root, stdio: 'inherit' });
-    if (installer.error || installer.status === null) throw installer.error ?? new Error('starter_installation_failed');
-    if (installer.status === 2) process.exit(installer.status);
-    if (installer.status !== 0) throw new Error('starter_installation_failed');
-    // Install and runtime receive the same non-secret configuration through arguments.
-    const override = { services: { application: { command: [
-      'node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo',
-      '--configuration', config.id, '--port', '4319', '--listen', '0.0.0.0',
-      '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store',
-      '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password',
-    ] } } };
-    const healthcheck = applicationHealthcheck(config.publicOrigin);
-    if (healthcheck) override.services.application.healthcheck = healthcheck;
-    run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override));
+    stage = '/installation';
+    run('docker', ['compose', 'build'], undefined, json);
+    run('docker', ['compose', 'up', '--wait', 'database'], undefined, json);
+    const installerArgs = ['compose', 'run', '--rm', '--no-deps', ...(json ? ['-T'] : []), 'installation',
+      'node', 'lifecycle.mjs', 'install', '--configuration', configuration, ...(json ? ['--json'] : [])];
+    const report = json ? await readInstallReport(installerArgs, configuration) : undefined;
+    if (report?.state === 'violated') final = report;
+    else {
+      if (report) packs = report.packs;
+      else {
+        const installer = spawnSync('docker', installerArgs, { cwd: root, stdio: 'inherit' });
+        if (installer.error || installer.status === null) throw installer.error ?? new Error('starter_installation_failed');
+        if (installer.status === 2) process.exit(installer.status);
+        if (installer.status !== 0) throw new Error('starter_installation_failed');
+      }
+      // Install and runtime receive the same non-secret configuration through arguments.
+      const override = { services: { application: { command: [
+        'node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo',
+        '--configuration', config.id, '--port', '4319', '--listen', '0.0.0.0',
+        '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store',
+        '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password',
+      ] } } };
+      const healthcheck = applicationHealthcheck(config.publicOrigin);
+      if (healthcheck) override.services.application.healthcheck = healthcheck;
+      run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override), json);
+      final = installReport(configuration, packs);
+    }
   } catch (error) {
-    const code = error instanceof Error && knownStarterRefusal.test(error.message)
-      ? error.message : 'starter_installation_failed';
-    process.stderr.write(`${code}\n`);
-    process.exitCode = 2;
+    const finding = commandRefusal(error, stage, stage !== '/installation');
+    if (json) final = installReport(configuration, packs, finding);
+    else {
+      process.stderr.write(`${finding.code}\nFix: ${finding.fix}\n`);
+      process.exitCode = 2;
+    }
   }
+  if (json) await emit({ command: 'up', ...final });
 } else if (command === 'serve-demo') {
   // Internal container entry: private runtime state never enters the image or Compose values.
   try {
@@ -109,32 +205,44 @@ if (command === 'candidate') {
       '--quote-acceptance-key-file', keyFile];
     await import('./host/server.ts');
   } catch (error) {
-    const code = error instanceof Error && knownStarterRefusal.test(error.message)
+    const code = error instanceof Error && starterGuidance(error.message)
       ? error.message : 'starter_demo_start_failed';
     process.stderr.write(`${code}\n`);
     process.exitCode = 2;
   }
 } else if (command === 'install') {
   // Internal one-shot Compose entry; no install connection reaches the HTTP host.
-  const { installationFailure, installationReport } = await import('./installation/refusals.ts');
+  const { installationReport } = await import('./installation/refusals.ts');
   const installEntry = Symbol.for('openlup.neutral-store.install-entry');
   // This one-shot process has its own catalogue admission before the host import.
   Reflect.set(globalThis, installEntry, true);
+  let configuration = '', stage = '/arguments';
+  let final;
   try {
+    const selected = lifecycleOptions(args);
+    stage = '/configuration';
     const [installation, { selectConfiguration }] = await Promise.all([
       import('./installation/install.ts'), import('./owned/store.config.ts'),
     ]).catch(error => { throw installationFailure(error); });
-    await installation.installDemonstration(selectConfiguration(configurationArgument(args)), installation.bootstrapDemonstration);
+    const config = selectConfiguration(selected);
+    configuration = config.id;
+    stage = '/installation';
+    const packs = await installation.installDemonstration(config, installation.bootstrapDemonstration, json ? process.stderr : process.stdout);
+    if (json) final = installReport(configuration, packs);
   } catch (error) {
-    let report = installationReport(error);
-    if (!report) {
-      const code = error instanceof Error ? error.message : 'starter_installation_failed';
-      const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
-      report = `${code}\n${hint ? hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit) + '\n' : ''}`;
+    if (json) final = installReport(configuration, [], commandRefusal(error, stage, stage !== '/installation'));
+    else {
+      let report = installationReport(error);
+      if (!report) {
+        const code = error instanceof Error ? error.message : 'starter_installation_failed';
+        const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
+        report = `${code}\n${hint ? hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit) + '\n' : ''}`;
+      }
+      process.exitCode = 2;
+      await new Promise((resolve, reject) => process.stderr.write(report, error => error ? reject(error) : resolve()));
     }
-    process.exitCode = 2;
-    await new Promise((resolve, reject) => process.stderr.write(report, error => error ? reject(error) : resolve()));
   } finally { Reflect.deleteProperty(globalThis, installEntry); }
+  if (json) await emit(final);
   // The installed runner owns its pool; this one-shot process owns its lifetime.
   process.exit(process.exitCode ?? 0);
 } else if (command === 'browser') {
@@ -185,7 +293,7 @@ if (command === 'candidate') {
 } else if (command === 'ownership') {
   process.stdout.write(await readFile(resolve(root, 'ownership.json'), 'utf8'));
 } else {
-  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] | browser [Playwright selection flags] | checkout-recovery --configuration <id> --database-url <runtime-url> | care --configuration <id> --database-url <runtime-url> | renewal --configuration <id> --database-url <runtime-url> | down | verify | upgrade <args> | ownership\n');
+  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] [--json] | refusals [--json] | browser [Playwright selection flags] | checkout-recovery --configuration <id> --database-url <runtime-url> | care --configuration <id> --database-url <runtime-url> | renewal --configuration <id> --database-url <runtime-url> | down | verify | upgrade <args> | ownership\n');
   process.exitCode = 2;
 }
 

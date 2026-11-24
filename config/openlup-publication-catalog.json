@@ -2762,6 +2762,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/lifecycle-refusals.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/lifecycle.mjs",
       "class": "public-output"
     },
@@ -2954,6 +2958,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/refusals.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/renewal-config.ts",
       "class": "public-output"
     },
@@ -3039,6 +3047,10 @@
     },
     {
       "path": "examples/neutral-store/test/interim-pricing.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/lifecycle.test.ts",
       "class": "public-output"
     },
     {

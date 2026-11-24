@@ -30,10 +30,12 @@ it("prints a bounded installation hint after the existing refusal and preserves 
   const { directory, write } = fixture();
   write("package.json", { type: "module" });
   write(starterLifecycle, readFileSync(resolve("examples/neutral-store", starterLifecycle), "utf8"));
+  write("lifecycle-refusals.mjs", readFileSync(resolve("examples/neutral-store/lifecycle-refusals.mjs"), "utf8"));
   write("browser-groups.mjs", "export const browserJourneyGroups = [];");
   write("host/healthcheck.ts", "export const applicationHealthcheck = () => undefined;");
   write("owned/store.config.ts", "export const selectConfiguration = () => ({});");
   write("installation/refusals.ts", readFileSync(resolve("examples/neutral-store/installation/refusals.ts"), "utf8"));
+  write("shared/refusals.ts", readFileSync(resolve("examples/neutral-store/shared/refusals.ts"), "utf8"));
   const message = "checkout_recovery_schedule_change_blocked_open_episodes (2 blocking orders)";
   for (const [fields, expected] of [
     [{ hint: "  Retry after\n those orders\tclose.  " }, "Retry after those orders close.\n"],

@@ -125,7 +125,10 @@ is present, `./lifecycle up` installs its rules and the operator form uses
 them. Use **Load draft example**, save it, and select **Prepare saved draft**.
 Older drafts keep the rules they were saved with. Keep the local catalogue
 build volume with the demonstration database when restarting the store.
-Without a rules bundle, drafts use the existing validator in `owned/catalogue.ts`.
+Without a rules bundle, `starter:item@1` can use its inline validator.
+For adopter types, follow **Install a pack in the starter** in the installed
+catalogue extension guide. Save and Prepare require the verified build for the
+exact declared type version.
 The native draft writer owns the command. The host supplies the command key
 and session actor outside the JSON payload.
 

@@ -51,6 +51,25 @@ The starter’s catalogue check is `npm run --silent catalogue:check:source`.
 It checks the packs and fixtures declared in `owned/catalogue.ts`.
 For a pack at another path, use the projection command in the recipe.
 
+## Install a pack in the starter
+
+Copy `pack.ts` and `fixtures.ts` from the installed [catalogue skeleton](./catalogue-pack-skeleton/pack.ts) into `owned/catalogue/`.
+Import `pack` and `fixtures` into `owned/catalogue.ts` and add `{ pack, drafts: fixtures.drafts }` to `catalogueConformance.packs` alongside the shipped legacy entry.
+Use `packs.flatMap<CatalogProductTypeInput>(entry => entry.pack.types)` when building the owned offline registry.
+The demonstration stores `<pack.id>@<pack.version>.json` as one filename. Its UTF-8 length can be at most 255 bytes, and the ID may contain neither slash, backslash nor NUL. The skeleton ID `stationery` is valid.
+
+With the starter's rules bundle in `owned/catalogue-rules.cjs`, run these commands from the application directory.
+
+```sh
+node --test owned/catalogue-rules.test.cjs
+npm run --silent catalogue:check:source
+npm run typecheck
+./lifecycle up --json
+```
+
+`up` rebuilds the image containing `owned/`. In the operator draft form, use the skeleton's `fixtures.drafts[0]` JSON with title `Notebook`, type `stationery:notebook@1`, and fresh draft, product, and SKU identities. Select **Save** and **Prepare saved draft**.
+If the host reports `starter_catalogue_build_missing`, restore the matching declared version and tested rules, rerun `./lifecycle up --json`, then retry the same draft action.
+
 ## New vertical
 
 In the extracted starter, add your pack and its fixtures to

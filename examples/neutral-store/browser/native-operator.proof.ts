@@ -2,6 +2,7 @@ import { market } from '../owned/market.config.ts';
 import { test as base, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { env } from 'node:process';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
 import { operations as declaredOperations } from '../shared/api.ts';
@@ -18,6 +19,7 @@ test('native support roster, catalogue administration, replay and operator admis
     ...(runtime ? ['-h', '127.0.0.1', '-U', 'starter_runtime'] : ['-U', 'starter_install']), '-d', 'neutral_store', '-c', query).trim();
   const fixture = JSON.parse(compose('exec', '-T', 'application', 'node', '--input-type=module', '-e', `
     import { randomUUID } from 'node:crypto';
+import { env } from 'node:process';
     import { createPostgresOperatorIdentityStore, createPostgresAccountLinkStore } from '@openlup/platform/identity';
     const connectionString='postgresql://starter_runtime@database:5432/neutral_store';
     const operators=createPostgresOperatorIdentityStore({connectionString});
@@ -290,4 +292,108 @@ test('native support roster, catalogue administration, replay and operator admis
   await action('auth.signOut');
   for (const operation of operations) expect((await action(operation)).code).toBe('operator_required');
   console.log('operation tally', JSON.stringify({ declared: status.length, bound: status.filter((row: { bound: boolean }) => row.bound).length }));
+});
+
+test('installed adopter pack refuses missing builds and resumes exact-pair authoring', async ({ page, baseURL, composeProject }) => {
+  test.setTimeout(180_000);
+  if (!baseURL || !/^st1-pr2-recipe-[a-z0-9-]+$/u.test(composeProject)) throw new Error('starter_pack_recipe_fixture_required');
+  const compose = (...args: string[]) => execFileSync('docker', ['compose', '--project-name', composeProject, ...args],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 8 * 1024 * 1024 });
+  const sql = (statement: string) => compose('exec', '-T', 'database', 'psql', '-XAt', '-v', 'ON_ERROR_STOP=1',
+    '-U', 'starter_install', '-d', 'neutral_store', '-c', statement);
+  const email = 'pack-operator@example.test', actionPath = '/api/actions/operator.catalogDrafts';
+  if (sql("SELECT count(*) FROM public.platform_human_principals WHERE email='pack-operator@example.test'").trim() === '0')
+    compose('exec', '-T', 'application', 'node', '--input-type=module', '-e', `
+    import { createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
+    const operators = createPostgresOperatorIdentityStore({connectionString:'postgresql://starter_runtime@database:5432/neutral_store'});
+    try { await operators.bootstrapFirstAdministrator({email:${JSON.stringify(email)}}); } finally { await operators.close(); }
+  `);
+  async function login() {
+    const auth = (data: object) => page.request.post(baseURL + '/api/actions/auth.operator', { data,
+      headers: { Origin: baseURL!, 'X-Starter-Request': '1', 'Idempotency-Key': randomUUID() } });
+    let token = '';
+    // Age only consumed challenges belonging to this disposable fixture identity between restarts.
+    sql(`UPDATE public.operator_identity_challenges SET created_at=created_at-interval '2 hours',
+      expires_at=expires_at-interval '2 hours', used_at=used_at-interval '2 hours'
+      WHERE used_at IS NOT NULL AND created_at > now()-interval '1 hour'
+        AND principal_id=(SELECT principal_id FROM public.platform_human_principals WHERE email='pack-operator@example.test')`);
+    const previous = new Set<string>();
+    function mail(): {email: string; token: string}[] {
+      try { return compose('exec', '-T', 'application', 'cat', '/application/.context/captured-messages/identity.jsonl')
+        .trim().split('\n').filter(Boolean).map(line => JSON.parse(line)); }
+      catch { return []; }
+    }
+    for (const message of mail()) previous.add(message.token);
+    expect((await (await auth({ email })).json()).ok).toBe(true);
+    await expect.poll(() => {
+      token = mail().find(message => message.email === email && !previous.has(message.token))?.token ?? '';
+      return /^[A-Za-z0-9_-]{43}$/u.test(token);
+    }).toBe(true);
+    expect((await (await auth({ token })).json()).ok).toBe(true);
+  }
+  const template = compose('exec', '-T', 'application', 'node', '--input-type=module', '-e',
+    "import { fixtures } from './owned/catalogue/fixtures.ts'; console.log(JSON.stringify(fixtures.drafts[0]));");
+  const pair = JSON.parse(template).product.type;
+  expect(pair).toMatchObject({ key: 'stationery:notebook', version: 1 });
+  function draft() {
+    const { product, skus } = JSON.parse(template);
+    return JSON.parse(template.replaceAll(product.id, randomUUID()).replaceAll(skus[0].id, randomUUID())
+      .replaceAll(skus[0].code, `NOTEBOOK-${randomUUID()}`));
+  }
+  await login();
+  await page.goto(routes.admin[market.defaultLocale]);
+  const panel = page.locator('#catalogue-drafts');
+  const saveForm = panel.locator('form').filter({ has: page.locator('[name=payload]') });
+  const prepareForm = panel.locator('form').filter({ has: page.getByRole('button', { name: /Prepare saved draft|Przygotuj zapisany szkic/u }) });
+  async function save(id: string, payload: object) {
+    await saveForm.locator('[name=draftId]').fill(id);
+    await saveForm.locator('[name=payload]').fill(JSON.stringify(payload));
+    const response = page.waitForResponse(r => r.url().endsWith(actionPath));
+    await saveForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
+    return (await response).json();
+  }
+  async function prepare(id: string) {
+    await prepareForm.locator('[name=draftId]').fill(id);
+    const response = page.waitForResponse(r => r.url().endsWith(actionPath));
+    await prepareForm.locator('button[type=submit]').click();
+    return (await response).json();
+  }
+  const invalid = draft();
+  invalid.product.sharedContent.presentation.title = '';
+  expect(await save(randomUUID(), invalid)).toMatchObject({ code: 'catalog_draft_payload_invalid',
+    issues: [{ code: 'title_required' }] });
+  const savedId = randomUUID(), savedPayload = draft();
+  const posted = page.waitForRequest(r => r.url().endsWith(actionPath));
+  const saved = await save(savedId, savedPayload);
+  expect(saved, saved.code).toMatchObject({ ok: true, value: { record: { payload: { product: { type: pair } } } } });
+  const originalKey = (await posted).headers()['idempotency-key']!;
+  const missingId = randomUUID(), missingPayload = draft();
+  const target = `/application/.context/catalogue-builds/packs/stationery@${pair.version}.json`;
+  compose('run', '--rm', '--no-deps', '-T', 'installation', 'node', '-e', 'require("node:fs").unlinkSync(process.argv[1])', target);
+  compose('restart', 'application');
+  await expect.poll(async () => (await page.request.get(baseURL + '/api/config').catch(() => null))?.status()).toBe(200);
+  await login();
+  const missing = { ok: false, code: 'starter_catalogue_build_missing', path: '/packs/1/pack',
+    observed: 'No verified pack build is available for stationery:notebook@1.',
+    cause: expect.any(String), fix: expect.any(String), recheck: expect.any(String) };
+  expect(await save(missingId, missingPayload)).toMatchObject(missing);
+  await expect(saveForm.locator('.action-result')).toContainText(missing.code);
+  expect(await prepare(savedId)).toMatchObject(missing);
+  await expect(prepareForm.locator('.action-result')).toContainText(missing.code);
+  await page.route('**' + actionPath, route => route.continue({ headers: { ...route.request().headers(), 'idempotency-key': originalKey } }), { times: 1 });
+  expect(await save(savedId, savedPayload)).toMatchObject({ ok: true, replayed: true });
+
+  const report = JSON.parse(execFileSync('./lifecycle', ['up', '--configuration', 'coffee', '--json'],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...env, COMPOSE_PROJECT_NAME: composeProject } }));
+  expect(report.packs).toContainEqual({ id: 'stationery', version: 1, outcome: 'unchanged', types: [pair], taxClasses: ['standard'] });
+  await login();
+  expect(await prepare(savedId)).toMatchObject({ ok: true });
+  expect(await save(missingId, missingPayload)).toMatchObject({ ok: true, value: { record: { payload: { product: { type: pair } } } } });
+  const original = sql("SELECT pg_get_functiondef('public.catalog_draft_get(uuid,integer,text)'::regprocedure)");
+  // Supply a valid receipt for another command so the draft handler detects an unavailable dependency.
+  sql(`CREATE OR REPLACE FUNCTION public.catalog_draft_get(p_draft_id uuid, p_revision integer DEFAULT NULL,
+    p_command_key text DEFAULT NULL) RETURNS jsonb LANGUAGE sql STABLE SET search_path=pg_catalog AS
+    $$ SELECT public.catalog_draft_record('${savedId}'::uuid, 1) $$`);
+  try { expect(await save(randomUUID(), draft())).toMatchObject({ ok: false, code: 'catalog_draft_dependency_unavailable' }); }
+  finally { sql(original); }
 });
