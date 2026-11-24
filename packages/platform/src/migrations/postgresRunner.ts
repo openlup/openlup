@@ -70,6 +70,7 @@ type LoadedPlan = Readonly<{
 }>;
 type LedgerRow = { catalog_path: unknown; sha256: unknown; position: unknown };
 type LedgerIdentityRow = { ledger_oid: unknown; ledger_safe: unknown };
+type LockedLedgerIdentityRow = LedgerIdentityRow & { ledger_locked: unknown };
 type AppliedLedger = { oid: string | null; applied: readonly PlannedMigration[] };
 type AdvisoryUnlockRow = { unlocked: unknown };
 const ACQUIRE_CATALOG_BOUND_MIGRATION_LOCK = "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8))";
@@ -164,6 +165,25 @@ const LEDGER_IDENTITY = `SELECT c.oid::pg_catalog.text AS ledger_oid,
   WHERE n.nspname OPERATOR(pg_catalog.=) 'public'::pg_catalog.name
     AND c.relname OPERATOR(pg_catalog.=) 'platform_schema_migrations'::pg_catalog.name`;
 
+const LEDGER_LOCKED_IDENTITY = LEDGER_IDENTITY.replace(
+  "AS ledger_safe\n  FROM pg_catalog.pg_class c",
+  `AS ledger_safe,
+    EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_locks l
+      WHERE l.pid OPERATOR(pg_catalog.=) pg_catalog.pg_backend_pid()
+        AND l.locktype OPERATOR(pg_catalog.=) 'relation'::pg_catalog.text
+        AND l.database OPERATOR(pg_catalog.=) (
+          SELECT d.oid FROM pg_catalog.pg_database d
+          WHERE d.datname OPERATOR(pg_catalog.=) pg_catalog.current_database()
+        )
+        AND l.relation OPERATOR(pg_catalog.=) c.oid
+        AND l.mode OPERATOR(pg_catalog.=) 'ShareRowExclusiveLock'::pg_catalog.text
+        AND l.granted
+    ) AS ledger_locked
+  FROM pg_catalog.pg_class c`,
+);
+
 export function createPostgresMigrationRunner(
   env: PostgresMigrationRunnerEnv,
   options: PostgresMigrationRunnerOptions,
@@ -243,7 +263,7 @@ export function createBoundPostgresMigrationRunner(env: PostgresMigrationRunnerE
               // LOCK is the first statement: under stronger caller defaults,
               // the catalog snapshot must begin after any competing DDL settles.
               await client.query(`LOCK TABLE ONLY ${LEDGER} IN SHARE ROW EXCLUSIVE MODE`);
-              const beforeSql = await readAlreadyLockedPrefix(client, plan.units);
+              const beforeSql = await readAlreadyLockedPrefix(client, plan.units, expectedOid);
               if (beforeSql.oid !== expectedOid || beforeSql.applied.length !== unit.position) {
                 throw new Error("platform migration ledger changed before write");
               }
@@ -255,11 +275,13 @@ export function createBoundPostgresMigrationRunner(env: PostgresMigrationRunnerE
             await client.query(unit.sql);
             // The baseline creates its ledger (and must acquire SHARE ROW EXCLUSIVE
             // now); later units already hold that transaction-scoped lock from above,
-            // so re-verifying LEDGER_IDENTITY and rows confirms neither OID nor shape
-            // nor prefix drifted during unit.sql without re-issuing redundant LOCK/OID passes.
+            // so re-verifying LEDGER_LOCKED_IDENTITY (shape, OID and granted
+            // ShareRowExclusiveLock in pg_locks) and prefix rows confirms neither
+            // transaction control nor DDL/DML tampered with the ledger without
+            // re-issuing redundant LOCK/OID passes.
             const beforeWrite = expectedOid === null
               ? await readLockedPrefix(client, plan.units, "SHARE ROW EXCLUSIVE")
-              : await readAlreadyLockedPrefix(client, plan.units);
+              : await readAlreadyLockedPrefix(client, plan.units, expectedOid);
             if (beforeWrite.oid === null || (expectedOid !== null && beforeWrite.oid !== expectedOid)
               || beforeWrite.applied.length !== unit.position) {
               throw new Error("platform migration ledger changed before write");
@@ -455,13 +477,20 @@ async function readLockedPrefix(client: PoolClient, units: readonly PlannedMigra
   return readPrefixRows(client, units, oid);
 }
 
-/** Verify ledger identity and prefix when the caller already holds SHARE ROW EXCLUSIVE on LEDGER. */
-async function readAlreadyLockedPrefix(client: PoolClient, units: readonly PlannedMigration[]): Promise<AppliedLedger> {
-  const observed = (await client.query<LedgerIdentityRow>(LEDGER_IDENTITY)).rows;
+/** Verify ledger identity, granted SHARE ROW EXCLUSIVE lock, and prefix on an already-locked forward unit. */
+async function readAlreadyLockedPrefix(
+  client: PoolClient,
+  units: readonly PlannedMigration[],
+  expectedOid: string,
+): Promise<AppliedLedger> {
+  const observed = (await client.query<LockedLedgerIdentityRow>(LEDGER_LOCKED_IDENTITY)).rows;
   if (observed.length === 0) return { oid: null, applied: [] };
   const identity = observed[0]!;
   if (observed.length !== 1 || typeof identity.ledger_oid !== "string" || identity.ledger_safe !== true) {
     throw new Error("platform migration ledger relation is not safe to read");
+  }
+  if (identity.ledger_oid !== expectedOid || identity.ledger_locked !== true) {
+    throw new Error("platform migration ledger changed before write");
   }
   return readPrefixRows(client, units, identity.ledger_oid);
 }

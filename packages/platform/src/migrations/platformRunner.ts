@@ -45,6 +45,7 @@ function platformMigrationSource(
   };
   return {
     readMigrations: root => {
+      pendingRead = null;
       const loaded = read(root);
       pendingRead = { root, manifest: loaded.manifest };
       return { migrations: loaded.migrations, errors: loaded.errors };
