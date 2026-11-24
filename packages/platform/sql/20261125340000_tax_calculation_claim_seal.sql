@@ -64,10 +64,72 @@ CREATE FUNCTION public.tax_calculation_check_domain_v1(p_invocation jsonb, p_pin
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
   WITH RECURSIVE
   pin AS (SELECT p_pin->'request' AS request, p_pin->>'kind'='fiscal_profile' AS fiscal),
+  seal_parts AS (SELECT
+    '{"snapshotRef":"string","destinationDigest":"string","schemaVersion":"number","policyRevision":"string"}'::jsonb AS binding,
+    '{"target":{"kind":"string","key":"string","taxClass?":"string","assignmentRef?":"string","deliveryKey?":"string"},
+      "jurisdiction":"string","level":"string","taxKind":"string","sourcing":"string"}'::jsonb AS cell,
+    '{"from":"string","until?":"string"}'::jsonb AS effective,
+    '[{"positionRef":"string","jurisdictionRef":"string","level":"string","taxKind":"string","taxabilityReason":"string","ruleRef":"string",
+      "resolution":{"assignmentRef":"string","policyRevision":"string","sourceRef":"string","sourceDigest?":"string",
+        "effective":{"from":"string","until?":"string"}},
+      "resolutionDigest":"string","providerLineRef?":"string","rateDecimal?":"string","taxableMinor":"number","taxMinor":"number"}]'::jsonb
+      AS quote_positions
+  ),
+  seal_components AS (SELECT seal_parts.*,
+    jsonb_build_object('basisMinor','number','netMinor','number','taxMinor','number','taxPositions',quote_positions) AS money_state
+    FROM seal_parts
+  ),
+  seal_money AS (SELECT seal_components.*,
+    '{"preDiscountMinor":"number","effectiveMinor":"number","netMinor":"number","taxMinor":"number","lineTotalMinor":"number"}'::jsonb
+    || jsonb_build_object('taxPositions',quote_positions,'discountAllocations',jsonb_build_array(
+      '{"allocationId":"string","adjustmentRef":"string","sequence":"number","source":"string","basisReductionMinor":"number",
+        "netReductionMinor":"number","taxReductionMinor":"number","evidenceRef":"string"}'::jsonb
+      || jsonb_build_object('before',money_state,'after',money_state))) AS component
+    FROM seal_components
+  ),
+  seal_documents AS (SELECT binding,
+    '{
+      "catalogueEvidenceRef":"string","mode":"string","coverageDigest":"string","currency":"string","deliverySelectionRef":"string",
+      "cadence?":{"schemaVersion":"number","kind":"string","days":"number"},
+      "paymentLimits":{"profileRef":"string","revision":"string","channelKey":"string","currency":"string","minMinor":"number","maxMinor":"number"},
+      "price":{"priceListRef":"string","priceContextDigest":"string","priceEvidenceRef":"string","classMapRevision":"string"},
+      "netTotal":"number","taxTotal":"number","feeTotal":"number","payableMinor":"number",
+      "feeLines":[{"feeKey":"string","jurisdictionRef":"string","feeKind":"string","amountMinor":"number",
+        "scope":{"kind":"string","bucketKey?":"string"},"refundRule":{"ref":"string","revision":"string"},"providerPositionRef?":"string"}],
+      "amountBasis":"string","promotion":{"engine":"string","rankingRuleRef":"string"},
+      "taxEvidence":{"calculationId":"string","evidenceDigest":"string","taxDate":"string","expiresAt":"string","kind":"string"},
+      "contractVersion":"string","schemaVersion":"number","quoteId":"string","status":"string","moneyDigest":"string","quoteDigest":"string"
+    }'::jsonb || jsonb_build_object('destination',binding,'lines',jsonb_build_array(component ||
+      '{"taxClassKey":"string","assignmentRef":"string","lineKey":"string","sourceOrdinal":"number","sku":"string",
+        "mode":"string","quantity":"number","unitBasisMinor":"number"}'::jsonb),
+      'deliveryBuckets',jsonb_build_array(
+        '{"taxClassKey":"string","assignmentRef":"string","bucketKey":"string","kind":"string","carrierRef":"string","serviceRef":"string",
+          "cost":{"ref":"string","currency":"string","amountMinor":"number"},"separatelyStated":"boolean"}'::jsonb
+        || jsonb_build_object('parts',jsonb_build_array(component || '{"sourceOrdinal?":"number"}'::jsonb)))) AS quote,
+    '{
+      "requestKey":"string","scope":{"adapter":"string","adapterVersion":"string","accountRef":"string","mode":"string"},
+      "calculationRef":"string","status":"string","calculatedAt":"string","expiresAt":"string","taxDate":"string",
+      "destinationDigest":"string","shipFromRef":"string","inputDigest":"string","policyRevision":"string","classMapRevision":"string",
+      "fiscalDigest":"string","providerLines?":[{"lineKey":"string","providerLineRef":"string"}]
+    }'::jsonb || jsonb_build_object('coverage',jsonb_build_object('digest','string','vector',jsonb_build_array(
+      '{"decision":"string","treatment?":{"kind":"string","reason":"string","ruleRef":"string"}}'::jsonb
+      || jsonb_build_object('cell',cell,
+        'declaration?', '{"jurisdiction":"string","taxKind":"string","status":"string","actorRef":"string","recordedAt":"string",
+          "acknowledgementRef?":"string"}'::jsonb || jsonb_build_object('effective',effective),
+        'registration?', '{"state":"string","evidenceRef":"string"}'::jsonb || jsonb_build_object('effective',effective)))),
+      'positions',jsonb_build_object('tax',jsonb_build_array(
+        '{"positionRef":"string","taxabilityReason":"string","ruleRef":"string","resolutionDigest":"string",
+          "ratePercent?":"string","providerLineRef?":"string"}'::jsonb || jsonb_build_object('cell',cell,'resolution',
+          '{"assignmentRef":"string","policyRevision":"string","sourceRef":"string","sourceDigest?":"string"}'::jsonb
+          || jsonb_build_object('effective',effective))),
+        'fees','[{"feeKey":"string","jurisdiction":"string","feeKind":"string","scope":{"kind":"string","key?":"string"},
+          "refundRule":{"ref":"string","revision":"string"},"providerPositionRef?":"string"}]'::jsonb)) AS adapter_evidence
+    FROM seal_money
+  ),
   -- Object keys ending in ? are optional, including keys specific to one variant.
   -- [shape] checks every element, [] admits only an empty array, and strings name JSON types.
-  shape(value, expected) AS (
-    SELECT p_pin, '{
+  roots(field, value, expected) AS (
+    SELECT '/pin', p_pin, '{
       "kind":"string", "validUntil":"string", "requestDigest":"string",
       "invocationDigest?":"string", "documentDigest?":"string",
       "destination":{"snapshotRef":"string","destinationDigest":"string","schemaVersion":"number","policyRevision":"string"}
@@ -98,7 +160,24 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
       }}
     }'::jsonb END FROM pin
     UNION ALL
-    SELECT child.value, child.expected
+    SELECT '/seal', p_seal,
+      '{"kind":"string","requestDigest":"string","validUntil":"string","contradiction":"boolean","disposition":"string"}'::jsonb
+      || jsonb_build_object('destination',binding,'outcome',CASE p_seal#>>'{outcome,kind}'
+        WHEN 'indeterminate' THEN '{"kind":"string"}'::jsonb
+        WHEN 'refused' THEN '{"kind":"string","code":"string","field":"string","remedy":"string"}'::jsonb
+        WHEN 'unavailable' THEN '{"kind":"string","code":"string","field":"string","remedy":"string","effect":"string"}'::jsonb
+        WHEN 'final' THEN jsonb_build_object('kind','string','quote',quote)
+        WHEN 'estimate' THEN jsonb_build_object('kind','string','quote',quote) END,
+        'evidence', CASE WHEN p_seal#>>'{outcome,kind}' IN ('final','estimate') THEN CASE p_seal->>'kind'
+          WHEN 'fiscal_profile' THEN '{"policyRevision":"string","posting":"string"}'::jsonb
+          WHEN 'tax_calculation' THEN jsonb_build_object('adapterDigest','string','adapterEvidence',adapter_evidence) END
+        ELSE '"null"'::jsonb END)
+    FROM seal_documents WHERE p_complete
+  ),
+  shape(field, value, expected) AS (
+    SELECT field, value, expected FROM roots
+    UNION ALL
+    SELECT shape.field, child.value, child.expected
     FROM shape
     CROSS JOIN LATERAL (
       SELECT member.value, CASE WHEN right(member.key,1) <> '?' THEN
@@ -109,15 +188,19 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
       FROM jsonb_array_elements(CASE WHEN jsonb_typeof(shape.value) = 'array' THEN shape.value ELSE '[]'::jsonb END) item
     ) child
     WHERE jsonb_typeof(shape.expected) IN ('object','array')
+  ),
+  invalid_shapes AS (
+    SELECT field FROM shape WHERE (CASE jsonb_typeof(expected)
+      WHEN 'object' THEN jsonb_typeof(value) = 'object' AND value ?& ARRAY(
+        SELECT key FROM jsonb_object_keys(expected) key WHERE right(key,1) <> '?')
+      WHEN 'array' THEN jsonb_typeof(value) = 'array'
+      WHEN 'string' THEN jsonb_typeof(value) = ANY(string_to_array(expected #>> '{}','|'))
+    END) IS DISTINCT FROM true
   )
   SELECT CASE
+    WHEN EXISTS (SELECT FROM invalid_shapes WHERE field = '/seal') THEN '/seal'
     WHEN NOT coalesce(p_pin->>'kind' IN ('fiscal_profile','tax_calculation'), false)
-      OR EXISTS (SELECT FROM shape WHERE (CASE jsonb_typeof(expected)
-        WHEN 'object' THEN jsonb_typeof(value) = 'object' AND value ?& ARRAY(
-          SELECT key FROM jsonb_object_keys(expected) key WHERE right(key,1) <> '?')
-        WHEN 'array' THEN jsonb_typeof(value) = 'array'
-        WHEN 'string' THEN jsonb_typeof(value) = ANY(string_to_array(expected #>> '{}','|'))
-      END) IS DISTINCT FROM true)
+      OR EXISTS (SELECT FROM invalid_shapes WHERE field = '/pin')
       OR (fiscal AND request->>'basis' IS DISTINCT FROM 'inclusive')
       OR (p_pin->'recovery' IS DISTINCT FROM 'null'::jsonb
         AND NOT coalesce(p_pin->>'recovery' COLLATE "C" ~ '^[0-9a-f]{64}$',false)) THEN '/pin'
@@ -198,7 +281,7 @@ BEGIN
     OR NOT coalesce(p_request->>'generation' COLLATE "C" ~ '^[1-9][0-9]{0,9}$'
       AND (p_request->>'generation')::numeric <= 2147483647,false)
     OR jsonb_typeof(submission->'contradiction') IS DISTINCT FROM 'boolean') THEN
-    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/seal';
+    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/seal', HINT='Supply the documented input.';
   END IF;
   client := (identity->>'clientId')::uuid;
   principal := (identity->>'principalRef')::uuid;
@@ -239,33 +322,35 @@ BEGIN
       OR r.generation::text IS DISTINCT FROM p_request->>'generation' OR r.claim_token::text IS DISTINCT FROM p_request->>'claimToken') THEN
       RAISE EXCEPTION 'tax_claim_stale' USING ERRCODE='55000', DETAIL='/claim';
     END IF;
-    IF r.state = 'terminal' THEN
-      terminal := public.tax_calculation_terminal_v1(r);
-      IF terminal IS NULL THEN RAISE EXCEPTION 'tax_evaluation_integrity_invalid' USING ERRCODE='55000', DETAIL='/taxEvidence'; END IF;
-      IF p_complete AND terminal->>'submissionDigest' IS DISTINCT FROM public.tax_calculation_hash_v1('evaluation-submission',submission) THEN
-        RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence';
-      END IF;
-      RETURN jsonb_build_object('kind','terminal','outcome',terminal->'outcome','validUntil',terminal->'validUntil');
-    END IF;
   ELSIF p_complete THEN
     RAISE EXCEPTION 'tax_claim_stale' USING ERRCODE='55000', DETAIL='/claim';
   END IF;
-  IF operation = 'lookup' THEN
+  IF operation = 'lookup' AND r.state IS DISTINCT FROM 'terminal' THEN
     RETURN jsonb_build_object('kind',CASE WHEN r.calculation_id IS NULL THEN 'missing' ELSE 'pending' END);
   END IF;
-  IF NOT p_complete AND r.calculation_id IS NOT NULL AND clock_timestamp() < r.lease_until THEN
+  IF NOT p_complete AND r.state = 'pending' AND clock_timestamp() < r.lease_until THEN
     RAISE EXCEPTION 'tax_claim_pending' USING ERRCODE='55000', DETAIL='/claim';
   END IF;
   pinned := coalesce(r.pin,p_request->'pin');
   original := pinned->'request';
-  field := public.tax_calculation_check_domain_v1(p_request->'invocation',pinned,submission,p_complete);
-  IF field = '/pin/destination/policyRevision' THEN
-    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field, HINT='Obtain a supported revision from the destination owner.';
+  IF p_complete OR r.state IS DISTINCT FROM 'terminal' THEN
+    field := public.tax_calculation_check_domain_v1(p_request->'invocation',pinned,submission,p_complete);
+    IF field = '/pin/destination/policyRevision' THEN
+      RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field, HINT='Obtain a supported revision from the destination owner.';
+    END IF;
+    IF field IN ('/pin','/seal') THEN
+      RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field, HINT='Supply the documented input.';
+    END IF;
+    IF field IS NOT NULL THEN RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field; END IF;
   END IF;
-  IF field = '/pin' THEN
-    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field, HINT='Supply the documented input.';
+  IF r.state = 'terminal' THEN
+    terminal := public.tax_calculation_terminal_v1(r);
+    IF terminal IS NULL THEN RAISE EXCEPTION 'tax_evaluation_integrity_invalid' USING ERRCODE='55000', DETAIL='/taxEvidence'; END IF;
+    IF p_complete AND terminal->>'submissionDigest' IS DISTINCT FROM public.tax_calculation_hash_v1('evaluation-submission',submission) THEN
+      RAISE EXCEPTION 'tax_reference_conflict' USING ERRCODE='22023', DETAIL='/taxEvidence';
+    END IF;
+    RETURN jsonb_build_object('kind','terminal','outcome',terminal->'outcome','validUntil',terminal->'validUntil');
   END IF;
-  IF field IS NOT NULL THEN RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field; END IF;
   destination := pinned->'destination';
   pinned_coverage := pinned->'coverage';
   IF NOT coalesce(pinned->>'requestDigest' COLLATE "C" ~ '^[0-9a-f]{64}$',false) THEN

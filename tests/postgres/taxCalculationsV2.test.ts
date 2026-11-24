@@ -7,10 +7,10 @@ import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor, type Postg
 import { createPostgresPrivacyStore, createPrivacyOperations, createIdentityPersonalDataContributor,
   createPersonalDataContributorRegistry, createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor,
 } from "@openlup/platform/identity";
-import { commerceQuoteV2Schema, quoteDigest, type CommerceQuoteMoneyV2, type CommerceQuoteV2 } from "@openlup/platform/pricing";
+import { commerceQuoteV2Schema, quoteDigest, type CommerceQuoteMoneyV2, type CommerceQuoteV2, type TaxPositionV2 } from "@openlup/platform/pricing";
 import { applyTaxCoverageRevision, beginTaxCalculation, completeTaxCalculation, evaluationDigest, localRateTable,
-  makeTaxQuoteRequest, verifyTaxQuoteResult } from "@openlup/platform/tax";
-import { taxQuoteRequestV1Schema, type TaxQuoteInputV1, type TaxQuoteRequestV1 } from "@openlup/platform/tax/contracts";
+  makeTaxQuoteRequest, reconcileTaxCoverage, verifyTaxQuoteResult } from "@openlup/platform/tax";
+import { taxCalculationEvidenceV1Schema, taxQuoteRequestV1Schema, type TaxCalculationEvidenceV1, type TaxQuoteInputV1, type TaxQuoteRequestV1 } from "@openlup/platform/tax/contracts";
 import { createPlatformPostgresMigrationRunner } from "@openlup/platform/migrations";
 import { composeNativePrivacy, nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -1045,7 +1045,8 @@ describe("native evaluation claim and seal", () => {
     await reachDestinationCutoff(store.owner, issued.binding);
     expect(await completeTaxCalculation(lane(), seal)).toEqual(result);
     expect(await beginTaxCalculation(lane(), lookup)).toEqual(result);
-    expect(await completeTaxCalculation(lane(), { ...seal, seal: { ...seal.seal, evidence: { policyRevision: "changed" } } }))
+    expect(await completeTaxCalculation(lane(), { ...seal, seal: { ...seal.seal,
+      evidence: { policyRevision: "changed", posting: "no_provider_posting" } } }))
       .toMatchObject({ code: "tax_reference_conflict", field: "/taxEvidence" });
     expect(await completeTaxCalculation(lane(), { ...seal, claimToken: randomUUID() })).toMatchObject({ code: "tax_claim_stale" });
     const row = (await store.owner.query("SELECT outcome_text FROM public.tax_calculations WHERE calculation_id=$1", [held.calculationId])).rows[0]!;
@@ -1192,6 +1193,193 @@ describe("native evaluation claim and seal", () => {
       requestDigest, destination, validUntil, kind, contradiction: false, outcome: { kind: "final", quote }, evidence: null,
     } };
   }
+
+  function maximalAdapterEvidence(request: TaxQuoteRequestV1, expiresAt: string): TaxCalculationEvidenceV1 {
+    const input = request.input;
+    const { scope, required, coverage, taxDate, shipFromRef, policyRevision, classMapRevision } = input;
+    const effective = { from: taxDate, until: "2099-01-01T00:00:00.000Z" };
+    const reconciled = reconcileTaxCoverage({ scope, taxDate, required, coverage, observations: required.map(cell => {
+      const active = cell.jurisdiction !== "district-b";
+      return { cell, assessedMinor: 0, registration: { state: active ? "active" : "inactive", effective, evidenceRef: "registration-a" },
+        treatment: { kind: active ? "taxable" : "not_applicable", reason: "fixture", ruleRef: "rule-a" } };
+    }) });
+    if (reconciled.kind !== "resolved") throw new Error(JSON.stringify(reconciled));
+    const resolution = { assignmentRef: "assignment-a", policyRevision, sourceRef: "fixture-source", sourceDigest: boundDigest, effective };
+    const tax = reconciled.vector.filter(row => row.cell.target.kind !== "fee" && row.decision === "in_scope_taxed")
+      .map(({ cell }, index) => ({ positionRef: "tax-position-" + index, cell, ratePercent: "0", taxabilityReason: "fixture",
+        ruleRef: "rule-a", resolution, resolutionDigest: digest("resolution", resolution), providerLineRef: "provider-line-" + index }));
+    const fees = required.flatMap(({ target, jurisdiction, taxKind }) => target.kind === "fee" ? [{
+      feeKey: target.key, jurisdiction, feeKind: taxKind, providerPositionRef: "provider-" + target.key,
+      scope: target.deliveryKey === undefined ? { kind: "order" as const } : { kind: "delivery" as const, key: target.deliveryKey },
+      refundRule: { ref: "refund-a", revision: "r1" },
+    }] : []);
+    const { vector, digest: coverageDigest } = reconciled;
+    const coordinates = { scope, destinationDigest: input.destination.digest, shipFromRef, policyRevision, classMapRevision };
+    const fiscalDigest = digest("fiscal", { ...coordinates, coverage: vector,
+      tax: tax.map(({ resolutionDigest: _resolutionDigest, providerLineRef: _providerLineRef, ...row }) => row), fees });
+    return { ...coordinates, requestKey: request.key, inputDigest: request.inputDigest, taxDate, fiscalDigest,
+      calculationRef: "shape-provider-ref", status: input.purpose, calculatedAt: new Date().toISOString(), expiresAt,
+      coverage: { vector, digest: coverageDigest }, positions: { tax, fees },
+      providerLines: input.lines.map(({ lineKey }) => ({ lineKey, providerLineRef: "provider-" + lineKey })),
+    };
+  }
+
+  const shapeCadence = { schemaVersion: 1, kind: "fixed_days", days: 30 } as const;
+
+  function maximalQuoteMoney(inclusive: boolean) {
+    const base = moneyFixture();
+    const component = (key: string, preDiscountMinor: number, reduction: number, sequence: number) => {
+      const position: TaxPositionV2 = { positionRef: "position-" + key, jurisdictionRef: "district-a", level: "district",
+        taxKind: "sale", taxabilityReason: "fixture", ruleRef: "rule-a", resolutionDigest: boundDigest, providerLineRef: "provider-" + key,
+        resolution: { assignmentRef: "assignment-a", policyRevision: "policy-a", sourceRef: "source-a", sourceDigest: boundDigest,
+          effective: { from: taxDate, until: "2099-01-01T00:00:00.000Z" } }, rateDecimal: "0", taxableMinor: 0, taxMinor: 0 };
+      const state = (basisMinor: number) => ({ basisMinor, netMinor: basisMinor, taxMinor: 0,
+        taxPositions: [{ ...position, taxableMinor: basisMinor }] });
+      const after = state(preDiscountMinor - reduction);
+      const { netMinor, taxMinor, taxPositions } = after;
+      return { preDiscountMinor, effectiveMinor: netMinor, netMinor, taxMinor, taxPositions, lineTotalMinor: netMinor,
+        discountAllocations: reduction === 0 ? [] : [{ allocationId: randomUUID(), adjustmentRef: "promo-" + key,
+          sequence, source: "legacy_promotion" as const, basisReductionMinor: reduction, netReductionMinor: reduction,
+          taxReductionMinor: 0, evidenceRef: "promotion-a", before: state(preDiscountMinor), after }] };
+    };
+    const shipping = { bucketKey: "shipping-a", kind: "shipping" as const, taxClassKey: "standard", assignmentRef: "assignment-a",
+      carrierRef: "carrier-a", serviceRef: "service-a", cost: { ref: "cost-a", currency: base.currency, amountMinor: 50 },
+      separatelyStated: true, parts: [{ ...component("shipping", 50, 5, 2), ...(inclusive ? { sourceOrdinal: 1 } : {}) }] };
+    const orderFee = { feeKey: "fee-order", jurisdictionRef: "district-a", feeKind: "sale", amountMinor: 2,
+      scope: { kind: "order" as const }, refundRule: { ref: "refund-a", revision: "r1" }, providerPositionRef: "provider-fee-order" };
+    return { ...base, mode: "subscription" as const, cadence: shapeCadence,
+      lines: [{ ...base.lines[0]!, ...component("line", 100, 5, 1), mode: "subscription" as const }],
+      deliveryBuckets: [shipping, { ...shipping, bucketKey: "handling-a", kind: "handling" as const,
+        separatelyStated: false, cost: { ...shipping.cost, amountMinor: 20 }, parts: [component("handling", 20, 0, 3)] }],
+      feeLines: [orderFee, { ...orderFee, feeKey: "fee-a", amountMinor: 3, providerPositionRef: "provider-fee-a",
+        scope: { kind: "delivery" as const, bucketKey: shipping.bucketKey } }],
+      netTotal: 160, feeTotal: 5, payableMinor: 165,
+    };
+  }
+
+  it("closes every stored seal object at the restricted SQL entry", async () => {
+    const db = await resources.installation("tax-seal-shapes");
+    const exclusive = await exclusiveFixture(db, input => {
+      const expanded = maximalRequest(input);
+      const { target, ...cell } = input.required[0]!;
+      return { ...expanded, lines: expanded.lines.map(line => ({ ...line, mode: "subscription" })),
+        required: [...expanded.required, { ...cell, target, jurisdiction: "district-b" },
+          { ...cell, target: { kind: "fee", key: "fee-order", taxClass: "standard", assignmentRef: "assignment-a" } }] };
+    });
+    const fiscal = await fixture(db, "estimate");
+    const subscription = (claim: ClaimInput) => ({ ...claim, invocation: { ...claim.invocation, mode: "subscription" as const, cadence: shapeCadence } });
+    const exclusiveInput = subscription(exclusive.claim), fiscalInput = subscription(fiscal.claim);
+    const exclusiveClaim = await claimFresh(exclusiveInput, lane(db)), fiscalClaim = await claimFresh(fiscalInput, lane(db));
+    const validUntil = future(180);
+    const adapterEvidence = maximalAdapterEvidence(exclusive.request, validUntil);
+    expect(taxCalculationEvidenceV1Schema.parse(adapterEvidence)).toStrictEqual(adapterEvidence);
+
+    function wire(input: ClaimInput, claim: Claim) {
+      const { calculationId, claimToken, generation, pin } = claim;
+      const { destination, kind, requestDigest, invocationDigest } = pin;
+      const fiscal = kind === "fiscal_profile", disposition = fiscal ? "no_provider_posting" : "required";
+      const evidence = fiscal ? { policyRevision: "fiscal-a", posting: disposition } : { adapterEvidence, adapterDigest: digest("evidence", adapterEvidence) };
+      const envelope = { calculationId, generation, destination, kind, requestDigest, invocationDigest, evidence, disposition, validUntil };
+      const taxEvidence = { calculationId, expiresAt: validUntil, taxDate, evidenceDigest: evaluationDigest("evaluation-evidence", envelope) };
+      const money = maximalQuoteMoney(fiscal);
+      const engine = "promotion-engine.v1";
+      const quote = sealQuote({ ...money, destination, ...fiscal ? {
+        amountBasis: "inclusive", promotion: { engine, rankingRuleRef: "lowest_payable_gross" }, taxEvidence: { ...taxEvidence, kind },
+      } : {
+        amountBasis: "exclusive", promotion: { engine, rankingRuleRef: "lowest_pre_tax.v1" }, taxEvidence: { ...taxEvidence, kind },
+      } }, input.invocation.purpose);
+      return { operation: "complete", identity: input.identity, invocation: input.invocation, calculationId, claimToken, generation,
+        seal: { destination, kind, requestDigest, validUntil, contradiction: false, evidence, disposition,
+          outcome: { kind: input.invocation.purpose, quote } } };
+    }
+
+    const exclusiveWire = wire(exclusiveInput, exclusiveClaim), fiscalWire = wire(fiscalInput, fiscalClaim);
+    const extra = { contactEmail: "synthetic@example.invalid", line1: "1 Example Lane" };
+    const witnessSql = "SELECT public.tax_calculation_complete_v1($1::jsonb) AS result";
+    const refusal = { code: "22023", message: "tax_invalid_input", detail: "/seal", hint: "Supply the documented input." };
+    const prefix = "evidence.adapterEvidence.";
+    const adapterPaths = ["", "scope", "providerLines.0", "coverage", "coverage.vector.0",
+      "coverage.vector.0.cell", "coverage.vector.0.cell.target", "coverage.vector.0.declaration",
+      "coverage.vector.0.declaration.effective", "coverage.vector.0.registration", "coverage.vector.0.registration.effective",
+      "coverage.vector.0.treatment", "positions", "positions.tax.0", "positions.tax.0.cell",
+      "positions.tax.0.cell.target", "positions.tax.0.resolution", "positions.tax.0.resolution.effective",
+      "positions.fees.0", "positions.fees.0.scope", "positions.fees.0.refundRule"];
+    const quotePrefix = "outcome.quote";
+    const quotePaths = ["", "cadence", "destination", "paymentLimits", "price", "promotion", "taxEvidence",
+      "lines.0", "lines.0.discountAllocations.0", "lines.0.discountAllocations.0.before", "lines.0.discountAllocations.0.after",
+      "lines.0.discountAllocations.0.before.taxPositions.0",
+      "lines.0.taxPositions.0", "lines.0.taxPositions.0.resolution", "lines.0.taxPositions.0.resolution.effective",
+      "deliveryBuckets.0", "deliveryBuckets.0.cost", "deliveryBuckets.0.parts.0",
+      "feeLines.0", "feeLines.0.scope", "feeLines.0.refundRule"];
+    const conflict = "tax_reference_conflict /taxEvidence";
+    type Witness = { name: string; input: object; calculationId: string; red: string };
+    const witnesses: Witness[] = [];
+    function inject(value: typeof exclusiveWire, claim: Claim, path: string, scalar = false) {
+      const input = JSON.parse(JSON.stringify(value)) as typeof value;
+      const { seal } = input;
+      const node = path ? path.split(".").reduce<Record<string, unknown>>((obj, key) => obj[key] as Record<string, unknown>, seal) : seal;
+      Object.assign(node, scalar ? { sku: extra } : extra);
+      // Bind the revised bytes so the structural gate, rather than a stale digest, decides.
+      if ("adapterEvidence" in seal.evidence) seal.evidence.adapterDigest = digest("evidence", seal.evidence.adapterEvidence);
+      const { calculationId, generation } = claim;
+      const { destination, kind, requestDigest, evidence, disposition, validUntil } = seal;
+      const evidenceDigest = evaluationDigest("evaluation-evidence", { calculationId, generation, destination, kind, requestDigest,
+        invocationDigest: claim.pin.invocationDigest, evidence, disposition, validUntil });
+      const { quoteDigest: _outer, moneyDigest: _inner, quoteId, status, schemaVersion, contractVersion, ...money } = seal.outcome.quote;
+      // Rebinding the digest preserves the relationship between amount basis and evidence kind.
+      const revised = { ...money, taxEvidence: { ...money.taxEvidence, evidenceDigest } } as CommerceQuoteMoneyV2;
+      const quote = { ...revised, quoteId, status, schemaVersion, contractVersion,
+        moneyDigest: quoteDigest("commerce.quote-money.v2", revised) };
+      seal.outcome.quote = { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) };
+      const red = path === "destination" || path === "outcome" || path === quotePrefix + ".destination" ? conflict : "terminal";
+      witnesses.push({ name: (kind === "fiscal_profile" ? "fiscal " : "") + (path || "seal") + (scalar ? " scalar" : ""),
+        input, calculationId, red });
+    }
+    for (const path of ["", "destination", "outcome", "evidence"]) inject(exclusiveWire, exclusiveClaim, path);
+    for (const path of adapterPaths) inject(exclusiveWire, exclusiveClaim, path ? prefix + path : "evidence.adapterEvidence");
+    for (const path of quotePaths) inject(exclusiveWire, exclusiveClaim, path ? quotePrefix + "." + path : quotePrefix);
+    inject(exclusiveWire, exclusiveClaim, quotePrefix + ".lines.0", true);
+    inject(fiscalWire, fiscalClaim, "evidence");
+    const refused = { kind: "refused", code: blocked.code, field: blocked.field, remedy: blocked.remedy };
+    const unavailable = { kind: "unavailable", code: "tax_adapter_unavailable", field: "/taxEvidence", effect: "none",
+      remedy: "Request a new quote when the tax service is available." };
+    for (const outcome of [{ kind: "indeterminate" }, refused, unavailable]) {
+      const indeterminate = outcome.kind === "indeterminate";
+      const seal = { ...fiscalWire.seal, evidence: null, disposition: outcome.kind, contradiction: indeterminate, outcome };
+      witnesses.push({ name: outcome.kind + " outcome", input: { ...fiscalWire, seal: { ...seal, outcome: { ...outcome, ...extra } } },
+        calculationId: fiscalClaim.calculationId, red: indeterminate ? "pending" : conflict },
+      { name: outcome.kind + " evidence object", input: { ...fiscalWire, seal: { ...seal, evidence: extra } },
+        calculationId: fiscalClaim.calculationId, red: indeterminate ? "pending" : "tax_invalid_input /seal/outcome" });
+    }
+
+    await withFunctionMutation("public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean)",
+      sql => sql.replace("THEN '/seal'", "THEN NULL"), async () => {
+        const runtime = await db.runtime.connect();
+        try {
+          for (const { input, name, red } of witnesses) {
+            await runtime.query("BEGIN");
+            try {
+              const observed = await runtime.query<{ result: { kind: string } }>(witnessSql, [input])
+                .then(({ rows }) => rows[0]!.result.kind, error => [error.message, error.detail].filter(Boolean).join(" "));
+              expect(observed, name).toBe(red);
+              console.info("Seal mutation", name, observed);
+            } finally { await runtime.query("ROLLBACK"); }
+          }
+        } finally { runtime.release(); }
+      }, db.owner);
+
+    for (const { name, input, calculationId } of witnesses) {
+      await expect(db.runtime.query(witnessSql, [input]), name).rejects.toMatchObject(refusal);
+      const { rows } = await db.owner.query("SELECT state,outcome_text,contradiction FROM public.tax_calculations WHERE calculation_id=$1", [calculationId]);
+      expect(rows, name).toStrictEqual([{ state: "pending", outcome_text: null, contradiction: false }]);
+    }
+    for (const input of [exclusiveWire, fiscalWire]) {
+      expect(commerceQuoteV2Schema.parse(input.seal.outcome.quote)).toStrictEqual(input.seal.outcome.quote);
+      await expect(db.runtime.query(witnessSql, [input])).resolves.toMatchObject({
+        rows: [{ result: { kind: "terminal", outcome: input.seal.outcome } }],
+      });
+    }
+  });
 
   async function createPrivacy(db = store, unitOfWork = lane(db)) {
     const actor = { principalId: randomUUID() };
