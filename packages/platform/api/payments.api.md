@@ -452,6 +452,33 @@ export { createPostgresPaymentProviderReconciliationPort } from "./postgresPayme
 export { createPostgresProviderPaymentRail } from "./postgresProviderRail.js";
 export type { PostgresProviderPaymentRail, PostgresProviderAttemptSnapshot } from "./postgresProviderRail.js";
 export { createPaymentProviderRegistry, toCoreCaptureHandoff, fromCoreCaptureHandoff, toCorePaymentProviderCapability, } from "./providerRegistry.js";
+export { DEFAULT_PAYMENT_METHOD_EXPIRY_WARNING_DAYS, validatePaymentMethodExpiryWarningDays, installPaymentMethodExpiryWarningDaysPolicy, readPaymentMethodExpiryWarningDaysOverride, readPaymentMethodExpiryWarningDaysPolicy, } from "./methodExpiryWarningPolicy.js";
+export type { PaymentMethodExpiryWarningDaysPolicy } from "./methodExpiryWarningPolicy.js";
+```
+## dist/payments/methodExpiryWarningPolicy.d.ts
+
+```ts
+/** @experimental Default warning window (in days) before payment method expiry flags `method_expiring`. */
+export declare const DEFAULT_PAYMENT_METHOD_EXPIRY_WARNING_DAYS = 30;
+/** @experimental Installed policy configuring when expiring subscription payment methods trigger `method_expiring`. */
+export interface PaymentMethodExpiryWarningDaysPolicy {
+    revision: string;
+    warningDays: number;
+}
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Validate a `payment_method_expiry_warning_days` policy document using SQL-equivalent rules. */
+export declare function validatePaymentMethodExpiryWarningDays(value: unknown): PaymentMethodExpiryWarningDaysPolicy;
+/** @experimental Install the payment method expiry warning policy on a host-owned write-capable connection. */
+export declare function installPaymentMethodExpiryWarningDaysPolicy(db: Executor, policy: PaymentMethodExpiryWarningDaysPolicy): Promise<void>;
+/** @experimental Read an explicit `payment_method_expiry_warning_days` override, returning `undefined` when absent. */
+export declare function readPaymentMethodExpiryWarningDaysOverride(db: Executor): Promise<PaymentMethodExpiryWarningDaysPolicy | undefined>;
+/** @experimental Read the installed `payment_method_expiry_warning_days` policy or the 30-day absence fallback. */
+export declare function readPaymentMethodExpiryWarningDaysPolicy(db: Executor): Promise<PaymentMethodExpiryWarningDaysPolicy>;
+export {};
 ```
 ## dist/payments/paymentAttemptSilenceWindow.d.ts
 

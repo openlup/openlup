@@ -1,5 +1,36 @@
 [
   {
+    "key": "payment_method_expiry_warning_days",
+    "domain": "payments",
+    "kind": "installed",
+    "goal": "Set how many days before a subscription payment method expires health reads flag it as method_expiring (method expiry warning window, card expiration threshold, expiring card alert).",
+    "schemaVersion": 1,
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": {"revision": {"type": "string", "pattern": "\\S"}, "warningDays": {"type": "integer", "minimum": 1, "maximum": 365}}, "required": ["revision", "warningDays"], "additionalProperties": false},
+    "previewSchema": null,
+    "examples": [
+      {"value": {"revision": "store-1", "warningDays": 14}},
+      {"value": {"revision": " ", "warningDays": 30}, "code": "payment_method_expiry_warning_days_policy_invalid"},
+      {"value": {"revision": "store-1", "warningDays": 0}, "code": "payment_method_expiry_warning_days_policy_invalid"}
+    ],
+    "fallback": {"revision": "default", "warningDays": 30},
+    "defaultBasis": {"kind": "reference-code"},
+    "whyThisDefault": "Thirty days preserves the historical method expiry warning window in subscription_method_health_read while giving subscribers one monthly billing cycle to update an expiring payment method.",
+    "effect": {
+      "appliesTo": "Subsequent calls to subscription_method_health_read evaluate active payment method expires_at <= now() + make_interval(days => payment_method_expiry_warning_days_read()) and classify matching expiring methods as method_expiring. When no row exists in public.commerce_settings, the SQL reader defaults to 30 days; malformed rows refuse fail-closed with SQLSTATE 22023 payment_method_expiry_warning_days_policy_invalid.",
+      "frozenOn": ["Already recorded renewal attempts, retry obligations, dunning notifications, and billing cycles retain their recorded state."],
+      "impact": "customer-promise"
+    },
+    "runtime": {"level": "read-only", "reason": "Install or update the public.commerce_settings row through installPaymentMethodExpiryWarningDaysPolicy or your store deployment step; runtime edits require a write-capable host connection."},
+    "change": {"operation": "installPaymentMethodExpiryWarningDaysPolicy"},
+    "rules": [
+      {
+        "code": "payment_method_expiry_warning_days_policy_invalid",
+        "path": [],
+        "description": "Supply exactly revision and warningDays. Revision must be a nonblank string and warningDays an integer from 1 through 365."
+      }
+    ]
+  },
+  {
     "key": "payments.declineNoticeTiming",
     "domain": "payments",
     "goal": "Choose the delay and link lifetime for a payment decline notice.",

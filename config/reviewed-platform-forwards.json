@@ -9003,6 +9003,42 @@
           }
         ],
         "dataStatements": []
+      },
+      {
+        "row": "settings-wave1-method-expiry-and-claim-hold",
+        "path": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_method_health_read(uuid)",
+            "beforeSha256": "e2e13ca569d59b8d6a44c2cfd1e25c249da618b4b2d7c9f0a3d93ddc2318eef3",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
+            "beforeSha256": "fe448c8e8bce1a9f1b21bc821cb7529a4bad31731bf570d1068b97342527f9fb",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.payment_method_expiry_warning_days_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_method_expiry_warning_days_read()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.promotion_claim_hold_hours_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.promotion_claim_hold_hours_read()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -12750,6 +12786,42 @@
       "path": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
       "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6",
       "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+      "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765",
+      "functions": [
+        {
+          "signature": "public.subscription_method_health_read(uuid)",
+          "beforeSha256": "e2e13ca569d59b8d6a44c2cfd1e25c249da618b4b2d7c9f0a3d93ddc2318eef3",
+          "afterSha256": "14c6a586f14717c7e19eaaa2c4e99cea23a1698ad4122942746e8257f28fdf5d"
+        },
+        {
+          "signature": "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
+          "beforeSha256": "fe448c8e8bce1a9f1b21bc821cb7529a4bad31731bf570d1068b97342527f9fb",
+          "afterSha256": "13fc56922638b7ba06a552caaf24f788db4417f4d9ea66aa0142b5ac8964fdb4"
+        },
+        {
+          "signature": "public.payment_method_expiry_warning_days_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "f0de2f75c7dfe13280f54dc5fa845492f0fdbdae5f45e91e47f044d4f0ce84a4"
+        },
+        {
+          "signature": "public.payment_method_expiry_warning_days_read()",
+          "beforeSha256": null,
+          "afterSha256": "2c1cf76e0e4a0cd5d3159a30929751ccb5c88296ae995aea0582d684af1702a7"
+        },
+        {
+          "signature": "public.promotion_claim_hold_hours_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "d3e5f612651c3623421c21e25334a7442558fdfa7b8d1b14a675267b8649ca85"
+        },
+        {
+          "signature": "public.promotion_claim_hold_hours_read()",
+          "beforeSha256": null,
+          "afterSha256": "0b279c20469bb2a282297a407de57e2af51bb88987faf651840e81524dc5a68b"
+        }
+      ]
     }
   ],
   "managedExactForwards": [

@@ -1,5 +1,36 @@
 [
   {
+    "key": "promotion_claim_hold_hours",
+    "domain": "promotions",
+    "kind": "installed",
+    "goal": "Set how many hours newly reserved promotion claims are held before stale claim expiration sweeps release unpaid order claims (promotion claim hold window, promo reservation TTL, claim expiry).",
+    "schemaVersion": 1,
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": {"revision": {"type": "string", "pattern": "\\S"}, "holdHours": {"type": "integer", "minimum": 1, "maximum": 720}}, "required": ["revision", "holdHours"], "additionalProperties": false},
+    "previewSchema": null,
+    "examples": [
+      {"value": {"revision": "store-1", "holdHours": 12}},
+      {"value": {"revision": " ", "holdHours": 24}, "code": "promotion_claim_hold_hours_policy_invalid"},
+      {"value": {"revision": "store-1", "holdHours": 0}, "code": "promotion_claim_hold_hours_policy_invalid"}
+    ],
+    "fallback": {"revision": "default", "holdHours": 24},
+    "defaultBasis": {"kind": "reference-code"},
+    "whyThisDefault": "Twenty-four hours preserves the historical reservation hold in commerce_create_promoted_order_draft_with_outbox and matches the default checkout payment and recovery horizon. Interaction: keep promotion_claim_hold_hours aligned with or at least as long as the active checkout.initialPaymentWindow if unpaid checkout recovery should retain reserved promotion capacity until that window closes; shorter holds release abandoned promotion capacity sooner.",
+    "effect": {
+      "appliesTo": "New promoted order drafts created via commerce_create_promoted_order_draft_with_outbox record expires_at = now() + make_interval(hours => promotion_claim_hold_hours_read()) on reserved commerce_promotion_claims rows. When no row exists in public.commerce_settings, the SQL reader defaults to 24 hours; malformed rows refuse fail-closed with SQLSTATE 22023 promotion_claim_hold_hours_policy_invalid. Interacts with checkout.initialPaymentWindow: setting holdHours shorter than checkout.initialPaymentWindow can allow stale promotion claim sweeps to cancel unpaid drafts and release claims before checkout recovery completes.",
+      "frozenOn": ["Already reserved, redeemed, or released commerce_promotion_claims rows (including idempotent draft replays) keep their recorded expires_at timestamps."],
+      "impact": "customer-promise"
+    },
+    "runtime": {"level": "read-only", "reason": "Install or update the public.commerce_settings row through installPromotionClaimHoldHoursPolicy or your store deployment step; runtime edits require a write-capable host connection."},
+    "change": {"operation": "installPromotionClaimHoldHoursPolicy"},
+    "rules": [
+      {
+        "code": "promotion_claim_hold_hours_policy_invalid",
+        "path": [],
+        "description": "Supply exactly revision and holdHours. Revision must be a nonblank string and holdHours an integer from 1 through 720."
+      }
+    ]
+  },
+  {
     "key": "promotions.freeShippingBasis",
     "domain": "promotions",
     "goal": "Choose the subtotal basis for free shipping.",

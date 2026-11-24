@@ -182,6 +182,10 @@ async function bindSettings({ database, app, configuration }) {
     if (!db || "configurationIds" in overrides) return { ...overrides, close };
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { describeRenewalStockProtectionSetting, readRenewalStockProtectionOverride, previewRenewalStockProtection } = await import("@openlup/platform/inventory");
+    // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
+    const { readPaymentMethodExpiryWarningDaysOverride } = await import("@openlup/platform/payments");
+    // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
+    const { readPromotionClaimHoldHoursOverride } = await import("@openlup/platform/promotions");
     const inventory = describeRenewalStockProtectionSetting().key;
     inventorySettingKey = inventory;
     return {
@@ -189,6 +193,14 @@ async function bindSettings({ database, app, configuration }) {
         "tax.coverage": async () => ({ refusal: "tax_coverage_reader_unbound" }),
         [inventory]: async () => {
           const policy = await readRenewalStockProtectionOverride(db);
+          return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
+        },
+        payment_method_expiry_warning_days: async () => {
+          const policy = await readPaymentMethodExpiryWarningDaysOverride(db);
+          return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
+        },
+        promotion_claim_hold_hours: async () => {
+          const policy = await readPromotionClaimHoldHoursOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
         },
         subscription_minimum_base_units: async () => {

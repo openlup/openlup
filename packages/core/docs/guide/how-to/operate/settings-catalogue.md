@@ -323,6 +323,18 @@ Search terms include settlement currency, settlement region, commerce settings m
 
 Show offline: `show market.settlementProfile --json`.
 
+## payment_method_expiry_warning_days
+
+Set how many days before a subscription payment method expires health reads flag it as method_expiring (method expiry warning window, card expiration threshold, expiring card alert).
+Search terms include payment method expiry, method_expiring, card expiration warning, renewal method health.
+
+- Owner **payments** · kind **installed** · runtime **read-only**
+- Default is `{"revision":"default","warningDays":30}`.
+- Basis `reference-code` (matches the reference deployment's code).
+- Thirty days preserves the historical method expiry warning window in subscription_method_health_read while giving subscribers one monthly billing cycle to update an expiring payment method.
+
+Show offline: `show payment_method_expiry_warning_days --json`.
+
 ## payments.declineNoticeTiming
 
 Choose the delay and link lifetime for a payment decline notice.
@@ -457,6 +469,18 @@ Search terms include quote amounts, price calculation.
 - The current subscription price policy rounds down to the configured quantum.
 
 Show offline: `show pricing.subscriptionPriceRounding --json`.
+
+## promotion_claim_hold_hours
+
+Set how many hours newly reserved promotion claims are held before stale claim expiration sweeps release unpaid order claims (promotion claim hold window, promo reservation TTL, claim expiry).
+Search terms include promotion claim hold, promo reservation expiry, initialPaymentWindow, stale promotion claims.
+
+- Owner **promotions** · kind **installed** · runtime **read-only**
+- Default is `{"revision":"default","holdHours":24}`.
+- Basis `reference-code` (matches the reference deployment's code).
+- Twenty-four hours preserves the historical reservation hold in commerce_create_promoted_order_draft_with_outbox and matches the default checkout payment and recovery horizon. Interaction: keep promotion_claim_hold_hours aligned with or at least as long as the active checkout.initialPaymentWindow if unpaid checkout recovery should retain reserved promotion capacity until that window closes; shorter holds release abandoned promotion capacity sooner.
+
+Show offline: `show promotion_claim_hold_hours --json`.
 
 ## promotions.freeShippingBasis
 
