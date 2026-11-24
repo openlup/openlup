@@ -220,6 +220,28 @@
         "action": "Correct the supplied policy using the rule, then repeat the connected read.",
         "command": "npm --silent run settings -- show checkout_recovery_reminders --database-url <read-capable-url> --json"
       }
+    },
+    {
+      "code": "payment_method_expiry_warning_days_policy_invalid",
+      "path": [],
+      "rule": "Supply exactly revision and warningDays. Revision must be a nonblank string and warningDays an integer from 1 through 365.",
+      "hint": "Check the value schema and examples for payment_method_expiry_warning_days.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm --silent run settings -- show payment_method_expiry_warning_days --json"
+      }
+    },
+    {
+      "code": "promotion_claim_hold_hours_policy_invalid",
+      "path": [],
+      "rule": "Supply exactly revision and holdHours. Revision must be a nonblank string and holdHours an integer from 1 through 720.",
+      "hint": "Check the value schema and examples for promotion_claim_hold_hours.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm --silent run settings -- show promotion_claim_hold_hours --json"
+      }
     }
   ]
 }

@@ -1,11 +1,13 @@
 /** Called by the existing cold consumer after installing its verified tarballs. */
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { execFileSync, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import type { AppUpgradePlan, AppVerificationFinding } from "@openlup/platform/lifecycle";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
+import { catalogueUpgradeFixture } from "../../examples/neutral-store/test/catalogue-upgrade-fixture.ts";
 
 // Immutable published artifacts, independently read from the public registry.
 // Availability failure refuses proof; no current workspace substitutes for them.
@@ -363,9 +365,10 @@ export function reconcileStarterCatalogue130(previous: string, target: string): 
   return previous.replace(registry, `import type { CatalogPackInput } from '@openlup/platform/catalog';\n\n${declarations.trimEnd()}`);
 }
 
-function assertStarterCatalogueAdmission(app: string, code: string, expectedQueries: number): void {
+function assertStarterCatalogueAdmission(app: string, code: string, expectedQueries: number, hasAdopterPack = false): void {
   execFileSync(process.execPath, ["--input-type=module", "-e", `
     import assert from 'node:assert/strict';
+    import { readFileSync } from 'node:fs';
     import { applyDemoSeed } from './installation/install.ts';
     import { configurations } from './owned/store.config.ts';
     let queries = 0;
@@ -375,6 +378,7 @@ function assertStarterCatalogueAdmission(app: string, code: string, expectedQuer
     } };
     await assert.rejects(applyDemoSeed(Object.values(configurations)[0], {
       connection, installRole: 'installer', runtimeRole: 'runtime',
+      catalogueRules: ${hasAdopterPack ? "readFileSync('owned/catalogue-rules.cjs')" : 'undefined'},
     }), { code: ${JSON.stringify(code)} });
     assert.equal(queries, ${expectedQueries});
   `], { cwd: app, env: isolatedConsumerEnv(), stdio: "pipe", timeout: 30_000 });
@@ -417,7 +421,124 @@ export function mergeStarterCareFile(directory: string, previous: Buffer, local:
   } finally { rmSync(merge, { recursive: true, force: true }); }
 }
 
-type UpgradePair = { from: string; to: string; fromVersion: string; toVersion: string; pristine?: boolean;
+type CatalogueBrowser = {
+  reference: string;
+  localImage?: string | undefined;
+  containerArguments(app: string, reference: string, name: string, localImage?: string, mounts?: string[]): string[];
+};
+
+const catalogueBrowserReadiness = "/catalogue-browser-readiness";
+const catalogueBrowserResult = catalogueBrowserReadiness + "/result.json";
+const launchCatalogueBrowser = `
+  const { renameSync, writeFileSync } = require("node:fs");
+  const report = value => {
+    writeFileSync("${catalogueBrowserResult}.tmp", JSON.stringify(value), { mode: 0o600 });
+    renameSync("${catalogueBrowserResult}.tmp", "${catalogueBrowserResult}");
+  };
+  Promise.resolve().then(() => {
+    const { chromium } = require("playwright");
+    return chromium.launchServer({ host: "127.0.0.1", timeout: 10_000 });
+  }).then(server => {
+    report({ endpoint: server.wsEndpoint() });
+  }, error => {
+    report({ error: String(error) });
+    setTimeout(() => process.exit(1), 25_000);
+  });
+`;
+const readCatalogueBrowser = `
+  const { existsSync, readFileSync } = require("node:fs");
+  const { setTimeout: sleep } = require("node:timers/promises");
+  (async () => {
+    const deadline = Date.now() + 20_000;
+    while (!existsSync("${catalogueBrowserResult}")) {
+      if (Date.now() >= deadline) return process.stdout.write(JSON.stringify("deadline"));
+      await sleep(100);
+    }
+    process.stdout.write(readFileSync("${catalogueBrowserResult}", "utf8"));
+  })().catch(error => { console.error(error.message); process.exitCode = 1; });
+`;
+
+function refuseCatalogueBrowser(code: string, cause?: unknown): never {
+  throw Object.assign(new Error(code, { cause }), { code });
+}
+
+/** Exercise the installed recipe on the upgraded app with its target package bytes. */
+export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Record<string, string>, browser?: CatalogueBrowser,
+  run: (file: string, args: readonly string[], options: ExecFileSyncOptionsWithStringEncoding) => string = execFileSync) {
+  const lockfile = join(app, "package-lock.json");
+  const retained = readFileSync(lockfile);
+  const lock = JSON.parse(retained.toString("utf8"));
+  const artifacts: string[] = [];
+  let lockRemapped = false, container: string | undefined, failure: { error: unknown } | undefined;
+  let readinessDirectory: string | undefined;
+  const options = { cwd: app, env: { ...isolatedConsumerEnv(), OPENLUP_STARTER_CATALOGUE_RECIPE_APP: app,
+    OPENLUP_STARTER_CATALOGUE_RECIPE_HASHES: JSON.stringify(preservedHashes) },
+    stdio: "pipe" as const, encoding: "utf8" as const,
+    timeout: 600_000, maxBuffer: 8 * 1024 * 1024 };
+  try {
+    for (const name of ["core", "outbox", "platform"]) {
+      const entry = lock.packages["node_modules/@openlup/" + name];
+      assert(typeof entry?.resolved === "string", "Catalogue recipe is missing an installed dependency");
+      if (!entry.resolved.startsWith("file:")) continue;
+      const bytes = readFileSync(resolve(app, entry.resolved.slice(5)));
+      assert.equal("sha512-" + createHash("sha512").update(bytes).digest("base64"), entry.integrity);
+      const local = `artifacts/openlup-${name}.tgz`, path = join(app, local);
+      if (existsSync(path)) assert.deepEqual(readFileSync(path), bytes, "Catalogue recipe artifact differs from the target lock");
+      else { writeFileSync(path, bytes, { flag: "wx" }); artifacts.push(path); }
+      if (entry.resolved !== "file:" + local) {
+        entry.resolved = "file:" + local;
+        lockRemapped = true;
+      }
+    }
+    if (lockRemapped) writeFileSync(lockfile, JSON.stringify(lock) + "\n");
+    const recipe = { ...options, env: { ...options.env } as NodeJS.ProcessEnv };
+    const dockerOptions = { ...options, timeout: 30_000 };
+    if (browser) {
+      let url: URL | undefined;
+      try {
+        const name = "starter-catalogue-browser-" + randomBytes(6).toString("hex");
+        readinessDirectory = mkdtempSync(join(tmpdir(), "openlup-catalogue-browser-"));
+        const readinessMount = `type=bind,src=${realpathSync(readinessDirectory)},dst=${catalogueBrowserReadiness}`;
+        const [action, ...args] = browser.containerArguments(app, browser.reference, name, browser.localImage, ["--mount", readinessMount]);
+        container = name;
+        run("docker", [action!, "--detach", ...args, "node", "-e", launchCatalogueBrowser], dockerOptions);
+        const readiness = JSON.parse(run("docker", ["exec", name, "node", "-e", readCatalogueBrowser], dockerOptions));
+        if (readiness !== "deadline") {
+          if (readiness?.error) throw new Error(readiness.error);
+          const endpoint = typeof readiness?.endpoint === "string" ? URL.parse(readiness.endpoint) : null;
+          assert(endpoint?.protocol === "ws:" && endpoint.hostname === "127.0.0.1" && endpoint.port && !endpoint.username && !endpoint.password,
+            "Invalid catalogue browser endpoint");
+          url = endpoint;
+        }
+      } catch (error) { refuseCatalogueBrowser("starter_catalogue_browser_startup_failed", error); }
+      if (!url) refuseCatalogueBrowser("starter_catalogue_browser_server_not_ready");
+      recipe.env.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT = url.href;
+    } else {
+      run(process.execPath, [realpathSync(join(app, "node_modules/.bin/playwright")), "install", "chromium"], options);
+    }
+    const result = run(process.execPath, ["--test", "--test-reporter=spec", "--test-name-pattern=^up_json_installed_starter_recipe$", "test/lifecycle.test.ts"], recipe);
+    assert.match(result, /✔ up_json_installed_starter_recipe/u);
+    if (browser) console.log(`Catalogue replay operator connected to pinned browser image ${browser.reference}`);
+  } catch (error) {
+    failure = { error };
+  } finally {
+    try {
+      if (container) run("docker", ["rm", "-f", container], { ...options, timeout: 30_000 });
+    } catch (error) {
+      failure ??= { error };
+    }
+    try {
+      if (readinessDirectory) rmSync(readinessDirectory, { recursive: true, force: true });
+      if (lockRemapped) writeFileSync(lockfile, retained);
+      for (const path of artifacts) rmSync(path);
+    } catch (error) {
+      failure ??= { error };
+    }
+  }
+  if (failure) throw failure.error;
+}
+
+type UpgradePair = { from: string; to: string; fromVersion: string; toVersion: string; pristine?: boolean; browser?: CatalogueBrowser;
   evidence: { planSha256?: string; customizations?: Record<string, string>;
     managedConflict?: { path: string; action: "create" | "replace" }; phases: { name: string; result: string }[] } };
 
@@ -425,6 +546,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const app = pair.from, from = starterUpgradeSnapshot(app, pair.fromVersion), to = starterUpgradeSnapshot(pair.to, pair.toVersion);
   const ownership = JSON.parse(readFileSync(join(app, "ownership.json"), "utf8"));
   const careUpgrade = needsStarterCareUpgrade(app, pair.to);
+  const catalogueUpgrade = !pair.pristine && !Object.hasOwn(from.files, "lifecycle-refusals.mjs")
+    && Object.hasOwn(to.files, "lifecycle-refusals.mjs");
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
@@ -438,6 +561,10 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const catalogue130 = pair.fromVersion === "1.3.0" && retireCatalogue &&
     !readFileSync(join(app, starterCatalogueFile), "utf8").includes("export const catalogueConformance");
   if (catalogue130) owned[starterCatalogueFile] = readFileSync(join(app, starterCatalogueFile));
+  const convertCatalogue = () => phase("starter-1.3.0-owned-catalogue-conversion", () => {
+    owned[starterCatalogueFile] = convertStarterCatalogue130(app, pair.to);
+  });
+  let adopterHashes: Record<string, string> | undefined;
   const settingsHost = join(app, starterSettingsHost);
   if (existsSync(settingsHost)) owned[starterSettingsHost] = readFileSync(settingsHost);
   const targetSettings = join(pair.to, starterSettingsHost);
@@ -480,6 +607,15 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       owned[retiredCatalogueFile] = Buffer.concat([owned[retiredCatalogueFile]!, Buffer.from("\n")]);
       writeFileSync(join(app, retiredCatalogueFile), owned[retiredCatalogueFile]!);
     }
+    if (catalogueUpgrade) {
+      if (catalogue130) convertCatalogue();
+      const skeleton = join(pair.to, "node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-pack-skeleton");
+      adopterHashes = catalogueUpgradeFixture(app, skeleton);
+      for (const path of Object.keys(adopterHashes)) {
+        assert(!Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path), "Adopter pack files must stay owned");
+        owned[path] = readFileSync(join(app, path));
+      }
+    }
     pair.evidence.customizations = Object.fromEntries(Object.entries(owned).map(([path, bytes]) => [path, hash(bytes)]));
     assertCompleteStarter(app, from);
   });
@@ -504,7 +640,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     }
     return report;
   };
-  const paths = new Set<string>([...Object.keys(from.files), ...Object.keys(to.files), ...ownership.owned]);
+  const paths = new Set<string>([...Object.keys(from.files), ...Object.keys(to.files), ...ownership.owned, ...Object.keys(adopterHashes ?? {})]);
   const readFiles = () => [...paths].map(path => existsSync(join(app, path)) ? readFileSync(join(app, path)) : null);
   let plan: ReturnType<typeof run>;
   phase("plan", () => {
@@ -638,6 +774,13 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     changed = plan.files.filter((file: { action: string }) => ["replace", "create"].includes(file.action));
     pair.evidence.planSha256 = hash(JSON.stringify(plan));
   });
+  const catalogueOwned = () => ({
+    ...Object.fromEntries((ownership.owned as string[])
+      .filter(path => !Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path) && existsSync(join(app, path)))
+      .map(path => [path, hash(readFileSync(join(app, path)))])),
+    ...catalogueUpgradeFixture(app),
+  });
+  const beforeCatalogueApply = catalogueUpgrade ? catalogueOwned() : undefined;
   phase("interrupt-and-refuse", () => {
     const preload = join(workspace, "interrupt.mjs");
     writeFileSync(preload, 'import { promises as fs } from "node:fs"; const rename = fs.rename.bind(fs); fs.rename = async (...args) => { await rename(...args); process.kill(process.pid, "SIGKILL"); await new Promise(() => {}); };');
@@ -670,7 +813,10 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     if (careUpgrade) assert(resumed.applied.length > 0, "care upgrade resume must write remaining files");
     checkUpgradeFiles();
   });
-  phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
+  phase("replay", () => {
+    assert.deepEqual(run("apply").applied, []); checkUpgradeFiles();
+    if (beforeCatalogueApply) assert.deepEqual(catalogueOwned(), beforeCatalogueApply, "Managed apply changed owned bytes");
+  });
   if (!pair.pristine && previousEffect && nextEffect && previousEffect !== nextEffect) phase("checkout-attempt-effect-reconciliation", () => {
     const current = readFileSync(settingsHost, "utf8");
     assert.equal(attemptLimitEffect.exec(current)?.[2], previousEffect);
@@ -712,24 +858,37 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     if (!pair.pristine) pair.evidence.customizations![careCopy] = hash(copy);
     assert.deepEqual(run("apply").applied, []); checkUpgradeFiles();
   });
-  if (catalogue130) phase("starter-1.3.0-owned-catalogue-conversion", () => {
+  if (catalogue130) {
     checkUpgradeFiles();
-    owned[starterCatalogueFile] = convertStarterCatalogue130(app, pair.to);
-  });
+    if (!catalogueUpgrade) convertCatalogue();
+  }
   rmSync(workspace, { recursive: true, force: true });
   return () => phase("installed-application-and-owned-bytes", () => {
     assertCompleteStarter(app, to); checkUpgradeFiles();
     if (catalogue130) phase("starter-1.3.0-installer-admission", () => {
       // Target packages are installed here. The role refusal witnesses a completed catalogue admission.
-      assertStarterCatalogueAdmission(app, "starter_seed_runtime_role_forbidden", 3);
+      assertStarterCatalogueAdmission(app, "starter_seed_runtime_role_forbidden", 3, catalogueUpgrade);
     });
     if (to.files["package.json"]?.includes('"catalogue:check:source"'))
       proveStarterCatalogueWrappers(app, dirname(app), to.files["package.json"]);
+    if (Object.hasOwn(to.files, "lifecycle-refusals.mjs")) {
+      assert(!Object.keys(to.files).some(path => path.startsWith(".context/catalogue-builds/")));
+      const table = JSON.parse(execFileSync(process.execPath, [starterLifecycle, "refusals", "--json"],
+        { cwd: app, env: isolatedConsumerEnv(), encoding: "utf8" }));
+      assert.equal(typeof table.starter_catalogue_build_missing?.fix, "string");
+    }
     if (retireCatalogue) phase("starter-catalogue-guided-consolidation", () => {
       if (!pair.pristine) renameSync(join(app, retiredCatalogueFile), join(app, "owned/catalogue-archive.json"));
       else rmSync(join(app, retiredCatalogueFile));
       assert(!existsSync(join(app, retiredCatalogueFile)));
       if (!pair.pristine) assert.deepEqual(readFileSync(join(app, "owned/catalogue-archive.json")), owned[retiredCatalogueFile]);
+    });
+    if (catalogueUpgrade) phase("installed-catalogue-build-replay", () => {
+      assert(adopterHashes && beforeCatalogueApply);
+      const before = catalogueOwned();
+      const expected = Object.fromEntries(Object.keys(adopterHashes).map(path => [path, beforeCatalogueApply[path]!]));
+      proveInstalledCatalogueUpgrade(app, expected, pair.browser);
+      assert.deepEqual(catalogueOwned(), before, "Catalogue replay changed upgraded owned bytes");
     });
   });
 }

@@ -49,6 +49,7 @@ Pin exact versions and upgrade all `@openlup/*` packages together.
 - [Choose an extension seam](how-to/extend/choose-an-extension-seam.md)
 - [Take ownership of a copied component or page](how-to/extend/eject-source.md)
 - [Compose a provider adapter](how-to/extend/provider-adapters.md)
+- [Install or scaffold a provider recipe](how-to/extend/provider-recipes.md)
 
 ### How-to: operate
 

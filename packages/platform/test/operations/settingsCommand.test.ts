@@ -752,6 +752,8 @@ it("checks every packaged schema against its default and valid examples", async 
     key,
     "market.fiscalProfile",
     "market.settlementProfile",
+    "payment_method_expiry_warning_days",
+    "promotion_claim_hold_hours",
     "shipping_flat_minor",
     "subscription_minimum_base_units",
     "subscription_sized_intro_phase",
@@ -1090,7 +1092,7 @@ async function settingsParity() {
   }
   // Current package output includes the internal number recipe for catalog.optionalGtin.
   expect(createHash("sha256").update(JSON.stringify(liveBytes)).digest("hex"))
-    .toBe("4b421b9049c50b0714e72cb0e63cf2b83b16e9624b44862174f0be5fd4835c07");
+    .toBe("d32f20cec2622aedd3d7773afcf91bec81159d84784187fe1a76909339a1eed8");
   const checkKeys = liveData.entries.filter(({ kind }) => kind === "code" || kind === "installed").map(({ key }) => key);
   const representatives = bound.filter(({ args, fixture }) => fixture !== undefined &&
     (args[0] === "check" || args[1] === key || args[1] === "checkout_recovery_reminders" && args[0] === "show" ||

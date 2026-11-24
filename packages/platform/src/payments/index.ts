@@ -108,3 +108,12 @@ export {
   fromCoreCaptureHandoff,
   toCorePaymentProviderCapability,
 } from "./providerRegistry.js";
+export {
+  DEFAULT_PAYMENT_METHOD_EXPIRY_WARNING_DAYS,
+  validatePaymentMethodExpiryWarningDays,
+  installPaymentMethodExpiryWarningDaysPolicy,
+  readPaymentMethodExpiryWarningDaysOverride,
+  readPaymentMethodExpiryWarningDaysPolicy,
+} from "./methodExpiryWarningPolicy.js";
+export type { PaymentMethodExpiryWarningDaysPolicy } from "./methodExpiryWarningPolicy.js";
+

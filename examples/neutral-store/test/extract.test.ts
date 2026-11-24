@@ -914,7 +914,7 @@ test('RP2 source wrapper checks the independent registry from packed dependencie
       import { starterCatalogue } from './host/editor-catalogue.ts';
       const type = { key: 'independent:item', version: 1 };
       const resolved = catalogDraftRegistry.resolve(type);
-      assert.equal(resolved, starterCatalogue().registry.resolve(type));
+      assert.throws(() => starterCatalogue().registry.resolve(type), { code: 'starter_catalogue_build_missing' });
       assert.equal(resolved.validateContent, catalogueConformance.packs[0].pack.types[0].validateContent);
       assert.equal(catalogDraftRegistry.resolve({ key: 'starter:item', version: 1 }), undefined);
       process.stdout.write(resolved.key);

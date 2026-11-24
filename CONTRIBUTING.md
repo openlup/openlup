@@ -2017,7 +2017,11 @@ Where activated, trusted `Queue Handoff` can insert a still-armed exact head onc
 after the required source successes and current native proof. At each of its two
 mergeability checks, it re-reads `UNKNOWN` up to twelve times, 15 seconds apart.
 Persistent `UNKNOWN` requires re-running the job. It does not arm an unarmed PR
-or automatically requeue an evicted head. Its App is scoped
+or automatically requeue an evicted head. For PRs touching migration paths or
+migration registries, it checks active entries in `main`'s merge queue first and
+exits cleanly with `status: "deferred"` (leaving the merge intent unburned) when
+another migration PR is already active; after the blocking PR clears and any
+required `landing:merge` push runs, the deferred PR can be enqueued normally. Its App is scoped
 to this repository with no bypass; its private key stays in the main-only
 `openlup-merge-queue` environment, separate from release credentials. Queue
 Handoff's built-in workflow token is read-only. Activation and settings remain

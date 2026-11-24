@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 199,
-        "exactTailCount": 89,
-        "objectInventorySha256": "adef643a711144b1f82f0f8d1c0a5eb2ccad91263f528ec84d984dc412623ad3",
+        "count": 200,
+        "exactTailCount": 90,
+        "objectInventorySha256": "68fc05832417034002330b67a946ed7a0c6ef607181cbc4731ec59c2e4fb18d1",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+            "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+          },
           {
             "file": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
             "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
@@ -805,10 +809,14 @@
         ]
       },
       "bootstrap": {
-        "count": 205,
-        "exactTailCount": 90,
-        "objectInventorySha256": "b80fb667e105fd6f3dc84f326e34d5d99f0f4a207e9fa5f02a793c7540f4b035",
+        "count": 206,
+        "exactTailCount": 91,
+        "objectInventorySha256": "8de81a17790c3a69ffb30ee01737ba55403b3fbc6e450946f77c9c27aae2333b",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+            "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+          },
           {
             "file": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
             "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
@@ -1632,10 +1640,14 @@
         ]
       },
       "separate": {
-        "count": 205,
-        "exactTailCount": 90,
-        "objectInventorySha256": "7b98a86ab18e20ab69763beb04ec5b64eed11a41189f7056b31bbf5c4a2300fc",
+        "count": 206,
+        "exactTailCount": 91,
+        "objectInventorySha256": "4a2cc8a6d180a22f67fb1fd252b0beeeb24ccb801d321b73c0e881580f50c868",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+            "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+          },
           {
             "file": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
             "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
@@ -2459,10 +2471,14 @@
         ]
       },
       "admin-managed": {
-        "count": 203,
-        "exactTailCount": 89,
-        "objectInventorySha256": "2f075aa967efad36653657d959b992d003cf5a47852c669af26bb56f00e0dca4",
+        "count": 204,
+        "exactTailCount": 90,
+        "objectInventorySha256": "4d3cbfce425591e4a8dc189d1799611cf6b0704a165a533c918d9d92c3034ecf",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+            "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+          },
           {
             "file": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
             "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
@@ -3278,10 +3294,14 @@
         ]
       },
       "admin-operator": {
-        "count": 203,
-        "exactTailCount": 89,
-        "objectInventorySha256": "0f74204d9dcef4430d6e90db8813ee8e827f5445b8f0d9b7afd635f700877d92",
+        "count": 204,
+        "exactTailCount": 90,
+        "objectInventorySha256": "167f7bb8af72ce9a763f6b27fc30d305dca4516b97a2f93273a59e9fce58e756",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+            "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+          },
           {
             "file": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
             "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"

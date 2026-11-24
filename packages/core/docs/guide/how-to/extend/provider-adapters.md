@@ -327,6 +327,8 @@ observations and retry or replay with offline fixtures. A passing fixture check
 does not prove account readiness, durable storage atomicity, a live integration,
 a release or support tier, or authorization to perform live operations. Follow
 [adapter conformance](adapter-conformance.md) to run the communications example
-and check your implementation. Keep the adapter in your application's source or
+and check your implementation. To install a prebuilt code-owned provider recipe
+or scaffold a new one with offline Stages 1–3 checks, follow
+[install or scaffold a provider recipe](provider-recipes.md). Keep the adapter in your application's source or
 propose it upstream through the [contribution
 process](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor).

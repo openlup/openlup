@@ -31,6 +31,9 @@ npx --no -- openlup recipe show payments/adyen
 # Install a code-owned recipe into owned/adapters/<domain>/<provider> and verify Stages 1–3 immediately
 npx --no -- openlup recipe add payments/adyen --verify
 
+# Scaffold a brand-new ADR-001-compliant provider recipe and verify offline immediately
+npx --no -- openlup recipe scaffold --domain payments --provider acme-pay --verify
+
 # Re-verify an installed or customized recipe at any time
 npx --no -- openlup recipe verify owned/adapters/payments/adyen --json
 ```
