@@ -260,6 +260,13 @@ export async function runBrowserGroups(runGroup, currentPhase, groups = browserJ
   if (failure) throw failure;
 }
 
+export const catalogueUpgradeGroupIndex = 1;
+
+export async function runCatalogueUpgrade({ groups, manifest, commit }, prove) {
+  if (groups && !groups.includes(catalogueUpgradeGroupIndex)) return;
+  await prove(manifest, commit);
+}
+
 export async function runStarterBrowser(options) {
   const started = performance.now(), outputs = [], privateValues = [];
   let phase = 'inputs';
@@ -429,7 +436,12 @@ export async function runStarterBrowser(options) {
             if (!counts.some(count => count.endsWith(' passed'))) throw new Error('starter_browser_results_missing');
             console.log(`Starter database journeys: ${counts.join(', ')}; group ${groupIndex + 1}`);
           }), () => cancellation.signal.aborted ? 'cancelled' : phase, options.groups);
-
+    });
+    await runCatalogueUpgrade(options, async (manifest, commit) => {
+      cancellation.signal.throwIfAborted();
+      phase = 'catalogue_upgrade';
+      const { provePublishedCatalogueUpgrade } = await import('./packages/exact-set-qualification.mjs');
+      provePublishedCatalogueUpgrade(manifest, commit);
     });
   } catch (error) {
     // Never publish assertion bodies, SQL details, connection strings or child errors.

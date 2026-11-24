@@ -7,7 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 import { createHash } from 'node:crypto';
 import pg from 'pg';
-import { assertCanaryImage, acquireStarterPostgres, browserArguments, canaryPurchasePattern, capturePrivateValues, parseArguments, resolveBrowserImage, runStarterImageCanary, runBrowserGroups, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
+import { assertCanaryImage, acquireStarterPostgres, browserArguments, canaryPurchasePattern, capturePrivateValues, catalogueUpgradeGroupIndex, parseArguments, resolveBrowserImage, runStarterImageCanary, runBrowserGroups, runCatalogueUpgrade, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
 import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
 
@@ -114,6 +114,16 @@ describe('installed starter browser CI', () => {
     } finally { report.mockRestore(); }
     const source = readFileSync('scripts/starter-browser-ci.mjs', 'utf8');
     expect(source).toContain("phase, options.groups)");
+  });
+  it('replays once for the owning group and skips selections of other groups', async () => {
+    const prove = vi.fn();
+    await runCatalogueUpgrade(parseArguments([...args, '--groups', '0,6']), prove);
+    expect(prove).not.toHaveBeenCalled();
+    await runCatalogueUpgrade(parseArguments([...args, '--groups', '1,6']), prove);
+    expect(prove.mock.calls).toEqual([[args[1], args[3]]]);
+    prove.mockClear();
+    await runCatalogueUpgrade(parseArguments(args), prove);
+    expect(prove.mock.calls).toEqual([[args[1], args[3]]]);
   });
   it.each(['', '0,0', '-1', '7', '1,7', '1.5', '01', '0,', ',0', '0, 1', '1e0', 'NaN'])('refuses an invalid group subset: %s', groups => {
     expect(() => parseArguments([...args, '--groups', groups])).toThrow('starter_browser_arguments_invalid');
@@ -266,6 +276,7 @@ describe('installed starter browser CI', () => {
     expect(install).toContain('needs: [install-packages]');
     expect(workflow).toContain('needs: [install-packages, install-browser]');
     const groups = install.match(/groups: \[(.*)\]/u)![1]!.replaceAll("'", '').split(', ').flatMap(shard => shard.split(',').map(Number));
+    expect(groups.filter(index => index === catalogueUpgradeGroupIndex)).toHaveLength(1);
     expect(groups.sort((left, right) => left - right)).toEqual(browserJourneyGroups.map((_, index) => index));
     expect(workflow).toContain('needs: [dco, typecheck, install-proof, test, self-check, gitleaks]');
   });
