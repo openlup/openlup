@@ -778,11 +778,15 @@
       "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
     },
     {
+      "file": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
+      "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3"
+    },
+    {
       "file": "db/platform/migrations/20261125280000_function_search_path_pg_temp.sql",
       "sha256": "199e3eb5e217e20a42f0e36a75d11e6cab748b8622f3792d7aa2a7da228cfbf4"
     }
   ],
-  "objectInventorySha256": "72a95990e7a837d85e81cd0b887457ee3953b0b64dfdf9298a79b8de1e8ad2de",
+  "objectInventorySha256": "2221581352f2ba3a53a3c6bb70bc9de5452cadb655545e71ccf041c5cda51cd4",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1586,16 +1590,20 @@
         "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
       },
       {
+        "file": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
+        "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3"
+      },
+      {
         "file": "db/platform/migrations/20261125280000_function_search_path_pg_temp.sql",
         "sha256": "199e3eb5e217e20a42f0e36a75d11e6cab748b8622f3792d7aa2a7da228cfbf4"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "4d51127392c8e35d0e7fb675261c664e8a2a042f3cd33c04268f59bc5d553085"
+        "withRestore": "bdf1258f6d521c553a8fa160356eefa8043e8c7fc9754b2ec47ec1dc41792a5e"
       },
       "separateMigrator": {
-        "withRestore": "c307621fd60ebe0827f5b543335cc3949b221f449ecc82bbe856423fec091d97"
+        "withRestore": "58a1aff120beebe27cd7aec95656ce1fea2e469f63abd92673951ef59c3ae1f5"
       }
     }
   },
@@ -2394,13 +2402,17 @@
         "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
       },
       {
+        "file": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
+        "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3"
+      },
+      {
         "file": "db/platform/migrations/20261125280000_function_search_path_pg_temp.sql",
         "sha256": "199e3eb5e217e20a42f0e36a75d11e6cab748b8622f3792d7aa2a7da228cfbf4"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "af93ae63accedbdd07556e089b50ad926749ace16a5ccae126ede0b3d88dd70b",
-      "operatorProvisioned": "7e652a46cf454c403b4ae60d9710deb3b4ca4a04fe418b6d6374cdecf729a002"
+      "installerManaged": "7a199720f39d018e3e399a7e652e943cafc76555f5d30d9a789e4fcfefec92d9",
+      "operatorProvisioned": "2191df42bc8d6d6ac3de1e1a42dd97e977bd573d5f4df5a845911682ff43b3f6"
     }
   }
 }

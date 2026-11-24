@@ -3,6 +3,7 @@ import installationInventory from "./current-installation-inventory.json" with {
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { Client, Pool, type PoolClient, type PoolConfig } from "pg";
 import { createPostgresDataGateway, type PgGatewayClient } from "@openlup/platform/data";
 import { advisoryLockKey, createPgAdvisoryLock, withAdvisoryLock, type AdvisoryLockQuerier } from "@openlup/platform/scheduler";
@@ -10,7 +11,7 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { qualifiedAdminPostgresCatalogPayload, qualifiedAdminPostgresStartupOptions,
   type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { runReleasedSchemaUpgradeProof } from "./m14ReleasedSchemaUpgrade.proof.js";
 import { proveRuntimeCheckout, watchRuntimeCheckoutAclDelta } from "./catalogRuntimeCheckout.proof.js";
 import { proveCheckoutOwnerGrant, provisionCheckoutOwner, readIssuedPlatformManifest, withIssuedPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
@@ -21,19 +22,26 @@ const identifier = (name: string): string => { assert.match(name, /^[a-z_][a-z0-
 
 export async function runQualifiedAdminCompositionProof(input: { roleMode: "installer-managed" | "operator-provisioned"; inventory: string; database?: PoolConfig;
  trustedControlPlane?: { roleNames: readonly string[] }; target?: "rds"; layout?: "serial-cluster";
- rolePrefix?: string; schemaProof?: { previousApplicationPath: string }; freshRuntimeCheckout?: boolean }) {
+ rolePrefix?: string; schemaProof?: { previousApplicationPath: string }; freshRuntimeCheckout?: boolean },
+ readyLocalConnectionString?: string) {
  const pools: Pool[] = [];
- let container;
+ let ownedContainer: PostgresContainer | undefined;
  try {
   const password = randomBytes(24).toString("hex");
-  container = input.database ? { connectionString: input.database.connectionString!, remove: async () => {} } : await runPostgresContainer({ name: `m14-qb-production-${input.roleMode}-${process.pid}`, password: "synthetic-conformance" });
-  if (!input.database) assert.equal(await waitForPostgresTcpReady(container.connectionString), true);
-  const bootstrapLogin = decodeURIComponent(new URL(container.connectionString).username);
-  const databaseName = decodeURIComponent(new URL(container.connectionString).pathname.slice(1));
+  let connectionString = input.database?.connectionString ?? readyLocalConnectionString;
+  if (!input.database && !readyLocalConnectionString) {
+    ownedContainer = await runPostgresContainer({ name: `m14-qb-production-${input.roleMode}-${process.pid}`, password: "synthetic-conformance" });
+    connectionString = ownedContainer.connectionString;
+    assert.equal(await waitForPostgresTcpReady(connectionString), true);
+  }
+  assert.ok(connectionString, "Qualified admin proof requires a PostgreSQL connection string");
+  const bootstrapUrl = new URL(connectionString);
+  const bootstrapLogin = decodeURIComponent(bootstrapUrl.username);
+  const databaseName = decodeURIComponent(bootstrapUrl.pathname.slice(1));
   const pool = (url: string): Pool => { const value = new Pool({ ...input.database, connectionString: url }); pools.push(value); return value; };
-  const loginUrl = (name: string): string => { const value = new URL(container!.connectionString); value.username = name;
-    value.password = name === bootstrapLogin ? new URL(container!.connectionString).password : password; return value.toString(); };
-  const bootstrap = pool(container.connectionString);
+  const loginUrl = (name: string): string => { const value = new URL(bootstrapUrl); value.username = name;
+    value.password = name === bootstrapLogin ? bootstrapUrl.password : password; return value.toString(); };
+  const bootstrap = pool(connectionString);
   const prefix = input.rolePrefix ?? (input.roleMode === "installer-managed" ? "qb_proof_managed" : "qb_proof_operator");
   const m = `${prefix}_m`, r = `${prefix}_r`, s = `${prefix}_s`, o = `${prefix}_o`;
   let operatorPool: Pool | undefined;
@@ -320,5 +328,12 @@ export async function runQualifiedAdminCompositionProof(input: { roleMode: "inst
     appliedAfterResume: resumed.applied.length + suffix.applied.length, ledgerRows: installed.length, replayApplied: 0,
     runtimeProved: true, restoreProved: true, connectionRecipeProved: true,
     shadowMatrixProved: true, refusalsProved: true };
- } finally { await closePostgres(container, pools); }
+ } finally { await closePostgres(ownedContainer, pools); }
+}
+
+// The local Vitest fixture owns this ready container. The child owns its pools.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const [input, connectionString]: [Parameters<typeof runQualifiedAdminCompositionProof>[0], string] = JSON.parse(process.argv[2]!);
+  const result = await runQualifiedAdminCompositionProof(input, connectionString);
+  console.log(JSON.stringify(result));
 }
