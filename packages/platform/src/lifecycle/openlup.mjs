@@ -352,15 +352,23 @@ function runSettingsToolProcess(argv, stdin) {
   });
 }
 
+const cliOptions = {
+  json: { type: "boolean" }, help: { type: "boolean" },
+  root: { type: "string" }, from: { type: "string" }, to: { type: "string" },
+  "schema-version": { type: "string" }, app: { type: "string" }, packs: { type: "string" }, "trusted-packs": { type: "string" },
+};
+
 async function main(args) {
-  if (args[0] === "catalogue" && args[1] === "schema") {
-    const [option, ...extra] = args.slice(2);
-    if (option !== undefined && (option !== "--json" || extra.length > 0)) {
-      const rejected = option === "--json" ? extra[0] : option;
+  // Identify schema before strict parsing can refuse a misplaced or malformed option.
+  const { positionals: [group, command] } = parseArgs({ args, options: cliOptions, strict: false, allowPositionals: true });
+  if (group === "catalogue" && command === "schema") {
+    const expected = ["catalogue", "schema", "--json"];
+    const rejected = args.find((arg, index) => arg !== expected[index]);
+    if (rejected !== undefined) {
       const flag = rejected.split("=", 1)[0];
       const syntax = ["--packs", "--trusted-packs", "--app", "--json"].includes(flag) ? `${flag} syntax`
         : rejected.startsWith("-") ? "an unsupported option" : "an extra positional argument";
-      emitRefusal(64, cliFinding("OPENLUP_E_CLI_INPUT", `Rejected ${syntax} after catalogue schema.`,
+      emitRefusal(64, cliFinding("OPENLUP_E_CLI_INPUT", `Rejected ${syntax} in the catalogue schema invocation.`,
         "catalogue schema takes only --json.", "Run the command without other flags or arguments.", "openlup catalogue schema --json"),
       { command: "catalogue schema" });
       return;
@@ -422,13 +430,7 @@ async function main(args) {
     }
     return;
   }
-  const { values, positionals } = parseArgs({
-    args, options: {
-      json: { type: "boolean" }, help: { type: "boolean" },
-      root: { type: "string" }, from: { type: "string" }, to: { type: "string" },
-      "schema-version": { type: "string" }, app: { type: "string" }, packs: { type: "string" }, "trusted-packs": { type: "string" },
-    }, strict: true, allowPositionals: true,
-  });
+  const { values, positionals } = parseArgs({ args, options: cliOptions, strict: true, allowPositionals: true });
   json = values.json === true;
   const isUpgrade = positionals.length === 2 && positionals[0] === "upgrade" && ["plan", "apply"].includes(positionals[1]);
   if (values["trusted-packs"] !== undefined && (positionals[0] !== "catalogue" || positionals[1] !== "project" || values.packs !== undefined || values.app !== undefined)) {

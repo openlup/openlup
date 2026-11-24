@@ -1323,11 +1323,21 @@ it("refusal_codes_page_contains_catalog_publication_tax_class_unavailable_with_f
   const repository = resolve(packageRoot, "../..");
   const read = (path: string) => readFileSync(join(repository, path), "utf8");
   const rendered = renderGeneratedRegion("refusal-codes", repository)!;
-  const tax = read("packages/platform/src/catalog/publicationError.ts")
-    .match(/catalog_publication_tax_class_unavailable: (\[[^\n]+\]),/u);
-  const [reason, fix, cause] = JSON.parse(tax![1]!);
-  const taxRow = rendered.split("\n").find(line => line.startsWith("| `catalog_publication_tax_class_unavailable` |"));
-  expect(taxRow).toBe(`| \`catalog_publication_tax_class_unavailable\` | \`${reason}\` | ${cause} | ${fix} |`);
+  const publication = read("packages/platform/src/catalog/publicationError.ts");
+  const rows = rendered.split("\n");
+  for (const [code, expectedCause] of [
+    ["catalog_publication_tax_class_unavailable"],
+    ["catalog_publication_gtin_conflict",
+      "This GTIN is already assigned in the store, either to another SKU or to this SKU under a different issuer."],
+    ["catalog_publication_sku_price_not_ready",
+      "The SKU fails the effective price list's readiness checks. There must be exactly one active, effective one-time entry at minimum quantity 1, and its gross amount must be positive. With no D2C subscription pricing policy history, there must be exactly one active, effective subscription entry, with a positive gross amount at minimum quantity 1. With policy history, exactly one valid policy revision must be effective and derive a positive price, and there must be no active, effective explicit subscription entry."],
+  ] as const) {
+    const owner = publication.split("\n").find(line => line.startsWith(`  ${code}: [`))!;
+    const [reason, fix, cause] = JSON.parse(owner.slice(owner.indexOf("["), -1));
+    if (expectedCause !== undefined) expect(cause, code).toBe(expectedCause);
+    const row = rows.find(line => line.startsWith(`| \`${code}\` |`));
+    expect(row).toBe(`| \`${code}\` | \`${reason}\` | ${expectedCause ?? cause} | ${fix} |`);
+  }
   const violations: string[] = [];
   assertCatalogueRecipeReachability(rendered, repository, violations);
   expect(violations).toEqual([]);
@@ -1345,6 +1355,10 @@ it("refusal_codes_page_contains_catalog_publication_tax_class_unavailable_with_f
   expect(pairs).toHaveLength(17);
   expect(builder.split("\n").filter(line => line.startsWith("| ")).slice(2))
     .toEqual(pairs.map(([, when, remedy]) => `| ${JSON.parse(when!)} | ${JSON.parse(remedy!)} |`));
+
+  expect(builder).toContain("| A generated schemaId or sourceRef exceeds 240 characters and the refusal points to namespace, or a generated documentRef exceeds 240 characters and the refusal points to slug. | Shorten namespace or slug until every generated document reference is at most 240 characters. |");
+  expect(builder).toContain("| The refusal points to skus.N.identifiers and the SKU has no unit GS1 GTIN after its supplied identifier records pass validation. | Add a valid unit GS1 GTIN for this SKU. If the product has no GS1 barcode, mint one with catalogInternalGtin using an unused store-local sequence. |");
+  expect(builder).toContain("| The refusal points to skus.N.identifiers.M.value and the named GS1 identifier has a supported plain JSON string value that fails GTIN format or checksum validation. | Enter a valid GTIN for this identifier. |");
 
   const usage = renderGeneratedRegion("cli:openlup", repository)!;
   expect(usage).toContain("openlup catalogue schema [--json]\n");

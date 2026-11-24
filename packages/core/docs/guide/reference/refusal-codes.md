@@ -94,7 +94,7 @@ Cause is shown when the owner supplies a sentence explaining the refusal.
 | `catalog_publication_gross_below_net` |  | The SKU gross mass is less than its net content. | Supply a gross mass at least as large as the net content. |
 | `catalog_publication_gross_mass_invalid` |  | The SKU gross mass is invalid or uses a unit the pinned type cannot convert. | Supply a positive gross mass in an installed mass unit. |
 | `catalog_publication_gross_mass_required` |  | The SKU needs a gross mass for the selected publication operation. | supply the gross mass for this SKU |
-| `catalog_publication_gtin_conflict` | `publication_gtin_conflict` | The GTIN is already assigned to a different SKU. | This GTIN is already assigned. Verify the barcode and prepare the draft again. |
+| `catalog_publication_gtin_conflict` | `publication_gtin_conflict` | This GTIN is already assigned in the store, either to another SKU or to this SKU under a different issuer. | This GTIN is already assigned. Verify the barcode and prepare the draft again. |
 | `catalog_publication_gtin_invalid` | `publication_gtin_invalid` |  | A SKU barcode has an invalid GTIN. Check its digits and try again. |
 | `catalog_publication_head_invalid` | `publication_changed` |  | The current publication changed. Reload the product and try again. |
 | `catalog_publication_history_item_too_large` | `catalog_publication_history_item_too_large` |  | A saved publication is too large for a history page. Read that publication with the full page reader. |
@@ -160,7 +160,7 @@ Cause is shown when the owner supplies a sentence explaining the refusal.
 | `catalog_publication_scope_expansion` |  |  | Keep changes within the product and SKUs named by the selected draft. |
 | `catalog_publication_sku_effect_missing` |  |  | Match the proposed SKU facts and options to the selected draft and installed derivation rules. |
 | `catalog_publication_sku_identity_changed` | `publication_sku_identity_changed` |  | A SKU code differs from its published identity. Restore the saved code or prepare a new SKU. |
-| `catalog_publication_sku_price_not_ready` | `publication_sku_price_not_ready` | The SKU lacks the required effective base or subscription price. | Set a positive gross base price and check the subscription price for this SKU in the effective price list. |
+| `catalog_publication_sku_price_not_ready` | `publication_sku_price_not_ready` | The SKU fails the effective price list's readiness checks. There must be exactly one active, effective one-time entry at minimum quantity 1, and its gross amount must be positive. With no D2C subscription pricing policy history, there must be exactly one active, effective subscription entry, with a positive gross amount at minimum quantity 1. With policy history, exactly one valid policy revision must be effective and derive a positive price, and there must be no active, effective explicit subscription entry. | Set a positive gross base price and check the subscription price for this SKU in the effective price list. |
 | `catalog_publication_sku_price_shape_invalid` | `publication_sku_price_shape_invalid` | The effective price entries have an unsupported tax basis, channel or minimum quantity. | Use gross one-time or subscription pricing at minimum quantity one for this SKU in the effective price list. |
 | `catalog_publication_sku_revision_invalid` | `publication_revision_invalid` |  | The product revisions do not match this publication. Reload the product and prepare it again. |
 | `catalog_publication_sku_title_invalid` | `publication_sku_title_invalid` |  | A SKU title is missing or too long. Enter a shorter title. |
@@ -205,15 +205,15 @@ Cause is shown when the owner supplies a sentence explaining the refusal.
 | --- | --- |
 | type.version is absent | Set type.version to the installed version of the product type. |
 | Several SKUs are supplied and either no SKU or multiple SKUs are marked primary | Mark exactly one SKU with primary: true. |
-| The SKU has no valid unit GS1 GTIN | Add a valid unit GS1 GTIN for this SKU. If the product has no GS1 barcode, mint one with catalogInternalGtin using an unused store-local sequence. |
+| The refusal points to skus.N.identifiers and the SKU has no unit GS1 GTIN after its supplied identifier records pass validation. | Add a valid unit GS1 GTIN for this SKU. If the product has no GS1 barcode, mint one with catalogInternalGtin using an unused store-local sequence. |
 | The SKU has multiple valid unit GS1 GTINs and none is marked primary, or isPrimary marks multiple identifiers or an identifier other than a unit GS1 GTIN | Set isPrimary to true on one valid unit GS1 GTIN and clear it on all other identifiers of this SKU. |
 | The named identifier quantity is invalid, or a case identifier has no quantity | Use quantity 1 for a unit identifier and supply the actual case quantity from 2 to 999999 for a case identifier. |
-| The named GS1 identifier value fails GTIN validation | Enter a valid GTIN for this identifier. |
+| The refusal points to skus.N.identifiers.M.value and the named GS1 identifier has a supported plain JSON string value that fails GTIN format or checksum validation. | Enter a valid GTIN for this identifier. |
 | The named GTIN repeats a GTIN elsewhere in the input after zero-padding to 14 digits | Remove the duplicate record or supply a distinct valid GTIN. Leading zeros and issuer changes do not distinguish GTINs. |
 | The named SKU has both sell modes disabled | Enable sell.oneTime, sell.subscription or both for this SKU. |
 | The named SKU code repeats a code used by another SKU in the product | Give each SKU of the product a distinct code. |
 | The named offerVersions array has zero or multiple entries | List exactly one offer version in offerVersions for this SKU, or omit offerVersions to use classic. |
-| The namespace or slug makes a generated document reference longer than 240 characters | Shorten namespace or slug until every generated document reference is at most 240 characters. |
+| A generated schemaId or sourceRef exceeds 240 characters and the refusal points to namespace, or a generated documentRef exceeds 240 characters and the refusal points to slug. | Shorten namespace or slug until every generated document reference is at most 240 characters. |
 | The generated draft or canonical document exceeds 1048576 UTF-8 bytes | Shorten optional product data or reduce the number of SKUs until each draft is at most 1048576 bytes. |
 | The named document or draft contains content nested beyond the allowed depth | Reduce nesting in the named content until the generated draft fits the depth limit of 48. |
 | The named field contains a value or key that cannot be represented as supported plain JSON data | Use plain JSON data in the named field and remove unsupported keys or values. |

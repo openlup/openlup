@@ -103,6 +103,14 @@ it("schema_codes_cover_dictionaries", () => {
     else expect(row.cause, code).toBe(cause);
   }
   for (const code of g1a) expect(codes.find(row => row.code === code)?.cause, code).toMatch(/[^\s].*\.$/u);
+  expect(codes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ code: "price_list_not_active",
+      cause: "The price operation names an ineligible list, or the SKU readiness check found no eligible list. An eligible price list is active, matches the settlement region and currency, and is within its validity window." }),
+    expect.objectContaining({ code: "catalog_publication_gtin_conflict",
+      cause: "This GTIN is already assigned in the store, either to another SKU or to this SKU under a different issuer." }),
+    expect.objectContaining({ code: "catalog_publication_sku_price_not_ready",
+      cause: "The SKU fails the effective price list's readiness checks. There must be exactly one active, effective one-time entry at minimum quantity 1, and its gross amount must be positive. With no D2C subscription pricing policy history, there must be exactly one active, effective subscription entry, with a positive gross amount at minimum quantity 1. With policy history, exactly one valid policy revision must be effective and derive a positive price, and there must be no active, effective explicit subscription entry." }),
+  ]));
   expect(required("duplicate_sku_id", "Remove the repeated SKU entry while preserving authoritative identity.").family).toBe("definition");
   expect(required("duplicate_sku_id", "Use a distinct identifier for each SKU.").family).toBe("draft");
   expect(codes.find(({ code }) => code === "catalog_publication_sku_price_not_ready")?.family).toBe("price");
@@ -114,37 +122,52 @@ it("schema_codes_cover_dictionaries", () => {
   expect(builder).toEqual([{ ...owner, family: "draft", severity: "error" }]);
   expect(builder[0]!.fixVariants).toHaveLength(17);
   const unit = (sequence: number) => ({ scheme: "gs1:gtin", issuer: "example:internal", packagingLevel: "unit", value: catalogInternalGtin(sequence) } as const);
-  for (const [identifiers, when] of [
-    [[], /no valid unit GS1 GTIN/u],
-    [[unit(1), unit(2)], /multiple valid unit GS1 GTINs and none is marked primary/u],
-  ] as const) {
-    const input: CatalogProductInput = {
-      namespace: "example", type: { key: "example:item", version: 1 }, slug: "item", name: "Item", presentation: {},
-      skus: [{ code: "ITEM", title: "Item", options: {}, netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 },
-        identifiers: [...identifiers], sell: { oneTime: true, subscription: false } }],
-    };
-    const matching = builder[0]!.fixVariants!.filter(variant => when.test(variant.when));
+  const product = (identifiers: CatalogProductInput["skus"][number]["identifiers"]): CatalogProductInput => ({
+    namespace: "example", type: { key: "example:item", version: 1 }, slug: "item", name: "Item", presentation: {},
+    skus: [{ code: "ITEM", title: "Item", options: {}, netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 },
+      identifiers, sell: { oneTime: true, subscription: false } }],
+  });
+  const cases = [
+    { input: product([]), path: "skus.0.identifiers",
+      when: "The refusal points to skus.N.identifiers and the SKU has no unit GS1 GTIN after its supplied identifier records pass validation." },
+    { input: product([unit(1), unit(2)]), path: "skus.0.identifiers",
+      when: "The SKU has multiple valid unit GS1 GTINs and none is marked primary, or isPrimary marks multiple identifiers or an identifier other than a unit GS1 GTIN" },
+    { input: product([{ ...unit(1), value: "5901234123458" }]), path: "skus.0.identifiers.0.value",
+      when: "The refusal points to skus.N.identifiers.M.value and the named GS1 identifier has a supported plain JSON string value that fails GTIN format or checksum validation.",
+      fix: "Enter a valid GTIN for this identifier." },
+    { input: { ...product([unit(1)]), namespace: "a".repeat(222), slug: "a" }, path: "namespace",
+      when: "A generated schemaId or sourceRef exceeds 240 characters and the refusal points to namespace, or a generated documentRef exceeds 240 characters and the refusal points to slug." },
+  ];
+  for (const { input, path, when, fix } of cases) {
+    const matching = builder[0]!.fixVariants!.filter(variant => variant.when === when);
     expect(matching).toHaveLength(1);
+    if (fix !== undefined) expect(matching[0]!.fix).toBe(fix);
     expect(() => buildCatalogReleaseDraftV3(input)).toThrow(expect.objectContaining({
-      code, path: "skus.0.identifiers",
+      code, path,
       message: expect.stringContaining(`\nCause: ${cause}\nFix: ${matching[0]!.fix}\n`),
     }));
   }
 });
 
 it.each([
-  { args: ["--packs", "redacted-marker"], observed: "Rejected --packs syntax" },
-  { args: ["--trusted-packs=redacted-marker", "--json"], observed: "Rejected --trusted-packs syntax" },
-  { args: ["--app", "redacted-marker"], observed: "Rejected --app syntax" },
-  { args: ["--app"], observed: "Rejected --app syntax" },
-  { args: ["--redacted-marker"], observed: "Rejected an unsupported option" },
-  { args: ["--help"], observed: "Rejected an unsupported option" },
-  { args: ["--json=redacted-marker"], observed: "Rejected --json syntax" },
-  { args: ["--json", "--json"], observed: "Rejected --json syntax" },
-  { args: ["--json", "redacted-marker"], observed: "Rejected an extra positional argument" },
-  { args: ["redacted-marker"], observed: "Rejected an extra positional argument" },
+  { args: ["catalogue", "schema", "--packs", "redacted-marker"], observed: "Rejected --packs syntax" },
+  { args: ["catalogue", "schema", "--trusted-packs=redacted-marker", "--json"], observed: "Rejected --trusted-packs syntax" },
+  { args: ["catalogue", "schema", "--app", "redacted-marker"], observed: "Rejected --app syntax" },
+  { args: ["catalogue", "schema", "--app"], observed: "Rejected --app syntax" },
+  { args: ["catalogue", "schema", "--redacted-marker"], observed: "Rejected an unsupported option" },
+  { args: ["catalogue", "schema", "--help"], observed: "Rejected an unsupported option" },
+  { args: ["catalogue", "schema", "--json=redacted-marker"], observed: "Rejected --json syntax" },
+  { args: ["catalogue", "schema", "--json", "--json"], observed: "Rejected --json syntax" },
+  { args: ["catalogue", "schema", "--json", "redacted-marker"], observed: "Rejected an extra positional argument" },
+  { args: ["catalogue", "schema", "redacted-marker"], observed: "Rejected an extra positional argument" },
+  { args: ["catalogue", "--help", "schema"], observed: "Rejected an unsupported option" },
+  { args: ["catalogue", "--packs", "./owned/catalogue.json", "schema"], observed: "Rejected --packs syntax" },
+  { args: ["catalogue", "--trusted-packs", "./owned/catalogue.ts", "schema"], observed: "Rejected --trusted-packs syntax" },
+  { args: ["catalogue", "--app=./owned/application.mjs", "schema"], observed: "Rejected --app syntax" },
+  { args: ["catalogue", "--json=redacted-marker", "schema"], observed: "Rejected --json syntax" },
+  { args: ["--json", "catalogue", "schema"], observed: "Rejected --json syntax" },
 ])("schema_refuses_pack_flags_with_64 $observed $args", ({ args, observed }) => {
-  const result = run("catalogue", "schema", ...args);
+  const result = run(...args);
   expect(result.status).toBe(64);
   expect(result.stderr).toBe("");
   expect(result.stdout).not.toContain("redacted-marker");
@@ -160,5 +183,12 @@ it.each([
     fix: "Run the command without other flags or arguments.",
     recheck: "openlup catalogue schema --json",
   });
+  expect(finding.observed).not.toMatch(/redacted-marker|\.\/owned\//u);
   expect(run(...finding.recheck.split(" ").slice(1)).status).toBe(0);
+});
+
+it("treats recognized option values as values when identifying the schema command", () => {
+  const result = run("catalogue", "--packs", "schema", "--help", "--json");
+  expect(result.status).toBe(0);
+  expect(JSON.parse(result.stdout).command).toBe("help");
 });
