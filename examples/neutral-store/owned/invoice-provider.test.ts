@@ -36,3 +36,10 @@ test('createOwnedInvoiceProvider mounts a valid InvoiceProviderPort implementati
   assert.equal(composed.provider, stubProvider);
   assert.equal(composed.unsupported, null);
 });
+
+test('createOwnedInvoiceProvider refuses malformed provider objects missing required port methods', () => {
+  assert.throws(
+    () => createOwnedInvoiceProvider({ provider: {} as unknown as InvoiceProviderPort }),
+    /owned_invoice_provider_methods_required/,
+  );
+});

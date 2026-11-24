@@ -38,24 +38,31 @@ describe("test accounting provider", () => {
     });
   });
 
-  it("supports neutral custom prefixes and getGovernmentClearanceStatus", async () => {
+  it("supports neutral custom prefixes and getGovernmentSubmissionStatus", async () => {
     const provider = createTestAccountingProvider({ invoicePrefix: "TEST/INV", correctionPrefix: "TEST/CR" });
-    const issued = await provider.createInvoice(
-      {
-        orderRef: "ORDER/999",
-        issueDate: "2030-06-09",
-        currency: "USD",
-        buyer: { name: "Buyer", email: "buyer@example.test", taxId: null },
-        documentKind: "b2c_named",
-        governmentClearanceRequired: false,
-        lines: [{ name: "Item", quantity: 1, unitNetMinor: 1000, unitGrossMinor: 1000, vatRate: "0" }],
-      },
-      { recoveryLookupRequired: false },
-    );
+    const snapshot = {
+      orderRef: "ORDER/999",
+      issueDate: "2030-06-09",
+      currency: "USD",
+      buyer: { name: "Buyer", email: "buyer@example.test", taxId: null },
+      documentKind: "b2c_named" as const,
+      governmentClearanceRequired: false,
+      lines: [{ name: "Item", quantity: 1, unitNetMinor: 1000, unitGrossMinor: 1000, vatRate: "0" }],
+    };
+    const issued = await provider.createInvoice(snapshot, { recoveryLookupRequired: false });
     expect(issued.providerInvoiceNumber).toBe("TEST/INV/2030/ORDER-999");
-    await expect(provider.getGovernmentClearanceStatus("test_inv_ORDER-999")).resolves.toEqual({
+
+    const correction = await provider.correctionRecovery?.createFullCorrection(snapshot, {
+      correctedProviderInvoiceId: issued.providerInvoiceId,
+      correctionReason: "cancelled",
+      correctionRef: "CORR/999",
+      recoveryLookupRequired: false,
+    });
+    expect(correction?.providerInvoiceNumber).toBe("TEST/CR/CORR-999");
+
+    await expect(provider.getGovernmentSubmissionStatus?.("test_inv_ORDER-999")).resolves.toEqual({
       status: "not_submitted",
-      clearanceRef: null,
+      number: null,
       raw: { provider: "accounting_test", mode: "test" },
     });
   });

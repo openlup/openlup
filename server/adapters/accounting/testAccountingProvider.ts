@@ -12,13 +12,7 @@ export interface TestAccountingProviderOptions {
 
 export function createTestAccountingProvider(
   options: TestAccountingProviderOptions = {},
-): AccountingDocumentProviderPort & {
-  getGovernmentClearanceStatus(providerInvoiceId: string): Promise<{
-    readonly status: "not_submitted";
-    readonly clearanceRef: null;
-    readonly raw: { readonly provider: "accounting_test"; readonly mode: "test" };
-  }>;
-} {
+): AccountingDocumentProviderPort {
   const invoicePrefix = options.invoicePrefix?.trim() || "TEST/FV";
   const correctionPrefix = options.correctionPrefix?.trim() || "TEST/KOR";
   return {
@@ -73,10 +67,10 @@ export function createTestAccountingProvider(
         raw: { provider: "accounting_test", mode: "test" },
       };
     },
-    async getGovernmentClearanceStatus(_providerInvoiceId: string) {
+    async getGovernmentSubmissionStatus(_providerInvoiceId: string) {
       return {
         status: "not_submitted" as const,
-        clearanceRef: null,
+        number: null,
         raw: { provider: "accounting_test", mode: "test" },
       };
     },
