@@ -134,8 +134,9 @@ responsibility splits and boundary limits across shared surfaces:
   evidence-class identity, and the validator admits the transition from historic
   preview to stable posture. Author exact publication-catalogue rows for moved
   tests and new package sources. Validated, regular, non-executable package
-  changelog fragments and reader guide Markdown follow
-  [the two pattern admissions](../../CONTRIBUTING.md#package-policy-and-release-checks).
+  changelog fragments, reader guide Markdown, and manifest-pinned platform SQL
+  migrations/mirrors follow
+  [the three pattern admissions](../../CONTRIBUTING.md#package-policy-and-release-checks).
   Policy and inventory checks derive live source-release bindings, validate
   authored fields and structure, and report a stale committed snapshot without
   failure. Refresh that snapshot only in a reviewed release-preparation change

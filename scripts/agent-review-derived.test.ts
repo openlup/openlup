@@ -640,8 +640,10 @@ it('keeps a package command that main added after the reviewed head forked', () 
   const landed = JSON.parse(git('show', `${merged}:${CATALOGUE}`));
   const upstream = JSON.parse(git('show', `${main}:${CATALOGUE}`));
   expect(landed.packageCommands).toEqual(upstream.packageCommands);
-  expect(landed.publicPaths.map(row => row.path)).toContain('packages/platform/sql/20990101010000_landing_fixture.sql');
-  expect(landed.publicPaths.map(row => row.path)).toContain('packages/platform/sql/20990101020000_landing_fixture.sql');
+  expect(landed.publicPaths.map(row => row.path)).not.toContain('packages/platform/sql/20990101010000_landing_fixture.sql');
+  expect(landed.publicPaths.map(row => row.path)).not.toContain('packages/platform/sql/20990101020000_landing_fixture.sql');
+  expect(git('ls-tree', '-r', '--name-only', merged, '--', 'packages/platform/sql/')).toContain('packages/platform/sql/20990101010000_landing_fixture.sql');
+  expect(git('ls-tree', '-r', '--name-only', merged, '--', 'packages/platform/sql/')).toContain('packages/platform/sql/20990101020000_landing_fixture.sql');
 });
 it('regenerates stale package command metadata when the trusted owner is unchanged', () => {
   try {
@@ -945,20 +947,26 @@ it('re-slots migration paths in the manifest, reviewed forwards and publication 
     append('20990101010000');
     const oldPath = 'db/platform/migrations/20990101010000_landing_fixture.sql';
     const newPath = 'db/platform/migrations/20990101030100_landing_fixture.sql';
+    const oldSupabase = 'supabase/migrations/20990101010000_landing_fixture.sql';
+    const newSupabase = 'supabase/migrations/20990101030200_landing_fixture.sql';
+    write(oldSupabase, 'SELECT 1;\n');
     const catalog = JSON.parse(read(CATALOGUE));
-    catalog.publicPaths.push({ path: oldPath, class: 'public-output' });
+    catalog.publicPaths.push({ path: oldSupabase, class: 'public-output' });
     catalog.publicPaths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
     write(CATALOGUE, json(catalog));
-    applyMigrationReslot(root, [{ path: oldPath, target: newPath }]);
+    applyMigrationReslot(root, [{ path: oldPath, target: newPath }, { path: oldSupabase, target: newSupabase }]);
     expect(existsSync(join(root, oldPath))).toBe(false);
     expect(existsSync(join(root, newPath))).toBe(true);
+    expect(existsSync(join(root, oldSupabase))).toBe(false);
+    expect(existsSync(join(root, newSupabase))).toBe(true);
     expect(read(MIGRATION_REGISTRIES[0])).toContain(newPath);
     expect(read(MIGRATION_REGISTRIES[1])).toContain(newPath);
     expect(read(MIGRATION_REGISTRIES[0])).not.toContain(oldPath);
     expect(read(MIGRATION_REGISTRIES[1])).not.toContain(oldPath);
     const rows = JSON.parse(read(CATALOGUE)).publicPaths.map(({ path }) => path);
-    expect(rows).toContain(newPath);
-    expect(rows).not.toContain(oldPath);
+    expect(rows).toContain(newSupabase);
+    expect(rows).not.toContain(oldSupabase);
+    expect(rows).not.toContain(newPath);
     expect(rows).toEqual([...rows].sort());
   } finally { restoreDerivedFixture(); }
 });

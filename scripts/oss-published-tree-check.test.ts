@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { runPublicTypecheckProjects } from "./oss-public-typecheck.ts";
 
 import { isExpandOnlyPlatformForward } from "./oss-source-release-contract.ts";
+import { isManifestPinnedSqlArea } from "./oss-publication-policy.ts";
 import { REQUIRED_CONTEXTS, contextPassed } from "./packages/release-gate.ts";
 import {
   PUBLIC_EXECUTION_ENTRYPOINTS,
@@ -1088,7 +1089,7 @@ describe("the public-only inventory check", () => {
       const policy = `${JSON.stringify({ schemaVersion: 1, activePaths: ["README.md"], contracts: [{ id: "entrypoint", owners: ["README.md"] }] }, null, 2)}\n`;
       const baselinePath = "db/platform/migrations/00000000000000_platform_baseline.sql", baseline = "CREATE TABLE example(id integer);\n";
       const paths = [...new Set([baselinePath, "README.md", "config/openlup-policy-registry.json", "config/openlup-publication-catalog.json", "config/openlup-source-release-contract.json", "config/platform-migration-manifest.json", "src/integrations/supabase/types.ts", "package-lock.json", "packages/core/package-lock.json", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS])].sort();
-      const catalogue = createPublicPublicationCatalog(paths.map((path) => ({ path, class: "public-output" })), []).contents;
+      const catalogue = createPublicPublicationCatalog(paths.filter((path) => !isManifestPinnedSqlArea(path)).map((path) => ({ path, class: "public-output" })), []).contents;
       const manifest = publicRootManifest();
       const lock = "{}\n";
       const migration = JSON.stringify({ schemaVersion: 1, baseline: { file: baselinePath, sha256: digest(baseline).slice(7) }, forward: [], objectInventorySha256: digest("objects").slice(7) }); const types = "export type Database = Record<string, any>;\n";
@@ -1104,10 +1105,14 @@ describe("the public-only inventory check", () => {
       expect(publicInventoryVerdict(root, (line) => lines.push(line))).toBe(true);
       expect(lines.join("\n")).toContain(`tracked public paths: ${paths.length}`);
       writeFileSync(join(root, baselinePath), `${baseline}SELECT 1;\n`);
-      const mismatched: string[] = [];
-      expect(publicInventoryVerdict(root, (line) => mismatched.push(line))).toBe(false);
-      expect(mismatched.join("\n")).toContain("SHA-256 mismatch");
+      expect(() => publicInventoryVerdict(root, () => undefined)).toThrow("SHA-256 mismatch");
       writeFileSync(join(root, baselinePath), baseline);
+      const manifestWithSeam = JSON.parse(manifest) as Record<string, unknown>;
+      manifestWithSeam.imports = { "#seam": { default: "./src/a.ts" } };
+      writeFileSync(join(root, "package.json"), JSON.stringify(manifestWithSeam));
+      const seamLines: string[] = [];
+      expect(publicInventoryVerdict(root, (line) => seamLines.push(line))).toBe(false);
+      expect(seamLines.join("\n")).toContain("unresolved conditional seam");
       writeFileSync(join(root, "package.json"), `${manifest}\n`);
       const stale: string[] = [];
       expect(publicInventoryVerdict(root, (line) => stale.push(line))).toBe(true);
@@ -1416,7 +1421,7 @@ describe("the combined --self-check mode", () => {
         "config/platform-migration-manifest.json", "src/integrations/supabase/types.ts",
         "package-lock.json", "packages/core/package-lock.json", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS,
       ])].sort();
-      const catalogue = createPublicPublicationCatalog(paths.map((path) => ({ path, class: "public-output" })), []).contents;
+      const catalogue = createPublicPublicationCatalog(paths.filter((path) => !isManifestPinnedSqlArea(path)).map((path) => ({ path, class: "public-output" })), []).contents;
       const manifest = publicRootManifest();
       const lock = "{}\n";
       const migration = JSON.stringify({ schemaVersion: 1, baseline: { file: baselinePath, sha256: digest(baseline).slice(7) }, forward: [], objectInventorySha256: digest("objects").slice(7) });
@@ -1466,11 +1471,9 @@ describe("the combined --self-check mode", () => {
       expect(() => selfCheckVerdict(root, () => undefined)).toThrow(/local Markdown link is missing/);
       writeFileSync(join(root, "docs/platform/README.md"), "[Guide](AGENT_GUIDE.md)\n");
 
-      // Enforces inventory failures (migration manifest SHA-256 mismatch, unresolved #imports seam).
+      // Enforces manifest-pinned SQL digest refusal and inventory failures (unresolved #imports seam).
       writeFileSync(join(root, baselinePath), `${baseline}SELECT 1;\n`);
-      const mismatchLines: string[] = [];
-      expect(selfCheckVerdict(root, (line) => mismatchLines.push(line))).toBe(false);
-      expect(mismatchLines.join("\n")).toContain("SHA-256 mismatch");
+      expect(() => selfCheckVerdict(root, () => undefined)).toThrow("SHA-256 mismatch");
       writeFileSync(join(root, baselinePath), baseline);
 
       const manifestWithConditional = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as Record<string, unknown>;
@@ -1699,7 +1702,7 @@ describe("shift-left release-note fragment audit and bare-Node dependency bounda
         "config/platform-migration-manifest.json", "src/integrations/supabase/types.ts",
         "package-lock.json", "packages/core/package-lock.json", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS,
       ])].sort();
-      const catalogue = createPublicPublicationCatalog(paths.map((path) => ({ path, class: "public-output" })), []).contents;
+      const catalogue = createPublicPublicationCatalog(paths.filter((path) => !isManifestPinnedSqlArea(path)).map((path) => ({ path, class: "public-output" })), []).contents;
       const manifest = JSON.stringify({
         name: "openlup",
         private: true,
