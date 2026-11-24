@@ -274,14 +274,17 @@ export function storeJourneyResources(options?: { isolatedCluster?: boolean }) {
           }
         }
       } finally {
-        await closePostgres(containers, pools, additionalClosers);
-        const pendingLeases = [...activeLeases];
-        activeLeases.clear();
-        if (pendingLeases.length) {
-          const settled = await Promise.allSettled(pendingLeases.map(lease => lease.release()));
-          const failed = settled.find((item): item is PromiseRejectedResult => item.status === "rejected");
-          if (failed && !roleMismatchError) {
-            roleMismatchError = failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason));
+        try {
+          await closePostgres(containers, pools, additionalClosers);
+        } finally {
+          const pendingLeases = [...activeLeases];
+          activeLeases.clear();
+          if (pendingLeases.length) {
+            const settled = await Promise.allSettled(pendingLeases.map(lease => lease.release()));
+            const failed = settled.find((item): item is PromiseRejectedResult => item.status === "rejected");
+            if (failed && !roleMismatchError) {
+              roleMismatchError = failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason));
+            }
           }
         }
       }

@@ -405,10 +405,15 @@ export async function createAccountMutationsTemplate(
             entry.closed = true;
             allPools.push(...entry.pools);
           }
-          await endPoolsSafely(allPools);
-          const settled = await Promise.allSettled(openEntries.map(entry => entry.lease.release()));
-          const failed = settled.find((item): item is PromiseRejectedResult => item.status === "rejected");
-          if (failed) throw failed.reason;
+          let releaseFailure: unknown;
+          try {
+            await endPoolsSafely(allPools);
+          } finally {
+            const settled = await Promise.allSettled(openEntries.map(entry => entry.lease.release()));
+            const failed = settled.find((item): item is PromiseRejectedResult => item.status === "rejected");
+            if (failed) releaseFailure = failed.reason;
+          }
+          if (releaseFailure !== undefined) throw releaseFailure;
         })();
         return closePromise;
       },

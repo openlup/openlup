@@ -125,11 +125,14 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 afterAll(async () => {
   try {
-    await closePostgres(container, [admin, migration, runtime].filter(Boolean));
-    if (brokerLease) {
-      const lease = brokerLease;
-      brokerLease = null;
-      await lease.release();
+    try {
+      await closePostgres(container, [admin, migration, runtime].filter(Boolean));
+    } finally {
+      if (brokerLease) {
+        const lease = brokerLease;
+        brokerLease = null;
+        await lease.release();
+      }
     }
   } finally { if (scratch) await rm(resolve(scratch, ".."), { recursive: true, force: true }); }
 });
@@ -334,7 +337,10 @@ export async function withRestoredStore(packet: ConnectedNativeStoreCapture, wor
     }
     await work({ owner, runtime, transaction });
   } finally {
-    await closePostgres(target, pools);
-    if (leased) await leased.release();
+    try {
+      await closePostgres(target, pools);
+    } finally {
+      if (leased) await leased.release();
+    }
   }
 }

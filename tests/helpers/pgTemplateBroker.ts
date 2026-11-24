@@ -291,6 +291,7 @@ export async function startPgTemplateBroker(): Promise<PgTemplateBroker> {
         // clones do not serialize on per-database key updates while CREATE DATABASE runs.
         const cloneBootstrapUrl = withLogin(cluster.container.connectionString, dbName, "postgres");
         const cloneBootstrap = new Pool({ connectionString: cloneBootstrapUrl });
+        cloneBootstrap.on("error", () => {});
         try {
           const hasKey = (await cloneBootstrap.query<{ exists: boolean }>(
             "SELECT to_regclass('acquisition_private.installation_key') IS NOT NULL AS exists",
@@ -301,9 +302,10 @@ export async function startPgTemplateBroker(): Promise<PgTemplateBroker> {
                   created_at = pg_catalog.clock_timestamp()
               WHERE singleton`);
           }
+          await cloneBootstrap.end();
+          if (closed) throw new Error("pg_template_broker_closed");
         } catch (error) {
-          cloneBootstrap.on("error", () => {});
-          await cloneBootstrap.end().catch(() => {});
+          if (!cloneBootstrap.ended) await cloneBootstrap.end().catch(() => {});
           await enqueueDdl(cluster, async () => {
             if (!closed && !cluster.bootstrap.ended) {
               await cluster.bootstrap.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`).catch(() => {});
@@ -311,8 +313,6 @@ export async function startPgTemplateBroker(): Promise<PgTemplateBroker> {
           });
           throw error;
         }
-        cloneBootstrap.on("error", () => {});
-        await cloneBootstrap.end();
         const id = randomBytes(12).toString("hex");
         leases.set(id, { id, profile, dbName });
         const ownerUrl = cloneBootstrapUrl;
