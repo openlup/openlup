@@ -776,10 +776,13 @@ For the managed pgTAP runner, prerequisites and proof limits, follow
 [Test scope and diagnostics](#separate-db-package-and-coverage-proof).
 
 The four `oss:published-tree` modes are distinct checks. `--policy` verifies
-the public policy, catalogue, documentation ownership, generated navigation and
-source-map freshness; `--inventory` verifies the selected tree; `--self-check`
-runs both `--policy` and `--inventory` in a single pass over the tracked tree
-and source-release snapshot; and `--typecheck` compares the preview's
+the public policy, catalogue, documentation ownership, generated navigation,
+source-map freshness, and (when comparing committed `HEAD` against a distinct
+PR, merge-group, explicit `--docs-base`, or local merge-base commit) append-only
+migration history plus package API `Migration:` blocks; `--inventory` verifies
+the selected tree; `--self-check` runs both `--policy` and `--inventory` in a
+single pass over the tracked tree and source-release snapshot; and `--typecheck`
+compares the preview's
 diagnostics with its tracked compatibility debt. The source repository's
 aggregate typechecker is not part of the projected command inventory and is not
 a substitute for `--typecheck`.
@@ -1010,8 +1013,10 @@ removed; other local environment variables pass through unchanged.
 
 Run `npm run preflight -- --fast` before reporting a change ready and before starting reviewers.
 It checks worktree cleanliness, mergeability against `origin/main` (skipped when `OPENLUP_STACK_BASE`
-points to an unlanded stack base), both neutrality gates, ast-grep scan and hygiene, the
-published-tree self-check (`oss:published-tree -- --self-check`), changelog fragments, added
+points to an unlanded stack base), both neutrality gates, ast-grep scan and hygiene, `eslint-changed`
+on changed non-deleted JS/TS files, conditional `client-secret-boundary` and `site-routes` guards, the
+published-tree self-check (`oss:published-tree -- --self-check`, including committed-tree append-only
+migration history and package API `Migration:` blocks when `HEAD` differs from its base), changelog fragments, added
 test-line date/expiry warnings, `gitleaks`, conditional guide-contract and package-manifest checks,
 and DCO sign-off across all commits (merge commits included). `WARN` and `SKIP` statuses surface
 without failing `--fast`. If fetch fails, it uses the local `origin/main`.
@@ -1021,8 +1026,12 @@ Run `npm run preflight -- --area` for a Docker-free, area-scoped check over chan
 `git merge-base HEAD origin/main` plus uncommitted and untracked files: it runs `eslint changed`,
 triggered Docker-free, consumer-pack-free tooling guard tests from `scripts/ci-test-scope.mjs` (plus
 `scripts/catalog-document-boundary.test.ts` on catalog, script or doc edits) through `test:hosted`,
-and `sql admit` when SQL under `db/` or `packages/*/sql/` changed. `--fast` and `--area` are
-mutually exclusive.
+and `sql admit` when SQL under `db/` or `packages/*/sql/` changed.
+
+Run `npm run preflight -- --affected` to run default preflight with test discovery expanded via
+`scripts/affected-tests.mjs` (reverse-import graph and contract-pin rules) so source-only edits
+also run their affected root Vitest suites through `test:hosted`. `--fast`, `--area`, and `--affected`
+are mutually exclusive.
 
 Without flags, `npm run preflight` is advisory and exits non-zero
 only when a check reports `FAIL`. It reads the change since
@@ -1034,6 +1043,10 @@ one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
 - `ast-grep hygiene`: the first-line file-wide `ast-grep-ignore` check and
   `ast-grep` rule tests (`ast-grep test --skip-snapshot-tests`);
 - `eslint changed`: ESLint on changed non-deleted JS/TS files before package builds;
+- `client-secret-boundary`: `node --experimental-strip-types scripts/check-client-secret-boundary.ts`
+  when `src/`, `server/`, `api/`, `config/environment-variables.json`, or the guard script changed;
+- `site-routes`: `node scripts/site-routes.mjs --public-reference` when `config/site-routes.json`,
+  `config/public-reference-site-routes.json`, or `scripts/site-routes*` changed;
 - `sql admit`: `npm run sql:admit` when SQL under `db/` or `packages/*/sql/`
   changed; reports `WARN` when the working tree has uncommitted or untracked
   changes;

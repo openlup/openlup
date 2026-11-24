@@ -23,7 +23,7 @@ import { assertMigrationBlocks } from "./packages/packages-check.ts";
 import { RELEASE_NOTE_PACKAGED_CONTENT_REMEDY, assertSimulatedUpgradePage, findReleaseNotePackagedContentViolations } from "./packages/release-docs-pass.ts";
 export { assertMaterializedOutputInventory, materializedOutputPaths } from "./oss-published-tree-output.ts";
 
-/** Append-only migration history at the PR or merge-group boundary. */
+/** Append-only migration history at the PR, merge-group, or local committed comparison boundary. */
 const MIGRATION_SHA = /^[a-f0-9]{40}$/u;
 const MIGRATION_MANIFEST = "config/platform-migration-manifest.json";
 const RAILS = ["db/platform/migrations/", "supabase/migrations/"] as const;

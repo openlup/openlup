@@ -398,7 +398,7 @@ describe("fast preflight", () => {
       "test expiries": "test expiries: skip no new or changed test files",
       gitleaks: "gitleaks: skip gitleaks is not on PATH; the required gitleaks job still scans the pull request",
       "eslint-changed": "eslint-changed: skip no changed JS/TS files",
-      "client-secret-boundary": "client-secret-boundary: skip no client or package source changed",
+      "client-secret-boundary": "client-secret-boundary: skip no client-secret-boundary inputs changed",
       "site-routes": "site-routes: skip no site route inputs changed",
       "guide-check": "guide-check: skip no guide or rule files changed",
       carriers: `carriers: skip ${dirty ? "clean committed checkout required" : "no report or settings inputs changed"}`,
@@ -1164,23 +1164,153 @@ describe("short expiries", () => {
 });
 
 describe("shift-left preflight guards and --affected discovery", () => {
-  it("triggers client-secret-boundary and site-routes guards only on matching paths", () => {
-    expect(CLIENT_SECRET_BOUNDARY_TRIGGER.test("src/pages/Home.tsx")).toBe(true);
-    expect(CLIENT_SECRET_BOUNDARY_TRIGGER.test("packages/core/src/index.ts")).toBe(true);
-    expect(CLIENT_SECRET_BOUNDARY_TRIGGER.test("scripts/check-client-secret-boundary.ts")).toBe(true);
-    expect(CLIENT_SECRET_BOUNDARY_TRIGGER.test("docs/platform/README.md")).toBe(false);
+  it("triggers client-secret-boundary and site-routes guards on their actual scanned inputs", () => {
+    for (const path of [
+      "src/pages/Home.tsx",
+      "server/adapters/postgres/connectedStoreRestore.ts",
+      "api/health.ts",
+      "config/environment-variables.json",
+      "scripts/check-client-secret-boundary.ts",
+    ]) {
+      expect(CLIENT_SECRET_BOUNDARY_TRIGGER.test(path), path).toBe(true);
+    }
+    for (const path of ["packages/core/src/index.ts", "docs/platform/README.md"]) {
+      expect(CLIENT_SECRET_BOUNDARY_TRIGGER.test(path), path).toBe(false);
+    }
 
-    expect(SITE_ROUTES_TRIGGER.test("src/App.tsx")).toBe(true);
-    expect(SITE_ROUTES_TRIGGER.test("public/robots.txt")).toBe(true);
-    expect(SITE_ROUTES_TRIGGER.test("index.html")).toBe(true);
-    expect(SITE_ROUTES_TRIGGER.test("scripts/site-routes.mjs")).toBe(true);
-    expect(SITE_ROUTES_TRIGGER.test("server/adapters/postgres/connectedStoreRestore.ts")).toBe(false);
+    for (const path of [
+      "config/site-routes.json",
+      "config/public-reference-site-routes.json",
+      "scripts/site-routes.mjs",
+    ]) {
+      expect(SITE_ROUTES_TRIGGER.test(path), path).toBe(true);
+    }
+    for (const path of ["src/App.tsx", "server/adapters/postgres/connectedStoreRestore.ts"]) {
+      expect(SITE_ROUTES_TRIGGER.test(path), path).toBe(false);
+    }
   });
 
-  it("discovers reverse-import affected tests from source-only changes via affectedTestCandidates", () => {
+  it("executes eslint-changed (with offlineNpm), client-secret-boundary, and site-routes in --fast and surfaces PASS/FAIL", async () => {
+    const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
+    const runFastCase = async (failGuards: boolean) => {
+      const seenCalls: Array<{ bin: string; args: string[]; env?: NodeJS.ProcessEnv }> = [];
+      mockChildProcesses((bin, args, options) => {
+        const list = [...(args ?? [])];
+        const call = `${bin} ${list.join(" ")}`;
+        seenCalls.push({ bin, args: list, env: options?.env });
+        if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
+        if (call === "git rev-parse HEAD") return { status: 0, stdout: head, stderr: "" };
+        if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
+        if (call === "git rev-parse origin/main") return { status: 0, stdout: upstream, stderr: "" };
+        if (call === `git diff --name-status --no-renames -z ${fork} HEAD`) {
+          return { status: 0, stdout: "M\0src/pages/Home.tsx\0M\0config/site-routes.json\0", stderr: "" };
+        }
+        if (bin === "gitleaks") {
+          return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+        }
+        if (bin === "npx" && list.includes("eslint")) {
+          expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
+          return failGuards
+            ? { status: 1, stdout: "src/pages/Home.tsx:1:1 error no-unused-vars\n", stderr: "" }
+            : { status: 0, stdout: "", stderr: "" };
+        }
+        if (bin === process.execPath && list.includes("scripts/check-client-secret-boundary.ts")) {
+          expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
+          return failGuards
+            ? { status: 1, stdout: "", stderr: "src/pages/Home.tsx:2: client source must not read process.env\n" }
+            : { status: 0, stdout: "Client secret boundary guard passed.\n", stderr: "" };
+        }
+        if (bin === process.execPath && list.includes("scripts/site-routes.mjs")) {
+          expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
+          return failGuards
+            ? { status: 1, stdout: "", stderr: "Error: Invalid site lifecycle\n" }
+            : { status: 0, stdout: "site routes hold: public-reference, 2 route(s)\n", stderr: "" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      });
+      const signed = "change\n\nSigned-off-by: Test Fixture <fixture@example.invalid>";
+      vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1f${signed}\0`);
+      const lines: string[] = [];
+      vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const exit = await main(now, ["--fast"]);
+      return { exit, lines, seenCalls };
+    };
+
+    const pass = await runFastCase(false);
+    expect(pass.exit).toBe(0);
+    expect(pass.lines).toContain("eslint-changed: ok");
+    expect(pass.lines).toContain("client-secret-boundary: ok");
+    expect(pass.lines).toContain("site-routes: ok");
+    expect(pass.seenCalls.some(({ bin, args }) => bin === "npx" && args.includes("eslint") && args.includes("src/pages/Home.tsx"))).toBe(true);
+    expect(pass.seenCalls.some(({ bin, args }) => bin === process.execPath && args.includes("scripts/check-client-secret-boundary.ts"))).toBe(true);
+    expect(pass.seenCalls.some(({ bin, args }) => bin === process.execPath && args.includes("scripts/site-routes.mjs") && args.includes("--public-reference"))).toBe(true);
+
+    const fail = await runFastCase(true);
+    expect(fail.exit).toBe(1);
+    expect(JSON.parse(fail.lines.at(-1)!)).toEqual({
+      preflight: "fast",
+      result: "fail",
+      head,
+      failed: ["eslint-changed", "client-secret-boundary", "site-routes"],
+    });
+    expect(fail.lines.some((line) => line.includes("no-unused-vars"))).toBe(true);
+    expect(fail.lines.some((line) => line.includes("client source must not read process.env"))).toBe(true);
+    expect(fail.lines.some((line) => line.includes("Invalid site lifecycle"))).toBe(true);
+  });
+
+  it("discovers reverse-import affected tests and pins contract tests on deleted migrations via affectedTestCandidates", () => {
     const candidates = affectedTestCandidates(changed("scripts/ci-vitest-shard.mjs"));
     expect(candidates).toContain("scripts/ci-vitest-shard.test.ts");
-    expect(affectedTestCandidates([{ path: "scripts/ci-vitest-shard.mjs", deleted: true }])).toEqual([]);
+    const deletedMigration = affectedTestCandidates([{ path: "db/platform/migrations/20261121000000_example.sql", deleted: true }]);
+    expect(deletedMigration).toContain("scripts/platform-migration-manifest.test.ts");
+    expect(deletedMigration).toContain("scripts/sql-admit.test.ts");
+    expect(affectedTestCandidates([{ path: "scripts/deleted-only.test.ts", deleted: true }])).toEqual([]);
+  });
+
+  it("runs --affected end-to-end through discoverTests and scripts/test-hosted.mjs (skip, pass, and fail exit propagation)", async () => {
+    const fork = "b".repeat(40);
+    const runAffected = async (diffStdout: string, hostedExit: number) => {
+      const hostedCalls: string[][] = [];
+      mockChildProcesses((bin, args) => {
+        const list = [...(args ?? [])];
+        const call = `${bin} ${list.join(" ")}`;
+        if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
+        if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
+        if (call === "git ls-files --others --exclude-standard -z") return { status: 0, stdout: "", stderr: "" };
+        if (call === `git diff --name-status --no-renames -z ${fork}`) return { status: 0, stdout: diffStdout, stderr: "" };
+        if (bin === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+        if (bin === "npx" && list.includes("vitest") && list.includes("list")) {
+          const files = list.filter((arg) => arg.endsWith(".test.ts"));
+          return { status: 0, stdout: `${files.join("\n")}\n`, stderr: "" };
+        }
+        if (bin === process.execPath && list[0] === "scripts/test-hosted.mjs") {
+          hostedCalls.push(list);
+          return { status: hostedExit, stdout: hostedExit === 0 ? "1 passed\n" : "1 failed\n", stderr: "" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      });
+      const lines: string[] = [];
+      vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+      vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const exit = await main(now, ["--affected"]);
+      return { exit, lines, hostedCalls };
+    };
+
+    const empty = await runAffected("M\0docs/platform/README.md\0", 0);
+    expect(empty.exit).toBe(0);
+    expect(empty.hostedCalls).toEqual([]);
+    expect(empty.lines.some((line) => line.startsWith("SKIP hosted tests:"))).toBe(true);
+
+    const passed = await runAffected("M\0scripts/ci-vitest-shard.mjs\0", 0);
+    expect(passed.exit).toBe(0);
+    expect(passed.hostedCalls).toEqual([["scripts/test-hosted.mjs", "scripts/ci-vitest-shard.test.ts"]]);
+    expect(passed.lines.some((line) => line.startsWith("PASS hosted tests: 1 file(s) passed"))).toBe(true);
+
+    const failed = await runAffected("M\0scripts/ci-vitest-shard.mjs\0", 1);
+    expect(failed.exit).toBe(1);
+    expect(failed.hostedCalls).toEqual([["scripts/test-hosted.mjs", "scripts/ci-vitest-shard.test.ts"]]);
+    expect(failed.lines.some((line) => line.startsWith("FAIL hosted tests:"))).toBe(true);
   });
 
   it("refuses mutually exclusive --fast, --area, and --affected combinations", async () => {
