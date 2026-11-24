@@ -3010,6 +3010,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/catalogue-upgrade-fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/checkout-attempts.test.ts",
       "class": "public-output"
     },

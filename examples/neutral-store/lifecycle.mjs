@@ -4,7 +4,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { starterDiagnostic, starterDiagnosticCode } from './shared/refusals.ts';
+import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
 import { starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
@@ -61,14 +61,15 @@ const argumentObserved = {
 function commandRefusal(error, stage, allowLegacy = false) {
   const known = installationFinding(error);
   if (known) return known;
-  const code = json ? starterDiagnosticCode(error) : (allowLegacy && error instanceof Error ? error.message : undefined);
+  const diagnostic = json ? readStarterDiagnostic(error) : undefined;
+  const code = json ? diagnostic?.code : (allowLegacy && error instanceof Error ? error.message : undefined);
   const guidance = code && starterGuidance(code);
   if (!guidance) return installationFinding(installationFailure(error, stage, 'launch'));
   const prerequisite = stage === '/installation' ? 'demonstration installation' : 'selected configuration';
   const { cause = `The ${prerequisite} failed a starter prerequisite.`, fix, recheck } = guidance;
   const observed = Object.hasOwn(argumentObserved, code) ? argumentObserved[code] : `The starter refused the ${prerequisite}.`;
-  return installationFinding(refusal(code, stage, observed, cause,
-    command === 'refusals' ? 'Use `./lifecycle refusals` with at most one `--json` option.' : fix,
+  return installationFinding(refusal(code, diagnostic?.guidance?.path ?? stage, observed, cause,
+    command === 'refusals' ? 'Use `./lifecycle refusals` with at most one `--json` option.' : diagnostic?.guidance?.fix ?? fix,
     command === 'refusals' ? 'Repeat the refusals command with the corrected options.' : recheck));
 }
 
@@ -234,7 +235,7 @@ if (command === 'refusals') {
     const [installation, owner] = await Promise.all([
       import('./installation/install.ts'), import('./owned/store.config.ts'),
     ]).catch(error => {
-      if (json && starterDiagnosticCode(error)) throw error;
+      if (json && readStarterDiagnostic(error)) throw error;
       throw installationFailure(error);
     });
     const config = ownedConfiguration(owner, selected);

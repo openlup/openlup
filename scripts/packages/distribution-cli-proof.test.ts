@@ -966,6 +966,8 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
   const run = (command: string, args: string[], cwd = source) => execFileSync(command, args, { cwd, encoding: "utf8", stdio: "pipe" });
   cpSync(resolve("scripts"), join(source, "scripts"), { recursive: true }); mkdirSync(packs); write("source/package.json", { type: "module" }); write("source/config/ci-images.json", readFileSync(resolve("config/ci-images.json"), "utf8"));
   write("source/examples/neutral-store/extract.mjs", readFileSync(resolve("examples/neutral-store/extract.mjs"), "utf8"));
+  const catalogueFixture = "examples/neutral-store/test/catalogue-upgrade-fixture.ts";
+  write("source/" + catalogueFixture, readFileSync(resolve(catalogueFixture), "utf8"));
   const names = ["core", "outbox", "platform"], dependencies = Object.fromEntries(names.map(name => ["@openlup/" + name, version]));
   write("source/config/openlup-packages.json", { schemaVersion: 2, packages: names.map(name => ({ name: "@openlup/" + name, directory: "packages/" + name, publish: true })), unreleased: [] });
   const packages = names.map(name => {

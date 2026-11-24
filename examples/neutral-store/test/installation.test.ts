@@ -21,6 +21,16 @@ import { applyDemoSeed, demonstrationMarker, installDemonstration, provisionDemo
   type DemonstrationInstallation } from '../installation/install.ts';
 import { installationReport } from '../installation/refusals.ts';
 
+const buildPacks = catalogueConformance.packs as { pack: CatalogPackInput; drafts: unknown[] }[];
+test.beforeEach(context => {
+  // Synthetic seeds add their own adopter packs. Keep the app's actual packs for the installed recipe.
+  const declared = [...buildPacks];
+  const starter = declared.filter(({ pack }) => pack.id === 'starter');
+  if (starter.length === declared.length) return;
+  buildPacks.splice(0, buildPacks.length, ...starter);
+  context.after(() => { buildPacks.splice(0, buildPacks.length, ...declared); });
+});
+
 test('publication provisioning sends a verifier and keeps the password in the private file', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'starter-publication-'));
   try {
@@ -684,7 +694,6 @@ test('lifecycle up, serve-demo, checkout-recovery and CLI delegation preserve na
 });
 
 const maxVersion = 2_147_483_647;
-const buildPacks = catalogueConformance.packs as { pack: CatalogPackInput; drafts: unknown[] }[];
 const packFixture = (id: string, version = 1, keys = ['item']): CatalogPackInput => ({
   id, namespace: 'example', version, openlupRange: '1.x', capabilities: {},
   types: keys.map(key => ({ key: `example:${key}`, version, dimensions: [], validateContent: () => [],

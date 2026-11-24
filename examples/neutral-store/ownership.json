@@ -107,6 +107,7 @@
     "shared/refusals.ts",
     "starter-release.json",
     "test/bindings.test.ts",
+    "test/catalogue-upgrade-fixture.ts",
     "test/healthcheck.test.ts",
     "test/import-boundary.test.ts",
     "test/installation.test.ts",

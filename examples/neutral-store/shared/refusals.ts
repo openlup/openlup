@@ -2,16 +2,21 @@ export const up = 'Run `./lifecycle up`.';
 export const rulesRecheck = 'Run `node --test owned/catalogue-rules.test.cjs`, then `./lifecycle up`.';
 const upJson = 'Run `./lifecycle up --json`';
 const reports = new WeakSet<Error>();
-const diagnosticCodes = new WeakMap<Error, string>();
+type DiagnosticGuidance = { path: string; fix: string };
+const diagnostics = new WeakMap<Error, { code: string; guidance: DiagnosticGuidance | undefined }>();
 
-// Keep legacy message and error properties while recording the local emitter's code.
-export function starterDiagnostic(code: string, error = new Error(code)) {
-  diagnosticCodes.set(error, code);
+// Keep the legacy error while recording the local emitter's code and guidance.
+export function starterDiagnostic(code: string, error = new Error(code), guidance?: DiagnosticGuidance) {
+  diagnostics.set(error, { code, guidance });
   return error;
 }
 
+export function readStarterDiagnostic(error: unknown) {
+  return error instanceof Error ? diagnostics.get(error) : undefined;
+}
+
 export function starterDiagnosticCode(error: unknown) {
-  return error instanceof Error ? diagnosticCodes.get(error) : undefined;
+  return readStarterDiagnostic(error)?.code;
 }
 
 export function refusal(code: string, path: string, observed: string, causeText: string, fix: string, recheck = up, cause?: unknown) {

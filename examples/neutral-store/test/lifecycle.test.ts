@@ -6,6 +6,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, write
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env as processEnv } from 'node:process';
+import { catalogueUpgradeFixture } from './catalogue-upgrade-fixture.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const oneLine = (stdout: string) => {
@@ -198,13 +199,19 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
       assert.equal(report.configuration, '');
       assert.equal(report.findings[0].code, 'starter_configuration_unknown');
     }
-    for (const [overrides, expectedId, code] of [
-      ['id: 42', '', 'starter_configuration_invalid'],
-      ['id: 123', '', 'starter_configuration_invalid'],
-      ['recovery: {}', defaultConfigurationId, 'starter_recovery_configuration_invalid'],
+    const presentation = 'renewal.subscriptionCare.retention.offerPresentation';
+    for (const [overrides, expectedId, code, path, fix] of [
+      ['id: 42', '', 'starter_configuration_invalid', '/configuration'],
+      ['id: 123', '', 'starter_configuration_invalid', '/configuration'],
+      ['recovery: {}', defaultConfigurationId, 'starter_recovery_configuration_invalid', '/configuration'],
+      [`renewal: { ...config.renewal, subscriptionCare: {
+        ...config.renewal.subscriptionCare, retention: { ...config.renewal.subscriptionCare.retention, offerPresentation: 'always' },
+      } }`, defaultConfigurationId, 'starter_retention_configuration_invalid', presentation,
+        `Set ${presentation} to ask_permission_first or off, or omit it for ask_permission_first.`],
     ]) {
       writeFileSync(configFile, realConfig + `\nexport function selectConfiguration() {
-        return { ...fixtureConfiguration(), ${overrides} };
+        const config = fixtureConfiguration();
+        return { ...config, ${overrides} };
       }\n`);
       for (const route of ['up', 'install']) {
         const result = spawnSync(process.execPath, ['lifecycle.mjs', route, '--json'], { cwd: app, encoding: 'utf8', env });
@@ -212,8 +219,9 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
         assert.equal(result.status, 2, result.stderr);
         assert.equal(report.configuration, expectedId);
         assert.equal(report.findings[0].code, code);
-        assert.equal(report.findings[0].path, '/configuration');
-        if (expectedId) assert.match(report.findings[0].fix, /required recovery states/u);
+        assert.equal(report.findings[0].path, path);
+        if (fix) assert.equal(report.findings[0].fix, fix);
+        if (code === 'starter_recovery_configuration_invalid') assert.match(report.findings[0].fix, /required recovery states/u);
         assert.deepEqual(report.packs, []);
         assert.equal(result.stderr, '');
       }
@@ -270,8 +278,14 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
   const app = recipeApp!;
   const origin = JSON.parse(readFileSync(join(app, '.starter-origin.json'), 'utf8'));
   assert.ok(['candidate', 'local-candidate', 'released', 'reconstructed'].includes(origin.mode ?? origin.kind));
+  const preserved = JSON.parse(processEnv.OPENLUP_STARTER_CATALOGUE_RECIPE_HASHES ?? '{}');
+  const assertPreserved = () => assert.deepEqual(catalogueUpgradeFixture(app), preserved, 'Adopter pack differs from the pre-upgrade fixture');
+  assertPreserved();
+  const context = join(app, '.context');
+  mkdirSync(context, { recursive: true });
+  const scratch = mkdtempSync(join(context, 'st1-recipe-'));
   const project = 'st1-pr2-recipe-' + randomUUID().slice(0, 8);
-  const env = { ...processEnv, COMPOSE_PROJECT_NAME: project };
+  const env = { ...processEnv, COMPOSE_PROJECT_NAME: project, GIT_INDEX_FILE: join(scratch, 'index') };
   const run = (command: string, args: string[], exit = 0) => {
     const result = spawnSync(command, args, { cwd: app, env, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
     assert.ifError(result.error);
@@ -282,24 +296,10 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
   const docker = (...args: string[]) => run('docker', ['compose', ...args]);
   const ledger = () => docker('exec', '-T', 'database', 'psql', '-XAt', '-v', 'ON_ERROR_STOP=1', '-U', 'starter_install',
     '-d', 'neutral_store', '-c', "SELECT pack_version FROM public.catalog_definition_installs WHERE pack_id='stationery' ORDER BY pack_version").trim();
-  const context = join(app, '.context'), catalogue = join(app, 'owned/catalogue.ts'), rules = join(app, 'owned/catalogue-rules.cjs');
-  mkdirSync(context, { recursive: true });
-  const skeleton = join(app, 'node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-pack-skeleton');
-  const packDirectory = join(app, 'owned/catalogue');
-  const initial = readFileSync(catalogue, 'utf8'), initialRules = readFileSync(rules);
-  const declared = initial.replace('const pack = {', 'const starterPack = {')
-    .replace('packs: [{ pack, drafts:', 'packs: [{ pack: starterPack, drafts:')
-    .replace('}, skus: [] }] }],', '}, skus: [] }] }, { pack, drafts: fixtures.drafts }],')
-    .replace('packs.flatMap(', 'packs.flatMap<CatalogProductTypeInput>(');
-  assert.notEqual(declared, initial);
-  let created = false;
+  const packPath = join(app, 'owned/catalogue/pack.ts'), rules = join(app, 'owned/catalogue-rules.cjs');
+  const initialPack = readFileSync(packPath), initialRules = readFileSync(rules);
   try {
     run('git', ['add', '-A']);
-    mkdirSync(packDirectory);
-    created = true;
-    for (const path of ['pack.ts', 'fixtures.ts']) cpSync(join(skeleton, path), join(packDirectory, path));
-    writeFileSync(catalogue, "import { pack } from './catalogue/pack.ts';\nimport { fixtures } from './catalogue/fixtures.ts';\n" + declared);
-
     run(process.execPath, ['--input-type=module', '-e', `
       import assert from 'node:assert/strict';
       import { starterCatalogue } from './host/editor-catalogue.ts';
@@ -309,7 +309,7 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     run(process.execPath, ['--test', 'owned/catalogue-rules.test.cjs']);
     assert.equal(oneLine(run('npm', ['run', '--silent', 'catalogue:check:source'])).state, 'satisfied');
     run('npm', ['run', 'typecheck']);
-    const heldRules = join(context, 'st1-recipe-rules.cjs');
+    const heldRules = join(scratch, 'catalogue-rules.cjs');
     renameSync(rules, heldRules);
     let refused;
     try { refused = up(2); } finally { renameSync(heldRules, rules); }
@@ -324,14 +324,15 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     assert.deepEqual(up().packs, [{ ...readback, outcome: 'unchanged' }]);
     const warmMs = Math.round(performance.now() - warmStarted);
     assert.equal(ledger(), '1');
-    writeFileSync(join(context, 'st1-recipe.playwright.mjs'), `export default {
-      testDir: '../browser', testMatch: 'native-operator.proof.ts', workers: 1,
+    const playwright = join(scratch, 'st1-recipe.playwright.mjs');
+    writeFileSync(playwright, `export default {
+      testDir: '../../browser', testMatch: 'native-operator.proof.ts', workers: 1,
       use: { baseURL: 'http://127.0.0.1:4319', composeProject: '${project}', trace: 'off', screenshot: 'off', video: 'off' }
     };\n`);
-    run('./node_modules/.bin/playwright', ['test', '--config', '.context/st1-recipe.playwright.mjs', '--grep', 'installed adopter pack']);
+    run('./node_modules/.bin/playwright', ['test', '--config', playwright, '--grep', 'installed adopter pack']);
+    assertPreserved();
 
-    const packPath = join(packDirectory, 'pack.ts');
-    writeFileSync(packPath, readFileSync(packPath, 'utf8').replaceAll('version: 1', 'version: 2'));
+    writeFileSync(packPath, initialPack.toString('utf8').replaceAll('version: 1', 'version: 2'));
     writeFileSync(rules, readFileSync(rules, 'utf8') + '\n// Règles version 2\n');
     run(process.execPath, ['--test', 'owned/catalogue-rules.test.cjs']);
     assert.equal(oneLine(run('npm', ['run', '--silent', 'catalogue:check:source'])).state, 'satisfied');
@@ -349,9 +350,8 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     const rulesDigest = createHash('sha256').update(readFileSync(rules)).digest('hex');
     assert.deepEqual(installed, { version: 2, rules: rulesDigest, validator: 'sha256:' + rulesDigest });
     const edits = run('git', ['diff', '--name-only']).trim().split('\n');
-    const added = run('git', ['ls-files', '--others', '--exclude-standard', 'owned/']).trim().split('\n');
-    assert.deepEqual([...edits, ...added].sort(),
-      ['owned/catalogue-rules.cjs', 'owned/catalogue.ts', 'owned/catalogue/fixtures.ts', 'owned/catalogue/pack.ts']);
+    assert.deepEqual(edits.sort(), ['owned/catalogue-rules.cjs', 'owned/catalogue/pack.ts']);
+    assert.equal(run('git', ['ls-files', '--others', '--exclude-standard', 'owned/']), '');
     console.log(JSON.stringify({ scenario: 'installed Compose pack recipe', coldMs, warmMs, ledger: ledger().split('\n') }));
     run('./lifecycle', ['down']);
     docker('down', '--volumes');
@@ -360,11 +360,10 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
   } finally {
     try { docker('down', '--volumes'); }
     finally {
-      if (created) {
-        writeFileSync(catalogue, initial);
-        writeFileSync(rules, initialRules);
-        rmSync(packDirectory, { recursive: true });
-      }
+      writeFileSync(packPath, initialPack);
+      writeFileSync(rules, initialRules);
+      rmSync(scratch, { recursive: true });
+      assertPreserved();
     }
   }
 });

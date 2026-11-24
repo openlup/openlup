@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { dirname, join, resolve } from "node:path";
 import type { AppUpgradePlan, AppVerificationFinding } from "@openlup/platform/lifecycle";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
+import { catalogueUpgradeFixture } from "../../examples/neutral-store/test/catalogue-upgrade-fixture.ts";
 
 // Immutable published artifacts, independently read from the public registry.
 // Availability failure refuses proof; no current workspace substitutes for them.
@@ -363,9 +364,10 @@ export function reconcileStarterCatalogue130(previous: string, target: string): 
   return previous.replace(registry, `import type { CatalogPackInput } from '@openlup/platform/catalog';\n\n${declarations.trimEnd()}`);
 }
 
-function assertStarterCatalogueAdmission(app: string, code: string, expectedQueries: number): void {
+function assertStarterCatalogueAdmission(app: string, code: string, expectedQueries: number, hasAdopterPack = false): void {
   execFileSync(process.execPath, ["--input-type=module", "-e", `
     import assert from 'node:assert/strict';
+    import { readFileSync } from 'node:fs';
     import { applyDemoSeed } from './installation/install.ts';
     import { configurations } from './owned/store.config.ts';
     let queries = 0;
@@ -375,6 +377,7 @@ function assertStarterCatalogueAdmission(app: string, code: string, expectedQuer
     } };
     await assert.rejects(applyDemoSeed(Object.values(configurations)[0], {
       connection, installRole: 'installer', runtimeRole: 'runtime',
+      catalogueRules: ${hasAdopterPack ? "readFileSync('owned/catalogue-rules.cjs')" : 'undefined'},
     }), { code: ${JSON.stringify(code)} });
     assert.equal(queries, ${expectedQueries});
   `], { cwd: app, env: isolatedConsumerEnv(), stdio: "pipe", timeout: 30_000 });
@@ -418,13 +421,14 @@ export function mergeStarterCareFile(directory: string, previous: Buffer, local:
 }
 
 /** Exercise the installed recipe on the upgraded app with its target package bytes. */
-export function proveInstalledCatalogueUpgrade(app: string) {
+export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Record<string, string>) {
   const lockfile = join(app, "package-lock.json");
   const retained = readFileSync(lockfile);
   const lock = JSON.parse(retained.toString("utf8"));
   const artifacts: string[] = [];
   let lockRemapped = false;
-  const options = { cwd: app, env: { ...isolatedConsumerEnv(), OPENLUP_STARTER_CATALOGUE_RECIPE_APP: app },
+  const options = { cwd: app, env: { ...isolatedConsumerEnv(), OPENLUP_STARTER_CATALOGUE_RECIPE_APP: app,
+    OPENLUP_STARTER_CATALOGUE_RECIPE_HASHES: JSON.stringify(preservedHashes) },
     stdio: "pipe" as const, encoding: "utf8" as const,
     timeout: 600_000, maxBuffer: 8 * 1024 * 1024 };
   try {
@@ -475,6 +479,10 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const catalogue130 = pair.fromVersion === "1.3.0" && retireCatalogue &&
     !readFileSync(join(app, starterCatalogueFile), "utf8").includes("export const catalogueConformance");
   if (catalogue130) owned[starterCatalogueFile] = readFileSync(join(app, starterCatalogueFile));
+  const convertCatalogue = () => phase("starter-1.3.0-owned-catalogue-conversion", () => {
+    owned[starterCatalogueFile] = convertStarterCatalogue130(app, pair.to);
+  });
+  let adopterHashes: Record<string, string> | undefined;
   const settingsHost = join(app, starterSettingsHost);
   if (existsSync(settingsHost)) owned[starterSettingsHost] = readFileSync(settingsHost);
   const targetSettings = join(pair.to, starterSettingsHost);
@@ -517,6 +525,15 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       owned[retiredCatalogueFile] = Buffer.concat([owned[retiredCatalogueFile]!, Buffer.from("\n")]);
       writeFileSync(join(app, retiredCatalogueFile), owned[retiredCatalogueFile]!);
     }
+    if (catalogueUpgrade) {
+      if (catalogue130) convertCatalogue();
+      const skeleton = join(pair.to, "node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-pack-skeleton");
+      adopterHashes = catalogueUpgradeFixture(app, skeleton);
+      for (const path of Object.keys(adopterHashes)) {
+        assert(!Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path), "Adopter pack files must stay owned");
+        owned[path] = readFileSync(join(app, path));
+      }
+    }
     pair.evidence.customizations = Object.fromEntries(Object.entries(owned).map(([path, bytes]) => [path, hash(bytes)]));
     assertCompleteStarter(app, from);
   });
@@ -541,7 +558,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     }
     return report;
   };
-  const paths = new Set<string>([...Object.keys(from.files), ...Object.keys(to.files), ...ownership.owned]);
+  const paths = new Set<string>([...Object.keys(from.files), ...Object.keys(to.files), ...ownership.owned, ...Object.keys(adopterHashes ?? {})]);
   const readFiles = () => [...paths].map(path => existsSync(join(app, path)) ? readFileSync(join(app, path)) : null);
   let plan: ReturnType<typeof run>;
   phase("plan", () => {
@@ -675,9 +692,12 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     changed = plan.files.filter((file: { action: string }) => ["replace", "create"].includes(file.action));
     pair.evidence.planSha256 = hash(JSON.stringify(plan));
   });
-  const catalogueOwned = () => Object.fromEntries((ownership.owned as string[])
-    .filter(path => !Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path) && existsSync(join(app, path)))
-    .map(path => [path, hash(readFileSync(join(app, path)))]));
+  const catalogueOwned = () => ({
+    ...Object.fromEntries((ownership.owned as string[])
+      .filter(path => !Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path) && existsSync(join(app, path)))
+      .map(path => [path, hash(readFileSync(join(app, path)))])),
+    ...catalogueUpgradeFixture(app),
+  });
   const beforeCatalogueApply = catalogueUpgrade ? catalogueOwned() : undefined;
   phase("interrupt-and-refuse", () => {
     const preload = join(workspace, "interrupt.mjs");
@@ -756,16 +776,16 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     if (!pair.pristine) pair.evidence.customizations![careCopy] = hash(copy);
     assert.deepEqual(run("apply").applied, []); checkUpgradeFiles();
   });
-  if (catalogue130) phase("starter-1.3.0-owned-catalogue-conversion", () => {
+  if (catalogue130) {
     checkUpgradeFiles();
-    owned[starterCatalogueFile] = convertStarterCatalogue130(app, pair.to);
-  });
+    if (!catalogueUpgrade) convertCatalogue();
+  }
   rmSync(workspace, { recursive: true, force: true });
   return () => phase("installed-application-and-owned-bytes", () => {
     assertCompleteStarter(app, to); checkUpgradeFiles();
     if (catalogue130) phase("starter-1.3.0-installer-admission", () => {
       // Target packages are installed here. The role refusal witnesses a completed catalogue admission.
-      assertStarterCatalogueAdmission(app, "starter_seed_runtime_role_forbidden", 3);
+      assertStarterCatalogueAdmission(app, "starter_seed_runtime_role_forbidden", 3, catalogueUpgrade);
     });
     if (to.files["package.json"]?.includes('"catalogue:check:source"'))
       proveStarterCatalogueWrappers(app, dirname(app), to.files["package.json"]);
@@ -782,8 +802,10 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       if (!pair.pristine) assert.deepEqual(readFileSync(join(app, "owned/catalogue-archive.json")), owned[retiredCatalogueFile]);
     });
     if (catalogueUpgrade) phase("installed-catalogue-build-replay", () => {
+      assert(adopterHashes && beforeCatalogueApply);
       const before = catalogueOwned();
-      proveInstalledCatalogueUpgrade(app);
+      const expected = Object.fromEntries(Object.keys(adopterHashes).map(path => [path, beforeCatalogueApply[path]!]));
+      proveInstalledCatalogueUpgrade(app, expected);
       assert.deepEqual(catalogueOwned(), before, "Catalogue replay changed upgraded owned bytes");
     });
   });

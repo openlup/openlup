@@ -171,7 +171,7 @@ export function qualificationReceipt(tag, commit, runnerImage = { image: env.Ima
   return { schemaVersion: 1, setVersion: tag.slice(14), tag, tagCommit: commit, runnerImage, startedAt: new Date().toISOString(), endedAt: null, result: 'FAIL', extraction: null, packages: [], checks: [] };
 }
 
-function prepareReleasedStarter(receipt, temporary, run, candidateManifest = undefined) {
+function prepareReleasedStarter(receipt, temporary, run, candidateManifest = undefined, qualifyProvider = true) {
   const { tag, tagCommit: expectedCommit } = receipt;
   const revision = candidateManifest ? expectedCommit : `refs/tags/${tag}`;
   assert.equal(run('git', ['rev-parse', `${revision}^{commit}`]).trim(), expectedCommit, 'source commit mismatch');
@@ -183,7 +183,7 @@ function prepareReleasedStarter(receipt, temporary, run, candidateManifest = und
   const packs = candidateManifest && readCurrentPackManifest(source, candidateManifest, expectedCommit);
   const application = json(join(starter, 'package.json'));
   const profile = application.providerQualification;
-  const qualification = Boolean(packs && profile);
+  const qualification = Boolean(packs && profile && qualifyProvider);
   delete application.providerQualification;
   if (qualification) Object.assign(application.dependencies, profile.dependencies);
   else if (profile) delete application.scripts['provider:qualify'];
@@ -214,6 +214,41 @@ function prepareReleasedStarter(receipt, temporary, run, candidateManifest = und
     ...(mode === 'reconstructed' ? ['--reason', 'Release tag predates versioned starter extraction.'] : [])]);
   receipt.extraction = json(join(extracted, '.starter-origin.json'));
   return { application: extracted, packages, source };
+}
+
+/** Use the published-tree pack artifacts to qualify the owned catalogue upgrade. */
+export function provePublishedCatalogueUpgrade(manifest, commit) {
+  const previous = '1.3.0', tag = 'openlup-core-v' + previous;
+  const predecessor = 'd25a5c7389c9dda63dada7ca880f18ccbf68dbe3';
+  const temporary = mkdtempSync(join(tmpdir(), 'openlup-catalogue-upgrade-'));
+  const run = (command, args, cwd = root) => execFileSync(command, args, {
+    cwd, env: isolatedConsumerEnv(), encoding: 'utf8', timeout: 120_000, stdio: 'pipe',
+  });
+  const install = app => run('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], app);
+  try {
+    run('git', ['fetch', '--no-tags', '--depth=1', 'origin', `refs/tags/${tag}:refs/tags/${tag}`]);
+    const pack = readCurrentPackManifest(root, manifest, commit).get('@openlup/core');
+    assert(pack, 'Catalogue upgrade requires the packed Core');
+    const prepare = (name, receipt, candidate) => {
+      const directory = join(temporary, name);
+      mkdirSync(directory);
+      const { application } = prepareReleasedStarter(receipt, directory, run, candidate, false);
+      install(application);
+      return application;
+    };
+    const from = prepare('from', qualificationReceipt(tag, predecessor));
+    const to = prepare('to', qualificationReceipt('openlup-core-v' + pack.version, commit), manifest);
+    const evidence = { phases: [] };
+    const finish = proveDistributionCliConsumer(to, { from, to, fromVersion: previous, toVersion: pack.version + '-candidate.' + commit.slice(0, 12), evidence });
+    assert.deepEqual(readFileSync(join(from, 'package.json')), readFileSync(join(to, 'package.json')));
+    cpSync(join(to, 'package-lock.json'), join(from, 'package-lock.json'));
+    install(from);
+    finish();
+    assert.ok(evidence.phases.some(phase => phase.name === 'installed-catalogue-build-replay' && phase.result === 'PASS'));
+    console.log('Published-tree catalogue upgrade PASS');
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
 }
 
 export function auditInstalledRelease(application, run) {

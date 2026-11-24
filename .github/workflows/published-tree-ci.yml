@@ -241,7 +241,7 @@ jobs:
     if: ${{ always() && needs.install-packages.result == 'success' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [install-packages]
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: ${{ matrix.groups == '1,6' && 12 || 8 }}
     permissions:
       contents: read
       actions: read
@@ -286,6 +286,10 @@ jobs:
         env:
           BROWSER_GROUPS: ${{ matrix.groups }}
         run: node --experimental-strip-types scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"
+      - name: Replay an installed catalogue pack across the managed upgrade
+        if: needs.install-packages.outputs.reuse != 'true' && matrix.groups == '1,6'
+        run: |
+          node --input-type=module -e 'import { provePublishedCatalogueUpgrade } from "./scripts/packages/exact-set-qualification.mjs"; provePublishedCatalogueUpgrade(process.argv[1], process.argv[2]);' "$RUNNER_TEMP/package-gates/packages-manifest.json" "$(git rev-parse HEAD)"
 
   install-proof:
     name: install-proof

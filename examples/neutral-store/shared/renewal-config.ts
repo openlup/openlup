@@ -132,8 +132,10 @@ export type SaveOfferKind = 'skip' | 'reschedule' | 'pause';
 export function assertRetention(config: SubscriptionCareConfig): void {
   const policy = config.retention;
   if (policy?.offerPresentation !== undefined && !['ask_permission_first', 'off'].includes(policy.offerPresentation)) {
-    throw starterDiagnostic('starter_retention_configuration_invalid', new Error(
-      'starter_retention_configuration_invalid: Set renewal.subscriptionCare.retention.offerPresentation to ask_permission_first or off, or omit it for ask_permission_first.'));
+    const code = 'starter_retention_configuration_invalid';
+    const path = 'renewal.subscriptionCare.retention.offerPresentation';
+    const fix = `Set ${path} to ask_permission_first or off, or omit it for ask_permission_first.`;
+    throw starterDiagnostic(code, new Error(`${code}: ${fix}`), { path, fix });
   }
   const kinds: readonly SaveOfferKind[] = ['skip', 'reschedule', 'pause'];
   if (!policy || !policy.offerByReason || typeof policy.offerByReason !== 'object' || Array.isArray(policy.offerByReason)
