@@ -405,6 +405,25 @@ describe("shift-left simulated upgrade-page audit", () => {
   const providerName = ["st", "ri", "pe"].join("");
   const allowlistedSubpath = `\`@openlup/platform/payments/${providerName}\``;
 
+  it("names the source fragment when a link fails the rendered guide contract", () => {
+    const f = fixture();
+    const fragment = "packages/core/changes/upgrade-link.md";
+    f.write(fragment, "- See the [upgrade guide](../how-to/missing.md).\n");
+    f.commit();
+
+    expect(() => assertSimulatedUpgradePage(f.root)).toThrow(
+      /packages\/core\/changes\/upgrade-link\.md: dangling local link \.\.\/how-to\/missing\.md/u,
+    );
+
+    f.write(fragment, "- See the [upgrade guide](../how-to/change.md).\n");
+    expect(() => assertSimulatedUpgradePage(f.root)).not.toThrow();
+
+    f.write(fragment, "- Follow milestone M19.\n");
+    expect(() => assertSimulatedUpgradePage(f.root)).toThrow(
+      /packages\/core\/changes\/upgrade-link\.md: repository-internal language \(task or milestone ID\): M19/u,
+    );
+  });
+
   it("exposes a 128 KiB default byte cap and accepts a valid simulated upgrade page without writing files", () => {
     expect(UPGRADE_PAGE_MAX_BYTES).toBe(128 * 1024);
     const f = fixture();
@@ -494,6 +513,9 @@ describe("shift-left simulated upgrade-page audit", () => {
     f.commit();
     f.git("tag", "openlup-core-v1.3.0");
     f.write("packages/core/package.json", JSON.stringify({ name: "@openlup/core", version: "1.4.0" }));
+    const fragment = "packages/core/changes/upgrade-link.md";
+    const previousPin = "https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/API.md";
+    f.write(fragment, `- See the [API](${previousPin}).\n`);
     f.commit();
 
     // Before upgrade/v1-4-0.md exists on disk, simulate 1.4.0 directly (not 1.5.0).
@@ -507,7 +529,8 @@ describe("shift-left simulated upgrade-page audit", () => {
 
     // Once release:bump writes upgrade/v1-4-0.md (and consumes fragments), audit the prepared file on disk.
     const preparedPath = "packages/core/docs/guide/upgrade/v1-4-0.md";
-    const cleanPrepared = `# Upgrading to 1.4.0\n\n## Highlights\n\n- Updated ${allowlistedSubpath} contract.\n`;
+    const cleanPrepared = `# Upgrading to 1.4.0\n\n## Highlights\n\n- Updated ${allowlistedSubpath} contract.\n- See the [API](${previousPin.replace("v1.3.0", "v1.4.0")}).\n`;
+    f.git("rm", fragment);
     f.write(preparedPath, cleanPrepared);
     f.commit();
     const cleanAudit = assertSimulatedUpgradePage(f.root);
@@ -518,6 +541,11 @@ describe("shift-left simulated upgrade-page audit", () => {
       bytes: Buffer.byteLength(cleanPrepared, "utf8"),
       prepared: true,
     });
+
+    f.write(preparedPath, cleanPrepared.replace("v1.4.0", "v1.3.0"));
+    expect(() => assertSimulatedUpgradePage(f.root)).toThrow(
+      /packages\/core\/docs\/guide\/upgrade\/v1-4-0\.md: repository link .* must pin openlup-core-v1\.4\.0/u,
+    );
 
     // Refuses prepared upgrade page exceeding byte cap.
     f.write(preparedPath, `# Upgrading to 1.4.0\n\n- ${"x".repeat(1024)}\n`);

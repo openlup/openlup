@@ -10,6 +10,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { documentationGit, documentationLinkTargets, parseDocumentationRouting, resolveDocumentationOwner, type DocumentationOwner } from "../documentation-routing.ts";
 // eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check runs before workspace install and reuses core's owning release-note audit
 import { assertReleaseNotePackagedContent, documentedAdapters, findReleaseNotePackagedContentViolations } from "../../packages/core/scripts/core-package-consumer-audit.ts";
+// eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check reuses Core's reader-guide Markdown rules in-process
+import { assertGuideLinks, assertGuideTitle, assertLocalMarkdownLinks, assertReaderLanguage, pinGuideReleaseLinks, readGuideAllowList } from "../../packages/core/scripts/documentation-guide-content.ts";
 import { isChangelogFragment, readChangelogFragments, validateChangelogFragment, type ChangelogFragment } from "./changelog-fragments.ts";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, parsePackagesConfig, releaseVersionAbove } from "./package-manifest-policy.ts";
 export { assertReleaseNotePackagedContent, documentedAdapters, findReleaseNotePackagedContentViolations };
@@ -400,12 +402,52 @@ function findOffendingUpgradeSections(path: string, text: string): string[] {
     .map(({ heading }) => heading);
 }
 
+function assertUpgradePageDocumentation(
+  root: string,
+  { version, path, text, prepared }: Pick<SimulatedUpgradePageAudit, "version" | "path" | "text" | "prepared">,
+  label: string,
+  fragments: readonly ChangelogFragment[],
+): void {
+  const repositoryRoot = resolve(root);
+  const packageRoot = join(repositoryRoot, "packages/core");
+  const guideRoot = join(repositoryRoot, GUIDE);
+  const file = join(repositoryRoot, path);
+  const tag = `openlup-core-v${version}`;
+  const violations: string[] = [];
+  const allowed = readGuideAllowList(repositoryRoot, violations);
+  // Preparation re-pins existing release URLs. A prepared file must already have the right pin.
+  const pageSource = prepared ? text : pinGuideReleaseLinks(text, version);
+  const checkContent = (source: string, sourceLabel: string, results: string[]) => {
+    assertGuideLinks(guideRoot, file, sourceLabel, source, repositoryRoot, tag, results);
+    assertReaderLanguage(sourceLabel, source, allowed, results);
+    assertLocalMarkdownLinks({ packageRoot, file, label: sourceLabel, source }, results);
+  };
+  assertGuideTitle(path, pageSource, violations);
+  checkContent(pageSource, path, violations);
+  if (violations.length === 0) return;
+
+  const fragmentViolations: string[] = [];
+  for (const fragment of fragments) {
+    checkContent(pinGuideReleaseLinks(fragment.contents.trimEnd(), version), fragment.path, fragmentViolations);
+  }
+  throw new Error([
+    `Observed: ${label} fails the Core documentation contract.`,
+    "Cause:",
+    ...violations,
+    ...fragmentViolations,
+    prepared
+      ? "Fix: Correct the diagnostics in the prepared upgrade page."
+      : "Fix: Correct the diagnostics in the source fragment or the generator that emitted the text.",
+    "Recheck: npm run preflight -- --fast",
+  ].join("\n"));
+}
+
 /**
  * Dry-run upgrade page audit in memory (no writes, bare Node 24 compatible):
  * when the core manifest is already bumped above the previous core tag and the
  * prepared upgrade page exists on disk, audits that prepared page; otherwise
  * renders the candidate upgrade page in memory from current fragments + API diffs.
- * Enforces the size cap and packed core release-note neutrality audit.
+ * Enforces the size cap, packed Core release-note neutrality and reader guide Markdown rules.
  * Returns null when no ancestor core release tag exists to diff against.
  */
 export function assertSimulatedUpgradePage(
@@ -469,7 +511,9 @@ export function assertSimulatedUpgradePage(
       + `\nFix: ${RELEASE_NOTE_PACKAGED_CONTENT_REMEDY}.`,
     );
   }
-  return { version, since, path, bytes, maxBytes, prepared, text };
+  const audit = { version, since, path, bytes, maxBytes, prepared, text };
+  assertUpgradePageDocumentation(root, audit, label, fragments);
+  return audit;
 }
 
 export function formatReleaseDocumentation(listing: ReleaseDocumentationListing): string {
