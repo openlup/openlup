@@ -1,3 +1,4 @@
+import { starterDiagnostic } from './refusals.ts';
 import type { SubscriptionCommandAdmission, SubscriptionLifecycleTerms } from '@openlup/platform/subscriptions/contracts';
 import type { NativeLifecycleMessagesOptions } from '@openlup/platform/subscriptions';
 import { assertChoice, type Choice } from './policy.ts';
@@ -36,14 +37,14 @@ export function assertRenewalConfig(config: RenewalConfig, locales: readonly Loc
     || !['succeeded', 'declined', 'ambiguous'].includes(config.sandbox?.retry)
     || !supportedLocales.includes(config.notices?.locale)
     || Object.entries(config.notices.countryLocales ?? {}).some(([country, locale]) => !/^[A-Z]{2}$/.test(country) || !supportedLocales.includes(locale))) {
-    throw new Error('starter_renewal_configuration_invalid');
+    throw starterDiagnostic('starter_renewal_configuration_invalid');
   }
   const copyKeys: (keyof RenewalNoticeText)[] = ['payment_failed', 'payment_expired', 'payment_recovery', 'payment_recovered',
     'lifecycle', 'active', 'amount', 'retry', 'charge', 'repair', 'expires', 'unknown', 'address', 'addressApplied', 'addressNextParcel',
     'status', 'minorUnits', 'cause', 'needsConfirmation', 'cannotRecur', 'methodDead', 'methodDataInvalid', 'methodMissing'];
   const paidKeys: (keyof RenewalNoticeText['paid'])[] = ['subject', 'order', 'item', 'quantity', 'subtotal', 'discount', 'total'];
   assertLocaleCopy(config.notices.copy, locales, 'renewal.notices.copy', [...copyKeys, ...paidKeys.map(key => `paid.${key}`)]);
-  if (config.retryBackoffHours.length !== 3) throw new Error('starter_database_retry_budget');
+  if (config.retryBackoffHours.length !== 3) throw starterDiagnostic('starter_database_retry_budget');
   assertSubscriptionCare(config.subscriptionCare);
 }
 
@@ -74,13 +75,13 @@ export function assertSubscriptionCare(config: SubscriptionCareConfig): void {
     || config.notices.renewalMinSeconds > config.notices.renewalMaxSeconds
     || config.notices.atRiskMinDays > config.notices.atRiskMaxDays
     || !config.retentionReasons?.length || config.retentionReasons.some(value => !/^[a-z][a-z0-9_]{0,119}$/.test(value))) {
-    throw new Error('starter_subscription_care_configuration_invalid');
+    throw starterDiagnostic('starter_subscription_care_configuration_invalid');
   }
   const keys = ['active', 'paused', 'cancelled', 'whilePaymentBlocked', 'whilePaymentExpired'] as const;
   if (!config.actions || Object.keys(config.actions).some(key => !keys.some(known => known === key))
     || keys.some(key => !Array.isArray(config.actions[key]) || new Set(config.actions[key]).size !== config.actions[key].length
       || config.actions[key].some(action => !careActions.includes(action)))) {
-    throw new Error('starter_subscription_actions_invalid');
+    throw starterDiagnostic('starter_subscription_actions_invalid');
   }
   assertChoice(config.pausePresets, pausePresetVocabulary, 'starter_pause_presets_invalid');
 }
@@ -131,14 +132,17 @@ export type SaveOfferKind = 'skip' | 'reschedule' | 'pause';
 export function assertRetention(config: SubscriptionCareConfig): void {
   const policy = config.retention;
   if (policy?.offerPresentation !== undefined && !['ask_permission_first', 'off'].includes(policy.offerPresentation)) {
-    throw new Error('starter_retention_configuration_invalid: Set renewal.subscriptionCare.retention.offerPresentation to ask_permission_first or off, or omit it for ask_permission_first.');
+    const code = 'starter_retention_configuration_invalid';
+    const path = 'renewal.subscriptionCare.retention.offerPresentation';
+    const fix = `Set ${path} to ask_permission_first or off, or omit it for ask_permission_first.`;
+    throw starterDiagnostic(code, new Error(`${code}: ${fix}`), { path, fix });
   }
   const kinds: readonly SaveOfferKind[] = ['skip', 'reschedule', 'pause'];
   if (!policy || !policy.offerByReason || typeof policy.offerByReason !== 'object' || Array.isArray(policy.offerByReason)
     || !kinds.includes(policy.defaultOffer) || Object.entries(policy.offerByReason).some(([reason, kind]) =>
       !config.retentionReasons.includes(reason) || !kinds.includes(kind))
     || policy.pausePreset !== undefined && !config.pausePresets?.allowed.includes(policy.pausePreset)) {
-    throw new Error('starter_retention_configuration_invalid');
+    throw starterDiagnostic('starter_retention_configuration_invalid');
   }
 }
 export function saveOfferKind(reason: string, config: SubscriptionCareConfig): SaveOfferKind {

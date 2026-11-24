@@ -1,3 +1,4 @@
+import { starterDiagnostic } from './refusals.ts';
 import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
 import { contains, choices, maximum, type Numbers } from './policy.ts';
 export { set, range, contains, choices, maximum, type Numbers } from './policy.ts';
@@ -35,7 +36,7 @@ export function admitsTerms(offer: SubscriptionOffer, days: number,
     && [...base,...addons].every(line => admitsLine(offer,line.sku,days,line.qty));
 }
 export function assertSubscriptionOffer(offer: SubscriptionOffer, skus: readonly string[]): void {
-  const invalid = (cause: string) => { throw new Error('starter_subscription_offer_invalid', { cause: `subscriptionOffers.<mode>.${cause}` }); };
+  const invalid = (cause: string) => { throw starterDiagnostic('starter_subscription_offer_invalid', new Error('starter_subscription_offer_invalid', { cause: `subscriptionOffers.<mode>.${cause}` })); };
   const integerRule = 'integers from 1 through 2147483647';
   const positive = (value: number) => Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647;
   const numbers = (domain: Numbers, path: string) => {
@@ -68,7 +69,7 @@ export function assertSubscriptionOffer(offer: SubscriptionOffer, skus: readonly
   }
   if (offer.maximumUnits < offer.minimumBaseUnits) invalid('maximumUnits: must be at least minimumBaseUnits');
   if (offer.maximumBaseLines + offer.maximumAddonLines > MAX_CHECKOUT_LINES) {
-    throw new Error('starter_lines_above_representation');
+    throw starterDiagnostic('starter_lines_above_representation');
   }
   for (const [sku,rules] of Object.entries(offer.bySku)) {
     const path = `bySku.${sku}`;
@@ -81,7 +82,7 @@ export function assertSubscriptionOffer(offer: SubscriptionOffer, skus: readonly
       numbers(rule.days, days);
       numbers(rule.quantities, `${path}.${index}.quantities`);
       if (maximum(rule.days) > maximum(offer.days)) invalid(`${days}: maximum cannot exceed the maximum in days`);
-      if (maximum(rule.quantities) > MAX_CHECKOUT_LINE_QUANTITY) throw new Error('starter_units_above_representation');
+      if (maximum(rule.quantities) > MAX_CHECKOUT_LINE_QUANTITY) throw starterDiagnostic('starter_units_above_representation');
       for (const day of choices(rule.days)) {
         if (!contains(offer.days,day)) invalid(`${days}: every cadence must be in days`);
         if (seen.has(day)) invalid(`${days}: cadence cannot repeat across rules for this SKU`);

@@ -798,11 +798,15 @@
       "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
     },
     {
+      "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+      "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+    },
+    {
       "file": "db/platform/migrations/20261126021000_tax_calculation_claim_seal.sql",
       "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
     }
   ],
-  "objectInventorySha256": "42ceb208b171db61269661f2fa2ec5f480e0baf361e38a9dac8b8efb5c6c1d34",
+  "objectInventorySha256": "06a33b835ffbbafb25af14c0cf7a9b04a93176b82d10b2d1b92f518900862b32",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1626,16 +1630,20 @@
         "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
       },
       {
+        "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+        "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+      },
+      {
         "file": "db/platform/migrations/20261126021000_tax_calculation_claim_seal.sql",
         "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "a277562a9f7de92ccc009304a8bc4dc8730c21df0aca3a100a59a61f449b1c15"
+        "withRestore": "a1326d71bf12f887fbc9040296bc5c581944b3ba0137d1a7ee8642864743283f"
       },
       "separateMigrator": {
-        "withRestore": "adbbbfc2e82b802040dc05ee1dc53a7754566fa62a5c5bee3676eafcd1a783aa"
+        "withRestore": "17c66654f198c11844f8ed0816904f83592190b0bc3aecacb898549442862192"
       }
     }
   },
@@ -2454,13 +2462,17 @@
         "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
       },
       {
+        "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+        "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+      },
+      {
         "file": "db/platform/migrations/20261126021000_tax_calculation_claim_seal.sql",
         "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "a24b320359e8038de4409c4a10611ddd95119e075364fdabb07fd8c539d9896f",
-      "operatorProvisioned": "30733f3baa3af4645086152d0afab00ef466403a67f99fa7e77527f83f62dbe6"
+      "installerManaged": "2d3ce99974003c1bedba4c4f4f1ebf80cd69f6d48a9fe01bffac9edbae659bb8",
+      "operatorProvisioned": "35b69db7e0dec303afb23a909bf8f314ca50ff1b68ddb441b9326ac535593319"
     }
   }
 }

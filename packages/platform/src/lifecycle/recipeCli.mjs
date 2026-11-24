@@ -1,4 +1,4 @@
-// Tool-only CLI module for `openlup recipe list|show|add|verify`.
+// Tool-only CLI module for `openlup recipe list|show|add|scaffold|verify`.
 // Zero third-party dependencies, zero ambient environment reads, strict path/symlink hardening.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -11,16 +11,104 @@ import { parseArgs } from "node:util";
 export const RECIPE_CLI_HELP = `openlup recipe list [--domain <domain>] [--status <status>] [--region <region>] [--catalog <dir>] [--json]
 openlup recipe show <id> [--catalog <dir>] [--json]
 openlup recipe add <id> [--dest <dir>] [--catalog <dir>] [--force] [--verify] [--json]
+openlup recipe scaffold --domain <domain> --provider <slug> [--dest <dir>] [--force] [--verify] [--json]
 openlup recipe verify <path> [--skip-tests] [--json]
 
-Recipes are code-owned, zero-SDK adapters copied into your application (default: owned/adapters/<domain>/<provider>).
+Recipes are code-owned, zero-SDK adapters copied or scaffolded into your application (default: owned/adapters/<domain>/<provider>).
 Use a <container>/<domain>/<provider> --dest layout so companion schema/ and index.json files sync cleanly for --verify.
 Offline verify checks manifest parity, ADR-001 static isolation, installed @openlup/platform range, and Stages 1-3 Vitest suites.
 Passing Stages 1-3 offline never claims Stage 4 live account readiness; complete LIVE_QUALIFICATION.md before enabling live traffic.
 Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 64 invalid invocation/JSON, 74 unavailable operation. JSON uses formatVersion=1.`;
 
 const RECIPE_ID_PATTERN = /^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/u;
+const PROVIDER_SLUG_PATTERN = /^[a-z][a-z0-9-]{1,47}$/u;
 const PROVIDER_KIND_PATTERN = /^[a-z][a-z0-9_-]{1,47}$/u;
+const SCAFFOLD_DOMAINS = Object.freeze({
+  payments: {
+    contractImports: ["@openlup/platform/payments/contracts", "@openlup/platform/payments/testing"],
+    conformanceRunner: { importPath: "@openlup/platform/payments/testing", exportName: "runPaymentAdapterConformance" },
+    openlupPlatformRange: "^1.3.0",
+    testedAgainstPlatformVersion: "1.3.0",
+    supportedCurrenciesPolicy: "host-configured",
+    exemplarRef: "payments/adyen",
+  },
+  fulfillment: {
+    contractImports: ["@openlup/platform/fulfillment/contracts", "@openlup/platform/fulfillment/testing"],
+    conformanceRunner: {
+      importPath: "@openlup/platform/fulfillment/testing",
+      exportName: "runFulfillmentAdapterConformance",
+      mode: "full",
+    },
+    openlupPlatformRange: "^1.3.0",
+    testedAgainstPlatformVersion: "1.3.0",
+    supportedCurrenciesPolicy: "not-applicable",
+    exemplarRef: "fulfillment/amazon-mcf",
+  },
+  shipping: {
+    contractImports: ["@openlup/platform/shipping/contracts", "@openlup/platform/shipping/testing"],
+    conformanceRunner: {
+      importPath: "@openlup/platform/shipping/testing",
+      exportName: "runShippingRateAdapterConformance",
+    },
+    openlupPlatformRange: "^1.4.0",
+    testedAgainstPlatformVersion: "1.4.0-dev",
+    supportedCurrenciesPolicy: "host-configured",
+    exemplarRef: "shipping/easypost",
+  },
+  tax: {
+    contractImports: ["@openlup/platform/tax/contracts", "@openlup/platform/tax"],
+    conformanceRunner: { importPath: "@openlup/platform/tax", exportName: "runTaxAdapterConformance" },
+    openlupPlatformRange: "^1.3.0",
+    testedAgainstPlatformVersion: "1.3.0",
+    supportedCurrenciesPolicy: "host-configured",
+    exemplarRef: "tax/avalara",
+  },
+  communications: {
+    contractImports: ["@openlup/platform/communications/contracts", "@openlup/platform/communications/testing"],
+    conformanceRunner: {
+      importPath: "@openlup/platform/communications/testing",
+      exportName: "runCommunicationsAdapterConformance",
+    },
+    openlupPlatformRange: "^1.4.0",
+    testedAgainstPlatformVersion: "1.4.0-dev",
+    supportedCurrenciesPolicy: "not-applicable",
+    exemplarRef: "communications/postmark",
+  },
+  accounting: {
+    contractImports: ["@openlup/platform/accounting/contracts", "@openlup/platform/accounting/testing"],
+    conformanceRunner: {
+      importPath: "@openlup/platform/accounting/testing",
+      exportName: "runAccountingAdapterConformance",
+    },
+    openlupPlatformRange: "^1.4.0",
+    testedAgainstPlatformVersion: "1.4.0-dev",
+    supportedCurrenciesPolicy: "host-configured",
+    exemplarRef: "accounting/quickbooks-online",
+  },
+  observability: {
+    contractImports: ["@openlup/platform/observability/contracts", "@openlup/platform/observability/testing"],
+    conformanceRunner: {
+      importPath: "@openlup/platform/observability/testing",
+      exportName: "runTelemetryAdapterConformance",
+    },
+    openlupPlatformRange: "^1.4.0",
+    testedAgainstPlatformVersion: "1.4.0-dev",
+    supportedCurrenciesPolicy: "not-applicable",
+    exemplarRef: "observability/axiom",
+  },
+  channels: {
+    contractImports: ["@openlup/platform/channels/contracts", "@openlup/platform/channels/testing"],
+    conformanceRunner: {
+      importPath: "@openlup/platform/channels/testing",
+      exportName: "runChannelAdapterConformance",
+      mode: "full",
+    },
+    openlupPlatformRange: "^1.4.0",
+    testedAgainstPlatformVersion: "1.4.0-dev",
+    supportedCurrenciesPolicy: "host-configured",
+    exemplarRef: "channels/shopify",
+  },
+});
 const CONTRACT_IMPORT_PATTERN = /^@openlup\/(?:core|platform|outbox)(?:\/[a-z0-9-]+)*$/u;
 const EGRESS_ORIGIN_PATTERN = /^https:\/\/(?:[a-z0-9.-]|\{[a-zA-Z][a-zA-Z0-9_]*\}|\*)+(?::[0-9]+)?$/u;
 const ALLOWED_STATUSES = new Set(["exemplar", "verified", "experimental", "unverified-for-version"]);
@@ -1605,6 +1693,436 @@ function renderVerifyText(report, renderFinding) {
   return lines.join("\n");
 }
 
+function formatTitleCase(slug) {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatPascalCase(slug) {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join("");
+}
+
+function buildScaffoldFiles({ domain, provider, providerKind, displayName, pascalName, domainSpec }) {
+  const recipeId = `${domain}/${provider}`;
+  const defaultOrigin = `https://api.${provider}.example.com`;
+  const allFiles = [
+    "LIVE_QUALIFICATION.md",
+    "README.md",
+    "recipe.json",
+    "server/adapter.ts",
+    "server/client.ts",
+    "server/index.ts",
+    "server/types.ts",
+    "tests/conformance.test.ts",
+    "tests/mount-proof.test.ts",
+  ];
+
+  const staticCapabilities = {
+    providerKind,
+    domain,
+    status: "scaffold-skeleton",
+    operations: {
+      healthCheck: { supported: false, reason: "scaffold_unimplemented" },
+    },
+  };
+
+  const manifest = {
+    schemaVersion: 1,
+    id: recipeId,
+    domain,
+    providerKind,
+    displayName: `${displayName} (${formatTitleCase(domain)})`,
+    summary: `Code-owned ${displayName} ${domain} adapter scaffold (zero-SDK injected fetch, ADR-001 isolated).`,
+    regions: ["global"],
+    status: "experimental",
+    openlupPlatformRange: domainSpec.openlupPlatformRange,
+    testedAgainstPlatformVersion: domainSpec.testedAgainstPlatformVersion,
+    contractImports: domainSpec.contractImports,
+    conformanceRunner: domainSpec.conformanceRunner,
+    sdkPolicy: "zero-dep-fetch",
+    egressOrigins: [defaultOrigin],
+    webhookAuth: "none",
+    browserSurface: { kind: "none" },
+    supportedCurrenciesPolicy: domainSpec.supportedCurrenciesPolicy,
+    staticCapabilities,
+    liveQualification: {
+      status: "offline-protocol-only",
+      checklist: "LIVE_QUALIFICATION.md",
+    },
+    files: {
+      serverEntry: "server/index.ts",
+      clientContract: "server/client.ts",
+      conformanceTest: "tests/conformance.test.ts",
+      mountProofTest: "tests/mount-proof.test.ts",
+      liveQualificationDoc: "LIVE_QUALIFICATION.md",
+      allFiles,
+    },
+  };
+
+  const typesTs = `export type ${pascalName}Fetch = (
+  input: string,
+  init?: {
+    readonly method?: string;
+    readonly headers?: Readonly<Record<string, string>>;
+    readonly body?: string;
+    readonly redirect?: "error";
+    readonly signal?: AbortSignal;
+  },
+) => Promise<{
+  readonly ok: boolean;
+  readonly status: number;
+  readonly text: () => Promise<string>;
+  readonly body?: { cancel?: () => Promise<unknown> | void } | null;
+}>;
+
+export interface ${pascalName}ClientConfig {
+  readonly apiKey: string;
+  readonly baseUrl: string;
+  readonly fetchImpl: ${pascalName}Fetch;
+  readonly timeoutMs?: number;
+}
+
+export interface ${pascalName}StaticCapabilities {
+  readonly providerKind: "${providerKind}";
+  readonly domain: "${domain}";
+  readonly status: "scaffold-skeleton";
+  readonly operations: {
+    readonly healthCheck: { readonly supported: false; readonly reason: "scaffold_unimplemented" };
+  };
+}
+
+export interface ${pascalName}AdapterResult {
+  readonly kind: "refused";
+  readonly reason: "unsupported" | "invalid_input";
+  readonly providerKind: "${providerKind}";
+  readonly message: string;
+}
+`;
+
+  const clientTs = `import type { ${pascalName}ClientConfig } from "./types.js";
+
+export const DEFAULT_${providerKind.toUpperCase()}_BASE_URL = ${JSON.stringify(defaultOrigin)};
+const DEFAULT_TIMEOUT_MS = 10_000;
+
+export function assertPinnedHttpsOrigin(rawUrl: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error("${providerKind}: baseUrl must be a valid https:// URL.");
+  }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+    throw new Error("${providerKind}: baseUrl must use https:// with no embedded credentials.");
+  }
+  return parsed.origin;
+}
+
+export function create${pascalName}Client(config: ${pascalName}ClientConfig) {
+  if (!config.apiKey || !config.apiKey.trim()) {
+    throw new Error("${providerKind}: non-empty apiKey is required.");
+  }
+  const pinnedOrigin = assertPinnedHttpsOrigin(config.baseUrl);
+  const timeoutMs =
+    typeof config.timeoutMs === "number" && Number.isFinite(config.timeoutMs) && config.timeoutMs > 0
+      ? config.timeoutMs
+      : DEFAULT_TIMEOUT_MS;
+
+  return {
+    pinnedOrigin,
+    async requestJson(path: string, init: { readonly method?: string; readonly body?: string } = {}) {
+      if (!path.startsWith("/") || path.includes("..")) {
+        throw new Error("${providerKind}: request path must start with '/' and contain no '..'.");
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await config.fetchImpl(\`\${pinnedOrigin}\${path}\`, {
+          method: init.method ?? "GET",
+          headers: {
+            accept: "application/json",
+            authorization: \`Bearer \${config.apiKey}\`,
+            ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
+          },
+          ...(init.body !== undefined ? { body: init.body } : {}),
+          redirect: "error",
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          await res.body?.cancel?.();
+          return { ok: false as const, status: res.status };
+        }
+        const text = await res.text();
+        return { ok: true as const, status: res.status, body: text ? (JSON.parse(text) as unknown) : null };
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  };
+}
+`;
+
+  const adapterTs = `import { create${pascalName}Client } from "./client.js";
+import type {
+  ${pascalName}AdapterResult,
+  ${pascalName}ClientConfig,
+  ${pascalName}StaticCapabilities,
+} from "./types.js";
+
+export function project${pascalName}StaticCapabilities(): ${pascalName}StaticCapabilities {
+  return {
+    providerKind: "${providerKind}",
+    domain: "${domain}",
+    status: "scaffold-skeleton",
+    operations: {
+      healthCheck: { supported: false, reason: "scaffold_unimplemented" },
+    },
+  };
+}
+
+/**
+ * Scaffold adapter entry point.
+ * Replace this starter implementation with the neutral ${domain} port from:
+ *   ${domainSpec.contractImports[0]}
+ * Reference exemplar: recipes/${domainSpec.exemplarRef}
+ */
+export function create${pascalName}Adapter(config: ${pascalName}ClientConfig) {
+  const client = create${pascalName}Client(config);
+  const capabilities = project${pascalName}StaticCapabilities();
+
+  return {
+    capabilities,
+    pinnedOrigin: client.pinnedOrigin,
+    /** Explicit zero-I/O refusal until provider endpoints are implemented and certified. */
+    async execute(input: { readonly referenceId: string }): Promise<${pascalName}AdapterResult> {
+      if (!input.referenceId || !input.referenceId.trim()) {
+        return {
+          kind: "refused",
+          reason: "invalid_input",
+          providerKind: "${providerKind}",
+          message: "Non-empty referenceId is required.",
+        };
+      }
+      return {
+        kind: "refused",
+        reason: "unsupported",
+        providerKind: "${providerKind}",
+        message: "Scaffold adapter has not yet wired live ${displayName} operations.",
+      };
+    },
+  };
+}
+`;
+
+  const indexTs = `export {
+  create${pascalName}Adapter,
+  project${pascalName}StaticCapabilities,
+} from "./adapter.js";
+export {
+  assertPinnedHttpsOrigin,
+  create${pascalName}Client,
+  DEFAULT_${providerKind.toUpperCase()}_BASE_URL,
+} from "./client.js";
+export type {
+  ${pascalName}AdapterResult,
+  ${pascalName}ClientConfig,
+  ${pascalName}Fetch,
+  ${pascalName}StaticCapabilities,
+} from "./types.js";
+`;
+
+  const conformanceTestTs = `import { existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it, vi } from "vitest";
+import {
+  assertPinnedHttpsOrigin,
+  create${pascalName}Adapter,
+  create${pascalName}Client,
+  DEFAULT_${providerKind.toUpperCase()}_BASE_URL,
+  project${pascalName}StaticCapabilities,
+} from "../server/index.js";
+
+const RECIPE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SECRET_CANARY = "sk_test_canary_${providerKind}_000000";
+
+function listFilesOnDisk(dir: string, prefix = ""): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix ? \`\${prefix}/\${entry.name}\` : entry.name;
+    if (entry.isDirectory()) {
+      out.push(...listFilesOnDisk(path.join(dir, entry.name), rel));
+    } else {
+      out.push(rel);
+    }
+  }
+  return out.sort();
+}
+
+describe("${recipeId} — Stage 1 & Stage 2 scaffold conformance baseline", () => {
+  it("preserves exact manifest files.allFiles and staticCapabilities parity", () => {
+    const manifest = JSON.parse(readFileSync(path.join(RECIPE_DIR, "recipe.json"), "utf8")) as {
+      id: string;
+      domain: string;
+      providerKind: string;
+      staticCapabilities: unknown;
+      files: { allFiles: string[] };
+    };
+    expect(manifest.id).toBe("${recipeId}");
+    expect(manifest.domain).toBe("${domain}");
+    expect(manifest.providerKind).toBe("${providerKind}");
+    expect(manifest.staticCapabilities).toEqual(project${pascalName}StaticCapabilities());
+    for (const rel of manifest.files.allFiles) {
+      expect(existsSync(path.join(RECIPE_DIR, rel))).toBe(true);
+    }
+    expect([...manifest.files.allFiles].sort()).toEqual(listFilesOnDisk(RECIPE_DIR));
+  });
+
+  it("pins HTTPS egress origins, cancels non-2xx bodies, and never leaks secret canaries", async () => {
+    expect(() => assertPinnedHttpsOrigin("http://insecure.example.com")).toThrow();
+    expect(() => assertPinnedHttpsOrigin("https://user:pass@api.example.com")).toThrow();
+    expect(assertPinnedHttpsOrigin(DEFAULT_${providerKind.toUpperCase()}_BASE_URL)).toBe(
+      DEFAULT_${providerKind.toUpperCase()}_BASE_URL,
+    );
+
+    const cancel = vi.fn();
+    const fetchImpl = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      text: async () => "upstream unavailable",
+      body: { cancel },
+    });
+    const client = create${pascalName}Client({
+      apiKey: SECRET_CANARY,
+      baseUrl: DEFAULT_${providerKind.toUpperCase()}_BASE_URL,
+      fetchImpl,
+    });
+    const failed = await client.requestJson("/v1/ping");
+    expect(failed).toEqual({ ok: false, status: 503 });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      \`\${DEFAULT_${providerKind.toUpperCase()}_BASE_URL}/v1/ping\`,
+      expect.objectContaining({ redirect: "error" }),
+    );
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(failed)).not.toContain(SECRET_CANARY);
+  });
+
+  it("returns explicit zero-I/O refusals for unimplemented scaffold operations", async () => {
+    const fetchImpl = vi.fn();
+    const adapter = create${pascalName}Adapter({
+      apiKey: SECRET_CANARY,
+      baseUrl: DEFAULT_${providerKind.toUpperCase()}_BASE_URL,
+      fetchImpl,
+    });
+    const res = await adapter.execute({ referenceId: "ref-001" });
+    expect(res.kind).toBe("refused");
+    expect(res.reason).toBe("unsupported");
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(JSON.stringify(res)).not.toContain(SECRET_CANARY);
+  });
+});
+`;
+
+  const mountProofTestTs = `import { describe, expect, it, vi } from "vitest";
+import { create${pascalName}Adapter, DEFAULT_${providerKind.toUpperCase()}_BASE_URL } from "../server/index.js";
+
+describe("${recipeId} — Stage 3 offline mount proof", () => {
+  it("constructs with zero provider I/O and refuses invalid input before transport", async () => {
+    const fetchImpl = vi.fn();
+    const adapter = create${pascalName}Adapter({
+      apiKey: "sk_test_mount_canary_${providerKind}",
+      baseUrl: DEFAULT_${providerKind.toUpperCase()}_BASE_URL,
+      fetchImpl,
+    });
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const invalid = await adapter.execute({ referenceId: "   " });
+    expect(invalid.kind).toBe("refused");
+    expect(invalid.reason).toBe("invalid_input");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+`;
+
+  const readmeMd = `# ${displayName} (${formatTitleCase(domain)} Recipe Scaffold)
+
+Code-owned, zero-SDK OpenLup provider recipe scaffold generated by \`openlup recipe scaffold\`.
+
+## Next Steps
+
+1. Replace the starter methods in \`server/adapter.ts\` and \`server/client.ts\` with the neutral \`${domain}\` contract from \`${domainSpec.contractImports[0]}\`.
+2. Wire the official offline conformance suite \`${domainSpec.conformanceRunner.exportName}\` from \`${domainSpec.conformanceRunner.importPath}\` into \`tests/conformance.test.ts\` (reference exemplar: \`recipes/${domainSpec.exemplarRef}\`).
+3. Update \`egressOrigins\`, \`webhookAuth\`, and \`staticCapabilities\` in \`recipe.json\` to match your live implementation.
+4. Run offline verification after every edit:
+
+\`\`\`bash
+npx --no -- openlup recipe verify owned/adapters/${recipeId}
+\`\`\`
+
+> **Boundary:** Passing offline Stages 1–3 never certifies live account credentials. Complete \`LIVE_QUALIFICATION.md\` before enabling live traffic.
+`;
+
+  const liveQualificationMd = `# Live Qualification Checklist — ${displayName} (${recipeId})
+
+Status: \`offline-protocol-only\` (scaffold baseline — NOT live-qualified).
+
+Complete every item below in your own sandbox/production account before routing live traffic:
+
+- [ ] **Credentials & Secret Isolation:** Supply API credentials exclusively via host composition (never hardcoded or logged).
+- [ ] **Egress Pinning:** Verify \`egressOrigins\` in \`recipe.json\` matches the provider's exact production and sandbox HTTPS origins.
+- [ ] **Conformance Suite:** Wire and pass \`${domainSpec.conformanceRunner.exportName}\` from \`${domainSpec.conformanceRunner.importPath}\` with secret/PII canary checks and planted-defect negative controls.
+- [ ] **Webhook / Auth Verification:** Confirm signature/timestamp verification (when applicable) executes before payload parsing.
+- [ ] **Sandbox End-to-End Receipt:** Record dated sandbox verification results and update \`liveQualification.status\` only after live sandbox evidence is captured.
+`;
+
+  const filesMap = {
+    "LIVE_QUALIFICATION.md": liveQualificationMd,
+    "README.md": readmeMd,
+    "recipe.json": `${JSON.stringify(manifest, null, 2)}\n`,
+    "server/adapter.ts": adapterTs,
+    "server/client.ts": clientTs,
+    "server/index.ts": indexTs,
+    "server/types.ts": typesTs,
+    "tests/conformance.test.ts": conformanceTestTs,
+    "tests/mount-proof.test.ts": mountProofTestTs,
+  };
+
+  return {
+    manifest,
+    plannedFiles: allFiles.map((relPath) => {
+      const bytes = Buffer.from(filesMap[relPath], "utf8");
+      return {
+        relPath,
+        bytes,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      };
+    }),
+  };
+}
+
+function renderScaffoldText(report, renderFinding) {
+  const lines = [
+    `recipe scaffold: ${report.state} (${report.recipeId})`,
+    `Destination: ${report.dest}`,
+    `Files created: ${report.filesCreated} | Tree SHA-256: ${report.recipeTreeSha256}`,
+    `Reference exemplar: ${report.exemplarRef}`,
+    `Conformance runner: ${report.conformanceRunner.importPath}#${report.conformanceRunner.exportName}`,
+    `Provenance: ${report.provenancePath}`,
+    `Verify offline: ${report.verifyCommand}`,
+    `Live qualification: complete ${report.liveQualificationChecklist} before enabling live traffic.`,
+  ];
+  if (report.verification) {
+    lines.push("", renderVerifyText(report.verification, renderFinding));
+  }
+  return lines.join("\n");
+}
+
 function renderAddText(report, renderFinding) {
   const lines = [
     `recipe add: ${report.state} (${report.recipeId})`,
@@ -1630,6 +2148,7 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
         json: { type: "boolean" },
         catalog: { type: "string" },
         domain: { type: "string" },
+        provider: { type: "string" },
         status: { type: "string" },
         region: { type: "string" },
         dest: { type: "string" },
@@ -1662,8 +2181,8 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
     refuse(
       64,
       "OPENLUP_E_CLI_INPUT",
-      "Missing recipe subcommand (expected list, show, add, or verify).",
-      "Use `openlup recipe list`, `openlup recipe show <id>`, `openlup recipe add <id>`, or `openlup recipe verify <path>`.",
+      "Missing recipe subcommand (expected list, show, add, scaffold, or verify).",
+      "Use `openlup recipe list`, `openlup recipe show <id>`, `openlup recipe add <id>`, `openlup recipe scaffold --domain <d> --provider <p>`, or `openlup recipe verify <path>`.",
     );
     return;
   }
@@ -1674,6 +2193,7 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
   if (subcommand === "list") {
     if (
       positionals.length !== 1 ||
+      values.provider !== undefined ||
       values.dest !== undefined ||
       values.force !== undefined ||
       values.verify !== undefined ||
@@ -1743,6 +2263,7 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
     if (
       positionals.length !== 2 ||
       values.domain !== undefined ||
+      values.provider !== undefined ||
       values.status !== undefined ||
       values.region !== undefined ||
       values.dest !== undefined ||
@@ -1856,6 +2377,7 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
     if (
       positionals.length !== 2 ||
       values.domain !== undefined ||
+      values.provider !== undefined ||
       values.status !== undefined ||
       values.region !== undefined ||
       values["skip-tests"] !== undefined
@@ -2198,7 +2720,13 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
         if (provStat && provStat.isFile()) {
           try {
             const loaded = JSON.parse(await fs.readFile(provenancePathAbs, "utf8"));
-            if (loaded && typeof loaded === "object" && loaded.recipes && typeof loaded.recipes === "object") {
+            if (
+              loaded &&
+              typeof loaded === "object" &&
+              loaded.recipes &&
+              typeof loaded.recipes === "object" &&
+              !Array.isArray(loaded.recipes)
+            ) {
               existingLedger = loaded;
             }
           } catch {
@@ -2271,11 +2799,250 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
     return;
   }
 
+  if (subcommand === "scaffold") {
+    if (
+      positionals.length !== 1 ||
+      values.status !== undefined ||
+      values.region !== undefined ||
+      values.catalog !== undefined ||
+      values["skip-tests"] !== undefined
+    ) {
+      refuse(
+        64,
+        "OPENLUP_E_CLI_INPUT",
+        "Invalid arguments for `openlup recipe scaffold`.",
+        "Usage: openlup recipe scaffold --domain <domain> --provider <slug> [--dest <dir>] [--force] [--verify] [--json]",
+      );
+      return;
+    }
+
+    const domain = typeof values.domain === "string" ? values.domain.trim() : "";
+    const provider = typeof values.provider === "string" ? values.provider.trim() : "";
+    if (!Object.prototype.hasOwnProperty.call(SCAFFOLD_DOMAINS, domain)) {
+      refuse(
+        64,
+        "OPENLUP_E_CLI_INPUT",
+        `Invalid or missing --domain: ${domain || "(empty)"}`,
+        `Supply --domain with one of: ${Object.keys(SCAFFOLD_DOMAINS).join(", ")}.`,
+      );
+      return;
+    }
+    if (!PROVIDER_SLUG_PATTERN.test(provider)) {
+      refuse(
+        64,
+        "OPENLUP_E_CLI_INPUT",
+        `Invalid or missing --provider slug: ${provider || "(empty)"}`,
+        "Supply --provider matching ^[a-z][a-z0-9-]{1,47}$ (e.g., acme-pay).",
+      );
+      return;
+    }
+
+    const domainSpec = SCAFFOLD_DOMAINS[domain];
+    const providerKind = provider.replaceAll("-", "_");
+    const displayName = formatTitleCase(provider);
+    const pascalName = formatPascalCase(provider);
+    const recipeId = `${domain}/${provider}`;
+    const defaultDestRel = join("owned", "adapters", domain, provider);
+    const requestedDest = values.dest !== undefined ? values.dest : defaultDestRel;
+    if (!requestedDest || !requestedDest.trim()) {
+      refuse(64, "OPENLUP_E_CLI_INPUT", "Empty --dest path.", "Pass a non-empty destination directory.");
+      return;
+    }
+
+    let destAbs;
+    try {
+      destAbs = await canonicalizePathWithMissingTail(resolve(cwd, requestedDest));
+    } catch {
+      refuse(
+        74,
+        "OPENLUP_E_RECIPE_UNSAFE_PATH",
+        `Destination path contains a symlink: ${requestedDest}`,
+        "Choose a destination directory with no symlink ancestors.",
+      );
+      return;
+    }
+
+    const destStat = await statOrNull(destAbs);
+    if (destStat) {
+      if (destStat.isSymbolicLink() || !destStat.isDirectory()) {
+        refuse(
+          74,
+          "OPENLUP_E_RECIPE_UNSAFE_PATH",
+          `Destination exists and is not an ordinary directory: ${requestedDest}`,
+          "Choose a clean directory path for --dest.",
+        );
+        return;
+      }
+      const existingEntries = await fs.readdir(destAbs);
+      if (existingEntries.length > 0 && values.force !== true) {
+        const finding = makeFinding(
+          "OPENLUP_E_RECIPE_DEST_EXISTS",
+          `Destination directory already exists and is non-empty: ${requestedDest}`,
+          "Refusing to overwrite existing adapter files without explicit --force.",
+          "Inspect existing edits, choose a new --dest, or rerun with `--force` to overwrite.",
+          shellCommand([
+            "recipe",
+            "scaffold",
+            "--domain",
+            domain,
+            "--provider",
+            provider,
+            ...(values.dest ? ["--dest", values.dest] : []),
+            "--force",
+            ...(values.verify ? ["--verify"] : []),
+            ...(isJson ? ["--json"] : []),
+          ]),
+        );
+        emit(
+          { command: "recipe scaffold", state: "refused", exitCode: 1, recipeId, dest: requestedDest, findings: [finding] },
+          renderFinding(finding),
+        );
+        return;
+      }
+    }
+
+    const { manifest, plannedFiles } = buildScaffoldFiles({
+      domain,
+      provider,
+      providerKind,
+      displayName,
+      pascalName,
+      domainSpec,
+    });
+
+    const recipeIdSuffix = `${sep}${recipeId.split("/").join(sep)}`;
+    const usesCanonicalContainerLayout = destAbs.endsWith(recipeIdSuffix);
+    const containerRoot = usesCanonicalContainerLayout ? resolve(destAbs, "../..") : null;
+    const provenancePathAbs =
+      usesCanonicalContainerLayout && containerRoot !== null
+        ? join(containerRoot, PROVENANCE_FILENAME)
+        : `${destAbs}.provenance.json`;
+
+    // Pre-validate target file paths and provenance target before writing a single byte.
+    try {
+      if (destStat) {
+        for (const item of plannedFiles) {
+          await assertNoSymlinkSegments(destAbs, item.relPath);
+        }
+      }
+      if (usesCanonicalContainerLayout && containerRoot !== null) {
+        await assertNoSymlinkAncestors(containerRoot);
+      }
+      const provStat = await statOrNull(provenancePathAbs);
+      if (provStat && (provStat.isSymbolicLink() || !provStat.isFile())) {
+        throw new Error(`SYMLINK_REFUSED:${provenancePathAbs}`);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("SYMLINK_REFUSED:")) {
+        refuse(
+          74,
+          "OPENLUP_E_RECIPE_UNSAFE_PATH",
+          "Refused symlinked destination or provenance path during recipe scaffold.",
+          "Remove symlinks under the destination container directory and retry.",
+        );
+        return;
+      }
+      throw error;
+    }
+
+    await fs.mkdir(destAbs, { recursive: true });
+    for (const item of plannedFiles) {
+      const targetFile = join(destAbs, ...item.relPath.split("/"));
+      await fs.mkdir(dirname(targetFile), { recursive: true });
+      await fs.writeFile(targetFile, item.bytes);
+    }
+
+    const sortedPlanned = [...plannedFiles].sort((a, b) => asciiCompare(a.relPath, b.relPath));
+    const treeHasher = createHash("sha256");
+    for (const item of sortedPlanned) {
+      treeHasher.update(`${item.relPath}:${item.sha256}\n`, "utf8");
+    }
+    const recipeTreeSha256 = treeHasher.digest("hex");
+    const destDisplay = displayPath(cwd, destAbs);
+
+    const provenanceRecord = {
+      recipeId: manifest.id,
+      providerKind: manifest.providerKind,
+      status: manifest.status,
+      dest: destDisplay,
+      openlupPlatformRange: manifest.openlupPlatformRange,
+      testedAgainstPlatformVersion: manifest.testedAgainstPlatformVersion,
+      installedAt: new Date().toISOString(),
+      recipeTreeSha256,
+      files: sortedPlanned.map(({ relPath, sha256 }) => ({ path: relPath, sha256 })),
+      liveQualificationStatus: manifest.liveQualification.status,
+      liveQualificationChecklist: join(destDisplay, manifest.files.liveQualificationDoc),
+    };
+
+    if (usesCanonicalContainerLayout && containerRoot !== null) {
+      let existingLedger = { schemaVersion: 1, recipes: {} };
+      const provStat = await statOrNull(provenancePathAbs);
+      if (provStat && provStat.isFile()) {
+        try {
+          const loaded = JSON.parse(await fs.readFile(provenancePathAbs, "utf8"));
+          if (
+            loaded &&
+            typeof loaded === "object" &&
+            loaded.recipes &&
+            typeof loaded.recipes === "object" &&
+            !Array.isArray(loaded.recipes)
+          ) {
+            existingLedger = loaded;
+          }
+        } catch {
+          existingLedger = { schemaVersion: 1, recipes: {} };
+        }
+      }
+      existingLedger.schemaVersion = 1;
+      existingLedger.recipes[manifest.id] = provenanceRecord;
+      await fs.writeFile(provenancePathAbs, `${JSON.stringify(existingLedger, null, 2)}\n`, "utf8");
+    } else {
+      await fs.writeFile(
+        provenancePathAbs,
+        `${JSON.stringify({ schemaVersion: 1, ...provenanceRecord }, null, 2)}\n`,
+        "utf8",
+      );
+    }
+
+    const verifyCommand = shellCommand(["recipe", "verify", destDisplay]);
+    let verification = null;
+    if (values.verify === true) {
+      verification = await verifyRecipeAtPath(destDisplay, { skipTests: false, json: isJson }, cwd);
+    }
+
+    const exitCode = verification ? verification.exitCode : 0;
+    const state = verification
+      ? verification.exitCode === 0
+        ? "scaffolded-and-verified"
+        : verification.state
+      : "scaffolded";
+    const report = {
+      command: "recipe scaffold",
+      state,
+      exitCode,
+      recipeId: manifest.id,
+      providerKind: manifest.providerKind,
+      status: manifest.status,
+      dest: destDisplay,
+      filesCreated: plannedFiles.length,
+      recipeTreeSha256,
+      exemplarRef: domainSpec.exemplarRef,
+      conformanceRunner: domainSpec.conformanceRunner,
+      provenancePath: displayPath(cwd, provenancePathAbs),
+      verifyCommand,
+      liveQualificationChecklist: provenanceRecord.liveQualificationChecklist,
+      ...(verification ? { verification } : {}),
+    };
+    emit(report, renderScaffoldText(report, renderFinding));
+    return;
+  }
+
   if (subcommand === "verify") {
     if (
       positionals.length !== 2 ||
       !positionals[1].trim() ||
       values.domain !== undefined ||
+      values.provider !== undefined ||
       values.status !== undefined ||
       values.region !== undefined ||
       values.dest !== undefined ||
@@ -2304,6 +3071,6 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
     64,
     "OPENLUP_E_CLI_INPUT",
     `Unknown recipe subcommand: ${subcommand}`,
-    "Use `openlup recipe list`, `openlup recipe show <id>`, `openlup recipe add <id>`, or `openlup recipe verify <path>`.",
+    "Use `openlup recipe list`, `openlup recipe show <id>`, `openlup recipe add <id>`, `openlup recipe scaffold --domain <d> --provider <p>`, or `openlup recipe verify <path>`.",
   );
 }

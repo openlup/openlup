@@ -5,9 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { CATALOG_CANONICAL_UNITS, type CatalogQuantity } from '@openlup/core/catalog';
 import type { CatalogDraftClaimV3 } from '@openlup/platform/catalog/contracts';
-import { canonicalCatalogDraftJson, catalogDefinitionDigest, createCatalogProductTypeRegistry, withCatalogPublicationRules,
-  type CatalogDefinitionInstallReceipt, type CatalogProductTypeInput, type CatalogProductTypeRef, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
-import { catalogDraftRegistry } from '../owned/catalogue.ts';
+import { canonicalCatalogDraftJson, catalogDefinitionDigest, catalogPackInstallIssues, catalogPackManifest,
+  catalogProductTypeRefSchema, createCatalogProductTypeRegistry, withCatalogPublicationRules,
+  type CatalogDefinitionInstallReceipt, type CatalogPackInput, type CatalogProductTypeInput, type CatalogProductTypeRef,
+  type CatalogPublicationRulesPack, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
+import { buildRefusal, packBuildFilename, starterDiagnostic } from '../shared/refusals.ts';
+import { catalogDraftRegistry, catalogueConformance } from '../owned/catalogue.ts';
 import { isRecord } from '../shared/offer.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import type { EditorProduct } from '../shared/subscription-edit.ts';
@@ -60,25 +63,66 @@ export function stageStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDef
   const installed = receipt.types.find(row => row.key === type.key && row.version === type.version);
   if (!installed || installed.definitionDigest !== catalogDefinitionDigest(definition)) throw new Error('starter_catalogue_install_receipt_invalid');
   const bytes = Buffer.from(canonicalCatalogDraftJson({ type, asset: artifact.toString('base64'), installed }));
+  return stageBuild(directory, `${type.version}.json`, bytes,
+    () => Object.assign(starterDiagnostic('starter_catalogue_build_conflict'), { code: 'EEXIST' }));
+}
+
+type StagedBuild = { publish(): void; discard(): void };
+function stageBuild(directory: string, filename: string, bytes: Buffer, conflict: () => Error, adopter = false): StagedBuild | undefined {
   mkdirSync(directory, { recursive: true });
-  const target = join(directory, `${type.version}.json`);
+  const target = join(directory, filename);
   const previous = readOptional(target);
   if (previous) {
-    if (!previous.equals(bytes)) throw Object.assign(new Error('starter_catalogue_build_conflict'), { code: 'EEXIST' });
+    if (!previous.equals(bytes)) throw conflict();
     return;
   }
   const temp = mkdtempSync(join(directory, '.pending-'));
   const source = join(temp, 'build.json');
   const discard = () => rmSync(temp, { recursive: true, force: true });
   try { writeFileSync(source, bytes); }
-  catch (error) { discard(); throw error; }
+  catch (error) {
+    try { discard(); } catch { /* Preserve the staging failure. */ }
+    throw error;
+  }
   return {
     publish() {
       try { linkSync(source, target); }
-      catch (error) { if (!readOptional(target)?.equals(bytes)) throw error; }
+      catch (error) {
+        let retained;
+        try { retained = readOptional(target); } catch { throw error; }
+        if (retained?.equals(bytes)) return;
+        throw adopter && retained ? conflict() : error;
+      }
     },
     discard,
   };
+}
+
+function buildJson(value: unknown): string {
+  return JSON.stringify(value, (_key, entry) => isRecord(entry)
+    ? Object.fromEntries(Object.keys(entry).sort().map(key => [key, entry[key]]))
+    : entry);
+}
+
+function verifiesPack(pack: CatalogPackInput, receipt: CatalogDefinitionInstallReceipt): boolean {
+  const { digest, ...manifest } = catalogPackManifest(pack);
+  return receipt?.packId === pack.id && receipt.packVersion === pack.version && typeof receipt.installedAt === 'string'
+    && receipt.manifestDigest === digest && buildJson(receipt.types) === buildJson(manifest.types)
+    && (receipt.canonicalManifest === undefined && manifest.subscriptionProfileDefinitions === undefined
+      || receipt.canonicalManifest === canonicalCatalogDraftJson(manifest))
+    && buildJson(receipt.subscriptionProfileDefinitions) === buildJson(manifest.subscriptionProfileDefinitions);
+}
+
+export function stagePackBuild(pack: CatalogPackInput, receipt: CatalogDefinitionInstallReceipt,
+  artifact: Uint8Array, directory = buildDirectory): StagedBuild | undefined {
+  const filename = packBuildFilename(pack.id, pack.version);
+  if (!filename) throw buildRefusal('starter_catalogue_pack_invalid', '/id', 'The adopter pack ID cannot form the required build filename.');
+  if (!verifiesPack(pack, receipt)) throw buildRefusal('starter_catalogue_install_receipt_invalid', '',
+    'The receipt does not verify the adopter pack build.');
+  const types = pack.types.map(({ validateContent: _callback, ...metadata }) => metadata);
+  const bytes = Buffer.from(buildJson({ pack: { ...pack, types }, asset: Buffer.from(artifact).toString('base64'), receipt }));
+  return stageBuild(join(directory, 'packs'), filename, bytes, () => buildRefusal('starter_catalogue_build_conflict', '',
+    'The target already contains different build bytes for this pack version.'), true);
 }
 
 export function starterCatalogue(directory = buildDirectory) {
@@ -86,7 +130,7 @@ export function starterCatalogue(directory = buildDirectory) {
   const pack = artifact && starterCataloguePack(artifact);
   const current = pack && createCatalogProductTypeRegistry(pack.types).resolve(pack.types[0]!);
   const history = new Map<number, { type: NonNullable<typeof current>; digest: string }>();
-  function readInstalled(ref: CatalogProductTypeRef) {
+  function readLegacy(ref: CatalogProductTypeRef) {
     if (ref.key !== starterCatalogueType.key || !Number.isSafeInteger(ref.version) || ref.version <= 1) return;
     const cached = history.get(ref.version);
     if (cached) return cached;
@@ -107,8 +151,62 @@ export function starterCatalogue(directory = buildDirectory) {
     history.set(ref.version, build);
     return build;
   }
-  return { current, readInstalled, registry: { resolve: (ref: CatalogProductTypeRef) =>
+  const admitted = new Map<string, { id: string; version: number; path: string; pairs: Set<string> }>();
+  catalogueConformance.packs.forEach(({ pack }, index) => {
+    if (pack.id === 'starter') return;
+    const pairs = new Set(pack.types.map(({ key, version }) => `${key}@${version}`));
+    const locator = { id: pack.id, version: pack.version, path: `/packs/${index}/pack`, pairs };
+    for (const pair of pairs) admitted.set(pair, locator);
+  });
+  type Locator = NonNullable<ReturnType<typeof admitted.get>>;
+  const verified = new Map<Locator, ReturnType<typeof createCatalogProductTypeRegistry>>();
+  function loadPack(pack: Locator) {
+    const filename = packBuildFilename(pack.id, pack.version);
+    if (!filename) return;
+    try {
+      const raw = readOptional(join(directory, 'packs', filename));
+      if (!raw) return;
+      const build = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(raw)) as {
+        pack: CatalogPublicationRulesPack; asset: string; receipt: CatalogDefinitionInstallReceipt;
+      };
+      const { pack: stored, asset, receipt } = build;
+      if (Object.keys(build).length !== 3) return;
+      if (stored.id !== pack.id || stored.version !== pack.version || typeof asset !== 'string') return;
+      const bytes = Buffer.from(asset, 'base64');
+      const validator = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+      if (asset !== bytes.toString('base64') || stored.types.length !== pack.pairs.size
+        || stored.types.some(type => Object.hasOwn(type, 'validateContent') || type.publicationRules !== true || type.validatorRef !== validator
+          || !pack.pairs.has(`${type.key}@${type.version}`))) return;
+      const bound = withCatalogPublicationRules(stored, () => bytes);
+      if (catalogPackInstallIssues(bound).length || !verifiesPack(bound, receipt)) return;
+      const registry = createCatalogProductTypeRegistry(bound.types);
+      verified.set(pack, registry);
+      return registry;
+    } catch { return undefined; }
+  }
+  function lookupBuild(input: unknown) {
+    if (!isRecord(input) || input.key === starterCatalogueType.key) return { outcome: 'out_of_scope' } as const;
+    const { key, version } = input;
+    const ref = catalogProductTypeRefSchema.safeParse({ key, version }).data;
+    const pair = ref && `${ref.key}@${ref.version}`;
+    const locator = pair ? admitted.get(pair) : undefined;
+    const type = locator && ref && (verified.get(locator) ?? loadPack(locator))?.resolve(ref);
+    return type ? { outcome: 'found', build: { type, digest: catalogDefinitionDigest(type) } } as const
+      : { outcome: 'missing', pair, path: locator?.path ?? '/type' } as const;
+  }
+  function readInstalled(ref: CatalogProductTypeRef) {
+    if (ref.key === starterCatalogueType.key) return readLegacy(ref);
+    const result = lookupBuild(ref);
+    if (result.outcome === 'found') return result.build;
+    throw missingPackBuild(result.outcome === 'missing' ? result.pair : undefined);
+  }
+  return { current, readInstalled, lookupBuild, registry: { resolve: (ref: CatalogProductTypeRef) =>
     readInstalled(ref)?.type ?? catalogDraftRegistry.resolve(ref) } };
+}
+
+export function missingPackBuild(pair: string | undefined, path = '/type') {
+  return buildRefusal('starter_catalogue_build_missing', path, pair
+    ? `No verified pack build is available for ${pair}.` : 'No verified pack build is available for the supplied type reference.');
 }
 
 export function demoIdentifier(config: StoreConfig, kind: string, key: string): string {

@@ -14,17 +14,11 @@ import { createAccountMutationsTemplate } from "./customerAccountMutations.fixtu
 
 const forward = "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql";
 const predecessor = "db/platform/migrations/20261125261000_subscription_activation_units.sql";
+const currentForwardFiles = (readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null)?.forward
+  .map(unit => unit.file) ?? [];
 // The later search-path forward appends pg_temp to pinned function search paths, so the upgrade applies it after the declaration.
-const searchPathForward = (readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null)?.forward
-  .find(unit => unit.file.endsWith("_function_search_path_pg_temp.sql"))?.file;
-// Every catalogue unit after the fixed predecessor applies in catalogue order, so a later forward extends the tail.
-function unitsAfterPredecessor(profile: string) {
-  const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
-  if (manifest?.schemaVersion !== 3) throw new Error("Expected the qualified platform manifest");
-  const plan = profile === "legacy" ? manifest : profile.startsWith("admin-") ? manifest.qualifiedAdmin : manifest.qualified;
-  const files = plan.forward.map(unit => unit.file);
-  return files.slice(files.indexOf(predecessor) + 1);
-}
+const searchPathForward = currentForwardFiles.find(file => file.endsWith("_function_search_path_pg_temp.sql"));
+const expectedAppliedFromForward = currentForwardFiles.slice(currentForwardFiles.indexOf(forward));
 const table = "public.identity_privacy_required_contributors";
 const reader = "public.identity_privacy_required_contributor_ids()";
 const owners = ["communication-events", "customer-billing", "customer-preferences", "customer-saved-addresses",
@@ -103,9 +97,9 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
           await expect(call()).rejects.toMatchObject({ code: "PRIVACY_ASSESSMENT_UNAVAILABLE", facts: { fix: expect.stringContaining("EXECUTE") } });
         }
         if (profile === "separate") await expect(capture()).rejects.toMatchObject({ code: "schema_conflict" });
-        const later = unitsAfterPredecessor(profile);
-        expect(later.slice(0, 2)).toEqual([forward, searchPathForward]);
-        expect((await upgrade.runner.apply()).applied).toEqual(later);
+        const applied = (await upgrade.runner.apply()).applied;
+        expect(applied.slice(0, 2)).toEqual([forward, searchPathForward]);
+        expect(applied).toEqual(expectedAppliedFromForward);
         expect((await ledger(upgrade.owner)).slice(0, original.length)).toEqual(original);
         expect(await required(upgrade.runtime)).toEqual(owners);
         expect((await upgrade.runner.apply()).applied).toEqual([]);
