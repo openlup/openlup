@@ -7,7 +7,7 @@
         "objectInventorySha256": "5581784f45b9fb9d43270ba462cbf575b0ce12ebb9ee31edc5c3adf24012b0e2",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125290000_tax_calculation_claim_seal.sql",
+            "file": "db/platform/migrations/20261125340000_tax_calculation_claim_seal.sql",
             "sha256": "493696a5adf687c3f397cea193b11552e5bd8ab9a83bec18b2b8339129dd1e44"
           },
           {
@@ -806,7 +806,7 @@
         "objectInventorySha256": "3a48ad8cbf57023070c75ff4816865e8d73a9a5eaecbd1daa6bfc1ad4bac62d4",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125290000_tax_calculation_claim_seal.sql",
+            "file": "db/platform/migrations/20261125340000_tax_calculation_claim_seal.sql",
             "sha256": "493696a5adf687c3f397cea193b11552e5bd8ab9a83bec18b2b8339129dd1e44"
           },
           {
@@ -1629,7 +1629,7 @@
         "objectInventorySha256": "78a17ebd2b1b34cbd498f6fc808d1845583c4c765598d8a00ccc3674b55f05a2",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125290000_tax_calculation_claim_seal.sql",
+            "file": "db/platform/migrations/20261125340000_tax_calculation_claim_seal.sql",
             "sha256": "493696a5adf687c3f397cea193b11552e5bd8ab9a83bec18b2b8339129dd1e44"
           },
           {
@@ -2452,7 +2452,7 @@
         "objectInventorySha256": "051fda240d9d4ed52f0aeade4be2300ddd12bc3b0100b536ca9462d318e511e3",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125290000_tax_calculation_claim_seal.sql",
+            "file": "db/platform/migrations/20261125340000_tax_calculation_claim_seal.sql",
             "sha256": "493696a5adf687c3f397cea193b11552e5bd8ab9a83bec18b2b8339129dd1e44"
           },
           {
@@ -3267,7 +3267,7 @@
         "objectInventorySha256": "5dca02082b6dfe67fd50dc191b86a556df40004b440e9f8beb5876c7ee2532d5",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125290000_tax_calculation_claim_seal.sql",
+            "file": "db/platform/migrations/20261125340000_tax_calculation_claim_seal.sql",
             "sha256": "493696a5adf687c3f397cea193b11552e5bd8ab9a83bec18b2b8339129dd1e44"
           },
           {
