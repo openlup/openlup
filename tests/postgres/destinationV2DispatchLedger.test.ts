@@ -16,6 +16,7 @@ const password = "synthetic-ledger";
 const table = "public.commerce_fulfillment_provider_commands";
 const predicate = "public.fulfillment_order_has_destination_v2(uuid,uuid)";
 const guard = "commerce_fulfillment_provider_command_destination_v2_guard";
+const guardRoutine = `public.${guard}()`;
 const roles = ["anon", "authenticated", "service_role", installation.runtimeLogin];
 const rpcNames = ["commerce_fulfillment_enqueue_provider_command", "commerce_fulfillment_claim_provider_commands",
   "commerce_fulfillment_mark_command_submitting", "commerce_fulfillment_provider_command_guard"];
@@ -70,10 +71,39 @@ const census = (shipments: string[]) => owner.query(`SELECT
   (SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.commerce_fulfillment_provider_command_transitions t
     JOIN ${table} c ON c.id=t.command_id WHERE c.shipment_id=ANY($1))::text AS transitions,
   (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM public.fulfillment_dispatch_refs r WHERE r.shipment_id=ANY($1))::text AS refs`, [shipments]);
-const attrs = () => owner.query(`SELECT oid::regprocedure::text AS signature, to_jsonb(p)-'prosrc' AS attributes
+const attrs = () => owner.query(`SELECT oid::regprocedure::text AS signature,
+  to_jsonb(p)-'prosrc'-'proargdefaults' AS attributes, pg_get_function_arguments(oid) AS arguments
   FROM pg_proc p WHERE pronamespace='public'::regnamespace AND proname=ANY($1) ORDER BY signature`, [rpcNames]);
 const incumbent = () => owner.query(`SELECT oid,pg_get_triggerdef(oid) AS definition FROM pg_trigger
   WHERE tgrelid=$1::regclass AND tgname='commerce_fulfillment_provider_command_guard'`, [table]);
+
+async function assertBrowserDefaultPrivileges(forward: string) {
+  const db = await owner.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query(`DROP TRIGGER ${guard} ON ${table};
+      DROP FUNCTION ${guardRoutine}, ${predicate};
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+      CREATE FUNCTION public.ledger_default_acl_control() RETURNS boolean LANGUAGE sql AS 'SELECT true'`);
+    const allowed = (signature: string) => db.query<{ role: string }>(`SELECT role FROM unnest($1::text[]) AS r(role)
+      WHERE has_function_privilege(role,$2::regprocedure,'EXECUTE') ORDER BY role`, [roles, signature]);
+    expect((await allowed("public.ledger_default_acl_control()")).rows.map(row => row.role)).toEqual([...roles].sort());
+    await db.query(readFileSync(forward, "utf8"));
+    expect((await allowed(guardRoutine)).rows).toEqual([]);
+    expect((await allowed(predicate)).rows).toEqual([{ role: installation.runtimeLogin }, { role: "service_role" }]);
+    for (const role of roles) {
+      await db.query(`SET LOCAL ROLE ${role}`);
+      const calls = [`SELECT ${guardRoutine}`];
+      if (role === "anon" || role === "authenticated") calls.push("SELECT public.fulfillment_order_has_destination_v2(NULL,NULL)");
+      for (const sql of calls) {
+        await db.query("SAVEPOINT denied_call");
+        await expect(db.query(sql)).rejects.toMatchObject({ code: "42501" });
+        await db.query("ROLLBACK TO SAVEPOINT denied_call; RELEASE SAVEPOINT denied_call");
+      }
+      await db.query("RESET ROLE");
+    }
+  } finally { try { await db.query("ROLLBACK"); } finally { db.release(); } }
+}
 
 async function legacyRun(provider: string, commandId: string) {
   const db = await runtime.connect();
@@ -99,7 +129,7 @@ it("upgrades the qualified ledger, preserving legacy bytes and fencing fresh v2 
     CREATE ROLE ledger_restore LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS`);
   const runtimeUrl = new URL(container.connectionString);
   runtimeUrl.username = installation.runtimeLogin;
-  runtime = new Pool({ connectionString: runtimeUrl.href, options: "-c role=service_role" });
+  runtime = new Pool({ connectionString: runtimeUrl.href });
 
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
   const isForward = (unit: PlatformMigrationManifestEntry) => unit.file.endsWith("_fulfillment_destination_v2_legacy_ledger_fence.sql");
@@ -116,8 +146,8 @@ it("upgrades the qualified ledger, preserving legacy bytes and fencing fresh v2 
     selected.qualified.objectInventorySha256.bootstrapMigrator.withRestore = fingerprint("");
     return createPlatformPostgresMigrationRunner({ connectionString: container!.connectionString }, {
       installation, poolFactory: () => owner,
-      // This fixture isolates a historical prefix and injects browser defaults. The
-      // independent installation-inventory proof checks the complete production catalog.
+      // This fixture isolates a historical prefix. The installation-inventory
+      // proof checks the complete production catalog independently.
       catalogProjectionPayload: async () => "",
       catalog: { readManifest: () => selected, readMigrations: () => ({ ...all, migrations: all.migrations.filter(unit => paths.has(unit.file)) }) },
     });
@@ -156,7 +186,6 @@ it("upgrades the qualified ledger, preserving legacy bytes and fencing fresh v2 
 
   const allShipments = [legacy.shipment, v2.shipment, fresh.shipment, old.shipment];
   const before = (await census(allShipments)).rows, priorAttrs = (await attrs()).rows, priorTrigger = (await incumbent()).rows;
-  await owner.query("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role");
   const upgrade = runner(true);
   expect(await upgrade.apply()).toEqual({ applied: [forward.file] });
   expect((await attrs()).rows).toEqual(priorAttrs);
@@ -170,15 +199,17 @@ it("upgrades the qualified ledger, preserving legacy bytes and fencing fresh v2 
     ARRAY(SELECT r.rolname::text FROM pg_roles r WHERE r.rolname=ANY($1::text[])
       AND has_function_privilege(r.oid,p.oid,'EXECUTE') ORDER BY 1) AS can_execute,
     NOT EXISTS (SELECT 1 FROM aclexplode(proacl) WHERE grantee=0) AS no_public
-    FROM pg_proc p WHERE p.oid=ANY($2::regprocedure[]) ORDER BY routine`, [roles, [predicate, `public.${guard}()`]]);
+    FROM pg_proc p WHERE p.oid=ANY($2::regprocedure[]) ORDER BY routine`, [roles, [predicate, guardRoutine]]);
   expect(grants.rows).toEqual([
     { routine: `${guard}()`, prosecdef: false, provolatile: "v", proconfig: ["search_path=pg_catalog, pg_temp"],
       can_execute: [], no_public: true },
     { routine: "fulfillment_order_has_destination_v2(uuid,uuid)", prosecdef: true, provolatile: "s", proconfig: ["search_path=pg_catalog, pg_temp"],
-      can_execute: ["service_role"], no_public: true },
+      can_execute: [installation.runtimeLogin, "service_role"], no_public: true },
   ]);
+  await assertBrowserDefaultPrivileges(forward.file);
+  await expect(runtime.query(`SELECT ${guardRoutine}`)).rejects.toMatchObject({ code: "42501" });
   expect((await runtime.query("SELECT session_user AS login,current_user AS role")).rows)
-    .toEqual([{ login: installation.runtimeLogin, role: "service_role" }]);
+    .toEqual([{ login: installation.runtimeLogin, role: installation.runtimeLogin }]);
   expect((await owner.query(`SELECT rolname FROM pg_roles WHERE rolname=ANY($1::text[])
     AND (has_table_privilege(oid,$2,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
       OR has_any_column_privilege(oid,$2,'SELECT,INSERT,UPDATE,REFERENCES'))`, [roles, orderBindingTable])).rows).toEqual([]);
