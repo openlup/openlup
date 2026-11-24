@@ -2,11 +2,12 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 // eslint-disable-next-line no-restricted-imports -- landing needs the trusted SQL inventory owner before workspace packages are installed
 import { renderSqlInventory } from '../packages/core/scripts/documentation-sql-inventory.ts';
 import { checkPlatformMigrationProjection } from './packages/platform-migration-projection.ts';
-import { readDocumentationState } from './documentation-routing.ts';
+import { assertDocumentationPath, documentationGit, readDocumentationState } from './documentation-routing.ts';
 import { renderDocumentationSourceMap } from './documentation-navigation.ts';
 import { createPublicPublicationCatalog, isManifestPinnedSqlArea } from './oss-publication-policy.ts';
 import { buildPackagesIncremental } from './build-packages-incremental.mjs';
@@ -132,26 +133,22 @@ export function runLandingGenerators(root, paths) {
   writeFileSync(join(root, SQL_REFERENCE), syncSqlReference(root));
 }
 export function withPredictedTree(cwd, tree, action) {
-  const git = args => execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'core.hooksPath=/dev/null', ...args],
-    { encoding: 'utf8', timeout: 30000, maxBuffer: 128 * 1024 * 1024, env: { PATH: '/usr/bin:/bin' } });
-  const rows = git(['ls-tree', '-rz', '--full-tree', tree]).split('\0').filter(Boolean);
+  const rows = documentationGit(cwd, ['ls-tree', '-rz', '--full-tree', tree]).toString('utf8').split('\0').filter(Boolean);
   if (rows.some(row => !row.startsWith('100644 blob ') && !row.startsWith('100755 blob '))) throw new Error('derived: non-regular predicted tree');
   const paths = rows.map(row => row.slice(row.indexOf('\t') + 1));
-  mkdirSync(join(cwd, '.context/scratch'), { recursive: true });
-  const root = mkdtempSync(join(cwd, '.context/scratch/derived-tree-'));
+  const root = mkdtempSync(join(tmpdir(), 'openlup-derived-tree-'));
   try {
     const ids = rows.map(row => row.split(' ')[2].split('\t')[0]);
-    const blobs = execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', cwd, 'cat-file', '--batch'], {
-      input: ids.join('\n') + '\n', timeout: 30000, maxBuffer: 128 * 1024 * 1024,
-    });
+    const blobs = documentationGit(cwd, ['cat-file', '--batch'], ids.join('\n') + '\n', 128 * 1024 * 1024);
     let offset = 0;
     for (let index = 0; index < paths.length; index++) {
       const newline = blobs.indexOf(10, offset);
       const header = blobs.subarray(offset, newline).toString('utf8').split(' ');
       if (header[0] !== ids[index] || header[1] !== 'blob' || !/^\d+$/u.test(header[2])) throw new Error('derived: unreadable blob');
       const size = Number(header[2]); offset = newline + 1;
+      assertDocumentationPath(paths[index]);
       const target = join(root, paths[index]);
-      if (paths[index].split('/').some(part => part === '..' || part === '.' || part === '.git') || !target.startsWith(root + '/')) throw new Error('derived: unsafe tree path');
+      if (paths[index].split('/').some(part => part.toLowerCase() === '.git') || !target.startsWith(root + '/')) throw new Error('derived: unsafe tree path');
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, blobs.subarray(offset, offset + size)); offset += size + 1;
     }

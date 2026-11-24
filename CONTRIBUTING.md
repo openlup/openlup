@@ -819,7 +819,7 @@ The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
-`guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `lint`, `preflight`, `prelint`,
+`guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `migration:finalize`, `lint`, `preflight`, `prelint`,
 `oss:published-tree`, `packages:check`, `release:bump`, `release:docs-pass`, `sql:admit`, `pretest`, `test`, `test:hosted`, and `test:scoped`.
 This reclassifies the complete current root script inventory; all commands are
 public, with `test:scoped` as the local wrapper around the unchanged `test` command.
@@ -1818,6 +1818,19 @@ In a fork, use the remote tracking `https://github.com/openlup/openlup.git` for
 fresh main. The review commands use `origin/main` as the local main reference.
 
 ### Derived landing carriers
+
+Use `npm run migration:finalize -- plan --base <main-sha> --head <draft-sha>`
+to preview the ordered mapping for committed, unlanded ordinary forwards.
+The plan is read-only. Run local `apply` from a dedicated worktree and supply
+`--pr <number> --repository-id <id> --pr-node-id <id>` with the same `--base`
+and `--head` arguments. From that worktree, run
+`git rev-parse --git-path openlup-migration-grant.json` to find the fixture
+location. Copy the grant JSON there as an owned regular file, then remove it
+when finished. Obtain the repository and PR node IDs independently of the
+grant fixture. Apply returns the SHA-256 of the
+exact inventory bytes it measured. Keep this value with the grant, base and
+finalized head for independent verification. Hosted reservation remains inactive.
+A renamed SQL identity retains its existing review obligations.
 
 From a clean committed task checkout, refresh the remote reference, then run:
 

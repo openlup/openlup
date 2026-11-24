@@ -12162,6 +12162,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/agent-review-queue-planner.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/agent-review-queue.mjs",
       "class": "public-output"
     },
@@ -12791,6 +12795,18 @@
     },
     {
       "path": "scripts/merchandising-order-draft-schema.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migration-finalize.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migration-finalize.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migration-slots.mjs",
       "class": "public-output"
     },
     {
@@ -30830,6 +30846,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/migrationFinalization.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/migrationLedgerAttributeVersion.test.ts",
       "class": "public-output"
     },
@@ -31556,6 +31576,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "migration:finalize",
+      "command": "node scripts/migration-finalize.mjs",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "lint",
       "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint .",
       "publicDocs": [
@@ -31683,7 +31713,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-cb756f48ff32142926f8b84922261a35f31f7b82d141d0cf9defdf76998024cc"
+      "digest": "sha256-a1261ab69f3cc09b8fb4ab34cdc3b553d88756a682e8a5b4d568160cfb54e7fe"
     },
     {
       "path": "packages/core/package.json",

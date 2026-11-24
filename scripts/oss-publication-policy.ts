@@ -62,6 +62,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("guard:public-reference-site-routes", "node scripts/site-routes.mjs --public-reference"),
   publicCommand("inventory:refresh", "node --import tsx scripts/installation-inventory-refresh.ts"),
   publicCommand("landing:merge", "node scripts/agent-review-landing.mjs"),
+  publicCommand("migration:finalize", "node scripts/migration-finalize.mjs"),
   publicCommand("lint", "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint ."),
   publicCommand("preflight", "node --experimental-strip-types scripts/preflight.ts"),
   publicCommand("prelint", "node scripts/build-packages-incremental.mjs"),

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
@@ -8,6 +8,7 @@ import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
 import { carryOverSourceReview, diagnoseReceipt, enqueueAfterChecks, isMigrationQueueSerializedPath, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
+import { createLocalQueueReadAdapter, observeQueueAdmission, parseQueueCommand, verifyQueueReview } from './agent-review-queue-planner.mjs';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
 function collectImportClosure(entry: string) {
@@ -1104,5 +1105,289 @@ describe('migration merge-queue serialization', () => {
     });
     await expect(f.execute()).rejects.toThrow('queued PR files response is invalid');
     expect(f.enqueue).not.toHaveBeenCalled();
+  });
+});
+
+describe('read-only exact-head queue planning', () => {
+  const observedAt = Date.parse('2099-11-24T14:00:00Z');
+  const issuedAt = '2099-11-24T13:00:00.000Z';
+  const expiresAt = '2099-11-24T15:00:00.000Z';
+  const grantId = '5c01d021-405e-4beb-80fc-e78bc65cfa28';
+  const repositoryId = 1376035358;
+  const baseRef = 'refs/heads/main';
+
+  function fixture() {
+    type Entry = { id: string; pr: number; head: string; state: string; position: number };
+    type Timeline = { id: number; type: string; head: string; commentId?: number; at?: string };
+    const main = { repositoryId, repository: 'openlup/openlup', ref: baseRef, sha: 'a'.repeat(40), workflowId: 42 };
+    const pulls = [3, 2, 1].map(number => ({
+      number, head: String(number).repeat(40), nodeId: `PR_${number}`, repositoryId, baseRef, state: 'open',
+      sourceRepositoryId: number === 3 ? 202 : repositoryId, sourceBranch: `branch-${number}`,
+      armed: false, draft: false, commandHistoryComplete: true,
+    }));
+    const first = pulls[2]; const second = pulls[1]; const disjoint = pulls[0];
+    type Pull = typeof first;
+    const commands = new Map(pulls.map(pr => [pr.number, [command(pr, pr.number, 'request', pr.number)]]));
+    function command(pr: Pull, number: number, verb: string, minute: number, grant?: string) {
+      const createdAt = `2099-11-24T13:${String(minute).padStart(2, '0')}:00Z`;
+      return { id: number, body: `/openlup-queue ${verb} ${pr.head}${grant ? ` ${grant}` : ''}`,
+        repositoryId, pr: pr.number, association: 'MEMBER', author: { type: 'User', id: pr.number, login: `author-${pr.number}` },
+        createdAt, updatedAt: createdAt, edited: false as boolean | undefined, minimized: false };
+    }
+    const files = new Map(pulls.map(pr => [pr.number, [{
+      filename: pr.number === 3 ? 'unrelated.txt' : `db/platform/migrations/2099112610000${pr.number}_example.sql`,
+      head: pr.head, status: 'added', previousFilename: undefined as string | undefined,
+    }]]));
+    const runs = new Map(pulls.map(pr => [pr.number, { id: pr.number, workflow_id: 42, run_attempt: 1,
+      event: 'pull_request', path: '.github/workflows/published-tree-ci.yml', repository: { id: repositoryId },
+      head_sha: pr.head, head_branch: pr.sourceBranch, head_repository: { id: pr.sourceRepositoryId },
+      status: 'completed', conclusion: 'success',
+    }]));
+    const jobs = new Map(pulls.map(pr => [pr.number, [...REQUIRED_CONTEXTS, 'native-review'].map((name, index) => ({
+      id: 100 + index, name, run_id: pr.number, run_attempt: 1, head_sha: pr.head, status: 'completed', conclusion: 'success',
+    }))]));
+    const entries: Entry[] = [];
+    const grants: { grantId: string; appId: number; envelope: string; state: string; occupancy: string }[] = [];
+    const finalization = new Map<number, { requiresGrant: boolean; status: string; grantId?: string; orderingDigest?: string; moves?: object[] }>();
+    const history = new Map<number, Timeline[]>();
+    const proposedMove = {
+      sourcePath: 'db/platform/migrations/20991126100001_example.sql', sourceVersion: '20991126100001',
+      targetPath: 'db/platform/migrations/20991126100001_example.sql', targetVersion: '20991126100001',
+      blobOid: 'e'.repeat(40), mode: '100644',
+    };
+    const grant = ({ state = 'active', occupancy = 'none', expires = expiresAt } = {}) => ({
+      grantId, appId: 7, state, occupancy,
+      envelope: JSON.stringify({
+        schemaVersion: 1, grantId, prNumber: first.number, prNodeId: first.nodeId, draftHead: 'b'.repeat(40),
+        baseRef, repositoryId, observedMain: main.sha, orderingDigest: 'c'.repeat(64),
+        issuedAt, expiresAt: expires, moves: [proposedMove],
+      }),
+    });
+    const page = <T>(items: T[]) => ({ items: structuredClone(items), next: null as string | null, count: items.length });
+    const adapter = {
+      main: vi.fn(() => structuredClone(main)),
+      queue: vi.fn((_main: unknown, _cursor: string | null) => page(entries)),
+      grants: vi.fn(() => page(grants)),
+      pulls: vi.fn(() => page(pulls)),
+      comments: vi.fn((pr: Pull) => page(commands.get(pr.number) ?? [])),
+      timeline: vi.fn((pr: Pull) => page(history.get(pr.number) ?? [])),
+      permission: vi.fn((actor: { id: number }) => ({ userId: actor.id, permission: 'write' })),
+      files: vi.fn((pr: Pull) => page((files.get(pr.number) ?? []).map(file => {
+        const { previousFilename, ...entry } = file;
+        return previousFilename ? { ...entry, previousFilename } : entry;
+      }))),
+      sourceRuns: vi.fn((pr: Pull) => page([runs.get(pr.number)!])),
+      sourceJobs: vi.fn((run: { id: number }) => page(jobs.get(run.id)!)),
+      review: vi.fn((pr: Pull, current: typeof main) => ({
+        review: { status: 'verified', head: pr.head, main: current.sha, receiptId: `receipt-${pr.number}` },
+        integration: { status: 'clean', head: pr.head, main: current.sha, tree: 'd'.repeat(40) },
+      })),
+      finalization: vi.fn((pr: Pull, current: typeof main) => ({
+        head: pr.head, main: current.sha, ...(finalization.get(pr.number) ?? { requiresGrant: false, status: 'not_required' }),
+      })),
+    };
+    const execute = () => observeQueueAdmission({ adapter, observedAt, appId: 7 });
+    return { main, first, second, disjoint, commands, command, files, runs, jobs, entries, grants, history, grant, proposedMove, finalization, adapter, execute };
+  }
+
+  it.each([
+    '/openlup-queue request SHA\n\n', '/openlup-queue  request SHA', 'x\n/openlup-queue request SHA',
+    '/openlup-queue request SHA\r\n', '/openlup-queue request SHA ', '/openlup-queue reserve SHA GRANT',
+    '/openlup-queue cancel SHA GRANT', '/openlup-queue request SHA 5c01d021-405e-5beb-80fc-e78bc65cfa28',
+    '/openlup-queue request SHA 5C01D021-405E-4BEB-80FC-E78BC65CFA28',
+  ])('rejects noncanonical command %j', example => {
+    expect(parseQueueCommand(example.replace('SHA', receipt.head).replace('GRANT', grantId))).toBeNull();
+  });
+
+  it('accepts an exact request, cancel, reserve, and migration grant', () => {
+    for (const verb of ['request', 'cancel', 'reserve']) {
+      expect(parseQueueCommand(`/openlup-queue ${verb} ${receipt.head}\n`)).toMatchObject({ verb, head: receipt.head });
+    }
+    expect(parseQueueCommand(`/openlup-queue request ${receipt.head} ${grantId}`)).toMatchObject({ grantId });
+  });
+
+  it('replays immediate, duplicate and skipped wakes without write capability and preserves request order', async () => {
+    vi.stubEnv('OPENLUP_NATIVE_QUEUE', 'enabled');
+    try {
+      const f = fixture();
+      f.commands.get(1)!.push(f.command(f.first, 10, 'request', 10));
+      const observed = await f.execute();
+      expect(observed).toMatchObject({ status: 'observed',
+        proposed: [{ pr: 1, status: 'proposal', commandId: 1 }, { pr: 3, status: 'proposal' }],
+        held: [{ pr: 2, reason: 'migration_reserved', blockingPrs: [1] }],
+      });
+      expect(await f.execute()).toEqual(observed);
+      f.entries.push({ id: 'entry-1', pr: 1, head: f.first.head, state: 'LOCKED', position: 1 });
+      expect((await f.execute()).proposed.map(row => row.pr)).toEqual([3]);
+      f.entries.length = 0;
+      f.commands.delete(1);
+      expect((await f.execute()).proposed.map(row => row.pr)).toEqual([2, 3]);
+      expect(JSON.stringify(observed)).not.toContain('/openlup-queue');
+      expect(f.adapter).not.toHaveProperty('enqueue');
+      expect(f.adapter).not.toHaveProperty('token');
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it('keeps a finalized head and grant across disjoint main advancement', async () => {
+    const f = fixture();
+    const grant = f.grant();
+    f.grants.push(grant);
+    f.commands.set(1, [f.command(f.first, 1, 'request', 1, grant.grantId)]);
+    f.finalization.set(1, { requiresGrant: true, status: 'verified', grantId: grant.grantId, orderingDigest: 'c'.repeat(64), moves: [f.proposedMove] });
+    const before = await f.execute();
+    f.main.sha = 'b'.repeat(40);
+    await expect(f.execute()).resolves.toEqual({ ...before, main: f.main.sha });
+    expect(before.proposed[0]).toMatchObject({ pr: 1, head: f.first.head, grantId });
+  });
+
+  it('keeps the lane occupied after a grant expires with ambiguous release', async () => {
+    const f = fixture();
+    f.grants.push(f.grant({ state: 'expired', occupancy: 'unknown', expires: '2099-11-24T13:30:00.000Z' }));
+    expect((await f.execute()).proposed.map(row => row.pr)).toEqual([3]);
+    expect((await f.execute()).held).toEqual(expect.arrayContaining([expect.objectContaining({ pr: 2, reason: 'migration_reserved', blockingPrs: [1] })]));
+    f.grants[0].occupancy = 'released';
+    expect((await f.execute()).proposed.map(row => row.pr)).toEqual([1, 3]);
+  });
+
+  it('checks the next queue page and both sides of renames, then refuses a missing page', async () => {
+    const f = fixture();
+    const firstHead = 'e'.repeat(40); const secondHead = 'f'.repeat(40);
+    f.entries.push({ id: 'queue-1', pr: 4, head: firstHead, state: 'QUEUED', position: 1 },
+      { id: 'queue-2', pr: 5, head: secondHead, state: 'QUEUED', position: 2 });
+    f.files.set(4, [{ filename: 'other.txt', status: 'modified', head: firstHead, previousFilename: undefined }]);
+    f.files.set(5, [{ filename: 'new.txt', status: 'renamed', head: secondHead, previousFilename: 'unrelated.txt' }]);
+    f.adapter.queue.mockImplementation((_main, cursor) => cursor
+      ? { items: [f.entries[1]], next: null, count: 2 }
+      : { items: [f.entries[0]], next: 'cursor-2', count: 2 });
+    expect((await f.execute()).held).toEqual(expect.arrayContaining([expect.objectContaining({ pr: 3, reason: 'overlapping_paths', blockingPrs: [5] })]));
+    f.adapter.queue.mockImplementation((_main, cursor) => cursor
+      ? { items: [], next: null, count: 2 }
+      : { items: [f.entries[0]], next: 'cursor-2', count: 2 });
+    await expect(f.execute()).resolves.toMatchObject({ status: 'held', proposed: [], reason: 'evidence_unknown' });
+  });
+
+  it('holds failed latest check attempts and accepts an exact fork source', async () => {
+    const f = fixture();
+    f.runs.get(1)!.run_attempt = 2;
+    const old = f.jobs.get(1)![0];
+    f.jobs.get(1)!.push({ ...old, id: 999, run_attempt: 2, conclusion: 'failure' });
+    expect((await f.execute()).proposed.map(row => row.pr)).toEqual([2, 3]);
+    expect((await f.execute()).held).toEqual([
+      expect.objectContaining({ pr: 1, reason: 'operator_diagnosis', checks: [old.name] }),
+    ]);
+    f.runs.get(3)!.head_repository.id = 303;
+    expect((await f.execute()).proposed.map(row => row.pr)).toEqual([2]);
+  });
+
+  it('checks reserve intent separately and never lets malformed newer evidence recover an older success', async () => {
+    const f = fixture();
+    f.commands.get(1)!.push(f.command(f.first, 10, 'reserve', 10));
+    const latest = { ...f.runs.get(2)!, id: 42, workflow_id: 999 };
+    f.adapter.sourceRuns.mockImplementation(pr => ({
+      items: [f.runs.get(pr.number)!, ...(pr.number === 2 ? [latest] : [])],
+      next: null, count: pr.number === 2 ? 2 : 1,
+    }));
+    expect((await f.execute()).held).toEqual([
+      expect.objectContaining({ pr: 1, reason: 'reserve_requested', commandId: 10 }),
+      expect.objectContaining({ pr: 2, reason: 'evidence_unknown' }),
+    ]);
+  });
+
+  it.each(['permission', 'edited', 'deleted', 'pushed', 'missing-history', 'unrequested'])('holds %s exact-head authority', async action => {
+    const f = fixture();
+    if (action === 'permission') f.adapter.permission.mockImplementation(actor => ({ userId: actor.id === 1 ? 77 : actor.id, permission: actor.id === 1 ? 'read' : 'write' }));
+    if (action === 'edited') f.commands.get(1)!.push({ ...f.command(f.first, 10, 'cancel', 10), edited: undefined });
+    if (action === 'deleted') f.history.set(1, [{ id: 10, type: 'command_deleted', commentId: 15, head: f.first.head, at: '2099-11-24T13:10:00Z' }]);
+    if (action === 'pushed') f.first.head = 'e'.repeat(40);
+    if (action === 'missing-history') f.first.commandHistoryComplete = false;
+    if (action === 'unrequested') f.commands.delete(1);
+    expect((await f.execute()).proposed.map(row => row.pr)).toEqual([2, 3]);
+    expect((await f.execute()).held).toEqual([expect.objectContaining({
+      pr: 1, reason: ['pushed', 'unrequested'].includes(action) ? 'request_required' : 'evidence_unknown',
+    })]);
+  });
+
+  it('holds overlapping native arming and identifies same-head terminal queue history', async () => {
+    const f = fixture();
+    f.first.armed = true;
+    f.history.set(3, [{ id: 77, type: 'queue_manual_removal', head: f.disjoint.head }]);
+    expect((await f.execute()).held).toEqual([
+      expect.objectContaining({ pr: 1, reason: 'already_armed' }),
+      expect.objectContaining({ pr: 2, reason: 'migration_reserved', blockingPrs: [1] }),
+      expect.objectContaining({ pr: 3, reason: 'operator_diagnosis', history: ['queue_manual_removal'] }),
+    ]);
+  });
+
+  it('retries a transient read once and discards changed reconciliation inputs', async () => {
+    const f = fixture();
+    f.adapter.queue.mockImplementationOnce(() => { throw Object.assign(new Error('temporary'), { transient: true }); });
+    expect((await f.execute()).status).toBe('observed');
+    expect(f.adapter.queue).toHaveBeenCalledTimes(3);
+    f.adapter.main.mockImplementationOnce(() => ({ ...f.main, sha: 'b'.repeat(40) }));
+    await expect(f.execute()).resolves.toMatchObject({ status: 'held', proposed: [], reason: 'evidence_unknown' });
+  });
+
+  it('holds when main changes after the second sweep has started reading candidates', async () => {
+    const f = fixture();
+    const review = f.adapter.review.getMockImplementation()!;
+    f.adapter.review.mockImplementation((pr, current) => {
+      if (f.adapter.main.mock.calls.length === 2) f.main.sha = 'b'.repeat(40);
+      return review(pr, current);
+    });
+    await expect(f.execute()).resolves.toMatchObject({ status: 'held', proposed: [], reason: 'evidence_unknown' });
+    expect(f.adapter.main).toHaveBeenCalledTimes(3);
+  });
+
+  it('reuses native review and merge preflight without fetching or updating refs', async () => {
+    const f = handoffFixture();
+    const reviewGit = f.runGit.getMockImplementation()!;
+    f.runGit.mockImplementation(async (cwd, ...args) => {
+      if (['fetch', 'update-ref'].includes(args[0])) throw new Error('observer cannot update object sources');
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor') return '';
+      if (args[0] === 'merge-tree') return receipt.tree;
+      return reviewGit(cwd, ...args);
+    });
+    await expect(verifyQueueReview({
+      api: f.api, cwd: process.cwd(), pr: { number: receipt.pr, head: receipt.head },
+      main: { sha: receipt.base }, observedAt: f.clock, runGit: f.runGit, readComments: async () => f.comments,
+    })).resolves.toMatchObject({
+      review: { status: 'verified', head: receipt.head, receiptId: '1' },
+      integration: { status: 'clean', main: receipt.base, tree: receipt.tree },
+    });
+  });
+
+  it('classifies an ordinary new SQL file from committed objects before it can ask for finalization evidence', async () => {
+    const f = fixture();
+    const cwd = mkdtempSync(join(tmpdir(), 'openlup-queue-local-read-'));
+    const git = (...args: string[]) => execFileSync('git', [
+      '-C', cwd, '-c', 'user.name=Queue Fixture', '-c', 'user.email=queue@example.invalid',
+      '-c', 'commit.gpgsign=false', ...args,
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    const put = (path: string, bytes: string) => {
+      const destination = join(cwd, path);
+      mkdirSync(dirname(destination), { recursive: true });
+      writeFileSync(destination, bytes);
+    };
+    try {
+      git('init', '-q');
+      put('config/reviewed-platform-forwards.json', '{}');
+      git('add', '.');
+      git('commit', '-qm', 'Base');
+      const base = git('rev-parse', 'HEAD');
+      put('db/platform/migrations/20991126100001_example.sql', 'select 1;\n');
+      git('add', '.');
+      git('commit', '-qm', 'Add forward');
+      const head = git('rev-parse', 'HEAD');
+      const grant = { grantId: 'grant-1' };
+      const source = { ...f.adapter, finalizationRecord: vi.fn(() => ({ grantId: grant.grantId, head, base })) };
+      const adapter = createLocalQueueReadAdapter({ reads: source, cwd });
+      await expect(adapter.finalization({ head }, { sha: base }, undefined, observedAt, undefined))
+        .resolves.toEqual({ head, main: base, requiresGrant: true });
+      expect(source.finalizationRecord).not.toHaveBeenCalled();
+      await expect(adapter.finalization({ head }, { sha: base }, grant, observedAt, undefined))
+        .resolves.toEqual({ head, main: base, requiresGrant: true });
+      expect(source.finalizationRecord).toHaveBeenCalledOnce();
+      expect(git('status', '--porcelain')).toBe('');
+    } finally { rmSync(cwd, { recursive: true, force: true }); }
   });
 });
