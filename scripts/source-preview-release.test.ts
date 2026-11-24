@@ -1848,9 +1848,9 @@ describe("descendant source release check", () => {
     const manifest = JSON.parse(SYNTHETIC_TREE["config/platform-migration-manifest.json"]!);
     manifest.forward = [{ file: path, sha256: createHash("sha256").update(sql).digest("hex") }];
     const sample = syntheticRelease({ extraFiles: { [path]: sql, "config/platform-migration-manifest.json": json(manifest) } });
-    try { expect(() => sample.release({ "config/platform-migration-manifest.json": SYNTHETIC_TREE["config/platform-migration-manifest.json"]! })).toThrow(/manifest/u); } finally { sample.cleanup(); }
+    try { expect(() => sample.release({ "config/platform-migration-manifest.json": SYNTHETIC_TREE["config/platform-migration-manifest.json"]! }, { regenerate: false })).toThrow(/descendant platform migration manifest refuses:/u); } finally { sample.cleanup(); }
     const missing = syntheticRelease();
-    try { expect(() => missing.release({ "db/platform/migrations/20260927000000_unbound.sql": sql })).toThrow(/unmanifested/u); } finally { missing.cleanup(); }
+    try { expect(() => missing.release({ "db/platform/migrations/20260927000000_unbound.sql": sql }, { regenerate: false })).toThrow(/descendant platform migration manifest refuses:.*unmanifested/u); } finally { missing.cleanup(); }
   });
 
   it("prepares only a target that descends from the previous preview and describes itself", async () => {

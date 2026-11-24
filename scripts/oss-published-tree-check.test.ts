@@ -1107,6 +1107,12 @@ describe("the public-only inventory check", () => {
       writeFileSync(join(root, baselinePath), `${baseline}SELECT 1;\n`);
       expect(() => publicInventoryVerdict(root, () => undefined)).toThrow("SHA-256 mismatch");
       writeFileSync(join(root, baselinePath), baseline);
+      const manifestWithSeam = JSON.parse(manifest) as Record<string, unknown>;
+      manifestWithSeam.imports = { "#seam": { default: "./src/a.ts" } };
+      writeFileSync(join(root, "package.json"), JSON.stringify(manifestWithSeam));
+      const seamLines: string[] = [];
+      expect(publicInventoryVerdict(root, (line) => seamLines.push(line))).toBe(false);
+      expect(seamLines.join("\n")).toContain("unresolved conditional seam");
       writeFileSync(join(root, "package.json"), `${manifest}\n`);
       const stale: string[] = [];
       expect(publicInventoryVerdict(root, (line) => stale.push(line))).toBe(true);

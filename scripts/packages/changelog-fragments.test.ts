@@ -141,12 +141,83 @@ describe("manifest-pinned platform SQL migration admission", () => {
     ["executable migration", migration, "100755", /non-executable/u],
     ["symlink migration", migration, "120000", /non-executable/u],
     ["digest mismatch", migration, "100644", /SHA-256 mismatch/u],
+    ["mirror digest mismatch", mirror, "100644", /SHA-256 mismatch/u],
   ])("refuses %s", (_label, path, mode, pattern) => {
     const read = (target: string) => {
       if (target === "config/platform-migration-manifest.json") return manifest;
       return sql;
     };
     expect(() => effectivePublicCatalogPaths(catalog, [{ path, mode }], read)).toThrow(pattern);
+  });
+
+  it("admits qualified and qualifiedAdmin plan migrations and refuses conflicting cross-plan pins", () => {
+    const expectedSha = createHash("sha256").update(sql).digest("hex");
+    const q2 = "db/platform/migrations/q2_00000000000000_platform_baseline.sql";
+    const qa = "db/platform/migrations/qa_00000000000000_platform_baseline.sql";
+    const multiPlan = JSON.stringify({
+      schemaVersion: 2,
+      baseline: { file: "db/platform/migrations/00000000000000_platform_baseline.sql", sha256: expectedSha },
+      forward: [{ file: migration, sha256: expectedSha }],
+      qualified: { baseline: { file: q2, sha256: expectedSha }, forward: [{ file: migration, sha256: expectedSha }] },
+      qualifiedAdmin: { baseline: { file: qa, sha256: expectedSha }, forward: [{ file: migration, sha256: expectedSha }] },
+    });
+    const read = (target: string) => (target === "config/platform-migration-manifest.json" ? multiPlan : sql);
+    expect(effectivePublicCatalogPaths(catalog, [
+      { path: q2, mode: "100644" },
+      { path: qa, mode: "100644" },
+      { path: "packages/platform/sql/q2_00000000000000_platform_baseline.sql", mode: "100644" },
+    ], read)).toEqual([
+      { path: q2, class: "public-output" },
+      { path: qa, class: "public-output" },
+      { path: "packages/platform/sql/q2_00000000000000_platform_baseline.sql", class: "public-output" },
+    ]);
+
+    const conflicting = JSON.stringify({
+      schemaVersion: 2,
+      baseline: { file: "db/platform/migrations/00000000000000_platform_baseline.sql", sha256: expectedSha },
+      forward: [{ file: migration, sha256: expectedSha }],
+      qualified: { forward: [{ file: migration, sha256: "1".repeat(64) }] },
+    });
+    expect(() => effectivePublicCatalogPaths(catalog, [{ path: migration, mode: "100644" }], (target) => (target === "config/platform-migration-manifest.json" ? conflicting : sql)))
+      .toThrow(/conflicting sha256 pin/u);
+  });
+
+  it.each([
+    ["nested manifest path", "db/platform/migrations/nested/evil.sql"],
+    ["package-only manifest path", "packages/platform/sql/rogue.sql"],
+    ["dotfile manifest path", "db/platform/migrations/.hidden.sql"],
+    ["traversal manifest path", "db/platform/migrations/../other/evil.sql"],
+    ["out-of-area manifest path", "scripts/evil.sql"],
+  ])("refuses non-canonical manifest unit path: %s", (_label, badFile) => {
+    const expectedSha = createHash("sha256").update(sql).digest("hex");
+    const badManifest = JSON.stringify({
+      schemaVersion: 2,
+      forward: [{ file: badFile, sha256: expectedSha }],
+    });
+    expect(() => effectivePublicCatalogPaths(catalog, [{ path: migration, mode: "100644" }], (target) => (target === "config/platform-migration-manifest.json" ? badManifest : sql)))
+      .toThrow(/canonical db\/platform\/migrations\/\*\.sql path/u);
+  });
+
+  it.each([
+    ["invalid UTF-8 bytes", Buffer.from([0xff, 0xfe]), /not UTF-8/u],
+    ["NUL byte payload", Buffer.from("SELECT 1;\x00\n"), /control-character/u],
+    ["CR control byte", Buffer.from("SELECT 1;\r\n"), /control-character/u],
+  ])("refuses %s even when raw SHA-256 matches the manifest pin", (_label, badBytes, pattern) => {
+    const rawSha = createHash("sha256").update(badBytes).digest("hex");
+    const matchingManifest = JSON.stringify({
+      schemaVersion: 2,
+      forward: [{ file: migration, sha256: rawSha }],
+    });
+    expect(() => effectivePublicCatalogPaths(catalog, [{ path: migration, mode: "100644" }], (target) => (target === "config/platform-migration-manifest.json" ? matchingManifest : badBytes)))
+      .toThrow(pattern);
+  });
+
+  it("refuses absent or duplicate-key platform migration manifests", () => {
+    expect(() => effectivePublicCatalogPaths(catalog, [{ path: migration, mode: "100644" }], (target) => (target === "config/platform-migration-manifest.json" ? undefined : sql)))
+      .toThrow(/manifest is absent/u);
+    const duplicateKey = `{"schemaVersion":2,"forward":[],"forward":[]}`;
+    expect(() => effectivePublicCatalogPaths(catalog, [{ path: migration, mode: "100644" }], (target) => (target === "config/platform-migration-manifest.json" ? duplicateKey : sql)))
+      .toThrow(/duplicate/iu);
   });
 
   it("refuses per-file catalog rows for manifest-pinned platform SQL files", () => {

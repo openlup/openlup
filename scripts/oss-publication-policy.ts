@@ -155,7 +155,24 @@ export const isManifestPinnedSqlArea = (path: string): boolean =>
   && !HAND_AUTHORED_PACKAGE_SQL_PATHS.has(path);
 
 const PLATFORM_MIGRATION_MANIFEST_PATH = "config/platform-migration-manifest.json";
+const CANONICAL_PLATFORM_MIGRATION_PATH = /^db\/platform\/migrations\/[A-Za-z0-9][A-Za-z0-9_-]*\.sql$/u;
 const HEX_SHA256 = /^[a-f0-9]{64}$/u;
+
+/** Regular non-executable UTF-8 SQL without NUL/control characters, bound to its manifest SHA-256 pin. */
+export function validateManifestPinnedSql(path: string, bytes: string | Buffer, mode: string, expectedSha256: string): string {
+  if (mode !== "100644") throw new Error(`${path}: platform SQL migration must be regular and non-executable`);
+  const raw = typeof bytes === "string" ? Buffer.from(bytes, "utf8") : bytes;
+  let contents: string;
+  try { contents = typeof bytes === "string" ? bytes : new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+  catch { throw new Error(`${path}: platform SQL migration is not UTF-8`); }
+  if (!contents.trim() || raw.some((byte) => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) {
+    throw new Error(`${path}: empty or control-character platform SQL migration is refused`);
+  }
+  const actual = createHash("sha256").update(raw).digest("hex");
+  if (actual !== expectedSha256) throw new Error(`${path}: platform SQL migration SHA-256 mismatch against ${PLATFORM_MIGRATION_MANIFEST_PATH}`);
+  return contents;
+}
+
 function readManifestPinnedSqlDigests(read: (path: string) => string | Buffer | undefined): Map<string, string> {
   const raw = read(PLATFORM_MIGRATION_MANIFEST_PATH);
   if (raw === undefined) throw new Error(`${PLATFORM_MIGRATION_MANIFEST_PATH}: platform migration manifest is absent`);
@@ -170,13 +187,12 @@ function readManifestPinnedSqlDigests(read: (path: string) => string | Buffer | 
     pinned.set(path, sha256);
   };
   const registerUnit = (unit: unknown, label: string) => {
-    if (!isObject(unit) || typeof unit.file !== "string" || typeof unit.sha256 !== "string" || !HEX_SHA256.test(unit.sha256)) {
-      throw new Error(`${PLATFORM_MIGRATION_MANIFEST_PATH}: ${label} must pin file and sha256`);
+    if (!isObject(unit) || typeof unit.file !== "string" || !CANONICAL_PLATFORM_MIGRATION_PATH.test(unit.file)
+      || typeof unit.sha256 !== "string" || !HEX_SHA256.test(unit.sha256)) {
+      throw new Error(`${PLATFORM_MIGRATION_MANIFEST_PATH}: ${label} must pin a canonical db/platform/migrations/*.sql path and sha256`);
     }
     register(unit.file, unit.sha256);
-    if (unit.file.startsWith("db/platform/migrations/")) {
-      register(`packages/platform/sql/${unit.file.slice("db/platform/migrations/".length)}`, unit.sha256);
-    }
+    register(`packages/platform/sql/${unit.file.slice("db/platform/migrations/".length)}`, unit.sha256);
   };
   const plans: [string, unknown][] = [
     ["root", manifest],
@@ -216,13 +232,11 @@ export function effectivePublicCatalogPaths(source: string, entries: readonly { 
   if (migrations.length > 0) {
     const pinned = readManifestPinnedSqlDigests(read);
     for (const { path, mode } of migrations) {
-      if (mode !== "100644") throw new Error(`${path}: platform SQL migration must be regular and non-executable`);
       const expected = pinned.get(path);
       if (expected === undefined) throw new Error(`${path}: unmanifested platform SQL migration is refused by manifest-pinned pattern admission`);
       const bytes = read(path);
       if (bytes === undefined) throw new Error(`${path}: platform SQL migration is absent`);
-      const actual = createHash("sha256").update(bytes).digest("hex");
-      if (actual !== expected) throw new Error(`${path}: platform SQL migration SHA-256 mismatch against ${PLATFORM_MIGRATION_MANIFEST_PATH}`);
+      validateManifestPinnedSql(path, bytes, mode, expected);
     }
   }
   return [...rows, ...[...fragments, ...guide, ...migrations].map(({ path }) => ({ path, class: "public-output" }))].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));

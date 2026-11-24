@@ -122,7 +122,7 @@ export function runLandingGenerators(root, paths) {
   } else {
     // Main may have changed this owner and already regenerated its policy metadata.
     // Compact replay trees may omit the owner. Keep their reviewed metadata while
-    // this process refreshes only the mirror rows.
+    // this process strips any manifest-pinned SQL rows.
     const merged = JSON.parse(generated);
     merged.packageCommands = catalog.packageCommands;
     merged.packageExecutionSurfaces = catalog.packageExecutionSurfaces;
