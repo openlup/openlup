@@ -7,7 +7,7 @@
         "objectInventorySha256": "2563d538499da9faa198a6f0856aa06dd5de45171240d79ba290905f1b848013",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126620000_function_search_path_pin_remaining.sql",
+            "file": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
             "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
           },
           {
@@ -838,7 +838,7 @@
         "objectInventorySha256": "a1cb3bba0f4179d3a9c21466a56af4940393e9db6f8bf65b842f5e6d7d3c9fbb",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126620000_function_search_path_pin_remaining.sql",
+            "file": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
             "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
           },
           {
@@ -1693,7 +1693,7 @@
         "objectInventorySha256": "c76482a7493b174e50b72670a68338d10c0d08bbf5e14c791d7ad19c25564e1b",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126620000_function_search_path_pin_remaining.sql",
+            "file": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
             "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
           },
           {
@@ -2548,7 +2548,7 @@
         "objectInventorySha256": "652988acaaf40ca52ba1d14995e06ef66e33a8e96d7369dd3d2a1117b0a84f69",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126620000_function_search_path_pin_remaining.sql",
+            "file": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
             "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
           },
           {
@@ -3395,7 +3395,7 @@
         "objectInventorySha256": "81331a6caa9e8453a6eca4caab9ec70d60f827a6a99e99825c186b8cd6ab68e4",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126620000_function_search_path_pin_remaining.sql",
+            "file": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
             "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
           },
           {

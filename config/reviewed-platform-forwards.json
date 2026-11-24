@@ -9176,7 +9176,7 @@
       },
       {
         "row": "function-search-path-pin-remaining",
-        "path": "db/platform/migrations/20261126620000_function_search_path_pin_remaining.sql",
+        "path": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
         "createdFunctions": [],
         "replacedFunctions": [],
         "grantOnlyFunctions": [],
@@ -13113,7 +13113,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261126620000_function_search_path_pin_remaining.sql",
+      "path": "db/platform/migrations/20261127060000_function_search_path_pin_remaining.sql",
       "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833",
       "functions": []
     }
