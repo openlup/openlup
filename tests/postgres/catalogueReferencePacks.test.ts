@@ -11,6 +11,8 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import type { CatalogDraftPayloadV3, CatalogPackInput, CatalogPublicationCommand } from "@openlup/platform/catalog";
 import type { CatalogConformanceReport } from "@openlup/platform/catalog/testing";
+import { ownedStackCleanup } from "../../scripts/owned-stack-cleanup.mjs";
+import { runCommand } from "../../scripts/run-cancellable-process-group.ts";
 import { hash, transaction } from "./catalogPublicationFixture.js";
 
 type Entry = { pack: CatalogPackInput; drafts: CatalogDraftPayloadV3[] };
@@ -41,6 +43,8 @@ let app: string;
 let childEnv: NodeJS.ProcessEnv;
 let composeUsed = false;
 let bridge: Server | undefined;
+let stackCleanup: ReturnType<typeof ownedStackCleanup> | undefined;
+const composeAbort = new AbortController();
 const pools: Pool[] = [];
 let installation: Promise<{ catalog: Catalog; db: Pool; entries: Map<string, Entry> }> | undefined;
 
@@ -51,17 +55,32 @@ beforeAll(() => {
   app = join(scratch, "starter");
   // The trusted catalogue CLI requires its projection directory outside any application tree.
   temporary = mkdtempSync(join(tmpdir(), "openlup-reference-packs-"));
+  const project = `reference-packs-${randomUUID()}`;
   childEnv = { ...processEnvironment, TMPDIR: temporary, TMP: temporary, TEMP: temporary,
-    COMPOSE_PROJECT_NAME: `reference-packs-${randomUUID()}`, COMPOSE_FILE: join(app, "compose.yaml") };
+    COMPOSE_PROJECT_NAME: project, COMPOSE_FILE: join(app, "compose.yaml") };
+  const signals = (["SIGINT", "SIGTERM"] as const).map(signal => ({ signal, listeners: process.listenerCount(signal) }));
+  stackCleanup = ownedStackCleanup(options => {
+    composeAbort.abort();
+    if (composeUsed) execFileSync("docker", ["compose", "--project-name", project, "down",
+      "--volumes", "--rmi", "local", "--remove-orphans"], { cwd: app, env: childEnv, ...options() });
+    removeScratch();
+  });
+  for (const { signal, listeners } of signals) {
+    expect(process.listenerCount(signal), `${signal} cleanup for Compose project ${project}`).toBe(listeners + 1);
+  }
 });
+
+function removeScratch() {
+  if (scratch) rmSync(scratch, { recursive: true, force: true });
+  if (temporary) rmSync(temporary, { recursive: true, force: true });
+}
 
 function executable(command: string, args: string[], cwd: string, input?: string): string {
   return execFileSync(command, args, { cwd, input, env: childEnv, encoding: "utf8", timeout: 240_000 });
 }
 
-function recipe(command: string, extra: NodeJS.ProcessEnv = {}): string {
-  const result = spawnSync("sh", ["-ec", command], { cwd: app, env: { ...childEnv, ...extra },
-    encoding: "utf8", timeout: 240_000 });
+async function recipe(command: string, extra: NodeJS.ProcessEnv = {}) {
+  const result = await stackCleanup!.command("sh", ["-ec", command], { cwd: app, env: { ...childEnv, ...extra } });
   if (result.error) throw result.error;
   expect(result.status, `${command}\n${result.stdout}\n${result.stderr}`).toBe(0);
   return result.stdout;
@@ -84,12 +103,8 @@ afterAll(async () => {
     await Promise.all(pools.map(pool => pool.end()));
     if (bridge) await new Promise<void>((done, fail) => bridge!.close(error => error ? fail(error) : done()));
   } finally {
-    try {
-      if (composeUsed) executable("docker", ["compose", "down", "--volumes", "--rmi", "local", "--remove-orphans"], app);
-    } finally {
-      if (scratch) rmSync(scratch, { recursive: true, force: true });
-      if (temporary) rmSync(temporary, { recursive: true, force: true });
-    }
+    if (stackCleanup) await stackCleanup.finish();
+    else removeScratch();
   }
 }, 120_000);
 
@@ -156,12 +171,12 @@ function materialize() {
   return pathToFileURL(path).href;
 }
 
-function assertInstalledCli() {
+async function assertInstalledCli() {
   const platform = join(app, "node_modules", "@openlup", "platform");
   const { bin } = JSON.parse(readFileSync(join(platform, "package.json"), "utf8")) as { bin: { openlup: string } };
   const expected = resolve(platform, bin.openlup);
   expect(expected.startsWith(platform + sep)).toBe(true);
-  const executable = recipe("npx --no -c 'command -v openlup'").trim();
+  const executable = (await recipe("npx --no -c 'command -v openlup'")).trim();
   expect(executable).toBe(join(app, "node_modules", ".bin", "openlup"));
   expect(realpathSync(executable)).toBe(expected);
   accessSync(executable, constants.X_OK);
@@ -175,7 +190,7 @@ async function scratchDatabase() {
     socket.on("end", () => process.stdin.destroy());`;
   const server = createServer(socket => {
     const child = spawn("docker", ["compose", "run", "--rm", "--no-deps", "-T", "installation",
-      "node", "-e", relay], { cwd: app, env: childEnv, stdio: ["pipe", "pipe", "inherit"] });
+      "node", "-e", relay], { cwd: app, env: childEnv, signal: composeAbort.signal, stdio: ["pipe", "pipe", "inherit"] });
     socket.pipe(child.stdin);
     child.stdout.pipe(socket);
     child.once("error", error => socket.destroy(error));
@@ -239,22 +254,26 @@ async function installRecipes() {
   let previous: Awaited<ReturnType<typeof installedState>> | undefined;
   let db: Pool | undefined;
   for (const { name, copy, target, importEntry, append } of recipes) {
-    recipe(copy, { REFERENCE_PACK_DIR: example(name) });
+    await recipe(copy, { REFERENCE_PACK_DIR: example(name) });
     const copied = join(app, target);
     expect(readFileSync(copied)).toEqual(readFileSync(join(example(name), "pack.ts")));
     const owned = readFileSync(declaration, "utf8");
     expect(owned).toContain(entries.size === 0 ? ownedList : explicitList);
     writeFileSync(declaration, importEntry + "\n" + owned.replace(ownedList, explicitList) + append + "\n");
-    assertInstalledCli();
-    expectSatisfied(recipe(sourceCheck), true);
+    await assertInstalledCli();
+    expectSatisfied(await recipe(sourceCheck), true);
 
     const { referenceEntry } = await import(/* @vite-ignore */ pathToFileURL(copied).href) as { referenceEntry: Entry };
     expect(Object.keys(referenceEntry).sort()).toEqual(["drafts", "pack"]);
     entries.set(name, referenceEntry);
 
+    if (!composeUsed) console.info(`Reference pack Compose project: ${childEnv.COMPOSE_PROJECT_NAME} (${app})`);
     composeUsed = true;
-    recipe(up);
-    expect(recipe(health).trim()).toBe("200");
+    // Stop the lifecycle launcher and its Docker subprocesses before taking down the project.
+    const started = await runCommand({ program: "sh", args: ["-ec", up], cwd: app, env: childEnv, capture: true,
+      signal: AbortSignal.any([composeAbort.signal, AbortSignal.timeout(240_000)]) });
+    expect(started.code, `${up}\n${started.stdout}`).toBe(0);
+    expect((await recipe(health)).trim()).toBe("200");
     if (!db) {
       await scratchDatabase();
       db = scratchPool("starter_install");
