@@ -12802,6 +12802,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/merge-queue-churn.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/merge-queue-churn.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/migration-finalize.mjs",
       "class": "public-output"
     },
