@@ -2,6 +2,23 @@ import { createHash } from 'node:crypto';
 import type { FulfillmentStockSyncPort, SyncCursor } from './contracts/index.js';
 import { nativeCall, type PgExecutor } from './postgresDispatchStore.js';
 
+const stockReplayConflict = 'fulfillment_stock_current_idempotency_conflict';
+
+/** Stock replay with different inputs. */
+export class FulfillmentStockReplayConflictError extends Error {
+  constructor(cause: unknown) {
+    super(stockReplayConflict, { cause });
+    this.name = 'FulfillmentStockReplayConflictError';
+  }
+}
+
+function stockCurrentRefusal(error: unknown): FulfillmentStockReplayConflictError | undefined {
+  if (error instanceof Error && error.message === stockReplayConflict && 'code' in error && error.code === '23505'
+    && 'detail' in error && error.detail === 'openlup:stock_current:replay_conflict') {
+    return new FulfillmentStockReplayConflictError(error);
+  }
+}
+
 /** The native catalogue has observed stock, not adopter inventory balances. */
 export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: {
   sourceKey: string;
@@ -10,6 +27,12 @@ export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: 
 }): FulfillmentStockSyncPort {
   const source = options.sourceKey.trim();
   if (!source) throw new Error('fulfillment_stock_source_key_required');
+  const currentStockExecutor: PgExecutor = {
+    async query(text, values) {
+      try { return await db.query(text, values); }
+      catch (error) { throw stockCurrentRefusal(error) ?? error; }
+    },
+  };
   return {
     readLocalInventoryStock: at => options.readLocalInventoryStock(at),
     async readCursor() {
@@ -86,8 +109,12 @@ export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: 
       return scatterBatchResponses<{ replayed: boolean; readBack: boolean }>(inputs.length, result.rows);
     },
     recordProviderStockCurrent(v) {
-      const s=v.snapshot;
-      return nativeCall(db,'fulfillment_record_stock_current',[source,v.requestKey,fingerprint(v),s.skuRef,s.totalQuantity,s.forSaleQuantity,s.reservedOrUnavailableQuantity,v.inventoryClass,v.lastSyncedAt,v.staleAfter,s.syncRunId]);
+      const { requestKey, snapshot, inventoryClass, lastSyncedAt, staleAfter } = v;
+      // Hash the enumerable snapshot and capture the SQL field values separately.
+      const requestFingerprint = fingerprint(structuredClone(v));
+      const values = [source, requestKey, requestFingerprint, snapshot.skuRef, snapshot.totalQuantity, snapshot.forSaleQuantity,
+        snapshot.reservedOrUnavailableQuantity, inventoryClass, lastSyncedAt, staleAfter, snapshot.syncRunId];
+      return nativeCall(currentStockExecutor, 'fulfillment_record_stock_current', values);
     },
     async recordProviderStockCurrentBatch(inputs) {
       if (!inputs.length) return [];

@@ -764,11 +764,19 @@
         "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f"
       },
       {
+        "file": "db/platform/migrations/20261125140000_fulfillment_stock_seed_outcome.sql",
+        "sha256": "b1a7209ec3537efb879a0b4fcf17e36a2c3108f5d89910d48f39acae0549bd7d"
+      },
+      {
+        "file": "db/platform/migrations/20261125150000_checkout_recovery_reminder_install_outcome.sql",
+        "sha256": "359e77a6192d8451a8d344ee4ff8108674f25ba1932f8ddf883d151c2d1dbfd2"
+      },
+      {
         "file": "db/platform/migrations/20261125170000_tax_calculations.sql",
         "sha256": "6ae68be228f8c50a807de4d168fdff4be5c8dae904d50360ccde61854ceac2cf"
       }
     ],
-    "objectInventorySha256": "e955e514fe08f0261c0a7dca26b872ededee7d8edc34d3c514f87fd9e4ee2516",
+    "objectInventorySha256": "e776cb0e373eeff0d9f2759ca2ad0d4f016a00e1eb9c8d9de25db79b1cd70610",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1556,16 +1564,24 @@
           "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f"
         },
         {
+          "file": "db/platform/migrations/20261125140000_fulfillment_stock_seed_outcome.sql",
+          "sha256": "b1a7209ec3537efb879a0b4fcf17e36a2c3108f5d89910d48f39acae0549bd7d"
+        },
+        {
+          "file": "db/platform/migrations/20261125150000_checkout_recovery_reminder_install_outcome.sql",
+          "sha256": "359e77a6192d8451a8d344ee4ff8108674f25ba1932f8ddf883d151c2d1dbfd2"
+        },
+        {
           "file": "db/platform/migrations/20261125170000_tax_calculations.sql",
           "sha256": "6ae68be228f8c50a807de4d168fdff4be5c8dae904d50360ccde61854ceac2cf"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "25c6a71022772d8c7ab706496fef0654210fbe529439bafdbce52a65723115df"
+          "withRestore": "d534813173ca36e891ffaca81ccb62ddc3fd40378117afc671f88ecf1f3244aa"
         },
         "separateMigrator": {
-          "withRestore": "52b01d34d0a22960d7e64bb9c9ccb243a8a3a41ead193a135e9e1495e861e428"
+          "withRestore": "088f07357b02c404e5f77ae31d24b82a46f2fba3e5a34207fb8564d337780205"
         }
       }
     },
@@ -2348,13 +2364,21 @@
           "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f"
         },
         {
+          "file": "db/platform/migrations/20261125140000_fulfillment_stock_seed_outcome.sql",
+          "sha256": "b1a7209ec3537efb879a0b4fcf17e36a2c3108f5d89910d48f39acae0549bd7d"
+        },
+        {
+          "file": "db/platform/migrations/20261125150000_checkout_recovery_reminder_install_outcome.sql",
+          "sha256": "359e77a6192d8451a8d344ee4ff8108674f25ba1932f8ddf883d151c2d1dbfd2"
+        },
+        {
           "file": "db/platform/migrations/20261125170000_tax_calculations.sql",
           "sha256": "6ae68be228f8c50a807de4d168fdff4be5c8dae904d50360ccde61854ceac2cf"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "17d77acedc90f6b2d6ca3abac7963d66846928fa1476d1cbb3d018cdf4d37350",
-        "operatorProvisioned": "42824bb27fa8020488292e148afaba8b0ac843edfdd5ef11f13ff6d8a2cb6fb1"
+        "installerManaged": "26d6bf72846775504f7ba3c9ff36a8a1567a1caf96db9735c53d511b59d2e377",
+        "operatorProvisioned": "cb0b731878217ba883d1acedfb6464f252dd4c585dbc9722a1e16b22df12ec9c"
       }
     }
   },
@@ -3308,6 +3332,16 @@
       "file": "20261125130000_commerce_destination_v2_order_bindings.sql",
       "source": "db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql",
       "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f"
+    },
+    {
+      "file": "20261125140000_fulfillment_stock_seed_outcome.sql",
+      "source": "db/platform/migrations/20261125140000_fulfillment_stock_seed_outcome.sql",
+      "sha256": "b1a7209ec3537efb879a0b4fcf17e36a2c3108f5d89910d48f39acae0549bd7d"
+    },
+    {
+      "file": "20261125150000_checkout_recovery_reminder_install_outcome.sql",
+      "source": "db/platform/migrations/20261125150000_checkout_recovery_reminder_install_outcome.sql",
+      "sha256": "359e77a6192d8451a8d344ee4ff8108674f25ba1932f8ddf883d151c2d1dbfd2"
     },
     {
       "file": "20261125170000_tax_calculations.sql",
