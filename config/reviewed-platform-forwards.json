@@ -9173,6 +9173,37 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "function-search-path-pin-remaining",
+        "path": "db/platform/migrations/20261126620000_function_search_path_pin_remaining.sql",
+        "createdFunctions": [],
+        "replacedFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "ownerWindowRole": "platform_acquisition_owner",
+        "settingsOnlyFunctions": [
+          {
+            "signature": "acquisition_private.case_projection(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "acquisition_private.keyed_digest(text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "acquisition_private.partner_case_projection(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "acquisition_private.refuse_append_only_mutation()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "auth.uid()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ]
       }
     ]
   },
@@ -13080,6 +13111,11 @@
           "afterSha256": "ed2705af4b71a473b5d91625b04d33363391153dc21874bc0a2b949c4a1f6bbc"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261126620000_function_search_path_pin_remaining.sql",
+      "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833",
+      "functions": []
     }
   ],
   "managedExactForwards": [
