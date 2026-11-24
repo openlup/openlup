@@ -120,3 +120,259 @@ export function destinationV2Capabilities(input: {
     savedAddressV2: { capability: "savedAddressV2", supported: false, available: false, refusalCode: "destination_v2_unsupported_rail" },
   };
 }
+
+type UUID = string;
+type Digest = string;
+type UtcMillis = string;
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+type NativeAddress = { line1: string; line2?: string; city: string; postalCode: string; country: string; subdivision?: string };
+type OriginalAddress = Omit<NativeAddress, "country" | "subdivision"> & { countryCode: string; subdivisionCode?: string };
+const contactKeys = ["recipientName", "contactEmail", "contactPhone", "companyName", "label", "taxId", "deliveryNotes", "courierInstructions"] as const;
+type Contact = { [Key in typeof contactKeys[number]]?: string };
+
+/** @experimental Host-authorized customer and checkout scope. */
+export type DestinationContextV2 = {
+  clientId: UUID; scopeRef: UUID;
+  owner: { installationRef: string; principalKind: "customer"; principalRef: UUID; customerOrSessionRef: UUID };
+};
+/** @experimental The binding sealed with destination evidence. */
+export type DestinationBindingV2 = {
+  snapshotRef: UUID; schemaVersion: 2; destinationDigest: Digest; policyRevision: string;
+};
+/** @experimental A sealed checkout selection. */
+export type DestinationSelectionV2 = { kind: "checkout"; scopeRef: UUID; selectionRevision: UUID };
+/** @experimental The service coordinates sealed with a checkout selection. */
+export type DestinationServicePinV2 = {
+  deliverySelectionRef: string; providerRef: string; carrierRef: string; serviceRef: string;
+  servicePolicyRevision: string; adapterRevision: string;
+};
+/** @experimental Issued or replayed destination evidence. */
+export type DestinationIssueResultV2 = {
+  binding: DestinationBindingV2; selection: DestinationSelectionV2; evidenceExpiresAt: UtcMillis; eventId: UUID; replayed: boolean;
+};
+/** @experimental Destination evidence verified by the native owner. Keep it server-side. */
+export type DestinationVerifiedReadV2 = {
+  binding: DestinationBindingV2; documentDigest: Digest; evidenceExpiresAt: UtcMillis;
+  document: DestinationBindingV2 & {
+    revision: 1; owner: DestinationContextV2["owner"]; clientId: UUID;
+    policyRef: string; classificationKeys: string[]; address: NativeAddress; contact: Contact;
+  };
+};
+
+type Check = {
+  kind: "checkout"; scopeRef: UUID; expectedSelectionRevision: UUID;
+  expectedBinding: DestinationBindingV2; expectedService: DestinationServicePinV2;
+};
+type SnapshotCommand = {
+  dialect: "commerce.destination.snapshot.v2"; requestKey: string; requestDigest: Digest;
+  purpose: "checkout"; scopeRef: UUID; original: { address: OriginalAddress; contact: Contact }; validated?: JsonValue;
+};
+type Rechecked = { binding: DestinationBindingV2; selection: DestinationSelectionV2; service: DestinationServicePinV2 };
+type Erased = { evidenceDisposition: "erased" };
+
+/** @experimental Native operations on the host's supplied executor. */
+export interface DestinationPortV2 {
+  snapshot(ctx: DestinationContextV2, command: SnapshotCommand, now: UtcMillis): Promise<Decision<DestinationIssueResultV2 | Erased>>;
+  read(ctx: DestinationContextV2, kind: "snapshot" | "order" | "shipment", id: UUID,
+    expectedBinding: DestinationBindingV2): Promise<Decision<DestinationVerifiedReadV2>>;
+  recheck(ctx: DestinationContextV2, check: Check): Promise<Decision<Rechecked>>;
+  registerOrder(ctx: DestinationContextV2, orderId: UUID, check: Check): Promise<Decision<DestinationBindingV2>>;
+}
+
+const addressKeys = ["line1", "line2", "city", "postalCode", "countryCode", "subdivisionCode"] as const;
+const refusalFields = {
+  address_invalid_input: [
+    "command", "now", "requestKey", "requestDigest", "purpose", "scopeRef", "original", "original.address", "original.contact",
+    ...addressKeys.map(key => `original.address.${key}` as const), ...contactKeys.map(key => `original.contact.${key}` as const),
+    "validated", "validated.address", "validated.contact", ...addressKeys, ...contactKeys,
+    "policyRef", "policyRevision", "classificationKeys", "orderId", "shipmentId",
+  ],
+  destination_dialect_invalid: ["version"],
+  destination_owner_unlinked: ["owner"],
+  destination_evidence_unavailable: ["destination.snapshotRef", "orderId", "shipmentId"],
+  destination_evidence_erased: ["owner"],
+  destination_binding_invalid: ["destination", "selectedDelivery", "orderBindings"],
+  destination_digest_mismatch: ["destinationDigest", "documentDigest"],
+  destination_version_changed: ["destination.policyRevision", "selectionRevision", "destination.snapshotRef", "destinationDigest"],
+  destination_v2_selection_required: ["destination.snapshotRef"],
+  destination_order_binding_occupied: ["orderId"],
+  destination_busy: ["orderId"],
+  destination_idempotency_conflict: ["idempotencyKey"],
+  destination_isolation_unsupported: ["isolation"],
+} as const;
+type Refusal<Code, Field> = {
+  outcome: "refused"; code: Code; field: Field; observed: string; cause: string; fix: string; recheck: string;
+};
+type OwnerRefusal = { [Code in keyof typeof refusalFields]: Refusal<Code, typeof refusalFields[Code][number]> }[keyof typeof refusalFields];
+type TransportField = "owner" | "command" | "destination" | "selectedDelivery" | "check";
+type TransportRefusal = Refusal<"address_invalid_input", TransportField>;
+type Decision<T> = T | OwnerRefusal | TransportRefusal;
+type BindValue = string | null | TransportRefusal;
+
+function transportRefusal(field: TransportField): TransportRefusal {
+  return {
+    outcome: "refused", code: "address_invalid_input", field,
+    observed: "An argument cannot be sent as plain JSON.",
+    cause: "The native destination operation requires lossless JSON arguments.",
+    fix: "Supply plain JSON data in the indicated argument.",
+    recheck: "Resubmit the original representable data.",
+  };
+}
+
+const jsonText = (value: string) => !value.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(value);
+const plainRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object"
+  && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+
+function dataEntries(value: object): [string, unknown][] {
+  const array = Array.isArray(value);
+  if (array ? Object.getPrototypeOf(value) !== Array.prototype : !plainRecord(value)) throw new TypeError("Expected plain JSON data");
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Reflect.ownKeys(descriptors).filter(key => !array || key !== "length");
+  if (array && (keys.length !== descriptors.length?.value || keys.some((key, index) => key !== String(index)))) {
+    throw new TypeError("Expected a dense JSON array");
+  }
+  return keys.map(key => {
+    if (typeof key !== "string" || !jsonText(key)) throw new TypeError("Invalid JSON key");
+    const descriptor = descriptors[key]!;
+    if (!descriptor.enumerable || !Object.hasOwn(descriptor, "value")) throw new TypeError("Expected enumerable JSON data");
+    return [key, descriptor.value];
+  });
+}
+
+function snapshotJson(value: unknown, ancestors = new Set<object>()): JsonValue {
+  if (value === null || typeof value === "boolean" || (typeof value === "string" && jsonText(value))
+    || (typeof value === "number" && Number.isFinite(value) && !Object.is(value, -0))) return value;
+  if (typeof value !== "object" || ancestors.has(value)) throw new TypeError("Expected lossless JSON data");
+  ancestors.add(value);
+  const entries = dataEntries(value).map(([key, child]) => [key, snapshotJson(child, ancestors)] as const);
+  ancestors.delete(value);
+  return Array.isArray(value) ? entries.map(([, child]) => child) : Object.fromEntries(entries);
+}
+
+function jsonArgument(value: unknown, field: TransportField): BindValue {
+  try { return JSON.stringify(snapshotJson(value)); }
+  catch { return transportRefusal(field); }
+}
+
+// Cast-bound scalars use PostgreSQL's input domain; the returned UUID spelling is canonical.
+const postgresUuid = /^(?:[0-9a-f]{4}-?){7}[0-9a-f]{4}$/iu;
+function uuidArgument(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const inner = value.startsWith("{") && value.endsWith("}") ? value.slice(1, -1) : value;
+  return postgresUuid.test(inner) ? value : null;
+}
+const kindArgument = (value: unknown) => typeof value === "string" && jsonText(value) ? value : null;
+const utcMillis = (value: string) => value.length === 24 && !value.startsWith("0000")
+  && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
+
+function checkArguments(value: unknown): BindValue[] {
+  try {
+    if (!plainRecord(value)) {
+      snapshotJson(value);
+      return [null, null, null, null, null];
+    }
+    const fields = new Map(dataEntries(value));
+    const kind = kindArgument(fields.get("kind"));
+    const scope = uuidArgument(fields.get("scopeRef"));
+    const revision = uuidArgument(fields.get("expectedSelectionRevision"));
+    const binding = fields.has("expectedBinding") ? jsonArgument(fields.get("expectedBinding"), "destination") : null;
+    const service = fields.has("expectedService") ? jsonArgument(fields.get("expectedService"), "selectedDelivery") : null;
+    // The check envelope is split over SQL parameters. Extra properties still have to be plain data.
+    for (const key of ["kind", "scopeRef", "expectedSelectionRevision", "expectedBinding", "expectedService"]) fields.delete(key);
+    for (const extra of fields.values()) snapshotJson(extra);
+    return [kind, scope, revision, binding, service];
+  } catch { return [transportRefusal("check")]; }
+}
+
+const uuid = z.string().regex(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u);
+const digest = z.string().regex(/^[a-f0-9]{64}$/u);
+const utc = z.string().refine(utcMillis);
+const serviceRef = z.string().refine(value => value.length > 0 && [...value].length <= 256 && jsonText(value));
+const bindingShape = {
+  snapshotRef: uuid, schemaVersion: z.literal(2), destinationDigest: digest,
+  policyRevision: z.string().refine(value => /[^ ]/u.test(value) && Buffer.byteLength(value, "utf8") <= 720),
+};
+const bindingSchema = z.strictObject(bindingShape);
+const selectionSchema = z.strictObject({ kind: z.literal("checkout"), scopeRef: uuid, selectionRevision: uuid });
+const snapshotResult = z.union([
+  z.strictObject({ binding: bindingSchema, selection: selectionSchema, evidenceExpiresAt: utc, eventId: uuid, replayed: z.boolean() }),
+  z.strictObject({ evidenceDisposition: z.literal("erased") }),
+]);
+const readResult = z.strictObject({
+  binding: bindingSchema, documentDigest: digest, evidenceExpiresAt: utc,
+  document: z.strictObject({
+    ...bindingShape, revision: z.literal(1), clientId: uuid, policyRef: z.string(), classificationKeys: z.array(z.string()),
+    owner: z.strictObject({ installationRef: z.string(), principalKind: z.literal("customer"), principalRef: uuid, customerOrSessionRef: uuid }),
+    address: z.strictObject({ line1: z.string(), line2: z.string().optional(), city: z.string(), postalCode: z.string(),
+      country: z.string(), subdivision: z.string().optional() }),
+    contact: z.strictObject(Object.fromEntries(contactKeys.map(key => [key, z.string().optional()]))),
+  }),
+});
+const recheckResult = z.strictObject({
+  binding: bindingSchema, selection: selectionSchema, service: z.strictObject({
+    deliverySelectionRef: serviceRef, providerRef: serviceRef, carrierRef: serviceRef, serviceRef,
+    servicePolicyRevision: serviceRef, adapterRevision: serviceRef,
+  }),
+});
+const ownerRefusal = z.strictObject({
+  outcome: z.literal("refused"), code: z.string(), field: z.string(),
+  observed: z.string(), cause: z.string(), fix: z.string(), recheck: z.string(),
+}).refine(({ code, field }) => Object.hasOwn(refusalFields, code)
+  && (refusalFields[code as keyof typeof refusalFields] as readonly string[]).includes(field));
+
+const infrastructureMessage = [
+  "OPENLUP_E_DESTINATION_INFRASTRUCTURE",
+  "Observed: The destination operation did not return a usable result.",
+  "Cause: The native executor or installed destination contract could not complete the operation.",
+  "Fix: Check the native app binding, driver initialization, database connection and TLS, runtime CONNECT, schema USAGE and EXECUTE privileges, and installed migrations.",
+  "Recheck: Retry the same operation.",
+].join("\n");
+
+/** @experimental Use the supplied executor. The native host owns transaction and session lifetime. */
+export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): DestinationPortV2 {
+  async function invoke<T>(sql: string, values: BindValue[], success: z.ZodType<T>): Promise<Decision<T>> {
+    const refusal = values.find(value => value !== null && typeof value === "object");
+    if (refusal) return refusal;
+    let response: Awaited<ReturnType<DestinationQueryExecutor["query"]>>;
+    try {
+      response = await db.query(sql, values);
+    } catch (cause) {
+      throw new Error(infrastructureMessage, { cause });
+    }
+    try {
+      const rows: unknown = Object.getOwnPropertyDescriptor(response, "rows")?.value;
+      if (Array.isArray(rows) && rows.length === 1) {
+        const row = dataEntries(rows)[0]?.[1];
+        const fields = plainRecord(row) ? dataEntries(row) : [];
+        if (fields.length === 1 && fields[0]?.[0] === "result") {
+          const result = snapshotJson(fields[0][1]);
+          if (ownerRefusal.safeParse(result).success) return result as OwnerRefusal;
+          const decoded = success.safeParse(result);
+          if (decoded.success) return decoded.data;
+        }
+      }
+    } catch {
+      // A malformed executor response is kept only as the server-side cause.
+    }
+    throw new Error(infrastructureMessage, { cause: response });
+  }
+
+  return {
+    snapshot(ctx, command, now) {
+      return invoke("SELECT public.commerce_snapshot_destination_v2($1::jsonb, $2::jsonb, $3::timestamptz) AS result",
+        [jsonArgument(ctx, "owner"), jsonArgument(command, "command"), typeof now === "string" && utcMillis(now) ? now : null], snapshotResult);
+    },
+    read(ctx, kind, id, binding) {
+      return invoke("SELECT public.commerce_read_destination_v2($1::jsonb, $2::text, $3::uuid, $4::jsonb) AS result",
+        [jsonArgument(ctx, "owner"), kindArgument(kind), uuidArgument(id), jsonArgument(binding, "destination")], readResult);
+    },
+    recheck(ctx, check) {
+      return invoke("SELECT public.commerce_recheck_destination_v2($1::jsonb, $2::text, $3::uuid, $4::uuid, $5::jsonb, $6::jsonb) AS result",
+        [jsonArgument(ctx, "owner"), ...checkArguments(check)], recheckResult);
+    },
+    registerOrder(ctx, orderId, check) {
+      return invoke("SELECT public.commerce_register_order_destination_v2($1::jsonb, $2::uuid, $3::text, $4::uuid, $5::uuid, $6::jsonb, $7::jsonb) AS result",
+        [jsonArgument(ctx, "owner"), uuidArgument(orderId), ...checkArguments(check)], bindingSchema);
+    },
+  };
+}

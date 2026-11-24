@@ -427,6 +427,53 @@ the binding. For `address_subdivision_required` or
 `address_subdivision_unrecognized`, enter a policy-admitted subdivision. For
 `address_postal_invalid`, correct the full postal code for the destination.
 
+### Read a retained order destination
+
+Use the experimental native destination port in server code after authenticating
+the order owner. Supply the host's executor, the authorized destination context
+and the binding recorded with the original order.
+
+```ts
+import {
+  createPostgresDestinationPortV2,
+  type DestinationBindingV2,
+  type DestinationContextV2,
+  type DestinationQueryExecutor,
+} from "@openlup/platform/commerce/server/destinations";
+
+export async function readRetainedDestination(
+  db: DestinationQueryExecutor,
+  context: DestinationContextV2,
+  orderId: string,
+  originalBinding: DestinationBindingV2,
+) {
+  const port = createPostgresDestinationPortV2(db);
+  const result = await port.read(context, "order", orderId, originalBinding);
+  if ("outcome" in result && result.outcome === "refused") {
+    return { status: "refused", code: result.code, field: result.field, fix: result.fix } as const;
+  }
+  return { status: "verified", evidence: result } as const;
+}
+```
+
+If the binding differs, recover the original binding from the order's sealed
+checkout evidence through the authorized order workflow and repeat the read.
+Keep destination documents, original commands, receipts and infrastructure
+causes server-side. For `OPENLUP_E_DESTINATION_INFRASTRUCTURE`, use the error's
+checklist to verify the native binding, driver, connection and TLS, runtime
+`CONNECT`, schema `USAGE`, function `EXECUTE` and installed migrations. Retry
+the same operation after fixing the cause.
+
+Keep fresh issuance disabled. For exact snapshot replay, submit the original
+command and digest. The validated projection can be omitted, and an authorized
+erased receipt can return only `{ evidenceDisposition: "erased" }`. The host
+owns the supplied executor's transaction and session lifetime. Use read
+committed for snapshot and roll back any outer transaction before returning a
+refusal. Keep the guarded claim's read-committed writer and its guards through
+completion. A fresh order binds the order inserted in the guarded repeatable-read
+writer after the admission probe. Abort that callback on refusal and return it
+after rollback or discard. Replay an existing order binding in read committed.
+
 ## Compose post-renewal policy
 
 Since 1.0.0, `owned/renewal-policy.ts` is the second and last
