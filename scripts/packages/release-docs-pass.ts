@@ -338,21 +338,24 @@ function isUpgradeVersion(version: string): boolean {
   return RELEASE_VERSION.test(version) || /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/u.test(version);
 }
 
-/** Render the upgrade page Markdown in memory without spawning the TypeScript guide planner. */
-export function renderUpgradePage({ root, version, since, fragments }: { root: string; version: string; since: string | undefined; fragments: readonly ChangelogFragment[] }): string {
+function renderUpgradePageSections({ root, version, since, fragments }: { root: string; version: string; since: string | undefined; fragments: readonly ChangelogFragment[] }) {
   if (!isUpgradeVersion(version)) throw new Error(`${version} is not a MAJOR.MINOR.PATCH release version or prerelease`);
   const guideRoot = join(resolve(root), GUIDE);
   const procedure = existsSync(join(guideRoot, "upgrade/README.md")) ? "; see the [upgrade procedure](README.md)" : "";
-  const sections = [`# Upgrading to ${version}`, `This page lists what changed since the previous release${procedure}.`];
+  const intro = [`# Upgrading to ${version}`, `This page lists what changed since the previous release${procedure}.`];
+  const notesSections: string[] = [];
   const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
   for (const entry of config.packages.filter(({ publish }) => publish)) {
     const notes = fragments.filter(({ path }) => path.startsWith(`${entry.directory}/changes/`)).sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
-    if (notes.length) sections.push(`## ${entry.name}`, ...notes.map(({ contents }) => contents.trimEnd()));
+    if (notes.length) notesSections.push(`## ${entry.name}`, ...notes.map(({ contents }) => contents.trimEnd()));
   }
-  sections.push("## API changes");
-  if (since) sections.push(...apiSections(root, since));
-  else sections.push("The previous release could not be determined: no core release tag is an ancestor of HEAD.");
-  return `${sections.join("\n\n")}\n`;
+  const api = ["## API changes", ...(since ? apiSections(root, since) : ["The previous release could not be determined: no core release tag is an ancestor of HEAD."])];
+  return { text: `${[...intro, ...notesSections, ...api].join("\n\n")}\n`, generated: `${[...intro, ...api].join("\n\n")}\n` };
+}
+
+/** Render the upgrade page Markdown in memory without spawning the TypeScript guide planner. */
+export function renderUpgradePage(input: Parameters<typeof renderUpgradePageSections>[0]): string {
+  return renderUpgradePageSections(input).text;
 }
 
 /** Assemble from the caller's exact consumed fragments, without reading or deleting fragment files. */
@@ -413,6 +416,7 @@ function assertUpgradePageDocumentation(
   { version, path, text, prepared }: Pick<SimulatedUpgradePageAudit, "version" | "path" | "text" | "prepared">,
   label: string,
   fragments: readonly ChangelogFragment[],
+  generated: string,
 ): void {
   const repositoryRoot = resolve(root);
   const packageRoot = join(repositoryRoot, "packages/core");
@@ -434,9 +438,9 @@ function assertUpgradePageDocumentation(
   const context = { packageRoot, file, label: pageLabel, packed, scripts, repositoryRoot, guideRoot, tag, allowed };
 
   // Preparation re-pins existing release URLs. A prepared file must already have the right pin.
-  const source = prepared ? text : pinGuideReleaseLinks(text, version, isUpgradeVersion);
+  const normalize = (source: string) => prepared ? source : pinGuideReleaseLinks(source, version, isUpgradeVersion);
   const pageFixes = new Set<GuidePageFix>();
-  assertGuidePage({ ...context, source, fixes: prepared ? pageFixes : undefined }, violations);
+  assertGuidePage({ ...context, source: normalize(text), fixes: prepared ? pageFixes : undefined }, violations);
   if (violations.length === 0) return;
 
   const fragmentViolations: string[] = [];
@@ -444,13 +448,14 @@ function assertUpgradePageDocumentation(
   for (const fragment of fragments) {
     const fixes = new Set<GuidePageFix>();
     const count = fragmentViolations.length;
-    const source = pinGuideReleaseLinks(fragment.contents.trimEnd(), version, isUpgradeVersion);
-    assertGuidePage({ ...context, source, fragmentPath: fragment.path, fixes }, fragmentViolations);
-    if (fragmentViolations.length > count) instructions.push(...upgradePageFixes(fragment.path, fixes));
+    assertGuidePage({ ...context, source: normalize(fragment.contents.trimEnd()), fragmentPath: fragment.path, fixes }, fragmentViolations);
+    if (fragmentViolations.length > count) instructions.push(...upgradePageFixes(fragment.path, fixes, tag));
   }
-  if (instructions.length === 0) {
-    if (prepared) instructions.push(...upgradePageFixes(path, pageFixes, true));
-    else instructions.push(violations.some((diagnostic) => diagnostic.endsWith(" targets a file missing from npm pack"))
+  if (prepared) instructions.push(...upgradePageFixes(path, pageFixes, tag, true));
+  else {
+    const generatorViolations = instructions.length ? [] : violations;
+    if (instructions.length) assertGuidePage({ ...context, source: normalize(generated) }, generatorViolations);
+    if (generatorViolations.length) instructions.push(generatorViolations.some((diagnostic) => diagnostic.endsWith(" targets a file missing from npm pack"))
       ? "include the linked file in the Core npm packlist by correcting `files` in packages/core/package.json, or correct the link emitted by scripts/packages/release-docs-pass.ts"
       : "correct the input used to render the upgrade page or the generator in scripts/packages/release-docs-pass.ts");
   }
@@ -467,21 +472,18 @@ function refuseUpgradePage(label: string, diagnostics: readonly string[], instru
   ].join("\n"));
 }
 
-function upgradePageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, prepared = false): string[] {
-  const guideForm = prepared ? "use a relative guide link" : "use the guide page title in plain text, without a link";
-  const messages: Record<Extract<GuidePageFix, string>, string> = {
-    "relative-link": prepared
-      ? `replace the pinned link into the guide with a relative guide link in ${path}`
-      : `in ${path}, ${guideForm}`,
+function upgradePageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, tag: string, prepared = false): string[] {
+  const guideForm = prepared ? "use a relative guide link" : "use the guide page title in plain text, without a link or repository path";
+  const coreLimit = path.startsWith("packages/core/changes/")
+    ? " For a Core fragment, also use its title or a descriptive name in plain text without a link or repository path if the full pinned URL would trigger the Core CHANGELOG.md checks. These scan for `packages/core`, `packages/ui`, `packages/create-*` package names and `docs/OSS_READINESS.md` at their path or word boundaries."
+    : "";
+  const messages: Record<GuidePageFix, string> = {
+    "unpinned-blob": `in ${path}, for each repository blob link named in Cause, either use plain text as described below or pin an existing file by replacing only the branch, tag or commit name between \`/blob/\` and the repository path with \`${tag}\`, keeping the path, query and anchor exactly as written. For an existing file inside the guide whose decoded path ends in \`.md\`, ${guideForm}.${coreLimit} Then rerun \`npm run preflight -- --fast\`.`,
+    "relative-link": prepared ? `replace the pinned link into the guide with a relative guide link in ${path}` : `in ${path}, ${guideForm}`,
     "repository-target": `correct the repository link's target path in ${path}`,
     "generated-region": `remove the generated-region marker and its matching closer from ${path}`,
   };
-  if (fixes.size === 0) return [`correct the reported ${prepared ? "guide " : ""}content in ${path}`];
-  return [...new Set([...fixes].map((fix) => typeof fix === "string"
-    ? messages[fix]
-    : `in ${path}, replace \`${fix.unpinnedBlob}\`. `
-      + `If the intended destination is an existing file other than a guide Markdown page, including non-Markdown assets inside the guide, use \`${fix.template}\` and keep any section anchor. `
-      + `If the intended destination is a guide Markdown page, ${guideForm}. Then rerun \`npm run preflight -- --fast\`.`))];
+  return fixes.size ? [...fixes].map((fix) => messages[fix]) : [`correct the reported ${prepared ? "guide " : ""}content in ${path}`];
 }
 
 /**
@@ -505,7 +507,7 @@ export function assertSimulatedUpgradePage(
   const path = upgradePagePath(version);
   const prepared = options.version === undefined && options.fragments === undefined && candidate.bumpedAboveTag && existsSync(join(root, path));
   let fragments: readonly ChangelogFragment[] = [];
-  let text: string;
+  let text: string, generated = "";
   if (prepared) {
     text = readFileSync(join(root, path), "utf8");
   } else {
@@ -521,7 +523,7 @@ export function assertSimulatedUpgradePage(
               return { path: entry, contents: validateChangelogFragment(entry, readFileSync(join(root, entry)), stat.mode & 0o111 ? "100755" : "100644") };
             })
         : config.packages.filter(({ publish }) => publish).flatMap(({ directory }) => readChangelogFragments(root, directory)));
-    text = renderUpgradePage({ root, version, since, fragments });
+    ({ text, generated } = renderUpgradePageSections({ root, version, since, fragments }));
   }
   const bytes = Buffer.byteLength(text, "utf8");
   const label = prepared
@@ -555,7 +557,7 @@ export function assertSimulatedUpgradePage(
     );
   }
   const audit = { version, since, path, bytes, maxBytes, prepared, text };
-  assertUpgradePageDocumentation(root, audit, label, fragments);
+  assertUpgradePageDocumentation(root, audit, label, fragments, generated);
   return audit;
 }
 
