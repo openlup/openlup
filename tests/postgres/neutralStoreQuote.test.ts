@@ -3,9 +3,9 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { setTimeout } from 'node:timers/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Pool, type PoolConfig } from 'pg';
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
@@ -14,7 +14,7 @@ let scratch: string;
 let consumer: string;
 let migrations: typeof import('@openlup/platform/migrations');
 const scenarioHelper = pathToFileURL(resolve('tests/helpers/neutralStoreScenario.mjs')).href;
-beforeAll(async () => {
+async function prepareQuoteConsumer() {
   if (!await dockerAvailable()) throw new Error('Starter quote proof requires real PostgreSQL');
   mkdirSync(resolve('.context/scratch'), { recursive: true });
   scratch = mkdtempSync(resolve('.context/scratch/starter-quote-'));
@@ -49,10 +49,11 @@ beforeAll(async () => {
   const installed = createRequire(join(consumer,'package.json'));
   expect(installed.resolve('@openlup/platform/migrations').startsWith(join(consumer,'node_modules'))).toBe(true);
   migrations = await import(pathToFileURL(installed.resolve('@openlup/platform/migrations')).href);
-}, postgresSetupTimeoutMs);
-afterAll(() => {
+}
+
+function removeQuoteConsumer() {
   if (scratch) rmSync(scratch,{ recursive: true,force: true });
-}, postgresTeardownTimeoutMs);
+}
 
 const shippingScript = String.raw`
   import assert from 'node:assert/strict';
@@ -165,31 +166,38 @@ const shippingScript = String.raw`
 
 const quoteDatabase = {
   start: runPostgresContainer,
+  ready: waitForPostgresTcpReady,
   pool: (options: PoolConfig) => new Pool(options),
-  createRole: (owner: Pool, role: string) => owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`),
+  async createRole(owner: Pool, role: string) {
+    await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
+  },
 };
 
 async function provisionQuoteCase(configuration: string, multiSize: boolean, containers: PostgresContainer[], pools: Pool[], database: typeof quoteDatabase, signal: AbortSignal) {
   const setupStarted = performance.now();
   // Opt-in reproduction of provisioning overrunning the existing 95 s case budget.
   if (configuration === 'supplements' && existsSync(resolve('.context/scratch/slow-quote-setup'))) {
-    await setTimeout(96_000, undefined, { signal });
+    await delay(96_000, undefined, { signal });
   }
   signal.throwIfAborted();
   const bootStarted = performance.now();
   const container = await database.start({ name: `starter-quote-${configuration}-${multiSize ? "multi" : "single"}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
+  if (signal.aborted) {
+    // A start already in flight can return after the teardown snapshot.
+    await container.remove();
+    signal.throwIfAborted();
+  }
   containers.push(container);
-  signal.throwIfAborted();
   const readyStarted = performance.now();
-  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Starter quote PostgreSQL unavailable');
+  const ready = await database.ready(container.connectionString);
   signal.throwIfAborted();
+  if (!ready) throw new Error('Starter quote PostgreSQL unavailable');
   const migrationStarted = performance.now();
   const owner = database.pool({ connectionString: container.connectionString }); pools.push(owner);
   for (const role of ['starter_runtime','starter_restore']) {
-    signal.throwIfAborted();
     await database.createRole(owner, role);
+    signal.throwIfAborted();
   }
-  signal.throwIfAborted();
   const selection = { generation: 'qualified-v2',roleMode: 'installer-managed',migrationLogin: 'postgres',bootstrapLogin: 'postgres',runtimeLogin: 'starter_runtime',restoreLogin: 'starter_restore' } as const;
   const migration = database.pool({ connectionString: container.connectionString,options: migrations.qualifiedPostgresStartupOptions(selection) });pools.push(migration);
   const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, {
@@ -407,6 +415,9 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
   console.info(JSON.stringify({ configuration, multiSize, proofMs: performance.now() - proofStarted, childMs: performance.now() - childStarted }));
 }
 
+// Leave room in the 75 s teardown for 5 s of pool close and 60 s of Docker removal.
+const quoteProvisioningJoinMs = 5_000;
+
 function quoteCaseFixture(configuration: string, multiSize: boolean, database = quoteDatabase) {
   const containers: PostgresContainer[] = [];
   const pools: Pool[] = [];
@@ -415,74 +426,131 @@ function quoteCaseFixture(configuration: string, multiSize: boolean, database = 
   return {
     setup: () => provisioning = provisionQuoteCase(configuration, multiSize, containers, pools, database, controller.signal),
     async teardown() {
+      // The signal's aborted flag also marks that cleanup owns the acquired resources.
       controller.abort();
-      // Let the current operation settle before taking the cleanup snapshot.
-      await provisioning?.catch(() => undefined);
-      await closePostgres(containers, pools);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        if (provisioning) {
+          const deadline = new Promise<void>(resolve => {
+            timer = setTimeout(resolve, quoteProvisioningJoinMs);
+          });
+          await Promise.race([provisioning.catch(() => undefined), deadline]);
+        }
+      } finally {
+        clearTimeout(timer);
+        await closePostgres(containers, pools);
+      }
     },
   };
 }
 
-it('closes every acquired quote pool before removing the database after interrupted setup', async () => {
+function controlledContainer(remove: PostgresContainer['remove']): PostgresContainer {
+  const connectionString = 'postgres://127.0.0.1/neutral_store';
+  return { port: 5432, connectionString, connectionStringFor: () => connectionString, remove };
+}
+
+it('closes quote pools and removes the container while provisioning is still stalled', async () => {
+  vi.useFakeTimers();
   let queryHeld!: () => void;
   let releaseQuery!: () => void;
   const held = new Promise<void>(resolve => { queryHeld = resolve; });
   const release = new Promise<void>(resolve => { releaseQuery = resolve; });
-  const pools: Pool[] = [];
-  let openAtRemoval: number | undefined;
+  const owner = new Pool();
+  const close = vi.spyOn(owner, 'end');
+  let setupSettled = false;
+  let openAtRemoval: boolean | undefined;
+  let settledAtRemoval: boolean | undefined;
+  const remove = vi.fn(async () => {
+    openAtRemoval = !owner.ended;
+    settledAtRemoval = setupSettled;
+  });
   const fixture = quoteCaseFixture('interrupted', false, {
-    async start(options) {
-      const container = await quoteDatabase.start(options);
-      return { ...container, async remove() {
-        openAtRemoval = pools.filter(pool => !pool.ended).length;
-        await container.remove();
-      } };
-    },
-    pool(options) {
-      const pool = quoteDatabase.pool(options);
-      pools.push(pool);
-      return pool;
-    },
-    async createRole(owner, role) {
-      const result = await quoteDatabase.createRole(owner, role);
+    start: async () => controlledContainer(remove),
+    ready: async () => true,
+    pool: () => owner,
+    async createRole(_owner, role) {
       if (role === 'starter_restore') {
         queryHeld();
         await release;
       }
-      return result;
     },
   });
   const setup = fixture.setup();
-  const settled = setup.catch(() => undefined);
+  const settled = setup.catch(() => undefined).then(() => { setupSettled = true; });
   let teardown: Promise<void> | undefined;
   try {
     await Promise.race([held, setup]);
     teardown = fixture.teardown();
-    releaseQuery();
+    await vi.advanceTimersByTimeAsync(quoteProvisioningJoinMs);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(openAtRemoval).toBe(false);
+    expect(settledAtRemoval).toBe(false);
     await teardown;
-    await settled;
-    expect(openAtRemoval).toBe(0);
-    expect(pools).toHaveLength(1);
+    releaseQuery();
     await expect(setup).rejects.toMatchObject({ name: 'AbortError' });
   } finally {
     releaseQuery();
-    await settled;
-    await (teardown ?? fixture.teardown());
-    await Promise.all(pools.filter(pool => !pool.ended).map(pool => pool.end()));
+    try {
+      await settled;
+      await (teardown ?? fixture.teardown());
+    } finally {
+      vi.useRealTimers();
+    }
   }
 });
 
-for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) {
-  describe.sequential(multiSize ? 'multi-size quote' : `${configuration} quote`, () => {
-    const database = quoteCaseFixture(configuration, multiSize);
-    let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
-    beforeAll(async () => {
-      fixture = await database.setup();
-    }, postgresSetupTimeoutMs);
-    afterAll(database.teardown, postgresTeardownTimeoutMs);
-
-    // About 4x the slowest hosted run (23,351 ms), rounded up to 5 s.
-    // The child measured at most 2.703 s; retain its separate 20 s deadline.
-    it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, () => runQuoteProof(fixture), 95_000);
+it('removes a quote container acquired after teardown completed', async () => {
+  vi.useFakeTimers();
+  let finishStart!: (container: PostgresContainer) => void;
+  const pendingStart = new Promise<PostgresContainer>(resolve => { finishStart = resolve; });
+  const remove = vi.fn(async () => undefined);
+  const container = controlledContainer(remove);
+  const ready = vi.fn(async () => true);
+  const fixture = quoteCaseFixture('late-start', false, {
+    ...quoteDatabase,
+    start: () => pendingStart,
+    ready,
   });
-}
+  const setup = fixture.setup();
+  const settled = setup.catch(() => undefined);
+  let teardownFinished = false;
+  const teardown = fixture.teardown().then(() => { teardownFinished = true; });
+  try {
+    await vi.advanceTimersByTimeAsync(quoteProvisioningJoinMs);
+    expect(teardownFinished).toBe(true);
+    expect(remove).not.toHaveBeenCalled();
+    finishStart(container);
+    await expect(setup).rejects.toMatchObject({ name: 'AbortError' });
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(ready).not.toHaveBeenCalled();
+  } finally {
+    finishStart(container);
+    try {
+      await settled;
+      await teardown;
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+});
+
+describe.sequential('installed quote proofs', () => {
+  beforeAll(prepareQuoteConsumer, postgresSetupTimeoutMs);
+  afterAll(removeQuoteConsumer, postgresTeardownTimeoutMs);
+
+  for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) {
+    describe.sequential(multiSize ? 'multi-size quote' : `${configuration} quote`, () => {
+      const database = quoteCaseFixture(configuration, multiSize);
+      let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
+      beforeAll(async () => {
+        fixture = await database.setup();
+      }, postgresSetupTimeoutMs);
+      afterAll(database.teardown, postgresTeardownTimeoutMs);
+
+      // About 4x the slowest hosted run (23,351 ms), rounded up to 5 s.
+      // The child measured at most 2.703 s; retain its separate 20 s deadline.
+      it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, () => runQuoteProof(fixture), 95_000);
+    });
+  }
+});
