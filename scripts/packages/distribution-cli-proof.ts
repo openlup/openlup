@@ -430,16 +430,18 @@ type CatalogueBrowser = {
 const catalogueBrowserReadiness = "/catalogue-browser-readiness";
 const catalogueBrowserResult = catalogueBrowserReadiness + "/result.json";
 const launchCatalogueBrowser = `
-  const { chromium } = require("playwright");
   const { renameSync, writeFileSync } = require("node:fs");
   const report = value => {
     writeFileSync("${catalogueBrowserResult}.tmp", JSON.stringify(value), { mode: 0o600 });
     renameSync("${catalogueBrowserResult}.tmp", "${catalogueBrowserResult}");
   };
-  chromium.launchServer({ host: "127.0.0.1", timeout: 10_000 }).then(server => {
+  Promise.resolve().then(() => {
+    const { chromium } = require("playwright");
+    return chromium.launchServer({ host: "127.0.0.1", timeout: 10_000 });
+  }).then(server => {
     report({ endpoint: server.wsEndpoint() });
-  }, () => {
-    report({ error: true });
+  }, error => {
+    report({ error: String(error) });
     setTimeout(() => process.exit(1), 25_000);
   });
 `;
@@ -449,15 +451,15 @@ const readCatalogueBrowser = `
   (async () => {
     const deadline = Date.now() + 20_000;
     while (!existsSync("${catalogueBrowserResult}")) {
-      if (Date.now() >= deadline) throw new Error("starter_catalogue_browser_server_not_ready");
+      if (Date.now() >= deadline) return process.stdout.write(JSON.stringify("deadline"));
       await sleep(100);
     }
     process.stdout.write(readFileSync("${catalogueBrowserResult}", "utf8"));
   })().catch(error => { console.error(error.message); process.exitCode = 1; });
 `;
 
-function refuseCatalogueBrowser(code: string): never {
-  throw Object.assign(new Error(code), { code });
+function refuseCatalogueBrowser(code: string, cause?: unknown): never {
+  throw Object.assign(new Error(code, { cause }), { code });
 }
 
 /** Exercise the installed recipe on the upgraded app with its target package bytes. */
@@ -492,21 +494,24 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
     const recipe = { ...options, env: { ...options.env } as NodeJS.ProcessEnv };
     const dockerOptions = { ...options, timeout: 30_000 };
     if (browser) {
-      const name = "starter-catalogue-browser-" + randomBytes(6).toString("hex");
-      readinessDirectory = mkdtempSync(join(tmpdir(), "openlup-catalogue-browser-"));
-      const readinessMount = `type=bind,src=${realpathSync(readinessDirectory)},dst=${catalogueBrowserReadiness}`;
-      const [action, ...args] = browser.containerArguments(app, browser.reference, name, browser.localImage, ["--mount", readinessMount]);
-      container = name;
-      try { run("docker", [action!, "--detach", ...args, "node", "-e", launchCatalogueBrowser], dockerOptions); }
-      catch { refuseCatalogueBrowser("starter_catalogue_browser_container_start_failed"); }
-      let readiness;
-      try { readiness = JSON.parse(run("docker", ["exec", name, "node", "-e", readCatalogueBrowser], dockerOptions)); }
-      catch { refuseCatalogueBrowser("starter_catalogue_browser_server_not_ready"); }
-      if (readiness?.error) refuseCatalogueBrowser("starter_catalogue_browser_launch_failed");
-      const url = typeof readiness?.endpoint === "string" ? URL.parse(readiness.endpoint) : null;
-      if (!(url?.protocol === "ws:" && url.hostname === "127.0.0.1" && url.port && !url.username && !url.password)) {
-        refuseCatalogueBrowser("starter_catalogue_browser_endpoint_invalid");
-      }
+      let url: URL | undefined;
+      try {
+        const name = "starter-catalogue-browser-" + randomBytes(6).toString("hex");
+        readinessDirectory = mkdtempSync(join(tmpdir(), "openlup-catalogue-browser-"));
+        const readinessMount = `type=bind,src=${realpathSync(readinessDirectory)},dst=${catalogueBrowserReadiness}`;
+        const [action, ...args] = browser.containerArguments(app, browser.reference, name, browser.localImage, ["--mount", readinessMount]);
+        container = name;
+        run("docker", [action!, "--detach", ...args, "node", "-e", launchCatalogueBrowser], dockerOptions);
+        const readiness = JSON.parse(run("docker", ["exec", name, "node", "-e", readCatalogueBrowser], dockerOptions));
+        if (readiness !== "deadline") {
+          if (readiness?.error) throw new Error(readiness.error);
+          const endpoint = typeof readiness?.endpoint === "string" ? URL.parse(readiness.endpoint) : null;
+          assert(endpoint?.protocol === "ws:" && endpoint.hostname === "127.0.0.1" && endpoint.port && !endpoint.username && !endpoint.password,
+            "Invalid catalogue browser endpoint");
+          url = endpoint;
+        }
+      } catch (error) { refuseCatalogueBrowser("starter_catalogue_browser_startup_failed", error); }
+      if (!url) refuseCatalogueBrowser("starter_catalogue_browser_server_not_ready");
       recipe.env.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT = url.href;
     } else {
       run(process.execPath, [realpathSync(join(app, "node_modules/.bin/playwright")), "install", "chromium"], options);

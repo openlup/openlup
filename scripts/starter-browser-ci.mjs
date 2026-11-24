@@ -271,16 +271,16 @@ export async function runCatalogueUpgrade({ groups, manifest, commit, localImage
   await prove(manifest, commit, { reference, localImage, containerArguments: browserContainerArguments });
 }
 
-const catalogueBrowserStartupCodes = new Set([
-  'starter_catalogue_browser_container_start_failed', 'starter_catalogue_browser_server_not_ready',
-  'starter_catalogue_browser_launch_failed', 'starter_catalogue_browser_endpoint_invalid',
-]);
-
 export function starterBrowserFailure(error, phase) {
   // Never publish assertion bodies, SQL details, connection strings or child errors.
   if (phase === 'catalogue_upgrade') {
     const code = error?.code;
-    return new Error(catalogueBrowserStartupCodes.has(code) ? code : 'starter_browser_catalogue_upgrade_failed');
+    if (code === 'starter_catalogue_browser_server_not_ready') return new Error(code);
+    if (code === 'starter_catalogue_browser_startup_failed') {
+      const fix = "Check that the pinned browser image is present or pullable as configured, that its Playwright and browser versions match the app's installed Playwright, and that the Playwright module loads and the browser launches inside the container.";
+      return new Error(`${code}\nFix: ${fix}`, { cause: error.cause });
+    }
+    return new Error('starter_browser_catalogue_upgrade_failed');
   }
   const refusal = /qualified PostgreSQL installation refused: ([a-z0-9_]+)/u.exec(error.message)?.[1]
     ?? (/^[A-Z0-9]{5}$/u.test(error.code ?? '') ? `sqlstate_${error.code}` : undefined);

@@ -28,12 +28,15 @@ function fixture() {
   return { directory, write };
 }
 
+const browserStartupFailed = "starter_catalogue_browser_startup_failed";
 it.each([
   ["mirror", undefined], ["local", undefined], ["release", undefined],
-  ["container-failure", "starter_catalogue_browser_container_start_failed"],
-  ["readiness-failure", "starter_catalogue_browser_server_not_ready"],
-  ["server-failure", "starter_catalogue_browser_launch_failed"],
-  ["invalid-endpoint", "starter_catalogue_browser_endpoint_invalid"],
+  ["container-failure", browserStartupFailed],
+  ["probe-failure", browserStartupFailed],
+  ["probe-deadline", "starter_catalogue_browser_server_not_ready"],
+  ["server-failure", browserStartupFailed],
+  ["module-load-failure", browserStartupFailed],
+  ["invalid-endpoint", browserStartupFailed],
   ["recipe-failure", "starter_browser_catalogue_upgrade_failed"],
 ] as const)("runs the catalogue recipe with %s browser setup", (mode, expectedCode) => {
   const { directory, write } = fixture();
@@ -47,7 +50,16 @@ it.each([
   const endpoint = "ws://127.0.0.1:43189/test";
   const sentinel = "private-browser-detail";
   const dockerError = Object.assign(new Error("docker failed"), { stderr: sentinel });
+  const probeError = Object.assign(new Error("docker unreachable"), { stderr: sentinel, stdout: '"deadline"' });
+  if (mode === "module-load-failure") {
+    write("node_modules/playwright/index.js", `require(${JSON.stringify(sentinel)});`);
+  }
   let readinessMount: string | undefined, readinessDirectory: string | undefined;
+  const runMountedScript = (script: string, setup = "") => {
+    const resultPath = JSON.stringify(join(readinessDirectory!, "result.json")).slice(1, -1);
+    return execFileSync(process.execPath, ["-e", setup + "\n" + script.replaceAll("/catalogue-browser-readiness/result.json", () => resultPath)],
+      { cwd: directory, stdio: "pipe", encoding: "utf8" });
+  };
   const run = vi.fn((_file: string, args: readonly string[], _options: ExecFileSyncOptionsWithStringEncoding) => {
     if (args[0] === "run") {
       readinessMount = args.find(arg => arg.endsWith(",dst=/catalogue-browser-readiness"));
@@ -56,12 +68,17 @@ it.each([
       readinessDirectory = mount![1]!;
       expect(statSync(readinessDirectory).mode & 0o777).toBe(0o700);
       if (mode === "container-failure") throw dockerError;
+      if (mode === "module-load-failure") {
+        expect(runMountedScript(args.at(-1)!, "globalThis.setTimeout = () => 0;")).toBe("");
+      }
     }
     if (args[0] === "rm" && mode === "container-failure") throw new Error("cleanup failed");
     if (args[0] === "exec") {
-      if (mode === "readiness-failure") {
-        throw Object.assign(new Error("docker exec failed"), { stderr: "starter_catalogue_browser_server_not_ready\n" + sentinel });
+      if (mode === "probe-failure") throw probeError;
+      if (mode === "probe-deadline") {
+        return runMountedScript(args.at(-1)!, "let now = 0; Date.now = () => (now += 20_001);");
       }
+      if (mode === "module-load-failure") return runMountedScript(args.at(-1)!);
       return JSON.stringify(mode === "server-failure" ? { error: sentinel }
         : { endpoint: mode === "invalid-endpoint" ? sentinel : endpoint });
     }
@@ -76,9 +93,19 @@ it.each([
       let failure: unknown;
       try { prove(); } catch (error) { failure = error; }
       expect(failure).toBeInstanceOf(Error);
-      const message = starterBrowserFailure(failure, "catalogue_upgrade").message;
-      expect(message).toBe(expectedCode);
-      expect(message).not.toContain(sentinel);
+      const error = starterBrowserFailure(failure, "catalogue_upgrade");
+      if (expectedCode === browserStartupFailed) {
+        expect(error.message).toBe(expectedCode + "\nFix: Check that the pinned browser image is present or pullable as configured, that its Playwright and browser versions match the app's installed Playwright, and that the Playwright module loads and the browser launches inside the container.");
+        const cause = Object.getOwnPropertyDescriptor(error, "cause");
+        expect(cause).toMatchObject({ enumerable: false, value: expect.any(Error) });
+        if (mode === "container-failure") expect(cause?.value).toBe(dockerError);
+        if (mode === "probe-failure") expect(cause?.value).toBe(probeError);
+        if (mode === "server-failure" || mode === "module-load-failure") {
+          expect(cause?.value.message).toContain(sentinel);
+        }
+      } else expect(error.message).toBe(expectedCode);
+      expect(error.message).not.toContain(sentinel);
+      expect(JSON.stringify(error)).not.toContain(sentinel);
     } else prove();
     const recipe = run.mock.calls.find(([file, args]) => file === process.execPath && args[0] === "--test");
     const installs = run.mock.calls.filter(([, args]) => args.includes("install"));
