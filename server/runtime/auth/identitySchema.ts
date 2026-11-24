@@ -7,7 +7,7 @@ const table = (name: string, columns: string): SchemaObject[] => [
 const fn = (name: string, signature = ""): SchemaObject => ({ kind: "function", name, signature });
 const contact = "id email first_name last_name phone lifecycle_stage acquisition_source";
 const membership = "role membership_state membership_provenance membership_accepted_at membership_revoked_at membership_revoked_by membership_revocation_reason";
-const declarationMigration = "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql";
+const declarationMigration = "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql";
 const declarationObjects: readonly SchemaObject[] = [
   { kind: "table", name: "public.identity_privacy_required_contributors" },
   fn("public.identity_privacy_required_contributor_ids"),

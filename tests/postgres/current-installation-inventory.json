@@ -7,7 +7,7 @@
         "objectInventorySha256": "0cc6acb7f428ed19d314b2505403d2bb48d62cfd258fddff106ad5a102d2ae68",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql",
+            "file": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
             "sha256": "d4951f9ac41ea7d560bf171b03084413d9d755d08a3024139ba663949bfbb23a"
           },
           {
@@ -798,7 +798,7 @@
         "objectInventorySha256": "b3fa1dc5082ee6fe34086bf8b5d9c64ea5e1d63f681b714f6971cdd63ed12f96",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql",
+            "file": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
             "sha256": "d4951f9ac41ea7d560bf171b03084413d9d755d08a3024139ba663949bfbb23a"
           },
           {
@@ -1613,7 +1613,7 @@
         "objectInventorySha256": "ca0038700dce36be2d071326a533c31541206af1edf011b39e8236a11818a6eb",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql",
+            "file": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
             "sha256": "d4951f9ac41ea7d560bf171b03084413d9d755d08a3024139ba663949bfbb23a"
           },
           {
@@ -2428,7 +2428,7 @@
         "objectInventorySha256": "1da3f0585109ea82de576b86da90b550b1aa31c88091db2b644d896e57eb4874",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql",
+            "file": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
             "sha256": "d4951f9ac41ea7d560bf171b03084413d9d755d08a3024139ba663949bfbb23a"
           },
           {
@@ -3235,7 +3235,7 @@
         "objectInventorySha256": "ba53eca3c2b7d89026cc09fa70fbf092e352ee25bbd8423d659315b65bacb797",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql",
+            "file": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
             "sha256": "d4951f9ac41ea7d560bf171b03084413d9d755d08a3024139ba663949bfbb23a"
           },
           {

@@ -105,8 +105,8 @@ it.each(["node-postgres", "node-supabase"] as const)("refuses every absent requi
   }
 });
 it.each([
-  ["declaration reader", "function:public.identity_privacy_required_contributor_ids()", "20261125230000_identity_privacy_required_contributors.sql"],
-  ["declaration table", "table:public.identity_privacy_required_contributors", "20261125230000_identity_privacy_required_contributors.sql"],
+  ["declaration reader", "function:public.identity_privacy_required_contributor_ids()", "20261125300000_identity_privacy_required_contributors.sql"],
+  ["declaration table", "table:public.identity_privacy_required_contributors", "20261125300000_identity_privacy_required_contributors.sql"],
   ["erasure ledger", "table:public.identity_privacy_erasures", "20261018190000_identity_privacy_erasures.sql"],
 ] as const)("names the installing forward when the native %s is absent", async (_object, subject, forward) => {
   const input = admission("node-postgres"), observe = input.schemaProbe.observe;

@@ -7341,7 +7341,7 @@
         "dataStatements": []
       },
       {
-        "path": "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql",
+        "path": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
         "row": "privacy-required-contributors",
         "replacedFunctions": [],
         "createdFunctions": [
@@ -11036,7 +11036,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql",
+      "path": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
       "sha256": "d4951f9ac41ea7d560bf171b03084413d9d755d08a3024139ba663949bfbb23a",
       "functions": [
         {

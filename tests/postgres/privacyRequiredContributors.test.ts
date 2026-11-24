@@ -12,7 +12,7 @@ import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { closePostgres, postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
 import { createAccountMutationsTemplate } from "./customerAccountMutations.fixture.js";
 
-const forward = "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql";
+const forward = "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql";
 const predecessor = "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql";
 const table = "public.identity_privacy_required_contributors";
 const reader = "public.identity_privacy_required_contributor_ids()";
