@@ -780,7 +780,7 @@
         "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
       },
       {
-        "file": "db/platform/migrations/20261125210000_function_search_path_pg_temp.sql",
+        "file": "db/platform/migrations/20261125280000_function_search_path_pg_temp.sql",
         "sha256": "199e3eb5e217e20a42f0e36a75d11e6cab748b8622f3792d7aa2a7da228cfbf4"
       }
     ],
@@ -1588,7 +1588,7 @@
           "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
         },
         {
-          "file": "db/platform/migrations/20261125210000_function_search_path_pg_temp.sql",
+          "file": "db/platform/migrations/20261125280000_function_search_path_pg_temp.sql",
           "sha256": "199e3eb5e217e20a42f0e36a75d11e6cab748b8622f3792d7aa2a7da228cfbf4"
         }
       ],
@@ -2396,7 +2396,7 @@
           "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
         },
         {
-          "file": "db/platform/migrations/20261125210000_function_search_path_pg_temp.sql",
+          "file": "db/platform/migrations/20261125280000_function_search_path_pg_temp.sql",
           "sha256": "199e3eb5e217e20a42f0e36a75d11e6cab748b8622f3792d7aa2a7da228cfbf4"
         }
       ],
@@ -3378,8 +3378,8 @@
       "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
     },
     {
-      "file": "20261125210000_function_search_path_pg_temp.sql",
-      "source": "db/platform/migrations/20261125210000_function_search_path_pg_temp.sql",
+      "file": "20261125280000_function_search_path_pg_temp.sql",
+      "source": "db/platform/migrations/20261125280000_function_search_path_pg_temp.sql",
       "sha256": "199e3eb5e217e20a42f0e36a75d11e6cab748b8622f3792d7aa2a7da228cfbf4"
     },
     {
