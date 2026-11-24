@@ -1678,7 +1678,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql",
+      "path": "db/platform/migrations/20261126520000_catalog_admission_issue_reader.sql",
       "class": "public-output"
     },
     {
@@ -5498,7 +5498,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261126040000_catalog_admission_issue_reader.sql",
+      "path": "packages/platform/sql/20261126520000_catalog_admission_issue_reader.sql",
       "class": "public-output"
     },
     {

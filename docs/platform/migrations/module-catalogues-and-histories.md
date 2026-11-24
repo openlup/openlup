@@ -32,7 +32,7 @@ for paging and refusal behavior.
 
 **Admission issue mode**
 
-The [admission issue reader forward](../../../db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql)
+The [admission issue reader forward](../../../db/platform/migrations/20261126520000_catalog_admission_issue_reader.sql)
 adds a private `admission_issue` mode to the same reader. Only these exact
 lowercase bytes select it, whatever the caller's collation. The other modes and
 the function's header, owner and grants are unchanged. The same owner boundary

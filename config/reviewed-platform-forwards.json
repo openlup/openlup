@@ -9119,7 +9119,7 @@
       },
       {
         "row": "catalog-admission-issue-reader",
-        "path": "db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql",
+        "path": "db/platform/migrations/20261126520000_catalog_admission_issue_reader.sql",
         "replacedFunctions": [
           {
             "signature": "public.catalog_offer_memberships_page(text,jsonb,integer,text)",
@@ -12992,7 +12992,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261126040000_catalog_admission_issue_reader.sql",
+      "path": "db/platform/migrations/20261126520000_catalog_admission_issue_reader.sql",
       "sha256": "1ca64162c40c8ef19a6146e0ea703cc427d473ac4d10275b1f50567ffbc8009e",
       "functions": [
         {
