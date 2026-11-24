@@ -366,6 +366,34 @@ export type PaymentVerifyNowResult = {
     attempt: ClaimedPaymentAttempt;
 };
 ```
+## dist/payments/declineNoticeTimingPolicy.d.ts
+
+```ts
+/** @experimental Default delay (in minutes) before a recoverable one-time decline notice becomes available. */
+export declare const DEFAULT_PAYMENT_DECLINE_NOTICE_DELAY_MINUTES = 3;
+/** @experimental Default lifetime (in hours) for a payment decline recovery link. */
+export declare const DEFAULT_PAYMENT_DECLINE_LINK_LIFETIME_HOURS = 24;
+/** @experimental Installed policy configuring delay and recovery link lifetime for payment decline notices. */
+export interface PaymentDeclineNoticeTimingPolicy {
+    revision: string;
+    delayMinutes: number;
+    linkLifetimeHours: number;
+}
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Validate a `payment_decline_notice_timing` policy document using SQL-equivalent rules. */
+export declare function validatePaymentDeclineNoticeTiming(value: unknown): PaymentDeclineNoticeTimingPolicy;
+/** @experimental Install the payment decline notice timing policy on a host-owned write-capable connection. */
+export declare function installPaymentDeclineNoticeTimingPolicy(db: Executor, policy: PaymentDeclineNoticeTimingPolicy): Promise<void>;
+/** @experimental Read an explicit `payment_decline_notice_timing` override, returning `undefined` when absent. */
+export declare function readPaymentDeclineNoticeTimingOverride(db: Executor): Promise<PaymentDeclineNoticeTimingPolicy | undefined>;
+/** @experimental Read the installed `payment_decline_notice_timing` policy or the 3-minute / 24-hour absence fallback. */
+export declare function readPaymentDeclineNoticeTimingPolicy(db: Executor): Promise<PaymentDeclineNoticeTimingPolicy>;
+export {};
+```
 ## dist/payments/eventConformanceRunner.d.ts
 
 ```ts
@@ -454,6 +482,8 @@ export type { PostgresProviderPaymentRail, PostgresProviderAttemptSnapshot } fro
 export { createPaymentProviderRegistry, toCoreCaptureHandoff, fromCoreCaptureHandoff, toCorePaymentProviderCapability, } from "./providerRegistry.js";
 export { DEFAULT_PAYMENT_METHOD_EXPIRY_WARNING_DAYS, validatePaymentMethodExpiryWarningDays, installPaymentMethodExpiryWarningDaysPolicy, readPaymentMethodExpiryWarningDaysOverride, readPaymentMethodExpiryWarningDaysPolicy, } from "./methodExpiryWarningPolicy.js";
 export type { PaymentMethodExpiryWarningDaysPolicy } from "./methodExpiryWarningPolicy.js";
+export { DEFAULT_PAYMENT_DECLINE_NOTICE_DELAY_MINUTES, DEFAULT_PAYMENT_DECLINE_LINK_LIFETIME_HOURS, validatePaymentDeclineNoticeTiming, installPaymentDeclineNoticeTimingPolicy, readPaymentDeclineNoticeTimingOverride, readPaymentDeclineNoticeTimingPolicy, } from "./declineNoticeTimingPolicy.js";
+export type { PaymentDeclineNoticeTimingPolicy } from "./declineNoticeTimingPolicy.js";
 ```
 ## dist/payments/methodExpiryWarningPolicy.d.ts
 

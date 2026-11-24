@@ -72,6 +72,8 @@ const searchTerms: Record<string, string> = {
   shipping_flat_minor: "flat shipping, legacy delivery rate, shipping cost, minor units",
   payment_method_expiry_warning_days: "payment method expiry, method_expiring, card expiration warning, renewal method health",
   promotion_claim_hold_hours: "promotion claim hold, promo reservation expiry, initialPaymentWindow, stale promotion claims",
+  "payments.declineNoticeTiming": "decline notice delay, recovery token expiry, failed payment notice, checkout recovery link lifetime",
+  "subscriptions.retrySchedule": "renewal retry policy, payment failure backoff, 3-rung retry ladder, dunning schedule",
   savedAddressValidation: "postal format, phone normalization, delivery address checks",
   "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
   "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",

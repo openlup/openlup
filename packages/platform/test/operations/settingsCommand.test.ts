@@ -753,10 +753,12 @@ it("checks every packaged schema against its default and valid examples", async 
     "market.fiscalProfile",
     "market.settlementProfile",
     "payment_method_expiry_warning_days",
+    "payments.declineNoticeTiming",
     "promotion_claim_hold_hours",
     "shipping_flat_minor",
     "subscription_minimum_base_units",
     "subscription_sized_intro_phase",
+    "subscriptions.retrySchedule",
     "tax.coverage",
   ]);
   for (const entry of entries) {
@@ -1092,14 +1094,14 @@ async function settingsParity() {
   }
   // Current package output includes the internal number recipe for catalog.optionalGtin.
   expect(createHash("sha256").update(JSON.stringify(liveBytes)).digest("hex"))
-    .toBe("d32f20cec2622aedd3d7773afcf91bec81159d84784187fe1a76909339a1eed8");
+    .toBe("c5bc4e6f8538cb9aea2e86b8ba1c213386938b5ec4941fec04ff367a8a6cd42b");
   const checkKeys = liveData.entries.filter(({ kind }) => kind === "code" || kind === "installed").map(({ key }) => key);
   const representatives = bound.filter(({ args, fixture }) => fixture !== undefined &&
     (args[0] === "check" || args[1] === key || args[1] === "checkout_recovery_reminders" && args[0] === "show" ||
       args[1] === "catalog.bundleAvailabilityPolicy" && args[0] === "preview"));
   for (const { key, kind } of liveData.entries) {
     const fixture = `show ${key}`;
-    if (kind === "installed" && addedKeys.has(key) && Object.hasOwn(expected.rows, fixture)) {
+    if (kind === "installed" && !bound.some(item => item.fixture === fixture) && Object.hasOwn(expected.rows, fixture)) {
       representatives.push({ args: ["show", key, ...parityArgs], fixture });
     }
   }

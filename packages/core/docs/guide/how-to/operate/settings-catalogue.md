@@ -337,11 +337,13 @@ Show offline: `show payment_method_expiry_warning_days --json`.
 
 ## payments.declineNoticeTiming
 
-Choose the delay and link lifetime for a payment decline notice.
-Search terms include charge handling, settlement.
+Set the delay in minutes and recovery link lifetime in hours for recoverable one-time payment decline notices (decline notice timing, recovery link lifetime, failed payment delay).
+Search terms include decline notice delay, recovery token expiry, failed payment notice, checkout recovery link lifetime.
 
-- Owner **payments** · kind **cap** · runtime **read-only**
-- Native decline notices wait three minutes and issue links for 24 hours.
+- Owner **payments** · kind **installed** · runtime **read-only**
+- Default is `{"revision":"default","delayMinutes":3,"linkLifetimeHours":24}`.
+- Basis `reference-code` (matches the reference deployment's code).
+- Three minutes of delay avoids sending premature failure notices during rapid retries or synchronous recovery, and 24 hours preserves the established checkout recovery token lifetime.
 
 Show offline: `show payments.declineNoticeTiming --json`.
 
@@ -728,11 +730,13 @@ Show offline: `show subscriptions.rescheduleTimeZone --json`.
 
 ## subscriptions.retrySchedule
 
-Use one retry schedule for host and provider-recorded payment failures.
-Search terms include recurring orders, renewals.
+Set the 3-rung retry backoff schedule in hours for subscription payment failures (subscription retry schedule, renewal retry policy, dunning schedule, backoff hours).
+Search terms include renewal retry policy, payment failure backoff, 3-rung retry ladder, dunning schedule.
 
-- Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Provider-recorded failures still use the fixed 24, 72 and 168 hour schedule.
+- Owner **subscriptions** · kind **installed** · runtime **read-only**
+- Default is `{"revision":"default","backoffHours":[24,72,168]}`.
+- Basis `reference-code` (matches the reference deployment's code).
+- Twenty-four, 72, and 168 hours preserve the historical 3-rung retry cadence (retries on days 1, 4, and 11 after the initial decline) across both 3-argument subscription_retry_apply_failure and provider-recorded failures applied through payment_provider_result_apply without explicit p_cadence.
 
 Show offline: `show subscriptions.retrySchedule --json`.
 

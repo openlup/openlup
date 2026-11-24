@@ -710,6 +710,8 @@ export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscri
 export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
 export { createPostgresNativeCheckoutSubscriptionPort } from "./postgresNativeCheckoutSubscriptionPort.js";
 export type { PostgresNativeCheckoutSubscriptionPort } from "./postgresNativeCheckoutSubscriptionPort.js";
+export { DEFAULT_SUBSCRIPTION_RETRY_BACKOFF_HOURS, validateSubscriptionRetrySchedule, installSubscriptionRetrySchedulePolicy, readSubscriptionRetryScheduleOverride, readSubscriptionRetrySchedulePolicy, } from "./retrySchedulePolicy.js";
+export type { SubscriptionRetrySchedulePolicy } from "./retrySchedulePolicy.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -1983,6 +1985,31 @@ export declare function replayRenewalAttempt<D extends HostedRenewalDue>(deps: R
 import type { RenewalIdentity, RenewalSchedule } from "./contracts/renewal.js";
 /** The host's existing dialect owns every byte; no normalization or new prefix. */
 export declare function renewalIdentity(schedule: RenewalSchedule, keys: (schedule: RenewalSchedule) => RenewalIdentity): RenewalIdentity;
+```
+## dist/subscriptions/retrySchedulePolicy.d.ts
+
+```ts
+/** @experimental Default 3-rung retry backoff schedule (in hours) after failed subscription renewal charges. */
+export declare const DEFAULT_SUBSCRIPTION_RETRY_BACKOFF_HOURS: readonly [number, number, number];
+/** @experimental Installed policy configuring the 3-rung retry backoff ladder for subscription payment failures. */
+export interface SubscriptionRetrySchedulePolicy {
+    revision: string;
+    backoffHours: [number, number, number];
+}
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Validate a `subscription_retry_schedule` policy document using SQL-equivalent rules. */
+export declare function validateSubscriptionRetrySchedule(value: unknown): SubscriptionRetrySchedulePolicy;
+/** @experimental Install the subscription retry schedule policy on a host-owned write-capable connection. */
+export declare function installSubscriptionRetrySchedulePolicy(db: Executor, policy: SubscriptionRetrySchedulePolicy): Promise<void>;
+/** @experimental Read an explicit `subscription_retry_schedule` override, returning `undefined` when absent. */
+export declare function readSubscriptionRetryScheduleOverride(db: Executor): Promise<SubscriptionRetrySchedulePolicy | undefined>;
+/** @experimental Read the installed `subscription_retry_schedule` policy or the `[24, 72, 168]` absence fallback. */
+export declare function readSubscriptionRetrySchedulePolicy(db: Executor): Promise<SubscriptionRetrySchedulePolicy>;
+export {};
 ```
 ## dist/subscriptions/sandboxRenewalRail.d.ts
 

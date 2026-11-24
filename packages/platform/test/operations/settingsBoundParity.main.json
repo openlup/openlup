@@ -367,7 +367,31 @@
         "throwing app": 3
       }
     },
+    "show payments.declineNoticeTiming": {
+      "text": {
+        "no app": 4,
+        "healthy app": 8,
+        "throwing app": 1
+      },
+      "json": {
+        "no app": 6,
+        "healthy app": 9,
+        "throwing app": 3
+      }
+    },
     "show promotion_claim_hold_hours": {
+      "text": {
+        "no app": 4,
+        "healthy app": 8,
+        "throwing app": 1
+      },
+      "json": {
+        "no app": 6,
+        "healthy app": 9,
+        "throwing app": 3
+      }
+    },
+    "show subscriptions.retrySchedule": {
       "text": {
         "no app": 4,
         "healthy app": 8,
