@@ -302,16 +302,19 @@ function apiSections(root: string, since: string): string[] {
       const qualify = new Set(rows.map(({ file }) => file)).size > 1;
       const seen = new Set<string>();
       for (const [category, label] of Object.entries(declarationLabels)) {
+        const categoryRows = rows.filter((row) => row.category === category);
         const excerpts: string[] = [];
         let previousFile: string | undefined;
-        for (const { file, text } of rows.filter((row) => row.category === category)) {
+        for (const { file, text } of categoryRows) {
           const key = `${file}\0${text}`;
           if (seen.has(key)) throw new Error(`${directory}: indistinguishable declaration rows in ${report} for ${file || "unheaded declarations"}; regenerate the API snapshots: ${snapshotRecovery(directory)}`);
           seen.add(key);
+          if (category === "added") continue;
           if (qualify && file !== previousFile) excerpts.push(`// ${file || "Unheaded declarations"}`);
           excerpts.push(text);
           previousFile = file;
         }
+        if (category === "added" && categoryRows.length) sections.push(`Added declarations: ${categoryRows.length}; see \`${report}\`.`);
         if (excerpts.length) sections.push(`${label} declarations:`, ["```ts nocheck", "// API report diff: not compiled.", ...excerpts, "```"].join("\n"));
       }
     }

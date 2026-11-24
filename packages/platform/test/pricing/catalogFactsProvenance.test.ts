@@ -143,7 +143,10 @@ it("releases both a partially reserved pool pair and a late connection", async (
   const read = vi.fn();
   await expect(withCatalogAdmissionFence({ connect } as never, {
     key: "bounded-request", clientId: "client", skuIds: [], revisionIds: [], priceListId: "list", timeoutMs: 10,
-  }, read)).rejects.toThrow("catalog_admission_fence_unavailable");
+  }, read)).rejects.toMatchObject({
+    message: "catalog_admission_fence_unavailable",
+    hint: "Retry the same request with the same idempotency key.",
+  });
   expect(release).toHaveBeenCalledOnce();
   expect(read).not.toHaveBeenCalled();
   acquired({ release: lateRelease });
