@@ -8,10 +8,9 @@ import type { CatalogAttributeValue } from "./contracts/draftV2.js";
 import type { CatalogPublicationFacts } from "./contracts/draftV3.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import type { AttributeDefinition } from "./contracts/attributes.js";
-import { isValidGtin } from "./contracts/foundation.js";
 import type { CatalogOptionValue, CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/productTypes.js";
 import { catalogPriceContextSchema } from "./foundationSchemas.js";
-import { isInternalGtin14 } from "./internalGtin.js";
+import { isInternalGtin } from "./internalGtin.js";
 import { readPostgresCatalogMembershipPage, type CatalogDiscoveryRefusal, type CatalogMembershipCursor,
   type CatalogMembershipItem } from "./postgresPublicationDiscovery.js";
 import { catalogPublishedProductSchema, catalogPublishedSkuSchema } from "./publicationCodec.js";
@@ -132,7 +131,7 @@ export function projectPublishedCatalogOfferPage(page: Extract<CatalogStorefront
           price: { oneTime: publicPrice(price.oneTime), subscription: publicPrice(price.subscription) },
           attributes: publicAttributes(attributes, definitions, "variant"),
           primaryUnitIdentifier: identifier && { scheme: identifier.scheme, issuer: identifier.issuer, value: identifier.value,
-            internal: identifier.scheme !== "gs1:gtin" || !isValidGtin(identifier.value) || isInternalGtin14(identifier.value.padStart(14, "0")) },
+            internal: isInternalGtin(identifier.scheme, identifier.value) },
         };
       }),
     };

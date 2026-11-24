@@ -1024,8 +1024,7 @@
       "id": "platform-catalog",
       "when": "Platform catalogue services and publication ports",
       "paths": [
-        "packages/platform/src/catalog/**",
-        "packages/platform/src/catalog-identifiers/**"
+        "packages/platform/src/catalog/**"
       ],
       "doc": "packages/platform/README.md",
       "anchor": "#catalog"
