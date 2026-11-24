@@ -662,6 +662,20 @@ it("transfers purchase owners, lines and receipts losslessly and preserves repla
 }, 105_000);
 
 // About 4x the slowest hosted run (12,820 ms), rounded up to 5 s.
+it("keeps an absent owned relation redacted and names an existing non-table relation", async () => {
+  await source.owner.query("ALTER TABLE public.subscription_cancel_feedback RENAME TO capture_feedback_saved");
+  try {
+    await expect(capture(source.owner, "missing-owned-relation"))
+      .rejects.toMatchObject({ code: "database_unavailable", table: undefined });
+    await source.owner.query("CREATE VIEW public.subscription_cancel_feedback AS SELECT 1 AS unused");
+    await expect(capture(source.owner, "non-table-owned-relation"))
+      .rejects.toMatchObject({ code: "schema_conflict", table: "subscription_cancel_feedback" });
+  } finally {
+    await source.owner.query(`DROP VIEW IF EXISTS public.subscription_cancel_feedback;
+      ALTER TABLE public.capture_feedback_saved RENAME TO subscription_cancel_feedback`);
+  }
+});
+
 it("refuses a native capture login that row security would silently filter", async () => {
   const login = "transfer_filtered_reader";
   await source.owner.query(`CREATE ROLE ${login} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'synthetic-transfer';
