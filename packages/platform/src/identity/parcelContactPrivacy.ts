@@ -4,7 +4,7 @@ import type { PgQueryExecutor } from '../data/index.js';
 
 /** Compose with the existing identity transaction and subscriptions veto. */
 export function createFulfillmentParcelContactPrivacyContributor(): PersonalDataContributor<PgQueryExecutor> {
-  const id = 'fulfillment-parcel-contacts', version = 'fulfillment.parcel-contacts.v2';
+  const id = 'fulfillment-parcel-contacts', version = 'fulfillment.parcel-contacts.v3';
   const obligations = [{ owner: id, resource: 'fulfillment.parcel-contacts', disposition: 'erase' as const,
     reasonCode: 'PRIVATE_DELIVERY_CONTACT', remote: false },
     { owner: id, resource: 'fulfillment.order-contacts', disposition: 'erase' as const,
@@ -19,7 +19,7 @@ export function createFulfillmentParcelContactPrivacyContributor(): PersonalData
     async export(db, subject) {
       const data = subject.contactId ? (await db.query('SELECT public.fulfillment_export_parcel_contacts($1::uuid) AS data', [subject.contactId])).rows[0]?.data : [];
       return { contributorId: id, version, data: data as PrivacyJson,
-        coverage: { complete: true, included: ['private parcel contacts', 'private order contacts', 'retained correction responses', 'payload-free erasure markers'], unavailable: [] }, obligations };
+        coverage: { complete: true, included: ['private parcel contacts including destination-binding projections', 'private order contacts', 'retained correction responses', 'payload-free erasure markers'], unavailable: [] }, obligations };
     },
     async assessErasure() { return { obligations }; },
     async eraseOrRetain(db, subject, assessment) {
