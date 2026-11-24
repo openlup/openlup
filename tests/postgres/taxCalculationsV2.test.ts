@@ -10,7 +10,7 @@ import { createPostgresPrivacyStore, createPrivacyOperations, createIdentityPers
 import { commerceQuoteV2Schema, quoteDigest, type CommerceQuoteMoneyV2, type CommerceQuoteV2 } from "@openlup/platform/pricing";
 import { applyTaxCoverageRevision, beginTaxCalculation, completeTaxCalculation, evaluationDigest, localRateTable,
   makeTaxQuoteRequest, verifyTaxQuoteResult } from "@openlup/platform/tax";
-import type { TaxQuoteInputV1, TaxQuoteRequestV1 } from "@openlup/platform/tax/contracts";
+import { taxQuoteRequestV1Schema, type TaxQuoteInputV1, type TaxQuoteRequestV1 } from "@openlup/platform/tax/contracts";
 import { createPlatformPostgresMigrationRunner } from "@openlup/platform/migrations";
 import { composeNativePrivacy, nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -621,7 +621,7 @@ describe("native evaluation claim and seal", () => {
       contradiction: false, outcome: { kind: invocation.purpose, quote }, evidence } };
   }
 
-  async function exclusiveFixture(db = store) {
+  async function exclusiveFixture(db = store, extend?: (input: TaxQuoteInputV1) => TaxQuoteInputV1) {
     const value = await fixture(db);
     const { binding } = value.issued;
     const address = snapshotCommand(value.ctx).command.validated.address;
@@ -640,16 +640,16 @@ describe("native evaluation claim and seal", () => {
         declarations: [{ jurisdiction: "district-a", taxKind: "sale", status: "registered",
           actorRef: "actor-a", recordedAt: taxDate, effective }] },
     };
-    const request = makeTaxQuoteRequest("original-key", original);
+    const request = makeTaxQuoteRequest("original-key", extend ? extend(original) : original);
     const installationRef = value.ctx.owner.installationRef;
     const row = (await db.owner.query("SELECT * FROM public.tax_coverage_read_v1($1,$2)",
-      [installationRef, original.scope.accountRef])).rows[0];
+      [installationRef, request.input.scope.accountRef])).rows[0];
     const result = row ?? await applyTaxCoverageRevision(db.owner, { expectedHead: null,
-      document: { installationRef, accountRef: original.scope.accountRef, coverage: original.coverage, actorRef: "fixture" } });
+      document: { installationRef, accountRef: request.input.scope.accountRef, coverage: request.input.coverage, actorRef: "fixture" } });
     const digest = "coverageDigest" in result ? result.coverageDigest : result.coverage_digest;
     expect(digest).toMatch(/^[0-9a-f]{64}$/u);
     const claim: ClaimWithPin = { ...value.claim, recovery, pin: { ...value.claim.pin, kind: "tax_calculation",
-      request, recovery, coverage: { accountRef: original.scope.accountRef, revision: original.coverage.revision, digest } } };
+      request, recovery, coverage: { accountRef: request.input.scope.accountRef, revision: request.input.coverage.revision, digest } } };
     return { ...value, claim, request };
   }
 
@@ -679,35 +679,137 @@ describe("native evaluation claim and seal", () => {
     return { ...claim.pin, request, requestDigest: evaluationDigest("evaluation-request", fullRequest) };
   }
 
-  async function expectRawClaim(claim: ClaimInput, pin: object, refusal?: { detail: string; hint?: string }) {
-    const sql = "SELECT public.tax_calculation_begin_v1($1::jsonb) AS result", args = [{ ...claim, pin }];
+  const rawClaimSql = "SELECT public.tax_calculation_begin_v1($1::jsonb) AS result";
+
+  async function expectRawClaim(claim: ClaimInput, pin: object, refusal?: { detail: string; hint?: string }, db = store) {
+    const args = [{ ...claim, pin }];
     if (refusal) {
-      await expect(store.runtime.query(sql, args)).rejects.toMatchObject({ code: "22023", message: "tax_invalid_input", ...refusal });
+      await expect(db.runtime.query(rawClaimSql, args)).rejects.toMatchObject({ code: "22023", message: "tax_invalid_input", ...refusal });
     } else {
-      const runtime = await store.runtime.connect();
+      const runtime = await db.runtime.connect();
       try {
         await runtime.query("BEGIN");
-        expect((await runtime.query(sql, args)).rows).toMatchObject([{ result: { kind: "claimed", generation: 1 } }]);
+        expect((await runtime.query(rawClaimSql, args)).rows).toMatchObject([{ result: { kind: "claimed", generation: 1 } }]);
       } finally {
         await runtime.query("ROLLBACK");
         runtime.release();
       }
     }
-    expect((await store.owner.query("SELECT state FROM public.tax_calculations WHERE identity=$1::jsonb", [claim.identity])).rows).toEqual([]);
+    expect((await db.owner.query("SELECT state FROM public.tax_calculations WHERE identity=$1::jsonb", [claim.identity])).rows).toEqual([]);
   }
 
-  it.each(["fiscal_profile", "tax_calculation"] as const)("closes the %s pin at the SQL entry", async kind => {
-    const exclusive = kind === "tax_calculation" ? await exclusiveFixture() : undefined;
-    const { claim } = exclusive ?? await fixture();
-    let pin = rawPin(claim);
-    if (exclusive) {
-      const { request } = exclusive;
-      const { address: _address, ...destination } = request.input.destination;
-      pin = rawPin(claim, { ...request, input: { ...request.input, destination } }, request);
+  function maximalRequest(input: TaxQuoteInputV1): TaxQuoteInputV1 {
+    const { scope, money, coverage } = input;
+    const accountRef = "shape-fixture-account", bucketKey = "shipping-a";
+    const assignment = { taxClass: "standard", assignmentRef: "assignment-a" };
+    const delivery = { ...assignment, bucketKey, carrierRef: "carrier-a", serviceRef: "service-a", separatelyStated: true,
+      cost: { ref: "cost-a", currency: input.currency, amountMinor: 50 } };
+    const { target: _target, ...cell } = input.required[0]!;
+    return { ...input, scope: { ...scope, accountRef },
+      money: { ...money, delivery: [{ bucketKey, deliveryKind: "shipping", amountMinor: 50 },
+        { bucketKey: "handling-a", deliveryKind: "handling", amountMinor: 20 }],
+        adjustments: [
+          { adjustmentRef: "promo-a", sequence: 1, amountMinor: 5, target: { lineKeys: [input.lines[0]!.lineKey] } },
+          { adjustmentRef: "promo-b", sequence: 2, amountMinor: 5, target: { bucketKey } },
+        ] },
+      delivery: [delivery, { ...delivery, bucketKey: "handling-a", separatelyStated: false, cost: { ...delivery.cost, amountMinor: 20 } }],
+      required: [...input.required,
+        { ...cell, target: { kind: "delivery", key: bucketKey } },
+        { ...cell, target: { kind: "delivery", key: "handling-a" } },
+        { ...cell, target: { kind: "fee", key: "fee-a", ...assignment, deliveryKey: bucketKey } },
+      ],
+      coverage: { ...coverage, accountRef, declarations: [...coverage.declarations,
+        { jurisdiction: "district-b", taxKind: "sale", status: "not_registered_acknowledged", actorRef: "actor-b",
+          recordedAt: taxDate, effective: { from: taxDate, until: "2099-01-01T00:00:00.000Z" }, acknowledgementRef: "ack-a" },
+      ] },
+    };
+  }
+
+  it("closes every stored pin object at the restricted SQL entry", async () => {
+    const db = await resources.installation("tax-pin-shapes");
+    const { claim, request } = await exclusiveFixture(db, maximalRequest);
+    const fiscal = (await fixture(db)).claim;
+    const { address, ...destination } = request.input.destination;
+    const pin = rawPin(claim, { ...request, input: { ...request.input, destination } }, request);
+    const extra = { contactEmail: "synthetic@example.invalid", line1: "1 Example Lane" };
+    const conflict = "tax_reference_conflict /taxEvidence";
+    const paths = [
+      ["", "claimed"],
+      ["coverage", "claimed"],
+      ["destination", "destination_binding_invalid destination"],
+      ["request", "claimed"],
+      ["request.input", "claimed"],
+      ["request.input.destination", "claimed"],
+      ["request.input.scope", "claimed"],
+      ["request.input.money", "claimed"],
+      ["request.input.money.sources.0", "claimed"],
+      ["request.input.money.delivery.0", "claimed"],
+      ["request.input.money.adjustments.0", "claimed"],
+      ["request.input.money.adjustments.0.target", "claimed"],
+      ["request.input.money.adjustments.1.target", "claimed"],
+      ["request.input.lines.0", "claimed"],
+      ["request.input.delivery.0", "claimed"],
+      ["request.input.delivery.0.cost", "claimed"],
+      ["request.input.required.0", "claimed"],
+      ["request.input.required.0.target", "claimed"],
+      ["request.input.coverage", conflict],
+      ["request.input.coverage.declarations.0", conflict],
+      ["request.input.coverage.declarations.0.effective", conflict],
+    ] as const;
+    type Witness = { name: string; input: ClaimInput; pin: object; field?: string; red: string };
+    const cases: Witness[] = paths.map(([path, red]) => {
+      const candidate = structuredClone(pin);
+      const target = path ? path.split(".").reduce<Record<string, unknown>>(
+        (node, key) => node[key] as Record<string, unknown>, candidate) : candidate;
+      Object.assign(target, extra);
+      return { name: path ? "pin." + path : "pin", input: claim, pin: candidate, red };
+    });
+    const replaced = (input: object) => ({ ...request, input: { ...request.input, destination, ...input } });
+    cases.push(
+      { name: "pin.recovery object", input: claim, pin: { ...pin, recovery: extra }, red: "claimed" },
+      { name: "pin.coverage array", input: claim, pin: { ...pin, coverage: [extra] }, red: "tax_reference_conflict /coverage Recover the verified original history through its owner." },
+      { name: "pin.request.input.money.fees element", input: claim, pin: { ...pin, request: replaced({ money: { ...request.input.money, fees: [extra] } }) }, red: "claimed" },
+      { name: "pin.request.input.lines[0].sku object", input: claim, pin: { ...pin, request: replaced({ lines: [{ ...request.input.lines[0], sku: extra }] }) }, red: "claimed" },
+      { name: "pin.request.input.destination.address", input: claim, pin: { ...pin, request }, red: conflict },
+      { name: "fiscal pin.request", input: fiscal, pin: rawPin(fiscal, { ...fiscal.pin.request, ...extra }), red: "claimed" },
+    );
+    for (const witness of cases) {
+      if (witness.input !== claim) continue;
+      // The direct caller supplies the digest, so bind it to each modified request.
+      const body = (witness.pin as { request: { input: { destination: object } } }).request;
+      Object.assign(witness.pin, { requestDigest: evaluationDigest("evaluation-request",
+        { ...body, input: { ...body.input, destination: { ...body.input.destination, address } } }) });
     }
-    const extra = kind === "fiscal_profile" ? { line1: "1 Example Lane" } : { contactEmail: "synthetic@example.invalid" };
-    await expectRawClaim(claim, pin);
-    await expectRawClaim(claim, { ...pin, ...extra }, { detail: "/pin" });
+
+    const identity: Witness = { name: "identity", input: { ...claim, identity: { ...claim.identity, ...extra } },
+      pin, field: "/identity", red: "claimed" };
+    const observeMutation = async (witness: Witness) => {
+      const runtime = await db.runtime.connect();
+      try {
+        await runtime.query("BEGIN");
+        const actual = await runtime.query<{ result: { kind: string } }>(rawClaimSql, [{ ...witness.input, pin: witness.pin }])
+          .then(({ rows }) => rows[0]!.result.kind, error => [error.message, error.detail, error.hint].filter(Boolean).join(" "));
+        expect(actual, witness.name).toBe(witness.red);
+        console.info("Pin mutation", witness.name, actual);
+      } finally {
+        await runtime.query("ROLLBACK");
+        runtime.release();
+      }
+    };
+    await withFunctionMutation("public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean)",
+      sql => sql.replace("THEN '/pin'", "THEN NULL"), async () => {
+        for (const witness of cases) await observeMutation(witness);
+      }, db.owner);
+    await withFunctionMutation("public.tax_calculation_transition_v1(jsonb,boolean)",
+      sql => sql.replace(/OR identity - ARRAY[^\n]+/u, ""), () => observeMutation(identity), db.owner);
+
+    expect(taxQuoteRequestV1Schema.parse(request)).toStrictEqual(request);
+    await expectRawClaim(claim, pin, undefined, db);
+    for (const witness of [...cases, identity]) {
+      await expectRawClaim(witness.input, witness.pin, { detail: witness.field ?? "/pin", hint: invalid("/pin").remedy }, db);
+      expect((await db.owner.query("SELECT count(*)::int AS count FROM public.tax_calculations")).rows, witness.name)
+        .toStrictEqual([{ count: 0 }]);
+    }
   });
 
   it.each(["deliverySelector", "paymentSelector", "sku"] as const)("bounds %s at the SQL entry in UTF-8 bytes", async key => {

@@ -62,11 +62,65 @@ $$;
 
 CREATE FUNCTION public.tax_calculation_check_domain_v1(p_invocation jsonb, p_pin jsonb, p_seal jsonb, p_complete boolean) RETURNS text
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+  WITH RECURSIVE
+  pin AS (SELECT p_pin->'request' AS request, p_pin->>'kind'='fiscal_profile' AS fiscal),
+  -- Object keys ending in ? are optional, including keys specific to one variant.
+  -- [shape] checks every element, [] admits only an empty array, and strings name JSON types.
+  shape(value, expected) AS (
+    SELECT p_pin, '{
+      "kind":"string", "validUntil":"string", "requestDigest":"string",
+      "invocationDigest?":"string", "documentDigest?":"string",
+      "destination":{"snapshotRef":"string","destinationDigest":"string","schemaVersion":"number","policyRevision":"string"}
+    }'::jsonb || CASE WHEN fiscal THEN '{
+      "coverage":"null", "recovery":"null", "request":{"basis":"string","taxDate":"string"}
+    }'::jsonb ELSE '{
+      "coverage":{"accountRef":"string","revision":"string","digest":"string"}, "recovery":"string|null",
+      "request":{"key":"string","inputDigest":"string","input":{
+        "scope":{"adapter":"string","adapterVersion":"string","accountRef":"string","mode":"string"},
+        "market":"string","currency":"string","purpose":"string","taxDate":"string",
+        "shipFromRef":"string","policyRevision":"string","classMapRevision":"string",
+        "destination":{"snapshotRef":"string","digest":"string","policyRevision":"string"},
+        "money":{
+          "amountBasis":"string","fees":[],
+          "sources":[{"lineKey":"string","sourceOrdinal":"number","quantity":"number","unitBasisMinor":"number"}],
+          "delivery":[{"bucketKey":"string","deliveryKind":"string","amountMinor":"number"}],
+          "adjustments":[{"adjustmentRef":"string","sequence":"number","amountMinor":"number",
+            "target":{"lineKeys?":["string"],"bucketKey?":"string"}}]
+        },
+        "lines":[{"taxClass":"string","assignmentRef":"string","lineKey":"string","sku":"string","mode":"string"}],
+        "delivery":[{"taxClass":"string","assignmentRef":"string","bucketKey":"string","carrierRef":"string",
+          "serviceRef":"string","separatelyStated":"boolean","cost":{"ref":"string","currency":"string","amountMinor":"number"}}],
+        "required":[{"target":{"kind":"string","key":"string","taxClass?":"string","assignmentRef?":"string","deliveryKey?":"string"},
+          "jurisdiction":"string","level":"string","taxKind":"string","sourcing":"string"}],
+        "coverage":{"schemaVersion":"number","accountRef":"string","revision":"string","declarations":[
+          {"jurisdiction":"string","taxKind":"string","status":"string","actorRef":"string","recordedAt":"string",
+            "acknowledgementRef?":"string","effective":{"from":"string","until?":"string"}}]}
+      }}
+    }'::jsonb END FROM pin
+    UNION ALL
+    SELECT child.value, child.expected
+    FROM shape
+    CROSS JOIN LATERAL (
+      SELECT member.value, CASE WHEN right(member.key,1) <> '?' THEN
+        coalesce(shape.expected->member.key,shape.expected->(member.key || '?')) END AS expected
+      FROM jsonb_each(CASE WHEN jsonb_typeof(shape.value) = 'object' THEN shape.value ELSE '{}'::jsonb END) member
+      UNION ALL
+      SELECT item.value, shape.expected->0
+      FROM jsonb_array_elements(CASE WHEN jsonb_typeof(shape.value) = 'array' THEN shape.value ELSE '[]'::jsonb END) item
+    ) child
+    WHERE jsonb_typeof(shape.expected) IN ('object','array')
+  )
   SELECT CASE
     WHEN NOT coalesce(p_pin->>'kind' IN ('fiscal_profile','tax_calculation'), false)
-      OR p_pin - ARRAY['destination','kind','request','coverage','validUntil','recovery','requestDigest','invocationDigest','documentDigest'] <> '{}'::jsonb
-      OR (CASE WHEN fiscal THEN request IS DISTINCT FROM jsonb_build_object('basis','inclusive','taxDate',request->'taxDate')
-        ELSE jsonb_path_exists(request, '$.**.address') OR jsonb_path_exists(request, '$.**.contact') END) THEN '/pin'
+      OR EXISTS (SELECT FROM shape WHERE (CASE jsonb_typeof(expected)
+        WHEN 'object' THEN jsonb_typeof(value) = 'object' AND value ?& ARRAY(
+          SELECT key FROM jsonb_object_keys(expected) key WHERE right(key,1) <> '?')
+        WHEN 'array' THEN jsonb_typeof(value) = 'array'
+        WHEN 'string' THEN jsonb_typeof(value) = ANY(string_to_array(expected #>> '{}','|'))
+      END) IS DISTINCT FROM true)
+      OR (fiscal AND request->>'basis' IS DISTINCT FROM 'inclusive')
+      OR (p_pin->'recovery' IS DISTINCT FROM 'null'::jsonb
+        AND NOT coalesce(p_pin->>'recovery' COLLATE "C" ~ '^[0-9a-f]{64}$',false)) THEN '/pin'
     WHEN char_length(p_pin#>>'{destination,policyRevision}') > 256 THEN '/pin/destination/policyRevision'
     WHEN jsonb_typeof(p_invocation->'lines') IS DISTINCT FROM 'array' THEN '/invocation/lines'
     ELSE coalesce(
@@ -87,7 +141,7 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
         THEN to_char(instant::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')=instant END) IS DISTINCT FROM true
       ORDER BY path LIMIT 1))
   END
-  FROM (SELECT p_pin->'request' AS request, p_pin->>'kind'='fiscal_profile' AS fiscal) pin;
+  FROM pin;
 $$;
 
 CREATE FUNCTION public.tax_calculation_transition_v1(p_request jsonb, p_complete boolean) RETURNS jsonb
@@ -132,7 +186,7 @@ BEGIN
     OR NOT coalesce(jsonb_typeof(identity->'installationRef')='string' AND octet_length(installation) BETWEEN 1 AND 200
       AND jsonb_typeof(identity->'evaluationKey')='string'
       AND length(identity->>'evaluationKey') + regexp_count(identity->>'evaluationKey',U&'[\+010000-\+10FFFF]') BETWEEN 1 AND 256,false) THEN
-    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/identity';
+    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/identity', HINT='Supply the documented input.';
   END IF;
   FOREACH field IN ARRAY ARRAY['clientId','principalRef','scopeRef'] LOOP
     IF NOT coalesce(jsonb_typeof(identity->field)='string'
@@ -208,13 +262,13 @@ BEGIN
   IF field = '/pin/destination/policyRevision' THEN
     RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field, HINT='Obtain a supported revision from the destination owner.';
   END IF;
+  IF field = '/pin' THEN
+    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field, HINT='Supply the documented input.';
+  END IF;
   IF field IS NOT NULL THEN RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field; END IF;
   destination := pinned->'destination';
   pinned_coverage := pinned->'coverage';
-  IF (pinned->>'kind' = 'tax_calculation') IS DISTINCT FROM (jsonb_typeof(pinned_coverage) = 'object')
-    OR NOT coalesce(pinned->>'requestDigest' COLLATE "C" ~ '^[0-9a-f]{64}$',false)
-    OR (pinned->'recovery' IS DISTINCT FROM 'null'::jsonb AND (
-      pinned->>'kind' <> 'tax_calculation' OR NOT coalesce(pinned->>'recovery' COLLATE "C" ~ '^[0-9a-f]{64}$',false))) THEN
+  IF NOT coalesce(pinned->>'requestDigest' COLLATE "C" ~ '^[0-9a-f]{64}$',false) THEN
     RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/pin';
   END IF;
   cutoff := (pinned->>'validUntil')::timestamptz;
