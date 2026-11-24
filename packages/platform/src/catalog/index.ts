@@ -53,6 +53,7 @@ export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
 export { CatalogDefinitionInstallError, catalogPackInstallIssues, installCatalogDefinitions } from "./installCatalogDefinitions.js";
+export { catalogInternalGtin } from "./internalGtin.js";
 export { readInstalledCatalogSubscriptionProfile } from "./installedSubscriptionProfiles.js";
 export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } from "./catalogDefinitionReadiness.js";
 export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
@@ -76,6 +77,8 @@ export type { CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 export { createCatalogDraftHandlerV2 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
 
+export { buildCatalogReleaseDraftV3, CatalogReleaseDraftError, catalogProductInputSchema,
+  type CatalogProductInput, type CatalogProductSkuInput } from "./releaseDraftBuilder.js";
 export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, catalogDraftPublicationOperationV3Schema,
   catalogDraftPublicationInputsV3Schema, catalogDraftPayloadV3Schema, catalogDraftCommandV3Schema,
   catalogDraftPublicationStoredPayloadSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema,

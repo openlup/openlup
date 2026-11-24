@@ -4241,6 +4241,7 @@ export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
 export { CatalogDefinitionInstallError, catalogPackInstallIssues, installCatalogDefinitions } from "./installCatalogDefinitions.js";
+export { catalogInternalGtin } from "./internalGtin.js";
 export { readInstalledCatalogSubscriptionProfile } from "./installedSubscriptionProfiles.js";
 export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } from "./catalogDefinitionReadiness.js";
 export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
@@ -4262,6 +4263,7 @@ export { createCatalogCandidateServiceWithPublication } from "./candidateService
 export type { CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 export { createCatalogDraftHandlerV2 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
+export { buildCatalogReleaseDraftV3, CatalogReleaseDraftError, catalogProductInputSchema, type CatalogProductInput, type CatalogProductSkuInput } from "./releaseDraftBuilder.js";
 export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, catalogDraftPublicationOperationV3Schema, catalogDraftPublicationInputsV3Schema, catalogDraftPayloadV3Schema, catalogDraftCommandV3Schema, catalogDraftPublicationStoredPayloadSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema, catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
 export { catalogDraftPayloadV4Schema, catalogDraftCommandV4Schema, type CatalogDraftCommandV4, type CatalogLifecycleDraftPage } from "./lifecycleDraftSchemas.js";
 export type { CatalogDraftPayloadV4, PublicationDraftRecord } from "./publicationIntent.js";
@@ -4307,6 +4309,16 @@ import type { PgQueryExecutor } from "../data/index.js";
  * @experimental
  */
 export declare function readInstalledCatalogSubscriptionProfile(readExecutor: PgQueryExecutor, ref: CatalogSubscriptionProfileRef): Promise<InstalledCatalogSubscriptionProfile | null>;
+```
+## dist/catalog/internalGtin.d.ts
+
+```ts
+/**
+ * Assigns a restricted-circulation number for use within one store. Choose a
+ * sequence unused in that store and keep the result out of external GTIN fields.
+ * @experimental
+ */
+export declare function catalogInternalGtin(sequence: number): string;
 ```
 ## dist/catalog/lifecycleDraftSchemas.d.ts
 
@@ -5440,6 +5452,82 @@ export declare function createReferenceCatalogItemsHandler({ catalogPort, respon
     catalogPort: SellableCatalogPort;
     responder: BffResponder;
 }): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/catalog/releaseDraftBuilder.d.ts
+
+```ts
+import type { CatalogAttributeValue } from "./contracts/draftV2.js";
+import type { CatalogDraftPayloadV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
+import type { CatalogOptionValue, CatalogProductTypeRef, CatalogQuantity } from "./contracts/productTypes.js";
+import { z } from "./validation.js";
+/** SKU description and sales modes.
+ * @experimental
+ */
+export interface CatalogProductSkuInput {
+    code: string;
+    title: string;
+    options: Readonly<Record<string, CatalogOptionValue>>;
+    netContent: CatalogQuantity;
+    identifiers: readonly {
+        scheme: string;
+        issuer: string;
+        value: string;
+        packagingLevel: "unit" | "case";
+        quantity?: number;
+        isPrimary?: boolean;
+        label?: string | null;
+    }[];
+    sell: {
+        oneTime: boolean;
+        subscription: boolean;
+    };
+    primary?: boolean;
+    grossMass?: CatalogQuantity;
+    attributes?: Readonly<Record<string, CatalogAttributeValue>>;
+    facts?: CatalogPublicationFacts;
+    minQuantity?: number;
+    isAddon?: boolean;
+    offerVersions?: readonly string[];
+    logisticsRef?: string | null;
+}
+/** Product input with an installed type.
+ * @experimental
+ */
+export interface CatalogProductInput {
+    namespace: string;
+    type: CatalogProductTypeRef;
+    slug: string;
+    name: string;
+    presentation: CatalogPublicationFacts;
+    skus: readonly CatalogProductSkuInput[];
+    document?: CatalogPublicationFacts;
+    attributes?: Readonly<Record<string, CatalogAttributeValue>>;
+}
+/** Checks the product input shape.
+ * @experimental
+ */
+export declare const catalogProductInputSchema: z.ZodType<CatalogProductInput>;
+/** Refusal with an input path and fix.
+ * @experimental
+ */
+export declare class CatalogReleaseDraftError extends Error {
+    readonly path: string;
+    readonly code = "release_draft_invalid";
+    constructor(path: string, message: string);
+}
+/** Builds a draft release and fixed activation.
+ * @experimental
+ */
+export declare function buildCatalogReleaseDraftV3(input: CatalogProductInput): {
+    release: {
+        payload: CatalogDraftPayloadV3;
+        digest: string;
+    };
+    activation: {
+        payload: CatalogDraftPayloadV3;
+        digest: string;
+    };
+};
 ```
 ## dist/catalog/resolvedSkuProjection.d.ts
 

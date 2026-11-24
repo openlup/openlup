@@ -1,4 +1,5 @@
 import type { OrganizationFacts } from "../contracts/contactLegal.js";
+import { isRestrictedCirculationNumber } from "./restrictedCirculationNumber.js";
 
 export type JsonLdNode = Record<string, unknown> & { "@context"?: string; "@id"?: string };
 
@@ -117,7 +118,7 @@ export function productLd(origin: string, product: ProductFacts) {
     ...(product.category !== undefined ? { category: product.category } : {}),
     image: product.images,
     ...(product.sku !== undefined ? { sku: product.sku } : {}),
-    ...(product.gtin13 !== undefined ? { gtin13: product.gtin13 } : {}),
+    ...(product.gtin13 !== undefined && !isRestrictedCirculationNumber(product.gtin13) ? { gtin13: product.gtin13 } : {}),
     ...(product.netContent ? { weight: schemaWeight(product.netContent) } : {}),
     url: product.url,
   };

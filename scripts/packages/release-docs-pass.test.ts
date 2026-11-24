@@ -124,10 +124,17 @@ describe("upgrade page assembly", () => {
     const result = assembleUpgradePage({ root: f.root, version, since: previousCoreTag(f.root), fragments: [] });
     expect(result.text).toContain(`# Upgrading to ${version}\n`); expect(result.violations).toEqual([]);
   });
-  it("uses publishable fragments in bump order, and includes added and removed exports with exempt fences", () => {
+  it("uses publishable fragments in bump order, summarizes additions, and lists removed and changed exports", () => {
     const f = fixture();
     f.write("packages/core/docs/guide/upgrade/README.md", "# Upgrade procedure\n");
-    f.write(api, report("// Updated comment\nexport declare const nextName: string;\nexport declare const kept: string;\n")); f.commit();
+    f.write(api, report([
+      "// Updated comment",
+      "export declare const nextName: string;",
+      "export type NextValue = number;",
+      "export declare function createValue(): NextValue;",
+      "export declare const kept: number;",
+      "",
+    ].join("\n"))); f.commit();
     const fragments = [
       { path: "packages/outbox/changes/one.md", contents: "- Outbox body.\n" },
       { path: "packages/core/changes/z-last.md", contents: "- Last body.\n" },
@@ -139,9 +146,15 @@ describe("upgrade page assembly", () => {
     expect(result.text).toContain("# Upgrading to 0.5.0\n"); expect(result.text).toContain("[upgrade procedure](README.md)");
     expect(result.text.indexOf("## @openlup/core")).toBeLessThan(result.text.indexOf("## @openlup/outbox"));
     expect(result.text.indexOf("First body.")).toBeLessThan(result.text.indexOf("Last body.")); expect(result.text).not.toContain("Private body.");
-    expect(result.text).toContain("Added declarations:\n\n```ts nocheck\n// API report diff: not compiled.\nexport declare const nextName: string;\n```");
-    expect(result.text).toContain("Removed declarations:\n\n```ts nocheck\n// API report diff: not compiled.\nexport declare const oldName: string;\n```");
-    expect(result.text).not.toContain("export declare const kept"); expect(result.text).not.toContain("Updated comment");
+    expect(result.text.slice(result.text.indexOf("## API changes"))).toBe([
+      "## API changes",
+      `### \`${api}\``,
+      `Added declarations: 3; see \`${api}\`.`,
+      "Removed declarations:",
+      "```ts nocheck\n// API report diff: not compiled.\nexport declare const oldName: string;\n```",
+      "Changed declarations:",
+      "```ts nocheck\n// API report diff: not compiled.\nexport declare const kept: number;\n```\n",
+    ].join("\n\n"));
     expect(validateGuidePage(upgradePagePath("0.5.0"), result.text, "100644")).toBe(result.text);
     expect(f.git("status", "--porcelain")).toBe("");
   });
@@ -156,9 +169,11 @@ describe("upgrade page assembly", () => {
   });
 
   it("reports both deleted and newly added API reports", () => {
-    const f = fixture(); f.git("rm", api); f.write("packages/outbox/api/outbox.api.md", report("export declare const send: () => void;\n")); f.commit();
+    const outbox = "packages/outbox/api/outbox.api.md";
+    const f = fixture(); f.git("rm", api); f.write(outbox, report("export declare const send: () => void;\n")); f.commit();
     const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: "openlup-core-v0.4.0", fragments: [] });
-    expect(text).toContain(`### \`${api}\``); expect(text).toContain("export declare const oldName"); expect(text).toContain("export declare const send");
+    expect(text).toContain(`### \`${api}\``); expect(text).toContain("export declare const oldName");
+    expect(text).toContain(`### \`${outbox}\`\n\nAdded declarations: 1; see \`${outbox}\`.`);
   });
 
   const overload = (type: string) => `export declare function moved(\n    value: ${type},\n): void;`;
@@ -209,8 +224,8 @@ describe("upgrade page assembly", () => {
     if (rename) f.git("mv", peer, "packages/core/api/renamed.api.md"); else f.write(peer, declaration);
     f.commit();
     const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
-    expect(text).toContain(rename ? emptyDeclarations : `### \`${peer}\`\n\nAdded declarations:`);
-    expect(text.includes("export declare const shared: string;")).toBe(!rename);
+    expect(text).toContain(rename ? emptyDeclarations : `### \`${peer}\`\n\nAdded declarations: 1; see \`${peer}\`.`);
+    expect(text).not.toContain("export declare const shared: string;");
   });
 
   it("reads all declaration files when report titles repeat", () => {
@@ -266,7 +281,7 @@ describe("upgrade page assembly", () => {
     );
   });
 
-  it("refuses indistinguishable rows after showing complete declaration blocks", () => {
+  it("refuses indistinguishable added rows before reporting their count", () => {
     const f = fixture({ [api]: report("") });
     f.write(api, declarationFile("shared", "export interface Item { value: string; }\n".repeat(2))); f.commit();
     expect(() => assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] })).toThrow(
@@ -433,6 +448,18 @@ describe("shift-left simulated upgrade-page audit", () => {
     );
   });
 
+  it("admits an exact addition summary for an approved adapter report", () => {
+    const f = fixture();
+    const adapterReport = `packages/platform/api/tax-${providerName}.api.md`;
+    const summary = `Added declarations: 1; see \`${adapterReport}\`.`;
+    f.write(adapterReport, report("export declare const factory: unknown;\n"));
+    f.commit();
+
+    const audit = assertSimulatedUpgradePage(f.root)!;
+    expect(audit.text).toContain(summary);
+    expect(() => assertReleaseNotePackagedContent(audit.path, `See \`${adapterReport}\`.`)).toThrow(/downstream provider dependency/u);
+  });
+
   it("refuses forbidden packaged content in fragments and API diffs with section attribution and concrete remedy", () => {
     expect(() => assertReleaseNotePackagedContent("packages/core/changes/ok.md", `- Uses ${allowlistedSubpath}.\n`)).not.toThrow();
     expect(() => assertReleaseNotePackagedContent("packages/core/changes/bad.md", `- Mentions bare ${providerName}.\n`)).toThrow(
@@ -451,7 +478,7 @@ describe("shift-left simulated upgrade-page audit", () => {
     expect(fragmentError).toContain("Fix: wrap approved adapter subpaths in inline code");
 
     f.git("rm", "packages/core/changes/leak.md");
-    f.write(api, report(`export declare const bad: "${providerName}";\nexport declare const kept: string;\n`));
+    f.write(api, report(`export declare const kept: "${providerName}";\n`));
     f.commit();
     let apiError = "";
     try { assertSimulatedUpgradePage(f.root); } catch (error) { apiError = (error as Error).message; }

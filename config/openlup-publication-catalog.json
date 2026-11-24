@@ -1846,6 +1846,14 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/migrations/compatible-data-transfer.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/migrations/module-catalogues-and-histories.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/agent-context-adaptive-routing.md",
       "class": "public-output"
     },
@@ -5970,6 +5978,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/internalGtin.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/lifecycleDraftSchemas.ts",
       "class": "public-output"
     },
@@ -6043,6 +6055,10 @@
     },
     {
       "path": "packages/platform/src/catalog/referenceCatalogHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/releaseDraftBuilder.ts",
       "class": "public-output"
     },
     {
@@ -8762,6 +8778,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/seo/restrictedCirculationNumber.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/seo/serializeJsonLd.ts",
       "class": "public-output"
     },
@@ -10650,11 +10670,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/catalog/internalGtin.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/catalog/postgresPublicationDiscovery.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/catalog/referenceCatalogHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/releaseDraftBuilder.test.ts",
       "class": "public-output"
     },
     {
@@ -12027,6 +12055,10 @@
     },
     {
       "path": "packages/platform/test/marketing/seo/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/seo/jsonLd.test.ts",
       "class": "public-output"
     },
     {

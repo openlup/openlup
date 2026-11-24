@@ -16,6 +16,7 @@ import type { CatalogProductTypeInput } from "../../src/catalog/contracts/produc
 import { CatalogDefinitionInstallError, installCatalogDefinitions } from "../../src/catalog/installCatalogDefinitions.js";
 import { catalogPackManifest } from "../../src/catalog/catalogPackManifest.js";
 import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
+import { catalogInternalGtin } from "../../src/catalog/internalGtin.js";
 import { assertCatalogPublicationGrossMass, assertCatalogPublicationPreparation, catalogPublicationClaim, compileCatalogPublication } from "../../src/catalog/publicationValidation.js";
 import type { PublicationDraftRecord, PublicationIntent } from "../../src/catalog/publicationIntent.js";
 import { compileCatalogPublicationDraft } from "../../src/catalog/publicationDraft.js";
@@ -1447,6 +1448,51 @@ it("explains how to order primary SKU selection before activation", async () => 
     diagnostic: { path: `publication.operations.${activation}` },
     message: "Set the document and the primary SKU before activation. Select a primary SKU or move set_primary_sku before set_product_status.",
   });
+});
+
+it("missing_unit_trade_identifier_fix_names_the_internal_number_helper", async () => {
+  const data = input();
+  data.payload.skus[0]!.identifiers = [];
+  const preview = await facade(data).prepareCandidate({
+    draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null,
+  });
+  expect(preview.preparation?.structural.issues).toContainEqual({
+    code: "unit_trade_identifier_missing", path: "skus.0.identifiers", phase: "structural", subject: "ARTICLE",
+    message: "Add a valid unit trade identifier to the SKU, then prepare the draft again. For a product without a GS1 barcode, mint one with catalogInternalGtin.",
+  });
+});
+
+it("full_identifier_list_replaces_record_and_operation", async () => {
+  const data = input();
+  const identifiers = data.payload.skus[0]!.identifiers!;
+  const operations = data.payload.publication.operations;
+  const primary = operations.find(operation => operation.op === "create_identifier" && operation.isPrimary)!;
+  const primaryIndex = operations.indexOf(primary);
+  const secondary = Array.from({ length: 31 }, (_, sequence) => ({
+    scheme: "gs1:gtin", issuer: "example:internal", value: catalogInternalGtin(sequence), packagingLevel: "unit",
+  } as const));
+  identifiers.push(...secondary);
+  operations.splice(primaryIndex + 1, 0, ...secondary.map(identifier => ({ ...primary, ...identifier, isPrimary: false })));
+
+  const service = facade(data);
+  const query = { draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: data.expectedHead };
+  const prepare = async () => (await service.prepareCandidate(query)).preparation?.structural;
+  await expect(prepare()).resolves.toEqual({ outcome: "staged", issues: [] });
+
+  const replacement = {
+    scheme: "gs1:gtin", issuer: "example:internal", value: catalogInternalGtin(31), packagingLevel: "unit",
+  } as const;
+  identifiers[0] = replacement;
+  await expect(prepare()).resolves.toMatchObject({
+    outcome: "blocked-input",
+    issues: expect.arrayContaining([expect.objectContaining({
+      code: "catalog_publication_identifier_source_mismatch", path: `publication.operations.${primaryIndex}`,
+    })]),
+  });
+
+  operations[primaryIndex] = { ...primary, ...replacement };
+  await expect(prepare()).resolves.toEqual({ outcome: "staged", issues: [] });
+  expect(identifiers).toHaveLength(32);
 });
 
 it("mass_required_fix_names_whole_grams", async () => {

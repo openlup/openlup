@@ -145,7 +145,7 @@
       "kind": "cap",
       "runtime": {
         "level": "read-only",
-        "reason": "Native catalogue identities require a GTIN."
+        "reason": "Native catalogue identities require a unit trade identifier. For a SKU without a globally assigned GTIN, see the internal number recipe in Products and trade items."
       },
       "change": {
         "reference": "docs/guide/concepts/catalogue-and-prices.md#products-and-trade-items"

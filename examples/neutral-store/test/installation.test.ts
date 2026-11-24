@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { buildCatalogReleaseDraftV3 } from '@openlup/platform/catalog';
 import { configurations } from '../owned/store.config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { editorProducts, readStarterCatalogueRules, starterCatalogue } from '../host/editor-catalogue.ts';
@@ -173,6 +174,46 @@ test('local rules run before installation and derive an immutable product type o
   assert.equal(first.validatorRef, `sha256:${createHash('sha256').update(bytes).digest('hex')}`);
   assert.ok(first.version > 1);
   assert.notEqual((await installed(Buffer.concat([bytes, Buffer.from('// Changed rules asset')]))).version, first.version);
+});
+
+test('operator_example_uses_builder', async context => {
+  const bytes = readStarterCatalogueRules();
+  if (!bytes) return context.skip('This starter has kept its existing draft validator.');
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  await mkdir(resolve(root, '.context'), { recursive: true });
+  const directory = await mkdtemp(resolve(root, '.context/operator-example-'));
+  try {
+    for (const path of ['host', 'shared', 'owned']) await cp(resolve(root, path), resolve(directory, path), { recursive: true });
+    const moduleUrl = pathToFileURL(resolve(directory, 'host/operator-composition.ts')).href;
+    const { composeOperatorCapabilities }: typeof import('../host/operator-composition.ts') = await import(moduleUrl);
+    const config = Object.values(configurations)[0]!;
+    const request = { commandKey: 'example', config, actor: { operatorRef: 'operator', customerRef: null } };
+    const fixture = installation();
+    fixture.binding.catalogueRules = bytes;
+    fixture.binding.catalogueBuildDirectory = resolve(directory, '.context/catalogue-builds');
+    const version = starterCatalogue(fixture.binding.catalogueBuildDirectory).current!.version;
+    async function example() {
+      const composed = composeOperatorCapabilities({
+        executor: { async query() { throw new Error('The example must not query the database'); } },
+        connectionString: 'postgresql://localhost/example',
+      });
+      try { return await composed.actions['operator.catalogDrafts']!({ action: 'example' }, request); }
+      finally { await composed.close?.(); }
+    }
+    assert.deepEqual(await example(), { ok: false, code: 'starter_catalogue_rules_required', issues: [
+      { path: 'product.type', code: 'type_not_installed', message: `rules version ${version} is not installed; run ./lifecycle up` },
+    ] });
+    await installDemonstration(config, async () => fixture.binding);
+    const installed = starterCatalogue(fixture.binding.catalogueBuildDirectory).readInstalled({ key: 'starter:item', version })!.type;
+    const title = 'Fictional item';
+    const { release } = buildCatalogReleaseDraftV3({ namespace: 'starter', type: { key: installed.key, version: installed.version },
+      slug: 'fictional-item', name: title, presentation: { title }, skus: [
+        { code: 'STARTER-EXAMPLE', title, options: {}, netContent: { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 },
+          identifiers: [{ scheme: 'gs1:gtin', issuer: 'starter:example', value: '5901234123457', packagingLevel: 'unit' }],
+          sell: { oneTime: true, subscription: false } },
+      ] });
+    assert.deepEqual(await example(), { ok: true, value: release.payload });
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test('a retained build conflict rolls back definition installation before commit', async context => {
