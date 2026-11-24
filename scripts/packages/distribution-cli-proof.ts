@@ -443,7 +443,7 @@ export function proveInstalledCatalogueUpgrade(app: string) {
       }
     }
     if (lockRemapped) writeFileSync(lockfile, JSON.stringify(lock) + "\n");
-    execFileSync("npx", ["--no", "--", "playwright", "install", "chromium"], options);
+    execFileSync(process.execPath, [realpathSync(join(app, "node_modules/.bin/playwright")), "install", "chromium"], options);
     const result = execFileSync(process.execPath, ["--test", "--test-reporter=spec", "--test-name-pattern=^up_json_installed_starter_recipe$", "test/lifecycle.test.ts"], options);
     assert.match(result, /✔ up_json_installed_starter_recipe/u);
   } finally {
