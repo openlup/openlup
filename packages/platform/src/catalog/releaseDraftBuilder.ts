@@ -75,37 +75,51 @@ export const catalogProductInputSchema: z.ZodType<CatalogProductInput> = z.stric
   for (const [index, sku] of skus.entries()) {
     for (const key of Object.keys(sku.options)) dimensions.add(key);
     if (dimensions.size <= 16) continue;
-    context.addIssue({ code: "custom", path: ["skus", index, "options"], message: fixes.dimensions });
+    context.addIssue({ code: "custom", path: ["skus", index, "options"], message: fixes.dimensions.fix });
     return;
   }
 });
 
-const fixes = {
-  version: "Set type.version to the installed version of the product type.",
-  primarySku: "Mark exactly one SKU with primary: true.",
-  missingGtin: "Add a valid unit GS1 GTIN for this SKU. If the product has no GS1 barcode, mint one with catalogInternalGtin using an unused store-local sequence.",
-  primaryGtin: "Set isPrimary to true on one valid unit GS1 GTIN and clear it on all other identifiers of this SKU.",
-  quantity: "Use quantity 1 for a unit identifier and supply the actual case quantity from 2 to 999999 for a case identifier.",
-  gtin: "Enter a valid GTIN for this identifier.",
-  duplicateGtin: "Remove the duplicate record or supply a distinct valid GTIN. Leading zeros and issuer changes do not distinguish GTINs.",
-  mode: "Enable sell.oneTime, sell.subscription or both for this SKU.",
-  code: "Give each SKU of the product a distinct code.",
-  offer: "List exactly one offer version in offerVersions for this SKU, or omit offerVersions to use classic.",
-  reference: "Shorten namespace or slug until every generated document reference is at most 240 characters.",
-  bytes: "Shorten optional product data or reduce the number of SKUs until each draft is at most 1048576 bytes.",
-  depth: "Reduce nesting in the named content until the generated draft fits the depth limit of 48.",
-  json: "Use plain JSON data in the named field and remove unsupported keys or values.",
-  shape: "Correct the field named by path to match catalogProductInputSchema.",
-  dimensions: "Use at most 16 distinct option keys across the product's SKUs.",
-  optionKey: "Rename this option to a valid key, such as pack_size, or remove it.",
-  omittedKey: "Review the keys and values in the named object. Remove or rename an unsupported key, or correct its value to match catalogProductInputSchema.",
-};
+const releaseDraftRefusal = {
+  code: "release_draft_invalid",
+  cause: "The product description does not produce a valid schema version 3 draft.",
+  fixes: {
+    version: { when: "type.version is absent", fix: "Set type.version to the installed version of the product type." },
+    primarySku: { when: "Several SKUs are supplied and either no SKU or multiple SKUs are marked primary", fix: "Mark exactly one SKU with primary: true." },
+    missingGtin: { when: "The refusal points to skus.N.identifiers and the SKU has no unit GS1 GTIN after its supplied identifier records pass validation.", fix: "Add a valid unit GS1 GTIN for this SKU. If the product has no GS1 barcode, mint one with catalogInternalGtin using an unused store-local sequence." },
+    primaryGtin: { when: "The SKU has multiple valid unit GS1 GTINs and none is marked primary, or isPrimary marks multiple identifiers or an identifier other than a unit GS1 GTIN", fix: "Set isPrimary to true on one valid unit GS1 GTIN and clear it on all other identifiers of this SKU." },
+    quantity: { when: "The named identifier quantity is invalid, or a case identifier has no quantity", fix: "Use quantity 1 for a unit identifier and supply the actual case quantity from 2 to 999999 for a case identifier." },
+    gtin: { when: "The refusal points to skus.N.identifiers.M.value and the named GS1 identifier has a supported plain JSON string value that fails GTIN format or checksum validation.", fix: "Enter a valid GTIN for this identifier." },
+    duplicateGtin: { when: "The named GTIN repeats a GTIN elsewhere in the input after zero-padding to 14 digits", fix: "Remove the duplicate record or supply a distinct valid GTIN. Leading zeros and issuer changes do not distinguish GTINs." },
+    mode: { when: "The named SKU has both sell modes disabled", fix: "Enable sell.oneTime, sell.subscription or both for this SKU." },
+    code: { when: "The named SKU code repeats a code used by another SKU in the product", fix: "Give each SKU of the product a distinct code." },
+    offer: { when: "The named offerVersions array has zero or multiple entries", fix: "List exactly one offer version in offerVersions for this SKU, or omit offerVersions to use classic." },
+    reference: { when: "A generated schemaId or sourceRef exceeds 240 characters and the refusal points to namespace, or a generated documentRef exceeds 240 characters and the refusal points to slug.", fix: "Shorten namespace or slug until every generated document reference is at most 240 characters." },
+    bytes: { when: "The generated draft or canonical document exceeds 1048576 UTF-8 bytes", fix: "Shorten optional product data or reduce the number of SKUs until each draft is at most 1048576 bytes." },
+    depth: { when: "The named document or draft contains content nested beyond the allowed depth", fix: "Reduce nesting in the named content until the generated draft fits the depth limit of 48." },
+    json: { when: "The named field contains a value or key that cannot be represented as supported plain JSON data", fix: "Use plain JSON data in the named field and remove unsupported keys or values." },
+    shape: { fix: "Correct the field named by path to match catalogProductInputSchema." },
+    dimensions: { when: "The union of option keys across the product SKUs exceeds 16", fix: "Use at most 16 distinct option keys across the product's SKUs." },
+    optionKey: { when: "The named SKU option key does not match the option-key grammar", fix: "Rename this option to a valid key, such as pack_size, or remove it." },
+    omittedKey: { when: "Observed says omitted key and identifies the containing object", fix: "Review the keys and values in the named object. Remove or rename an unsupported key, or correct its value to match catalogProductInputSchema." },
+  },
+} as const;
+
+const fixes = releaseDraftRefusal.fixes;
+
+/** @internal */
+export function describeReleaseDraftRefusal(): {
+  code: CatalogReleaseDraftError["code"]; cause: string; fix: string; fixVariants: readonly { when: string; fix: string }[];
+} {
+  const { code, cause, fixes: { shape, ...variants } } = releaseDraftRefusal;
+  return { code, cause, fix: shape.fix, fixVariants: Object.values(variants) };
+}
 
 /** Refusal with an input path and fix.
  * @experimental
  */
 export class CatalogReleaseDraftError extends Error {
-  readonly code = "release_draft_invalid";
+  readonly code = "release_draft_invalid" satisfies typeof releaseDraftRefusal.code;
   constructor(readonly path: string, message: string) {
     super(message);
     this.name = "CatalogReleaseDraftError";
@@ -118,8 +132,8 @@ function refuse(path: string, fix: keyof typeof fixes, value: unknown, omittedKe
   const kind = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
   throw new CatalogReleaseDraftError(path, [
     `Observed: ${path} (${kind} [redacted]${omittedKey ? `, omitted key: ${omittedKey}` : ""}).`,
-    "Cause: The product description does not produce a valid schema version 3 draft.",
-    `Fix: ${fixes[fix]}`,
+    `Cause: ${releaseDraftRefusal.cause}`,
+    `Fix: ${fixes[fix].fix}`,
     "Recheck: Call buildCatalogReleaseDraftV3 again with the corrected description.",
   ].join("\n"));
 }
@@ -188,7 +202,7 @@ function parseProduct(input: unknown): CatalogProductInput {
     const { path, omittedKey } = inputPath(fields);
     const value = sourceValue(input, fields);
     if (omittedKey) refuse(path, "omittedKey", value, omittedKey);
-    if (issue.code === "custom" && issue.message === fixes.dimensions) refuse(path, "dimensions", value);
+    if (issue.code === "custom" && issue.message === fixes.dimensions.fix) refuse(path, "dimensions", value);
     if (issue.code === "invalid_key" && fields.length === 4 && fields[0] === "skus" && fields[2] === "options")
       refuse(path, "optionKey", value);
     if (path === "type.version" && value === undefined) refuse(path, "version", value);

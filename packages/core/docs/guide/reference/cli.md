@@ -10,6 +10,7 @@ Find command syntax and help for the installed tools.
 ```text
 openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SNAPSHOT.json --schema-version N [--json]
 openlup verify [--app ./application-observations.mjs] [--json]
+openlup catalogue schema [--json]
 openlup catalogue check --packs ./owned/catalogue.json [--json]
 openlup catalogue project --trusted-packs ./owned/catalogue.ts [--json]
 openlup settings list|show|preview|explain [--help] [--json] (experimental)

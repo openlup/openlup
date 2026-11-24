@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Pool } from "pg";
-import { createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createPrivacyOperations, createPostgresCustomerChallengeStore } from "@openlup/platform/identity";
+import { createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createPrivacyOperations, createTaxCalculationPrivacyContributor, createPostgresCustomerChallengeStore } from "@openlup/platform/identity";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { captureOrderReviewMediaFilesystem, reconcileOrderReviewMediaFilesystem } from "../../server/adapters/filesystem/orderReviewMediaTransferInventory.js";
 import { createOrderReviewMediaTransferReader } from "../../server/adapters/filesystem/orderReviewMediaTransferReader.js";
@@ -93,15 +93,19 @@ export type RecoveryPrivacyObligation = { admin: string; subject: { principal: s
  * free-text redaction and replay. No direct data rewrite substitutes for it. */
 export async function applyRecoveryPrivacy(runtimeUrl: string, obligation: RecoveryPrivacyObligation) {
   const store = createPostgresPrivacyStore(), unitOfWork = createPostgresPrivacyUnitOfWork({ connectionString: runtimeUrl });
-  const registry = createPersonalDataContributorRegistry([
-    createIdentityPersonalDataContributor(store, { retainedContactFields: {
-      lifecycle_stage: { owner: "clients", resource: "clients.lifecycle_stage", disposition: "retain", reasonCode: "LIFECYCLE", remote: false },
-    } }, () => obligation.subject.receipt), createSubscriptionsPrivacyContributor(),
-  ], { requiredContributorIds: ["identity", "subscriptions"] });
-  const operations = createPrivacyOperations({ store, unitOfWork, registry,
-    now: () => new Date(obligation.completedAt), randomId: () => obligation.subject.receipt });
-  const input = { subject: { kind: "contact" as const, contactId: obligation.subject.contact }, idempotencyKey: obligation.subject.receipt };
   try {
+    const installed = await unitOfWork.run(async db => (await db.query(
+      "SELECT to_regclass('public.tax_calculations') IS NOT NULL AS installed",
+    )).rows[0]?.installed === true);
+    const registry = createPersonalDataContributorRegistry([
+      createIdentityPersonalDataContributor(store, { retainedContactFields: {
+        lifecycle_stage: { owner: "clients", resource: "clients.lifecycle_stage", disposition: "retain", reasonCode: "LIFECYCLE", remote: false },
+      } }, () => obligation.subject.receipt), createSubscriptionsPrivacyContributor(),
+      ...(installed ? [createTaxCalculationPrivacyContributor()] : []),
+    ], { requiredContributorIds: ["identity", "subscriptions", ...(installed ? ["tax-calculations"] : [])] });
+    const operations = createPrivacyOperations({ store, unitOfWork, registry,
+      now: () => new Date(obligation.completedAt), randomId: () => obligation.subject.receipt });
+    const input = { subject: { kind: "contact" as const, contactId: obligation.subject.contact }, idempotencyKey: obligation.subject.receipt };
     const receipt = await operations.erase({ principalId: obligation.admin }, input);
     assert.equal(receipt.outcome, "ERASED");
     assert.deepEqual(await operations.erase({ principalId: obligation.admin }, input), { ...receipt, outcome: "ALREADY_ERASED" });
