@@ -449,14 +449,12 @@ it.each(["writer", "restore", "callback", "probe", "read", "COMMIT"] as const)("
   expect(read).toHaveBeenCalledTimes(stage === "read" || stage === "COMMIT" ? 2 : 0);
 });
 
-it.each([false, true])("aborts a pending read on a standalone probe error with prelock=%s", async hooked => {
+it.each([false, true])("waits for a pending read before refusing on a standalone probe error with prelock=%s", async hooked => {
   const owner = installation.owner, clients: PoolClient[] = [];
-  const atRead = latch(), resume = latch<string>(), discarded = latch();
+  const atRead = latch(), resume = latch<string>();
   const trace: string[] = [];
   const pool = pair((index, db) => { clients[index] = db; }, (_, sql) => { trace.push(sql); });
-  const release = vi.fn((discard: unknown, db: PoolClient) => {
-    if (discard === true && db === clients[1]) discarded.resolve();
-  });
+  const release = vi.fn();
   owner.on("release", release);
   const result = withCatalogAdmissionFence(pool, scope(), () => {
     atRead.resolve();
@@ -465,7 +463,10 @@ it.each([false, true])("aborts a pending read on a standalone probe error with p
   try {
     await atRead.wait(result);
     clients[1]!.emit("error", new Error("private probe connection diagnostic"));
-    await discarded.wait();
+    await yieldTurn();
+    await yieldTurn();
+    expect(release).not.toHaveBeenCalled();
+    resume.resolve("read complete");
     expectFenceError(await result, { message: unavailable, hint: checklist });
     expect(release).toHaveBeenCalledTimes(2);
     expect(release).toHaveBeenCalledWith(true, clients[0]);
@@ -477,6 +478,55 @@ it.each([false, true])("aborts a pending read on a standalone probe error with p
   }
   await yieldTurn();
   expect(trace).not.toContain("COMMIT");
+});
+
+it.each([false, true])("preserves the active read query rejection after asynchronous cleanup with prelock=%s", async hooked => {
+  const owner = installation.owner, clients: PoolClient[] = [], trace: string[] = [];
+  const pool = pair((index, db) => { clients[index] = db; }, (_, sql) => { trace.push(sql); });
+  const failure = Object.assign(new TypeError("connection lost during read"), { code: "ECONNRESET" });
+  const keys = Reflect.ownKeys(failure);
+  const release = vi.fn(), cleanup = vi.fn();
+  let readResult: Promise<unknown> | undefined;
+  owner.on("release", release);
+  try {
+    const error = await withCatalogAdmissionFence(pool, scope(), () => {
+      const writer = clients[0]! as PoolClient & Client;
+      // Fail the active driver query before it can consume a server response.
+      const query = writer.query("SELECT 1");
+      readResult = query.finally(async () => { await yieldTurn(); cleanup(); });
+      writer.connection.emit("error", failure);
+      return readResult;
+    }, hooked ? { prelock: guard } : undefined).catch(error => error);
+    expect(error).toBe(failure);
+    expect(Object.getPrototypeOf(error)).toBe(TypeError.prototype);
+    expect(Reflect.ownKeys(error)).toEqual(keys);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(trace).not.toContain("COMMIT");
+    expect(release).toHaveBeenCalledWith(true, clients[0]);
+  } finally {
+    await readResult?.catch(() => {});
+    owner.removeListener("release", release);
+  }
+});
+
+it.each([false, true])("refuses when the writer fails after read resolves with prelock=%s", async hooked => {
+  const owner = installation.owner, clients: PoolClient[] = [], trace: string[] = [];
+  const release = vi.fn();
+  const pool = pair((index, db) => { clients[index] = db; }, (_, sql) => { trace.push(sql); });
+  owner.on("release", release);
+  try {
+    const error = await withCatalogAdmissionFence(pool, scope(), () => new Promise<void>(resolve => {
+      queueMicrotask(() => {
+        resolve();
+        clients[0]!.emit("error", new Error("private writer connection diagnostic"));
+      });
+    }), hooked ? { prelock: guard } : undefined).catch(error => error);
+    expectFenceError(error, { message: unavailable, hint: checklist });
+    expect(trace).not.toContain("COMMIT");
+    expect(release).toHaveBeenCalledWith(true, clients[0]);
+  } finally {
+    owner.removeListener("release", release);
+  }
 });
 
 it.each([
