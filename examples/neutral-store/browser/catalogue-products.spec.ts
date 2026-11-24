@@ -205,27 +205,28 @@ test.beforeAll(async ({ request, baseURL }, info) => {
   const owner = new URL(selected.ownerUrl), runtime = new URL(selected.runtimeUrl);
   owner.pathname = '/' + database;
   runtime.pathname = owner.pathname;
-  let host: ChildProcess | undefined, state: string | undefined, databaseCreated = false;
+  const resources: { host?: ChildProcess; state?: string; databaseCreated?: true } = {};
   await admin.connect();
   closeFixture = async () => {
     try {
-      try { await stopHost(host); }
-      finally { if (databaseCreated) await admin.query(`DROP DATABASE ${database}`); }
+      try { await stopHost(resources.host); }
+      finally { if (resources.databaseCreated) await admin.query(`DROP DATABASE ${database}`); }
     } finally {
       try { await admin.end(); }
-      finally { if (state) await rm(state, { recursive: true, force: true }); }
+      finally { if (resources.state) await rm(resources.state, { recursive: true, force: true }); }
     }
   };
   const { rows: [target] } = await admin.query("SELECT shobj_description(oid, 'pg_database') AS marker FROM pg_database WHERE datname=current_database()");
   assert.equal(target?.marker, demonstrationMarker);
   await admin.query(`CREATE DATABASE ${database} TEMPLATE catalogue_browser_template`);
-  databaseCreated = true;
+  resources.databaseCreated = true;
   await admin.query(`COMMENT ON DATABASE ${database} IS '${demonstrationMarker}'`);
+  const state = await mkdtemp(join(selected.state, 'catalogue-'));
+  resources.state = state;
   const installer = new pg.Client({ connectionString: owner.href });
   await installer.connect();
   let keyFile: string;
   try {
-    state = await mkdtemp(join(selected.state, 'catalogue-'));
     keyFile = await prepareDemonstrationQuoteKey(installer, state);
   } finally { await installer.end(); }
   const port = await loopbackPort();
@@ -233,9 +234,10 @@ test.beforeAll(async ({ request, baseURL }, info) => {
   const password = decodeURIComponent(runtime.password);
   runtime.password = '';
   // The demo CLI pins the installed database name. Use the same native bindings through the programmatic server entry.
-  host = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-', '--configuration', fixture.id,
+  const host = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-', '--configuration', fixture.id,
     '--port', String(port), '--listen', '127.0.0.1'], { env: { PGPASSWORD: password }, stdio: ['pipe', 'ignore', 'ignore'] });
-  host.stdin!.end(`
+  resources.host = host;
+  host.stdin.end(`
     import { createApplication } from './host/server.ts';
     import { composeNativeBindings } from './host/native-composition.ts';
     import { createOriginPolicy } from './host/origin-policy.ts';
