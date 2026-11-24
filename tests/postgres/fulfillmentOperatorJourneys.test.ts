@@ -717,8 +717,19 @@ it('roundtrips exact parcel associations, operator receipts and status evidence 
     await source.runtime.query('SELECT public.fulfillment_record_operator_status_evidence($1,$2)', [event, parcel]);
     await port.cancelCommerceFulfillmentOrder({ idempotencyKey: `cancel-${randomUUID()}`, actorUserId: f.actor, fulfillmentOrderId: parcel, reason: 'operator cancellation' });
     await createPostgresFulfillmentCommerceMutationPort(source.runtime, { portKey: 'operator-fixture', providerRef: 'warehouse', stockSourceKey: f.source }).recordCommerceFulfillmentProviderAttempt({ idempotencyKey: `operator-${parcel}`, fulfillmentOrderId: parcel, actorUserId: f.actor, providerKind: 'warehouse', status: 'failed', requestPayload: { source: 'operator' } });
+    const legacy = await subject(source.owner);
+    const queued = await source.runtime.query(`SELECT public.commerce_fulfillment_enqueue_provider_command($1,'warehouse','dispatch_create','1',$2,
+      repeat('a',64),repeat('b',64),NULL,repeat('c',64),repeat('d',64),repeat('e',64),2) AS value`, [legacy.shipment, randomUUID()]);
+    expect(queued.rows[0]!.value).toMatchObject({ status: 'queued', version: 1 });
+    for (const store of [source, target]) {
+      expect((await store.owner.query(`SELECT tgenabled FROM pg_trigger
+        WHERE tgrelid='public.commerce_fulfillment_provider_commands'::regclass
+          AND tgname='commerce_fulfillment_provider_command_destination_v2_guard' AND (tgtype & 4)<>0`)).rows)
+        .toEqual([{ tgenabled: 'O' }]);
+    }
     const packet = await captureStoreJourney(source.owner, 'operator-source'), freshTarget = await captureStoreJourney(target.owner, 'operator-target');
     const tables = ['fulfillment_operator_attempts','fulfillment_parcel_reservation_sets','fulfillment_parcel_lines','fulfillment_parcel_line_reservations','fulfillment_operator_receipts','fulfillment_operator_status_evidence'];
+    tables.push('commerce_fulfillment_provider_commands', 'commerce_fulfillment_provider_command_transitions');
     for (const table of tables) expect(packet.owned.find(row => row.table === table)?.rows.length).toBeGreaterThan(0);
     expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).toMatchObject({ replayed: false });
     const client = await target.owner.connect();
