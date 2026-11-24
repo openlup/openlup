@@ -135,3 +135,12 @@ Documents, confirmation and retry keys stay in component memory and clear on
 subject/session change, including late responses. Exports never enter browser
 storage.
 
+### Native coverage gaps
+
+The shipped native export does not yet include personal data from
+`account-support` account events, risk, marketing, or native acquisition evidence.
+The shipped native erasure operation does not yet handle that data.
+
+If you use these modules on native, you must handle access and erasure requests
+for that data outside the shipped operations. As the data controller, you must
+decide the legal basis and retention for that data. Coverage is planned.
