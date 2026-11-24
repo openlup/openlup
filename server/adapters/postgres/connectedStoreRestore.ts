@@ -408,6 +408,8 @@ export async function restoreConnectedNativeStore(input: {
       let neutralized = 0;
       for (const table of order) {
         const rows = source.get(table)!;
+        const copyingPrivacyReceipts = table === "identity_privacy_erasures" && rows.rows.length > 0;
+        if (copyingPrivacyReceipts) await client.query("SELECT pg_catalog.set_config('app.tax_historical_receipt_restore',$1,true)", [facts.xid]);
         if (table === "subscription_price_policy_revisions") {
           // Only the policy copy may retain the provenance of a guarded close.
           await client.query("INSERT INTO public.subscription_price_policy_restore_capabilities VALUES (pg_catalog.pg_current_xact_id())");
@@ -459,6 +461,7 @@ export async function restoreConnectedNativeStore(input: {
             await insert(client, rows, row);
           }
         }
+        if (copyingPrivacyReceipts) await client.query("SELECT pg_catalog.set_config('app.tax_historical_receipt_restore','',true)");
         if (table === "subscription_price_policy_revisions") {
           await client.query("DELETE FROM public.subscription_price_policy_restore_capabilities WHERE transaction_id=pg_catalog.pg_current_xact_id()");
         }
@@ -699,6 +702,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     subscription_price_policy_revisions: ["subscription_price_policy_revisions_00_guard_insert", "subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
     identity_privacy_erasures: ["tax_calculation_privacy_guard"],
+    tax_calculations: ["tax_calculation_guard"],
     clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
     commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],

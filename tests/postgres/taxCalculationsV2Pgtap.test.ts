@@ -27,10 +27,11 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 afterAll(async () => { await Promise.all([closePostgres(container, pool), resources.close()]); }, postgresTeardownTimeoutMs);
 
-const otherAcl = (relation: string) => `SELECT CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS role, a.privilege_type AS privilege
+const otherAcl = (relation: string) => `SELECT CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS role,
+    a.privilege_type AS privilege,pg_get_userbyid(a.grantor) AS grantor,a.is_grantable AS grantable
   FROM pg_class c CROSS JOIN LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a
   WHERE c.oid='${relation}'::regclass AND a.grantee<>c.relowner
-  ORDER BY role,privilege`;
+  ORDER BY role,privilege,grantor,grantable`;
 
 it.each([true, false])("replays storage constraints and function pins with browser and runtime roles present=%s", async optionalRoles => {
   const db = await pool.connect();
@@ -44,17 +45,32 @@ it.each([true, false])("replays storage constraints and function pins with brows
     await contributor.eraseOrRetain(db, subject, assessment, { principalId: subject.contactId });
     if (!optionalRoles) await db.query("DROP OWNED BY anon,authenticated,service_role CASCADE; DROP ROLE anon,authenticated,service_role");
     await db.query("CREATE TABLE public.tax_calculation_acl_control (id uuid)");
-    const defaultAcl = (await db.query(otherAcl("public.tax_calculation_acl_control"))).rows
-      .filter(row => !["PUBLIC", "anon", "authenticated", "service_role"].includes(row.role));
+    await db.query("REVOKE ALL ON TABLE public.tax_calculation_acl_control FROM PUBLIC");
+    if (optionalRoles) await db.query("REVOKE ALL ON TABLE public.tax_calculation_acl_control FROM anon,authenticated,service_role");
+    const defaultAcl = (await db.query(otherAcl("public.tax_calculation_acl_control"))).rows;
     await db.query(readFileSync(forward, "utf8"));
     expect((await db.query(otherAcl("public.tax_calculations"))).rows).toStrictEqual(defaultAcl);
     console.info("Managed-image default ACL grantees retained by the replay:", [...new Set(defaultAcl.map(row => row.role))]);
-    const response = await db.query(readFileSync(script, "utf8"));
-    const results = Array.isArray(response) ? response : [response];
-    const lines = results.flatMap(result => result.rows.flatMap((row: Record<string, unknown>) =>
-      Object.values(row).filter((value): value is string => typeof value === "string")));
+    const fixture = readFileSync(script, "utf8");
+    const tap = async () => {
+      const response = await db.query(fixture);
+      const results = Array.isArray(response) ? response : [response];
+      return results.flatMap(result => result.rows.flatMap((row: Record<string, unknown>) =>
+        Object.values(row).filter((value): value is string => typeof value === "string")));
+    };
+    if (optionalRoles) for (const routine of ["frame_v1(text,jsonb)", "hash_v1(text,jsonb)", "terminal_v1(public.tax_calculations)"]) {
+      for (const change of ["VOLATILE", "RESET search_path"]) {
+        await db.query("SAVEPOINT attributes_mutation");
+        await db.query(`ALTER FUNCTION public.tax_calculation_${routine} ${change}`);
+        expect((await tap()).filter(line => /^not ok /u.test(line))).toEqual([
+          expect.stringContaining("all six exact routines have the required attribute tuple"),
+        ]);
+        await db.query("ROLLBACK TO SAVEPOINT attributes_mutation");
+      }
+    }
+    const lines = await tap();
     expect(lines.filter(line => /^(?:not ok|# Looks like)/u.test(line))).toEqual([]);
-    expect(lines.filter(line => /^ok \d+/u.test(line))).toHaveLength(14);
+    expect(lines.filter(line => /^ok \d+/u.test(line))).toHaveLength(12);
     if (optionalRoles) {
       const { rows } = await db.query(`SELECT rolname, count(*) FILTER (WHERE has_function_privilege(r.oid,p.oid,'execute'))::int AS executable
         FROM pg_proc p CROSS JOIN pg_roles r WHERE p.pronamespace='public'::regnamespace AND p.proname LIKE 'tax_calculation_%'
@@ -78,6 +94,11 @@ async function assertGrants(runtime: Pool, login: string) {
       AND has_function_privilege(current_user, oid, 'EXECUTE') ORDER BY proname) AS routines`);
   expect(rows).toStrictEqual([{ login, runtime: login, table_access: false, column_access: false,
     routines: ["tax_calculation_erase_v1", "tax_calculation_export_v1"] }]);
+  const roleAccess = await runtime.query(`SELECT rolname FROM pg_roles WHERE rolname::text=ANY($1)
+    AND (has_table_privilege(oid,'public.tax_calculations','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+      OR has_any_column_privilege(oid,'public.tax_calculations','SELECT,INSERT,UPDATE,REFERENCES'))`,
+  [[login, "anon", "authenticated", "service_role"]]);
+  expect(roleAccess.rows).toEqual([]);
   await expect(runtime.query("SELECT * FROM public.tax_calculations")).rejects.toMatchObject({ code: "42501" });
   expect((await runtime.query("SELECT public.tax_calculation_export_v1(gen_random_uuid()) AS result")).rows).toEqual([{ result: [] }]);
 }

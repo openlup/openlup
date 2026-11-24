@@ -7109,7 +7109,7 @@
           {
             "name": "tax_calculation_guard",
             "table": "public.tax_calculations",
-            "sha256": "a6375b6597eccb2e5a6a0de3fa149a8292a2e59f4f9e2029e0f76e29ee08d7a1"
+            "sha256": "cc86512edbd8e7153b556fe40faa12e0fe0239975ce64b7439f8aa4eb4223be5"
           },
           {
             "name": "tax_calculation_privacy_guard",
@@ -10534,12 +10534,12 @@
     },
     {
       "path": "db/platform/migrations/20261125170000_tax_calculations.sql",
-      "sha256": "5e7c003dd37fc9482f109ec06bd5c2307fa885496cd2cb2a91880f91b322cf29",
+      "sha256": "6ae68be228f8c50a807de4d168fdff4be5c8dae904d50360ccde61854ceac2cf",
       "functions": [
         {
           "signature": "public.tax_calculation_frame_v1(text,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "1086d046a2c86bcd139f8e371087e9b76d0c63503bbe359be8b2c05aaf304822"
+          "afterSha256": "f49c3e5948c710380f5e35a22ab4dcf9ac0a1ac07cc3b5deca8d546fff76f705"
         },
         {
           "signature": "public.tax_calculation_hash_v1(text,jsonb)",
@@ -10549,17 +10549,17 @@
         {
           "signature": "public.tax_calculation_guard_v1()",
           "beforeSha256": null,
-          "afterSha256": "7a6940d7bf9d4eb6aac52eaa88fabedbe8e98a34ea03fb7cbeadb6957cec3c60"
+          "afterSha256": "fab0fcdb5929c55ae0fcac3b821fe2e52b2c1a02499fe591a17fe3de49d685b9"
         },
         {
           "signature": "public.tax_calculation_terminal_v1(public.tax_calculations)",
           "beforeSha256": null,
-          "afterSha256": "b9315cfaac280fe6f5eb6ca47027da9ab48a144852d8e57205b4e05ba1a5cb20"
+          "afterSha256": "72396bcbbb14edeb068a7e77b35b35c34bf3e1504b2071f97898c431a8c6d66e"
         },
         {
           "signature": "public.tax_calculation_export_v1(uuid)",
           "beforeSha256": null,
-          "afterSha256": "0bd0a5d2d8edb47d0a93b8c9966999813acb4e6b7af7a71989da7cb32e69787f"
+          "afterSha256": "3028f2c0fe2f9620437f0f7338c9188882b7dc6a475a12afad82454bd7f1052a"
         },
         {
           "signature": "public.tax_calculation_erase_v1(uuid)",

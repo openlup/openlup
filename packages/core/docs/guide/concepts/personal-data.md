@@ -58,6 +58,8 @@ no retention period or remote-provider operation.
 For native tax evaluation, add `createTaxCalculationPrivacyContributor()` from
 `@openlup/platform/identity` to the privacy registry and require
 `tax-calculations` on every handler, including during issuance rollback.
+Enable evaluation writes only after every native privacy handler that serves
+the store includes the tax-calculation contributor.
 Export includes verified evaluation outcomes. Erasure keeps only an evaluation
 identifier and any pseudonymous marker needed to fence provider reference reuse.
 

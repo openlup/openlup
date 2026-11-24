@@ -36,7 +36,7 @@ CREATE FUNCTION public.tax_calculation_frame_v1(p_tag text, p_body jsonb) RETURN
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE frame text := public.catalog_publication_canonical(jsonb_build_array('platform.tax.' || p_tag || '.v1',p_body),0);
 BEGIN
-  IF octet_length(frame) > 1048576 THEN RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/'; END IF;
+  IF octet_length(convert_to(frame,'UTF8')) > 1048576 THEN RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/'; END IF;
   RETURN frame;
 END;
 $$;
@@ -48,13 +48,46 @@ $$;
 
 CREATE FUNCTION public.tax_calculation_guard_v1() RETURNS trigger
 LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_catalog AS $$
+DECLARE
+  body jsonb;
+  coordinate text;
 BEGIN
   IF TG_TABLE_NAME = 'identity_privacy_erasures' THEN
-    -- Restoring old receipts on the pristine store uses the migration owner.
-    IF current_user = pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid = TG_RELID))
-      OR NEW.contributor_versions ? 'tax-calculations' THEN RETURN NEW; END IF;
+    IF NEW.contributor_versions ? 'tax-calculations' OR (
+      current_user = pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid = TG_RELID))
+      AND current_setting('app.tax_historical_receipt_restore',true) = pg_current_xact_id_if_assigned()::text
+      AND EXISTS (SELECT FROM pg_locks WHERE pid=pg_backend_pid() AND granted
+        AND relation='public.tax_calculations'::regclass AND mode='ShareRowExclusiveLock')
+    ) THEN RETURN NEW; END IF;
     RAISE EXCEPTION 'PRIVACY_CONTRIBUTOR_MISSING' USING ERRCODE='55000';
   END IF;
+  IF TG_OP IN ('INSERT','UPDATE') AND NEW.state <> 'erased' THEN
+    BEGIN
+      PERFORM public.tax_calculation_frame_v1('evaluation-key',NEW.identity),
+        public.tax_calculation_frame_v1('evaluation-pin',NEW.pin);
+      IF jsonb_typeof(NEW.identity) IS DISTINCT FROM 'object' OR jsonb_typeof(NEW.pin) IS DISTINCT FROM 'object' THEN
+        RAISE data_exception;
+      END IF;
+      IF NEW.outcome_text IS NOT NULL THEN
+        IF octet_length(convert_to(NEW.outcome_text,'UTF8')) > 1048576 THEN RAISE data_exception; END IF;
+        body := (NEW.outcome_text::jsonb)->1;
+        IF jsonb_typeof(body) IS DISTINCT FROM 'object'
+          OR NEW.outcome_text IS DISTINCT FROM public.tax_calculation_frame_v1('evaluation-outcome',body)
+          OR NOT coalesce(jsonb_typeof(body->'submissionDigest')='string'
+            AND body->>'submissionDigest' COLLATE "C" ~ '^[0-9a-f]{64}$',false) THEN
+          RAISE data_exception;
+        END IF;
+      END IF;
+      FOREACH coordinate IN ARRAY ARRAY['invocationDigest','requestDigest'] LOOP
+        IF NOT coalesce(jsonb_typeof(NEW.pin->coordinate)='string'
+          AND NEW.pin->>coordinate COLLATE "C" ~ '^[0-9a-f]{64}$',false)
+          OR (body IS NOT NULL AND body->coordinate IS DISTINCT FROM NEW.pin->coordinate) THEN RAISE data_exception; END IF;
+      END LOOP;
+    EXCEPTION WHEN data_exception THEN
+      RAISE EXCEPTION 'tax_evaluation_frame_invalid' USING ERRCODE='23514', DETAIL='/taxEvidence';
+    END;
+  END IF;
+  IF TG_OP = 'INSERT' THEN RETURN NEW; END IF;
   IF TG_OP = 'UPDATE' AND OLD.state <> 'erased' AND NEW.calculation_id = OLD.calculation_id THEN
     IF NEW.state = 'erased' AND NEW.provider_digest IS NOT DISTINCT FROM OLD.provider_digest THEN RETURN NEW; END IF;
     IF OLD.state = 'pending' AND
@@ -70,7 +103,7 @@ BEGIN
   RAISE EXCEPTION 'tax_evaluation_integrity_invalid' USING ERRCODE='55000', DETAIL='/taxEvidence';
 END;
 $$;
-CREATE TRIGGER tax_calculation_guard BEFORE UPDATE OR DELETE ON public.tax_calculations FOR EACH ROW EXECUTE FUNCTION public.tax_calculation_guard_v1();
+CREATE TRIGGER tax_calculation_guard BEFORE INSERT OR UPDATE OR DELETE ON public.tax_calculations FOR EACH ROW EXECUTE FUNCTION public.tax_calculation_guard_v1();
 CREATE TRIGGER tax_calculation_privacy_guard BEFORE INSERT ON public.identity_privacy_erasures FOR EACH ROW EXECUTE FUNCTION public.tax_calculation_guard_v1();
 
 CREATE FUNCTION public.tax_calculation_terminal_v1(r public.tax_calculations) RETURNS jsonb
@@ -79,6 +112,7 @@ DECLARE
   body jsonb;
   outcome jsonb;
   quote jsonb;
+  approved_remedy text;
 BEGIN
   IF r.outcome_digest IS DISTINCT FROM encode(sha256(convert_to(r.outcome_text,'UTF8')),'hex')
     OR r.pin_digest IS DISTINCT FROM public.tax_calculation_hash_v1('evaluation-pin',r.pin)
@@ -90,8 +124,11 @@ BEGIN
     OR body->'generation' IS DISTINCT FROM to_jsonb(r.generation)
     OR body->'invocationDigest' IS DISTINCT FROM r.pin->'invocationDigest'
     OR body->'requestDigest' IS DISTINCT FROM r.pin->'requestDigest'
+    OR NOT coalesce(jsonb_typeof(body->'invocationDigest')='string' AND body->>'invocationDigest' COLLATE "C" ~ '^[0-9a-f]{64}$'
+      AND jsonb_typeof(body->'requestDigest')='string' AND body->>'requestDigest' COLLATE "C" ~ '^[0-9a-f]{64}$',false)
     OR body->'destination' IS DISTINCT FROM r.pin->'destination'
     OR body->'kind' IS DISTINCT FROM r.pin->'kind'
+    OR NOT coalesce(body->>'kind' IN ('tax_calculation','fiscal_profile'),false)
     OR NOT coalesce((body->>'validUntil')::timestamptz <= (r.pin->>'validUntil')::timestamptz,false)
     OR body->'providerDigest' IS DISTINCT FROM coalesce(to_jsonb(r.provider_digest),'null'::jsonb)
     OR body->'contradiction' IS DISTINCT FROM to_jsonb(r.contradiction) THEN RETURN NULL; END IF;
@@ -109,10 +146,21 @@ BEGIN
           jsonb_build_array('commerce.quote.v2',quote - 'quoteDigest'),0),'UTF8')),'hex') THEN RETURN NULL; END IF;
       RETURN body || jsonb_build_object('outcome',jsonb_build_object('kind',outcome->'kind','quote',quote));
     WHEN 'refused', 'unavailable' THEN
-      IF jsonb_typeof(outcome->'code') IS DISTINCT FROM 'string' OR jsonb_typeof(outcome->'field') IS DISTINCT FROM 'string'
-        OR jsonb_typeof(outcome->'remedy') IS DISTINCT FROM 'string' THEN RETURN NULL; END IF;
+      SELECT permitted.remedy INTO approved_remedy FROM (VALUES
+        ('refused','tax_provider_reference_conflict','/taxEvidence','Reconcile the original calculation with the tax adapter owner before further work.'),
+        ('refused','tax_evaluation_integrity_invalid','/taxEvidence','Recover the original evaluation from its authoritative owner.'),
+        ('refused','tax_calculation_expired','/taxEvidence/expiresAt','Select the destination again and obtain a fresh quote.'),
+        ('refused','commerce_destination_owner_mismatch','/destination/snapshotRef','Re-obtain evidence through the authenticated owner.'),
+        ('refused','destination_digest_mismatch','/destination/destinationDigest','Replay the original document and its digest.'),
+        ('refused','tax_reference_conflict','/coverage','Recover the verified original history through its owner.'),
+        ('unavailable','tax_adapter_unavailable','/taxEvidence','Recover the original evidence through the adapter owner.'),
+        ('unavailable','tax_coverage_evidence_unavailable','/taxEvidence','Recover the original evidence through the adapter owner.')
+      ) permitted(arm, code, field, remedy)
+      WHERE to_jsonb(permitted.arm)=outcome->'kind' AND to_jsonb(permitted.code)=outcome->'code'
+        AND to_jsonb(permitted.field)=outcome->'field';
+      IF approved_remedy IS NULL OR outcome->'remedy' IS DISTINCT FROM to_jsonb(approved_remedy) THEN RETURN NULL; END IF;
       RETURN body || jsonb_build_object('outcome',jsonb_build_object('kind',outcome->'kind','code',outcome->'code',
-        'field',outcome->'field','remedy',outcome->'remedy') ||
+        'field',outcome->'field','remedy',approved_remedy) ||
         CASE WHEN outcome->>'kind' = 'unavailable' THEN '{"effect":"none"}'::jsonb ELSE '{}'::jsonb END);
     ELSE RETURN NULL;
   END CASE;
@@ -124,7 +172,8 @@ CREATE FUNCTION public.tax_calculation_export_v1(p_client_id uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
   SELECT coalesce(jsonb_agg(jsonb_build_object('calculationId',r.calculation_id,'status',r.state,'issuedAt',
     to_char(r.issued_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) ||
-    CASE WHEN r.identity->'clientId' IS DISTINCT FROM to_jsonb(p_client_id) THEN '{"verification":"failed"}'::jsonb
+    CASE WHEN r.identity->'clientId' IS DISTINCT FROM to_jsonb(p_client_id)
+      OR r.pin->'destination' IS DISTINCT FROM d.binding THEN '{"verification":"failed"}'::jsonb
       WHEN r.state='pending' THEN '{}'::jsonb WHEN sealed.body IS NULL THEN '{"verification":"failed"}'::jsonb
       ELSE jsonb_build_object('outcome',sealed.body->'outcome') END ORDER BY r.calculation_id),'[]'::jsonb)
   FROM public.tax_calculations r JOIN public.commerce_destination_v2_documents d ON d.snapshot_ref=r.snapshot_ref

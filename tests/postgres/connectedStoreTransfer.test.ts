@@ -378,7 +378,7 @@ beforeAll(async () => {
   await source.owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at,membership_revoked_at,membership_revoked_by)
     VALUES($1,'distributor','revoked','legacy','2020-01-01','2021-01-01',$2)`, [revoked, admin]);
   await source.owner.query(`INSERT INTO public.identity_privacy_erasures(erasure_id,idempotency_key,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-    VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
+    VALUES($1,$2,$3,$4,'identity.erasure.v1','{"tax-calculations":"commerce.tax-calculations.v1"}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
   media = await mediaFixture();
   consent = await consentFixture();
 
