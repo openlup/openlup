@@ -515,15 +515,45 @@ describe("openlup recipe CLI (Agent-DX list|show|add|verify)", () => {
       payBody.verification.stages.stages1to3Tests.numTotalTests,
     );
 
-    // 2. Scaffold a ^1.4.0 domain (shipping/parcel-fast) and verify monorepo-next-minor + Stages 1-3 pass
-    const scaffoldShip = await runCli(
-      ["recipe", "scaffold", "--domain", "shipping", "--provider", "parcel-fast", "--verify", "--json"],
-      { cwd: appDir },
-    );
-    expect(scaffoldShip.exitCode).toBe(0);
-    const shipBody = JSON.parse(scaffoldShip.stdout) as { state: string; recipeId: string };
-    expect(shipBody.state).toBe("scaffolded-and-verified");
-    expect(shipBody.recipeId).toBe("shipping/parcel-fast");
+    // 2. Verify every one of the 8 supported domains scaffolds cleanly and emits an exportName that actually exists on @openlup/platform
+    for (const domain of [
+      "payments",
+      "fulfillment",
+      "shipping",
+      "tax",
+      "communications",
+      "accounting",
+      "observability",
+      "channels",
+    ]) {
+      const slug = `sample-${domain}`;
+      const res = await runCli(
+        [
+          "recipe",
+          "scaffold",
+          "--domain",
+          domain,
+          "--provider",
+          slug,
+          ...(domain === "shipping" ? ["--verify"] : []),
+          "--json",
+        ],
+        { cwd: appDir },
+      );
+      expect(res.exitCode, `scaffold failed for domain ${domain}`).toBe(0);
+      const body = JSON.parse(res.stdout) as {
+        state: string;
+        recipeId: string;
+        conformanceRunner: { importPath: string; exportName: string };
+      };
+      expect(body.recipeId).toBe(`${domain}/${slug}`);
+      if (domain === "shipping") expect(body.state).toBe("scaffolded-and-verified");
+      const runnerMod = (await import(body.conformanceRunner.importPath)) as Record<string, unknown>;
+      expect(
+        typeof runnerMod[body.conformanceRunner.exportName],
+        `${body.conformanceRunner.importPath}#${body.conformanceRunner.exportName}`,
+      ).toBe("function");
+    }
 
     // 3. Re-scaffolding over existing directory refuses without --force (exit 1) and succeeds with --force (exit 0)
     const conflict = await runCli(
@@ -540,7 +570,7 @@ describe("openlup recipe CLI (Agent-DX list|show|add|verify)", () => {
     );
     expect(forced.exitCode).toBe(0);
 
-    // 4. Symlinked destination is refused (exit 74) without writing into outside directory
+    // 4. Symlinked destination and symlinked provenance target are refused (exit 74) without writing outside
     const outsideDir = join(appDir, "outside-scaffold");
     await fs.mkdir(outsideDir, { recursive: true });
     const symlinkDest = join(appDir, "linked-scaffold");
@@ -552,10 +582,34 @@ describe("openlup recipe CLI (Agent-DX list|show|add|verify)", () => {
     expect(symlinkRes.exitCode).toBe(74);
     expect(await fs.readdir(outsideDir)).toEqual([]);
 
-    // 5. Invalid domain, invalid provider slug, and cross-subcommand --provider flag exit 64
+    const outsideProv = join(appDir, "outside-prov.json");
+    const provContainer = join(appDir, "prov-symlink-test");
+    await fs.mkdir(provContainer, { recursive: true });
+    await fs.symlink(outsideProv, join(provContainer, ".openlup-provenance.json"));
+    const provSymlinkRes = await runCli(
+      [
+        "recipe",
+        "scaffold",
+        "--domain",
+        "payments",
+        "--provider",
+        "prov-test",
+        "--dest",
+        join(provContainer, "payments/prov-test"),
+        "--json",
+      ],
+      { cwd: appDir },
+    );
+    expect(provSymlinkRes.exitCode).toBe(74);
+
+    // 5. Invalid domain, invalid provider slug, empty --dest, and cross-subcommand --provider flags exit 64
     expect((await runCli(["recipe", "scaffold", "--domain", "unknown", "--provider", "acme-pay", "--json"])).exitCode).toBe(64);
     expect((await runCli(["recipe", "scaffold", "--domain", "payments", "--provider", "Bad_Slug!", "--json"])).exitCode).toBe(64);
+    expect((await runCli(["recipe", "scaffold", "--domain", "payments", "--provider", "acme-pay", "--dest", "", "--json"])).exitCode).toBe(64);
     expect((await runCli(["recipe", "scaffold", "--domain", "payments", "--provider", "acme-pay", "--catalog", CATALOG_DIR, "--json"])).exitCode).toBe(64);
     expect((await runCli(["recipe", "list", "--provider", "acme-pay", "--json"])).exitCode).toBe(64);
+    expect((await runCli(["recipe", "show", "payments/adyen", "--provider", "acme-pay", "--json"])).exitCode).toBe(64);
+    expect((await runCli(["recipe", "add", "payments/adyen", "--provider", "acme-pay", "--json"])).exitCode).toBe(64);
+    expect((await runCli(["recipe", "verify", join(appDir, "owned/adapters/payments/acme-pay"), "--provider", "acme-pay", "--json"])).exitCode).toBe(64);
   }, 30_000);
 });

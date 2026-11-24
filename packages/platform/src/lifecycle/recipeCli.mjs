@@ -46,7 +46,10 @@ const SCAFFOLD_DOMAINS = Object.freeze({
   },
   shipping: {
     contractImports: ["@openlup/platform/shipping/contracts", "@openlup/platform/shipping/testing"],
-    conformanceRunner: { importPath: "@openlup/platform/shipping/testing", exportName: "runShippingAdapterConformance" },
+    conformanceRunner: {
+      importPath: "@openlup/platform/shipping/testing",
+      exportName: "runShippingRateAdapterConformance",
+    },
     openlupPlatformRange: "^1.4.0",
     testedAgainstPlatformVersion: "1.4.0-dev",
     supportedCurrenciesPolicy: "host-configured",
@@ -86,7 +89,7 @@ const SCAFFOLD_DOMAINS = Object.freeze({
     contractImports: ["@openlup/platform/observability/contracts", "@openlup/platform/observability/testing"],
     conformanceRunner: {
       importPath: "@openlup/platform/observability/testing",
-      exportName: "runObservabilityAdapterConformance",
+      exportName: "runTelemetryAdapterConformance",
     },
     openlupPlatformRange: "^1.4.0",
     testedAgainstPlatformVersion: "1.4.0-dev",
@@ -1769,6 +1772,7 @@ function buildScaffoldFiles({ domain, provider, providerKind, displayName, pasca
     readonly method?: string;
     readonly headers?: Readonly<Record<string, string>>;
     readonly body?: string;
+    readonly redirect?: "error";
     readonly signal?: AbortSignal;
   },
 ) => Promise<{
@@ -1847,6 +1851,7 @@ export function create${pascalName}Client(config: ${pascalName}ClientConfig) {
             ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
           },
           ...(init.body !== undefined ? { body: init.body } : {}),
+          redirect: "error",
           signal: controller.signal,
         });
         if (!res.ok) {
@@ -2000,6 +2005,10 @@ describe("${recipeId} — Stage 1 & Stage 2 scaffold conformance baseline", () =
     });
     const failed = await client.requestJson("/v1/ping");
     expect(failed).toEqual({ ok: false, status: 503 });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      \`\${DEFAULT_${providerKind.toUpperCase()}_BASE_URL}/v1/ping\`,
+      expect.objectContaining({ redirect: "error" }),
+    );
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(failed)).not.toContain(SECRET_CANARY);
   });
@@ -2711,7 +2720,13 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
         if (provStat && provStat.isFile()) {
           try {
             const loaded = JSON.parse(await fs.readFile(provenancePathAbs, "utf8"));
-            if (loaded && typeof loaded === "object" && loaded.recipes && typeof loaded.recipes === "object") {
+            if (
+              loaded &&
+              typeof loaded === "object" &&
+              loaded.recipes &&
+              typeof loaded.recipes === "object" &&
+              !Array.isArray(loaded.recipes)
+            ) {
               existingLedger = loaded;
             }
           } catch {
@@ -2965,7 +2980,13 @@ export async function runRecipeCommand(args, { emit, refuse, renderFinding, setJ
       if (provStat && provStat.isFile()) {
         try {
           const loaded = JSON.parse(await fs.readFile(provenancePathAbs, "utf8"));
-          if (loaded && typeof loaded === "object" && loaded.recipes && typeof loaded.recipes === "object") {
+          if (
+            loaded &&
+            typeof loaded === "object" &&
+            loaded.recipes &&
+            typeof loaded.recipes === "object" &&
+            !Array.isArray(loaded.recipes)
+          ) {
             existingLedger = loaded;
           }
         } catch {
