@@ -570,7 +570,7 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
           return {
             async query(sql: string | QueryConfig, values?: unknown[]) {
               const text = typeof sql === "string" ? sql : sql.text;
-              if (!raced && text.includes('LOCK TABLE "public"."platform_schema_migrations"')) {
+              if (!raced && text.startsWith("LOCK TABLE ") && text.includes('"public"."platform_schema_migrations"')) {
                 await root.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=0", [changed]);
                 raced = true;
               }
