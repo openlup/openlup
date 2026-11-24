@@ -459,10 +459,11 @@ checkout-owner definitions are owned by the migration principal, pin
 `pg_catalog, pg_temp` and grant no application role execution. The private
 draft entry keeps fresh governed purchase unavailable.
 `catalog_admission_runtime_checkout(text,text,uuid,jsonb)` grants EXECUTE only
-to `service_role`, and only when that role exists. Nothing calls the routine
-yet. It refuses every invocation with SQLSTATE `55000` and
-`catalog_admission_quote_authority_required` before reading or writing purchase
-data. The existing checkout-owner controls supply no governed checkout authority.
+to `service_role` when that role exists. Its private `prelock` operation guards
+selected catalogue and exact-client facts. `write` refuses with SQLSTATE
+`55000` and `catalog_admission_quote_authority_required`. A selection that
+consults the promotion roster, normalized email family or claims lacks
+authority until those predicates have guards.
 Draft replay checks the original owner and receipt before fresh admission
 advice. Fresh recovery refuses at the lineage writer when the original order
 retains an acceptance or when live classification finds governed demand in its
@@ -505,12 +506,18 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
    takes the exclusive key advisory lock. The destination `prelock` takes
    ledger `SHARE`, client `FOR KEY SHARE`, checkout selection `FOR SHARE NOWAIT`,
    then the expected document `FOR SHARE NOWAIT`. Use ascending keys per group.
-2. The fence locks the receipt `FOR UPDATE`, then client, sorted SKUs and
+2. The fence locks the receipt `FOR UPDATE`. The incumbent path then takes client, sorted SKUs and
    sorted revisions `FOR KEY SHARE`. The client's mode matches the hook's.
    It locks `catalog_products` and `price_lists` in `SHARE`, takes the exclusive
    transaction advisory lock for each sorted list/SKU pair, then takes
    `price_entries` in `SHARE`. Price apply takes the same advisory lock.
-3. After the visibility probe, the writer's `read` callback authenticates native
+3. The selected component skips fresh guards for a saved receipt. On absence
+   it authorizes before `prelock`. The guard takes erasure ledger `SHARE`, then
+   exact client `FOR UPDATE`, up to 500 of that client's orders in ID order
+   `FOR SHARE NOWAIT`, and the selected SKUs and declaring revision `FOR KEY SHARE`.
+   It takes product `SHARE`, then projection and issue-integrity relations in
+   publication order, followed by the same price guards and policy-history `SHARE NOWAIT`.
+4. After the visibility probe, the writer's `read` callback authenticates native
    replay, then checks fresh owner facts, including the issued policy revision and sealed service-pin shape.
    `catalogAdmissionFence.ts:229–287`,
    `20261125010000_catalog_purchase_admission.sql:2–24,58–94`.
@@ -523,6 +530,8 @@ On fence expiry the writer is discarded. The fence key is released within the
 fence budget plus 50 ms plus two writer round trips. Writer latency delays
 delivery of the timeout settings and the lock request. In the no-injected-latency
 witness the bound is budget plus 50 ms.
+For the selected component the deadline also covers the writer's read callback
+and the restoration of local timeouts before COMMIT.
 
 - **Erasure.** The privacy store takes the ledger in `SHARE ROW EXCLUSIVE`,
   then the identity challenge relation in `EXCLUSIVE` before its subject locks.
