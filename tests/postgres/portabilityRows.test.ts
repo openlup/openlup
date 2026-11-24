@@ -116,3 +116,22 @@ it("refuses history-producing canonical INSERT triggers, schema drift, unbounded
   await expect(captureCompatiblePostgresRows({ source: snapshot, sourceId: "source", catalogueId, tables: ["platform_schema_migrations" as CompatiblePostgresTable], maximumRows: 10, maximumBytes: 1024 })).rejects.toMatchObject({ code: "unsupported_table" });
   await expect(captureCompatiblePostgresRows({ source: snapshot, sourceId: "source", catalogueId, tables: ["subscriptions"], maximumRows: 10001, maximumBytes: 1024 })).rejects.toMatchObject({ code: "invalid_input" });
 });
+
+it("admits the renewal acceptance trigger at its earlier or pinned search path and refuses any other setting", async () => {
+  const admit = "public.catalog_acceptance_record_admit_v2()";
+  const pinned = "SET search_path = pg_catalog, public, pg_temp";
+  expect((await target.query("SELECT proconfig FROM pg_proc WHERE oid=$1::regprocedure", [admit])).rows)
+    .toEqual([{ proconfig: ["search_path=pg_catalog, public, pg_temp"] }]);
+  const packets = [await capture(["subscription_renewal_terms"]), await capture(["subscription_renewal_operations"])];
+  try {
+    for (const [setting, admitted] of [["SET search_path = pg_catalog, public", true], [pinned, true],
+      ["SET search_path = pg_catalog, pg_temp", false], ["RESET search_path", false]] as const) {
+      await target.query(`ALTER FUNCTION ${admit} ${setting}`);
+      for (const packet of packets) {
+        const result = restoreCompatiblePostgresRows({ target: destination, catalogueId, packet });
+        if (admitted) await expect(result, setting).resolves.toMatchObject({ sha256: packet.sha256 });
+        else await expect(result, setting).rejects.toMatchObject({ code: "insert_trigger_requires_owner", table: packet.tables[0]!.table });
+      }
+    }
+  } finally { await target.query(`ALTER FUNCTION ${admit} ${pinned}`); }
+});

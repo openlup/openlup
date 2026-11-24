@@ -333,7 +333,8 @@ it('binds fresh and exact-predecessor runner histories, package bytes, live inve
     const outcomeForwards = [stockForward, reminderForward];
     expect(applied.filter(path => outcomeForwards.includes(path))).toEqual(outcomeForwards);
     expect((await upgrade.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows.slice(0, stockHistory.length)).toEqual(stockHistory);
-    expect((await upgrade.query(attributes, [replaced])).rows).toEqual(stockHeader);
+    // The later search-path forward appends pg_temp to this function's path; the rest of its header is unchanged.
+    expect((await upgrade.query(attributes, [replaced])).rows).toEqual(stockHeader.map(row => ({ ...row, proconfig: ["search_path=pg_catalog, public, pg_temp"] })));
     const nominal = await writer.recordProviderStockCurrent(changed).catch((error: unknown) => error);
     expect(nominal).toMatchObject({ name: 'FulfillmentStockReplayConflictError', message: stockConflict });
     expect(nominal).toBeInstanceOf(Reflect.get(fulfillment, 'FulfillmentStockReplayConflictError'));

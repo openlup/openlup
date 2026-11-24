@@ -66,6 +66,8 @@ const offerEvents = (db: Pool, id: string) => db.query(`SELECT event_type,payloa
   WHERE subscription_id=$1 ORDER BY event_type`, [id]).then(result => result.rows);
 const offerReceipts = (db: Pool, id: string) => db.query(`SELECT idempotency_key,command,command_fingerprint,result,status
   FROM public.subscription_command_receipts WHERE subscription_id=$1 ORDER BY idempotency_key`, [id]).then(result => result.rows);
+// The later search-path forward appends pg_temp to a pinned path that lacks it.
+const appendPgTemp = (setting: string) => setting.startsWith("search_path=") && !setting.endsWith(", pg_temp") ? `${setting}, pg_temp` : setting;
 const signatures = ["public.subscription_terminalize_unpaid_artifacts(uuid,timestamptz,text,text)",
   "public.subscription_pause_close_recovery(uuid,text,uuid,timestamptz)",
   "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
@@ -467,10 +469,10 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
   }, 30_000);
 
   it("preserves replacement headers/ACLs, closes every created ACL, and replays the upgrade", async () => {
-    // The full suffix also pins the pause function's search path.
+    // The full suffix also pins the pause function's search path and appends pg_temp to the others.
     const expectedCatalog = env.before.map(row => row.signature === "customer_subscription_pause_as_actor(uuid,text,text,text)"
       ? { ...row, proconfig: ["search_path=pg_catalog, pg_temp"] }
-      : row);
+      : { ...row, proconfig: row.proconfig.map(appendPgTemp) });
     expect(env.after).toEqual(expectedCatalog);
     expect(env.bodiesBefore).toHaveLength(3);
     expect(env.bodiesAfter).toHaveLength(7);
@@ -480,7 +482,7 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
       has_function_privilege(to_regrole('service_role'),p.oid,'EXECUTE') AS service,coalesce((SELECT bool_or(x.grantee=0 AND x.privilege_type='EXECUTE')
        FROM aclexplode(p.proacl) x),false) AS public FROM pg_proc p WHERE p.oid=ANY($1::regprocedure[]) ORDER BY signature`, [signatures])).rows;
     expect(acl).toHaveLength(4);
-    for (const entry of acl) expect(entry).toMatchObject({ prosecdef: false, proconfig: ["search_path=pg_catalog"], anon: false, authenticated: false, service: profile === "legacy" ? null : true, public: false });
+    for (const entry of acl) expect(entry).toMatchObject({ prosecdef: false, proconfig: ["search_path=pg_catalog, pg_temp"], anon: false, authenticated: false, service: profile === "legacy" ? null : true, public: false });
     const view = (await env.owner.query(`SELECT has_table_privilege('anon','public.subscription_retention_outcomes','SELECT') AS anon,
       has_table_privilege('authenticated','public.subscription_retention_outcomes','SELECT') AS authenticated,
       has_table_privilege(to_regrole('service_role'),'public.subscription_retention_outcomes','SELECT') AS service`)).rows[0];
@@ -514,7 +516,8 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
       .replace("    IF TG_OP = 'UPDATE' THEN\n      PERFORM public.catalog_order_line_sum_acceptance(v_order_id, OLD.order_id);\n    END IF;\n", "")
       .replace("  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);\n", "");
     expect(moneyBody).toBe(mainGuard!.body);
-    expect(catalogueGuard!.definition.replace(catalogueGuard!.body, "")).toBe(mainGuard!.definition.replace(mainGuard!.body, ""));
+    expect(catalogueGuard!.definition.replace(catalogueGuard!.body, "")).toBe(mainGuard!.definition.replace(mainGuard!.body, "")
+      .replace("SET search_path TO 'public', 'pg_catalog'\n", "SET search_path TO 'public', 'pg_catalog', 'pg_temp'\n"));
     expect(env.guardAfter.triggers).toEqual(env.guardBefore.triggers);
   });
 

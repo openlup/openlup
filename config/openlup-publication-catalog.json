@@ -1662,6 +1662,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5415,6 +5419,10 @@
     },
     {
       "path": "packages/platform/sql/20261125300000_identity_privacy_required_contributors.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125310000_function_search_path_pg_temp.sql",
       "class": "public-output"
     },
     {
