@@ -481,4 +481,15 @@ describe("PostgreSQL owned Docker volume cleanup", () => {
       await closePostgres(container, pool);
     }
   }, 120_000);
+
+  it("prepends FAST_POSTGRES_SERVER_FLAGS before SERVER_FLAGS for managed-compat fast durability and omits them for default", async () => {
+    const { resolveManagedCompatServerFlags } = await import("../helpers/managedCompatPostgres.js");
+    const { FAST_POSTGRES_SERVER_FLAGS } = await import("../helpers/postgresContainer.js");
+    const { SERVER_FLAGS } = await import("../../scripts/public-ci-pgtap.mjs");
+
+    expect(resolveManagedCompatServerFlags()).toEqual([...FAST_POSTGRES_SERVER_FLAGS, ...SERVER_FLAGS]);
+    expect(resolveManagedCompatServerFlags("fast")).toEqual([...FAST_POSTGRES_SERVER_FLAGS, ...SERVER_FLAGS]);
+    expect(resolveManagedCompatServerFlags("default")).toEqual([...SERVER_FLAGS]);
+    expect(() => resolveManagedCompatServerFlags("invalid" as "fast")).toThrow("PostgreSQL durability must be 'fast' or 'default'.");
+  });
 });
