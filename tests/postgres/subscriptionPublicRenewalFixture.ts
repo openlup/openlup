@@ -42,6 +42,7 @@ export let admin: Pool, migration: Pool, runtime: Pool;
 export let runtimeUrl: string;
 let selection: QualifiedPostgresInstallation = { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres",
   migrationLogin: "postgres", runtimeLogin: "g7_runtime", restoreLogin: "g7_restore" };
+export function runtimeLogin(): string { return selection.runtimeLogin; }
 const lock = "openlup:public-platform-migrations:v1";
 const secret = "synthetic-conformance";
 export const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: "sandbox", authorizationRef: "sandbox:authorization",
