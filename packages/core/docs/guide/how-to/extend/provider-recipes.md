@@ -7,7 +7,7 @@ Install a code-owned, zero-SDK provider adapter into your application's `owned/a
 Use a provider recipe when you need to integrate an external payment, fulfillment, shipping, tax, communications, accounting, observability, or sales-channel service without adding third-party vendor SDKs or modifying platform internals.
 
 - **Code-owned:** `openlup recipe add` copies plain TypeScript source files into your application (`owned/adapters/<domain>/<provider>`). You own, audit, and customize the code directly.
-- **recipe-contract isolated:** Recipe runtime files import only declared public exports of `@openlup/core`, `@openlup/platform`, and `@openlup/outbox`, Node built-ins (in server runtime modules only), and local relative files. Credentials and `fetchImpl` are injected explicitly at composition time.
+- **Isolated by the provider recipe contract:** Recipe runtime files import only declared public exports of `@openlup/core`, `@openlup/platform`, and `@openlup/outbox`, Node built-ins (in server runtime modules only), and local relative files. Credentials and `fetchImpl` are injected explicitly at composition time.
 - **Offline-verified first:** Every recipe ships with manifest parity checks, static isolation checks, and offline Vitest conformance and mount-proof suites (Stages 1–3).
 
 ## Discover and inspect available recipes
@@ -36,7 +36,7 @@ Use a `<container>/<domain>/<provider>` destination layout (the default) when sp
 
 ## Scaffold a new provider recipe
 
-When no catalog recipe exists for your provider, generate an recipe-contract-compliant starter tree and verify it offline immediately:
+When no catalog recipe exists for your provider, generate a starter tree that follows the provider recipe contract and verify it offline immediately:
 
 ```bash
 npx --no -- openlup recipe scaffold --domain payments --provider acme-pay --verify
@@ -55,7 +55,7 @@ npx --no -- openlup recipe verify owned/adapters/payments/adyen --json
 Verification checks four offline stages:
 
 1. **Manifest & disk parity:** `recipe.json` satisfies the recipe schema and `files.allFiles` matches every file on disk.
-2. **recipe-contract static isolation:** Runtime files contain no ambient runtime environment reads, no ambient global `fetch()` calls, no disallowed external SDK imports, and no browser-to-server imports.
+2. **Provider recipe contract static isolation:** Runtime files contain no ambient runtime environment reads, no ambient global `fetch()` calls, no disallowed external SDK imports, and no browser-to-server imports.
 3. **Platform range compatibility:** Your installed `@openlup/platform` version satisfies `openlupPlatformRange`.
 4. **Offline Stages 1–3 suites:** Both declared Vitest suites (`files.conformanceTest` and `files.mountProofTest` in `recipe.json`) pass with zero skipped assertions.
 
