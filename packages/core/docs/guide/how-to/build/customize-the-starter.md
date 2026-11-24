@@ -114,7 +114,9 @@ docker compose down --volumes
 ```
 
 The volume removal destroys all data in that demonstration project. A fresh
-startup creates and marks a new demonstration database.
+startup creates and marks a new demonstration database. Use this procedure
+only with the owner's approval for a disposable demonstration, including
+when correction of an invalid seed issuer changes its retained digest.
 
 ## Edit and refresh
 
@@ -132,6 +134,41 @@ wait for the host to listen before refreshing. With the starter's `build` and
 after a fragment edit. Changes to public media need a manual refresh; they are
 not watched. The watcher polls even while idle. A restart loses process-local
 sessions, and client and configuration changes do not reload atomically.
+
+## Set seeded product physical facts
+
+In `owned/store.config.ts`, each seeded product declares its original gram
+weight and primary unit identifier:
+
+```ts
+physical: {
+  netContent: { dimension: 'mass', unit: 'openlup:g', unscaled: '250', scale: 0 },
+  primaryUnitIdentifier: { scheme: 'gs1:gtin', issuer: 'demo', value: '0000000000017' },
+}
+```
+
+Use a decimal digit string for `unscaled`, from `'1'` through `'2147483647'`,
+with no leading zero. Supply a valid GTIN check digit and keep all authored
+digits, including leading zeros. The issuer must contain 1 to 240 UTF-16
+code units with no surrounding whitespace, NUL or unpaired surrogate.
+In `owned/subscription-editing.ts`, use the same gram range as a number for
+each editor catalogue `physicalSize`.
+
+During upgrade, replace a pristine `owned/store.config.ts` with the candidate
+copy. In a customized file, convert each old `netWeightG`, `unitGtin` and
+`issuer` in place using the shape above. Keep the weight, GTIN digits and
+issuer exactly as authored where the values satisfy the new domain. The
+installer projects these inputs into the existing product documents, so an
+unchanged entry can replay against the retained document.
+
+For `OPENLUP_E_STARTER_PRODUCT_PHYSICAL_INVALID`, migrate the relevant entry
+and correct its values from verified facts. If correcting the issuer changes
+a retained digest, see [Reset an interrupted first install](#reset-an-interrupted-first-install)
+for an owner-approved rebuild of that disposable demo in the same Compose
+project. The procedure removes all data in the demo volume. For
+`OPENLUP_E_STARTER_SYNTHETIC_PHYSICAL_SIZE_INVALID`, correct the named SKU's
+`physicalSize` from the verified whole-gram size. Restart and recheck
+`/api/config` after either repair.
 
 ## Select your configuration
 

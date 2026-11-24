@@ -12,7 +12,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogPackManifest, withCatalogPublicationRules,
   type CatalogDefinitionInstallReceipt, type CatalogPackInput } from '@openlup/platform/catalog';
 import { configurations } from '../owned/store.config.ts';
-import { starterDiagnosticCode } from '../shared/refusals.ts';
+import { readStarterDiagnostic, starterDiagnosticCode } from '../shared/refusals.ts';
+import { assertConfig } from '../shared/config.ts';
 import { catalogueConformance } from '../owned/catalogue.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { editorProducts, readStarterCatalogueRules, stagePackBuild, starterCatalogue, starterCataloguePack } from '../host/editor-catalogue.ts';
@@ -482,6 +483,68 @@ for (const [config, retained] of [
       retained.flatMap(([, , , , rows]) => rows.map(([skuId, , { issuer, unitGtin }]) => [skuId, issuer, unitGtin])));
   });
 }
+
+test('physical admission preserves canonical gram bounds, issuer bytes and identifier spelling', () => {
+  const largestIssuer = 'a'.repeat(238) + '😀';
+  for (const [grams, gtin] of [['1', '95010939'], ['2147483647', '0000000000017']]) {
+    const config = structuredClone(configurations.supplements!);
+    const product = config.offer.products[0]!;
+    product.physical.netContent.unscaled = grams!;
+    product.physical.primaryUnitIdentifier = { scheme: 'gs1:gtin', issuer: largestIssuer, value: gtin! };
+    config.subscriptionEditing.catalogue[1]!.physicalSize = 2_147_483_647;
+    const variant = buildDemoSeed(config).documents[0]!.document.variants[0]!;
+    assert.deepEqual(variant.physical, { netWeightG: Number(grams), unitGtin: gtin, issuer: largestIssuer });
+    assert.equal(buildDemoSeed(config).documents[0]!.document.variants[1]!.physical.netWeightG, 2_147_483_647);
+  }
+});
+
+test('refuses unsupported typed physical inputs before bootstrap, rules access or seed SQL', async () => {
+  const productCode = 'OPENLUP_E_STARTER_PRODUCT_PHYSICAL_INVALID';
+  const syntheticCode = 'OPENLUP_E_STARTER_SYNTHETIC_PHYSICAL_SIZE_INVALID';
+  const fields: readonly [branch: 'netContent' | 'primaryUnitIdentifier', key: string, values: unknown[]][] = [
+    ['netContent', 'unscaled', ['0', '1.5', 1, '2147483648', '01', '+1', '1e0', '1\n']],
+    ['netContent', 'dimension', ['volume', 'count']],
+    ['netContent', 'unit', ['openlup:kg', 'openlup:ml']],
+    ['netContent', 'scale', [1, '0']],
+    ['netContent', 'extra', [true]],
+    ['primaryUnitIdentifier', 'scheme', ['example:gtin']],
+    ['primaryUnitIdentifier', 'value', ['0000000000018', 'abc', 17]],
+    ['primaryUnitIdentifier', 'issuer', ['', ' demo', 'demo ', 'a\u0000b', '\uD800', '\uDC00', 'a'.repeat(239) + '😀', 5]],
+  ];
+  const config = () => structuredClone(configurations.supplements!);
+  const cases = fields.flatMap(([branch, key, values]) => values.map(value => {
+    const input = config();
+    Reflect.set(input.offer.products[0]!.physical[branch]!, key, value);
+    return { input, code: productCode, subject: input.offer.products[0]!.sku, path: 'offer.products[].physical' };
+  }));
+  for (const physical of [null, { netWeightG: 1, unitGtin: '0000000000017', issuer: 'demo' },
+    { ...config().offer.products[0]!.physical, primaryUnitIdentifier: null }]) {
+    const input = config();
+    Reflect.set(input.offer.products[0]!, 'physical', physical);
+    cases.push({ input, code: productCode, subject: input.offer.products[0]!.sku, path: 'offer.products[].physical' });
+  }
+  for (const value of [0, 1.5, '1', 2_147_483_648, Infinity, NaN]) {
+    const input = config(), product = input.subscriptionEditing.catalogue[1]!;
+    Reflect.set(product, 'physicalSize', value);
+    cases.push({ input, code: syntheticCode, subject: product.sku, path: 'subscriptionEditing.catalogue[].physicalSize' });
+  }
+  for (const { input, code, subject, path } of cases) {
+    const exact = (error: unknown) => {
+      assert.equal(Object.getPrototypeOf(error), Error.prototype);
+      assert.deepEqual(Reflect.ownKeys(error as object).filter(key => key !== 'stack'), ['message']);
+      assert.equal((error as Error).message, code);
+      const diagnostic = readStarterDiagnostic(error);
+      assert.equal(diagnostic?.code, code);
+      assert.deepEqual(diagnostic?.guidance, { ...diagnostic?.guidance, path, subject });
+      return true;
+    };
+    assert.throws(() => assertConfig(input), exact);
+    await assert.rejects(installDemonstration(input, async () => assert.fail('bootstrap reached')), exact);
+    const { calls, binding } = installation();
+    await assert.rejects(applyDemoSeed(input, binding, () => assert.fail('rules source reached')), exact);
+    assert.deepEqual(calls, []);
+  }
+});
 
 function infrastructureCause(original: unknown) {
   return (error: unknown) => {

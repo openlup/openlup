@@ -5,10 +5,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
+import { seedPhysicalGuidance } from './shared/seed-physical.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
 import { starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
-import { installationFailure, installationFinding, refusal } from './installation/refusals.ts';
+import { installationFailure, installationFinding, installationReport, refusal } from './installation/refusals.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const [command, ...args] = process.argv.slice(2);
@@ -58,8 +59,17 @@ const argumentObserved = {
   starter_argument_duplicate: 'The lifecycle command received the same option more than once.',
   starter_argument_value_required: 'The configuration option has no value.',
 };
+function physicalFinding(error) {
+  const diagnostic = readStarterDiagnostic(error);
+  if (diagnostic?.guidance && Object.hasOwn(seedPhysicalGuidance, diagnostic.code))
+    return { code: diagnostic.code, ...seedPhysicalGuidance[diagnostic.code], subject: diagnostic.guidance.subject };
+}
+function physicalReport({ code, path, observed, cause, fix, recheck, subject }) {
+  const safeSubject = subject.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, char => `\\u{${char.codePointAt(0).toString(16)}}`);
+  return installationReport(refusal(code, path, observed, cause, fix, recheck)) + `Subject: ${safeSubject}\n`;
+}
 function commandRefusal(error, stage, allowLegacy = false) {
-  const known = installationFinding(error);
+  const known = installationFinding(error) ?? physicalFinding(error);
   if (known) return known;
   const diagnostic = json ? readStarterDiagnostic(error) : undefined;
   const code = json ? diagnostic?.code : (allowLegacy && error instanceof Error ? error.message : undefined);
@@ -109,6 +119,7 @@ async function readInstallReport(argv, configuration) {
     && Array.isArray(pack.taxClasses) && pack.taxClasses.every(key => typeof key === 'string'))) return report;
   const findingFields = ['code', 'path', 'observed', 'cause', 'fix', 'recheck'];
   const finding = report.findings[0];
+  if (Object.hasOwn(seedPhysicalGuidance, finding?.code)) findingFields.push('subject');
   if (report.state === 'violated' && status === 2 && report.packs.length === 0 && report.findings.length === 1
     && fields(finding, findingFields) && findingFields.every(key => typeof finding[key] === 'string')
     && starterGuidance(finding.code)) return report;
@@ -193,7 +204,7 @@ if (command === 'refusals') {
     const finding = commandRefusal(error, stage, stage !== '/installation');
     if (json) final = installReport(configuration, packs, finding);
     else {
-      process.stderr.write(`${finding.code}\nFix: ${finding.fix}\n`);
+      process.stderr.write(Object.hasOwn(finding, 'subject') ? physicalReport(finding) : `${finding.code}\nFix: ${finding.fix}\n`);
       process.exitCode = 2;
     }
   }
@@ -201,10 +212,12 @@ if (command === 'refusals') {
 } else if (command === 'serve-demo') {
   // Internal container entry: private runtime state never enters the image or Compose values.
   try {
-    const { parseHostArguments } = await import('./shared/config.ts');
+    const { assertConfig, parseHostArguments } = await import('./shared/config.ts');
+    const { selectConfiguration } = await import('./owned/store.config.ts');
+    const options = parseHostArguments(args);
+    assertConfig(selectConfiguration(options.configuration));
     const { prepareDemonstrationQuoteKey } = await import('./installation/install.ts');
     const { default: pg } = await import('pg');
-    const options = parseHostArguments(args);
     if (!options.databaseUrl) throw new Error('starter_runtime_connection_required');
     const connection = new pg.Client({ connectionString: options.databaseUrl });
     let keyFile;
@@ -218,12 +231,12 @@ if (command === 'refusals') {
   } catch (error) {
     const code = error instanceof Error && starterGuidance(error.message)
       ? error.message : 'starter_demo_start_failed';
-    process.stderr.write(`${code}\n`);
+    const finding = physicalFinding(error);
+    process.stderr.write(finding ? physicalReport(finding) : `${code}\n`);
     process.exitCode = 2;
   }
 } else if (command === 'install') {
   // Internal one-shot Compose entry; no install connection reaches the HTTP host.
-  const { installationReport } = await import('./installation/refusals.ts');
   const installEntry = Symbol.for('openlup.neutral-store.install-entry');
   // This one-shot process has its own catalogue admission before the host import.
   Reflect.set(globalThis, installEntry, true);
@@ -251,7 +264,8 @@ if (command === 'refusals') {
   } catch (error) {
     if (json) final = installReport(configuration, [], commandRefusal(error, stage, stage !== '/installation'));
     else {
-      let report = installationReport(error);
+      const finding = physicalFinding(error);
+      let report = finding ? physicalReport(finding) : installationReport(error);
       if (!report) {
         const code = error instanceof Error ? error.message : 'starter_installation_failed';
         const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());

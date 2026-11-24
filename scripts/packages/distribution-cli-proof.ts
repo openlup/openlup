@@ -100,8 +100,21 @@ export const starterOptionalOwnedFiles: ReadonlySet<string> = new Set([
 ]);
 
 export const starterSettingsHost = "owned/settings-host.ts";
+const starterStoreConfig = "owned/store.config.ts";
+const legacyStarterPhysical = /\{ netWeightG: (\d+), unitGtin: '([0-9]+)', issuer: '([^'\r\n]+)' \}/gu;
 const settingsHeading = "\n## Change a business setting\n";
 const starterAgentGuide = "AGENTS.md";
+
+export function migrateStarterPhysical(app: string, target: string, pristine: boolean): Buffer {
+  const path = join(app, starterStoreConfig);
+  const previous = readFileSync(path, "utf8");
+  const next = pristine ? readFileSync(join(target, starterStoreConfig), "utf8") : previous.replaceAll(legacyStarterPhysical,
+    (_, grams, gtin, issuer) => `{ netContent: { dimension: 'mass', unit: 'openlup:g', unscaled: '${grams}', scale: 0 }, primaryUnitIdentifier: { scheme: 'gs1:gtin', issuer: '${issuer}', value: '${gtin}' } }`);
+  assert(next !== previous && !/\bnetWeightG:/u.test(next), "starter_physical_upgrade_manual_reconciliation_required");
+  const bytes = Buffer.from(next);
+  writeFileSync(path, bytes);
+  return bytes;
+}
 
 export function includeSettingsHost(app: string, target: string, to: ReturnType<typeof starterUpgradeSnapshot>): void {
   if (!existsSync(join(target, starterSettingsHost))) return;
@@ -584,6 +597,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const predecessorSettings = careUpgrade ? owned[starterSettingsHost] : undefined;
   const predecessorCopy = careUpgrade ? readFileSync(join(app, careCopy)) : undefined;
   phase("migrate-owned-contracts", () => { migrateStarterOwned(app, pair.to, from, to); });
+  const physicalUpgrade = !Object.hasOwn(from.files, "shared/seed-physical.ts") && Object.hasOwn(to.files, "shared/seed-physical.ts")
+    && /\bnetWeightG:/u.test(readFileSync(join(app, starterStoreConfig), "utf8"));
   if (!pair.pristine) phase("customize-owned", () => {
     for (const [path, before, after] of [
       ["owned/store.config.ts", "#3d6657", "#663d57"],
@@ -592,6 +607,12 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert(ownership.owned.includes(path) && !Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path));
       const original = readFileSync(join(app, path), "utf8"); assert(original.includes(before));
       writeFileSync(join(app, path), original.replaceAll(before, after)); owned[path] = readFileSync(join(app, path));
+    }
+    if (physicalUpgrade) {
+      const local = owned[starterStoreConfig]!.toString().replace("netWeightG: 250, unitGtin: '0000000000017', issuer: 'demo'",
+        "netWeightG: 275, unitGtin: '0000000000109', issuer: 'example:local'");
+      assert.notEqual(local, owned[starterStoreConfig]!.toString());
+      writeFileSync(join(app, starterStoreConfig), owned[starterStoreConfig] = Buffer.from(local));
     }
     if (previousQuotaCopy !== undefined || predecessorCopy) {
       assert(ownership.owned.includes(starterCheckoutCopy));
@@ -863,6 +884,12 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     }
     if (!pair.pristine) pair.evidence.customizations![careCopy] = hash(copy);
     assert.deepEqual(run("apply").applied, []); checkUpgradeFiles();
+  });
+  if (physicalUpgrade) phase("starter-owned-physical-reconciliation", () => {
+    owned[starterStoreConfig] = migrateStarterPhysical(app, pair.to, pair.pristine === true);
+    if (!pair.pristine) pair.evidence.customizations![starterStoreConfig] = hash(owned[starterStoreConfig]);
+    assert.deepEqual(run("apply").applied, []);
+    checkUpgradeFiles();
   });
   if (catalogue130) {
     checkUpgradeFiles();

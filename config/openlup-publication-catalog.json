@@ -2174,6 +2174,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/seed-physical.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/subscription-edit.ts",
       "class": "public-output"
     },
