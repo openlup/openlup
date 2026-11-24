@@ -175,13 +175,14 @@ function onlyAdds(before: readonly string[], after: readonly string[]): boolean 
  * A pure addition keeps every old line in order and has no "before", so it needs none. The head
  * must stay readable as the next base, block or not: its config parses, and each package
  * publishable there keeps a gates file with a `packageSurface` object and every snapshot it lists.
- * The published-tree `--policy` check runs this against a pull request's or merge group's base.
+ * The published-tree `--policy` / `--self-check` check runs this against a pull request's, merge group's, or local comparison base whenever `HEAD` differs from that base.
  */
 export function assertMigrationBlocks(root: string, base: string, head: string): void {
-  for (const commit of [base, head]) capture(root, "git", ["rev-parse", "--verify", `${commit}^{commit}`]);
+  const readGit = (args: string[]): string => documentationGit(root, args).toString("utf8");
+  for (const commit of [base, head]) readGit(["rev-parse", "--verify", `${commit}^{commit}`]);
   const refuse = (detail: string): never => { throw new Error(`migration-block: ${detail}`); };
-  const atBase = (path: string): string => { try { return capture(root, "git", ["show", `${base}:${path}`]); } catch { return refuse(`${path} cannot be read at the base ${base}`); } };
-  const atHead = (path: string): string | undefined => { try { return capture(root, "git", ["show", `${head}:${path}`]); } catch { return undefined; } };
+  const atBase = (path: string): string => { try { return readGit(["show", `${base}:${path}`]); } catch { return refuse(`${path} cannot be read at the base ${base}`); } };
+  const atHead = (path: string): string | undefined => { try { return readGit(["show", `${head}:${path}`]); } catch { return undefined; } };
   const surface = (commit: string, path: string, text: string | undefined): Record<string, unknown> => {
     let found: unknown = {};
     try { if (text !== undefined) found = (JSON.parse(text) as { packageSurface?: unknown }).packageSurface; } catch { found = undefined; }
@@ -212,12 +213,12 @@ export function assertMigrationBlocks(root: string, base: string, head: string):
         });
       };
       const rootLock = JSON.parse(atHead("package-lock.json") ?? "null");
-      const baseRootLock = capture(root, "git", ["ls-tree", base, "--", "package-lock.json"]).trim() ? JSON.parse(atBase("package-lock.json")) : undefined;
+      const baseRootLock = readGit(["ls-tree", base, "--", "package-lock.json"]).trim() ? JSON.parse(atBase("package-lock.json")) : undefined;
       for (const row of after.packages) {
         const rootCarrier = rootLock?.packages?.[row.directory];
         if ((row.publish || rootCarrier !== undefined || baseRootLock?.packages?.[row.directory] !== undefined) && !carrierMatches(row.name, rootCarrier)) return false;
         const path = `${row.directory}/package-lock.json`, bytes = atHead(path);
-        if (!bytes && capture(root, "git", ["ls-tree", base, "--", path]).trim()) return false;
+        if (!bytes && readGit(["ls-tree", base, "--", path]).trim()) return false;
         if (bytes) { const lock = JSON.parse(bytes); if (lock.version !== versions.get(row.name) || !carrierMatches(row.name, lock.packages?.[""])) return false; }
       }
       if (before.some((row) => { const old = versionOf(JSON.parse(atBase(`${row.directory}/package.json`))); return typeof old !== "string" || releaseVersionAbove(version, old) !== true; })) return false;
@@ -226,7 +227,7 @@ export function assertMigrationBlocks(root: string, base: string, head: string):
     } catch { return false; }
   };
   const fragmentNotes = new Map<string, string[]>();
-  for (const row of capture(root, "git", ["ls-tree", "-r", "-z", "--full-tree", head]).split("\0").filter(Boolean)) {
+  for (const row of readGit(["ls-tree", "-r", "-z", "--full-tree", head]).split("\0").filter(Boolean)) {
     const match = /^(\d{6}) \w+ ([a-f0-9]{40})\t(.+)$/u.exec(row);
     if (!match || !isChangelogFragmentArea(match[3]!)) continue;
     const path = match[3]!, directory = path.split("/").slice(0, 2).join("/");
