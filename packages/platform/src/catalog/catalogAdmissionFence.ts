@@ -119,11 +119,10 @@ async function reservePair<Connection extends FenceConnection>(
   }
 }
 
-const snapshotSql = `WITH snap AS MATERIALIZED (SELECT pg_current_snapshot() AS value)
+const snapshotSql = (selected: boolean) => `WITH snap AS MATERIALIZED (SELECT pg_current_snapshot() AS value)
   SELECT pg_snapshot_xmax(value)::text AS xmax,
     ARRAY(SELECT xid::text FROM pg_snapshot_xip(value) xid WHERE xid <> $1::xid8 ORDER BY xid) AS xip,
-    current_user::text AS role, session_user::text AS login,
-    NOT pg_is_in_recovery() AND EXISTS (
+${selected ? "    current_user::text AS role, session_user::text AS login,\n" : ""}    NOT pg_is_in_recovery() AND EXISTS (
       SELECT 1 FROM pg_locks WHERE locktype='advisory' AND mode='ExclusiveLock' AND granted AND pid=$2
         AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
         AND classid=$3::oid AND objid=$4::oid AND objsubid=2
@@ -326,12 +325,13 @@ async function runFence<T, Connection extends FenceConnection>(
             Reflect.ownKeys(result).length !== 1 || !Object.hasOwn(result, "kind") || Reflect.get(result, "kind") !== "locked") throw unavailable();
         }
       }
-      const frozen = (await dispatch<Visibility>(snapshotSql, scope)).rows[0]!;
+      const snapshot = snapshotSql(selected);
+      const frozen = (await dispatch<Visibility>(snapshot, scope)).rows[0]!;
       const probeMs = activeRemaining();
       probePending = true;
       let current: Visibility | undefined;
       try {
-        const result = await probe.query<Visibility>({ text: snapshotSql, values: scope, query_timeout: probeMs });
+        const result = await probe.query<Visibility>({ text: snapshot, values: scope, query_timeout: probeMs });
         [current] = result.rows;
       } catch (error) {
         probeFailed = true;

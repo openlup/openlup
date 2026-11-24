@@ -15,7 +15,7 @@ import { createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore, t
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { actorId, authoredPublicationDocument, fixture, graph, hash, insertGraph, installPublicationActors, transaction } from "./catalogPublicationFixture.js";
 import { destinationContext, documentTable, readSnapshot, reachDestinationCutoff, selectionTable, snapshot } from "./destinationDocumentFixture.js";
-import { receiptArgs, receiptCall, receiptClient } from "./destinationReceiptFixture.js";
+import { markReceiptClientErased, receiptArgs, receiptCall, receiptClient } from "./destinationReceiptFixture.js";
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
 
 let installation: LifecycleInstallation;
@@ -1861,10 +1861,12 @@ const componentGuards: GuardCase[] = [
     return db => db.query("UPDATE public.commerce_order_draft_receipts SET request_fingerprint=$2 WHERE idempotency_key=$1",
       [request.key, "b".repeat(32)]);
   } },
-  { name: "erasure ledger", wait: relationWait("identity_privacy_erasures"), writer: simpleWrite(`INSERT INTO public.identity_privacy_erasures
-      (erasure_id,idempotency_key,client_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-      VALUES(gen_random_uuid(),gen_random_uuid(),$1,$2,'identity.erasure.v1','{}','{}','{}',clock_timestamp())`,
-    ({ request }) => [request.clientId, actorId]) },
+  { name: "erasure ledger", wait: relationWait("identity_privacy_erasures"), async writer({ request }) {
+    return async db => {
+      await db.query("LOCK TABLE public.identity_privacy_erasures IN SHARE ROW EXCLUSIVE MODE");
+      await markReceiptClientErased(db, request.clientId);
+    };
+  } },
   { name: "exact client", wait: tupleWait, writer: simpleWrite("UPDATE public.clients SET first_name='Changed' WHERE id=$1",
     ({ request }) => [request.clientId]) },
   { name: "order insert via client foreign key", wait: tupleWait, writer: simpleWrite(orderInsert, ({ request }) => [request.clientId, 1]) },
