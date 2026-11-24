@@ -20,12 +20,14 @@ describe("customer Supabase client", () => {
     const {
       getCustomerSupabase,
       shouldDetectCustomerSessionInUrl,
+      createCustomerSessionUrlDetector,
       CUSTOMER_AUTH_STORAGE_KEY,
     } = await import("./customerClient");
 
     expect(mockCreateClient).not.toHaveBeenCalled();
     expect(shouldDetectCustomerSessionInUrl(new URL("https://openlup.test/konto/auth/callback"))).toBe(true);
     expect(shouldDetectCustomerSessionInUrl(new URL("https://openlup.test/account/auth/callback"))).toBe(true);
+    expect(createCustomerSessionUrlDetector(["/custom/auth/cb"])(new URL("https://openlup.test/custom/auth/cb"))).toBe(true);
     expect(shouldDetectCustomerSessionInUrl(new URL("https://openlup.test/admin/auth/callback"))).toBe(false);
 
     expect(getCustomerSupabase()).toEqual({ mocked: true });

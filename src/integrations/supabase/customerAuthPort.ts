@@ -29,8 +29,16 @@ function toAuthSession(session: Session | null): AuthSession | null {
   };
 }
 
-export function createSupabaseCustomerAuthPort(): CustomerAuthPort {
+export interface SupabaseCustomerAuthPortOptions {
+  /** Fallback locale when signInWithOtp receives an unmapped locale. Defaults to neutral `"en"`. */
+  readonly defaultLocale?: 'en' | 'pl';
+}
+
+export function createSupabaseCustomerAuthPort(
+  options: SupabaseCustomerAuthPortOptions = {},
+): CustomerAuthPort {
   const supabase = getCustomerSupabase();
+  const fallbackLocale = options.defaultLocale ?? 'en';
   return {
     async getSession() {
       const { data, error } = await supabase.auth.getSession();
@@ -49,7 +57,8 @@ export function createSupabaseCustomerAuthPort(): CustomerAuthPort {
 
     async signInWithOtp({ email, locale }) {
       try {
-        await requestCustomerMagicLink(email, locale === 'en' ? 'en' : 'pl', {
+        const resolvedLocale = locale === 'en' || locale === 'pl' ? locale : fallbackLocale;
+        await requestCustomerMagicLink(email, resolvedLocale, {
           returnTo: readCustomerReturnTo(),
         });
         return { error: null };

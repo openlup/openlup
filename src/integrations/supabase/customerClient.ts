@@ -16,6 +16,11 @@ export const CUSTOMER_AUTH_STORAGE_KEY = 'customer.auth.managed.v1';
 export const CUSTOMER_AUTH_CALLBACK_PATH = '/konto/auth/callback';
 export const CUSTOMER_AUTH_CALLBACK_PATH_EN = '/account/auth/callback';
 
+export const CUSTOMER_AUTH_CALLBACK_PATHS: readonly string[] = Object.freeze([
+  CUSTOMER_AUTH_CALLBACK_PATH_EN,
+  CUSTOMER_AUTH_CALLBACK_PATH,
+]);
+
 let customerSupabase: SupabaseClient<Database> | null = null;
 let customerSessionStorage: Pick<Storage, 'removeItem'> | null = null;
 
@@ -24,9 +29,14 @@ export function clearCustomerSessionStorage(): void {
   customerSessionStorage?.removeItem(CUSTOMER_AUTH_STORAGE_KEY);
 }
 
-export function shouldDetectCustomerSessionInUrl(url: URL): boolean {
-  return url.pathname === CUSTOMER_AUTH_CALLBACK_PATH || url.pathname === CUSTOMER_AUTH_CALLBACK_PATH_EN;
+export function createCustomerSessionUrlDetector(
+  callbackPaths: readonly string[] = CUSTOMER_AUTH_CALLBACK_PATHS,
+): (url: URL) => boolean {
+  const allowed = new Set(callbackPaths);
+  return (url: URL) => allowed.has(url.pathname);
 }
+
+export const shouldDetectCustomerSessionInUrl = createCustomerSessionUrlDetector(CUSTOMER_AUTH_CALLBACK_PATHS);
 
 export function getCustomerSupabase(): SupabaseClient<Database> {
   if (!customerSupabase) {
