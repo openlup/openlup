@@ -1109,7 +1109,7 @@ moving `pg_temp` to the end. When the trusted list is known, the check prints th
 exact `ALTER FUNCTION` statement. For a missing or empty path, review and set the
 trusted schema list before appending `pg_temp`. Eleven acquisition and partner
 acquisition definer functions now pin `pg_temp` last on their search path.
-The [function search-path forward](../../db/platform/migrations/20261125175000_function_search_path_pg_temp.sql)
+The [function search-path forward](../../db/platform/migrations/20261125210000_function_search_path_pg_temp.sql)
 appends `pg_temp` to the search path of 388 installer-owned `public` functions
 on every plan, keeping their schema order. Where the qualified-v2 plan already
 sets `pg_catalog, public, pg_temp`, every plan takes that value. Only the
