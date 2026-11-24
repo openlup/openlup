@@ -633,6 +633,10 @@ provider activation and hosted qualification retain their existing limits.
 
 ## Published starter catalogue limits
 
+Published products display a title or localized short name and an optional
+local image. Long descriptions, product details and pack contents display as
+empty copy.
+
 The starter reserves part of its 500 active sellable SKU quote capacity for
 seeded storefront and editor SKUs. Active sellable SKUs across offers also
 count. If capacity is exhausted, reduce the active sellable catalogue through

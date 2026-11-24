@@ -57,9 +57,10 @@ at `node_modules/@openlup/core/docs/guide/reference/limits.md`.
 
 Run `./lifecycle browser browser/catalogue-products.spec.ts` in the extracted
 candidate. Each project publishes its own disposable fixture, including a
-sibling beyond the first 24 rows. At phone and desktop widths the spec reloads
-the selected SKU, restores its cart and checks the quote against its gross
-price and currency. It also checks missing fixture, disconnected reader,
+sibling beyond the first 24 rows. It verifies an image-free listing and a
+localized listing with verified media. At phone and desktop widths the spec
+reloads the selected SKU, restores its cart and checks the quote against its
+gross price and currency. It also checks missing fixture, disconnected reader,
 sibling substitution and private attribute controls. The attempted governed
 checkout records its own refusal and checks the order count.
 

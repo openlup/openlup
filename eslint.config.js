@@ -197,7 +197,7 @@ export const PLATFORM_MODULE_GRAPH = {
   "operations/server": { values: ["operations", "bff", "tax/contracts"], types: ["http", "data", "operations/contracts"] },
   risk: { contracts: true, values: [], types: [] },
   "risk/server": { values: ["commerce", "risk", "identity/contracts"], types: ["risk/contracts", "data", "http", "bff"] },
-  marketing: { contracts: true, values: [], types: [] },
+  marketing: { contracts: true, values: ["catalog-identifiers"], types: [] },
   "marketing/server": { values: ["marketing", "identity/contracts"], types: ["http", "bff", "marketing/contracts", "communications/contracts"] },
   commerce: { contracts: true, values: ["pricing/contracts", "shipping"], types: [] },
   "commerce/server": { values: ["commerce", "fulfillment", "pricing", "shipping", "promotions", "pricing/contracts"], types: ["http", "bff", "commerce/contracts", "data"] },
@@ -212,7 +212,8 @@ export const PLATFORM_MODULE_GRAPH = {
   // The catalog-to-pricing value edge lets the effective bundle store reuse pricing's
   // effective-window authority via selectEffectiveBundleTargetPrice.
   "catalog/testing": { values: ["catalog"], types: ["catalog/contracts"] },
-  catalog: { contracts: true, values: ["pricing", "data", "migrations"], types: ["bff", "http"] },
+  "catalog-identifiers": { values: [], types: [] },
+  catalog: { contracts: true, values: ["pricing", "data", "migrations", "catalog-identifiers"], types: ["bff", "http"] },
   communications: { contracts: true, values: ["data", "identity"], types: ["http"] },
   identity: { contracts: true, values: ["bff", "data", "kernel"], types: ["http"] },
   kernel: { values: [], types: [] },

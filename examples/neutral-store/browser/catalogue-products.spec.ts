@@ -12,6 +12,8 @@ import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogInternalG
 import { createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore } from '@openlup/platform/pricing';
 import { demoIdentifier, readStarterCatalogueRules, stageStarterCatalogueBuild, starterCataloguePack } from '../host/editor-catalogue.ts';
 import { catalogDraftRegistry } from '../owned/catalogue.ts';
+import { copy } from '../owned/copy.ts';
+import { quoteCopy } from '../owned/quote-copy.ts';
 import { configurations } from '../owned/store.config.ts';
 import { productPath, routes } from '../shared/routes.ts';
 import type { StarterCatalogueItem } from '../shared/catalogue-products.ts';
@@ -19,7 +21,10 @@ import type { StarterCatalogueItem } from '../shared/catalogue-products.ts';
 const slug = 'published-article';
 const title = 'Published article';
 const finishes = Array.from({ length: 25 }, (_, index) => `finish-${String(index + 1).padStart(2, '0')}`);
-const currency = configurations.coffee.market.currency;
+const imageSlug = 'illustrated-article';
+const imageName = 'Article with image';
+const imageRef = '/media/collection.svg';
+const currency = configurations.coffee!.market.currency;
 type Fixture = { id: keyof typeof configurations; baseURL: string; runtimeUrl: string; ownerUrl: string; state: string };
 type Selection = { sku: string; title: string; price: number };
 
@@ -40,6 +45,13 @@ function assertSelection(body: unknown, wanted: Selection): StarterCatalogueItem
   return product;
 }
 
+function assertQuote(body: { ok: boolean; value: { currency: string; lines: unknown } }, wanted: Selection) {
+  assert.equal(body.ok, true);
+  assert.equal(body.value.currency, currency);
+  assert.deepEqual(body.value.lines, [{ sku: wanted.sku, quantity: 1, baseUnitMinor: wanted.price,
+    unitMinor: wanted.price, lineMinor: wanted.price }]);
+}
+
 async function withOwner<T>(owner: pg.Pool, work: (db: pg.PoolClient) => Promise<T>): Promise<T> {
   const db = await owner.connect();
   try {
@@ -53,8 +65,8 @@ async function withOwner<T>(owner: pg.Pool, work: (db: pg.PoolClient) => Promise
 
 async function author(fixture: Fixture) {
   const owner = new pg.Pool({ connectionString: fixture.ownerUrl });
-  const config = configurations[fixture.id];
-  const actor = randomUUID(), draftId = randomUUID();
+  const config = configurations[fixture.id]!;
+  const actor = randomUUID();
   try {
     const artifact = readStarterCatalogueRules();
     assert.ok(artifact);
@@ -94,28 +106,14 @@ async function author(fixture: Fixture) {
         ON CONFLICT(job_name) DO UPDATE SET enabled=excluded.enabled,last_status=excluded.last_status,last_success_at=excluded.last_success_at,metadata=excluded.metadata`,
       [{ promotionReady: true }]);
     });
-    const presentation = Object.fromEntries(config.market.locales.map(locale => [locale, title]));
     const netContent = { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 } as const;
-    const { release, activation } = buildCatalogReleaseDraftV3({ namespace: 'storefront-proof',
-      type: { key: definition.key, version: definition.version }, slug, name: title,
-      presentation: { title, name: presentation, description: presentation, mediaAlt: presentation, media: config.offer.products[0]!.media },
-      attributes: { private_sample: 'private fixture attribute' },
-      skus: finishes.map((finish, index) => ({ code: `ARTICLE-${finish.toUpperCase()}`, title: finish, primary: index === 0,
-        options: { finish: { kind: 'choice', value: finish } }, attributes: { finish },
-        netContent, grossMass: { ...netContent, unscaled: '120' },
-        identifiers: [{ scheme: 'gs1:gtin', issuer: 'fixture', value: catalogInternalGtin(2000 + index), packagingLevel: 'unit' }],
-        sell: { oneTime: true, subscription: false }, logisticsRef: `fixture:logistics/${finish}` })),
-    });
-    const active: CatalogDraftPayloadV4 = { ...activation.payload, schemaVersion: 4, publication: { ...activation.payload.publication,
-      operations: activation.payload.publication.operations.map(operation =>
-        operation.op === 'set_product_status' ? { op: 'set_product_lifecycle', productSlug: slug, expectedState: 'draft', state: 'active', children: [] }
-          : operation.op === 'set_sku_status' ? { op: 'set_sku_lifecycle', skuCode: operation.skuCode, expectedState: 'draft', state: 'active' } : operation),
-    } };
+    const imageDigest = () => createHash('sha256').update(readFileSync('public' + imageRef)).digest('hex');
     const commands = createPostgresCatalogPublicationCommands({ authorizeHuman: async id => id === actor
       ? { ok: true, userId: actor, role: 'admin', isMachineActor: false } : { ok: false },
-    catalogPublicationOwner: { run: work => withOwner(owner, work) }, registry: createCatalogProductTypeRegistry(pack.types) });
+    catalogPublicationOwner: { run: work => withOwner(owner, work) }, registry: createCatalogProductTypeRegistry(pack.types),
+    verifyMedia: async (_db, claim) => claim.mediaRef === imageRef && claim.revisionDigest === imageDigest() });
     const operator = (await commands.authorize(actor))!;
-    async function publish(payload: CatalogDraftPayloadV4, revision: number, expectedHead: CatalogHeadRef | null) {
+    async function publish(draftId: string, payload: CatalogDraftPayloadV4, revision: number, expectedHead: CatalogHeadRef | null) {
       const canonicalCommand = canonicalCatalogDraftJson({ schemaVersion: 4, action: revision === 1 ? 'create' : 'revise',
         draftId, expectedRevision: revision - 1, commandKey: randomUUID(), payload });
       const fingerprint = createHash('sha256').update(canonicalCommand).digest('hex');
@@ -127,28 +125,51 @@ async function author(fixture: Fixture) {
       expect((await commands.execute({ ...subject, action: 'approve', commandKey: randomUUID(),
         postStateDigest: prepared.preparation.postStateDigest }, operator)).outcome).toBe('committed');
       const published = await commands.execute({ ...subject, action: 'publish', commandKey: randomUUID(), expectedHead,
-        changes: revision === 2 ? active.skus.map(sku => ({ variantId: sku.id, expectedRevision: 1, state: 'active' })) : [] }, operator);
+        changes: revision === 2 ? payload.skus.map(sku => ({ variantId: sku.id, expectedRevision: 1, state: 'active' })) : [] }, operator);
       if (published.outcome !== 'committed' || !('head' in published.receipt)) throw new Error(JSON.stringify(published));
       return published.receipt.head;
     }
-    const head = await publish({ ...release.payload, schemaVersion: 4 }, 1, null);
-    const byId = new Map();
-    for (const [index, sku] of release.payload.skus.entries()) {
-      const price = 2400 + index;
-      await withOwner(owner, async db => {
-        await db.query('SET LOCAL ROLE authenticated');
-        await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor, role: 'authenticated' })]);
-        const result = await createCatalogPriceSetupHandler({ store: createPostgresCatalogPriceSetupStore(db),
-          authorizeOperator: async () => ({ actorId: actor }) }).apply({ schemaVersion: 1, commandKey: randomUUID(),
-          variantId: sku.id, priceListId: demoIdentifier(config, 'price-list', config.market.currency),
-          mode: 'one_time', minQty: 1, amountKind: 'gross', unitPriceMinor: price, expected: { entryId: null, unitPriceMinor: null } }, undefined);
-        expect(result.outcome).toBe('committed');
+    async function releaseProduct(productSlug: string, productFinishes: readonly string[], sequence: number,
+      presentation: Parameters<typeof buildCatalogReleaseDraftV3>[0]['presentation']) {
+      const draftId = randomUUID();
+      const { release, activation } = buildCatalogReleaseDraftV3({ namespace: 'storefront-proof',
+        type: { key: definition.key, version: definition.version }, slug: productSlug, name: title, presentation,
+        attributes: { private_sample: 'private fixture attribute' },
+        skus: productFinishes.map((finish, index) => ({ code: `${productSlug}-${finish}`.toUpperCase(), title: finish, primary: index === 0,
+          options: { finish: { kind: 'choice', value: finish } }, attributes: { finish },
+          netContent, grossMass: { ...netContent, unscaled: '120' },
+          identifiers: [{ scheme: 'gs1:gtin', issuer: 'fixture', value: catalogInternalGtin(sequence + index), packagingLevel: 'unit' }],
+          sell: { oneTime: true, subscription: false }, logisticsRef: `fixture:logistics/${finish}` })),
       });
-      byId.set(sku.id, { sku: sku.code, title: finishes[index], price });
+      const active: CatalogDraftPayloadV4 = { ...activation.payload, schemaVersion: 4, publication: { ...activation.payload.publication,
+        operations: activation.payload.publication.operations.map(operation =>
+          operation.op === 'set_product_status' ? { op: 'set_product_lifecycle', productSlug, expectedState: 'draft', state: 'active', children: [] }
+            : operation.op === 'set_sku_status' ? { op: 'set_sku_lifecycle', skuCode: operation.skuCode, expectedState: 'draft', state: 'active' } : operation),
+      } };
+      if (presentation.mediaRef === imageRef) active.publication.evidence.media = active.skus.map(sku => ({
+        skuCode: sku.code!, mediaRef: imageRef, assetRefs: [], revisionDigest: imageDigest(),
+      }));
+      const head = await publish(draftId, { ...release.payload, schemaVersion: 4 }, 1, null);
+      const byId = new Map<string, Selection>();
+      for (const [index, sku] of release.payload.skus.entries()) {
+        const price = 2400 + index;
+        await withOwner(owner, async db => {
+          await db.query('SET LOCAL ROLE authenticated');
+          await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor, role: 'authenticated' })]);
+          const result = await createCatalogPriceSetupHandler({ store: createPostgresCatalogPriceSetupStore(db),
+            authorizeOperator: async () => ({ actorId: actor }) }).apply({ schemaVersion: 1, commandKey: randomUUID(),
+            variantId: sku.id, priceListId: demoIdentifier(config, 'price-list', config.market.currency),
+            mode: 'one_time', minQty: 1, amountKind: 'gross', unitPriceMinor: price, expected: { entryId: null, unitPriceMinor: null } }, undefined);
+          expect(result.outcome).toBe('committed');
+        });
+        byId.set(sku.id, { sku: sku.code!, title: productFinishes[index]!, price });
+      }
+      const activationHead = await publish(draftId, active, 2, head);
+      expect(activationHead.revision).toBe(2);
+      return [...byId.keys()].sort().map(id => byId.get(id)!);
     }
-    const activationHead = await publish(active, 2, head);
-    expect(activationHead.revision).toBe(2);
-    const ordered = [...byId.keys()].sort().map(id => byId.get(id) as Selection);
+    const ordered = await releaseProduct(slug, finishes, 2000, { title, routePath: { en: '/products/published-article' } });
+    await releaseProduct(imageSlug, [finishes[0]!], 2100, { title, shortName: { en: imageName }, mediaRef: imageRef });
     return { first: ordered[0]!, wanted: ordered[24]! };
   } finally { await owner.end(); }
 }
@@ -167,9 +188,11 @@ test.beforeAll(async ({ request, baseURL }, info) => {
 });
 
 test('lists and quotes the exact published SKU across browser widths', async ({ page, request }) => {
-  const config = configurations[fixture.id], base = fixture.baseURL, locale = config.market.defaultLocale;
+  const config = configurations[fixture.id]!, base = fixture.baseURL, locale = config.market.defaultLocale;
   const listing = await (await action(request, base, 'storefront.catalogue', {})).json();
   const item = assertSelection(listing, wanted);
+  expect(item.name[locale]).toBe(title);
+  expect(item.media).toBe('');
   const candidate = structuredClone(listing);
   candidate.value.products.find((product: StarterCatalogueItem) => product.sku === wanted.sku).attributes.private_sample = 'forbidden';
   assert.throws(() => assertSelection(candidate, wanted));
@@ -181,11 +204,16 @@ test('lists and quotes the exact published SKU across browser widths', async ({ 
     await page.evaluate(configuration => localStorage.removeItem('neutral-store:cart:v1:' + configuration), config.id);
     await page.reload();
     const path = productPath(slug, locale);
-    await page.locator(`a[href="${path}?sku=${encodeURIComponent(first.sku)}"]`).click();
+    const firstLink = page.locator(`a[href="${path}?sku=${encodeURIComponent(first.sku)}"]`);
+    await expect(firstLink).toBeVisible();
+    await expect(firstLink.locator('xpath=ancestor::article').locator('img')).toHaveCount(0);
+    await expect(page.getByRole('img', { name: imageName })).toBeVisible();
+    await firstLink.click();
     await page.getByRole('link', { name: wanted.title, exact: true }).click();
     await expect(page).toHaveURL(base + path + '?sku=' + encodeURIComponent(wanted.sku));
     await page.reload();
     await expect(page.getByText(wanted.title + ' · ' + wanted.sku, { exact: true })).toBeVisible();
+    await expect(page.locator('.product-detail img')).toHaveCount(0);
     const money = new Intl.NumberFormat(locale, { style: 'currency', currency }).format(wanted.price / 100);
     await expect(page.locator('.product-detail .price')).toHaveText(money);
     await page.getByRole('spinbutton').fill(String(item.minQuantity));
@@ -198,10 +226,22 @@ test('lists and quotes the exact published SKU across browser widths', async ({ 
     await page.reload();
     await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku })).toBeVisible();
     const quote = await (await quoted).json();
-    expect(quote.ok).toBe(true);
-    expect(quote.value.currency).toBe(currency);
-    expect(quote.value.lines).toEqual([{ sku: wanted.sku, quantity: 1, baseUnitMinor: wanted.price, unitMinor: wanted.price, lineMinor: wanted.price }]);
+    assertQuote(quote, wanted);
+    await expect(page.getByRole('complementary', { name: copy[locale].boxSummary })).toContainText(money);
   }
+  const quotePath = '**/api/actions/offer.validate';
+  await page.route(quotePath, async route => {
+    const response = await route.fetch();
+    const quote = await response.json();
+    assertQuote(quote, wanted);
+    quote.value.lines[0].sku = first.sku;
+    assert.throws(() => assertQuote(quote, wanted));
+    await route.fulfill({ response, json: quote });
+  });
+  await page.reload();
+  await expect(page.getByText(quoteCopy[locale].unavailable, { exact: true })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: copy[locale].boxSummary })).toHaveCount(0);
+  await page.unroute(quotePath);
   const db = new pg.Pool({ connectionString: fixture.runtimeUrl });
   try {
     const count = async () => (await db.query('SELECT count(*)::int AS n FROM public.commerce_orders')).rows[0]!.n;
@@ -246,7 +286,7 @@ test('a disconnected mounted reader fails the same published selection', async (
     expect(response.status()).toBe(503);
     const body = await response.json();
     assert.throws(() => assertSelection(body, wanted));
-    const locale = configurations[fixture.id].market.defaultLocale;
+    const locale = configurations[fixture.id]!.market.defaultLocale;
     await page.goto(baseURL + productPath(slug, locale) + '?sku=' + encodeURIComponent(wanted.sku));
     await expect(page.getByText(body.code, { exact: true })).toBeVisible();
     await expect(page.getByText(wanted.title + ' · ' + wanted.sku, { exact: true })).toHaveCount(0);

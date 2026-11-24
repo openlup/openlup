@@ -1,3 +1,5 @@
+import { isRestrictedCirculationNumber } from "../catalog-identifiers/index.js";
+
 const internalPrefix = "04";
 
 /**
@@ -14,11 +16,6 @@ export function catalogInternalGtin(sequence: number): string {
   const reference = internalPrefix + String(sequence).padStart(10, "0");
   const sum = [...reference].reduce((total, digit, index) => total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
   return reference + String((10 - sum % 10) % 10);
-}
-
-/** @internal The company and regional prefixes for 13-digit restricted-circulation numbers. */
-export function isRestrictedCirculationNumber(value: string): boolean {
-  return /^(?:0[24]|2[0-9])[0-9]{11}$/u.test(value);
 }
 
 /** @internal Classifies a validated GTIN padded to fourteen digits. */

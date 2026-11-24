@@ -671,6 +671,7 @@ describe.sequential('installed quote proofs', () => {
       const script = String.raw`
         import assert from 'node:assert/strict';
         import { createHash, randomUUID } from 'node:crypto';
+        import { readFileSync } from 'node:fs';
         import pg from 'pg';
         import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogInternalGtin, createPostgresCatalogDraftStoreV4,
           createPostgresCatalogPublicationCommands } from '@openlup/platform/catalog';
@@ -721,16 +722,18 @@ describe.sequential('installed quote proofs', () => {
           await owner.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())",[actorId]);
           await owner.query("INSERT INTO public.platform_job_controls(job_name,active_driver,enabled,last_status,last_success_at,metadata) VALUES ('platform-watchdog','worker',true,'success',clock_timestamp(),$1),('promotion-claim-sweep','worker',true,'success',clock_timestamp(),'{}') ON CONFLICT(job_name) DO UPDATE SET enabled=excluded.enabled,last_status=excluded.last_status,last_success_at=excluded.last_success_at,metadata=excluded.metadata", [{promotionReady:true}]);
           const installed = starterCatalogue(), type = { key:installed.current.key, version:installed.current.version };
+          const mediaRef = '/media/collection.svg';
+          const mediaDigest = () => createHash('sha256').update(readFileSync('./application/public'+mediaRef)).digest('hex');
           const commands = createPostgresCatalogPublicationCommands({
             authorizeHuman:async id => id === actorId ? {ok:true,userId:id,role:'admin',isMachineActor:false} : {ok:false},
             catalogPublicationOwner:{run:transaction},registry:installed.registry,
+            verifyMedia:async (_db, claim)=>claim.mediaRef===mediaRef && claim.revisionDigest===mediaDigest(),
           });
           const operator = await commands.authorize(actorId);
           assert.ok(operator);
           const netContent = { dimension:'mass',unit:'openlup:g',scale:0,unscaled:'100' };
-          const copy = Object.fromEntries(config.market.locales.map(locale => [locale,'Published article']));
-          const build = (slug,sku,sequence) => buildCatalogReleaseDraftV3({ namespace:'fixture', type, slug, name:'Published article',
-            presentation:{title:'Published article',name:copy,description:copy,mediaAlt:copy,media:config.offer.products[0].media},
+          const build = (slug,sku,sequence,presentation={title:'Published article',routePath:{en:'/products/'+slug}}) =>
+            buildCatalogReleaseDraftV3({ namespace:'fixture', type, slug, name:'Published article', presentation,
             document:{details:{z:'Zażółć',a:['曲', '🌿']}}, skus:[{
               code:sku,title:'Published article',options:{},netContent,grossMass:{...netContent,unscaled:'120'},
               identifiers:[{scheme:'gs1:gtin',issuer:'fixture',value:catalogInternalGtin(sequence),packagingLevel:'unit'}],
@@ -782,6 +785,11 @@ describe.sequential('installed quote proofs', () => {
           });
           await price(release.payload.skus[0].id,2700);
           await publish(draftId,2,activation.payload,released);
+          const listed = await dispatchAction(bindings,'storefront.catalogue',{},context);
+          assert.equal(listed.ok,true);
+          const published = listed.value.products.find(item=>item.sku===sku);
+          assert.equal(published.name.en,'Published article');
+          assert.equal(published.media,'');
           assert.deepEqual(await seedQuote(),original);
           const publishedRequest = {cart:{...seedRequest.cart,lines:[{sku,quantity:1}]}};
           const answer = await dispatchAction(bindings,'offer.validate',publishedRequest,context);
@@ -793,9 +801,10 @@ describe.sequential('installed quote proofs', () => {
             mode:'one_time',cadenceDays:null,promoCodes:[],lines:cart.lines,
           });
           assert.equal(servicing.quote.lines[0].sku,cart.lines[0].sku);
-          assert.deepEqual(servicing.quote.lines[0].unitPriceGross,original);
+          assert.deepEqual(servicing.quote.lines[0].unitPriceGross,config.offer.products[0].unitPrice);
 
-          const collision = build('schema-collision','SCHEMA-COLLISION',1021), collisionId = randomUUID();
+          const collision = build('schema-collision','SCHEMA-COLLISION',1021,
+            {title:'Schema collision',shortName:{en:'Collision example'},mediaRef}), collisionId = randomUUID();
           const initial = {...collision.release.payload,schemaVersion:4}, active = {...collision.activation.payload,schemaVersion:4};
           for (const {product} of [initial,active]) {
             const document = product.sharedContent.document;
@@ -811,11 +820,17 @@ describe.sequential('installed quote proofs', () => {
               : operation.op === 'set_sku_status' ? {op:'set_sku_lifecycle',skuCode:operation.skuCode,expectedState:'draft',state:'active'} : operation);
           const collisionRelease = await publish(collisionId,1,initial,null);
           const collisionSku = active.skus[0];
+          active.publication.evidence.media = [{skuCode:collisionSku.code,mediaRef,assetRefs:[],revisionDigest:mediaDigest()}];
           await price(collisionSku.id,2800);
           const collisionActive = await publish(collisionId,2,active,collisionRelease,[{variantId:collisionSku.id,expectedRevision:1,state:'active'}]);
+          const items = (await dispatchAction(bindings,'storefront.catalogue',{},context)).value.products;
+          const illustrated = items.find(item=>item.sku===collisionSku.code);
+          assert.equal(illustrated.name.en,'Collision example');
+          assert.equal(illustrated.media,mediaRef);
           await assert.rejects(seedQuote,{message:'catalog_document_schema_invalid'});
           active.publication.operations = [{op:'set_product_lifecycle',productSlug:active.product.slug,
             expectedState:'active',state:'withdrawn',children:[{skuCode:collisionSku.code,expectedState:'active'}]}];
+          delete active.publication.evidence.media;
           await publish(collisionId,3,active,collisionActive,[{variantId:collisionSku.id,expectedRevision:2,state:'withdrawn'}]);
           assert.deepEqual(await seedQuote(),original);
           const offline = composeCatalogueStorefront({run:async()=>{throw new Error('Disconnected reader');}});

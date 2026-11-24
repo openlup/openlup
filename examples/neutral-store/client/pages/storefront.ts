@@ -37,6 +37,10 @@ function productGrid(context: PageContext): HTMLElement {
     ...context.catalogueProducts.map(product => {
       const card = context.fragments.productCard(context, product);
       if (product.variantTitle !== undefined) {
+        if (!product.media) {
+          for (const image of card.querySelectorAll('img[src=""]')) image.remove();
+          if (context.config.offer.layout === 'list') card.style.gridTemplateColumns = 'minmax(0, 1fr)';
+        }
         const path = productPath(product.slug, context.locale);
         for (const anchor of card.querySelectorAll('a')) if (anchor.getAttribute('href') === path) anchor.href = skuHref(path, product.sku);
         append(card, el('p', {}, product.variantTitle));
@@ -64,7 +68,7 @@ export function productPage(context: PageContext): HTMLElement {
       return;
     }
     const cart = context.getCart();
-    if (!cart.lines.length && !product.permittedPurchaseModes.includes(cart.mode)) {
+    if (product.minQuantity !== undefined && !cart.lines.length && !product.permittedPurchaseModes.includes(cart.mode)) {
       cart.mode = product.permittedPurchaseModes[0]!;
       cart.cadenceDays = cart.mode === 'subscription' ? context.config.offer.defaultCadenceDays : null;
     }
@@ -81,15 +85,15 @@ export function productPage(context: PageContext): HTMLElement {
       link(context.t('cart'), routes.cart[context.locale], 'button-link'));
   });
   return el('article', { class: 'product-detail' },
-    el('img', { src: product.media, alt: product.mediaAlt[context.locale], width: 440, height: 440 }),
+    product.media ? el('img', { src: product.media, alt: product.mediaAlt[context.locale], width: 440, height: 440 }) : null,
     el('div', {}, link(context.t('catalog'), routes.catalog[context.locale]),
       el('h1', {}, product.name[context.locale]),
       product.variantTitle !== undefined ? el('p', {}, product.variantTitle, ' · ', product.sku) : null,
       ...context.catalogueProducts.filter(item => item.slug === slug && item.sku !== product.sku).map(item =>
         link(item.variantTitle ?? item.sku, skuHref(productPath(slug, context.locale), item.sku))),
-      el('p', {}, product.description[context.locale]),
-      el('p', {}, product.details[context.locale]),
-      el('p', { class: 'muted' }, `${context.t('packContents')}: ${product.contents}`),
+      product.description[context.locale] && el('p', {}, product.description[context.locale]),
+      product.details[context.locale] && el('p', {}, product.details[context.locale]),
+      product.contents && el('p', { class: 'muted' }, `${context.t('packContents')}: ${product.contents}`),
       nativeUnitPrice(context, product),
       quantity.wrapper, add, output));
 }

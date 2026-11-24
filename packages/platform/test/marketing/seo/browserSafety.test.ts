@@ -11,7 +11,7 @@ it("bundles the SEO and content leaves for a browser without imports or ambient 
     bundle: true, platform: "browser", format: "esm", write: false, metafile: true,
   });
   expect(Object.keys(result.metafile!.inputs).sort()).toEqual([
-    "src/catalog/internalGtin.ts",
+    "src/catalog-identifiers/index.ts",
     "src/marketing/contactLegal.ts",
     "src/marketing/seo/jsonLd.ts",
     "src/marketing/seo/metadata.ts",

@@ -8,10 +8,9 @@ import { validateCart } from '../shared/offer.ts';
 import type { Product } from '../shared/config.ts';
 
 type Page = Extract<CatalogStorefrontPageResult, { protocol: 'governed' }>;
-const config = configurations.coffee;
-const byLocale = Object.fromEntries(config.market.locales.map(locale => [locale, 'Article']));
-const presentation = { title: 'Article', name: byLocale, description: byLocale, mediaAlt: byLocale,
-  media: '/media/article-1.svg', extra: { publicCopy: true } };
+const config = configurations.coffee!;
+const presentation = { title: 'Article', shortName: { en: 'Short article' },
+  mediaRef: '/media/article-1.svg', routePath: { en: '/articles/sample' }, accent: '#bca321' };
 const typeRef = { key: 'starter:item', version: 2 };
 const digest = 'a'.repeat(64);
 const attribute = (key: string, scope: 'product' | 'variant', outward = true) => ({
@@ -63,10 +62,18 @@ test('only exact receipt-backed public attributes reach the offer, and presentat
 test('localized presentation and gross price map to exact eligible sibling selections', () => {
   assert.equal(mapStarterPresentation(presentation)?.contents, '');
   assert.deepEqual(mapStarterPresentation(presentation)?.details, Object.fromEntries(config.market.locales.map(locale => [locale, ''])));
-  assert.equal('extra' in mapStarterPresentation(presentation)!, false);
+  assert.equal('accent' in mapStarterPresentation(presentation)!, false);
+  assert.deepEqual(mapStarterPresentation(presentation)?.name, { en: 'Short article', pl: 'Article' });
+  assert.deepEqual(mapStarterPresentation(presentation)?.mediaAlt, { en: 'Short article', pl: 'Article' });
+  assert.deepEqual(mapStarterPresentation(presentation)?.description, { en: '', pl: '' });
+  const fallback = mapStarterPresentation({ title: 'Fallback', routePath: { en: '/articles/fallback' } });
+  assert.deepEqual(fallback?.name, { en: 'Fallback', pl: 'Fallback' });
+  assert.equal(fallback?.media, '');
+  assert.equal(mapStarterPresentation(null), undefined);
+  assert.equal(mapStarterPresentation({ shortName: { en: 'Missing title' } }), undefined);
   for (const media of ['/media/a.svg\n', '/media/.svg', '/media/a/b.svg', '//media/a.svg', '/media/a%20.svg'])
-    assert.equal(mapStarterPresentation({ ...presentation, media }), undefined);
-  assert.equal(mapStarterPresentation({ ...presentation, name: {} }), undefined);
+    assert.equal(mapStarterPresentation({ ...presentation, mediaRef: media }), undefined);
+  assert.equal(mapStarterPresentation({ ...presentation, shortName: { en: '' } }), undefined);
   assert.equal(mapStarterPresentation({ ...presentation, title: '   ' }), undefined);
   const towardsStore = publishedToStarterProducts(project([receipt]), config);
   const ownedCardInput: Product = towardsStore[1]!;

@@ -4102,6 +4102,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog-identifiers/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/acceptedReferenceStore.ts",
       "class": "public-output"
     },

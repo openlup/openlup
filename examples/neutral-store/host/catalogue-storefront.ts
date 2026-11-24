@@ -11,11 +11,14 @@ const pageSize = 24;
 const readFix = 'Check PostgreSQL reachability, TLS, driver, runtime login and grants, and installed migrations. Reread the same SKU.';
 const pageFix = 'Reduce active sellable SKUs through the catalogue workflow, then reread and quote.';
 const fixes = {
-  starter_catalogue_presentation_invalid: ['presentation', 'Correct the published copy and local media reference using the starter presentation shape.',
+  starter_catalogue_presentation_invalid: ['presentation', 'The published title or local media reference does not fit the starter presentation.',
+    'Correct the published copy and local media reference using the starter presentation shape.',
     'Publish through the catalogue workflow and reread the same SKU.'],
-  starter_catalogue_price_missing: ['price.oneTime', 'Set an effective gross one-time price through the authorized price action.',
+  starter_catalogue_price_missing: ['price.oneTime', 'The SKU has no effective one-time price.',
+    'Set an effective gross one-time price through the authorized price action.',
     'Reread the SKU and repeat its server quote.'],
-  starter_catalogue_price_basis_unsupported: ['price.oneTime', 'Correct the effective gross one-time price through the authorized price action.',
+  starter_catalogue_price_basis_unsupported: ['price.oneTime', 'The effective one-time price does not fit the configured gross market.',
+    'Correct the effective gross one-time price through the authorized price action.',
     'Reread the SKU and repeat its server quote.'],
 } as const;
 const failure = (code: string, message: string, cause?: unknown) =>
@@ -60,9 +63,9 @@ export function composeCatalogueStorefront(transactions: Transactions, readPage 
         const mapped = readStarterProducts(projectPublishedCatalogOfferPage(result, [...receipts.values()].filter(row => !!row)), config);
         for (const item of mapped.products) if (!products.has(item.sku)) products.set(item.sku, item);
         for (const { code, subject } of mapped.exclusions) {
-          const [path, fix, recheck] = fixes[code];
+          const [path, cause, fix, recheck] = fixes[code];
           console.warn(JSON.stringify({ code, subject, path, observed: 'The published SKU was omitted from the storefront.',
-            cause: code, fix, recheck }));
+            cause, fix, recheck }));
         }
         if (!cursor) break;
         visited.add(cursor.skuId);

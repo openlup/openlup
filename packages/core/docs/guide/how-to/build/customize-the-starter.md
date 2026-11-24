@@ -176,13 +176,27 @@ project. The procedure removes all data in the demo volume. For
 
 ## Show published products in the starter
 
-Author storefront copy in the publication's `product.presentation`. Supply a
-nonblank `title`, strings for `name`, `description` and `mediaAlt` in each
-configured locale, and a `media` path such as `/media/article.svg`. Use one
-filename starting with an ASCII letter or digit, followed by letters, digits,
-dots, underscores or hyphens. Optional `details` is localized copy and optional
-`contents` is a string. Both default to empty copy. Treat every presentation
-field as public when authoring the publication.
+Set `product.presentation.title` to a nonblank product name. Use the optional
+`shortName` map for localized display names. The starter uses the title when
+a locale has no short name. Set `mediaRef` to a local `/media/` filename to
+show an image with the display name as its alt text. Start the filename with
+an ASCII letter or digit and use only letters, digits, dots, underscores and
+hyphens thereafter. Omit `mediaRef` to show the product without an image.
+
+For example, use this presentation for an article with an English short name
+and an existing starter image.
+
+```json
+{
+  "title": "Published article",
+  "shortName": { "en": "Article with image" },
+  "mediaRef": "/media/collection.svg"
+}
+```
+
+The platform also admits `routePath`, `advertisedWeightsG` and `accent`.
+The starter uses its own product routes and display layout. Treat all
+authored presentation fields as public.
 
 After activation into `classic`, open the catalogue and select a SKU. Reload
 its product URL with `?sku=<encoded SKU>`, add it to the cart and check the
