@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Pool, type PoolClient } from 'pg';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { FULFILLMENT_MIGRATIONS, createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
+import * as fulfillment from '@openlup/platform/fulfillment';
 import { createPostgresMigrationRunner } from '../../server/adapters/postgres/migrationRunner.js';
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from '../../server/adapters/postgres/selectedCatalogProjection.js';
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
@@ -14,6 +16,10 @@ import { executor, manifest, units } from '../helpers/fulfillmentNative.js';
 const image = 'ghcr.io/openlup/library/postgres@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97';
 const file = 'db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql';
 const signature = 'public.fulfillment_record_stock_evidence(text,text,text,text,text,text,integer,integer)';
+const stockForward = 'db/platform/migrations/20261125140000_fulfillment_stock_seed_outcome.sql';
+const reminderForward = 'db/platform/migrations/20261125150000_checkout_recovery_reminder_install_outcome.sql';
+const stockConflict = 'fulfillment_stock_current_idempotency_conflict';
+const stockDetail = 'openlup:stock_current:replay_conflict';
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 let container: PostgresContainer | undefined;
 let pool: Pool;
@@ -36,6 +42,22 @@ async function inventory(db: Pool | PoolClient) {
   const client = db instanceof Pool ? await db.connect() : db;
   try { return hash(selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client))); }
   finally { if (db instanceof Pool) client.release(); }
+}
+async function currentInput(db: Pool | PoolClient, sku: string, quantity = 1) {
+  const { synced, stale } = (await db.query("SELECT now() AS synced, now()+interval '1 day' AS stale")).rows[0];
+  const lastSyncedAt = synced.toISOString();
+  return { requestKey: `current:${sku}`, inventoryClass: 'sellable' as const, lastSyncedAt, staleAfter: stale.toISOString(),
+    snapshot: { providerRef: 'fixture', collectedAt: lastSyncedAt, sourceRevision: null, revisionSource: 'collection' as const,
+      quantityKind: 'snapshot' as const, skuRef: sku, totalQuantity: quantity, forSaleQuantity: quantity,
+      reservedOrUnavailableQuantity: 0, syncRunId: 'fixture-current' } };
+}
+const changedCurrent = (value: Awaited<ReturnType<typeof currentInput>>) => ({
+  ...value, snapshot: { ...value.snapshot, totalQuantity: value.snapshot.totalQuantity + 1 },
+});
+async function currentState(db: Pool | PoolClient) {
+  const stock = await db.query('SELECT * FROM public.fulfillment_stock_current ORDER BY source_key,sku');
+  const operations = await db.query('SELECT * FROM public.fulfillment_stock_operations ORDER BY idempotency_key');
+  return { stock: stock.rows, operations: operations.rows };
 }
 beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error('Stock evidence replay proof requires Docker PostgreSQL');
@@ -158,6 +180,56 @@ it('serializes existing-row replays and resolver races in lock acquisition order
   }
 }, 30_000);
 
+it('observes the first batch insert before the later conflict rolls back stock and operations', async () => {
+  const { rows } = await pool.query("SELECT sku FROM unnest(ARRAY['batch-a','batch-z']) AS sku ORDER BY sku");
+  const earlier = await currentInput(pool, rows[0].sku);
+  const later = await currentInput(pool, rows[1].sku);
+  const client = await pool.connect();
+  const notices: string[] = [];
+  const notice = ({ message }: { message?: string }) => { if (message) notices.push(message); };
+  client.on('notice', notice);
+  try {
+    const writer = port(client);
+    await writer.recordProviderStockCurrent(later);
+    await client.query(`CREATE FUNCTION public.fixture_current_inserted() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE NOTICE 'inserted stock for %', NEW.sku; RETURN NEW; END $$;
+      CREATE TRIGGER fixture_current_inserted AFTER INSERT ON public.fulfillment_stock_current
+        FOR EACH ROW EXECUTE FUNCTION public.fixture_current_inserted()`);
+    const before = await currentState(client);
+    expect(before.stock.some(row => row.sku === earlier.snapshot.skuRef)).toBe(false);
+    const batch = writer.recordProviderStockCurrentBatch!;
+    // Submit out of order to prove the statement's SQL-side ordering.
+    const rejection = await batch([changedCurrent(later), earlier]).catch((error: unknown) => error);
+    expect(rejection).toMatchObject({ code: '23505', message: stockConflict });
+    expect(notices).toContain(`inserted stock for ${earlier.snapshot.skuRef}`);
+    expect(await currentState(client)).toEqual(before);
+    expect(await batch([later, earlier])).toEqual([{ replayed: true, readBack: true }, { replayed: false, readBack: true }]);
+    expect(await currentState(client)).toMatchObject({
+      stock: expect.arrayContaining([expect.objectContaining({ sku: earlier.snapshot.skuRef })]),
+      operations: expect.arrayContaining([expect.objectContaining({ idempotency_key: earlier.requestKey })]),
+    });
+    expect(rejection).toHaveProperty('detail', stockDetail);
+  } finally {
+    await client.query('DROP TRIGGER IF EXISTS fixture_current_inserted ON public.fulfillment_stock_current; DROP FUNCTION IF EXISTS public.fixture_current_inserted()');
+    client.off('notice', notice);
+    client.release();
+  }
+});
+
+it('preserves the PostgreSQL quantity and timestamp boundaries and does not classify invalid writes as replays', async () => {
+  const value = await currentInput(pool, 'current-boundary', 2147483647);
+  await expect(port().recordProviderStockCurrent(value)).resolves.toEqual({ replayed: false, readBack: true });
+  await expect(port().recordProviderStockCurrent(await currentInput(pool, 'current-zero', 0))).resolves.toEqual({ replayed: false, readBack: true });
+  for (const [invalid, code] of [
+    [await currentInput(pool, 'current-overflow', 2147483648), '22003'],
+    [await currentInput(pool, 'current-negative', -1), '23514'],
+    [{ ...value, requestKey: 'bad-date', lastSyncedAt: 'invalid timestamp' }, '22007'],
+    [{ ...value, requestKey: 'bad-window', staleAfter: value.lastSyncedAt }, '23514'],
+  ] as const) {
+    await expect(port().recordProviderStockCurrent(invalid)).rejects.toMatchObject({ code });
+  }
+});
+
 it('binds fresh and exact-predecessor runner histories, package bytes, live inventory and unchanged function header/ACL', async () => {
   const projection = FULFILLMENT_MIGRATIONS.find(unit => unit.catalogPath === file)!;
   expect(projection.catalogPath).toBe(file);
@@ -218,5 +290,67 @@ it('binds fresh and exact-predecessor runner histories, package bytes, live inve
     expect(await runner(upgrade, root).apply()).toEqual({ applied: [] });
     expect((await runner(upgrade, root).status()).pending).toEqual([]);
     expect(await inventory(upgrade)).toBe(forwardInventory);
+
+    const prior = JSON.parse(execFileSync('git', ['show', 'b79e94360:config/platform-migration-manifest.json'], { encoding: 'utf8' }));
+    const previousUnits = prior.forward.slice(projection.position);
+    for (const { file: path } of previousUnits) writeFileSync(join(root, path), readFileSync(path));
+    writeFileSync(join(root, 'config/platform-migration-manifest.json'), JSON.stringify({
+      ...manifest, forward: prior.forward, objectInventorySha256: prior.objectInventorySha256,
+    }));
+    expect((await runner(upgrade, root).apply()).applied).toEqual(previousUnits.map(({ file: path }: { file: string }) => path));
+    const stockHistory = (await upgrade.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows;
+    const current = await currentInput(upgrade, 'current-upgrade');
+    let driver: unknown;
+    const writer = createPostgresFulfillmentStockSyncPort({ async query(sql, values) {
+      try { return await upgrade.query(sql, values); }
+      catch (error) { driver = error; throw error; }
+    } }, { sourceKey: 'fixture-stock-replay', async readLocalInventoryStock() { return []; } });
+    expect(await writer.recordProviderStockCurrent(current)).toEqual({ replayed: false, readBack: true });
+    const later = await currentInput(upgrade, current.snapshot.skuRef, 4);
+    expect(await writer.recordProviderStockCurrent({ ...later, requestKey: 'current-upgrade-later' })).toEqual({ replayed: false, readBack: true });
+    const changed = changedCurrent(current);
+    const raw = await writer.recordProviderStockCurrent(changed).catch((error: unknown) => error);
+    expect(raw).toBe(driver);
+    expect(raw).toMatchObject({ code: '23505', message: stockConflict });
+    expect((raw as { detail?: string }).detail).toBeUndefined();
+    const replaced = 'public.fulfillment_record_stock_current(text,text,text,text,integer,integer,integer,text,timestamptz,timestamptz,text)';
+    const stockHeader = (await upgrade.query(attributes, [replaced])).rows;
+    const stockBefore = await currentState(upgrade);
+    const interveningPath = 'db/platform/migrations/20261125130000_fixture_intervening_forward.sql';
+    const suffix = manifest.forward.slice(prior.forward.length);
+    for (const unit of suffix) writeFileSync(join(root, unit.file), readFileSync(unit.file));
+    if (suffix[0]?.file === stockForward) {
+      // Exercise a real runner upgrade even before another portable forward lands.
+      const sql = 'SELECT 1;\n';
+      writeFileSync(join(root, interveningPath), sql);
+      suffix.unshift({ file: interveningPath, sha256: hash(sql) });
+    }
+    const upgradedManifest = { ...manifest, forward: [...prior.forward, ...suffix] };
+    writeFileSync(join(root, 'config/platform-migration-manifest.json'), JSON.stringify(upgradedManifest));
+    const fresh = runner(upgrade, root);
+    const applied = (await fresh.apply()).applied;
+    expect(applied).toEqual(suffix.map(unit => unit.file));
+    const outcomeForwards = [stockForward, reminderForward];
+    expect(applied.filter(path => outcomeForwards.includes(path))).toEqual(outcomeForwards);
+    expect((await upgrade.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows.slice(0, stockHistory.length)).toEqual(stockHistory);
+    expect((await upgrade.query(attributes, [replaced])).rows).toEqual(stockHeader);
+    const nominal = await writer.recordProviderStockCurrent(changed).catch((error: unknown) => error);
+    expect(nominal).toMatchObject({ name: 'FulfillmentStockReplayConflictError', message: stockConflict });
+    expect(nominal).toBeInstanceOf(Reflect.get(fulfillment, 'FulfillmentStockReplayConflictError'));
+    expect((nominal as Error).cause).toBe(driver);
+    expect(driver).toMatchObject({ code: '23505', message: stockConflict, detail: stockDetail });
+    const invalid = { ...current, requestKey: 'invalid-current-upgrade', staleAfter: current.lastSyncedAt };
+    const operational = await writer.recordProviderStockCurrent(invalid).catch((error: unknown) => error);
+    expect(operational).toBe(driver);
+    expect(operational).toMatchObject({ code: '23514' });
+    expect(await writer.recordProviderStockCurrent(current)).toEqual({ replayed: true, readBack: true });
+    expect(await currentState(upgrade)).toEqual(stockBefore);
+    const session = await upgrade.connect();
+    try {
+      await session.query('BEGIN');
+      await expect(port(session).recordProviderStockCurrent(changed)).rejects.toBeInstanceOf(Reflect.get(fulfillment, 'FulfillmentStockReplayConflictError'));
+      await expect(session.query('SELECT 1')).rejects.toMatchObject({ code: '25P02' });
+    } finally { await session.query('ROLLBACK'); session.release(); }
+    expect(await fresh.apply()).toEqual({ applied: [] });
   } finally { await closePostgres(undefined, upgrade); rmSync(root, { recursive: true, force: true }); }
-}, 60_000);
+}, 120_000);

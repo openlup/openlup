@@ -2,11 +2,27 @@ import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
 import { createHash, randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { expect } from "vitest";
+// eslint-disable-next-line no-restricted-imports -- exercise the native fence at its private component boundary
+import { withCatalogAdmissionFence } from "../../packages/platform/src/catalog/catalogAdmissionFence.js";
+// eslint-disable-next-line no-restricted-imports -- verify the private guard sequence without adding an installed export
+import { destinationV2Prelock } from "../../packages/platform/src/commerce/server/destinations/destinationV2Prelock.js";
 import { receiptClient, receiptDialect } from "./destinationReceiptFixture.js";
 
 export const documentTable = "public.commerce_destination_v2_documents";
 export const selectionTable = "public.commerce_destination_v2_checkout_selections";
+export const orderBindingTable = "public.commerce_destination_v2_order_bindings";
 type Db = Pool | PoolClient;
+
+export function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((onResolve, onReject) => {
+    resolve = onResolve;
+    reject = onReject;
+  });
+  return { promise, resolve, reject };
+}
+
 const uuid = () => randomUUID();
 export const destinationHash = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
 const originalAddress = { city: "Ze\u0301lvo\u0301rë", line1: " A 😀 ", line2: "2", postalCode: "00-001", countryCode: "xa", subdivisionCode: "xa-01" };
@@ -49,6 +65,40 @@ export async function readSnapshot(db: Db, ctx: Context, binding: Binding, id = 
 export async function reachDestinationCutoff(owner: Db, binding: Binding) {
   await owner.query(`UPDATE ${documentTable} SET evidence_expires_at=clock_timestamp(), issued_at=clock_timestamp()-interval '24 hours'
     WHERE snapshot_ref=$1`, [binding.snapshotRef]);
+}
+export const testServicePin = {
+  deliverySelectionRef: "selected", providerRef: "provider", carrierRef: "carrier",
+  serviceRef: "service", servicePolicyRevision: "service-policy", adapterRevision: "adapter",
+};
+const checkArgs = (ctx: Context, issued: Issued, pin: unknown) =>
+  [ctx, "checkout", ctx.scopeRef, issued.selection.selectionRevision, issued.binding, pin];
+export async function recheckDestination(db: Db, ctx: Context, issued: Issued, pin: unknown = testServicePin) {
+  return (await db.query("SELECT public.commerce_recheck_destination_v2($1,$2,$3,$4,$5,$6) AS value",
+    checkArgs(ctx, issued, pin))).rows[0]!.value;
+}
+export async function registerDestination(db: Db, ctx: Context, orderId: string, issued: Issued, pin: unknown = testServicePin) {
+  const [context, ...args] = checkArgs(ctx, issued, pin);
+  return (await db.query("SELECT public.commerce_register_order_destination_v2($1,$2,$3,$4,$5,$6,$7) AS value",
+    [context, orderId, ...args])).rows[0]!.value;
+}
+export async function insertDestinationOrder(db: Db, ctx: Context, id = randomUUID()) {
+  return (await db.query(`INSERT INTO public.commerce_orders (id,client_id,status,currency_code,total_amount_minor)
+    VALUES ($1,$2,'pending_payment','XXX',0) RETURNING id`, [id, ctx.clientId])).rows[0]!.id as string;
+}
+export function destinationFence<T>(pool: Pick<Pool, "connect">, ctx: Context, issued: Issued, read: (db: PoolClient) => Promise<T>) {
+  return withCatalogAdmissionFence(pool, {
+    key: randomUUID(), clientId: ctx.clientId, priceListId: randomUUID(), skuIds: [randomUUID()],
+    revisionIds: [], timeoutMs: 6000,
+  }, read, { prelock: destinationV2Prelock(ctx, issued.binding.snapshotRef) });
+}
+export async function bindDestinationOrder(pool: Pool, ctx: Context, issued: Issued) {
+  return destinationFence(pool, ctx, issued, async db => {
+    const decision = await recheckDestination(db, ctx, issued);
+    expect(decision).toEqual({ binding: issued.binding, selection: issued.selection, service: testServicePin });
+    const order = await insertDestinationOrder(db, ctx);
+    expect(await registerDestination(db, ctx, order, issued)).toEqual(issued.binding);
+    return order;
+  });
 }
 export async function proveDocumentEncoderParity(owner: Db) {
   const ctx = { clientId: uuid(), scopeRef: uuid(), owner: { installationRef: 'Fixture "α"\\😀', principalKind: "customer",

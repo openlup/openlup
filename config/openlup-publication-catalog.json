@@ -1626,6 +1626,38 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125140000_fulfillment_stock_seed_outcome.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125150000_checkout_recovery_reminder_install_outcome.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125170000_tax_calculations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125260000_subscription_activation_execute_grants.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125261000_subscription_activation_units.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -1836,6 +1868,14 @@
     {
       "path": "docs/platform/history/platform-readme-release-notes-0.43.0.md",
       "class": "public-output"
+    },
+    {
+      "path": "docs/platform/migrations/compatible-data-transfer.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/migrations/module-catalogues-and-histories.md",
+      "class": "platform-documentation"
     },
     {
       "path": "docs/platform/plans/agent-context-adaptive-routing.md",
@@ -2331,6 +2371,30 @@
     },
     {
       "path": "eslint.config.js",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/cosmetics/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/cosmetics/pack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/pet-food/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/pet-food/pack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements/pack.ts",
       "class": "public-output"
     },
     {
@@ -5314,6 +5378,38 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125130000_commerce_destination_v2_order_bindings.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125140000_fulfillment_stock_seed_outcome.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125150000_checkout_recovery_reminder_install_outcome.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125170000_tax_calculations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125200000_subscription_renewal_registration_units.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125220000_commerce_destination_v2_typed_refusals.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125260000_subscription_activation_execute_grants.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125261000_subscription_activation_units.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5794,11 +5890,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogSchemaDescription.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogSkuEnvelope.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/catalog/catalogSkuEnvelopeMapper.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogStorefrontPage.ts",
       "class": "public-output"
     },
     {
@@ -5954,6 +6058,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/internalGtin.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/lifecycleDraftSchemas.ts",
       "class": "public-output"
     },
@@ -6027,6 +6135,10 @@
     },
     {
       "path": "packages/platform/src/catalog/referenceCatalogHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/releaseDraftBuilder.ts",
       "class": "public-output"
     },
     {
@@ -6799,6 +6911,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/customerCheckoutLinks.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/destinations/destinationV2Prelock.ts",
       "class": "public-output"
     },
     {
@@ -8318,6 +8434,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/taxCalculationPrivacy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/adminInventory.ts",
       "class": "public-output"
     },
@@ -8626,6 +8746,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/lifecycle/catalogueSchema.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/lifecycle/index.ts",
       "class": "public-output"
     },
@@ -8743,6 +8867,10 @@
     },
     {
       "path": "packages/platform/src/marketing/seo/metadata.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/seo/restrictedCirculationNumber.ts",
       "class": "public-output"
     },
     {
@@ -10634,11 +10762,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/catalog/internalGtin.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/catalog/postgresPublicationDiscovery.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/catalog/referenceCatalogHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/releaseDraftBuilder.test.ts",
       "class": "public-output"
     },
     {
@@ -11926,6 +12062,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/lifecycle/catalogue-schema.snapshot.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/catalogueSchema.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/lifecycle/postgresInstallQualification.test.ts",
       "class": "public-output"
     },
@@ -12011,6 +12155,10 @@
     },
     {
       "path": "packages/platform/test/marketing/seo/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/seo/jsonLd.test.ts",
       "class": "public-output"
     },
     {
@@ -31578,11 +31726,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogStorefrontPage.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogSubscriptionProfiles.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/catalogVariantAxes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogueReferencePacks.test.ts",
       "class": "public-output"
     },
     {
@@ -31810,6 +31966,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationV2OrderBinding.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/destinationV2Receipts.test.ts",
       "class": "public-output"
     },
@@ -31923,6 +32083,10 @@
     },
     {
       "path": "tests/postgres/fixtures/paymentReconciliation/setup.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/taxCalculationsV2/replayed.sql",
       "class": "public-output"
     },
     {
@@ -32554,6 +32718,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionActivationFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionActivationPermissions.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionAlignmentRollbackCases.ts",
       "class": "public-output"
     },
@@ -32654,6 +32826,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionRegistrationActivationLockOrder.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRegistrationFixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionRenewalAdapterCases.ts",
       "class": "public-output"
     },
@@ -32715,6 +32895,14 @@
     },
     {
       "path": "tests/postgres/subscriptionWinback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCalculationsV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCalculationsV2Pgtap.test.ts",
       "class": "public-output"
     },
     {

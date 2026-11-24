@@ -64,7 +64,7 @@ Use catalogue SKUs that have no GTIN.
 Search terms include product assortment, SKU records.
 
 - Owner **catalog** · kind **cap** · runtime **read-only**
-- Native catalogue identities require a GTIN.
+- Native catalogue identities require a unit trade identifier. For a SKU without a globally assigned GTIN, see the internal number recipe in Products and trade items.
 
 Show offline: `show catalog.optionalGtin --json`.
 

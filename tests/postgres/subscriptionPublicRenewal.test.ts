@@ -723,11 +723,15 @@ it("preserves exact frozen recovery JSON and keeps changed bindings refused", as
   } finally { await db.query("ROLLBACK"); db.release(); }
   expect((await runtime.query("SELECT count(*)::integer AS n FROM public.subscription_stock_wait_cases WHERE subscription_id=$1", [f.subscriptionId])).rows).toEqual([{ n: 1 }]);
   const before = await allPublicRows(admin);
+  // Await rollback before the next probe can try the transaction advisory lock.
+  const admitWithRecovery = (recovery: typeof frozen.binding) => transaction(pinned =>
+    api.createPostgresStockWaitStore({ executor: pinned, codec: d.codec, withTransaction: transaction, workerId: "uuid-recovery" })
+      .admit({ ...input, recovery }));
   for (const caseId of [randomUUID(), "invalid-uuid"]) {
-    await expect(store.admit({ ...input, recovery: { ...frozen.binding, caseId } }))
+    await expect(admitWithRecovery({ ...frozen.binding, caseId }))
       .rejects.toMatchObject({ code: "23505", message: "stock_wait_frozen_binding_changed" });
   }
-  await expect(store.admit({ ...input, recovery: { ...frozen.binding, engineIdempotencyKey: frozen.binding.engineIdempotencyKey + ":changed" } }))
+  await expect(admitWithRecovery({ ...frozen.binding, engineIdempotencyKey: frozen.binding.engineIdempotencyKey + ":changed" }))
     .rejects.toMatchObject({ code: "23505", message: "stock_wait_frozen_binding_changed" });
   expect(await allPublicRows(admin)).toEqual(before);
   expect(d.execute).not.toHaveBeenCalled();
@@ -945,31 +949,59 @@ it("accepts an uppercase subscription UUID through the restricted installed rene
   expect(await allPublicRows(admin)).toEqual(before);
 }, 30_000);
 
-it("drains normal due renewals concurrently with bounded concurrency, zero duplicate dispatch, and monotonic cycle advance", async () => {
+function normalWorkerRendezvous(candidateIds: ReadonlySet<string>) {
+  const entered = new Set<string>();
+  let releasePeer!: () => void;
+  const peer = new Promise<void>(resolve => { releasePeer = resolve; });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let missingPeer = false;
+  let inFlight = 0, peak = 0;
+  return {
+    get peak() { return peak; },
+    get missingPeer() { return missingPeer; },
+    async query(sql: string, values?: unknown[]) {
+      const id = String(values?.[0]);
+      if (!sql.startsWith("SELECT cycle_snapshot FROM public.subscription_renewal_operations") || !candidateIds.has(id) || entered.has(id)) {
+        return executor.query(sql, values);
+      }
+      if (entered.size === 0) timer = setTimeout(() => { missingPeer = true; releasePeer(); }, 1_000);
+      entered.add(id);
+      if (entered.size === 2) { clearTimeout(timer); releasePeer(); }
+      peak = Math.max(peak, ++inFlight);
+      try {
+        await peer;
+        if (missingPeer) throw new Error("Normal renewal worker did not reach the rendezvous");
+        return await executor.query(sql, values);
+      } finally { inFlight--; }
+    },
+  };
+}
+
+it("drains normal due renewals concurrently with zero duplicate dispatch and monotonic cycle advance", async () => {
   const subs = [await active(), await active(), await active(), await active()];
+  const candidateIds = new Set(subs.map(s => s.subscriptionId));
   const d = await deps(subs[0].subscriptionId, "succeeded");
   const executedByOrder = new Map<string, number>();
-  let inFlight = 0, maxInFlight = 0;
   const baseRail = d.input.paymentRails.resolve("sandbox")!;
-  const timedRail = {
+  const countedRail = {
     ...baseRail,
     async execute(input: Parameters<typeof baseRail.execute>[0]) {
-      inFlight++;
-      maxInFlight = Math.max(maxInFlight, inFlight);
-      await new Promise(resolve => setTimeout(resolve, 40));
       executedByOrder.set(input.orderId, (executedByOrder.get(input.orderId) ?? 0) + 1);
-      try { return await baseRail.execute(input); }
-      finally { inFlight--; }
+      return baseRail.execute(input);
     },
   };
   const unused = async (): Promise<never> => { throw new Error("unexpected_retry_on_concurrent_renewal"); };
   let clock = now;
-  const native = api.createNativeSubscriptionBinding({
-    enabled: true, batchLimit: 10, concurrency: 4, population: `concurrent-renewal:${subs[0].subscriptionId}`,
-    executor, withTransaction: transaction,
+  let rendezvous: ReturnType<typeof normalWorkerRendezvous> | undefined;
+  let admit = executor.query;
+  const bindingFor = (concurrency: number) => api.createNativeSubscriptionBinding({
+    enabled: true, batchLimit: 10, concurrency, population: `concurrent-renewal:${subs[0].subscriptionId}`,
+    executor: { query: (sql, values) => sql.startsWith("SELECT public.subscription_stock_wait_admit(")
+      ? admit(sql, values) : (rendezvous?.query ?? executor.query)(sql, values) },
+    withTransaction: transaction,
     withRunLease: async (_population, work) => work(),
     codec: d.codec, settlement: db => settlement(d.codec, db), inventory: d.input.inventory,
-    paymentRails: { resolve: channel => channel === "sandbox" ? timedRail : null },
+    paymentRails: { resolve: channel => channel === "sandbox" ? countedRail : null },
     policy: d.input.policy,
     retry: { readFrozenMandate: unused, retryInput: () => { throw new Error("unexpected_retry"); }, payments: { execute: unused, readOutcome: unused }, recoveredTemplate: "recovered" },
     failureTemplate: "failed", recoveryPath: "/recover", workerId: "concurrent-worker", now: () => clock,
@@ -977,20 +1009,50 @@ it("drains normal due renewals concurrently with bounded concurrency, zero dupli
     readiness: async () => ({ state: "ready", candidate: { artifact: "fixture", configuration: "fixture", environment: "disposable", database: "fixture", schema: "complete" }, loadedPackages: [], issues: [] }),
   });
 
+  const serial = normalWorkerRendezvous(candidateIds);
+  rendezvous = serial;
+  expect(await bindingFor(1).services.run()).toMatchObject({ renewals: Array.from(candidateIds, () => ({ status: "error" })) });
+  expect(serial.missingPeer).toBe(true);
+  expect(serial.peak).toBe(1);
+  expect(executedByOrder.size).toBe(0);
+
+  rendezvous = normalWorkerRendezvous(candidateIds);
+  const native = bindingFor(4);
   const settledIds: string[] = [];
   for (let pass = 0; pass < 4 && settledIds.length < 4; pass++) {
-    const run = await native.services.run();
+    const run = await transaction(async lockDb => {
+      let winner: ReturnType<typeof executor.query> | undefined;
+      let busyLock: ReturnType<typeof executor.query> | undefined;
+      admit = async (sql, values) => {
+        if (!winner) {
+          winner = executor.query(sql, values);
+          return winner;
+        }
+        // Once the first real admission commits, force the other rows down the real busy path.
+        busyLock ??= winner.then(() => lockDb.query("SELECT pg_advisory_xact_lock(846832106,1)"));
+        await busyLock;
+        return executor.query(sql, values);
+      };
+      try { return await native.services.run(); }
+      finally { admit = executor.query; }
+    });
+    if (rendezvous) {
+      expect(rendezvous.missingPeer, "Normal renewal worker did not reach the rendezvous").toBe(false);
+      expect(rendezvous.peak).toBeGreaterThanOrEqual(2);
+      // This counts four fixture candidates. The batch helper test exercises the worker cap with more rows.
+      expect(rendezvous.peak).toBeLessThanOrEqual(4);
+      rendezvous = undefined;
+    }
     expect(run).not.toBeNull();
     const renewals = "renewals" in run! ? run.renewals : [];
+    expect(renewals).toHaveLength(1);
     expect(renewals.every(r => r.status === "succeeded")).toBe(true);
     settledIds.push(...renewals.map(r => r.subscriptionId));
     // Rows omitted by 55P03 hot-SKU admission busy retain their 5-minute claim lease until expiry.
     if (settledIds.length < 4) clock = new Date(Date.parse(clock) + 6 * 60_000).toISOString();
   }
   expect(settledIds).toHaveLength(4);
-  expect(new Set(settledIds)).toEqual(new Set(subs.map(s => s.subscriptionId)));
-  expect(maxInFlight).toBeGreaterThanOrEqual(2);
-  expect(maxInFlight).toBeLessThanOrEqual(4);
+  expect(new Set(settledIds)).toEqual(candidateIds);
   expect(executedByOrder.size).toBe(4);
   expect([...executedByOrder.values()].every(count => count === 1)).toBe(true);
 
@@ -1001,8 +1063,7 @@ it("drains normal due renewals concurrently with bounded concurrency, zero dupli
   }
 
   // Re-running immediately must find no due renewals and dispatch nothing again.
-  const finalRun = await native.services.run();
-  expect(finalRun).not.toBeNull();
-  expect("renewals" in finalRun! ? finalRun.renewals : []).toEqual([]);
-  expect([...executedByOrder.values()].every(count => count === 1)).toBe(true);
+  const dispatches = [...executedByOrder];
+  expect(await native.services.run()).toMatchObject({ renewals: [] });
+  expect([...executedByOrder]).toEqual(dispatches);
 }, 30_000);

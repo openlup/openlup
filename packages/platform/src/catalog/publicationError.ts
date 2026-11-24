@@ -112,11 +112,9 @@ export type Issue = Omit<CatalogCandidateIssue, "code" | "message"> & { detail?:
   PlatformIssue | { kind: "adopterRule"; rule: Rule; code: string }
 );
 export type EvaluationIssue = { outcome: CatalogPublicationFailure["outcome"]; diagnostic: Issue };
-type Remedy = readonly [reason: string, fix: string] | Pick<CatalogConformanceRule, "fix">;
+type Remedy = readonly [reason: string, fix: string, cause?: string] | CatalogConformanceRule | { fix: string; cause?: string };
 
-function skuSizeRemedy(subject?: string): string {
-  return `Reduce the facts or details for ${subject ? `SKU ${subject}` : "this SKU"} and prepare the publication again.`;
-}
+const skuSizeFix = "Reduce the facts or details for this SKU and prepare the publication again.";
 
 export function publicationIssue(code: PlatformCode, phase: CatalogCandidateIssue["phase"], path: string, subject?: string): Issue & PlatformIssue {
   return { kind: "platform", code, path, ...(phase === undefined ? {} : { phase }), ...(subject === undefined ? {} : { subject }) };
@@ -134,7 +132,7 @@ export function renderPublicationIssue(issue: Issue): CatalogCandidateIssue & { 
   const { kind: _kind, stored, detail, ...fields } = issue;
   const { code, subject } = fields;
   const fix = stored ? "Recover the sealed publication or re-export it from a verified copy."
-    : detail ?? (code === "catalog_publication_sku_too_large" ? skuSizeRemedy(subject) : publicationRemedy(code));
+    : detail ?? (code === "catalog_publication_sku_too_large" && subject ? skuSizeFix.replace("this SKU", () => `SKU ${subject}`) : publicationRemedy(code));
   const sku = subject && (["catalog_publication_identifier_blank", "catalog_publication_identifier_key_reused",
     "catalog_publication_sku_price_not_ready", "catalog_publication_sku_price_shape_invalid",
     "catalog_publication_v3_activation_readiness_failed"].includes(code));
@@ -200,7 +198,7 @@ const publicationRefusals = {
   catalog_publication_approval_state_valid: ["publication_approval_state_invalid", "The approved product details are invalid. Each SKU may appear once in the approved state. Prepare the publication again."],
   catalog_publication_post_state_changed: ["publication_post_state_changed", "The product or its SKUs differ from the approval. Prepare the publication again."],
   catalog_publication_roster_limit: ["publication_roster_limit", "A product can retain up to 10,000 SKUs. Put additional SKUs on another product and prepare the publication again."],
-  catalog_publication_sku_too_large: ["publication_sku_too_large", skuSizeRemedy()],
+  catalog_publication_sku_too_large: ["publication_sku_too_large", skuSizeFix],
   catalog_publication_sku_identity_changed: ["publication_sku_identity_changed", "A SKU code differs from its published identity. Restore the saved code or prepare a new SKU."],
   catalog_publication_document_required: ["publication_document_required", "Select a product document revision and prepare the draft again."],
   catalog_publication_primary_sku_required: ["publication_primary_sku_required", "Select the primary SKU and prepare the draft again."],
@@ -215,32 +213,32 @@ const publicationRefusals = {
   catalog_publication_pointer_capability_unconsumed: ["publication_content_not_saved", "The selected product content was not saved. Select the content again and retry."],
   catalog_publication_busy: ["publication_busy", "Another catalogue change is in progress. Retry with the same command key."],
   catalog_publication_command_key_reused: ["publication_command_key_reused", "This command key belongs to a different request. Retry the original request or use a fresh key."],
-  catalog_publication_gtin_conflict: ["publication_gtin_conflict", "This GTIN is already assigned. Verify the barcode and prepare the draft again."],
+  catalog_publication_gtin_conflict: ["publication_gtin_conflict", "This GTIN is already assigned. Verify the barcode and prepare the draft again.", "This GTIN is already assigned in the store, either to another SKU or to this SKU under a different issuer."],
   catalog_publication_identifier_conflict: ["publication_identifier_conflict", "This identifier is already assigned. Check its issuer and value."],
   catalog_publication_identifier_blank: ["publication_identifier_blank", "Enter a nonblank value for this identifier."],
   catalog_publication_identifier_key_reused: ["publication_identifier_key_reused", "Use a distinct issuer and value pair for this identifier."],
   catalog_publication_draft_advanced: ["publication_draft_advanced", "The saved draft changed. Prepare its current revision."],
   catalog_publication_route_conflict: ["publication_route_conflict", "Another product uses this route. Choose a different route and prepare the draft again."],
   catalog_publication_lifecycle_assertion_changed: ["publication_lifecycle_assertion_changed", "Reload the SKU revisions and prepare the lifecycle changes again."],
-  catalog_publication_tax_class_unavailable: ["publication_tax_class_unavailable", "Install or activate the tax class declared by this product type."],
-  catalog_publication_price_key_reused: ["publication_price_key_reused", "Use a distinct command key for each price change in the draft."],
-  catalog_publication_price_changed: ["publication_price_changed", "The current base price differs from the draft. Reload it and prepare the draft again."],
-  catalog_publication_price_unavailable: ["publication_price_unavailable", "The base price could not be verified. Check the price list or retry the command."],
-  catalog_publication_price_readiness: ["publication_price_readiness", "The proposed prices or offers do not meet storefront readiness. Check their setup and prepare the draft again."],
-  catalog_publication_sku_price_not_ready: ["publication_sku_price_not_ready", "Set a positive gross base price and check the subscription price for this SKU in the effective price list."],
-  catalog_publication_sku_price_shape_invalid: ["publication_sku_price_shape_invalid", "Use gross one-time or subscription pricing at minimum quantity one for this SKU in the effective price list."],
-  price_list_not_active: ["price_list_not_active", "Activate the intended price list or select an effective list for the settlement region and currency."],
-  price_list_not_found: ["price_list_not_found", "Select an installed, effective price list for the settlement region and currency, then prepare the draft again."],
-  command_key_reused: ["command_key_reused", "Give the changed price operation a fresh command key and prepare the draft again."],
-  command_fingerprint_invalid: ["command_fingerprint_invalid", reviewDraft],
-  command_invalid: ["command_invalid", reviewDraft],
-  operator_mismatch: ["operator_mismatch", "Have the administrator who completed the child price command replay it."],
-  command_in_progress: ["command_in_progress", "Retry the publication with the same command keys after the price change finishes."],
-  sku_not_found: ["sku_not_found", "Select an existing SKU for the price change or create it in this publication."],
-  sku_archived: ["sku_archived", "Restore the SKU before changing its price or remove the price change."],
-  base_price_ambiguous: ["base_price_ambiguous", "Resolve overlapping base price entries for this SKU and price list, then prepare the draft again."],
+  catalog_publication_tax_class_unavailable: ["publication_tax_class_unavailable", "Install or activate the tax class declared by this product type.", "The selected product type declares a tax class that is absent or inactive."],
+  catalog_publication_price_key_reused: ["publication_price_key_reused", "Use a distinct command key for each price change in the draft.", "More than one price change in the draft uses the same command key."],
+  catalog_publication_price_changed: ["publication_price_changed", "The current base price differs from the draft. Reload it and prepare the draft again.", "The effective base price does not match the price state expected by the command."],
+  catalog_publication_price_unavailable: ["publication_price_unavailable", "The base price could not be verified. Check the price list or retry the command.", "The price read or write did not return the evidence needed to verify the base price."],
+  catalog_publication_price_readiness: ["publication_price_readiness", "The proposed prices or offers do not meet storefront readiness. Check their setup and prepare the draft again.", "The proposed pricing does not meet the readiness requirements of the selected storefront or price list."],
+  catalog_publication_sku_price_not_ready: ["publication_sku_price_not_ready", "Set a positive gross base price and check the subscription price for this SKU in the effective price list.", "The SKU fails the effective price list's readiness checks. There must be exactly one active, effective one-time entry at minimum quantity 1, and its gross amount must be positive. With no D2C subscription pricing policy history, there must be exactly one active, effective subscription entry, with a positive gross amount at minimum quantity 1. With policy history, exactly one valid policy revision must be effective and derive a positive price, and there must be no active, effective explicit subscription entry."],
+  catalog_publication_sku_price_shape_invalid: ["publication_sku_price_shape_invalid", "Use gross one-time or subscription pricing at minimum quantity one for this SKU in the effective price list.", "The effective price entries have an unsupported tax basis, channel or minimum quantity."],
+  price_list_not_active: ["price_list_not_active", "Activate the intended price list or select an effective list for the settlement region and currency.", "The price operation names an ineligible list, or the SKU readiness check found no eligible list. An eligible price list is active, matches the settlement region and currency, and is within its validity window."],
+  price_list_not_found: ["price_list_not_found", "Select an installed, effective price list for the settlement region and currency, then prepare the draft again.", "The price list selected by the base-price command does not exist."],
+  command_key_reused: ["command_key_reused", "Give the changed price operation a fresh command key and prepare the draft again.", "This price command key already belongs to a different fingerprint."],
+  command_fingerprint_invalid: ["command_fingerprint_invalid", reviewDraft, "The price command fingerprint has an invalid format."],
+  command_invalid: ["command_invalid", reviewDraft, "The submitted base-price operation violates the command’s input requirements."],
+  operator_mismatch: ["operator_mismatch", "Have the administrator who completed the child price command replay it.", "A different operator owns the existing price command."],
+  command_in_progress: ["command_in_progress", "Retry the publication with the same command keys after the price change finishes.", "The price command already has an unfinished claim."],
+  sku_not_found: ["sku_not_found", "Select an existing SKU for the price change or create it in this publication.", "The price command refers to a SKU that does not exist."],
+  sku_archived: ["sku_archived", "Restore the SKU before changing its price or remove the price change.", "The price command refers to an archived SKU."],
+  base_price_ambiguous: ["base_price_ambiguous", "Resolve overlapping base price entries for this SKU and price list, then prepare the draft again.", "Multiple base-price entries match the same SKU and price-list context."],
   catalog_definition_drift: ["catalog_definition_drift", rulesMismatch],
-  publication_preparation_unavailable: ["publication_preparation_unavailable", reviewDraft],
+  publication_preparation_unavailable: ["publication_preparation_unavailable", reviewDraft, "The selected draft version cannot be prepared here or required preparation evidence is unavailable."],
   catalog_publication_identity_conflict: ["publication_identity_conflict", "A product slug or SKU code is already in use. Choose an available identity and prepare the draft again."],
   activation_not_assessed: { fix: "Verify purchase readiness for the proposed product and SKUs." },
   activation_unknown: { fix: "Verify purchase readiness for the proposed product and SKUs." },
@@ -271,19 +269,19 @@ const publicationRefusals = {
   catalog_publication_document_source_missing: { fix: "Select a document revision backed by a saved draft for this product." },
   catalog_publication_document_text_copied: { fix: "Replace the copied document text with the display value for this field." },
   catalog_publication_eligibility_source_mismatch: { fix: "Match purchase eligibility to the modes in the saved draft." },
-  catalog_publication_gross_below_net: { fix: "Supply a gross mass at least as large as the net content." },
-  catalog_publication_gross_mass_invalid: { fix: "Supply a positive gross mass in an installed mass unit." },
-  catalog_publication_gross_mass_required: { fix: "supply the gross mass for this SKU" },
+  catalog_publication_gross_below_net: { fix: "Supply a gross mass at least as large as the net content.", cause: "The SKU gross mass is less than its net content." },
+  catalog_publication_gross_mass_invalid: { fix: "Supply a positive gross mass in an installed mass unit.", cause: "The SKU gross mass is invalid or uses a unit the pinned type cannot convert." },
+  catalog_publication_gross_mass_required: { fix: "supply the gross mass for this SKU", cause: "The SKU needs a gross mass for the selected publication operation." },
   catalog_publication_identifier_effect_missing: { fix: "Match the identifier operation to the identifier saved for this SKU." },
   catalog_publication_identifier_primary_invalid: { fix: "Use a valid unit GTIN as the primary trade identifier." },
   catalog_publication_identifier_requires_created_sku: { fix: "Create the SKU before adding its identifier." },
   catalog_publication_identifier_source_mismatch: { fix: "Match the identifier operation to the identifier saved for this SKU." },
-  catalog_publication_integral_grams_required: { fix: "Supply net content that converts to a supported positive whole number of grams." },
-  catalog_publication_net_content_invalid: { fix: "Supply a positive exact net quantity in an eligible unit of the pinned product type." },
+  catalog_publication_integral_grams_required: { fix: "Supply net content that converts to a supported positive whole number of grams.", cause: "Net content does not convert to a supported positive whole number of grams." },
+  catalog_publication_net_content_invalid: { fix: "Supply a positive exact net quantity in an eligible unit of the pinned product type.", cause: "The SKU net content is absent or violates the pinned product type’s quantity rules." },
   catalog_publication_quantity_definition_unqualified: { fix: "Select an eligible unit with an exact conversion in the pinned product type, or use an eligible product type." },
   catalog_publication_activation_membership_required: { fix: "Admit this SKU to an offer before enabling purchases." },
   catalog_publication_logistics_source_mismatch: { fix: "Use the SKU metadata saved in the selected draft." },
-  catalog_publication_mass_required_until_mc5: { fix: "Publish net content as the net mass in whole grams. Declare a labelled volume or count as a quantity variant option. If the option's dimension has role \"net_content\", remove that role in a new product type version, keep the option, and select the new version on the draft." },
+  catalog_publication_mass_required_until_mc5: { fix: "Publish net content as the net mass in whole grams. Declare a labelled volume or count as a quantity variant option. If the option's dimension has role \"net_content\", remove that role in a new product type version, keep the option, and select the new version on the draft.", cause: "Publication accepts net content only as mass in whole grams." },
   catalog_publication_media_evidence_mismatch: { fix: "Bind the selected media reference and asset list to verified evidence for this SKU." },
   catalog_publication_media_readiness_unproven: { fix: "Bind the selected media reference and asset list to verified evidence for this SKU." },
   catalog_publication_media_validation_unavailable: { fix: "Verify the SKU media and retry once that evidence is available." },
@@ -309,8 +307,8 @@ const publicationRefusals = {
   catalog_publication_sku_effect_missing: { fix: "Match the proposed SKU facts and options to the selected draft and installed derivation rules." },
   catalog_publication_source_invalid: { fix: "Select an open, receipted draft revision for this product." },
   catalog_publication_source_mismatch: { fix: "Select an open, receipted draft revision for this product." },
-  catalog_publication_v3_activation_readiness_failed: { fix: "Supply the logistics reference for this SKU." },
-  catalog_publication_v3_active_primary_required: { fix: "Activate the primary SKU with a purchase mode, or leave the product in draft." },
+  catalog_publication_v3_activation_readiness_failed: { fix: "Supply the logistics reference for this SKU.", cause: "The SKU is being made sellable without its required logistics reference." },
+  catalog_publication_v3_active_primary_required: { fix: "Activate the primary SKU with a purchase mode, or leave the product in draft.", cause: "The primary SKU is not active and sellable." },
   catalog_publication_v3_compile_archive_refused: { fix: "Withdraw the SKU through a supported lifecycle transition." },
   catalog_publication_v3_compile_change_noop: { fix: "Include a change to the product or one of its SKUs." },
   catalog_publication_v3_compile_derived_facts_mismatch: { fix: "Match the proposed SKU facts and options to the selected draft and installed derivation rules." },
@@ -360,7 +358,7 @@ const publicationRefusals = {
   option_type_invalid: { fix: "Supply an option value that matches the installed dimension and its allowed values or units." },
   option_value_invalid: { fix: "Supply an option value that matches the installed dimension and its allowed values or units." },
   price_reference_missing: { fix: "Verify the selected price operations in the effective price list." },
-  price_validation_unavailable: { fix: "Verify the selected price operations in the effective price list." },
+  price_validation_unavailable: { fix: "Verify the selected price operations in the effective price list.", cause: "The price validator did not return usable validation evidence." },
   primary_sku_missing: { fix: "Select the primary SKU." },
   primary_sku_not_in_product: { fix: "Select a primary SKU belonging to this product." },
   publication_evidence_unavailable: { fix: "Load the current publication and its retained revisions before retrying." },
@@ -371,9 +369,12 @@ const publicationRefusals = {
   trade_identifier_invalid: { fix: "Supply a valid GTIN." },
   trade_identifier_quantity_invalid: { fix: "Use quantity one for a unit or at least two for a case." },
   trade_identifier_scheme_unsupported: { fix: "Use a supported trade identifier scheme." },
-  type_not_installed: { fix: "Install the product type and version selected by the draft." },
-  unit_trade_identifier_missing: { fix: "Add a valid unit trade identifier to the SKU, then prepare the draft again." },
+  type_not_installed: { fix: "Install the product type and version selected by the draft.", cause: "No installed definition matches the draft product type and version." },
+  unit_trade_identifier_missing: { fix: "Add a valid unit trade identifier to the SKU, then prepare the draft again. For a product without a GS1 barcode, mint one with catalogInternalGtin.", cause: "The SKU needs a valid unit GTIN for publication." },
 } as const satisfies Record<PlatformCode, Remedy>;
+
+/** @internal Static owner guidance used by the CLI and reader guide. */
+export { publicationRefusals };
 
 export type AdmissionDiagnostic = PlatformCode;
 export const refusePublicationCommand = publicationRefuse;

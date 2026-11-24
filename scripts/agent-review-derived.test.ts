@@ -1,6 +1,7 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import childProcess, { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -64,6 +65,30 @@ const landingCli = () => fixtureNpm('run', 'landing:merge');
 const land = () => landingMerge(root, { runCommand: fixtureCommand });
 const checkout = (rev: string) => { git('reset', '--hard'); git('checkout', '-q', '--detach', rev); };
 const setMain = (rev: string) => { git('branch', '-f', 'main', rev); git('update-ref', 'refs/remotes/origin/main', rev); };
+const installedLock = 'node_modules/.package-lock.json';
+const lockedDependency = 'node_modules/zod';
+const toolchainCheck = ['--input-type=module', '-e', expect.stringContaining('assertCarrierToolchain(process.cwd())')];
+const status = () => git('status', '--porcelain=v1', '--untracked-files=all');
+function expectRestoredHead(head: string) {
+  expect(git('rev-parse', 'HEAD')).toBe(head);
+  expect(existsSync(join(root, '.git/MERGE_HEAD'))).toBe(false);
+  expect(status()).toBe('');
+}
+function startToolchainLanding(input: 'package-lock.json' | '.npmrc') {
+  checkout(base);
+  write('README.md', read('README.md') + '\nFixture branch change.\n');
+  const left = commit();
+  checkout(base);
+  if (input === 'package-lock.json') {
+    const lock = JSON.parse(read(input));
+    lock.packages[lockedDependency].version = '0.0.0-fixture';
+    write(input, json(lock));
+  } else write(input, read(input).replace('legacy-peer-deps=true', 'legacy-peer-deps=false'));
+  const right = commit();
+  setMain(right);
+  checkout(left);
+  return { left, right };
+}
 function probeExport() {
   write(PORTABILITY, read(PORTABILITY) + '\n/** @experimental A fixture declaration. */\nexport const fixturePortability = 1;\n');
   write('packages/platform/changes/fixture-portability.md', '- Add an experimental portability fixture and describe reservation policy.\n');
@@ -346,17 +371,213 @@ it.each([
         await captureCommittedReviewCandidate(root, right, landed));
       expect(integration).toMatchObject({ kind: 'derived', derived: true });
     } else {
-      expect(landingCli).toThrow(`landing: @openlup/${owner} API snapshots changed; add or modify ${directory}/changes/*.md or ${directory}/CHANGELOG.md on the first parent and retain it in the merge`);
-      expect(git('rev-parse', 'HEAD')).toBe(left);
-      expect(git('rev-parse', 'MERGE_HEAD')).toBe(right);
+      const cli = spawnSync(process.execPath, [npmCli, 'run', 'landing:merge'], { cwd: root, env: fixtureEnvironment, encoding: 'utf8', timeout: 180000 });
+      expect(cli.status).toBe(1);
+      expect(cli.stderr).toContain(`landing: @openlup/${owner} API snapshots changed; add or modify ${directory}/changes/*.md or ${directory}/CHANGELOG.md on the first parent and retain it in the merge`);
+      expect(cli.stderr).toContain('OPENLUP_E_LANDING_ABORTED: merge aborted; the checkout is back at HEAD');
+      expectRestoredHead(left);
       expect(read(report)).not.toContain('fixtureApi');
       expect(git('diff', '--cached', '--name-only', '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api')).toBe('');
     }
   } finally { restoreDerivedFixture(); }
 }, 180000);
 
+it.each([
+  ['package-lock.json', '1'],
+  ['package-lock.json', undefined],
+  ['.npmrc', '1'],
+] as const)('lands a changed main lock through the selected install route (%s, marker %s)', async (input, marker) => {
+  const previousMarker = localFixtureEnvironment().AI_RESOURCE_GATE_ACTIVE;
+  const lockBytes = read(installedLock);
+  try {
+    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', marker);
+    const { left, right } = startToolchainLanding(input);
+    const mergeHead = () => existsSync(join(root, '.git/MERGE_HEAD')) ? git('rev-parse', 'MERGE_HEAD') : undefined;
+    const calls: [string, string[], string | undefined][] = [];
+    const landed = await landingMerge(root, {
+      runCommand: (command, args) => {
+        calls.push([command, args, mergeHead()]);
+        if (!args.includes('ci')) return fixtureCommand(command, args);
+        expect(git('diff', '--name-only', left, '--', input)).toBe(input);
+        const installed = JSON.parse(lockBytes);
+        installed.packages[lockedDependency] = JSON.parse(read('package-lock.json')).packages[lockedDependency];
+        write(installedLock, json(installed));
+      },
+    });
+    const install = marker === undefined
+      ? ['ai-resource-gate', ['run', '--wait', 'openlup:landing-build', '--', process.execPath, npmCli, 'ci'], right]
+      : [process.execPath, [npmCli, 'ci'], right];
+    expect(calls).toEqual([[process.execPath, toolchainCheck, undefined], install, [process.execPath, toolchainCheck, right]]);
+    expect(git('show', '-s', '--format=%P%n%B', landed.head)).toBe(`${left} ${right}\nMerge origin/main and refresh derived carriers\n\nSigned-off-by: Fixture <fixture@example.invalid>`);
+    expect(status()).toBe('');
+  } finally {
+    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', previousMarker);
+    write(installedLock, lockBytes);
+    restoreDerivedFixture();
+  }
+}, 60000);
+
+it('aborts landing after a carrier failure', async () => {
+  const injected = new TypeError('fixture carrier failed after writing');
+  const keys = Reflect.ownKeys(injected).filter(key => key !== 'stack');
+  const leftover = 'packages/platform/sql/landing-rollback-fixture.sql';
+  const ignored = 'landing-fixture-local.log';
+  try {
+    checkout(base); probeExport(); const left = commit();
+    const inventory = read(INVENTORY_PATH), report = read(PORTABILITY_REPORT);
+    checkout(base); write(PORTABILITY_REPORT, report + '\nMain-only report edit.\n');
+    write('.gitignore', read('.gitignore') + `\n!/${ignored}\n`);
+    const right = commit(); setMain(right); checkout(left);
+    write(ignored, 'Existing ignored output.\n');
+    const runCommand = vi.fn((command: string, args: string[]) => {
+      if (args[0] !== npmCli) return fixtureCommand(command, args);
+      write(INVENTORY_PATH, 'Partial unchanged-by-merge carrier.\n');
+      write(PORTABILITY_REPORT, 'Partial changed-by-merge carrier.\n');
+      write(leftover, 'Partial untracked output.\n');
+      throw injected;
+    });
+    const failure = await landingMerge(root, { runCommand }).catch(error => error);
+    expect(failure).toBe(injected);
+    expect(failure.message).toBe('fixture carrier failed after writing');
+    expect(Object.getPrototypeOf(failure)).toBe(TypeError.prototype);
+    expect(Reflect.ownKeys(failure).filter(key => key !== 'stack')).toEqual(keys);
+    expectRestoredHead(left);
+    expect(read(INVENTORY_PATH)).toBe(inventory);
+    expect(read(PORTABILITY_REPORT)).toBe(report);
+    expect(existsSync(join(root, leftover))).toBe(false);
+    expect(read(ignored)).toBe('Existing ignored output.\n');
+  } finally {
+    rmSync(join(root, leftover), { force: true });
+    rmSync(join(root, ignored), { force: true });
+    restoreDerivedFixture();
+  }
+}, 60000);
+
+it('preserves unrelated work saved during the brokered install', async () => {
+  const injected = new Error('fixture brokered npm ci failed');
+  const previousMarker = localFixtureEnvironment().AI_RESOURCE_GATE_ACTIVE;
+  const untracked = 'landing-concurrent-note.txt';
+  try {
+    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', undefined);
+    const { left } = startToolchainLanding('package-lock.json');
+    const readme = read('README.md') + '\nConcurrent tracked edit.\n';
+    const note = 'Concurrent untracked note.\n';
+    const runCommand = (command: string, args: string[]) => {
+      if (command !== 'ai-resource-gate') return fixtureCommand(command, args);
+      write('README.md', readme);
+      write(untracked, note);
+      throw injected;
+    };
+    const failure = await landingMerge(root, { runCommand }).catch(error => error);
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure.errors[0]).toBe(injected);
+    expect(failure.message).toContain('OPENLUP_E_LANDING_ABORT_FAILED').toContain('README.md').toContain(untracked);
+    expect(failure.message).not.toContain('the checkout is back at HEAD');
+    expect(git('rev-parse', 'HEAD')).toBe(left);
+    expect(existsSync(join(root, '.git/MERGE_HEAD'))).toBe(false);
+    expect(readFileSync(join(root, 'README.md'))).toEqual(Buffer.from(readme));
+    expect(readFileSync(join(root, untracked))).toEqual(Buffer.from(note));
+  } finally {
+    rmSync(join(root, untracked), { force: true });
+    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', previousMarker);
+    restoreDerivedFixture();
+  }
+}, 60000);
+
+it('refuses to take ownership of an existing merge with an empty porcelain status', async () => {
+  try {
+    checkout(base); const right = commit(); setMain(right); checkout(base);
+    git('commit', '--allow-empty', '-qm', 'First-parent fixture');
+    const head = git('rev-parse', 'HEAD');
+    git('merge', '--no-ff', '--no-commit', right);
+    expect(status()).toBe('');
+    const runCommand = vi.fn();
+    await expect(landingMerge(root, { runCommand })).rejects.toThrow('landing: a merge is already in progress');
+    expect(runCommand).not.toHaveBeenCalled();
+    expect(git('rev-parse', 'MERGE_HEAD')).toBe(right);
+    expect(git('rev-parse', 'HEAD')).toBe(head);
+    expect(status()).toBe('');
+  } finally { restoreDerivedFixture(); }
+}, 60000);
+
+it.each(['merged check', 'npm ci'])('aborts when the merged toolchain still fails after npm ci (%s failure)', async step => {
+  const installError = new Error('fixture npm ci failed');
+  const diagnostic = `carrier build: installed npm tree does not match package-lock.json (${lockedDependency}); run npm ci in this checkout`;
+  const previousMarker = localFixtureEnvironment().AI_RESOURCE_GATE_ACTIVE;
+  const npmShim = 'node_modules/.fixture-npm.cjs';
+  const direct = vi.spyOn(childProcess, 'execFileSync');
+  syncBuiltinESMExports();
+  try {
+    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', '1');
+    const { left } = startToolchainLanding('package-lock.json');
+    const runCommand = vi.fn((command: string, args: string[]) => {
+      if (args[0] !== npmCli || args[1] !== 'ci') return fixtureCommand(command, args);
+      if (step === 'npm ci') throw installError;
+      // Simulate a successful install that leaves the local install record mismatched.
+    });
+    direct.mockClear();
+    const failure = await landingMerge(root, { runCommand }).catch(error => error);
+    const expectedCalls = [[process.execPath, toolchainCheck], [process.execPath, [npmCli, 'ci']]];
+    if (step === 'merged check') expectedCalls.push([process.execPath, toolchainCheck]);
+    expect(runCommand.mock.calls.map(([command, args]) => [command, args])).toEqual(expectedCalls);
+    expectRestoredHead(left);
+    if (step === 'npm ci') {
+      // The HEAD check is the only inline Node subprocess. The generator and projection bypass runCommand.
+      const inlineNode = direct.mock.calls.flatMap(([command, args]) =>
+        command === process.execPath && Array.isArray(args) && args[0] === '--input-type=module' ? [args] : []);
+      expect(inlineNode).toEqual([toolchainCheck]);
+      expect(failure).toBe(installError);
+      return;
+    }
+    expect(failure.stderr).toContain(diagnostic);
+
+    write(npmShim, `const { argv, exit } = require('node:process');
+      const command = argv[2];
+      if (command === '--version') console.log(${JSON.stringify(fixtureNpm('--version').trim())});
+      else if (command !== 'ci') exit(1);\n`);
+    const cli = spawnSync(process.execPath, ['scripts/agent-review-landing.mjs'], {
+      cwd: root, env: { ...fixtureEnvironment, AI_RESOURCE_GATE_ACTIVE: '1', npm_execpath: join(root, npmShim) }, encoding: 'utf8', timeout: 180000,
+    });
+    expect(cli.status).toBe(1);
+    expect(cli.stderr).toContain(`OPENLUP_E_LANDING_TOOLCHAIN: ${diagnostic}\nafter npm ci from the merged lock`);
+    expect(cli.stderr).toContain('OPENLUP_E_LANDING_ABORTED: merge aborted; the checkout is back at HEAD');
+    expectRestoredHead(left);
+  } finally {
+    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', previousMarker);
+    direct.mockRestore();
+    syncBuiltinESMExports();
+    rmSync(join(root, npmShim), { force: true });
+    restoreDerivedFixture();
+  }
+}, 60000);
+
+it('retains the original failure when merge abort fails', async () => {
+  const injected = new Error('fixture carrier failure before abort');
+  const indexLock = '.git/index.lock';
+  try {
+    checkout(base); probeExport(); const left = commit();
+    checkout(base); const right = commit(); setMain(right); checkout(left);
+    const failure = await landingMerge(root, {
+      runCommand: (command, args) => {
+        if (args[0] !== npmCli) return fixtureCommand(command, args);
+        write(indexLock, 'Fixture abort obstruction.\n');
+        throw injected;
+      },
+    }).catch(error => error);
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure.cause).toBe(injected);
+    expect(failure.errors[0]).toBe(injected);
+    expect(failure.errors[1].stderr).toContain('index.lock');
+    expect(failure.message).toContain(injected.message).toContain('OPENLUP_E_LANDING_ABORT_FAILED').toContain('MERGE_HEAD present');
+    expect(failure.message).not.toContain('the checkout is back at HEAD');
+    expect(git('rev-parse', 'MERGE_HEAD')).toBe(right);
+  } finally {
+    rmSync(join(root, indexLock), { force: true });
+    restoreDerivedFixture();
+  }
+}, 60000);
+
 it('refuses an inventory-only landing with a mismatched installed dependency before writing', () => {
-  const installedLock = 'node_modules/.package-lock.json';
   const lockBytes = read(installedLock);
   const indexBytes = () => readFileSync(join(root, '.git/index'));
   const trackedDigest = () => {
@@ -749,6 +970,20 @@ it('lands an inverted migration only with explicit re-slot', async () => {
     const upstream = commit();
     setMain(upstream);
     checkout(pr);
+    const original = 'db/platform/migrations/20990101010000_landing_fixture.sql';
+    const reslotted = 'db/platform/migrations/20990101020100_landing_fixture.sql';
+    const originalSql = read(original);
+    const failure = new Error('inventory refresh failed after re-slot');
+    await expect(landingMerge(root, { reSlot: true, runCommand: (command, args) => {
+      if (args.includes(join(root, 'scripts/installation-inventory-refresh.ts'))) {
+        expect(read(reslotted)).toBe(originalSql);
+        throw failure;
+      }
+      fixtureCommand(command, args);
+    } })).rejects.toBe(failure);
+    expectRestoredHead(pr);
+    expect(read(original)).toBe(originalSql);
+    expect(existsSync(join(root, reslotted))).toBe(false);
     const result = await landingMerge(root, { reSlot: true, runCommand: (command, args) => {
       if (args.includes(join(root, 'scripts/installation-inventory-refresh.ts'))) return;
       fixtureCommand(command, args);

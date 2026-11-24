@@ -465,7 +465,15 @@ it("dispatches real activation, lifecycle, renewal and pause-reminder sources th
   await runtime.query(`SELECT public.subscription_apply_lifecycle_action($1,$2,$3,'pause',$4::jsonb,$5::timestamptz)`,
     [paused.client, `pause:${paused.subscription}`, paused.subscription, { pausePreset: "2_weeks" }, new Date(Date.now() - 12 * 86400000).toISOString()]);
   const repair = await fixture(); await open(runtime, repair);
+  const unrelated = await open(runtime, await fixture());
+  const unrelatedKey = `subscription-notice:dunning:${unrelated.notificationId}`;
+  await admin.query("UPDATE public.subscription_dunning_notifications SET scheduled_at=now()+interval '1 day' WHERE id=$1", [unrelated.notificationId]);
   const observed: NativeLifecycleNotice[] = [], captures: string[] = [];
+  const fixtureSubscriptions = new Set([activated.subscriptionId, paused.subscription, repair.subscription]);
+  const fixtureCaptures = () => {
+    const keys = new Set(observed.filter(notice => fixtureSubscriptions.has(notice.subscriptionId)).map(notice => notice.messageKey));
+    return captures.filter(key => keys.has(key));
+  };
   const store = createPostgresTransactionalDeliveryStore({ connectionString: runtimeUrl });
   const captured = createCapturedTransactionalDelivery({ outcome: command => { captures.push(command.idempotencyKey); return { state: "accepted" }; } });
   try {
@@ -478,9 +486,16 @@ it("dispatches real activation, lifecycle, renewal and pause-reminder sources th
       expect.objectContaining({ subscriptionId: paused.subscription, templateSlug: "subscription-pause-reminder" }),
       expect.objectContaining({ subscriptionId: repair.subscription, templateSlug: "subscription-payment-failed-1" }),
     ]));
-    const before = [...captures];
+    expect(captures).not.toContain(unrelatedKey);
+    const before = fixtureCaptures();
+    const firstPass = new Set(captures), firstPassCount = captures.length;
+    // Make a first send due during replay without waiting for a lease to expire.
+    await admin.query("UPDATE public.subscription_dunning_notifications SET scheduled_at=now() WHERE id=$1", [unrelated.notificationId]);
     await binding.run(100);
-    expect(captures).toEqual(before);
+    expect(fixtureCaptures()).toEqual(before);
+    const secondPass = captures.slice(firstPassCount);
+    expect(secondPass.filter(key => firstPass.has(key))).toEqual([]);
+    expect(secondPass.filter(key => key === unrelatedKey)).toEqual([unrelatedKey]);
     await expect(binding.run(0)).rejects.toThrow("subscription_notice_limit_invalid");
   } finally { await store.close(); }
 });

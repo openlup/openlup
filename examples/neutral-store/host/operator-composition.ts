@@ -1,9 +1,8 @@
-import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { createPostgresCustomerSupportJourneyPort } from '@openlup/platform/account-support/postgres';
 import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   createPostgresCatalogDraftStoreV3, createCatalogDraftHandlerV3, createCatalogCandidateServiceWithPublication, CatalogCandidateError, BundleRpcError,
-  canonicalCatalogDraftJson, evaluateBundleComposition, createPostgresCatalogPublicationCommands, createPostgresCatalogPublicationReads,
+  buildCatalogReleaseDraftV3, evaluateBundleComposition, createPostgresCatalogPublicationCommands, createPostgresCatalogPublicationReads,
   type CatalogHeadRef, type CatalogPublicationCommand, type CatalogPublicationFailure, type CatalogDraftPayloadV3, type CatalogProductTypeRef } from '@openlup/platform/catalog';
 import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
 import { starterCatalogue, starterCatalogueType } from './editor-catalogue.ts';
@@ -25,28 +24,13 @@ const only = (payload: Record<string, unknown>, keys: string[]) =>
   Object.keys(payload).every(key => key === 'locale' || keys.includes(key));
 
 function publicationExample(type: CatalogProductTypeRef): CatalogDraftPayloadV3 {
-  const id = randomUUID(), skuId = randomUUID(), revisionId = randomUUID(), slug = 'fictional-item';
-  const title = 'Fictional item', skuCode = `STARTER-${skuId}`;
-  const document = { schemaId: 'starter:document', documentRef: `starter:${revisionId}`, productSlug: slug, revisionNo: 1, name: title };
-  const canonicalText = canonicalCatalogDraftJson(document);
-  const digest = createHash('sha256').update(canonicalText).digest('hex');
-  const documentRevision = { id: revisionId, productId: id, revisionNo: 1, schemaId: document.schemaId, documentRef: document.documentRef,
-    sourceRef: 'starter:example', digest };
-  const presentation = { title }, sku = { skuCode, title, minQuantity: 1, isAddon: false, facts: {} };
-  const identifier = { scheme: 'gs1:gtin', issuer: 'starter:example', value: '5901234123457', packagingLevel: 'unit' as const };
-  return { schemaVersion: 3, product: { id, type: { key: type.key, version: type.version }, slug, dimensions: [], primarySkuId: skuId, documentRevision,
-    sharedContent: { schemaVersion: 1, catalogAction: 'create', document, presentation, publicationSkus: [sku], requestedModes: [], offerMemberships: [] } },
-  skus: [{ id: skuId, productId: id, code: skuCode, options: {}, netContent: { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 }, identifiers: [identifier] }],
-  publication: { kind: 'release', evidence: {}, operations: [
-    { op: 'create_product', productId: id, productSlug: slug, name: title },
-    { op: 'register_document_revision', productSlug: slug, revisionId, revisionNo: 1, documentRef: document.documentRef,
-      sourceRef: documentRevision.sourceRef, canonicalText, digest, provenance: { source: 'current_draft' } },
-    { op: 'move_document_pointer', productSlug: slug, documentRevisionNo: 1 },
-    { op: 'create_sku', productSlug: slug, documentRevisionNo: 1, skuId, ...sku },
-    { op: 'create_identifier', skuCode, ...identifier, quantity: 1, isPrimary: true, label: null, sourceRef: null },
-    { op: 'set_primary_sku', productSlug: slug, skuCode },
-    { op: 'set_product_presentation', productSlug: slug, presentation },
-  ] } };
+  const title = 'Fictional item';
+  return buildCatalogReleaseDraftV3({ namespace: 'starter', type: { key: type.key, version: type.version },
+    slug: 'fictional-item', name: title, presentation: { title }, skus: [
+      { code: 'STARTER-EXAMPLE', title, options: {}, netContent: { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 },
+        identifiers: [{ scheme: 'gs1:gtin', issuer: 'starter:example', value: '5901234123457', packagingLevel: 'unit' }],
+        sell: { oneTime: true, subscription: false } },
+    ] }).release.payload;
 }
 
 /** Operator identity is established by native request authentication before dispatch. */

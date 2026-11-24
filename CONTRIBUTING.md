@@ -657,6 +657,8 @@ node scripts/verify-local.mjs --plan
 node scripts/verify-local.mjs --plan --json
 # Include the raw DB diagnostic when its inputs are in scope:
 node scripts/verify-local.mjs --plan --pgtap
+# Inspect the opt-in affected-test plan:
+node scripts/verify-local.mjs --layered --plan --json
 ```
 
 Planning is read-only and works on an unreviewed, dirty task worktree without
@@ -694,6 +696,13 @@ The runner uses the commands below once: a single locked install, lint's package
 prerequisites, both reference builds, shared package/API/coverage gates and one
 `test:scoped`. Hosted shards, event-bound dependency comparison and receipt
 admission remain hosted checks; this optional command is local feedback.
+
+For a shorter opt-in local loop after review, use `node scripts/verify-local.mjs
+--layered`. It keeps the same fast phases and package gates, then runs
+`npm test -- <affected paths>` selected by `scripts/affected-tests.mjs`. If no
+Vitest file is affected, the tests phase reports `0 affected Vitest files
+(full suite runs in hosted CI)` and succeeds. The default command still runs
+`test:scoped`; hosted CI and Merge Queue run all eight Vitest shards.
 
 Each phase uses the existing native before/after review and candidate checks.
 Where the optional resource broker is installed, a closed phase map selects its
@@ -1554,8 +1563,9 @@ access; see [Package artifact limits](.github/VERSIONING_AND_EOL.md#package-arti
 All packages are validated and planned before writes, and only
 consumed fragments are deleted after successful writes. The set bump also plans
 an `upgrade/v<major>-<minor>-<patch>.md` guide page from those fragments and
-the API diff before any writes, refusing an existing page; it lists added, removed
-and changed declarations. Guide-contract violations
+the API diff before any writes, refusing an existing page. For each API report,
+the page gives the count of added declarations with the report path and lists
+removed and changed declarations individually. Guide-contract violations
 print warnings for correction in the same PR. It also refreshes the guide's
 repository-link pins and generated regions, and re-pins released repository links
 in each publishable package's `AGENTS.md` and `README.md`.
@@ -1819,11 +1829,24 @@ The helper merges the exact fetched `origin/main` with DCO sign-off; it never
 rebases or pushes. Configure your Git `user.name` and `user.email` before running
 it: the merge uses that identity and `-s` for your personal
 [DCO certification](#developer-certificate-of-origin).
-It stops on an authored conflict, leaving the merge for a
-human or worker. It refreshes its carrier set with the merged tree's own
-inventory refresh and generators, run in new processes, not the code it loaded
-before the merge. Append-only migration entries are unioned in slot order;
-existing entries cannot be edited and new duplicate slots refuse. Issued
+The helper checks the installed toolchain against HEAD before merging. If the
+merge changes a toolchain input such as `package-lock.json` or `.npmrc`, it runs
+`npm ci` once in the merged checkout and rechecks the toolchain once before
+refreshing carriers. That install uses the host build broker
+(`ai-resource-gate run --wait openlup:landing-build --`) unless
+`AI_RESOURCE_GATE_ACTIVE` is already set. The broker is required only for an
+unwrapped install. Matching inputs skip the install and the second check.
+
+Authored conflicts leave the merge open for resolution. On other failures the
+helper restores landing writes, aborts its merge and verifies the original HEAD,
+an empty Git status and the absence of `MERGE_HEAD`. If rollback fails, inspect
+`git status` and resolve the reported cleanup failure before retrying. Ignored
+install and build outputs are outside Git rollback. If an install ran, you may
+need `npm ci` at the restored HEAD before retrying.
+
+The helper refreshes its carrier set with the merged tree's inventory refresh
+and generators in new processes. Append-only migration entries are unioned in
+slot order. Existing entries cannot be edited and new duplicate slots refuse. Issued
 prefixes retain their original order. With a unique merge base, the closed
 registry union admits additions and base-entry removals in the named arrays of
 the publication catalogue, package boundary test and cold-consumer script. A

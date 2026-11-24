@@ -1088,9 +1088,9 @@ async function settingsParity() {
     const { exit, output } = await run(json ? [...args, "--json"] : args);
     liveBytes.push([exit, output]);
   }
-  // Main's current package digest includes installed tax coverage.
+  // Current package output includes the internal number recipe for catalog.optionalGtin.
   expect(createHash("sha256").update(JSON.stringify(liveBytes)).digest("hex"))
-    .toBe("18f75be66daccace6f25ba4040a82542f324c00d25bb2a29788bc16c371b578d");
+    .toBe("4b421b9049c50b0714e72cb0e63cf2b83b16e9624b44862174f0be5fd4835c07");
   const checkKeys = liveData.entries.filter(({ kind }) => kind === "code" || kind === "installed").map(({ key }) => key);
   const representatives = bound.filter(({ args, fixture }) => fixture !== undefined &&
     (args[0] === "check" || args[1] === key || args[1] === "checkout_recovery_reminders" && args[0] === "show" ||

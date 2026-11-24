@@ -14,7 +14,7 @@ import type { RenewalPreparedSettlement, RenewalReservationResult, RenewalSettle
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery, createPostgresDeliveryReconciliationPort } from "@openlup/platform/communications";
 import { refusedNoticeSources, noticeSessionWithRecipientFault } from "./m19NoticeFixture.js";
-import { createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPrivacyOperations, createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
+import { createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createTaxCalculationPrivacyContributor, createPostgresPrivacyStore, createPrivacyOperations, createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { createPostgresPaymentTruthPort, createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import type { SandboxPaymentAttempt, SandboxPaymentOutcome } from "@openlup/platform/payments/contracts";
 import { createPostgresDataGateway, type PgGatewayClient, type PgQueryExecutor } from "@openlup/platform/data";
@@ -35,8 +35,8 @@ import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/po
 import { captureStoreJourney, storeJourneyResources, type JourneyTargetInstallation, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
 
 import { createDestinationDocumentPrivacyContributor, createDestinationReceiptPrivacyContributor } from "@openlup/platform/identity";
-import { snapshotCommand, destinationContext, documentTable, reachDestinationCutoff, readSnapshot,
-  selectionTable, snapshot } from "./destinationDocumentFixture.js";
+import { bindDestinationOrder, insertDestinationOrder, orderBindingTable, snapshotCommand, destinationContext,
+  documentTable, reachDestinationCutoff, readSnapshot, selectionTable, snapshot, testServicePin } from "./destinationDocumentFixture.js";
 import { awaitReceiptWait, backendPid, idempotencyConflict, receiptArgs, receiptCall, receiptClient, receiptOutcome,
   receiptTable } from "./destinationReceiptFixture.js";
 
@@ -378,7 +378,7 @@ beforeAll(async () => {
   await source.owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at,membership_revoked_at,membership_revoked_by)
     VALUES($1,'distributor','revoked','legacy','2020-01-01','2021-01-01',$2)`, [revoked, admin]);
   await source.owner.query(`INSERT INTO public.identity_privacy_erasures(erasure_id,idempotency_key,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-    VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
+    VALUES($1,$2,$3,$4,'identity.erasure.v1','{"tax-calculations":"commerce.tax-calculations.v1"}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
   media = await mediaFixture();
   consent = await consentFixture();
 
@@ -1741,8 +1741,8 @@ it("destination_receipt_privacy_round_trip", async () => {
     }]),
   ) }, randomUUID);
   const contributor = createDestinationReceiptPrivacyContributor(), documents = createDestinationDocumentPrivacyContributor();
-  const registry = createPersonalDataContributorRegistry([identityOwner, contributor, documents],
-    { requiredContributorIds: ["identity", "destination-receipts", "destination-documents"] });
+  const registry = createPersonalDataContributorRegistry([identityOwner, contributor, documents, createTaxCalculationPrivacyContributor()],
+    { requiredContributorIds: ["identity", "destination-receipts", "destination-documents", "tax-calculations"] });
   const unitOfWork = (onStart?: (pid: number) => void) => ({
     async run<T>(work: (db: PgQueryExecutor) => Promise<T>): Promise<T> {
       const db = await clean.runtime.connect();
@@ -1775,12 +1775,13 @@ it("destination_receipt_privacy_round_trip", async () => {
   const documentExport = async (id: string) => (await operations().export(actor, subject(id))).documents.find(d => d.contributorId === documents.id);
   const withheld = (ref: string) => ({ snapshotRef: ref, issuedAt: expect.stringMatching(/Z$/u), evidenceDisposition: "available",
     verification: { status: "failed", code: "destination_digest_mismatch", field: "documentDigest" } });
-  const included = ["private checkout destination documents", "destination document expiry and erasure metadata"];
+  const included = ["private checkout destination documents", "destination document expiry and erasure metadata",
+    "verified order binding pins", "order binding erasure markers"];
   await alterStoredBytes(firstDocument.binding.snapshotRef);
   const recovery = await documentExport(issued);
   expect(recovery).toEqual({ contributorId: documents.id, version: "commerce.destination-documents.v1",
     data: [withheld(firstDocument.binding.snapshotRef)], obligations: expect.any(Array), coverage: { complete: false, included,
-      unavailable: ["Destination documents that failed stored-evidence verification are withheld. After their cutoff, run commerce_destination_v2_expire and export again; review any row still withheld."] } });
+      unavailable: ["Review withheld destination evidence with the destination owner. After cutoff, run commerce_destination_v2_expire for unbound documents and export again."] } });
   await reachDestinationCutoff(clean.owner, firstDocument.binding);
   await reachDestinationCutoff(clean.owner, expired.binding);
   expect((await clean.owner.query("SELECT public.commerce_destination_v2_expire(clock_timestamp(),1000) AS count")).rows)
@@ -1804,6 +1805,31 @@ it("destination_receipt_privacy_round_trip", async () => {
   }]));
   expect(await payload(issued)).toMatchObject([{ eventId: firstDocument.eventId, evidenceDisposition: "available" }]);
 
+  const boundDocument = await snapshot(clean.runtime, issuedCtx);
+  const boundOrder = await bindDestinationOrder(clean.owner, issuedCtx, boundDocument);
+  const foreignOrder = await insertDestinationOrder(clean.owner, retainedCtx);
+  await clean.owner.query(`INSERT INTO ${orderBindingTable} (order_id,snapshot_ref,selection,service)
+    SELECT $2,snapshot_ref,selection,service FROM ${orderBindingTable} WHERE order_id=$1`, [boundOrder, foreignOrder]);
+  const cleanBinding = { orderId: boundOrder, selection: boundDocument.selection, service: testServicePin };
+  const incomplete = await documentExport(issued);
+  expect(incomplete).toMatchObject({ coverage: { complete: false }, data: expect.arrayContaining([expect.objectContaining({
+    snapshotRef: boundDocument.binding.snapshotRef,
+    orderBindings: [cleanBinding],
+    verification: { status: "failed", code: "destination_binding_invalid", field: "orderBindings" },
+  })]) });
+  expect(JSON.stringify(incomplete?.data)).not.toContain(foreignOrder);
+  await clean.owner.query(`DELETE FROM ${orderBindingTable} WHERE order_id=$1`, [foreignOrder]);
+  await clean.owner.query("DELETE FROM public.commerce_orders WHERE id=$1", [foreignOrder]);
+  await clean.owner.query(`UPDATE ${orderBindingTable} SET service=jsonb_set(service,'{adapterRevision}','"withheld-pin"') || '{"extra":"malformed"}'
+    WHERE order_id=$1`, [boundOrder]);
+  await reachDestinationCutoff(clean.owner, boundDocument.binding);
+  await clean.owner.query("SELECT public.commerce_destination_v2_expire(clock_timestamp(),1000)");
+  const withheldBinding = await documentExport(issued);
+  expect(withheldBinding?.coverage).toMatchObject({ complete: false });
+  expect(JSON.stringify(withheldBinding?.data)).not.toContain(boundOrder);
+  expect(JSON.stringify(withheldBinding?.data)).not.toContain("withheld-pin");
+  await clean.owner.query(`UPDATE ${orderBindingTable} SET service=$2 WHERE order_id=$1`, [boundOrder, testServicePin]);
+
   const writer = await clean.owner.connect();
   let firstErasure: ReturnType<ReturnType<typeof operations>["erase"]> | undefined;
   const erasureRequest = request(issued);
@@ -1826,16 +1852,16 @@ it("destination_receipt_privacy_round_trip", async () => {
   expect(await payload(issued)).toEqual(expect.arrayContaining([{
     eventId: issuedReceipt.eventId, eventSchemaVersion: 1, createdAt: expect.stringMatching(/Z$/u), evidenceDisposition: "erased",
   }]));
-  expect(await documentPayload(issued)).toEqual(expect.arrayContaining([firstDocument, issuedDocument].map(result => ({
+  expect(await documentPayload(issued)).toEqual(expect.arrayContaining([firstDocument, issuedDocument, boundDocument].map(result => ({
     snapshotRef: result.binding.snapshotRef, issuedAt: expect.any(String), evidenceDisposition: "erased",
   }))));
   expect((await clean.owner.query(`SELECT owner_scope,scope_ref,binding,document_text,document_digest FROM ${documentTable}
-    WHERE client_id=$1`, [issued])).rows).toEqual(Array.from({ length: 2 }, () => ({
+    WHERE client_id=$1`, [issued])).rows).toEqual(Array.from({ length: 3 }, () => ({
     owner_scope: null, scope_ref: null, binding: null, document_text: null, document_digest: null,
   })));
   expect((await clean.owner.query(`SELECT snapshot_ref FROM ${selectionTable} WHERE scope_ref=$1`, [issuedCtx.scopeRef])).rows).toEqual([]);
   expect(await snapshot(clean.runtime, issuedCtx, issuedCommand)).toEqual({ evidenceDisposition: "erased" });
-  await expect(readSnapshot(clean.runtime, issuedCtx, issuedDocument.binding)).rejects.toMatchObject({ message: "destination_evidence_unavailable" });
+  await expect(readSnapshot(clean.runtime, issuedCtx, issuedDocument.binding)).resolves.toMatchObject({ code: "destination_evidence_unavailable" });
   await unitOfWork().run(async db => {
     await store.prepareErasure(db);
     expect((await db.query("SELECT public.commerce_destination_v2_receipts_erase($1) AS count", [issued])).rows).toEqual([{ count: 0 }]);
@@ -1867,8 +1893,8 @@ it("destination_receipt_privacy_round_trip", async () => {
     await awaitReceiptWait(clean.owner, pid, "relation", "ShareLock");
     release.resolve();
     expect(await erasure).toMatchObject({ outcome: "ERASED" });
-    await expect(fresh).rejects.toMatchObject({ code: "55000", message: "destination_evidence_erased", detail: "owner",
-      hint: "Re-obtain evidence through the authenticated owner or review the privacy disposition." });
+    await expect(fresh).resolves.toMatchObject({ outcome: "refused", code: "destination_evidence_erased", field: "owner",
+      fix: "Review the privacy disposition." });
   } finally {
     release.resolve();
     await Promise.allSettled([erasure, fresh]);
@@ -1895,13 +1921,15 @@ it("destination_receipt_privacy_round_trip", async () => {
   expect(await restore(transferred)).toMatchObject({ replayed: false, captureSha256: transferred.sha256 });
   const readback = await captureStoreJourney(target.owner, "destination-receipts-readback");
   const table = (value: ConnectedNativeStoreCapture, relation: string) => value.owned.find(rows => `public.${rows.table}` === relation);
-  for (const [relation, count] of [[receiptTable, 7], [documentTable, 5], [selectionTable, 1]] as const) {
+  for (const [relation, count] of [[receiptTable, 8], [documentTable, 6], [selectionTable, 1], [orderBindingTable, 1]] as const) {
     expect(table(transferred, relation)?.rows).toHaveLength(count);
     expect(table(readback, relation)).toEqual(table(transferred, relation));
   }
+  expect((await target.owner.query(`SELECT * FROM ${orderBindingTable} WHERE order_id=$1`, [boundOrder])).rows)
+    .toEqual([{ order_id: boundOrder, snapshot_ref: boundDocument.binding.snapshotRef, selection: null, service: null }]);
   expect(await readSnapshot(target.runtime, retainedCtx, live.binding)).toEqual(liveRead);
-  await expect(readSnapshot(target.runtime, retainedCtx, expired.binding)).rejects.toMatchObject({
-    message: "destination_version_changed", detail: "destination.snapshotRef",
+  await expect(readSnapshot(target.runtime, retainedCtx, expired.binding)).resolves.toMatchObject({
+    code: "destination_version_changed", field: "destination.snapshotRef",
   });
   expect(await snapshot(target.runtime, issuedCtx, issuedCommand)).toEqual({ evidenceDisposition: "erased" });
   expect(await receiptCall(target.runtime, "read", retainedArgs)).toEqual(available);

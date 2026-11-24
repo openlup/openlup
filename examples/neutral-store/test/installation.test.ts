@@ -6,13 +6,15 @@ import { tmpdir } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { buildCatalogReleaseDraftV3 } from '@openlup/platform/catalog';
 import { configurations } from '../owned/store.config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { editorProducts, readStarterCatalogueRules, starterCatalogue } from '../host/editor-catalogue.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { applyDemoSeed, demonstrationMarker, installDemonstration, provisionDemonstrationPublicationPassword,
   type DemonstrationInstallation } from '../installation/install.ts';
+import { installationReport } from '../installation/refusals.ts';
 
 test('publication provisioning sends a verifier and keeps the password in the private file', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'starter-publication-'));
@@ -172,6 +174,46 @@ test('local rules run before installation and derive an immutable product type o
   assert.equal(first.validatorRef, `sha256:${createHash('sha256').update(bytes).digest('hex')}`);
   assert.ok(first.version > 1);
   assert.notEqual((await installed(Buffer.concat([bytes, Buffer.from('// Changed rules asset')]))).version, first.version);
+});
+
+test('operator_example_uses_builder', async context => {
+  const bytes = readStarterCatalogueRules();
+  if (!bytes) return context.skip('This starter has kept its existing draft validator.');
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  await mkdir(resolve(root, '.context'), { recursive: true });
+  const directory = await mkdtemp(resolve(root, '.context/operator-example-'));
+  try {
+    for (const path of ['host', 'shared', 'owned']) await cp(resolve(root, path), resolve(directory, path), { recursive: true });
+    const moduleUrl = pathToFileURL(resolve(directory, 'host/operator-composition.ts')).href;
+    const { composeOperatorCapabilities }: typeof import('../host/operator-composition.ts') = await import(moduleUrl);
+    const config = Object.values(configurations)[0]!;
+    const request = { commandKey: 'example', config, actor: { operatorRef: 'operator', customerRef: null } };
+    const fixture = installation();
+    fixture.binding.catalogueRules = bytes;
+    fixture.binding.catalogueBuildDirectory = resolve(directory, '.context/catalogue-builds');
+    const version = starterCatalogue(fixture.binding.catalogueBuildDirectory).current!.version;
+    async function example() {
+      const composed = composeOperatorCapabilities({
+        executor: { async query() { throw new Error('The example must not query the database'); } },
+        connectionString: 'postgresql://localhost/example',
+      });
+      try { return await composed.actions['operator.catalogDrafts']!({ action: 'example' }, request); }
+      finally { await composed.close?.(); }
+    }
+    assert.deepEqual(await example(), { ok: false, code: 'starter_catalogue_rules_required', issues: [
+      { path: 'product.type', code: 'type_not_installed', message: `rules version ${version} is not installed; run ./lifecycle up` },
+    ] });
+    await installDemonstration(config, async () => fixture.binding);
+    const installed = starterCatalogue(fixture.binding.catalogueBuildDirectory).readInstalled({ key: 'starter:item', version })!.type;
+    const title = 'Fictional item';
+    const { release } = buildCatalogReleaseDraftV3({ namespace: 'starter', type: { key: installed.key, version: installed.version },
+      slug: 'fictional-item', name: title, presentation: { title }, skus: [
+        { code: 'STARTER-EXAMPLE', title, options: {}, netContent: { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 },
+          identifiers: [{ scheme: 'gs1:gtin', issuer: 'starter:example', value: '5901234123457', packagingLevel: 'unit' }],
+          sell: { oneTime: true, subscription: false } },
+      ] });
+    assert.deepEqual(await example(), { ok: true, value: release.payload });
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test('a retained build conflict rolls back definition installation before commit', async context => {
@@ -464,6 +506,63 @@ test('an existing seed caller without a stock port uses the native writer and ro
   };
   await assert.rejects(applyDemoSeed(config,failed.binding),{ message: 'native_stock_refused' });
   assert.equal(failed.calls.at(-1)!.text,'ROLLBACK');
+});
+
+test('stock replay reports the affected SKU and succeeds after restoring its original quantity', async () => {
+  const config = Object.values(configurations)[0]!, fixture = installation();
+  delete fixture.binding.stock;
+  const query = fixture.binding.connection.query;
+  const first = editorProducts(config)[0]!;
+  const code = 'fulfillment_stock_current_idempotency_conflict';
+  fixture.binding.connection.query = async (text, values) => {
+    if (text.startsWith('SELECT public.fulfillment_record_stock_current') && values?.[3] === first.sku
+      && values[4] !== first.stockQuantity) {
+      throw Object.assign(new Error(code), { code: '23505', detail: 'openlup:stock_current:replay_conflict' });
+    }
+    return query(text, values);
+  };
+  await applyDemoSeed(config, fixture.binding);
+  const changed = structuredClone(config);
+  changed.purchase.stock.quantities[first.sku] = first.stockQuantity + 1;
+  await assert.rejects(installDemonstration(changed, async () => fixture.binding), (error: unknown) => {
+    const report = installationReport(error);
+    assert.ok(report);
+    assert.equal(report.split('\n')[0], code);
+    assert.ok(report.includes(first.sku));
+    assert.match(report, /owned\/store.config.ts/u);
+    assert.match(report, /Fix: Restore the original stock inputs for this SKU, then rerun the demo installer\./u);
+    assert.match(report, /Recheck: Run `\.\/lifecycle up`\./u);
+    return true;
+  });
+  assert.equal(fixture.calls.at(-1)?.text, 'ROLLBACK');
+  await applyDemoSeed(config, fixture.binding);
+  assert.equal(fixture.calls.at(-1)?.text, 'COMMIT');
+});
+
+test('blocked reminders report the validated count and leave unknown failures on the existing path', async () => {
+  const config = Object.values(configurations)[0]!, fixture = installation();
+  const query = fixture.binding.connection.query;
+  const code = 'checkout_recovery_schedule_change_blocked_open_episodes';
+  const raw = Object.assign(new Error(`${code} (2 blocking orders)`), { code: '55000' });
+  let failure: unknown = Object.assign(new Error(raw.message), { code: raw.code, detail: 'openlup:reminder_schedule:blocking_orders=2' });
+  fixture.binding.connection.query = async (text, values) => {
+    if (text === installReminderSchedule && failure) throw failure;
+    return query(text, values);
+  };
+  await assert.rejects(applyDemoSeed(config, fixture.binding), (error: unknown) => {
+    const report = installationReport(error);
+    assert.ok(report);
+    assert.equal(report.split('\n')[0], code);
+    assert.match(report, /checkoutRecoveryReminders.*\b2\b.*blocking orders/u);
+    assert.match(report, /Fix: Keep the current schedule in effect\. Retry after the blocking orders are paid or cancelled\. For abandoned carts, retry once the blocking draft receipts are invalidated or the orders have a settlement intent\./u);
+    return true;
+  });
+  assert.equal(fixture.calls.at(-1)?.text, 'ROLLBACK');
+  failure = raw;
+  await assert.rejects(applyDemoSeed(config, fixture.binding), (error: unknown) => error === raw);
+  failure = undefined;
+  await applyDemoSeed(config, fixture.binding);
+  assert.equal(fixture.calls.at(-1)?.text, 'COMMIT');
 });
 
 test('owned renewal priority validates before installation writes, independent of configuration ID', async () => {

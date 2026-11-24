@@ -54,6 +54,32 @@ describe('local obligation contract', () => {
     expect(gitleaksFor(candidate)).toEqual(baseCommand);
     expect(gitleaksFor({ base: candidate.base, head: candidate.base, changedPaths: ['src/app.ts'] })).toEqual(baseCommand);
   });
+  it('plans affected SQL tests only in layered mode and skips an empty selection', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'verification-layered-')); directories.push(cwd);
+    for (const path of [
+      'scripts/platform-migration-manifest.test.ts',
+      'scripts/packages/platform-migration-projection.test.ts',
+      'scripts/pgtap-parity.test.ts',
+      'scripts/sql-admit.test.ts',
+    ]) {
+      await mkdir(join(cwd, path.slice(0, path.lastIndexOf('/'))), { recursive: true });
+      await writeFile(join(cwd, path), '// test\n');
+    }
+    const changedPaths = ['db/platform/migrations/20400101000000_example.sql'];
+    const layered = verificationPlan({ ...candidate, changedPaths }, '/run', '/packs', false, { layered: true, rootDir: cwd });
+    expect(layered.mode).toBe('layered');
+    expect(layered.phases.find(step => step.name === 'tests')?.command).toEqual([
+      'env', '-u', 'OPENLUP_STACK_BASE', 'npm', 'test', '--',
+      'scripts/packages/platform-migration-projection.test.ts', 'scripts/pgtap-parity.test.ts',
+      'scripts/platform-migration-manifest.test.ts', 'scripts/sql-admit.test.ts',
+    ]);
+    expect(layered.hostedOnly[0].reason).toContain('Merge Queue');
+    const empty = verificationPlan({ ...candidate, changedPaths: ['notes/unrelated.md'] }, '/run', '/packs', false, { layered: true, rootDir: cwd });
+    expect(empty.phases.find(step => step.name === 'tests')).toMatchObject({ command: [], skipMessage: '0 affected Vitest files (full suite runs in hosted CI)' });
+    const full = verificationPlan({ ...candidate, changedPaths }, '/run', '/packs');
+    expect(full.mode).toBe('full');
+    expect(full.phases.find(step => step.name === 'tests')?.command).toEqual(['env', '-u', 'OPENLUP_STACK_BASE', 'npm', 'run', 'test:scoped']);
+  });
   it('refuses unknown, duplicate, missing and wrongly ordered obligations', () => {
     const steps = plan().phases;
     expect(() => validateVerificationSteps([...steps, { name: 'typo' }])).toThrow('unknown verification phase: typo');
@@ -213,6 +239,6 @@ describe('read-only public explain CLI', () => {
   }, 30_000);
   it.each([['--json'], ['--plan', '--plan'], ['--skip'], ['--plan', '--pgtap', '--pgtap']])('refuses invalid args %j before writing', async (...args) => {
     const cwd = await mkdtemp(join(tmpdir(), 'verification-plan-args-')); directories.push(cwd);
-    expect(execute(cwd, ...args).status).toBe(1); expect(await readdir(cwd)).toEqual([]);
+    expect(execute(cwd, ...args).status).toBe(2); expect(await readdir(cwd)).toEqual([]);
   }, 30_000);
 });

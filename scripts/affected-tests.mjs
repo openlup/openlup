@@ -64,6 +64,24 @@ const CONTRACT_PIN_RULES = [
       "scripts/pgtap-parity.test.ts",
     ],
   },
+  {
+    match: (filePath) => /^db\/platform\/migrations\/[^/]+\.sql$/u.test(filePath)
+      || /^packages\/[^/]+\/sql\/[^/]+\.sql$/u.test(filePath),
+    tests: [
+      "scripts/platform-migration-manifest.test.ts",
+      "scripts/packages/platform-migration-projection.test.ts",
+      "scripts/pgtap-parity.test.ts",
+      "scripts/sql-admit.test.ts",
+    ],
+  },
+  {
+    match: (filePath) => filePath === "docs/platform/DATA_AND_MIGRATIONS.md"
+      || /^docs\/platform\/migrations\/[^/]+\.md$/u.test(filePath),
+    tests: [
+      "scripts/documentation-links.test.ts",
+      "scripts/reviewed-native-store-forward.test.ts",
+    ],
+  },
 ];
 
 function compareCodeUnits(left, right) {

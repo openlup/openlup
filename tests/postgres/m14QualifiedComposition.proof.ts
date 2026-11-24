@@ -10,7 +10,7 @@ import { Client, Pool, type PoolClient } from "pg";
 import { createPostgresNotificationRecipientsPort } from "@openlup/platform/communications";
 import { createPostgresDataGateway, type PgGatewayClient, type PgQueryExecutor } from "@openlup/platform/data";
 import { advisoryLockKey, createPgAdvisoryLock, withAdvisoryLock, type AdvisoryLockQuerier } from "@openlup/platform/scheduler";
-import { createPostgresAccountLinkStore, createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork } from "@openlup/platform/identity";
+import { createPostgresAccountLinkStore, createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createTaxCalculationPrivacyContributor } from "@openlup/platform/identity";
 import type { ErasureReceipt } from "@openlup/platform/identity/contracts";
 import { createPostgresOrderReviewLifecyclePort, createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
 import { createCustomerDiagnosticHistoryPort } from "../../server/adapters/customerDiagnosticHistory.js";
@@ -627,13 +627,18 @@ async function proveRuntimeLockPrivileges(bootstrap: Pool): Promise<void> {
   const privacy = createPostgresPrivacyStore();
   const privacyUnitOfWork = createPostgresPrivacyUnitOfWork(env);
   ports.push(privacyUnitOfWork);
-  const receipt: ErasureReceipt = { version: "identity.erasure.v1", erasureId: receiptId, completedAt: "2026-01-03T00:00:00.000Z", outcome: "ERASED", obligations: [] };
+  const tax = createTaxCalculationPrivacyContributor();
+  const resolved = { principalId: subject, contactId: null, identity: {} };
+  const actor = { principalId: operator };
   await privacyUnitOfWork.run(async db => {
     await assertRuntime(db);
     await privacy.prepareErasure(db);
     assert.deepEqual((await db.query(`SELECT mode FROM pg_catalog.pg_locks WHERE pid=pg_catalog.pg_backend_pid()
       AND relation='public.identity_privacy_erasures'::pg_catalog.regclass AND mode='ShareRowExclusiveLock' AND granted`)).rows, [{ mode: "ShareRowExclusiveLock" }]);
-    await privacy.saveReceipt(db, { principalId: subject, contactId: null, identity: {} }, { principalId: operator }, key, receipt, []);
+    const assessment = await tax.assessErasure(db, resolved);
+    const disposition = await tax.eraseOrRetain(db, resolved, assessment, actor);
+    const receipt: ErasureReceipt = { version: "identity.erasure.v1", erasureId: receiptId, completedAt: "2026-01-03T00:00:00.000Z", outcome: "ERASED", obligations: disposition.obligations };
+    await privacy.saveReceipt(db, resolved, actor, key, receipt, [disposition]);
     assert.deepEqual(await privacy.findReceipt(db, { kind: "principal", principalId: subject }, key), receipt);
   });
   const receiptBefore = (await runtime.query("SELECT * FROM public.identity_privacy_erasures WHERE erasure_id=$1", [receiptId])).rows;

@@ -481,6 +481,33 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     expect(() => checkGuide(roots)).not.toThrow();
   });
 
+  const reportSummary = "Added declarations: 14; see `packages/core/api/catalog.api.md`.";
+
+  it("accepts exact generated Core report summaries on a versioned upgrade page", () => {
+    const roots = guideFixture("# Guide\n", {
+      "upgrade/v1-2-3.md": [
+        "# Upgrade",
+        reportSummary,
+        "Added declarations: 2; see `packages/core/api/pricing.api.md`.",
+        "Added declarations: 1; see `packages/core/api/subscription.api.md`.",
+        "",
+      ].join("\n\n"),
+    });
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each([
+    ["upgrade/v1-2-3.md", "See `packages/core/api/catalog.api.md`."],
+    ["upgrade/v1-2-3.md", reportSummary + " More details."],
+    ["upgrade/v1-2-3.md", "```text\n" + reportSummary + "\n```"],
+    ["upgrade/v1-2-3.md", "```text\n```\u00A0\n" + reportSummary + "\n```"],
+    ["upgrade/version-notes.md", reportSummary],
+    ["reference/report.md", reportSummary],
+  ])("rejects a non-exempt Core report path in %s (%s)", (path, source) => {
+    const roots = guideFixture("# Guide\n", { [path]: "# Guide page\n\n" + source + "\n" });
+    expect(() => checkGuide(roots)).toThrow(`docs/guide/${path}: monorepo package path`);
+  });
+
   it.each([
     ["inside a fence", "```text\n### `packages/core/api/example-contracts.api.md`\n```"],
     ["after a Unicode line separator", "Literal text\u2028### `packages/core/api/example-contracts.api.md`"],
@@ -1290,4 +1317,53 @@ it("catalogue_codes_link_existing_recipes", () => {
   const stale: string[] = [];
   assertCatalogueRecipeReachability(rendered + "[`unknown`](../how-to/extend/catalogue-extension.md#new-vertical)", repository, stale);
   expect(stale).toContain("catalogue recipe link has no matching owner code: `unknown`");
+});
+
+it("refusal_codes_page_contains_catalog_publication_tax_class_unavailable_with_fix", () => {
+  const repository = resolve(packageRoot, "../..");
+  const read = (path: string) => readFileSync(join(repository, path), "utf8");
+  const rendered = renderGeneratedRegion("refusal-codes", repository)!;
+  const publication = read("packages/platform/src/catalog/publicationError.ts");
+  const rows = rendered.split("\n");
+  for (const [code, expectedCause] of [
+    ["catalog_publication_tax_class_unavailable"],
+    ["catalog_publication_gtin_conflict",
+      "This GTIN is already assigned in the store, either to another SKU or to this SKU under a different issuer."],
+    ["catalog_publication_sku_price_not_ready",
+      "The SKU fails the effective price list's readiness checks. There must be exactly one active, effective one-time entry at minimum quantity 1, and its gross amount must be positive. With no D2C subscription pricing policy history, there must be exactly one active, effective subscription entry, with a positive gross amount at minimum quantity 1. With policy history, exactly one valid policy revision must be effective and derive a positive price, and there must be no active, effective explicit subscription entry."],
+  ] as const) {
+    const owner = publication.split("\n").find(line => line.startsWith(`  ${code}: [`))!;
+    const [reason, fix, cause] = JSON.parse(owner.slice(owner.indexOf("["), -1));
+    if (expectedCause !== undefined) expect(cause, code).toBe(expectedCause);
+    const row = rows.find(line => line.startsWith(`| \`${code}\` |`));
+    expect(row).toBe(`| \`${code}\` | \`${reason}\` | ${expectedCause ?? cause} | ${fix} |`);
+  }
+  const violations: string[] = [];
+  assertCatalogueRecipeReachability(rendered, repository, violations);
+  expect(violations).toEqual([]);
+
+  const owner = read("packages/platform/src/catalog/releaseDraftBuilder.ts")
+    .match(/const releaseDraftRefusal = \{\n([\s\S]+?)\n\} as const/u)![1]!;
+  const literal = (pattern: RegExp): string => JSON.parse(owner.match(pattern)![1]!);
+  const code = literal(/code: ("[^"]+"),/u);
+  expect(code).toBe("release_draft_invalid");
+  expect(rendered.match(/`release_draft_invalid`/gu)).toHaveLength(1);
+  const builder = rendered.split("### `release_draft_invalid`\n")[1]!;
+  expect(builder).toContain("**Cause** " + literal(/cause: ("[^"]+"),/u));
+  expect(builder).toContain("**Fix** " + literal(/shape: \{ fix: ("[^"]+") \},/u));
+  const pairs = [...owner.matchAll(/when: ("(?:[^"\\]|\\.)+"), fix: ("(?:[^"\\]|\\.)+")/gu)];
+  expect(pairs).toHaveLength(17);
+  expect(builder.split("\n").filter(line => line.startsWith("| ")).slice(2))
+    .toEqual(pairs.map(([, when, remedy]) => `| ${JSON.parse(when!)} | ${JSON.parse(remedy!)} |`));
+
+  expect(builder).toContain("| A generated schemaId or sourceRef exceeds 240 characters and the refusal points to namespace, or a generated documentRef exceeds 240 characters and the refusal points to slug. | Shorten namespace or slug until every generated document reference is at most 240 characters. |");
+  expect(builder).toContain("| The refusal points to skus.N.identifiers and the SKU has no unit GS1 GTIN after its supplied identifier records pass validation. | Add a valid unit GS1 GTIN for this SKU. If the product has no GS1 barcode, mint one with catalogInternalGtin using an unused store-local sequence. |");
+  expect(builder).toContain("| The refusal points to skus.N.identifiers.M.value and the named GS1 identifier has a supported plain JSON string value that fails GTIN format or checksum validation. | Enter a valid GTIN for this identifier. |");
+
+  const usage = renderGeneratedRegion("cli:openlup", repository)!;
+  expect(usage).toContain("openlup catalogue schema [--json]\n");
+  for (const page of ["refusal-codes", "cli"]) {
+    syncGeneratedRegions(read(`packages/core/docs/guide/reference/${page}.md`), page, repository, false, violations);
+  }
+  expect(violations).toEqual([]);
 });

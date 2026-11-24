@@ -11,7 +11,7 @@ import { runCatalogExtensionConformance } from "../../src/catalog/testing/index.
 import { projectCatalogExtensionConformance } from "../../src/catalog/testing/catalogExtensionConformance.js";
 import { catalogPackIssues, catalogPackInstallIssues, catalogPackManifest, installCatalogDefinitions, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry,
   validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, canonicalizeCatalogCombinationV2, CatalogCombinationError,
-  catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema, validateCatalogDraftV2, createCatalogDraftHandler, withCatalogPublicationRules, catalogVariantOptions } from "../../src/catalog/index.js";
+  catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema, validateCatalogDraftV2, createCatalogDraftHandler, withCatalogPublicationRules, catalogVariantOptions, catalogInternalGtin } from "../../src/catalog/index.js";
 import { artifact, input } from "./fixtures/publicationInput.js";
 import { catalogDraftV3ValidationPayload } from "../../src/catalog/draftV3Schemas.js";
 import { inspectCatalogPack } from "../../src/catalog/productTypeIssues.js";
@@ -477,16 +477,17 @@ describe("catalogue conformance findings", () => {
     }]);
   });
 
-  it("gtin_recipe_replaces_an_identifier_when_the_list_is_full", async () => {
+  it.each([0, 32])("the internal number clears the unit GTIN advisory with %i existing identifiers", async (count) => {
     const subject = JSON.parse(fixture("volume-net-content"));
     const sku = subject.packs[0].drafts[0].skus[0];
-    sku.identifiers = Array.from({ length: 32 }, (_, i) =>
+    sku.identifiers = Array.from({ length: count }, (_, i) =>
       ({ scheme: "sample:label", issuer: "sample", value: String(i), packagingLevel: "unit" }));
     const before = await checkSubject(subject);
     expect(before.exitCode).toBe(0);
     expect(before.findings.find(({ code }) => code === "advisory_unit_identifier_missing")?.fix)
-      .toBe("Add a valid unit GTIN to the SKU. A SKU holds at most 32 identifiers, so replace one when the list is full.");
-    sku.identifiers[0] = { scheme: "gs1:gtin", issuer: "sample", value: "4006381333931", packagingLevel: "unit" };
+      .toBe("Add a valid unit GTIN to the SKU. For a product without a GS1 barcode, mint one with catalogInternalGtin. A SKU holds at most 32 identifiers, so replace one when the list is full.");
+    sku.identifiers[0] = { scheme: "gs1:gtin", issuer: "sample:internal", value: catalogInternalGtin(1), packagingLevel: "unit" };
+    expect(sku.identifiers).toHaveLength(Math.max(1, count));
     const report = await checkSubject(subject);
     expect(report).toMatchObject({ state: "satisfied", exitCode: 0 });
     expect(report.findings.map(({ code }) => code)).not.toContain("advisory_unit_identifier_missing");
