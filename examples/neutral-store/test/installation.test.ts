@@ -11,7 +11,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogPackManifest, withCatalogPublicationRules,
   type CatalogDefinitionInstallReceipt, type CatalogPackInput } from '@openlup/platform/catalog';
-import { configurations } from '../owned/store.config.ts';
+import { configurations, selectConfiguration } from '../owned/store.config.ts';
 import { readStarterDiagnostic, starterDiagnosticCode } from '../shared/refusals.ts';
 import { assertConfig } from '../shared/config.ts';
 import { catalogueConformance } from '../owned/catalogue.ts';
@@ -67,7 +67,7 @@ test('container demo startup privately creates a key once, reuses it, and refuse
     } };`);
     // Observe the actual host handoff without starting HTTP or exposing the private value.
     await writeFile(resolve(directory, 'host/server.ts'), 'console.log(JSON.stringify(process.argv));');
-    const argv = ['lifecycle.mjs', 'serve-demo', '--configuration', 'supplements', '--port', '4319',
+    const argv = ['lifecycle.mjs', 'serve-demo', '--configuration', selectConfiguration().id, '--port', '4319',
       '--listen', '0.0.0.0', '--database-url', 'postgresql://starter_runtime@database/neutral_store'];
     async function start(marker: string) {
       await writeFile(resolve(directory, 'node_modules/pg/marker.json'), JSON.stringify(marker));
@@ -453,11 +453,17 @@ const coffeeDocuments: readonly PredecessorDocument[] = [
   ],
 ];
 
-for (const [config, retained] of [
-  [configurations.supplements!, supplementsDocuments],
-  [configurations.coffee!, coffeeDocuments],
+// The frozen bytes describe the shipped source fixtures. Extracted stores run the
+// general seed contract against their own registry, even when they reuse an ID.
+const extracted = fs.existsSync(new URL('../.starter-origin.json', import.meta.url));
+for (const [id, retained] of [
+  ['supplements', supplementsDocuments],
+  ['coffee', coffeeDocuments],
 ] as const) {
-  test(`${config.id}: installer preserves the predecessor's document payload and physical SQL arguments`, async () => {
+  test(`${id}: installer preserves the predecessor's document payload and physical SQL arguments`, {
+    skip: extracted && 'Frozen predecessor bytes cover the shipped source configuration.',
+  }, async () => {
+    const config = configurations[id]!;
     const { binding, calls } = installation();
     await applyDemoSeed(config, binding);
     const argsFor = (prefix: string) => calls.filter(({ text }) => text.startsWith(prefix)).map(({ values }) => values!);
@@ -487,7 +493,7 @@ for (const [config, retained] of [
 test('physical admission preserves canonical gram bounds, issuer bytes and identifier spelling', () => {
   const largestIssuer = 'a'.repeat(238) + '😀';
   for (const [grams, gtin] of [['1', '95010939'], ['2147483647', '0000000000017']]) {
-    const config = structuredClone(configurations.supplements!);
+    const config = structuredClone(selectConfiguration());
     const product = config.offer.products[0]!;
     product.physical.netContent.unscaled = grams!;
     product.physical.primaryUnitIdentifier = { scheme: 'gs1:gtin', issuer: largestIssuer, value: gtin! };
@@ -511,7 +517,7 @@ test('refuses unsupported typed physical inputs before bootstrap, rules access o
     ['primaryUnitIdentifier', 'value', ['0000000000018', 'abc', 17]],
     ['primaryUnitIdentifier', 'issuer', ['', ' demo', 'demo ', 'a\u0000b', '\uD800', '\uDC00', 'a'.repeat(239) + '😀', 5]],
   ];
-  const config = () => structuredClone(configurations.supplements!);
+  const config = () => structuredClone(selectConfiguration());
   const cases = fields.flatMap(([branch, key, values]) => values.map(value => {
     const input = config();
     Reflect.set(input.offer.products[0]!.physical[branch]!, key, value);

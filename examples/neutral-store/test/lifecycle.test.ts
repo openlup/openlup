@@ -7,6 +7,7 @@ import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env as processEnv } from 'node:process';
 import { catalogueUpgradeFixture } from './catalogue-upgrade-fixture.ts';
+import { selectConfiguration } from '../owned/store.config.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const oneLine = (stdout: string) => {
@@ -260,17 +261,18 @@ test('physical findings precede Docker, bootstrap, runtime connection and key pr
       export async function readQuoteAcceptanceKeyring() { appendFileSync('io', 'runtime key\\n'); throw new Error('unexpected key'); }
     `);
     const owner = join(app, 'owned/store.config.ts'), original = readFileSync(owner, 'utf8');
+    const config = selectConfiguration();
     const recheck = 'Restart the starter and recheck `/api/config`.';
     for (const [edit, finding] of [
-      ["configurations.coffee.offer.products[0].physical.primaryUnitIdentifier.issuer = ' demo';", {
-        code: 'OPENLUP_E_STARTER_PRODUCT_PHYSICAL_INVALID', path: 'offer.products[].physical', subject: 'PEBBLE-LIGHT-250',
+      ["selectConfiguration().offer.products[0].physical.primaryUnitIdentifier.issuer = ' demo';", {
+        code: 'OPENLUP_E_STARTER_PRODUCT_PHYSICAL_INVALID', path: 'offer.products[].physical', subject: config.offer.products[0]!.sku,
         observed: 'The configured product physical facts were refused.',
         cause: 'Seed products require positive whole grams in the signed 32-bit range, a valid primary gs1:gtin and an unchanged issuer.',
         fix: 'Apply the owned configuration migration where needed and correct the entry from verified facts. If correcting the issuer changes the retained seed digest, use “Reset an interrupted first install” for an owner-approved rebuild of the disposable demonstration in the same Compose project. That procedure removes all data in the demo volume.',
         recheck,
       }],
-      ["configurations.coffee.subscriptionEditing.catalogue[1].physicalSize = 2147483648;", {
-        code: 'OPENLUP_E_STARTER_SYNTHETIC_PHYSICAL_SIZE_INVALID', path: 'subscriptionEditing.catalogue[].physicalSize', subject: 'PEBBLE-LIGHT-250-L',
+      ["selectConfiguration().subscriptionEditing.catalogue[1].physicalSize = 2147483648;", {
+        code: 'OPENLUP_E_STARTER_SYNTHETIC_PHYSICAL_SIZE_INVALID', path: 'subscriptionEditing.catalogue[].physicalSize', subject: config.subscriptionEditing.catalogue[1]!.sku,
         observed: 'The configured editor catalogue size was refused.',
         cause: 'The size must be a number of whole grams from 1 through 2147483647.',
         fix: 'Correct the affected `physicalSize` in `owned/subscription-editing.ts` to the verified supported whole-gram size.',
@@ -279,7 +281,7 @@ test('physical findings precede Docker, bootstrap, runtime connection and key pr
     ] as const) {
       writeFileSync(owner, original + '\n' + edit + '\n');
       const invoke = (...args: string[]) => spawnSync(process.execPath, args, { cwd: app, env, encoding: 'utf8', timeout: 10_000 });
-      const configured = ['--configuration', 'coffee'];
+      const configured = ['--configuration', config.id];
       const runtime = ['--database-url', 'postgresql://starter_runtime@database/neutral_store'];
       const { code, path, subject, observed, cause, fix } = finding;
       const expectedText = [code, 'Observed: ' + observed, 'Cause: ' + cause, 'Fix: ' + fix,
@@ -294,7 +296,7 @@ test('physical findings precede Docker, bootstrap, runtime connection and key pr
           assert.ifError(json.error);
           assert.deepEqual([json.status, json.stderr], [2, '']);
           assert.deepEqual(oneLine(json.stdout), {
-            ...(command === 'up' ? { command } : {}), formatVersion: 1, configuration: 'coffee',
+            ...(command === 'up' ? { command } : {}), formatVersion: 1, configuration: config.id,
             exitCode: 2, state: 'violated', packs: [], findings: [finding],
           });
         }
