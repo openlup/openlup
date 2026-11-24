@@ -1191,6 +1191,7 @@ describe("shift-left preflight guards and --affected discovery", () => {
   });
 
   it("executes eslint-changed (with offlineNpm), client-secret-boundary, and site-routes in --fast and surfaces PASS/FAIL", async () => {
+    vi.stubEnv("npm_execpath", join(process.cwd(), "fixture-npm-cli.js"));
     const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
     const runFastCase = async (failGuards: boolean) => {
       const seenCalls: Array<{ bin: string; args: string[]; env?: NodeJS.ProcessEnv }> = [];
