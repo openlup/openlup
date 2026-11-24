@@ -153,10 +153,18 @@ export function assertChangelogFragmentsPackagedContent(root: string, paths: Ite
 const trackedFiles = (root: string): string[] =>
   documentationGit(root, ["ls-files", "-z"]).toString("utf8").split("\0").filter(Boolean);
 
+function requireStagedCatalogInput(root: string, path: string, contents: Buffer): void {
+  const stage = documentationGit(root, ["--literal-pathspecs", "ls-files", "--stage", "-z", "--", path]).toString("utf8");
+  const entry = /^100644 ([a-f0-9]{40}) 0\t[^\0]+\0$/u.exec(stage);
+  if (!entry || !documentationGit(root, ["cat-file", "blob", entry[1]!]).equals(contents))
+    throw new Error(`sync-catalog: stage the current regular non-executable file before syncing: ${path}`);
+}
+
 /** Admit new tracked outputs only after the existing public trust checks hold. */
 export function syncPublicOutputCatalog(root: string): string[] {
   const catalogPath = join(root, PUBLICATION_CATALOG_PATH);
-  const source = readFileSync(catalogPath, "utf8");
+  const catalogBytes = readFileSync(catalogPath);
+  const source = catalogBytes.toString("utf8");
   const catalog = parsePublicPublicationCatalog(source);
   const tracked = trackedFiles(root);
   const trackedSet = new Set(tracked);
@@ -168,7 +176,12 @@ export function syncPublicOutputCatalog(root: string): string[] {
     return { path, mode: stat.isFile() ? (stat.mode & 0o111 ? "100755" : "100644") : "unsupported" };
   }), (path) => readFileSync(join(root, path))).map(({ path }) => path));
   const missing = tracked.filter((path) => !admitted.has(path));
-  const policy = parsePublicPolicyRegistry(readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"));
+  const registryBytes = readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH));
+  if (missing.length) {
+    requireStagedCatalogInput(root, PUBLICATION_CATALOG_PATH, catalogBytes);
+    requireStagedCatalogInput(root, PUBLIC_POLICY_REGISTRY_PATH, registryBytes);
+  }
+  const policy = parsePublicPolicyRegistry(registryBytes.toString("utf8"));
   const active = new Set(policy.activePaths);
   const withheld = new Set(catalog.guardViability.filter((row) => row.status === "withheld")
     .flatMap((row) => row.withheldPaths));
@@ -177,10 +190,12 @@ export function syncPublicOutputCatalog(root: string): string[] {
       throw new Error(`sync-catalog: ${path} requires pattern or explicit policy admission`);
     const stat = lstatSync(join(root, path));
     if (!stat.isFile() || (stat.mode & 0o111)) throw new Error(`sync-catalog: ${path} must be a regular non-executable file`);
-    const contents = readFileSync(join(root, path), "utf8");
-    if (isDirectExecutionEntrypoint(path, contents) && !PUBLIC_EXECUTION_ENTRYPOINTS.includes(path as typeof PUBLIC_EXECUTION_ENTRYPOINTS[number]))
+    const contents = readFileSync(join(root, path));
+    requireStagedCatalogInput(root, path, contents);
+    const text = contents.toString("utf8");
+    if (isDirectExecutionEntrypoint(path, text) && !PUBLIC_EXECUTION_ENTRYPOINTS.includes(path as typeof PUBLIC_EXECUTION_ENTRYPOINTS[number]))
       throw new Error(`sync-catalog: unauthorized execution entrypoint ${path}`);
-    if (carriesPrivateOperationalCoordinate(contents, path)) throw new Error(`sync-catalog: private coordinate in ${path}`);
+    if (carriesPrivateOperationalCoordinate(text, path)) throw new Error(`sync-catalog: private coordinate in ${path}`);
   }
   assertMaterializedRepositoryDocReferences(root, trackedSet);
   const rows = [...catalog.publicPaths.filter(({ path }) => trackedSet.has(path)),

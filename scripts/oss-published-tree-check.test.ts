@@ -71,7 +71,18 @@ it("syncs only safe tracked public outputs and removes deleted rows", () => {
     git("add", "-A");
     put("private.txt", ["https://github.com/example", "app"].join("/")); git("add", "-A");
     expect(() => syncPublicOutputCatalog(root)).toThrow(/private coordinate/);
+    put("private.txt", "Safe worktree content.\n");
+    const before = readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8");
+    expect(() => syncPublicOutputCatalog(root)).toThrow(/stage the current.*private.txt/);
+    expect(readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8")).toBe(before);
     git("rm", "-fq", "private.txt");
+    const policyPath = "config/openlup-policy-registry.json";
+    const registry = (activePaths: string[]) => JSON.stringify({ schemaVersion: 1, activePaths, contracts: [] });
+    put("staged-policy.txt", "Safe text, active policy.\n");
+    put(policyPath, registry(["staged-policy.txt"])); git("add", "-A");
+    put(policyPath, registry([]));
+    expect(() => syncPublicOutputCatalog(root)).toThrow(/stage the current.*openlup-policy-registry/);
+    git("rm", "-fq", "staged-policy.txt");
     put("unexpected.mjs", "#!/usr/bin/env node\nconsole.log('hello');\n"); git("add", "-A");
     expect(() => syncPublicOutputCatalog(root)).toThrow(/unauthorized execution entrypoint/);
   } finally { rmSync(root, { recursive: true, force: true }); }

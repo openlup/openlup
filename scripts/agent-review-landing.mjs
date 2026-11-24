@@ -161,7 +161,7 @@ async function mergeWithRollback(cwd, { hasMerge, requireNoMerge, ...context }) 
   const writes = { paths: new Set(), generated: false };
   let inventoryRefreshed;
   try {
-    try { await git(cwd, '-c', 'core.hooksPath=/dev/null', 'merge', '--no-ff', '--no-commit', main); }
+    try { await git(cwd, '-c', 'core.hooksPath=/dev/null', 'merge', '--no-ff', '--no-commit', '--no-overwrite-ignore', main); }
     catch (error) { if (error.code !== 1 || !hasMerge()) throw error; }
     inventoryRefreshed = await landMergedCheckout(cwd, { ...context, writes });
   } catch (error) {
@@ -374,12 +374,12 @@ export async function assertNoAuthoredSlotReferences(cwd, base, head, changes) {
   const paths = pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z', base, head));
   const hits = [];
   for (const path of paths) {
-    if (RESLOT_REGISTRIES.has(path) || generatedCarrier(path) || changes.some(change => change.path === path)) continue;
+    if (RESLOT_REGISTRIES.has(path) || generatedCarrier(path)) continue;
     let content;
     try { content = await git(cwd, 'show', `${head}:${path}`); }
     catch (error) { if (error.code === 128) continue; throw error; }
     for (const [index, line] of content.split('\n').entries()) {
-      if (changes.some(({ path: oldPath }) => line.includes(oldPath.split('/').at(-1)))) hits.push(`${path}:${index + 1}`);
+      if (changes.some(({ path: oldPath }) => oldPath !== path && line.includes(oldPath.split('/').at(-1)))) hits.push(`${path}:${index + 1}`);
     }
   }
   if (hits.length) throw new Error(`landing: --re-slot refuses authored migration references: ${hits.join(', ')}`);
@@ -473,6 +473,26 @@ async function runLanding(cwd, runCommand, diagnostics, reSlot) {
   return mergeWithRollback(cwd, { head, main, base, run, carrierEnv, diagnostics, slotChanges, mainMigrations, ...mergeState });
 }
 
+async function reconcileReslotMirror(cwd, { mirror, targetMirror, head, main, collision, writes, stagedReslot }) {
+  for (const candidate of [mirror, targetMirror]) {
+    if (lstatSync(resolve(cwd, candidate), { throwIfNoEntry: false }) &&
+        !(await git(cwd, '--literal-pathspecs', 'ls-files', '--', candidate))) {
+      throw new Error(`landing: re-slot refuses to overwrite untracked mirror: ${candidate}`);
+    }
+  }
+  let ignored;
+  try { ignored = await git(cwd, 'check-ignore', '--', targetMirror); }
+  catch (error) { if (error.code !== 1) throw error; }
+  if (ignored) throw new Error(`landing: re-slot destination mirror is ignored: ${targetMirror}`);
+  const tracked = async revision => (await git(cwd, '--literal-pathspecs', 'ls-tree', revision, '--', mirror)).trim();
+  const [onHead, onMain] = await Promise.all([tracked(head), tracked(main)]);
+  if (!(collision && onMain) && !(onHead && !onMain)) return;
+  writes.paths.add(mirror);
+  stagedReslot.add(mirror);
+  if (onMain) writeFileSync(resolve(cwd, mirror), await git(cwd, 'show', `${main}:${mirror}`));
+  else if (existsSync(resolve(cwd, mirror))) unlinkSync(resolve(cwd, mirror));
+}
+
 async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diagnostics, writes, slotChanges, mainMigrations }) {
   if ((await git(cwd, 'rev-parse', '--verify', 'MERGE_HEAD')).trim() !== main) throw new Error('landing: exact main merge required');
   if (slotChanges.length) {
@@ -490,12 +510,8 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
       if (collision) await git(cwd, 'checkout', '--theirs', '--', path);
       if (path.startsWith('db/platform/migrations/')) {
         const mirror = `packages/platform/sql/${path.split('/').at(-1)}`;
-        writes.paths.add(mirror);
-        if (collision) {
-          try { writeFileSync(resolve(cwd, mirror), await git(cwd, 'show', `${main}:${mirror}`)); }
-          catch (error) { if (error.code !== 128) throw error; if (existsSync(resolve(cwd, mirror))) unlinkSync(resolve(cwd, mirror)); }
-        } else if (existsSync(resolve(cwd, mirror))) unlinkSync(resolve(cwd, mirror));
-        if (existsSync(resolve(cwd, mirror)) || await git(cwd, '--literal-pathspecs', 'ls-files', '--', mirror)) stagedReslot.add(mirror);
+        const targetMirror = `packages/platform/sql/${target.split('/').at(-1)}`;
+        await reconcileReslotMirror(cwd, { mirror, targetMirror, head, main, collision, writes, stagedReslot });
       }
     }
     await git(cwd, '--literal-pathspecs', 'add', '-A', '--', ...stagedReslot);

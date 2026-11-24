@@ -787,7 +787,9 @@ a substitute for `--typecheck`.
 Git paths: it removes deleted rows and admits new safe files as `public-output`.
 Pattern-admitted fragments and guide pages remain outside per-file rows; policy
 paths, withheld files, untracked files, private coordinates, and unknown direct
-execution entrypoints are refused. Review any new class before publishing.
+execution entrypoints are refused. Stage the current file, publication catalogue
+and policy registry before admitting a new output. Review any new class before
+publishing.
 `check:dco-signoff` takes both range ends as full 40-character commit SHAs,
 hence `git rev-parse`: it refuses a short SHA or a ref name with exit code 2,
 and exits 1 on a range that contains no commit. In a fork, use the remote that

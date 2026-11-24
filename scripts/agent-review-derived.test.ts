@@ -927,11 +927,14 @@ it('refuses authored migration filenames before re-slot changes the tree', async
     checkout(base);
     append('20990101010000');
     write('scripts/fixture-reference.test.ts', 'const migration = "20990101010000_landing_fixture.sql";\n');
+    const other = 'db/platform/migrations/20990101020000_other.sql';
+    write(other, "SELECT '20990101010000_landing_fixture.sql';\n");
     const head = commit();
     const changes = [{ path: 'db/platform/migrations/20990101010000_landing_fixture.sql',
-      target: 'db/platform/migrations/20990101030100_landing_fixture.sql' }];
+      target: 'db/platform/migrations/20990101030100_landing_fixture.sql' },
+    { path: other, target: 'db/platform/migrations/20990101030200_other.sql' }];
     await expect(assertNoAuthoredSlotReferences(root, base, head, changes))
-      .rejects.toThrow('scripts/fixture-reference.test.ts:1');
+      .rejects.toThrow(`${other}:1, scripts/fixture-reference.test.ts:1`);
     expect(git('status', '--porcelain=v1')).toBe('');
   } finally { restoreDerivedFixture(); }
 });
@@ -961,6 +964,8 @@ it('re-slots migration paths in the manifest, reviewed forwards and publication 
 });
 
 it('lands an inverted migration only with explicit re-slot', async () => {
+  const ignoredMirror = 'packages/platform/sql/20990101020100_landing_fixture.sql';
+  const exclude = read('.git/info/exclude');
   try {
     checkout(base);
     append('20990101010000');
@@ -973,6 +978,17 @@ it('lands an inverted migration only with explicit re-slot', async () => {
     const original = 'db/platform/migrations/20990101010000_landing_fixture.sql';
     const reslotted = 'db/platform/migrations/20990101020100_landing_fixture.sql';
     const originalSql = read(original);
+    write('.git/info/exclude', exclude + `\n/${ignoredMirror}\n`);
+    write(ignoredMirror, 'Local ignored SQL.\n');
+    await expect(landingMerge(root, { reSlot: true, runCommand: fixtureCommand }))
+      .rejects.toThrow(`landing: re-slot refuses to overwrite untracked mirror: ${ignoredMirror}`);
+    expectRestoredHead(pr);
+    expect(read(ignoredMirror)).toBe('Local ignored SQL.\n');
+    rmSync(join(root, ignoredMirror));
+    await expect(landingMerge(root, { reSlot: true, runCommand: fixtureCommand }))
+      .rejects.toThrow(`landing: re-slot destination mirror is ignored: ${ignoredMirror}`);
+    expectRestoredHead(pr);
+    write('.git/info/exclude', exclude);
     const failure = new Error('inventory refresh failed after re-slot');
     await expect(landingMerge(root, { reSlot: true, runCommand: (command, args) => {
       if (args.includes(join(root, 'scripts/installation-inventory-refresh.ts'))) {
@@ -990,6 +1006,7 @@ it('lands an inverted migration only with explicit re-slot', async () => {
     } });
     expect(result.head).toMatch(/^[a-f0-9]{40}$/u);
     expect(git('ls-files', 'db/platform/migrations/20990101020100_landing_fixture.sql')).toContain('20990101020100');
+    expect(git('show', `HEAD:${ignoredMirror}`)).toBe(originalSql.trim());
     expect(git('ls-files', 'db/platform/migrations/20990101010000_landing_fixture.sql')).toBe('');
     const manifest = JSON.parse(read(MIGRATION_REGISTRIES[0]));
     const earlier = 'db/platform/migrations/20990101020000_landing_fixture.sql';
@@ -1002,7 +1019,11 @@ it('lands an inverted migration only with explicit re-slot', async () => {
     const slots = registry.nativeStoreForwardClass.slots.map(({ path }) => path);
     expect(slots.indexOf(later)).toBeGreaterThan(slots.indexOf(earlier));
     expect(evaluatePlatformMigrationManifestMetadata(manifest)).toEqual([]);
-  } finally { git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged); setMain(main); }
+  } finally {
+    rmSync(join(root, ignoredMirror), { force: true });
+    write('.git/info/exclude', exclude);
+    restoreDerivedFixture();
+  }
 }, 60_000);
 
 it('keeps both SQL forwards when main added the same migration filename', async () => {
