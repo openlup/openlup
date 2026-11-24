@@ -143,7 +143,7 @@ export function createSettingsBindings({ db, configuration }: {
           "assertRenewalConfig checks exactly three whole-hour delays from 1 through 2147483647.",
         ),
         effect: {
-          appliesTo: "The starter's renewal retry driver reads the deployed 3-step ladder when scheduling retries after a failed charge. Provider-recorded payment failures applied in SQL still use the fixed 24, 72 and 168 hour ladder; see subscriptions.retrySchedule.",
+          appliesTo: "The starter's renewal retry driver passes the deployed 3-step ladder as retryCadence when scheduling retries after a failed charge. Provider-recorded payment failures applied in SQL without explicit p_cadence (and 3-argument subscription_retry_apply_failure) read the installed subscription_retry_schedule policy in public.commerce_settings (defaulting to [24, 72, 168]); see subscriptions.retrySchedule.",
           frozenOn: ["A waiting retry obligation keeps its scheduled retry time."],
           impact: 'operations',
         },

@@ -31,7 +31,7 @@ describe("payment truth public forward", () => {
 
 // Follow the current portable catalogue, so a later replacement also changes this witness.
 describe("provider-recorded renewal retry timing", () => {
-  it("uses the three-argument failure overload and its SQL default of [24,72,168] hours", () => {
+  it("delegates to subscription_retry_schedule_read with the SQL default of [24,72,168] hours", () => {
     const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
     const statements = [manifest.baseline, ...manifest.forward].flatMap(({ file }: { file: string }) =>
       sqlStatements(readFileSync(file, "utf8"), true));
@@ -41,8 +41,10 @@ describe("provider-recorded renewal retry timing", () => {
     const provider11 = definition("public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)");
     expect(provider11).toMatch(/RETURN public\.payment_provider_result_apply\([\s\S]*?,NULL::jsonb\);/u);
     const provider12 = definition("public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text,jsonb)");
-    expect(provider12).toMatch(/retry_result:=public\.subscription_retry_apply_failure\(renewal\.id,p_idempotency_key\|\|':truth',\s*jsonb_build_object\([\s\S]*?'firstRecordedAt',COALESCE\(e\.created_at,a\.updated_at\)\),\s*COALESCE\(p_cadence,'\{"backoffHours":\[24,72,168\]\}'::jsonb\)\);/u);
+    expect(provider12).toMatch(/retry_result:=public\.subscription_retry_apply_failure\(renewal\.id,p_idempotency_key\|\|':truth',\s*jsonb_build_object\([\s\S]*?'firstRecordedAt',COALESCE\(e\.created_at,a\.updated_at\)\),\s*COALESCE\(p_cadence,\s*public\.subscription_retry_schedule_read\(\)\)\);/u);
     const failure = definition("public.subscription_retry_apply_failure(uuid,text,jsonb)");
-    expect(failure).toMatch(/RETURN public\.subscription_retry_apply_failure\(p_operation_id,p_key,p_input,'\{"backoffHours":\[24,72,168\]\}'::jsonb\);/u);
+    expect(failure).toMatch(/RETURN public\.subscription_retry_apply_failure\(p_operation_id,p_key,p_input,public\.subscription_retry_schedule_read\(\)\);/u);
+    const reader = definition("public.subscription_retry_schedule_read()");
+    expect(reader).toMatch(/RETURN '\{"backoffHours":\[24,72,168\]\}'::jsonb;/u);
   });
 });

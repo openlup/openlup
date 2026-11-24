@@ -91,3 +91,12 @@ export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscri
 export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
 export { createPostgresNativeCheckoutSubscriptionPort } from "./postgresNativeCheckoutSubscriptionPort.js";
 export type { PostgresNativeCheckoutSubscriptionPort } from "./postgresNativeCheckoutSubscriptionPort.js";
+export {
+  DEFAULT_SUBSCRIPTION_RETRY_BACKOFF_HOURS,
+  validateSubscriptionRetrySchedule,
+  installSubscriptionRetrySchedulePolicy,
+  readSubscriptionRetryScheduleOverride,
+  readSubscriptionRetrySchedulePolicy,
+} from "./retrySchedulePolicy.js";
+export type { SubscriptionRetrySchedulePolicy } from "./retrySchedulePolicy.js";
+

@@ -43,8 +43,8 @@ Offline `show` for package keys returns catalogue metadata. For a declared
 app setting with a reported value, `show` also returns a file observation with
 the configuration selected by the binding and the value it reports. For
 `inventory_renewal_protection`, `payment_method_expiry_warning_days`,
-`promotion_claim_hold_hours`, `subscription_minimum_base_units`,
-`subscription_sized_intro_phase`, `shipping_flat_minor`,
+`payments.declineNoticeTiming`, `promotion_claim_hold_hours`, `subscription_minimum_base_units`,
+`subscription_sized_intro_phase`, `subscriptions.retrySchedule`, `shipping_flat_minor`,
 `pricing.subscriptionPricePolicy`, `communications.nativeDeliveryControls`, and (with `--app`)
 reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
@@ -52,7 +52,7 @@ store (connected reads of `communications.nativeDeliveryControls` require an exp
 `SELECT` grant on `public.communication_delivery_controls`). The existing installed
 row or rows may be an explicit override. An absent
 `inventory_renewal_protection`, `payment_method_expiry_warning_days`,
-`promotion_claim_hold_hours`, or `shipping_flat_minor` row uses the platform fallback,
+`payments.declineNoticeTiming`, `promotion_claim_hold_hours`, `subscriptions.retrySchedule`, or `shipping_flat_minor` row uses the platform fallback,
 whereas an absent `subscription_minimum_base_units`, `subscription_sized_intro_phase`,
 `pricing.subscriptionPricePolicy`, or `communications.nativeDeliveryControls`
 row reports `absent` (`subscription_minimum_base_units` and `subscription_sized_intro_phase`
@@ -285,8 +285,8 @@ stdout. Pass an explicit `--app` only for application code you trust.
 List, show and explain work for platform keys without an app or database. With a
 PostgreSQL URL, the built-in readers can show the installed row or rows (or fallback or
 absent state) for `inventory_renewal_protection`, `payment_method_expiry_warning_days`,
-`promotion_claim_hold_hours`, `subscription_minimum_base_units`,
-`subscription_sized_intro_phase`, `shipping_flat_minor`,
+`payments.declineNoticeTiming`, `promotion_claim_hold_hours`, `subscription_minimum_base_units`,
+`subscription_sized_intro_phase`, `subscriptions.retrySchedule`, `shipping_flat_minor`,
 `pricing.subscriptionPricePolicy`, and `communications.nativeDeliveryControls`
 (requiring an explicit `SELECT` grant on `public.communication_delivery_controls`).
 A stock preview needs the application's stock source. A connected reminder
@@ -385,7 +385,9 @@ and whether retrying can help.
 | `commerce_setting_runtime_not_ready` | Read the key's runtime reason and existing change mechanism. |
 | `inventory_renewal_protection_policy_invalid` | Check the value schema and examples using `show inventory_renewal_protection`. |
 | `payment_method_expiry_warning_days_policy_invalid` | Check the value schema and examples using `show payment_method_expiry_warning_days`. |
+| `payment_decline_notice_timing_policy_invalid` | Check the value schema and examples using `show payments.declineNoticeTiming`. |
 | `promotion_claim_hold_hours_policy_invalid` | Check the value schema and examples using `show promotion_claim_hold_hours`. |
+| `subscription_retry_schedule_policy_invalid` | Check the value schema and examples using `show subscriptions.retrySchedule`. |
 | `checkout_recovery_policy_invalid` | Correct the supplied host policy, including offset order after defaults, then repeat the connected read. |
 
 ## Use the settings server from an MCP client

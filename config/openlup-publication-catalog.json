@@ -1670,6 +1670,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261126022000_catalog_price_list_basis.sql",
       "class": "public-output"
     },
@@ -2854,7 +2858,31 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/email-transport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/email-transport.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/fragments.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/fulfillment-adapter.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/fulfillment-adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/invoice-provider.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/invoice-provider.ts",
       "class": "public-output"
     },
     {
@@ -5455,6 +5483,10 @@
     },
     {
       "path": "packages/platform/sql/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
       "class": "public-output"
     },
     {
@@ -9266,6 +9298,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/declineNoticeTimingPolicy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/eventConformanceRunner.ts",
       "class": "public-output"
     },
@@ -10411,6 +10447,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/renewalIdentity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/retrySchedulePolicy.ts",
       "class": "public-output"
     },
     {
@@ -12390,11 +12430,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/declineNoticeTimingPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/methodExpiryWarningPolicy.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/payments/nativeInstant.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/payment_decline_notice_timing.json",
       "class": "public-output"
     },
     {
@@ -13066,6 +13114,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/retrySchedulePolicy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/retryTiming.test.ts",
       "class": "public-output"
     },
@@ -13083,6 +13135,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/subscriptionSizing.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/subscription_retry_schedule.json",
       "class": "public-output"
     },
     {
@@ -32767,6 +32823,10 @@
     },
     {
       "path": "tests/postgres/settingsWave1Policies.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/settingsWave2Policies.test.ts",
       "class": "public-output"
     },
     {

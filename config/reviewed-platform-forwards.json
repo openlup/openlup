@@ -9041,6 +9041,42 @@
         "dataStatements": []
       },
       {
+        "row": "settings-wave2-retry-schedule-and-decline-timing",
+        "path": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_retry_apply_failure(uuid,text,jsonb)",
+            "beforeSha256": "718b37b01d2aacf2e0d612dd5a59f0922fbc66b424d4e318bc32e8977ddf28ba",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text,jsonb)",
+            "beforeSha256": "fc92b8758ebc0341ef935f4108400aefe611806db3d7421319699cabd82826c8",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_retry_schedule_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_retry_schedule_read()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_decline_notice_timing_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_decline_notice_timing_read()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "catalog-price-list-basis",
         "path": "db/platform/migrations/20261126022000_catalog_price_list_basis.sql",
         "replacedFunctions": [],
@@ -12832,6 +12868,42 @@
           "signature": "public.promotion_claim_hold_hours_read()",
           "beforeSha256": null,
           "afterSha256": "0b279c20469bb2a282297a407de57e2af51bb88987faf651840e81524dc5a68b"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
+      "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792",
+      "functions": [
+        {
+          "signature": "public.subscription_retry_apply_failure(uuid,text,jsonb)",
+          "beforeSha256": "718b37b01d2aacf2e0d612dd5a59f0922fbc66b424d4e318bc32e8977ddf28ba",
+          "afterSha256": "c91f686db6db10e77958a4d1234b922e302c14236a8a70f9b946b88ed9d3a8f0"
+        },
+        {
+          "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text,jsonb)",
+          "beforeSha256": "fc92b8758ebc0341ef935f4108400aefe611806db3d7421319699cabd82826c8",
+          "afterSha256": "346a92ef13ea7bffc306f931652c74a67f966bf920f7202a418cd8875ae40ffc"
+        },
+        {
+          "signature": "public.subscription_retry_schedule_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "be6b885e7773de5b187d748e9204c2ce1137ae2784c71ca0c3848cd92dcc7dab"
+        },
+        {
+          "signature": "public.subscription_retry_schedule_read()",
+          "beforeSha256": null,
+          "afterSha256": "9d31cdefc301c08c66e65c90478b8e22e435944193ccf61efadd62cb1653eca1"
+        },
+        {
+          "signature": "public.payment_decline_notice_timing_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "e5d0b7b22f958a2ff19146e15051805899679ea1ffbf010c50f884f7ad334ba2"
+        },
+        {
+          "signature": "public.payment_decline_notice_timing_read()",
+          "beforeSha256": null,
+          "afterSha256": "f524b303f24c3a036930f2cbcf67ae8a41505f05193c82f98a7d6e798a37ad13"
         }
       ]
     },
