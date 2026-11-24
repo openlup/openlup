@@ -214,14 +214,18 @@ export async function writeBrowserFixtures(app, entries) {
     JSON.stringify(entries.map(({ id, baseURL }) => ({ id, baseURL }))), { mode: 0o600 });
 }
 
-export function browserArguments(app, reference, name, localImage) {
+export function browserContainerArguments(app, reference, name, localImage, mounts = []) {
   if (reference !== imageReference(readCiImage('starter-browser')) && (processEnvironment.CI || !localImage || reference !== localBrowserReference())) throw new Error('starter_browser_mirror_required');
   return ['run', '--rm', '--pull=never', '--name', name, '--network=host', '--read-only',
     '--user', `${process.getuid()}:${process.getgid()}`,
     '--tmpfs', '/tmp:rw,nosuid,nodev', '--ipc=host', '-e', 'CI=true', '-e', 'HOME=/tmp',
-    '--mount', `type=bind,src=${app},dst=/app,readonly`,
-    '--mount', `type=bind,src=${join(app, '.context/care-browser')},dst=/app/.context/care-browser`,
-    '--workdir', '/app', reference,
+    '--mount', `type=bind,src=${app},dst=/app,readonly`, ...mounts,
+    '--workdir', '/app', reference];
+}
+
+export function browserArguments(app, reference, name, localImage) {
+  const fixtures = `type=bind,src=${join(app, '.context/care-browser')},dst=/app/.context/care-browser`;
+  return [...browserContainerArguments(app, reference, name, localImage, ['--mount', fixtures]),
     'node', 'node_modules/@playwright/test/cli.js', 'test', '--config', 'playwright.database.config.ts',
     '--workers=1', '--retries=0', '--reporter=dot', '--output=/tmp/test-results'];
 }
@@ -260,9 +264,32 @@ export async function runBrowserGroups(runGroup, currentPhase, groups = browserJ
   if (failure) throw failure;
 }
 
+export const catalogueUpgradeGroupIndex = 1;
+
+export async function runCatalogueUpgrade({ groups, manifest, commit, localImage }, reference, prove) {
+  if (groups && !groups.includes(catalogueUpgradeGroupIndex)) return;
+  await prove(manifest, commit, { reference, localImage, containerArguments: browserContainerArguments });
+}
+
+export function starterBrowserFailure(error, phase) {
+  // Never publish assertion bodies, SQL details, connection strings or child errors.
+  if (phase === 'catalogue_upgrade') {
+    const code = error?.code;
+    if (code === 'starter_catalogue_browser_server_not_ready') return new Error(code);
+    if (code === 'starter_catalogue_browser_startup_failed') {
+      const fix = "Check that the pinned browser image is present or pullable as configured, that its Playwright and browser versions match the app's installed Playwright, and that the Playwright module loads and the browser launches inside the container.";
+      return new Error(`${code}\nFix: ${fix}`, { cause: error.cause });
+    }
+    return new Error('starter_browser_catalogue_upgrade_failed');
+  }
+  const refusal = /qualified PostgreSQL installation refused: ([a-z0-9_]+)/u.exec(error.message)?.[1]
+    ?? (/^[A-Z0-9]{5}$/u.test(error.code ?? '') ? `sqlstate_${error.code}` : undefined);
+  return new Error(/^starter_[A-Za-z_]+$/u.test(error.message) ? error.message : `starter_browser_${phase}_failed${refusal ? `_${refusal}` : ''}`);
+}
+
 export async function runStarterBrowser(options) {
   const started = performance.now(), outputs = [], privateValues = [];
-  let phase = 'inputs';
+  let phase = 'inputs', image;
   const cancellation = new AbortController();
   const interrupt = () => cancellation.abort();
   process.once('SIGINT', interrupt);
@@ -291,7 +318,7 @@ export async function runStarterBrowser(options) {
       if (options.commit !== commit) throw new Error('starter_browser_candidate_mismatch');
       const packs = readCurrentPackManifest(root, options.manifest, options.commit);
       phase = 'image';
-      const image = await resolveBrowserImage(undefined, options.localImage);
+      image = await resolveBrowserImage(undefined, options.localImage);
       console.log(`Starter browser image: ${image}`);
       console.log(`Starter browser image resolution: ${Math.round(performance.now() - started)} ms`);
       phase = 'application';
@@ -429,13 +456,15 @@ export async function runStarterBrowser(options) {
             if (!counts.some(count => count.endsWith(' passed'))) throw new Error('starter_browser_results_missing');
             console.log(`Starter database journeys: ${counts.join(', ')}; group ${groupIndex + 1}`);
           }), () => cancellation.signal.aborted ? 'cancelled' : phase, options.groups);
-
+    });
+    await runCatalogueUpgrade(options, image, async (manifest, commit, browser) => {
+      cancellation.signal.throwIfAborted();
+      phase = 'catalogue_upgrade';
+      const { provePublishedCatalogueUpgrade } = await import('./packages/exact-set-qualification.mjs');
+      provePublishedCatalogueUpgrade(manifest, commit, browser);
     });
   } catch (error) {
-    // Never publish assertion bodies, SQL details, connection strings or child errors.
-    const refusal = /qualified PostgreSQL installation refused: ([a-z0-9_]+)/u.exec(error.message)?.[1]
-      ?? (/^[A-Z0-9]{5}$/u.test(error.code ?? '') ? `sqlstate_${error.code}` : undefined);
-    throw new Error(/^starter_[A-Za-z_]+$/u.test(error.message) ? error.message : `starter_browser_${phase}_failed${refusal ? `_${refusal}` : ''}`);
+    throw starterBrowserFailure(error, phase);
   } finally {
     process.removeListener('SIGINT', interrupt);
     process.removeListener('SIGTERM', interrupt);

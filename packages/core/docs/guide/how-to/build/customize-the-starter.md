@@ -72,6 +72,15 @@ the prepared application directory:
 This builds the image, starts PostgreSQL, applies the packaged migration history
 and fictional seed, then serves the application at `http://127.0.0.1:4319`.
 Pass `--configuration <id>` to select another owned configuration.
+Use `./lifecycle up --json` for the final installation report on stdout. Progress
+goes to stderr. The report lists adopter packs as `installed` or `unchanged`.
+On a refusal, `packs: []` means there is no confirmed install report. The SQL
+transaction may already have committed.
+Use `./lifecycle refusals` or `./lifecycle refusals --json` to look up remedies.
+Restore a missing rules bundle before rerunning the
+[pack installation recipe](../extend/catalogue-extension.md#install-a-pack-in-the-starter).
+For a disposable demonstration with damaged storage, see
+[Reset an interrupted first install](#reset-an-interrupted-first-install).
 `./lifecycle down` stops the project while preserving its data. Keep the
 passwordless demonstration network and its database isolated; do not reuse this
 Compose file or its database authentication rules for a deployed application.
@@ -660,8 +669,8 @@ support access through the [operator roster](#provision-operator-rosters).
 
 ### Change a product rule
 
-To add a product type for offline checking, follow
-[New vertical](../extend/catalogue-extension.md#new-vertical).
+To add a product type for the demonstration, follow
+[Install a pack in the starter](../extend/catalogue-extension.md#install-a-pack-in-the-starter).
 
 In a fresh extraction of the starter, edit
 `owned/catalogue-rules.cjs` and add an accepted and a refused example to

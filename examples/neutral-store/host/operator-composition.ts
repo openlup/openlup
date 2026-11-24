@@ -5,7 +5,8 @@ import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   buildCatalogReleaseDraftV3, evaluateBundleComposition, createPostgresCatalogPublicationCommands, createPostgresCatalogPublicationReads,
   type CatalogHeadRef, type CatalogPublicationCommand, type CatalogPublicationFailure, type CatalogDraftPayloadV3, type CatalogProductTypeRef } from '@openlup/platform/catalog';
 import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
-import { starterCatalogue, starterCatalogueType } from './editor-catalogue.ts';
+import { missingPackBuild, starterCatalogue, starterCatalogueType } from './editor-catalogue.ts';
+import { installationFinding } from '../shared/refusals.ts';
 import { isRecord } from '../shared/offer.ts';
 import type { ActionBinding, ActionContext, ApplicationBindings } from './bindings.ts';
 
@@ -39,6 +40,12 @@ export function composeOperatorCapabilities(input: {
 }):
 Pick<ApplicationBindings, 'actions' | 'close'> {
   const catalogue = starterCatalogue();
+  function registerBuildCheck(context: ActionContext, ref: unknown) {
+    context.registerCatalogueBuildCheck?.(() => {
+      const found = catalogue.lookupBuild(ref);
+      return found.outcome === 'missing' ? installationFinding(missingPackBuild(found.pair, found.path)) : undefined;
+    });
+  }
   const current = catalogue.current;
   const installed = current && catalogue.readInstalled(current)?.type;
   const rulesVersionIssue = (version: number) => ({ path: 'product.type', code: 'type_not_installed',
@@ -191,6 +198,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
         const saved = await drafts.get({ draftId: payload.draftId, revision: draftRevision }, context);
         if ('reason' in saved) return publicationRefused(saved);
         if (!saved.record) return refused('draft_not_found');
+        registerBuildCheck(context, saved.record.payload.product.type);
         const { productId } = saved.record;
         // The native candidate runner decides whether the draft can repair live drift.
         const { rows: [lineage] } = await publicationLane.run(db => db.query(`SELECT
@@ -210,6 +218,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
           const record = 'record' in result ? result.record : null;
           if (revision !== undefined && record?.payload.product.type.key === starterCatalogueType.key)
             rulesVersion = record.payload.product.type.version;
+          if (revision !== undefined && record) registerBuildCheck(context, record.payload.product.type);
           return record;
         },
         installedDefinitionDigest: async ref => catalogue.readInstalled(ref)?.digest ?? null,
@@ -246,6 +255,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
     if ('reason' in result) {
       const issues = 'issues' in result && Array.isArray(result.issues) ? result.issues : [];
       const type = isRecord(authored) && isRecord(authored.product) && isRecord(authored.product.type) ? authored.product.type : undefined;
+      if (result.reason === 'draft_dependency_unavailable') registerBuildCheck(context, type);
       const detail = issues.map(issue => issue.code === 'type_not_installed' && type && Number.isSafeInteger(type.version)
         ? { ...issue, ...rulesVersionIssue(Number(type.version)) } : issue);
       return { ...refused(`catalog_${result.reason}`), ...(detail.length ? { issues: detail } : {}) };

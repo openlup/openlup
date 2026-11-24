@@ -5,6 +5,7 @@ import { operationLimits } from '../shared/limits.ts';
 import { evaluateOffer, parseCart, validateCart } from '../shared/offer.ts';
 import type { PersonalDataContributorRegistry } from '@openlup/platform/identity';
 import type { PgQueryExecutor } from '@openlup/platform/data';
+import type { installationFinding } from '../shared/refusals.ts';
 
 export interface VerifiedActor {
   customerRef: string | null;
@@ -26,6 +27,7 @@ export interface ActionContext {
   config: StoreConfig;
   setCookie?: (cookie: string) => void;
   accept?: () => Promise<void>;
+  registerCatalogueBuildCheck?: (check: () => ReturnType<typeof installationFinding>) => void;
 }
 
 export type ActionBinding = (input: ActionInput, context: ActionContext) => Promise<ActionResult>;
@@ -91,5 +93,11 @@ export async function dispatchAction(
   }
   const action = bindings.actions[operation];
   if (!action) return { ok: false, code: 'host_binding_required' };
-  return action(input, context);
+  if (operation !== 'operator.catalogDrafts' || !['create', 'revise', 'prepare'].some(value => value === input.action))
+    return action(input, context);
+  let check: (() => ReturnType<typeof installationFinding>) | undefined;
+  const result = await action(input, { ...context, registerCatalogueBuildCheck: registered => { check = registered; } });
+  const trigger = input.action === 'prepare' ? 'candidate_dependency_unavailable' : 'catalog_draft_dependency_unavailable';
+  const finding = !result.ok && result.code === trigger ? check?.() : undefined;
+  return finding ? { ok: false, ...finding, message: finding.observed } : result;
 }

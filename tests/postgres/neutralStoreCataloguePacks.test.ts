@@ -4,7 +4,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writ
 import { join, resolve } from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { canonicalCatalogDraftJson, catalogPackManifest, catalogProductTypeIssues, withCatalogPublicationRules } from "@openlup/platform/catalog";
+import { canonicalCatalogDraftJson, catalogPackManifest, catalogProductTypeIssues, installCatalogDefinitions, withCatalogPublicationRules } from "@openlup/platform/catalog";
 import type { CatalogPackInput } from "@openlup/platform/catalog/contracts";
 import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } from "@openlup/platform/migrations";
@@ -125,7 +125,7 @@ it("two_packs_three_types_install_with_tax_classes", async () => {
   expect((await owner.query("SELECT 1 FROM public.catalog_subscription_profile_receipts WHERE profile_key=$1", [profileRef.key])).rowCount).toBe(0);
   const statements: string[] = [];
   await run(inputs, { statements });
-  expect(statements.filter(sql => sql.includes("public.catalog_definition_install"))).toHaveLength(3);
+  expect(statements.filter(sql => sql.startsWith("SELECT public.catalog_definition_install("))).toHaveLength(3);
   const [receipts, types, taxes, profiles] = await snapshot(owner, tables.slice(0, 4));
   for (const input of [provider, consumer]) {
     const bound = withCatalogPublicationRules(input, () => rules);
@@ -150,8 +150,41 @@ it("second_install_is_idempotent", async () => {
   const inputs = [starter, entry(pack("replay"))];
   await run(inputs);
   const before = await snapshot();
-  await run(inputs);
+  let started: number | undefined, packMs: number | undefined;
+  const replay = await run(inputs, { after(text, _client, values) {
+    if (text.startsWith("SELECT public.catalog_definition_install(") && values?.[0] === "starter:local-rules")
+      started = performance.now();
+    if (started !== undefined && text.startsWith("INSERT INTO public.catalog_products") && packMs === undefined)
+      packMs = performance.now() - started;
+  } });
+  expect(replay.map(({ outcome }) => outcome)).toEqual(["unchanged"]);
+  expect(packMs).toBeGreaterThan(0);
+  console.log("Warm adopter ledger read, replay and build staging (ms)", Math.round(packMs!));
   expect((await snapshot()).slice(0, 4)).toEqual(before.slice(0, 4));
+});
+
+it("the existing definition lock orders adopter ledger readback after a competing commit", async () => {
+  const candidate = pack("locked-report");
+  const competing = await owner.connect();
+  const statements: string[] = [];
+  const builds = mkdtempSync(join(scratch, "locked-report-"));
+  await competing.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+  let installing: ReturnType<typeof run> | undefined;
+  try {
+    await installCatalogDefinitions(competing, withCatalogPublicationRules(candidate, () => rules));
+    installing = run([starter, entry(candidate)], { statements, builds });
+    void installing.catch(() => {});
+    await vi.waitFor(async () => {
+      const waiting = await owner.query("SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted");
+      expect(waiting.rowCount).toBeGreaterThan(0);
+    });
+    expect(statements.some(text => text.startsWith("SELECT 1 FROM public.catalog_definition_installs"))).toBe(false);
+  } finally {
+    try { await competing.query("COMMIT"); } finally { competing.release(); }
+  }
+  const results = await installing;
+  expect(results?.map(({ outcome }) => outcome)).toEqual(["unchanged"]);
+  expect(readdirSync(join(builds, "packs"))).toEqual([`${candidate.id}@${candidate.version}.json`]);
 });
 
 it("changed_pack_same_version_refuses_version_conflict and rolls back a late seed failure", async () => {
@@ -185,7 +218,8 @@ it("changed_pack_same_version_refuses_version_conflict and rolls back a late see
   expect(result).toMatchObject({ code: "starter_installation_failed" });
   expect(Object.getOwnPropertyDescriptor(result, "cause")?.value).toBe(failure);
   expect(await snapshot()).toEqual(before);
-  expect(readdirSync(builds)).toEqual([]);
+  expect(readdirSync(builds)).toEqual(["packs"]);
+  expect(readdirSync(join(builds, "packs"))).toEqual([]);
 });
 
 it.each([
@@ -343,7 +377,7 @@ it("runtime_login_cannot_install", async () => {
 
 function materialize() {
   const app = mkdtempSync(join(scratch, "app-"));
-  for (const path of ["host", "shared", "owned", "installation", "lifecycle.mjs", "browser-groups.mjs", "package.json"])
+  for (const path of ["host", "shared", "owned", "installation", "lifecycle.mjs", "lifecycle-refusals.mjs", "browser-groups.mjs", "package.json"])
     cpSync(join(source, path), join(app, path), { recursive: true });
   return app;
 }
@@ -458,7 +492,7 @@ it("packs_without_rules_refuse_before_any_write reports dependency loading and t
     } });`);
   writeFileSync(join(app, "check-cause.mjs"), `import assert from "node:assert/strict";
     import { installationReport as render } from "./installation/refusals.ts";
-    export { installationFailure } from "./installation/refusals.ts";
+    export { installationFailure, installationFinding, refusal } from "./installation/refusals.ts";
     export function installationReport(error) {
       const descriptor = Object.getOwnPropertyDescriptor(error, "cause");
       if (globalThis.knownImportFailure) {

@@ -1,3 +1,4 @@
+import { starterDiagnostic } from './refusals.ts';
 import { contains, type SubscriptionOffer } from './subscription-offer.ts';
 /** Application values; protocols and money algorithms remain package-owned. */
 export interface QuoteConfiguration {
@@ -21,5 +22,5 @@ export function assertQuoteConfiguration(config: QuoteConfiguration, plan: Subsc
     || !Number.isSafeInteger(offer.initialDiscountBps) || offer.initialDiscountBps <= 0 || offer.initialDiscountBps >= 10000
     || !Number.isSafeInteger(offer.delivery2DiscountBps) || offer.delivery2DiscountBps < 0 || offer.delivery2DiscountBps > 10000
     || !Number.isSafeInteger(offer.minimumProductPayableMinor) || offer.minimumProductPayableMinor < 1
-    || !contains(plan.days,offer.graduationCadenceDays)) throw new Error('starter_quote_configuration_invalid');
+    || !contains(plan.days,offer.graduationCadenceDays)) throw starterDiagnostic('starter_quote_configuration_invalid');
 }
