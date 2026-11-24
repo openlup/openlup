@@ -42,7 +42,8 @@ const quotedKeywords = new Set(`all analyse analyze and any array as asc asymmet
   using values varchar variadic verbose when where window with xmlattributes xmlconcat xmlelement xmlexists xmlforest xmlnamespaces
   xmlparse xmlpi xmlroot xmlserialize xmltable`.split(/\s+/u));
 const quoteIdentifier = (name: string) => /^[a-z_][a-z0-9_]*$/u.test(name) && !quotedKeywords.has(name) ? name : `"${name.replaceAll('"', '""')}"`;
-const sqlSpace = new Set([" ", "\t", "\n", "\r", "\v", "\f"]);
+// PostgreSQL 16 scanner whitespace; a newer server also accepts \v, which can only make this check stricter.
+const sqlSpace = new Set([" ", "\t", "\n", "\r", "\f"]);
 // Identifiers keep at most 63 bytes, cut at a character boundary.
 function truncateIdentifier(name: string): string {
   const bytes = Buffer.from(name, "utf8");
@@ -86,14 +87,16 @@ function splitSearchPath(value: string): string[] | null {
   }
 }
 
+// PostgreSQL treats these names as temporary schemas, including TOAST ones.
+const isTemporarySchema = (name: string) => name === "pg_temp" || name.startsWith("pg_temp_") || name.startsWith("pg_toast_temp_");
+
 function searchPathFailures(functions: readonly PinnedFunction[]): string[] {
   const failures: string[] = [];
-  const temporarySchema = /^pg_temp(?:_\d+)?$/u;
   for (const { signature, search_path: searchPath } of functions) {
     const names = searchPath === null ? null : splitSearchPath(searchPath);
-    if (names && names.at(-1) === "pg_temp" && !names.slice(0, -1).some(name => temporarySchema.test(name))) continue;
+    if (names && names.at(-1) === "pg_temp" && !names.slice(0, -1).some(isTemporarySchema)) continue;
     // Exact SQL needs a valid list whose remaining schemas are concrete names.
-    const trusted = names?.filter(name => !temporarySchema.test(name)) ?? [];
+    const trusted = names?.filter(name => !isTemporarySchema(name)) ?? [];
     const remedy = trusted.length && trusted.every(name => name.length > 0 && name !== "$user")
       ? `ALTER FUNCTION ${signature} SET search_path = ${[...trusted, "pg_temp"].map(quoteIdentifier).join(", ")};`
       : "review and set an explicit trusted schema list, then append pg_temp";
@@ -394,6 +397,7 @@ it("reports how to pin pg_temp last while preserving quoted schema names", () =>
     "function public.temp_duplicated(): pin pg_temp last: ALTER FUNCTION public.temp_duplicated() SET search_path = pg_catalog, pg_temp;",
     "function public.temp_numbered(): pin pg_temp last: ALTER FUNCTION public.temp_numbered() SET search_path = pg_catalog, pg_temp;",
     'function public.quoted_upper_last(): pin pg_temp last: ALTER FUNCTION public.quoted_upper_last() SET search_path = pg_catalog, "PG_TEMP", pg_temp;',
+    'function public.quoted_case(): pin pg_temp last: ALTER FUNCTION public.quoted_case() SET search_path = "PG_TEMP", pg_temp;',
   ]);
 });
 
@@ -413,6 +417,11 @@ it("parses search paths as PostgreSQL does and prints exact SQL only for a concr
     { signature: "public.trailing_comma()", search_path: "pg_catalog, pg_temp," },
     { signature: "public.keyword_name()", search_path: '"select", pg_catalog' },
     { signature: "public.long_name()", search_path: `${"a".repeat(70)}, pg_temp` },
+    { signature: "public.trailing_vt()", search_path: "pg_catalog, pg_temp\v" },
+    { signature: "public.vt_separated()", search_path: "pg_catalog,\vpg_temp" },
+    { signature: "public.toast_temp_earlier()", search_path: "pg_catalog, pg_toast_temp_1, pg_temp" },
+    { signature: "public.toast_temp_last()", search_path: "pg_catalog, pg_toast_temp_1" },
+    { signature: "public.temp_suffix_earlier()", search_path: "pg_catalog, pg_temp_x, pg_temp" },
   ])).toEqual([
     'function public.trailing_nbsp(): pin pg_temp last: ALTER FUNCTION public.trailing_nbsp() SET search_path = pg_catalog, "pg_temp ", pg_temp;',
     'function public.quoted_upper(): pin pg_temp last: ALTER FUNCTION public.quoted_upper() SET search_path = pg_catalog, "PG_TEMP", pg_temp;',
@@ -423,6 +432,11 @@ it("parses search paths as PostgreSQL does and prints exact SQL only for a concr
     manual("public.unterminated()"),
     manual("public.trailing_comma()"),
     'function public.keyword_name(): pin pg_temp last: ALTER FUNCTION public.keyword_name() SET search_path = "select", pg_catalog, pg_temp;',
+    'function public.trailing_vt(): pin pg_temp last: ALTER FUNCTION public.trailing_vt() SET search_path = pg_catalog, "pg_temp\v", pg_temp;',
+    'function public.vt_separated(): pin pg_temp last: ALTER FUNCTION public.vt_separated() SET search_path = pg_catalog, "\vpg_temp", pg_temp;',
+    "function public.toast_temp_earlier(): pin pg_temp last: ALTER FUNCTION public.toast_temp_earlier() SET search_path = pg_catalog, pg_temp;",
+    "function public.toast_temp_last(): pin pg_temp last: ALTER FUNCTION public.toast_temp_last() SET search_path = pg_catalog, pg_temp;",
+    "function public.temp_suffix_earlier(): pin pg_temp last: ALTER FUNCTION public.temp_suffix_earlier() SET search_path = pg_catalog, pg_temp;",
   ]);
   expect(splitSearchPath(`"${"é".repeat(40)}"`)).toEqual(["é".repeat(31)]);
 });

@@ -1102,7 +1102,8 @@ top-level `SET search_path` list of unquoted ASCII identifiers, using `=` or
 `pg_temp_<N>` entry. The rest of the header must match with whitespace between
 tokens normalized and literal and quoted identifier tokens kept byte-exact.
 The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
-requires `pg_temp` last, with no earlier `pg_temp` or `pg_temp_<N>` entry, for every
+requires `pg_temp` last, with no earlier temporary schema (`pg_temp`, or a name
+starting with `pg_temp_` or `pg_toast_temp_`), for every
 installed non-system, non-extension definer and for every such function that sets its own
 search path. It splits each path as PostgreSQL does. Its `SEARCH_PATH_PENDING` list
 names the five remaining functions outside `public`. The check fails when a listed
