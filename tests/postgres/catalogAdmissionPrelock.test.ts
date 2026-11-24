@@ -1290,7 +1290,7 @@ it("authenticates stored submit replay before checking an expired document and r
   await reachDestinationCutoff(owner, evidence.binding);
   await owner.query(expireDestination);
   expect((await owner.query(`SELECT scope_ref FROM ${selectionTable} WHERE scope_ref=$1`, [ctx.scopeRef])).rows).toEqual([]);
-  await expect(readSnapshot(owner, ctx, evidence.binding)).rejects.toMatchObject({ message: "destination_version_changed" });
+  await expect(readSnapshot(owner, ctx, evidence.binding)).resolves.toMatchObject({ code: "destination_version_changed" });
   const checkFresh = vi.fn(async () => "fresh");
   const replay = (incoming: string) => withCatalogAdmissionFence(owner, input, async writer => {
     const { rows } = await writer.query("SELECT public.catalog_admission_replay_order_draft($1,$2,$3,$4) AS response",

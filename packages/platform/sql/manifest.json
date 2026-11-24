@@ -780,11 +780,15 @@
         "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
       },
       {
+        "file": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
+        "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3"
+      },
+      {
         "file": "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql",
         "sha256": "156d6dfcda052e24b47ee977a427fe6b0c7a484f0e9e5689ae454d118eb63920"
       }
     ],
-    "objectInventorySha256": "2147620425797e67bb23dbd19e318d9c4db230b08939159546abdcbd94b2dd18",
+    "objectInventorySha256": "5ec59fc7c1eb4ec2db428339bd066ab009fbb500eb6fc7b2fb05b488a986b007",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1588,16 +1592,20 @@
           "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
         },
         {
+          "file": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
+          "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3"
+        },
+        {
           "file": "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql",
           "sha256": "156d6dfcda052e24b47ee977a427fe6b0c7a484f0e9e5689ae454d118eb63920"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "ce66daff85ac50a07a89360340b980729ee1ba0d17403a004a6e5ec4987cdf4e"
+          "withRestore": "00dc06a8fb3a26af6cc95bef74919a94469e842db4e738f92393d7fbf941cb34"
         },
         "separateMigrator": {
-          "withRestore": "7c1ff3559798d5f77a9b08e03ac344b1da9e9a7aa1616dfab2aaab8a49ccb734"
+          "withRestore": "faa16cf04576cee274f5135def658f36da26049e1b2a3b1b6e61740cae8b5053"
         }
       }
     },
@@ -2396,13 +2404,17 @@
           "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
         },
         {
+          "file": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
+          "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3"
+        },
+        {
           "file": "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql",
           "sha256": "156d6dfcda052e24b47ee977a427fe6b0c7a484f0e9e5689ae454d118eb63920"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "db8d008a8acd58a42e71f316eddd9b29f99b426d17da69fb69ad9c4286b6b18c",
-        "operatorProvisioned": "e3dac8debbf2056e97e8e62c66e34046038759877c5983ad98013f15ec2d1003"
+        "installerManaged": "a70126516d33375a16fc8db969d8dbfe9d4806edb1e742c1785ca62af3a07e78",
+        "operatorProvisioned": "c735340fac8ca209bbb18492a8b98c425d3b933709c96941093f86dd90e1e52b"
       }
     }
   },
@@ -3376,6 +3388,11 @@
       "file": "20261125200000_subscription_renewal_registration_units.sql",
       "source": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
       "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
+    },
+    {
+      "file": "20261125220000_commerce_destination_v2_typed_refusals.sql",
+      "source": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
+      "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3"
     },
     {
       "file": "20261125240000_tax_calculation_claim_seal.sql",
