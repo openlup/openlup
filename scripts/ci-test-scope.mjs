@@ -37,6 +37,7 @@ const ROOT_DOC_SET = new Set(ROOT_DOC_FILES);
 // see CONTRIBUTING.md#extend-tooling-selection-conservatively.
 // Keep scripts/packages/platform-agent-guide.test.ts unlisted: it always runs outbox/platform docs:check.
 // Keep scripts/agent-review-derived.test.ts unlisted: it runs Docker-free derived landing checks and readDocumentationState over all tracked paths.
+// Keep scripts/preflight-integration.test.ts unlisted: it clones HEAD and runs full-repo preflight -- --fast (publication, neutrality, ast-grep, filewide-ignore and guide-check tree scans).
 // Keep scripts/packages/generate-release-bom.test.ts unlisted: it scans every *.md file anywhere in the repository.
 const NATIVE_STORE_CATALOG_SHARED_INPUTS = [
   'tests/postgres/nativeStoreForwardCatalog.shared.ts',
