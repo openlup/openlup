@@ -127,7 +127,8 @@ const cas = `WITH input AS MATERIALIZED (
   RETURNING l.revision
 )
 SELECT coalesce((SELECT revision FROM inserted),(SELECT revision FROM updated)) AS revision,
-  CASE WHEN NOT EXISTS (SELECT FROM input) THEN 'isolation'
+  CASE WHEN EXISTS (SELECT FROM inserted) OR EXISTS (SELECT FROM updated) THEN NULL
+    WHEN NOT EXISTS (SELECT FROM input) THEN 'isolation'
     WHEN $2::integer IS NULL OR (SELECT revision FROM locked) IS DISTINCT FROM $2::integer THEN 'conflict'
     WHEN (SELECT revision FROM locked)=${maxRevision} THEN 'exhausted'
     ELSE 'profile' END AS outcome`;
@@ -139,8 +140,10 @@ export async function installCommerceMoneyLimitsV2(owner: CommerceMoneyLimitsQue
   const { value, expectedRevision } = parsed.data;
   try {
     const row = (await owner.query(cas, [JSON.stringify(value), expectedRevision])).rows[0];
-    if (revisionSchema.safeParse(row?.revision).success && typeof row?.revision === "number") {
-      return { kind: "installed", value, revision: row.revision };
+    if (row?.outcome === null) {
+      const revision = typeof row.revision === "string" && /^[1-9][0-9]{0,9}$/u.test(row.revision)
+        ? Number(row.revision) : row.revision;
+      return { kind: "installed", value, revision: revisionSchema.parse(revision) };
     }
     if (row?.outcome === "conflict") return refused(conflict, "/expectedRevision");
     if (row?.outcome === "exhausted") return refused(exhausted, "/expectedRevision");

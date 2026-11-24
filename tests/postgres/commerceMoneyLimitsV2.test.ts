@@ -9,7 +9,7 @@ import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import {
   bindCommerceMoneyLimitsV2Reader, inspectCommerceMoneyLimitsV2, installCommerceMoneyLimitsV2,
-  type CommerceMoneyLimitsV2, type InstallLimitsInput, type LimitsTuple,
+  type CommerceMoneyLimitsQueryExecutor, type CommerceMoneyLimitsV2, type InstallLimitsInput, type LimitsTuple,
 } from "@openlup/platform/commerce/server";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
@@ -44,7 +44,7 @@ const unavailable = "money_limits_operation_unavailable";
 const checklist = "Check the native app binding, driver setup, database connection and TLS, operation-role privileges, and installed migrations. Then retry the same operation.";
 const unbound = { code: "money_limits_reader_unbound", path: ["paymentLimits"],
   rule: "Connected show requires owner inspection for the intended installation and rail.",
-  hint: "Supply the native owner inspection in the app's settings binding.",
+  hint: "Supply the native owner inspection under reader key commerce.money_limits.v2.owner in the app's settings binding.",
   remediation: { retry: true, action: "Bind the native owner inspection to the intended installation and rail, then retry connected show." } };
 const inspectionUnavailable = { code: unavailable, path: ["inspection"], rule: "The native payment limits inspection could not complete.",
   hint: "Check the installation and its owner connection.", remediation: { retry: true, action: checklist } };
@@ -154,6 +154,16 @@ async function whileLocked(
     holder.release(); waiter.release();
   }
 }
+
+it("decides installation from the CAS outcome and returns a numeric revision for int4 text", async () => {
+  const query = vi.fn<CommerceMoneyLimitsQueryExecutor["query"]>()
+    .mockResolvedValueOnce({ rows: [{ outcome: null, revision: "2147483647" }] })
+    .mockResolvedValueOnce({ rows: [{ outcome: "conflict", revision: 2147483647 }] });
+  const doc = value("text-revision");
+  const input = { value: doc, expectedRevision: 2147483646 };
+  expect(await installCommerceMoneyLimitsV2({ query }, input)).toEqual({ kind: "installed", value: doc, revision: 2147483647 });
+  exact(await installCommerceMoneyLimitsV2({ query }, input), conflict);
+});
 
 it("decides insert, staleness and the matching revision across a conflicting writer lock", async () => {
   const scope = tuple("contended");

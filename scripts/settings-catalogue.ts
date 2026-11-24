@@ -166,7 +166,7 @@ const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly Set
     code: "money_limits_reader_unbound",
     path: ["paymentLimits"],
     rule: "Connected show requires owner inspection for the intended installation and rail.",
-    hint: "Supply the native owner inspection in the app's settings binding.",
+    hint: "Supply the native owner inspection under reader key commerce.money_limits.v2.owner in the app's settings binding.",
     remediation: { retry: true, action: "Bind the native owner inspection to the intended installation and rail, then retry connected show." },
   },
   {
