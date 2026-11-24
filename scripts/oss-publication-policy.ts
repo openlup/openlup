@@ -160,7 +160,7 @@ function readManifestPinnedSqlDigests(read: (path: string) => string | Buffer | 
   const raw = read(PLATFORM_MIGRATION_MANIFEST_PATH);
   if (raw === undefined) throw new Error(`${PLATFORM_MIGRATION_MANIFEST_PATH}: platform migration manifest is absent`);
   const text = typeof raw === "string" ? raw : new TextDecoder("utf-8", { fatal: true }).decode(raw);
-  const manifest = parseObject(text, PLATFORM_MIGRATION_MANIFEST_PATH, parseStrictJson);
+  const manifest = parseObject(text, PLATFORM_MIGRATION_MANIFEST_PATH, (contents) => parseStrictJson(contents, PLATFORM_MIGRATION_MANIFEST_PATH));
   const pinned = new Map<string, string>();
   const register = (path: string, sha256: string) => {
     const existing = pinned.get(path);
