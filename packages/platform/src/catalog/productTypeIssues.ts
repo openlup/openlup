@@ -43,7 +43,8 @@ const decimalString = z.string().max(66).regex(/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)
 const scalarSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("text"), maxLength: bound, minLength: bound.optional() }).strict(),
   z.object({ kind: z.literal("localized_text"), maxLength: bound, locales: z.array(z.string().min(1).max(64)).min(1).max(100), requiredLocales: z.array(z.string().min(1).max(64)).max(100).optional() }).strict(),
-  z.object({ kind: z.literal("decimal"), scale: z.number().int().min(0).max(12), min: decimalString.optional(), max: decimalString.optional() }).strict(),
+  z.object({ kind: z.literal("decimal"), scale: z.number().int().min(0).max(12), min: decimalString.optional(), max: decimalString.optional() }).strict()
+    .describe("Use scale 0 for whole numbers; there is no integer kind."),
   z.object({ kind: z.literal("quantity"), dimension: catalogQuantityDimensionSchema, units: z.array(catalogNamespacedKeySchema).min(1).max(64) }).strict(),
   z.object({ kind: z.literal("boolean") }).strict(),
   z.object({ kind: z.literal("enum"), values: z.array(z.object({ id: z.string().min(1).max(120), labels: labels.optional() }).strict()).min(1).max(1000) }).strict(),
@@ -71,13 +72,16 @@ const attributeSchema = z.object({
   required: z.boolean(), cardinality: z.object({ min: bound, max: bound }).strict(),
   filterable: z.boolean(), facetable: z.boolean(), public: z.boolean(), displayOrder: bound, labels,
 }).strict();
+/** @internal */
+export const CATALOG_MAX_AXES = 16;
+
 /** @experimental */
 export const catalogDefinitionMetadataSchema = catalogProductTypeRefSchema.extend({
   units: z.array(unitSchema).max(64),
   netContentUnits: z.array(catalogNamespacedKeySchema).min(1).max(64),
   dimensions: z.array(dimensionSchema).max(16),
   attributes: z.array(attributeSchema).max(1000).optional(),
-  axes: z.array(z.object({ key: catalogDimensionKeySchema, attributeKey: catalogDimensionKeySchema, labels: labels.optional() }).strict()).max(16).optional(),
+  axes: z.array(z.object({ key: catalogDimensionKeySchema, attributeKey: catalogDimensionKeySchema, labels: labels.optional() }).strict()).max(CATALOG_MAX_AXES).optional(),
   validatorRef: z.string().regex(/^sha256:[a-f0-9]{64}$/u).optional(),
   publicationRules: z.literal(true).optional(),
   subscriptionProfileRef: catalogProductTypeRefSchema.optional(),

@@ -55,6 +55,171 @@ Find the machine-readable code identifying why an operation was refused; see the
 | `@openlup/platform` | `SubscriptionPricePolicyDigestRefusal` | [`./pricing/contracts`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/pricing-contracts.api.md), [`./pricing`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/pricing.api.md) | `subscription_price_policy_digest_mismatch`, `subscription_price_policy_original_tuple_unverified` |
 | `@openlup/platform` | `SubscriptionUnsupportedCode` | [`./account-support/contracts`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/account-support-contracts.api.md), [`./account-support`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/account-support.api.md), [`./subscriptions/contracts`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/subscriptions-contracts.api.md) | `multi_cycle_prepaid_unsupported`, `native_command_bound_receipts_unsupported`, `native_generic_bundle_commands_unsupported`, `native_prepared_attempt_store_unsupported` |
 | `@openlup/platform` | `TaxRefusalCode` | [`./tax/contracts`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/tax-contracts.api.md) | `tax_amount_out_of_range`, `tax_breakdown_incomplete`, `tax_calculation_closed`, `tax_calculation_expired`, `tax_calculation_unusable`, `tax_class_missing`, `tax_close_not_eligible`, `tax_coverage_inconsistent`, `tax_coverage_undeclared`, `tax_invalid_input`, `tax_operation_unsupported`, `tax_reference_conflict`, `tax_reversal_unsubstantiated`, `tax_rule_missing`, `tax_scope_mismatch` |
+
+## Catalogue refusal code fixes
+
+Cause is shown when the owner supplies a sentence explaining the refusal.
+
+| Code | Reason | Cause | Fix |
+| --- | --- | --- | --- |
+| `catalog_publication_absent` | `catalog_publication_absent` |  | The selected publication does not exist. Reload the product and select one of its publications. |
+| `catalog_publication_activation_effect_missing` |  |  | Match purchase eligibility to the modes in the saved draft. |
+| `catalog_publication_activation_membership_required` |  |  | Admit this SKU to an offer before enabling purchases. |
+| `catalog_publication_approval_missing` | `publication_approval_missing` |  | This publication needs an active approval. Approve the proposed revision first. |
+| `catalog_publication_approval_state_valid` | `publication_approval_state_invalid` |  | The approved product details are invalid. Each SKU may appear once in the approved state. Prepare the publication again. |
+| `catalog_publication_approval_wrong` | `publication_approval_wrong` |  | The approval has changed. Reload the active decision and try again. |
+| `catalog_publication_attributes_invalid` | `publication_attributes_invalid` |  | An attribute value is invalid. Check the value type in the product or SKU definition. |
+| `catalog_publication_authored_amounts_invalid` |  |  | Use a SKU code and net content accepted by the installed product rules. |
+| `catalog_publication_axes_invalid` | `publication_axes_invalid` |  | Product axes are invalid. Use unique lowercase dimension keys. |
+| `catalog_publication_busy` | `publication_busy` |  | Another catalogue change is in progress. Retry with the same command key. |
+| `catalog_publication_candidate_already_issued` | `publication_candidate_already_issued` |  | This candidate is already issued; revoking it has no effect. No action is needed. |
+| `catalog_publication_candidate_invalid` | `publication_approval_invalid` |  | Approval does not match the selected product revision. Review and approve that revision again. |
+| `catalog_publication_command_key_reused` | `publication_command_key_reused` |  | This command key belongs to a different request. Retry the original request or use a fresh key. |
+| `catalog_publication_committed_at_valid` | `publication_time_invalid` |  | The publication date is out of range. Re-export a result dated between years 0001 and 9999. |
+| `catalog_publication_content_invalid` | `publication_content_invalid` |  | Product content is invalid. Review the presentation fields and SKU settings. |
+| `catalog_publication_cursor_invalid` | `candidate_invalid` |  | Restart from the first page or reuse the continuation returned for this product. |
+| `catalog_publication_decided_at_valid` | `publication_decision_time_invalid` |  | The approval date is out of range. Re-export a decision dated between years 0001 and 9999. |
+| `catalog_publication_derived_source_mismatch` |  |  | Match the proposed SKU facts and options to the selected draft and installed derivation rules. |
+| `catalog_publication_document_bytes_unavailable` |  |  | Recover the selected document bytes from the receipted draft or a verified copy. |
+| `catalog_publication_document_invalid` | `publication_content_changed` |  | The selected product content differs from the approved revision. Review the product and prepare it again. |
+| `catalog_publication_document_required` | `publication_document_required` |  | Select a product document revision and prepare the draft again. |
+| `catalog_publication_document_revision_sequence` |  |  | Reload the document revisions and select the current revision or register the next one. |
+| `catalog_publication_document_source_mismatch` |  |  | Select a document revision backed by a saved draft for this product. |
+| `catalog_publication_document_source_missing` |  |  | Select a document revision backed by a saved draft for this product. |
+| `catalog_publication_document_text_copied` |  |  | Replace the copied document text with the display value for this field. |
+| `catalog_publication_draft_advanced` | `publication_draft_advanced` |  | The saved draft changed. Prepare its current revision. |
+| `catalog_publication_eligibility_source_mismatch` |  |  | Match purchase eligibility to the modes in the saved draft. |
+| `catalog_publication_envelope_too_large` | `catalog_publication_envelope_too_large` |  | The response is too large. Read the publication page by page. |
+| `catalog_publication_facts_invalid` | `publication_facts_invalid` |  | Remove reserved document keys from the published product or SKU details. Keep the authored document only in its designated draft field, then prepare the publication again. |
+| `catalog_publication_gross_below_net` |  | The SKU gross mass is less than its net content. | Supply a gross mass at least as large as the net content. |
+| `catalog_publication_gross_mass_invalid` |  | The SKU gross mass is invalid or uses a unit the pinned type cannot convert. | Supply a positive gross mass in an installed mass unit. |
+| `catalog_publication_gross_mass_required` |  | The SKU needs a gross mass for the selected publication operation. | supply the gross mass for this SKU |
+| `catalog_publication_gtin_conflict` | `publication_gtin_conflict` | This GTIN is already assigned in the store, either to another SKU or to this SKU under a different issuer. | This GTIN is already assigned. Verify the barcode and prepare the draft again. |
+| `catalog_publication_gtin_invalid` | `publication_gtin_invalid` |  | A SKU barcode has an invalid GTIN. Check its digits and try again. |
+| `catalog_publication_head_invalid` | `publication_changed` |  | The current publication changed. Reload the product and try again. |
+| `catalog_publication_history_item_too_large` | `catalog_publication_history_item_too_large` |  | A saved publication is too large for a history page. Read that publication with the full page reader. |
+| `catalog_publication_identifier_blank` | `publication_identifier_blank` |  | Enter a nonblank value for this identifier. |
+| `catalog_publication_identifier_conflict` | `publication_identifier_conflict` |  | This identifier is already assigned. Check its issuer and value. |
+| `catalog_publication_identifier_effect_missing` |  |  | Match the identifier operation to the identifier saved for this SKU. |
+| `catalog_publication_identifier_key_reused` | `publication_identifier_key_reused` |  | Use a distinct issuer and value pair for this identifier. |
+| `catalog_publication_identifier_primary_invalid` |  |  | Use a valid unit GTIN as the primary trade identifier. |
+| `catalog_publication_identifier_requires_created_sku` |  |  | Create the SKU before adding its identifier. |
+| `catalog_publication_identifier_source_mismatch` |  |  | Match the identifier operation to the identifier saved for this SKU. |
+| `catalog_publication_identity_conflict` | `publication_identity_conflict` |  | A product slug or SKU code is already in use. Choose an available identity and prepare the draft again. |
+| `catalog_publication_integral_grams_required` |  | Net content does not convert to a supported positive whole number of grams. | Supply net content that converts to a supported positive whole number of grams. |
+| `catalog_publication_issue_sealed` | `publication_requires_new_revision` |  | This publication is complete. Create a new publication to add the revision. |
+| `catalog_publication_lifecycle_assertion_changed` | `publication_lifecycle_assertion_changed` |  | Reload the SKU revisions and prepare the lifecycle changes again. |
+| `catalog_publication_lineage_invalid` | `publication_version_invalid` |  | The selected previous publication is unavailable. Reload the product and select its current publication. |
+| `catalog_publication_lineage_unknown` | `catalog_publication_lineage_unknown` |  | This product has no publication yet. Publish a revision of the product before reading its publication. |
+| `catalog_publication_live_drift` | `publication_changed` |  | The current product or a SKU differs from the prepared publication. Reload the product and prepare it again. |
+| `catalog_publication_logistics_source_mismatch` |  |  | Use the SKU metadata saved in the selected draft. |
+| `catalog_publication_manifest_invalid` | `publication_details_invalid` |  | The publication contains invalid product details. Review the product and prepare it again. |
+| `catalog_publication_mass_required_until_mc5` |  | Publication accepts net content only as mass in whole grams. | Publish net content as the net mass in whole grams. Declare a labelled volume or count as a quantity variant option. If the option's dimension has role "net_content", remove that role in a new product type version, keep the option, and select the new version on the draft. |
+| `catalog_publication_media_evidence_mismatch` |  |  | Bind the selected media reference and asset list to verified evidence for this SKU. |
+| `catalog_publication_media_readiness_unproven` |  |  | Bind the selected media reference and asset list to verified evidence for this SKU. |
+| `catalog_publication_media_validation_unavailable` |  |  | Verify the SKU media and retry once that evidence is available. |
+| `catalog_publication_membership_change_not_allowed` |  |  | Use the offer and admission status accepted by the saved draft and product rules. |
+| `catalog_publication_membership_effect_missing` |  |  | Use the offer and admission status accepted by the saved draft and product rules. |
+| `catalog_publication_membership_source_mismatch` |  |  | Use the offer and admission status accepted by the saved draft and product rules. |
+| `catalog_publication_metadata_effect_missing` |  |  | Use the SKU metadata saved in the selected draft. |
+| `catalog_publication_net_content_invalid` |  | The SKU net content is absent or violates the pinned product type’s quantity rules. | Supply a positive exact net quantity in an eligible unit of the pinned product type. |
+| `catalog_publication_net_weight_unsupported` | `publication_net_weight_unsupported` |  | Net content must be expressed in whole grams at scale 0 to publish. Other units cannot be published yet. |
+| `catalog_publication_operation_invalid` |  |  | Use a supported publication operation. |
+| `catalog_publication_operation_source_ambiguous` |  |  | Select one receipted draft that authorizes this operation for the SKU. |
+| `catalog_publication_operation_source_mismatch` |  |  | Select one receipted draft that authorizes this operation for the SKU. |
+| `catalog_publication_operation_source_missing` |  |  | Select one receipted draft that authorizes this operation for the SKU. |
+| `catalog_publication_page_invalid` | `publication_details_too_large` |  | The product and one SKU exceed the publication size limit. Reduce product or SKU details and prepare it again. |
+| `catalog_publication_pointer_capability_unconsumed` | `publication_content_not_saved` |  | The selected product content was not saved. Select the content again and retry. |
+| `catalog_publication_post_state_changed` | `publication_post_state_changed` |  | The product or its SKUs differ from the approval. Prepare the publication again. |
+| `catalog_publication_presentation_effect_missing` |  |  | Match the presentation operation to the saved product presentation. |
+| `catalog_publication_presentation_invalid` |  |  | Use the supported presentation fields and keep the authored document in the draft. |
+| `catalog_publication_presentation_source_mismatch` |  |  | Match the presentation operation to the saved product presentation. |
+| `catalog_publication_presentation_unavailable` |  |  | Verify the storefront presentation and route before retrying. |
+| `catalog_publication_price_changed` | `publication_price_changed` | The effective base price does not match the price state expected by the command. | The current base price differs from the draft. Reload it and prepare the draft again. |
+| `catalog_publication_price_key_reused` | `publication_price_key_reused` | More than one price change in the draft uses the same command key. | Use a distinct command key for each price change in the draft. |
+| `catalog_publication_price_readiness` | `publication_price_readiness` | The proposed pricing does not meet the readiness requirements of the selected storefront or price list. | The proposed prices or offers do not meet storefront readiness. Check their setup and prepare the draft again. |
+| `catalog_publication_price_unavailable` | `publication_price_unavailable` | The price read or write did not return the evidence needed to verify the base price. | The base price could not be verified. Check the price list or retry the command. |
+| `catalog_publication_primary_sku_required` | `publication_primary_sku_required` |  | Select the primary SKU and prepare the draft again. |
+| `catalog_publication_product_identity_conflict` |  |  | Choose an unused product slug or revise the existing product. |
+| `catalog_publication_product_name_source_mismatch` |  |  | Use the product name saved in the selected draft. |
+| `catalog_publication_quantity_definition_unqualified` |  |  | Select an eligible unit with an exact conversion in the pinned product type, or use an eligible product type. |
+| `catalog_publication_query_invalid` | `candidate_invalid` |  | Reload the product and use the publication identifiers returned for it. |
+| `catalog_publication_read_invalid` | `catalog_publication_read_invalid` |  | The saved publication could not be read. Try again, and ask the store operator to check its publication history if this continues. |
+| `catalog_publication_readback_item_too_large` | `catalog_publication_readback_item_too_large` |  | A saved SKU revision is too large for one page. Ask the store operator to check the publication size limits. |
+| `catalog_publication_receipt_input_invalid` | `publication_receipt_input_invalid` |  | The saved command result contains invalid text or structure. Restore the original result from a verified copy or ask the store operator to recover it. |
+| `catalog_publication_receipt_invalid` | `publication_incomplete` |  | The publication is incomplete. Reload the product and check its publication status before you try again. |
+| `catalog_publication_receipt_unsupported` | `catalog_publication_receipt_unsupported` |  | Receipt lookup needs an authorized publisher. Authorize the reader, then look up the receipt again. |
+| `catalog_publication_record_immutable` | `publication_requires_new_revision` |  | Saved publication details cannot be changed. Reload the product and prepare a new publication. |
+| `catalog_publication_reserved_carrier` | `publication_reserved_carrier` |  | Keep the authored document in its designated draft field. Remove this reserved key from published details. |
+| `catalog_publication_roster_limit` | `publication_roster_limit` |  | A product can retain up to 10,000 SKUs. Put additional SKUs on another product and prepare the publication again. |
+| `catalog_publication_route_conflict` | `publication_route_conflict` |  | Another product uses this route. Choose a different route and prepare the draft again. |
+| `catalog_publication_rule_failed` |  |  | Correct the reported rule hook and rebuild the product rules. |
+| `catalog_publication_rules_binding_mismatch` |  |  | The product rules and installed definition differ. Rebuild the rules, attach the build to the product type, and install the updated definition before retrying. |
+| `catalog_publication_rules_digest_mismatch` |  |  | The product rules and installed definition differ. Rebuild the rules, attach the build to the product type, and install the updated definition before retrying. |
+| `catalog_publication_rules_module_invalid` |  |  | Export all required hooks from the self-contained rules module and rebuild it. |
+| `catalog_publication_scope_expansion` |  |  | Keep changes within the product and SKUs named by the selected draft. |
+| `catalog_publication_sku_effect_missing` |  |  | Match the proposed SKU facts and options to the selected draft and installed derivation rules. |
+| `catalog_publication_sku_identity_changed` | `publication_sku_identity_changed` |  | A SKU code differs from its published identity. Restore the saved code or prepare a new SKU. |
+| `catalog_publication_sku_price_not_ready` | `publication_sku_price_not_ready` | The SKU fails the effective price list's readiness checks. There must be exactly one active, effective one-time entry at minimum quantity 1, and its gross amount must be positive. With no D2C subscription pricing policy history, there must be exactly one active, effective subscription entry, with a positive gross amount at minimum quantity 1. With policy history, exactly one valid policy revision must be effective and derive a positive price, and there must be no active, effective explicit subscription entry. | Set a positive gross base price and check the subscription price for this SKU in the effective price list. |
+| `catalog_publication_sku_price_shape_invalid` | `publication_sku_price_shape_invalid` | The effective price entries have an unsupported tax basis, channel or minimum quantity. | Use gross one-time or subscription pricing at minimum quantity one for this SKU in the effective price list. |
+| `catalog_publication_sku_revision_invalid` | `publication_revision_invalid` |  | The product revisions do not match this publication. Reload the product and prepare it again. |
+| `catalog_publication_sku_title_invalid` | `publication_sku_title_invalid` |  | A SKU title is missing or too long. Enter a shorter title. |
+| `catalog_publication_sku_too_large` | `publication_sku_too_large` |  | Reduce the facts or details for this SKU and prepare the publication again. |
+| `catalog_publication_source_invalid` |  |  | Select an open, receipted draft revision for this product. |
+| `catalog_publication_source_mismatch` |  |  | Select an open, receipted draft revision for this product. |
+| `catalog_publication_tax_class_unavailable` | `publication_tax_class_unavailable` | The selected product type declares a tax class that is absent or inactive. | Install or activate the tax class declared by this product type. |
+| `catalog_publication_use_readback_v2` |  |  | Read this legacy issue with readbackV2. |
+| `catalog_publication_use_readback_v3` |  |  | Read this governed issue with readbackV3. |
+| `catalog_publication_v3_activation_readiness_failed` |  | The SKU is being made sellable without its required logistics reference. | Supply the logistics reference for this SKU. |
+| `catalog_publication_v3_active_primary_required` |  | The primary SKU is not active and sellable. | Activate the primary SKU with a purchase mode, or leave the product in draft. |
+| `catalog_publication_v3_compile_archive_refused` |  |  | Withdraw the SKU through a supported lifecycle transition. |
+| `catalog_publication_v3_compile_change_noop` |  |  | Include a change to the product or one of its SKUs. |
+| `catalog_publication_v3_compile_derived_facts_mismatch` |  |  | Match the proposed SKU facts and options to the selected draft and installed derivation rules. |
+| `catalog_publication_v3_compile_document_absent` |  |  | Select a document revision backed by a saved draft for this product. |
+| `catalog_publication_v3_compile_document_conflict` |  |  | Reload the document revisions and select the current revision or register the next one. |
+| `catalog_publication_v3_compile_document_stale` |  |  | Reload the document revisions and select the current revision or register the next one. |
+| `catalog_publication_v3_compile_identifier_conflict` |  |  | Use a trade identifier that is unique to this SKU. |
+| `catalog_publication_v3_compile_primary_foreign` |  |  | Select a primary SKU belonging to this product. |
+| `catalog_publication_v3_compile_primary_immutable` |  |  | Keep the published primary SKU. |
+| `catalog_publication_v3_compile_product_absent` |  |  | Create the product before applying this operation. |
+| `catalog_publication_v3_compile_product_conflict` |  |  | Choose an unused product slug or revise the existing product. |
+| `catalog_publication_v3_compile_product_incomplete` |  |  | Set the document and the primary SKU before activation. Select a primary SKU or move set_primary_sku before set_product_status. |
+| `catalog_publication_v3_compile_sku_absent` |  |  | Select a SKU in the draft or create it before applying this operation. |
+| `catalog_publication_v3_compile_sku_archived` |  |  | Restore this SKU before making it sellable. |
+| `catalog_publication_v3_compile_sku_conflict` |  |  | Choose an unused SKU code. |
+| `catalog_publication_v3_document_digest_mismatch` |  |  | Use the canonical document bytes and their matching digest. |
+| `catalog_publication_v3_document_invalid` |  |  | Use a complete JSON object for the product document revision. |
+| `catalog_publication_v3_document_not_canonical` |  |  | Use the canonical document bytes and their matching digest. |
+| `catalog_publication_v3_document_reference_stale` |  |  | Reload the document revisions and select the current revision or register the next one. |
+| `catalog_publication_v3_presentation_required` |  |  | Supply the product presentation or its document revision. |
+| `catalog_publication_v3_structural_readiness_failed` |  |  | A new product needs its presentation. Add a set_product_presentation operation that matches the draft presentation. |
+| `catalog_publication_wire_invalid` | `publication_details_invalid` |  | Some publication details are invalid. Review the product and its revisions, then try again. |
+
+### `release_draft_invalid`
+
+**Cause** The product description does not produce a valid schema version 3 draft.
+
+**Fix** Correct the field named by path to match catalogProductInputSchema.
+
+| When | Fix |
+| --- | --- |
+| type.version is absent | Set type.version to the installed version of the product type. |
+| Several SKUs are supplied and either no SKU or multiple SKUs are marked primary | Mark exactly one SKU with primary: true. |
+| The refusal points to skus.N.identifiers and the SKU has no unit GS1 GTIN after its supplied identifier records pass validation. | Add a valid unit GS1 GTIN for this SKU. If the product has no GS1 barcode, mint one with catalogInternalGtin using an unused store-local sequence. |
+| The SKU has multiple valid unit GS1 GTINs and none is marked primary, or isPrimary marks multiple identifiers or an identifier other than a unit GS1 GTIN | Set isPrimary to true on one valid unit GS1 GTIN and clear it on all other identifiers of this SKU. |
+| The named identifier quantity is invalid, or a case identifier has no quantity | Use quantity 1 for a unit identifier and supply the actual case quantity from 2 to 999999 for a case identifier. |
+| The refusal points to skus.N.identifiers.M.value and the named GS1 identifier has a supported plain JSON string value that fails GTIN format or checksum validation. | Enter a valid GTIN for this identifier. |
+| The named GTIN repeats a GTIN elsewhere in the input after zero-padding to 14 digits | Remove the duplicate record or supply a distinct valid GTIN. Leading zeros and issuer changes do not distinguish GTINs. |
+| The named SKU has both sell modes disabled | Enable sell.oneTime, sell.subscription or both for this SKU. |
+| The named SKU code repeats a code used by another SKU in the product | Give each SKU of the product a distinct code. |
+| The named offerVersions array has zero or multiple entries | List exactly one offer version in offerVersions for this SKU, or omit offerVersions to use classic. |
+| A generated schemaId or sourceRef exceeds 240 characters and the refusal points to namespace, or a generated documentRef exceeds 240 characters and the refusal points to slug. | Shorten namespace or slug until every generated document reference is at most 240 characters. |
+| The generated draft or canonical document exceeds 1048576 UTF-8 bytes | Shorten optional product data or reduce the number of SKUs until each draft is at most 1048576 bytes. |
+| The named document or draft contains content nested beyond the allowed depth | Reduce nesting in the named content until the generated draft fits the depth limit of 48. |
+| The named field contains a value or key that cannot be represented as supported plain JSON data | Use plain JSON data in the named field and remove unsupported keys or values. |
+| The union of option keys across the product SKUs exceeds 16 | Use at most 16 distinct option keys across the product's SKUs. |
+| The named SKU option key does not match the option-key grammar | Rename this option to a valid key, such as pack_size, or remove it. |
+| Observed says omitted key and identifies the containing object | Review the keys and values in the named object. Remove or rename an unsupported key, or correct its value to match catalogProductInputSchema. |
 <!-- /generated:refusal-codes -->
 
 ## Codes without a closed list
