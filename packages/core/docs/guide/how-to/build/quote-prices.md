@@ -225,6 +225,8 @@ export async function rollback(owner) {
 
 For connected show, export the owner reader from your app's `settings.mjs`.
 Use the migration-owner URL for this operator command and a trusted app scope.
+Return `{ present: false, effective: null }` for absence and a canonical decimal
+string in `revision` for a present row.
 
 ```js
 import { inspectCommerceMoneyLimitsV2 } from "@openlup/platform/commerce/server";

@@ -221,5 +221,6 @@ export {
   inspectCommerceMoneyLimitsV2, installCommerceMoneyLimitsV2,
 } from "./commerceMoneyLimitsV2.js";
 export type {
-  CommerceMoneyLimitsV2, InstallLimitsInput, InstallLimitsResult, LimitsInspectionResult, LimitsReadResult, LimitsTuple,
+  CommerceMoneyLimitsQueryExecutor, CommerceMoneyLimitsV2, InstallLimitsInput, InstallLimitsResult,
+  LimitsInspectionResult, LimitsReadResult, LimitsTuple,
 } from "./commerceMoneyLimitsV2.js";

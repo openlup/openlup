@@ -4154,7 +4154,12 @@ export declare function checkoutOrchestrationFailureDetails(reason: string | nul
 ## dist/commerce/server/commerceMoneyLimitsV2.d.ts
 
 ```ts
-import type { PgQueryExecutor } from "../../data/index.js";
+/** @experimental Host query interface for installed payment limits. */
+export interface CommerceMoneyLimitsQueryExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
 /** @experimental Coordinates of one installed payment rail. */
 export interface LimitsTuple {
     installationRef: string;
@@ -4183,18 +4188,18 @@ declare const remedies: {
     readonly money_limits_revision_conflict: "Inspect the tuple with the owner binding. Retry the initial insert if absent, or deliberately resubmit the intended change with the observed revision.";
     readonly money_limits_revision_exhausted: "Have the installation owner qualify a replacement rail.";
 };
-declare const refused: (code: keyof typeof remedies, field: string) => {
+type InstallLimitsRefusal = {
     kind: "refused";
-    code: string;
+    code: keyof typeof remedies;
     field: string;
-    remedy: "Correct the indicated field using the documented payment limits input." | "Inspect the tuple with the owner binding. Retry the initial insert if absent, or deliberately resubmit the intended change with the observed revision." | "Have the installation owner qualify a replacement rail.";
+    remedy: (typeof remedies)[keyof typeof remedies];
 };
 /** @experimental An installed revision or a refusal without a repair value. */
 export type InstallLimitsResult = {
     kind: "installed";
     value: CommerceMoneyLimitsV2;
     revision: number;
-} | ReturnType<typeof refused>;
+} | InstallLimitsRefusal;
 /** @experimental Runtime observation of active terms for the bound rail. */
 export type LimitsReadResult = {
     present: false;
@@ -4218,11 +4223,11 @@ export type LimitsInspectionResult = {
     value: CommerceMoneyLimitsV2;
 };
 /** @experimental Install one set of payment limits with the migration-owner executor. */
-export declare function installCommerceMoneyLimitsV2(owner: PgQueryExecutor, input: InstallLimitsInput): Promise<InstallLimitsResult>;
+export declare function installCommerceMoneyLimitsV2(owner: CommerceMoneyLimitsQueryExecutor, input: InstallLimitsInput): Promise<InstallLimitsResult>;
 /** @experimental Inspect the active or inactive revision using the migration owner. */
-export declare function inspectCommerceMoneyLimitsV2(owner: PgQueryExecutor, scope: LimitsTuple): Promise<LimitsInspectionResult>;
+export declare function inspectCommerceMoneyLimitsV2(owner: CommerceMoneyLimitsQueryExecutor, scope: LimitsTuple): Promise<LimitsInspectionResult>;
 /** @experimental Bind a restricted reader to the intended installation and rail. */
-export declare function bindCommerceMoneyLimitsV2Reader(db: PgQueryExecutor, scope: LimitsTuple): () => Promise<LimitsReadResult>;
+export declare function bindCommerceMoneyLimitsV2Reader(db: CommerceMoneyLimitsQueryExecutor, scope: LimitsTuple): () => Promise<LimitsReadResult>;
 /** @experimental Describe the installed limits for settings discovery. */
 export declare function describeCommerceMoneyLimitsV2Setting(): {
     readonly schemaVersion: 1;
@@ -5539,7 +5544,7 @@ export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSc
 export { CheckoutRecoveryScheduleChangeBlockedError } from "./checkoutRecoveryReminderSchedule.js";
 export { catalogAdmissionRefusal } from "./catalogAdmissionRefusal.js";
 export { bindCommerceMoneyLimitsV2Reader, describeCommerceMoneyLimitsV2Setting, inspectCommerceMoneyLimitsV2, installCommerceMoneyLimitsV2, } from "./commerceMoneyLimitsV2.js";
-export type { CommerceMoneyLimitsV2, InstallLimitsInput, InstallLimitsResult, LimitsInspectionResult, LimitsReadResult, LimitsTuple, } from "./commerceMoneyLimitsV2.js";
+export type { CommerceMoneyLimitsQueryExecutor, CommerceMoneyLimitsV2, InstallLimitsInput, InstallLimitsResult, LimitsInspectionResult, LimitsReadResult, LimitsTuple, } from "./commerceMoneyLimitsV2.js";
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 

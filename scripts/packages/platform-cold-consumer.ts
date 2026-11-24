@@ -2695,6 +2695,13 @@ assert(!acceptance.verifyPromotionQuoteAcceptance({ token, request, quote: { ...
 await assert.rejects(applyPromotionCodesV2({ ...input, port: { resolve: async () => { throw new Error("read unavailable"); } } }), /read unavailable/);
 assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type: "unknown", discount_value: 0 }), /promotion_v1_benefit_invalid/);
 `);
+    if (entries.includes("commerce/server")) {
+      const declaration = join(consumer, "node_modules/@openlup/platform/dist/commerce/server/commerceMoneyLimitsV2.d.ts");
+      const { importedFiles, typeReferenceDirectives } = ts.preProcessFile(readFileSync(declaration, "utf8"));
+      const forbidden = [...importedFiles, ...typeReferenceDirectives].map(({ fileName }) => fileName)
+        .filter(specifier => /^(?:pg|@types\/pg)(?:\/|$)|(?:^|\/)data(?:\/|$)/u.test(specifier));
+      assert.deepEqual(forbidden, [], "Installed payment limits declarations require a self-contained executor.");
+    }
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
     compileConsumer(consumer, entries, compiler);
     compileReferenceDelegationTypes(consumer, compiler);

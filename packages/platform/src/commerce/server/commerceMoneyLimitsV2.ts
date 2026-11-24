@@ -1,5 +1,9 @@
 import { z } from "zod";
-import type { PgQueryExecutor } from "../../data/index.js";
+
+/** @experimental Host query interface for installed payment limits. */
+export interface CommerceMoneyLimitsQueryExecutor {
+  query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+}
 
 /** @experimental Coordinates of one installed payment rail. */
 export interface LimitsTuple {
@@ -34,11 +38,18 @@ const remedies = {
   [exhausted]: "Have the installation owner qualify a replacement rail.",
 } as const;
 const checklist = "Check the native app binding, driver setup, database connection and TLS, operation-role privileges, and installed migrations. Then retry the same operation.";
-const refused = (code: keyof typeof remedies, field: string) => ({ kind: "refused" as const, code, field, remedy: remedies[code] });
+type InstallLimitsRefusal = {
+  kind: "refused";
+  code: keyof typeof remedies;
+  field: string;
+  remedy: (typeof remedies)[keyof typeof remedies];
+};
+const refused = (code: InstallLimitsRefusal["code"], field: string): InstallLimitsRefusal =>
+  ({ kind: "refused", code, field, remedy: remedies[code] });
 
 /** @experimental An installed revision or a refusal without a repair value. */
 export type InstallLimitsResult = { kind: "installed"; value: CommerceMoneyLimitsV2; revision: number }
-  | ReturnType<typeof refused>;
+  | InstallLimitsRefusal;
 
 /** @experimental Runtime observation of active terms for the bound rail. */
 export type LimitsReadResult = { present: false }
@@ -122,7 +133,7 @@ SELECT coalesce((SELECT revision FROM inserted),(SELECT revision FROM updated)) 
     ELSE 'profile' END AS outcome`;
 
 /** @experimental Install one set of payment limits with the migration-owner executor. */
-export async function installCommerceMoneyLimitsV2(owner: PgQueryExecutor, input: InstallLimitsInput): Promise<InstallLimitsResult> {
+export async function installCommerceMoneyLimitsV2(owner: CommerceMoneyLimitsQueryExecutor, input: InstallLimitsInput): Promise<InstallLimitsResult> {
   const parsed = installSchema.safeParse(input);
   if (!parsed.success) return refused(invalid, fieldOf(parsed.error));
   const { value, expectedRevision } = parsed.data;
@@ -139,7 +150,7 @@ export async function installCommerceMoneyLimitsV2(owner: PgQueryExecutor, input
 }
 
 /** @experimental Inspect the active or inactive revision using the migration owner. */
-export async function inspectCommerceMoneyLimitsV2(owner: PgQueryExecutor, scope: LimitsTuple): Promise<LimitsInspectionResult> {
+export async function inspectCommerceMoneyLimitsV2(owner: CommerceMoneyLimitsQueryExecutor, scope: LimitsTuple): Promise<LimitsInspectionResult> {
   const parameters = scopeSnapshot(scope);
   try {
     const { rows } = await owner.query(`SELECT l.revision,public.commerce_money_limits_v2_validate(${document}) AS value
@@ -151,7 +162,7 @@ export async function inspectCommerceMoneyLimitsV2(owner: PgQueryExecutor, scope
 }
 
 /** @experimental Bind a restricted reader to the intended installation and rail. */
-export function bindCommerceMoneyLimitsV2Reader(db: PgQueryExecutor, scope: LimitsTuple): () => Promise<LimitsReadResult> {
+export function bindCommerceMoneyLimitsV2Reader(db: CommerceMoneyLimitsQueryExecutor, scope: LimitsTuple): () => Promise<LimitsReadResult> {
   const parameters = scopeSnapshot(scope);
   return async () => {
     try {
