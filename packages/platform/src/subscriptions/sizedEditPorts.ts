@@ -34,6 +34,8 @@ export interface SizedHostPorts {
 }
 export interface SizedEditorOptions extends SizedHostPorts {
   policy: SizedEditPolicy;
+  /** @experimental Edit quote TTL in minutes (integer 1..1440, default 15). */
+  quoteTtlMinutes?: number;
   withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
   now(): string;
 }

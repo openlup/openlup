@@ -89,3 +89,11 @@ export type { AccountEventPrivacyJson, AccountEventPrivacyObligation, AccountEve
 
 export { createPostgresCustomerBillingProfilePort, createCustomerBillingProfileSchemas, createCustomerBillingProfilesHandler } from "./customerAccount/billingProfiles.js";
 export type { BillingProfileTaxPolicy } from "./customerAccount/billingProfiles.js";
+export {
+  DEFAULT_ACCOUNT_SUPPORT_OPERATOR_SLIDE_MAX_DAYS,
+  validateAccountSupportOperatorSlideMaxDays,
+  installAccountSupportOperatorSlideMaxDaysPolicy,
+  readAccountSupportOperatorSlideMaxDaysOverride,
+  readAccountSupportOperatorSlideMaxDaysPolicy,
+} from "./operatorSlideMaxDaysPolicy.js";
+export type { AccountSupportOperatorSlideMaxDaysPolicy } from "./operatorSlideMaxDaysPolicy.js";

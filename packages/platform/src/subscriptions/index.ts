@@ -99,4 +99,13 @@ export {
   readSubscriptionRetrySchedulePolicy,
 } from "./retrySchedulePolicy.js";
 export type { SubscriptionRetrySchedulePolicy } from "./retrySchedulePolicy.js";
+export {
+  DEFAULT_SUBSCRIPTION_EDIT_QUOTE_TTL_MINUTES,
+  resolveSubscriptionEditQuoteTtlMinutes,
+  validateSubscriptionEditQuoteTtlMinutes,
+  installSubscriptionEditQuoteTtlMinutesPolicy,
+  readSubscriptionEditQuoteTtlMinutesOverride,
+  readSubscriptionEditQuoteTtlMinutesPolicy,
+} from "./editQuoteTtlPolicy.js";
+export type { SubscriptionEditQuoteTtlMinutesPolicy } from "./editQuoteTtlPolicy.js";
 

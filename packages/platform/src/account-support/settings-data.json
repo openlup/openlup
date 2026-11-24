@@ -7,5 +7,37 @@
     "kind": "invariant",
     "runtime": {"level": "read-only", "reason": "The last human administrator is required for recoverable administration."},
     "change": {"reference": "docs/guide/concepts/personal-data.md#export-and-erasure"}
+  },
+  {
+    "key": "account_support_operator_slide_max_days",
+    "domain": "account-support",
+    "kind": "installed",
+    "goal": "Set the maximum number of days ahead an operator slide_next_cycle command may schedule the next subscription cycle (operator slide max days, operator reschedule window, support slide limit).",
+    "schemaVersion": 1,
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": {"revision": {"type": "string", "pattern": "\\S"}, "maxDays": {"type": "integer", "minimum": 3, "maximum": 365}}, "required": ["revision", "maxDays"], "additionalProperties": false},
+    "previewSchema": null,
+    "examples": [
+      {"value": {"revision": "store-1", "maxDays": 30}},
+      {"value": {"revision": "store-1", "maxDays": 120}},
+      {"value": {"revision": " ", "maxDays": 60}, "code": "account_support_operator_slide_max_days_policy_invalid"},
+      {"value": {"revision": "store-1", "maxDays": 2}, "code": "account_support_operator_slide_max_days_policy_invalid"}
+    ],
+    "fallback": {"revision": "default", "maxDays": 60},
+    "defaultBasis": {"kind": "reference-code"},
+    "whyThisDefault": "Sixty days preserves the historical operator slide_next_cycle ceiling in customer_support_apply_subscription_action_v1 while matching customer subscription reschedule bounds.",
+    "effect": {
+      "appliesTo": "Subsequent fresh calls to customer_support_apply_subscription_action_v1 read key='account_support_operator_slide_max_days' from public.commerce_settings via account_support_operator_slide_max_days_read(), validating optional payload slideMinDays (1..maxDays) and accepting slide_next_cycle targets through now + make_interval(days => maxDays) before delegating slideMaxDays to eight-argument subscription_command_apply. When no row exists in public.commerce_settings, the SQL reader defaults to 60 days; malformed rows refuse fail-closed with SQLSTATE 22023 account_support_operator_slide_max_days_policy_invalid.",
+      "frozenOn": ["Already scheduled subscription cycles and completed customer_support_subscription_commands receipts (including idempotent replays) retain their recorded dates and outcomes."],
+      "impact": "customer-promise"
+    },
+    "runtime": {"level": "read-only", "reason": "Install or update the public.commerce_settings row through installAccountSupportOperatorSlideMaxDaysPolicy or your store deployment step; runtime edits require a write-capable host connection."},
+    "change": {"operation": "installAccountSupportOperatorSlideMaxDaysPolicy"},
+    "rules": [
+      {
+        "code": "account_support_operator_slide_max_days_policy_invalid",
+        "path": [],
+        "description": "Supply exactly revision and maxDays. Revision must be a nonblank string and maxDays an integer from 3 through 365."
+      }
+    ]
   }
 ]

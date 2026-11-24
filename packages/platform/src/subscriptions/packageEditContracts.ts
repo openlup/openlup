@@ -42,6 +42,8 @@ export interface PackageEditLimits { maximumPlanDays: number; maximumBaseLines: 
 export interface PackageEditorOptions extends PackageEditQuotePorts {
   /** Required only for the exact portion lever. */
   portionModes?: SubscriptionPortionModes;
+  /** @experimental Edit quote TTL in minutes (integer 1..1440, default 15). */
+  quoteTtlMinutes?: number;
   /** One connection through commit/rollback; authorization precedes this factory. */
   withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
   limits: PackageEditLimits;

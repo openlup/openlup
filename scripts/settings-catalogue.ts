@@ -74,6 +74,8 @@ const searchTerms: Record<string, string> = {
   promotion_claim_hold_hours: "promotion claim hold, promo reservation expiry, initialPaymentWindow, stale promotion claims",
   "payments.declineNoticeTiming": "decline notice delay, recovery token expiry, failed payment notice, checkout recovery link lifetime",
   "subscriptions.retrySchedule": "renewal retry policy, payment failure backoff, 3-rung retry ladder, dunning schedule",
+  account_support_operator_slide_max_days: "operator slide max days, support reschedule window, slide_next_cycle limit",
+  subscription_edit_quote_ttl_minutes: "subscription edit quote TTL, quote expiry minutes, edit preview validity window",
   savedAddressValidation: "postal format, phone normalization, delivery address checks",
   "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
   "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",
