@@ -209,6 +209,8 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261125100000_commerce_destination_v2_checkout.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125100000_commerce_destination_v2_checkout.sql) |
 | [`20261125120000_catalog_legacy_draft_fixed_locks.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125120000_catalog_legacy_draft_fixed_locks.sql) |
 | [`20261125130000_commerce_destination_v2_order_bindings.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125130000_commerce_destination_v2_order_bindings.sql) |
+| [`20261125140000_fulfillment_stock_seed_outcome.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125140000_fulfillment_stock_seed_outcome.sql) |
+| [`20261125150000_checkout_recovery_reminder_install_outcome.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125150000_checkout_recovery_reminder_install_outcome.sql) |
 | [`20261125200000_commerce_destination_v2_typed_refusals.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125200000_commerce_destination_v2_typed_refusals.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
