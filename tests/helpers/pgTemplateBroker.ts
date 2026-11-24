@@ -149,6 +149,7 @@ export async function startPgTemplateBroker(): Promise<PgTemplateBroker> {
           throw new Error(`PostgreSQL template cluster unavailable (${profile})`);
         }
         bootstrap = new Pool({ connectionString: container.connectionString });
+        bootstrap.on("error", () => {});
         pools.push(bootstrap);
         const rolePassword = randomBytes(16).toString("hex");
         const isSeparate = profile === "qualified-v2-separate";

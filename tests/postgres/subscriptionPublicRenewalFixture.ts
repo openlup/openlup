@@ -125,8 +125,10 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 afterAll(async () => {
   try {
+    const activePools = [admin, migration, runtime].filter(Boolean);
+    for (const activePool of activePools) activePool.on("error", () => {});
     try {
-      await closePostgres(container, [admin, migration, runtime].filter(Boolean));
+      await closePostgres(container, activePools);
     } finally {
       if (brokerLease) {
         const lease = brokerLease;
@@ -337,6 +339,7 @@ export async function withRestoredStore(packet: ConnectedNativeStoreCapture, wor
     }
     await work({ owner, runtime, transaction });
   } finally {
+    for (const activePool of pools) activePool.on("error", () => {});
     try {
       await closePostgres(target, pools);
     } finally {
