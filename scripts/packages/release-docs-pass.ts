@@ -449,7 +449,7 @@ function assertUpgradePageDocumentation(
     if (fragmentViolations.length > count) instructions.push(...upgradePageFixes(fragment.path, fixes));
   }
   if (instructions.length === 0) {
-    if (prepared) instructions.push(...upgradePageFixes(path, pageFixes, `correct the reported guide content in ${path}`));
+    if (prepared) instructions.push(...upgradePageFixes(path, pageFixes, true));
     else instructions.push(violations.some((diagnostic) => diagnostic.endsWith(" targets a file missing from npm pack"))
       ? "include the linked file in the Core npm packlist by correcting `files` in packages/core/package.json, or correct the link emitted by scripts/packages/release-docs-pass.ts"
       : "correct the input used to render the upgrade page or the generator in scripts/packages/release-docs-pass.ts");
@@ -467,16 +467,21 @@ function refuseUpgradePage(label: string, diagnostics: readonly string[], instru
   ].join("\n"));
 }
 
-function upgradePageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, fallback = `correct the reported content in ${path}`): string[] {
+function upgradePageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, prepared = false): string[] {
+  const guideForm = prepared ? "use a relative guide link" : "use the guide page title in plain text, without a link";
   const messages: Record<Extract<GuidePageFix, string>, string> = {
-    "relative-link": `replace the pinned link into the guide with a relative guide link in ${path}`,
+    "relative-link": prepared
+      ? `replace the pinned link into the guide with a relative guide link in ${path}`
+      : `in ${path}, ${guideForm}`,
     "repository-target": `correct the repository link's target path in ${path}`,
     "generated-region": `remove the generated-region marker and its matching closer from ${path}`,
   };
-  if (fixes.size === 0) return [fallback];
+  if (fixes.size === 0) return [`correct the reported ${prepared ? "guide " : ""}content in ${path}`];
   return [...new Set([...fixes].map((fix) => typeof fix === "string"
     ? messages[fix]
-    : `replace the ref \`${fix.ref}\` in ${path} with the canonical Core release pin for the releasing version, then rerun \`npm run preflight -- --fast\``))];
+    : `in ${path}, replace \`${fix.unpinnedBlob}\`. `
+      + `If the intended destination is an existing file outside the guide, use \`${fix.template}\` and keep any section anchor. `
+      + `If the intended destination is in the guide, ${guideForm}. Then rerun \`npm run preflight -- --fast\`.`))];
 }
 
 /**

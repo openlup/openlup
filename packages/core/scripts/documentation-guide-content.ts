@@ -207,7 +207,10 @@ export function assertGuideLinks(guideRoot: string, file: string, label: string,
     const [url, kind, ref, path] = match;
     if (ref !== tag) {
       violations.push(`${label}: repository link ${url} must pin ${tag}; run docs:check -- --write`);
-      if (fixes && kind === "blob") fixes.add(findRepositoryLinkFix(repositoryRoot, guideRoot, ref!, path ?? ""));
+      if (fixes && kind === "blob") {
+        const suffix = /^[?#][^\s)>"'`]*/u.exec(candidateSource.slice(match.index + url.length));
+        fixes.add({ unpinnedBlob: url + (suffix?.[0] ?? ""), template: canonical.replace("<path>", "<repository-relative-path>") });
+      }
       continue;
     }
     const target = repositoryLinkTarget(repositoryRoot, guideRoot, path ?? "");
@@ -226,18 +229,6 @@ function repositoryLinkTarget(repositoryRoot: string, guideRoot: string, path: s
   const resolved = resolve(repositoryRoot, decoded);
   if (!decoded || !resolved.startsWith(`${repositoryRoot}${sep}`) || !existsSync(resolved)) return "missing";
   return (resolved === guideRoot || resolved.startsWith(`${guideRoot}${sep}`)) && decoded.endsWith(".md") ? "guide" : "repository";
-}
-
-function findRepositoryLinkFix(repositoryRoot: string, guideRoot: string, ref: string, path: string): GuidePageFix {
-  const segments = [ref, ...path.split("/")];
-  let foundGuide = false;
-  // A ref can contain slashes. Try the longest repository path first, for the audit's advice only.
-  for (let boundary = 1; boundary < segments.length; boundary++) {
-    const target = repositoryLinkTarget(repositoryRoot, guideRoot, segments.slice(boundary).join("/"));
-    if (target === "repository") return { ref: segments.slice(0, boundary).join("/") };
-    if (target === "guide") foundGuide = true;
-  }
-  return foundGuide ? "relative-link" : "repository-target";
 }
 
 function safeDecode(value: string): string {
@@ -377,7 +368,7 @@ type GuidePage = PackageMarkdown & {
   fixes?: Set<GuidePageFix>;
 };
 
-export type GuidePageFix = { ref: string } | "relative-link" | "repository-target" | "generated-region";
+export type GuidePageFix = { unpinnedBlob: string; template: string } | "relative-link" | "repository-target" | "generated-region";
 
 /** Apply the installed contract's page rules to Markdown before compiling its checked fences. */
 export function assertGuidePage(page: GuidePage, violations: string[]): Fence[] {
