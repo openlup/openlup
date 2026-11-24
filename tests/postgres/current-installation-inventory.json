@@ -7,7 +7,7 @@
         "objectInventorySha256": "fcaa9d19ec7b2a2f7287b807788d74253bc6f1b14ddeae405645a341611b270b",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126610000_commerce_money_limits_v2.sql",
+            "file": "db/platform/migrations/20261127010000_commerce_money_limits_v2.sql",
             "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
           },
           {
@@ -838,7 +838,7 @@
         "objectInventorySha256": "51a2557ebbd2628330156455383fd5a727ea5ae7631c900f5d9db68637078769",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126610000_commerce_money_limits_v2.sql",
+            "file": "db/platform/migrations/20261127010000_commerce_money_limits_v2.sql",
             "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
           },
           {
@@ -1693,7 +1693,7 @@
         "objectInventorySha256": "e11f7f5c51ec8882d88d5f00b3b95801f62895c0dac3ca446d32b15e1fd5e934",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126610000_commerce_money_limits_v2.sql",
+            "file": "db/platform/migrations/20261127010000_commerce_money_limits_v2.sql",
             "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
           },
           {
@@ -2548,7 +2548,7 @@
         "objectInventorySha256": "64be366f0c10ee5656d0ee27deb7910e1219bc2e493ade5213358d034356c9f2",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126610000_commerce_money_limits_v2.sql",
+            "file": "db/platform/migrations/20261127010000_commerce_money_limits_v2.sql",
             "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
           },
           {
@@ -3395,7 +3395,7 @@
         "objectInventorySha256": "dfe99f876febbd6bfb9a120e8685787aabe3ae041d481d785b1b14f607399334",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126610000_commerce_money_limits_v2.sql",
+            "file": "db/platform/migrations/20261127010000_commerce_money_limits_v2.sql",
             "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
           },
           {

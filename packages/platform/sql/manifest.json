@@ -824,7 +824,7 @@
         "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
       },
       {
-        "file": "db/platform/migrations/20261126610000_commerce_money_limits_v2.sql",
+        "file": "db/platform/migrations/20261127010000_commerce_money_limits_v2.sql",
         "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
       }
     ],
@@ -1676,7 +1676,7 @@
           "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
         },
         {
-          "file": "db/platform/migrations/20261126610000_commerce_money_limits_v2.sql",
+          "file": "db/platform/migrations/20261127010000_commerce_money_limits_v2.sql",
           "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
         }
       ],
@@ -2528,7 +2528,7 @@
           "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
         },
         {
-          "file": "db/platform/migrations/20261126610000_commerce_money_limits_v2.sql",
+          "file": "db/platform/migrations/20261127010000_commerce_money_limits_v2.sql",
           "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
         }
       ],
@@ -3565,8 +3565,8 @@
       "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
     },
     {
-      "file": "20261126610000_commerce_money_limits_v2.sql",
-      "source": "db/platform/migrations/20261126610000_commerce_money_limits_v2.sql",
+      "file": "20261127010000_commerce_money_limits_v2.sql",
+      "source": "db/platform/migrations/20261127010000_commerce_money_limits_v2.sql",
       "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
     },
     {
