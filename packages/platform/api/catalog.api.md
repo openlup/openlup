@@ -4433,8 +4433,8 @@ export declare function readInstalledCatalogSubscriptionProfile(readExecutor: Pg
  * @experimental
  */
 export declare function catalogInternalGtin(sequence: number): string;
-/** @internal Classifies a validated GTIN padded to fourteen digits. */
-export declare function isInternalGtin14(value: string): boolean;
+/** @internal Classifies a GTIN using its fourteen-digit normalized form. */
+export declare function isInternalGtin(scheme: string, authored: string): boolean;
 ```
 ## dist/catalog/lifecycleDraftSchemas.d.ts
 
