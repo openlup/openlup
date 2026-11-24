@@ -53,6 +53,16 @@ database bindings; UI navigation or a captured sandbox receipt does not qualify
 a live provider. See [application setup](../README.md) and the installed guide
 at `node_modules/@openlup/core/docs/guide/reference/limits.md`.
 
+## Published product and quote proof
+
+Run `./lifecycle browser browser/catalogue-products.spec.ts` in the extracted
+candidate. Each project publishes its own disposable fixture, including a
+sibling beyond the first 24 rows. At phone and desktop widths the spec reloads
+the selected SKU, restores its cart and checks the quote against its gross
+price and currency. It also checks missing fixture, disconnected reader,
+sibling substitution and private attribute controls. The attempted governed
+checkout records its own refusal and checks the order count.
+
 ## Subscription editor proof
 
 With the selected packages installed and built, run the component recipe:

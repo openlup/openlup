@@ -156,6 +156,8 @@ code units with no surrounding whitespace, NUL or unpaired surrogate.
 In `owned/subscription-editing.ts`, use the same gram range as a number for
 each editor catalogue `physicalSize`.
 
+Both physical-fact findings identify the affected SKU as Subject.
+
 During upgrade, replace a pristine `owned/store.config.ts` with the candidate
 copy. In a customized file, convert each old `netWeightG`, `unitGtin` and
 `issuer` in place using the shape above. Keep the weight, GTIN digits and
@@ -171,6 +173,27 @@ project. The procedure removes all data in the demo volume. For
 `OPENLUP_E_STARTER_SYNTHETIC_PHYSICAL_SIZE_INVALID`, correct the named SKU's
 `physicalSize` from the verified whole-gram size. Restart and recheck
 `/api/config` after either repair.
+
+## Show published products in the starter
+
+Author storefront copy in the publication's `product.presentation`. Supply a
+nonblank `title`, strings for `name`, `description` and `mediaAlt` in each
+configured locale, and a `media` path such as `/media/article.svg`. Use one
+filename starting with an ASCII letter or digit, followed by letters, digits,
+dots, underscores or hyphens. Optional `details` is localized copy and optional
+`contents` is a string. Both default to empty copy. Treat every presentation
+field as public when authoring the publication.
+
+After activation into `classic`, open the catalogue and select a SKU. Reload
+its product URL with `?sku=<encoded SKU>`, add it to the cart and check the
+same SKU and currency in the server quote. See the [published catalogue limits](../../reference/limits.md#published-starter-catalogue-limits)
+for capacity and document schema.
+
+If you copied an earlier managed storefront page into application source,
+reconcile its product selection and cart with the installed version. Keep the
+SKU query parameter in localized links, preserve the saved SKU through a failed
+read and verify the server's SKU, quantity and currency before showing amounts.
+Owned `productCard(context, product)` customizations still receive a `Product`.
 
 ## Select your configuration
 

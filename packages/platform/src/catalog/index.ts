@@ -110,5 +110,5 @@ export { readPostgresCatalogActivationReadiness, readPostgresCatalogMembershipPa
 export type { CatalogActivationReadinessInput, CatalogActivationReadinessItem, CatalogActivationReadinessResult, CatalogDiscoveryEvidence,
   CatalogDiscoveryRefusal, CatalogInstalledReadiness, CatalogMembershipCursor, CatalogMembershipItem,
   CatalogMembershipPageInput, CatalogMembershipPageResult } from "./postgresPublicationDiscovery.js";
-export { readPostgresCatalogStorefrontPage, type CatalogStorefrontPageInput, type CatalogStorefrontPageResult,
+export { projectPublishedCatalogOfferPage, readPostgresCatalogStorefrontPage, type PublishedCatalogOfferPage, type CatalogStorefrontPageInput, type CatalogStorefrontPageResult,
   type CatalogStorefrontPrice, type CatalogStorefrontProduct, type CatalogStorefrontSku } from "./catalogStorefrontPage.js";

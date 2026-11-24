@@ -630,3 +630,16 @@ private-capture cleanup.
 Native intake composes existing commands and the job ledger; it installs no
 scheduler. Public tracking access, label create/void, independent split shipments,
 provider activation and hosted qualification retain their existing limits.
+
+## Published starter catalogue limits
+
+The starter reserves part of its 500 active sellable SKU quote capacity for
+seeded storefront and editor SKUs. Active sellable SKUs across offers also
+count. If capacity is exhausted, reduce the active sellable catalogue through
+the supported lifecycle, then reread and quote.
+
+Publish new products under a document schema distinct from the configured
+`quote.document.schemaId`. For an existing collision, withdraw the colliding
+product through governed catalogue commands and repeat the original quote.
+Supported published documents use canonical draft JSON. Recover damaged
+revisions from a verified backup and repeat the affected quote.

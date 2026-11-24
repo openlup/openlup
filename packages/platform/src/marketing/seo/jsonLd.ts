@@ -1,5 +1,5 @@
 import type { OrganizationFacts } from "../contracts/contactLegal.js";
-import { isRestrictedCirculationNumber } from "./restrictedCirculationNumber.js";
+import { isRestrictedCirculationNumber } from "../../catalog/internalGtin.js";
 
 export type JsonLdNode = Record<string, unknown> & { "@context"?: string; "@id"?: string };
 

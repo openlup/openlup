@@ -3,7 +3,8 @@ import type { PageContext } from '../context.ts';
 import type { Cart, OfferResult } from '../../shared/offer.ts';
 import { emptyCart, validateCart } from '../../shared/offer.ts';
 import { nativeUnitPrice, refreshLiveQuote, clearLiveQuote } from '../live-quote.ts';
-import { routes } from '../../shared/routes.ts';
+import { productPath, routes } from '../../shared/routes.ts';
+import { selectCatalogueProduct } from '../../shared/catalogue-products.ts';
 import { append, button, el, link } from '../dom.ts';
 import { field, refusal } from '../forms.ts';
 
@@ -32,23 +33,41 @@ export function catalogPage(context: PageContext): HTMLElement {
 
 function productGrid(context: PageContext): HTMLElement {
   return el('div', { class: `products ${context.config.offer.layout}` },
-    ...context.config.offer.products.map(product => context.fragments.productCard(context, product)));
+    context.catalogueError ? refusal(context, context.catalogueError, context.t('applicationUnavailable')) : null,
+    ...context.catalogueProducts.map(product => {
+      const card = context.fragments.productCard(context, product);
+      if (product.variantTitle !== undefined) {
+        const path = productPath(product.slug, context.locale);
+        for (const anchor of card.querySelectorAll('a')) if (anchor.getAttribute('href') === path) anchor.href = skuHref(path, product.sku);
+        append(card, el('p', {}, product.variantTitle));
+      }
+      return card;
+    }));
 }
 
+const skuHref = (path: string, sku: string) => `${path}?sku=${encodeURIComponent(sku)}`;
+
 export function productPage(context: PageContext): HTMLElement {
-  const product = context.config.offer.products.find(item => item.slug === context.route.slug);
+  const selections = context.query.getAll('sku'), slug = context.route.slug ?? '';
+  const product = selections.length <= 1 ? selectCatalogueProduct(context.catalogueProducts, slug, selections[0] ?? null) : undefined;
   if (!product) return el('section', {}, el('h1', {}, context.t('notFound')),
+    context.catalogueError ? refusal(context, context.catalogueError, context.t('applicationUnavailable')) : null,
     link(context.t('catalog'), routes.catalog[context.locale]));
-  const quantity = field(context, { name: 'quantity', label: 'quantity', type: 'number', value: '1',
-    min: 1, max: context.config.offer.maxUnits });
+  const minimum = product.minQuantity ?? 1;
+  const quantity = field(context, { name: 'quantity', label: 'quantity', type: 'number', value: String(minimum),
+    min: minimum, max: context.config.offer.maxUnits });
   const output = el('div', { 'aria-live': 'polite' });
   const add = button(context.t('buy'), () => {
     const count = Number(quantity.control.value);
-    if (!Number.isSafeInteger(count) || count < 1 || count > context.config.offer.maxUnits) {
+    if (!Number.isSafeInteger(count) || count < minimum || count > context.config.offer.maxUnits) {
       output.replaceChildren(refusal(context, 'quantity_invalid', context.t('quantity_invalid')));
       return;
     }
     const cart = context.getCart();
+    if (!cart.lines.length && !product.permittedPurchaseModes.includes(cart.mode)) {
+      cart.mode = product.permittedPurchaseModes[0]!;
+      cart.cadenceDays = cart.mode === 'subscription' ? context.config.offer.defaultCadenceDays : null;
+    }
     const previous = cart.lines.find(line => line.sku === product.sku);
     if (previous) previous.quantity += count;
     else cart.lines.push({ sku: product.sku, quantity: count });
@@ -65,6 +84,9 @@ export function productPage(context: PageContext): HTMLElement {
     el('img', { src: product.media, alt: product.mediaAlt[context.locale], width: 440, height: 440 }),
     el('div', {}, link(context.t('catalog'), routes.catalog[context.locale]),
       el('h1', {}, product.name[context.locale]),
+      product.variantTitle !== undefined ? el('p', {}, product.variantTitle, ' · ', product.sku) : null,
+      ...context.catalogueProducts.filter(item => item.slug === slug && item.sku !== product.sku).map(item =>
+        link(item.variantTitle ?? item.sku, skuHref(productPath(slug, context.locale), item.sku))),
       el('p', {}, product.description[context.locale]),
       el('p', {}, product.details[context.locale]),
       el('p', { class: 'muted' }, `${context.t('packContents')}: ${product.contents}`),
@@ -141,12 +163,12 @@ export function cartPage(context: PageContext): HTMLElement {
   const rows = el('div', { class: 'cart-lines' });
   const quantities = new Map<string, HTMLInputElement>();
   for (const line of cart.lines) {
-    const product = context.config.offer.products.find(item => item.sku === line.sku);
+    const product = context.catalogueProducts.find(item => item.sku === line.sku);
     const quantity = field(context, { name: line.sku, label: 'quantity', type: 'number',
-      value: String(line.quantity), min: 1, max: context.config.offer.maxUnits });
+      value: String(line.quantity), min: product?.minQuantity ?? 1, max: context.config.offer.maxUnits });
     quantities.set(line.sku, quantity.control as HTMLInputElement);
     append(rows, el('section', { class: 'cart-row' },
-      el('h2', {}, product?.name[context.locale] ?? line.sku), quantity.wrapper,
+      el('h2', {}, product?.variantTitle ? `${product.variantTitle} · ${line.sku}` : product?.name[context.locale] ?? line.sku), quantity.wrapper,
       button(context.t('remove'), () => {
         cart.lines = cart.lines.filter(item => item.sku !== line.sku);
         context.setCart(cart);
@@ -156,7 +178,7 @@ export function cartPage(context: PageContext): HTMLElement {
   function save(): boolean {
     const next: Cart = { ...cart, mode: mode.value(), cadenceDays: mode.cadence(),
       lines: cart.lines.map(line => ({ sku: line.sku, quantity: Number(quantities.get(line.sku)?.value) })) };
-    const value = validateCart(context.config, next);
+    const value = validateCart(context.config, next, 'checkout', context.catalogueProducts);
     if (!value.ok) { clearLiveQuote(result); result.replaceChildren(offerIssues(context,value)); return false; }
     void refreshLiveQuote(context,value.cart,result,quote => result.replaceChildren(context.fragments.checkoutSummary(context,quote)));
     context.setCart(value.cart);
@@ -166,7 +188,8 @@ export function cartPage(context: PageContext): HTMLElement {
     button(context.t('update'), () => { save(); }),
     button(context.t('checkout'), () => { if (save()) context.navigate(routes.checkout[context.locale]); }),
     button(context.t('demoReset'), () => { context.setCart(emptyCart(context.config)); context.navigate(routes.cart[context.locale]); }, 'secondary')),
-    result, link(context.t('builder'), routes.builder[context.locale]));
+    result, context.catalogueError ? refusal(context, context.catalogueError, context.t('applicationUnavailable')) : null,
+    link(context.t('builder'), routes.builder[context.locale]));
   save();
   return page;
 }

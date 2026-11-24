@@ -1,0 +1,260 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
+import { once } from 'node:events';
+import { readFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { expect, test, type APIRequestContext } from '@playwright/test';
+import pg from 'pg';
+import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogInternalGtin, createCatalogProductTypeRegistry,
+  createPostgresCatalogDraftStoreV4, createPostgresCatalogPublicationCommands, installCatalogDefinitions,
+  type CatalogDraftPayloadV4, type CatalogHeadRef } from '@openlup/platform/catalog';
+import { createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore } from '@openlup/platform/pricing';
+import { demoIdentifier, readStarterCatalogueRules, stageStarterCatalogueBuild, starterCataloguePack } from '../host/editor-catalogue.ts';
+import { catalogDraftRegistry } from '../owned/catalogue.ts';
+import { configurations } from '../owned/store.config.ts';
+import { productPath, routes } from '../shared/routes.ts';
+import type { StarterCatalogueItem } from '../shared/catalogue-products.ts';
+
+const slug = 'published-article';
+const title = 'Published article';
+const finishes = Array.from({ length: 25 }, (_, index) => `finish-${String(index + 1).padStart(2, '0')}`);
+const currency = configurations.coffee.market.currency;
+type Fixture = { id: keyof typeof configurations; baseURL: string; runtimeUrl: string; ownerUrl: string; state: string };
+type Selection = { sku: string; title: string; price: number };
+
+function action(request: APIRequestContext, origin: string, operation: string, data: Record<string, unknown>) {
+  return request.post(`${origin}/api/actions/${operation}`, { data,
+    headers: { Origin: origin, 'X-Starter-Request': '1', 'Idempotency-Key': randomUUID() } });
+}
+
+function assertSelection(body: unknown, wanted: Selection): StarterCatalogueItem {
+  assert.ok(body && typeof body === 'object' && 'ok' in body && body.ok === true && 'value' in body);
+  const { products } = body.value as { products: StarterCatalogueItem[] };
+  const matching = products.filter(item => item.slug === slug && item.sku === wanted.sku);
+  assert.equal(matching.length, 1);
+  const product = matching[0]!;
+  assert.equal(product.variantTitle, wanted.title);
+  assert.deepEqual(product.unitPrice, { amountMinor: wanted.price, currency });
+  assert.deepEqual(product.attributes, { finish: wanted.title });
+  return product;
+}
+
+async function withOwner<T>(owner: pg.Pool, work: (db: pg.PoolClient) => Promise<T>): Promise<T> {
+  const db = await owner.connect();
+  try {
+    await db.query('BEGIN');
+    const value = await work(db);
+    await db.query('COMMIT');
+    return value;
+  } catch (error) { await db.query('ROLLBACK'); throw error; }
+  finally { db.release(); }
+}
+
+async function author(fixture: Fixture) {
+  const owner = new pg.Pool({ connectionString: fixture.ownerUrl });
+  const config = configurations[fixture.id];
+  const actor = randomUUID(), draftId = randomUUID();
+  try {
+    const artifact = readStarterCatalogueRules();
+    assert.ok(artifact);
+    const starter = catalogDraftRegistry.resolve({ key: 'starter:item', version: 1 });
+    assert.ok(starter);
+    const base = { required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, displayOrder: 0, labels: {} };
+    const pack = starterCataloguePack(artifact, () => ({ ...starter,
+      dimensions: [{ key: 'finish', kind: 'choice', values: finishes }],
+      axes: [{ key: 'finish', attributeKey: 'finish' }],
+      attributes: [
+        { ...base, key: 'finish', scope: 'variant', public: true, valueType: { kind: 'enum', values: finishes.map(id => ({ id })) } },
+        { ...base, key: 'private_sample', scope: 'product', public: false, valueType: { kind: 'text', maxLength: 40 } },
+      ],
+    }));
+    const definition = pack.types[0]!;
+    const installed = await withOwner(owner, db => installCatalogDefinitions(db, pack));
+    const staged = stageStarterCatalogueBuild(artifact, installed, undefined, definition);
+    try { staged?.publish(); } finally { staged?.discard(); }
+    await owner.query("INSERT INTO public.platform_human_principals (principal_id,email) VALUES ($1,'catalogue-proof@example.invalid')", [actor]);
+    await owner.query(`INSERT INTO public.platform_human_memberships
+      (principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+      VALUES ($1,'admin','active','legacy',clock_timestamp())`, [actor]);
+    // Supply the disposable fixture's derived-price prerequisites without altering the installed demo seed.
+    await withOwner(owner, async db => {
+      const list = demoIdentifier(config, 'price-list', config.market.currency);
+      await db.query(`UPDATE public.price_entries SET active=false,valid_to=statement_timestamp()
+        WHERE price_list_id=$1 AND mode='subscription' AND active`, [list]);
+      const bundle = { id: 'fixture:bundle', status: 'active', trigger_type: 'automatic', code: null,
+        discount_type: 'percentage', discount_value: 5, applies_to_kind: 'order_total', applies_to_payload: { cart_mode: 'one_time' },
+        stacking_rule: 'stackable_with_any', eligibility: { min_cart_minor: 12000 }, region_availability: [config.market.country],
+        valid_from: '2000-01-01T00:00:00.000Z', valid_to: null, redemption_limit_global: null, redemption_limit_per_customer: null,
+        promotion_engine_version: 'promotion-engine.v1', benefit_lane: 'product', benefit_kind: 'percentage', benefit_value_bps: 500,
+        benefit_value_minor: null, v2_mirror_of: null };
+      await db.query('INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES($1,$2,true)', [bundle.id, bundle]);
+      await db.query(`INSERT INTO public.platform_job_controls(job_name,active_driver,enabled,last_status,last_success_at,metadata)
+        VALUES ('platform-watchdog','worker',true,'success',clock_timestamp(),$1),('promotion-claim-sweep','worker',true,'success',clock_timestamp(),'{}')
+        ON CONFLICT(job_name) DO UPDATE SET enabled=excluded.enabled,last_status=excluded.last_status,last_success_at=excluded.last_success_at,metadata=excluded.metadata`,
+      [{ promotionReady: true }]);
+    });
+    const presentation = Object.fromEntries(config.market.locales.map(locale => [locale, title]));
+    const netContent = { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 } as const;
+    const { release, activation } = buildCatalogReleaseDraftV3({ namespace: 'storefront-proof',
+      type: { key: definition.key, version: definition.version }, slug, name: title,
+      presentation: { title, name: presentation, description: presentation, mediaAlt: presentation, media: config.offer.products[0]!.media },
+      attributes: { private_sample: 'private fixture attribute' },
+      skus: finishes.map((finish, index) => ({ code: `ARTICLE-${finish.toUpperCase()}`, title: finish, primary: index === 0,
+        options: { finish: { kind: 'choice', value: finish } }, attributes: { finish },
+        netContent, grossMass: { ...netContent, unscaled: '120' },
+        identifiers: [{ scheme: 'gs1:gtin', issuer: 'fixture', value: catalogInternalGtin(2000 + index), packagingLevel: 'unit' }],
+        sell: { oneTime: true, subscription: false }, logisticsRef: `fixture:logistics/${finish}` })),
+    });
+    const active: CatalogDraftPayloadV4 = { ...activation.payload, schemaVersion: 4, publication: { ...activation.payload.publication,
+      operations: activation.payload.publication.operations.map(operation =>
+        operation.op === 'set_product_status' ? { op: 'set_product_lifecycle', productSlug: slug, expectedState: 'draft', state: 'active', children: [] }
+          : operation.op === 'set_sku_status' ? { op: 'set_sku_lifecycle', skuCode: operation.skuCode, expectedState: 'draft', state: 'active' } : operation),
+    } };
+    const commands = createPostgresCatalogPublicationCommands({ authorizeHuman: async id => id === actor
+      ? { ok: true, userId: actor, role: 'admin', isMachineActor: false } : { ok: false },
+    catalogPublicationOwner: { run: work => withOwner(owner, work) }, registry: createCatalogProductTypeRegistry(pack.types) });
+    const operator = (await commands.authorize(actor))!;
+    async function publish(payload: CatalogDraftPayloadV4, revision: number, expectedHead: CatalogHeadRef | null) {
+      const canonicalCommand = canonicalCatalogDraftJson({ schemaVersion: 4, action: revision === 1 ? 'create' : 'revise',
+        draftId, expectedRevision: revision - 1, commandKey: randomUUID(), payload });
+      const fingerprint = createHash('sha256').update(canonicalCommand).digest('hex');
+      const saved = await createPostgresCatalogDraftStoreV4(owner).apply({ canonicalCommand, fingerprint, actorId: actor });
+      expect(saved.outcome).toBe('committed');
+      const prepared = await commands.prepareCandidate({ draftId, draftRevision: revision, expectedHead }, operator);
+      if (!('candidateRef' in prepared) || !prepared.preparation?.postStateDigest) throw new Error(JSON.stringify(prepared));
+      const subject = { productId: payload.product.id, candidateRef: prepared.candidateRef, candidateDigest: prepared.candidateDigest };
+      expect((await commands.execute({ ...subject, action: 'approve', commandKey: randomUUID(),
+        postStateDigest: prepared.preparation.postStateDigest }, operator)).outcome).toBe('committed');
+      const published = await commands.execute({ ...subject, action: 'publish', commandKey: randomUUID(), expectedHead,
+        changes: revision === 2 ? active.skus.map(sku => ({ variantId: sku.id, expectedRevision: 1, state: 'active' })) : [] }, operator);
+      if (published.outcome !== 'committed' || !('head' in published.receipt)) throw new Error(JSON.stringify(published));
+      return published.receipt.head;
+    }
+    const head = await publish({ ...release.payload, schemaVersion: 4 }, 1, null);
+    const byId = new Map();
+    for (const [index, sku] of release.payload.skus.entries()) {
+      const price = 2400 + index;
+      await withOwner(owner, async db => {
+        await db.query('SET LOCAL ROLE authenticated');
+        await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor, role: 'authenticated' })]);
+        const result = await createCatalogPriceSetupHandler({ store: createPostgresCatalogPriceSetupStore(db),
+          authorizeOperator: async () => ({ actorId: actor }) }).apply({ schemaVersion: 1, commandKey: randomUUID(),
+          variantId: sku.id, priceListId: demoIdentifier(config, 'price-list', config.market.currency),
+          mode: 'one_time', minQty: 1, amountKind: 'gross', unitPriceMinor: price, expected: { entryId: null, unitPriceMinor: null } }, undefined);
+        expect(result.outcome).toBe('committed');
+      });
+      byId.set(sku.id, { sku: sku.code, title: finishes[index], price });
+    }
+    const activationHead = await publish(active, 2, head);
+    expect(activationHead.revision).toBe(2);
+    const ordered = [...byId.keys()].sort().map(id => byId.get(id) as Selection);
+    return { first: ordered[0]!, wanted: ordered[24]! };
+  } finally { await owner.end(); }
+}
+
+let fixture: Fixture, wanted: Selection, first: Selection;
+test.beforeAll(async ({ request, baseURL }, info) => {
+  const entries = JSON.parse(readFileSync('.context/care-browser/fixtures.json', 'utf8')) as Fixture[];
+  const selected = entries.find(row => row.id === info.project.name && row.baseURL === baseURL);
+  assert.ok(selected && selected.ownerUrl && selected.runtimeUrl && selected.state);
+  fixture = selected;
+  const empty = await (await action(request, fixture.baseURL, 'storefront.catalogue', {})).json();
+  expect(empty.ok).toBe(true);
+  assert.throws(() => assertSelection(empty, { sku: 'MISSING', title: '', price: 0 }));
+  ({ wanted, first } = await author(fixture));
+  assert.throws(() => assertSelection(empty, wanted));
+});
+
+test('lists and quotes the exact published SKU across browser widths', async ({ page, request }) => {
+  const config = configurations[fixture.id], base = fixture.baseURL, locale = config.market.defaultLocale;
+  const listing = await (await action(request, base, 'storefront.catalogue', {})).json();
+  const item = assertSelection(listing, wanted);
+  const candidate = structuredClone(listing);
+  candidate.value.products.find((product: StarterCatalogueItem) => product.sku === wanted.sku).attributes.private_sample = 'forbidden';
+  assert.throws(() => assertSelection(candidate, wanted));
+  const substituted = { ...listing, value: { products: [assertSelection(listing, first)] } };
+  assert.throws(() => assertSelection(substituted, wanted));
+  for (const width of [320, 1280]) {
+    await page.setViewportSize({ width, height: 850 });
+    await page.goto(base + routes.catalog[locale]);
+    await page.evaluate(configuration => localStorage.removeItem('neutral-store:cart:v1:' + configuration), config.id);
+    await page.reload();
+    const path = productPath(slug, locale);
+    await page.locator(`a[href="${path}?sku=${encodeURIComponent(first.sku)}"]`).click();
+    await page.getByRole('link', { name: wanted.title, exact: true }).click();
+    await expect(page).toHaveURL(base + path + '?sku=' + encodeURIComponent(wanted.sku));
+    await page.reload();
+    await expect(page.getByText(wanted.title + ' · ' + wanted.sku, { exact: true })).toBeVisible();
+    const money = new Intl.NumberFormat(locale, { style: 'currency', currency }).format(wanted.price / 100);
+    await expect(page.locator('.product-detail .price')).toHaveText(money);
+    await page.getByRole('spinbutton').fill(String(item.minQuantity));
+    await page.locator('.product-detail button').click();
+    await page.goto(base + routes.cart[locale]);
+    await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku })).toBeVisible();
+    await expect(page.getByRole('spinbutton')).toHaveValue(String(item.minQuantity));
+    const quoted = page.waitForResponse(response => response.url().endsWith('/api/actions/offer.validate')
+      && response.request().postDataJSON().cart.lines[0].sku === wanted.sku);
+    await page.reload();
+    await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku })).toBeVisible();
+    const quote = await (await quoted).json();
+    expect(quote.ok).toBe(true);
+    expect(quote.value.currency).toBe(currency);
+    expect(quote.value.lines).toEqual([{ sku: wanted.sku, quantity: 1, baseUnitMinor: wanted.price, unitMinor: wanted.price, lineMinor: wanted.price }]);
+  }
+  const db = new pg.Pool({ connectionString: fixture.runtimeUrl });
+  try {
+    const count = async () => (await db.query('SELECT count(*)::int AS n FROM public.commerce_orders')).rows[0]!.n;
+    const before = await count();
+    const result = await action(request, base, 'checkout.create', { configuration: config.id, country: config.market.country, locale,
+      termsAccepted: true, termsRevision: config.legal.revision, email: 'storefront-checkout@example.invalid',
+      firstName: 'Example', lastName: 'Buyer', phone: '00000', line1: '1 Example Lane', city: 'Example', postalCode: '00000',
+      cart: { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null, lines: [{ sku: wanted.sku, quantity: 1 }] },
+    });
+    expect(await result.json()).toMatchObject({ ok: false, code: 'catalog_admission_quote_authority_required' });
+    expect(await count()).toBe(before);
+  } finally { await db.end(); }
+});
+
+test('a disconnected mounted reader fails the same published selection', async ({ page, request }) => {
+  const probe = createServer().listen(0, '127.0.0.1');
+  await once(probe, 'listening');
+  const port = (probe.address() as { port: number }).port;
+  await new Promise<void>(done => probe.close(() => done()));
+  const baseURL = `http://127.0.0.1:${port}`;
+  const child = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-', '--configuration',
+    fixture.id, '--port', String(port), '--listen', '127.0.0.1'], { stdio: ['pipe', 'ignore', 'ignore'] });
+  child.stdin.end(`
+    import pg from 'pg';
+    import { createApplication } from './host/server.ts';
+    import { composeCatalogueStorefront } from './host/catalogue-storefront.ts';
+    import { pendingBindings } from './host/bindings.ts';
+    import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
+    const connectionString = 'postgres://127.0.0.1:1/unreachable_fixture';
+    const pool = new pg.Pool({ connectionString, connectionTimeoutMillis: 1000 });
+    const mounted = composeCatalogueStorefront(createPostgresRoleFreeTransactionLane({connectionString},{pool}));
+    const bindings = pendingBindings();
+    bindings.actions['storefront.catalogue'] = mounted.action;
+    const server = createApplication(bindings).listen(${port}, '127.0.0.1');
+    process.on('SIGTERM', async () => { server.close(); await pool.end(); });
+  `);
+  try {
+    await expect.poll(async () => (await request.get(baseURL + '/api/config').catch(() => null))?.status()).toBe(200);
+    const status = await (await action(request, baseURL, 'application.status', {})).json();
+    expect(status.value.bindings).toContainEqual(expect.objectContaining({ operation: 'storefront.catalogue', bound: true }));
+    const response = await action(request, baseURL, 'storefront.catalogue', {});
+    expect(response.status()).toBe(503);
+    const body = await response.json();
+    assert.throws(() => assertSelection(body, wanted));
+    const locale = configurations[fixture.id].market.defaultLocale;
+    await page.goto(baseURL + productPath(slug, locale) + '?sku=' + encodeURIComponent(wanted.sku));
+    await expect(page.getByText(body.code, { exact: true })).toBeVisible();
+    await expect(page.getByText(wanted.title + ' · ' + wanted.sku, { exact: true })).toHaveCount(0);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = once(child, 'exit');
+      child.kill('SIGTERM');
+      await exited;
+    }
+  }
+});

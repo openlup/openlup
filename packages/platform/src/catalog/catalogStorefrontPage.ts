@@ -6,8 +6,12 @@ import {
 } from "../pricing/index.js";
 import type { CatalogAttributeValue } from "./contracts/draftV2.js";
 import type { CatalogPublicationFacts } from "./contracts/draftV3.js";
-import type { CatalogOptionValue, CatalogQuantity } from "./contracts/productTypes.js";
+import { canonicalCatalogDraftJson } from "./contracts/draft.js";
+import type { AttributeDefinition } from "./contracts/attributes.js";
+import { isValidGtin } from "./contracts/foundation.js";
+import type { CatalogOptionValue, CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/productTypes.js";
 import { catalogPriceContextSchema } from "./foundationSchemas.js";
+import { isInternalGtin14 } from "./internalGtin.js";
 import { readPostgresCatalogMembershipPage, type CatalogDiscoveryRefusal, type CatalogMembershipCursor,
   type CatalogMembershipItem } from "./postgresPublicationDiscovery.js";
 import { catalogPublishedProductSchema, catalogPublishedSkuSchema } from "./publicationCodec.js";
@@ -71,7 +75,61 @@ export type CatalogStorefrontPageResult =
     products: CatalogStorefrontProduct[];
     nextCursor: CatalogMembershipCursor | null;
   }
-  | (CatalogDiscoveryRefusal & { message: string });
+  | (CatalogDiscoveryRefusal & { message: string; issue?: "offer_unpublished" });
+
+type PublishedSku = Pick<CatalogStorefrontSku, "skuCode" | "title" | "minQuantity" | "netContent" | "sell" | "price" | "attributes"> & {
+  primaryUnitIdentifier: (NonNullable<CatalogStorefrontSku["primaryUnitIdentifier"]> & { internal: boolean }) | null;
+};
+type PublishedProduct = Pick<CatalogStorefrontProduct, "slug" | "name" | "presentation" | "attributes"> & { skus: PublishedSku[] };
+
+/** A filtered public offer with its server-side continuation.
+ * @experimental
+ */
+export type PublishedCatalogOfferPage =
+  | { protocol: "legacy"; products: []; nextCursor: null }
+  | { protocol: "governed"; products: PublishedProduct[]; nextCursor: CatalogMembershipCursor | null };
+
+type InstalledDefinition = { type: Pick<CatalogProductTypeDefinition, "key" | "version" | "attributes">; digest: string };
+
+function verifiedAttributes(receipts: readonly InstalledDefinition[], seal: string | null): readonly AttributeDefinition[] {
+  const first = receipts[0];
+  if (!first || !/^[0-9a-f]{64}$/u.test(first.digest) || receipts.some(row => row.digest !== first.digest)) return [];
+  try {
+    const definitions = first.type.attributes ?? [];
+    const bytes = canonicalCatalogDraftJson(definitions);
+    if (receipts.some(row => canonicalCatalogDraftJson(row.type.attributes ?? []) !== bytes)) return [];
+    return seal === null || seal === first.digest ? definitions : [];
+  } catch { return []; }
+}
+
+function publicAttributes(values: CatalogStorefrontProduct["attributes"], definitions: readonly AttributeDefinition[], scope: AttributeDefinition["scope"]) {
+  return Object.fromEntries(definitions.filter(row => row.scope === scope && row.public === true && Object.hasOwn(values, row.key))
+    .map(({ key }) => [key, structuredClone(values[key])]));
+}
+
+/** Projects receipt-verified attributes and authored public presentation for outward use.
+ * @experimental
+ */
+export function projectPublishedCatalogOfferPage(page: Extract<CatalogStorefrontPageResult, { protocol: string }>,
+  installedDefinitions: readonly InstalledDefinition[]): PublishedCatalogOfferPage {
+  if (page.protocol === "legacy") return { protocol: "legacy", products: [], nextCursor: null };
+  const products = page.products.map(product => {
+    const { slug, name, presentation, typeRef, definitionDigest, attributes, skus } = product;
+    const receipts = installedDefinitions.filter(row => row.type.key === typeRef.key && row.type.version === typeRef.version);
+    const definitions = verifiedAttributes(receipts, definitionDigest);
+    return { slug, name, presentation: structuredClone(presentation), attributes: publicAttributes(attributes, definitions, "product"),
+      skus: skus.map(({ skuCode, title, minQuantity, netContent, primaryUnitIdentifier, sell, price, attributes }): PublishedSku => {
+        const identifier = primaryUnitIdentifier;
+        return { skuCode, title, minQuantity, netContent: { ...netContent }, sell: { ...sell },
+          price: structuredClone(price), attributes: publicAttributes(attributes, definitions, "variant"),
+          primaryUnitIdentifier: identifier && { scheme: identifier.scheme, issuer: identifier.issuer, value: identifier.value,
+            internal: identifier.scheme !== "gs1:gtin" || !isValidGtin(identifier.value) || isInternalGtin14(identifier.value.padStart(14, "0")) },
+        };
+      }),
+    };
+  });
+  return { protocol: "governed", products, nextCursor: page.nextCursor && { ...page.nextCursor } };
+}
 
 const offerVersion = z.string().min(1).max(240)
   .refine(value => value.trim() === value && !value.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(value));
@@ -106,7 +164,8 @@ function snapshotInput(input: CatalogStorefrontPageInput) {
   }
 }
 
-type Refusal = CatalogDiscoveryRefusal & { message: string };
+type Refusal = Extract<CatalogStorefrontPageResult, { outcome: string }>;
+const unpublished = z.strictObject({ kind: z.literal("refusal"), reason: z.literal("unknown_offer") });
 
 const fixes = {
   catalog_offer_memberships_page_input_invalid: "Use a published offer version and valid region, currency, channel and page size. Start without a cursor, then reuse the cursor returned for that offer.",
@@ -132,7 +191,7 @@ const missingPrice = new Set<CommercePriceAuthorityRefusal>([
   "active_price_list_not_found", "base_price_not_found", "legacy_subscription_price_not_found", "subscription_price_policy_not_effective",
 ]);
 
-function withFix(refusal: CatalogDiscoveryRefusal): Refusal {
+function withFix(refusal: Omit<Refusal, "message">): Refusal {
   if (Object.hasOwn(fixes, refusal.reason)) return { ...refusal, message: fixes[refusal.reason as keyof typeof fixes] };
   return unavailable("catalog_publication_read_unavailable");
 }
@@ -289,7 +348,7 @@ async function readPrice(authority: CommercePriceAuthorityPort, query: CommerceP
 }
 
 /** Reads published catalogue display data and current prices in one snapshot. Checkout resolves its own prices.
- * Product and SKU attributes are returned unfiltered. Before sending them to a browser, keep only the attributes your installed type definitions mark `public: true`.
+ * Use projectPublishedCatalogOfferPage before sending offer rows to outward consumers.
  * @experimental
  */
 export async function readPostgresCatalogStorefrontPage(
@@ -314,12 +373,17 @@ export async function readPostgresCatalogStorefrontPage(
       const atTime = windowTime(rows[0]?.at_time);
       if (!Number.isFinite(Date.parse(atTime))) throw new Error("Invalid PostgreSQL clock");
 
-      const membership = await readPostgresCatalogMembershipPage(db, { offerVersion, cursor: cursor ?? null, limit, mode: null });
+      let offerUnpublished = false;
+      const membership = await readPostgresCatalogMembershipPage({ async query(sql, values) {
+        const result = await db.query(sql, values);
+        offerUnpublished = result.rows.length === 1 && unpublished.safeParse(result.rows[0]?.result).success;
+        return result;
+      } }, { offerVersion, cursor: cursor ?? null, limit, mode: null });
       if ("outcome" in membership) {
         // The membership reader owns specific SQL refusals and also handles invalid evidence
         // returned as data. Preserve the original SQL error when it only returned a generic refusal.
         if (queryFailure && membership.reason === "catalog_publication_read_unavailable") throw queryFailure.error;
-        return withFix(membership);
+        return withFix(offerUnpublished && !cursor ? { ...membership, issue: "offer_unpublished" } : membership);
       }
       if (membership.protocol === "legacy") return { protocol: "legacy", products: [], nextCursor: null };
       const products = await readProjection(db, membership.items);

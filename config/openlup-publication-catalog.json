@@ -1590,6 +1590,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/catalogue-products.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/dev-loop.proof.ts",
       "class": "public-output"
     },
@@ -1791,6 +1795,10 @@
     },
     {
       "path": "examples/neutral-store/host/bindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/catalogue-storefront.ts",
       "class": "public-output"
     },
     {
@@ -2122,6 +2130,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/catalogue-presentation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/catalogue-products.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/config.ts",
       "class": "public-output"
     },
@@ -2203,6 +2219,10 @@
     },
     {
       "path": "examples/neutral-store/test/browser-groups.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-products.test.ts",
       "class": "public-output"
     },
     {
@@ -7227,10 +7247,6 @@
     },
     {
       "path": "packages/platform/src/marketing/seo/metadata.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/marketing/seo/restrictedCirculationNumber.ts",
       "class": "public-output"
     },
     {

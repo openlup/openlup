@@ -385,6 +385,24 @@ the SKUs remain in draft status. Set the prices and retry the same Publish
 request. If builder input is refused, correct the field in the error's `path`
 and call the builder again.
 
+## Project published offers for display
+
+On the server, read the experimental `readPostgresCatalogStorefrontPage` result
+and call `projectPublishedCatalogOfferPage` from `@openlup/platform/catalog`.
+Supply definition receipts verified against the installed builds for the exact
+type key and version. The projection exposes own attributes marked
+`public: true` for their exact product or variant scope. Missing, conflicting
+or unverifiable type evidence yields empty attribute maps.
+
+Everything authored in `product.presentation` becomes public copy. The
+projection carries it unchanged. The starter chooses the fields it displays
+from that copy. Continue the server read with the returned cursor, even when
+the current page produces no displayable SKUs.
+
+The projected primary identifier includes `internal`. Keep internal values as
+local references and omit them from external global GTIN fields. An external
+consumer verifies issuance before treating a global candidate as an issued GTIN.
+
 ## Products labelled in ml or pieces
 
 Use a `quantity` variant option in the unit on the label and supply the

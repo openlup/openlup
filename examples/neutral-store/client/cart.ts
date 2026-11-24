@@ -1,14 +1,17 @@
 import type { StoreConfig } from '../shared/config.ts';
-import { emptyCart, evaluateOffer, type Cart } from '../shared/offer.ts';
+import { emptyCart, parseCart, validateCart, type Cart } from '../shared/offer.ts';
+import type { StarterCatalogueItem } from '../shared/catalogue-products.ts';
 
 export interface BrowserCart {
   get(): Cart;
   set(cart: Cart): void;
   clear(): void;
+  reconcile(): void;
   close(): void;
 }
 
-export function createBrowserCart(config: StoreConfig, notice: (kind: 'storageUnavailable' | 'cartReset' | 'storageChanged') => void): BrowserCart {
+export function createBrowserCart(config: StoreConfig, notice: (kind: 'storageUnavailable' | 'cartReset' | 'storageChanged') => void,
+  products: () => readonly StarterCatalogueItem[] | undefined = () => config.offer.products): BrowserCart {
   const key = `neutral-store:cart:v1:${config.id}`;
   let current = emptyCart(config);
   let storage: Storage | null = null;
@@ -17,11 +20,13 @@ export function createBrowserCart(config: StoreConfig, notice: (kind: 'storageUn
   function read(raw: string | null): Cart {
     if (raw === null) return emptyCart(config);
     try {
-      const result = evaluateOffer(config, JSON.parse(raw));
+      const candidate: unknown = JSON.parse(raw), catalogue = products();
+      const parsed = parseCart(config.id, candidate);
+      if (parsed.ok && !catalogue && parsed.cart.lines.some(({ sku }) => !config.offer.products.some(item => item.sku === sku))) return parsed.cart;
+      const result = validateCart(config, candidate, 'checkout', catalogue);
       if (result.ok) return result.cart;
       if (result.selection) return result.selection;
       // An empty saved cart is valid application state, although it cannot be checked out.
-      const candidate: unknown = JSON.parse(raw);
       if (typeof candidate === 'object' && candidate !== null
         && 'configuration' in candidate && candidate.configuration === config.id
         && 'lines' in candidate && Array.isArray(candidate.lines) && candidate.lines.length === 0) {
@@ -44,6 +49,7 @@ export function createBrowserCart(config: StoreConfig, notice: (kind: 'storageUn
 
   return {
     get: () => structuredClone(current),
+    reconcile() { current = read(JSON.stringify(current)); },
     set(cart) {
       current = structuredClone(cart);
       try { storage?.setItem(key, JSON.stringify(current)); }
