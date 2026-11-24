@@ -1,11 +1,16 @@
 import type { PoolClient } from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { nativeHarness } from "../helpers/fulfillmentNative.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import {
   expectedRegistrationRefusal, registerRenewal, registrationAttachments, registrationParents,
   registrationRefusal, seedRegistration, type RegistrationParent,
 } from "./subscriptionRegistrationFixture.js";
+
+import {
+  activationEffects, callCommit, callEntry, callRepair, expectedActivationEffects,
+  seedCapturedActivation, type CapturedActivation,
+} from "./subscriptionActivationFixture.js";
 
 const database = nativeHarness("renewal-registration-locks");
 beforeAll(() => database.start(), postgresSetupTimeoutMs);
@@ -28,15 +33,20 @@ async function withBarrier<T>(
   parent: RegistrationParent, orderId: string, facts: unknown, barrier: number,
   observe: (db: PoolClient) => Promise<void>, complete: (result: ReturnType<typeof registerRenewal>) => Promise<T>,
 ) {
+  return withRowBarrier(rows[barrier]![1], orderId, b => registerRenewal(b, parent, orderId, facts), observe, complete);
+}
+
+async function withRowBarrier<T, R>(lock: string, key: string, call: (db: PoolClient) => Promise<R>,
+  observe: (db: PoolClient) => Promise<void>, complete: (result: Promise<R>) => Promise<T>) {
   const a = await database.pool.connect(), b = await database.pool.connect(), c = await database.pool.connect();
-  let result: ReturnType<typeof registerRenewal> | undefined;
+  let result: Promise<R> | undefined;
   try {
     await a.query("BEGIN");
-    expect((await a.query(rows[barrier]![1], [orderId])).rowCount).toBe(1);
+    expect((await a.query(lock, [key])).rowCount).toBe(1);
     await b.query("SET statement_timeout='15s'");
     const holder = (await a.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
     const caller = (await b.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
-    result = registerRenewal(b, parent, orderId, facts);
+    result = call(b);
     // Keep a rejected call observed while waiting for the lock.
     void result.catch(() => {});
     let blockers: number[] = [];
@@ -112,3 +122,71 @@ for (const parent of registrationParents) {
     expect(await registrationAttachments(database.pool, orderId)).toEqual(before);
   }, 25_000);
 }
+
+const activationLocks = {
+  order: rows[0][1],
+  activation: rows[1][1],
+  attachment: rows[2][1],
+  client: "SELECT id FROM public.clients WHERE id=$1 FOR UPDATE",
+  settlement: "SELECT id FROM public.commerce_settlement_intents WHERE id=$1 FOR UPDATE",
+};
+type ActivationRow = keyof typeof activationLocks;
+const entryBarriers = ["order", "activation", "settlement", "client", "attachment"] as const;
+const commitBarriers = ["client", "order", "activation", "attachment"] as const;
+const repairBarriers = ["activation", "client", "order", "attachment"] as const;
+const variants = [0, 1] as const;
+const activationPaths = [
+  ...variants.map(variant => ({ name: variant ? "Ew" : "E", barriers: entryBarriers, untouched: [],
+    call: (db: PoolClient, fixture: CapturedActivation) => callEntry(db, variant, fixture),
+    result: { state: "active", replayed: false }, repaired: false })),
+  ...variants.map(variant => ({ name: variant ? "Cw" : "C", barriers: commitBarriers, untouched: ["settlement" as const],
+    call: (db: PoolClient, fixture: CapturedActivation) => callCommit(db, variant, fixture),
+    result: { state: "active", repaired: false }, repaired: false })),
+  { name: "gap repair", barriers: repairBarriers, untouched: ["settlement" as const], call: callRepair,
+    result: { repaired: 1, overdue: 0 }, repaired: true },
+];
+const trace = [
+  ["subscriptions", "INSERT"], ["subscription_cycles", "INSERT"], ["commerce_orders", "UPDATE"],
+  ["subscription_activations", "UPDATE"], ["subscription_events", "INSERT"], ["subscription_renewal_attachments", "UPDATE"],
+] as const;
+
+describe("native activation transaction lock and write order", () => {
+  beforeAll(async () => {
+    await database.pool.query(`CREATE TABLE public.activation_trace (
+      position bigint GENERATED ALWAYS AS IDENTITY, relation_name text, operation text);
+      CREATE FUNCTION public.record_activation_trace() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        INSERT INTO public.activation_trace(relation_name,operation) VALUES(TG_TABLE_NAME,TG_OP);
+        RETURN NULL;
+      END; $$;`);
+    for (const [relation, operation] of trace) {
+      await database.pool.query(`CREATE TRIGGER activation_trace AFTER ${operation} ON public.${relation}
+        FOR EACH ROW EXECUTE FUNCTION public.record_activation_trace()`);
+    }
+  });
+
+  for (const path of activationPaths) {
+    it.each(path.barriers.slice())(`${path.name} holds exactly the rows before the %s barrier`, async barrier => {
+      const fixture = await seedCapturedActivation(database.pool);
+      await database.pool.query("INSERT INTO public.subscription_renewal_attachments(order_id) VALUES($1)", [fixture.orderId]);
+      await database.pool.query("TRUNCATE public.activation_trace");
+      const keys: Record<ActivationRow, string> = { order: fixture.orderId, activation: fixture.orderId,
+        attachment: fixture.orderId, settlement: fixture.intentId, client: fixture.clientId };
+      const barriers: readonly ActivationRow[] = path.barriers;
+      const index = barriers.indexOf(barrier);
+      await withRowBarrier(activationLocks[barrier], keys[barrier], b => path.call(b, fixture), async c => {
+        for (const name of [...barriers, ...path.untouched]) {
+          if (name === barrier) continue;
+          const position = barriers.indexOf(name);
+          expect(await probe(c, activationLocks[name], keys[name]), name)
+            .toEqual(position >= 0 && position < index ? { code: "55P03" } : { count: 1 });
+        }
+      }, async result => {
+        await expect(result).resolves.toMatchObject(path.result);
+      });
+      expect(await activationEffects(database.pool, fixture.orderId)).toEqual(expectedActivationEffects(path.repaired));
+      expect((await database.pool.query("SELECT relation_name,operation FROM public.activation_trace ORDER BY position")).rows)
+        .toEqual(trace.map(([relation_name, operation]) => ({ relation_name, operation })));
+    }, 25_000);
+  }
+});

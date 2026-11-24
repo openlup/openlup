@@ -87,8 +87,24 @@ it('complete immutable prefix 72 upgrades through 73/74, preserves rows/history 
   for(const unit of units.slice(0,73)){const path=join(root,unit.file);mkdirSync(dirname(path),{recursive:true});writeFileSync(path,readFileSync(unit.file));}
   mkdirSync(join(root,'config'));writeFileSync(join(root,'config/platform-migration-manifest.json'),JSON.stringify(prefix));await h.runner(db,root).apply();
   const f=await fixture(db);const before=(await db.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows;const rows=(await db.query('SELECT * FROM public.fulfillment_shipments WHERE id=$1',[f.shipment])).rows;
-  const oldAcl=(await db.query("SELECT oid,proacl::text FROM pg_proc WHERE pronamespace='public'::regnamespace ORDER BY oid")).rows;expect(before).toHaveLength(73);expect((await h.runner(db).apply()).applied).toEqual(units.slice(73).map(u=>u.file));
+  // D1b intentionally removes PUBLIC EXECUTE from the two base activation functions.
+  const activationSignatures = [
+   'public.subscription_activate_from_captured_payment(text,uuid,text)',
+   'public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)',
+  ];
+  const oldAcl = (await db.query(`SELECT oid,proacl::text FROM pg_proc
+    WHERE pronamespace='public'::regnamespace
+      AND NOT EXISTS (SELECT 1 FROM unnest($1::text[]) AS s(signature) WHERE to_regprocedure(s.signature)=pg_proc.oid)
+    ORDER BY oid`, [activationSignatures])).rows;
+  expect(before).toHaveLength(73);expect((await h.runner(db).apply()).applied).toEqual(units.slice(73).map(u=>u.file));
   expect((await db.query('SELECT * FROM public.platform_schema_migrations WHERE position<=72 ORDER BY position')).rows).toEqual(before);expect((await db.query('SELECT * FROM public.fulfillment_shipments WHERE id=$1',[f.shipment])).rows).toEqual(rows);expect((await db.query('SELECT oid,proacl::text FROM pg_proc WHERE oid=ANY($1::oid[]) ORDER BY oid',[oldAcl.map(row=>row.oid)])).rows).toEqual(oldAcl);
+  for (const signature of activationSignatures) {
+   expect((await db.query(`SELECT
+     ARRAY(SELECT ROW(a.grantee, a.privilege_type, a.is_grantable) FROM aclexplode(p.proacl) a ORDER BY a.grantee)
+       = ARRAY(SELECT ROW(r.oid, 'EXECUTE'::text, false) FROM pg_roles r
+         WHERE r.oid=p.proowner OR r.rolname='service_role' ORDER BY r.oid) AS matches
+     FROM pg_proc p WHERE p.oid=to_regprocedure($1)`, [signature])).rows, signature).toEqual([{ matches: true }]);
+  }
   expect(await h.runner(db).apply()).toEqual({applied:[]});expect((await h.runner(db).status()).pending).toEqual([]);expect((await db.query('SELECT mode FROM public.subscription_delivery_alignment_control')).rows).toEqual([{mode:'off'}]);
  }finally{await closePostgres(resource,db);rmSync(root,{recursive:true,force:true});}
 },60_000);
