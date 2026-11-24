@@ -3,14 +3,17 @@ import { createServer, request, type IncomingMessage, type Server, type ServerRe
 import { Pool } from "pg";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import {
+  qualifiedAdminPostgresCatalogPayload,
   qualifiedAdminPostgresStartupOptions,
+  qualifiedPostgresCatalogPayload,
   qualifiedPostgresStartupOptions,
   type QualifiedAdminPostgresInstallation,
   type QualifiedPostgresInstallation,
 } from "../../server/adapters/postgres/qualifiedInstall.js";
+import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "./postgresContainer.js";
 
-export type TemplateProfile = "legacy" | "qualified-v2" | "qualified-admin";
+export type TemplateProfile = "legacy" | "qualified-v2" | "qualified-v2-separate" | "qualified-admin";
 export type PgTemplateBrokerEndpoint = { url: string; token: string };
 export type PgTemplateLease = {
   id: string;
@@ -19,11 +22,16 @@ export type PgTemplateLease = {
   ownerUrl: string;
   migrationUrl: string;
   runtimeUrl: string;
+  restoreUrl: string;
+  migrationLogin: string;
+  runtimeLogin: string;
+  restoreLogin: string;
+  inventory: string;
   rolePassword: string;
   release(): Promise<void>;
 };
 
-const VALID_PROFILES = new Set<TemplateProfile>(["legacy", "qualified-v2", "qualified-admin"]);
+const VALID_PROFILES = new Set<TemplateProfile>(["legacy", "qualified-v2", "qualified-v2-separate", "qualified-admin"]);
 const ROLE_SNAPSHOT_SQL = `SELECT json_build_object(
   'roles', (SELECT coalesce(json_agg(r ORDER BY r.rolname), '[]'::json) FROM (
     SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls, rolconfig
@@ -83,6 +91,10 @@ type ClusterState = {
   container: PostgresContainer;
   bootstrap: Pool;
   rolePassword: string;
+  migrationLogin: string;
+  runtimeLogin: string;
+  restoreLogin: string;
+  inventory: string;
   baselineRoleDigest: string;
   ddlChain: Promise<unknown>;
   sequence: number;
@@ -139,17 +151,34 @@ export async function startPgTemplateBroker(): Promise<PgTemplateBroker> {
         bootstrap = new Pool({ connectionString: container.connectionString });
         pools.push(bootstrap);
         const rolePassword = randomBytes(16).toString("hex");
-        const m = "lifecycle_m", r = "lifecycle_r", s = "lifecycle_s";
+        const isSeparate = profile === "qualified-v2-separate";
+        const migrationLogin = profile === "qualified-admin"
+          ? "lifecycle_m"
+          : isSeparate
+            ? "transfer_owner"
+            : "postgres";
+        const runtimeLogin = profile === "legacy"
+          ? "postgres"
+          : isSeparate
+            ? "transfer_runtime"
+            : "lifecycle_r";
+        const restoreLogin = profile === "legacy"
+          ? "postgres"
+          : isSeparate
+            ? "transfer_restore"
+            : "lifecycle_s";
         if (profile === "qualified-admin") {
-          await bootstrap.query(`CREATE ROLE ${m} LOGIN NOINHERIT NOSUPERUSER CREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${rolePassword}'`);
+          await bootstrap.query(`CREATE ROLE ${migrationLogin} LOGIN NOINHERIT NOSUPERUSER CREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${rolePassword}'`);
+        } else if (isSeparate) {
+          await bootstrap.query(`CREATE ROLE ${migrationLogin} LOGIN INHERIT SUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${rolePassword}'`);
         }
         if (profile !== "legacy") {
-          for (const name of [r, s]) {
+          for (const name of [runtimeLogin, restoreLogin]) {
             await bootstrap.query(`CREATE ROLE ${name} LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${rolePassword}'`);
           }
         }
-        if (profile === "qualified-admin") {
-          await bootstrap.query(`CREATE DATABASE template_migrated OWNER ${m}`);
+        if (profile === "qualified-admin" || isSeparate) {
+          await bootstrap.query(`CREATE DATABASE template_migrated OWNER ${migrationLogin}`);
         } else {
           await bootstrap.query("CREATE DATABASE template_migrated");
         }
@@ -157,14 +186,13 @@ export async function startPgTemplateBroker(): Promise<PgTemplateBroker> {
           profile === "legacy"
             ? { generation: "legacy" }
             : {
-              generation: profile,
+              generation: profile === "qualified-admin" ? "qualified-admin" : "qualified-v2",
               roleMode: "installer-managed",
               bootstrapLogin: "postgres",
-              migrationLogin: profile === "qualified-admin" ? m : "postgres",
-              runtimeLogin: r,
-              restoreLogin: s,
+              migrationLogin,
+              runtimeLogin,
+              restoreLogin,
             };
-        const migrationLogin = installation.generation === "legacy" ? "postgres" : installation.migrationLogin;
         const templateUrl = withLogin(
           container.connectionString,
           "template_migrated",
@@ -180,10 +208,24 @@ export async function startPgTemplateBroker(): Promise<PgTemplateBroker> {
           connectionString: templateUrl,
           options: startupOptions ? `${startupOptions} -c timezone=UTC` : "-c timezone=UTC",
         });
+        let inventory = "";
         try {
           const runner = createPostgresMigrationRunner(
             { connectionString: templateUrl },
-            { root: process.cwd(), installation, poolFactory: () => migrationPool },
+            {
+              root: process.cwd(),
+              installation,
+              poolFactory: () => migrationPool,
+              catalogProjectionPayload: async client => {
+                const payload = installation.generation === "qualified-v2"
+                  ? await qualifiedPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
+                  : installation.generation === "qualified-admin"
+                    ? await qualifiedAdminPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
+                    : selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client));
+                inventory = createHash("sha256").update(payload).digest("hex");
+                return payload;
+              },
+            },
           );
           await runner.apply();
         } finally {
@@ -198,6 +240,10 @@ export async function startPgTemplateBroker(): Promise<PgTemplateBroker> {
           container,
           bootstrap,
           rolePassword,
+          migrationLogin,
+          runtimeLogin,
+          restoreLogin,
+          inventory,
           baselineRoleDigest,
           ddlChain: Promise.resolve(),
           sequence: 0,
@@ -234,41 +280,65 @@ export async function startPgTemplateBroker(): Promise<PgTemplateBroker> {
         }
         const label = typeof body.label === "string" ? body.label : undefined;
         const cluster = await ensureCluster(profile);
-        const leased = await enqueueDdl(cluster, async () => {
+        const dbName = await enqueueDdl(cluster, async () => {
           if (closed) throw new Error("pg_template_broker_closed");
-          const dbName = `cl_${++cluster.sequence}${sanitizeLabel(label)}`;
-          const ownerClause = profile === "qualified-admin" ? " OWNER lifecycle_m" : "";
-          await cluster.bootstrap.query(`CREATE DATABASE "${dbName}" TEMPLATE template_migrated${ownerClause}`);
-          // Rotate acquisition_private.installation_key as bootstrap superuser so every clone
-          // has an independent installation key (works even when lifecycle_m is NOSUPERUSER).
-          const cloneBootstrapUrl = withLogin(cluster.container.connectionString, dbName, "postgres");
-          const cloneBootstrap = new Pool({ connectionString: cloneBootstrapUrl });
-          try {
-            const hasKey = (await cloneBootstrap.query<{ exists: boolean }>(
-              "SELECT to_regclass('acquisition_private.installation_key') IS NOT NULL AS exists",
-            )).rows[0]?.exists;
-            if (hasKey) {
-              await cloneBootstrap.query(`UPDATE acquisition_private.installation_key
-                SET key_bytes = pg_catalog.decode(pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', '') || pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', ''), 'hex'),
-                    created_at = pg_catalog.clock_timestamp()
-                WHERE singleton`);
-            }
-          } finally {
-            cloneBootstrap.on("error", () => {});
-            await cloneBootstrap.end();
-          }
-          const id = randomBytes(12).toString("hex");
-          leases.set(id, { id, profile, dbName });
-          const ownerUrl = cloneBootstrapUrl;
-          const migrationUrl = profile === "qualified-admin"
-            ? withLogin(cluster.container.connectionString, dbName, "lifecycle_m", cluster.rolePassword)
-            : ownerUrl;
-          const runtimeUrl = profile === "legacy"
-            ? ownerUrl
-            : withLogin(cluster.container.connectionString, dbName, "lifecycle_r", cluster.rolePassword);
-          return { id, profile, dbName, ownerUrl, migrationUrl, runtimeUrl, rolePassword: cluster.rolePassword };
+          const created = `cl_${++cluster.sequence}${sanitizeLabel(label)}`;
+          const ownerClause = cluster.migrationLogin !== "postgres" ? ` OWNER ${cluster.migrationLogin}` : "";
+          await cluster.bootstrap.query(`CREATE DATABASE "${created}" TEMPLATE template_migrated${ownerClause}`);
+          return created;
         });
-        send(200, leased);
+        // Rotate acquisition_private.installation_key outside ddlChain so concurrent
+        // clones do not serialize on per-database key updates while CREATE DATABASE runs.
+        const cloneBootstrapUrl = withLogin(cluster.container.connectionString, dbName, "postgres");
+        const cloneBootstrap = new Pool({ connectionString: cloneBootstrapUrl });
+        try {
+          const hasKey = (await cloneBootstrap.query<{ exists: boolean }>(
+            "SELECT to_regclass('acquisition_private.installation_key') IS NOT NULL AS exists",
+          )).rows[0]?.exists;
+          if (hasKey) {
+            await cloneBootstrap.query(`UPDATE acquisition_private.installation_key
+              SET key_bytes = pg_catalog.decode(pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', '') || pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', ''), 'hex'),
+                  created_at = pg_catalog.clock_timestamp()
+              WHERE singleton`);
+          }
+        } catch (error) {
+          cloneBootstrap.on("error", () => {});
+          await cloneBootstrap.end().catch(() => {});
+          await enqueueDdl(cluster, async () => {
+            if (!closed && !cluster.bootstrap.ended) {
+              await cluster.bootstrap.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`).catch(() => {});
+            }
+          });
+          throw error;
+        }
+        cloneBootstrap.on("error", () => {});
+        await cloneBootstrap.end();
+        const id = randomBytes(12).toString("hex");
+        leases.set(id, { id, profile, dbName });
+        const ownerUrl = cloneBootstrapUrl;
+        const migrationUrl = cluster.migrationLogin === "postgres"
+          ? ownerUrl
+          : withLogin(cluster.container.connectionString, dbName, cluster.migrationLogin, cluster.rolePassword);
+        const runtimeUrl = cluster.runtimeLogin === "postgres"
+          ? ownerUrl
+          : withLogin(cluster.container.connectionString, dbName, cluster.runtimeLogin, cluster.rolePassword);
+        const restoreUrl = cluster.restoreLogin === "postgres"
+          ? ownerUrl
+          : withLogin(cluster.container.connectionString, dbName, cluster.restoreLogin, cluster.rolePassword);
+        send(200, {
+          id,
+          profile,
+          dbName,
+          ownerUrl,
+          migrationUrl,
+          runtimeUrl,
+          restoreUrl,
+          migrationLogin: cluster.migrationLogin,
+          runtimeLogin: cluster.runtimeLogin,
+          restoreLogin: cluster.restoreLogin,
+          inventory: cluster.inventory,
+          rolePassword: cluster.rolePassword,
+        });
         return;
       }
       if (req.method === "POST" && req.url === "/release") {
@@ -413,6 +483,11 @@ export async function leaseFromEndpoint(
     ownerUrl: String(payload.ownerUrl),
     migrationUrl: String(payload.migrationUrl),
     runtimeUrl: String(payload.runtimeUrl),
+    restoreUrl: String(payload.restoreUrl ?? ""),
+    migrationLogin: String(payload.migrationLogin ?? ""),
+    runtimeLogin: String(payload.runtimeLogin ?? ""),
+    restoreLogin: String(payload.restoreLogin ?? ""),
+    inventory: String(payload.inventory ?? ""),
     rolePassword: String(payload.rolePassword),
     async release() {
       if (released) return;
@@ -426,6 +501,17 @@ export async function leaseFromEndpoint(
       }
     },
   };
+}
+
+/** Return true when running inside a Vitest worker with the run-scoped template broker available. */
+export async function hasPgTemplateBroker(): Promise<boolean> {
+  try {
+    const vitest = await import("vitest");
+    const endpoint = vitest.inject("pgTemplateBroker");
+    return Boolean(endpoint?.url && endpoint?.token);
+  } catch {
+    return false;
+  }
 }
 
 /** Attempt to lease a cloned database from the Vitest run-scoped broker, or return null outside Vitest. */
