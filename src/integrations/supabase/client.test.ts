@@ -17,10 +17,12 @@ describe("supabase client", () => {
   });
 
   it("creates the Supabase client with admin-only URL session detection", async () => {
-    const { supabase, shouldDetectAdminSessionInUrl } = await import("./client");
+    const { supabase, getAdminSupabase, shouldDetectAdminSessionInUrl, createAdminSessionUrlDetector } = await import("./client");
 
     expect(supabase).toEqual({ mocked: true });
+    expect(getAdminSupabase()).toBe(supabase);
     expect(shouldDetectAdminSessionInUrl(new URL("https://openlup.test/admin/auth/callback"))).toBe(true);
+    expect(createAdminSessionUrlDetector("/ops/callback")(new URL("https://openlup.test/ops/callback"))).toBe(true);
     expect(shouldDetectAdminSessionInUrl(new URL("https://openlup.test/konto/auth/callback"))).toBe(false);
     expect(mockCreateClient).toHaveBeenCalledTimes(1);
     expect(mockCreateClient).toHaveBeenCalledWith(
