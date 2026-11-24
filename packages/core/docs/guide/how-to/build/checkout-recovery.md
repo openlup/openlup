@@ -126,10 +126,10 @@ the durable sweep marker together with compensated activation.
 
 ## Install reminder stages and hours
 
-Use `installCheckoutRecoveryReminderSchedule` and `readCheckoutRecoveryReminderSchedule`
-in `@openlup/platform/commerce/server`, with the
+Use `installCheckoutRecoveryReminderSchedule`, `readCheckoutRecoveryReminderSchedule`
+and `CheckoutRecoveryScheduleChangeBlockedError` in `@openlup/platform/commerce/server`, with the
 `CheckoutRecoveryReminderSchedule` type in `@openlup/platform/commerce/contracts`.
-Apply the complete native catalogue, including the episode pin forward. Install
+Apply the complete native catalogue, including the reminder installation outcome forward. Install
 explicitly on your write-capable installation connection. The
 `checkout_recovery_reminders` commerce setting contains a
 nonblank `revision` and two nonempty arrays: `abandonedCart` admits `first`,
@@ -215,14 +215,17 @@ require an order in `pending_payment` and no pin for the wave's kind:
 A pin for one kind exempts only that kind. If neither predicate matches any
 order, the guard allows the changed install.
 
-When the guard refuses, PostgreSQL returns SQLSTATE `55000` and the message
-`checkout_recovery_schedule_change_blocked_open_episodes (N blocking orders)`.
-The separate `HINT` says the current schedule stays in effect and tells you when
-to retry. `installCheckoutRecoveryReminderSchedule` propagates the original
-database error with its code, message and hint. For this installation refusal,
-the updated starter's `./lifecycle up` shows the database message and count on
-stderr, followed by the retry hint on one line. The outer command also reports
-`starter_installation_failed`.
+Check this installer refusal with
+`error instanceof CheckoutRecoveryScheduleChangeBlockedError`. Use
+`error.blockingOrders` to display the count as a decimal string. The fixed
+message is `checkout_recovery_schedule_change_blocked_open_episodes`, and
+the original PostgreSQL error is available as `error.cause`. Direct SQL calls
+retain SQLSTATE `55000`, the count in the message and the retry hint. Older
+schemas without the outcome forward still return the original driver error.
+After either refusal, roll back an explicit transaction before retrying.
+
+For the named refusal, the starter's `./lifecycle up` reports the count, the
+affected `checkoutRecoveryReminders` configuration and when to try again.
 
 The current schedule stays in effect. Retry after the blocking orders are paid
 or cancelled. An abandoned cart also stops blocking when all its draft receipts

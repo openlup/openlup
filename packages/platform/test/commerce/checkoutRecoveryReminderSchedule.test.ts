@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule } from '../../src/commerce/server/checkoutRecoveryReminderSchedule.js';
+import * as commerceServer from '../../src/commerce/server/index.js';
 import { createCheckoutRecoveryContentFactory } from '../../src/communications/contracts/checkoutRecovery.js';
 import { createAbandonedCartContentFactory } from '../../src/communications/contracts/abandonedCart.js';
 import { createOutboxCheckoutRecoveryEmailHandler } from '../../src/commerce/server/outboxCheckoutRecoveryEmailHandler.js';
@@ -9,6 +10,41 @@ import type { OutboxEventRow } from '@openlup/core/outbox';
 const defaults = { revision: 'default',
   abandonedCart: [{ stage: 'first', afterHours: 1 }, { stage: 'gentle', afterHours: 24 }, { stage: 'last', afterHours: 72 }],
   checkoutRecovery: [{ stage: 'first', afterHours: 1 }, { stage: 'last', afterHours: 20 }] } as const;
+const blockedSchedule = 'checkout_recovery_schedule_change_blocked_open_episodes';
+const detailPrefix = 'openlup:reminder_schedule:blocking_orders=';
+const refusal = (count: string, detail: string | undefined = detailPrefix + count, code = '55000') =>
+  Object.assign(new Error(`${blockedSchedule} (${count} blocking orders)`), { code, detail });
+
+it.each(['1', '9223372036854775807'])('decodes a blocked reminder schedule with count %s', async count => {
+  const driver = refusal(count);
+  const query = vi.fn().mockRejectedValueOnce(driver).mockResolvedValueOnce({ rows: [] });
+  const error = await installCheckoutRecoveryReminderSchedule({ query }, defaults).catch((failure: unknown) => failure);
+  expect(error).toMatchObject({ name: 'CheckoutRecoveryScheduleChangeBlockedError', message: blockedSchedule, blockingOrders: count });
+  expect(Object.getPrototypeOf(error)).toBe(Reflect.get(commerceServer, 'CheckoutRecoveryScheduleChangeBlockedError').prototype);
+  expect(Object.getOwnPropertyDescriptor(error, 'cause')).toMatchObject({ enumerable: false });
+  expect((error as Error).cause).toBe(driver);
+  await expect(installCheckoutRecoveryReminderSchedule({ query }, defaults)).resolves.toBeUndefined();
+  expect(query.mock.calls[0]).toEqual(query.mock.calls[1]);
+});
+
+it.each([
+  ...['0', '9223372036854775808', '+1', '-1', '01', ' 1', '1 ', '1\n2', '1\n', '1extra', ''].map(count => refusal(count)),
+  Object.assign(refusal('1'), { detail: undefined }),
+  refusal('1', 'some other detail'),
+  refusal('1', detailPrefix + '1', '22023'),
+  Object.assign(new Error('another guard'), { code: '55000' }),
+  Object.assign(new Error('connection lost'), { code: '08006' }),
+])('preserves an unrecognized reminder rejection by identity: %s', async driver => {
+  const query = vi.fn().mockRejectedValue(driver);
+  await expect(installCheckoutRecoveryReminderSchedule({ query }, defaults)).rejects.toBe(driver);
+});
+
+it('installs the largest admitted reminder hour without changing the binding', async () => {
+  const query = vi.fn().mockResolvedValue({ rows: [] });
+  const schedule = { ...defaults, checkoutRecovery: [{ stage: 'last', afterHours: 2147483647 }] } as const;
+  await installCheckoutRecoveryReminderSchedule({ query }, schedule);
+  expect(query.mock.calls[0]?.[1]).toEqual(['checkout_recovery_reminders', JSON.stringify(schedule)]);
+});
 const malformedSchedules: unknown[] = [null, [], {}, { ...defaults, revision: '' }, { ...defaults, revision: ' \t' },
   { ...defaults, extra: true }, { ...defaults, abandonedCart: [] }, { ...defaults, checkoutRecovery: null },
   ...[0, -1, 1.5, '20', null, 2147483648, Infinity].map(afterHours => ({ ...defaults, checkoutRecovery: [{ stage: 'last', afterHours }] })),
