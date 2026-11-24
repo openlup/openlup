@@ -329,7 +329,7 @@ No recipe is listed as `verified` in `recipes/index.json` unless its test suite 
 ### Recipe compatibility and ownership
 
 - Merchants adopt recipes through source ownership: they copy a recipe into their repository's `owned/` adapter tree and verify it against their installed `@openlup/platform` version (`openlup recipe verify`).
-- `recipes/index.json` records the exact `@openlup/platform` version each recipe passed conformance against. A recipe that fails against a newer platform release flips to `unverified-for-<version>` instead of silently claiming compatibility.
+- `recipes/index.json` records, in `testedAgainstPlatformVersion`, the exact `@openlup/platform` version each recipe passed conformance against. A recipe that fails against a newer platform release takes the status `unverified-for-version` instead of silently claiming compatibility.
 
 ### Recipe contract enforcement
 
