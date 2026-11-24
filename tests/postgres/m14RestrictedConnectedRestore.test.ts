@@ -91,6 +91,35 @@ async function install(shape: Shape, mode: Mode, label: string, apply = true): P
   } catch (error) { await closePostgres(container, pools); throw error; }
 }
 
+// Bounds source/target provisioning to two concurrent containers per test and
+// tears down any fulfilled container before rethrowing a partial setup failure.
+async function installPair(shape: Shape, mode: Mode, sourceLabel: string, targetLabel: string): Promise<[Installed, Installed]> {
+  const [sourceResult, targetResult] = await Promise.allSettled([
+    install(shape, mode, sourceLabel),
+    install(shape, mode, targetLabel),
+  ]);
+  if (sourceResult.status === "fulfilled" && targetResult.status === "fulfilled") {
+    return [sourceResult.value, targetResult.value];
+  }
+  const containers: PostgresContainer[] = [];
+  const pools: Pool[] = [];
+  for (const result of [sourceResult, targetResult]) {
+    if (result.status === "fulfilled") {
+      containers.push(result.value.container);
+      pools.push(...result.value.pools);
+    }
+  }
+  const setupError = sourceResult.status === "rejected" ? sourceResult.reason : (targetResult as PromiseRejectedResult).reason;
+  if (containers.length > 0) {
+    try {
+      await closePostgres(containers, pools);
+    } catch (cleanupError) {
+      throw new AggregateError([setupError, cleanupError], "Restricted restore pair setup and cleanup failed");
+    }
+  }
+  throw setupError;
+}
+
 async function withAcquisitionOwnerWindow<T>(installed: Installed, work: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await installed.owner.connect();
   try {
@@ -182,7 +211,8 @@ async function cancellationRows(owner: Pool, subscriptionId: string) {
     FROM public.subscriptions s WHERE s.id=$1`, [subscriptionId])).rows;
 }
 
-it.each(["installer-managed", "operator-provisioned"] as const)("cx1r_feedback_native_admission_and_replay (%s)", async mode => {
+// Only two independent single-container cases; Vitest drains them before the next serial test.
+it.concurrent.each(["installer-managed", "operator-provisioned"] as const)("cx1r_feedback_native_admission_and_replay (%s)", async mode => {
   const source = await install("neon", mode, "cancel-feedback");
   try {
     const runtime = feedbackRuntime(source);
@@ -337,8 +367,7 @@ it("cx1r_feedback_retries_when_winner_is_deleted", async () => {
 }, postgresSetupTimeoutMs);
 
 it("cx1r_feedback_full_store_round_trip", async () => {
-  const source = await install("neon", "operator-provisioned", "feedback-source");
-  let target: Installed | undefined;
+  const [source, target] = await installPair("neon", "operator-provisioned", "feedback-source", "feedback-target");
   try {
     const sourceRuntime = feedbackRuntime(source);
     const { event, client, command, receipt } = await cancelSubscription(source.owner, sourceRuntime);
@@ -370,7 +399,6 @@ it("cx1r_feedback_full_store_round_trip", async () => {
       packet: { ...publicBody, sha256: packetDigest(publicBody) },
     })).rejects.toMatchObject({ code: "unsupported_table" });
 
-    target = await install("neon", "operator-provisioned", "feedback-target");
     const freshTarget = await capture(target, "cancel-feedback-fresh-target");
     const input = { owner: target.owner, installation: target.selection, packet, freshTarget };
     const changed = structuredClone(packet);
@@ -389,8 +417,7 @@ it("cx1r_feedback_full_store_round_trip", async () => {
     expect(restored.owned.find(entry => entry.table === "subscription_command_receipts")).toEqual(sourceReceipts);
     expect(restored.compatible.tables.find(entry => entry.table === "subscription_events")).toEqual(sourceEvents);
   } finally {
-    if (target) await closePostgres(target.container, target.pools);
-    await closePostgres(source.container, source.pools);
+    await closePostgres([target.container, source.container], [...target.pools, ...source.pools]);
   }
 }, 245_000);
 
@@ -456,10 +483,8 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
   }, postgresSetupTimeoutMs);
   it(`restores a connected native graph through ${shape}-shaped ${mode} admission`, async () => {
     if (!await dockerAvailable()) throw new Error("Restricted restore requires disposable PostgreSQL 16");
-    let source: Installed | undefined, target: Installed | undefined;
+    const [source, target] = await installPair(shape, mode, "source", "target");
     try {
-      source = await install(shape, mode, "source");
-      target = await install(shape, mode, "target");
       const { rows: [subscription] } = await source.owner.query<{ id: string }>(`WITH client AS (
         INSERT INTO public.clients(email,lifecycle_stage) VALUES('restricted@example.invalid','lead') RETURNING id
       )
@@ -528,14 +553,13 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       expect(await keyIdentity(target)).toEqual(beforeKey);
       await expect(restoreConnectedNativeStore({ ...input, freshTarget: packet })).rejects.toMatchObject({ code: "invalid_input" });
       const restoreLogin = new Pool({ connectionString: (() => {
-        const url = new URL(target!.container.connectionString); url.username = target!.selection.restoreLogin; return url.toString();
+        const url = new URL(target.container.connectionString); url.username = target.selection.restoreLogin; return url.toString();
       })() });
       target.pools.push(restoreLogin);
       await expect(restoreLogin.query("UPDATE public.clients SET email='forbidden@example.invalid'")).rejects.toMatchObject({ code: "42501" });
       await expect(restoreLogin.query("SELECT * FROM acquisition_private.installation_key")).rejects.toMatchObject({ code: "42501" });
     } finally {
-      if (target) await closePostgres(target.container, target.pools);
-      if (source) await closePostgres(source.container, source.pools);
+      await closePostgres([target.container, source.container], [...target.pools, ...source.pools]);
     }
   // About 4x the slowest hosted run (60,506 ms), rounded up to 5 s.
   }, 245_000);
