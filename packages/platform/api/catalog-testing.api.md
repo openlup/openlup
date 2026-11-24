@@ -45,6 +45,20 @@ export declare function withCatalogAdmissionFence<T, Connection extends FenceCon
     /** Locks only, on the writer after the key advisory lock and before receipt locking. */
     prelock?: (writer: FenceLockWriter) => Promise<void>;
 }): Promise<T>;
+type FenceInput = {
+    key: string;
+    clientId: string;
+    timeoutMs: number;
+};
+type SelectedScope = {
+    skuIds: readonly [string, string];
+    skuRevisionId: string;
+    priceListId: string;
+};
+/** The server supplies scope only for an evaluation covered by these guards.
+ * @internal
+ */
+export declare function withSelectedCatalogAdmissionFence<T, Connection extends FenceConnection>(pool: FencePool<Connection>, input: FenceInput, scope: SelectedScope | undefined, read: (db: FenceLockWriter, effectInstant: string, receiptPresent: boolean) => Promise<T>, authorizeFresh: () => void): Promise<T>;
 export {};
 ```
 ## dist/catalog/catalogOwnerQuote.d.ts

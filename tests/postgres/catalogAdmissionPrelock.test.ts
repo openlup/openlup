@@ -1941,9 +1941,13 @@ it.each(componentGuards.flatMap(guard => phases.map(phase => ({ ...guard, phase 
     const pool = pair(undefined, async (index, sql) => {
       if (scenario.phase === "before probe" && index === 1 && sql.startsWith("WITH snap")) await conflict();
     }, runtime);
-    await withSelectedCatalogAdmissionFence(pool, request, guards, async () => {
+    const outcome = await withSelectedCatalogAdmissionFence(pool, request, guards, async () => {
       if (scenario.phase === "after probe") await conflict();
-    }, noAuthorizationRefusal);
+    }, noAuthorizationRefusal).catch(error => error);
+    if (outcome !== undefined) {
+      expect(scenario.phase).toBe("before probe");
+      expectFenceError(outcome, { message: visibility, code: "40001", hint: sameKey });
+    }
     expect(conflict).toHaveBeenCalledTimes(1);
     await transaction(installation.owner, mutate);
   }, setupTimeout * 2);
@@ -1977,7 +1981,9 @@ it("keeps a real Stage B revision out until the selected crossing releases its c
   const pool = pair(undefined, async (index, sql) => {
     if (index === 1 && sql.startsWith("WITH snap")) await attempt();
   }, installation.runtime);
-  await withSelectedCatalogAdmissionFence(pool, request, guards, attempt, noAuthorizationRefusal);
+  const beforeProbe = await withSelectedCatalogAdmissionFence(pool, request, guards, async () => {}, noAuthorizationRefusal).catch(error => error);
+  if (beforeProbe !== undefined) expectFenceError(beforeProbe, { message: visibility, code: "40001", hint: sameKey });
+  await withSelectedCatalogAdmissionFence(installation.runtime, request, guards, attempt, noAuthorizationRefusal);
   expect(await api.execute(command, actor)).toMatchObject({ outcome: "committed" });
 });
 

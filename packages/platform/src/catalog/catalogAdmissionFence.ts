@@ -202,7 +202,9 @@ const dispatchSelected = "SELECT public.catalog_admission_runtime_checkout($1::t
 const canonicalUuid = (value: unknown) => typeof value === "string" && value.length === 36 &&
   /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(value);
 
-/** The server supplies scope only for an evaluation covered by these guards. */
+/** The server supplies scope only for an evaluation covered by these guards.
+ * @internal
+ */
 export async function withSelectedCatalogAdmissionFence<T, Connection extends FenceConnection>(
   pool: FencePool<Connection>, input: FenceInput, scope: SelectedScope | undefined,
   read: (db: FenceLockWriter, effectInstant: string, receiptPresent: boolean) => Promise<T>,
