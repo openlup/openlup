@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { InvoiceProviderPort } from '@openlup/platform/invoicing';
+import type { InvoiceProviderPort } from '@openlup/platform/invoicing/contracts';
 import { createOwnedInvoiceProvider } from './invoice-provider.ts';
 
 test('createOwnedInvoiceProvider defaults to zero-credential native unsupported refusals', () => {
@@ -11,18 +11,24 @@ test('createOwnedInvoiceProvider defaults to zero-credential native unsupported 
 });
 
 test('createOwnedInvoiceProvider mounts a valid InvoiceProviderPort implementation', () => {
+  const unsupported = {
+    kind: 'unsupported' as const,
+    code: 'unsupported' as const,
+    retryable: false as const,
+    effectMayHaveSucceeded: false as const,
+  };
   const stubProvider: InvoiceProviderPort = {
     async issue() {
-      return { kind: 'refused', code: 'provider_unavailable', retryable: false };
+      return unsupported;
     },
     async correct() {
-      return { kind: 'refused', code: 'provider_unavailable', retryable: false };
+      return unsupported;
     },
     async read() {
-      return { kind: 'unsupported', code: 'readback_unsupported' };
+      return unsupported;
     },
     async void() {
-      return { kind: 'unsupported', code: 'remote_void_unsupported' };
+      return unsupported;
     },
   };
   const composed = createOwnedInvoiceProvider({ provider: stubProvider });

@@ -22,7 +22,7 @@ test('createOwnedEmailTransport wraps an external provider transport with policy
     providerKind: 'stub_email',
     async send() {
       return {
-        outcome: { ok: true, resendId: 'msg_test_001', providerError: null },
+        outcome: { ok: true, resendId: 'msg_test_001', providerError: null, httpStatus: 200, aborted: false },
         providerResponse: { id: 'msg_test_001' },
       };
     },

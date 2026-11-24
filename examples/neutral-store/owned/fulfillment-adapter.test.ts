@@ -30,13 +30,23 @@ function buildStubFulfillmentAdapter(providerRef: string): FulfillmentProviderAd
       readiness: { ready: true },
       ownsDeliveredNotification: false,
       stockAuthority: 'local_atp',
+      labelReadOwner: 'none',
+      actionPolicy: {
+        providerSpecificAdminActions: false,
+        genericAdminActions: true,
+        mutationSurface: 'provider_adapter',
+      },
     },
     dispatch: {
       async prepare() {
-        return { kind: 'refused', code: 'not_configured', retryable: false };
+        return { kind: 'refused', refusal: { reason: 'not_ready', phase: 'prepare', retryable: false } };
       },
       async dispatch() {
-        return { kind: 'refused', code: 'not_configured', retryable: false };
+        return {
+          kind: 'not_dispatched',
+          effectMayHaveSucceeded: false,
+          refusal: { reason: 'not_ready', phase: 'dispatch', retryable: false },
+        };
       },
     },
   };

@@ -1,7 +1,5 @@
-import {
-  createNativeUnsupportedInvoicePorts,
-  type InvoiceProviderPort,
-} from '@openlup/platform/invoicing';
+import { createNativeUnsupportedInvoicePorts } from '@openlup/platform/invoicing';
+import type { InvoiceProviderPort } from '@openlup/platform/invoicing/contracts';
 
 export type NativeUnsupportedInvoicePorts = ReturnType<typeof createNativeUnsupportedInvoicePorts>;
 
