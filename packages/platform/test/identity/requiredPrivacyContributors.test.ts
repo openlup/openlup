@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPrivacyOperations, isNativePrivacyOperations, PrivacyRefusal,
-  type PersonalDataContributor, type PrivacyStore } from "../../src/identity/index.js";
+  type PersonalDataContributor, type PrivacyStore, type PrivacyUseCaseDependencies } from "../../src/identity/index.js";
 import type { PgQueryExecutor } from "../../src/data/index.js";
 
 const id = "11111111-1111-4111-8111-111111111111";
@@ -54,6 +54,25 @@ it("observes an appended required owner on the same operations before touching a
   const repaired = create([...owners, contributor("destination-documents")]);
   await expect(repaired.export(actor, subject)).resolves.toMatchObject({ missingContributors: [] });
   await expect(repaired.erase(actor, input)).resolves.toMatchObject({ outcome: "ERASED" });
+});
+
+it.each(["export", "erase"] as const)("keeps native %s guarded after the caller reassigns the store", async operation => {
+  const { store, unitOfWork, owners } = composition();
+  const deps: PrivacyUseCaseDependencies<null> = {
+    store, unitOfWork, registry: createPersonalDataContributorRegistry(owners, { requiredContributorIds: [] }),
+    now: () => new Date(0), randomId: () => id,
+  };
+  const guarded = createPrivacyOperations(deps);
+  const fallbackResolve = vi.fn(store.resolve.getMockImplementation()!);
+  deps.store = { ...store, privacyRail: undefined, resolve: fallbackResolve };
+  store.readRequiredContributorIds.mockResolvedValue(["destination-documents", "identity"]);
+
+  expect(isNativePrivacyOperations(guarded)).toBe(true);
+  await expect(operation === "export" ? guarded.export(actor, subject) : guarded.erase(actor, input))
+    .rejects.toMatchObject({ code: "PRIVACY_CONTRIBUTOR_MISSING", facts: { observed: expect.stringContaining("destination-documents") } });
+  expect(store.readRequiredContributorIds).toHaveBeenCalledExactlyOnceWith(null);
+  expect(store.resolve).not.toHaveBeenCalled();
+  expect(fallbackResolve).not.toHaveBeenCalled();
 });
 
 it.each([
