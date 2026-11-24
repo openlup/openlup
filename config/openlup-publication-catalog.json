@@ -8862,6 +8862,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/tax/taxCalculationComposition.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/tax/taxCalculationStore.ts",
       "class": "public-output"
     },
@@ -30310,7 +30314,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/commerceQuoteV2CompositionWire.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/commerceQuoteV2Storage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2StorageFixture.ts",
       "class": "public-output"
     },
     {

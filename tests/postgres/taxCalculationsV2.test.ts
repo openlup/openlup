@@ -557,7 +557,8 @@ describe("native evaluation claim and seal", () => {
 
   type ClaimInput = Extract<Parameters<typeof beginTaxCalculation>[1], { operation: "claim" }>;
   type ClaimWithPin = ClaimInput & { pin: NonNullable<ClaimInput["pin"]> };
-  type SealInput = Exclude<Parameters<typeof completeTaxCalculation>[1], Uint8Array>;
+  type CompleteInput = Exclude<Parameters<typeof completeTaxCalculation>[1], Uint8Array>;
+  type SealInput = Omit<CompleteInput, "seal"> & { seal: Extract<CompleteInput["seal"], { compositionDigest?: never }> };
   type Claim = Extract<Awaited<ReturnType<typeof beginTaxCalculation>>, { kind: "claimed" }>;
   type Lane = PostgresRoleFreeTransactionLane<PgQueryExecutor>;
   const recovery = "ab".repeat(32);
