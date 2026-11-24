@@ -859,12 +859,17 @@ it("M11 K1 proves installed commerce success and refusal without optional peers"
   const consumer = pristinePackedA1Fixture();
   assertConsumerIsolation(consumer, root);
   proveCommerceConsumer(consumer);
+  expect(consumerNode(consumer, `
+const entry = await import("@openlup/platform/fulfillment");
+process.stdout.write(typeof entry.FulfillmentStockReplayConflictError);
+`)).toBe("function");
   const serverExports = JSON.parse(consumerNode(consumer, `
 const entry = await import("@openlup/platform/commerce/server");
 process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map(([name, value]) => [name, typeof value]))));
 `));
   expect(serverExports).toEqual({
     CHECKOUT_RECOVERY_TOKEN_PREFIX: "string",
+    CheckoutRecoveryScheduleChangeBlockedError: "function",
     EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS: "number",
     ORDER_DRAFT_RPC_NAME: "string",
     ORDER_DRAFT_SUPERSEDE_RPC_NAME: "string",
