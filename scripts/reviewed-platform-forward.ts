@@ -3087,6 +3087,14 @@ const nativeStoreSignature = (signature: string): string | null => {
   if (!match) return null;
   try { return nativeStoreIdentity(match[1]!, match[2]!); } catch { return null; }
 };
+
+const nativeStoreSettingsSignature = (signature: string): string | null => {
+  if (signature === "auth.uid()") return signature;
+  const match = /^(acquisition_private\.[a-z_][a-z0-9_]*)[ \t\n]*\((.*)\)$/u.exec(signature);
+  if (!match) return nativeStoreSignature(signature);
+  try { return nativeStoreIdentity(match[1]!, match[2]!); } catch { return null; }
+};
+
 const nativeStoreFunctions = (slot: NativeStoreSlot): NativeStoreFunction[] => [...slot.replacedFunctions, ...slot.createdFunctions.map(fn => ({ ...fn, beforeSha256: null }))];
 
 const nativePrefixStatementsCache = new WeakMap<Buffer, readonly { statement: string; tokens: PlatformSqlToken[]; complete: boolean }[]>();
@@ -3443,7 +3451,12 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
     if (settingsOnly) {
       const settings = slot.settingsOnlyFunctions;
       if (slot.replacedFunctions.length || slot.createdFunctions.length || slot.grantOnlyFunctions.length || !Array.isArray(slot.dataStatements) || slot.dataStatements.length) throw new Error("reviewed native store settings-only slot requires empty function definition, grant and data lists");
-      if (!Array.isArray(settings) || !settings.length || settings.some(fn => !fn || !keysAre(fn, "searchPath,signature") || typeof fn.signature !== "string" || nativeStoreSignature(fn.signature) !== fn.signature || typeof fn.searchPath !== "string" || !/^(?:(?!pg_temp, )[a-z_][a-z0-9_]*, )*pg_temp$/u.test(fn.searchPath))) throw new Error("reviewed native store settings-only slot requires canonical qualified signatures and search_path ending in pg_temp");
+      if (!Array.isArray(settings) || !settings.length || settings.some(fn =>
+        !fn || !keysAre(fn, "searchPath,signature")
+        || typeof fn.signature !== "string" || nativeStoreSettingsSignature(fn.signature) !== fn.signature
+        || typeof fn.searchPath !== "string" || !/^(?:(?!pg_temp, )[a-z_][a-z0-9_]*, )*pg_temp$/u.test(fn.searchPath))) {
+        throw new Error("reviewed native store settings-only slot requires canonical qualified signatures and search_path ending in pg_temp. Use public.<name>(<types>), acquisition_private.<name>(<types>) or exactly auth.uid().");
+      }
       if (new Set(settings.map(fn => fn.signature)).size !== settings.length) throw new Error("reviewed native store settings-only slot has duplicate signatures");
       continue;
     }

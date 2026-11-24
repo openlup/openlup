@@ -38,7 +38,7 @@ export function isMigrationQueueSerializedPath(path) {
     || path.startsWith('packages/platform/sql/')
   );
 }
-async function readPullRequestChangedPaths(api, root, prNumber) {
+export async function readPullRequestChangedPaths(api, root, prNumber) {
   const paths = [];
   for (let page = 1; page <= PR_FILES_MAX_PAGES; page += 1) {
     const batch = await api.get(`${root}/pulls/${prNumber}/files?per_page=100&page=${page}`);
@@ -55,7 +55,7 @@ async function readPullRequestChangedPaths(api, root, prNumber) {
   }
   throw new Error('queued PR files listing exceeded the bounded pagination limit');
 }
-async function findBlockingMigrationQueuePrs({ api, root, owner, name, prNumber }) {
+export async function findBlockingMigrationQueuePrs({ api, root, owner, name, prNumber }) {
   const queueQuery = `query { repository(owner:${JSON.stringify(owner)},name:${JSON.stringify(name)}) { mergeQueue(branch:"main") { entries(first:${MERGE_QUEUE_SCAN_LIMIT}) { pageInfo { hasNextPage } nodes { state pullRequest { number } } } } } }`;
   const response = await api.get(`/graphql?query=${encodeURIComponent(queueQuery)}`);
   const entries = response?.data?.repository?.mergeQueue?.entries;
