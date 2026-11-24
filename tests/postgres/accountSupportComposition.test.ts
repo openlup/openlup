@@ -39,13 +39,13 @@ it("P1 probes the full installed catalogue and delegates the R5 API route to R4'
   const api = createOperatorRecovery({ graph: "native", authority });
   const execute = vi.spyOn(api, "execute");
   const operatorRoute = createM12OperatorSubscriptionActionRoute(execute);
-  // Full identity comes from all ordered migration bytes and the runner's checked ledger.
   const version = createHash("sha256").update(JSON.stringify(units)).digest("hex");
   const catalogue = { version, migration: units.at(-1)!.file };
-  const probe = createSchemaProbe({ query: (text, values) => h.pool.query(text, values ? [...values] : undefined) }, async () => {
-    const status = await h.runner().status();
-    return { database: "m12-disposable", version: status.pending.length === 0 && status.applied.length === units.length ? version : null };
-  });
+  const status = await h.runner().status();
+  expect(status).toEqual({ applied: units.map(({ file }) => file), pending: [] });
+  // The fixture applies no migrations after setup. The guard probes live objects each time.
+  const observedIdentity = { database: "m12-disposable", version };
+  const probe = createSchemaProbe({ query: (text, values) => h.pool.query(text, values ? [...values] : undefined) }, async () => observedIdentity);
   const objects: RequiredSchema["objects"] = [
     ...["subscriptions", "subscription_command_receipts", "customer_support_subscription_commands", "customer_support_subscription_audit_events"].map(name => ({ kind: "table" as const, name: `public.${name}` })),
     { kind: "function", name: "public.customer_support_apply_subscription_action_v1", signature: "uuid,uuid,text,jsonb,integer,text,timestamp with time zone" },
