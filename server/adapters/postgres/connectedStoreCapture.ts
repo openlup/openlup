@@ -62,6 +62,7 @@ const owned = [
   "payment_dunning_case_attribution", "payment_refund_evidence",
   "commerce_destinations", "commerce_destination_bindings", "commerce_destination_v2_receipts",
   "commerce_destination_v2_documents", "commerce_destination_v2_checkout_selections", "commerce_destination_v2_order_bindings",
+  "subscription_destination_v2_selections",
   "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts", "subscription_command_receipts", "subscription_quote_previews", "subscription_edit_quotes",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",

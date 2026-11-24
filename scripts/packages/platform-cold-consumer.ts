@@ -1288,6 +1288,77 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
   }
 }
 
+function proveNativeDestinationConsumer(consumer: string, compiler: string): void {
+  const guide = readFileSync(join(consumer, "node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md"), "utf8");
+  const recipe = /### Read a retained order destination\n[^#]*?```ts\n([\s\S]*?)\n```/u.exec(guide)?.[1];
+  assert(recipe, "The packed starter guide must contain the native destination recipe");
+  const recipeFile = "native-destination-recipe.ts";
+  writeFileSync(join(consumer, recipeFile), recipe);
+  const taskFile = "native-destination-task.ts";
+  writeFileSync(join(consumer, taskFile), `
+import {
+  createPostgresDestinationPortV2, type DestinationQueryExecutor,
+  type DestinationPortV2, type DestinationContextV2, type DestinationBindingV2, type DestinationSelectionV2,
+  type DestinationServicePinV2, type DestinationIssueResultV2, type DestinationVerifiedReadV2,
+} from "@openlup/platform/commerce/server/destinations";
+
+declare const db: DestinationQueryExecutor, context: DestinationContextV2, binding: DestinationBindingV2;
+declare const selection: DestinationSelectionV2, service: DestinationServicePinV2, orderId: string;
+const port: DestinationPortV2 = createPostgresDestinationPortV2(db);
+const issued = await port.snapshot(context, {
+  dialect: "commerce.destination.snapshot.v2", requestKey: "example-request", requestDigest: "a".repeat(64),
+  purpose: "checkout", scopeRef: context.scopeRef,
+  original: { address: { line1: "1 Example Street", city: "Example", postalCode: "0000", countryCode: "XX" }, contact: {} },
+}, "2030-01-01T00:00:00.000Z");
+export const issueResult: DestinationIssueResultV2 | undefined = "binding" in issued ? issued : undefined;
+const retained = await port.read(context, "order", orderId, binding);
+export const readResult: DestinationVerifiedReadV2 | undefined = "document" in retained ? retained : undefined;
+const check = { kind: selection.kind, scopeRef: selection.scopeRef, expectedSelectionRevision: selection.selectionRevision,
+  expectedBinding: binding, expectedService: service };
+export const rechecked = await port.recheck(context, check);
+export const registered = await port.registerOrder(context, orderId, check);
+`);
+  for (const [module, resolution] of [["NodeNext", "NodeNext"], ["ESNext", "Bundler"]]) {
+    command(process.execPath, [compiler, "--noEmit", "--strict", "--target", "ES2022", "--module", module,
+      "--moduleResolution", resolution, recipeFile, taskFile], consumer);
+  }
+  console.log(consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { readRetainedDestination } from "./native-destination-recipe.ts";
+
+const clientId = "00000000-0000-0000-0000-000000000001";
+const scopeRef = "00000000-0000-0000-0000-000000000002";
+const orderId = "00000000-0000-0000-0000-000000000003";
+const snapshotRef = "00000000-0000-0000-0000-000000000004";
+const owner = { installationRef: "example", principalKind: "customer", principalRef: orderId, customerOrSessionRef: clientId };
+const context = { clientId, scopeRef, owner };
+const binding = { snapshotRef, schemaVersion: 2, destinationDigest: "a".repeat(64), policyRevision: "revision" };
+const different = { ...binding, policyRevision: "different" };
+const verified = {
+  binding, documentDigest: "b".repeat(64), evidenceExpiresAt: "2030-01-02T00:00:00.000Z",
+  document: { ...binding, revision: 1, owner, clientId, policyRef: "policy", classificationKeys: [],
+    address: { line1: "1 Example Street", city: "Example", country: "XX", postalCode: "0000" }, contact: {} },
+};
+const refused = {
+  outcome: "refused", code: "destination_version_changed", field: "destination.policyRevision",
+  observed: "The supplied binding differs from the recorded binding.", cause: "A retained read requires the original order binding.",
+  fix: "Use the binding recorded for the original order.",
+  recheck: "Take the order's binding from its sealed checkout evidence through the authorized order workflow, then repeat the read; never reselect for a placed order.",
+};
+const calls = [];
+const db = { async query(sql, values) {
+  calls.push([sql, values]);
+  return { rows: [{ result: values[3] === JSON.stringify(binding) ? verified : refused }] };
+} };
+assert.deepEqual(await readRetainedDestination(db, context, orderId, different),
+  { status: "refused", code: refused.code, field: refused.field, fix: refused.fix });
+assert.deepEqual(await readRetainedDestination(db, context, orderId, binding), { status: "verified", evidence: verified });
+const statement = "SELECT public.commerce_read_destination_v2($1::jsonb, $2::text, $3::uuid, $4::jsonb) AS result";
+assert.deepEqual(calls, [different, binding].map(tuple => [statement, [JSON.stringify(context), "order", orderId, JSON.stringify(tuple)]]));
+console.log("Platform installed native destination recipe PASS");
+`).trim());
+}
+
 function compileReferenceDelegationTypes(consumer: string, compiler: string): void {
   const file = join(consumer, "reference-delegation-types.ts");
   writeFileSync(file, REFERENCE_DELEGATION_TYPES);
@@ -2696,6 +2767,7 @@ await assert.rejects(applyPromotionCodesV2({ ...input, port: { resolve: async ()
 assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type: "unknown", discount_value: 0 }), /promotion_v1_benefit_invalid/);
 `);
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
+    proveNativeDestinationConsumer(consumer, compiler);
     compileConsumer(consumer, entries, compiler);
     compileReferenceDelegationTypes(consumer, compiler);
     for (const proof of RISK_WORKFLOW_PROOFS) proveRiskWorkflowConsumer(consumer, compiler, proof);
