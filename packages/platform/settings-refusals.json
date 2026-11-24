@@ -233,6 +233,17 @@
       }
     },
     {
+      "code": "payment_decline_notice_timing_policy_invalid",
+      "path": [],
+      "rule": "Supply exactly revision, delayMinutes, and linkLifetimeHours. Revision must be a nonblank string, delayMinutes an integer from 0 through 1440, and linkLifetimeHours an integer from 1 through 168.",
+      "hint": "Check the value schema and examples for payments.declineNoticeTiming.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm --silent run settings -- show payments.declineNoticeTiming --json"
+      }
+    },
+    {
       "code": "promotion_claim_hold_hours_policy_invalid",
       "path": [],
       "rule": "Supply exactly revision and holdHours. Revision must be a nonblank string and holdHours an integer from 1 through 720.",
@@ -241,6 +252,17 @@
         "retry": true,
         "action": "Check the schema and correct the rejected value.",
         "command": "npm --silent run settings -- show promotion_claim_hold_hours --json"
+      }
+    },
+    {
+      "code": "subscription_retry_schedule_policy_invalid",
+      "path": [],
+      "rule": "Supply exactly revision and backoffHours. Revision must be a nonblank string and backoffHours an array of exactly three integers from 1 through 2147483647.",
+      "hint": "Check the value schema and examples for subscriptions.retrySchedule.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm --silent run settings -- show subscriptions.retrySchedule --json"
       }
     }
   ]

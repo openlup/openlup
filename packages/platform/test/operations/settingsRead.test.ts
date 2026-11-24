@@ -212,6 +212,56 @@ describe("settings show", () => {
       });
     }
   });
+
+  it("explains Wave 2 refusal codes and distinguishes override, fallback, offline, and malformed rows for E14 and E1", async () => {
+    const cases = [
+      {
+        key: "subscriptions.retrySchedule",
+        code: "subscription_retry_schedule_policy_invalid",
+        fallback: { revision: "default", backoffHours: [24, 72, 168] },
+        override: { revision: "store-1", backoffHours: [24, 48, 96] },
+        rulePattern: /revision.*nonblank.*backoffHours.*three integers.*1 through 2147483647/u,
+        goal: "renewal retry policy",
+      },
+      {
+        key: "payments.declineNoticeTiming",
+        code: "payment_decline_notice_timing_policy_invalid",
+        fallback: { revision: "default", delayMinutes: 3, linkLifetimeHours: 24 },
+        override: { revision: "store-1", delayMinutes: 5, linkLifetimeHours: 48 },
+        rulePattern: /revision.*nonblank.*delayMinutes.*0 through 1440.*linkLifetimeHours.*1 through 168/u,
+        goal: "recovery link lifetime",
+      },
+    ] as const;
+
+    const { listResult } = loadSettingsCatalogue();
+    for (const item of cases) {
+      expect(explainSetting(item.code)).toMatchObject({
+        explanation: { code: item.code, path: [], rule: expect.stringMatching(item.rulePattern) },
+      });
+      const listed = listResult.parse(listSettings({ goal: item.goal })).entries;
+      expect(listed.map(entry => entry.key)).toContain(item.key);
+      let state: "override" | "absent" | "malformed" = "override";
+      const readers = {
+        [item.key]: async () => {
+          if (state === "override") return { present: true, value: item.override, revision: item.override.revision } as const;
+          if (state === "absent") return { present: false } as const;
+          throw new Error(item.code);
+        },
+      };
+      expect(await showSetting({ key: item.key })).toMatchObject({ observation: { state: "offline" } });
+      expect(await showSetting({ key: item.key }, readers)).toMatchObject({
+        observation: { state: "override", value: item.override, revision: item.override.revision },
+      });
+      state = "absent";
+      expect(await showSetting({ key: item.key }, readers)).toMatchObject({
+        observation: { state: "fallback", value: item.fallback },
+      });
+      state = "malformed";
+      expect(await showSetting({ key: item.key }, readers)).toMatchObject({
+        refusal: { code: "commerce_setting_read_unavailable" },
+      });
+    }
+  });
 });
 
 it("finds inventory buffer in the packaged settings list", () => {

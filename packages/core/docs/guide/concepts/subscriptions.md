@@ -341,13 +341,15 @@ and 11 after the initial decline if each runs and fails when due. Days 1, 3 and
 | Failure-recording path | Timing used |
 | --- | --- |
 | Fresh failures through `createPostgresRetryLifecycleBinding` or `createNativeRetryDriver` | Trusted `retryCadence.backoffHours`; the starter's `host/renewal-sandbox.ts:composeRenewalSandbox` passes `retryBackoffHours` to this driver. `createPostgresRetryStore(db, cadence).applyFailure` calls the four-argument SQL overload. |
-| Provider-recorded renewal failures through `payment_provider_result_apply` | Accepts an optional 3-rung `p_cadence` (`{"backoffHours":[h1,h2,h3]}`) via `PostgresPaymentTruthOptions.retryCadence` in `createPostgresProviderPaymentControlPort`, forwarding to the four-argument `subscription_retry_apply_failure`. Omitting `p_cadence` (or calling the 11-argument overload) retains `[24, 72, 168]`. Replaying an already-recorded failure receipt keeps its originally pinned schedule. |
+| Provider-recorded renewal failures through `payment_provider_result_apply` | Accepts an optional 3-rung `p_cadence` (`{"backoffHours":[h1,h2,h3]}`) via `PostgresPaymentTruthOptions.retryCadence` in `createPostgresProviderPaymentControlPort`, forwarding to the four-argument `subscription_retry_apply_failure`. Omitting `p_cadence` (or calling the 11-argument overload) reads `subscription_retry_schedule` from `public.commerce_settings` via `subscription_retry_schedule_read()`, defaulting to `[24, 72, 168]` when absent and failing closed with `22023` when malformed; three-argument `subscription_retry_apply_failure` reads the same installed policy. Replaying an already-recorded failure receipt keeps its originally pinned schedule. |
 
 Sandbox observation recording is separate from provider-result recording;
 configuring the starter sandbox does not establish provider retry timing.
-The current definitions are `payment_provider_result_apply` in
-`20261124150000_native_provider_retry_cadence.sql`
-and both failure overloads in
+The current definitions are `payment_provider_result_apply` and three-argument
+`subscription_retry_apply_failure` in
+`20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql` (updating
+`20261124150000_native_provider_retry_cadence.sql`), and four-argument
+`subscription_retry_apply_failure` in
 [`20261109100000_subscription_retry_resume.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261109100000_subscription_retry_resume.sql).
 Verify your selected catalogue or applied prefix with the
 [current-definition lookup](../upgrade/database-migrations.md#find-the-current-function-definition).

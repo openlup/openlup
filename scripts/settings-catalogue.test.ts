@@ -24,7 +24,7 @@ it("represents every domain data key and executable descriptor in the catalogue"
     "inventory_renewal_protection", "checkout_recovery_reminders", "subscriber_winback_policy",
     "pricing.subscriptionPricePolicy", "communications.nativeDeliveryControls", "tax.coverage",
   ]));
-  expect(entries.filter(({ kind }) => kind === "cap").length).toBeGreaterThanOrEqual(40);
+  expect(entries.filter(({ kind }) => kind === "cap").length).toBeGreaterThanOrEqual(38);
   expect(entries.filter(({ kind }) => kind === "code").map(({ key }) => key)).toEqual([
     "catalog.bundleAvailabilityPolicy",
     "checkout.resumeWindowMinutes",
@@ -142,7 +142,7 @@ it("points every cap and invariant reference away from settings-catalogue.md", (
     entries: Array<{ key: string; kind: string; change: { reference: string } }>;
   };
   const nonEditable = entries.filter(({ kind }) => kind === "cap" || kind === "invariant");
-  expect(nonEditable.length).toBeGreaterThanOrEqual(47);
+  expect(nonEditable.length).toBeGreaterThanOrEqual(45);
   for (const entry of nonEditable) {
     expect(entry.change.reference, entry.key).not.toContain("settings-catalogue.md");
   }

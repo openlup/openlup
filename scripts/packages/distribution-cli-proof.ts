@@ -91,6 +91,12 @@ export const starterOptionalOwnedFiles: ReadonlySet<string> = new Set([
   ...starterOptionalCatalogueFiles,
   "owned/payment-rail.ts",
   "owned/payment-rail.test.ts",
+  "owned/email-transport.ts",
+  "owned/email-transport.test.ts",
+  "owned/fulfillment-adapter.ts",
+  "owned/fulfillment-adapter.test.ts",
+  "owned/invoice-provider.ts",
+  "owned/invoice-provider.test.ts",
 ]);
 
 export const starterSettingsHost = "owned/settings-host.ts";

@@ -124,6 +124,16 @@ describe("createSupabaseCustomerAuthPort", () => {
     expect(await port.signInWithOtp({ email: "a@b.com", locale: "pl" })).toEqual({
       error: "magic_link_send_failed",
     });
+
+    // Unmapped locales fall back to neutral "en" by default, or respect explicit defaultLocale override.
+    requestMagicLink.mockResolvedValueOnce(undefined);
+    expect(await port.signInWithOtp({ email: "a@b.com", locale: "de" })).toEqual({ error: null });
+    expect(requestMagicLink).toHaveBeenLastCalledWith("a@b.com", "en", { returnTo: null });
+
+    requestMagicLink.mockResolvedValueOnce(undefined);
+    const customPort = createSupabaseCustomerAuthPort({ defaultLocale: "pl" });
+    expect(await customPort.signInWithOtp({ email: "a@b.com", locale: "de" })).toEqual({ error: null });
+    expect(requestMagicLink).toHaveBeenLastCalledWith("a@b.com", "pl", { returnTo: null });
   });
 
   it("verifies the magic-link OTP fallback code", async () => {
