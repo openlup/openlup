@@ -1674,7 +1674,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261126022000_catalog_price_list_basis.sql",
+      "path": "db/platform/migrations/20261126510000_catalog_price_list_basis.sql",
       "class": "public-output"
     },
     {
@@ -5490,7 +5490,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261126022000_catalog_price_list_basis.sql",
+      "path": "packages/platform/sql/20261126510000_catalog_price_list_basis.sql",
       "class": "public-output"
     },
     {
