@@ -58,7 +58,7 @@ function isExternalOrAnchor(target: string): boolean {
   return target === "" || target.startsWith("#") || target.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(target);
 }
 
-const guideAllowListPath = "config/documentation-guide-allowlist.json";
+export const guideAllowListPath = "config/documentation-guide-allowlist.json";
 const absoluteFilesystemPath = /(?<![\w.~:/-])(?:file:\/\/)?\/(?:Users|home)\/[A-Za-z0-9._-]+|(?<![\w\\])[A-Za-z]:[\\/]Users[\\/][A-Za-z0-9._-]+/g;
 // Repository-internal language that a reader of the guide cannot resolve.
 const readerLanguagePatterns: ReadonlyArray<readonly [RegExp, string]> = [
@@ -207,22 +207,37 @@ export function assertGuideLinks(guideRoot: string, file: string, label: string,
     const [url, kind, ref, path] = match;
     if (ref !== tag) {
       violations.push(`${label}: repository link ${url} must pin ${tag}; run docs:check -- --write`);
-      if (!fixes || kind !== "blob") continue;
+      if (fixes && kind === "blob") fixes.add(findRepositoryLinkFix(repositoryRoot, guideRoot, ref!, path ?? ""));
+      continue;
     }
-    const decoded = safeDecode(path ?? "");
-    const resolved = resolve(repositoryRoot, decoded);
-    const targetExists = decoded && resolved.startsWith(`${repositoryRoot}${sep}`) && existsSync(resolved);
-    const guidePage = (resolved === guideRoot || resolved.startsWith(`${guideRoot}${sep}`)) && decoded.endsWith(".md");
-    if (ref !== tag) {
-      if (targetExists && !guidePage) fixes?.add("release-pin");
-    } else if (!targetExists) {
+    const target = repositoryLinkTarget(repositoryRoot, guideRoot, path ?? "");
+    if (target === "missing") {
       violations.push(`${label}: repository link ${url} targets a path missing from the repository`);
       fixes?.add("repository-target");
-    } else if (guidePage) {
+    } else if (target === "guide") {
       violations.push(`${label}: repository link ${url} points into the guide; use a relative link`);
       fixes?.add("relative-link");
     }
   }
+}
+
+function repositoryLinkTarget(repositoryRoot: string, guideRoot: string, path: string): "missing" | "guide" | "repository" {
+  const decoded = safeDecode(path);
+  const resolved = resolve(repositoryRoot, decoded);
+  if (!decoded || !resolved.startsWith(`${repositoryRoot}${sep}`) || !existsSync(resolved)) return "missing";
+  return (resolved === guideRoot || resolved.startsWith(`${guideRoot}${sep}`)) && decoded.endsWith(".md") ? "guide" : "repository";
+}
+
+function findRepositoryLinkFix(repositoryRoot: string, guideRoot: string, ref: string, path: string): GuidePageFix {
+  const segments = [ref, ...path.split("/")];
+  let foundGuide = false;
+  // A ref can contain slashes. Try the longest repository path first, for the audit's advice only.
+  for (let boundary = 1; boundary < segments.length; boundary++) {
+    const target = repositoryLinkTarget(repositoryRoot, guideRoot, segments.slice(boundary).join("/"));
+    if (target === "repository") return { ref: segments.slice(0, boundary).join("/") };
+    if (target === "guide") foundGuide = true;
+  }
+  return foundGuide ? "relative-link" : "repository-target";
 }
 
 function safeDecode(value: string): string {
@@ -362,7 +377,7 @@ type GuidePage = PackageMarkdown & {
   fixes?: Set<GuidePageFix>;
 };
 
-export type GuidePageFix = "release-pin" | "relative-link" | "repository-target" | "generated-region";
+export type GuidePageFix = { ref: string } | "relative-link" | "repository-target" | "generated-region";
 
 /** Apply the installed contract's page rules to Markdown before compiling its checked fences. */
 export function assertGuidePage(page: GuidePage, violations: string[]): Fence[] {

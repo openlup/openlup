@@ -505,13 +505,14 @@ describe("shift-left simulated upgrade-page audit", () => {
     expect(() => checkRenderedFixture(f, contents)).not.toThrow();
   });
 
-  it.each(["main", "release-preview", "openlup-core-vpreview"])("tells the fragment author how to replace branch ref %s", (branch) => {
-    const contents = `- See [API](https://github.com/openlup/openlup/blob/${branch}/docs/platform/API.md).\n`;
+  it.each(["main", "release-preview", "openlup-core-vpreview", "feature/documentation"])("tells the fragment author how to replace ref %s", (ref) => {
+    const url = `https://github.com/openlup/openlup/blob/${ref}/docs/platform/API.md`;
+    const contents = `- See [API](${url}).\n`;
     const f = parityFixture(contents);
     const audit = () => assertSimulatedUpgradePage(f.root);
-    expect(audit).toThrow(`Fix: replace the branch reference in ${fixtureFragment} with the canonical Core release pin for the releasing version, then rerun \`npm run preflight -- --fast\``);
+    expect(audit).toThrow(`Fix: replace the ref \`${ref}\` in ${fixtureFragment} with the canonical Core release pin for the releasing version, then rerun \`npm run preflight -- --fast\``);
     expect(audit).not.toThrow("docs:check -- --write");
-    expect(() => checkRenderedFixture(f, contents)).toThrow("docs:check -- --write");
+    expect(() => checkRenderedFixture(f, contents)).toThrow(`${fixturePage}: repository link ${url} must pin openlup-core-v0.5.0; run docs:check -- --write`);
   });
 
   it.each([
@@ -523,9 +524,44 @@ describe("shift-left simulated upgrade-page audit", () => {
       target: "docs/platform/absent.md",
       fix: `correct the repository link's target path in ${fixtureFragment}`,
     },
-  ])("gives a source edit for a bad pinned target $target", ({ target, fix }) => {
-    const contents = `- See [API](https://github.com/openlup/openlup/blob/openlup-core-v0.5.0/${target}).\n`;
-    expect(() => assertSimulatedUpgradePage(parityFixture(contents).root)).toThrow(`Fix: ${fix}`);
+  ])("gives a source edit for a guide or missing target $target", ({ target, fix }) => {
+    for (const ref of ["openlup-core-v0.5.0", "feature/documentation"]) {
+      const contents = `- See [API](https://github.com/openlup/openlup/blob/${ref}/${target}).\n`;
+      expect(() => assertSimulatedUpgradePage(parityFixture(contents).root)).toThrow(`Fix: ${fix}`);
+    }
+  });
+
+  it.each([
+    {
+      mode: "simulated",
+      version: "0.4.0",
+      fix: "include the linked file in the Core npm packlist by correcting `files` in packages/core/package.json, or correct the link emitted by scripts/packages/release-docs-pass.ts",
+    },
+    {
+      mode: "prepared",
+      version: "0.5.0",
+      fix: `correct the reported guide content in packages/core/${fixturePage}`,
+    },
+  ])("points an unpacked upgrade procedure link at the correct $mode input", ({ mode, version, fix }) => {
+    const f = fixture();
+    f.write("packages/core/package.json", JSON.stringify({ name: "@openlup/core", version, files: [fixturePage] }));
+    f.write("packages/core/docs/guide/upgrade/README.md", "# Upgrade procedure\n");
+    if (mode === "prepared") f.write(`packages/core/${fixturePage}`, "# Upgrading\n\n[Upgrade procedure](README.md)\n");
+    const audit = () => assertSimulatedUpgradePage(f.root);
+    expect(audit).toThrow(`${fixturePage}: local link README.md targets a file missing from npm pack`);
+    expect(audit).toThrow(`Fix: ${fix}\nRecheck: npm run preflight -- --fast`);
+  });
+
+  it.each([
+    { name: "missing", source: undefined },
+    { name: "invalid schema", source: '{"schemaVersion":2,"terms":[]}' },
+    { name: "invalid JSON", source: "{" },
+  ])("points the $name reader-language allow-list at its own input", ({ source }) => {
+    const f = fixture();
+    const path = "config/documentation-guide-allowlist.json";
+    if (source === undefined) rmSync(join(f.root, path));
+    else f.write(path, source);
+    expect(() => assertSimulatedUpgradePage(f.root)).toThrow(`Fix: correct ${path}\nRecheck: npm run preflight -- --fast`);
   });
 
   it("exposes a 128 KiB default byte cap and accepts a valid simulated upgrade page without writing files", () => {

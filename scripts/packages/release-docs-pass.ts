@@ -11,7 +11,7 @@ import { documentationGit, documentationLinkTargets, parseDocumentationRouting, 
 // eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check runs before workspace install and reuses core's owning release-note audit
 import { assertReleaseNotePackagedContent, documentedAdapters, findReleaseNotePackagedContentViolations } from "../../packages/core/scripts/core-package-consumer-audit.ts";
 // eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check reuses Core's reader-guide Markdown rules in-process
-import { assertGuidePage, pinGuideReleaseLinks, readGuideAllowList, type GuidePageFix } from "../../packages/core/scripts/documentation-guide-content.ts";
+import { assertGuidePage, guideAllowListPath, pinGuideReleaseLinks, readGuideAllowList, type GuidePageFix } from "../../packages/core/scripts/documentation-guide-content.ts";
 // eslint-disable-next-line no-restricted-imports -- match the Core contract's npm pack inventory without loading its compiler
 import { packDryRun } from "../../packages/core/scripts/release-npm-checks.ts";
 import { isChangelogFragment, readChangelogFragments, validateChangelogFragment, type ChangelogFragment } from "./changelog-fragments.ts";
@@ -421,7 +421,13 @@ function assertUpgradePageDocumentation(
   const pageLabel = relative(packageRoot, file).split(sep).join("/");
   const tag = `openlup-core-v${version}`;
   const violations: string[] = [];
-  const allowed = readGuideAllowList(repositoryRoot, violations);
+  let allowed: Set<string>;
+  try {
+    allowed = readGuideAllowList(repositoryRoot, violations);
+  } catch {
+    refuseUpgradePage(label, [`${guideAllowListPath}: expected readable JSON with schemaVersion 1 and a list of exact terms`], [`correct ${guideAllowListPath}`]);
+  }
+  if (violations.length > 0) refuseUpgradePage(label, violations, [`correct ${guideAllowListPath}`]);
   const packed = new Set((packDryRun(packageRoot).files ?? []).map((entry) => entry.path));
   if (!prepared) packed.add(pageLabel);
   const { scripts } = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { scripts?: Record<string, string> };
@@ -430,7 +436,7 @@ function assertUpgradePageDocumentation(
   // Preparation re-pins existing release URLs. A prepared file must already have the right pin.
   const source = prepared ? text : pinGuideReleaseLinks(text, version, isUpgradeVersion);
   const pageFixes = new Set<GuidePageFix>();
-  assertGuidePage({ ...context, source, fixes: pageFixes }, violations);
+  assertGuidePage({ ...context, source, fixes: prepared ? pageFixes : undefined }, violations);
   if (violations.length === 0) return;
 
   const fragmentViolations: string[] = [];
@@ -442,26 +448,35 @@ function assertUpgradePageDocumentation(
     assertGuidePage({ ...context, source, fragmentPath: fragment.path, fixes }, fragmentViolations);
     if (fragmentViolations.length > count) instructions.push(...upgradePageFixes(fragment.path, fixes));
   }
-  if (instructions.length === 0) instructions.push(...upgradePageFixes(path, pageFixes, prepared));
+  if (instructions.length === 0) {
+    if (prepared) instructions.push(...upgradePageFixes(path, pageFixes, `correct the reported guide content in ${path}`));
+    else instructions.push(violations.some((diagnostic) => diagnostic.endsWith(" targets a file missing from npm pack"))
+      ? "include the linked file in the Core npm packlist by correcting `files` in packages/core/package.json, or correct the link emitted by scripts/packages/release-docs-pass.ts"
+      : "correct the input used to render the upgrade page or the generator in scripts/packages/release-docs-pass.ts");
+  }
+  refuseUpgradePage(label, [...violations, ...fragmentViolations], instructions);
+}
+
+function refuseUpgradePage(label: string, diagnostics: readonly string[], instructions: readonly string[]): never {
   throw new Error([
     `Observed: ${label} fails the Core documentation contract.`,
     "Cause:",
-    ...[...violations, ...fragmentViolations].map((diagnostic) => diagnostic.replaceAll("; run docs:check -- --write", "")),
+    ...diagnostics.map((diagnostic) => diagnostic.replaceAll("; run docs:check -- --write", "")),
     ...instructions.map((instruction) => `Fix: ${instruction}`),
     "Recheck: npm run preflight -- --fast",
   ].join("\n"));
 }
 
-function upgradePageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, prepared = false): string[] {
-  const messages: Record<GuidePageFix, string> = {
-    "release-pin": prepared
-      ? `update the link in ${path} to the canonical Core release pin for the releasing version`
-      : `replace the branch reference in ${path} with the canonical Core release pin for the releasing version, then rerun \`npm run preflight -- --fast\``,
+function upgradePageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, fallback = `correct the reported content in ${path}`): string[] {
+  const messages: Record<Extract<GuidePageFix, string>, string> = {
     "relative-link": `replace the pinned link into the guide with a relative guide link in ${path}`,
     "repository-target": `correct the repository link's target path in ${path}`,
     "generated-region": `remove the generated-region marker and its matching closer from ${path}`,
   };
-  return fixes.size > 0 ? [...fixes].map((fix) => messages[fix]) : [`correct the reported guide content in ${path}`];
+  if (fixes.size === 0) return [fallback];
+  return [...new Set([...fixes].map((fix) => typeof fix === "string"
+    ? messages[fix]
+    : `replace the ref \`${fix.ref}\` in ${path} with the canonical Core release pin for the releasing version, then rerun \`npm run preflight -- --fast\``))];
 }
 
 /**
