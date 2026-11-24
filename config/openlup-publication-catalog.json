@@ -1626,6 +1626,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261125140000_fulfillment_stock_seed_outcome.sql",
       "class": "public-output"
     },
@@ -2347,6 +2351,30 @@
     },
     {
       "path": "eslint.config.js",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/cosmetics/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/cosmetics/pack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/pet-food/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/pet-food/pack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements/pack.ts",
       "class": "public-output"
     },
     {
@@ -5330,6 +5358,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125130000_commerce_destination_v2_order_bindings.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261125140000_fulfillment_stock_seed_outcome.sql",
       "class": "public-output"
     },
@@ -6831,6 +6863,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/customerCheckoutLinks.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/destinations/destinationV2Prelock.ts",
       "class": "public-output"
     },
     {
@@ -31634,6 +31670,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogueReferencePacks.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/channelConnectedRestore.test.ts",
       "class": "public-output"
     },
@@ -31855,6 +31895,10 @@
     },
     {
       "path": "tests/postgres/destinationV2Checkout.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/destinationV2OrderBinding.test.ts",
       "class": "public-output"
     },
     {

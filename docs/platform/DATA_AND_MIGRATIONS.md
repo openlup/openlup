@@ -482,18 +482,21 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
 
 1. The fence pins its snapshot with the exclusive nonce advisory lock, then
    takes the exclusive key advisory lock. The destination `prelock` takes
-   ledger `SHARE`, client `FOR KEY SHARE`, selection, policy and service guards,
-   then document. Lock rows in ascending key order within each group. Returned
-   keys can bound those locks.
+   ledger `SHARE`, client `FOR KEY SHARE`, checkout selection `FOR SHARE NOWAIT`,
+   then the expected document `FOR SHARE NOWAIT`. Use ascending keys per group.
 2. The fence locks the receipt `FOR UPDATE`, then client, sorted SKUs and
    sorted revisions `FOR KEY SHARE`. The client's mode matches the hook's.
    It locks `catalog_products` and `price_lists` in `SHARE`, takes the exclusive
    transaction advisory lock for each sorted list/SKU pair, then takes
    `price_entries` in `SHARE`. Price apply takes the same advisory lock.
-3. After all locks, run the visibility probe. Start `read` with native
-   authenticated replay, then evaluate fresh owner facts under the same locks.
+3. After the visibility probe, the writer's `read` callback authenticates native
+   replay, then checks fresh owner facts, including the issued policy revision and sealed service-pin shape.
    `catalogAdmissionFence.ts:229–287`,
    `20261125010000_catalog_purchase_admission.sql:2–24,58–94`.
+
+The [legacy draft forward](../../db/platform/migrations/20261125120000_catalog_legacy_draft_fixed_locks.sql)
+also locks the client first, then SKUs by ascending ID. Its repeatable-read
+writer locks products by ascending ID after taking the shared catalogue fence.
 
 On fence expiry the writer is discarded. The fence key is released within the
 fence budget plus 50 ms plus two writer round trips. Writer latency delays
@@ -502,16 +505,17 @@ witness the bound is budget plus 50 ms.
 
 - **Erasure.** The privacy store takes the ledger in `SHARE ROW EXCLUSIVE`,
   then the identity challenge relation in `EXCLUSIVE` before its subject locks.
-  Destination erasure locks the client `FOR UPDATE`, removes selections and
-  updates documents. `postgresPrivacy.ts:10–24,46–52`,
-  `20261125100000_commerce_destination_v2_checkout.sql:369–383`.
+  [Destination erasure](../../db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql)
+  locks the client `FOR UPDATE`, scrubs binding pins and documents, and removes selections.
+  `postgresPrivacy.ts:10–24,46–52`.
 - **Destination receipt and issuance.** The receipt takes its scoped exclusive
   advisory lock, ledger `SHARE`, and, for a fresh receipt, client `FOR UPDATE`.
   Issuance takes those guards before inserting the fresh document, upserting the
-  selection and committing the scoped receipt. Expiry takes ledger `SHARE`, then
+  selection and committing the scoped receipt.
+  [Expiry](../../db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql) takes ledger `SHARE`, then
   client, selection and document `FOR UPDATE`, in client and snapshot order.
   `20261125080000_commerce_destination_v2_receipts.sql:102–132,136–195`,
-  `20261125100000_commerce_destination_v2_checkout.sql:139–148,220–231,398–419`.
+  `20261125100000_commerce_destination_v2_checkout.sql:139–148,220–231`.
 - **Stage B publication.** It takes candidate and command advisory guards, then
   sorted draft heads `FOR NO KEY UPDATE`. Publish takes `SHARE ROW EXCLUSIVE
   NOWAIT` on `catalog_products`, `catalog_skus`, `catalog_sku_identifiers`,
@@ -1465,6 +1469,13 @@ They cannot be redefined or named by a direct privilege statement. Only their
 pinned conditional role/verb capabilities are admitted, without demanding a new
 PUBLIC revoke. A block naming created functions still requires their revokes;
 a block naming only grant-only functions does not.
+A dedicated grant-only slot may flag every entry with `revokePublic: true`,
+`grantTo: ["service_role"]` and `revokeFrom: []`, with no other capabilities or
+bound function definitions. For signatures in the pre-class native prefix, put
+one direct `REVOKE ALL ON FUNCTION … FROM PUBLIC` per signature in registry
+order, then one constant `service_role` existence block granting EXECUTE to the
+same ordered list without grant option. PostgreSQL verifies SECURITY INVOKER
+and a raw NULL ACL before replay.
 The ordinary conditional DO shell requires an exact `pg_roles` existence guard around
 one constant privilege EXECUTE, on admitted targets, for the same role. Function
 privileges and table revokes retain one block per role, verb and object kind
@@ -1678,9 +1689,14 @@ operator a forward creates for another operand type cannot hide what it adds:
   its ACL, so only its body may change — except its single `search_path=` `proconfig`
   entry may strictly append trailing `, pg_temp` when its slot pins that tightened
   `search_path` and the prior entry did not already name `pg_temp` or `pg_temp_<N>`.
-  A grant-only function keeps its attributes and
+  An ordinary grant-only function keeps its attributes and
   body, may gain only EXECUTE for its listed grant roles and may lose privileges only
-  from its listed roles.
+  from its listed roles. A `revokePublic` entry requires a raw NULL ACL and
+  SECURITY INVOKER before replay, preserves function identity, body and
+  attributes including raw argument defaults, and ends with exactly owner
+  EXECUTE plus non-grantable EXECUTE for `service_role` when that role exists
+  and differs from the owner. Neither `anon` nor `authenticated` may retain
+  effective EXECUTE.
 - A created function is owned by the migration role, keeps no PUBLIC execute and
   grants execute only to `authenticated` and `service_role`, never with a grant
   option. A definer carries its pinned `search_path`; a function whose slot pins none
