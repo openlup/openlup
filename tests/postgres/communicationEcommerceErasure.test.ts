@@ -5,7 +5,8 @@ import { currencyExponent } from '@openlup/platform/market-packs';
 import type { PgQueryExecutor } from '@openlup/platform/data';
 import { createEcommerceEventPrivacyContributor, createPostgresEcommerceEventProjection } from '@openlup/platform/communications';
 import { createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createIdentityPersonalDataContributor,
-  createPersonalDataContributorRegistry, createFulfillmentParcelContactPrivacyContributor, createCustomerBillingPrivacyContributor, erasePersonalData } from '@openlup/platform/identity';
+  createPersonalDataContributorRegistry, createFulfillmentParcelContactPrivacyContributor, createCustomerBillingPrivacyContributor,
+  createTaxCalculationPrivacyContributor, erasePersonalData } from '@openlup/platform/identity';
 import { createSubscriptionsPrivacyContributor } from '../../server/runtime/auth/subscriptionsPrivacyContributor.js';
 import { ecommercePaid, ecommerceAt } from './communicationEcommerceFixture.js';
 import { lifecycleInstallation, type LifecycleInstallation } from './subscriptionLifecycleClosureFixture.js';
@@ -40,7 +41,8 @@ it('erases through the qualified runtime before a waiting projection without a d
   const registry = createPersonalDataContributorRegistry([
     createIdentityPersonalDataContributor(store, { retainedContactFields }, randomUUID), createSubscriptionsPrivacyContributor(),
     createFulfillmentParcelContactPrivacyContributor(), createCustomerBillingPrivacyContributor(), createEcommerceEventPrivacyContributor(),
-  ], { requiredContributorIds: ['identity', 'subscriptions', 'fulfillment-parcel-contacts', 'customer-billing', 'communication-events'] });
+    createTaxCalculationPrivacyContributor(),
+  ], { requiredContributorIds: ['identity', 'subscriptions', 'fulfillment-parcel-contacts', 'customer-billing', 'communication-events', 'tax-calculations'] });
   const withTransaction = async <T>(work: (db: PoolClient) => Promise<T>) => {
     try { await projectionDb.query('BEGIN'); const result = await work(projectionDb); await projectionDb.query('COMMIT'); return result; }
     catch (error) { await projectionDb.query('ROLLBACK'); throw error; }

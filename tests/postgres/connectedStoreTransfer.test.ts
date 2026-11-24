@@ -14,7 +14,7 @@ import type { RenewalPreparedSettlement, RenewalReservationResult, RenewalSettle
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery, createPostgresDeliveryReconciliationPort } from "@openlup/platform/communications";
 import { refusedNoticeSources, noticeSessionWithRecipientFault } from "./m19NoticeFixture.js";
-import { createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPrivacyOperations, createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
+import { createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createTaxCalculationPrivacyContributor, createPostgresPrivacyStore, createPrivacyOperations, createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { createPostgresPaymentTruthPort, createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import type { SandboxPaymentAttempt, SandboxPaymentOutcome } from "@openlup/platform/payments/contracts";
 import { createPostgresDataGateway, type PgGatewayClient, type PgQueryExecutor } from "@openlup/platform/data";
@@ -1741,8 +1741,8 @@ it("destination_receipt_privacy_round_trip", async () => {
     }]),
   ) }, randomUUID);
   const contributor = createDestinationReceiptPrivacyContributor(), documents = createDestinationDocumentPrivacyContributor();
-  const registry = createPersonalDataContributorRegistry([identityOwner, contributor, documents],
-    { requiredContributorIds: ["identity", "destination-receipts", "destination-documents"] });
+  const registry = createPersonalDataContributorRegistry([identityOwner, contributor, documents, createTaxCalculationPrivacyContributor()],
+    { requiredContributorIds: ["identity", "destination-receipts", "destination-documents", "tax-calculations"] });
   const unitOfWork = (onStart?: (pid: number) => void) => ({
     async run<T>(work: (db: PgQueryExecutor) => Promise<T>): Promise<T> {
       const db = await clean.runtime.connect();

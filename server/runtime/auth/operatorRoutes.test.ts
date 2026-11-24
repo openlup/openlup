@@ -173,6 +173,8 @@ it('direct privacy routes precede managed entries and enforce human admin in the
 
 const privacyContact = '22222222-2222-4222-8222-222222222222';
 async function mountedPrivacyQuery(sql: string) {
+  if (sql.includes("to_regclass('public.tax_calculations')")) return { rows: [{ installed: true }] };
+  if (sql === 'SELECT public.tax_calculation_export_v1($1::uuid) AS data') return { rows: [{ data: [] }] };
   if (sql === 'SELECT public.communication_event_privacy($1::uuid,false) AS value') return { rows: [{ value: [] }] };
   if (sql.startsWith('SELECT public.customer_billing_export')) return { rows: [{ data: { profiles: [{ client_id: privacyContact, full_name: 'Billing Buyer' }], invoiceBuyers: [{ buyer: { name: 'Frozen Buyer' } }] } }] };
   if (sql === 'SELECT public.commerce_destination_v2_receipts_export($1::uuid) AS data') return { rows: [{ data: [{ evidenceDisposition: 'erased' }] }] };
@@ -296,6 +298,14 @@ it('keeps native destination issuance dormant with a complete privacy registry',
   expect(composeNativePrivacy(privacyComposition(), issuanceEnabled).destination.destinationAddressV2.available).toBe(true);
   expect(composeNativePrivacy(privacyComposition()).destination.destinationAddressV2.available).toBe(false);
 });
+it('requires the installed tax evaluation contributor even while issuance is disabled', async () => {
+  f.missingDestinationOwner = 'tax-calculations';
+  const { operations } = composeNativePrivacy(privacyComposition());
+  await expect(operations.erase({ principalId: privacyContact }, {
+    subject: { kind: 'contact', contactId: privacyContact }, idempotencyKey: privacyContact,
+  })).rejects.toMatchObject({ code: 'PRIVACY_CONTRIBUTOR_MISSING' });
+});
+
 it.each(['destination-receipts', 'destination-documents'])('native privacy composition requires %s', async missing => {
   f.adopterPolicy = true;
   f.missingDestinationOwner = missing;

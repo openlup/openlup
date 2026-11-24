@@ -55,6 +55,12 @@ no retention period or remote-provider operation.
 
 ## Export and erasure
 
+For native tax evaluation, add `createTaxCalculationPrivacyContributor()` from
+`@openlup/platform/identity` to the privacy registry and require
+`tax-calculations` on every handler, including during issuance rollback.
+Export includes verified evaluation outcomes. Erasure keeps only an evaluation
+identifier and any pseudonymous marker needed to fence provider reference reuse.
+
 The reference host exposes `POST /api/bff/admin/identity/privacy/export` and
 `POST /api/bff/admin/identity/privacy/erase`. Both require the application's
 deployment route policy under `mutation` risk; the public default returns HTTP

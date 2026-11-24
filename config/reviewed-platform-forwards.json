@@ -7072,6 +7072,51 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "tax-calculations",
+        "path": "db/platform/migrations/20261125170000_tax_calculations.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.tax_calculation_frame_v1(text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_calculation_hash_v1(text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_calculation_guard_v1()",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.tax_calculation_terminal_v1(public.tax_calculations)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_calculation_export_v1(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_calculation_erase_v1(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "tax_calculation_guard",
+            "table": "public.tax_calculations",
+            "sha256": "a6375b6597eccb2e5a6a0de3fa149a8292a2e59f4f9e2029e0f76e29ee08d7a1"
+          },
+          {
+            "name": "tax_calculation_privacy_guard",
+            "table": "public.identity_privacy_erasures",
+            "sha256": "6e59aad23d4da8031cb4d5abb88a8c88544d00873feab42608306e848106639e"
+          }
+        ]
       }
     ]
   },
@@ -10484,6 +10529,42 @@
           "signature": "public.catalog_admission_check_legacy_draft(text,jsonb,uuid,boolean)",
           "beforeSha256": "ffacafdd851dd1e7d87eca830e8b880087e59a32deec952649add8c5bfe0137d",
           "afterSha256": "f1ede9dae81ec658aea6697241f357cbfa4b4135d647c5677777b1d3cbdea56e"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125170000_tax_calculations.sql",
+      "sha256": "5e7c003dd37fc9482f109ec06bd5c2307fa885496cd2cb2a91880f91b322cf29",
+      "functions": [
+        {
+          "signature": "public.tax_calculation_frame_v1(text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "1086d046a2c86bcd139f8e371087e9b76d0c63503bbe359be8b2c05aaf304822"
+        },
+        {
+          "signature": "public.tax_calculation_hash_v1(text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "8a4a59bced87eef4c4d6ed4530c6aa0079a47e24c64d9a092bb472afd444cb64"
+        },
+        {
+          "signature": "public.tax_calculation_guard_v1()",
+          "beforeSha256": null,
+          "afterSha256": "7a6940d7bf9d4eb6aac52eaa88fabedbe8e98a34ea03fb7cbeadb6957cec3c60"
+        },
+        {
+          "signature": "public.tax_calculation_terminal_v1(public.tax_calculations)",
+          "beforeSha256": null,
+          "afterSha256": "b9315cfaac280fe6f5eb6ca47027da9ab48a144852d8e57205b4e05ba1a5cb20"
+        },
+        {
+          "signature": "public.tax_calculation_export_v1(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "0bd0a5d2d8edb47d0a93b8c9966999813acb4e6b7af7a71989da7cb32e69787f"
+        },
+        {
+          "signature": "public.tax_calculation_erase_v1(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "abae28bc3f7e282657ae32f8c9f6f903206da14f82dc7a7f7c34bbf4ebbb345e"
         }
       ]
     }
