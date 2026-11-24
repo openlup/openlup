@@ -1030,6 +1030,16 @@
       "anchor": "#catalog"
     },
     {
+      "id": "catalogue-reference-packs",
+      "when": "Reference catalogue pack fixtures and independent starter recipes",
+      "paths": [
+        "examples/catalog-packs/*/README.md",
+        "examples/catalog-packs/*/pack.ts"
+      ],
+      "doc": "packages/core/docs/guide/how-to/extend/catalogue-extension.md",
+      "anchor": "#new-vertical"
+    },
+    {
       "id": "platform-commerce",
       "when": "Platform commerce contracts and order effects",
       "paths": [
