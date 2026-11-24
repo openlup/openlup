@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Pool } from 'pg';
+import { Pool, type PoolConfig } from 'pg';
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
 
@@ -163,25 +163,46 @@ const shippingScript = String.raw`
   } finally {await new Promise(resolve=>{server.close(resolve);server.closeIdleConnections();});await bindings.close();await runtime.end();await owner.end();}
 `;
 
-async function provisionQuoteCase(configuration: string, multiSize: boolean, containers: PostgresContainer[], pools: Pool[]) {
+const quoteDatabase = {
+  start: runPostgresContainer,
+  pool: (options: PoolConfig) => new Pool(options),
+  createRole: (owner: Pool, role: string) => owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`),
+};
+
+async function provisionQuoteCase(configuration: string, multiSize: boolean, containers: PostgresContainer[], pools: Pool[], database: typeof quoteDatabase, signal: AbortSignal) {
   const setupStarted = performance.now();
   // Opt-in reproduction of provisioning overrunning the existing 95 s case budget.
   if (configuration === 'supplements' && existsSync(resolve('.context/scratch/slow-quote-setup'))) {
-    await setTimeout(96_000);
+    await setTimeout(96_000, undefined, { signal });
   }
+  signal.throwIfAborted();
   const bootStarted = performance.now();
-  const container = await runPostgresContainer({ name: `starter-quote-${configuration}-${multiSize ? "multi" : "single"}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
+  const container = await database.start({ name: `starter-quote-${configuration}-${multiSize ? "multi" : "single"}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
   containers.push(container);
+  signal.throwIfAborted();
   const readyStarted = performance.now();
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Starter quote PostgreSQL unavailable');
+  signal.throwIfAborted();
   const migrationStarted = performance.now();
-  const owner = new Pool({ connectionString: container.connectionString }); pools.push(owner);
-  for (const role of ['starter_runtime','starter_restore']) await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
+  const owner = database.pool({ connectionString: container.connectionString }); pools.push(owner);
+  for (const role of ['starter_runtime','starter_restore']) {
+    signal.throwIfAborted();
+    await database.createRole(owner, role);
+  }
+  signal.throwIfAborted();
   const selection = { generation: 'qualified-v2',roleMode: 'installer-managed',migrationLogin: 'postgres',bootstrapLogin: 'postgres',runtimeLogin: 'starter_runtime',restoreLogin: 'starter_restore' } as const;
-  const migration = new Pool({ connectionString: container.connectionString,options: migrations.qualifiedPostgresStartupOptions(selection) });pools.push(migration);
-  const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, { installation: selection,poolFactory: () => migration });
-  await runner.apply();expect((await runner.status()).pending).toEqual([]);
+  const migration = database.pool({ connectionString: container.connectionString,options: migrations.qualifiedPostgresStartupOptions(selection) });pools.push(migration);
+  const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, {
+    installation: selection,
+    poolFactory: () => { signal.throwIfAborted(); return migration; },
+  });
+  await runner.apply();
+  signal.throwIfAborted();
+  const status = await runner.status();
+  signal.throwIfAborted();
+  expect(status.pending).toEqual([]);
   await owner.query("COMMENT ON DATABASE neutral_store IS 'openlup-neutral-store-demo-v1'");
+  signal.throwIfAborted();
   const runtime = new URL(container.connectionString);runtime.username = 'starter_runtime';runtime.password = 'synthetic-conformance';
   const migrationFinished = performance.now();
   console.info(JSON.stringify({ configuration, multiSize, setupMs: migrationFinished - setupStarted,
@@ -386,15 +407,79 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
   console.info(JSON.stringify({ configuration, multiSize, proofMs: performance.now() - proofStarted, childMs: performance.now() - childStarted }));
 }
 
+function quoteCaseFixture(configuration: string, multiSize: boolean, database = quoteDatabase) {
+  const containers: PostgresContainer[] = [];
+  const pools: Pool[] = [];
+  const controller = new AbortController();
+  let provisioning: ReturnType<typeof provisionQuoteCase> | undefined;
+  return {
+    setup: () => provisioning = provisionQuoteCase(configuration, multiSize, containers, pools, database, controller.signal),
+    async teardown() {
+      controller.abort();
+      // Let the current operation settle before taking the cleanup snapshot.
+      await provisioning?.catch(() => undefined);
+      await closePostgres(containers, pools);
+    },
+  };
+}
+
+it('closes every acquired quote pool before removing the database after interrupted setup', async () => {
+  let queryHeld!: () => void;
+  let releaseQuery!: () => void;
+  const held = new Promise<void>(resolve => { queryHeld = resolve; });
+  const release = new Promise<void>(resolve => { releaseQuery = resolve; });
+  const pools: Pool[] = [];
+  let openAtRemoval: number | undefined;
+  const fixture = quoteCaseFixture('interrupted', false, {
+    async start(options) {
+      const container = await quoteDatabase.start(options);
+      return { ...container, async remove() {
+        openAtRemoval = pools.filter(pool => !pool.ended).length;
+        await container.remove();
+      } };
+    },
+    pool(options) {
+      const pool = quoteDatabase.pool(options);
+      pools.push(pool);
+      return pool;
+    },
+    async createRole(owner, role) {
+      const result = await quoteDatabase.createRole(owner, role);
+      if (role === 'starter_restore') {
+        queryHeld();
+        await release;
+      }
+      return result;
+    },
+  });
+  const setup = fixture.setup();
+  const settled = setup.catch(() => undefined);
+  let teardown: Promise<void> | undefined;
+  try {
+    await Promise.race([held, setup]);
+    teardown = fixture.teardown();
+    releaseQuery();
+    await teardown;
+    await settled;
+    expect(openAtRemoval).toBe(0);
+    expect(pools).toHaveLength(1);
+    await expect(setup).rejects.toMatchObject({ name: 'AbortError' });
+  } finally {
+    releaseQuery();
+    await settled;
+    await (teardown ?? fixture.teardown());
+    await Promise.all(pools.filter(pool => !pool.ended).map(pool => pool.end()));
+  }
+});
+
 for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) {
   describe.sequential(multiSize ? 'multi-size quote' : `${configuration} quote`, () => {
-    const containers: PostgresContainer[] = [];
-    const pools: Pool[] = [];
+    const database = quoteCaseFixture(configuration, multiSize);
     let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
     beforeAll(async () => {
-      fixture = await provisionQuoteCase(configuration, multiSize, containers, pools);
+      fixture = await database.setup();
     }, postgresSetupTimeoutMs);
-    afterAll(() => closePostgres(containers, pools), postgresTeardownTimeoutMs);
+    afterAll(database.teardown, postgresTeardownTimeoutMs);
 
     // About 4x the slowest hosted run (23,351 ms), rounded up to 5 s.
     // The child measured at most 2.703 s; retain its separate 20 s deadline.
