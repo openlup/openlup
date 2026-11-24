@@ -9130,6 +9130,18 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "catalog-price-list-basis",
+        "path": "db/platform/migrations/20261126530000_catalog_price_list_basis.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.price_lists ADD COLUMN amount_basis text;",
+          "ALTER TABLE public.price_lists ADD CONSTRAINT price_lists_basis_check CHECK (amount_basis IN ('tax_inclusive', 'tax_exclusive'));"
+        ]
       }
     ]
   },
@@ -13001,6 +13013,11 @@
           "afterSha256": "fc81204376fb206eec192d3ce4a6a3ca47cdd55af2c87fba625b4922ba308756"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261126530000_catalog_price_list_basis.sql",
+      "sha256": "fb7449ee5ea25e995c4970c68c358792528e4f7e6214c658ee86648dc73a2dfc",
+      "functions": []
     }
   ],
   "managedExactForwards": [

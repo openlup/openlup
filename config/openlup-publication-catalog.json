@@ -30118,6 +30118,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogPriceListBasis.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogPublication.test.ts",
       "class": "public-output"
     },
