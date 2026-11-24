@@ -2024,3 +2024,26 @@ it("destination_receipt_privacy_round_trip", async () => {
   expect(await receiptCall(target.runtime, "read", issuedArgs)).toEqual(tombstone);
   expect(await restore(transferred)).toMatchObject({ replayed: true, captureSha256: transferred.sha256 });
 }, 30_000);
+
+it("restores subscription destination pointers after both parents with exact live and erased rows", async () => {
+  const native = await sourceTemplates.clone("subscription-destination-transfer");
+  const db = native.owner, ctx = await destinationContext(db);
+  const live = ctx.scopeRef, marker = randomUUID();
+  for (const id of [live, marker]) await db.query(`INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,status)
+    VALUES($1,$2,28,clock_timestamp()+interval '28 days','active')`, [id, ctx.clientId]);
+  const issued = await snapshot(native.runtime, ctx);
+  await db.query(`DELETE FROM ${selectionTable} WHERE scope_ref=$1`, [live]);
+  await db.query(`UPDATE ${documentTable} SET purpose=NULL,evidence_expires_at=issued_at WHERE snapshot_ref=$1`, [issued.binding.snapshotRef]);
+  const { rows: [erased] } = await db.query(`INSERT INTO ${documentTable}
+    (snapshot_ref,client_id,issued_at,evidence_expires_at,evidence_disposition)
+    VALUES(gen_random_uuid(),$1,statement_timestamp(),statement_timestamp(),'erased') RETURNING snapshot_ref`, [ctx.clientId]);
+  await db.query(`INSERT INTO public.subscription_destination_v2_selections(subscription_id,snapshot_ref,selection_revision,service)
+    VALUES($1,$2,$3,$4),($5,$6,NULL,NULL)`, [live, issued.binding.snapshotRef, issued.selection.selectionRevision,
+    testServicePin, marker, erased!.snapshot_ref]);
+  const carried = await capture(db, "subscription-destination-parent-first");
+  const selectionRows = carried.owned.find(table => table.table === "subscription_destination_v2_selections")!.rows;
+  expect(selectionRows).toHaveLength(2);
+  expect((await restore(carried)).replayed).toBe(false);
+  expect((await census(target.owner)).subscription_destination_v2_selections).toEqual([...selectionRows].sort());
+  expect((await restore(carried)).replayed).toBe(true);
+}, 90_000);
