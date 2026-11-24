@@ -263,6 +263,46 @@ it("attempts the fresh-path order lock before checking the cutoff", async () => 
   }
 });
 
+it("samples the cutoff after waiting for the fresh-path order lock statement and rolls back", async () => {
+  const { owner, runtime } = store;
+  const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx);
+  const order = await insertDestinationOrder(owner, ctx);
+  const holder = await owner.connect();
+  const ready = deferred<{ pid: number; cutoff: string }>();
+  let bind: Promise<never> | undefined;
+  try {
+    await holder.query("BEGIN");
+    // NOWAIT applies to the row. The relation lock lets the same statement wait while the row is held.
+    await holder.query("LOCK TABLE public.commerce_orders IN EXCLUSIVE MODE");
+    await holder.query("SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE", [order]);
+    bind = destinationFence(owner, ctx, issued, async writer => {
+      const pid = await backendPid(writer);
+      const { rows: [timing] } = await writer.query<{ cutoff: string }>(`UPDATE ${documentTable}
+        SET evidence_expires_at=clock_timestamp()+interval '3 seconds'
+        WHERE snapshot_ref=$1 RETURNING evidence_expires_at::text AS cutoff`, [issued.binding.snapshotRef]);
+      ready.resolve({ pid, cutoff: timing!.cutoff });
+      throw { decision: await registerDestination(writer, ctx, order, issued) };
+    });
+    void bind.catch(ready.reject);
+    const { pid, cutoff } = await ready.promise;
+    await awaitReceiptWait(owner, pid, "relation", "RowShareLock");
+    expect((await holder.query(`SELECT pg_backend_pid() = ANY(pg_blocking_pids($1))
+      AND clock_timestamp() < $2::timestamptz AS blocked_before_cutoff`, [pid, cutoff])).rows)
+      .toEqual([{ blocked_before_cutoff: true }]);
+    await holder.query("SELECT pg_sleep_until($1::timestamptz + interval '10 milliseconds')", [cutoff]);
+    await holder.query("COMMIT");
+    await expect(bind).rejects.toEqual({ decision: stale("destination.snapshotRef") });
+    expect((await owner.query(`SELECT 1 FROM ${orderBindingTable} WHERE order_id=$1`, [order])).rows).toEqual([]);
+    expect(await readSnapshot(runtime, ctx, issued.binding)).toMatchObject({
+      binding: issued.binding, evidenceExpiresAt: issued.evidenceExpiresAt,
+    });
+  } finally {
+    await holder.query("ROLLBACK");
+    await bind?.catch(() => undefined);
+    holder.release();
+  }
+}, 12000);
+
 it.each([selectionTable, documentTable])("preserves fence contention for the guarded row in %s", async table => {
   const { owner, runtime } = store;
   const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx);
@@ -328,8 +368,9 @@ it.each(["reselections", "erasures"] as const)("orders %s before and after the b
         else await changing;
         await other.query("COMMIT");
         if (relation) {
-          expect((await owner.query(`SELECT order_id,snapshot_ref,selection,service FROM ${orderBindingTable} WHERE order_id=$1`, [order])).rows)
-            .toEqual([{ order_id: order, snapshot_ref: issued.binding.snapshotRef, selection: null, service: null }]);
+          expect((await owner.query(`SELECT order_id,snapshot_ref,selection IS NULL AND service IS NULL AS pins_scrubbed
+            FROM ${orderBindingTable} WHERE order_id=$1`, [order])).rows)
+            .toEqual([{ order_id: order, snapshot_ref: issued.binding.snapshotRef, pins_scrubbed: true }]);
         }
         expect(await registerDestination(runtime, ctx, order, issued)).toEqual(relation ? unavailable("orderId") : issued.binding);
       } else {
