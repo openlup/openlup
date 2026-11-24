@@ -780,11 +780,11 @@
         "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
       },
       {
-        "file": "db/platform/migrations/20261125210000_subscription_activation_execute_grants.sql",
+        "file": "db/platform/migrations/20261125260000_subscription_activation_execute_grants.sql",
         "sha256": "3a5cceabc95b5727ccae5e5aa1f7b3ee38f28511824bc7a76b4e9b639bb8d065"
       },
       {
-        "file": "db/platform/migrations/20261125220000_subscription_activation_units.sql",
+        "file": "db/platform/migrations/20261125261000_subscription_activation_units.sql",
         "sha256": "c9c30da72445e0fff5f6d00f8bb1de8d51b11f4ee443a8a297b8ac35fac5726d"
       }
     ],
@@ -1592,11 +1592,11 @@
           "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
         },
         {
-          "file": "db/platform/migrations/20261125210000_subscription_activation_execute_grants.sql",
+          "file": "db/platform/migrations/20261125260000_subscription_activation_execute_grants.sql",
           "sha256": "3a5cceabc95b5727ccae5e5aa1f7b3ee38f28511824bc7a76b4e9b639bb8d065"
         },
         {
-          "file": "db/platform/migrations/20261125220000_subscription_activation_units.sql",
+          "file": "db/platform/migrations/20261125261000_subscription_activation_units.sql",
           "sha256": "c9c30da72445e0fff5f6d00f8bb1de8d51b11f4ee443a8a297b8ac35fac5726d"
         }
       ],
@@ -2404,11 +2404,11 @@
           "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
         },
         {
-          "file": "db/platform/migrations/20261125210000_subscription_activation_execute_grants.sql",
+          "file": "db/platform/migrations/20261125260000_subscription_activation_execute_grants.sql",
           "sha256": "3a5cceabc95b5727ccae5e5aa1f7b3ee38f28511824bc7a76b4e9b639bb8d065"
         },
         {
-          "file": "db/platform/migrations/20261125220000_subscription_activation_units.sql",
+          "file": "db/platform/migrations/20261125261000_subscription_activation_units.sql",
           "sha256": "c9c30da72445e0fff5f6d00f8bb1de8d51b11f4ee443a8a297b8ac35fac5726d"
         }
       ],
@@ -3390,13 +3390,13 @@
       "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
     },
     {
-      "file": "20261125210000_subscription_activation_execute_grants.sql",
-      "source": "db/platform/migrations/20261125210000_subscription_activation_execute_grants.sql",
+      "file": "20261125260000_subscription_activation_execute_grants.sql",
+      "source": "db/platform/migrations/20261125260000_subscription_activation_execute_grants.sql",
       "sha256": "3a5cceabc95b5727ccae5e5aa1f7b3ee38f28511824bc7a76b4e9b639bb8d065"
     },
     {
-      "file": "20261125220000_subscription_activation_units.sql",
-      "source": "db/platform/migrations/20261125220000_subscription_activation_units.sql",
+      "file": "20261125261000_subscription_activation_units.sql",
+      "source": "db/platform/migrations/20261125261000_subscription_activation_units.sql",
       "sha256": "c9c30da72445e0fff5f6d00f8bb1de8d51b11f4ee443a8a297b8ac35fac5726d"
     },
     {
