@@ -14,11 +14,12 @@ BEGIN
    continued jsonb; start_at integer := 0; roster_size bigint; member_count bigint; chosen uuid; chosen_eligible boolean;
    page_keys jsonb; consulted jsonb;
    uuid_shape CONSTANT text := '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$';
-   token_keys CONSTANT text[] := ARRAY['selectedSkuId','offset','offerVersion','mode','headDigest','limit'];
+   token_keys CONSTANT text[] := ARRAY['selectedSkuId','offset','offerVersion','mode','headDigest','limit','binding'];
    inconsistent CONSTANT jsonb := '{"kind":"refusal","reason":"inconsistent_evidence"}';
+   moved CONSTANT jsonb := '{"kind":"refusal","reason":"head_moved"}';
   BEGIN
-   -- Validate the closed input before any cast or read. A continuation repeats the selection and binds
-   -- the offer, mode, page size and in-scope head digest; its offset is a multiple of the page size.
+   -- Validate the closed input shape before any cast or read. A continuation's request context, binding,
+   -- alignment and roster position are compared only after the head digest.
    IF public.catalog_publication_text_valid(to_jsonb(p_offer_version),240,true) IS DISTINCT FROM true
     OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 100 OR jsonb_typeof(p_cursor) IS DISTINCT FROM 'object' THEN RETURN invalid; END IF;
    continued := p_cursor->'continuation';
@@ -27,15 +28,16 @@ BEGIN
     OR (continued IS NOT NULL AND jsonb_typeof(continued) IS DISTINCT FROM 'object') THEN RETURN invalid; END IF;
    IF continued IS NOT NULL THEN
     IF NOT continued ?& token_keys OR continued - token_keys <> '{}'::jsonb
-     OR continued->'selectedSkuId' IS DISTINCT FROM p_cursor->'selectedSkuId'
-     OR continued->'offerVersion' IS DISTINCT FROM to_jsonb(p_offer_version)
+     OR (jsonb_typeof(continued->'selectedSkuId')='string' AND continued->>'selectedSkuId' COLLATE pg_catalog."C" ~ uuid_shape) IS DISTINCT FROM true
+     OR jsonb_typeof(continued->'offerVersion') IS DISTINCT FROM 'string'
      OR continued->'mode' IS DISTINCT FROM '"admission_issue"'::jsonb
      OR (jsonb_typeof(continued->'headDigest')='string' AND continued->>'headDigest' COLLATE pg_catalog."C" ~ '^[0-9a-f]{64}$') IS DISTINCT FROM true
+     OR (jsonb_typeof(continued->'binding')='string' AND continued->>'binding' COLLATE pg_catalog."C" ~ '^[0-9a-f]{64}$') IS DISTINCT FROM true
      OR (jsonb_typeof(continued->'limit')='number' AND continued->>'limit' COLLATE pg_catalog."C" ~ '^[1-9][0-9]{0,2}$') IS DISTINCT FROM true
      OR (jsonb_typeof(continued->'offset')='number' AND continued->>'offset' COLLATE pg_catalog."C" ~ '^[1-9][0-9]{0,2}$') IS DISTINCT FROM true
     THEN RETURN invalid; END IF;
     start_at := (continued->>'offset')::integer;
-    IF (continued->>'limit')::integer <> p_limit OR start_at > 499 OR start_at % p_limit <> 0 THEN RETURN invalid; END IF;
+    IF (continued->>'limit')::integer > 100 OR start_at > 499 THEN RETURN invalid; END IF;
    END IF;
    chosen := (p_cursor->>'selectedSkuId')::uuid;
    authority := public.catalog_publication_read_head();
@@ -92,29 +94,42 @@ BEGIN
      FROM (SELECT sku_id,product_id FROM roster ORDER BY sku_id OFFSET start_at LIMIT p_limit) slice)
    INTO member_count,chosen_eligible,head_digest,page_keys FROM roster;
    IF member_count IS DISTINCT FROM roster_size THEN RETURN inconsistent; END IF;
-   IF continued IS NOT NULL AND continued->'headDigest' IS DISTINCT FROM to_jsonb(head_digest) THEN
-    RETURN '{"kind":"refusal","reason":"head_moved"}'::jsonb;
+   IF continued IS NOT NULL THEN
+    IF continued->'headDigest' IS DISTINCT FROM to_jsonb(head_digest) THEN RETURN moved; END IF;
+    -- The binding covers the request's offer, selection and page size, the mode, the token's offset and the head digest.
+    IF continued->'selectedSkuId' IS DISTINCT FROM p_cursor->'selectedSkuId' OR continued->'offerVersion' IS DISTINCT FROM to_jsonb(p_offer_version)
+     OR continued->'limit' IS DISTINCT FROM to_jsonb(p_limit) OR continued->>'binding' IS DISTINCT FROM encode(sha256(convert_to(
+      jsonb_build_array(p_offer_version,p_cursor->'selectedSkuId','admission_issue',p_limit,start_at,head_digest)::text,'UTF8')),'hex')
+    THEN RETURN invalid; END IF;
+    IF start_at % p_limit <> 0 OR start_at >= roster_size THEN RETURN invalid; END IF;
    END IF;
-   IF start_at>=roster_size THEN RETURN invalid; END IF;
    IF NOT chosen_eligible THEN RETURN invalid || '{"detail":"catalog_admission_selection_ineligible"}'::jsonb; END IF;
-   -- Resolve only the page. Each page product's head is authenticated once through its first page member,
-   -- and each earlier issuing publication once through its manifest, exact reference and product-bound document.
-   WITH page AS MATERIALIZED (
+   -- Resolve only the page. read_head authenticated every current head; after confirming the global head digest,
+   -- each page product's head is parsed and its product-bound document checked against the head manifest.
+   -- Each earlier issuing publication is authenticated once through its manifest, exact reference and document.
+   WITH current_heads AS MATERIALIZED (
+    SELECT encode(sha256(convert_to(jsonb_agg(jsonb_build_array(h.product_id,h.publication_id,h.revision,p.digest)
+      ORDER BY h.product_id)::text,'UTF8')),'hex') AS digest
+    FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON (p.product_id,p.id)=(h.product_id,h.publication_id)
+   ), page AS MATERIALIZED (
     SELECT (k->>0)::uuid AS sku_id,(k->>1)::uuid AS product_id FROM jsonb_array_elements(page_keys) AS entry(k)
-   ), firsts AS MATERIALIZED (
-    SELECT DISTINCT ON (product_id) product_id,sku_id FROM page ORDER BY product_id,sku_id
    ), heads AS MATERIALIZED (
-    SELECT f.product_id,public.catalog_publication_selected_evidence(f.product_id,f.sku_id) AS e FROM firsts f
-   ), manifests AS MATERIALIZED (
-    SELECT hd.product_id,hd.e,c.id AS head_id,c.canonical_state::jsonb->'skus' AS refs
-    FROM heads hd LEFT JOIN public.catalog_publications c ON hd.e->>'kind'='evidence'
-     AND (c.product_id,c.id)=(hd.product_id,(hd.e #>> '{head,publicationId}')::uuid)
+    SELECT c.product_id,c.id AS head_id,c.canonical_state::jsonb AS body,
+     jsonb_build_object('publicationId',c.id,'revision',c.revision,'documentDigest',d.digest) AS head,
+     jsonb_build_object('id',d.id,'productId',d.product_id,'revisionNo',d.revision_no,'schemaId',d.schema_id,
+      'documentRef',d.document_ref,'sourceRef',d.source_ref,'digest',d.digest) AS document
+    FROM (SELECT DISTINCT product_id FROM page) g
+    JOIN public.catalog_publication_heads h ON h.product_id=g.product_id
+    JOIN public.catalog_publications c ON (c.product_id,c.id,c.revision)=(h.product_id,h.publication_id,h.revision)
+    LEFT JOIN public.catalog_product_document_revisions d ON (d.product_id,d.id)=(c.product_id,c.document_revision_id)
    ), members AS MATERIALIZED (
-    SELECT g.sku_id,g.product_id,m.e,m.head_id,ref.r AS reference,rev.id AS revision_id,rev.publication_id AS issue_id
-    FROM page g JOIN manifests m USING (product_id)
-    LEFT JOIN LATERAL (SELECT r FROM jsonb_array_elements(m.refs) r WHERE r->'skuId'=to_jsonb(g.sku_id)) ref ON true
-    LEFT JOIN public.catalog_sku_revisions rev ON rev.id=(ref.r->>'revisionId')::uuid
-     AND (rev.product_id,rev.sku_id,rev.revision,rev.digest)=(g.product_id,g.sku_id,(ref.r->>'revision')::integer,ref.r->>'digest')
+    SELECT g.sku_id,g.product_id,hd.head_id,hd.head,hd.body #> '{product,document}'=hd.document AS head_bound,
+     ref.r AS reference,rev.id AS revision_id,rev.publication_id AS issue_id
+    FROM page g LEFT JOIN heads hd USING (product_id)
+    LEFT JOIN LATERAL (SELECT r FROM jsonb_array_elements(hd.body->'skus') r WHERE r->'skuId'=to_jsonb(g.sku_id)) ref ON true
+    -- One exact sealed-revision lookup per page member; OFFSET 0 keeps it per member.
+    LEFT JOIN LATERAL (SELECT s.id,s.publication_id FROM public.catalog_sku_revisions s WHERE s.id=(ref.r->>'revisionId')::uuid
+     AND (s.product_id,s.sku_id,s.revision,s.digest)=(g.product_id,g.sku_id,(ref.r->>'revision')::integer,ref.r->>'digest') OFFSET 0) rev ON true
    ), origins AS MATERIALIZED (
     SELECT o.id,o.product_id,jsonb_build_object('publicationId',o.id,'revision',o.revision,'documentDigest',d.digest) AS issue,
      public.catalog_publication_read_manifest(o.product_id,o.canonical_state,o.digest) AS body,
@@ -122,28 +137,28 @@ BEGIN
       'documentRef',d.document_ref,'sourceRef',d.source_ref,'digest',d.digest) AS document
     FROM public.catalog_publications o
     JOIN public.catalog_product_document_revisions d ON (d.product_id,d.id)=(o.product_id,o.document_revision_id)
-    WHERE (o.product_id,o.id) IN (SELECT product_id,issue_id FROM members WHERE e->>'kind'='evidence' AND issue_id<>head_id)
+    WHERE (o.product_id,o.id) IN (SELECT product_id,issue_id FROM members WHERE issue_id<>head_id)
    ), checked AS (
-    SELECT m.sku_id,m.product_id,m.revision_id,CASE WHEN m.issue_id=m.head_id THEN m.e->'head' ELSE o.issue END AS issue,
-     CASE WHEN m.e->>'kind' IS DISTINCT FROM 'evidence' THEN coalesce(m.e,inconsistent)
-      WHEN m.revision_id IS NULL OR (m.issue_id<>m.head_id AND (o.body IS NULL
+    SELECT m.sku_id,m.product_id,m.revision_id,CASE WHEN m.issue_id=m.head_id THEN m.head ELSE o.issue END AS issue,
+     CASE WHEN m.head_bound IS NOT TRUE OR m.revision_id IS NULL OR (m.issue_id<>m.head_id AND (o.body IS NULL
        OR o.body #> '{product,document}' IS DISTINCT FROM o.document
        OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(o.body->'skus') x WHERE x=m.reference))) THEN inconsistent END AS refusal
     FROM members m LEFT JOIN origins o ON (o.product_id,o.id)=(m.product_id,m.issue_id)
    )
-   SELECT (array_agg(refusal ORDER BY sku_id) FILTER (WHERE refusal IS NOT NULL))[1],
+   SELECT CASE WHEN (SELECT digest FROM current_heads) IS DISTINCT FROM authority->>'headDigest' THEN moved
+     ELSE (array_agg(refusal ORDER BY sku_id) FILTER (WHERE refusal IS NOT NULL))[1] END,
     jsonb_agg(jsonb_build_object('kind',CASE WHEN sku_id=chosen THEN 'declaring' ELSE 'compared' END,'productId',product_id,
      'publicationId',issue->'publicationId','revision',issue->'revision','documentDigest',issue->'documentDigest',
      'skuRevisionId',revision_id) ORDER BY sku_id),
-    (SELECT jsonb_agg(jsonb_build_object('productId',product_id,'publicationId',e #> '{head,publicationId}',
-      'revision',e #> '{head,revision}','documentDigest',e #> '{head,documentDigest}') ORDER BY product_id) FROM heads)
+    (SELECT jsonb_agg(jsonb_build_object('productId',product_id) || head ORDER BY product_id) FROM heads)
    INTO failed,items,consulted FROM checked;
    IF failed IS NOT NULL THEN RETURN failed; END IF;
    IF jsonb_array_length(items) IS DISTINCT FROM least(p_limit::bigint,roster_size-start_at) THEN RETURN inconsistent; END IF;
    RETURN jsonb_build_object('kind','page','value',jsonb_build_object('issues',items,'consultedHeads',consulted,
     'rosterCount',roster_size,'nextCursor',CASE WHEN start_at+p_limit<roster_size THEN jsonb_build_object(
      'selectedSkuId',p_cursor->'selectedSkuId','offset',start_at+p_limit,'offerVersion',p_offer_version,
-     'mode','admission_issue','headDigest',head_digest,'limit',p_limit) END));
+     'mode','admission_issue','headDigest',head_digest,'limit',p_limit,'binding',encode(sha256(convert_to(
+      jsonb_build_array(p_offer_version,p_cursor->'selectedSkuId','admission_issue',p_limit,start_at+p_limit,head_digest)::text,'UTF8')),'hex')) END));
   END;
  END IF;
  IF public.catalog_publication_text_valid(to_jsonb(p_offer_version),240,true) IS DISTINCT FROM true

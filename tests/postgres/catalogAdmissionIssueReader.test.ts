@@ -37,7 +37,7 @@ const login = (name: string) => {
 };
 
 type Seed = { offer: string; id?: ReturnType<typeof randomUUID>; admitted?: boolean; productActive?: boolean; skuActive?: boolean; standalone?: boolean;
-  subscription?: boolean; extra?: number; lifecycle?: true };
+  subscription?: boolean; extra?: number; lifecycle?: true; also?: string };
 async function seed(db: PoolClient, options: Seed) {
   const issue = await graph(db, { ...fixture(), ...(options.id ? { skuId: options.id } : {}) }, null, true,
     options.lifecycle ? { lifecycle: "active", subscriptionEligible: options.subscription ?? true } : {});
@@ -48,7 +48,8 @@ async function seed(db: PoolClient, options: Seed) {
     issue.facts.sellableInSubscription = options.subscription ?? true;
     await db.query("UPDATE public.catalog_products SET status=$2 WHERE id=$1", [issue.productId, issue.product.status]);
   }
-  issue.facts.memberships = [{ offerVersion: options.offer, admitted: options.admitted ?? true }];
+  issue.facts.memberships = [{ offerVersion: options.offer, admitted: options.admitted ?? true },
+    ...(options.also ? [{ offerVersion: options.also, admitted: true }] : [])].sort((left, right) => left.offerVersion < right.offerVersion ? -1 : 1);
   await insertGraph(db, issue, { extraSkuCount: options.extra });
   return issue;
 }
@@ -180,11 +181,57 @@ async function readAsCaller(caller: Pool, observer: Db, args: unknown[]) {
   } finally { await db.query("ROLLBACK"); db.release(); }
 }
 
-async function functionCalls(db: PoolClient) {
-  const { rows } = await db.query(`SELECT funcname, calls FROM pg_catalog.pg_stat_xact_user_functions
-    WHERE funcname IN ('catalog_publication_selected_evidence','catalog_publication_read_manifest','catalog_publication_read_head')`);
-  const count = (name: string) => Number(rows.find(row => row.funcname === name)?.calls ?? 0);
-  return { evidence: count("catalog_publication_selected_evidence"), manifests: count("catalog_publication_read_manifest") };
+// The continuation binding as the reader computes it, used to build otherwise valid tokens.
+async function binding(db: Db, offer: string, selection: string, limit: number, offset: number, headDigest: string) {
+  return (await db.query(`SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array($1::pg_catalog.text,
+      pg_catalog.to_jsonb($2::pg_catalog.text), 'admission_issue'::pg_catalog.text, $3::pg_catalog.int4, $4::pg_catalog.int4,
+      $5::pg_catalog.text)::pg_catalog.text, 'UTF8')), 'hex') AS value`, [offer, selection, limit, offset, headDigest])).rows[0]!.value as string;
+}
+
+// Per-transaction counters: helper calls, and rows read from the sealed revision table.
+async function counters(db: PoolClient) {
+  const row = (await db.query(`SELECT
+      coalesce(pg_catalog.pg_stat_get_xact_function_calls($1::pg_catalog.regprocedure), 0) AS evidence,
+      coalesce(pg_catalog.pg_stat_get_xact_function_calls($2::pg_catalog.regprocedure), 0) AS manifests,
+      (SELECT t.seq_tup_read + coalesce(t.idx_tup_fetch, 0) FROM pg_catalog.pg_stat_xact_user_tables t
+        WHERE t.relid = 'public.catalog_sku_revisions'::pg_catalog.regclass) AS revisions`,
+  ["public.catalog_publication_selected_evidence(uuid,uuid)", "public.catalog_publication_read_manifest(uuid,text,text)"])).rows[0]!;
+  return { evidence: Number(row.evidence), manifests: Number(row.manifests), revisions: Number(row.revisions) };
+}
+async function measure(db: PoolClient, offer: string, cursor: unknown, limit: number) {
+  const before = await counters(db), result = await read(db, offer, cursor, limit), after = await counters(db);
+  return { result, evidence: after.evidence - before.evidence, manifests: after.manifests - before.manifests,
+    revisions: after.revisions - before.revisions };
+}
+// The selection refusal follows the roster, digest and offset steps and precedes page evidence.
+async function rosterOnly(db: PoolClient, offer: string, limit: number) {
+  const value = await measure(db, offer, { selectedSkuId: fixedId(999) }, limit);
+  expect(value.result).toEqual(ineligible);
+  return value;
+}
+async function headCount(db: PoolClient) {
+  const heads = Number((await db.query("SELECT pg_catalog.count(*) FROM public.catalog_publication_heads")).rows[0]!.count);
+  const before = await counters(db);
+  await db.query("SELECT public.catalog_publication_read_head()");
+  // read_head validates each current head manifest once.
+  expect((await counters(db)).manifests - before.manifests).toBe(heads);
+  return heads;
+}
+// A fresh superuser backend has no cached plans. Without sequential scans the row counter counts the reader's
+// lookups, not a planner choice to scan a small table.
+async function measuring(work: (db: PoolClient) => Promise<void>) {
+  const own = new Pool({ connectionString: container.connectionString, max: 1 });
+  const db = await own.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("SET LOCAL track_functions = 'pl'");
+    await db.query("SET LOCAL enable_seqscan = off");
+    await work(db);
+  } finally {
+    await db.query("ROLLBACK").catch(() => undefined);
+    db.release(true);
+    await own.end();
+  }
 }
 
 beforeAll(async () => {
@@ -309,7 +356,7 @@ it("validates one closed input before reading and refuses each malformed or mism
   const first = await read(pool, offer, { selectedSkuId: fixedId(201) }, 1);
   const token = first.value.nextCursor;
   expect(token).toEqual({ selectedSkuId: fixedId(201), offset: 1, offerVersion: offer, mode: "admission_issue",
-    headDigest: expect.stringMatching(/^[0-9a-f]{64}$/u), limit: 1 });
+    headDigest: expect.stringMatching(/^[0-9a-f]{64}$/u), limit: 1, binding: await binding(pool, offer, fixedId(201), 1, 1, token.headDigest) });
   const continued = (change: Record<string, unknown> = {}, outer: Record<string, unknown> = {}) =>
     ({ selectedSkuId: fixedId(201), continuation: { ...token, ...change }, ...outer });
   const { continuation: _drop, ...pageOne } = continued();
@@ -324,6 +371,10 @@ it("validates one closed input before reading and refuses each malformed or mism
     [offer, continued({ offset: 0 }), 1], [offer, continued({ offset: 500, limit: 100 }), 100], [offer, continued({ offset: 1.5 }), 1],
     [offer, continued({ offset: "1" }), 1], [offer, continued({ offset: 2, limit: 3 }), 3], [offer, continued({ offset: -1 }), 1],
     [offer, continued({ headDigest: token.headDigest.toUpperCase() }), 1], [offer, continued({ headDigest: "f".repeat(63) }), 1],
+    [offer, { ...pageOne, continuation: (({ binding: _binding, ...rest }) => rest)(token) }, 1], [offer, continued({ binding: null }), 1],
+    [offer, continued({ binding: token.binding.toUpperCase() }), 1], [offer, continued({ binding: "f".repeat(63) }), 1],
+    // Shape refusals precede the digest step.
+    [offer, continued({ limit: 101, headDigest: "f".repeat(64) }), 1], [offer, continued({ offset: 500, headDigest: "f".repeat(64) }), 1],
     [offer, pageOne, 0], [offer, pageOne, 101], [offer, pageOne, null], ["", pageOne, 1], [" padded", pageOne, 1],
     ["x".repeat(241), pageOne, 1], [`${"x".repeat(239)}\u{1F600}`, pageOne, 1], [null, pageOne, 1],
   ];
@@ -336,7 +387,10 @@ it("validates one closed input before reading and refuses each malformed or mism
     expect(await read(pool, unknown, pageOne, 1)).toEqual(refusal("unknown_offer"));
   }
   expect(await read(pool, offer, continued({ headDigest: "f".repeat(64) }), 1)).toEqual(refusal("head_moved"));
-  expect(await read(pool, offer, continued({ offset: 2, limit: 2 }), 2)).toEqual(invalid);
+  // An aligned offset outside the roster is refused at the offset step, with a valid binding and a current digest.
+  const outside = { offset: 2, binding: await binding(pool, offer, fixedId(201), 1, 2, token.headDigest) };
+  expect(await read(pool, offer, continued(outside), 1)).toEqual(invalid);
+  expect(await read(pool, offer, continued({ ...outside, headDigest: "f".repeat(64) }), 1)).toEqual(refusal("head_moved"));
   // A digest mismatch precedes the offset and selection checks.
   expect(await read(pool, offer, { selectedSkuId: fixedId(999), continuation: { ...token, selectedSkuId: fixedId(999), offset: 3, limit: 1,
     headDigest: "f".repeat(64) } }, 1)).toEqual(refusal("head_moved"));
@@ -351,16 +405,17 @@ it("validates one closed input before reading and refuses each malformed or mism
   expect(JSON.parse(await text(pool, [offer, pageOne, 1, "ADMISSION_ISSUE"], collated))).toEqual(invalid);
 });
 
+type Token = { offset: number; headDigest: string; binding: string; limit: number };
+
 it("enforces the roster and page caps before resolving evidence and walks a complete cursor chain", async () => {
   const offer = "test:caps";
-  const db = await pool.connect();
-  try {
-    await db.query("BEGIN");
+  await measuring(async db => {
     const large = await seed(db, { offer, id: fixedId(300), extra: 499 });
-    await db.query("SET LOCAL track_functions='pl'");
-    let token: unknown = null, offset = 0, declaring = 0;
+    await seed(db, { offer: "test:caps-baseline", id: fixedId(302) });
+    let token: Token | null = null, last: Token | null = null, offset = 0, declaring = 0;
     const revisions = new Set<string>();
     for (let page = 1; page <= 20; page++) {
+      if (page === 20) last = token;
       const result = await read(db, offer, token === null ? { selectedSkuId: large.skuId } : { selectedSkuId: large.skuId, continuation: token }, 25);
       expect(result.value.rosterCount).toBe(500);
       expect(result.value.issues).toHaveLength(25);
@@ -368,51 +423,168 @@ it("enforces the roster and page caps before resolving evidence and walks a comp
       for (const issue of result.value.issues) { revisions.add(issue.skuRevisionId); declaring += Number(issue.kind === "declaring"); }
       offset += 25;
       token = result.value.nextCursor;
-      expect(token === null ? null : (token as { offset: number }).offset).toBe(page === 20 ? null : offset);
+      expect(token === null ? null : token.offset).toBe(page === 20 ? null : offset);
     }
     expect([revisions.size, declaring]).toEqual([500, 1]);
-    const token25 = (await read(db, offer, { selectedSkuId: large.skuId }, 25)).value.nextCursor;
-    const at = (offset: number) => ({ selectedSkuId: large.skuId, continuation: { ...token25, offset } });
-    expect((await read(db, offer, at(475), 25)).value).toMatchObject({ rosterCount: 500, nextCursor: null, issues: expect.any(Array) });
-    for (const offset of [500, 490, 26]) expect(await read(db, offer, at(offset), 25)).toEqual(invalid);
-    const before = await functionCalls(db);
-    await db.query("SELECT public.catalog_publication_read_head()");
-    const headOnly = await functionCalls(db);
-    expect(await read(db, offer, { selectedSkuId: large.skuId }, 24)).toEqual(refusal("inconsistent_evidence", "catalog_admission_page_cap_exceeded"));
-    const pageCap = await functionCalls(db);
-    expect([pageCap.evidence - headOnly.evidence, pageCap.manifests - headOnly.manifests]).toEqual([0, headOnly.manifests - before.manifests]);
-    await seed(db, { offer, id: fixedId(301) });
-    for (const limit of [1, 25, 100]) {
-      expect(await read(db, offer, { selectedSkuId: large.skuId }, limit)).toEqual(refusal("inconsistent_evidence", "catalog_admission_membership_cap_exceeded"));
+    // The genuine token issued for offset 475 serves the last page again.
+    expect(last!.offset).toBe(475);
+    expect((await read(db, offer, { selectedSkuId: large.skuId, continuation: last }, 25)).value)
+      .toMatchObject({ rosterCount: 500, nextCursor: null, issues: expect.any(Array) });
+    // An unaligned offset inside the roster, with a valid binding for it, is refused at the offset step after the digest.
+    const at = async (offset: number, headDigest = last!.headDigest) => ({ selectedSkuId: large.skuId,
+      continuation: { ...last, offset, headDigest, binding: await binding(db, offer, large.skuId, 25, offset, headDigest) } });
+    for (const offset of [26, 490]) {
+      expect(await read(db, offer, await at(offset), 25)).toEqual(invalid);
+      expect(await read(db, offer, await at(offset, "f".repeat(64)), 25)).toEqual(refusal("head_moved"));
     }
-    expect((await functionCalls(db)).evidence).toBe(pageCap.evidence);
-  } finally { await db.query("ROLLBACK"); db.release(); }
+    expect(await read(db, offer, await at(500), 25)).toEqual(invalid);
+    // Both caps refuse before any evidence read: no helper call, manifest or sealed revision beyond the roster check.
+    const heads = await headCount(db);
+    const baseline = await rosterOnly(db, "test:caps-baseline", 25);
+    expect({ evidence: baseline.evidence, manifests: baseline.manifests }).toEqual({ evidence: 0, manifests: heads });
+    expect((await rosterOnly(db, offer, 25)).revisions).toBe(baseline.revisions);
+    const pageCap = await measure(db, offer, { selectedSkuId: large.skuId }, 24);
+    expect(pageCap.result).toEqual(refusal("inconsistent_evidence", "catalog_admission_page_cap_exceeded"));
+    expect([pageCap.evidence, pageCap.manifests - heads, pageCap.revisions - baseline.revisions]).toEqual([0, 0, 0]);
+    await seed(db, { offer, id: fixedId(301) });
+    const capped = await headCount(db), cappedBaseline = await rosterOnly(db, "test:caps-baseline", 25);
+    expect({ evidence: cappedBaseline.evidence, manifests: cappedBaseline.manifests }).toEqual({ evidence: 0, manifests: capped });
+    for (const limit of [1, 25, 100]) {
+      const over = await measure(db, offer, { selectedSkuId: large.skuId }, limit);
+      expect(over.result).toEqual(refusal("inconsistent_evidence", "catalog_admission_membership_cap_exceeded"));
+      expect([over.evidence, over.manifests - capped, over.revisions - cappedBaseline.revisions]).toEqual([0, 0, 0]);
+    }
+  });
 }, 120_000);
 
-it("authenticates each required publication once per call and resolves at most one page of members", async () => {
-  const offer = "test:shared";
+it("binds each continuation to the request's offer, selection and page size and to its offset", async () => {
+  const offer = "test:bind", twin = "test:bind-twin";
+  await transaction(pool, async db => { for (let index = 210; index <= 215; index++) await seed(db, { offer, also: twin, id: fixedId(index) }); });
+  const token: Token = (await read(pool, offer, { selectedSkuId: fixedId(210) }, 2)).value.nextCursor;
+  expect(token).toMatchObject({ offset: 2, limit: 2, binding: await binding(pool, offer, fixedId(210), 2, 2, token.headDigest) });
+  // The twin offer lists the same products, so it has the same head digest.
+  expect((await read(pool, twin, { selectedSkuId: fixedId(210) }, 2)).value.nextCursor.headDigest).toBe(token.headDigest);
+  expect(await read(pool, offer, { selectedSkuId: fixedId(210), continuation: token }, 2))
+    .toMatchObject({ kind: "page", value: { rosterCount: 6, nextCursor: { offset: 4 } } });
+  const rewrites: [string, string, Partial<Token> & Record<string, unknown>, number][] = [
+    [offer, fixedId(211), { selectedSkuId: fixedId(211) }, 2], [twin, fixedId(210), { offerVersion: twin }, 2],
+    [offer, fixedId(210), { limit: 1 }, 1], [offer, fixedId(210), { offset: 4 }, 2],
+  ];
+  for (const [at, selection, change, limit] of rewrites) {
+    // Each consistent rewrite keeps the original binding and is refused without a page.
+    const rewritten = { ...token, ...change };
+    expect(await read(pool, at, { selectedSkuId: selection, continuation: rewritten }, limit), JSON.stringify(change)).toEqual(invalid);
+    // With its own binding the same rewrite is served, so the binding alone refuses it.
+    const rebound = { ...rewritten, binding: await binding(pool, at, selection, limit, rewritten.offset, rewritten.headDigest) };
+    expect(await read(pool, at, { selectedSkuId: selection, continuation: rebound }, limit), JSON.stringify(change)).toMatchObject({ kind: "page" });
+  }
+});
+
+it("reuses the head authentication and resolves only the page's sealed revisions", async () => {
+  await measuring(async db => {
+    // A fresh head that issued twenty members, read one member per page.
+    const fresh = await seed(db, { offer: "test:fresh-head", id: fixedId(400), extra: 19 });
+    // Five members issued by one earlier publication, read as one page under a later head.
+    const earlier = await seed(db, { offer: "test:shared-issuer", id: fixedId(410), extra: 4 });
+    const moved = await carry(db, earlier, earlier, await references(db, earlier.head), 2);
+    await seed(db, { offer: "test:roster-baseline", id: fixedId(420) });
+    const heads = await headCount(db);
+    const baseline = await rosterOnly(db, "test:roster-baseline", 1);
+    expect({ evidence: baseline.evidence, manifests: baseline.manifests }).toEqual({ evidence: 0, manifests: heads });
+    // The roster reads do not depend on the offer, so one baseline serves both offers.
+    for (const [offer, limit] of [["test:fresh-head", 1], ["test:shared-issuer", 5]] as const) {
+      expect((await rosterOnly(db, offer, limit)).revisions).toBe(baseline.revisions);
+    }
+    const one = await measure(db, "test:fresh-head", { selectedSkuId: fixedId(400) }, 1);
+    expect(one.result).toMatchObject({ kind: "page", value: { rosterCount: 20,
+      issues: [issueOf(fresh.head, fresh.productId, fresh.skuRevisionId, "declaring")], consultedHeads: [{ productId: fresh.productId, ...fresh.head }] } });
+    expect([one.evidence, one.manifests - heads, one.revisions - baseline.revisions]).toEqual([0, 0, 1]);
+    const shared = await measure(db, "test:shared-issuer", { selectedSkuId: fixedId(410) }, 5);
+    expect(shared.result.value.issues).toHaveLength(5);
+    expect(new Set(shared.result.value.issues.map((issue: { publicationId: string }) => issue.publicationId))).toEqual(new Set([earlier.head.publicationId]));
+    expect(shared.result.value.consultedHeads).toEqual([{ productId: earlier.productId, ...moved.head }]);
+    // The shared earlier issuer is authenticated once.
+    expect([shared.evidence, shared.manifests - heads, shared.revisions - baseline.revisions]).toEqual([0, 1, 5]);
+    // The head's product-bound document no longer matches the head manifest; the document join is intact.
+    await db.query("SAVEPOINT head_document");
+    await db.query("SET LOCAL session_replication_role=replica");
+    await db.query("UPDATE public.catalog_product_document_revisions SET digest=$2 WHERE id=$1", [fresh.document.id, hash("damaged head document")]);
+    await db.query("SET LOCAL session_replication_role=origin");
+    expect(await read(db, "test:fresh-head", { selectedSkuId: fixedId(400) }, 1)).toEqual(refusal("inconsistent_evidence"));
+    await db.query("ROLLBACK TO SAVEPOINT head_document");
+    expect((await read(db, "test:fresh-head", { selectedSkuId: fixedId(400) }, 1)).kind).toBe("page");
+  });
+});
+
+it("refuses each membership drift and earlier issue fault without a page", async () => {
+  const offer = "test:faults";
   const db = await pool.connect();
   try {
     await db.query("BEGIN");
-    const shared = await seed(db, { offer, id: fixedId(400), extra: 2 });
-    const refs = await references(db, shared.head);
-    const moved = await carry(db, shared, shared, refs, 2);
-    const single = await seed(db, { offer, id: fixedId(401), extra: 1 });
-    await db.query("SET LOCAL track_functions='pl'");
-    const heads = Number((await db.query("SELECT count(*) FROM public.catalog_publication_heads")).rows[0]!.count);
-    const before = await functionCalls(db);
-    const page = await read(db, offer, { selectedSkuId: fixedId(400) });
-    const after = await functionCalls(db);
-    expect(page.value.issues).toHaveLength(5);
-    expect(page.value.issues.filter((issue: { productId: string }) => issue.productId === shared.productId))
-      .toEqual(refs.map(ref => issueOf(shared.head, shared.productId, ref.revisionId, ref.skuId === fixedId(400) ? "declaring" : "compared")));
-    expect(page.value.consultedHeads).toEqual([{ productId: shared.productId, ...moved.head }, { productId: single.productId, ...single.head }]
-      .sort((left, right) => left.productId < right.productId ? -1 : 1));
-    // One head authentication per page product, one manifest per head in the catalogue read, and one per earlier issue.
-    expect([after.evidence - before.evidence, after.manifests - before.manifests]).toEqual([2, heads + 2 + 1]);
-    const small = await functionCalls(db);
-    expect((await read(db, offer, { selectedSkuId: fixedId(400) }, 2)).value.issues).toHaveLength(2);
-    expect((await functionCalls(db)).evidence - small.evidence).toBeLessThanOrEqual(2);
+    const issued = await seed(db, { offer, id: fixedId(800), extra: 1 });
+    await carry(db, issued, issued, await references(db, issued.head), 2);
+    const fresh = await seed(db, { offer, id: fixedId(801) });
+    const outside = await seed(db, { offer: "test:faults-outside", id: fixedId(802) });
+    const args = [offer, { selectedSkuId: fixedId(801) }, 100] as const;
+    expect(await read(db, ...args)).toMatchObject({ kind: "page", value: { rosterCount: 3 } });
+    const fault = async (name: string, damage: () => Promise<unknown>, expected: unknown) => {
+      await db.query(`SAVEPOINT ${name}`);
+      try {
+        await damage();
+        expect(await read(db, ...args), name).toEqual(expected);
+      } finally { await db.query(`ROLLBACK TO SAVEPOINT ${name}`); }
+      expect((await read(db, ...args)).kind, name).toBe("page");
+    };
+    const drift = refusal("inconsistent_evidence", "catalog_publication_live_drift");
+    // A sealed member that the live catalogue no longer lists.
+    await fault("sealed_only", () => db.query(`UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{memberships}','[]')
+      WHERE id=$1`, [fixedId(801)]), drift);
+    // A live member that its sealed revision does not list.
+    await fault("live_only", () => db.query(`UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{memberships}',$2::jsonb)
+      WHERE id=$1`, [outside.skuId, json([{ offerVersion: offer, admitted: true }, { offerVersion: "test:faults-outside", admitted: true }])]), drift);
+    // The earlier issuing manifest still authenticates but references another revision of the member.
+    const issuingReference = async () => {
+      await db.query("SET LOCAL session_replication_role=replica");
+      await db.query(`WITH changed AS (
+          SELECT public.catalog_publication_canonical(pg_catalog.jsonb_set(p.canonical_state::jsonb, '{skus}', (
+            SELECT pg_catalog.jsonb_agg(CASE WHEN r->'skuId' = pg_catalog.to_jsonb($2::text)
+              THEN pg_catalog.jsonb_set(r, '{digest}', pg_catalog.to_jsonb($3::text)) ELSE r END ORDER BY position)
+            FROM pg_catalog.jsonb_array_elements(p.canonical_state::jsonb->'skus') WITH ORDINALITY AS refs(r, position))), 0) AS state
+          FROM public.catalog_publications p WHERE p.id=$1)
+        UPDATE public.catalog_publications p SET canonical_state=c.state,
+          digest=pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(c.state, 'UTF8')), 'hex') FROM changed c WHERE p.id=$1`,
+      [issued.head.publicationId, fixedId(800), hash("another revision")]);
+      await db.query("SET LOCAL session_replication_role=origin");
+      expect((await db.query(`SELECT public.catalog_publication_read_manifest(product_id, canonical_state, digest) IS NOT NULL AS valid
+        FROM public.catalog_publications WHERE id=$1`, [issued.head.publicationId])).rows).toEqual([{ valid: true }]);
+    };
+    await fault("issuing_reference", issuingReference, refusal("inconsistent_evidence"));
+    // The earlier issuing publication's document no longer matches its manifest; the document join is intact.
+    await fault("issuing_document", async () => {
+      await db.query("SET LOCAL session_replication_role=replica");
+      await db.query("UPDATE public.catalog_product_document_revisions SET digest=$2 WHERE id=$1", [issued.document.id, hash("damaged issue document")]);
+      await db.query("SET LOCAL session_replication_role=origin");
+    }, refusal("inconsistent_evidence"));
+    // A head document mismatch on one product and a wrong earlier reference on another, applied in both orders.
+    // Order among page faults is unobservable because they share one refusal value.
+    const headDocument = async () => {
+      await db.query("SET LOCAL session_replication_role=replica");
+      await db.query("UPDATE public.catalog_product_document_revisions SET digest=$2 WHERE id=$1", [fresh.document.id, hash("damaged head document")]);
+      await db.query("SET LOCAL session_replication_role=origin");
+    };
+    for (const [first, second] of [[headDocument, issuingReference], [issuingReference, headDocument]]) {
+      await db.query("SAVEPOINT first_fault");
+      await first!();
+      await db.query("SAVEPOINT second_fault");
+      await second!();
+      expect(await read(db, ...args)).toEqual(refusal("inconsistent_evidence"));
+      // Repairing either fault leaves the other, which still refuses alone; repairing both serves the page.
+      await db.query("ROLLBACK TO SAVEPOINT second_fault");
+      expect(await read(db, ...args)).toEqual(refusal("inconsistent_evidence"));
+      await db.query("ROLLBACK TO SAVEPOINT first_fault");
+      await db.query("RELEASE SAVEPOINT first_fault");
+      expect((await read(db, ...args)).kind).toBe("page");
+    }
   } finally { await db.query("ROLLBACK"); db.release(); }
 });
 
