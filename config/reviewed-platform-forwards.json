@@ -9176,7 +9176,7 @@
       },
       {
         "row": "commerce-money-limits",
-        "path": "db/platform/migrations/20261126600000_commerce_money_limits_v2.sql",
+        "path": "db/platform/migrations/20261126610000_commerce_money_limits_v2.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -13110,7 +13110,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261126600000_commerce_money_limits_v2.sql",
+      "path": "db/platform/migrations/20261126610000_commerce_money_limits_v2.sql",
       "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5",
       "functions": [
         {
