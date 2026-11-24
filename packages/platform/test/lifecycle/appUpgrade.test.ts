@@ -214,12 +214,19 @@ describe("application scaffold upgrade", () => {
     expect(await tree(input.root)).toEqual(current);
   });
 
-  it("preserves existing file permissions and leaves another hardlink's bytes untouched", async () => {
+  it("applies the umask to new files, preserves replacement permissions and leaves hardlink bytes untouched", async () => {
     const input = await fixture(), destination = join(input.root, "generated/entry.ts");
     await fs.chmod(destination, 0o754);
     await fs.link(destination, join(input.root, "adopter-hardlink.ts"));
-    await applyAppUpgrade(input);
+    const umask = 0o027;
+    const previousUmask = process.umask(umask);
+    try {
+      await applyAppUpgrade(input);
+    } finally {
+      process.umask(previousUmask);
+    }
     expect((await fs.stat(destination)).mode & 0o777).toBe(0o754);
+    expect((await fs.stat(join(input.root, "generated/new.ts"))).mode & 0o777).toBe(0o644 & ~umask);
     expect(await fs.readFile(join(input.root, "adopter-hardlink.ts"), "utf8")).toBe(input.from.files["generated/entry.ts"]);
   });
 
