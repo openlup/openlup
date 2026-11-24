@@ -6,6 +6,7 @@ import { accessSync, constants, readFileSync, realpathSync, statSync, writeFileS
 import { delimiter, join, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import { Pool } from "pg";
 import { createPostgresMigrationRunner } from "../server/adapters/postgres/migrationRunner.ts";
 import { selectPlatformMigrationManifest } from "./platform-migration-manifest.ts";
@@ -175,7 +176,7 @@ async function measure(profile: typeof profiles[number]) {
     return { count: ledger.length, exactTailCount, objectInventorySha256: measured, tail: ledger.map(unit => ({ file: unit.catalog_path, sha256: unit.sha256 })) };
   } finally { await closePostgres(container, pools); }
 }
-export async function refreshInstallationInventory(env: NodeJS.ProcessEnv = processEnvironment): Promise<void> {
+export async function refreshInstallationInventory(env: NodeJS.ProcessEnv = processEnvironment, output?: string): Promise<void> {
   const concurrency = parseInventoryConcurrency(env.OPENLUP_INVENTORY_CONCURRENCY);
   const source = readFileSync(INVENTORY_PATH, "utf8"), envelope = inventoryEnvelope(source);
   const measured = await mapWithConcurrency(profiles, concurrency, profile => measure(profile));
@@ -184,11 +185,15 @@ export async function refreshInstallationInventory(env: NodeJS.ProcessEnv = proc
     connectedTableCount: connectedNativeStoreTables.length,
   };
   // Replacing only this value preserves historical bytes, including their formatting.
-  writeFileSync(INVENTORY_PATH, envelope.before + JSON.stringify(current, null, 2).replaceAll("\n", "\n  ") + envelope.after);
+  const contents = envelope.before + JSON.stringify(current, null, 2).replaceAll("\n", "\n  ") + envelope.after;
+  if (output === undefined) writeFileSync(INVENTORY_PATH, contents);
+  else writeFileSync(output, contents, { flag: "wx", mode: 0o600 });
   console.log(`Measured all five complete PostgreSQL installation inventories (concurrency=${concurrency})`);
 }
 
 async function main(): Promise<number> {
+  const { values: { output } } = parseArgs({ options: { output: { type: "string" } } });
+  if (output !== undefined && output.trim() === "") throw new Error("--output requires a new file path");
   // Validate concurrency before waiting on the host broker so malformed env fails fast.
   parseInventoryConcurrency(processEnvironment.OPENLUP_INVENTORY_CONCURRENCY);
   const gated = resolveInventoryResourceGate(
@@ -201,7 +206,7 @@ async function main(): Promise<number> {
   if (gated) {
     return runGatedChild(gated, process.cwd(), processEnvironment);
   }
-  await refreshInstallationInventory(processEnvironment);
+  await refreshInstallationInventory(processEnvironment, output);
   return 0;
 }
 

@@ -681,8 +681,8 @@ describe("sql:admit", () => {
     // Main then adds a stricter refusal rule: delegation must execute main's stricter rule (exit 1), while --allow-stale-rules runs the local checkout's rules (exit 0 + WARNING).
     const baseAdmitSource = readFileSync("scripts/sql-admit.ts", "utf8");
     const stricter = baseAdmitSource.replace(
-      "attempt(\"migration history\", \"self-check, base..merge\", () => assertAppendOnlyMigrationHistory(root, base, merge));",
-      "attempt(\"migration history\", \"self-check, base..merge\", () => { throw new Error(\"synthetic_base_stricter_rule\"); });",
+      "attempt(\"migration history\", \"self-check, base..merge\", () => {",
+      "attempt(\"migration history\", \"self-check, base..merge\", () => { throw new Error(\"synthetic_base_stricter_rule\");",
     );
     expect(stricter).not.toBe(baseAdmitSource);
     f.put("scripts/sql-admit.ts", stricter);

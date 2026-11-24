@@ -18,6 +18,7 @@ import { AGENT_GUIDE_PATH, renderAgentGuide, renderDocumentationSourceMap, SOURC
 import { assertMaterializedOutputInventory } from "./oss-published-tree-output.ts";
 import { isChangelogFragment, isChangelogFragmentArea } from "./packages/changelog-fragments.ts";
 import { PACKAGES_CONFIG_PATH } from "./packages/package-manifest-policy.ts";
+import { isUtcMigrationSlot, migrationIdentity } from "./migration-slots.mjs";
 import { assertMigrationBlocks } from "./packages/packages-check.ts";
 import { RELEASE_NOTE_PACKAGED_CONTENT_REMEDY, assertSimulatedUpgradePage, findReleaseNotePackagedContentViolations } from "./packages/release-docs-pass.ts";
 export { assertMaterializedOutputInventory, materializedOutputPaths } from "./oss-published-tree-output.ts";
@@ -44,13 +45,15 @@ function readMigrationBlob(root: string, entry: MigrationEntry): string {
   return documentationGit(root, ["cat-file", "blob", entry.oid]).toString("utf8");
 }
 
-export function assertAppendOnlyMigrationHistory(root: string, base: string, head: string): void {
+export function assertAppendOnlyMigrationHistory(root: string, base: string, head: string, { enforceUtc = false } = {}): string[] {
   if (!MIGRATION_SHA.test(base) || !MIGRATION_SHA.test(head) || base === head) throw new Error("migration history requires distinct full base and head commit SHAs");
   const actualHead = documentationGit(root, ["rev-parse", "HEAD"]).toString("utf8").trim();
   if (actualHead !== head) throw new Error("migration history head differs from the checkout");
   documentationGit(root, ["merge-base", "--is-ancestor", base, head]);
   const before = migrationSnapshot(root, base), after = migrationSnapshot(root, head);
   const additions: string[] = [];
+  const observations: string[] = [];
+  const introduced = new Set<string>();
   for (const path of new Set([...before.keys(), ...after.keys()])) {
     if (path === MIGRATION_MANIFEST) continue;
     const old = before.get(path), next = after.get(path);
@@ -60,7 +63,14 @@ export function assertAppendOnlyMigrationHistory(root: string, base: string, hea
     const bytes = documentationGit(root, ["cat-file", "blob", next.oid]);
     assertAdmittedPlatformForward(root, base, head, path, bytes);
     additions.push(path);
+    const identity = migrationIdentity(path);
+    if (identity && !identity.qualifier) {
+      if (!isUtcMigrationSlot(identity.version)) observations.push(`migration history requires an exact UTC second: ${path}`);
+      if (introduced.has(identity.version)) observations.push(`migration history repeats introduced ordinary version ${identity.version}: ${path}`);
+      introduced.add(identity.version);
+    }
   }
+  if (enforceUtc && observations.length) throw new Error(observations.join("\n"));
   for (const rail of RAILS) {
     let version = [...before.keys()].filter((path) => path.startsWith(rail)).map((path) => /^\d{14}/u.exec(path.slice(rail.length))?.[0] ?? "").sort().at(-1) ?? "";
     for (const path of additions.filter((item) => item.startsWith(rail) && !isQualifiedPlatformMigrationPath(item)).sort()) {
@@ -80,6 +90,7 @@ export function assertAppendOnlyMigrationHistory(root: string, base: string, hea
   if (errors.length) throw new Error(`migration history manifest refuses: ${errors.join("; ")}`);
   const historyErrors = evaluatePlatformMigrationManifestHistory(prior, current, additions.filter((path) => path.startsWith(RAILS[0])));
   if (historyErrors.length) throw new Error(`migration history manifest refuses: ${historyErrors.join("; ")}`);
+  return observations;
 }
 
 const MANIFEST = "package.json";
@@ -489,7 +500,7 @@ function assertDocumentationAndMigrations(root: string, options: ReadonlyMap<str
   }
   if (base.provenance === "pull-request" || base.provenance === "merge-group") {
     const head = documentationGit(root, ["rev-parse", "HEAD"]).toString("utf8").trim();
-    assertAppendOnlyMigrationHistory(root, base.base, head);
+    for (const observation of assertAppendOnlyMigrationHistory(root, base.base, head)) log(`- migration slot observation: ${observation}`);
     log(`- append-only migration history: ${base.base}..${head}`);
     assertMigrationBlocks(root, base.base, head);
     log(`- package API changes carry Migration blocks: ${base.base}..${head}`);

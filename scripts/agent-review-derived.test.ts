@@ -863,7 +863,7 @@ it('refuses inverted or duplicate migration slots before starting merge or Docke
   expect(() => assertAppendOnlyLandingSlots([
     'db/platform/migrations/20990101030000_first.sql',
     'db/platform/migrations/20990101030000_second.sql',
-  ], mainPaths)).toThrow('landing: migration slot is not strictly later than origin/main');
+  ], mainPaths)).toThrow('migration slots: ambiguous draft version');
   expect(() => assertAppendOnlyLandingSlots(['supabase/migrations/20990101010000_pr.sql'], mainPaths))
     .toThrow('landing: migration slot is not strictly later than origin/main');
 
@@ -909,18 +909,18 @@ it('refuses inverted or duplicate migration slots before starting merge or Docke
 }, 60_000);
 
 it('plans shared migration slots across rails and UTC rollover', () => {
-  expect(nextFreeMigrationSlot('20261231235900')).toBe('20270101000000');
-  expect(nextFreeMigrationSlot('20261231235942')).toBe('20270101000042');
+  expect(nextFreeMigrationSlot('20261231235959')).toBe('20270101000000');
+  expect(nextFreeMigrationSlot('20261231235942')).toBe('20261231235943');
   expect(landingSlotPlan(['db/platform/migrations/20270101000000_pr.sql'], [
     'supabase/migrations/qa_20270101010000_main.sql',
-  ])).toMatchObject({ maxMainSlot: '20270101010000', nextFreeSlot: '20270101010100',
-    changes: [{ path: 'db/platform/migrations/20270101000000_pr.sql', target: 'db/platform/migrations/20270101010100_pr.sql' }] });
+  ])).toMatchObject({ maxMainSlot: '20270101010000', nextFreeSlot: '20270101010001',
+    changes: [{ path: 'db/platform/migrations/20270101000000_pr.sql', target: 'db/platform/migrations/20270101010001_pr.sql' }] });
   expect(landingSlotPlan([
     'db/platform/migrations/20270101000000_old.sql',
     'db/platform/migrations/20270101010100_new.sql',
   ], ['supabase/migrations/20270101010000_main.sql'])).toMatchObject({
-    nextFreeSlot: '20270101010200',
-    changes: [{ target: 'db/platform/migrations/20270101010200_old.sql' }],
+    nextFreeSlot: '20270101010001',
+    changes: [{ target: 'db/platform/migrations/20270101010001_old.sql' }],
   });
 });
 
@@ -936,7 +936,7 @@ it('refuses authored migration filenames before re-slot changes the tree', async
       target: 'db/platform/migrations/20990101030100_landing_fixture.sql' },
     { path: other, target: 'db/platform/migrations/20990101030200_other.sql' }];
     await expect(assertNoAuthoredSlotReferences(root, base, head, changes))
-      .rejects.toThrow(`${other}:1, scripts/fixture-reference.test.ts:1`);
+      .rejects.toThrow(`${other}:1 (20990101010000), scripts/fixture-reference.test.ts:1 (20990101010000)`);
     expect(git('status', '--porcelain=v1')).toBe('');
   } finally { restoreDerivedFixture(); }
 });
@@ -972,11 +972,13 @@ it('re-slots migration paths in the manifest, reviewed forwards and publication 
 });
 
 it('lands an inverted migration only with explicit re-slot', async () => {
-  const ignoredMirror = 'packages/platform/sql/20990101020100_landing_fixture.sql';
+  const ignoredMirror = 'packages/platform/sql/20990101020002_landing_fixture.sql';
   const exclude = read('.git/info/exclude');
   try {
     checkout(base);
     append('20990101010000');
+    append('20990101020001');
+    append('20990101020100');
     const pr = commit();
     checkout(base);
     append('20990101020000');
@@ -984,7 +986,7 @@ it('lands an inverted migration only with explicit re-slot', async () => {
     setMain(upstream);
     checkout(pr);
     const original = 'db/platform/migrations/20990101010000_landing_fixture.sql';
-    const reslotted = 'db/platform/migrations/20990101020100_landing_fixture.sql';
+    const reslotted = 'db/platform/migrations/20990101020002_landing_fixture.sql';
     const originalSql = read(original);
     write('.git/info/exclude', exclude + `\n/${ignoredMirror}\n`);
     write(ignoredMirror, 'Local ignored SQL.\n');
@@ -1013,15 +1015,18 @@ it('lands an inverted migration only with explicit re-slot', async () => {
       fixtureCommand(command, args);
     } });
     expect(result.head).toMatch(/^[a-f0-9]{40}$/u);
-    expect(git('ls-files', 'db/platform/migrations/20990101020100_landing_fixture.sql')).toContain('20990101020100');
+    expect(git('ls-files', 'db/platform/migrations/20990101020002_landing_fixture.sql')).toContain('20990101020002');
     expect(git('show', `HEAD:${ignoredMirror}`)).toBe(originalSql.trim());
     expect(git('ls-files', 'db/platform/migrations/20990101010000_landing_fixture.sql')).toBe('');
     const manifest = JSON.parse(read(MIGRATION_REGISTRIES[0]));
     const earlier = 'db/platform/migrations/20990101020000_landing_fixture.sql';
-    const later = 'db/platform/migrations/20990101020100_landing_fixture.sql';
+    const later = 'db/platform/migrations/20990101020002_landing_fixture.sql';
     for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
       const files = plan.forward.map(({ file }) => file);
-      expect(files.indexOf(later)).toBeGreaterThan(files.indexOf(earlier));
+      expect(files.slice(files.indexOf(earlier))).toEqual([
+        earlier, later, 'db/platform/migrations/20990101020003_landing_fixture.sql',
+        'db/platform/migrations/20990101020100_landing_fixture.sql',
+      ]);
     }
     const registry = JSON.parse(read(MIGRATION_REGISTRIES[1]));
     const slots = registry.nativeStoreForwardClass.slots.map(({ path }) => path);
@@ -1036,7 +1041,7 @@ it('lands an inverted migration only with explicit re-slot', async () => {
 
 it('keeps both SQL forwards when main added the same migration filename', async () => {
   const oldPath = 'db/platform/migrations/20990101010000_landing_fixture.sql';
-  const target = 'db/platform/migrations/20990101010100_landing_fixture.sql';
+  const target = 'db/platform/migrations/20990101010001_landing_fixture.sql';
   const mainSql = '-- Distinct main forward\nSELECT 2;\n';
   try {
     checkout(base);

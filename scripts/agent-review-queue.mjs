@@ -149,13 +149,19 @@ export function diagnoseReceipt(body) {
   }
   return null;
 }
-export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments, currentHeadComments) {
+async function readReceiptComments(api, root, pr) {
   const comments = [];
   for (let page = 1; ; page += 1) {
     const batch = await api.get(`${root}/issues/${pr}/comments?per_page=100&page=${page}`);
     demand(Array.isArray(batch), 'PR comments response is invalid'); comments.push(...batch);
-    if (batch.length < 100) break;
+    if (batch.length < 100) return comments;
   }
+}
+
+export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments, currentHeadComments, {
+  readComments = readReceiptComments, receiptIds,
+} = {}) {
+  const comments = [...await readComments(api, root, pr)];
   const receipts = [];
   comments.sort((a, b) => Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at) || b.id - a.id);
   for (const comment of comments) {
@@ -171,11 +177,14 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
         permissions.set(key, ['admin', 'maintain', 'write'].includes(access?.permission ?? access?.role_name));
       } catch { /* A failed lookup never establishes trust; the next poll asks again. */ }
     }
-    if (permissions.get(key)) receipts.push(receipt);
+    if (permissions.get(key)) {
+      receipts.push(receipt);
+      receiptIds?.set(receipt, comment.id);
+    }
   }
   return receipts;
 }
-export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 3 * 60 * 1000, runGit = git, fastFail = undefined, onCandidate = undefined }) {
+export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 3 * 60 * 1000, runGit = git, fastFail = undefined, onCandidate = undefined, committedObjectsOnly = false, readComments = undefined, expectedMain = undefined }) {
   demand(/^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && event.repository?.private === false, 'use a public repository GitHub event');
   const root = `/repos/${env.GITHUB_REPOSITORY}`; const group = env.GITHUB_EVENT_NAME === 'merge_group' ? event.merge_group : null;
   const shouldFastFail = fastFail ?? !group;
@@ -193,20 +202,23 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
     if (!group) demand(event.pull_request?.head?.sha === pr.head.sha, 'PR head changed; rerun CI for the current head', 'stale');
     const invalidComments = [];
     const currentHeadComments = [];
-    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions, invalidComments, currentHeadComments);
+    const receiptIds = new Map();
+    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions, invalidComments, currentHeadComments, { readComments, receiptIds });
     for (const receipt of receipts) {
-      const main = (await api.get(`${root}/git/ref/heads/main`)).object?.sha; demand(SHA.test(main), 'main commit identity is invalid');
+      const main = (await api.get(`${root}/git/ref/heads/main`)).object?.sha; demand(SHA.test(main) && (expectedMain === undefined || expectedMain === main), 'main commit identity is invalid or changed');
       const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => event.type === 'prepare' ? [event.candidate.base, event.candidate.head] : event.type === 'renew' ? [event.proof.main] : []) : [];
       const refs = [...new Set([receipt.base, receipt.head, main, ...historical, ...(group ? [group.base_sha, group.head_sha] : [])])];
       demand(refs.every(ref => SHA.test(ref)), 'receipt references invalid source objects');
       let candidate; let baseValid; let legacyRules;
       try {
-        await runGit(cwd, '-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', ...refs);
-        await runGit(cwd, 'update-ref', 'refs/remotes/origin/main', main);
+        if (!committedObjectsOnly) {
+          await runGit(cwd, '-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', ...refs);
+          await runGit(cwd, 'update-ref', 'refs/remotes/origin/main', main);
+        }
         candidate = await captureCommittedReviewCandidate(cwd, receipt.base, receipt.head, runGit);
         if (receipt.version === 3) await validateEconomySession(cwd, receipt.session, runGit);
         else legacyRules = await captureReviewRules(cwd, candidate, runGit) === undefined;
-        const forks = (await runGit(cwd, 'merge-base', '--all', receipt.head, 'origin/main')).trim().split('\n');
+        const forks = (await runGit(cwd, 'merge-base', '--all', receipt.head, committedObjectsOnly ? main : 'origin/main')).trim().split('\n');
         baseValid = forks.length === 1 && SHA.test(forks[0]) && receipt.base === forks[0];
       } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
       let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() });
@@ -226,21 +238,36 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');
       if (!group) demand((await api.get(`${root}/git/ref/heads/main`)).object?.sha === main, 'main moved during admission; rerun CI', 'stale');
       const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() }); demand(final.ok, final.reason, final.code);
-      onCandidate?.(candidate);
-      console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
+      onCandidate?.(candidate, receiptIds.get(receipt));
+      if (!committedObjectsOnly) console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
     }
     if (shouldFastFail && receipts.length === 0 && invalidComments.length === 0 && currentHeadComments.length === 0) {
-      console.log(`needs_agent_review: ${reason}`);
+      if (!committedObjectsOnly) console.log(`needs_agent_review: ${reason}`);
       throw new Error(`needs_agent_review: no receipt comment yet for head ${pr.head.sha}; ${reason}; when native-review is the only failed job of the completed run, Native Review Receipt Rerun will rerun it automatically`);
     }
     const invalid = invalidComments[0];
     const v2Remedy = invalid?.body.split('\n', 1)[0] === RECEIPT_MARKER
       ? ' A v2 receipt needs a session prepared on current main.' : '';
     invalidCommentNotice = invalid ? `; receipt comment ${invalid.id}: Review receipt machine block could not be parsed: ${diagnoseReceipt(invalid.body)}. Re-run \`node scripts/agent-review-session.mjs receipt ${prNumber}\` and post its exact output.${v2Remedy}` : '';
-    console.log(`needs_agent_review: ${reason}${invalidCommentNotice}`); await sleep(Math.min(15000, Math.max(0, deadlineMs - (now() - start))));
+    if (!committedObjectsOnly) console.log(`needs_agent_review: ${reason}${invalidCommentNotice}`);
+    await sleep(Math.min(15000, Math.max(0, deadlineMs - (now() - start))));
   }
   throw new Error(`needs_agent_review: bounded 3-minute receipt wait expired; ${reason}${invalidCommentNotice}`);
 }
+export function readLatestSourceJobs(source, jobs) {
+  const positive = value => Number.isSafeInteger(value) && value > 0;
+  demand(jobs.every(job => positive(job?.id) && job.run_id === source.id && job.head_sha === source.head_sha
+    && positive(job.run_attempt) && job.run_attempt <= source.run_attempt) && new Set(jobs.map(job => job.id)).size === jobs.length, 'source jobs identity is invalid or duplicated');
+  return [...REQUIRED_CONTEXTS, 'native-review'].map(name => {
+    const matches = jobs.filter(job => job.name === name);
+    const latest = matches.reduce((attempt, job) => Math.max(attempt, job.run_attempt), 0);
+    const selected = matches.filter(job => job.run_attempt === latest);
+    demand(selected.length <= 1, `source requires one actual successful latest ${name} check`);
+    const job = selected[0];
+    return { id: job?.id, name, attempt: latest, status: job?.status, conclusion: job?.conclusion };
+  });
+}
+
 // A completed source run hands an existing merge request to GitHub's queue once.
 // This code runs only from trusted main; source objects are never checked out.
 export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = process.cwd(), now = Date.now, runGit = git,
@@ -321,13 +348,8 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
     demand(result.jobs.length === Math.min(100, total - jobs.length), 'source jobs pagination is incomplete');
     jobs.push(...result.jobs);
   }
-  demand(jobs.every(job => positive(job?.id) && job.run_id === source.id && job.head_sha === source.head_sha
-    && positive(job.run_attempt) && job.run_attempt <= source.run_attempt) && new Set(jobs.map(job => job.id)).size === jobs.length, 'source jobs identity is invalid or duplicated');
-  for (const name of [...REQUIRED_CONTEXTS, 'native-review']) {
-    const matches = jobs.filter(job => job.name === name);
-    const latest = matches.reduce((attempt, job) => Math.max(attempt, job.run_attempt), 0);
-    const selected = matches.filter(job => job.run_attempt === latest);
-    demand(selected.length === 1 && selected[0].status === 'completed' && selected[0].conclusion === 'success', `source requires one actual successful latest ${name} check`);
+  for (const job of readLatestSourceJobs(source, jobs)) {
+    demand(job.status === 'completed' && job.conclusion === 'success', `source requires one actual successful latest ${job.name} check`);
   }
   let admittedCandidate;
   await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },

@@ -235,7 +235,11 @@ export async function admitSqlRange({ root, base, head, fork, merge }: Range): P
   for (const path of added) {
     attempt(path, "self-check forward admission", () => assertAdmittedPlatformForward(root, base, merge, path, gitBytes(root, ["cat-file", "blob", `${merge}:${path}`])));
   }
-  attempt("migration history", "self-check, base..merge", () => assertAppendOnlyMigrationHistory(root, base, merge));
+  const observed: string[] = [];
+  attempt("migration history", "self-check, base..merge", () => {
+    observed.push(...assertAppendOnlyMigrationHistory(root, base, merge));
+  });
+  for (const message of observed) verdicts.push({ status: "PASS", subject: "migration slot observation", check: "self-check, base..merge", message });
   // Merge queue: the PR head on its fork point, then the merge-group head on main.
   const candidate = await captureCommittedReviewCandidate(root, fork, head, closedRunGit);
   if (!needsForwardApproval(candidate.changedPaths, path => hasExactManagedForward(root, fork, path) || hasExactManagedForward(root, base, path))) {
@@ -299,7 +303,7 @@ export async function sqlAdmit(cwd: string, argv: readonly string[], log: (line:
     const verdicts = await admitSqlRange(range);
     for (const verdict of verdicts) {
       log(`${verdict.status.padEnd(8)} ${verdict.subject} [${verdict.check}]${verdict.message === undefined ? "" : `: ${verdict.message}`}`);
-      if (verdict.message !== undefined && !verdict.message.includes(" is pinned; only these statements may name ")) log(`         capability needed: ${capabilityHint(verdict.message)}`);
+      if (verdict.status === "REFUSED" && verdict.message !== undefined && !verdict.message.includes(" is pinned; only these statements may name ")) log(`         capability needed: ${capabilityHint(verdict.message)}`);
     }
     const refused = verdicts.filter((verdict) => verdict.status === "REFUSED").length;
     log(`sql:admit: ${verdicts.length} checks, ${refused} refused. Not run here: npm run oss:published-tree -- --policy and -- --inventory, the neutrality ratchet, the root test suite (including the real-PostgreSQL native catalogue test) and pgTAP. Hosted CI and the merge queue remain authoritative.`);
