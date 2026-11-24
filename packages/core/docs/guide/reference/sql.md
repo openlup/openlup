@@ -214,6 +214,8 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261125170000_tax_calculations.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125170000_tax_calculations.sql) |
 | [`20261125200000_subscription_renewal_registration_units.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125200000_subscription_renewal_registration_units.sql) |
 | [`20261125220000_commerce_destination_v2_typed_refusals.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125220000_commerce_destination_v2_typed_refusals.sql) |
+| [`20261125260000_subscription_activation_execute_grants.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125260000_subscription_activation_execute_grants.sql) |
+| [`20261125261000_subscription_activation_units.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125261000_subscription_activation_units.sql) |
 | [`20261125280000_function_search_path_pg_temp.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125280000_function_search_path_pg_temp.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |

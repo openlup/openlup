@@ -117,6 +117,26 @@ proves default and legacy compatibility, zero-write refusal, frozen replay and
 the existing command edit fence. A 72-hour cutoff closes earlier than 24 hours,
 as the installed fence subtracts stored hours from the next cycle instant.
 
+## Native activation EXECUTE grants
+
+The [ACL forward](../../db/platform/migrations/20261125260000_subscription_activation_execute_grants.sql)
+removes default PUBLIC EXECUTE from the base activation entry and commit
+functions. It grants EXECUTE to `service_role` where present. The
+[units forward](../../db/platform/migrations/20261125261000_subscription_activation_units.sql)
+preserves the four parent signatures and grants while introducing four
+internal functions with owner and `service_role` access.
+
+After these forwards, PUBLIC cannot execute the base activation entry or commit
+functions. Run activation with the qualified runtime login (which inherits
+`service_role`) or with the owner login. Other roles receive SQLSTATE `42501`
+when calling either base function. Custom activation roles are unsupported
+because the migration runner pins function ACLs in the installation inventory
+and qualified installations refuse grants to principals outside the installation.
+
+These forwards use the reviewed default-ACL preimage for the two base functions.
+An installation with an explicit ACL on either base function requires separate
+review before applying the ACL forward.
+
 ## Native renewal stock protection
 
 The [renewal credit aggregation forward](../../db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql)

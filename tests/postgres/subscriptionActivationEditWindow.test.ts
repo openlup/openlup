@@ -1,10 +1,15 @@
 import { readFileSync } from "node:fs";
 import { assertNativeStoreForward, readReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { createHash, randomUUID } from "node:crypto";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { expect, it } from "vitest";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
 import { api, executor, admin, runtime, facts, purchase, rpc, transaction, days, at } from "./subscriptionPublicRenewalFixture.js";
+
+import {
+  activationEffects, alternateFingerprint, callCommit, callEntry, commitSignatures, entrySignatures,
+  expectedActivationEffects, refusal, seedCapturedActivation,
+} from "./subscriptionActivationFixture.js";
 
 const fingerprint = (value: string) => createHash("sha256").update(value).digest("hex");
 async function row(orderId: string) {
@@ -215,3 +220,95 @@ it("preserves predecessor bodies, config, raw ACLs and owners while narrowing ne
     await assertOptInSecurity(db);
   } finally { await db.query("ROLLBACK"); db.release(); }
 });
+
+async function rolledBack(work: (db: PoolClient) => Promise<void>) {
+  const db = await admin.connect();
+  try {
+    await db.query("BEGIN");
+    await work(db);
+  } finally { await db.query("ROLLBACK"); db.release(); }
+}
+
+const stateRefusals = [
+  ["not_declared", "DELETE FROM public.subscription_activations WHERE order_id=$1"],
+  ["order_compensated", "UPDATE public.subscription_activations SET state='compensated',compensated_at=clock_timestamp() WHERE order_id=$1"],
+  ["order_not_paid", "UPDATE public.commerce_orders SET status='pending_payment' WHERE id=$1"],
+  ["payment_not_captured", "DELETE FROM public.commerce_settlement_intents WHERE order_id=$1"],
+  ["payment_not_captured", "UPDATE public.commerce_settlement_intents SET status='created',settled_at=NULL WHERE order_id=$1"],
+] as const;
+
+for (const variant of [0, 1] as const) {
+  const entry = entrySignatures[variant]!, commit = commitSignatures[variant]!;
+  const expected = (suffix: string, code?: string) => refusal(`subscription_activation_${suffix}`, code);
+
+  it(`${entry} preserves typed input and NULL precedence`, async () => rolledBack(async db => {
+    const p = await seedCapturedActivation(db);
+    const cases = [
+      [{ key: " short ", orderId: randomUUID() }, expected("invalid_input")],
+      [{ key: null }, expected("invalid_input")],
+      [{ orderId: null }, expected("invalid_input")],
+      [{ fingerprint: "invalid" }, expected("invalid_input")],
+      [{ orderId: randomUUID() }, expected("order_not_found")],
+      [{ orderId: randomUUID(), fingerprint: null }, expected("order_not_found")],
+      [{ fingerprint: null }, expected("payment_fingerprint_conflict", "23505")],
+      [{ fingerprint: alternateFingerprint }, expected("payment_fingerprint_conflict", "23505")],
+    ] as const;
+    for (const [input, error] of cases) {
+      await db.query("SAVEPOINT entry_refusal");
+      await expect(callEntry(db, variant, p, input)).rejects.toMatchObject(error);
+      await db.query("ROLLBACK TO SAVEPOINT entry_refusal");
+    }
+  }));
+
+  it.each(stateRefusals)(`${entry} preserves %s after %s`, async (suffix, sql) => rolledBack(async db => {
+    const p = await seedCapturedActivation(db);
+    expect((await db.query(sql, [p.orderId])).rowCount).toBe(1);
+    await expect(callEntry(db, variant, p)).rejects.toMatchObject(expected(suffix));
+  }));
+
+  it(`${entry} separates stored replay fingerprint conflicts from the incoming check`, async () => rolledBack(async db => {
+    const p = await seedCapturedActivation(db);
+    const answer = await callEntry(db, variant, p, { hours: 24 });
+    expect(answer).toMatchObject({ state: "active", replayed: false, orderId: p.orderId });
+    expect(await activationEffects(db, p.orderId)).toEqual(expectedActivationEffects(false, variant ? 24 : 72));
+    expect(await callEntry(db, variant, p, { hours: 720 })).toEqual({ ...answer, replayed: true });
+    await db.query("UPDATE public.subscription_activations SET payment_fingerprint=$2 WHERE order_id=$1", [p.orderId, alternateFingerprint]);
+    await expect(callEntry(db, variant, p)).rejects.toMatchObject(expected("payment_fingerprint_conflict", "23505"));
+  }));
+
+  it(`${commit} rolls back all write effects on attachment refusal`, async () => rolledBack(async db => {
+    const p = await seedCapturedActivation(db);
+    await db.query("DELETE FROM public.subscription_activations WHERE order_id=$1", [p.orderId]);
+    const effects = async () => (await db.query(`SELECT
+      (SELECT count(*)::int FROM public.subscriptions WHERE client_id=$2) AS subscriptions,
+      (SELECT count(*)::int FROM public.subscription_cycles) AS cycles,
+      (SELECT count(*)::int FROM public.subscription_events) AS events,
+      (SELECT count(*)::int FROM public.subscription_renewal_attachments WHERE order_id=$1) AS attachments,
+      (SELECT subscription_cycle_id FROM public.commerce_orders WHERE id=$1) AS order_link`, [p.orderId, p.clientId])).rows;
+    const before = await effects();
+    await db.query("SAVEPOINT capture_refusal");
+    await expect(callCommit(db, variant, p, { actualRow: false }))
+      .rejects.toMatchObject(refusal("subscription_renewal_attachment_not_active"));
+    await db.query("ROLLBACK TO SAVEPOINT capture_refusal");
+    expect(await effects()).toEqual(before);
+  }));
+
+  it.each([entry, commit])(`${entry} reaches its parent %s`, async signature => rolledBack(async db => {
+    const p = await seedCapturedActivation(db);
+    const { definition } = await functionCatalog(db, signature);
+    const marker = "activation_parent_probe";
+    const sabotaged = String(definition).replace("\nBEGIN\n", `\nBEGIN\n  RAISE EXCEPTION '${marker}';\n`);
+    expect(sabotaged).not.toEqual(definition);
+    await db.query(sabotaged);
+    await expect(callEntry(db, variant, p)).rejects.toMatchObject(refusal(marker, "P0001"));
+  }));
+}
+
+it.each([0, 721])("preserves typed opt-in refusals and precedence at %s hours", async hours => rolledBack(async db => {
+  const p = await seedCapturedActivation(db);
+  const invalid = refusal("subscription_activation_edit_window_invalid");
+  await db.query("SAVEPOINT edit_window_refusal");
+  await expect(callEntry(db, 1, p, { hours, key: null, fingerprint: null })).rejects.toMatchObject(invalid);
+  await db.query("ROLLBACK TO SAVEPOINT edit_window_refusal");
+  await expect(callCommit(db, 1, p, { hours })).rejects.toMatchObject(invalid);
+}));
