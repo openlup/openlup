@@ -1626,6 +1626,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261125170000_tax_calculations.sql",
       "class": "public-output"
     },
@@ -1840,6 +1844,14 @@
     {
       "path": "docs/platform/history/platform-readme-release-notes-0.43.0.md",
       "class": "public-output"
+    },
+    {
+      "path": "docs/platform/migrations/compatible-data-transfer.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/migrations/module-catalogues-and-histories.md",
+      "class": "platform-documentation"
     },
     {
       "path": "docs/platform/plans/agent-context-adaptive-routing.md",
@@ -2335,6 +2347,30 @@
     },
     {
       "path": "eslint.config.js",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/cosmetics/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/cosmetics/pack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/pet-food/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/pet-food/pack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements/pack.ts",
       "class": "public-output"
     },
     {
@@ -5318,6 +5354,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125130000_commerce_destination_v2_order_bindings.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261125170000_tax_calculations.sql",
       "class": "public-output"
     },
@@ -6039,6 +6079,10 @@
     },
     {
       "path": "packages/platform/src/catalog/referenceCatalogHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/releaseDraftBuilder.ts",
       "class": "public-output"
     },
     {
@@ -6811,6 +6855,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/customerCheckoutLinks.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/destinations/destinationV2Prelock.ts",
       "class": "public-output"
     },
     {
@@ -10663,6 +10711,10 @@
     },
     {
       "path": "packages/platform/test/catalog/referenceCatalogHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/releaseDraftBuilder.test.ts",
       "class": "public-output"
     },
     {
@@ -31614,6 +31666,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogueReferencePacks.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/channelConnectedRestore.test.ts",
       "class": "public-output"
     },
@@ -31835,6 +31891,10 @@
     },
     {
       "path": "tests/postgres/destinationV2Checkout.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/destinationV2OrderBinding.test.ts",
       "class": "public-output"
     },
     {
