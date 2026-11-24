@@ -153,7 +153,11 @@ async function install(pkg: InstalledMigrations, label: string, selection: Retur
     finally { await restore.end(); }
     return { template, clone, close };
   } catch (error) {
-    await close();
+    try {
+      await close();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Checkout restore setup and cleanup both failed");
+    }
     throw error;
   }
 }
@@ -354,10 +358,21 @@ type SharedGrantArtifact = {
   dispose: () => Promise<void>;
 };
 
-let sharedArtifact: SharedGrantArtifact;
+let sharedArtifact: Promise<SharedGrantArtifact>;
+let pendingFixtureWork = Promise.resolve();
+
+function runFixtureWork(signal: AbortSignal, work: () => Promise<void>) {
+  // Vitest can move on after a timeout while setup or teardown is still running.
+  const operation = pendingFixtureWork.then(() => {
+    signal.throwIfAborted();
+    return work();
+  });
+  pendingFixtureWork = operation.then(() => undefined, () => undefined);
+  return operation;
+}
 
 beforeAll(async () => {
-  sharedArtifact = await new Promise<SharedGrantArtifact>((resolveReady, rejectReady) => {
+  sharedArtifact = new Promise<SharedGrantArtifact>((resolveReady, rejectReady) => {
     let release!: () => void;
     const done = new Promise<void>(resolveDone => { release = resolveDone; });
     const lifecycle = withGrantArtifact(async (pkg, root, manifest) => {
@@ -366,11 +381,14 @@ beforeAll(async () => {
     });
     lifecycle.catch(rejectReady);
   });
+  await sharedArtifact;
 }, postgresSetupTimeoutMs);
 
 afterAll(async () => {
-  if (sharedArtifact) await sharedArtifact.dispose();
-});
+  await pendingFixtureWork;
+  const artifact = await sharedArtifact?.catch(() => undefined);
+  await artifact?.dispose();
+}, postgresSetupTimeoutMs);
 
 function throwSettledErrors(errors: readonly unknown[], message: string): never {
   if (errors.length === 1) throw errors[0];
@@ -400,8 +418,7 @@ async function installPair(pkg: InstalledMigrations, profile: Profile, selection
   throwSettledErrors([...setupErrors, ...cleanupErrors], "Checkout restore pair setup/cleanup failed");
 }
 
-it.each(profiles)("restores the same nonempty checkout graph on %s", async profile => {
-  const { pkg, root, manifest } = sharedArtifact;
+async function verifyRestoreProfile(profile: Profile, pkg: InstalledMigrations, root: string, manifest: Parameters<typeof withPlatformCatalog>[0]) {
   const selection = select(profile);
   const expected = selectPlatformMigrationManifest(manifest, selection.generation, selection.generation === "qualified-admin"
     ? { roleMode: selection.roleMode } : { migrationIsBootstrap: profile === "bootstrap", hasRestore: true });
@@ -504,14 +521,27 @@ it.each(profiles)("restores the same nonempty checkout graph on %s", async profi
         cwd.mockRestore();
       }
   });
-}, Math.max(245_000, postgresSetupTimeoutMs));
+}
+
+for (const profile of profiles) {
+  it(`restores the same nonempty checkout graph on ${profile}`, ({ signal }) =>
+    runFixtureWork(signal, async () => {
+      // The later-definition proof mutates the packed manifest in the bootstrap case.
+      if (profile === "bootstrap") {
+        await withGrantArtifact((pkg, root, manifest) => verifyRestoreProfile(profile, pkg, root, manifest));
+        return;
+      }
+      const { pkg, root, manifest } = await sharedArtifact;
+      await verifyRestoreProfile(profile, pkg, root, manifest);
+    }), Math.max(245_000, postgresSetupTimeoutMs));
+}
 
 async function verifyLegacyNoOp(pkg: InstalledMigrations, state: "absent" | "present") {
   const container = await runPostgresContainer({ name: `checkout-legacy-${state}-${process.pid}`, password });
   const owner = new Pool({ connectionString: container.connectionString });
   const env = { connectionString: container.connectionString };
   const options = { installation: { generation: "legacy" as const }, poolFactory: () => owner };
-  try {
+  await withDisposal({ dispose: () => closePostgres(container, [owner]) }, async () => {
     expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
     const before = await import("@openlup/platform/migrations");
     await before.createPlatformPostgresMigrationRunner(env, options).apply();
@@ -532,15 +562,16 @@ async function verifyLegacyNoOp(pkg: InstalledMigrations, state: "absent" | "pre
     expect(after.at(-1)?.catalog_path).toBe(grantPath);
     expect(await runner.apply()).toEqual({ applied: [] });
     expect(await ledger()).toEqual(after);
-  } finally { await closePostgres(container, [owner]); }
+  });
 }
 
-it("records the legacy no-op with the cluster login absent and present", async () => {
-  const { pkg } = sharedArtifact;
-  const results = await Promise.allSettled([
-    verifyLegacyNoOp(pkg, "absent"),
-    verifyLegacyNoOp(pkg, "present"),
-  ]);
-  const errors = results.flatMap(result => result.status === "rejected" ? [result.reason] : []);
-  if (errors.length > 0) throwSettledErrors(errors, "Legacy no-op verification failed in both states");
-}, Math.max(245_000, postgresSetupTimeoutMs));
+it("records the legacy no-op with the cluster login absent and present", ({ signal }) =>
+  runFixtureWork(signal, async () => {
+    const { pkg } = await sharedArtifact;
+    const results = await Promise.allSettled([
+      verifyLegacyNoOp(pkg, "absent"),
+      verifyLegacyNoOp(pkg, "present"),
+    ]);
+    const errors = results.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+    if (errors.length > 0) throwSettledErrors(errors, "Legacy no-op verification failed in both states");
+  }), Math.max(245_000, postgresSetupTimeoutMs));
