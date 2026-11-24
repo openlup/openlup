@@ -1,10 +1,10 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, constants, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
@@ -45,9 +45,9 @@ const pools: Pool[] = [];
 let installation: Promise<{ catalog: Catalog; db: Pool; entries: Map<string, Entry> }> | undefined;
 
 beforeAll(() => {
-  const parent = resolve(".context/scratch");
-  mkdirSync(parent, { recursive: true });
-  scratch = mkdtempSync(join(parent, "reference-packs-"));
+  scratch = realpathSync(mkdtempSync(join(tmpdir(), "openlup-reference-packs-")));
+  const fromCheckout = relative(realpathSync("."), scratch);
+  expect(isAbsolute(fromCheckout) || fromCheckout.startsWith(`..${sep}`)).toBe(true);
   app = join(scratch, "starter");
   // The trusted catalogue CLI requires its projection directory outside any application tree.
   temporary = mkdtempSync(join(tmpdir(), "openlup-reference-packs-"));
@@ -156,6 +156,17 @@ function materialize() {
   return pathToFileURL(path).href;
 }
 
+function assertInstalledCli() {
+  const platform = join(app, "node_modules", "@openlup", "platform");
+  const { bin } = JSON.parse(readFileSync(join(platform, "package.json"), "utf8")) as { bin: { openlup: string } };
+  const expected = resolve(platform, bin.openlup);
+  expect(expected.startsWith(platform + sep)).toBe(true);
+  const executable = recipe("npx --no -c 'command -v openlup'").trim();
+  expect(executable).toBe(join(app, "node_modules", ".bin", "openlup"));
+  expect(realpathSync(executable)).toBe(expected);
+  accessSync(executable, constants.X_OK);
+}
+
 // Only the installer image has the scratch database's Unix socket. Relay a
 // test connection over Compose stdio without publishing a database port.
 async function scratchDatabase() {
@@ -234,6 +245,7 @@ async function installRecipes() {
     const owned = readFileSync(declaration, "utf8");
     expect(owned).toContain(entries.size === 0 ? ownedList : explicitList);
     writeFileSync(declaration, importEntry + "\n" + owned.replace(ownedList, explicitList) + append + "\n");
+    assertInstalledCli();
     expectSatisfied(recipe(sourceCheck), true);
 
     const { referenceEntry } = await import(/* @vite-ignore */ pathToFileURL(copied).href) as { referenceEntry: Entry };
