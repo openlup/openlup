@@ -2,13 +2,17 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 206,
-        "exactTailCount": 96,
-        "objectInventorySha256": "fcaa9d19ec7b2a2f7287b807788d74253bc6f1b14ddeae405645a341611b270b",
+        "count": 207,
+        "exactTailCount": 97,
+        "objectInventorySha256": "0de9fd43cbb180b22a1b8b94285c13a4f8d288caa0fe48324848440f6740bf70",
         "tail": [
           {
             "file": "db/platform/migrations/20261127090000_commerce_money_limits_v2.sql",
             "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
+          },
+          {
+            "file": "db/platform/migrations/20261127030000_subscription_destination_v2.sql",
+            "sha256": "3a21b65a6191f0b616dca11e9fe10181da391fada78e7992b78c9e0d648132c4"
           },
           {
             "file": "db/platform/migrations/20261126540000_tax_calculation_claim_seal.sql",
@@ -833,13 +837,17 @@
         ]
       },
       "bootstrap": {
-        "count": 212,
-        "exactTailCount": 97,
-        "objectInventorySha256": "51a2557ebbd2628330156455383fd5a727ea5ae7631c900f5d9db68637078769",
+        "count": 213,
+        "exactTailCount": 98,
+        "objectInventorySha256": "767642035aec1dd09a8a8b37cbb6d66ec3b50773bed706231bd4873b70dd5f53",
         "tail": [
           {
             "file": "db/platform/migrations/20261127090000_commerce_money_limits_v2.sql",
             "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
+          },
+          {
+            "file": "db/platform/migrations/20261127030000_subscription_destination_v2.sql",
+            "sha256": "3a21b65a6191f0b616dca11e9fe10181da391fada78e7992b78c9e0d648132c4"
           },
           {
             "file": "db/platform/migrations/20261126540000_tax_calculation_claim_seal.sql",
@@ -1688,13 +1696,17 @@
         ]
       },
       "separate": {
-        "count": 212,
-        "exactTailCount": 97,
-        "objectInventorySha256": "e11f7f5c51ec8882d88d5f00b3b95801f62895c0dac3ca446d32b15e1fd5e934",
+        "count": 213,
+        "exactTailCount": 98,
+        "objectInventorySha256": "77ff9bda3e84addb0ba9936cba6da7765447a66c45c370f077ac1077f4da8fb3",
         "tail": [
           {
             "file": "db/platform/migrations/20261127090000_commerce_money_limits_v2.sql",
             "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
+          },
+          {
+            "file": "db/platform/migrations/20261127030000_subscription_destination_v2.sql",
+            "sha256": "3a21b65a6191f0b616dca11e9fe10181da391fada78e7992b78c9e0d648132c4"
           },
           {
             "file": "db/platform/migrations/20261126540000_tax_calculation_claim_seal.sql",
@@ -2543,13 +2555,17 @@
         ]
       },
       "admin-managed": {
-        "count": 210,
-        "exactTailCount": 96,
-        "objectInventorySha256": "64be366f0c10ee5656d0ee27deb7910e1219bc2e493ade5213358d034356c9f2",
+        "count": 211,
+        "exactTailCount": 97,
+        "objectInventorySha256": "26973b0d6c51cb9a11c6ffcb22f47438bc01a5a719a3f1319f297bb1a2ceeeb5",
         "tail": [
           {
             "file": "db/platform/migrations/20261127090000_commerce_money_limits_v2.sql",
             "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
+          },
+          {
+            "file": "db/platform/migrations/20261127030000_subscription_destination_v2.sql",
+            "sha256": "3a21b65a6191f0b616dca11e9fe10181da391fada78e7992b78c9e0d648132c4"
           },
           {
             "file": "db/platform/migrations/20261126540000_tax_calculation_claim_seal.sql",
@@ -3390,13 +3406,17 @@
         ]
       },
       "admin-operator": {
-        "count": 210,
-        "exactTailCount": 96,
-        "objectInventorySha256": "dfe99f876febbd6bfb9a120e8685787aabe3ae041d481d785b1b14f607399334",
+        "count": 211,
+        "exactTailCount": 97,
+        "objectInventorySha256": "36865c1587a7a94770ff42ba42b54b31e9e40ba2a4a104e82cdeafd57b97e987",
         "tail": [
           {
             "file": "db/platform/migrations/20261127090000_commerce_money_limits_v2.sql",
             "sha256": "8bd6651c07dd37457ccc548adedc2ae073b7be5973c7de8facddd65b776c8ce5"
+          },
+          {
+            "file": "db/platform/migrations/20261127030000_subscription_destination_v2.sql",
+            "sha256": "3a21b65a6191f0b616dca11e9fe10181da391fada78e7992b78c9e0d648132c4"
           },
           {
             "file": "db/platform/migrations/20261126540000_tax_calculation_claim_seal.sql",
@@ -4237,7 +4257,7 @@
         ]
       }
     },
-    "connectedTableCount": 176
+    "connectedTableCount": 177
   },
   "historical": {}
 }

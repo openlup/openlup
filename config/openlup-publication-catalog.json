@@ -12806,6 +12806,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/merge-queue-check-arm.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/merge-queue-churn.mjs",
       "class": "public-output"
     },
@@ -13231,6 +13235,10 @@
     },
     {
       "path": "scripts/post-order-control-schema.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/preflight-integration.test.ts",
       "class": "public-output"
     },
     {
@@ -30447,6 +30455,10 @@
     },
     {
       "path": "tests/postgres/destinationV2Receipts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/destinationV2SubscriptionEdit.test.ts",
       "class": "public-output"
     },
     {

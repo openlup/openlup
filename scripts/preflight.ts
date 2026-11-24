@@ -1,6 +1,7 @@
 // Local checks before review. The default checks the change since the fork
 // point plus working-tree edits; --fast runs the cheap readiness gate;
-// --area runs ESLint, Docker-free area tooling guards, and SQL admission.
+// --area runs ESLint, Docker-free area tooling guards, and SQL admission;
+// --affected expands default preflight test discovery to reverse-import affected tests.
 import { spawn, spawnSync, type SpawnOptions, type SpawnSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -9,6 +10,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
+import { findAffectedTests } from "./affected-tests.mjs";
 import { INVENTORY_PATH, MIGRATION_REGISTRIES } from "./agent-review-derived.mjs";
 import { carrierLocale, carrierNpmCli, carrierPlan, describeCarrierToolchain, readReportOwners } from "./agent-review-landing.mjs";
 import { TOOLING_INPUTS, excludedToolingTests } from "./ci-test-scope.mjs";
@@ -248,10 +250,10 @@ async function astGrepHygiene(options?: SpawnOptions): Promise<CheckResult> {
     : { check: "ast-grep hygiene", status: "FAIL", detail: `ast-grep rule tests failed (${seconds} s)`, notes: tail(tests.output) };
 }
 
-async function eslintChanged(changes: readonly Change[]): Promise<CheckResult> {
+async function eslintChanged(changes: readonly Change[], options?: SpawnOptions): Promise<CheckResult> {
   const files = changes.filter(({ path, deleted }) => !deleted && SCRIPT.test(path)).map(({ path }) => path);
   if (files.length === 0) return { check: "eslint changed", status: "SKIP", detail: "no changed JS/TS files" };
-  const result = await executeAsync("npx", ["--no", "--", "eslint", "--", ...files]);
+  const result = await executeAsync("npx", ["--no", "--", "eslint", "--", ...files], options);
   return result.code === 0
     ? { check: "eslint changed", status: "PASS", detail: `${files.length} changed file(s) passed eslint (${result.seconds} s)` }
     : { check: "eslint changed", status: "FAIL", detail: `eslint failed on ${files.length} changed file(s)`, notes: tail(result.output) };
@@ -555,8 +557,22 @@ export function testDiscoveryVerdict(selection: TestSelection): CheckResult {
     detail: `${selection.files.length} root Vitest file(s), ${selection.separate.length} confirmed separate-runner file(s); discovery is not execution`, notes };
 }
 
-function discoverTests(changes: readonly Change[]): TestSelection {
-  const candidates = changes.filter(({ path, deleted }) => !deleted && isTestEntry(path)).map(({ path }) => path);
+type FindAffectedTestsFn = (options: { changedFiles: string[]; rootDir: string }) => {
+  affectedTests: Array<{ path: string; reasons: string[] }>;
+};
+
+export function affectedTestCandidates(changes: readonly Change[], rootDir = process.cwd()): string[] {
+  const allPaths = changes.map(({ path }) => path);
+  if (allPaths.length === 0) return [];
+  const direct = changes.filter(({ path, deleted }) => !deleted && isTestEntry(path)).map(({ path }) => path);
+  const { affectedTests } = (findAffectedTests as unknown as FindAffectedTestsFn)({ changedFiles: allPaths, rootDir });
+  return [...new Set([...direct, ...affectedTests.map(({ path }) => path)])].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+function discoverTests(changes: readonly Change[], affected = false): TestSelection {
+  const candidates = affected
+    ? affectedTestCandidates(changes)
+    : changes.filter(({ path, deleted }) => !deleted && isTestEntry(path)).map(({ path }) => path);
   if (candidates.length === 0) return { files: [], separate: [], unknown: [] };
   const files = vitestFiles(candidates);
   const outside = candidates.filter((path) => !files.includes(path));
@@ -599,6 +615,23 @@ function print(result: CheckResult): void {
 const STACK_BASE_SHA = /^[0-9a-f]{40}$/u;
 const GUIDE_TRIGGER = /^(?:AGENTS\.md$|CONTRIBUTING\.md$|packages\/[^/]+\/(?:api\/|src\/|sql\/.*\.sql$|(?:AGENTS|README)\.md$|(?:package|release-gates)\.json$)|packages\/core\/(?:docs\/guide\/|scripts\/(?:documentation[^/]*|public-api-config)\.ts$)|packages\/platform\/settings-refusals\.json$|packages\/ui\/smoke\/neutrality\.ts$|config\/(?:environment-variables|documentation-guide-allowlist)\.json$)/u;
 const PACKAGE_MANIFEST_TRIGGER = /^(?:packages\/[^/]+\/package\.json|config\/openlup-packages\.json)$/u;
+export const CLIENT_SECRET_BOUNDARY_TRIGGER = /^(?:src\/|server\/|api\/|config\/environment-variables\.json$|scripts\/check-client-secret-boundary\.ts$)/u;
+export const SITE_ROUTES_TRIGGER = /^(?:config\/site-routes\.json$|config\/public-reference-site-routes\.json$|scripts\/site-routes)/u;
+
+async function runTriggeredGuard(
+  check: string,
+  changes: readonly Change[],
+  trigger: RegExp,
+  args: readonly string[],
+  skipDetail: string,
+  options?: SpawnOptions & { timeout?: number },
+): Promise<CheckResult> {
+  if (!changes.some(({ path }) => trigger.test(path))) return { check, status: "SKIP", detail: skipDetail };
+  const result = await executeAsync(process.execPath, args, options);
+  return result.code === 0
+    ? { check, status: "PASS", detail: `passed (${result.seconds} s)` }
+    : { check, status: "FAIL", detail: `node ${args.join(" ")} exited ${result.code ?? "on a signal"}`, notes: tail(result.output) };
+}
 
 const AREA_EXCLUDED_TESTS = new Set([
   "scripts/agent-review-derived-inventory.test.ts",
@@ -733,6 +766,9 @@ async function fastPreflight(now: Date): Promise<number> {
     uiNeutralityEntry,
     astGrepEntry,
     astGrepHygieneEntry,
+    eslintChangedEntry,
+    clientSecretBoundaryEntry,
+    siteRoutesEntry,
     publicationEntry,
     migrationProjectionEntry,
     fragmentsEntry,
@@ -756,6 +792,17 @@ async function fastPreflight(now: Date): Promise<number> {
     runFastItem("ui-neutrality", () => command("ui-neutrality", process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts"])),
     runFastItem("ast-grep", () => astGrep(offlineNpm)),
     runFastItem("ast-grep-hygiene", () => astGrepHygiene(offlineNpm)),
+    runFastItem("eslint-changed", () => eslintChanged(requireChanges(), offlineNpm)),
+    runFastItem("client-secret-boundary", () => runTriggeredGuard(
+      "client-secret-boundary", requireChanges(), CLIENT_SECRET_BOUNDARY_TRIGGER,
+      ["--experimental-strip-types", "scripts/check-client-secret-boundary.ts"],
+      "no client-secret-boundary inputs changed", offlineNpm,
+    )),
+    runFastItem("site-routes", () => runTriggeredGuard(
+      "site-routes", requireChanges(), SITE_ROUTES_TRIGGER,
+      ["scripts/site-routes.mjs", "--public-reference"],
+      "no site route inputs changed", offlineNpm,
+    )),
     runFastItem("publication", async () => {
       let npmCli: string;
       let npmVersion = "unavailable (npm CLI path missing or relative)";
@@ -804,6 +851,7 @@ async function fastPreflight(now: Date): Promise<number> {
 
   const ordered: FastEntry[] = [
     cleanEntry, mergeCleanEntry, neutralityEntry, uiNeutralityEntry, astGrepEntry, astGrepHygieneEntry,
+    eslintChangedEntry, clientSecretBoundaryEntry, siteRoutesEntry,
     publicationEntry, carriersEntry, migrationProjectionEntry, fragmentsEntry, settingsCandidatesEntry,
     testLinesEntry, gitleaksEntry, guideCheckEntry, packageManifestEntry, dcoEntry,
   ];
@@ -907,8 +955,9 @@ async function areaPreflight(): Promise<number> {
 export async function main(now: Date, args: readonly string[] = []): Promise<number> {
   const fast = args.includes("--fast");
   const area = args.includes("--area");
-  if (fast && area) {
-    console.error("preflight: --fast and --area are mutually exclusive");
+  const affected = args.includes("--affected");
+  if ((fast && area) || (fast && affected) || (area && affected)) {
+    console.error("preflight: --fast, --area, and --affected are mutually exclusive");
     return 2;
   }
   if (fast) {
@@ -947,8 +996,18 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
           ["settings-candidates", () => settingsCandidateGuard(base, changes, new Set(untrackedPaths))],
           ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
           ["gitleaks", () => gitleaks(base, untrackedPaths)],
-          ["test discovery", () => { selection = discoverTests(changes); return testDiscoveryVerdict(selection); }],
+          ["test discovery", () => { selection = discoverTests(changes, affected); return testDiscoveryVerdict(selection); }],
           ["eslint changed", () => eslintChanged(changes)],
+          ["client-secret-boundary", () => runTriggeredGuard(
+            "client-secret-boundary", changes, CLIENT_SECRET_BOUNDARY_TRIGGER,
+            ["--experimental-strip-types", "scripts/check-client-secret-boundary.ts"],
+            "no client-secret-boundary inputs changed",
+          )],
+          ["site-routes", () => runTriggeredGuard(
+            "site-routes", changes, SITE_ROUTES_TRIGGER,
+            ["scripts/site-routes.mjs", "--public-reference"],
+            "no site route inputs changed",
+          )],
           ["sql admit", () => sqlAdmit(changes)],
         ],
       },
