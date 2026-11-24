@@ -1646,7 +1646,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261125210000_identity_privacy_required_contributors.sql",
+      "path": "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql",
       "class": "public-output"
     },
     {
@@ -5390,7 +5390,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261125210000_identity_privacy_required_contributors.sql",
+      "path": "packages/platform/sql/20261125230000_identity_privacy_required_contributors.sql",
       "class": "public-output"
     },
     {
