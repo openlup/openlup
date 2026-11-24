@@ -94,6 +94,18 @@ let occupiedSlots = 0;
 let liveContainers = 0;
 let peakContainers = 0;
 
+async function startupLeftNoContainer(name: string): Promise<boolean> {
+  try {
+    const { stdout } = await exec("docker", [
+      "ps", "--all", "--filter", `name=^/${name}$`, "--format", "{{.Names}}",
+    ], { timeout: 5_000, killSignal: "SIGKILL" });
+    return stdout.trim() === "";
+  } catch {
+    // Retain the slot if Docker cannot confirm that its container is absent.
+    return false;
+  }
+}
+
 function registerCase(profile: (typeof profiles)[number], shape: (typeof shapes)[number]) {
   const label = `${profile.name}/${shape.name}`;
   const discriminators = profile.name === "target" && shape.name === "separate-restore";
@@ -101,12 +113,19 @@ function registerCase(profile: (typeof profiles)[number], shape: (typeof shapes)
   let ready: [PostgresContainer, PostgresContainer | undefined];
   let proof: Promise<void> | undefined;
 
-  async function startReady(name: string, unavailableMessage: string) {
+  async function startReady(name: string, unavailableMessage: string, tmpfsSizeMb?: number) {
     // Reserve capacity before Docker starts so a failed cleanup cannot admit extra containers.
     expect(occupiedSlots).toBeLessThan(2);
     occupiedSlots++;
-    const instance = await runPostgresContainer({ name, password: "synthetic-conformance" });
-    containers.push(instance);
+    const instance = await runPostgresContainer({ name, password: "synthetic-conformance", tmpfsSizeMb }).catch(async error => {
+      if (await startupLeftNoContainer(name)) occupiedSlots--;
+      throw error;
+    });
+    containers.push({ ...instance, async remove() {
+      await instance.remove();
+      liveContainers--;
+      occupiedSlots--;
+    } });
     peakContainers = Math.max(peakContainers, ++liveContainers);
     if (!await waitForPostgresTcpReady(instance.connectionString)) throw new Error(unavailableMessage);
     return instance;
@@ -114,6 +133,10 @@ function registerCase(profile: (typeof profiles)[number], shape: (typeof shapes)
 
   beforeAll(async () => {
     const started = performance.now();
+    if (discriminators) {
+      // Refuse before Docker creates anything, then require both real target slots.
+      await expect(startReady(`m14-q2-invalid-${process.pid}`, "Unexpected ready fixture", 0)).rejects.toThrow("PostgreSQL tmpfsSizeMb");
+    }
     const [primary, fresh] = await Promise.allSettled([
       startReady(`m14-q2-${profile.name}-${shape.name}-${process.pid}`, "Qualified composition PostgreSQL unavailable"),
       discriminators ? startReady(`m14-q2-checkout-fresh-${process.pid}`, "Fresh checkout fixture PostgreSQL unavailable") : undefined,
@@ -129,8 +152,6 @@ function registerCase(profile: (typeof profiles)[number], shape: (typeof shapes)
     // A timed-out case is already marked failed. Join its child before removing either database.
     await proof?.catch(() => undefined);
     await closePostgres(containers);
-    liveContainers -= containers.length;
-    occupiedSlots -= containers.length;
     console.info(`qualified-production ${label} teardownMs=${Math.round(performance.now() - started)} liveContainers=${liveContainers}`);
   }, postgresTeardownTimeoutMs);
 
