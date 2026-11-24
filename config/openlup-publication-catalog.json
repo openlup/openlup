@@ -1642,6 +1642,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261125210000_function_search_path_pg_temp.sql",
       "class": "public-output"
     },
@@ -5379,6 +5383,10 @@
     },
     {
       "path": "packages/platform/sql/20261125170000_tax_calculations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125200000_subscription_renewal_registration_units.sql",
       "class": "public-output"
     },
     {
@@ -32694,6 +32702,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionActivationPermissions.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionAlignmentRollbackCases.ts",
       "class": "public-output"
     },
@@ -32791,6 +32803,14 @@
     },
     {
       "path": "tests/postgres/subscriptionRecoveryTruth.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRegistrationActivationLockOrder.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRegistrationFixture.ts",
       "class": "public-output"
     },
     {

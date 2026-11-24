@@ -272,9 +272,10 @@ pg_temp`, revoke PUBLIC before conditional role ACL blocks and add no table
 privileges. Registration seals optional full retained delivery/acquisition terms
 in the existing purchase attachment, fixes its acquisition basis version on the
 server, and compares the authorization instant with UTC microsecond identity.
-The old zero-only registration and its completer remain unchanged. A completed
-attachment reader exposes the retained terms; no current-settings read or
-additional agreement table is introduced. Graduation uses existing subscription,
+Both registration functions use owner-only SQL units for locking, validation
+and storage, and the shipping variant uses an owner-only unit to normalize
+retained facts. A completed attachment reader exposes the retained terms; no
+current-settings read or additional agreement table is introduced. Graduation uses existing subscription,
 line-collection and event privileges inside the host transaction. Retained order
 preparation uses existing item INSERT/DELETE and shipping-adjustment INSERT
 privileges, with the existing deferred line-sum guard. The subscription owner
