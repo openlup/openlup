@@ -2,7 +2,7 @@ import { preferencePort, courierPreference } from './customerPreferences.fixture
 import { randomUUID } from 'node:crypto';
 import type { PgQueryExecutor } from '@openlup/platform/data';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
-import { createCustomerSavedAddressPrivacyContributor, createPostgresPrivacyStore, createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPrivacyOperations } from '@openlup/platform/identity';
+import { createCustomerSavedAddressPrivacyContributor, createPostgresPrivacyStore, createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createTaxCalculationPrivacyContributor, createPrivacyOperations } from '@openlup/platform/identity';
 import { createAccountEventPrivacyContributor } from '@openlup/platform/account-support';
 import type { PrivacyJson } from '@openlup/platform/identity/contracts';
 import { captureConnectedNativeStore } from '../../server/adapters/postgres/connectedStoreCapture.js';
@@ -203,7 +203,7 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
         const value = await work(context); await connection.query('COMMIT'); return value;
       } catch (error) { await connection.query('ROLLBACK'); throw error; } finally { connection.release(); }
     } };
-    const registry = createPersonalDataContributorRegistry([identity, createCustomerSavedAddressPrivacyContributor(), createAccountEventPrivacyContributor({ read, assess: async () => 'retain' })], { requiredContributorIds: ['identity','customer-saved-addresses','account-support'] });
+    const registry = createPersonalDataContributorRegistry([identity, createTaxCalculationPrivacyContributor(), createCustomerSavedAddressPrivacyContributor(), createAccountEventPrivacyContributor({ read, assess: async () => 'retain' })], { requiredContributorIds: ['identity','customer-saved-addresses','account-support','tax-calculations'] });
     const privacy = createPrivacyOperations({ store, registry, unitOfWork, now: () => new Date(at), randomId: randomUUID });
     const exported = await privacy.export({ principalId: operator }, { kind: 'contact', contactId: f.client });
     expect(exported.documents.find(document => document.contributorId === 'customer-saved-addresses')).toMatchObject({ coverage: { complete: true }, data: [{ tax_id: '1234563218', delivery_notes: 'Private text', canonical_key: expect.stringContaining('example street 1') }] });
