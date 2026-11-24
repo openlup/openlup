@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { UPGRADE_PAGE_MAX_BYTES, assembleUpgradePage, assertReleaseNotePackagedContent, assertSimulatedUpgradePage, formatReleaseDocumentation, listReleaseDocumentation, previousCoreTag, renderUpgradePage, summarizeApiDiff, upgradePagePath } from "./release-docs-pass.ts";
 import { addReleaseSection } from "./release-bump.ts";
@@ -411,12 +411,12 @@ describe("shift-left simulated upgrade-page audit", () => {
 
   it("names the source fragment when a link fails the rendered guide contract", () => {
     const f = fixture();
-    const fragment = "packages/core/changes/upgrade-link.md";
+    const fragment = "packages/outbox/changes/upgrade-link.md";
     f.write(fragment, "- See the [upgrade guide](../how-to/missing.md).\n");
     f.commit();
 
     expect(() => assertSimulatedUpgradePage(f.root)).toThrow(
-      /packages\/core\/changes\/upgrade-link\.md: dangling local link \.\.\/how-to\/missing\.md/u,
+      /packages\/outbox\/changes\/upgrade-link\.md: dangling local link \.\.\/how-to\/missing\.md/u,
     );
 
     f.write(fragment, "- See the [upgrade guide](../how-to/change.md).\n");
@@ -424,12 +424,13 @@ describe("shift-left simulated upgrade-page audit", () => {
 
     f.write(fragment, "- Follow milestone M19.\n");
     expect(() => assertSimulatedUpgradePage(f.root)).toThrow(
-      /packages\/core\/changes\/upgrade-link\.md: repository-internal language \(task or milestone ID\): M19/u,
+      /packages\/outbox\/changes\/upgrade-link\.md: repository-internal language \(task or milestone ID\): M19/u,
     );
   });
 
   const fixtureFragment = "packages/outbox/changes/guide.md";
   const coreFragment = "packages/core/changes/guide.md";
+  const platformFragment = "packages/platform/changes/guide.md";
   const fixturePage = "docs/guide/upgrade/v0-5-0.md";
   const fixtureTag = "openlup-core-v0.5.0";
   const guideReadme = "packages/core/docs/guide/README.md";
@@ -469,6 +470,12 @@ describe("shift-left simulated upgrade-page audit", () => {
     }));
     mkdirSync(join(f.root, "packages/core/docs/guide/upgrade"), { recursive: true });
     f.write("packages/core/docs/guide/how-to/checkout-only.md", "# Checkout only\n");
+    if (fragment === platformFragment) {
+      const path = "config/openlup-packages.json";
+      const config = JSON.parse(readFileSync(join(f.root, path), "utf8"));
+      config.packages.push({ name: "@openlup/platform", directory: "packages/platform", publish: true });
+      f.write(path, JSON.stringify(config));
+    }
     f.write(fragment, contents);
     return f;
   }
@@ -518,15 +525,20 @@ describe("shift-left simulated upgrade-page audit", () => {
     f.write(guideReadme, "# Reader guide\n\nGuide-specific instructions.\n");
     f.write(`packages/core/${guideAsset}`, "{}\n");
     f.write("docs/platform/API.md", "# API reference\n\n## API\n\n## API_\n");
+    f.write("docs/platform/DATA_AND_MIGRATIONS.md", "# Data and migrations\n\n## Native activation EXECUTE grants\n");
     if (rootReadme) f.write("README.md", "# Repository home\n\nRepository overview.\n");
     return f;
   }
 
-  function emittedFixes(f: ReturnType<typeof fixture>): string[] {
+  function auditRefusal(f: ReturnType<typeof fixture>): string {
     let message = "";
     try { assertSimulatedUpgradePage(f.root); } catch (error) { message = (error as Error).message; }
     expect(message).toContain("Observed:");
-    return message.match(/^Fix: .+$/gm) ?? [];
+    return message;
+  }
+
+  function emittedFixes(f: ReturnType<typeof fixture>): string[] {
+    return auditRefusal(f).match(/^Fix: .+$/gm) ?? [];
   }
 
   function emittedFix(f: ReturnType<typeof fixture>): string {
@@ -536,17 +548,22 @@ describe("shift-left simulated upgrade-page audit", () => {
   }
 
   function pinFromAdvice(fix: string, contents: string, ref: string): string {
-    const tag = fix.match(/repository path with `([^`]+)`/)?.[1];
+    const tag = fix.match(/name after `\/blob\/` with `([^`]+)`/)?.[1];
     expect(tag).toBe(fixtureTag);
-    expect(fix).toContain("keeping the path, query and anchor exactly as written");
+    expect(fix).toContain("Keep the query and anchor exactly as written");
     return contents.replaceAll(`/blob/${ref}/`, `/blob/${tag}/`);
   }
 
+  function plainFromAdvice(fix: string, contents: string, link: string, name: string): string {
+    expect(fix).toMatch(/(?:guide page title|target's title or a short description) in plain text, without a link or repository path/);
+    expect(contents).toContain(link);
+    return contents.replace(link, name);
+  }
+
   function useGuideTitle(fix: string, f: ReturnType<typeof fixture>, contents: string, url: string): string {
-    expect(fix).toContain("use the guide page title in plain text, without a link or repository path");
     const title = readFileSync(join(f.root, guideReadme), "utf8").match(/^# (.+)$/m)?.[1];
     expect(title).toBeDefined();
-    return contents.replace(`[Guide](${url})`, title!);
+    return plainFromAdvice(fix, contents, `[Guide](${url})`, title!);
   }
 
   function checkLinkOutcome(contents: string, rootReadme = false, fragment = fixtureFragment): string {
@@ -558,8 +575,9 @@ describe("shift-left simulated upgrade-page audit", () => {
   function expectUnpinnedFix(fix: string, fragment = fixtureFragment): void {
     expect(fix).toContain(fragment);
     expect(fix).toContain("repository blob link named in Cause");
-    expect(fix).toContain("decoded path ends in `.md`");
-    expect(fix).toContain("use the guide page title in plain text, without a link or repository path");
+    expect(fix).toContain("replace the link with its target's title or a short description in plain text, without a link or repository path. To keep a link, for an existing file other than a guide Markdown page");
+    expect(fix).toContain("write the canonical repository path without `.` or `..` segments");
+    expect(fix).toContain(fixtureTag);
     expect(fix).not.toMatch(/https?:\/\/|github\.com/);
     expect(fix).toMatch(/Then rerun `npm run preflight -- --fast`\.?$/);
   }
@@ -595,34 +613,98 @@ describe("shift-left simulated upgrade-page audit", () => {
     expect(checkLinkOutcome(linked, rootReadme)).toContain(`[API](https://github.com/openlup/openlup/blob/${fixtureTag}/docs/platform/API.md#api)`);
   });
 
-  it("pins the slash ref and then applies the separate missing-target Fix", () => {
-    const url = "https://github.com/openlup/openlup/blob/feature/documentation/docs/platform/absent.md";
-    const original = `- See [Guide](${url}).\n`;
+  it("uses the plain-text Fix for a missing target behind a slash ref", () => {
+    const link = "[Guide](https://github.com/openlup/openlup/blob/feature/documentation/docs/platform/absent.md)";
+    const original = `- See ${link}.
+`;
     const fix = emittedFix(linkFixture(original));
     expectUnpinnedFix(fix);
-    const pinned = pinFromAdvice(fix, original, "feature/documentation");
-    expect(emittedFix(linkFixture(pinned))).toContain(`correct the repository link's target path in ${fixtureFragment}`);
-    expect(() => checkRenderedFixture(linkFixture(pinned), pinned)).toThrow("targets a path missing from the repository");
-    const target = "docs/platform/API.md#api";
-    expect(checkLinkOutcome(pinned.replace("docs/platform/absent.md", target))).toContain(`[Guide](https://github.com/openlup/openlup/blob/${fixtureTag}/${target})`);
+    expect(checkLinkOutcome(plainFromAdvice(fix, original, link, "Platform API reference"))).toContain("- See Platform API reference.");
   });
 
   it.each([fixtureFragment, coreFragment])("applies the guide asset advice in %s", (fragment) => {
     const target = `packages/core/${guideAsset}`;
     const url = `https://github.com/openlup/openlup/blob/main/${target}`;
-    const contents = `- See [catalogue](${url}).\n`;
-    const fix = emittedFix(linkFixture(contents, false, fragment));
-    expectUnpinnedFix(fix, fragment);
+    const contents = `- See [catalogue](${url}).
+`;
+    const refusal = auditRefusal(linkFixture(contents, false, fragment));
+    const fixes = refusal.match(/^Fix: .+$/gm) ?? [];
+    expectUnpinnedFix(fixes[0]!, fragment);
     if (fragment === coreFragment) {
-      expect(fix).toContain("title or a descriptive name in plain text without a link or repository path");
-      expect(fix).toContain("Core CHANGELOG.md");
-      for (const boundary of ["packages/core", "packages/ui", "packages/create-*", "docs/OSS_READINESS.md"]) expect(fix).toContain(boundary);
-      const edited = contents.replace(`[catalogue](${url})`, "static JSON sample");
+      expect(refusal).toContain(`${coreFragment} (Core CHANGELOG.md): monorepo package path`);
+      expect(fixes).toHaveLength(2);
+      expect(fixes[1]).toBe(`Fix: correct the reported content in ${fragment}`);
+      const edited = plainFromAdvice(fixes[0]!, contents, `[catalogue](${url})`, "static JSON sample");
       expect(checkLinkOutcome(edited, false, fragment)).toContain("- See static JSON sample.");
     } else {
-      const edited = pinFromAdvice(fix, contents, "main");
+      expect(fixes).toHaveLength(1);
+      const edited = pinFromAdvice(fixes[0]!, contents, "main");
       expect(checkLinkOutcome(edited)).toContain(`[catalogue](https://github.com/openlup/openlup/blob/${fixtureTag}/${target})`);
     }
+  });
+
+  it("offers a canonical path and plain text for one unpinned link with dot segments", () => {
+    const path = "docs/platform/../platform/DATA_AND_MIGRATIONS.md";
+    const canonical = posix.normalize(path);
+    const anchor = "#native-activation-execute-grants";
+    const repo = "https://github.com/openlup/openlup/blob";
+    const link = `[Data and migrations](${repo}/main/${path}${anchor})`;
+    const original = `- See ${link}.
+`;
+    const f = linkFixture(original, false, platformFragment);
+    const refusal = auditRefusal(f);
+    expect(refusal).toContain(`${platformFragment}: non-canonical repository link ${repo}/main/${path}${anchor}`);
+    expect(refusal).toContain(`${platformFragment}: repository link ${repo}/main/${path} must pin ${fixtureTag}`);
+    const fixes = refusal.match(/^Fix: .+$/gm) ?? [];
+    expect(fixes).toHaveLength(1);
+    const [fix] = fixes;
+    expectUnpinnedFix(fix!, platformFragment);
+    const pinned = pinFromAdvice(fix!, original, "main").replace(path, canonical);
+    expect(checkLinkOutcome(pinned, false, platformFragment)).toContain(`[Data and migrations](${repo}/${fixtureTag}/${canonical}${anchor})`);
+    const plain = plainFromAdvice(fix!, original, link, "Data and migrations");
+    expect(checkLinkOutcome(plain, false, platformFragment)).toContain("- See Data and migrations.");
+  });
+
+  it("reports the Core CHANGELOG command in the first refusal and after a pin-only edit", () => {
+    const source = "./" + "veli";
+    const url = `https://github.com/openlup/openlup/blob/main/docs/platform/API.md?source=${source}`;
+    const link = `[API](${url})`;
+    const original = `- See ${link}.
+`;
+    const reason = "downstream repository command";
+    const cause = `${coreFragment} (Core CHANGELOG.md): ${reason}`;
+    const refusal = auditRefusal(linkFixture(original, false, coreFragment));
+    expect(refusal).toContain(`${coreFragment}: repository link https://github.com/openlup/openlup/blob/main/docs/platform/API.md must pin ${fixtureTag}`);
+    expect(refusal).toContain(cause);
+    const generic = `Fix: correct the reported content in ${coreFragment}`;
+    const fixes = refusal.match(/^Fix: .+$/gm) ?? [];
+    expect(fixes).toHaveLength(2);
+    expect(fixes[1]).toBe(generic);
+    const fix = fixes[0]!;
+    expectUnpinnedFix(fix, coreFragment);
+    expect(checkLinkOutcome(plainFromAdvice(fix, original, link, "API reference"), false, coreFragment)).toContain("- See API reference.");
+
+    const pinned = pinFromAdvice(fix, original, "main");
+    const pinRefusal = auditRefusal(linkFixture(pinned, false, coreFragment));
+    expect(pinRefusal).toContain(cause);
+    expect(pinRefusal.match(/^Fix: .+$/gm)).toEqual([generic]);
+    expect(() => checkRenderedFixture(linkFixture(pinned, false, coreFragment), pinned, coreFragment)).toThrow(`CHANGELOG.md: ${reason}`);
+    const corrected = pinned.replace(source, "guide");
+    expect(checkLinkOutcome(corrected, false, coreFragment)).toContain(`/blob/${fixtureTag}/docs/platform/API.md?source=guide`);
+  });
+
+  it.each([
+    { link: `[catalogue](https://github.com/openlup/openlup/blob/${fixtureTag}/packages/core/${guideAsset})`,
+      cause: "monorepo package path", description: "static JSON sample" },
+    { link: "[guide](../how-to/change.md)", cause: "local link escapes package ../how-to/change.md", description: "Change" },
+  ])("refuses a Core changelog fragment with $cause even when the guide accepts it", ({ link, cause, description }) => {
+    const original = `- See ${link}.
+`;
+    const refusal = auditRefusal(linkFixture(original, false, coreFragment));
+    expect(refusal).toContain(`${coreFragment} (Core CHANGELOG.md): ${cause}`);
+    expect(refusal.match(/^Fix: .+$/gm)).toEqual([`Fix: correct the reported content in ${coreFragment}`]);
+    expect(() => checkRenderedFixture(linkFixture(original, false, coreFragment), original, coreFragment)).toThrow(`CHANGELOG.md: ${cause}`);
+    expect(checkLinkOutcome(original.replace(link, description), false, coreFragment)).toContain(`- See ${description}.`);
   });
 
   it.each([
@@ -676,6 +758,9 @@ describe("shift-left simulated upgrade-page audit", () => {
   it("keeps target-path advice for a pinned missing file", () => {
     const contents = `- See [API](https://github.com/openlup/openlup/blob/${fixtureTag}/docs/platform/absent.md).\n`;
     expect(emittedFix(linkFixture(contents))).toContain(`correct the repository link's target path in ${fixtureFragment}`);
+    expect(() => checkRenderedFixture(linkFixture(contents), contents)).toThrow("targets a path missing from the repository");
+    const target = "docs/platform/API.md#api";
+    expect(checkLinkOutcome(contents.replace("docs/platform/absent.md", target))).toContain(`[API](https://github.com/openlup/openlup/blob/${fixtureTag}/${target})`);
   });
 
   it.each([

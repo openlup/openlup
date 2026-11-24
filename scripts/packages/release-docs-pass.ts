@@ -11,7 +11,7 @@ import { documentationGit, documentationLinkTargets, parseDocumentationRouting, 
 // eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check runs before workspace install and reuses core's owning release-note audit
 import { assertReleaseNotePackagedContent, documentedAdapters, findReleaseNotePackagedContentViolations } from "../../packages/core/scripts/core-package-consumer-audit.ts";
 // eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check reuses Core's reader-guide Markdown rules in-process
-import { assertGuidePage, guideAllowListPath, pinGuideReleaseLinks, readGuideAllowList, type GuidePageFix } from "../../packages/core/scripts/documentation-guide-content.ts";
+import { assertGuidePage, assertPackageMarkdown, guideAllowListPath, pinGuideReleaseLinks, readGuideAllowList, type GuidePageFix } from "../../packages/core/scripts/documentation-guide-content.ts";
 // eslint-disable-next-line no-restricted-imports -- match the Core contract's npm pack inventory without loading its compiler
 import { packDryRun } from "../../packages/core/scripts/release-npm-checks.ts";
 import { isChangelogFragment, readChangelogFragments, validateChangelogFragment, type ChangelogFragment } from "./changelog-fragments.ts";
@@ -441,18 +441,26 @@ function assertUpgradePageDocumentation(
   const normalize = (source: string) => prepared ? source : pinGuideReleaseLinks(source, version, isUpgradeVersion);
   const pageFixes = new Set<GuidePageFix>();
   assertGuidePage({ ...context, source: normalize(text), fixes: prepared ? pageFixes : undefined }, violations);
-  if (violations.length === 0) return;
-
   const fragmentViolations: string[] = [];
   const instructions: string[] = [];
+  const changelog = { packageRoot, file: join(packageRoot, "CHANGELOG.md"), label: "CHANGELOG.md", packed, scripts };
   for (const fragment of fragments) {
     const fixes = new Set<GuidePageFix>();
-    const count = fragmentViolations.length;
-    assertGuidePage({ ...context, source: normalize(fragment.contents.trimEnd()), fragmentPath: fragment.path, fixes }, fragmentViolations);
-    if (fragmentViolations.length > count) instructions.push(...upgradePageFixes(fragment.path, fixes, tag));
+    const source = fragment.contents.trimEnd();
+    if (violations.length) assertGuidePage({ ...context, source: normalize(source), fragmentPath: fragment.path, fixes }, fragmentViolations);
+    // The link Fix also covers any other guide content. CHANGELOG.md has its own Fix.
+    if (fixes.has("unpinned-blob")) fixes.delete("content");
+    if (fragment.path.startsWith("packages/core/changes/")) {
+      const count = fragmentViolations.length;
+      // Release copies the fragment text verbatim and links resolve from the package root.
+      assertPackageMarkdown({ ...changelog, source }, false, fragmentViolations, `${fragment.path} (Core CHANGELOG.md)`);
+      if (fragmentViolations.length > count) fixes.add("content");
+    }
+    if (fixes.size) instructions.push(...upgradePageFixes(fragment.path, fixes, tag));
   }
+  if (violations.length === 0 && fragmentViolations.length === 0) return;
   if (prepared) instructions.push(...upgradePageFixes(path, pageFixes, tag, true));
-  else {
+  else if (violations.length) {
     const generatorViolations = instructions.length ? [] : violations;
     if (instructions.length) assertGuidePage({ ...context, source: normalize(generated) }, generatorViolations);
     if (generatorViolations.length) instructions.push(generatorViolations.some((diagnostic) => diagnostic.endsWith(" targets a file missing from npm pack"))
@@ -474,16 +482,16 @@ function refuseUpgradePage(label: string, diagnostics: readonly string[], instru
 
 function upgradePageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, tag: string, prepared = false): string[] {
   const guideForm = prepared ? "use a relative guide link" : "use the guide page title in plain text, without a link or repository path";
-  const coreLimit = path.startsWith("packages/core/changes/")
-    ? " For a Core fragment, also use its title or a descriptive name in plain text without a link or repository path if the full pinned URL would trigger the Core CHANGELOG.md checks. These scan for `packages/core`, `packages/ui`, `packages/create-*` package names and `docs/OSS_READINESS.md` at their path or word boundaries."
-    : "";
+  const plainForm = "replace the link with its target's title or a short description in plain text, without a link or repository path";
+  const pinForm = `for an existing file other than a guide Markdown page, keep the link, replace only the branch, tag or commit name after \`/blob/\` with \`${tag}\`, and write the canonical repository path without \`.\` or \`..\` segments. Keep the query and anchor exactly as written.`;
   const messages: Record<GuidePageFix, string> = {
-    "unpinned-blob": `in ${path}, for each repository blob link named in Cause, either use plain text as described below or pin an existing file by replacing only the branch, tag or commit name between \`/blob/\` and the repository path with \`${tag}\`, keeping the path, query and anchor exactly as written. For an existing file inside the guide whose decoded path ends in \`.md\`, ${guideForm}.${coreLimit} Then rerun \`npm run preflight -- --fast\`.`,
+    "unpinned-blob": `in ${path}, for each repository blob link named in Cause, ${prepared ? `${guideForm} for a guide Markdown page` : plainForm}. To keep a link, ${pinForm} Correct any other reported guide content in the same file and follow any separate Fix. Then rerun \`npm run preflight -- --fast\`.`,
+    "content": `correct the reported ${prepared ? "guide " : ""}content in ${path}`,
     "relative-link": prepared ? `replace the pinned link into the guide with a relative guide link in ${path}` : `in ${path}, ${guideForm}`,
     "repository-target": `correct the repository link's target path in ${path}`,
     "generated-region": `remove the generated-region marker and its matching closer from ${path}`,
   };
-  return fixes.size ? [...fixes].map((fix) => messages[fix]) : [`correct the reported ${prepared ? "guide " : ""}content in ${path}`];
+  return (fixes.size ? [...fixes] : ["content"] as const).map((fix) => messages[fix]);
 }
 
 /**
@@ -491,7 +499,7 @@ function upgradePageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, tag: s
  * when the core manifest is already bumped above the previous core tag and the
  * prepared upgrade page exists on disk, audits that prepared page; otherwise
  * renders the candidate upgrade page in memory from current fragments + API diffs.
- * Enforces the size cap, packed Core release-note neutrality and the Core guide page contract.
+ * Enforces the size cap, packed Core release-note neutrality and the Core Markdown contract for the guide page and Core changelog fragments.
  * The only additional subprocess is Core's npm pack dry run.
  * Returns null when no ancestor core release tag exists to diff against.
  */

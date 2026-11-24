@@ -132,14 +132,18 @@ function decodeCharacterReferences(source: string): string {
 }
 
 export function assertGuideLinks(guideRoot: string, file: string, label: string, raw: string, repositoryRoot: string, tag: string, violations: string[], fixes?: Set<GuidePageFix>): void {
+  const report = (message: string, fix: GuidePageFix = "content") => {
+    violations.push(`${label}: ${message}`);
+    fixes?.add(fix);
+  };
   for (const target of markdownLinkTargets(raw, () => undefined)) {
     if (/&(?!amp;)/.test(target)) {
-      violations.push(`${label}: link destination ${target} uses a character reference or a bare &; write the characters literally and an ampersand as &amp;`);
+      report(`link destination ${target} uses a character reference or a bare &; write the characters literally and an ampersand as &amp;`);
     }
   }
   const source = decodeCharacterReferences(raw);
   // Find delimiters in raw source so decoded quotes and angles cannot split HTML values.
-  const targets = markdownLinkTargets(raw, (reason) => violations.push(`${label}: ${reason}`)).map(decodeCharacterReferences);
+  const targets = markdownLinkTargets(raw, (reason) => report(reason)).map(decodeCharacterReferences);
   // Browsers normalise a destination before following it (percent-encoded or mixed-case hosts,
   // tabs and newlines, backslashes, default ports, user info). Parse each destination as a browser
   // does; one that reaches GitHub must already be written in the parser's own canonical
@@ -180,14 +184,15 @@ export function assertGuideLinks(guideRoot: string, file: string, label: string,
     let canonical: string | undefined;
     try { canonical = new URL(target).href; } catch { canonical = undefined; }
     if (canonical !== target || !canonicalRepositoryLink.test(target)) {
-      violations.push(`${label}: non-canonical repository link ${target}; use ${repositoryUrl}/blob/${tag}/<path>`);
+      report(`non-canonical repository link ${target}; use ${repositoryUrl}/blob/${tag}/<path>`,
+        target.startsWith(`${repositoryUrl}/blob/`) ? "unpinned-blob" : "content");
     }
   }
   for (const target of targets) {
     if (isExternalOrAnchor(target)) continue;
     const local = resolve(dirname(file), safeDecode(target.split(/[?#]/, 1)[0] ?? ""));
     if (local !== guideRoot && !local.startsWith(`${guideRoot}${sep}`)) {
-      violations.push(`${label}: link ${target} leaves the guide; use ${repositoryUrl}/blob/${tag}/<path>`);
+      report(`link ${target} leaves the guide; use ${repositoryUrl}/blob/${tag}/<path>`);
     }
   }
   const canonical = `${repositoryUrl}/blob/${tag}/<path>`;
@@ -200,23 +205,20 @@ export function assertGuideLinks(guideRoot: string, file: string, label: string,
   for (const [url] of candidateSource.matchAll(/(?:(?:https?:)?\/\/(?:www\.github\.com|raw\.githubusercontent\.com|github\.com)|(?<![\w./-])www\.github\.com)\/openlup\/openlup(?=\/|$|[\s)>"'`?#])[^\s)>"'`]*/gi)) {
     const rest = url.startsWith(repositoryUrl) ? url.slice(repositoryUrl.length) : undefined;
     if (rest === undefined || !/^(?:\/?(?:[?#].*)?|\/blob\/.*|\/issues(?:[/?#].*)?)$/.test(rest)) {
-      violations.push(`${label}: non-canonical repository link ${url}; use ${canonical}`);
+      report(`non-canonical repository link ${url}; use ${canonical}`);
     }
   }
   for (const match of candidateSource.matchAll(/https:\/\/github\.com\/openlup\/openlup\/(blob|tree)\/([^/\s)>"'`]+)\/?([^\s)>"'`#?]*)/g)) {
     const [url, kind, ref, path] = match;
     if (ref !== tag) {
-      violations.push(`${label}: repository link ${url} must pin ${tag}; run docs:check -- --write`);
-      if (kind === "blob") fixes?.add("unpinned-blob");
+      report(`repository link ${url} must pin ${tag}; run docs:check -- --write`, kind === "blob" ? "unpinned-blob" : "content");
       continue;
     }
     const target = repositoryLinkTarget(repositoryRoot, guideRoot, path ?? "");
     if (target === "missing") {
-      violations.push(`${label}: repository link ${url} targets a path missing from the repository`);
-      fixes?.add("repository-target");
+      report(`repository link ${url} targets a path missing from the repository`, "repository-target");
     } else if (target === "guide") {
-      violations.push(`${label}: repository link ${url} points into the guide; use a relative link`);
-      fixes?.add("relative-link");
+      report(`repository link ${url} points into the guide; use a relative link`, "relative-link");
     }
   }
 }
@@ -365,7 +367,7 @@ type GuidePage = PackageMarkdown & {
   fixes?: Set<GuidePageFix>;
 };
 
-export type GuidePageFix = "unpinned-blob" | "relative-link" | "repository-target" | "generated-region";
+export type GuidePageFix = "unpinned-blob" | "relative-link" | "repository-target" | "generated-region" | "content";
 
 /** Apply the installed contract's page rules to Markdown before compiling its checked fences. */
 export function assertGuidePage(page: GuidePage, violations: string[]): Fence[] {
@@ -376,9 +378,14 @@ export function assertGuidePage(page: GuidePage, violations: string[]): Fence[] 
     fixes?.add("generated-region");
   }
   const guideSource = syncRegions ? syncRegions(source) : source;
+  let count = violations.length;
   if (!fragmentPath) assertGuideTitle(diagnosticLabel, guideSource, violations);
+  if (violations.length > count) fixes?.add("content");
   assertGuideLinks(guideRoot, file, diagnosticLabel, guideSource, repositoryRoot, tag, violations, fixes);
+  count = violations.length;
   assertReaderLanguage(diagnosticLabel, guideSource, allowed, violations);
   assertPackageMarkdown(page, true, violations, diagnosticLabel);
-  return checkedTypeScriptFences(diagnosticLabel, source, violations);
+  const fences = checkedTypeScriptFences(diagnosticLabel, source, violations);
+  if (violations.length > count) fixes?.add("content");
+  return fences;
 }
