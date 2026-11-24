@@ -8,7 +8,7 @@ import {
   type CatalogPublishCommand, type CatalogStorefrontPageInput,
 } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog/contracts";
-import type { PgQueryExecutor } from "@openlup/platform/data";
+import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor } from "@openlup/platform/data";
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "@openlup/platform/migrations";
 import { createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore } from "@openlup/platform/pricing";
 import { hash, transaction } from "./catalogPublicationFixture.js";
@@ -16,6 +16,7 @@ import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPo
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 let container: PostgresContainer | undefined, admin: Pool, runtime: Pool, legacy: Pool;
+let runtimeConnectionString: string;
 const password = "synthetic-conformance", actor = randomUUID(), list = randomUUID();
 const installation: QualifiedPostgresInstallation = { generation: "qualified-v2", roleMode: "installer-managed",
   migrationLogin: "postgres", bootstrapLogin: "postgres", runtimeLogin: "storefront_runtime", restoreLogin: "storefront_restore" };
@@ -98,7 +99,8 @@ beforeAll(async () => {
   expect((await runner.status()).pending).toEqual([]);
   const url = new URL(container.connectionString);
   url.username = installation.runtimeLogin;
-  runtime = new Pool({ connectionString: url.toString() });
+  runtimeConnectionString = url.toString();
+  runtime = new Pool({ connectionString: runtimeConnectionString });
   await admin.query("CREATE DATABASE storefront_legacy TEMPLATE postgres");
   url.pathname = "/storefront_legacy";
   legacy = new Pool({ connectionString: url.toString() });
@@ -222,6 +224,83 @@ it("ambiguous_price_list_refuses_dependency_unavailable", async () => {
       message: "End the overlapping price lists so exactly one is effective for the requested region and currency." });
   } finally { await admin.query("UPDATE public.price_lists SET valid_to=statement_timestamp() WHERE id=$1", [overlapping]); }
   expect((await governed()).products[0]!.skus.find(sku => sku.skuId === skuId)!.price.oneTime).toEqual(price(1000));
+});
+
+it("ignores an expired active-status price list with an infinite start", async () => {
+  const expired = randomUUID();
+  await admin.query(`INSERT INTO public.price_lists(id,name,region_code,currency,status,valid_from,valid_to)
+    VALUES($1,'Expired storefront list','ZZ','XXX','active','-infinity',statement_timestamp()-interval '1 hour')`, [expired]);
+  try {
+    const page = await governed();
+    expect(page.products[0]!.skus.find(sku => sku.skuId === skuId)!.price)
+      .toEqual({ oneTime: price(1000), subscription: price(900) });
+  } finally { await admin.query("DELETE FROM public.price_lists WHERE id=$1", [expired]); }
+});
+
+it("verifies SQL-sealed finite policy timestamps through the default runtime lane", async () => {
+  const channel = "WEB_FINITE_POLICY";
+  await admin.query(`INSERT INTO public.subscription_price_policy_revisions
+    (id,revision_no,price_list_id,region_code,currency,channel,effective_from,effective_to,
+      discount_bps,rounding_quantum_minor,rounding_rule,digest)
+    SELECT id,1,$1,'ZZ','XXX',$2,starts,ends,1250,10,'FLOOR_TO_QUANTUM',
+      public.catalog_price_setup_policy_digest(id,1,$1,'ZZ','XXX',$2,starts,ends,1250,10,'FLOOR_TO_QUANTUM')
+    FROM (SELECT gen_random_uuid() AS id,
+      date_trunc('second',statement_timestamp())-interval '1 hour'+interval '123 milliseconds' AS starts,
+      date_trunc('second',statement_timestamp())+interval '1 hour'+interval '456 milliseconds' AS ends) timing`, [list, channel]);
+  const lane = createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString: runtimeConnectionString });
+  try {
+    const page = await governed(readPostgresCatalogStorefrontPage(lane, { ...input, channel }));
+    expect(page.products[0]!.skus.find(sku => sku.skuId === skuId)!.price)
+      .toEqual({ oneTime: price(1000), subscription: price(870) });
+  } finally { await lane.close(); }
+});
+
+it("refuses a zero gross base for a subscription-only legacy price and recovers after repair", async () => {
+  const offerVersion = "test:subscription-only";
+  const { release, activation } = buildCatalogReleaseDraftV3({ namespace: "test", type: typeRef, slug: "subscription-article",
+    name: "Subscription article", presentation: { title: "Subscription article" }, skus: [{
+      code: "SUBSCRIPTION-ARTICLE", title: "Subscription article", options: options("matte"), attributes: { finish: "matte" },
+      netContent, grossMass: { ...netContent, unscaled: "120" }, logisticsRef: "test:logistics/subscription-article",
+      identifiers: [{ scheme: "gs1:gtin", issuer: "test:internal", value: catalogInternalGtin(304),
+        packagingLevel: "unit", isPrimary: true }],
+      sell: { oneTime: false, subscription: true }, offerVersions: [offerVersion],
+    }] });
+  const subscriptionDraft = randomUUID(), variantId = release.payload.skus[0]!.id;
+  const released = await saveAndPublish(subscriptionDraft, release.payload, 1, null);
+  const base = await setBasePrice(variantId, 1000);
+  await saveAndPublish(subscriptionDraft, activation.payload, 2, released);
+
+  const legacyEntry = randomUUID(), request = { ...input, offerVersion, channel: "WEB_SUBSCRIPTION_ONLY" };
+  try {
+    await transaction(admin, async db => {
+      await db.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,min_qty,amount_kind,unit_price_minor,valid_from)
+        VALUES($1,$2,$3,'subscription',1,'gross',850,statement_timestamp()-interval '1 hour')`, [legacyEntry, list, variantId]);
+      await db.query("UPDATE public.price_entries SET unit_price_minor=0 WHERE id=$1", [base]);
+    });
+    expect(await read(request)).toEqual({ outcome: "dependency_unavailable", reason: "price_shape_invalid",
+      message: "Set a positive gross one-time base price within the supported range. If the subscription amount is invalid, correct its effective price entry or policy." });
+    await admin.query("UPDATE public.price_entries SET unit_price_minor=1000 WHERE id=$1", [base]);
+    const page = await governed(read(request));
+    expect(page.products[0]?.skus).toMatchObject([{ skuId: variantId, sell: { oneTime: false, subscription: true },
+      price: { oneTime: null, subscription: price(850) } }]);
+  } finally {
+    await transaction(admin, async db => {
+      await db.query("UPDATE public.price_entries SET unit_price_minor=1000 WHERE id=$1 AND unit_price_minor=0", [base]);
+      await db.query("DELETE FROM public.price_entries WHERE id=$1", [legacyEntry]);
+    });
+  }
+});
+
+it("reports a projection deadlock as retryable and succeeds in a new transaction", async () => {
+  const result = await readPostgresCatalogStorefrontPage({ run: work => transaction(runtime,
+    client => work({ async query(sql, args) {
+      if (sql.includes("FROM public.catalog_skus s JOIN public.catalog_products"))
+        throw Object.assign(new Error("Synthetic projection deadlock"), { code: "40P01" });
+      return client.query(sql, args);
+    } })) }, input);
+  expect(result).toEqual({ outcome: "conflict", reason: "catalog_publication_transaction_conflict", retryable: true,
+    message: "Retry the page in a new transaction after the concurrent operation finishes." });
+  expect((await governed()).products).toHaveLength(1);
 });
 
 it("pages by SKU and rejects out-of-domain input or a cursor for another offer", async () => {

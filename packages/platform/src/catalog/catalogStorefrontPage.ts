@@ -147,9 +147,9 @@ function failure(error: unknown): Refusal {
   if (error === invalidAmount) return unavailable("price_shape_invalid");
   if (error instanceof CommercePriceAuthorityError) return withFix({ outcome: "dependency_unavailable", reason: error.code });
   const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
-  if (code === "40001" || code === "55P03") {
+  if (code === "40001" || code === "40P01" || code === "55P03") {
     return withFix({ outcome: "conflict", retryable: true,
-      reason: code === "40001" ? "catalog_publication_transaction_conflict" : "catalog_publication_read_busy" });
+      reason: code === "55P03" ? "catalog_publication_read_busy" : "catalog_publication_transaction_conflict" });
   }
   const classified = publicationReadFailure(error);
   const reason = Object.hasOwn(fixes, classified.reason) ? classified.reason : "publication_authority_unavailable";
@@ -208,9 +208,11 @@ async function readProjection(db: PgQueryExecutor, items: CatalogMembershipItem[
   return [...products.values()];
 }
 
-function isoTime(value: unknown): string {
+function windowTime(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
-  if (typeof value === "string" && Number.isFinite(Date.parse(value))) return value;
+  if (typeof value === "string") return value;
+  // pg returns numeric infinities, which the authority excludes from effective windows.
+  if (value === Infinity || value === -Infinity) return String(value);
   throw new Error("Invalid PostgreSQL timestamp");
 }
 
@@ -233,12 +235,12 @@ function storefrontPriceReads(db: PgQueryExecutor, context: Pick<CommercePriceAu
     const bySku: Entries = new Map();
     for (const row of rows) {
       const variantId = row.variant_id as string;
-      const validFrom = isoTime(row.valid_from);
+      const validFrom = windowTime(row.valid_from);
       const group = bySku.get(variantId) ?? [];
       group.push({
         value: { priceEntryId: row.id as string, variantId, priceListId, mode, matchedMinQty: 1,
           unitPriceMinor: row.unit_price_minor as number, amountKind: row.amount_kind as ResolvedPrice["amountKind"], resolvedAt: validFrom },
-        validFrom, validTo: row.valid_to === null ? null : isoTime(row.valid_to),
+        validFrom, validTo: row.valid_to === null ? null : windowTime(row.valid_to),
       });
       bySku.set(variantId, group);
     }
@@ -248,24 +250,29 @@ function storefrontPriceReads(db: PgQueryExecutor, context: Pick<CommercePriceAu
   return {
     listPriceLists: () => lists ??= db.query(`SELECT id,valid_from,valid_to FROM public.price_lists
       WHERE region_code=$1 AND currency=$2 AND status='active' ORDER BY id`, [context.regionCode, context.currency])
-      .then(({ rows }) => rows.map(row => ({ value: row.id as string, validFrom: isoTime(row.valid_from),
-        validTo: row.valid_to === null ? null : isoTime(row.valid_to) }))),
+      .then(({ rows }) => rows.map(row => ({ value: row.id as string, validFrom: windowTime(row.valid_from),
+        validTo: row.valid_to === null ? null : windowTime(row.valid_to) }))),
     listExactBaseEntries: async ({ priceListId, variantId }) =>
       (await (base ??= entries(priceListId, "one_time"))).get(variantId) ?? [],
     listExactLegacySubscriptionEntries: async ({ priceListId, variantId }) =>
       (await (legacy ??= entries(priceListId, "subscription"))).get(variantId) ?? [],
     listSubscriptionPolicyHistory: ({ priceListId }) => policy ??= db.query(`SELECT id,digest,closed_from_open,effective_from,effective_to,
       revision_no AS "revisionNo",discount_bps AS "discountBps",rounding_quantum_minor AS "roundingQuantumMinor",
-      rounding_rule AS "roundingRule" FROM public.subscription_price_policy_revisions
+      rounding_rule AS "roundingRule", to_char(effective_from AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "effectiveFrom",
+      to_char(effective_to AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "effectiveTo"
+      FROM public.subscription_price_policy_revisions
       WHERE price_list_id=$1 AND region_code=$2 AND currency=$3 AND channel=$4 ORDER BY revision_no,id`,
     [priceListId, context.regionCode, context.currency, context.channel]).then(({ rows }) =>
       rows.map(({ closed_from_open, effective_from, effective_to, ...row }) => {
-        const effectiveFrom = isoTime(effective_from);
-        const effectiveTo = effective_to === null ? null : isoTime(effective_to);
-        return { value: { ...row, ...context, priceListId, effectiveFrom, effectiveTo,
-          ...(closed_from_open ? { closedFromOpen: true } : {}) }, validFrom: effectiveFrom, validTo: effectiveTo };
+        // Window selection uses the driver values. The sealed tuple uses the SQL UTC rendering.
+        return { value: { ...row, ...context, priceListId, ...(closed_from_open ? { closedFromOpen: true } : {}) },
+          validFrom: windowTime(effective_from), validTo: effective_to === null ? null : windowTime(effective_to) };
       })),
   };
+}
+
+function validAmount(amount: number): boolean {
+  return Number.isInteger(amount) && amount >= 1 && amount <= 2_147_483_647;
 }
 
 async function readPrice(authority: CommercePriceAuthorityPort, query: CommercePriceAuthorityQuery): Promise<CatalogStorefrontPrice | null> {
@@ -273,7 +280,7 @@ async function readPrice(authority: CommercePriceAuthorityPort, query: CommerceP
     const resolved = await authority.resolvePrice(query);
     const amountMinor = resolved.unitPriceMinor;
     const kind = resolved.kind === "subscription_legacy" ? resolved.legacyResolved.amountKind : resolved.base.amountKind;
-    if (!Number.isInteger(amountMinor) || amountMinor < 1 || amountMinor > 2_147_483_647 || (kind !== "gross" && kind !== "net")) throw invalidAmount;
+    if (!validAmount(resolved.base.unitPriceMinor) || !validAmount(amountMinor) || (kind !== "gross" && kind !== "net")) throw invalidAmount;
     return { amountMinor, currency: query.currency, amountBasis: kind === "gross" ? "tax_inclusive" : "tax_exclusive" };
   } catch (error) {
     if (error instanceof CommercePriceAuthorityError && missingPrice.has(error.code)) return null;
@@ -282,6 +289,7 @@ async function readPrice(authority: CommercePriceAuthorityPort, query: CommerceP
 }
 
 /** Reads published catalogue display data and current prices in one snapshot. Checkout resolves its own prices.
+ * Product and SKU attributes are returned unfiltered. Before sending them to a browser, keep only the attributes your installed type definitions mark `public: true`.
  * @experimental
  */
 export async function readPostgresCatalogStorefrontPage(
@@ -303,7 +311,8 @@ export async function readPostgresCatalogStorefrontPage(
       } };
       await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
       const { rows } = await db.query("SELECT clock_timestamp() AS at_time");
-      const atTime = isoTime(rows[0]?.at_time);
+      const atTime = windowTime(rows[0]?.at_time);
+      if (!Number.isFinite(Date.parse(atTime))) throw new Error("Invalid PostgreSQL clock");
 
       const membership = await readPostgresCatalogMembershipPage(db, { offerVersion, cursor: cursor ?? null, limit, mode: null });
       if ("outcome" in membership) {

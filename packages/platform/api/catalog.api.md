@@ -1502,6 +1502,7 @@ export type CatalogStorefrontPageResult = {
     message: string;
 });
 /** Reads published catalogue display data and current prices in one snapshot. Checkout resolves its own prices.
+ * Product and SKU attributes are returned unfiltered. Before sending them to a browser, keep only the attributes your installed type definitions mark `public: true`.
  * @experimental
  */
 export declare function readPostgresCatalogStorefrontPage(transactions: Pick<PostgresRoleFreeTransactionLane<PgQueryExecutor>, "run">, input: CatalogStorefrontPageInput): Promise<CatalogStorefrontPageResult>;
