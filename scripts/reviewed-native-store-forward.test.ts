@@ -8,6 +8,7 @@ import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
 import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql, NATIVE_STORE_GUARD_CATALOGS } from "../tests/helpers/issuedPlatformCatalog.ts";
+import { nativeStoreRevokePublicMessages } from "./reviewed-platform-forward.ts";
 import { renderCheckoutOwnerGrant, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
@@ -1969,6 +1970,14 @@ describe("settings-only native forwards", () => {
     return value;
   };
   const prefix = [{ path: PLATFORM_BASELINE_FILE, bytes: before }];
+  const nonPublicSettings = [
+    { signature: "acquisition_private.keyed_digest(text,jsonb)", searchPath: "pg_catalog, pg_temp" },
+    { signature: "auth.uid()", searchPath: "pg_catalog, pg_temp" },
+  ];
+  const nonPublicPrefix = [
+    "db/platform/migrations/20260810180001_self_host_actor_auth.sql",
+    "db/platform/migrations/20260816140000_acquisition_case_foundation.sql",
+  ].map(path => ({ path, bytes: readFileSync(path) }));
   const ownerWindowRole = "fixture_owner";
   const windowText = renderNativeStoreSettingsOwnerWindow(settings, ownerWindowRole);
   const [open, , , close] = sqlStatements(windowText, false, false, true) as [string, string, string, string];
@@ -1994,6 +2003,69 @@ describe("settings-only native forwards", () => {
       expect(() => assertCoLocatedForwardApproval(folder, base, head)).not.toThrow();
       expect(() => assertAdmittedPlatformForward(folder, base, head, path, Buffer.from(text), true)).not.toThrow();
     });
+  });
+
+  it("admits non-public settings from committed native definitions through PR, queue and release checks", () => {
+    nativeGitFixture(({ folder, git, put, commit }) => {
+      const candidate = nonPublicSettings.map(render).join("\n");
+      const value = valueFor(candidate, nonPublicSettings);
+      const prior = { ...value, nativeStoreForwardClass: { sealed: true, slots: [] }, nativeStoreForwards: [] };
+      put(PLATFORM_BASELINE_FILE, before);
+      for (const source of nonPublicPrefix) put(source.path, source.bytes);
+      put("config/reviewed-platform-forwards.json", encode(prior));
+      const base = commit();
+      put(path, candidate);
+      put("config/reviewed-platform-forwards.json", encode(value));
+      const head = commit();
+      const group = git("commit-tree", git("rev-parse", `${head}^{tree}`), "-p", base, "-p", head, "-m", "Synthetic settings group");
+      expect(() => assertAdmittedPlatformForward(folder, base, head, path, Buffer.from(candidate))).not.toThrow();
+      expect(() => assertCoLocatedForwardApproval(folder, base, group)).not.toThrow();
+      expect(() => assertAdmittedPlatformForward(folder, base, head, path, Buffer.from(candidate), true)).not.toThrow();
+    });
+  });
+
+  it.each([
+    "fixture_private.keyed_digest(text,jsonb)",
+    'acquisition_private."keyed_digest"(text,jsonb)',
+    "Acquisition_Private.keyed_digest(text,jsonb)",
+    "auth.fixture_other()",
+    "auth.uid(uuid)",
+    "auth.uid( )",
+  ])("refuses settings signature %s and names the admitted forms", signature => {
+    const functions = [{ ...nonPublicSettings[0]!, signature }];
+    expect(() => readReviewedForwardRegistry(encode(valueFor(render(functions[0]!), functions))))
+      .toThrow("Use public.<name>(<types>), acquisition_private.<name>(<types>) or exactly auth.uid().");
+  });
+
+  it("refuses a non-public settings target absent from the base definitions", () => {
+    const candidate = nonPublicSettings.map(render).join("\n");
+    expect(() => assertNativeStoreForward(valueFor(candidate, nonPublicSettings), path, Buffer.from(candidate), [...prefix, nonPublicPrefix[0]!]))
+      .toThrow("settings-only function absent from base migrations: acquisition_private.keyed_digest(text,jsonb)");
+  });
+
+  it("refuses extra SQL for non-public settings with a matching file hash", () => {
+    const candidate = [...nonPublicSettings.map(render), "SELECT 1;"].join("\n");
+    expect(() => assertNativeStoreForward(valueFor(candidate, nonPublicSettings), path, Buffer.from(candidate), [...prefix, ...nonPublicPrefix]))
+      .toThrow("Expected 2 statements, found 3.");
+  });
+
+  it.each(nonPublicSettings)("keeps $signature out of the ordinary function lists", ({ signature, searchPath }) => {
+    const value = registry();
+    const slot = emptySlot(path);
+    value.nativeStoreForwardClass = { sealed: true, slots: [slot] };
+    const read = () => readReviewedForwardRegistry(encode(value));
+    expect(read).not.toThrow();
+
+    slot.createdFunctions = [{ signature, searchPath }];
+    expect(read).toThrow("reviewed native store closed signature, preimage or search_path drifted");
+    slot.createdFunctions = [];
+    slot.replacedFunctions = [{ signature, searchPath, beforeSha256: sqlSha256(before) }];
+    expect(read).toThrow("reviewed native store closed signature, preimage or search_path drifted");
+    slot.replacedFunctions = [];
+    slot.grantOnlyFunctions = [{ signature, grantTo: ["authenticated"], revokeFrom: [] }];
+    expect(read).toThrow("reviewed native store invalid grant-only signature or role capability");
+    slot.grantOnlyFunctions = [{ signature, grantTo: ["service_role"], revokeFrom: [], revokePublic: true }];
+    expect(read).toThrow(nativeStoreRevokePublicMessages.slot);
   });
 
   it.each([
@@ -2083,6 +2155,11 @@ describe("settings-only native forwards", () => {
       { path, bytes: Buffer.from(withWindow ? windowText : text) },
     ];
     expect(() => assertNativeStoreForward(value, next.path, Buffer.from(candidate), history)).not.toThrow();
+    expect(() => assertNativeStoreForward(value, next.path, Buffer.from(candidate), history.slice(0, 1)))
+      .toThrow(new Error("reviewed native store requires every earlier slot landed first"));
+    const drifted = [history[0]!, { path, bytes: Buffer.concat([history[1]!.bytes, Buffer.from("\n")]) }];
+    expect(() => assertNativeStoreForward(value, next.path, Buffer.from(candidate), drifted))
+      .toThrow(new Error("reviewed native store requires every earlier slot landed first"));
 
     const unrelated = "db/platform/migrations/20261124133000_fixture_history.sql";
     for (const statement of [render(replace), `ALTER FUNCTION ${replace.signature} COST 10;`]) {
