@@ -29,7 +29,7 @@ import { cataloguePublicationAuthority, catalogueReadGrant, fixture as catalogue
   installPublicationActors, membershipSignature, readinessSignature, transaction } from "./catalogPublicationFixture.js";
 
 const input: { connectionString: string; freshConnectionString?: string; selection: QualifiedPostgresInstallation; expectedInventory: string;
-  discriminators: boolean; freshRuntimeCheckout?: boolean } = JSON.parse(process.argv[2]!);
+  discriminators: boolean; freshRuntimeCheckout?: boolean; separateCheckoutProof?: "independent" | "deferred" } = JSON.parse(process.argv[2]!);
 const { selection } = input;
 const lockName = "openlup:public-platform-migrations:v1";
 const password = "synthetic-proof-only";
@@ -780,8 +780,24 @@ async function prepareFixtureCluster(base: string) {
   return { bootstrap, connectionString };
 }
 
+let activePhase: { name: string; started: number } | undefined;
+
+function reportPhase(outcome: "ok" | "assertion" | "failed") {
+  if (!activePhase) return;
+  const { name, started } = activePhase;
+  process.stderr.write(`qualification-phase ${name} ${outcome} ${Math.round(performance.now() - started)}\n`);
+  activePhase = undefined;
+}
+
+function beginPhase(name: string) {
+  reportPhase("ok");
+  activePhase = { name, started: performance.now() };
+  process.stderr.write(`qualification-phase ${name} start 0\n`);
+}
+
 async function prove() {
   const started = performance.now();
+  beginPhase("prepare-primary");
   const fixtureUrl = new URL(input.connectionString);
   assert.equal(fixtureUrl.hostname, "127.0.0.1");
   assert.ok(fixtureUrl.port);
@@ -834,6 +850,7 @@ async function prove() {
   const assertAclDelta = watchRuntimeCheckoutAclDelta(migration);
   const runner = createPostgresMigrationRunner({ connectionString }, { installation: selection, poolFactory: () => migration });
   const deniedCheckout = [pool(loginUrl(selection.restoreLogin!)), pool(loginUrl("openlup_checkout_owner"))];
+  const ledger = async () => (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM public.platform_schema_migrations ORDER BY position")).rows;
   const before = await runner.status();
   assert.deepEqual(before, { applied: [], pending: expected.map(entry => entry.file) });
   if (input.freshRuntimeCheckout) {
@@ -842,6 +859,36 @@ async function prove() {
     await proveRuntimeCheckout(bootstrap, pool(loginUrl(selection.runtimeLogin)), selection.migrationLogin, deniedCheckout);
     return { freshRuntimeCheckout: true, ledgerRows: expected.length };
   }
+  if (input.separateCheckoutProof === "independent") {
+    assert.ok(input.freshConnectionString);
+    beginPhase("checkout-issued-prefix");
+    const prefix = issuedExpected.map(entry => entry.file);
+    await withIssuedPlatformCatalog(async root => {
+      const issuedRunner = createPostgresMigrationRunner({ connectionString }, { root, installation: selection });
+      assert.deepEqual(await issuedRunner.apply(), { applied: prefix });
+      assert.deepEqual(await issuedRunner.apply(), { applied: [] });
+    });
+    await observeInventory(input.expectedInventory);
+    beginPhase("checkout-current-suffix");
+    const expectedApplied = expected.map(entry => entry.file);
+    const suffix = expectedApplied.slice(prefix.length);
+    assert.deepEqual(await runner.status(), { applied: prefix, pending: suffix });
+    assert.deepEqual(await runner.apply(), { applied: suffix });
+    assertAclDelta();
+    assert.deepEqual(await runner.status(), { applied: expectedApplied, pending: [] });
+    const inventorySha256 = await observeInventory(manifest.objectInventorySha256);
+    const installed = await ledger();
+    assert.deepEqual(installed.map(({ executed_at: _time, ...row }) => row),
+      expected.map((entry, position) => ({ catalog_path: entry.file, sha256: entry.sha256, position })));
+    beginPhase("checkout-discriminators");
+    const fresh = await prepareFixtureCluster(input.freshConnectionString);
+    await proveCheckoutOwnerGrant(connectionString, loginUrl(selection.runtimeLogin), selection, password, fresh.connectionString);
+    await bootstrap.query("DROP ROLE openlup_checkout_owner");
+    assert.deepEqual(await runner.apply(), { applied: [] });
+    assert.deepEqual(await ledger(), installed);
+    return { checkoutDiscriminators: true, inventorySha256, ledgerRows: installed.length };
+  }
+  beginPhase("issued-prefix");
   let issuedInventorySha256 = "";
   const prefixApplied = await withIssuedPlatformCatalog(async root => {
     const prefixRunner = createPostgresMigrationRunner({ connectionString }, { root, installation: selection });
@@ -849,16 +896,22 @@ async function prove() {
     const applied = await prefixRunner.apply();
     assert.deepEqual(applied.applied, issuedExpected.map(entry => entry.file));
     assert.deepEqual(await prefixRunner.apply(), { applied: [] });
+    beginPhase("issued-inventory");
     issuedInventorySha256 = await observeInventory(input.expectedInventory);
     return applied.applied;
   });
+  beginPhase("current-suffix");
   assert.deepEqual(await runner.status(), { applied: prefixApplied, pending: expected.slice(prefixApplied.length).map(entry => entry.file) });
   const grantPosition = expected.findIndex(({ file }) => file === catalogueReadGrant);
   assert.ok(grantPosition >= prefixApplied.length);
   const beforeGrant = await withPlatformCatalog(catalogueReadPrefix(source, false), root =>
     createPostgresMigrationRunner({ connectionString }, { root, installation: selection }).apply());
   assert.deepEqual(beforeGrant.applied, expected.slice(prefixApplied.length, grantPosition).map(entry => entry.file));
-  if (input.discriminators) await proveCatalogueReadGuard(bootstrap);
+  if (input.discriminators) {
+    beginPhase("catalogue-read-guard");
+    await proveCatalogueReadGuard(bootstrap);
+  }
+  beginPhase("catalogue-grant-and-suffix");
   const aclBeforeGrant = await publisherFunctionAcl(bootstrap);
   assert.deepEqual(readGrants(aclBeforeGrant), []);
   const grantApplied = await withPlatformCatalog(catalogueReadPrefix(source, true), root =>
@@ -878,7 +931,7 @@ async function prove() {
   assert.deepEqual(suffixApplied.applied, expected.slice(grantPosition + 1).map(entry => entry.file));
   const appliedNow = { applied: [...prefixApplied, ...beforeGrant.applied, ...grantApplied.applied, ...suffixApplied.applied] };
   assert.deepEqual(appliedNow, { applied: expected.map(entry => entry.file) });
-  const ledger = async () => (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM public.platform_schema_migrations ORDER BY position")).rows;
+  beginPhase("current-ledger-inventory-replay");
   const installed = await ledger();
   assert.deepEqual(installed.map(({ executed_at: _time, ...row }) => row), expected.map((entry, position) => ({ catalog_path: entry.file, sha256: entry.sha256, position })));
   const healthy = { applied: expected.map(entry => entry.file), pending: [] };
@@ -892,11 +945,16 @@ async function prove() {
   assert.deepEqual(await publisherFunctionAcl(bootstrap), publisherAcl);
   assert.deepEqual(await ledger(), installed);
   const inventorySha256 = await observeInventory(manifest.objectInventorySha256);
+  beginPhase("runtime-checkout");
   const fresh = input.freshConnectionString && await prepareFixtureCluster(input.freshConnectionString);
   await proveRuntimeCheckout(bootstrap, pool(loginUrl(selection.runtimeLogin)), selection.migrationLogin, deniedCheckout);
-  await proveCheckoutOwnerGrant(connectionString, loginUrl(selection.runtimeLogin), selection, password,
-    fresh ? fresh.connectionString : undefined);
+  if (input.separateCheckoutProof !== "deferred") {
+    beginPhase("checkout-discriminators");
+    await proveCheckoutOwnerGrant(connectionString, loginUrl(selection.runtimeLogin), selection, password,
+      fresh ? fresh.connectionString : undefined);
+  }
   await bootstrap.query("DROP ROLE openlup_checkout_owner");
+  beginPhase("runtime-privileges-and-behavior");
   await proveRetainedRuntime(bootstrap);
   await proveOwnerPathResolution(bootstrap);
   await proveRuntimeLockPrivileges(bootstrap);
@@ -907,6 +965,7 @@ async function prove() {
   assert.deepEqual(await runner.status(), healthy);
   assert.deepEqual(await ledger(), installed);
   if (input.discriminators) {
+    beginPhase("inventory-comment-refusal");
     const originalComment = (await bootstrap.query("SELECT pg_catalog.col_description('public.clients'::pg_catalog.regclass,attnum) AS comment FROM pg_catalog.pg_attribute WHERE attrelid='public.clients'::pg_catalog.regclass AND attname='email'")).rows[0].comment;
     await bootstrap.query("COMMENT ON COLUMN public.clients.email IS 'm14 qualification inventory mutant'");
     try {
@@ -921,6 +980,7 @@ async function prove() {
     assert.deepEqual(await runner.status(), healthy);
 
     // A separate session capability refusal, not the inventory mismatch above.
+    beginPhase("runtime-capability-refusal");
     await bootstrap.query("GRANT SET ON PARAMETER session_replication_role TO anon");
     try {
       for (const operation of [() => runner.status(), () => runner.apply({ dryRun: true }), () => runner.apply()]) {
@@ -934,6 +994,7 @@ async function prove() {
     // Their definitions intentionally change inventory; qualification must reach
     // that precise refusal without invoking either function, including pre-hook
     // lock acquisition/release and the catalog namespace filter.
+    beginPhase("inventory-overload-refusal");
     await bootstrap.query(`CREATE TABLE public.q2_shadow_calls(kind pg_catalog.text NOT NULL);
       CREATE FUNCTION public.left(value pg_catalog.name, size pg_catalog.int4)
         RETURNS pg_catalog.text LANGUAGE plpgsql VOLATILE AS $$
@@ -954,6 +1015,7 @@ async function prove() {
     }
     assert.deepEqual(await runner.status(), healthy);
 
+    beginPhase("search-path-refusal-and-recovery");
     await bootstrap.query(`CREATE SCHEMA q2_shadow;
       CREATE TABLE q2_shadow.calls(kind pg_catalog.text NOT NULL);
       CREATE FUNCTION q2_shadow.current_database() RETURNS pg_catalog.name LANGUAGE plpgsql VOLATILE AS $$
@@ -977,6 +1039,7 @@ async function prove() {
     assert.deepEqual(await recovered.apply(), { applied: [] });
     assert.deepEqual(await ledger(), installed);
   }
+  beginPhase("final-replay");
   assert.deepEqual(await runner.status(), healthy);
   assert.deepEqual(await runner.apply(), { applied: [] });
   assert.deepEqual(await ledger(), installed);
@@ -991,15 +1054,18 @@ async function prove() {
 let exitCode = 0;
 try {
   const result = await prove();
+  beginPhase("child-shutdown");
   await new Promise<void>((resolve, reject) => process.stdout.write(`${JSON.stringify(result)}\n`, error => error ? reject(error) : resolve()));
 } catch (error) {
   exitCode = 1;
-  console.error(error);
+  reportPhase((error as { code?: unknown } | undefined)?.code === "ERR_ASSERTION" ? "assertion" : "failed");
 } finally {
   const closedPorts = await Promise.allSettled(ports.map(value => value.close()));
   if (closedPorts.some(result => result.status === "rejected")) exitCode = 1;
   const closing = await Promise.allSettled(pools.filter(value => !value.ended).map(value => value.end()));
   if (closing.some(result => result.status === "rejected")) exitCode = 1;
+  reportPhase(exitCode ? "failed" : "ok");
+  await new Promise<void>(resolve => process.stderr.write("", () => resolve()));
 }
 // Every runner call is awaited; exiting releases only this child's hidden pools.
 process.exit(exitCode);
