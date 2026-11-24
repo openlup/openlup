@@ -28,6 +28,7 @@ test.beforeEach(context => {
   const starter = declared.filter(({ pack }) => pack.id === 'starter');
   if (starter.length === declared.length) return;
   buildPacks.splice(0, buildPacks.length, ...starter);
+  assert.ok('after' in context);
   context.after(() => { buildPacks.splice(0, buildPacks.length, ...declared); });
 });
 
