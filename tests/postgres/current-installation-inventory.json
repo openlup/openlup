@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 190,
-        "exactTailCount": 80,
-        "objectInventorySha256": "ca696d64005b2677a15b5455bb712a02549bd05bb9328a318aad51258f159418",
+        "count": 191,
+        "exactTailCount": 81,
+        "objectInventorySha256": "842e75396e7e2c82b51509ad6ced9aeb81ef3d46eb5cce938940b39491f0e01c",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
+            "sha256": "41b7c9abd1ab5c7a8c3cf720e7b3b25da494dfb82286d548ab27f29f549da8bf"
+          },
           {
             "file": "db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql",
             "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f"
@@ -769,10 +773,14 @@
         ]
       },
       "bootstrap": {
-        "count": 196,
-        "exactTailCount": 81,
-        "objectInventorySha256": "d48147ca30581b5e0643ea71682ba1e5d6e89c3adfa75b559698e0181348a027",
+        "count": 197,
+        "exactTailCount": 82,
+        "objectInventorySha256": "080fc2a996ef8c7aec36c51c9eea15cef318d1b0a6f186a9f8aa110347659b56",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
+            "sha256": "41b7c9abd1ab5c7a8c3cf720e7b3b25da494dfb82286d548ab27f29f549da8bf"
+          },
           {
             "file": "db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql",
             "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f"
@@ -1560,10 +1568,14 @@
         ]
       },
       "separate": {
-        "count": 196,
-        "exactTailCount": 81,
-        "objectInventorySha256": "c3acf6951151760568bec2d1347920b6a58004deadc8c3696afc55a71773f73a",
+        "count": 197,
+        "exactTailCount": 82,
+        "objectInventorySha256": "a4b24c315bd0c3c4fb61d6b227bc87d4408f0e23a2f730d50f1f1c591b05db91",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
+            "sha256": "41b7c9abd1ab5c7a8c3cf720e7b3b25da494dfb82286d548ab27f29f549da8bf"
+          },
           {
             "file": "db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql",
             "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f"
@@ -2351,10 +2363,14 @@
         ]
       },
       "admin-managed": {
-        "count": 194,
-        "exactTailCount": 80,
-        "objectInventorySha256": "30d00712c3144f984f58f183a3b0208251a56c5f349c1560c1a63b5ab5ce4143",
+        "count": 195,
+        "exactTailCount": 81,
+        "objectInventorySha256": "47e8d1108da19b127ca14e452b3e1186fed5ae421b84809c39c811ce1264ee3c",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
+            "sha256": "41b7c9abd1ab5c7a8c3cf720e7b3b25da494dfb82286d548ab27f29f549da8bf"
+          },
           {
             "file": "db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql",
             "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f"
@@ -3134,10 +3150,14 @@
         ]
       },
       "admin-operator": {
-        "count": 194,
-        "exactTailCount": 80,
-        "objectInventorySha256": "84631c4a0bdacd47563dd39e3bbea4363e5ee59bca21622239a9ecf4b4734bda",
+        "count": 195,
+        "exactTailCount": 81,
+        "objectInventorySha256": "cf2882606e23613d1db9ba069a6a25349763de469f2eb45f929b1012b80a3471",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
+            "sha256": "41b7c9abd1ab5c7a8c3cf720e7b3b25da494dfb82286d548ab27f29f549da8bf"
+          },
           {
             "file": "db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql",
             "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f"
