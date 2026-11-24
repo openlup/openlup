@@ -3,8 +3,9 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { setTimeout } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
@@ -12,8 +13,6 @@ import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardow
 let scratch: string;
 let consumer: string;
 let migrations: typeof import('@openlup/platform/migrations');
-const containers: PostgresContainer[] = [];
-const pools: Pool[] = [];
 const scenarioHelper = pathToFileURL(resolve('tests/helpers/neutralStoreScenario.mjs')).href;
 beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error('Starter quote proof requires real PostgreSQL');
@@ -51,9 +50,8 @@ beforeAll(async () => {
   expect(installed.resolve('@openlup/platform/migrations').startsWith(join(consumer,'node_modules'))).toBe(true);
   migrations = await import(pathToFileURL(installed.resolve('@openlup/platform/migrations')).href);
 }, postgresSetupTimeoutMs);
-afterAll(async () => {
-  try { await closePostgres(containers,pools); }
-  finally { if (scratch) rmSync(scratch,{ recursive: true,force: true }); }
+afterAll(() => {
+  if (scratch) rmSync(scratch,{ recursive: true,force: true });
 }, postgresTeardownTimeoutMs);
 
 const shippingScript = String.raw`
@@ -165,13 +163,18 @@ const shippingScript = String.raw`
   } finally {await new Promise(resolve=>{server.close(resolve);server.closeIdleConnections();});await bindings.close();await runtime.end();await owner.end();}
 `;
 
-// About 4x the slowest hosted run (23,351 ms), rounded up to 5 s.
-// The child measured at most 2.703 s; retain its separate 20 s deadline.
-for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, async () => {
-  const caseStarted = performance.now();
+async function provisionQuoteCase(configuration: string, multiSize: boolean, containers: PostgresContainer[], pools: Pool[]) {
+  const setupStarted = performance.now();
+  // Opt-in reproduction of provisioning overrunning the existing 95 s case budget.
+  if (configuration === 'supplements' && process.env.OPENLUP_TEST_SLOW_QUOTE_SETUP === '1') {
+    await setTimeout(96_000);
+  }
+  const bootStarted = performance.now();
   const container = await runPostgresContainer({ name: `starter-quote-${configuration}-${multiSize ? "multi" : "single"}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
   containers.push(container);
+  const readyStarted = performance.now();
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Starter quote PostgreSQL unavailable');
+  const migrationStarted = performance.now();
   const owner = new Pool({ connectionString: container.connectionString }); pools.push(owner);
   for (const role of ['starter_runtime','starter_restore']) await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
   const selection = { generation: 'qualified-v2',roleMode: 'installer-managed',migrationLogin: 'postgres',bootstrapLogin: 'postgres',runtimeLogin: 'starter_runtime',restoreLogin: 'starter_restore' } as const;
@@ -180,6 +183,14 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
   await runner.apply();expect((await runner.status()).pending).toEqual([]);
   await owner.query("COMMENT ON DATABASE neutral_store IS 'openlup-neutral-store-demo-v1'");
   const runtime = new URL(container.connectionString);runtime.username = 'starter_runtime';runtime.password = 'synthetic-conformance';
+  const migrationFinished = performance.now();
+  console.info(JSON.stringify({ configuration, multiSize, setupMs: migrationFinished - setupStarted,
+    bootMs: readyStarted - bootStarted, readyMs: migrationStarted - readyStarted, migrationMs: migrationFinished - migrationStarted }));
+  return { configuration, multiSize, ownerUrl: container.connectionString, runtimeUrl: runtime.toString() };
+}
+
+function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Awaited<ReturnType<typeof provisionQuoteCase>>) {
+  const proofStarted = performance.now();
   const script = String.raw`
     import assert from 'node:assert/strict';
     import pg from 'pg';
@@ -346,13 +357,13 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
       console.log(JSON.stringify({configuration:config.id,unit:1420,subtotal:4260,second:3958,capabilityRefused:true,secondPromiseRefresh:true,retainedCapture:true}));
     } finally {await runtime.end();await owner.end();}
   `;
-  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${script}`);
+  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,ownerUrl,runtimeUrl })};\n${script}`);
   const childStarted = performance.now();
   let output: string;
   try { output = execFileSync(process.execPath,['--experimental-strip-types','scenario.mjs','--configuration',configuration], { cwd: consumer,encoding: 'utf8',timeout: 20_000 }); }
   catch (error) { throw new Error((error as { stderr?: Buffer }).stderr?.toString() ?? 'Starter quote child failed',{ cause: error }); }
   expect(JSON.parse(output.trim())).toMatchObject({ configuration,unit: 1420,subtotal: 4260,second: 3958,capabilityRefused: true,secondPromiseRefresh: true,retainedCapture: true });
-  writeFileSync(join(consumer,'shipping-scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${shippingScript.replaceAll('\\`','`')}`);
+  writeFileSync(join(consumer,'shipping-scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,ownerUrl,runtimeUrl })};\n${shippingScript.replaceAll('\\`','`')}`);
   const shippingRun = () => execFileSync(process.execPath,['--experimental-strip-types','shipping-scenario.mjs','--configuration',configuration], { cwd: consumer,encoding: 'utf8',timeout: 20_000,stdio: 'pipe' });
   let shippingOutput: string;
   try { shippingOutput = shippingRun(); }
@@ -372,5 +383,21 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
       expect(failure).toContain(mutation.failure);
     } finally { writeFileSync(mutation.path,original); }
   }
-  console.info(JSON.stringify({ configuration, caseMs: performance.now() - caseStarted, childMs: performance.now() - childStarted }));
-}, 95_000);
+  console.info(JSON.stringify({ configuration, multiSize, proofMs: performance.now() - proofStarted, childMs: performance.now() - childStarted }));
+}
+
+for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) {
+  describe.sequential(multiSize ? 'multi-size quote' : `${configuration} quote`, () => {
+    const containers: PostgresContainer[] = [];
+    const pools: Pool[] = [];
+    let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
+    beforeAll(async () => {
+      fixture = await provisionQuoteCase(configuration, multiSize, containers, pools);
+    }, postgresSetupTimeoutMs);
+    afterAll(() => closePostgres(containers, pools), postgresTeardownTimeoutMs);
+
+    // About 4x the slowest hosted run (23,351 ms), rounded up to 5 s.
+    // The child measured at most 2.703 s; retain its separate 20 s deadline.
+    it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, () => runQuoteProof(fixture), 95_000);
+  });
+}
