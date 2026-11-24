@@ -1217,7 +1217,7 @@ describe("shift-left preflight guards and --affected discovery", () => {
         if (bin === process.execPath && list.includes("scripts/check-client-secret-boundary.ts")) {
           expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
           return failGuards
-            ? { status: 1, stdout: "", stderr: "src/pages/Home.tsx:2: client source must not read process.env\n" }
+            ? { status: 1, stdout: "", stderr: "src/pages/Home.tsx:2: client secret boundary violation fixture\n" }
             : { status: 0, stdout: "Client secret boundary guard passed.\n", stderr: "" };
         }
         if (bin === process.execPath && list.includes("scripts/site-routes.mjs")) {
@@ -1255,7 +1255,7 @@ describe("shift-left preflight guards and --affected discovery", () => {
       failed: ["eslint-changed", "client-secret-boundary", "site-routes"],
     });
     expect(fail.lines.some((line) => line.includes("no-unused-vars"))).toBe(true);
-    expect(fail.lines.some((line) => line.includes("client source must not read process.env"))).toBe(true);
+    expect(fail.lines.some((line) => line.includes("client secret boundary violation fixture"))).toBe(true);
     expect(fail.lines.some((line) => line.includes("Invalid site lifecycle"))).toBe(true);
   });
 
