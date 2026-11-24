@@ -774,7 +774,7 @@
       "sha256": "6ae68be228f8c50a807de4d168fdff4be5c8dae904d50360ccde61854ceac2cf"
     },
     {
-      "file": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
+      "file": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
       "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3"
     }
   ],
@@ -1578,7 +1578,7 @@
         "sha256": "6ae68be228f8c50a807de4d168fdff4be5c8dae904d50360ccde61854ceac2cf"
       },
       {
-        "file": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
+        "file": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
         "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3"
       }
     ],
@@ -2382,7 +2382,7 @@
         "sha256": "6ae68be228f8c50a807de4d168fdff4be5c8dae904d50360ccde61854ceac2cf"
       },
       {
-        "file": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
+        "file": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
         "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3"
       }
     ],

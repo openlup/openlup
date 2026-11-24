@@ -1642,7 +1642,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
+      "path": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
       "class": "public-output"
     },
     {
@@ -5382,7 +5382,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261125200000_commerce_destination_v2_typed_refusals.sql",
+      "path": "packages/platform/sql/20261125220000_commerce_destination_v2_typed_refusals.sql",
       "class": "public-output"
     },
     {

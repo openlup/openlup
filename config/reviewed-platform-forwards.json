@@ -7230,7 +7230,7 @@
       },
       {
         "row": "destination-typed-refusals",
-        "path": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
+        "path": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
         "replacedFunctions": [
           {
             "signature": "public.commerce_destination_v2_receipt_scoped_key(jsonb,text,text,text)",
@@ -10856,7 +10856,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
+      "path": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
       "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3",
       "functions": [
         {
