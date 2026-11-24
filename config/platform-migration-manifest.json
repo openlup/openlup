@@ -762,7 +762,7 @@
       "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f"
     },
     {
-      "file": "db/platform/migrations/20261125140000_subscription_renewal_registration_units.sql",
+      "file": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
       "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
     }
   ],
@@ -1554,7 +1554,7 @@
         "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f"
       },
       {
-        "file": "db/platform/migrations/20261125140000_subscription_renewal_registration_units.sql",
+        "file": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
         "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
       }
     ],
@@ -2346,7 +2346,7 @@
         "sha256": "dc3dd5d67d26c8d9986bf18ef777922e131e5c8b5b52b22cd766f9fdb701cc5f"
       },
       {
-        "file": "db/platform/migrations/20261125140000_subscription_renewal_registration_units.sql",
+        "file": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
         "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94"
       }
     ],

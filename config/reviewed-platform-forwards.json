@@ -7157,7 +7157,7 @@
       },
       {
         "row": "subscription-renewal-registration-units",
-        "path": "db/platform/migrations/20261125140000_subscription_renewal_registration_units.sql",
+        "path": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
         "replacedFunctions": [
           {
             "signature": "public.subscription_register_renewal_purchase(uuid,jsonb)",
@@ -10709,7 +10709,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261125140000_subscription_renewal_registration_units.sql",
+      "path": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
       "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94",
       "functions": [
         {

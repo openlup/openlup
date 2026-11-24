@@ -1630,7 +1630,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261125140000_subscription_renewal_registration_units.sql",
+      "path": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
       "class": "public-output"
     },
     {
@@ -5358,7 +5358,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261125140000_subscription_renewal_registration_units.sql",
+      "path": "packages/platform/sql/20261125200000_subscription_renewal_registration_units.sql",
       "class": "public-output"
     },
     {
