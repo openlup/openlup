@@ -119,10 +119,10 @@ as the installed fence subtracts stored hours from the next cycle instant.
 
 ## Native activation EXECUTE grants
 
-The [ACL forward](../../db/platform/migrations/20261125150000_subscription_activation_execute_grants.sql)
+The [ACL forward](../../db/platform/migrations/20261125210000_subscription_activation_execute_grants.sql)
 removes default PUBLIC EXECUTE from the base activation entry and commit
 functions. It grants EXECUTE to `service_role` where present. The
-[units forward](../../db/platform/migrations/20261125160000_subscription_activation_units.sql)
+[units forward](../../db/platform/migrations/20261125220000_subscription_activation_units.sql)
 preserves the four parent signatures and grants while introducing four
 internal functions with owner and `service_role` access.
 
