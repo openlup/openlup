@@ -495,6 +495,7 @@ it.each(profiles)("preserves the runtime checkout identity and ACLs through the 
     const { body, ...prior } = await facts();
     expect((await runner.apply()).applied[0]).toBe(prelockForward.path);
     expect((await runner.apply()).applied).toEqual([]);
+    // The runner acknowledges the migration COMMIT before replay and the fresh catalogue reads.
     const { body: installed, ...after } = await facts();
     expect(after).toEqual(prior);
     expect(installed).not.toBe(body);
@@ -524,6 +525,7 @@ it.each(profiles)("preserves the runtime checkout identity and ACLs through the 
       const { rows: [client] } = await db.query("INSERT INTO public.clients(email) VALUES('prelock@example.invalid') RETURNING id");
       return { client: client.id, payload: { skuIds: [issue.skuId, legacy.skuId], skuRevisionId: issue.skuRevisionId, priceListId: list.id } };
     });
+    // The transaction helper acknowledges the seed COMMIT before the runtime role reads it.
     const call = "SELECT public.catalog_admission_runtime_checkout($1::pg_catalog.text,$2::pg_catalog.text,$3::pg_catalog.uuid,$4::pg_catalog.jsonb) AS result";
     const key = "fixture-checkout-key";
     await transaction(runtime, async db => {

@@ -1360,6 +1360,7 @@ it.each([true, false].flatMap(checkoutFirst => [true, false].map(selected => ({ 
       await expect(purchase).rejects.toMatchObject({ code: "40001", message: visibility });
       expect(read).not.toHaveBeenCalled();
     }
+    // COMMIT was acknowledged on the price writer before this fresh owner read.
     expect((await owner.query("SELECT unit_price_minor FROM public.price_entries WHERE price_list_id=$1 AND active", [list])).rows)
       .toEqual([{ unit_price_minor: 130 }]);
   } finally {
@@ -1508,6 +1509,33 @@ const noAuthorizationRefusal = () => {};
 const orderInsert = `INSERT INTO public.commerce_orders(client_id,status,currency_code,total_amount_minor)
   SELECT $1,'pending_payment','XXX',0 FROM generate_series(1,$2) RETURNING id`;
 
+async function observeBefore(check: () => Promise<boolean>, deadline: number) {
+  await expect.poll(async () => await check() && performance.now() <= deadline,
+    { timeout: Math.max(1, deadline - performance.now()), interval: 2 }).toBe(true);
+}
+
+function trackedSelectedWriter(observeQuery?: QueryObserver, onWriter?: (db: PoolClient) => Promise<void> | void) {
+  let backend: number | undefined, xid: string | undefined;
+  const pool = pair(async (index, db) => {
+    if (index === 0) {
+      backend = await pid(db);
+      await onWriter?.(db);
+    }
+  }, observeQuery, installation.runtime, undefined, (sql, index, { rows }) => {
+    if (index !== 0 || !sql.startsWith("SELECT pg_current_xact_id()")) return;
+    const value: unknown = rows[0]?.xid;
+    if (typeof value === "string") xid = value;
+  });
+  return { pool, get pid() { return backend; }, waitUntil: (deadline: number) => observeBefore(async () => {
+    // The backend check also covers a nonce sent before the deadline without a returned XID.
+    const { rows: [result] } = await installation.owner.query<{ settled: boolean }>(`SELECT
+      NOT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND state IS DISTINCT FROM 'idle')
+      AND COALESCE(pg_visible_in_snapshot($2::xid8, pg_current_snapshot()), true) AS settled`,
+    [backend ?? null, xid ?? null]);
+    return result?.settled === true;
+  }, deadline) };
+}
+
 async function selectedFixture() {
   const seed = fixture();
   const skuRevisionId = await transaction(installation.owner, async db => {
@@ -1590,6 +1618,7 @@ it("checks exact selected input, transaction and advisory layout before fresh lo
       await db.query("ROLLBACK TO SAVEPOINT invalid_selected");
       await db.query("RELEASE SAVEPOINT invalid_selected");
     }
+    // Acknowledged savepoint rollbacks complete on this same backend before the lock read.
     expect((await db.query(`SELECT 1 FROM pg_locks WHERE pid=pg_backend_pid()
       AND relation IN ('public.clients'::regclass,'public.catalog_products'::regclass,'public.commerce_orders'::regclass)`)).rows).toEqual([]);
     await db.query("SET LOCAL search_path=pg_temp,public,pg_catalog");
@@ -1627,10 +1656,12 @@ it("takes the transaction key before dispatch even if the writer already holds t
     await withSelectedCatalogAdmissionFence(pool, request, guards, async db => {
       expect((await db.query("SELECT pg_advisory_unlock(hashtextextended($1::text,0)) AS unlocked", [request.key])).rows)
         .toEqual([{ unlocked: true }]);
+      // The session unlock is acknowledged while the writer transaction is still held here.
       const check = "SELECT pg_try_advisory_xact_lock(hashtextextended($1::text,0)) AS acquired";
       expect((await installation.owner.query(check, [request.key])).rows).toEqual([{ acquired: false }]);
     }, noAuthorizationRefusal);
     expect(statements.filter(sql => sql === keySql || sql === selectedSql)).toEqual([keySql, selectedSql]);
+    // A successful fence result follows the writer's acknowledged COMMIT.
     expect((await installation.owner.query("SELECT pg_try_advisory_xact_lock(hashtextextended($1::text,0)) AS acquired", [request.key])).rows)
       .toEqual([{ acquired: true }]);
   } finally {
@@ -1660,6 +1691,7 @@ it("authorizes only after an absent receipt and skips fresh guards for a saved r
     VALUES($1,$2,$3,'{}')`, [request.key, "a".repeat(32), order.id]);
   trace.length = 0;
   await expect(withSelectedCatalogAdmissionFence(pool, request, undefined, async (db, instant, present) => {
+    // The order and receipt inserts were acknowledged as autocommit statements before the fence started.
     expect(present).toBe(true);
     expect(Number.isFinite(Date.parse(instant))).toBe(true);
     expect((await db.query("SELECT id FROM public.commerce_orders WHERE id=$1", [order.id])).rows).toEqual([{ id: order.id }]);
@@ -1673,8 +1705,8 @@ it("holds compatible selected guards through two concurrent order inserts and re
   const [first, second] = [await selectedFixture(), await selectedFixture()];
   const atFirst = latch(), atSecond = latch(), insert = latch();
   const rollback = new Error("discard fixture orders");
-  async function cross(entry: typeof first, ready: ReturnType<typeof latch<void>>) {
-    return withSelectedCatalogAdmissionFence(installation.runtime, entry.request, entry.guards, async db => {
+  async function cross(entry: typeof first, ready: ReturnType<typeof latch<void>>, writer: ReturnType<typeof trackedSelectedWriter>) {
+    return withSelectedCatalogAdmissionFence(writer.pool, entry.request, entry.guards, async db => {
       ready.resolve();
       await insert.wait();
       expect(await db.query(orderInsert, [entry.request.clientId, 1])).toMatchObject({ rows: [expect.objectContaining({ id: expect.any(String) })] });
@@ -1682,15 +1714,17 @@ it("holds compatible selected guards through two concurrent order inserts and re
     }, noAuthorizationRefusal).catch(error => error);
   }
   const started = performance.now();
-  const leader = cross(first, atFirst);
+  const writers = [trackedSelectedWriter(), trackedSelectedWriter()] as const;
+  const leader = cross(first, atFirst, writers[0]);
   let follower: Promise<unknown> | undefined;
   try {
     await atFirst.wait(leader);
-    follower = cross(second, atSecond);
+    follower = cross(second, atSecond, writers[1]);
     await atSecond.wait(follower);
     insert.resolve();
     expect(await Promise.all([leader, follower])).toEqual([rollback, rollback]);
     expect(performance.now() - started).toBeLessThan(setupTimeout);
+    await Promise.all(writers.map(writer => writer.waitUntil(started + setupTimeout + wallMarginMs)));
     expect((await installation.owner.query("SELECT 1 FROM public.commerce_orders WHERE client_id=ANY($1::uuid[])",
       [[first.request.clientId, second.request.clientId]])).rows).toEqual([]);
   } finally { insert.resolve(); await Promise.all([leader, follower]); }
@@ -1699,18 +1733,8 @@ it("holds compatible selected guards through two concurrent order inserts and re
 it("bounds the shared client wait and retries the original key", async () => {
   const { request, guards } = await selectedFixture();
   const ready = latch(), release = latch();
-  const writerXids: string[] = [];
-  const observeWriterXid = (sql: string, index: number, { rows }: QueryResult) => {
-    if (index !== 0 || !sql.startsWith("SELECT pg_current_xact_id()")) return;
-    const xid: unknown = rows[0]?.xid;
-    if (typeof xid === "string") writerXids.push(xid);
-  };
-  const holderPool = pair(undefined, undefined, installation.runtime, undefined, observeWriterXid);
-  let contenderPid: number | undefined;
-  const contenderPool = pair(async (index, db) => {
-    if (index === 0) contenderPid = await pid(db);
-  }, undefined, installation.runtime, undefined, observeWriterXid);
-  const first = withSelectedCatalogAdmissionFence(holderPool, request, guards, async () => {
+  const contender = trackedSelectedWriter();
+  const first = withSelectedCatalogAdmissionFence(installation.runtime, request, guards, async () => {
     ready.resolve();
     await release.wait();
   }, noAuthorizationRefusal);
@@ -1718,19 +1742,11 @@ it("bounds the shared client wait and retries the original key", async () => {
   try {
     await ready.wait(first);
     const started = performance.now();
-    await expect(withSelectedCatalogAdmissionFence(contenderPool, second, guards, async () => "unexpected", noAuthorizationRefusal))
+    await expect(withSelectedCatalogAdmissionFence(contender.pool, second, guards, async () => "unexpected", noAuthorizationRefusal))
       .rejects.toMatchObject({ message: unavailable, hint: sameKey });
-    expect(performance.now() - started).toBeLessThan(800);
+    // Prove the contender's rollback while the client row is still held. The holder then acknowledges COMMIT.
+    await contender.waitUntil(started + second.timeoutMs + wallMarginMs);
   } finally { release.resolve(); await first; }
-  // A wall timeout can discard the contender's connection before PostgreSQL finishes rolling it back.
-  await expect.poll(async () => {
-    const { rows: [result] } = await installation.owner.query<{ settled: boolean }>(`SELECT
-      NOT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND state IS DISTINCT FROM 'idle')
-      AND NOT EXISTS (SELECT 1 FROM unnest($2::xid8[]) AS writer(xid)
-        WHERE NOT pg_visible_in_snapshot(writer.xid, pg_current_snapshot())) AS settled`,
-    [contenderPid ?? null, writerXids]);
-    return result?.settled;
-  }, { timeout: barrierTimeout }).toBe(true);
   await expect(withSelectedCatalogAdmissionFence(installation.runtime, second, guards, async () => "retried", noAuthorizationRefusal))
     .resolves.toBe("retried");
 });
@@ -1739,6 +1755,7 @@ it("guards 500 existing orders for the qualified client and refuses 501", async 
   const { request, guards } = await selectedFixture();
   await installation.owner.query(orderInsert, [request.clientId, 500]);
   await installation.owner.query(orderInsert, [clientId, 501]);
+  // The seed inserts and the extra order below are acknowledged autocommit statements.
   await expect(withSelectedCatalogAdmissionFence(installation.runtime, request, guards, async db => {
     const { rows } = await db.query("SELECT count(*)::int AS count FROM public.commerce_orders WHERE client_id=$1", [request.clientId]);
     return rows[0]?.count;
@@ -1773,6 +1790,7 @@ it.each(["promotion roster", "email family"] as const)("refuses a selection requ
     expect((await db.query(count, parameters)).rows).toEqual([{ count: 1 }]);
     if (roster) await addPromotion(names[1]!);
     else await installation.runtime.query("INSERT INTO public.clients(email) VALUES($1)", [`${emailLocalPart}+entrant@example.invalid`]);
+    // The insert is committed before these reads. The writer retains its pinned snapshot.
     expect((await db.query(count, parameters)).rows).toEqual([{ count: 1 }]);
     expect((await installation.runtime.query(count, parameters)).rows).toEqual([{ count: 2 }]);
   }, noAuthorizationRefusal);
@@ -1789,37 +1807,64 @@ it.each(["promotion roster", "email family"] as const)("refuses a selection requ
     request, undefined, read, noAuthorizationRefusal)).rejects.toThrow("catalog_admission_line_ineligible");
   expect(read).not.toHaveBeenCalled();
   expect(trace).not.toContain(selectedSql);
+  // The completed refusal never invoked a write path.
   expect((await owner.query(effects, [request.clientId, request.key])).rows).toEqual(before);
 });
 
-it("bounds a stalled selected read and prevents late SQL on the released writer", async () => {
+it.each([false, true])("bounds a stalled selected read and prevents late SQL on the released writer (blocked SQL: %s)", async busy => {
   const { request, guards } = await selectedFixture();
-  const ready = latch(), resume = latch(), settled = latch();
+  const ready = latch(), resume = latch(), settled = latch<{ blocked: boolean | undefined; late: boolean }>();
   const statements: string[] = [], releases: boolean[] = [];
-  const pool = pair((index, db) => {
-    if (index !== 0) return;
+  const writer = trackedSelectedWriter((_index, sql) => { statements.push(sql); }, db => {
     const release = db.release.bind(db);
     db.release = discard => { releases.push(discard === true); release(discard); };
-  }, (_index, sql) => { statements.push(sql); }, installation.runtime);
-  const attempt = withSelectedCatalogAdmissionFence(pool, { ...request, timeoutMs: 500 }, guards, async db => {
-    ready.resolve();
-    await resume.wait();
-    try { await expect(db.query(selectedSql, ["write", request.key, request.clientId, {}])).rejects.toBeDefined(); }
-    finally { settled.resolve(); }
-  }, noAuthorizationRefusal).catch(error => error);
+  });
+  const owner = installation.owner;
+  const blocker = busy ? await owner.connect() : undefined;
+  const blockedKey = randomUUID();
+  const input = { ...request, timeoutMs: 500 };
+  let attempt: Promise<unknown> | undefined;
   try {
+    if (blocker) {
+      await blocker.query("BEGIN");
+      await blocker.query(keySql, [blockedKey]);
+    }
+    const blockerPid = blocker && await pid(blocker);
+    const deadline = performance.now() + input.timeoutMs + wallMarginMs;
+    attempt = withSelectedCatalogAdmissionFence(writer.pool, input, guards, async db => {
+      const blocked = blocker && db.query(keySql, [blockedKey]).then(() => false, () => true);
+      ready.resolve();
+      await resume.wait();
+      const late = await db.query(selectedSql, ["write", request.key, request.clientId, {}]).then(() => false, () => true);
+      settled.resolve({ blocked: await blocked, late });
+    }, noAuthorizationRefusal).catch(error => error);
     await ready.wait(attempt);
+    if (blockerPid !== undefined) await waitForBlock(writer.pid!, blockerPid, "advisory");
+    // The peer must take both locks by the original budget plus 50 ms, while read is still stalled.
+    await observeBefore(async () => {
+      const { rows: [result] } = await owner.query<{ released: boolean }>(`SELECT
+        pg_try_advisory_xact_lock(hashtextextended($1::text,0)) AND EXISTS (
+          SELECT 1 FROM public.clients WHERE id=$2 FOR UPDATE SKIP LOCKED
+        ) AS released`, [input.key, input.clientId]);
+      return result?.released === true;
+    }, deadline);
     expectFenceError(await attempt, { message: unavailable, hint: sameKey });
     expect(releases).toEqual([true]);
-    expect((await installation.owner.query("SELECT pg_try_advisory_xact_lock(hashtextextended($1::text,0)) AS released", [request.key])).rows)
-      .toEqual([{ released: true }]);
+    await writer.waitUntil(deadline);
     resume.resolve();
     await settled.wait();
+    const outcome = await settled.promise;
+    if (busy) expect(outcome.blocked).toBe(true);
+    expect(outcome.late).toBe(true);
     expect(statements.filter(sql => sql === selectedSql)).toHaveLength(1);
     expect(statements).not.toContain("COMMIT");
     await expect(withSelectedCatalogAdmissionFence(installation.runtime, request, guards, async () => "retried", noAuthorizationRefusal))
       .resolves.toBe("retried");
-  } finally { resume.resolve(); await attempt; }
+  } finally {
+    resume.resolve();
+    await attempt;
+    if (blocker) await blocker.query("ROLLBACK").finally(() => blocker.release());
+  }
 });
 
 it("snapshots selected input and handles deadline limits and guarded read transport", async () => {
@@ -1933,16 +1978,17 @@ it.each(componentGuards.flatMap(guard => phases.map(phase => ({ ...guard, phase 
     if (scenario.phase === "writer first") {
       const competing = await installation.owner.connect();
       let attempt: Promise<unknown> | undefined;
+      const assigned = latch();
+      const writer = trackedSelectedWriter(undefined, () => { assigned.resolve(); });
       try {
         await competing.query("BEGIN");
         await mutate(competing);
-        const assigned = latch<number>();
-        const pool = pair(async (index, db) => { if (index === 0) assigned.resolve(await pid(db)); }, undefined, runtime);
         const read = vi.fn(async () => "unexpected");
-        attempt = withSelectedCatalogAdmissionFence(pool, request, guards, read, noAuthorizationRefusal).catch(error => error);
+        const deadline = performance.now() + request.timeoutMs + wallMarginMs;
+        attempt = withSelectedCatalogAdmissionFence(writer.pool, request, guards, read, noAuthorizationRefusal).catch(error => error);
         if (scenario.wait) {
           await assigned.wait(attempt);
-          await waitForBlock(await assigned.promise, await pid(competing), scenario.wait.type, scenario.wait.relation);
+          await waitForBlock(writer.pid!, await pid(competing), scenario.wait.type, scenario.wait.relation);
           await competing.query("COMMIT");
           expectFenceError(await attempt, { message: visibility, code: "40001", hint: sameKey });
         } else {
@@ -1950,6 +1996,7 @@ it.each(componentGuards.flatMap(guard => phases.map(phase => ({ ...guard, phase 
           await competing.query("COMMIT");
         }
         expect(read).not.toHaveBeenCalled();
+        await writer.waitUntil(deadline);
       } finally { await competing.query("ROLLBACK"); competing.release(); await attempt; }
       await expect(withSelectedCatalogAdmissionFence(runtime, request, guards, async () => "retried", noAuthorizationRefusal)).resolves.toBe("retried");
       return;
@@ -1961,10 +2008,11 @@ it.each(componentGuards.flatMap(guard => phases.map(phase => ({ ...guard, phase 
         await mutate(db);
       })).rejects.toMatchObject({ code: "55P03" });
     });
-    const pool = pair(undefined, async (index, sql) => {
+    const writer = trackedSelectedWriter(async (index, sql) => {
       if (scenario.phase === "before probe" && index === 1 && sql.startsWith("WITH snap")) await conflict();
-    }, runtime);
-    const outcome = await withSelectedCatalogAdmissionFence(pool, request, guards, async () => {
+    });
+    const deadline = performance.now() + request.timeoutMs + wallMarginMs;
+    const outcome = await withSelectedCatalogAdmissionFence(writer.pool, request, guards, async () => {
       if (scenario.phase === "after probe") await conflict();
     }, noAuthorizationRefusal).catch(error => error);
     if (outcome !== undefined) {
@@ -1972,6 +2020,8 @@ it.each(componentGuards.flatMap(guard => phases.map(phase => ({ ...guard, phase 
       expectFenceError(outcome, { message: visibility, code: "40001", hint: sameKey });
     }
     expect(conflict).toHaveBeenCalledTimes(1);
+    // The competing transaction helper has acknowledged ROLLBACK. Verify the fence writer has settled too.
+    await writer.waitUntil(deadline);
     await transaction(installation.owner, mutate);
   }, setupTimeout * 2);
 
@@ -1986,6 +2036,7 @@ it("holds the complete catalogue projection and issue guards at the probe", asyn
   let writerPid = 0;
   const pool = pair(async (index, db) => { if (index === 0) writerPid = await pid(db); }, async (index, sql) => {
     if (index !== 1 || !sql.startsWith("WITH snap")) return;
+    // The writer acknowledged the guard query and cannot finish while this probe hook is pending.
     const { rows } = await installation.owner.query(`SELECT c.relname FROM pg_locks l JOIN pg_class c ON c.oid=l.relation
       JOIN pg_namespace n ON n.oid=c.relnamespace WHERE l.pid=$1 AND l.mode='ShareLock' AND l.granted AND n.nspname='public'
       ORDER BY c.relname COLLATE "C"`, [writerPid]);
@@ -2001,12 +2052,15 @@ it("keeps a real Stage B revision out until the selected crossing releases its c
   const attempt = async () => {
     expect(await api.execute(command, actor)).toMatchObject({ outcome: "conflict", reason: "publication_busy" });
   };
-  const pool = pair(undefined, async (index, sql) => {
+  const writer = trackedSelectedWriter(async (index, sql) => {
     if (index === 1 && sql.startsWith("WITH snap")) await attempt();
-  }, installation.runtime);
-  const beforeProbe = await withSelectedCatalogAdmissionFence(pool, request, guards, async () => {}, noAuthorizationRefusal).catch(error => error);
+  });
+  const deadline = performance.now() + request.timeoutMs + wallMarginMs;
+  const beforeProbe = await withSelectedCatalogAdmissionFence(writer.pool, request, guards, async () => {}, noAuthorizationRefusal).catch(error => error);
   if (beforeProbe !== undefined) expectFenceError(beforeProbe, { message: visibility, code: "40001", hint: sameKey });
+  await writer.waitUntil(deadline);
   await withSelectedCatalogAdmissionFence(installation.runtime, request, guards, attempt, noAuthorizationRefusal);
+  // The selected writer's COMMIT has been acknowledged before the publisher crosses in this third transaction.
   expect(await api.execute(command, actor)).toMatchObject({ outcome: "committed" });
 });
 
@@ -2015,22 +2069,24 @@ it("restores selected read settings before commit and preserves an unacknowledge
   const releases: boolean[] = [];
   let writer: PoolClient;
   const commitFailure = new Error("commit transport failed");
-  const pool = pair(async (index, db) => {
-    if (index) return;
+  const tracked = trackedSelectedWriter(async (_index, sql) => {
+    if (sql !== "COMMIT") return;
+    // Read the restored settings on the original backend before sending COMMIT.
+    expect((await writer.query("SELECT current_setting('lock_timeout') AS lock,current_setting('statement_timeout') AS statement")).rows)
+      .toEqual([{ lock: "250ms", statement: "700ms" }]);
+    throw commitFailure;
+  }, async db => {
     writer = db;
     await db.query("SET lock_timeout='250ms'; SET statement_timeout='700ms'");
     const release = db.release.bind(db);
     db.release = discard => { releases.push(discard === true); release(discard); throw new Error("cleanup failed"); };
-  }, async (_index, sql) => {
-    if (sql !== "COMMIT") return;
-    expect((await writer.query("SELECT current_setting('lock_timeout') AS lock,current_setting('statement_timeout') AS statement")).rows)
-      .toEqual([{ lock: "250ms", statement: "700ms" }]);
-    throw commitFailure;
-  }, installation.runtime);
-  await expect(withSelectedCatalogAdmissionFence(pool, request, guards, async db => {
+  });
+  await expect(withSelectedCatalogAdmissionFence(tracked.pool, request, guards, async db => {
     await db.query("SET LOCAL lock_timeout='10ms'");
   }, noAuthorizationRefusal)).rejects.toBe(commitFailure);
   expect(releases).toEqual([true]);
+  // COMMIT has no fence deadline. This test fault is before dispatch, so use the fixture's observation bound.
+  await tracked.waitUntil(performance.now() + barrierTimeout);
   await expect(withSelectedCatalogAdmissionFence(installation.runtime, request, guards, async () => "retried", noAuthorizationRefusal))
     .resolves.toBe("retried");
 });
@@ -2038,11 +2094,10 @@ it("restores selected read settings before commit and preserves an unacknowledge
 it("retries a receipt committed while the selected fence waits on its key", async () => {
   const { request, guards } = await selectedFixture();
   const blocker = await installation.owner.connect();
-  const assigned = latch<number>();
+  const assigned = latch();
   const trace: string[] = [];
   let attempt: Promise<unknown> | undefined;
-  const pool = pair(async (index, db) => { if (index === 0) assigned.resolve(await pid(db)); },
-    (_index, sql) => { trace.push(sql); }, installation.runtime);
+  const writer = trackedSelectedWriter((_index, sql) => { trace.push(sql); }, () => { assigned.resolve(); });
   const read = vi.fn(async () => "unexpected");
   const authorize = vi.fn(() => { throw new Error("starter_quote_refresh_required"); });
   try {
@@ -2051,13 +2106,15 @@ it("retries a receipt committed while the selected fence waits on its key", asyn
     const { rows: [order] } = await blocker.query(orderInsert, [request.clientId, 1]);
     await blocker.query(`INSERT INTO public.commerce_order_draft_receipts(idempotency_key,request_fingerprint,order_id,response_payload)
       VALUES($1,$2,$3,'{}')`, [request.key, "a".repeat(32), order.id]);
-    attempt = withSelectedCatalogAdmissionFence(pool, request, guards, read, authorize).catch(error => error);
+    const deadline = performance.now() + request.timeoutMs + wallMarginMs;
+    attempt = withSelectedCatalogAdmissionFence(writer.pool, request, guards, read, authorize).catch(error => error);
     await assigned.wait(attempt);
-    await waitForBlock(await assigned.promise, await pid(blocker), "advisory");
+    await waitForBlock(writer.pid!, await pid(blocker), "advisory");
     await blocker.query("COMMIT");
     expectFenceError(await attempt, { message: visibility, code: "40001", hint: sameKey });
     expect(read).not.toHaveBeenCalled();
     expect(trace).not.toContain(selectedSql);
+    await writer.waitUntil(deadline);
     await expect(withSelectedCatalogAdmissionFence(installation.runtime, request, undefined, async (_db, _instant, present) => present, authorize))
       .resolves.toBe(true);
     expect(authorize).toHaveBeenCalledTimes(1);
