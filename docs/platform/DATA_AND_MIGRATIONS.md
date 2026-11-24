@@ -1115,9 +1115,11 @@ bypass the content checks.
 
 For search-path hardening, a settings-only slot pins its `path` and an ordered
 `settingsOnlyFunctions` list of `{ signature, searchPath }` entries for qualified
-functions in the base migrations. Signatures are unique and each `searchPath`
-contains a single `pg_temp` entry in the final position. The other function and
-data lists are empty. By default the whole-file pin covers exactly the listed
+functions in the base migrations. Use `public.<name>(<types>)`,
+`acquisition_private.<name>(<types>)` or exactly `auth.uid()` for each unique
+signature. Each `searchPath` contains a single `pg_temp` entry in the final
+position. The other function and data lists are empty.
+By default the whole-file pin covers exactly the listed
 `ALTER FUNCTION … SET search_path` statements in order. The PostgreSQL catalog
 check allows only the pinned `search_path` changes. A settings-only slot may
 name an `ownerWindowRole`. Its forward then contains exactly the rendered open
