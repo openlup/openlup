@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PUBLIC_EXECUTION_ENTRYPOINTS } from "./oss-publication-contract.ts";
-import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog } from "./oss-publication-policy.ts";
+import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, isManifestPinnedSqlArea } from "./oss-publication-policy.ts";
 import * as sourceContract from "./oss-source-release-contract.ts";
 import { SOURCE_RELEASE_CONTRACT_PATH, assertSourceReleaseSnapshot, createSourceReleaseContract } from "./oss-source-release-contract.ts";
 import { policyVerdict, publicInventoryVerdict } from "./oss-published-tree-check.ts";
@@ -40,7 +40,7 @@ function fixture() {
   write("packages/core/CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n## [0.17.0]\n\n- Previous.\n");
   write(SOURCE_RELEASE_CONTRACT_PATH, createSourceReleaseContract({ inventoryDigest: zero, classDigest: zero, packageDigest: zero, rootLockDigest: zero, coreLockDigest: zero, migrationManifestDigest: zero, databaseTypesDigest: zero, policyRegistryDigest: zero, publicationCatalogDigest: zero }).contents);
   write("config/openlup-publication-catalog.json", "{}"); git("add", ".");
-  const paths = git("ls-files").split("\n");
+  const paths = git("ls-files").split("\n").filter((path) => !isManifestPinnedSqlArea(path));
   write("config/openlup-publication-catalog.json", createPublicPublicationCatalog(paths.map((path) => ({ path, class: "public-output" })), []).contents);
   const commit = () => { git("add", "."); git("commit", "-qm", "fixture"); return git("rev-parse", "HEAD"); };
   commit();
