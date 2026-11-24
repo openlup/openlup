@@ -34,6 +34,8 @@ For each adjacent release hop in a starter application:
    snapshot pair and confirm replay makes no further changes. Finish any
    [ownership inventory reconciliation](#reconcile-a-customized-ownership-inventory)
    before refreshing dependencies.
+   See the [1.4.0 release notes](#per-release-notes) to repair permissions on files
+   created by earlier upgrades.
 6. Refresh the application's package pins, lockfile and installation to match
    the reconciled manifest. Pin every `@openlup/*` package in use to the same
    exact target version.

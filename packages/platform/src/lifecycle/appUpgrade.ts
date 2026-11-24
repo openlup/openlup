@@ -62,7 +62,7 @@ export async function applyAppUpgrade(input: AppUpgradeInput): Promise<{ plan: A
       await fs.mkdir(dirname(destination), { recursive: true });
       const temporary = join(dirname(destination), `.openlup-${randomUUID()}.tmp`);
       // Rename replaces this directory entry rather than modifying a possible hardlink.
-      const mode = file.action === "replace" ? (await fs.stat(destination)).mode & 0o777 : 0o600;
+      const mode = file.action === "replace" ? (await fs.stat(destination)).mode & 0o777 : 0o644;
       let handle;
       try {
         handle = await fs.open(temporary, "wx", mode);
