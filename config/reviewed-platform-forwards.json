@@ -7342,7 +7342,7 @@
       },
       {
         "row": "tax-calculation-claim-seal",
-        "path": "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql",
+        "path": "db/platform/migrations/20261125290000_tax_calculation_claim_seal.sql",
         "replacedFunctions": [
           {
             "signature": "public.tax_calculation_terminal_v1(public.tax_calculations)",
@@ -11052,7 +11052,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql",
+      "path": "db/platform/migrations/20261125290000_tax_calculation_claim_seal.sql",
       "sha256": "493696a5adf687c3f397cea193b11552e5bd8ab9a83bec18b2b8339129dd1e44",
       "functions": [
         {

@@ -10,7 +10,7 @@ import { qualifiedAdminPostgresStartupOptions, qualifiedPostgresStartupOptions, 
 import { storeJourneyResources } from "../helpers/storeJourney.js";
 
 const forward = "db/platform/migrations/20261125170000_tax_calculations.sql";
-const claimSeal = "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql";
+const claimSeal = "db/platform/migrations/20261125290000_tax_calculation_claim_seal.sql";
 const script = "tests/postgres/fixtures/taxCalculationsV2/replayed.sql";
 const resources = storeJourneyResources();
 let container: PostgresContainer | undefined, pool: Pool;
