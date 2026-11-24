@@ -1,9 +1,62 @@
+import { once } from "node:events";
+import { createServer } from "node:http";
+import { setImmediate } from "node:timers/promises";
 import { Pool } from "pg";
 import { describe, expect, it } from "vitest";
 import { dockerAvailable } from "../helpers/postgresContainer.js";
 import { leaseFromEndpoint, startPgTemplateBroker } from "../helpers/pgTemplateBroker.js";
 
 const describeIfDocker = (await dockerAvailable()) ? describe : describe.skip;
+
+it.each(["legacy", "qualified-admin", "qualified-v2"] as const)("uses one control POST per socket for %s", async profile => {
+  const requests: { path: string | undefined; socket: number }[] = [];
+  let socketId = 0;
+  let responseMode: "ok" | "refuse" | "reset" = "ok";
+  const sockets = new WeakMap<object, number>();
+  const server = createServer((request, response) => {
+    const socket = sockets.get(request.socket)!;
+    const reused = requests.some(previous => previous.socket === socket);
+    requests.push({ path: request.url, socket });
+    if (reused || responseMode === "reset") {
+      request.socket.resetAndDestroy();
+      return;
+    }
+    request.resume();
+    response.setHeader("Content-Type", "application/json");
+    response.statusCode = responseMode === "refuse" ? 409 : 200;
+    response.end(JSON.stringify(responseMode === "refuse" ? { error: "fixture_refused" } : { id: "lease" }));
+  });
+  server.on("connection", socket => sockets.set(socket, ++socketId));
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Missing broker listener address");
+    const endpoint = { url: `http://127.0.0.1:${address.port}`, token: "fixture" };
+    const lease = await leaseFromEndpoint(endpoint, profile);
+    expect(lease.id).toBe("lease");
+    // Let an eligible keep-alive socket return to the client's idle pool.
+    await setImmediate();
+    await expect(lease.release()).resolves.toBeUndefined();
+    responseMode = "refuse";
+    await expect(leaseFromEndpoint(endpoint, profile)).rejects.toThrow("pg_template_broker_clone_failed (409): fixture_refused");
+    responseMode = "ok";
+    const refusedRelease = await leaseFromEndpoint(endpoint, profile);
+    responseMode = "refuse";
+    await expect(refusedRelease.release()).rejects.toThrow("pg_template_broker_release_failed (409): fixture_refused");
+    responseMode = "ok";
+    const resetRelease = await leaseFromEndpoint(endpoint, profile);
+    responseMode = "reset";
+    await expect(resetRelease.release()).rejects.toMatchObject({ cause: { code: "ECONNRESET" } });
+    expect(requests.map(request => request.path)).toEqual(["/clone", "/release", "/clone", "/clone", "/release", "/clone", "/release"]);
+    expect(new Set(requests.map(request => request.socket)).size).toBe(requests.length);
+  } finally {
+    const closed = once(server, "close");
+    server.close();
+    server.closeAllConnections();
+    await closed;
+  }
+});
 
 describe("PostgreSQL template broker (lazy boot & auth boundary)", () => {
   it("starts zero containers on boot and refuses unauthenticated requests with 401", async () => {

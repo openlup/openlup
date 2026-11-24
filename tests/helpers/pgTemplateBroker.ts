@@ -380,6 +380,8 @@ export async function leaseFromEndpoint(
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${endpoint.token}`,
+      // Control POSTs are one-shot, including when a previous socket is winding down.
+      Connection: "close",
     },
     body: JSON.stringify({ profile, label }),
   });
@@ -405,6 +407,7 @@ export async function leaseFromEndpoint(
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${endpoint.token}`,
+          Connection: "close",
         },
         body: JSON.stringify({ id }),
       });
@@ -412,6 +415,7 @@ export async function leaseFromEndpoint(
         const errBody = await releaseResponse.json().catch(() => ({})) as Record<string, unknown>;
         throw new Error(`pg_template_broker_release_failed (${releaseResponse.status}): ${String(errBody.error ?? "unknown")}`);
       }
+      await releaseResponse.arrayBuffer();
     },
   };
 }
