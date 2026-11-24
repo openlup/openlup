@@ -106,6 +106,15 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     assert.equal(refusal.calls.length, 3);
     const { command: _up, ...refusalEnvelope } = refusal.report;
     assert.equal(up('fake', undefined, JSON.stringify(refusalEnvelope) + '\n', 2).report.findings[0].observed, observed);
+    for (const [code, path, fix] of [
+      ['checkout_recovery_schedule_change_blocked_open_episodes', 'checkoutRecoveryReminders', 'Keep the current schedule in effect.'],
+      ['fulfillment_stock_current_idempotency_conflict', 'owned/store.config.ts', 'Restore the original stock inputs for this SKU, then rerun the demo installer.'],
+    ]) {
+      const finding = { ...refusalEnvelope.findings[0], code, path, fix };
+      const result = up('fake', undefined, JSON.stringify({ ...refusalEnvelope, findings: [finding] }) + '\n', 2);
+      assert.deepEqual(result.report.findings, [finding]);
+      assert.equal(result.calls.length, 3);
+    }
     const text = up('refusal', ['--configuration', 'coffee']);
     assert.equal(text.run.status, 2);
     assert.match(text.run.stderr, /starter_catalogue_rules_required\nObserved: .*é\\n\\r\\t[^\n]+\nCause: /u);

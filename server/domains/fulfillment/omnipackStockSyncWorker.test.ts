@@ -6,8 +6,24 @@ import {
   type OmnipackStockSyncProvider,
 } from "./omnipackStockSyncWorker.js";
 import type { InventoryStockLine } from "../../../src/domains/inventory/contracts.js";
+import * as fulfillment from "@openlup/platform/fulfillment";
+
+const providerKind = "omnipack";
 
 describe("OmniPack stock sync worker", () => {
+  it("retains the fixed stock replay diagnostic for the nominal rejection", async () => {
+    const port = fakePort();
+    const provider = fakeProvider({ movements: [], stock: [
+      { provider: providerKind, sku: "sku-a", totalQuantity: 1, forSaleQuantity: 1, reservedOrUnavailableQuantity: 0 },
+    ] });
+    const reason = "fulfillment_stock_current_idempotency_conflict";
+    const ErrorClass = Reflect.get(fulfillment, "FulfillmentStockReplayConflictError");
+    const error = ErrorClass ? new ErrorClass(new Error("private driver context")) : new Error(reason);
+    vi.mocked(port.recordProviderStockCurrent).mockRejectedValueOnce(error);
+    await expect(runOmnipackStockSyncWorker({ port, provider, movementBatchSize: 100 })).resolves.toMatchObject({ ok: false, reason });
+    expect(port.recordStockSnapshot).not.toHaveBeenCalled();
+  });
+
   it("records classified raw snapshots without provider/local mismatch evidence", async () => {
     const port = fakePort({
       localBalances: [
@@ -17,7 +33,7 @@ describe("OmniPack stock sync worker", () => {
     });
     const provider = fakeProvider({
       stock: [
-        { provider: "omnipack", sku: "OPENLUP-BEEF-2KG", totalQuantity: 4, forSaleQuantity: 4, reservedOrUnavailableQuantity: 0 },
+        { provider: providerKind, sku: "OPENLUP-BEEF-2KG", totalQuantity: 4, forSaleQuantity: 4, reservedOrUnavailableQuantity: 0 },
         { provider: "omnipack", sku: "OPENLUP-DUCK-2KG", totalQuantity: 8, forSaleQuantity: 8, reservedOrUnavailableQuantity: 0 },
       ],
       movements: [

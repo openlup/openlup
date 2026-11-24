@@ -14,7 +14,7 @@ import { createPostgresDestinationPort } from '@openlup/platform/commerce/server
 import { createPostgresNativeCheckoutHostPort } from '@openlup/platform/commerce/server/native-checkout';
 import { createPostgresNativeCheckoutSubscriptionPort } from '@openlup/platform/subscriptions';
 import { createPostgresPurchaseReservationPort, createPostgresAbandonedCheckoutCompensationPort } from '@openlup/platform/inventory';
-import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
+import { createPostgresFulfillmentStockSyncPort, FulfillmentStockReplayConflictError } from '@openlup/platform/fulfillment';
 import { createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
 import { ACQUISITION_TERMS_CAPABILITY, type CreateQuoteResponse } from '@openlup/platform/pricing';
 import type { ApplicationBindings, ActionContext } from './bindings.ts';
@@ -242,6 +242,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     } }, { regionCode: context.config.market.country,
       financialPolicy: createAcquisitionFinancialPolicy(), isAcquisitionDiscount: discount => discount.promotionId === `demo-acquisition:${context.config.id}` });
     let created: { id: string; fresh: boolean } | null = null;
+    let writingStock = false;
     try {
       const orderId = priorOrder?.id ?? (await drafts.createOrderDraft({ idempotencyKey: key, quoteSnapshot }, { clientId: contact.clientId })).orderDraft.orderId.slice(6);
       created = { id: orderId, fresh: !priorOrder };
@@ -252,11 +253,13 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       // Replayed registration compares the original immutable address before returning it.
       await destinations.registerOrder({ idempotencyKey: `${key}:destination`, orderId, address: shipping, now: new Date().toISOString() });
       const stock = createPostgresFulfillmentStockSyncPort(db, { sourceKey: source(context), readLocalInventoryStock: async () => [] });
+      writingStock = true;
       for (const line of quote.lines) await stock.recordProviderStockCurrent({ requestKey: `starter-stock:${line.sku}`, snapshot: {
         providerRef: context.config.purchase.stock.providerRef, collectedAt: context.config.purchase.stock.collectedAt, sourceRevision: null,
         revisionSource: 'collection', quantityKind: 'snapshot', skuRef: line.sku,
         totalQuantity: context.config.purchase.stock.quantities[line.sku]!, forSaleQuantity: context.config.purchase.stock.quantities[line.sku]!, reservedOrUnavailableQuantity: 0, syncRunId: context.config.purchase.stock.syncRunId,
       }, inventoryClass: 'sellable', lastSyncedAt: context.config.purchase.stock.collectedAt, staleAfter: context.config.purchase.stock.staleAfter });
+      writingStock = false;
       const items = await checkoutHost.readOrderItems(orderId);
       await reservations.reserveOrderItems({ idempotencyKey: `${key}:hold`, orderId, stockSourceKey: source(context),
         items: items.map(item => ({ orderItemId: item.id, skuId: item.sku_id, quantity: item.quantity })),
@@ -279,11 +282,12 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     } catch (error) {
       // Creation has no payment dispatch. Never cancel the canonical order on a
       // changed-input replay, or any error carrying uncertain/in-flight dispatch.
-      const reason = isRecord(error) ? error.reason ?? (isRecord(error.details) ? error.details.reason : undefined) : undefined;
+      const reason = !writingStock && isRecord(error) ? error.reason ?? (isRecord(error.details) ? error.details.reason : undefined) : undefined;
       if (created?.fresh && reason !== 'provider_attempt_in_flight' && reason !== 'provider_dispatch_uncertain') {
         await compensation.cancelAbandonedOrder({ idempotencyKey: `${key}:compensate`, orderId: created.id,
           reason: ['journey_consumed', 'checkout_journey_consumed'].includes(String(reason)) ? 'checkout_journey_consumed' : 'checkout_failed_before_dispatch' });
       }
+      if (writingStock) return refused(error instanceof FulfillmentStockReplayConflictError ? 'starter_command_conflict' : 'starter_purchase_unavailable');
       return failure(error);
     }
     } catch (error) { return refused(quoteFailure(error)); }

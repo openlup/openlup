@@ -13,6 +13,8 @@ const argumentsForUp = {
 const candidate = { fix: 'Supply one matching Core, Outbox and Platform tarball from the same candidate set.', recheck: 'Repeat `./lifecycle candidate` with the three qualified tarballs.' };
 
 export const starterRefusals = Object.freeze(Object.fromEntries(Object.entries({
+  checkout_recovery_schedule_change_blocked_open_episodes: owner,
+  fulfillment_stock_current_idempotency_conflict: owner,
   ...buildGuidance,
   starter_acquisition_seed_conflict: verifySeed,
   starter_argument_duplicate: argumentsForUp,
