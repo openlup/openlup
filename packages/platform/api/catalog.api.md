@@ -1426,6 +1426,86 @@ import type { PgQueryExecutor } from "../data/index.js";
  */
 export declare function createPostgresCatalogSkuEnvelopeReadPort(executor: PgQueryExecutor): PublicCatalogSkuEnvelopeReadPort;
 ```
+## dist/catalog/catalogStorefrontPage.d.ts
+
+```ts
+import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from "../data/index.js";
+import type { CatalogAttributeValue } from "./contracts/draftV2.js";
+import type { CatalogPublicationFacts } from "./contracts/draftV3.js";
+import type { CatalogOptionValue, CatalogQuantity } from "./contracts/productTypes.js";
+import { type CatalogDiscoveryRefusal, type CatalogMembershipCursor } from "./postgresPublicationDiscovery.js";
+import type { CatalogSkuRevisionRef } from "./publicationContracts.js";
+/** @experimental */
+export interface CatalogStorefrontPageInput {
+    offerVersion: string;
+    regionCode: string;
+    currency: string;
+    channel: string;
+    limit: number;
+    cursor?: CatalogMembershipCursor | null;
+}
+/** @experimental */
+export interface CatalogStorefrontPrice {
+    amountMinor: number;
+    currency: string;
+    amountBasis: "tax_inclusive" | "tax_exclusive";
+}
+/** @experimental */
+export interface CatalogStorefrontSku {
+    skuId: string;
+    skuCode: string;
+    skuRevision: CatalogSkuRevisionRef;
+    title: string;
+    minQuantity: number;
+    options: Readonly<Record<string, CatalogOptionValue>>;
+    attributes: Readonly<Record<string, CatalogAttributeValue>>;
+    netContent: CatalogQuantity;
+    primaryUnitIdentifier: {
+        scheme: string;
+        issuer: string;
+        value: string;
+    } | null;
+    sell: {
+        oneTime: boolean;
+        subscription: boolean;
+    };
+    price: {
+        oneTime: CatalogStorefrontPrice | null;
+        subscription: CatalogStorefrontPrice | null;
+    };
+}
+/** @experimental */
+export interface CatalogStorefrontProduct {
+    productId: string;
+    slug: string;
+    name: string;
+    typeRef: {
+        key: string;
+        version: number;
+    };
+    definitionDigest: string | null;
+    attributes: Readonly<Record<string, CatalogAttributeValue>>;
+    presentation: CatalogPublicationFacts | null;
+    skus: CatalogStorefrontSku[];
+}
+/** @experimental */
+export type CatalogStorefrontPageResult = {
+    protocol: "legacy";
+    products: [];
+    nextCursor: null;
+} | {
+    protocol: "governed";
+    headDigest: string;
+    products: CatalogStorefrontProduct[];
+    nextCursor: CatalogMembershipCursor | null;
+} | (CatalogDiscoveryRefusal & {
+    message: string;
+});
+/** Reads published catalogue display data and current prices in one snapshot. Checkout resolves its own prices.
+ * @experimental
+ */
+export declare function readPostgresCatalogStorefrontPage(transactions: Pick<PostgresRoleFreeTransactionLane<PgQueryExecutor>, "run">, input: CatalogStorefrontPageInput): Promise<CatalogStorefrontPageResult>;
+```
 ## dist/catalog/commerceQuoteCatalogRead.d.ts
 
 ```ts
@@ -4282,6 +4362,7 @@ export { createPostgresCatalogPublicationCommands } from "./catalogPublicationCo
 export type { CatalogPublicationCommand, CatalogPublicationCommandResult, CatalogPublicationDecisionReceipt, PostgresCatalogPublicationCommandsDeps } from "./catalogPublicationCommands.js";
 export { readPostgresCatalogActivationReadiness, readPostgresCatalogMembershipPage } from "./postgresPublicationDiscovery.js";
 export type { CatalogActivationReadinessInput, CatalogActivationReadinessItem, CatalogActivationReadinessResult, CatalogDiscoveryEvidence, CatalogDiscoveryRefusal, CatalogInstalledReadiness, CatalogMembershipCursor, CatalogMembershipItem, CatalogMembershipPageInput, CatalogMembershipPageResult } from "./postgresPublicationDiscovery.js";
+export { readPostgresCatalogStorefrontPage, type CatalogStorefrontPageInput, type CatalogStorefrontPageResult, type CatalogStorefrontPrice, type CatalogStorefrontProduct, type CatalogStorefrontSku } from "./catalogStorefrontPage.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
