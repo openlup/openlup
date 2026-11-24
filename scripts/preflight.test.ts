@@ -13,7 +13,8 @@ vi.mock("node:child_process", async (original) => {
 });
 
 import {
-  addedLines, areaGuardTests, formatCheckLine, inventoryClosureDigest, isTestEntry, isTestFile, missingFragments, nearDates,
+  CLIENT_SECRET_BOUNDARY_TRIGGER, SITE_ROUTES_TRIGGER,
+  addedLines, affectedTestCandidates, areaGuardTests, formatCheckLine, inventoryClosureDigest, isTestEntry, isTestFile, missingFragments, nearDates,
   parseNameStatus, main, neutralityVerdict, releasedPackageSource, separateTestFiles, shortExpiries,
   sqlTreeChanges, testDiscoveryVerdict, vitestFiles, type AddedLine, type Change,
 } from "./preflight.ts";
@@ -396,6 +397,9 @@ describe("fast preflight", () => {
       "test dates": "test dates: skip no new or changed test files",
       "test expiries": "test expiries: skip no new or changed test files",
       gitleaks: "gitleaks: skip gitleaks is not on PATH; the required gitleaks job still scans the pull request",
+      "eslint-changed": "eslint-changed: skip no changed JS/TS files",
+      "client-secret-boundary": "client-secret-boundary: skip no client or package source changed",
+      "site-routes": "site-routes: skip no site route inputs changed",
       "guide-check": "guide-check: skip no guide or rule files changed",
       carriers: `carriers: skip ${dirty ? "clean committed checkout required" : "no report or settings inputs changed"}`,
       ...(dirty ? { "migration projection": "migration projection: skip clean committed checkout required" } : {}),
@@ -404,6 +408,7 @@ describe("fast preflight", () => {
     expect(lines.filter((line) => !line.startsWith("    ")).map((line) => line.replace(/ \(\d+ s\)$/u, "")))
       .toEqual([
         "clean", "merge-clean", "neutrality", "ui-neutrality", "ast-grep", "ast-grep-hygiene",
+        "eslint-changed", "client-secret-boundary", "site-routes",
         "carrier toolchain", "publication", "carriers", "migration projection",
         "fragments", "settings-candidates", "test dates", "test expiries", "gitleaks", "guide-check", "package-manifest", "dco",
       ].map((name) => skipLines[name] ?? `${name}: ${failures.includes(name) ? `FAIL ${reasons[name]}` : "ok"}`));
@@ -649,7 +654,7 @@ describe("area preflight", () => {
   it("rejects mutually exclusive --fast and --area with exit code 2", async () => {
     const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await main(now, ["--fast", "--area"])).toBe(2);
-    expect(stderr).toHaveBeenCalledWith("preflight: --fast and --area are mutually exclusive");
+    expect(stderr).toHaveBeenCalledWith("preflight: --fast, --area, and --affected are mutually exclusive");
   });
 
   it("runs eslint, area tooling guards via test-hosted, and sql admit without Docker or typecheck", async () => {
@@ -1155,5 +1160,33 @@ describe("short expiries", () => {
     "token_expiry = 1500 ms",
   ])("does not warn on %s", (text) => {
     expect(shortExpiries(line(text))).toEqual([]);
+  });
+});
+
+describe("shift-left preflight guards and --affected discovery", () => {
+  it("triggers client-secret-boundary and site-routes guards only on matching paths", () => {
+    expect(CLIENT_SECRET_BOUNDARY_TRIGGER.test("src/pages/Home.tsx")).toBe(true);
+    expect(CLIENT_SECRET_BOUNDARY_TRIGGER.test("packages/core/src/index.ts")).toBe(true);
+    expect(CLIENT_SECRET_BOUNDARY_TRIGGER.test("scripts/check-client-secret-boundary.ts")).toBe(true);
+    expect(CLIENT_SECRET_BOUNDARY_TRIGGER.test("docs/platform/README.md")).toBe(false);
+
+    expect(SITE_ROUTES_TRIGGER.test("src/App.tsx")).toBe(true);
+    expect(SITE_ROUTES_TRIGGER.test("public/robots.txt")).toBe(true);
+    expect(SITE_ROUTES_TRIGGER.test("index.html")).toBe(true);
+    expect(SITE_ROUTES_TRIGGER.test("scripts/site-routes.mjs")).toBe(true);
+    expect(SITE_ROUTES_TRIGGER.test("server/adapters/postgres/connectedStoreRestore.ts")).toBe(false);
+  });
+
+  it("discovers reverse-import affected tests from source-only changes via affectedTestCandidates", () => {
+    const candidates = affectedTestCandidates(changed("scripts/ci-vitest-shard.mjs"));
+    expect(candidates).toContain("scripts/ci-vitest-shard.test.ts");
+    expect(affectedTestCandidates([{ path: "scripts/ci-vitest-shard.mjs", deleted: true }])).toEqual([]);
+  });
+
+  it("refuses mutually exclusive --fast, --area, and --affected combinations", async () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await main(now, ["--fast", "--affected"])).toBe(2);
+    expect(await main(now, ["--area", "--affected"])).toBe(2);
+    expect(stderr).toHaveBeenCalledTimes(2);
   });
 });

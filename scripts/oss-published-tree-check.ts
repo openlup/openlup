@@ -487,12 +487,15 @@ function assertDocumentationAndMigrations(root: string, options: ReadonlyMap<str
       log(`- ${kind} upgrade page: ${audit.path} (${audit.bytes}/${audit.maxBytes} bytes since ${audit.since})`);
     }
   }
-  if (base.provenance === "pull-request" || base.provenance === "merge-group") {
+  if (base.provenance === "pull-request" || base.provenance === "merge-group"
+    || base.provenance === "explicit" || base.provenance === "merge-base") {
     const head = documentationGit(root, ["rev-parse", "HEAD"]).toString("utf8").trim();
-    assertAppendOnlyMigrationHistory(root, base.base, head);
-    log(`- append-only migration history: ${base.base}..${head}`);
-    assertMigrationBlocks(root, base.base, head);
-    log(`- package API changes carry Migration blocks: ${base.base}..${head}`);
+    if (base.provenance === "pull-request" || base.provenance === "merge-group" || head !== base.base) {
+      assertAppendOnlyMigrationHistory(root, base.base, head);
+      log(`- append-only migration history: ${base.base}..${head}`);
+      assertMigrationBlocks(root, base.base, head);
+      log(`- package API changes carry Migration blocks: ${base.base}..${head}`);
+    }
   }
   return ok;
 }
