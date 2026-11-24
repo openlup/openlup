@@ -7,7 +7,7 @@
         "objectInventorySha256": "a6dbca3c458cf5688e63eb5d3eb5a45c14a1611005cd71eb59cbcd5341649633",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126510000_catalog_price_list_basis.sql",
+            "file": "db/platform/migrations/20261126530000_catalog_price_list_basis.sql",
             "sha256": "fb7449ee5ea25e995c4970c68c358792528e4f7e6214c658ee86648dc73a2dfc"
           },
           {
@@ -826,7 +826,7 @@
         "objectInventorySha256": "17a304ae774531634d3d2af4506acda98d7cd1f91a5c417e9292e22054c1efdd",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126510000_catalog_price_list_basis.sql",
+            "file": "db/platform/migrations/20261126530000_catalog_price_list_basis.sql",
             "sha256": "fb7449ee5ea25e995c4970c68c358792528e4f7e6214c658ee86648dc73a2dfc"
           },
           {
@@ -1669,7 +1669,7 @@
         "objectInventorySha256": "ea432c1730164cee5037886d0eb77a7e3c34eac524e2236580770211638a2fa7",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126510000_catalog_price_list_basis.sql",
+            "file": "db/platform/migrations/20261126530000_catalog_price_list_basis.sql",
             "sha256": "fb7449ee5ea25e995c4970c68c358792528e4f7e6214c658ee86648dc73a2dfc"
           },
           {
@@ -2512,7 +2512,7 @@
         "objectInventorySha256": "f2bac77f9b162b7c732295f77a7f88f24a7ccbd4f3483da8371a6032766dbc07",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126510000_catalog_price_list_basis.sql",
+            "file": "db/platform/migrations/20261126530000_catalog_price_list_basis.sql",
             "sha256": "fb7449ee5ea25e995c4970c68c358792528e4f7e6214c658ee86648dc73a2dfc"
           },
           {
@@ -3347,7 +3347,7 @@
         "objectInventorySha256": "ada5c7e681d643a8b08f440184ed5d8bc8ae3b5429861e7ac7a9d666e60372c5",
         "tail": [
           {
-            "file": "db/platform/migrations/20261126510000_catalog_price_list_basis.sql",
+            "file": "db/platform/migrations/20261126530000_catalog_price_list_basis.sql",
             "sha256": "fb7449ee5ea25e995c4970c68c358792528e4f7e6214c658ee86648dc73a2dfc"
           },
           {
