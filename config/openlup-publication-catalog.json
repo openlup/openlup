@@ -6042,6 +6042,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/releaseDraftBuilder.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/resolvedSkuProjection.ts",
       "class": "public-output"
     },
@@ -10659,6 +10663,10 @@
     },
     {
       "path": "packages/platform/test/catalog/referenceCatalogHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/releaseDraftBuilder.test.ts",
       "class": "public-output"
     },
     {
