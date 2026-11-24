@@ -271,6 +271,22 @@ export async function runCatalogueUpgrade({ groups, manifest, commit, localImage
   await prove(manifest, commit, { reference, localImage, containerArguments: browserContainerArguments });
 }
 
+const catalogueBrowserStartupCodes = new Set([
+  'starter_catalogue_browser_container_start_failed', 'starter_catalogue_browser_server_not_ready',
+  'starter_catalogue_browser_launch_failed', 'starter_catalogue_browser_endpoint_invalid',
+]);
+
+export function starterBrowserFailure(error, phase) {
+  // Never publish assertion bodies, SQL details, connection strings or child errors.
+  if (phase === 'catalogue_upgrade') {
+    const code = error?.code;
+    return new Error(catalogueBrowserStartupCodes.has(code) ? code : 'starter_browser_catalogue_upgrade_failed');
+  }
+  const refusal = /qualified PostgreSQL installation refused: ([a-z0-9_]+)/u.exec(error.message)?.[1]
+    ?? (/^[A-Z0-9]{5}$/u.test(error.code ?? '') ? `sqlstate_${error.code}` : undefined);
+  return new Error(/^starter_[A-Za-z_]+$/u.test(error.message) ? error.message : `starter_browser_${phase}_failed${refusal ? `_${refusal}` : ''}`);
+}
+
 export async function runStarterBrowser(options) {
   const started = performance.now(), outputs = [], privateValues = [];
   let phase = 'inputs', image;
@@ -448,10 +464,7 @@ export async function runStarterBrowser(options) {
       provePublishedCatalogueUpgrade(manifest, commit, browser);
     });
   } catch (error) {
-    // Never publish assertion bodies, SQL details, connection strings or child errors.
-    const refusal = /qualified PostgreSQL installation refused: ([a-z0-9_]+)/u.exec(error.message)?.[1]
-      ?? (/^[A-Z0-9]{5}$/u.test(error.code ?? '') ? `sqlstate_${error.code}` : undefined);
-    throw new Error(/^starter_[A-Za-z_]+$/u.test(error.message) ? error.message : `starter_browser_${phase}_failed${refusal ? `_${refusal}` : ''}`);
+    throw starterBrowserFailure(error, phase);
   } finally {
     process.removeListener('SIGINT', interrupt);
     process.removeListener('SIGTERM', interrupt);

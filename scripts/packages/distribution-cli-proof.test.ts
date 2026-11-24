@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { env } from "node:process";
 import { imageReference, readCiImage } from "../ci-image-pull.mjs";
-import { browserContainerArguments } from "../starter-browser-ci.mjs";
+import { browserContainerArguments, starterBrowserFailure } from "../starter-browser-ci.mjs";
 import { proveInstalledCareUpgrade, qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
   includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers, retiresStarterCatalogue, proveStarterCatalogue130,
@@ -28,7 +28,14 @@ function fixture() {
   return { directory, write };
 }
 
-it.each(["mirror", "local", "release", "server-failure"] as const)("runs the catalogue recipe with %s browser setup", mode => {
+it.each([
+  ["mirror", undefined], ["local", undefined], ["release", undefined],
+  ["container-failure", "starter_catalogue_browser_container_start_failed"],
+  ["readiness-failure", "starter_catalogue_browser_server_not_ready"],
+  ["server-failure", "starter_catalogue_browser_launch_failed"],
+  ["invalid-endpoint", "starter_catalogue_browser_endpoint_invalid"],
+  ["recipe-failure", "starter_browser_catalogue_upgrade_failed"],
+] as const)("runs the catalogue recipe with %s browser setup", (mode, expectedCode) => {
   const { directory, write } = fixture();
   write("package-lock.json", { packages: Object.fromEntries(
     ["core", "outbox", "platform"].map(name => ["node_modules/@openlup/" + name, { resolved: "https://example.test/" + name }]),
@@ -38,6 +45,8 @@ it.each(["mirror", "local", "release", "server-failure"] as const)("runs the cat
   const localImage = mode === "local" ? imageReference(image, "mcr.microsoft.com/playwright") : undefined;
   const reference = localImage ?? imageReference(image);
   const endpoint = "ws://127.0.0.1:43189/test";
+  const sentinel = "private-browser-detail";
+  const dockerError = Object.assign(new Error("docker failed"), { stderr: sentinel });
   let readinessMount: string | undefined, readinessDirectory: string | undefined;
   const run = vi.fn((_file: string, args: readonly string[], _options: ExecFileSyncOptionsWithStringEncoding) => {
     if (args[0] === "run") {
@@ -46,16 +55,31 @@ it.each(["mirror", "local", "release", "server-failure"] as const)("runs the cat
       expect(mount).not.toBeNull();
       readinessDirectory = mount![1]!;
       expect(statSync(readinessDirectory).mode & 0o777).toBe(0o700);
+      if (mode === "container-failure") throw dockerError;
     }
-    if (args[0] === "exec") return JSON.stringify(mode === "server-failure" ? { error: "synthetic browser launch failure" } : { endpoint });
+    if (args[0] === "rm" && mode === "container-failure") throw new Error("cleanup failed");
+    if (args[0] === "exec") {
+      if (mode === "readiness-failure") {
+        throw Object.assign(new Error("docker exec failed"), { stderr: "starter_catalogue_browser_server_not_ready\n" + sentinel });
+      }
+      return JSON.stringify(mode === "server-failure" ? { error: sentinel }
+        : { endpoint: mode === "invalid-endpoint" ? sentinel : endpoint });
+    }
+    if (args[0] === "--test" && mode === "recipe-failure") throw new Error("starter_recipe_compose_failed");
     return args[0] === "--test" ? "✔ up_json_installed_starter_recipe" : "";
   });
   const browser = { reference, localImage, containerArguments: browserContainerArguments };
   try {
     vi.stubEnv("CI", mode === "local" ? "" : "true");
     const prove = () => proveInstalledCatalogueUpgrade(directory, {}, mode === "release" ? undefined : browser, run);
-    if (mode === "server-failure") expect(prove).toThrow("synthetic browser launch failure");
-    else prove();
+    if (expectedCode) {
+      let failure: unknown;
+      try { prove(); } catch (error) { failure = error; }
+      expect(failure).toBeInstanceOf(Error);
+      const message = starterBrowserFailure(failure, "catalogue_upgrade").message;
+      expect(message).toBe(expectedCode);
+      expect(message).not.toContain(sentinel);
+    } else prove();
     const recipe = run.mock.calls.find(([file, args]) => file === process.execPath && args[0] === "--test");
     const installs = run.mock.calls.filter(([, args]) => args.includes("install"));
     if (mode === "release") {
@@ -75,7 +99,7 @@ it.each(["mirror", "local", "release", "server-failure"] as const)("runs the cat
     expect(existsSync(readinessDirectory!)).toBe(false);
     expect(run.mock.calls.at(-1)?.slice(0, 2)).toEqual(["docker", ["rm", "-f", name]]);
     expect(installs).toHaveLength(0);
-    if (mode === "server-failure") expect(recipe).toBeUndefined();
+    if (expectedCode && mode !== "recipe-failure") expect(recipe).toBeUndefined();
     else expect(recipe?.[2].env?.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT).toBe(endpoint);
   } finally { vi.unstubAllEnvs(); }
 });

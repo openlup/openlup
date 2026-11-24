@@ -438,8 +438,8 @@ const launchCatalogueBrowser = `
   };
   chromium.launchServer({ host: "127.0.0.1", timeout: 10_000 }).then(server => {
     report({ endpoint: server.wsEndpoint() });
-  }, error => {
-    report({ error: error.message });
+  }, () => {
+    report({ error: true });
     setTimeout(() => process.exit(1), 25_000);
   });
 `;
@@ -455,6 +455,10 @@ const readCatalogueBrowser = `
     process.stdout.write(readFileSync("${catalogueBrowserResult}", "utf8"));
   })().catch(error => { console.error(error.message); process.exitCode = 1; });
 `;
+
+function refuseCatalogueBrowser(code: string): never {
+  throw Object.assign(new Error(code), { code });
+}
 
 /** Exercise the installed recipe on the upgraded app with its target package bytes. */
 export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Record<string, string>, browser?: CatalogueBrowser,
@@ -493,12 +497,16 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
       const readinessMount = `type=bind,src=${realpathSync(readinessDirectory)},dst=${catalogueBrowserReadiness}`;
       const [action, ...args] = browser.containerArguments(app, browser.reference, name, browser.localImage, ["--mount", readinessMount]);
       container = name;
-      run("docker", [action!, "--detach", ...args, "node", "-e", launchCatalogueBrowser], dockerOptions);
-      const { endpoint, error } = JSON.parse(run("docker", ["exec", name, "node", "-e", readCatalogueBrowser], dockerOptions));
-      assert(!error, error);
-      const url = new URL(endpoint);
-      assert(url.protocol === "ws:" && url.hostname === "127.0.0.1" && url.port && !url.username && !url.password,
-        "starter_catalogue_browser_endpoint_invalid");
+      try { run("docker", [action!, "--detach", ...args, "node", "-e", launchCatalogueBrowser], dockerOptions); }
+      catch { refuseCatalogueBrowser("starter_catalogue_browser_container_start_failed"); }
+      let readiness;
+      try { readiness = JSON.parse(run("docker", ["exec", name, "node", "-e", readCatalogueBrowser], dockerOptions)); }
+      catch { refuseCatalogueBrowser("starter_catalogue_browser_server_not_ready"); }
+      if (readiness?.error) refuseCatalogueBrowser("starter_catalogue_browser_launch_failed");
+      const url = typeof readiness?.endpoint === "string" ? URL.parse(readiness.endpoint) : null;
+      if (!(url?.protocol === "ws:" && url.hostname === "127.0.0.1" && url.port && !url.username && !url.password)) {
+        refuseCatalogueBrowser("starter_catalogue_browser_endpoint_invalid");
+      }
       recipe.env.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT = url.href;
     } else {
       run(process.execPath, [realpathSync(join(app, "node_modules/.bin/playwright")), "install", "chromium"], options);
@@ -514,9 +522,13 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
     } catch (error) {
       failure ??= { error };
     }
-    if (readinessDirectory) rmSync(readinessDirectory, { recursive: true, force: true });
-    if (lockRemapped) writeFileSync(lockfile, retained);
-    for (const path of artifacts) rmSync(path);
+    try {
+      if (readinessDirectory) rmSync(readinessDirectory, { recursive: true, force: true });
+      if (lockRemapped) writeFileSync(lockfile, retained);
+      for (const path of artifacts) rmSync(path);
+    } catch (error) {
+      failure ??= { error };
+    }
   }
   if (failure) throw failure.error;
 }
