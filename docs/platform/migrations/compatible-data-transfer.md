@@ -491,8 +491,17 @@ time and disposition. Verified available rows also export the document,
 scope, digest and cutoff, including after cutoff until cleanup. An available
 row that fails a stored-evidence check exports only the snapshot ref, issuance
 time, disposition and verification status, code and field. The contributor
-reports incomplete coverage. After cutoff, run the owner expiry batch and
-export again. Review any rows still withheld.
+reports incomplete coverage. After cutoff, run the owner expiry batch for
+unbound documents and export again. Review withheld bound evidence with the
+destination owner.
+
+The [order destination forward](../../../db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql)
+adds typed recheck, bind and retained order and shipment reads. Bind saves the
+issued document link, checkout selection and sealed service pin. Retained reads
+use the binding recorded for the original order even after reselection or cutoff.
+The owner expiry batch and direct erasure require `READ COMMITTED`. Expiry skips
+bound documents. Erasure clears the two pins and keeps the order and snapshot refs.
+Privacy export includes only verified same-subject order bindings.
 
 Require `destination-receipts` and `destination-documents` in the same
 registry used for native privacy operations. Assemble the two experimental
@@ -502,7 +511,7 @@ when issuance is disabled. Pass that same registry as `privacyRegistry` to
 before entering the privacy transaction. An authorized historical replay
 of erased evidence returns the erased disposition alone.
 
-Both relations carry through exact-current connected-store capture and
+Documents, checkout selections and order bindings carry through exact-current connected-store capture and
 restore. The restricted runtime has only the document client-ID column for
 lead absorption, which counts every disposition. Discard or recapture any
 private transfer packet containing evidence erased after capture.

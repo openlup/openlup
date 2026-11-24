@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { Pool } from "pg";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import {
@@ -370,21 +370,38 @@ export async function startPgTemplateBroker(): Promise<PgTemplateBroker> {
   };
 }
 
+function postControl(endpoint: PgTemplateBrokerEndpoint, path: "clone" | "release", input: object) {
+  const body = JSON.stringify(input);
+  return new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const outgoing = request(`${endpoint.url}/${path}`, {
+      method: "POST",
+      // A one-use agent starts with no sockets, even if fetch has warmed this origin.
+      agent: false,
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body),
+        Authorization: `Bearer ${endpoint.token}`,
+      },
+    }, response => {
+      let reply = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk: string) => { reply += chunk; });
+      response.once("error", reject);
+      response.once("end", () => resolve({ status: response.statusCode ?? 0, body: reply }));
+    });
+    outgoing.once("error", reject);
+    outgoing.end(body);
+  });
+}
+
 export async function leaseFromEndpoint(
   endpoint: PgTemplateBrokerEndpoint,
   profile: TemplateProfile,
   label?: string,
 ): Promise<PgTemplateLease> {
-  const response = await fetch(`${endpoint.url}/clone`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${endpoint.token}`,
-    },
-    body: JSON.stringify({ profile, label }),
-  });
-  const payload = await response.json() as Record<string, unknown>;
-  if (!response.ok) {
+  const response = await postControl(endpoint, "clone", { profile, label });
+  const payload = JSON.parse(response.body) as Record<string, unknown>;
+  if (response.status < 200 || response.status >= 300) {
     throw new Error(`pg_template_broker_clone_failed (${response.status}): ${String(payload.error ?? "unknown")}`);
   }
   const id = String(payload.id);
@@ -400,17 +417,12 @@ export async function leaseFromEndpoint(
     async release() {
       if (released) return;
       released = true;
-      const releaseResponse = await fetch(`${endpoint.url}/release`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${endpoint.token}`,
-        },
-        body: JSON.stringify({ id }),
-      });
-      if (!releaseResponse.ok) {
-        const errBody = await releaseResponse.json().catch(() => ({})) as Record<string, unknown>;
-        throw new Error(`pg_template_broker_release_failed (${releaseResponse.status}): ${String(errBody.error ?? "unknown")}`);
+      const response = await postControl(endpoint, "release", { id });
+      if (response.status < 200 || response.status >= 300) {
+        let error: unknown;
+        try { error = (JSON.parse(response.body) as { error?: unknown } | null)?.error; }
+        catch { /* A non-JSON refusal still reports its status. */ }
+        throw new Error(`pg_template_broker_release_failed (${response.status}): ${String(error ?? "unknown")}`);
       }
     },
   };
