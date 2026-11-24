@@ -17,6 +17,65 @@ export { carryOverSourceReview } from './agent-review-session.mjs';
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
 const RECEIPT_LIMIT = 1024 * 1024;
+const MIGRATION_QUEUE_EXACT_PATHS = new Set([
+  'config/platform-migration-manifest.json',
+  REVIEWED_FORWARD_PATH,
+  'tests/postgres/current-installation-inventory.json',
+]);
+const KNOWN_MERGE_QUEUE_STATES = new Set(['QUEUED', 'AWAITING_CHECKS', 'MERGEABLE', 'LOCKED', 'UNMERGEABLE']);
+const MERGE_QUEUE_SCAN_LIMIT = 20;
+const PR_FILES_MAX_PAGES = 30;
+/**
+ * Paths that serialize migration PRs through the merge queue so concurrent
+ * migration candidates do not burn their single-shot queue attempt on conflict eviction.
+ * @param {string} path
+ */
+export function isMigrationQueueSerializedPath(path) {
+  return typeof path === 'string' && (
+    MIGRATION_QUEUE_EXACT_PATHS.has(path)
+    || path.startsWith('db/platform/migrations/')
+    || path.startsWith('supabase/migrations/')
+    || path.startsWith('packages/platform/sql/')
+  );
+}
+async function readPullRequestChangedPaths(api, root, prNumber) {
+  const paths = [];
+  for (let page = 1; page <= PR_FILES_MAX_PAGES; page += 1) {
+    const batch = await api.get(`${root}/pulls/${prNumber}/files?per_page=100&page=${page}`);
+    demand(Array.isArray(batch) && batch.length <= 100
+      && batch.every(entry => typeof entry?.filename === 'string' && entry.filename.length > 0),
+      'queued PR files response is invalid');
+    for (const entry of batch) paths.push(entry.filename);
+    if (batch.length < 100) return paths;
+  }
+  throw new Error('queued PR files listing exceeded the bounded pagination limit');
+}
+async function findBlockingMigrationQueuePrs({ api, root, owner, name, prNumber }) {
+  const queueQuery = `query { repository(owner:${JSON.stringify(owner)},name:${JSON.stringify(name)}) { mergeQueue(branch:"main") { entries(first:${MERGE_QUEUE_SCAN_LIMIT}) { pageInfo { hasNextPage } nodes { state pullRequest { number } } } } } }`;
+  const response = await api.get(`/graphql?query=${encodeURIComponent(queueQuery)}`);
+  const entries = response?.data?.repository?.mergeQueue?.entries;
+  demand(!response?.errors && Array.isArray(entries?.nodes) && typeof entries?.pageInfo?.hasNextPage === 'boolean',
+    'merge queue inspection response is invalid');
+  demand(!entries.pageInfo.hasNextPage,
+    'merge queue exceeds the bounded serialization scan limit; wait and re-run Queue Handoff');
+  const activePeers = [];
+  const seen = new Set();
+  for (const node of entries.nodes) {
+    const peerNumber = node?.pullRequest?.number;
+    demand(typeof node?.state === 'string' && KNOWN_MERGE_QUEUE_STATES.has(node.state)
+      && Number.isSafeInteger(peerNumber) && peerNumber > 0,
+      'merge queue entry identity or state is invalid');
+    if (node.state === 'UNMERGEABLE' || peerNumber === prNumber || seen.has(peerNumber)) continue;
+    seen.add(peerNumber);
+    activePeers.push(peerNumber);
+  }
+  const blockingPrs = [];
+  for (const peerNumber of activePeers) {
+    const peerPaths = await readPullRequestChangedPaths(api, root, peerNumber);
+    if (peerPaths.some(isMigrationQueueSerializedPath)) blockingPrs.push(peerNumber);
+  }
+  return blockingPrs;
+}
 /**
  * The queue applies the co-located forward guard only when a PR changes the registry or a reviewed-class migration.
  * @param {readonly string[]} changedPaths
@@ -111,7 +170,7 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
   }
   return receipts;
 }
-export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 3 * 60 * 1000, runGit = git, fastFail = undefined }) {
+export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 3 * 60 * 1000, runGit = git, fastFail = undefined, onCandidate = undefined }) {
   demand(/^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && event.repository?.private === false, 'use a public repository GitHub event');
   const root = `/repos/${env.GITHUB_REPOSITORY}`; const group = env.GITHUB_EVENT_NAME === 'merge_group' ? event.merge_group : null;
   const shouldFastFail = fastFail ?? !group;
@@ -162,6 +221,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');
       if (!group) demand((await api.get(`${root}/git/ref/heads/main`)).object?.sha === main, 'main moved during admission; rerun CI', 'stale');
       const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() }); demand(final.ok, final.reason, final.code);
+      onCandidate?.(candidate);
       console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
     }
     if (shouldFastFail && receipts.length === 0 && invalidComments.length === 0 && currentHeadComments.length === 0) {
@@ -264,8 +324,10 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
     const selected = matches.filter(job => job.run_attempt === latest);
     demand(selected.length === 1 && selected[0].status === 'completed' && selected[0].conclusion === 'success', `source requires one actual successful latest ${name} check`);
   }
+  let admittedCandidate;
   await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },
     env: { GITHUB_REPOSITORY: env.GITHUB_REPOSITORY, GITHUB_EVENT_NAME: 'pull_request' }, api, cwd, now, runGit, fastFail: false,
+    onCandidate: observed => { admittedCandidate = observed; },
     sleep: () => { throw new Error('Current native review is unavailable at CI completion; no enqueue retry'); } });
   const pr = await readMergeable(currentIntent => {
     demand(currentIntent.enabledAt === intent.enabledAt && currentIntent.enabledBy?.login === login,
@@ -275,6 +337,19 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
   if (attempted(pr)) return { status: 'skipped', reason: 'this merge intent already entered the queue; no automatic requeue' };
   const finalAccess = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
   demand(['write', 'maintain', 'admin'].includes(finalAccess?.permission ?? finalAccess?.role_name), 'auto-merge authority changed before enqueue');
+  demand(Array.isArray(admittedCandidate?.changedPaths), 'native admission did not yield candidate paths');
+  if (admittedCandidate.changedPaths.some(isMigrationQueueSerializedPath)) {
+    const blockingPrs = await findBlockingMigrationQueuePrs({ api, root, owner, name, prNumber: number });
+    if (blockingPrs.length > 0) {
+      return {
+        status: 'deferred',
+        pr: number,
+        head: source.head_sha,
+        blockingPrs,
+        reason: 'another migration PR is already active in the merge queue',
+      };
+    }
+  }
   const queued = await enqueue({ pullRequestId: pr.id, expectedHeadOid: source.head_sha, jump: false });
   demand(typeof queued?.id === 'string' && queued.id.length > 0, 'enqueue did not confirm a queue entry');
   const after = await live();
