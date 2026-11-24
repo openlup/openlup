@@ -72,7 +72,11 @@ async function readJourneyClusterRoleDigest(bootstrap: Pool): Promise<string> {
   return createHash("sha256").update(rows[0]!.snapshot).digest("hex");
 }
 
-/** Own resources per suite; no ambient database, owner fallback or extra runtime grants. */
+/**
+ * Own resources per suite; no ambient database, owner fallback or extra runtime grants.
+ * Pass `{ isolatedCluster: true }` for suites that mutate cluster-wide roles, restart Docker,
+ * or invoke cluster-wide snapshot checks such as `withCatalogAdmissionFence` (`pg_current_snapshot()`).
+ */
 export function storeJourneyResources(options?: { isolatedCluster?: boolean }) {
   const containers: PostgresContainer[] = [], pools: Pool[] = [];
   const activeLeases = new Set<PgTemplateLease>();
