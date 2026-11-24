@@ -46,7 +46,8 @@ export async function markReceiptClientErased(owner: Db, client: string) {
   await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [actor, `${actor}@example.invalid`]);
   await owner.query(`INSERT INTO public.identity_privacy_erasures
     (erasure_id,idempotency_key,client_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-    VALUES (gen_random_uuid(),gen_random_uuid(),$1,$2,'identity.erasure.v1','{}','{}','[]',clock_timestamp())`, [client, actor]);
+    VALUES (gen_random_uuid(),gen_random_uuid(),$1,$2,'identity.erasure.v1',
+      '{"tax-calculations":"commerce.tax-calculations.v1"}','{}','[]',clock_timestamp())`, [client, actor]);
 }
 
 export async function backendPid(db: PoolClient): Promise<number> {
