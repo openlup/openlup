@@ -221,7 +221,7 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261126010000_settings_wave1_method_expiry_and_claim_hold.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql) |
 | [`20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql) |
 | [`20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql) |
-| [`20261126500000_tax_calculation_claim_seal.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261126500000_tax_calculation_claim_seal.sql) |
+| [`20261126540000_tax_calculation_claim_seal.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261126540000_tax_calculation_claim_seal.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |
