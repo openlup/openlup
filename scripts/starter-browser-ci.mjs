@@ -387,12 +387,15 @@ export async function runStarterBrowser(options) {
               await bootstrap.query(`COMMENT ON DATABASE ${database} IS '${demonstrationMarker}'`);
               const installUrl = `postgresql://${installRole}:${password}@127.0.0.1:${postgres.port}/${database}`;
               const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: installRole, runtimeLogin: runtimeRole, restoreLogin: restoreRole };
-              const migrationPool = guard(new pg.Pool({ connectionString: installUrl,
-                options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 }));
-              defer(() => migrationPool.end());
-              const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: installUrl }, { installation: selection, poolFactory: () => migrationPool });
-              const first = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
-              if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
+              const first = await withCleanup(async release => {
+                const migrationPool = guard(new pg.Pool({ connectionString: installUrl,
+                  options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 }));
+                release(() => migrationPool.end());
+                const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: installUrl }, { installation: selection, poolFactory: () => migrationPool });
+                const applied = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
+                if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
+                return applied;
+              });
               console.log(`Starter ${configuration} migrations: ${first.applied.length}; repeat: ${repeat.applied.length}; elapsed: ${Math.round(performance.now() - started)} ms`);
               const publicationPasswordFile = join(scratch, `${groupIndex}-${configuration}-publication-password`);
               const installer = guard(new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 }));
@@ -404,6 +407,8 @@ export async function runStarterBrowser(options) {
                 await applyDemoSeed(selectConfiguration(configuration), seed);
                 await applyDemoSeed(selectConfiguration(configuration), seed);
               } finally { await installer.end(); }
+              if (groupIndex === browserJourneyGroups.length - 1)
+                await bootstrap.query(`CREATE DATABASE catalogue_browser_template TEMPLATE ${database} OWNER ${installRole}`);
               phase = 'runtime';
               const runtimeUrl = `postgresql://${runtimeRole}@127.0.0.1:${postgres.port}/${database}`;
               const runtime = guard(new pg.Client({ host: '127.0.0.1', port: postgres.port, database, user: runtimeRole, password, connectionTimeoutMillis: 5000 }));

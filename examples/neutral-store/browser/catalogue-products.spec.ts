@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
+import { join } from 'node:path';
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import pg from 'pg';
 import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogInternalGtin, createCatalogProductTypeRegistry,
@@ -11,6 +13,7 @@ import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogInternalG
   type CatalogDraftPayloadV4, type CatalogHeadRef } from '@openlup/platform/catalog';
 import { createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore } from '@openlup/platform/pricing';
 import { demoIdentifier, readStarterCatalogueRules, stageStarterCatalogueBuild, starterCataloguePack } from '../host/editor-catalogue.ts';
+import { demonstrationMarker, prepareDemonstrationQuoteKey } from '../installation/install.ts';
 import { catalogDraftRegistry } from '../owned/catalogue.ts';
 import { copy } from '../owned/copy.ts';
 import { quoteCopy } from '../owned/quote-copy.ts';
@@ -174,18 +177,88 @@ async function author(fixture: Fixture) {
   } finally { await owner.end(); }
 }
 
+async function loopbackPort() {
+  const probe = createServer().listen(0, '127.0.0.1');
+  await once(probe, 'listening');
+  const port = (probe.address() as { port: number }).port;
+  await new Promise<void>(done => probe.close(() => done()));
+  return port;
+}
+
+async function stopHost(child: ChildProcess | undefined) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = once(child, 'exit');
+  child.kill('SIGTERM');
+  await exited;
+}
+
 let fixture: Fixture, wanted: Selection, first: Selection;
+let closeFixture: (() => Promise<void>) | undefined;
 test.beforeAll(async ({ request, baseURL }, info) => {
+  test.setTimeout(60_000);
   const entries = JSON.parse(readFileSync('.context/care-browser/fixtures.json', 'utf8')) as Fixture[];
   const selected = entries.find(row => row.id === info.project.name && row.baseURL === baseURL);
   assert.ok(selected && selected.ownerUrl && selected.runtimeUrl && selected.state);
-  fixture = selected;
+  const admin = new pg.Client({ connectionString: selected.ownerUrl });
+  // The template captures the installed seed before the remainder group's purchases.
+  const database = 'catalogue_browser_' + randomUUID().replaceAll('-', '');
+  const owner = new URL(selected.ownerUrl), runtime = new URL(selected.runtimeUrl);
+  owner.pathname = '/' + database;
+  runtime.pathname = owner.pathname;
+  let host: ChildProcess | undefined, state: string | undefined, databaseCreated = false;
+  await admin.connect();
+  closeFixture = async () => {
+    try {
+      try { await stopHost(host); }
+      finally { if (databaseCreated) await admin.query(`DROP DATABASE ${database}`); }
+    } finally {
+      try { await admin.end(); }
+      finally { if (state) await rm(state, { recursive: true, force: true }); }
+    }
+  };
+  const { rows: [target] } = await admin.query("SELECT shobj_description(oid, 'pg_database') AS marker FROM pg_database WHERE datname=current_database()");
+  assert.equal(target?.marker, demonstrationMarker);
+  await admin.query(`CREATE DATABASE ${database} TEMPLATE catalogue_browser_template`);
+  databaseCreated = true;
+  await admin.query(`COMMENT ON DATABASE ${database} IS '${demonstrationMarker}'`);
+  const installer = new pg.Client({ connectionString: owner.href });
+  await installer.connect();
+  let keyFile: string;
+  try {
+    state = await mkdtemp(join(selected.state, 'catalogue-'));
+    keyFile = await prepareDemonstrationQuoteKey(installer, state);
+  } finally { await installer.end(); }
+  const port = await loopbackPort();
+  fixture = { ...selected, baseURL: `http://127.0.0.1:${port}`, ownerUrl: owner.href, runtimeUrl: runtime.href, state };
+  const password = decodeURIComponent(runtime.password);
+  runtime.password = '';
+  // The demo CLI pins the installed database name. Use the same native bindings through the programmatic server entry.
+  host = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-', '--configuration', fixture.id,
+    '--port', String(port), '--listen', '127.0.0.1'], { env: { PGPASSWORD: password }, stdio: ['pipe', 'ignore', 'ignore'] });
+  host.stdin!.end(`
+    import { createApplication } from './host/server.ts';
+    import { composeNativeBindings } from './host/native-composition.ts';
+    import { createOriginPolicy } from './host/origin-policy.ts';
+    import { readQuoteAcceptanceKeyring } from './host/quote-secret.ts';
+    import { selectConfiguration } from './owned/store.config.ts';
+    process.chdir(${JSON.stringify(state)});
+    const config = selectConfiguration(${JSON.stringify(fixture.id)});
+    const bindings = await composeNativeBindings(${JSON.stringify(runtime.href)}, createOriginPolicy(config, ${port}), config,
+      await readQuoteAcceptanceKeyring(${JSON.stringify(keyFile)}));
+    const server = createApplication(bindings).listen(${port}, '127.0.0.1');
+    process.once('SIGTERM', () => {
+      server.close(() => { void bindings.close(); });
+      server.closeIdleConnections();
+    });
+  `);
+  await expect.poll(async () => (await request.get(fixture.baseURL + '/api/config').catch(() => null))?.status()).toBe(200);
   const empty = await (await action(request, fixture.baseURL, 'storefront.catalogue', {})).json();
   expect(empty.ok).toBe(true);
   assert.throws(() => assertSelection(empty, { sku: 'MISSING', title: '', price: 0 }));
   ({ wanted, first } = await author(fixture));
   assert.throws(() => assertSelection(empty, wanted));
 });
+test.afterAll(async () => { await closeFixture?.(); });
 
 test('lists and quotes the exact published SKU across browser widths', async ({ page, request }) => {
   const config = configurations[fixture.id]!, base = fixture.baseURL, locale = config.market.defaultLocale;
@@ -257,10 +330,7 @@ test('lists and quotes the exact published SKU across browser widths', async ({ 
 });
 
 test('a disconnected mounted reader fails the same published selection', async ({ page, request }) => {
-  const probe = createServer().listen(0, '127.0.0.1');
-  await once(probe, 'listening');
-  const port = (probe.address() as { port: number }).port;
-  await new Promise<void>(done => probe.close(() => done()));
+  const port = await loopbackPort();
   const baseURL = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-', '--configuration',
     fixture.id, '--port', String(port), '--listen', '127.0.0.1'], { stdio: ['pipe', 'ignore', 'ignore'] });
@@ -290,11 +360,5 @@ test('a disconnected mounted reader fails the same published selection', async (
     await page.goto(baseURL + productPath(slug, locale) + '?sku=' + encodeURIComponent(wanted.sku));
     await expect(page.getByText(body.code, { exact: true })).toBeVisible();
     await expect(page.getByText(wanted.title + ' · ' + wanted.sku, { exact: true })).toHaveCount(0);
-  } finally {
-    if (child.exitCode === null && child.signalCode === null) {
-      const exited = once(child, 'exit');
-      child.kill('SIGTERM');
-      await exited;
-    }
-  }
+  } finally { await stopHost(child); }
 });
