@@ -372,6 +372,17 @@ afterAll(async () => {
   if (sharedArtifact) await sharedArtifact.dispose();
 });
 
+function throwSettledErrors(errors: readonly unknown[], message: string): never {
+  if (errors.length === 1) throw errors[0];
+  throw new AggregateError(errors, message);
+}
+
+async function closeFixtures(fixtures: readonly { close(): Promise<void> }[]) {
+  const results = await Promise.allSettled(fixtures.map(fixture => fixture.close()));
+  const errors = results.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+  if (errors.length > 0) throwSettledErrors(errors, "Checkout restore fixture cleanup failed");
+}
+
 async function installPair(pkg: InstalledMigrations, profile: Profile, selection: ReturnType<typeof select>) {
   // Bound concurrency to 2 disposable clusters (source + target) so cluster-wide
   // checkoutOwnerLogin states remain strictly isolated while halving setup wall time.
@@ -382,11 +393,11 @@ async function installPair(pkg: InstalledMigrations, profile: Profile, selection
   if (sourceResult.status === "fulfilled" && targetResult.status === "fulfilled") {
     return [sourceResult.value, targetResult.value] as const;
   }
-  await Promise.allSettled([
-    sourceResult.status === "fulfilled" ? sourceResult.value.close() : Promise.resolve(),
-    targetResult.status === "fulfilled" ? targetResult.value.close() : Promise.resolve(),
-  ]);
-  throw sourceResult.status === "rejected" ? sourceResult.reason : (targetResult as PromiseRejectedResult).reason;
+  const setupErrors = [sourceResult, targetResult].flatMap(result => result.status === "rejected" ? [result.reason] : []);
+  const fulfilled = [sourceResult, targetResult].flatMap(result => result.status === "fulfilled" ? [result.value] : []);
+  const cleanupResults = await Promise.allSettled(fulfilled.map(fixture => fixture.close()));
+  const cleanupErrors = cleanupResults.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+  throwSettledErrors([...setupErrors, ...cleanupErrors], "Checkout restore pair setup/cleanup failed");
 }
 
 it.each(profiles)("restores the same nonempty checkout graph on %s", async profile => {
@@ -396,7 +407,7 @@ it.each(profiles)("restores the same nonempty checkout graph on %s", async profi
     ? { roleMode: selection.roleMode } : { migrationIsBootstrap: profile === "bootstrap", hasRestore: true });
   const [sourceFixture, targetFixture] = await installPair(pkg, profile, selection);
   const source = sourceFixture.template;
-  try {
+  await withDisposal({ dispose: () => closeFixtures([targetFixture, sourceFixture]) }, async () => {
     const cwd = vi.spyOn(process, "cwd").mockReturnValue(root);
     try {
         const original = await source.project();
@@ -492,9 +503,7 @@ it.each(profiles)("restores the same nonempty checkout graph on %s", async profi
       } finally {
         cwd.mockRestore();
       }
-    } finally {
-      await Promise.allSettled([targetFixture.close(), sourceFixture.close()]);
-    }
+  });
 }, Math.max(245_000, postgresSetupTimeoutMs));
 
 async function verifyLegacyNoOp(pkg: InstalledMigrations, state: "absent" | "present") {
@@ -532,7 +541,6 @@ it("records the legacy no-op with the cluster login absent and present", async (
     verifyLegacyNoOp(pkg, "absent"),
     verifyLegacyNoOp(pkg, "present"),
   ]);
-  for (const result of results) {
-    if (result.status === "rejected") throw result.reason;
-  }
+  const errors = results.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+  if (errors.length > 0) throwSettledErrors(errors, "Legacy no-op verification failed in both states");
 }, Math.max(245_000, postgresSetupTimeoutMs));
