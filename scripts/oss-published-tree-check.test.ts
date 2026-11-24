@@ -593,7 +593,7 @@ describe("complete public CI", () => {
     expect(shard).toContain("needs: [reuse-gate, test-prep]");
     expect(shard.split("\n").find(line => line.startsWith("    if:"))).toBe(shardFence);
     expect(workflowJob("test").split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
-    expect(shard).toContain("    strategy:\n      fail-fast: false\n      max-parallel: 8\n      matrix:\n        shard: [1, 2, 3, 4, 5, 6, 7, 8]\n");
+    expect(shard).toContain("    strategy:\n      fail-fast: ${{ github.event_name == 'merge_group' }}\n      max-parallel: 8\n      matrix:\n        shard: [1, 2, 3, 4, 5, 6, 7, 8]\n");
     expect(shard).not.toMatch(/include:|exclude:|continue-on-error|--(?:maxWorkers|pool|retry|testTimeout|hookTimeout|bail)/u);
     expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 25\n");
     expect(shard).toContain("          fetch-depth: 0\n");
