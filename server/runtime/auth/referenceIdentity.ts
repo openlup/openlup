@@ -29,6 +29,10 @@ const methods = {
 } as const;
 const exportRoute = "/api/bff/admin/identity/privacy/export", eraseRoute = "/api/bff/admin/identity/privacy/erase";
 
+export function isReferencePrivacyRoute(route: string): boolean {
+  return route === exportRoute || route === eraseRoute;
+}
+
 function bindReferencePrivacy(route: string, ports: ReferenceIdentityPorts): HttpHandler {
   const handler = route === eraseRoute ? createPrivacyEraseHandler : createPrivacyExportHandler;
   const unavailable = async () => { throw nativePrivacyUnavailable(new Error("native_privacy_operations_required")); };
@@ -44,13 +48,18 @@ export function createReferenceIdentity(input: {
   migrationIdentity: string;
   env: Record<string, string | undefined>;
   createRoutes(ports: ReferenceIdentityPorts, env: Record<string, string | undefined>): readonly RouteEntry[];
+  /** Wrap the guarded native handler with the host's request scope and lifecycle. */
+  decoratePrivacyRoute?(route: string, guarded: HttpHandler): HttpHandler;
   ports: ReferenceIdentityPorts;
 }) {
   const env = Object.freeze({ ...input.env });
   const ports = { ...input.ports };
   const routes = input.createRoutes(ports, env).map(route => {
-    const handle = input.bundle === "node-postgres" && (route.route === exportRoute || route.route === eraseRoute)
-      ? bindReferencePrivacy(route.route, ports) : route.handler;
+    let handle = route.handler;
+    if (input.bundle === "node-postgres" && isReferencePrivacyRoute(route.route)) {
+      const guarded = bindReferencePrivacy(route.route, ports);
+      handle = input.decoratePrivacyRoute?.(route.route, guarded) ?? guarded;
+    }
     return { ...route, handler: withObservedRoute({ route: route.route, domain: "identity",
       surface: route.route.startsWith("/api/bff/admin/") ? "admin" : "customer", risk: "mutation" },
     async (req, res) => { await handle(req, res); }) };

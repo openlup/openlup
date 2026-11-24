@@ -59,10 +59,11 @@ function selectedPorts(bundle: IdentityBundle, observe: (operation: "export" | "
         erase: vi.fn(async () => { observe("erase"); return undefined as never; }) },
   };
 }
-function admission(bundle: IdentityBundle, observe = vi.fn()): ReferenceIdentityAdmission {
+function admission(bundle: IdentityBundle, observe = vi.fn(), earlierRoutes: RouteEntry[] = []): ReferenceIdentityAdmission {
   vi.stubEnv("PLATFORM_BUNDLE", bundle);
   const runtime = createReferenceIdentity({ bundle, env: readCustomerRouteEnv(), migrationIdentity: "complete", ports: selectedPorts(bundle, observe),
     createRoutes: ports => [
+      ...earlierRoutes,
       { route: "/api/bff/customers/reconcile-account", pattern: /^\/api\/bff\/customers\/reconcile-account$/, params: [],
         handler: async () => { await ports.customerProfile.getCustomerMe("11111111-1111-4111-8111-111111111111"); } },
       ...(["export", "erase"] as const).map((operation): RouteEntry => ({ route: `/api/bff/admin/identity/privacy/${operation}`, pattern: new RegExp(`^/api/bff/admin/identity/privacy/${operation}$`), params: [], ...(bundle === "node-postgres" ? { availability: "direct-postgres" as const } : {}),
@@ -102,6 +103,18 @@ it.each(["node-postgres", "node-supabase"] as const)("refuses every absent requi
     expect(result.admitted, JSON.stringify(missing)).toBe(false);
     expect(result.report.issues).toContainEqual(expect.objectContaining({ module: "identity", observation: "object_absent" }));
   }
+});
+it("names the declaration forward when the native reader is absent", async () => {
+  const input = admission("node-postgres"), observe = input.schemaProbe.observe;
+  const subject = "function:public.identity_privacy_required_contributor_ids()";
+  input.schemaProbe.observe = async requirement => {
+    const result = await observe(requirement);
+    return { ...result, objects: result.objects.map(entry => ({ ...entry, present: entry.present && objectKey(entry.object) !== subject })) };
+  };
+  const result = await admitReferenceIdentity(input);
+  expect(result.admitted).toBe(false);
+  expect(result.report.issues).toContainEqual(expect.objectContaining({ subject, observation: "object_absent",
+    fix: "Apply db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql for the selected adapter." }));
 });
 it("keeps the inventories disjoint and pins fields used by each bundle", () => {
   const direct = identityRequiredSchema("node-postgres", "complete").objects.map(object => object.name);
@@ -256,6 +269,39 @@ it.each([
     expect(observe).toHaveBeenCalledExactlyOnceWith(operation);
     expect(input.runtime.ports.operatorAuthorization.authorize).toHaveBeenCalledTimes(bundle === "node-postgres" ? 2 : 1);
     server.close();
+  } finally { policy.allow = false; rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each([
+  ["profile", "export"], ["profile", "erase"], ["admitted host", "export"], ["admitted host", "erase"],
+] as const)("keeps the %s native %s route ahead of an earlier overlapping pattern", async (mount, operation) => {
+  policy.allow = true;
+  const origin = "http://127.0.0.1:58422";
+  const profile = mount === "profile" ? { origin, directory: ".", runId: "synthetic", bundle: "node-postgres" as const, assertOwned: async () => {} } : undefined;
+  vi.stubEnv("OPENLUP_REFERENCE_PROFILE", profile ? "identity" : undefined);
+  vi.stubEnv("APP_BASE_URL", origin);
+  const intercept = vi.fn<RouteEntry["handler"]>((_req, res) => res.status(202).json({ intercepted: true }));
+  const observe = vi.fn(), input = admission("node-postgres", observe, [{ route: "/api/bff/admin/identity/example",
+    pattern: /^\/api\/bff\/admin\/identity\/privacy\//, params: [], handler: intercept }]);
+  const root = mkdtempSync(join(tmpdir(), "identity-overlap-"));
+  try {
+    mkdirSync(join(root, "config")); writeFileSync(join(root, "config/site-routes.json"), readFileSync("config/public-reference-site-routes.json"));
+    vi.spyOn(Server.prototype, "listen").mockImplementation(function(this: Server, ...args: unknown[]) { (args.at(-1) as () => void)(); return this; } as typeof Server.prototype.listen);
+    const server = await startPublicReferenceServer({ root, env: readCustomerRouteEnv(), identity: { ...input, profile } });
+    try {
+      const body = { subject: { kind: "contact", contactId: "22222222-2222-4222-8222-222222222222" },
+        ...(operation === "erase" ? { idempotencyKey: "33333333-3333-4333-8333-333333333333" } : {}) };
+      const req = Object.assign(Readable.from([Buffer.from(JSON.stringify(body))]), {
+        url: `/api/bff/admin/identity/privacy/${operation}`, method: "POST",
+        headers: { host: new URL(origin).host, origin, "content-type": "application/json" },
+      });
+      const res = { statusCode: 0, headersSent: false, writeHead: vi.fn(), setHeader: vi.fn(), hasHeader: vi.fn(() => true), end: vi.fn() };
+      server.emit("request", req, res);
+      await vi.waitFor(() => expect(res.end).toHaveBeenCalled());
+      expect(intercept).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(200);
+      expect(observe).toHaveBeenCalledExactlyOnceWith(operation);
+    } finally { server.close(); }
   } finally { policy.allow = false; rmSync(root, { recursive: true, force: true }); }
 });
 

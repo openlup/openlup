@@ -11,7 +11,7 @@ const membership = "role membership_state membership_provenance membership_accep
 export function identityRequiredSchema(bundle: IdentityBundle, version: string): RequiredSchema {
   if (!version.trim()) throw new Error("identity_migration_identity_required");
   const common = [...table("public.clients", contact), fn("auth.uid")];
-  return { version, migration: bundle === "node-postgres" ? "db/platform/migrations/20261018190000_identity_privacy_erasures.sql" : "supabase/migrations", objects: bundle === "node-postgres" ? [
+  return { version, migration: bundle === "node-postgres" ? "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql" : "supabase/migrations", objects: bundle === "node-postgres" ? [
     ...common, ...table("public.clients", "principal_id country metadata external_ref updated_at").slice(1),
     ...table("public.customer_identity_challenges", "id client_id principal_id email_fingerprint token_hash created_at expires_at used_at"),
     ...table("public.platform_human_principals", "principal_id email created_at"),

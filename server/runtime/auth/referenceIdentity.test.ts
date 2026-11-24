@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
+import type { HttpHandler, HttpRequest, HttpResponse } from "@openlup/platform/http";
 import mountedReconcile from "../../bff/customers/reconcile-account.js";
 import * as customerBindings from "../customers/customerIdentityBinding.js";
 import * as customerShared from "../../bff/customers/shared.js";
@@ -665,7 +665,7 @@ it.each(["node-postgres", "node-supabase"] as const)("disposable profile admits 
   expect(observed.inventoryComplete).toBe(true);
   expect(observed.loadedPackages.map(pkg => pkg.name).sort()).toEqual(["@openlup/core", "@openlup/platform"]);
   const loaded = await import(pathToFileURL(join(profile.directory, "runtime/runtime.mjs")).href);
-  const called = vi.fn(async () => {});
+  const called = vi.fn(async (_operation: "export" | "erase") => {});
   const ports = {
     customerSession: { verifyAccessToken: vi.fn() }, customerProfile: { getCustomerMe: vi.fn() },
     operatorAuthorization: { authorize: vi.fn(async () => ({ ok: true, principalId, role: "admin", isMachineActor: false })) },
@@ -673,10 +673,21 @@ it.each(["node-postgres", "node-supabase"] as const)("disposable profile admits 
     privacy: bundle === "node-postgres" ? syntheticNativePrivacy(loaded.createPrivacyOperations, called) : { export: called, erase: vi.fn() },
     emailTrustPolicy: createVerifierResultOnlyEmailTrustPolicy(),
   };
-  const adaptedQuery = vi.fn();
-  const runtime = loaded.createReferenceIdentity({ bundle, env: { ...processEnvironment }, migrationIdentity: "complete", ports,
-    createRoutes: () => [{ route: "/api/bff/admin/identity/privacy/export", pattern: /^\/api\/bff\/admin\/identity\/privacy\/export$/, params: [],
-      handler: async (req: HttpRequest, res: HttpResponse) => { adaptedQuery(req.query); await called(); res.status(200).json({ ok: true }); } }],
+  const wrapped = vi.fn(), afterHandler = vi.fn();
+  const decoration = { decoratePrivacyRoute: (route: string, handle: HttpHandler): HttpHandler => async (req, res) => {
+    wrapped(route, req.query);
+    await handle(req, res);
+    afterHandler(route);
+  } };
+  const operations = ["export", "erase"] as const;
+  const paths = operations.map(operation => `/api/bff/admin/identity/privacy/${operation}`);
+  const runtime = loaded.createReferenceIdentity({ bundle, env: { ...processEnvironment }, migrationIdentity: "complete", ports, ...decoration,
+    createRoutes: () => paths.map((route, index) => ({ route, pattern: new RegExp(`^${route}$`), params: [],
+      handler: async (req: HttpRequest, res: HttpResponse) => {
+        wrapped(route, req.query);
+        await called(operations[index]);
+        res.status(200).json({ ok: true });
+      } })),
   });
   const candidate = { artifact: "synthetic", configuration: "synthetic", environment: "test", database: runId, schema: "complete" };
   let missing = false;
@@ -727,16 +738,22 @@ it.each(["node-postgres", "node-supabase"] as const)("disposable profile admits 
       expect(end).toHaveBeenCalledWith("Not found\n");
     }
     const { Readable } = await import("node:stream");
-    const body = JSON.stringify({ subject: { kind: "contact", contactId } });
-    const request = Object.assign(Readable.from([Buffer.from(body)]), { url: "/api/bff/admin/identity/privacy/export?returnTo=%252F&literal=%25", method: "POST", headers: req.headers });
-    await new Promise<void>((done, reject) => {
-      const response = { statusCode: 0, headersSent: false, setHeader: vi.fn(), getHeader: vi.fn(), hasHeader: vi.fn(() => true), end: done, destroy: reject };
-      server.emit("request", request, response);
-      setTimeout(() => reject(new Error("Identity dispatch did not complete")), 2000).unref();
-    });
-    expect(called).toHaveBeenCalledOnce();
-    if (bundle === "node-supabase") expect(adaptedQuery).toHaveBeenCalledWith({ returnTo: "%2F", literal: "%" });
-    else expect(adaptedQuery).not.toHaveBeenCalled();
+    for (const [index, path] of paths.entries()) {
+      const body = JSON.stringify({ subject: { kind: "contact", contactId }, ...(operations[index] === "erase" ? { idempotencyKey: targetId } : {}) });
+      const request = Object.assign(Readable.from([Buffer.from(body)]), { url: `${path}?returnTo=%252F&literal=%25`, method: "POST", headers: req.headers });
+      await new Promise<void>((done, reject) => {
+        const response = { statusCode: 0, headersSent: false, setHeader: vi.fn(), getHeader: vi.fn(), hasHeader: vi.fn(() => true), end: done, destroy: reject };
+        server.emit("request", request, response);
+        setTimeout(() => reject(new Error("Identity dispatch did not complete")), 2000).unref();
+      });
+    }
+    expect(called.mock.calls).toEqual(operations.map(operation => [operation]));
+    expect(wrapped.mock.calls).toEqual(paths.map(path => [path, { returnTo: "%2F", literal: "%" }]));
+    await vi.waitFor(() => expect(afterHandler.mock.calls).toEqual(bundle === "node-postgres" ? paths.map(path => [path]) : []));
+    if (bundle === "node-postgres") for (const index of operations.keys()) {
+      expect(wrapped.mock.invocationCallOrder[index]).toBeLessThan(called.mock.invocationCallOrder[index]);
+      expect(afterHandler.mock.invocationCallOrder[index]).toBeGreaterThan(called.mock.invocationCallOrder[index]);
+    }
     expect(ports.operatorAuthorization.authorize).toHaveBeenCalled();
   } finally { server.close(); }
 });

@@ -21,7 +21,7 @@ import { createAdminUserInviteHandler, createAdminUserInvitePort, createInviteAd
   createPrivacyExportHandler, createPrivacyEraseHandler, createPostgresPrivacyUnitOfWork, createPostgresPrivacyStore, createManagedPrivacyStore,
   createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPrivacyOperations, type ManagedIdentityClient, type InviteAdminUserClient } from "@openlup/platform/identity";
 import { createSchemaProbe, type LoadedPackage } from "@openlup/core/readiness";
-import type { HttpRequest } from "@openlup/platform/http";
+import type { HttpHandler, HttpRequest } from "@openlup/platform/http";
 import type { ReferenceIdentityPorts } from "../../server/runtime/auth/referenceIdentity.js";
 import { createSupabaseAdminUserRemovePort } from "../../server/adapters/supabase/adminUserActionPort.js";
 import type { ReferenceIdentityRuntime } from "../../server/runtime/public-reference/serve.js";
@@ -228,6 +228,8 @@ export async function runAcceptance(setup: Setup) {
     });
     const mailbox: Awaited<ReturnType<typeof createCapturedIdentityMailbox>> = await loaded.createCapturedIdentityMailbox(profile);
     const requestScope = new AsyncLocalStorage<{ req: HttpRequest; customer?: ReturnType<typeof loaded.createCustomerIdentityBinding> }>();
+    const inRequestScope = (handler: HttpHandler): HttpHandler => (req, res) => requestScope.run({ req }, () => handler(req, res));
+    const decoratedPrivacyRoutes = new Set<string>();
     const currentRequest = () => { const scope = requestScope.getStore(); assert(scope, "Identity request scope required"); return scope; };
     const authorize: ReferenceIdentityPorts["operatorAuthorization"]["authorize"] = (token, options) => {
       const binding = loaded.resolveAdminAuthBinding(env).binding;
@@ -292,9 +294,14 @@ export async function runAcceptance(setup: Setup) {
         configuration: createHash("sha256").update(JSON.stringify(Object.fromEntries(Object.keys(env).map(key => [key, processEnvironment[key]])))).digest("hex"),
       }),
       runtime: loaded.createReferenceIdentity({ bundle, migrationIdentity, env, ports,
+        decoratePrivacyRoute: (route: string, guarded: HttpHandler) => inRequestScope((req, res) => ownedDatabase.runRequest(() => {
+          assert.equal(currentRequest().req, req);
+          decoratedPrivacyRoutes.add(route);
+          return guarded(req, res);
+        })),
         createRoutes: (selected: ReferenceIdentityPorts, environment: Record<string, string | undefined>) => {
           const mount = (route: string, handler: import("@openlup/platform/bff").RouteEntry["handler"]) => ({ route, pattern: new RegExp(`^${route}$`), params: [],
-            handler: (req: HttpRequest, res: import("@openlup/platform/http").HttpResponse) => requestScope.run({ req }, () => handler(req, res)) });
+            handler: inRequestScope(handler) });
           const authenticateUser = async (req: HttpRequest) => {
             const token = readBearerToken(req), principal = token ? await selected.customerSession.verifyAccessToken(token) : null;
             return principal ? { ok: true as const, userId: principal.principalId } : { ok: false as const, code: "UNAUTHORIZED" as const, message: "Customer session required" };
@@ -456,6 +463,7 @@ export async function runAcceptance(setup: Setup) {
     const erased = await request("/api/bff/admin/identity/privacy/erase", admin.token, erase);
     if (bundle === "node-postgres") {
       assert.equal(erased.status, 200);
+      assert.deepEqual([...decoratedPrivacyRoutes].sort(), ["/api/bff/admin/identity/privacy/erase", "/api/bff/admin/identity/privacy/export"]);
       assert.deepEqual((await request("/api/bff/admin/identity/privacy/erase", admin.token, erase)).envelope.data, { ...erased.envelope.data, outcome: "ALREADY_ERASED" });
       assert.equal((await pool.query("SELECT principal_id FROM public.clients WHERE id=$1", [CONTACT])).rows[0].principal_id, null);
       assert.equal((await pool.query("SELECT id FROM public.clients WHERE id=$1", [CONTACT])).rows[0].id, CONTACT);

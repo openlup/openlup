@@ -44,10 +44,10 @@ Browser request, contributor-document and receipt shapes come from
 
 ### Upgrade native privacy operations
 
-Apply the complete native catalogue before routing to the new handler. The
-installation owner declares required contributor IDs in the same ordered
-forward as the owner feature. The runtime can execute the declaration reader
-and reads the current set once in each admitted operation's transaction.
+Apply the complete native catalogue for the selected rollout. The installation
+owner declares required contributor IDs in the same ordered forward as the owner
+feature. The runtime can execute the declaration reader. Each admitted operation
+reads the current set once inside its transaction.
 Register working owners for every installed ID, including saved addresses,
 preferences and tax evaluations in the reference composition. Keep an ID declared while its
 scoped evidence remains.
@@ -55,15 +55,24 @@ scoped evidence remains.
 Native store wrappers implement `NativePrivacyStore` and forward
 `readRequiredContributorIds` on the held transaction. Inject the instance
 returned by the serving module's `createPrivacyOperations` into the reference
-host. Decorate the route or store while passing through both guarded operations.
-Probe export and erasure on the exact serving build before routing requests.
+host. Use `decoratePrivacyRoute` to wrap each guarded handler with host request
+scope or lifecycle logic. Probe both operations on the exact serving build
+through isolated candidate routing.
+
+Before reopening ordinary native privacy traffic, verify all three conditions.
+
+1. Both slices are present on every serving revision.
+2. The second slice's catalogue is installed.
+3. The per-store cutover is verified.
+
+Installing the first slice alone leaves the fence in place.
 
 Native export and erasure return HTTP 503 when a declared owner is absent or
 the binding or declaration cannot be verified. Update strict clients to accept
 `observed`, `cause`, `fix` and `recheck` alongside `privacyCode` in `error.details`.
 Direct callers receive the same four strings in `PrivacyRefusal.facts`. Follow
-the fix and retry the original request. Keep new owner writers dormant until
-receipt coverage and the per-store cutover are also qualified.
+the fix and retry the original request. Keep new owner writers dormant through
+the cutover.
 
 Require `customer-billing` even when no invoice reader is selected: native
 first-duty capture can freeze buyer components, including shipping fallback.
