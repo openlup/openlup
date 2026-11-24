@@ -19,7 +19,9 @@ const addresses = "customer-saved-addresses", preferences = "customer-preference
 const coverageCode = "PRIVACY_RECEIPT_COVERAGE_INCOMPLETE";
 const approvalCode = "PRIVACY_RECONCILIATION_APPROVAL_UNVERIFIED";
 const profiles = ["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const;
-const prefixInventory = {
+const predecessor = "db/platform/migrations/20261127030000_subscription_destination_v2.sql";
+// These inventory pins are stable because the predecessor has already landed.
+const predecessorInventory = {
   legacy: "8e1e71413a13096ff346a372e108a341888559710658381d2646aa31f0fe86a2",
   bootstrap: "3a975d84d61ba04d2fd030e417b40a03e10038c8512f85038f1c3da154d3168c",
   separate: "4cb2b2bf42d8afed96f274fb04b60f5644d152a7ba518248364fb17fd248ca24",
@@ -34,14 +36,14 @@ function forwardPlan() {
   return { manifest, forward: forward!.file };
 }
 
-function writePrefix(root: string, manifest: ReturnType<typeof forwardPlan>["manifest"], forward: string) {
-  manifest.objectInventorySha256 = prefixInventory.legacy;
-  manifest.qualified.objectInventorySha256 = { bootstrapMigrator: { withRestore: prefixInventory.bootstrap }, separateMigrator: { withRestore: prefixInventory.separate } };
-  manifest.qualifiedAdmin.objectInventorySha256 = { installerManaged: prefixInventory["admin-managed"], operatorProvisioned: prefixInventory["admin-operator"] };
+function writePrefix(root: string, manifest: ReturnType<typeof forwardPlan>["manifest"]) {
+  manifest.objectInventorySha256 = predecessorInventory.legacy;
+  manifest.qualified.objectInventorySha256 = { bootstrapMigrator: { withRestore: predecessorInventory.bootstrap }, separateMigrator: { withRestore: predecessorInventory.separate } };
+  manifest.qualifiedAdmin.objectInventorySha256 = { installerManaged: predecessorInventory["admin-managed"], operatorProvisioned: predecessorInventory["admin-operator"] };
   for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
-    const index = plan.forward.findIndex(unit => unit.file === forward);
-    expect(index).toBeGreaterThanOrEqual(0);
-    plan.forward = plan.forward.slice(0, index);
+    const index = plan.forward.findIndex(unit => unit.file === predecessor);
+    expect(index, `landed predecessor ${predecessor}`).toBeGreaterThanOrEqual(0);
+    plan.forward = plan.forward.slice(0, index + 1);
     for (const unit of [plan.baseline, ...plan.forward]) {
       const target = join(root, unit.file);
       mkdirSync(dirname(target), { recursive: true });
@@ -96,14 +98,17 @@ it.each(profiles)("installs, upgrades and reconciles in %s", async profile => {
   let previous: Awaited<ReturnType<typeof createAccountMutationsTemplate>> | undefined;
   let current: typeof previous;
   try {
-    writePrefix(prefix, manifest, forward);
+    writePrefix(prefix, structuredClone(manifest));
+    const plan = profile === "legacy" ? manifest : profile.startsWith("admin-") ? manifest.qualifiedAdmin : manifest.qualified;
+    const later = plan.forward.slice(plan.forward.findIndex(unit => unit.file === predecessor) + 1).map(unit => unit.file);
+    expect(later).toContain(forward);
     previous = await createAccountMutationsTemplate(profile, "privacy-prefix", prefix);
     const db = await previous.clone();
     const f = await seed(db);
     const oldLedger = await ledger(db.owner), oldReceipt = await f.original();
     expect((await db.owner.query("SELECT to_regprocedure($1) AS reader", [reader])).rows[0].reader).toBeNull();
     await expect(f.operations.erase(f.actor, f.input)).rejects.toMatchObject({ code: "PRIVACY_ASSESSMENT_UNAVAILABLE" });
-    expect((await db.runner.apply()).applied[0]).toBe(forward);
+    expect((await db.runner.apply()).applied).toEqual(later);
     expect((await ledger(db.owner)).slice(0, oldLedger.length)).toEqual(oldLedger);
     expect((await db.runner.apply()).applied).toEqual([]);
     expect(await f.original()).toBe(oldReceipt);
