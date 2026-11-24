@@ -491,17 +491,17 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
    `price_entries` in `SHARE`. Price apply takes the same advisory lock.
 3. After the visibility probe, the writer's `read` callback authenticates native
    replay, then checks fresh owner facts, including the issued policy revision and sealed service-pin shape.
-   `catalogAdmissionFence.ts:223–250`,
+   `catalogAdmissionFence.ts:229–287`,
    `20261125010000_catalog_purchase_admission.sql:2–24,58–94`.
 
 The [legacy draft forward](../../db/platform/migrations/20261125120000_catalog_legacy_draft_fixed_locks.sql)
 also locks the client first, then SKUs by ascending ID. Its repeatable-read
 writer locks products by ascending ID after taking the shared catalogue fence.
 
-On hook expiry, the fence discards the writer connection and releases the
-probe. The fence key is released within the hook budget plus the wall margin
-plus two round trips of the writer connection. Writer connection latency
-delays delivery of the timeout settings and the lock request to PostgreSQL.
+On fence expiry the writer is discarded. The fence key is released within the
+fence budget plus 50 ms plus two writer round trips. Writer latency delays
+delivery of the timeout settings and the lock request. In the no-injected-latency
+witness the bound is budget plus 50 ms.
 
 - **Erasure.** The privacy store takes the ledger in `SHARE ROW EXCLUSIVE`,
   then the identity challenge relation in `EXCLUSIVE` before its subject locks.
