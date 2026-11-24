@@ -1165,6 +1165,7 @@ it("keeps the packed release-note audit in parity with the neutrality adapter pa
 
 it("admits the generated tax adapter section and inline fragment reference", () => {
   const { root } = fixture({
+    "config/documentation-guide-allowlist.json": JSON.stringify({ schemaVersion: 1, terms: [] }),
     "config/openlup-packages.json": JSON.stringify({ schemaVersion: 2, packages: [
       { name: "@openlup/core", directory: "packages/core", publish: true },
     ], unreleased: [] }),

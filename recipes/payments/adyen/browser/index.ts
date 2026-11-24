@@ -1,7 +1,7 @@
 /**
  * Browser-only Adyen Web Drop-in controller for the OpenLup Adyen Recipe.
  *
- * ADR-001 constraints:
+ * Provider recipe contract constraints:
  * - Zero Node built-ins and zero imports from `../server/**`.
  * - Zero ambient environment reads or global `<script>` tags.
  * - Exchanges neutral copy/settlement states with the host storefront and

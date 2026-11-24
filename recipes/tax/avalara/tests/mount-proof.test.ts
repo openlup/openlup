@@ -30,7 +30,7 @@ import {
 } from "./fixtures.js";
 
 /**
- * Stage 3 Real-Flow Mount Proof (ADR-001 §5):
+ * Stage 3 Real-Flow Mount Proof (provider recipe contract, four-stage proof):
  * Uses ONLY public `@openlup/platform/tax` and `@openlup/platform/tax/contracts` exports
  * so this proof runs identically in the monorepo, after `git subtree split`, and in any
  * standalone adopter store.

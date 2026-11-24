@@ -145,7 +145,72 @@ export function validateGuidePage(path: string, bytes: string | Buffer, mode: st
   return contents;
 }
 
-/** Exact authored rows, plus the two content-validated pattern admissions: changelog fragments and guide pages. */
+/** Hand-authored package SQL files that are not projected from `config/platform-migration-manifest.json`. */
+export const HAND_AUTHORED_PACKAGE_SQL_PATHS = new Set([
+  "packages/platform/sql/20260809150001_job_run_ledger_v3.sql",
+]);
+/** Platform SQL migrations and their projected package mirrors, admitted by manifest-pinned pattern. */
+export const isManifestPinnedSqlArea = (path: string): boolean =>
+  (/^db\/platform\/migrations\/.+\.sql$/u.test(path) || /^packages\/platform\/sql\/.+\.sql$/u.test(path))
+  && !HAND_AUTHORED_PACKAGE_SQL_PATHS.has(path);
+
+const PLATFORM_MIGRATION_MANIFEST_PATH = "config/platform-migration-manifest.json";
+const CANONICAL_PLATFORM_MIGRATION_PATH = /^db\/platform\/migrations\/[A-Za-z0-9][A-Za-z0-9_-]*\.sql$/u;
+const HEX_SHA256 = /^[a-f0-9]{64}$/u;
+
+/** Regular non-executable UTF-8 SQL without NUL/control characters, bound to its manifest SHA-256 pin. */
+export function validateManifestPinnedSql(path: string, bytes: string | Buffer, mode: string, expectedSha256: string): string {
+  if (mode !== "100644") throw new Error(`${path}: platform SQL migration must be regular and non-executable`);
+  const raw = typeof bytes === "string" ? Buffer.from(bytes, "utf8") : bytes;
+  let contents: string;
+  try { contents = typeof bytes === "string" ? bytes : new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+  catch { throw new Error(`${path}: platform SQL migration is not UTF-8`); }
+  if (!contents.trim() || raw.some((byte) => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) {
+    throw new Error(`${path}: empty or control-character platform SQL migration is refused`);
+  }
+  const actual = createHash("sha256").update(raw).digest("hex");
+  if (actual !== expectedSha256) throw new Error(`${path}: platform SQL migration SHA-256 mismatch against ${PLATFORM_MIGRATION_MANIFEST_PATH}`);
+  return contents;
+}
+
+function readManifestPinnedSqlDigests(read: (path: string) => string | Buffer | undefined): Map<string, string> {
+  const raw = read(PLATFORM_MIGRATION_MANIFEST_PATH);
+  if (raw === undefined) throw new Error(`${PLATFORM_MIGRATION_MANIFEST_PATH}: platform migration manifest is absent`);
+  const text = typeof raw === "string" ? raw : new TextDecoder("utf-8", { fatal: true }).decode(raw);
+  const manifest = parseObject(text, PLATFORM_MIGRATION_MANIFEST_PATH, (contents) => parseStrictJson(contents, PLATFORM_MIGRATION_MANIFEST_PATH));
+  const pinned = new Map<string, string>();
+  const register = (path: string, sha256: string) => {
+    const existing = pinned.get(path);
+    if (existing !== undefined && existing !== sha256) {
+      throw new Error(`${PLATFORM_MIGRATION_MANIFEST_PATH}: conflicting sha256 pin for ${path}`);
+    }
+    pinned.set(path, sha256);
+  };
+  const registerUnit = (unit: unknown, label: string) => {
+    if (!isObject(unit) || typeof unit.file !== "string" || !CANONICAL_PLATFORM_MIGRATION_PATH.test(unit.file)
+      || typeof unit.sha256 !== "string" || !HEX_SHA256.test(unit.sha256)) {
+      throw new Error(`${PLATFORM_MIGRATION_MANIFEST_PATH}: ${label} must pin a canonical db/platform/migrations/*.sql path and sha256`);
+    }
+    register(unit.file, unit.sha256);
+    register(`packages/platform/sql/${unit.file.slice("db/platform/migrations/".length)}`, unit.sha256);
+  };
+  const plans: [string, unknown][] = [
+    ["root", manifest],
+    ...(manifest.qualified !== undefined ? [["qualified", manifest.qualified] as [string, unknown]] : []),
+    ...(manifest.qualifiedAdmin !== undefined ? [["qualifiedAdmin", manifest.qualifiedAdmin] as [string, unknown]] : []),
+  ];
+  for (const [name, plan] of plans) {
+    if (!isObject(plan)) throw new Error(`${PLATFORM_MIGRATION_MANIFEST_PATH}: ${name} plan must be an object`);
+    if (plan.baseline !== undefined) registerUnit(plan.baseline, `${name}.baseline`);
+    if (plan.forward !== undefined) {
+      if (!Array.isArray(plan.forward)) throw new Error(`${PLATFORM_MIGRATION_MANIFEST_PATH}: ${name}.forward must be an array`);
+      for (const [index, unit] of plan.forward.entries()) registerUnit(unit, `${name}.forward[${index}]`);
+    }
+  }
+  return pinned;
+}
+
+/** Exact authored rows, plus the three content-validated pattern admissions: changelog fragments, guide pages, and manifest-pinned platform SQL migrations. */
 export function effectivePublicCatalogPaths(source: string, entries: readonly { path: string; mode: string }[], read: (path: string) => string | Buffer | undefined): PublicCatalogPath[] {
   const rows = parsePublicPublicationCatalog(source).publicPaths;
   const fragments = entries.filter(({ path }) => isChangelogFragmentArea(path));
@@ -162,5 +227,17 @@ export function effectivePublicCatalogPaths(source: string, entries: readonly { 
     validateGuidePage(path, bytes, mode);
   }
   for (const row of rows) if (isGuidePageArea(row.path)) throw new Error(`${row.path}: guide pages use pattern admission, not per-file catalog rows`);
-  return [...rows, ...[...fragments, ...guide].map(({ path }) => ({ path, class: "public-output" }))].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
+  for (const row of rows) if (isManifestPinnedSqlArea(row.path)) throw new Error(`${row.path}: platform migrations use manifest-pinned pattern admission, not per-file catalog rows`);
+  const migrations = entries.filter(({ path }) => isManifestPinnedSqlArea(path));
+  if (migrations.length > 0) {
+    const pinned = readManifestPinnedSqlDigests(read);
+    for (const { path, mode } of migrations) {
+      const expected = pinned.get(path);
+      if (expected === undefined) throw new Error(`${path}: unmanifested platform SQL migration is refused by manifest-pinned pattern admission`);
+      const bytes = read(path);
+      if (bytes === undefined) throw new Error(`${path}: platform SQL migration is absent`);
+      validateManifestPinnedSql(path, bytes, mode, expected);
+    }
+  }
+  return [...rows, ...[...fragments, ...guide, ...migrations].map(({ path }) => ({ path, class: "public-output" }))].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
 }

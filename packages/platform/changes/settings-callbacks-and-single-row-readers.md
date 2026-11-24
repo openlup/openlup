@@ -1,4 +1,4 @@
-### Add callback entries (C1-C8) and single-row installed policy readers (B1, B2, B4)
+### Add callback entries and single-row installed policy readers
 
 Added eight `callback` entries (`checkout.offerAdmission`, `shipping.rateResolver`,
 `subscriptions.afterRenewal`, `subscriptions.editTermsAdmission`,

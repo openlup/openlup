@@ -248,12 +248,22 @@ export async function captureConnectedNativeStore(input: {
       }
       let count = packet.tables.reduce((sum, table) => sum + table.rows.length, 0);
       let bytes = packet.tables.reduce((sum, table) => sum + table.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);
+      const columnsByTable = new Map<string, Column[]>();
+      const { rows: attributeRows } = await db.query<{ table: string; name: string | null; type: string | null }>(`SELECT c.relname AS table,a.attname AS name,pg_catalog.format_type(a.atttypid,a.atttypmod) AS type
+        FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+        LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
+        WHERE n.nspname='public' AND c.relname=ANY($1::pg_catalog.text[])
+        ORDER BY c.relname,a.attnum`, [owned]);
+      for (const row of attributeRows) {
+        const columns = columnsByTable.get(row.table) ?? [];
+        if (row.name !== null && row.type !== null) columns.push({ name: row.name, type: row.type });
+        columnsByTable.set(row.table, columns);
+      }
       const tables: ConnectedStoreOwnedRows[] = [];
       for (const table of owned) {
-        const columns = (await db.query<Column>(`SELECT a.attname AS name,pg_catalog.format_type(a.atttypid,a.atttypmod) AS type
-          FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
-          WHERE a.attrelid=$1::pg_catalog.regclass AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
-          ORDER BY a.attnum`, [`public.${table}`])).rows;
+        const columns = columnsByTable.get(table);
+        // Preserve the redacted failure from the previous regclass lookup.
+        if (!columns) throw new PostgresTransferError("database_unavailable");
         if (!columns.length || columns.some(column => !/^[a-z][a-z0-9_]{0,62}$/.test(column.name))) {
           throw new PostgresTransferError("schema_conflict", table);
         }

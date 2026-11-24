@@ -118,7 +118,8 @@ describe("extracted-root documentation contract", () => {
   it("keeps downstream documentation identifiers readable in the production contract", () => {
     const source = readFileSync(join(packageRoot, "scripts", "documentation-contract.ts"), "utf8");
 
-    expect(source).toContain('const downstreamRepositoryCommand = "veli";');
+    const content = readFileSync(join(packageRoot, "scripts", "documentation-guide-content.ts"), "utf8");
+    expect(content).toContain('const downstreamRepositoryCommand = "veli";');
     expect(source).toContain('const retiredPackageScope = "veli";');
   });
 

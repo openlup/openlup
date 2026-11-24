@@ -1,4 +1,4 @@
-### Move `shipping.rateResolver` to the packaged catalogue and report B1/B2 file values
+### Move `shipping.rateResolver` to the packaged catalogue and report subscription policy file values
 
 `shipping.rateResolver` is now a packaged `callback` entry in `@openlup/platform`
 rather than a starter `code` declaration. `owned/settings-host.ts` removes its

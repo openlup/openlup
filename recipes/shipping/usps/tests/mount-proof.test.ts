@@ -39,7 +39,7 @@ import {
 } from "./fixtures.js";
 
 /**
- * Stage 3 Real-Flow Mount Proof (ADR-001 §5):
+ * Stage 3 Real-Flow Mount Proof (provider recipe contract, four-stage proof):
  * Wires `createUspsCarrierRateAdapter` + `selectCheapestCarrierRate` into
  * `createDbBackedCommerceQuotePort` + `createQuoteShippingPromotions` using ONLY
  * public `@openlup/platform/*` and `@openlup/core/*` exports.

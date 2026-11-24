@@ -175,7 +175,7 @@ describe("openlup recipe CLI (Agent-DX list|show|add|verify)", () => {
     expect(epBody.verification.stages.stages1to3Tests.passed).toBe(true);
   }, 30_000);
 
-  it("enforces overwrite refusal, --force, symlink refusal, local-edit provenance, and ADR-001 isolation checks", async () => {
+  it("enforces overwrite refusal, --force, symlink refusal, local-edit provenance, and recipe-contract isolation checks", async () => {
     const appDir = await makeTempDir("openlup-recipe-cli-sec-");
     const dest = join(appDir, "owned/adapters/channels/shopify");
 
@@ -218,7 +218,7 @@ describe("openlup recipe CLI (Agent-DX list|show|add|verify)", () => {
     expect(modBody.state).toBe("satisfied");
     expect(modBody.provenanceState).toBe("locally-modified");
 
-    // Planted ADR-001 violation (ambient env read + vendor SDK import) fails verify (exit 1)
+    // Planted recipe-contract violation (ambient env read + vendor SDK import) fails verify (exit 1)
     const envExpr = `${"proc" + "ess"}.${"env"}.LEAKED_KEY`;
     await fs.writeFile(
       adapterPath,
@@ -305,7 +305,7 @@ describe("openlup recipe CLI (Agent-DX list|show|add|verify)", () => {
     expect(ownedIdx.recipes.map((r) => r.id)).toEqual(["shipping/usps"]);
   }, 30_000);
 
-  it("blocks schema/ symlink escape, catalog overlap under tmpdir, ADR-001 bypasses, manifest drift, and test failures", async () => {
+  it("blocks schema/ symlink escape, catalog overlap under tmpdir, recipe-contract bypasses, manifest drift, and test failures", async () => {
     const appDir = await makeTempDir("openlup-recipe-cli-regressions-");
 
     // 1. Symlinked owned/adapters/schema must be refused (exit 74) with zero writes to outside dir OR dest
@@ -469,7 +469,7 @@ describe("openlup recipe CLI (Agent-DX list|show|add|verify)", () => {
     expect(ncBody.verification.findings.some((f) => f.code === "OPENLUP_E_RECIPE_NONCANONICAL_DEST")).toBe(true);
   }, 30_000);
 
-  it("scaffolds ADR-001-compliant recipes across domains with --verify, overwrite/symlink refusal, and flag validation", async () => {
+  it("scaffolds recipe-contract-compliant recipes across domains with --verify, overwrite/symlink refusal, and flag validation", async () => {
     const appDir = await makeTempDir("openlup-recipe-cli-scaffold-");
 
     // 1. Scaffold payments/acme-pay into default owned/adapters/payments/acme-pay and verify offline Stages 1-3

@@ -5,7 +5,7 @@ import {
 
 /**
  * Narrow structural client contract and zero-SDK hardened HTTP client for
- * ShipEngine REST API v1 Rates (ADR-001: zero vendor SDK, zero ambient
+ * ShipEngine REST API v1 Rates (recipe contract: zero vendor SDK, zero ambient
  * environment reads, zero ambient fetch, strict HTTPS origin pinning,
  * redirect: "error").
  */

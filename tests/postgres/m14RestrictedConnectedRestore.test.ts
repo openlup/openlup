@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
-import { expect, it } from "vitest";
+import { aroundEach, expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -22,11 +22,11 @@ const password = "synthetic-restricted-restore";
 const groups = ["anon", "authenticated", "service_role", "platform_acquisition_owner",
   "platform_acquisition_runtime", "openlup_retained_import_owner"];
 
-async function install(shape: Shape, mode: Mode, label: string, apply = true): Promise<Installed> {
+async function install(shape: Shape, mode: Mode, label: string, apply = true, expectCase = expect): Promise<Installed> {
   const container = await runPostgresContainer({ name: `m14-restricted-connected-${shape}-${mode}-${label}-${process.pid}`, password });
   const pools: Pool[] = [];
   try {
-    expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+    expectCase(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
     const pool = (url: string): Pool => { const p = new Pool({ connectionString: url }); pools.push(p); return p; };
     let root = pool(container.connectionString);
     const namedUrl = (name: string): string => { const url = new URL(container.connectionString); url.username = name; return url.toString(); };
@@ -78,17 +78,56 @@ async function install(shape: Shape, mode: Mode, label: string, apply = true): P
     const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")),
       "qualified-admin", { roleMode: mode });
     // This small admission discriminator runs before the full migration/restore.
-    expect((await owner.query("SELECT rolsuper,rolcreaterole,rolcreatedb FROM pg_catalog.pg_roles WHERE rolname=$1",
+    expectCase((await owner.query("SELECT rolsuper,rolcreaterole,rolcreatedb FROM pg_catalog.pg_roles WHERE rolname=$1",
       [selection.bootstrapLogin])).rows).toEqual([{ rolsuper: false, rolcreaterole: true, rolcreatedb: true }]);
-    await expect(owner.query("SELECT * FROM pg_catalog.pg_control_system()")).rejects.toMatchObject({ code: "42501" });
-    expect(1 + manifest.forward.length).toBe(installationInventory.current.profiles[mode === "installer-managed" ? "admin-managed" : "admin-operator"].count);
-    expect((await runner.status()).pending).toHaveLength(1 + manifest.forward.length);
+    await expectCase(owner.query("SELECT * FROM pg_catalog.pg_control_system()")).rejects.toMatchObject({ code: "42501" });
+    expectCase(1 + manifest.forward.length).toBe(installationInventory.current.profiles[mode === "installer-managed" ? "admin-managed" : "admin-operator"].count);
+    expectCase((await runner.status()).pending).toHaveLength(1 + manifest.forward.length);
     if (apply) {
-      expect((await runner.apply()).applied).toHaveLength(1 + manifest.forward.length);
-      expect((await runner.status()).pending).toEqual([]);
+      expectCase((await runner.apply()).applied).toHaveLength(1 + manifest.forward.length);
+      expectCase((await runner.status()).pending).toEqual([]);
     }
     return { container, pools, owner, runner, selection, inventory: manifest.objectInventorySha256 };
-  } catch (error) { await closePostgres(container, pools); throw error; }
+  } catch (error) {
+    try {
+      await closePostgres(container, pools);
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Restricted restore setup and cleanup both failed");
+    }
+    throw error;
+  }
+}
+
+// Bounds source/target provisioning to two concurrent containers per test and
+// tears down any fulfilled container before rethrowing a partial setup failure.
+async function installPair(shape: Shape, mode: Mode, sourceLabel: string, targetLabel: string): Promise<[Installed, Installed]> {
+  const [sourceResult, targetResult] = await Promise.allSettled([
+    install(shape, mode, sourceLabel),
+    install(shape, mode, targetLabel),
+  ]);
+  if (sourceResult.status === "fulfilled" && targetResult.status === "fulfilled") {
+    return [sourceResult.value, targetResult.value];
+  }
+  const errors: unknown[] = [];
+  const containers: PostgresContainer[] = [];
+  const pools: Pool[] = [];
+  for (const result of [sourceResult, targetResult]) {
+    if (result.status === "fulfilled") {
+      containers.push(result.value.container);
+      pools.push(...result.value.pools);
+    } else {
+      errors.push(result.reason);
+    }
+  }
+  if (containers.length > 0) {
+    try {
+      await closePostgres(containers, pools);
+    } catch (cleanupError) {
+      errors.push(cleanupError);
+    }
+  }
+  if (errors.length === 1) throw errors[0];
+  throw new AggregateError(errors, "Restricted restore pair setup/cleanup failed");
 }
 
 async function withAcquisitionOwnerWindow<T>(installed: Installed, work: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -182,8 +221,8 @@ async function cancellationRows(owner: Pool, subscriptionId: string) {
     FROM public.subscriptions s WHERE s.id=$1`, [subscriptionId])).rows;
 }
 
-it.each(["installer-managed", "operator-provisioned"] as const)("cx1r_feedback_native_admission_and_replay (%s)", async mode => {
-  const source = await install("neon", mode, "cancel-feedback");
+async function verifyFeedbackAdmission(mode: Mode, expectCase: typeof expect) {
+  const source = await install("neon", mode, "cancel-feedback", true, expectCase);
   try {
     const runtime = feedbackRuntime(source);
     const before = await cancelSubscription(source.owner, runtime);
@@ -203,39 +242,39 @@ it.each(["installer-managed", "operator-provisioned"] as const)("cx1r_feedback_n
       EXISTS (SELECT FROM aclexplode(c.relacl) WHERE grantee=0) AS public_table
       FROM pg_proc p, pg_class c WHERE p.oid=$1::regprocedure AND c.oid=$2::regclass`,
     [feedbackRoutine, `public.${feedbackTable}`, source.selection.runtimeLogin]);
-    expect(acl).toEqual({ rls: true, definer: true, proconfig: ["search_path=pg_catalog, pg_temp"],
+    expectCase(acl).toEqual({ rls: true, definer: true, proconfig: ["search_path=pg_catalog, pg_temp"],
       runtime_execute: true, service_execute: true, runtime_table: false, service_table: false, public_execute: false, public_table: false });
-    expect((await runtime.query("SELECT current_user AS role")).rows).toEqual([{ role: source.selection.runtimeLogin }]);
+    expectCase((await runtime.query("SELECT current_user AS role")).rows).toEqual([{ role: source.selection.runtimeLogin }]);
     for (const statement of [
       "SELECT * FROM public.subscription_cancel_feedback",
       "INSERT INTO public.subscription_cancel_feedback (cancel_event_id,reason_code) VALUES (gen_random_uuid(),'schedule')",
       "UPDATE public.subscription_cancel_feedback SET reason_code='other'",
       "DELETE FROM public.subscription_cancel_feedback",
     ]) {
-      await expect(runtime.query(statement)).rejects.toMatchObject({ code: "42501" });
+      await expectCase(runtime.query(statement)).rejects.toMatchObject({ code: "42501" });
     }
     const browser = await runtime.connect();
     try {
       for (const role of ["anon", "authenticated"]) {
         await browser.query(`SET ROLE ${role}`);
-        await expect(submitFeedback(browser, event, client, reason, true)).rejects.toMatchObject({ code: "42501" });
-        await expect(browser.query("SELECT * FROM public.subscription_cancel_feedback")).rejects.toMatchObject({ code: "42501" });
+        await expectCase(submitFeedback(browser, event, client, reason, true)).rejects.toMatchObject({ code: "42501" });
+        await expectCase(browser.query("SELECT * FROM public.subscription_cancel_feedback")).rejects.toMatchObject({ code: "42501" });
       }
     } finally { await browser.query("RESET ROLE"); browser.release(); }
 
     for (const code of [null, "", "a".repeat(121), "Mixed_case", "a-b", "a\n", "ä"]) {
-      expect(await submitFeedback(runtime, event, client, code, true)).toBe("invalid_reason");
+      expectCase(await submitFeedback(runtime, event, client, code, true)).toBe("invalid_reason");
     }
     const missingEvent = randomUUID();
     for (const [cancelEvent, owner] of [[wrongEvent, client], [missingEvent, client], [event, foreign]] as const) {
-      expect(await submitFeedback(runtime, cancelEvent, owner, reason, true)).toBe("cancel_not_found");
+      expectCase(await submitFeedback(runtime, cancelEvent, owner, reason, true)).toBe("cancel_not_found");
     }
-    expect(await submitFeedback(runtime, event, foreign, "Mixed_case", true)).toBe("invalid_reason");
-    expect(await submitFeedback(runtime, missingEvent, client, "Mixed_case", true)).toBe("invalid_reason");
+    expectCase(await submitFeedback(runtime, event, foreign, "Mixed_case", true)).toBe("invalid_reason");
+    expectCase(await submitFeedback(runtime, missingEvent, client, "Mixed_case", true)).toBe("invalid_reason");
     for (const offered of [false, null]) {
-      expect(await submitFeedback(runtime, event, client, reason, offered)).toBe("reason_not_offered");
+      expectCase(await submitFeedback(runtime, event, client, reason, offered)).toBe("reason_not_offered");
     }
-    expect((await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows).toEqual([]);
+    expectCase((await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows).toEqual([]);
 
     await source.owner.query(`CREATE COLLATION public.feedback_loose
       (provider = icu, locale = 'und-u-ka-shifted-ks-level1', deterministic = false)`);
@@ -244,7 +283,7 @@ it.each(["installer-managed", "operator-provisioned"] as const)("cx1r_feedback_n
         $3::text COLLATE public.feedback_loose = $4::text AS equal,
         public.subscription_cancel_feedback_submit($1,$2,$3::text COLLATE public.feedback_loose,$5) AS status`,
       [event, client, "sche_dule", reason, offered]);
-      expect(result!.equal).toBe(true);
+      expectCase(result!.equal).toBe(true);
       return result!.status;
     };
 
@@ -254,7 +293,7 @@ it.each(["installer-managed", "operator-provisioned"] as const)("cx1r_feedback_n
     let attempts: Promise<PromiseSettledResult<string>[]> | undefined;
     try {
       await writer.query("BEGIN ISOLATION LEVEL READ COMMITTED");
-      expect(await submitFeedback(writer, event, client, reason, true)).toBe("recorded");
+      expectCase(await submitFeedback(writer, event, client, reason, true)).toBe("recorded");
       const pids = await Promise.all([same, different].map(async db => (await db.query("SELECT pg_backend_pid() AS pid")).rows[0].pid));
       const { pid } = (await writer.query("SELECT pg_backend_pid() AS pid")).rows[0];
       attempts = Promise.allSettled([submitFeedback(same, event, client, reason, true), submitEquivalent(different, true)]);
@@ -262,32 +301,63 @@ it.each(["installer-managed", "operator-provisioned"] as const)("cx1r_feedback_n
       const parents = await source.owner.query(`SELECT e.id FROM public.subscriptions s
         JOIN public.subscription_events e ON e.subscription_id=s.id
         WHERE s.id=$1 AND e.id=$2 FOR SHARE OF s,e NOWAIT`, [command.subscriptionId, event]);
-      expect(parents.rows).toEqual([{ id: event }]);
+      expectCase(parents.rows).toEqual([{ id: event }]);
       // The rivals have reached INSERT on the sidecar before waiting for the writer.
-      await expect.poll(async () => (await source.owner.query(`SELECT count(*)::int AS waiting FROM unnest($1::int[]) waiting(pid)
+      await expectCase.poll(async () => (await source.owner.query(`SELECT count(*)::int AS waiting FROM unnest($1::int[]) waiting(pid)
         WHERE $2::int=ANY(pg_blocking_pids(waiting.pid)) AND EXISTS (SELECT 1 FROM pg_locks l
           WHERE l.pid=waiting.pid AND l.relation='public.subscription_cancel_feedback'::regclass
           AND l.mode='RowExclusiveLock' AND l.granted)`, [pids, pid])).rows[0].waiting).toBe(2);
       await writer.query("COMMIT");
-      expect(await attempts).toEqual([{ status: "fulfilled", value: "replayed" }, { status: "fulfilled", value: "reason_conflict" }]);
+      expectCase(await attempts).toEqual([{ status: "fulfilled", value: "replayed" }, { status: "fulfilled", value: "reason_conflict" }]);
     } finally {
       await writer.query("ROLLBACK");
       await attempts;
       for (const db of [writer, same, different]) db.release();
     }
     const stored = (await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows;
-    expect(stored).toEqual([{ cancel_event_id: event, reason_code: reason, recorded_at: expect.any(Date) }]);
-    expect(await submitFeedback(runtime, event, client, reason, false)).toBe("replayed");
-    expect(await submitEquivalent(runtime, false)).toBe("reason_conflict");
-    expect(await submitFeedback(runtime, event, client, alternateReason, false)).toBe("reason_conflict");
-    expect(await submitFeedback(runtime, event, foreign, reason, true)).toBe("cancel_not_found");
-    expect((await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows).toEqual(stored);
-    expect(await commands(runtime).apply(command)).toEqual({ ...receipt, outcome: "replayed" });
-    expect(await cancellationRows(source.owner, command.subscriptionId)).toEqual(retained);
+    expectCase(stored).toEqual([{ cancel_event_id: event, reason_code: reason, recorded_at: expectCase.any(Date) }]);
+    expectCase(await submitFeedback(runtime, event, client, reason, false)).toBe("replayed");
+    expectCase(await submitEquivalent(runtime, false)).toBe("reason_conflict");
+    expectCase(await submitFeedback(runtime, event, client, alternateReason, false)).toBe("reason_conflict");
+    expectCase(await submitFeedback(runtime, event, foreign, reason, true)).toBe("cancel_not_found");
+    expectCase((await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows).toEqual(stored);
+    expectCase(await commands(runtime).apply(command)).toEqual({ ...receipt, outcome: "replayed" });
+    expectCase(await cancellationRows(source.owner, command.subscriptionId)).toEqual(retained);
   } finally { await closePostgres(source.container, source.pools); }
+}
+
+const activeSerialFixtures = new Set<Promise<void>>();
+const activeConcurrentFixtures = new Set<Promise<void>>();
+
+aroundEach(async (runTest, { signal, task }) => {
+  // Vitest can time out the case without cancelling its database work.
+  await Promise.all(activeSerialFixtures);
+  if (!task.concurrent) await Promise.all(activeConcurrentFixtures);
+  signal.throwIfAborted();
+  await runTest();
 }, postgresSetupTimeoutMs);
 
-it("cx1r_feedback_retries_when_winner_is_deleted", async () => {
+function trackFixture(active: Set<Promise<void>>, work: () => Promise<void>) {
+  const result = work();
+  const drained = result.then(() => undefined, () => undefined);
+  active.add(drained);
+  void drained.then(() => active.delete(drained));
+  return result;
+}
+
+function restoreTest(name: string, work: () => Promise<void>, timeout: number) {
+  it(name, () => trackFixture(activeSerialFixtures, work), timeout);
+}
+
+// Use each case's own assertion context and wait for cleanup even after a case times out.
+it.concurrent.for(["installer-managed", "operator-provisioned"] as const)(
+  "cx1r_feedback_native_admission_and_replay (%s)", { timeout: postgresSetupTimeoutMs }, async (mode, { expect, onTestFinished }) => {
+    const work = trackFixture(activeConcurrentFixtures, () => verifyFeedbackAdmission(mode, expect));
+    onTestFinished(({ signal }) => signal.aborted ? work : undefined, postgresSetupTimeoutMs);
+    await work;
+  });
+
+restoreTest("cx1r_feedback_retries_when_winner_is_deleted", async () => {
   const source = await install("neon", "operator-provisioned", "vanished-feedback");
   try {
     const runtime = feedbackRuntime(source);
@@ -336,9 +406,8 @@ it("cx1r_feedback_retries_when_winner_is_deleted", async () => {
   } finally { await closePostgres(source.container, source.pools); }
 }, postgresSetupTimeoutMs);
 
-it("cx1r_feedback_full_store_round_trip", async () => {
-  const source = await install("neon", "operator-provisioned", "feedback-source");
-  let target: Installed | undefined;
+restoreTest("cx1r_feedback_full_store_round_trip", async () => {
+  const [source, target] = await installPair("neon", "operator-provisioned", "feedback-source", "feedback-target");
   try {
     const sourceRuntime = feedbackRuntime(source);
     const { event, client, command, receipt } = await cancelSubscription(source.owner, sourceRuntime);
@@ -370,7 +439,6 @@ it("cx1r_feedback_full_store_round_trip", async () => {
       packet: { ...publicBody, sha256: packetDigest(publicBody) },
     })).rejects.toMatchObject({ code: "unsupported_table" });
 
-    target = await install("neon", "operator-provisioned", "feedback-target");
     const freshTarget = await capture(target, "cancel-feedback-fresh-target");
     const input = { owner: target.owner, installation: target.selection, packet, freshTarget };
     const changed = structuredClone(packet);
@@ -389,12 +457,11 @@ it("cx1r_feedback_full_store_round_trip", async () => {
     expect(restored.owned.find(entry => entry.table === "subscription_command_receipts")).toEqual(sourceReceipts);
     expect(restored.compatible.tables.find(entry => entry.table === "subscription_events")).toEqual(sourceEvents);
   } finally {
-    if (target) await closePostgres(target.container, target.pools);
-    await closePostgres(source.container, source.pools);
+    await closePostgres([target.container, source.container], [...target.pools, ...source.pools]);
   }
 }, 245_000);
 
-it("keeps the elevated control-plane membership requirement for self-host selections", async () => {
+restoreTest("keeps the elevated control-plane membership requirement for self-host selections", async () => {
   const fixture = await install("rds", "installer-managed", "self-host-scope", false);
   try {
     delete fixture.selection.target; delete fixture.selection.layout;
@@ -402,7 +469,7 @@ it("keeps the elevated control-plane membership requirement for self-host select
   } finally { await closePostgres(fixture.container, fixture.pools); }
 }, postgresSetupTimeoutMs);
 
-it("does not let an RDS declaration trust a non-stock role without elevated flags", async () => {
+restoreTest("does not let an RDS declaration trust a non-stock role without elevated flags", async () => {
   const fixture = await install("rds", "installer-managed", "non-stock-authority", false);
   try {
     await fixture.pools[0]!.query(`CREATE ROLE declared_outsider NOLOGIN; REVOKE rds_superuser FROM host_bootstrap;
@@ -413,7 +480,7 @@ it("does not let an RDS declaration trust a non-stock role without elevated flag
 }, postgresSetupTimeoutMs);
 
 for (const role of ["rds_password", "rds_iam", "rds_ad"] as const) {
-  it(`does not count bootstrap membership only in ${role} as RDS authority`, async () => {
+  restoreTest(`does not count bootstrap membership only in ${role} as RDS authority`, async () => {
     const fixture = await install("rds", "installer-managed", `non-authority-${role}`, false);
     try {
       await fixture.pools[0]!.query(`CREATE ROLE ${role} NOLOGIN; REVOKE rds_superuser FROM host_bootstrap;
@@ -427,7 +494,7 @@ for (const role of ["rds_password", "rds_iam", "rds_ad"] as const) {
 }
 
 for (const outside of ["grantor", "member"] as const) {
-  it(`compares RDS predefined-role edges with a non-stock ${outside}`, async () => {
+  restoreTest(`compares RDS predefined-role edges with a non-stock ${outside}`, async () => {
     const fixture = await install(outside === "grantor" ? "neon" : "rds", "installer-managed", `non-stock-${outside}`, false);
     try {
       fixture.selection.target = "rds"; fixture.selection.layout = "serial-cluster";
@@ -442,7 +509,7 @@ for (const outside of ["grantor", "member"] as const) {
 }
 
 for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-managed", "operator-provisioned"] as const) {
-  it(`admits ${shape}-shaped ${mode} control-plane roles before installation`, async () => {
+  restoreTest(`admits ${shape}-shaped ${mode} control-plane roles before installation`, async () => {
     if (!await dockerAvailable()) throw new Error("Restricted admission requires disposable PostgreSQL 16");
     const fixture = await install(shape, mode, "admission", false);
     try {
@@ -454,12 +521,10 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await expect(fixture.runner.status()).rejects.toThrow("outside_role_has_host_authority");
     } finally { await closePostgres(fixture.container, fixture.pools); }
   }, postgresSetupTimeoutMs);
-  it(`restores a connected native graph through ${shape}-shaped ${mode} admission`, async () => {
+  restoreTest(`restores a connected native graph through ${shape}-shaped ${mode} admission`, async () => {
     if (!await dockerAvailable()) throw new Error("Restricted restore requires disposable PostgreSQL 16");
-    let source: Installed | undefined, target: Installed | undefined;
+    const [source, target] = await installPair(shape, mode, "source", "target");
     try {
-      source = await install(shape, mode, "source");
-      target = await install(shape, mode, "target");
       const { rows: [subscription] } = await source.owner.query<{ id: string }>(`WITH client AS (
         INSERT INTO public.clients(email,lifecycle_stage) VALUES('restricted@example.invalid','lead') RETURNING id
       )
@@ -528,14 +593,13 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       expect(await keyIdentity(target)).toEqual(beforeKey);
       await expect(restoreConnectedNativeStore({ ...input, freshTarget: packet })).rejects.toMatchObject({ code: "invalid_input" });
       const restoreLogin = new Pool({ connectionString: (() => {
-        const url = new URL(target!.container.connectionString); url.username = target!.selection.restoreLogin; return url.toString();
+        const url = new URL(target.container.connectionString); url.username = target.selection.restoreLogin; return url.toString();
       })() });
       target.pools.push(restoreLogin);
       await expect(restoreLogin.query("UPDATE public.clients SET email='forbidden@example.invalid'")).rejects.toMatchObject({ code: "42501" });
       await expect(restoreLogin.query("SELECT * FROM acquisition_private.installation_key")).rejects.toMatchObject({ code: "42501" });
     } finally {
-      if (target) await closePostgres(target.container, target.pools);
-      if (source) await closePostgres(source.container, source.pools);
+      await closePostgres([target.container, source.container], [...target.pools, ...source.pools]);
     }
   // About 4x the slowest hosted run (60,506 ms), rounded up to 5 s.
   }, 245_000);

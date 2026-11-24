@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://openlup.org/schemas/recipe.v1.schema.json",
   "title": "OpenLup Provider Recipe Manifest (v1)",
-  "description": "Machine-readable contract manifest for a self-contained, source-owned OpenLup Provider Recipe governed by ADR-001.",
+  "description": "Machine-readable contract manifest for a self-contained, source-owned OpenLup Provider Recipe governed by the provider recipe contract.",
   "type": "object",
   "additionalProperties": false,
   "required": [

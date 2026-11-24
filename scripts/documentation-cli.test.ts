@@ -7,7 +7,7 @@ import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { PUBLIC_EXECUTION_ENTRYPOINTS } from "./oss-publication-contract.ts";
-import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, isGuidePage } from "./oss-publication-policy.ts";
+import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, isGuidePage, isManifestPinnedSqlArea } from "./oss-publication-policy.ts";
 import { readDocumentationState, type DocumentationSurface } from "./documentation-routing.ts";
 import { AGENT_GUIDE_PATH, renderAgentGuide, renderDocumentationSourceMap } from "./documentation-navigation.ts";
 import { resolveDocumentationBase } from "./documentation-git.ts";
@@ -88,7 +88,7 @@ function seed(root: string): string {
   write(root, "config/openlup-publication-catalog.json", "{}");
   git(root, ["add", "."]);
   const paths = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean).sort();
-  write(root, "config/openlup-publication-catalog.json", createPublicPublicationCatalog(paths.filter((path) => !isGuidePage(path)).map((path) => ({ path, class: "public-output" })), []).contents);
+  write(root, "config/openlup-publication-catalog.json", createPublicPublicationCatalog(paths.filter((path) => !isGuidePage(path) && !isManifestPinnedSqlArea(path)).map((path) => ({ path, class: "public-output" })), []).contents);
   return commit(root);
 }
 

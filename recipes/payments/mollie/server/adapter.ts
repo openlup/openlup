@@ -82,7 +82,7 @@ export const molliePaymentCapabilities: Readonly<PaymentAdapterCapabilities> =
 /**
  * Deterministic serializable projection of static capabilities (omitting the
  * JS function `assessMandate`), cross-checked mechanically against
- * `recipe.json#staticCapabilities` in conformance tests (ADR-001).
+ * `recipe.json#staticCapabilities` in conformance tests (provider recipe contract).
  */
 export function projectMollieStaticCapabilities(
   capabilities: PaymentAdapterCapabilities = molliePaymentCapabilities,
