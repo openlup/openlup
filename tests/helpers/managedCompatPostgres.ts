@@ -24,7 +24,7 @@ import { Client } from "pg";
 import packagePins from "../../config/ci-postgres-packages.json" with { type: "json" };
 import { imageReference, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { ensurePackages, INITDB_ARGS, selectPackageFiles, SERVER_FLAGS, packageCacheDir } from "../../scripts/public-ci-pgtap.mjs";
-import { runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer, type PostgresContainerSpec } from "./postgresContainer.js";
+import { FAST_POSTGRES_SERVER_FLAGS, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer, type PostgresContainerDurability, type PostgresContainerSpec } from "./postgresContainer.js";
 
 const exec = promisify(execFile);
 const root = resolve(import.meta.dirname, "../..");
@@ -65,7 +65,22 @@ async function stagePackages(): Promise<{ directory: string; names: string[] }> 
   return { directory, names: files.map(file => file.name) };
 }
 
-export type ManagedCompatPostgresSpec = Pick<PostgresContainerSpec, "name" | "password" | "labels">;
+export type ManagedCompatPostgresSpec = Pick<PostgresContainerSpec, "name" | "password" | "labels" | "durability" | "tmpfsSizeMb">;
+
+/**
+ * Resolve PostgreSQL flags for `docker-entrypoint.sh postgres "$@"`.
+ * Because `runManagedCompatPostgres` overrides the image entrypoint to install
+ * pinned `.deb` extensions before exec'ing postgres, `runPostgresContainer`
+ * leaves `command` untouched; forwarding `FAST_POSTGRES_SERVER_FLAGS` here
+ * keeps disposable managed-compat containers aligned with `"fast"` durability
+ * while letting `SERVER_FLAGS` retain final precedence.
+ */
+export function resolveManagedCompatServerFlags(durability: PostgresContainerDurability = "fast"): string[] {
+  if (durability !== "fast" && durability !== "default") {
+    throw new Error("PostgreSQL durability must be 'fast' or 'default'.");
+  }
+  return durability === "fast" ? [...FAST_POSTGRES_SERVER_FLAGS, ...SERVER_FLAGS] : [...SERVER_FLAGS];
+}
 
 /**
  * Start stock PostgreSQL 17 with the pinned extensions installed and the
@@ -75,6 +90,7 @@ export type ManagedCompatPostgresSpec = Pick<PostgresContainerSpec, "name" | "pa
  */
 export async function runManagedCompatPostgres(spec: ManagedCompatPostgresSpec): Promise<PostgresContainer> {
   if (!/^[A-Za-z0-9_-]+$/u.test(spec.password)) throw new Error("managed-compat password must be a plain synthetic token");
+  const serverFlags = resolveManagedCompatServerFlags(spec.durability);
   const packages = await stagePackages();
   const pin = readCiImage(packagePins.image);
   let container: PostgresContainer | undefined;
@@ -89,7 +105,7 @@ export async function runManagedCompatPostgres(spec: ManagedCompatPostgresSpec):
       ],
       command: ["-c",
         `set -euo pipefail; dpkg -i ${packages.names.map(name => `${debsInContainer}/${name}`).join(" ")} >/dev/null; exec docker-entrypoint.sh postgres "$@"`,
-        "openlup-managed-compat", ...SERVER_FLAGS],
+        "openlup-managed-compat", ...serverFlags],
     });
     // The bootstrap superuser shares the disposable container password.
     const bootstrap = container.connectionString.replace("postgres://postgres:", `postgres://${bootstrapUser}:`);
