@@ -1,6 +1,6 @@
 import { createPostgresCommerceOmsPort } from "@openlup/platform/commerce/server/postgres";
 import { createPostgresRenewalSettlementPort as mainSettlement } from "../../server/adapters/postgres/commerce/renewalSettlement.js";
-import { connectedNativeStoreTables } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { connectedNativeStoreTables, readPrivacyDeclarationCensus, requiredPrivacyDeclarationTable } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { randomUUID } from "node:crypto";
 import { beforeEach, expect, it, vi } from "vitest";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
@@ -459,7 +459,7 @@ it("captures populated retry, token, destination and draft rows, restores cleanl
   const profile = new Set<string>(connectedNativeStoreTables), outside: string[] = [];
   const relations = (await admin.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
   for (const { tablename } of relations) {
-    if (profile.has(tablename) || tablename === "platform_schema_migrations") continue;
+    if (profile.has(tablename) || tablename === "platform_schema_migrations" || tablename === requiredPrivacyDeclarationTable) continue;
     const identifier = String(tablename).replaceAll('"', '""');
     if ((await admin.query(`SELECT 1 FROM public."${identifier}" LIMIT 1`)).rows.length) outside.push(tablename);
   }
@@ -473,6 +473,7 @@ it("captures populated retry, token, destination and draft rows, restores cleanl
   const duty = await api.activateNativePurchaseWithRenewal(fault, { ...pendingPurchase, facts });
   expect(duty.renewalAttachment).toBe("pending");
   const before = await allPublicRows(admin), packet = await captureStore(admin, "public-renewal-source");
+  expect(packet.requiredPrivacyContributorIds).toEqual(await readPrivacyDeclarationCensus(admin));
   expect(await allPublicRows(admin)).toEqual(before);
   for (const table of [...tables, "commerce_destinations", "commerce_destination_bindings", "commerce_order_draft_receipts"]) {
     const index = packet.owned.findIndex(relation => relation.table === table), relation = packet.owned[index]!;
