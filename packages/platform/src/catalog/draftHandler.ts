@@ -12,7 +12,7 @@ import type { CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStore
 import { catalogDraftPublicationStoredApplyResultSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema, catalogDraftV3ValidationPayload } from "./draftV3Schemas.js";
 import { lifecycleStoredCommandSchema, lifecycleStoredPageSchema, lifecycleStoredRecordSchema, lifecycleStoredResultSchema,
   type CatalogDraftCommandV4, type CatalogLifecycleDraftPage } from "./lifecycleDraftSchemas.js";
-import { draftBasisPriceIssue, type PublicationDraftRecord } from "./publicationIntent.js";
+import type { PublicationDraftRecord } from "./publicationIntent.js";
 import type { z } from "./validation.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
@@ -46,7 +46,7 @@ function failure(error: unknown): CatalogDraftRefusal {
 /** Dark use case: mounting requires a verified operator authorizer at composition. */
 function draftHandler<Context, Record extends PublicationDraftRecord, Page extends CatalogDraftPage>(deps: CatalogDraftHandlerDeps<Context, Record, Page>, schemas: {
   command: z.ZodType<CatalogDraftPublicationStoredCommand | CatalogDraftCommandV4>; page: z.ZodType<Page>; record: z.ZodType<Record>;
-  result: z.ZodType<{ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal>; governed?: true;
+  result: z.ZodType<{ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal>;
 }) {
   const { command: catalogDraftCommandSchema, record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema, page: parsePage } = schemas;
   async function actor(context: Context): Promise<CatalogDraftOperator | CatalogDraftRefusal> {
@@ -66,27 +66,24 @@ function draftHandler<Context, Record extends PublicationDraftRecord, Page exten
       if ("outcome" in operator) return operator;
       let canonicalCommand: string;
       try { canonicalCommand = canonicalCatalogDraftJson(input); } catch { return invalid(); }
-      const snapshot = JSON.parse(canonicalCommand), command = catalogDraftCommandSchema.safeParse(snapshot).data;
-      const issue = !command && schemas.governed && snapshot?.schemaVersion === 4 ? draftBasisPriceIssue(snapshot.payload) : undefined;
-      const identity = command ?? (issue && catalogDraftGetQuerySchema.safeParse({ draftId: snapshot.draftId, commandKey: snapshot.commandKey }).data);
-      if (!identity?.commandKey) return invalid();
-      const { draftId, commandKey } = identity;
+      const parsed = catalogDraftCommandSchema.safeParse(JSON.parse(canonicalCommand));
+      if (!parsed.success) return invalid();
+      const command = parsed.data;
       const fingerprint = createHash("sha256").update(canonicalCommand).digest("hex");
       try {
         // Read receipts first: changed registry, moved head or abandonment cannot erase a committed command.
-        const original = await deps.store.get({ draftId, commandKey }, operator.actorId);
+        const original = await deps.store.get({ draftId: command.draftId, commandKey: command.commandKey }, operator.actorId);
         if (original !== null) {
           const record = catalogDraftRecordSchema.parse(original);
-          if (record.draftId !== draftId || record.commandKey !== commandKey) return unavailable();
+          if (record.draftId !== command.draftId || record.commandKey !== command.commandKey) return unavailable();
           if (record.actorId !== operator.actorId) return { outcome: "unauthorized", reason: "draft_command_actor_mismatch" };
           if (record.fingerprint !== fingerprint) return { outcome: "conflict", reason: "draft_command_key_reused" };
           return { outcome: "replayed", record };
         }
-        if (!command) return { outcome: "validation_issue", reason: issue!.code, issues: [issue!] };
         let readiness: CatalogDraftReadiness | undefined;
         if (command.payload) {
           const validation = command.payload.schemaVersion !== 1
-            ? await validateCatalogDraftV2(command.payload.schemaVersion === 4 ? { product: command.payload.product, schemaVersion: 2, skus: command.payload.skus.map(({ priceOperations: _prices, ...sku }) => sku) }
+            ? await validateCatalogDraftV2(command.payload.schemaVersion === 4 ? { product: command.payload.product, schemaVersion: 2, skus: command.payload.skus }
               : command.payload.schemaVersion === 3 ? catalogDraftV3ValidationPayload(command.payload) : command.payload, deps.registry, deps.attributeReferences)
             : validateCatalogDraft(command.payload, deps.registry);
           if (!validation.valid) return { outcome: "validation_issue", reason: "draft_payload_invalid", issues: validation.issues };
@@ -100,7 +97,7 @@ function draftHandler<Context, Record extends PublicationDraftRecord, Page exten
         }
         return result;
       } catch (error) {
-        if (command?.payload && error instanceof CatalogPublicationError && error.diagnostic.kind === "platform" && error.diagnostic.code === "catalog_publication_rule_failed") {
+        if (command.payload && error instanceof CatalogPublicationError && error.diagnostic.kind === "platform" && error.diagnostic.code === "catalog_publication_rule_failed") {
           const issue = publicationDiagnostic(error, "structural", "product.sharedContent", command.payload.product.type.key);
           return { outcome: "validation_issue", reason: "draft_payload_invalid", issues: [renderPublicationIssue(issue)] };
         }
@@ -159,5 +156,5 @@ export function createCatalogDraftHandlerV3<Context>(deps: CatalogDraftHandlerDe
  */
 export function createCatalogDraftHandlerV4<Context>(deps: CatalogDraftHandlerDeps<Context, PublicationDraftRecord, CatalogLifecycleDraftPage>) {
   return draftHandler(deps, { command: lifecycleStoredCommandSchema, page: lifecycleStoredPageSchema,
-    record: lifecycleStoredRecordSchema, result: lifecycleStoredResultSchema, governed: true });
+    record: lifecycleStoredRecordSchema, result: lifecycleStoredResultSchema });
 }

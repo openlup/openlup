@@ -40,27 +40,6 @@ export const catalogPriceSetupCommandSchema = z.object({
   expected: catalogPriceSetupExpectedSchema,
 }).strict();
 
-const basisAmountKind = z.enum(["gross", "net"]);
-const catalogPriceSetupCommandV2Schema = catalogPriceSetupCommandSchema.extend({
-  schemaVersion: z.literal(2),
-  commandKey: commandKey.refine(value => value.length <= 240 && !value.includes("\u0000") && !/[\uD800-\uDFFF]/u.test(value)),
-  amountKind: basisAmountKind,
-  expectedListAmountBasis: z.enum(["tax_inclusive", "tax_exclusive"]),
-  expected: z.union([
-    z.object({ entryId: z.null(), unitPriceMinor: z.null(), amountKind: z.null() }).strict(),
-    z.object({ entryId: id, unitPriceMinor: amount.refine(value => !Object.is(value, -0)), amountKind: basisAmountKind }).strict(),
-  ]),
-}).superRefine((command, ctx) => {
-  if ((command.amountKind === "net") !== (command.expectedListAmountBasis === "tax_exclusive"))
-    ctx.addIssue({ code: "custom", path: ["amountKind"], message: "Use the amount kind for the selected list basis." });
-});
-/** Canonical bytes for a basis-aware price command.
- * @experimental
- */
-export function canonicalCatalogPriceSetupCommandV2(input: unknown): string {
-  return JSON.stringify(sortKeys(catalogPriceSetupCommandV2Schema.parse(input)));
-}
-
 /** @experimental */
 export const catalogPriceSetupPreviewQuerySchema = z.object({
   variantId: id, priceListId: id, unitPriceMinor: positiveAmount.optional(),

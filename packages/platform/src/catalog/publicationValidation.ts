@@ -555,8 +555,6 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     });
     if (!intent) return publicationRefuse("candidate_invalid");
     const payload = intent;
-    if (payload.publication.evidence.priceContext)
-      throw new CatalogPublicationError(publicationIssue("price_validation_unavailable", "pricing", "skus"), "dependency_unavailable");
     const governedIntent = payload.schemaVersion === 4;
     const withdrawalOnly = governedIntent && lifecycleWithdrawalOnly(payload);
     need(equal(payload.product.type, { key: definition.key, version: definition.version }), "catalog_definition_drift");

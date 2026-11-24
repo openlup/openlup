@@ -223,7 +223,7 @@ function exclusiveResult(input: Extract<ComposeCommerceQuoteMoneyV2Input, { veri
 }
 
 function positionReader(input: ComposeCommerceQuoteMoneyV2Input, result: CatalogueMoneyV2Result) {
-  const all = new Map(input.positions.map((row): readonly [string, PositionMetadata] => "ref" in row
+  const all = new Map(input.positions.map(row => "ref" in row
     ? [componentKey(row.ref), row.position] : [row.positionRef, row]));
   const unused = new Set(all.keys());
   const fiscalRates = "fiscal" in input

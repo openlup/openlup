@@ -2559,23 +2559,6 @@ export declare function canonicalCatalogDraftJson(input: unknown): string;
 ```ts
 import type { CatalogDraftPayload, CatalogDraftCommand, CatalogDraftSummary, CatalogDraftRefusal } from "./draft.js";
 import type { CatalogQuantity } from "./productTypes.js";
-/** Basis-aware price operation admitted by a governed v4 draft.
- * @experimental
- */
-export type CatalogDraftBasisPriceOperationV2 = Omit<CatalogDraftPriceOperationV2, "schemaVersion" | "amountKind" | "expected"> & {
-    schemaVersion: 2;
-    amountKind: "gross" | "net";
-    expectedListAmountBasis: "tax_inclusive" | "tax_exclusive";
-    expected: {
-        entryId: null;
-        unitPriceMinor: null;
-        amountKind: null;
-    } | {
-        entryId: string;
-        unitPriceMinor: number;
-        amountKind: "gross" | "net";
-    };
-};
 /** One immediate positive gross base replacement. Expectations are wholly null or wholly set.
  * @experimental
  */
@@ -2929,7 +2912,7 @@ export * from "./catalogPack.js";
 export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./productTypes.js";
 export type { CatalogDefinitionInstallReceipt } from "./definitionInstall.js";
 export type { CatalogCombinationIdentityV2, CatalogCombinationCode, CatalogRetainedCombinationV2, CatalogCombinationChangeV2 } from "./variantAxes.js";
-export type { CatalogDraftPriceOperationV2, CatalogDraftBasisPriceOperationV2, CatalogAttributeScalarValue, CatalogAttributeValue, CatalogDraftPayloadV2, CatalogDraftCommandV2, CatalogDraftStoredPayload, CatalogDraftStoredCommand, CatalogDraftStoredRecord, CatalogDraftStoredApplyResult } from "./draftV2.js";
+export type { CatalogDraftPriceOperationV2, CatalogAttributeScalarValue, CatalogAttributeValue, CatalogDraftPayloadV2, CatalogDraftCommandV2, CatalogDraftStoredPayload, CatalogDraftStoredCommand, CatalogDraftStoredRecord, CatalogDraftStoredApplyResult } from "./draftV2.js";
 export type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison, CatalogCandidateIssue } from "./candidate.js";
 export type { CatalogPublicationJson, CatalogPublicationFacts, CatalogDraftProvenanceV3, CatalogDraftClaimV3, CatalogDraftMediaClaimV3, CatalogDraftPublicationSkuV3, CatalogDraftMembershipV3, CatalogDraftSharedContentV3, CatalogDraftPublicationOperationV3, CatalogDraftPublicationInputsV3, CatalogDraftPayloadV3, CatalogDraftCommandV3, CatalogDraftPublicationStoredPayload, CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord, CatalogDraftPublicationStoredApplyResult } from "./draftV3.js";
 ```
@@ -3320,59 +3303,6 @@ export interface CatalogCombinationChangeV2 {
     readonly optionValues?: Readonly<Record<string, CatalogOptionValue>> | null;
 }
 ```
-## dist/catalog/draftBasisPrice.d.ts
-
-```ts
-import { z } from "./validation.js";
-declare const contextSchema: z.ZodObject<{
-    priceListId: z.ZodGUID;
-    regionCode: z.ZodString;
-    currency: z.ZodString;
-    amountBasis: z.ZodEnum<{
-        tax_inclusive: "tax_inclusive";
-        tax_exclusive: "tax_exclusive";
-    }>;
-    tax: z.ZodNullable<z.ZodObject<{
-        market: z.ZodString;
-        taxClassKey: z.ZodString;
-        classMapRevision: z.ZodString;
-        classMapDigest: z.ZodString;
-    }, z.core.$strict>>;
-}, z.core.$strict>;
-export type DraftBasisPriceContext = z.infer<typeof contextSchema>;
-export declare function readDraftBasisPrices(skus: readonly {
-    id: string;
-    priceOperations?: unknown[] | undefined;
-}[], evidence: unknown): {
-    issue?: undefined;
-    context?: undefined;
-    v2?: undefined;
-} | {
-    issue: {
-        code: string;
-        path: string;
-        message: string;
-    };
-    context?: undefined;
-    v2?: undefined;
-} | {
-    context: {
-        priceListId: string;
-        regionCode: string;
-        currency: string;
-        amountBasis: "tax_inclusive" | "tax_exclusive";
-        tax: {
-            market: string;
-            taxClassKey: string;
-            classMapRevision: string;
-            classMapDigest: string;
-        } | null;
-    };
-    v2: Set<unknown>;
-    issue?: undefined;
-};
-export {};
-```
 ## dist/catalog/draftHandler.d.ts
 
 ```ts
@@ -3380,7 +3310,7 @@ import { type CatalogDraftApplyResult, type CatalogDraftRecord, type CatalogDraf
 import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import { type CatalogLifecycleDraftPage } from "./lifecycleDraftSchemas.js";
-import { type PublicationDraftRecord } from "./publicationIntent.js";
+import type { PublicationDraftRecord } from "./publicationIntent.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import { type CatalogDraftOperator, type CatalogDraftStorePort } from "./draftPorts.js";
 import type { CatalogDraftIssue, CatalogProductTypeRegistry } from "./productTypeSchemas.js";
@@ -5906,8 +5836,6 @@ export interface CatalogCandidatePublicationDeps {
 ```ts
 import { z } from "./validation.js";
 import type { CatalogDraftPayloadV3, CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
-import { type DraftBasisPriceContext } from "./draftBasisPrice.js";
-import type { CatalogDraftBasisPriceOperationV2, CatalogDraftPriceOperationV2 } from "./contracts/draftV2.js";
 declare const state: z.ZodEnum<{
     active: "active";
     draft: "draft";
@@ -5984,28 +5912,17 @@ export type PublicationIntent = Omit<CatalogDraftPayloadV3, "schemaVersion" | "p
     schemaVersion: 3 | 4;
     publication: Omit<CatalogDraftPayloadV3["publication"], "operations"> & {
         operations: PublicationOperation[];
-        evidence: CatalogDraftPayloadV3["publication"]["evidence"] & {
-            priceContext?: DraftBasisPriceContext;
-        };
     };
 };
 /** @experimental */
-export type CatalogDraftPayloadV4 = Omit<PublicationIntent, "skus"> & {
+export type CatalogDraftPayloadV4 = PublicationIntent & {
     schemaVersion: 4;
-    skus: (Omit<PublicationIntent["skus"][number], "priceOperations"> & {
-        priceOperations?: (CatalogDraftPriceOperationV2 | CatalogDraftBasisPriceOperationV2)[] | undefined;
-    })[];
 };
 /** @experimental */
 export type PublicationDraftRecord = Omit<CatalogDraftPublicationStoredRecord, "payload"> & {
     payload: CatalogDraftPublicationStoredRecord["payload"] | CatalogDraftPayloadV4;
 };
 export declare function lifecycleWithdrawalOnly(payload: PublicationIntent): boolean;
-export declare function draftBasisPriceIssue(input: unknown): {
-    code: string;
-    path: string;
-    message: string;
-} | undefined;
 export declare function isLifecycleOperation(operation: PublicationOperation): operation is PublicationLifecycleOperation;
 /** Preserve the original wire for identity. Lower both inputs once into a single ordered intent. */
 export declare function publicationIntent(input: unknown, onInvalid?: (path: string, unsupportedKey: boolean, fix?: string) => never, stored?: boolean): PublicationIntent | null;

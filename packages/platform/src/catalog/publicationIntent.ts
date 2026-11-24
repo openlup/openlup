@@ -3,8 +3,6 @@ import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import type { CatalogDraftPayloadV3, CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import { catalogDraftPayloadV3Schema, catalogPublicationDraftPayloadSchema } from "./draftV3Schemas.js";
 import { catalogDraftSummarySchema } from "./draftSchemas.js";
-import { readDraftBasisPrices, type DraftBasisPriceContext } from "./draftBasisPrice.js";
-import type { CatalogDraftBasisPriceOperationV2, CatalogDraftPriceOperationV2 } from "./contracts/draftV2.js";
 import { catalogDraftProductV2Schema, catalogDraftSkuV2Schema } from "./draftV2Schemas.js";
 
 const state = z.enum(["draft", "active", "withdrawn", "archived"]);
@@ -27,14 +25,10 @@ type LegacyOperation = CatalogDraftPayloadV3["publication"]["operations"][number
 export type PublicationOperation = LegacyOperation | PublicationLifecycleOperation;
 export type PublicationIntent = Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication"> & {
   schemaVersion: 3 | 4;
-  publication: Omit<CatalogDraftPayloadV3["publication"], "operations"> & { operations: PublicationOperation[];
-    evidence: CatalogDraftPayloadV3["publication"]["evidence"] & { priceContext?: DraftBasisPriceContext } };
+  publication: Omit<CatalogDraftPayloadV3["publication"], "operations"> & { operations: PublicationOperation[] };
 };
 /** @experimental */
-export type CatalogDraftPayloadV4 = Omit<PublicationIntent, "skus"> & { schemaVersion: 4;
-  skus: (Omit<PublicationIntent["skus"][number], "priceOperations"> & {
-    priceOperations?: (CatalogDraftPriceOperationV2 | CatalogDraftBasisPriceOperationV2)[] | undefined;
-  })[] };
+export type CatalogDraftPayloadV4 = PublicationIntent & { schemaVersion: 4 };
 /** @experimental */
 export type PublicationDraftRecord = Omit<CatalogDraftPublicationStoredRecord, "payload"> & {
   payload: CatalogDraftPublicationStoredRecord["payload"] | CatalogDraftPayloadV4;
@@ -45,18 +39,14 @@ export function lifecycleWithdrawalOnly(payload: PublicationIntent): boolean {
   return operations.length > 0 && operations.every(operation =>
     (operation.op === "set_product_lifecycle" || operation.op === "set_sku_lifecycle") && operation.state === "withdrawn"
     || operation.op === "set_eligibility" && !operation.sellableStandalone && !operation.sellableInSubscription)
-    && !payload.publication.evidence.priceContext && !payload.skus.some(sku => sku.priceOperations?.length);
+    && !payload.skus.some(sku => sku.priceOperations?.length);
 }
 
 const v4Wire = z.object({ schemaVersion: z.literal(4),
   product: catalogDraftProductV2Schema.extend({ sharedContent: z.unknown() }).strict(),
-  skus: z.array(catalogDraftSkuV2Schema.extend({ priceOperations: z.array(z.unknown()).optional() })).max(10_000),
+  skus: z.array(catalogDraftSkuV2Schema).max(10_000),
   publication: z.object({ kind: z.enum(["release", "compensation"]), operations: z.array(z.unknown()), evidence: z.unknown() }).strict(),
 }).strict();
-export function draftBasisPriceIssue(input: unknown) {
-  const draft = v4Wire.safeParse(input);
-  return draft.success ? readDraftBasisPrices(draft.data.skus, draft.data.publication.evidence).issue : undefined;
-}
 const summary = catalogDraftSummarySchema.extend({ payload: z.unknown() }).strict();
 
 export function isLifecycleOperation(operation: PublicationOperation): operation is PublicationLifecycleOperation {
@@ -81,16 +71,10 @@ export function publicationIntent(input: unknown, onInvalid?: (path: string, uns
   const wire = v4Wire.safeParse(input);
   if (!wire.success) return invalid(wire.error.issues[0]!);
   const { publication, skus } = wire.data;
-  const basis = readDraftBasisPrices(skus, publication.evidence);
-  if (basis.issue) return onInvalid?.(basis.issue.path, false, basis.issue.message) ?? null;
-  const evidence = basis.context ? Object.fromEntries(Object.entries(publication.evidence as object).filter(([key]) => key !== "priceContext"))
-    : publication.evidence;
   const lifecycle = publication.operations.map(operation => lifecycleOperation.safeParse(operation));
   const commonIndexes = lifecycle.flatMap((op, index) => op.success ? [] : [index]);
   const common = (stored ? catalogDraftPayloadV3Schema : catalogPublicationDraftPayloadSchema).safeParse({ ...wire.data, schemaVersion: 3,
-    skus: basis.v2 ? skus.map(sku => sku.priceOperations === undefined ? sku
-      : { ...sku, priceOperations: sku.priceOperations.filter(operation => !basis.v2!.has(operation)) }) : skus,
-    publication: { ...publication, evidence, operations: publication.operations.filter((_operation, index) => !lifecycle[index]!.success) },
+    publication: { ...publication, operations: publication.operations.filter((_operation, index) => !lifecycle[index]!.success) },
   });
   if (!common.success) {
     const issue = common.error.issues[0]!;
@@ -114,8 +98,7 @@ export function publicationIntent(input: unknown, onInvalid?: (path: string, uns
       && (other.sellableStandalone || other.sellableInSubscription)));
   if (missingEligibility >= 0) return onInvalid?.(`publication.operations.${missingEligibility}`, false) ?? null;
   try { canonicalCatalogDraftJson(input); } catch { return null; }
-  return { ...common.data, schemaVersion: 4, publication: { ...common.data.publication, operations,
-    evidence: basis.context ? { ...common.data.publication.evidence, priceContext: basis.context } : common.data.publication.evidence } };
+  return { ...common.data, schemaVersion: 4, skus, publication: { ...common.data.publication, operations } };
 }
 
 /** Read only the revision identity. The interpreter owns payload admission. */

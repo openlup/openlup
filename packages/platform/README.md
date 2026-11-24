@@ -1201,11 +1201,6 @@ for installation, transfer and managed-rail limits. Scheduling, list lifecycle,
 context-version operations, zero-price writes and broader price plans remain
 reserved for a later command version.
 
-The experimental `CatalogPriceSetupCommandV2` and
-`CatalogDraftBasisPriceOperationV2` describe a basis-aware edit in a governed
-v4 draft. Save persists the host-supplied price context with the draft revision.
-The existing immediate writer still accepts the gross command described above.
-
 The existing `./catalog` entry supplies the opt-in PostgreSQL quote catalog
 reader described under [Catalog](#catalog); the quote engine consumes its
 existing `CommerceQuoteCatalogReadPort`.

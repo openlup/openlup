@@ -98,23 +98,6 @@ export interface CatalogPriceSetupCommand {
         unitPriceMinor: number;
     };
 }
-/** Basis-aware, exact-SKU, one-time base replacement.
- * @experimental
- */
-export type CatalogPriceSetupCommandV2 = Omit<CatalogPriceSetupCommand, "schemaVersion" | "amountKind" | "expected"> & {
-    schemaVersion: 2;
-    amountKind: "gross" | "net";
-    expectedListAmountBasis: "tax_inclusive" | "tax_exclusive";
-    expected: {
-        entryId: null;
-        unitPriceMinor: null;
-        amountKind: null;
-    } | {
-        entryId: string;
-        unitPriceMinor: number;
-        amountKind: "gross" | "net";
-    };
-};
 /** @experimental */
 export interface CatalogPriceSetupEntry {
     entryId: string;
@@ -239,7 +222,7 @@ export { ACQUISITION_TERMS_CAPABILITY } from "./acquisitionTerms.js";
 export type { AcquisitionQuoteRequest, AcquisitionQuoteContext, AcquisitionQuote, AcquisitionCapability, AcquisitionTermsMetadata, AcquisitionTerms, ResolvedAcquisitionTerms, AcquisitionTermsExpectation } from "./acquisitionTerms.js";
 export { COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION } from "./offer.js";
 export type { AcquisitionOfferPricingResponse } from "./offer.js";
-export type { CatalogPriceSetupCommand, CatalogPriceSetupCommandV2, CatalogPriceSetupEntry, CatalogPriceSetupReadiness, CatalogPriceSetupPreviewQuery, CatalogPriceSetupSubscription, CatalogPriceSetupPreview, CatalogPriceSetupReceipt, CatalogPriceSetupRefusal, CatalogPriceSetupApplyResult } from "./catalogPriceSetup.js";
+export type { CatalogPriceSetupCommand, CatalogPriceSetupEntry, CatalogPriceSetupReadiness, CatalogPriceSetupPreviewQuery, CatalogPriceSetupSubscription, CatalogPriceSetupPreview, CatalogPriceSetupReceipt, CatalogPriceSetupRefusal, CatalogPriceSetupApplyResult } from "./catalogPriceSetup.js";
 export type { CommerceQuoteMoneyV2, CommerceQuoteV2, MoneyLineV2, DiscountAllocationV2, TaxPositionV2, DeliveryBucketV2, FeeLineV2 } from "./quoteV2.js";
 ```
 ## dist/pricing/contracts/money.d.ts
