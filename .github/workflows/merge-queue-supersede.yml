@@ -33,14 +33,18 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          live=$(gh api --paginate "repos/$REPO/git/matching-refs/heads/gh-readonly-queue/" --jq '.[].ref | sub("^refs/heads/"; "")')
-          for status in queued in_progress waiting; do
+          # Runs first, then refs: a ref present when its run was listed is
+          # still listed, so a live group's run is never cancelled.
+          runs=$(for status in queued in_progress waiting; do
             gh api --paginate "repos/$REPO/actions/workflows/published-tree-ci.yml/runs?event=merge_group&status=$status&per_page=100" \
-              --jq '.workflow_runs[] | "\(.id) \(.head_branch)"'
-          done | while read -r id branch; do
+              --jq '.workflow_runs[] | "\(.id) \(.head_branch)"' || exit 1
+          done)
+          live=$(gh api --paginate "repos/$REPO/git/matching-refs/heads/gh-readonly-queue/" --jq '.[].ref | sub("^refs/heads/"; "")')
+          while read -r id branch; do
+            [ -n "$id" ] || continue
             case "$branch" in gh-readonly-queue/*) ;; *) continue ;; esac
             if ! grep -qxF "$branch" <<<"$live"; then
               echo "cancel $id ($branch)"
-              gh api -X POST "repos/$REPO/actions/runs/$id/cancel" >/dev/null || echo "cancel $id failed"
+              gh api -X POST "repos/$REPO/actions/runs/$id/cancel" >/dev/null || echo "::warning::cancel $id failed"
             fi
-          done
+          done <<<"$runs"
