@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { createDestinationDocumentPrivacyContributor, createDestinationReceiptPrivacyContributor, createPersonalDataContributorRegistry } from "@openlup/platform/identity";
 import { expect, it } from "vitest";
 import { z } from "zod";
@@ -391,6 +392,12 @@ async function expectInfrastructure(result: Promise<unknown>, cause?: unknown) {
   expect(descriptor).toMatchObject({ enumerable: false, configurable: true, writable: true });
   if (cause !== undefined) expect(descriptor?.value).toBe(cause);
   expect(JSON.stringify(error)).toBe("{}");
+  return error as Error;
+}
+
+function expectMalformedCause(error: Error, rowCount: number | null) {
+  expect(Reflect.ownKeys(error.cause as object).sort()).toEqual(["reason", "rowCount"]);
+  expect(error.cause).toStrictEqual({ reason: "malformed_response", rowCount });
 }
 
 it("throws the fixed infrastructure error for executor failures, even if the cause resembles a refusal", async () => {
@@ -398,6 +405,38 @@ it("throws the fixed infrastructure error for executor failures, even if the cau
     const port = createPostgresDestinationPortV2({ query: async () => { throw cause; } });
     await expectInfrastructure(port.snapshot(context, command, now), cause);
   }
+});
+
+it("decodes success and owner refusals from an executor array subclass with metadata", async () => {
+  class DriverRows extends Array<Record<string, unknown>> {
+    count = 1;
+    command = "SELECT";
+    columns = [{ name: "result" }];
+  }
+  const results = [verified, retainedChanged];
+  const port = createPostgresDestinationPortV2({ query: async () => ({ rows: new DriverRows({ result: results.shift() }) }) });
+  await expect(port.read(context, "order", orderId, binding)).resolves.toStrictEqual(verified);
+  expectRefusal(await port.read(context, "order", orderId, binding), retainedChanged);
+});
+
+it("uses the single own data row without invoking an index accessor", async () => {
+  let accesses = 0;
+  const rows = [{ result: verified }];
+  Object.defineProperty(rows, "0", { get() { accesses++; return { result: verified }; } });
+  const port = createPostgresDestinationPortV2({ query: async () => ({ rows }) });
+  const error = await expectInfrastructure(port.read(context, "order", orderId, binding));
+  expect(accesses).toBe(0);
+  expectMalformedCause(error, 1);
+});
+
+it("keeps malformed read evidence out of the inspected infrastructure error", async () => {
+  const response = { rows: [{ result: { ...verified, documentDigest: "invalid" } }] };
+  const port = createPostgresDestinationPortV2({ query: async () => response });
+  const error = await expectInfrastructure(port.read(context, "order", orderId, binding));
+  const inspected = inspect(error, { depth: null });
+  expect(inspected).not.toContain(verified.document.address.line1);
+  expect(inspected).not.toContain(verified.document.contact.recipientName);
+  expectMalformedCause(error, 1);
 });
 
 it("rejects malformed rows and expanded refusal or success shapes", async () => {
@@ -411,10 +450,12 @@ it("rejects malformed rows and expanded refusal or success shapes", async () => 
     { ...issued, binding: { ...binding, destinationDigest: "A".repeat(64) } },
     { ...issued, selection: { ...selection, scopeRef: "wrong" } }, { ...issued, replayed: "true" }, { ...issued, eventId: 1 }];
   for (const rows of [[], [{ result: issued }, { result: issued }], [{}], [{ result: issued, extra: true }], ...outcomes.map(result => [{ result }])]) {
-    const response = { rows };
-    const port = createPostgresDestinationPortV2({ query: async () => response });
-    await expectInfrastructure(port.snapshot(context, command, now), response);
+    const port = createPostgresDestinationPortV2({ query: async () => ({ rows }) });
+    expectMalformedCause(await expectInfrastructure(port.snapshot(context, command, now)), rows.length);
   }
+  const invalidRows = { length: 1 } as unknown as Record<string, unknown>[];
+  const invalidExecutor = createPostgresDestinationPortV2({ query: async () => ({ rows: invalidRows }) });
+  expectMalformedCause(await expectInfrastructure(invalidExecutor.snapshot(context, command, now)), null);
   const readVariants = [
     { ...verified, document: { ...verified.document, revision: 2 } },
     { ...verified, document: { ...verified.document, owner: { ...owner, principalKind: "guest" } } },

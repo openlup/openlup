@@ -339,10 +339,13 @@ export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): D
     } catch (cause) {
       throw new Error(infrastructureMessage, { cause });
     }
+    let rowCount: number | null = null;
     try {
       const rows: unknown = Object.getOwnPropertyDescriptor(response, "rows")?.value;
-      if (Array.isArray(rows) && rows.length === 1) {
-        const row = dataEntries(rows)[0]?.[1];
+      const length: unknown = Array.isArray(rows) ? rows.length : null;
+      rowCount = typeof length === "number" ? length : null;
+      if (rowCount === 1) {
+        const row: unknown = Object.getOwnPropertyDescriptor(rows, "0")?.value;
         const fields = plainRecord(row) ? dataEntries(row) : [];
         if (fields.length === 1 && fields[0]?.[0] === "result") {
           const result = snapshotJson(fields[0][1]);
@@ -352,9 +355,9 @@ export function createPostgresDestinationPortV2(db: DestinationQueryExecutor): D
         }
       }
     } catch {
-      // A malformed executor response is kept only as the server-side cause.
+      // Keep only the row count when decoding fails.
     }
-    throw new Error(infrastructureMessage, { cause: response });
+    throw new Error(infrastructureMessage, { cause: { reason: "malformed_response", rowCount } });
   }
 
   return {

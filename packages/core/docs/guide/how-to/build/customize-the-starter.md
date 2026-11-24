@@ -466,13 +466,11 @@ the same operation after fixing the cause.
 
 Keep fresh issuance disabled. For exact snapshot replay, submit the original
 command and digest. The validated projection can be omitted, and an authorized
-erased receipt can return only `{ evidenceDisposition: "erased" }`. The host
-owns the supplied executor's transaction and session lifetime. Use read
-committed for snapshot and roll back any outer transaction before returning a
-refusal. Keep the guarded claim's read-committed writer and its guards through
-completion. A fresh order binds the order inserted in the guarded repeatable-read
-writer after the admission probe. Abort that callback on refusal and return it
-after rollback or discard. Replay an existing order binding in read committed.
+erased receipt can return only `{ evidenceDisposition: "erased" }`. Run
+`snapshot` and `registerOrder` in the host's own `READ COMMITTED` transaction.
+Use `registerOrder` only to replay an existing order binding. Roll back any
+outer transaction before publishing a refusal. Fresh claim and fresh-order
+binding are unavailable to adopters and stay disabled.
 
 ## Compose post-renewal policy
 
