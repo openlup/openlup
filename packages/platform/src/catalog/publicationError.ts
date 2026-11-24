@@ -159,8 +159,7 @@ export function publicationDiagnostic(error: CatalogPublicationError, phase: Non
 }
 export const publicationRefuse = (code: PlatformCode, outcome?: CatalogPublicationError["outcome"]): never => { throw new CatalogPublicationError(code, outcome); };
 
-/** @internal Static owner guidance used by the CLI and reader guide. */
-export const publicationRefusals: Readonly<Record<PlatformCode, Remedy>> = {
+const publicationRefusals = {
   ...CATALOG_CONFORMANCE_RULES,
   catalog_publication_cursor_invalid: ["candidate_invalid", "Restart from the first page or reuse the continuation returned for this product."],
   catalog_publication_query_invalid: ["candidate_invalid", "Reload the product and use the publication identifiers returned for it."],
@@ -372,7 +371,10 @@ export const publicationRefusals: Readonly<Record<PlatformCode, Remedy>> = {
   trade_identifier_scheme_unsupported: { fix: "Use a supported trade identifier scheme." },
   type_not_installed: { fix: "Install the product type and version selected by the draft.", cause: "No installed definition matches the draft product type and version." },
   unit_trade_identifier_missing: { fix: "Add a valid unit trade identifier to the SKU, then prepare the draft again. For a product without a GS1 barcode, mint one with catalogInternalGtin.", cause: "The SKU needs a valid unit GTIN for publication." },
-};
+} as const satisfies Record<PlatformCode, Remedy>;
+
+/** @internal Static owner guidance used by the CLI and reader guide. */
+export { publicationRefusals };
 
 export type AdmissionDiagnostic = PlatformCode;
 export const refusePublicationCommand = publicationRefuse;

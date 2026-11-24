@@ -33,7 +33,7 @@ function describeCodes() {
   const publication = (Object.keys(publicationRefusals) as PlatformCode[]).flatMap(code => {
     const remedy = publicationRefusals[code];
     if ("rule" in remedy) return []; // Spread from the conformance record above.
-    const cause = "fix" in remedy ? remedy.cause : remedy.at(2);
+    const cause = "fix" in remedy ? ("cause" in remedy ? remedy.cause : undefined) : remedy.at(2);
     return [{ code, family: publicationFamily(code), severity: "error" as const,
       ...(cause === undefined ? {} : { cause }), fix: publicationRemedy(code) }];
   });
