@@ -1,19 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool } from "pg";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
-import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor } from "@openlup/platform/data";
+import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor, type PostgresRoleFreeTransactionLane } from "@openlup/platform/data";
 import { createPostgresPrivacyStore, createPrivacyOperations, createIdentityPersonalDataContributor,
   createPersonalDataContributorRegistry, createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor,
 } from "@openlup/platform/identity";
 import { commerceQuoteV2Schema, quoteDigest, type CommerceQuoteMoneyV2, type CommerceQuoteV2 } from "@openlup/platform/pricing";
+import { applyTaxCoverageRevision, beginTaxCalculation, completeTaxCalculation, evaluationDigest, localRateTable,
+  makeTaxQuoteRequest, verifyTaxQuoteResult } from "@openlup/platform/tax";
+import type { TaxQuoteInputV1, TaxQuoteRequestV1 } from "@openlup/platform/tax/contracts";
 import { createPlatformPostgresMigrationRunner } from "@openlup/platform/migrations";
 import { composeNativePrivacy } from "../../server/runtime/auth/privacyBinding.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { captureStoreJourney, journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
-import { destinationContext, destinationHash, reachDestinationCutoff, snapshot } from "./destinationDocumentFixture.js";
+import { destinationContext, destinationHash, reachDestinationCutoff, snapshot, snapshotCommand, snapshotPreimage } from "./destinationDocumentFixture.js";
 
 const resources = storeJourneyResources();
 let store: JourneyInstallation;
@@ -518,4 +521,560 @@ it("refuses native privacy when its installed RPC privileges are missing", async
   expect(await storedRow(store.owner, value.calculationId)).toMatchObject({ state: "terminal" });
   expect((await current.export(actor, subject(value.ctx.clientId))).documents.find(entry => entry.contributorId === "tax-calculations"))
     .toMatchObject({ coverage: { complete: true }, data: [{ outcome: value.outcome }] });
+});
+
+describe("native evaluation claim and seal", () => {
+  let store: JourneyInstallation;
+  beforeAll(async () => { store = await resources.installation("tax-claim-seal"); }, postgresSetupTimeoutMs);
+
+  const lane = (db = store) => createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString: db.runtimeUrl }, { pool: db.runtime });
+  const defaultInvocation = { purpose: "final", mode: "one_time", lines: [{ sku: "item-a", quantity: 1 }],
+    deliverySelector: "delivery-a", paymentSelector: "rail-a" } as const;
+
+  type ClaimInput = Extract<Parameters<typeof beginTaxCalculation>[1], { operation: "claim" }>;
+  type SealInput = Exclude<Parameters<typeof completeTaxCalculation>[1], Uint8Array>;
+  type Claim = Extract<Awaited<ReturnType<typeof beginTaxCalculation>>, { kind: "claimed" }>;
+  type Lane = PostgresRoleFreeTransactionLane<PgQueryExecutor>;
+  const recovery = "ab".repeat(32);
+  const blocked = { kind: "refused", code: "commerce_destination_owner_mismatch", field: "/destination/snapshotRef",
+    remedy: "Re-obtain evidence through the authenticated owner." };
+  const invalid = (field: string) => ({ kind: "refused", code: "tax_invalid_input", field, remedy: "Supply the documented input." });
+
+  async function fixture(db = store, purpose: "final" | "estimate" = "final", evaluationKey: string = randomUUID()) {
+    const ctx = await destinationContext(db.owner);
+    const issued = await snapshot(db.runtime, ctx);
+    const identity = { clientId: ctx.clientId, principalRef: ctx.owner.principalRef, installationRef: ctx.owner.installationRef,
+      scopeRef: ctx.scopeRef, evaluationKey };
+    const invocation = { ...defaultInvocation, purpose, lines: [...defaultInvocation.lines] };
+    const claim = { operation: "claim", identity, invocation, recovery: null, pin: {
+      kind: "fiscal_profile", destination: issued.binding, request: { basis: "inclusive", taxDate: "2026-01-01T00:00:00.000Z" },
+      coverage: null, validUntil: issued.evidenceExpiresAt, recovery: null,
+    } } satisfies ClaimInput;
+    return { ctx, claim, lookup: { identity, invocation, operation: "lookup" as const }, issued };
+  }
+
+  const boundDigest = "a".repeat(64);
+  const effectiveDate = "2026-06-05T10:00:00.000Z";
+  function moneyFixture() {
+    return {
+      catalogueEvidenceRef: "catalogue:v1", mode: "one_time" as const, currency: "XXX",
+      paymentLimits: { profileRef: "limits", revision: "limits:v1", channelKey: "checkout", currency: "XXX", minMinor: 1, maxMinor: 1000 },
+      coverageDigest: boundDigest, deliverySelectionRef: "delivery-a",
+      price: { priceListRef: "list-a", priceContextDigest: boundDigest, priceEvidenceRef: "price-a", classMapRevision: "classes-a" },
+      lines: [{ lineKey: "item-z", sourceOrdinal: 1, sku: "item-z", mode: "one_time" as const, quantity: 1, unitBasisMinor: 100,
+        taxClassKey: "standard", assignmentRef: "assignment-a", preDiscountMinor: 100, effectiveMinor: 100,
+        netMinor: 100, taxMinor: 0, lineTotalMinor: 100, discountAllocations: [], taxPositions: [] }],
+      deliveryBuckets: [], feeLines: [], netTotal: 100, taxTotal: 0, feeTotal: 0, payableMinor: 100,
+    };
+  }
+  function sealQuote(money: CommerceQuoteMoneyV2, status: CommerceQuoteV2["status"] = "final"): CommerceQuoteV2 {
+    const quote = { ...money, contractVersion: "commerce.v1", schemaVersion: 2, quoteId: randomUUID(), status,
+      moneyDigest: quoteDigest("commerce.quote-money.v2", money) } as const;
+    return { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) };
+  }
+
+  function fiscalSeal(input: ClaimInput, claim: Claim, cutoff = claim.pin.validUntil): SealInput {
+    const { identity, invocation } = input, { calculationId, claimToken, generation, pin } = claim;
+    const { requestDigest, invocationDigest, destination, kind } = pin;
+    const validUntil = cutoff;
+    const evidence = { policyRevision: "fiscal-a", posting: "no_provider_posting" };
+    const envelope = { calculationId, invocationDigest, requestDigest, generation, destination, kind, evidence,
+      disposition: "no_provider_posting", validUntil };
+    if (kind !== "fiscal_profile") throw new Error("Expected fiscal fixture");
+    const money = moneyFixture();
+    const lines = money.lines.map(line => ({ ...line, taxPositions: [{
+      positionRef: "fixture-fiscal", jurisdictionRef: "fixture-jurisdiction", level: "district", taxKind: "consumption",
+      taxabilityReason: "fixture", ruleRef: "policy", resolution: { assignmentRef: "assignment-a", policyRevision: "fiscal-a",
+        sourceRef: "fiscal-profile", effective: { from: effectiveDate } }, resolutionDigest: boundDigest,
+      rateDecimal: "0", taxableMinor: line.netMinor, taxMinor: 0,
+    }] }));
+    const quote = sealQuote({ ...money, lines, destination, amountBasis: "inclusive",
+      promotion: { engine: "promotion-engine.v1", rankingRuleRef: "lowest_payable_gross" },
+      taxEvidence: { kind, taxDate: effectiveDate, calculationId,
+        expiresAt: validUntil, evidenceDigest: evaluationDigest("evaluation-evidence", envelope) },
+    }, invocation.purpose);
+    return { identity, invocation, calculationId, claimToken, generation, seal: { requestDigest, destination, validUntil, kind,
+      contradiction: false, outcome: { kind: invocation.purpose, quote }, evidence } };
+  }
+
+  async function exclusiveFixture(db = store) {
+    const value = await fixture(db);
+    const { binding } = value.issued;
+    const address = snapshotCommand(value.ctx).command.validated.address;
+    const effective = { from: taxDate };
+    const scope = { adapter: "adapter-a", adapterVersion: "1", accountRef: "account-a", mode: "test" } as const;
+    const source = { lineKey: "item-z", sourceOrdinal: 1, quantity: 1, unitBasisMinor: 100 };
+    const original: TaxQuoteInputV1 = {
+      scope, market: "market-a", currency: "XXX", purpose: "final", taxDate,
+      destination: { snapshotRef: binding.snapshotRef, digest: binding.destinationDigest, policyRevision: binding.policyRevision, address },
+      shipFromRef: "origin-a", policyRevision: "policy-a", classMapRevision: "classes-a",
+      money: { amountBasis: "exclusive", sources: [source], delivery: [], adjustments: [], fees: [] },
+      lines: [{ lineKey: source.lineKey, sku: "item-z", mode: "one_time", taxClass: "standard", assignmentRef: "assignment-a" }],
+      delivery: [], required: [{ target: { kind: "line", key: source.lineKey }, jurisdiction: "district-a",
+        level: "district", taxKind: "sale", sourcing: "destination" }],
+      coverage: { schemaVersion: 1, accountRef: scope.accountRef, revision: "coverage-a",
+        declarations: [{ jurisdiction: "district-a", taxKind: "sale", status: "registered",
+          actorRef: "actor-a", recordedAt: taxDate, effective }] },
+    };
+    const request = makeTaxQuoteRequest("original-key", original);
+    const installationRef = value.ctx.owner.installationRef;
+    const row = (await db.owner.query("SELECT * FROM public.tax_coverage_read_v1($1,$2)",
+      [installationRef, original.scope.accountRef])).rows[0];
+    const result = row ?? await applyTaxCoverageRevision(db.owner, { expectedHead: null,
+      document: { installationRef, accountRef: original.scope.accountRef, coverage: original.coverage, actorRef: "fixture" } });
+    const digest = "coverageDigest" in result ? result.coverageDigest : result.coverage_digest;
+    expect(digest).toMatch(/^[0-9a-f]{64}$/u);
+    const claim: ClaimInput = { ...value.claim, recovery, pin: { ...value.claim.pin, kind: "tax_calculation",
+      request, recovery, coverage: { accountRef: original.scope.accountRef, revision: original.coverage.revision, digest } } };
+    return { ...value, claim, request };
+  }
+
+  async function claimFresh(input: ClaimInput, active = lane()): Promise<Claim> {
+    const result = await beginTaxCalculation(active, input);
+    expect(result).toMatchObject({ kind: "claimed", generation: 1 });
+    if (result.kind !== "claimed") throw new Error("Expected first claim");
+    return result;
+  }
+
+  async function forceClaimTransition(owner: Pool, id: string, generation: number) {
+    await owner.query(`BEGIN; ALTER TABLE public.tax_calculations DISABLE TRIGGER tax_calculation_guard;
+      UPDATE public.tax_calculations SET generation=${generation},lease_until=clock_timestamp()-interval '1 second'
+      WHERE calculation_id='${id}'; ALTER TABLE public.tax_calculations ENABLE TRIGGER tax_calculation_guard; COMMIT;`);
+  }
+
+  async function mutateTransition(search: string, replacement: string, witness: () => Promise<void>) {
+    const sql = "SELECT pg_get_functiondef('public.tax_calculation_transition_v1(jsonb,boolean)'::regprocedure) AS definition";
+    const definition: string = (await store.owner.query(sql)).rows[0]!.definition;
+    expect(definition).toContain(search);
+    await store.owner.query(definition.replace(search, replacement));
+    try { await witness(); }
+    finally { await store.owner.query(definition); }
+  }
+
+  it("binds invocation order, serializes first claims and grants no dispatch on lookup or takeover before the lease", async () => {
+    const { claim, lookup } = await fixture();
+    expect(await beginTaxCalculation(lane(), lookup)).toStrictEqual({ kind: "missing" });
+    const results = await Promise.all([beginTaxCalculation(lane(), claim), beginTaxCalculation(lane(), claim)]);
+    expect(results.map(result => result.kind).sort()).toStrictEqual(["claimed", "refused"]);
+    expect(results).toContainEqual({ kind: "refused", code: "tax_claim_pending", field: "/claim", remedy: "Read the original evaluation outcome." });
+    expect(await beginTaxCalculation(lane(), lookup)).toStrictEqual({ kind: "pending" });
+    const changed = { ...lookup, invocation: { ...lookup.invocation, lines: [{ sku: "item-b", quantity: 1 }] } };
+    const expectConflict = async () => expect(await beginTaxCalculation(lane(), changed))
+      .toMatchObject({ kind: "refused", code: "tax_reference_conflict", field: "/requestKey" });
+    await mutateTransition("OR r.pin->>'invocationDigest' IS DISTINCT FROM invocation", "", async () => {
+      await expect(expectConflict()).rejects.toThrow(/expected/u);
+    });
+    await expectConflict();
+  });
+
+  it("pins the address-free request and fences changed qualification, stale tokens and exhausted takeover", async () => {
+    const { claim, issued } = await exclusiveFixture();
+    const first = await claimFresh(claim);
+    expect(first.pin.request).toMatchObject({ key: "original-key", input: { destination: { snapshotRef: issued.binding.snapshotRef } } });
+    expect(JSON.stringify(first.pin.request)).not.toContain("Zélvórë");
+    expect(JSON.stringify(first.pin.request)).not.toContain('"address"');
+    await forceClaimTransition(store.owner, first.calculationId, 1);
+    const retry = { operation: "claim", identity: claim.identity, invocation: claim.invocation, recovery } as const;
+    expect(await beginTaxCalculation(lane(), { ...retry, recovery: null })).toMatchObject({ code: "tax_adapter_unavailable" });
+    const second = await beginTaxCalculation(lane(), retry);
+    expect(second).toMatchObject({ kind: "claimed", generation: 2, pin: first.pin });
+    if (second.kind !== "claimed") throw new Error("Expected takeover");
+    expect(second.claimToken).not.toBe(first.claimToken);
+    const refusal = { identity: claim.identity, invocation: claim.invocation, claimToken: first.claimToken,
+      calculationId: first.calculationId, generation: first.generation, seal: { kind: "tax_calculation", validUntil: first.pin.validUntil, requestDigest: first.pin.requestDigest,
+        destination: first.pin.destination, contradiction: false, evidence: null, outcome: { kind: "indeterminate" } } } satisfies SealInput;
+    expect(await completeTaxCalculation(lane(), refusal)).toMatchObject({ code: "tax_claim_stale", field: "/claim" });
+    await forceClaimTransition(store.owner, first.calculationId, 2147483647);
+    expect(await beginTaxCalculation(lane(), retry)).toMatchObject({ code: "tax_claim_generation_exhausted" });
+  });
+
+  it("maps indistinguishable B1 refusals and canonicalization failures in stored coverage to closed outcomes", async () => {
+    const foreign = await fixture(), owned = await fixture();
+    const { claim } = owned;
+    const candidates = [
+      { ...claim, pin: { ...claim.pin, destination: foreign.issued.binding } },
+      { ...claim, identity: { ...claim.identity, scopeRef: randomUUID() } },
+      { ...claim, pin: { ...claim.pin, destination: { ...owned.issued.binding, snapshotRef: randomUUID() } } },
+    ];
+    await mutateTransition("RAISE EXCEPTION 'commerce_destination_owner_mismatch' USING ERRCODE='55000', DETAIL='/destination/snapshotRef';", "RAISE;", async () => {
+      await expect(beginTaxCalculation(lane(), candidates[0]!)).rejects.toMatchObject({
+        code: "commerce_quote_v2_unavailable", cause: { message: "destination_evidence_unavailable" },
+      });
+    });
+    for (const candidate of candidates) expect(await beginTaxCalculation(lane(), candidate)).toStrictEqual(blocked);
+    const exclusive = await exclusiveFixture(), c = exclusive.claim.pin!.coverage!;
+    const corrupt = `WITH RECURSIVE nested(depth,value) AS (
+      VALUES (0,'null'::jsonb) UNION ALL SELECT depth+1,jsonb_build_array(value) FROM nested WHERE depth<49
+    ) INSERT INTO public.tax_coverage_revisions
+      (installation_ref,account_ref,revision,sequence_no,coverage,coverage_digest,actor_ref,recorded_at)
+      SELECT $1,$2,'corrupt-history',2,jsonb_build_object('schemaVersion',1,'accountRef',$2::text,'revision','corrupt-history','declarations',value),
+        repeat('0',64),'fixture',clock_timestamp() FROM nested WHERE depth=49`;
+    try {
+      await store.owner.query(corrupt, [exclusive.claim.identity.installationRef, c.accountRef]);
+      await mutateTransition("'catalog_publication_wire_invalid',", "", async () => {
+        const error = await beginTaxCalculation(lane(), exclusive.claim).catch((error: unknown) => error);
+        expect(error).toMatchObject({ code: "commerce_quote_v2_unavailable", cause: { message: "catalog_publication_wire_invalid" } });
+        expect(Object.getOwnPropertyDescriptor(error, "cause")?.enumerable).toBe(false);
+      });
+      expect(await beginTaxCalculation(lane(), exclusive.claim)).toStrictEqual({ kind: "refused", code: "tax_reference_conflict",
+        field: "/coverage", remedy: "Recover the verified original history through its owner." });
+    } finally {
+      const client = await store.owner.connect();
+      let committed = false;
+      try {
+        await client.query("BEGIN");
+        await client.query("ALTER TABLE public.tax_coverage_revisions DISABLE TRIGGER tax_coverage_revision_immutable");
+        await client.query("DELETE FROM public.tax_coverage_revisions WHERE revision='corrupt-history'");
+        await client.query("ALTER TABLE public.tax_coverage_revisions ENABLE TRIGGER tax_coverage_revision_immutable");
+        await client.query("COMMIT");
+        committed = true;
+      } finally {
+        if (!committed) await client.query("ROLLBACK").finally(() => client.release());
+        else client.release();
+      }
+    }
+  });
+
+  function lostAcknowledgment(active: Lane, rollback = false): Lane {
+    let first = true;
+    return {
+      close: active.close,
+      async run<T>(work: (executor: PgQueryExecutor) => Promise<T>) {
+        const result = await active.run(async executor => {
+          const reply = await work(executor);
+          if (first && rollback) { first = false; throw new Error("Synthetic lost seal with rollback"); }
+          return reply;
+        });
+        if (first) { first = false; throw new Error("Synthetic lost commit reply"); }
+        return result;
+      },
+    };
+  }
+
+  it.each(["final", "estimate"] as const)("seals %s once, gives no authority on claim acknowledgement loss and recovers a lost seal", async purpose => {
+    const dropped = await fixture(store, purpose);
+    expect(await beginTaxCalculation(lostAcknowledgment(lane()), dropped.claim)).toStrictEqual({ kind: "pending" });
+    const { claim, lookup, issued } = await fixture(store, purpose);
+    const held = await claimFresh(claim);
+    const seal = fiscalSeal(claim, held);
+    expect(await completeTaxCalculation(lostAcknowledgment(lane(), true), seal)).toStrictEqual({ kind: "pending" });
+    const success = seal.seal.outcome;
+    if (!("quote" in success)) throw new Error("Expected the success fixture to contain a quote");
+    const badDigest = { ...seal, seal: { ...seal.seal, outcome: {
+      ...success, quote: { ...(success.quote as CommerceQuoteV2), quoteDigest: boundDigest },
+    } } };
+    expect(await completeTaxCalculation(lane(), badDigest)).toMatchObject({ kind: "refused", code: "tax_reference_conflict" });
+    expect(await beginTaxCalculation(lane(), lookup)).toStrictEqual({ kind: "pending" });
+    const result = await completeTaxCalculation(lostAcknowledgment(lane()), seal);
+    expect(result).toStrictEqual({ kind: "terminal", validUntil: held.pin.validUntil, freshness: "current", outcome: seal.seal.outcome });
+    await reachDestinationCutoff(store.owner, issued.binding);
+    expect(await completeTaxCalculation(lane(), seal)).toEqual(result);
+    expect(await beginTaxCalculation(lane(), lookup)).toEqual(result);
+    expect(await completeTaxCalculation(lane(), { ...seal, seal: { ...seal.seal, evidence: { policyRevision: "changed" } } }))
+      .toMatchObject({ code: "tax_reference_conflict", field: "/taxEvidence" });
+    expect(await completeTaxCalculation(lane(), { ...seal, claimToken: randomUUID() })).toMatchObject({ code: "tax_claim_stale" });
+    const row = (await store.owner.query("SELECT outcome_text FROM public.tax_calculations WHERE calculation_id=$1", [held.calculationId])).rows[0]!;
+    expect(row.outcome_text.match(/"quoteDigest"/gu)).toHaveLength(1);
+  });
+
+  it.each(["tax_adapter_unavailable", "tax_coverage_evidence_unavailable"] as const)(
+    "keeps uncertain work pending and verifies the definitive %s remedy through subject export",
+    async code => {
+      const { claim, ctx, lookup } = await fixture();
+      const held = await claimFresh(claim), original = fiscalSeal(claim, held);
+      const pending = { ...original, seal: { ...original.seal, contradiction: true, outcome: { kind: "indeterminate" as const } } };
+      expect(await completeTaxCalculation(lane(), pending)).toStrictEqual({ kind: "pending" });
+      expect(await completeTaxCalculation(lane(), pending)).toStrictEqual({ kind: "pending" });
+      expect(await beginTaxCalculation(lane(), lookup)).toStrictEqual({ kind: "pending" });
+      expect(await storedRow(store.owner, held.calculationId)).toMatchObject({ state: "pending", contradiction: true });
+      expect(await storedRow(store.owner, held.calculationId)).not.toHaveProperty("outcome_text");
+
+      const action = "Request a new quote when the tax service is available.";
+      const oldAction = "Recover the original evidence through the adapter owner.";
+      const outcome = { kind: "unavailable", code } as const;
+      const seal = { ...original, seal: { ...original.seal, outcome } };
+      const definitive = { ...outcome, effect: "none", field: "/taxEvidence", remedy: action };
+      const { current } = privacy(store), actor = await operator(store.owner);
+      const exportEvaluation = async () => (await current.export(actor, subject(ctx.clientId))).documents
+        .find(entry => entry.contributorId === "tax-calculations");
+      const signature = "public.tax_calculation_terminal_v1(public.tax_calculations)";
+      await withFunctionMutation(signature, sql => sql.replaceAll(action, oldAction), async () => {
+        expect(await completeTaxCalculation(lane(), seal)).toMatchObject({ kind: "refused", code: "tax_reference_conflict" });
+        expect(await beginTaxCalculation(lane(), lookup)).toStrictEqual({ kind: "pending" });
+      }, store.owner);
+      expect(await completeTaxCalculation(lane(), seal)).toMatchObject({ kind: "terminal", outcome: definitive });
+      expect(await completeTaxCalculation(lane(), seal)).toMatchObject({ kind: "terminal", outcome: definitive });
+      expect(await exportEvaluation()).toMatchObject({ coverage: { complete: true }, data: [{ outcome: definitive }] });
+
+      const saved = await storedRow(store.owner, held.calculationId);
+      try {
+        for (const remedy of [oldAction, "Private adapter diagnostic for 12 Main Street"]) {
+          const expected = JSON.parse(saved.outcome_text)[1];
+          const corrupt = frame("evaluation-outcome", { ...expected, outcome: { ...definitive, remedy } });
+          await disableGuard("tax_calculations", () => store.owner.query(
+            "UPDATE public.tax_calculations SET outcome_text=$2,outcome_digest=$3 WHERE calculation_id=$1",
+            [held.calculationId, corrupt, destinationHash(corrupt)]), store.owner);
+        const rejected = await exportEvaluation();
+        expect(rejected).toMatchObject({ coverage: { complete: false },
+            data: [{ calculationId: held.calculationId, verification: "failed" }] });
+        expect(JSON.stringify(rejected?.data)).not.toContain('"outcome"');
+          expect(await beginTaxCalculation(lane(), lookup)).toMatchObject({ kind: "refused", code: "tax_evaluation_integrity_invalid" });
+        }
+      } finally {
+        await disableGuard("tax_calculations", () => store.owner.query(
+          "UPDATE public.tax_calculations SET outcome_text=$2,outcome_digest=$3 WHERE calculation_id=$1",
+          [held.calculationId, saved.outcome_text, saved.outcome_digest]), store.owner);
+      }
+    },
+  );
+
+  it("executes native key, request-byte, depth, Unicode and clock edge validation through the wrapper", async () => {
+    const { claim, lookup } = await fixture(store, "final", "😀".repeat(128));
+    const accept = await claimFresh(claim);
+    expect(accept.pin.requestDigest).toMatch(/^[0-9a-f]{64}$/u);
+    expect(await beginTaxCalculation(lane(), { ...claim, identity: { ...claim.identity, evaluationKey: "😀".repeat(129) } }))
+      .toStrictEqual(invalid("/identity/evaluationKey"));
+    expect(await beginTaxCalculation(lane(), Uint8Array.of(0xc0, 0x80))).toStrictEqual(invalid("/"));
+    expect(await beginTaxCalculation(lane(), { ...claim, identity: { ...claim.identity, evaluationKey: "\u0000" } })).toStrictEqual(invalid("/"));
+    expect(await beginTaxCalculation(lane(), { ...claim, identity: { ...claim.identity, evaluationKey: "\ud800" } })).toStrictEqual(invalid("/"));
+    expect(await beginTaxCalculation(lane(), { ...claim, identity: { ...claim.identity, evaluationKey: "" } }))
+      .toStrictEqual(invalid("/identity/evaluationKey"));
+    const lookupText = canonicalCatalogDraftJson(lookup), byteCap = 1_048_576;
+    const boundary = (extra: number) => new TextEncoder().encode(lookupText + " ".repeat(byteCap - Buffer.byteLength(lookupText) + extra));
+    expect(await beginTaxCalculation(lane(), boundary(0))).toStrictEqual({ kind: "pending" });
+    expect(await beginTaxCalculation(lane(), boundary(1))).toStrictEqual(invalid("/"));
+    let reads = 0;
+    const accessor = { ...lookup, get identity() { reads++; return lookup.identity; } };
+    expect(await beginTaxCalculation(lane(), accessor)).toStrictEqual(invalid("/"));
+    expect(reads).toBe(0);
+    expect(await beginTaxCalculation(lane(), { ...claim, pin: { ...claim.pin, validUntil: "0000-01-01T00:00:00.000Z" } }))
+      .toStrictEqual(invalid("/pin/validUntil"));
+    for (const validUntil of ["0001-01-01T00:00:00.000Z", "9999-12-31T23:59:59.999Z"]) {
+      const request = { ...claim, identity: { ...claim.identity, evaluationKey: validUntil }, pin: { ...claim.pin!, validUntil } };
+      expect(await beginTaxCalculation(lane(), request)).toMatchObject({ code: "tax_calculation_expired" });
+    }
+    const complete = fiscalSeal(claim, accept);
+    for (const generation of [0, 2_147_483_648, 1.5])
+      expect(await completeTaxCalculation(lane(), { ...complete, generation })).toStrictEqual(invalid("/generation"));
+    expect(await beginTaxCalculation(lane(), { ...claim, invocation: { ...claim.invocation, paymentSelector: "😀".repeat(61) } }))
+      .toStrictEqual(invalid("/invocation/paymentSelector"));
+    expect(await beginTaxCalculation(lane(), { ...lookup, identity: { ...lookup.identity, evaluationKey: "selector-boundary" },
+      invocation: { ...lookup.invocation, paymentSelector: "😀".repeat(60) } })).toStrictEqual({ kind: "missing" });
+    expect(await beginTaxCalculation(lane(), { ...claim, pin: { ...claim.pin, request: "é".repeat(524289) } }))
+      .toStrictEqual(invalid("/"));
+    let nested: unknown = {};
+    for (let depth = 0; depth < 49; depth++) nested = [nested];
+    expect(await beginTaxCalculation(lane(), { ...claim, pin: { ...claim.pin, request: nested } })).toStrictEqual(invalid("/"));
+  });
+
+  it("round-trips pending, expired and terminal rows through an exact-current pristine target", async () => {
+    const { clone } = await resources.targetTemplate("tax-transfer");
+    const target = await clone("copy");
+    const expired = await fixture();
+    await claimFresh(expired.claim);
+    await reachDestinationCutoff(store.owner, expired.issued.binding);
+    const final = await fixture(), held = await claimFresh(final.claim);
+    await completeTaxCalculation(lane(), fiscalSeal(final.claim, held));
+    // No live dispatcher is attached to either captured store.
+    const packet = await captureStoreJourney(store.owner, "tax-source");
+    const freshTarget = await captureStoreJourney(target.owner, "tax-target");
+    expect((await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).replayed).toBe(false);
+    expect(await beginTaxCalculation(lane(target), expired.lookup)).toStrictEqual({ kind: "pending" });
+    expect(await beginTaxCalculation(lane(target), expired.claim)).toMatchObject({ code: "tax_claim_pending" });
+    expect(await beginTaxCalculation(lane(target), final.lookup)).toMatchObject({ kind: "terminal" });
+    expect((await target.owner.query("SELECT state FROM public.tax_calculations GROUP BY state ORDER BY state")).rows.map(row => row.state))
+      .toEqual(["pending", "terminal"]);
+  });
+
+  async function providerSeal(input: ClaimInput, request: TaxQuoteRequestV1, claim: Claim, providerRef: string, validUntil: string): Promise<SealInput> {
+    const { scope, market, currency, taxDate } = request.input;
+    const effective = { from: taxDate };
+    const reply = await localRateTable({ scope, market, currency, now: () => new Date().toISOString(), calculationLifetimeMs: 120_000,
+      validityWindowMs: 2_000, rounding: "half_up_largest_remainder",
+      rules: [{ kind: "rate", jurisdiction: "district-a", taxClass: "standard", taxKind: "sale",
+        ruleRef: "rule-a", legalBasisRef: "rulebook-a", effective, ratePercent: "0" }],
+      registrations: [{ state: "active", jurisdiction: "district-a", taxKind: "sale", evidenceRef: "registration-a", effective }],
+    }).quote(request);
+    if (reply.kind !== "final") throw new Error(JSON.stringify(reply));
+    const adapterEvidence = { ...reply.evidence, calculationRef: providerRef };
+    const result = { ...reply, evidence: adapterEvidence, evidenceDigest: digest("evidence", adapterEvidence) };
+    expect(verifyTaxQuoteResult(request, result)).toBeUndefined();
+    const { identity, invocation } = input, { calculationId, claimToken, generation, pin } = claim;
+    const { requestDigest, invocationDigest, destination } = pin;
+    const kind = "tax_calculation";
+    const evidence = { adapterEvidence, adapterDigest: result.evidenceDigest };
+    const envelope = { calculationId, invocationDigest, requestDigest, generation, destination, kind, evidence, disposition: "required", validUntil };
+    const quote = sealQuote({ ...moneyFixture(), destination,
+      amountBasis: "exclusive", promotion: { engine: "promotion-engine.v1", rankingRuleRef: "lowest_pre_tax.v1" },
+      taxEvidence: { kind, calculationId, taxDate: request.input.taxDate, expiresAt: validUntil, evidenceDigest: evaluationDigest("evaluation-evidence", envelope) },
+    });
+    return { identity, invocation, calculationId, claimToken, generation, adapter: { request, result }, seal: {
+      requestDigest, destination, validUntil, kind, contradiction: false, outcome: { kind: "final", quote }, evidence: null,
+    } };
+  }
+
+  async function createPrivacy(db = store, unitOfWork = lane(db)) {
+    const actor = { principalId: randomUUID() };
+    await db.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [actor.principalId, actor.principalId + "@example.invalid"]);
+    await db.owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+      VALUES($1,'admin','active','legacy',clock_timestamp())`, [actor.principalId]);
+    const operations = composeNativePrivacy({ store: createPostgresPrivacyStore(), unitOfWork }).operations;
+    return (contactId: string) => operations.erase(actor, { subject: { kind: "contact", contactId }, idempotencyKey: randomUUID() });
+  }
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(accept => { resolve = accept; });
+    return { promise, resolve };
+  }
+  function holdBeforeCommit(active: Lane) {
+    const reached = deferred<void>(), release = deferred<void>();
+    const held: Lane = { close: active.close, run: work => active.run(async executor => {
+      const reply = await work(executor);
+      reached.resolve();
+      await release.promise;
+      return reply;
+    }) };
+    return { held, reached: reached.promise, release: () => release.resolve() };
+  }
+  function observeBackend(active: Lane) {
+    const ready = deferred<number>();
+    const observed: Lane = { close: active.close, run: work => active.run(executor => work({ async query(sql, params) {
+      const result = await executor.query(sql, params);
+      if (sql.startsWith("SET TRANSACTION")) ready.resolve(Number((await executor.query("SELECT pg_backend_pid() AS pid")).rows[0]!.pid));
+      return result;
+    } })) };
+    return { observed, pid: ready.promise };
+  }
+  async function waitForTransactionLock(owner: Pool, pid: number) {
+    await expect.poll(async () => (await owner.query("SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1", [pid])).rows[0]?.wait_event_type,
+      { interval: 10, timeout: 3500 }).toBe("Lock");
+  }
+  const future = (seconds: number) => new Date(Date.now() + seconds * 1000).toISOString();
+
+  async function providerCutoffRace() {
+    const first = await exclusiveFixture(), second = await exclusiveFixture();
+    const one = await claimFresh(first.claim), two = await claimFresh(second.claim);
+    const providerRef = randomUUID();
+    const [sealOne, sealTwo] = await Promise.all([
+      providerSeal(first.claim, first.request, one, providerRef, future(60)),
+      providerSeal(second.claim, second.request, two, providerRef, future(3)),
+    ]);
+    const firstGate = holdBeforeCommit(lane()), secondBackend = observeBackend(lane());
+    const a = completeTaxCalculation(firstGate.held, sealOne);
+    await Promise.race([firstGate.reached, a.then(() => { throw new Error("Winner failed to reach commit"); })]);
+    const b = completeTaxCalculation(secondBackend.observed, sealTwo);
+    try {
+      await waitForTransactionLock(store.owner, await secondBackend.pid);
+      await store.owner.query("SELECT pg_sleep_until($1::timestamptz)", [sealTwo.seal.validUntil]);
+    } finally {
+      firstGate.release();
+      await expect(a).resolves.toMatchObject({ kind: "terminal", outcome: { kind: "final" } });
+    }
+    return { reply: await b, lookup: await beginTaxCalculation(lane(), second.lookup) };
+  }
+
+  it("rolls back a seal that crossed cutoff in a provider uniqueness wait", async () => {
+    const check = "IF clock_timestamp() >= cutoff THEN RAISE EXCEPTION 'tax_calculation_expired' USING ERRCODE='55000', DETAIL='/taxEvidence/expiresAt'; END IF;";
+    await mutateTransition("END LOOP;\n  " + check, "END LOOP;", async () => {
+      expect(await providerCutoffRace()).toMatchObject({ reply: { kind: "terminal", outcome: { code: "tax_provider_reference_conflict" } },
+        lookup: { kind: "terminal" } });
+    });
+    expect(await providerCutoffRace()).toMatchObject({ reply: { code: "tax_calculation_expired", field: "/taxEvidence/expiresAt" },
+      lookup: { kind: "pending" } });
+  });
+
+  it("refuses a competing seal after erasure and exact-current restore", async () => {
+    const providerRef = randomUUID();
+    const winner = await exclusiveFixture(), claimed = await claimFresh(winner.claim);
+    const winnerSeal = await providerSeal(winner.claim, winner.request, claimed, providerRef, future(60));
+    expect(await completeTaxCalculation(lane(), winnerSeal)).toMatchObject({ kind: "terminal", outcome: { kind: "final" } });
+    await (await createPrivacy())(winner.ctx.clientId);
+    const { body } = (await store.owner.query(`SELECT jsonb_strip_nulls(to_jsonb(c)) AS body FROM public.tax_calculations c WHERE calculation_id=$1`,
+      [claimed.calculationId])).rows[0]!;
+    expect(body).toStrictEqual({ calculation_id: claimed.calculationId, state: "erased", provider_digest: expect.stringMatching(/^[0-9a-f]{64}$/u) });
+    const { clone } = await resources.targetTemplate("tax-provider-fence");
+    const target = await clone("provider-fence");
+    const packet = await captureStoreJourney(store.owner, "fenced-source"), freshTarget = await captureStoreJourney(target.owner, "fenced-target");
+    await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget });
+    for (const installation of [store, target]) {
+      const other = await exclusiveFixture(installation), ownLane = lane(installation);
+      const held = await claimFresh(other.claim, ownLane);
+      const seal = await providerSeal(other.claim, other.request, held, providerRef, future(60));
+      const reply = await completeTaxCalculation(ownLane, seal);
+      expect(reply).toMatchObject({ kind: "terminal", outcome: { kind: "refused", code: "tax_provider_reference_conflict", field: "/taxEvidence" } });
+      expect(JSON.stringify(reply)).not.toContain(claimed.calculationId);
+      expect(JSON.stringify(reply)).not.toContain(providerRef);
+      expect(await completeTaxCalculation(ownLane, seal)).toEqual(reply);
+    }
+  });
+
+  it("fences writes when privacy owns the ledger first", async () => {
+    const value = await fixture();
+    const held = holdBeforeCommit(lane()), erase = await createPrivacy(store, held.held);
+    const erased = erase(value.ctx.clientId);
+    await Promise.race([held.reached, erased.then(() => { throw new Error("Erasure failed to reach commit"); })]);
+    const { observed, pid } = observeBackend(lane());
+    const attempt = beginTaxCalculation(observed, value.claim);
+    try { await waitForTransactionLock(store.owner, await pid); }
+    finally { held.release(); await erased; }
+    await expect(attempt).resolves.toMatchObject({ code: "destination_evidence_erased" });
+  });
+
+  it("lets an acknowledged claim finish before concurrent privacy scrubs it", async () => {
+    const value = await fixture();
+    const held = holdBeforeCommit(lane()), erase = await createPrivacy();
+    const pending = beginTaxCalculation(held.held, value.claim);
+    await Promise.race([held.reached, pending.then(() => { throw new Error("Claim failed to reach commit"); })]);
+    const erasure = erase(value.ctx.clientId);
+    try {
+      await expect.poll(async () => (await store.owner.query(`SELECT EXISTS(SELECT FROM pg_locks
+        WHERE relation='public.identity_privacy_erasures'::regclass AND mode='ShareRowExclusiveLock' AND NOT granted) AS waiting`)).rows[0]?.waiting,
+      { interval: 10, timeout: 3500 }).toBe(true);
+    } finally { held.release(); await erasure; }
+    const claimed = await pending;
+    if (claimed.kind !== "claimed") throw new Error("Expected acknowledged original claim");
+    await expect(completeTaxCalculation(lane(), fiscalSeal(value.claim, claimed))).resolves.toMatchObject({ code: "destination_evidence_erased" });
+  });
+
+  it("probes all inherited field byte limits on the actual B1 issuance path", async () => {
+    const { ctx } = await fixture();
+    const ranges = {
+      address: { line1: 200, line2: 200, city: 120, postalCode: 32, countryCode: 2, subdivisionCode: 16 },
+      contact: { recipientName: 200, contactEmail: 254, contactPhone: 64, companyName: 200, label: 200, taxId: 64, deliveryNotes: 500, courierInstructions: 500 },
+      policy: { policyRef: 720, policyRevision: 720 },
+    };
+    for (const [section, limits] of Object.entries(ranges)) for (const [field, limit] of Object.entries(limits)) {
+      const initial = snapshotCommand(ctx).command;
+      const value = field === "countryCode" || field === "subdivisionCode" ? "A".repeat(limit) : "é".repeat(Math.floor(limit / 2));
+      const command = (fieldValue: string) => {
+        const requestKey = randomUUID();
+        const patched = section === "policy" ? { [field]: fieldValue }
+          : { [section]: { ...initial.validated[section as "address" | "contact"], [field]: fieldValue } };
+        const next = { ...initial, requestKey, validated: { ...initial.validated, ...patched } };
+        return { ...next, requestDigest: destinationHash(canonicalCatalogDraftJson(snapshotPreimage(ctx, next))) };
+      };
+      expect((await snapshot(store.runtime, ctx, command(value))).binding).toBeDefined();
+      const bad = { message: "address_invalid_input", detail: field };
+      await expect(snapshot(store.runtime, ctx, command(value + "A"))).rejects.toMatchObject(bad);
+      await expect(snapshot(store.runtime, ctx, command("A\u0085"))).rejects.toMatchObject(bad);
+      if (section === "address" && field !== "countryCode" && field !== "subdivisionCode") {
+        await expect(snapshot(store.runtime, ctx, command(" X"))).rejects.toMatchObject(bad);
+        await expect(snapshot(store.runtime, ctx, command("e\u0301"))).rejects.toMatchObject(bad);
+      }
+    }
+  });
+
+  it("returns historical authority when acknowledgment arrives after a timely seal's cutoff", async () => {
+    const value = await fixture();
+    const claim = await claimFresh(value.claim);
+    const seal = fiscalSeal(value.claim, claim, future(2));
+    const waiting = holdBeforeCommit(lane());
+    const completion = completeTaxCalculation(waiting.held, seal);
+    try {
+      await Promise.race([waiting.reached, completion.then(() => { throw new Error("Expected the seal to reach commit"); })]);
+      await store.owner.query("SELECT pg_sleep_until($1::timestamptz)", [seal.seal.validUntil]);
+    } finally { waiting.release(); }
+    await expect(completion).resolves.toMatchObject({ kind: "terminal", freshness: "historical", outcome: seal.seal.outcome });
+  });
 });

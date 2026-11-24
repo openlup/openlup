@@ -1642,6 +1642,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125180000_tax_calculation_claim_seal.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5375,6 +5379,10 @@
     },
     {
       "path": "packages/platform/sql/20261125170000_tax_calculations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125180000_tax_calculation_claim_seal.sql",
       "class": "public-output"
     },
     {
@@ -10451,6 +10459,10 @@
     },
     {
       "path": "packages/platform/src/tax/stripe/transactions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/taxCalculationStore.ts",
       "class": "public-output"
     },
     {
