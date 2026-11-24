@@ -13,17 +13,17 @@ import { closePostgres, postgresSetupTimeoutMs } from "../helpers/postgresContai
 import { createAccountMutationsTemplate } from "./customerAccountMutations.fixture.js";
 
 const forward = "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql";
-const predecessor = "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql";
+const predecessor = "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql";
 const table = "public.identity_privacy_required_contributors";
 const reader = "public.identity_privacy_required_contributor_ids()";
 const owners = ["communication-events", "customer-billing", "customer-preferences", "customer-saved-addresses",
   "destination-documents", "destination-receipts", "fulfillment-parcel-contacts", "identity", "subscriptions", "tax-calculations"];
 const before = {
-  legacy: "bf242a8ae82132a0d59f9cb96d766f125a4f2f6e18baae43e15ac058b2616d28",
-  bootstrap: "2aa471ad096c7ec15a209623f857ce105667944b2ad86a6d232254e36bb26da1",
-  separate: "1013a88668bbdc90dcdc0144b364e865908a5c5eca7fe4959d1e0aad4e454a56",
-  "admin-managed": "0a3f8bbfc45f015f58636e9a6071d4838146554bb351f86ddcf808696e8e7b05",
-  "admin-operator": "d8a2c8bd7b2a3683935ac5b13b687ea29121e22b8be01dbe3d1470876fe67f1d",
+  legacy: "49aa2d18eef5772a2e890843360f54e5c71cbd8fa206b87c7fe1b354bdb14561",
+  bootstrap: "2679824e92d96b0038af9edef472ccf98fd770eac56bdf2c89c87e21f5e853a8",
+  separate: "be332fa06e6d9d9a265a35fe377241ed29984df1d174ea2e665680012246be7d",
+  "admin-managed": "990105d982899778d2add6ca74eca7792bd15b8c8d6c76a57213b22e57d577ae",
+  "admin-operator": "cfb73792c9d53f1f307fb7312623243aa045bc0fc09427a43eb73e9d6e1ba505",
 };
 const ledger = (db: Pool) => db.query("SELECT * FROM public.platform_schema_migrations ORDER BY position").then(result => result.rows);
 const required = (db: Pool | PoolClient) => db.query<{ ids: string[] }>(`SELECT ${reader} AS ids`).then(result => result.rows[0].ids);
@@ -92,7 +92,7 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
           await expect(call()).rejects.toMatchObject({ code: "PRIVACY_ASSESSMENT_UNAVAILABLE", facts: { fix: expect.stringContaining("EXECUTE") } });
         }
         if (profile === "separate") await expect(capture()).rejects.toMatchObject({ code: "schema_conflict" });
-        expect((await upgrade.runner.apply()).applied).toContain(forward);
+        expect((await upgrade.runner.apply()).applied).toEqual([forward]);
         expect((await ledger(upgrade.owner)).slice(0, original.length)).toEqual(original);
         expect(await required(upgrade.runtime)).toEqual(owners);
         expect((await upgrade.runner.apply()).applied).toEqual([]);
