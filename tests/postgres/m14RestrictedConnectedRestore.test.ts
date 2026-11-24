@@ -88,7 +88,14 @@ async function install(shape: Shape, mode: Mode, label: string, apply = true): P
       expect((await runner.status()).pending).toEqual([]);
     }
     return { container, pools, owner, runner, selection, inventory: manifest.objectInventorySha256 };
-  } catch (error) { await closePostgres(container, pools); throw error; }
+  } catch (error) {
+    try {
+      await closePostgres(container, pools);
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Restricted restore setup and cleanup both failed");
+    }
+    throw error;
+  }
 }
 
 // Bounds source/target provisioning to two concurrent containers per test and
