@@ -756,20 +756,38 @@ describe("native evaluation claim and seal", () => {
     expect(await beginTaxCalculation(lane(), retry)).toMatchObject({ code: "tax_claim_generation_exhausted" });
   });
 
-  it("maps indistinguishable B1 refusals and canonicalization failures in stored coverage to closed outcomes", async () => {
+  it("maps missing or foreign destination evidence to the same refusal without writing a claim", async () => {
     const foreign = await fixture(), owned = await fixture();
     const { claim } = owned;
     const candidates = [
-      { ...claim, pin: { ...claim.pin, destination: foreign.issued.binding } },
-      { ...claim, identity: { ...claim.identity, scopeRef: randomUUID() } },
-      { ...claim, pin: { ...claim.pin, destination: { ...owned.issued.binding, snapshotRef: randomUUID() } } },
-    ];
-    await mutateTransition("RAISE EXCEPTION 'commerce_destination_owner_mismatch' USING ERRCODE='55000', DETAIL='/destination/snapshotRef';", "RAISE;", async () => {
-      await expect(beginTaxCalculation(lane(), candidates[0]!)).rejects.toMatchObject({
-        code: "commerce_quote_v2_unavailable", cause: { message: "destination_evidence_unavailable" },
-      });
-    });
-    for (const candidate of candidates) expect(await beginTaxCalculation(lane(), candidate)).toStrictEqual(blocked);
+      ["foreign snapshot", { ...claim, pin: { ...claim.pin, destination: foreign.issued.binding } }],
+      ["foreign owner", { ...claim, identity: { ...claim.identity, installationRef: "foreign-installation" } }],
+      ["foreign checkout scope", { ...claim, identity: { ...claim.identity, scopeRef: randomUUID() } }],
+      ["missing snapshot", { ...claim, pin: { ...claim.pin, destination: { ...owned.issued.binding, snapshotRef: randomUUID() } } }],
+    ] as const;
+    for (const [name, candidate] of candidates) {
+      expect(await beginTaxCalculation(lane(), candidate), name).toStrictEqual(blocked);
+      expect((await store.owner.query("SELECT state FROM public.tax_calculations WHERE identity=$1::jsonb", [candidate.identity])).rows, name)
+        .toEqual([]);
+    }
+  });
+
+  it("maps typed destination digest and revision refusals without writing a claim", async () => {
+    const { claim } = await fixture();
+    const binding = claim.pin.destination;
+    const candidates = [
+      [{ ...binding, destinationDigest: "0".repeat(64) }, { code: "destination_digest_mismatch",
+        field: "/destination/destinationDigest", remedy: "Replay the original document and its digest." }],
+      [{ ...binding, policyRevision: "other-revision" }, { code: "destination_version_changed",
+        field: "/destination/policyRevision", remedy: "Select the destination again and obtain a fresh quote." }],
+    ] as const;
+    for (const [destination, outcome] of candidates) {
+      expect(await beginTaxCalculation(lane(), { ...claim, pin: { ...claim.pin, destination } })).toStrictEqual({ kind: "refused", ...outcome });
+      expect((await store.owner.query("SELECT state FROM public.tax_calculations WHERE identity=$1::jsonb", [claim.identity])).rows).toEqual([]);
+    }
+  });
+
+  it("maps canonicalization failures in stored coverage to a closed refusal", async () => {
     const exclusive = await exclusiveFixture(), c = exclusive.claim.pin!.coverage!;
     const corrupt = `WITH RECURSIVE nested(depth,value) AS (
       VALUES (0,'null'::jsonb) UNION ALL SELECT depth+1,jsonb_build_array(value) FROM nested WHERE depth<49
@@ -1128,12 +1146,12 @@ describe("native evaluation claim and seal", () => {
         return { ...next, requestDigest: destinationHash(canonicalCatalogDraftJson(snapshotPreimage(ctx, next))) };
       };
       expect((await snapshot(store.runtime, ctx, command(value))).binding).toBeDefined();
-      const bad = { message: "address_invalid_input", detail: field };
-      await expect(snapshot(store.runtime, ctx, command(value + "A"))).rejects.toMatchObject(bad);
-      await expect(snapshot(store.runtime, ctx, command("A\u0085"))).rejects.toMatchObject(bad);
+      const bad = { outcome: "refused", code: "address_invalid_input", field };
+      await expect(snapshot(store.runtime, ctx, command(value + "A"))).resolves.toMatchObject(bad);
+      await expect(snapshot(store.runtime, ctx, command("A\u0085"))).resolves.toMatchObject(bad);
       if (section === "address" && field !== "countryCode" && field !== "subdivisionCode") {
-        await expect(snapshot(store.runtime, ctx, command(" X"))).rejects.toMatchObject(bad);
-        await expect(snapshot(store.runtime, ctx, command("e\u0301"))).rejects.toMatchObject(bad);
+        await expect(snapshot(store.runtime, ctx, command(" X"))).resolves.toMatchObject(bad);
+        await expect(snapshot(store.runtime, ctx, command("e\u0301"))).resolves.toMatchObject(bad);
       }
     }
   });

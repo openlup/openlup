@@ -201,13 +201,13 @@ BEGIN
     RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/taxEvidence/expiresAt';
   END;
   cutoff := (pinned->>'validUntil')::timestamptz;
-  BEGIN
-    owned := public.commerce_read_destination_v2(ctx,'snapshot',(destination->>'snapshotRef')::uuid,destination);
-  EXCEPTION WHEN SQLSTATE '55000' THEN
-    GET STACKED DIAGNOSTICS code=MESSAGE_TEXT, field=PG_EXCEPTION_DETAIL;
-    IF code <> 'destination_evidence_unavailable' OR field IS DISTINCT FROM 'destination.snapshotRef' THEN RAISE; END IF;
-    RAISE EXCEPTION 'commerce_destination_owner_mismatch' USING ERRCODE='55000', DETAIL='/destination/snapshotRef';
-  END;
+  owned := public.commerce_read_destination_v2(ctx,'snapshot',(destination->>'snapshotRef')::uuid,destination);
+  IF owned->>'outcome' = 'refused' THEN
+    field := owned->>'field';
+    code := CASE WHEN owned->>'code' = 'destination_evidence_unavailable' AND field = 'destination.snapshotRef'
+      THEN 'commerce_destination_owner_mismatch' ELSE owned->>'code' END;
+    RAISE EXCEPTION '%', code USING ERRCODE='22023', DETAIL=CASE WHEN code='commerce_destination_owner_mismatch' THEN '/destination/snapshotRef' ELSE field END;
+  END IF;
   IF pinned_coverage IS NOT NULL AND pinned_coverage <> 'null'::jsonb THEN
     BEGIN
       SELECT c.coverage INTO history FROM public.tax_coverage_read_v1(installation,pinned_coverage->>'accountRef') c
