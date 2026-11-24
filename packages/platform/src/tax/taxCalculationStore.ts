@@ -22,14 +22,15 @@ const invocation = z.strictObject({ purpose, mode: z.enum(["one_time", "subscrip
   deliverySelector: selectors, paymentSelector: selectors });
 const common = { identity: scope, invocation };
 const coverage = z.strictObject({ accountRef: text, revision: text, digest });
+const fiscalRequest = z.strictObject({ basis: z.literal("inclusive"), taxDate: z.iso.datetime({ precision: 3 }) });
 const pin = z.strictObject({ destination, kind: arm, request: z.unknown(), coverage: coverage.nullable(), validUntil: instant, recovery: digest.nullable() });
 const begin = z.discriminatedUnion("operation", [z.strictObject({ ...common, operation: z.literal("lookup") }),
   z.strictObject({ ...common, operation: z.literal("claim"), pin: pin.optional(), recovery: digest.nullable() })]);
 const outcomes = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("indeterminate") }),
   z.strictObject({ kind: z.literal("unavailable"), code: z.enum(["tax_coverage_evidence_unavailable", "tax_adapter_unavailable"]) }),
-  z.strictObject({ kind: z.literal("refused"), code: z.string().regex(/^(?:tax|money|shipping|promotion)_[a-z_]+$/u).max(64),
-    field: z.string().regex(/^(?:\/.*)?$/u).max(256), remedy: z.string().min(1).max(512) }),
+  z.strictObject({ kind: z.literal("refused"), code: z.string().min(1).max(64), // SQL verifies the permitted refusal tuple.
+    field: z.string().max(256), remedy: z.string().min(1).max(512) }),
   z.strictObject({ kind: z.literal("final"), quote: z.unknown() }),
   z.strictObject({ kind: z.literal("estimate"), quote: z.unknown() }),
 ]);
@@ -144,25 +145,28 @@ function prepare<T extends z.ZodType>(schema: T, input: unknown): z.output<T> | 
 }
 
 async function execute(lane: TaxCalculationTransactionLane, input: EvaluationScope & { operation: "lookup" | "claim" | "complete" }): Promise<BeginTaxCalculationResult> {
-  const routine = input.operation === "complete" ? "complete" : "begin";
+  const statement = `SELECT public.tax_calculation_${input.operation === "complete" ? "complete" : "begin"}_v1($1::jsonb) AS result`;
   let wire: string;
   try { wire = canonicalCatalogDraftJson(input); }
   catch { return refusal("tax_invalid_input", "/"); }
   let awaitingCommit = false;
   try {
-    const result = await lane.run(async db => {
+    const { reply: result, sampledAtMs, sentAt } = await lane.run(async db => {
       await db.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
-      const reply = (await db.query(`SELECT public.tax_calculation_${routine}_v1($1::jsonb) AS result`, [wire])).rows[0]?.result as BeginTaxCalculationResult;
+      const sentAt = performance.now();
+      const { sampledAtMs, ...reply } = ((await db.query(statement, [wire])).rows[0]?.result ?? {}) as BeginTaxCalculationResult & { sampledAtMs?: number };
       if (!reply?.kind) throw new Error("Missing evaluation result");
       awaitingCommit = true;
-      return reply;
+      return { reply, sampledAtMs, sentAt };
     });
+    if (result.kind === "claimed" && !(typeof sampledAtMs === "number" && sampledAtMs + (performance.now() - sentAt) < Date.parse(result.pin.validUntil)))
+      return refusal("tax_calculation_expired", "/taxEvidence/expiresAt");
     return result.kind === "terminal" ? { ...result, freshness: new Date().toISOString() >= result.validUntil ? "historical" : "current" } : result;
   } catch (error) {
     if (awaitingCommit && input.operation !== "lookup") return execute(lane, { operation: "lookup", identity: input.identity, invocation: input.invocation });
     const known = awaitingCommit ? undefined : fromDatabase(error);
     if (known) return known;
-    throw unavailable(error, "/" + (input.operation === "lookup" ? "lookup" : routine === "begin" ? "claim" : "completion"));
+    throw unavailable(error, "/" + (input.operation === "complete" ? "completion" : input.operation));
   }
 }
 
@@ -174,6 +178,8 @@ export async function beginTaxCalculation(lane: TaxCalculationTransactionLane, i
   if ("kind" in parsed) return parsed;
   if (parsed.operation !== "claim" || !parsed.pin) return execute(lane, parsed);
   const pin = parsed.pin;
+  if ([...pin.destination.policyRevision].length > 256)
+    return refusal("tax_invalid_input", "/pin/destination/policyRevision", "Obtain a supported revision from the destination owner.");
   try {
     const requestDigest = evaluationDigest("evaluation-request", pin.request);
     if (pin.kind === "tax_calculation") {
@@ -185,6 +191,7 @@ export async function beginTaxCalculation(lane: TaxCalculationTransactionLane, i
       const { address: _address, ...destination } = request.input.destination;
       pin.request = { ...request, input: { ...request.input, destination } };
     } else if (pin.coverage !== null || pin.recovery !== null) return refusal("tax_invalid_input", "/pin");
+    else if (!fiscalRequest.safeParse(pin.request).success) return refusal("tax_invalid_input", "/pin/request");
     Object.assign(pin, { requestDigest });
   } catch { return refusal("tax_invalid_input", "/pin/request"); }
   return execute(lane, parsed);

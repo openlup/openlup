@@ -537,7 +537,7 @@ describe("native evaluation claim and seal", () => {
   type Lane = PostgresRoleFreeTransactionLane<PgQueryExecutor>;
   const recovery = "ab".repeat(32);
   const blocked = { kind: "refused", code: "commerce_destination_owner_mismatch", field: "/destination/snapshotRef",
-    remedy: "Re-obtain evidence through the authenticated owner." };
+    remedy: "Re-obtain evidence through the authenticated owner." } as const;
   const invalid = (field: string) => ({ kind: "refused", code: "tax_invalid_input", field, remedy: "Supply the documented input." });
 
   async function fixture(db = store, purpose: "final" | "estimate" = "final", evaluationKey: string = randomUUID()) {
@@ -650,6 +650,74 @@ describe("native evaluation claim and seal", () => {
     try { await witness(); }
     finally { await store.owner.query(definition); }
   }
+
+  it.each(["wrapper", "SQL"] as const)("refuses an address-bearing fiscal request through %s without writing a claim", async entry => {
+    const { claim } = await fixture();
+    const request = { ...claim.pin.request, line1: "1 Example Lane", line2: "Unit A", city: "Example", postalCode: "00000",
+      contactEmail: "synthetic@example.invalid" };
+    const input = { ...claim, pin: { ...claim.pin, request } };
+    if (entry === "wrapper") {
+      expect(await beginTaxCalculation(lane(), input)).toStrictEqual(invalid("/pin/request"));
+    } else {
+      const pins = [{ ...input.pin, requestDigest: evaluationDigest("evaluation-request", request) },
+        { ...claim.pin, line1: request.line1, requestDigest: evaluationDigest("evaluation-request", claim.pin.request) }];
+      for (const pin of pins) {
+        await expect(store.runtime.query("SELECT public.tax_calculation_begin_v1($1::jsonb)", [{ ...input, pin }]))
+          .rejects.toMatchObject({ code: "22023", message: "tax_invalid_input" });
+      }
+    }
+    expect((await store.owner.query("SELECT state FROM public.tax_calculations WHERE identity=$1::jsonb", [claim.identity])).rows).toEqual([]);
+  });
+
+  it("withholds the token when claim commit acknowledgment crosses cutoff", async () => {
+    const { claim } = await fixture();
+    const validUntil = future(3), active = lane(), committed = deferred<void>(), release = deferred<void>();
+    const delayed: Lane = { close: active.close, run: async work => {
+      const reply = await active.run(work);
+      committed.resolve();
+      await release.promise;
+      return reply;
+    } };
+    const pending = beginTaxCalculation(delayed, { ...claim, pin: { ...claim.pin, validUntil } });
+    try {
+      await Promise.race([committed.promise, pending.then(() => { throw new Error("Expected the claim to reach commit"); })]);
+      await store.owner.query("SELECT pg_sleep_until($1::timestamptz)", [validUntil]);
+    } finally { release.resolve(); }
+    const result = await pending;
+    expect(result).toStrictEqual({ kind: "refused", code: "tax_calculation_expired", field: "/taxEvidence/expiresAt",
+      remedy: "Select the destination again and obtain a fresh quote." });
+    expect(result).not.toHaveProperty("claimToken");
+    expect((await store.owner.query(`SELECT state,lease_until>clock_timestamp() AS leased
+      FROM public.tax_calculations WHERE identity=$1::jsonb`, [claim.identity])).rows).toEqual([{ state: "pending", leased: true }]);
+  });
+
+  it.each([blocked, { kind: "refused", code: "destination_digest_mismatch", field: "/destination/destinationDigest",
+    remedy: "Replay the original document and its digest." }] as const)("seals and exactly replays $code through the wrapper", async outcome => {
+    const { claim } = await fixture();
+    const original = fiscalSeal(claim, await claimFresh(claim));
+    const seal = { ...original, seal: { ...original.seal, outcome } };
+    const reply = await completeTaxCalculation(lane(), seal);
+    expect(reply).toStrictEqual({ kind: "terminal", validUntil: seal.seal.validUntil, freshness: "current", outcome });
+    expect(await completeTaxCalculation(lane(), seal)).toStrictEqual(reply);
+  });
+
+  it("admits a shared policy revision at 256 code points and refuses 257 before a claim", async () => {
+    const { claim, ctx } = await fixture();
+    const revision = "😀".repeat(100) + "a".repeat(156);
+    const claimWithRevision = async (policyRevision: string) => {
+      const initial = snapshotCommand(ctx).command;
+      const command = { ...initial, requestKey: randomUUID(), validated: { ...initial.validated, policyRevision } };
+      const issued = await snapshot(store.runtime, ctx, { ...command,
+        requestDigest: destinationHash(canonicalCatalogDraftJson(snapshotPreimage(ctx, command))) });
+      return { ...claim, identity: { ...claim.identity, evaluationKey: randomUUID() },
+        pin: { ...claim.pin, destination: issued.binding, validUntil: issued.evidenceExpiresAt } };
+    };
+    expect(await beginTaxCalculation(lane(), await claimWithRevision(revision))).toMatchObject({ kind: "claimed" });
+    const excess = await claimWithRevision(revision + "a");
+    expect(await beginTaxCalculation(lane(), excess)).toStrictEqual({ kind: "refused", code: "tax_invalid_input", field: "/pin/destination/policyRevision",
+      remedy: "Obtain a supported revision from the destination owner." });
+    expect((await store.owner.query("SELECT state FROM public.tax_calculations WHERE identity=$1::jsonb", [excess.identity])).rows).toEqual([]);
+  });
 
   it("binds invocation order, serializes first claims and grants no dispatch on lookup or takeover before the lease", async () => {
     const { claim, lookup } = await fixture();
@@ -870,9 +938,11 @@ describe("native evaluation claim and seal", () => {
   it("round-trips pending, expired and terminal rows through an exact-current pristine target", async () => {
     const { clone } = await resources.targetTemplate("tax-transfer");
     const target = await clone("copy");
-    const expired = await fixture();
-    await claimFresh(expired.claim);
-    await reachDestinationCutoff(store.owner, expired.issued.binding);
+    const expired = await exclusiveFixture();
+    const validUntil = future(3);
+    const original = await claimFresh({ ...expired.claim, pin: { ...expired.claim.pin!, validUntil } });
+    await forceClaimTransition(store.owner, original.calculationId, original.generation);
+    await store.owner.query("SELECT pg_sleep_until($1::timestamptz)", [validUntil]);
     const final = await fixture(), held = await claimFresh(final.claim);
     await completeTaxCalculation(lane(), fiscalSeal(final.claim, held));
     // No live dispatcher is attached to either captured store.
@@ -880,7 +950,10 @@ describe("native evaluation claim and seal", () => {
     const freshTarget = await captureStoreJourney(target.owner, "tax-target");
     expect((await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget })).replayed).toBe(false);
     expect(await beginTaxCalculation(lane(target), expired.lookup)).toStrictEqual({ kind: "pending" });
-    expect(await beginTaxCalculation(lane(target), expired.claim)).toMatchObject({ code: "tax_claim_pending" });
+    const { pin: _pin, ...takeover } = expired.claim;
+    expect(await beginTaxCalculation(lane(target), takeover)).toMatchObject({ code: "tax_calculation_expired", field: "/taxEvidence/expiresAt" });
+    expect(await storedRow(target.owner, original.calculationId)).toMatchObject({ state: "pending",
+      generation: original.generation, claim_token: original.claimToken });
     expect(await beginTaxCalculation(lane(target), final.lookup)).toMatchObject({ kind: "terminal" });
     expect((await target.owner.query("SELECT state FROM public.tax_calculations GROUP BY state ORDER BY state")).rows.map(row => row.state))
       .toEqual(["pending", "terminal"]);

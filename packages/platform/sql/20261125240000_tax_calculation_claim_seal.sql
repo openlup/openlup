@@ -174,8 +174,12 @@ BEGIN
     RAISE EXCEPTION 'tax_claim_pending' USING ERRCODE='55000', DETAIL='/claim';
   END IF;
   pinned := coalesce(r.pin,p_request->'pin');
+  original := pinned->'request';
   IF NOT coalesce(pinned->>'kind' IN ('fiscal_profile','tax_calculation'), false)
-    OR jsonb_path_exists(pinned->'request', '$.**.address') OR jsonb_path_exists(pinned->'request', '$.**.contact') THEN
+    OR (CASE WHEN pinned->>'kind'='fiscal_profile' THEN original IS DISTINCT FROM jsonb_build_object('basis','inclusive','taxDate',original->'taxDate')
+      OR (original->>'taxDate' COLLATE "C" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$') IS NOT TRUE
+      OR pinned - ARRAY['destination','kind','request','coverage','validUntil','recovery','requestDigest','invocationDigest','documentDigest'] <> '{}'::jsonb
+    ELSE jsonb_path_exists(original, '$.**.address') OR jsonb_path_exists(original, '$.**.contact') END) THEN
     RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/pin';
   END IF;
   destination := pinned->'destination';
@@ -218,7 +222,6 @@ BEGIN
                     ELSE 'Recover the verified original history through its owner.' END;
     END;
   END IF;
-  original := pinned->'request';
   IF pinned->>'kind' = 'tax_calculation' THEN
     address := owned#>'{document,address}';
     address := (address - ARRAY['country','subdivision']) || jsonb_build_object('countryCode',address->'country')
@@ -264,7 +267,7 @@ BEGIN
         WHERE calculation_id=r.calculation_id RETURNING * INTO r;
     END IF;
     IF clock_timestamp() >= cutoff THEN RAISE EXCEPTION 'tax_calculation_expired' USING ERRCODE='55000', DETAIL='/taxEvidence/expiresAt'; END IF;
-    RETURN jsonb_build_object('kind','claimed','calculationId',r.calculation_id,'generation',r.generation,'claimToken',r.claim_token,'pin',pinned);
+    RETURN jsonb_build_object('kind','claimed','calculationId',r.calculation_id,'generation',r.generation,'claimToken',r.claim_token,'pin',pinned,'sampledAtMs',extract(epoch FROM clock_timestamp()) * 1000);
   END IF;
   IF submission->'requestDigest' IS DISTINCT FROM pinned->'requestDigest' OR submission->'kind' IS DISTINCT FROM pinned->'kind'
     OR submission->'destination' IS DISTINCT FROM destination THEN

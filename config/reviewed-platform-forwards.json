@@ -10919,7 +10919,7 @@
     },
     {
       "path": "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql",
-      "sha256": "6a7be4b18d043947626ed7aef67b8c2c830d0f8da33f825a0e6e3240de5e5123",
+      "sha256": "156d6dfcda052e24b47ee977a427fe6b0c7a484f0e9e5689ae454d118eb63920",
       "functions": [
         {
           "signature": "public.tax_calculation_terminal_v1(public.tax_calculations)",
@@ -10929,7 +10929,7 @@
         {
           "signature": "public.tax_calculation_transition_v1(jsonb,boolean)",
           "beforeSha256": null,
-          "afterSha256": "0ee965b8b5dd856a40ea41a4013eec527d9c9d5af96f09e69094aeae92efe982"
+          "afterSha256": "9de0cbced72eb53032f82cc3c7a9260a7c1d616db003c586c15b235bba57413b"
         },
         {
           "signature": "public.tax_calculation_begin_v1(jsonb)",

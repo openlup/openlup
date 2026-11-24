@@ -781,10 +781,10 @@
       },
       {
         "file": "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql",
-        "sha256": "6a7be4b18d043947626ed7aef67b8c2c830d0f8da33f825a0e6e3240de5e5123"
+        "sha256": "156d6dfcda052e24b47ee977a427fe6b0c7a484f0e9e5689ae454d118eb63920"
       }
     ],
-    "objectInventorySha256": "b0ce3c2ad06125e1295025e650d9a501e0c1cacc99feef421f1e9c2df4de0f72",
+    "objectInventorySha256": "2147620425797e67bb23dbd19e318d9c4db230b08939159546abdcbd94b2dd18",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1589,15 +1589,15 @@
         },
         {
           "file": "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql",
-          "sha256": "6a7be4b18d043947626ed7aef67b8c2c830d0f8da33f825a0e6e3240de5e5123"
+          "sha256": "156d6dfcda052e24b47ee977a427fe6b0c7a484f0e9e5689ae454d118eb63920"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "7e3e525eca76df64f9f50162958e700df65f3372a48c614aa7fdc6f1c23cda3a"
+          "withRestore": "ce66daff85ac50a07a89360340b980729ee1ba0d17403a004a6e5ec4987cdf4e"
         },
         "separateMigrator": {
-          "withRestore": "ec714daa57185d62203d30ebcf9ec412910a64e553e3f21d94a5493ff0c07dbb"
+          "withRestore": "7c1ff3559798d5f77a9b08e03ac344b1da9e9a7aa1616dfab2aaab8a49ccb734"
         }
       }
     },
@@ -2397,12 +2397,12 @@
         },
         {
           "file": "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql",
-          "sha256": "6a7be4b18d043947626ed7aef67b8c2c830d0f8da33f825a0e6e3240de5e5123"
+          "sha256": "156d6dfcda052e24b47ee977a427fe6b0c7a484f0e9e5689ae454d118eb63920"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "71fa8b64ebe551e887b0dfebc4404ac7408951a050db9447361e902a2399e923",
-        "operatorProvisioned": "42694777e1e1a599e5d17349b128b4c760d0886fe782021881fe48aebf76620a"
+        "installerManaged": "db8d008a8acd58a42e71f316eddd9b29f99b426d17da69fb69ad9c4286b6b18c",
+        "operatorProvisioned": "e3dac8debbf2056e97e8e62c66e34046038759877c5983ad98013f15ec2d1003"
       }
     }
   },
@@ -3380,7 +3380,7 @@
     {
       "file": "20261125240000_tax_calculation_claim_seal.sql",
       "source": "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql",
-      "sha256": "6a7be4b18d043947626ed7aef67b8c2c830d0f8da33f825a0e6e3240de5e5123"
+      "sha256": "156d6dfcda052e24b47ee977a427fe6b0c7a484f0e9e5689ae454d118eb63920"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",
