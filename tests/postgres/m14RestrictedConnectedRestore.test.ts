@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
-import { expect, it } from "vitest";
+import { aroundEach, expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -22,11 +22,11 @@ const password = "synthetic-restricted-restore";
 const groups = ["anon", "authenticated", "service_role", "platform_acquisition_owner",
   "platform_acquisition_runtime", "openlup_retained_import_owner"];
 
-async function install(shape: Shape, mode: Mode, label: string, apply = true): Promise<Installed> {
+async function install(shape: Shape, mode: Mode, label: string, apply = true, expectCase = expect): Promise<Installed> {
   const container = await runPostgresContainer({ name: `m14-restricted-connected-${shape}-${mode}-${label}-${process.pid}`, password });
   const pools: Pool[] = [];
   try {
-    expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+    expectCase(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
     const pool = (url: string): Pool => { const p = new Pool({ connectionString: url }); pools.push(p); return p; };
     let root = pool(container.connectionString);
     const namedUrl = (name: string): string => { const url = new URL(container.connectionString); url.username = name; return url.toString(); };
@@ -78,14 +78,14 @@ async function install(shape: Shape, mode: Mode, label: string, apply = true): P
     const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")),
       "qualified-admin", { roleMode: mode });
     // This small admission discriminator runs before the full migration/restore.
-    expect((await owner.query("SELECT rolsuper,rolcreaterole,rolcreatedb FROM pg_catalog.pg_roles WHERE rolname=$1",
+    expectCase((await owner.query("SELECT rolsuper,rolcreaterole,rolcreatedb FROM pg_catalog.pg_roles WHERE rolname=$1",
       [selection.bootstrapLogin])).rows).toEqual([{ rolsuper: false, rolcreaterole: true, rolcreatedb: true }]);
-    await expect(owner.query("SELECT * FROM pg_catalog.pg_control_system()")).rejects.toMatchObject({ code: "42501" });
-    expect(1 + manifest.forward.length).toBe(installationInventory.current.profiles[mode === "installer-managed" ? "admin-managed" : "admin-operator"].count);
-    expect((await runner.status()).pending).toHaveLength(1 + manifest.forward.length);
+    await expectCase(owner.query("SELECT * FROM pg_catalog.pg_control_system()")).rejects.toMatchObject({ code: "42501" });
+    expectCase(1 + manifest.forward.length).toBe(installationInventory.current.profiles[mode === "installer-managed" ? "admin-managed" : "admin-operator"].count);
+    expectCase((await runner.status()).pending).toHaveLength(1 + manifest.forward.length);
     if (apply) {
-      expect((await runner.apply()).applied).toHaveLength(1 + manifest.forward.length);
-      expect((await runner.status()).pending).toEqual([]);
+      expectCase((await runner.apply()).applied).toHaveLength(1 + manifest.forward.length);
+      expectCase((await runner.status()).pending).toEqual([]);
     }
     return { container, pools, owner, runner, selection, inventory: manifest.objectInventorySha256 };
   } catch (error) {
@@ -222,7 +222,7 @@ async function cancellationRows(owner: Pool, subscriptionId: string) {
 }
 
 async function verifyFeedbackAdmission(mode: Mode, expectCase: typeof expect) {
-  const source = await install("neon", mode, "cancel-feedback");
+  const source = await install("neon", mode, "cancel-feedback", true, expectCase);
   try {
     const runtime = feedbackRuntime(source);
     const before = await cancelSubscription(source.owner, runtime);
@@ -326,15 +326,38 @@ async function verifyFeedbackAdmission(mode: Mode, expectCase: typeof expect) {
   } finally { await closePostgres(source.container, source.pools); }
 }
 
+const activeSerialFixtures = new Set<Promise<void>>();
+const activeConcurrentFixtures = new Set<Promise<void>>();
+
+aroundEach(async (runTest, { signal, task }) => {
+  // Vitest can time out the case without cancelling its database work.
+  await Promise.all(activeSerialFixtures);
+  if (!task.concurrent) await Promise.all(activeConcurrentFixtures);
+  signal.throwIfAborted();
+  await runTest();
+}, postgresSetupTimeoutMs);
+
+function trackFixture(active: Set<Promise<void>>, work: () => Promise<void>) {
+  const result = work();
+  const drained = result.then(() => undefined, () => undefined);
+  active.add(drained);
+  void drained.then(() => active.delete(drained));
+  return result;
+}
+
+function restoreTest(name: string, work: () => Promise<void>, timeout: number) {
+  it(name, () => trackFixture(activeSerialFixtures, work), timeout);
+}
+
 // Use each case's own assertion context and wait for cleanup even after a case times out.
 it.concurrent.for(["installer-managed", "operator-provisioned"] as const)(
   "cx1r_feedback_native_admission_and_replay (%s)", { timeout: postgresSetupTimeoutMs }, async (mode, { expect, onTestFinished }) => {
-    const work = verifyFeedbackAdmission(mode, expect);
-    onTestFinished(() => work.then(() => undefined, () => undefined), postgresSetupTimeoutMs);
+    const work = trackFixture(activeConcurrentFixtures, () => verifyFeedbackAdmission(mode, expect));
+    onTestFinished(({ signal }) => signal.aborted ? work : undefined, postgresSetupTimeoutMs);
     await work;
   });
 
-it("cx1r_feedback_retries_when_winner_is_deleted", async () => {
+restoreTest("cx1r_feedback_retries_when_winner_is_deleted", async () => {
   const source = await install("neon", "operator-provisioned", "vanished-feedback");
   try {
     const runtime = feedbackRuntime(source);
@@ -383,7 +406,7 @@ it("cx1r_feedback_retries_when_winner_is_deleted", async () => {
   } finally { await closePostgres(source.container, source.pools); }
 }, postgresSetupTimeoutMs);
 
-it("cx1r_feedback_full_store_round_trip", async () => {
+restoreTest("cx1r_feedback_full_store_round_trip", async () => {
   const [source, target] = await installPair("neon", "operator-provisioned", "feedback-source", "feedback-target");
   try {
     const sourceRuntime = feedbackRuntime(source);
@@ -438,7 +461,7 @@ it("cx1r_feedback_full_store_round_trip", async () => {
   }
 }, 245_000);
 
-it("keeps the elevated control-plane membership requirement for self-host selections", async () => {
+restoreTest("keeps the elevated control-plane membership requirement for self-host selections", async () => {
   const fixture = await install("rds", "installer-managed", "self-host-scope", false);
   try {
     delete fixture.selection.target; delete fixture.selection.layout;
@@ -446,7 +469,7 @@ it("keeps the elevated control-plane membership requirement for self-host select
   } finally { await closePostgres(fixture.container, fixture.pools); }
 }, postgresSetupTimeoutMs);
 
-it("does not let an RDS declaration trust a non-stock role without elevated flags", async () => {
+restoreTest("does not let an RDS declaration trust a non-stock role without elevated flags", async () => {
   const fixture = await install("rds", "installer-managed", "non-stock-authority", false);
   try {
     await fixture.pools[0]!.query(`CREATE ROLE declared_outsider NOLOGIN; REVOKE rds_superuser FROM host_bootstrap;
@@ -457,7 +480,7 @@ it("does not let an RDS declaration trust a non-stock role without elevated flag
 }, postgresSetupTimeoutMs);
 
 for (const role of ["rds_password", "rds_iam", "rds_ad"] as const) {
-  it(`does not count bootstrap membership only in ${role} as RDS authority`, async () => {
+  restoreTest(`does not count bootstrap membership only in ${role} as RDS authority`, async () => {
     const fixture = await install("rds", "installer-managed", `non-authority-${role}`, false);
     try {
       await fixture.pools[0]!.query(`CREATE ROLE ${role} NOLOGIN; REVOKE rds_superuser FROM host_bootstrap;
@@ -471,7 +494,7 @@ for (const role of ["rds_password", "rds_iam", "rds_ad"] as const) {
 }
 
 for (const outside of ["grantor", "member"] as const) {
-  it(`compares RDS predefined-role edges with a non-stock ${outside}`, async () => {
+  restoreTest(`compares RDS predefined-role edges with a non-stock ${outside}`, async () => {
     const fixture = await install(outside === "grantor" ? "neon" : "rds", "installer-managed", `non-stock-${outside}`, false);
     try {
       fixture.selection.target = "rds"; fixture.selection.layout = "serial-cluster";
@@ -486,7 +509,7 @@ for (const outside of ["grantor", "member"] as const) {
 }
 
 for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-managed", "operator-provisioned"] as const) {
-  it(`admits ${shape}-shaped ${mode} control-plane roles before installation`, async () => {
+  restoreTest(`admits ${shape}-shaped ${mode} control-plane roles before installation`, async () => {
     if (!await dockerAvailable()) throw new Error("Restricted admission requires disposable PostgreSQL 16");
     const fixture = await install(shape, mode, "admission", false);
     try {
@@ -498,7 +521,7 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await expect(fixture.runner.status()).rejects.toThrow("outside_role_has_host_authority");
     } finally { await closePostgres(fixture.container, fixture.pools); }
   }, postgresSetupTimeoutMs);
-  it(`restores a connected native graph through ${shape}-shaped ${mode} admission`, async () => {
+  restoreTest(`restores a connected native graph through ${shape}-shaped ${mode} admission`, async () => {
     if (!await dockerAvailable()) throw new Error("Restricted restore requires disposable PostgreSQL 16");
     const [source, target] = await installPair(shape, mode, "source", "target");
     try {
