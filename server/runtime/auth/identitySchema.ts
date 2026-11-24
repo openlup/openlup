@@ -12,7 +12,7 @@ const declarationObjects: readonly SchemaObject[] = [
   { kind: "table", name: "public.identity_privacy_required_contributors" },
   fn("public.identity_privacy_required_contributor_ids"),
 ];
-const declarationKeys = new Set(declarationObjects.map(schemaObjectKey));
+const declarationKeys = new Set(declarationObjects.map(entry => schemaObjectKey(entry)));
 
 export function identitySchemaRecovery(bundle: IdentityBundle, issue: ReadinessIssue): ReadinessIssue {
   if (bundle === "node-postgres" && issue.module === "identity" && issue.code === "OPENLUP_E_SCHEMA_BEHIND"
