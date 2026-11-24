@@ -387,14 +387,14 @@ export async function runStarterBrowser(options) {
               await bootstrap.query(`COMMENT ON DATABASE ${database} IS '${demonstrationMarker}'`);
               const installUrl = `postgresql://${installRole}:${password}@127.0.0.1:${postgres.port}/${database}`;
               const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: installRole, runtimeLogin: runtimeRole, restoreLogin: restoreRole };
-              const first = await withCleanup(async release => {
+              const { first, repeat } = await withCleanup(async release => {
                 const migrationPool = guard(new pg.Pool({ connectionString: installUrl,
                   options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 }));
                 release(() => migrationPool.end());
                 const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: installUrl }, { installation: selection, poolFactory: () => migrationPool });
-                const applied = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
+                const first = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
                 if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
-                return applied;
+                return { first, repeat };
               });
               console.log(`Starter ${configuration} migrations: ${first.applied.length}; repeat: ${repeat.applied.length}; elapsed: ${Math.round(performance.now() - started)} ms`);
               const publicationPasswordFile = join(scratch, `${groupIndex}-${configuration}-publication-password`);
