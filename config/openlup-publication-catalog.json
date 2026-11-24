@@ -1650,6 +1650,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125260000_subscription_activation_execute_grants.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125261000_subscription_activation_units.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5391,6 +5399,14 @@
     },
     {
       "path": "packages/platform/sql/20261125220000_commerce_destination_v2_typed_refusals.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125260000_subscription_activation_execute_grants.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125261000_subscription_activation_units.sql",
       "class": "public-output"
     },
     {
@@ -32699,6 +32715,10 @@
     },
     {
       "path": "tests/postgres/subscriptionActivationEditWindow.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionActivationFixture.ts",
       "class": "public-output"
     },
     {
