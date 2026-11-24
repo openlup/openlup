@@ -194,7 +194,8 @@ it("exports and erases mixed contacts and refuses new evidence for an erased sub
       expect.objectContaining({ shipmentId: v1.fulfillmentRef, contact: legacyContact }),
       expect.objectContaining({ shipmentId: v2.fulfillmentOrderId, contact: first.expected }),
     ]) });
-  await contributor.eraseOrRetain(store.runtime, subject, await contributor.assessErasure(store.runtime, subject));
+  const assessment = await contributor.assessErasure(store.runtime, subject);
+  await contributor.eraseOrRetain(store.runtime, subject, assessment, { principalId: randomUUID() });
   await markReceiptClientErased(store.owner, first.client);
   expect(await contactRows(store.owner, first.client)).toEqual(expect.arrayContaining(
     [v1.fulfillmentRef, v2.fulfillmentOrderId].map(shipment_id => ({ shipment_id, contact: {}, captured_at: expect.any(Date), erased_at: expect.any(Date) })),
