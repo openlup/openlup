@@ -11,6 +11,7 @@ import type { AcquisitionFinancialPolicy } from "@openlup/platform/pricing";
 import type { NativeCheckoutDraftRequest } from "@openlup/platform/commerce/server/native-checkout";
 import { platformConsumerInstallArgs, assertConsumerIsolation } from "../../scripts/packages/platform-cold-consumer.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { packWorkspaceTarballs } from "../helpers/packWorkspaceTarball.js";
 
 type TestRequest = NativeCheckoutDraftRequest & { quoteSnapshot: { quote: {
   context: NonNullable<NativeCheckoutDraftRequest["quoteSnapshot"]["quote"]["context"]> & Record<string, unknown>;
@@ -48,10 +49,11 @@ export async function acquisitionFixture() {
     const npm = (args: string[], cwd: string) => execFileSync("npm", args, { cwd, encoding: "utf8", stdio: "pipe", timeout: 120_000 });
     const peers = ["zod", "pg", "pg-connection-string", "pg-int8", "pg-pool", "pg-protocol", "pg-types", "pgpass",
       "postgres-array", "postgres-bytea", "postgres-date", "postgres-interval", "split2", "xtend", "@types/pg", "@types/node", "undici-types"];
-    const tarballs = ["packages/core", "packages/platform", ...peers.map(name => `node_modules/${name}`)].map(directory => {
-      const [result] = JSON.parse(npm(["pack", "--offline", "--ignore-scripts", "--json", "--pack-destination", scratch], resolve(directory)));
-      return join(scratch, result.filename);
-    });
+    const tarballs = await packWorkspaceTarballs(
+      ["packages/core", "packages/platform", ...peers.map(name => `node_modules/${name}`)],
+      scratch,
+      { offline: true },
+    );
     writeFileSync(join(consumer, "package.json"), '{"type":"module","private":true}');
     npm(platformConsumerInstallArgs(tarballs), consumer);
     assertConsumerIsolation(consumer, process.cwd(), false);

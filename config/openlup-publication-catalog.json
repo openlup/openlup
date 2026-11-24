@@ -29858,6 +29858,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/packWorkspaceTarball.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/pgTemplateBroker.ts",
       "class": "public-output"
     },
@@ -30015,6 +30019,10 @@
     },
     {
       "path": "tests/platform/neutralStoreCheckoutRetry.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/packWorkspaceTarball.test.ts",
       "class": "public-output"
     },
     {

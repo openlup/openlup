@@ -8,6 +8,7 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { packWorkspaceTarballs } from "../helpers/packWorkspaceTarball.js";
 
 it("uses installed bundle writes on qualified-v2 through the restricted runtime login, including refusal and replay", async () => {
   const root = process.cwd();
@@ -17,10 +18,11 @@ it("uses installed bundle writes on qualified-v2 through the restricted runtime 
   const environment = { ...processEnvironment }; delete environment.NODE_PATH; delete environment.NODE_OPTIONS;
   const command = (name: string, args: string[], cwd = root) => execFileSync(name, args, { cwd, env: environment, encoding: "utf8", timeout: 120_000, maxBuffer: 4 * 1024 * 1024 });
   // The locked root supplies driver/type peers; installed platform bytes come from local tarballs.
-  const packs = ["packages/core", "packages/outbox", "packages/platform", "node_modules/zod"].map(directory => {
-    const [packed] = JSON.parse(command("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", scratch], join(root, directory)));
-    return join(scratch, packed.filename);
-  });
+  const packs = await packWorkspaceTarballs(
+    ["packages/core", "packages/outbox", "packages/platform", "node_modules/zod"],
+    scratch,
+    { env: environment },
+  );
   writeFileSync(join(consumer, "package.json"), JSON.stringify({ private: true, type: "module" }));
   command("npm", ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", ...packs], consumer);
   for (const name of ["core", "outbox", "platform"]) expect(realpathSync(join(consumer, "node_modules/@openlup", name))).toBe(join(consumer, "node_modules/@openlup", name));
