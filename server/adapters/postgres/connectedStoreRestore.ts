@@ -5,12 +5,13 @@ import {
   PostgresTransferError, restoreCompatiblePostgresRows,
   type CompatiblePostgresPacket,
 } from "@openlup/platform/portability";
-import { deriveOidcPrincipalId } from "@openlup/platform/identity";
+import { deriveOidcPrincipalId, validateRequiredPrivacyContributorIds } from "@openlup/platform/identity";
 import { evaluatePlatformMigrationManifest, readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../../scripts/platform-migration-manifest.js";
 import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
   assertQualifiedAdminPostgresSelection, type QualifiedAdminPostgresInstallation, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
 import { assertConnectedCatalogPublications, connectedNativeStoreTables,
-  connectedStoreClusterIdentitySql, connectedStoreRowSource, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
+  connectedStoreClusterIdentitySql, connectedStoreRowSource, readPrivacyDeclarationCensus,
+  requiredPrivacyDeclarationTable, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 
 const { catalogPublicationAdmissionRefusal, decodePublicationPacket, requireDecodedPublication } = nativeCatalogPublication;
 
@@ -282,6 +283,7 @@ const order = [
   "commerce_destinations", "commerce_destination_bindings", "commerce_destination_v2_receipts",
   "commerce_destination_v2_documents", "commerce_destination_v2_checkout_selections", "commerce_destination_v2_order_bindings",
   "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts",
+  "tax_calculations",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "fulfillment_dispatch_refs", "fulfillment_paid_handoffs", "fulfillment_observations", "fulfillment_stock_movements",
   "fulfillment_parcel_reservation_sets", "fulfillment_parcel_lines", "fulfillment_parcel_line_reservations",
@@ -370,6 +372,13 @@ export async function restoreConnectedNativeStore(input: {
     // Inspect definitions after table locks, before any retained-data mutation.
     const lockedInventory = inventory ?? await catalogPayload(client, installation);
     if (digest(lockedInventory) !== manifest.objectInventorySha256) fail("schema_conflict");
+    const declared = JSON.stringify(packet.requiredPrivacyContributorIds);
+    const assertPrivacyDeclaration = async () => {
+      const live = await readPrivacyDeclarationCensus({ query: (sql, values) => client.query(sql, values ? [...values] : undefined) });
+      if (declared !== JSON.stringify(live)) fail("target_conflict", requiredPrivacyDeclarationTable);
+    };
+    if (declared !== JSON.stringify(fresh.requiredPrivacyContributorIds)) fail("target_conflict", requiredPrivacyDeclarationTable);
+    await assertPrivacyDeclaration();
     for (const table of connectedNativeStoreTables) {
       const actual = (await client.query<{ name: string; type: string }>(`SELECT a.attname AS name,
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
@@ -408,6 +417,8 @@ export async function restoreConnectedNativeStore(input: {
       let neutralized = 0;
       for (const table of order) {
         const rows = source.get(table)!;
+        const copyingPrivacyReceipts = table === "identity_privacy_erasures" && rows.rows.length > 0;
+        if (copyingPrivacyReceipts) await client.query("SELECT pg_catalog.set_config('app.tax_historical_receipt_restore',$1,true)", [facts.xid]);
         if (table === "subscription_price_policy_revisions") {
           // Only the policy copy may retain the provenance of a guarded close.
           await client.query("INSERT INTO public.subscription_price_policy_restore_capabilities VALUES (pg_catalog.pg_current_xact_id())");
@@ -459,6 +470,7 @@ export async function restoreConnectedNativeStore(input: {
             await insert(client, rows, row);
           }
         }
+        if (copyingPrivacyReceipts) await client.query("SELECT pg_catalog.set_config('app.tax_historical_receipt_restore','',true)");
         if (table === "subscription_price_policy_revisions") {
           await client.query("DELETE FROM public.subscription_price_policy_restore_capabilities WHERE transaction_id=pg_catalog.pg_current_xact_id()");
         }
@@ -519,6 +531,7 @@ export async function restoreConnectedNativeStore(input: {
       if (await catalogPayload(client, installation) !== lockedInventory) fail("schema_conflict");
       if (JSON.stringify((await client.query<{ value: string }>("SELECT pg_catalog.to_jsonb(m)::pg_catalog.text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows) !== JSON.stringify(ledgerBefore)) fail("schema_conflict");
       if ((await client.query("SELECT pg_catalog.pg_current_xact_id()::pg_catalog.text AS xid")).rows[0].xid !== facts.xid) fail("invalid_input");
+      await assertPrivacyDeclaration();
       await client.query("COMMIT");
       result = { captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: neutralized };
     }
@@ -569,6 +582,7 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }
     if (shape === "unsupported") refuseSourceSchema();
+    validateRequiredPrivacyContributorIds(copy.requiredPrivacyContributorIds);
     const all = tables(copy);
     if (all.size !== connectedNativeStoreTables.length || connectedNativeStoreTables.some(table => !all.has(table))) fail("invalid_input");
     let count = 0, bytes = 0;
@@ -626,7 +640,8 @@ async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): 
 }
 async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[]): Promise<void> {
   for (const relation of relations) {
-    if (relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName) || relation.table === "platform_schema_migrations")) continue;
+    if (relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName)
+      || relation.table === "platform_schema_migrations" || relation.table === requiredPrivacyDeclarationTable)) continue;
     if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")) continue;
     if ((await client.query(`SELECT 1 FROM ${quoted(relation.schema)}.${quoted(relation.table)} LIMIT 1`)).rows.length) fail("unsupported_table", `${relation.schema}.${relation.table}`);
   }
@@ -698,6 +713,8 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     // These guards retain final intervals and recompute the same definition digest.
     subscription_price_policy_revisions: ["subscription_price_policy_revisions_00_guard_insert", "subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
+    identity_privacy_erasures: ["tax_calculation_privacy_guard"],
+    tax_calculations: ["tax_calculation_guard"],
     clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
     commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],

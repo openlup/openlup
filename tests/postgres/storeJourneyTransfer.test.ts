@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresNativeCheckoutPersistence } from "@openlup/platform/commerce/server/native-checkout";
 import { createNativeRenewalCodec, createPostgresPurchaseRenewalWriter, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
+import { requiredPrivacyDeclarationTable } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { assertJourneyRuntime, captureAndActivateJourney, captureStoreJourney, draftStoreJourney, journeyCensus, journeyFacts,
   journeyPaidAt, journeyRpc, journeyScheduledAt, journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
@@ -27,10 +28,16 @@ it("transfers one purchased store to a pristine database and continues its open 
   const before = await journeyCensus(source.owner);
   const packet = await captureStoreJourney(source.owner, "journey-purchased-source");
   const carried = [...packet.compatible.tables, ...packet.owned];
-  // Discover actual populated journey tables independently. An omitted populated
-  // table must fail capture itself or this full-row comparison after restore.
+  // Compare all populated relations against their packet representation.
   for (const [table, rows] of Object.entries(before)) if (rows.length) {
     const captured = carried.find(entry => entry.table === table);
+    if (table === requiredPrivacyDeclarationTable) {
+      const requiredIds = rows.map(row => (JSON.parse(row) as { contributor_id: string }).contributor_id).sort();
+      expect(captured).toBeUndefined();
+      expect(packet.requiredPrivacyContributorIds).toEqual(requiredIds);
+      expect(pristine.requiredPrivacyContributorIds).toEqual(requiredIds);
+      continue;
+    }
     expect(captured, `capture omitted ${table}`).toBeDefined();
     expect([...captured!.rows].sort(), `capture changed ${table}`).toEqual([...rows].sort());
   }

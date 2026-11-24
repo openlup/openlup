@@ -58,6 +58,7 @@ export * from "./postgresOperatorIdentity.js";
 export * from "./privacyPorts.js";
 export * from "./personalDataRegistry.js";
 export * from "./privacyUseCases.js";
+export { nativePrivacyUnavailable, privacyRefusalDetails, validateRequiredPrivacyContributorIds } from "./requiredPrivacyContributors.js";
 export * from "./identityPersonalDataContributor.js";
 export * from "./postgresPrivacy.js";
 export * from "./managedPrivacy.js";
@@ -75,3 +76,4 @@ export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPriv
 export { createCustomerPreferencePrivacyContributor } from './customerPreferencePrivacy.js';
 export { createCustomerBillingPrivacyContributor } from './billingProfilePrivacy.js';
 export { createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor } from "./destinationPrivacy.js";
+export { createTaxCalculationPrivacyContributor } from "./taxCalculationPrivacy.js";

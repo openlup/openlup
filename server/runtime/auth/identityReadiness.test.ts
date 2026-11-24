@@ -7,7 +7,8 @@ import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import type { RouteEntry } from "@openlup/platform/bff";
 import type { CandidateIdentity, SchemaObject } from "@openlup/core/readiness";
-import { createVerifierResultOnlyEmailTrustPolicy } from "@openlup/platform/identity";
+import { createPrivacyOperations, createVerifierResultOnlyEmailTrustPolicy } from "@openlup/platform/identity";
+import { syntheticNativePrivacy } from "../../../tests/identity/acceptance.conformance.js";
 import { createReferenceIdentity, admitReferenceIdentity, type ReferenceIdentityAdmission, type ReferenceIdentityPorts } from "./referenceIdentity.js";
 import { identityRequiredSchema, type IdentityBundle } from "./identitySchema.js";
 import { readManagedMigrationChain } from "../../../scripts/public-ci-pgtap.mjs";
@@ -47,19 +48,22 @@ const objectKey = (object: SchemaObject) => `${object.kind}:${object.name}${obje
 // Auth is owned by the managed runtime, outside its public migration chain.
 // These fixed external observations are only a readiness fixture; the managed DB proof probes them live.
 const managedAuth = new Set(["function:auth.uid()", "table:auth.users", "column:auth.users.id", "column:auth.users.email", "column:auth.users.email_confirmed_at"]);
-function selectedPorts(): ReferenceIdentityPorts {
+function selectedPorts(bundle: IdentityBundle, observe: (operation: "export" | "erase") => void): ReferenceIdentityPorts {
   return {
     emailTrustPolicy: createVerifierResultOnlyEmailTrustPolicy(),
     customerSession: { verifyAccessToken: vi.fn(async () => null) }, customerProfile: { getCustomerMe: vi.fn(async () => null) },
     operatorAuthorization: { authorize: vi.fn(async () => ({ ok: true as const, principalId: "11111111-1111-4111-8111-111111111111", role: "admin" as const, isMachineActor: false })) },
     operatorActions: { inviteAdminUser: vi.fn(), removeAdminUser: vi.fn() },
-    delivery: { deliver: vi.fn(async () => {}) }, privacy: { export: vi.fn(), erase: vi.fn() },
+    delivery: { deliver: vi.fn(async () => {}) }, privacy: bundle === "node-postgres"
+      ? syntheticNativePrivacy(createPrivacyOperations, observe) : { export: vi.fn(async () => { observe("export"); return undefined as never; }),
+        erase: vi.fn(async () => { observe("erase"); return undefined as never; }) },
   };
 }
-function admission(bundle: IdentityBundle): ReferenceIdentityAdmission {
+function admission(bundle: IdentityBundle, observe = vi.fn(), earlierRoutes: RouteEntry[] = []): ReferenceIdentityAdmission {
   vi.stubEnv("PLATFORM_BUNDLE", bundle);
-  const runtime = createReferenceIdentity({ bundle, env: readCustomerRouteEnv(), migrationIdentity: "complete", ports: selectedPorts(),
+  const runtime = createReferenceIdentity({ bundle, env: readCustomerRouteEnv(), migrationIdentity: "complete", ports: selectedPorts(bundle, observe),
     createRoutes: ports => [
+      ...earlierRoutes,
       { route: "/api/bff/customers/reconcile-account", pattern: /^\/api\/bff\/customers\/reconcile-account$/, params: [],
         handler: async () => { await ports.customerProfile.getCustomerMe("11111111-1111-4111-8111-111111111111"); } },
       ...(["export", "erase"] as const).map((operation): RouteEntry => ({ route: `/api/bff/admin/identity/privacy/${operation}`, pattern: new RegExp(`^/api/bff/admin/identity/privacy/${operation}$`), params: [], ...(bundle === "node-postgres" ? { availability: "direct-postgres" as const } : {}),
@@ -100,6 +104,21 @@ it.each(["node-postgres", "node-supabase"] as const)("refuses every absent requi
     expect(result.report.issues).toContainEqual(expect.objectContaining({ module: "identity", observation: "object_absent" }));
   }
 });
+it.each([
+  ["declaration reader", "function:public.identity_privacy_required_contributor_ids()", "20261125300000_identity_privacy_required_contributors.sql"],
+  ["declaration table", "table:public.identity_privacy_required_contributors", "20261125300000_identity_privacy_required_contributors.sql"],
+  ["erasure ledger", "table:public.identity_privacy_erasures", "20261018190000_identity_privacy_erasures.sql"],
+] as const)("names the installing forward when the native %s is absent", async (_object, subject, forward) => {
+  const input = admission("node-postgres"), observe = input.schemaProbe.observe;
+  input.schemaProbe.observe = async requirement => {
+    const result = await observe(requirement);
+    return { ...result, objects: result.objects.map(entry => ({ ...entry, present: entry.present && objectKey(entry.object) !== subject })) };
+  };
+  const result = await admitReferenceIdentity(input);
+  expect(result.admitted).toBe(false);
+  expect(result.report.issues).toEqual([expect.objectContaining({ code: "OPENLUP_E_SCHEMA_BEHIND", subject, observation: "object_absent",
+    fix: `Apply db/platform/migrations/${forward} for the selected adapter.` })]);
+});
 it("keeps the inventories disjoint and pins fields used by each bundle", () => {
   const direct = identityRequiredSchema("node-postgres", "complete").objects.map(object => object.name);
   const managed = identityRequiredSchema("node-supabase", "complete").objects.map(object => object.name);
@@ -111,6 +130,13 @@ it("keeps the inventories disjoint and pins fields used by each bundle", () => {
 it("refuses a registered route replaced with an unrelated function", async () => {
   const input = admission("node-postgres"); input.runtime.routes[0].handler = async () => {};
   expect((await admitReferenceIdentity(input)).report.issues).toContainEqual(expect.objectContaining({ module: "identity", code: "OPENLUP_E_PORT_MISSING", subject: "/api/bff/customers/reconcile-account" }));
+});
+it("refuses callable native privacy operations without the serving factory's proof", async () => {
+  const input = admission("node-postgres");
+  input.runtime.ports.privacy = { export: vi.fn(), erase: vi.fn() };
+  const result = await admitReferenceIdentity(input);
+  expect(result.admitted).toBe(false);
+  expect(result.report.issues).toContainEqual(expect.objectContaining({ module: "identity", code: "OPENLUP_E_PORT_MISSING", subject: "privacy" }));
 });
 it.each(["customerSession", "customerProfile", "operatorAuthorization", "operatorActions", "delivery", "privacy"] as const)("refuses missing %s binding", async key => {
   const input = admission("node-postgres"); Reflect.deleteProperty(input.runtime.ports, key);
@@ -205,7 +231,7 @@ it("covers invitation writes and managed soft-link lookup columns independently 
 });
 it.each(["customerSession", "customerProfile", "operatorAuthorization", "operatorActions", "delivery", "privacy"] as const)("refuses a placeholder for the actual %s binding", async key => {
   const input = admission("node-postgres");
-  for (const method of Object.keys(input.runtime.ports[key])) Reflect.deleteProperty(input.runtime.ports[key], method);
+  Reflect.set(input.runtime.ports, key, {});
   const result = await admitReferenceIdentity(input);
   expect(result.admitted).toBe(false);
   expect(result.report.issues).toContainEqual(expect.objectContaining({ code: "OPENLUP_E_PORT_MISSING", subject: key }));
@@ -230,20 +256,55 @@ it.each([
   ["node-supabase", "export"], ["node-supabase", "erase"],
 ] as const)("dispatches the admitted %s policy-wrapped privacy %s implementation", async (bundle, operation) => {
   policy.allow = true;
-  const input = admission(bundle);
+  const observe = vi.fn(), input = admission(bundle, observe);
   const root = mkdtempSync(join(tmpdir(), "identity-dispatch-"));
   try {
     mkdirSync(join(root, "config")); writeFileSync(join(root, "config/site-routes.json"), readFileSync("config/public-reference-site-routes.json"));
     vi.spyOn(Server.prototype, "listen").mockImplementation(function(this: Server, ...args: unknown[]) { (args.at(-1) as () => void)(); return this; } as typeof Server.prototype.listen);
     const server = await startPublicReferenceServer({ root, env: readCustomerRouteEnv(), identity: input });
-    const req = Object.assign(Readable.from([]), { url: `/api/bff/admin/identity/privacy/${operation}`, method: "POST", headers: {} });
+    const subject = { kind: "contact", contactId: "22222222-2222-4222-8222-222222222222" };
+    const body = operation === "export" ? { subject } : { subject, idempotencyKey: "33333333-3333-4333-8333-333333333333" };
+    const req = Object.assign(Readable.from([Buffer.from(JSON.stringify(body))]), { url: `/api/bff/admin/identity/privacy/${operation}`, method: "POST", headers: {} });
     const res = { statusCode: 0, headersSent: false, writeHead: vi.fn(), setHeader: vi.fn(), hasHeader: vi.fn(() => true), end: vi.fn() };
     server.emit("request", req, res);
     await vi.waitFor(() => expect(res.end).toHaveBeenCalled());
     expect(res.statusCode).toBe(200);
-    expect(input.runtime.ports.privacy[operation]).toHaveBeenCalledOnce();
-    expect(input.runtime.ports.operatorAuthorization.authorize).toHaveBeenCalledOnce();
+    expect(observe).toHaveBeenCalledExactlyOnceWith(operation);
+    expect(input.runtime.ports.operatorAuthorization.authorize).toHaveBeenCalledTimes(bundle === "node-postgres" ? 2 : 1);
     server.close();
+  } finally { policy.allow = false; rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each([
+  ["profile", "export"], ["profile", "erase"], ["admitted host", "export"], ["admitted host", "erase"],
+] as const)("keeps the %s native %s route ahead of an earlier overlapping pattern", async (mount, operation) => {
+  policy.allow = true;
+  const origin = "http://127.0.0.1:58422";
+  const profile = mount === "profile" ? { origin, directory: ".", runId: "synthetic", bundle: "node-postgres" as const, assertOwned: async () => {} } : undefined;
+  vi.stubEnv("OPENLUP_REFERENCE_PROFILE", profile ? "identity" : undefined);
+  vi.stubEnv("APP_BASE_URL", origin);
+  const intercept = vi.fn<RouteEntry["handler"]>((_req, res) => res.status(202).json({ intercepted: true }));
+  const observe = vi.fn(), input = admission("node-postgres", observe, [{ route: "/api/bff/admin/identity/example",
+    pattern: /^\/api\/bff\/admin\/identity\/privacy\//, params: [], handler: intercept }]);
+  const root = mkdtempSync(join(tmpdir(), "identity-overlap-"));
+  try {
+    mkdirSync(join(root, "config")); writeFileSync(join(root, "config/site-routes.json"), readFileSync("config/public-reference-site-routes.json"));
+    vi.spyOn(Server.prototype, "listen").mockImplementation(function(this: Server, ...args: unknown[]) { (args.at(-1) as () => void)(); return this; } as typeof Server.prototype.listen);
+    const server = await startPublicReferenceServer({ root, env: readCustomerRouteEnv(), identity: { ...input, profile } });
+    try {
+      const body = { subject: { kind: "contact", contactId: "22222222-2222-4222-8222-222222222222" },
+        ...(operation === "erase" ? { idempotencyKey: "33333333-3333-4333-8333-333333333333" } : {}) };
+      const req = Object.assign(Readable.from([Buffer.from(JSON.stringify(body))]), {
+        url: `/api/bff/admin/identity/privacy/${operation}`, method: "POST",
+        headers: { host: new URL(origin).host, origin, "content-type": "application/json" },
+      });
+      const res = { statusCode: 0, headersSent: false, writeHead: vi.fn(), setHeader: vi.fn(), hasHeader: vi.fn(() => true), end: vi.fn() };
+      server.emit("request", req, res);
+      await vi.waitFor(() => expect(res.end).toHaveBeenCalled());
+      expect(intercept).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(200);
+      expect(observe).toHaveBeenCalledExactlyOnceWith(operation);
+    } finally { server.close(); }
   } finally { policy.allow = false; rmSync(root, { recursive: true, force: true }); }
 });
 

@@ -1,5 +1,6 @@
 import { nativeCatalogPublication } from "@openlup/platform/catalog";
 import type { PgQueryExecutor } from "@openlup/platform/data";
+import { readRequiredPrivacyContributorIds, validateRequiredPrivacyContributorIds } from "@openlup/platform/identity";
 import { createHash } from "node:crypto";
 import {
   captureCompatiblePostgresRows, PostgresTransferError,
@@ -41,6 +42,7 @@ const compatible = [
 ] as const satisfies readonly CompatiblePostgresTable[];
 
 const owned = [
+  "tax_calculations",
   "subscription_cancel_feedback",
   // Authoritative installation configuration with operator audit references.
   "tax_coverage_revisions",
@@ -110,6 +112,12 @@ const intentionallyNotCarriedRelation = "public.customer_identity_challenges";
 
 // REBUILDABLE: count only, never transport stale attribute rows as authority.
 const rebuildableRelation = "public.catalog_attribute_projection";
+export const requiredPrivacyDeclarationTable = "identity_privacy_required_contributors";
+
+export async function readPrivacyDeclarationCensus(db: PgQueryExecutor): Promise<readonly string[]> {
+  try { return validateRequiredPrivacyContributorIds(await readRequiredPrivacyContributorIds(db)); }
+  catch { throw new PostgresTransferError("schema_conflict", requiredPrivacyDeclarationTable); }
+}
 
 export const connectedNativeStoreTables = [...compatible, ...owned] as const;
 
@@ -137,6 +145,7 @@ export interface ConnectedNativeStoreCapture {
   format: "openlup.native-retained-store.v1";
   compatible: CompatiblePostgresPacket;
   owned: ConnectedStoreOwnedRows[];
+  requiredPrivacyContributorIds: readonly string[];
   /** Actual database snapshot identity; never an object/host seal receipt. */
   observation: { cluster: string; database: string; login: string; snapshot: string };
   emptyOutsideProfile: string[];
@@ -202,6 +211,7 @@ export async function captureConnectedNativeStore(input: {
         } }, sourceId, catalogueId,
         tables: compatible, maximumRows, maximumBytes,
       });
+      const requiredPrivacyContributorIds = await readPrivacyDeclarationCensus(db);
       const relations = (await db.query<{ schema: string; table: string; owner: string }>(`SELECT n.nspname AS schema,c.relname AS table,
         pg_catalog.pg_get_userbyid(c.relowner) AS owner
         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
@@ -211,7 +221,7 @@ export async function captureConnectedNativeStore(input: {
       const emptyOutsideProfile: string[] = [];
       const outsideProfileCensus: ConnectedNativeStoreCapture["outsideProfileCensus"] = [];
       for (const relation of relations) {
-        if (relation.schema === "public" && allowed.has(relation.table)) continue;
+        if (relation.schema === "public" && (allowed.has(relation.table) || relation.table === requiredPrivacyDeclarationTable)) continue;
         const qualified = `${identifier(relation.schema)}.${identifier(relation.table)}`;
         if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")
           || relation.schema === "public" && relation.table === "platform_schema_migrations"
@@ -263,7 +273,7 @@ export async function captureConnectedNativeStore(input: {
       await assertConnectedCatalogPublications(db);
       const result = {
         format: "openlup.native-retained-store.v1" as const,
-        compatible: packet, owned: tables,
+        compatible: packet, owned: tables, requiredPrivacyContributorIds,
         observation: { cluster: facts.cluster, database: facts.database, login: facts.login, snapshot: facts.snapshot }, emptyOutsideProfile, outsideProfileCensus,
       };
       return { ...result, sha256: createHash("sha256").update(JSON.stringify(result)).digest("hex") };

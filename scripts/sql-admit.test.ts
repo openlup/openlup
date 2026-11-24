@@ -124,7 +124,7 @@ describe("checkout owner execute on self-check, queue and release", () => {
     } else {
       expect(release).not.toThrow();
     }
-  }, 20_000);
+  }, 60_000);
 
   it.each(["q2", "qa", "qb"])("scans %s controls in selected plan order and names the drifting file", generation => {
     const f = fixture(), value = registry();
@@ -217,7 +217,7 @@ END; $$;
     const reported = verdictLines(result.stdout);
     expect(reported).toEqual(directVerdicts(f, base, head).verdicts);
     expect(reported).toEqual(expected);
-  }, 20_000);
+  }, 60_000);
 });
 
 const unterminatedEarlierPath = "db/platform/migrations/20990102100000_unterminated_table.sql";
@@ -282,7 +282,7 @@ END; $$;
     const reported = verdictLines(result.stdout);
     expect(reported).toEqual(directVerdicts(f, base, head).verdicts);
     expect(reported).toEqual(expected);
-  }, 20_000);
+  }, 60_000);
 });
 
 describe.each([

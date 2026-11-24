@@ -14,6 +14,8 @@ const tasks = Object.freeze([
   { id: 'upgrade-conflict', query: 'application file upgrade local edits conflict', direct: 'divergent changed files|local edits', target: 'refuses divergent changed files' },
   { id: 'role-proof-boundary', query: 'legacy bootstrap role install readiness', direct: 'rolePrerequisitesMet|install readiness', target: 'rolePrerequisitesMet[\\s\\S]{0,60}does not establish' },
   { id: 'transaction-outbox', query: 'PostgreSQL enqueue transaction', direct: 'enqueue|transaction', target: 'enqueue', packageName: '@openlup/outbox' },
+  { id: 'catalogue-net-content', query: 'publish net content ml', direct: 'Discover the grammar', target: '^## Discover the grammar(?:\\n|$)', guide: 'how-to/extend/catalogue-extension.md' },
+  { id: 'catalogue-refusal-fix', query: 'catalogue refusal code fix', direct: 'Catalogue refusal code fixes', target: '^## Catalogue refusal code fixes(?:\\n|$)', guide: 'reference/refusal-codes.md' },
   { id: 'polish-with-symbol', query: 'Gdzie jest nextRetryAttemptAt i retry?', direct: 'nextRetryAttemptAt|retry', target: 'nextRetryAttemptAt' },
   { id: 'polish-freeform', query: 'Czy opóźniona dostawa przesuwa kolejny cykl wcześniej?', direct: 'opóźniona|dostawa|wcześniej', target: 'monotonic|late.payment|late.delivery', exploratory: true },
   { id: 'no-match-not-absence', query: 'quantumBananaSeam', direct: 'quantumBananaSeam', absent: true },
@@ -32,12 +34,16 @@ for (const task of tasks) {
   const cliMs = performance.now() - start;
   if (run.status !== 0) throw new Error(`${task.id}: CLI refused: ${run.stderr}`);
   const output = JSON.parse(run.stdout);
+  const target = task.target && new RegExp(task.target, 'iu');
+  const guide = task.guide && join(scope, 'core/docs/guide', task.guide);
   let readable = true;
   let relevant = 0;
   for (const hit of output.hits) {
     const lines = readFileSync(hit.file, 'utf8').split('\n');
     readable &&= Number.isInteger(hit.start) && Number.isInteger(hit.end) && hit.start >= 1 && hit.end >= hit.start && hit.end <= lines.length;
-    if ((!task.packageName || task.packageName === hit.packageName) && task.target && new RegExp(task.target, 'iu').test(lines.slice(hit.start - 1, hit.end).join('\n'))) relevant++;
+    if ((!task.packageName || task.packageName === hit.packageName)
+      && (!guide || hit.packageName === '@openlup/core' && hit.file === guide)
+      && target?.test(lines.slice(hit.start - 1, hit.end).join('\n'))) relevant++;
   }
   const directStart = performance.now();
   // A single manually selected rg expression per task over the same installed bytes.
@@ -47,8 +53,15 @@ for (const task of tasks) {
   if (direct.status !== 0 && direct.status !== 1) throw new Error(`${task.id}: rg failed: ${direct.stderr}`);
   const directLines = direct.stdout.trim() ? direct.stdout.trim().split('\n') : [];
   const topDirect = directLines.slice(0, 8);
-  const directRelevant = task.target ? topDirect.filter((line) => new RegExp(task.target, 'iu').test(line)).length : 0;
-  const pass = readable && (task.absent ? output.hits.length === 0 : relevant > 0);
+  const directRelevant = target ? topDirect.filter((line) => {
+    if (!guide) return target.test(line);
+    const prefix = `${guide}:`;
+    if (!line.startsWith(prefix)) return false;
+    const heading = /^\d+:(.*)$/u.exec(line.slice(prefix.length))?.[1];
+    return heading !== undefined && target.test(heading);
+  }).length : 0;
+  const pass = readable && (task.absent ? output.hits.length === 0 : relevant > 0)
+    && (!guide || directRelevant > 0);
   results.push({ id: task.id, query: task.query, exploratory: task.exploratory ?? false, pass, cli: { ms: +cliMs.toFixed(2), hits: output.hits.length, readable, targetHitFraction: `${relevant}/${output.hits.length}`, citations: output.hits.map(({file,start,end}) => `${file}:${start}-${end}`) }, direct: { ms: +directMs.toFixed(2), matchingLines: directLines.length, firstEightTargetFraction: `${directRelevant}/${topDirect.length}`, expression: task.direct } });
 }
 console.log(JSON.stringify({ root, node: process.version, limits: ['Static source-target smoke checks; no agent completion/correctness claim.', 'One cold process per CLI query; OS caches are uncontrolled, one sample only.', 'rg uses frozen human-selected expressions and all packed Markdown/declarations; CLI selects its own narrower corpus.', 'Target-hit fractions measure textual relevance, not semantic precision or invariant comprehension.', 'Freeform Polish is exploratory; no translation capability is assumed.', 'An empty result proves no indexed match, never absence of a public seam.'], results }, null, 2));

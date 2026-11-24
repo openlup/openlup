@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { createPostgresCustomerAccountMutationPort, createCustomerAccountMutationSchemas, createSelfServiceCommandFacade, createAccountEventPrivacyContributor } from "@openlup/platform/account-support";
-import { createPostgresPrivacyStore, createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPrivacyOperations } from "@openlup/platform/identity";
+import { createPostgresPrivacyStore, createPersonalDataContributorRegistry, createPrivacyOperations } from "@openlup/platform/identity";
+import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import type { PrivacyJson } from "@openlup/platform/identity/contracts";
 import type { AccountSupportCapabilities } from "@openlup/platform/account-support/contracts";
 import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
@@ -171,10 +172,10 @@ for (const profile of ["legacy", "bootstrap", "separate", "admin-managed", "admi
   });
   it("exports classified payloads and requires an explicit retention disposition before identity erasure", async () => {
     const f=await fixture(), operator=await admin(); await f.port.updateProfile(f.principalId,{idempotencyKey:"privacy-profile",firstName:"Private"});
-    const store=createPostgresPrivacyStore(), identity=createIdentityPersonalDataContributor(store,{retainedContactFields:Object.fromEntries(["lifecycle_stage","acquisition_source"].map(field=>[field,{owner:"clients",resource:`clients.${field}`,disposition:"retain" as const,reasonCode:"CONTACT_LIFECYCLE_RETENTION",remote:false}]))},randomUUID);
+    const store=createPostgresPrivacyStore();
     const read=async (context:PgQueryExecutor,subject:{contactId:string|null})=>({available:true,data:(await context.query("SELECT to_jsonb(e)::text AS value FROM public.customer_account_events e WHERE client_id=$1 ORDER BY id",[subject.contactId])).rows.map(row=>JSON.parse(String(row.value))) as PrivacyJson});
     const unitOfWork={run:async<T>(work:(context:PgQueryExecutor)=>Promise<T>)=>{const client=await db.owner.connect();try{await client.query("BEGIN");const result=await work(client);await client.query("COMMIT");return result;}catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}}};
-    const make=(retain:boolean)=>createPrivacyOperations({store,unitOfWork,registry:createPersonalDataContributorRegistry([identity,createAccountEventPrivacyContributor({read,assess:retain?async()=>"retain":null})],{requiredContributorIds:["identity","account-support"]}),now:()=>new Date(AT),randomId:randomUUID});
+    const make=(retain:boolean)=>createPrivacyOperations({store,unitOfWork,registry:createPersonalDataContributorRegistry([...nativePrivacyContributors(store),createAccountEventPrivacyContributor({read,assess:retain?async()=>"retain":null})],{requiredContributorIds:["identity","account-support","tax-calculations"]}),now:()=>new Date(AT),randomId:randomUUID});
     const exported=await make(false).export({principalId:operator},{kind:"contact",contactId:f.clientId});
     expect(exported.documents.find(d=>d.contributorId==="account-support")).toMatchObject({coverage:{complete:true},data:[{payload:{firstName:"Private"}}],obligations:[{disposition:"unresolved"}]});
     await expect(make(false).erase({principalId:operator},{subject:{kind:"contact",contactId:f.clientId},idempotencyKey:randomUUID()})).rejects.toMatchObject({code:"PRIVACY_OWNERSHIP_UNDECLARED"});

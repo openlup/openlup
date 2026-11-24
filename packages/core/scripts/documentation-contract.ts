@@ -463,7 +463,8 @@ export function renderGeneratedRegion(name: string, repositoryRoot: string, core
     const cliPath = "packages/platform/src/lifecycle/openlup.mjs";
     const cliCodes = readCliCodes(repositoryRoot);
     if (cliCodes.length) rows.push(["`@openlup/platform`", "`openlup`", link(cliPath, "command line"), cliCodes.map(codeLiteral).join(", ")]);
-    return markdownTable(["Package", "Type", "Reports", "Codes"], rows.sort((left, right) => left[0]!.localeCompare(right[0]!) || left[1]!.localeCompare(right[1]!) || left[3]!.localeCompare(right[3]!)));
+    return markdownTable(["Package", "Type", "Reports", "Codes"], rows.sort((left, right) => left[0]!.localeCompare(right[0]!) || left[1]!.localeCompare(right[1]!) || left[3]!.localeCompare(right[3]!)))
+      + renderCatalogueRefusals(repositoryRoot);
   }
   const maturity = /^maturity:([a-z]+)$/.exec(name)?.[1];
   if (maturity) {
@@ -651,6 +652,74 @@ function readCliCodes(repositoryRoot: string): string[] {
   const path = join(repositoryRoot, "packages/platform/src/lifecycle/openlup.mjs");
   if (!existsSync(path)) return [];
   return [...new Set(readFileSync(path, "utf8").match(/\bOPENLUP_E_[A-Z_]+\b/g) ?? [])].filter((code) => code.startsWith("OPENLUP_E_CLI_")).sort();
+}
+
+function catalogueBindings(repositoryRoot: string, file: string): Map<string, ts.Expression> {
+  const path = join(repositoryRoot, "packages/platform/src/catalog", file);
+  if (!existsSync(path)) return new Map();
+  const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+  const bindings = new Map<string, ts.Expression>();
+  for (const statement of source.statements) {
+    if (!ts.isVariableStatement(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)) continue;
+    for (const { name, initializer } of statement.declarationList.declarations) {
+      if (ts.isIdentifier(name) && initializer) bindings.set(name.text, initializer);
+    }
+  }
+  return bindings;
+}
+
+function catalogueFields(expression: ts.Expression | undefined, allowConformanceSpread = false): Map<string, ts.Expression> {
+  while (expression && (ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression))) expression = expression.expression;
+  if (!expression || !ts.isObjectLiteralExpression(expression)) throw new Error("Catalogue refusal metadata must be a static object");
+  const fields = new Map<string, ts.Expression>();
+  for (const property of expression.properties) {
+    if (allowConformanceSpread && ts.isSpreadAssignment(property) && ts.isIdentifier(property.expression)
+      && property.expression.text === "CATALOG_CONFORMANCE_RULES") continue;
+    if (!ts.isPropertyAssignment(property) || !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)))
+      throw new Error("Catalogue refusal metadata must use named static properties");
+    fields.set(property.name.text, property.initializer);
+  }
+  return fields;
+}
+
+function catalogueText(expression: ts.Expression | undefined, bindings?: Map<string, ts.Expression>): string {
+  const value = expression && ts.isIdentifier(expression) ? bindings?.get(expression.text) : expression;
+  if (!value || !ts.isStringLiteralLike(value)) throw new Error("Catalogue refusal text must be literal");
+  return value.text;
+}
+
+function renderCatalogueRefusals(repositoryRoot: string): string {
+  const publication = catalogueBindings(repositoryRoot, "publicationError.ts");
+  const builder = catalogueBindings(repositoryRoot, "releaseDraftBuilder.ts");
+  if (!publication.size && !builder.size) return "";
+  const rows: string[][] = [];
+  for (const [code, entry] of catalogueFields(publication.get("publicationRefusals"), true)) {
+    if (!code.startsWith("catalog_publication_")) continue;
+    let reason: ts.Expression | undefined, fix: ts.Expression | undefined, cause: ts.Expression | undefined;
+    if (ts.isArrayLiteralExpression(entry)) {
+      [reason, fix, cause] = entry.elements;
+    } else {
+      const fields = catalogueFields(entry);
+      fix = fields.get("fix");
+      cause = fields.get("cause");
+    }
+    rows.push([codeLiteral(code), reason ? codeLiteral(catalogueText(reason)) : "", cause ? catalogueText(cause) : "", catalogueText(fix, publication)]);
+  }
+  rows.sort(([left], [right]) => left! < right! ? -1 : left! > right! ? 1 : 0);
+  const refusal = catalogueFields(builder.get("releaseDraftRefusal"));
+  const fixes = catalogueFields(refusal.get("fixes"));
+  const shape = catalogueFields(fixes.get("shape"));
+  fixes.delete("shape");
+  const variants = [...fixes.values()].map(entry => {
+    const fields = catalogueFields(entry);
+    return [catalogueText(fields.get("when")), catalogueText(fields.get("fix"))];
+  });
+  return "\n## Catalogue refusal code fixes\n\n"
+    + "Cause is shown when the owner supplies a sentence explaining the refusal.\n\n"
+    + markdownTable(["Code", "Reason", "Cause", "Fix"], rows)
+    + `\n### ${codeLiteral(catalogueText(refusal.get("code")))}\n\n`
+    + `**Cause** ${catalogueText(refusal.get("cause"))}\n\n**Fix** ${catalogueText(shape.get("fix"))}\n\n`
+    + markdownTable(["When", "Fix"], variants);
 }
 
 /** Derive installed recipe links from the exhaustive owner record, without executing pack code. */

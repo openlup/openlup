@@ -9,7 +9,7 @@ import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres
 import { captureOrderReviewMediaFilesystem, reconcileOrderReviewMediaFilesystem } from "../../server/adapters/filesystem/orderReviewMediaTransferInventory.js";
 import { createOrderReviewMediaTransferReader } from "../../server/adapters/filesystem/orderReviewMediaTransferReader.js";
 import { restoreOrderReviewMediaFilesystem } from "../../server/adapters/filesystem/orderReviewMediaTransferRestore.js";
-import { createSubscriptionsPrivacyContributor } from "../../server/runtime/auth/subscriptionsPrivacyContributor.js";
+import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import { catchupMediaLimits, mediaReferences } from "./m14ConnectedCatchup.js";
 
 const sha = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
@@ -93,15 +93,15 @@ export type RecoveryPrivacyObligation = { admin: string; subject: { principal: s
  * free-text redaction and replay. No direct data rewrite substitutes for it. */
 export async function applyRecoveryPrivacy(runtimeUrl: string, obligation: RecoveryPrivacyObligation) {
   const store = createPostgresPrivacyStore(), unitOfWork = createPostgresPrivacyUnitOfWork({ connectionString: runtimeUrl });
-  const registry = createPersonalDataContributorRegistry([
-    createIdentityPersonalDataContributor(store, { retainedContactFields: {
-      lifecycle_stage: { owner: "clients", resource: "clients.lifecycle_stage", disposition: "retain", reasonCode: "LIFECYCLE", remote: false },
-    } }, () => obligation.subject.receipt), createSubscriptionsPrivacyContributor(),
-  ], { requiredContributorIds: ["identity", "subscriptions"] });
-  const operations = createPrivacyOperations({ store, unitOfWork, registry,
-    now: () => new Date(obligation.completedAt), randomId: () => obligation.subject.receipt });
-  const input = { subject: { kind: "contact" as const, contactId: obligation.subject.contact }, idempotencyKey: obligation.subject.receipt };
   try {
+    const registry = createPersonalDataContributorRegistry([
+      createIdentityPersonalDataContributor(store, { retainedContactFields: {
+        lifecycle_stage: { owner: "clients", resource: "clients.lifecycle_stage", disposition: "retain", reasonCode: "LIFECYCLE", remote: false },
+      } }, () => obligation.subject.receipt), ...nativePrivacyContributors(store).slice(1),
+    ], { requiredContributorIds: ["identity", "subscriptions", "tax-calculations"] });
+    const operations = createPrivacyOperations({ store, unitOfWork, registry,
+      now: () => new Date(obligation.completedAt), randomId: () => obligation.subject.receipt });
+    const input = { subject: { kind: "contact" as const, contactId: obligation.subject.contact }, idempotencyKey: obligation.subject.receipt };
     const receipt = await operations.erase({ principalId: obligation.admin }, input);
     assert.equal(receipt.outcome, "ERASED");
     assert.deepEqual(await operations.erase({ principalId: obligation.admin }, input), { ...receipt, outcome: "ALREADY_ERASED" });

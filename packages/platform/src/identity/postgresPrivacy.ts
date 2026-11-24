@@ -1,11 +1,20 @@
 import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
-import { PrivacyRefusal, type PrivacyStore, type ResolvedPrivacySubject, type AuthorizedHumanAdministrator } from "./privacyPorts.js";
+import { PrivacyRefusal, type NativePrivacyStore, type ResolvedPrivacySubject, type AuthorizedHumanAdministrator } from "./privacyPorts.js";
 import { erasureReceiptSchema, type PrivacySubjectRef, type PrivacyJson } from "./contracts/privacy.js";
 
 type Row = Record<string, unknown>;
 function json(value: unknown): PrivacyJson { return JSON.parse(JSON.stringify(value)) as PrivacyJson; }
-export function createPostgresPrivacyStore(): PrivacyStore<PgQueryExecutor> {
+/** Read the installed declaration through the caller's held connection. */
+export async function readRequiredPrivacyContributorIds(db: PgQueryExecutor): Promise<readonly string[]> {
+  const { rows } = await db.query("SELECT public.identity_privacy_required_contributor_ids() AS ids");
+  if (rows.length !== 1 || !Array.isArray(rows[0]?.ids)) throw new Error("privacy_declaration_invalid");
+  return rows[0].ids as string[];
+}
+
+export function createPostgresPrivacyStore(): NativePrivacyStore<PgQueryExecutor> {
   return {
+    privacyRail: "native",
+    readRequiredContributorIds: readRequiredPrivacyContributorIds,
     erasureSupported: true,
     async prepareErasure(db) {
       await db.query("SET LOCAL lock_timeout = '5s'");

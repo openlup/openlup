@@ -68,6 +68,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "tests/postgres/runOidcIdentityConformance.mjs",
   "tests/postgres/runM14RecipeConformance.mjs",
   "tests/postgres/runM14ManagedSourceWitness.mjs",
+  "tests/postgres/m14QualifiedAdminComposition.proof.ts",
   "tests/postgres/m14QualifiedComposition.proof.ts",
   "tests/postgres/m14ReleasedSchemaUpgradeChild.ts",
   "tests/identity/runAcceptance.mjs", "tests/identity/acceptance.conformance.ts", "server/runtime/auth/capturedIdentityMailbox.test.ts",

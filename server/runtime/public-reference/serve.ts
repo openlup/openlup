@@ -7,7 +7,7 @@ import { enforceDeploymentRoutePolicy } from "#deployment-route-policy";
 import { withObservedRoute } from "../../_lib/observability/route.js";
 import { sendBffError, sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import { createReferenceBffDispatcher } from "../bffDispatch.js";
-import { admitReferenceIdentity, type ReferenceIdentity, type ReferenceIdentityAdmission } from "../auth/referenceIdentity.js";
+import { admitReferenceIdentity, isReferencePrivacyRoute, type ReferenceIdentity, type ReferenceIdentityAdmission } from "../auth/referenceIdentity.js";
 import type { admitReferenceOutbox } from "../outbox/candidateAdmission.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -149,6 +149,9 @@ function createServerForCandidate(options: PublicReferenceServerOptions, identit
   return createServer((request, res) => {
     const pathname = requestPath(request);
     if (!pathname) return response(res, 404, "Not found\n", { "content-type": "text/plain; charset=utf-8" });
+    const registeredIdentityRoutes = identityRuntime?.routes ?? [];
+    const identityRoutes = identityRuntime?.bundle === "node-postgres" && isReferencePrivacyRoute(pathname.replace(/\/+$/, ""))
+      ? registeredIdentityRoutes.filter(entry => entry.route === pathname) : registeredIdentityRoutes;
     const operationsRead = pathname === "/api/bff/admin/platform/alerts" ? options.operations?.alerts
       : pathname === "/api/bff/admin/platform/pipeline" ? options.operations?.pipeline : undefined;
     if (operationsRead) {
@@ -188,7 +191,7 @@ function createServerForCandidate(options: PublicReferenceServerOptions, identit
       return;
     }
     if (identity && pathname.startsWith("/api/")) {
-      const route = identityRuntime?.routes.find(entry => entry.route === pathname);
+      const route = identityRoutes.find(entry => entry.route === pathname);
       const method = IDENTITY_ROUTES.get(pathname);
       if (!route || !method) return response(res, 404, "Not found\n");
       if (request.headers.host !== new URL(identity.profile!.origin).host || request.method !== method
@@ -197,14 +200,14 @@ function createServerForCandidate(options: PublicReferenceServerOptions, identit
       for (const [key, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(key, value);
       res.setHeader("content-security-policy", identityCsp);
       void withIdentityReferencePolicy(identity.profile!, async () => {
-        await dispatch(identityRuntime!.routes, await adaptRequest(request, pathname, false, 32768), decorateResponse(res));
+        await dispatch(identityRoutes, await adaptRequest(request, pathname, false, 32768), decorateResponse(res));
       }).catch(() => { if (!res.headersSent) response(res, 503, "Identity reference unavailable\n"); else res.destroy(); });
       return;
     }
-    if (identityRuntime?.routes.some(route => route.pattern.test(pathname))) {
+    if (identityRoutes.some(route => route.pattern.test(pathname))) {
       const decorated = decorateResponse(res);
       if (!enforceDeploymentRoutePolicy({ route: pathname, domain: "identity", surface: pathname.startsWith("/api/bff/admin/") ? "admin" : "customer", risk: "mutation" }, request, decorated)) return;
-      void adaptRequest(request, pathname, false, 32768).then(req => dispatch(identityRuntime.routes, req, decorateResponse(res))).catch(() => {
+      void adaptRequest(request, pathname, false, 32768).then(req => dispatch(identityRoutes, req, decorateResponse(res))).catch(() => {
         if (!res.headersSent) response(res, 503, "Identity request unavailable\n");
       });
       return;
