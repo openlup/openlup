@@ -7,7 +7,7 @@
         "objectInventorySha256": "594cafb7f6b7c30d5b57e0d2975cfb91801549af767e8666e83573e65661ccd9",
         "tail": [
           {
-            "file": "db/platform/migrations/20261127000000_catalog_runtime_checkout_prelock.sql",
+            "file": "db/platform/migrations/20261127110000_catalog_runtime_checkout_prelock.sql",
             "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
           },
           {
@@ -838,7 +838,7 @@
         "objectInventorySha256": "242f878faf038146ca0f210229c9da256bad000cd4671212cd3675a89ceef35d",
         "tail": [
           {
-            "file": "db/platform/migrations/20261127000000_catalog_runtime_checkout_prelock.sql",
+            "file": "db/platform/migrations/20261127110000_catalog_runtime_checkout_prelock.sql",
             "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
           },
           {
@@ -1693,7 +1693,7 @@
         "objectInventorySha256": "01cac6766cf95f85e614b6a5364342797a399cd103f98940028b3f8636a1743c",
         "tail": [
           {
-            "file": "db/platform/migrations/20261127000000_catalog_runtime_checkout_prelock.sql",
+            "file": "db/platform/migrations/20261127110000_catalog_runtime_checkout_prelock.sql",
             "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
           },
           {
@@ -2548,7 +2548,7 @@
         "objectInventorySha256": "d8903f7f78fd0c775557825c3c75249cc0029e9116238ad191d622af34dc4b60",
         "tail": [
           {
-            "file": "db/platform/migrations/20261127000000_catalog_runtime_checkout_prelock.sql",
+            "file": "db/platform/migrations/20261127110000_catalog_runtime_checkout_prelock.sql",
             "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
           },
           {
@@ -3395,7 +3395,7 @@
         "objectInventorySha256": "73d81ae1a3e51b84e735d8fd1b2d81ea72013295236274e8a685a80edbb4babf",
         "tail": [
           {
-            "file": "db/platform/migrations/20261127000000_catalog_runtime_checkout_prelock.sql",
+            "file": "db/platform/migrations/20261127110000_catalog_runtime_checkout_prelock.sql",
             "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
           },
           {
