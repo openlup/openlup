@@ -104,17 +104,20 @@ it.each(["node-postgres", "node-supabase"] as const)("refuses every absent requi
     expect(result.report.issues).toContainEqual(expect.objectContaining({ module: "identity", observation: "object_absent" }));
   }
 });
-it("names the declaration forward when the native reader is absent", async () => {
+it.each([
+  ["declaration reader", "function:public.identity_privacy_required_contributor_ids()", "20261125230000_identity_privacy_required_contributors.sql"],
+  ["declaration table", "table:public.identity_privacy_required_contributors", "20261125230000_identity_privacy_required_contributors.sql"],
+  ["erasure ledger", "table:public.identity_privacy_erasures", "20261018190000_identity_privacy_erasures.sql"],
+] as const)("names the installing forward when the native %s is absent", async (_object, subject, forward) => {
   const input = admission("node-postgres"), observe = input.schemaProbe.observe;
-  const subject = "function:public.identity_privacy_required_contributor_ids()";
   input.schemaProbe.observe = async requirement => {
     const result = await observe(requirement);
     return { ...result, objects: result.objects.map(entry => ({ ...entry, present: entry.present && objectKey(entry.object) !== subject })) };
   };
   const result = await admitReferenceIdentity(input);
   expect(result.admitted).toBe(false);
-  expect(result.report.issues).toContainEqual(expect.objectContaining({ subject, observation: "object_absent",
-    fix: "Apply db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql for the selected adapter." }));
+  expect(result.report.issues).toEqual([expect.objectContaining({ code: "OPENLUP_E_SCHEMA_BEHIND", subject, observation: "object_absent",
+    fix: `Apply db/platform/migrations/${forward} for the selected adapter.` })]);
 });
 it("keeps the inventories disjoint and pins fields used by each bundle", () => {
   const direct = identityRequiredSchema("node-postgres", "complete").objects.map(object => object.name);

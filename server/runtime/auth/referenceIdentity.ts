@@ -5,7 +5,7 @@ import { withObservedRoute } from "../../_lib/observability/route.js";
 import { MACHINE_ACTOR_WRITE_ROUTES, allowedAdminRolesForBffRoute } from "../../_lib/admin-domain/auth.js";
 import { observeReferencePackages } from "../outbox/candidateAdmission.js";
 import { assessIdentityReadiness, assessOidcReadiness } from "./identityReadiness.js";
-import { identityRequiredSchema, type IdentityBundle } from "./identitySchema.js";
+import { identityRequiredSchema, identitySchemaRecovery, type IdentityBundle } from "./identitySchema.js";
 import { createPrivacyEraseHandler, createPrivacyExportHandler, isNativePrivacyOperations, nativePrivacyUnavailable,
   readBearerToken } from "@openlup/platform/identity";
 import type { HttpHandler } from "@openlup/platform/http";
@@ -106,7 +106,8 @@ export async function admitReferenceIdentity(input: ReferenceIdentityAdmission) 
   const oidc = await assessOidcReadiness(input.runtime.ports.oidcVerifiers ?? []);
   const state = oidc.state === "unknown" || report.state === "unknown" || emailTrust.state === "unknown" ? "unknown"
     : oidc.state === "unsatisfied" || report.state === "unsatisfied" || emailTrust.state === "unsatisfied" ? "unsatisfied" : "ready";
-  const combined = { ...report, state, issues: [...report.issues, ...emailTrust.issues, ...oidc.issues] } as const;
+  const issues = report.issues.map(issue => identitySchemaRecovery(input.runtime.bundle, issue));
+  const combined = { ...report, state, issues: [...issues, ...emailTrust.issues, ...oidc.issues] } as const;
   const assertCurrent = () => {
     const current = input.currentIdentity();
     if (Object.keys(identity).some(key => identity[key as keyof CandidateIdentity] !== current[key as keyof CandidateIdentity])) throw new Error("identity_candidate_admission_stale");

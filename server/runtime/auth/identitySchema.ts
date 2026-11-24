@@ -1,4 +1,4 @@
-import type { RequiredSchema, SchemaObject } from "@openlup/core/readiness";
+import { schemaObjectKey, type ReadinessIssue, type RequiredSchema, type SchemaObject } from "@openlup/core/readiness";
 
 export type IdentityBundle = "node-postgres" | "node-supabase";
 const table = (name: string, columns: string): SchemaObject[] => [
@@ -7,11 +7,26 @@ const table = (name: string, columns: string): SchemaObject[] => [
 const fn = (name: string, signature = ""): SchemaObject => ({ kind: "function", name, signature });
 const contact = "id email first_name last_name phone lifecycle_stage acquisition_source";
 const membership = "role membership_state membership_provenance membership_accepted_at membership_revoked_at membership_revoked_by membership_revocation_reason";
+const declarationMigration = "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql";
+const declarationObjects: readonly SchemaObject[] = [
+  { kind: "table", name: "public.identity_privacy_required_contributors" },
+  fn("public.identity_privacy_required_contributor_ids"),
+];
+const declarationKeys = new Set(declarationObjects.map(schemaObjectKey));
+
+export function identitySchemaRecovery(bundle: IdentityBundle, issue: ReadinessIssue): ReadinessIssue {
+  if (bundle === "node-postgres" && issue.module === "identity" && issue.code === "OPENLUP_E_SCHEMA_BEHIND"
+    && (issue.observation === "object_absent" || issue.observation === "object_unknown") && declarationKeys.has(issue.subject)) {
+    return { ...issue, fix: `Apply ${declarationMigration} for the selected adapter.` };
+  }
+  return issue;
+}
+
 /** The host supplies the expected complete catalogue identity, independently of its live observer. */
 export function identityRequiredSchema(bundle: IdentityBundle, version: string): RequiredSchema {
   if (!version.trim()) throw new Error("identity_migration_identity_required");
   const common = [...table("public.clients", contact), fn("auth.uid")];
-  return { version, migration: bundle === "node-postgres" ? "db/platform/migrations/20261125230000_identity_privacy_required_contributors.sql" : "supabase/migrations", objects: bundle === "node-postgres" ? [
+  return { version, migration: bundle === "node-postgres" ? "db/platform/migrations/20261018190000_identity_privacy_erasures.sql" : "supabase/migrations", objects: bundle === "node-postgres" ? [
     ...common, ...table("public.clients", "principal_id country metadata external_ref updated_at").slice(1),
     ...table("public.customer_identity_challenges", "id client_id principal_id email_fingerprint token_hash created_at expires_at used_at"),
     ...table("public.platform_human_principals", "principal_id email created_at"),
@@ -27,7 +42,7 @@ export function identityRequiredSchema(bundle: IdentityBundle, version: string):
     fn("public.customer_identity_challenge_redeem", "text,timestamp with time zone"),
     fn("public.platform_human_membership_is_active", "uuid"), fn("public.platform_human_membership_is_administrator", "uuid"),
     fn("public.platform_revoke_human_membership", "uuid,uuid,text"),
-    fn("public.identity_privacy_required_contributor_ids"),
+    ...declarationObjects,
   ] : [
     ...common, ...table("public.clients", "auth_user_id created_at").slice(1), ...table("public.admin_users", `id email is_machine_actor ${membership}`),
     ...table("public.admin_audit_events", "id actor_admin_id target_admin_id action old_value new_value occurred_at"),
