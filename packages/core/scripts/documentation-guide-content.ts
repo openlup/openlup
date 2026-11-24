@@ -4,27 +4,39 @@ import { repositoryUrl } from "./documentation-sql-inventory.ts";
 
 // Reader guide Markdown rules shared by Core docs:check and the dependency-free release-page audit.
 
-function markdownLinkTargets(source: string, refuse: (reason: string) => void): string[] {
+function markdownLinkTargets(source: string, refuse: (reason: string) => void, starts?: Set<number>): string[] {
+  const destination = (text: string, offset: number) => {
+    starts?.add(offset + Number(text[offset] === "<"));
+    return linkDestination(text.slice(offset), refuse);
+  };
   // Inspect destination delimiters conservatively; nested/escaped label text
   // and blockquote/list containers must not hide a package-local target.
   const inline = [...source.matchAll(/\]\([ \t\r\n]*/g)]
-    .map((match) => linkDestination(source.slice(match.index + match[0].length), refuse));
+    .map((match) => destination(source, match.index + match[0].length));
   // Generated declarations contain index signatures, not link definitions.
+  const omitFence = (fence: string) => starts ? fence.replace(/[^\r\n]/g, " ") : "";
   const referenceSource = source
-    .replace(/^ {0,3}(`{3,})[^`\r\n]*\r?\n[\s\S]*?^ {0,3}\1`*[ \t]*\r?$/gm, "")
-    .replace(/^ {0,3}(~{3,})[^\r\n]*\r?\n[\s\S]*?^ {0,3}\1~*[ \t]*\r?$/gm, "");
+    .replace(/^ {0,3}(`{3,})[^`\r\n]*\r?\n[\s\S]*?^ {0,3}\1`*[ \t]*\r?$/gm, omitFence)
+    .replace(/^ {0,3}(~{3,})[^\r\n]*\r?\n[\s\S]*?^ {0,3}\1~*[ \t]*\r?$/gm, omitFence);
   const references = [...referenceSource.matchAll(/\[(?:\\.|[^\]\\])+\]:[ \t\r\n]*/g)]
-    .map((match) => linkDestination(referenceSource.slice(match.index + match[0].length), refuse));
-  const html = [...source.matchAll(/<a\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)].flatMap(([element]) => {
+    .map((match) => destination(referenceSource, match.index + match[0].length));
+  const html = [...source.matchAll(/<a\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)].flatMap((match) => {
+    const element = match[0];
     // Consume whole attribute values: href-like text or > inside a title is not a boundary.
     // HTML whitespace only: a no-break space is part of an attribute name, not a separator.
     for (const attribute of element.slice(2, -1).matchAll(/([^\t\n\f\r =/>]+)(?:[\t\n\f\r ]*=[\t\n\f\r ]*(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r "'=<>`]+)))?/g)) {
-      if (attribute[1]!.toLowerCase() === "href") return [attribute[2] ?? attribute[3] ?? attribute[4] ?? ""];
+      if (attribute[1]!.toLowerCase() !== "href") continue;
+      const href = attribute[2] ?? attribute[3] ?? attribute[4] ?? "";
+      starts?.add(match.index + 2 + attribute.index + attribute[0].lastIndexOf(href));
+      return [href];
     }
     return [];
   });
   // CommonMark autolinks: `<scheme:...>` with no spaces, controls or angle brackets.
-  const autolinks = [...source.matchAll(/<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*)>/g)].map((match) => match[1]!);
+  const autolinks = [...source.matchAll(/<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*)>/g)].map((match) => {
+    starts?.add(match.index + 1);
+    return match[1]!;
+  });
   return [...inline, ...references, ...html, ...autolinks].filter((target): target is string => target !== undefined);
 }
 
@@ -159,7 +171,10 @@ export function assertGuideLinks(guideRoot: string, file: string, label: string,
       candidates.add(decodeCharacterReferences(value[1] ?? value[2] ?? value[3] ?? ""));
     }
   }
-  const bareLinkSource = source.replace(/(?:[A-Za-z][A-Za-z0-9+.-]*:|\/\/|www\.)[^\s<>"'`[\]{}|^]+/g, (token) => {
+  const authoredLinks = fixes && new Set(candidates);
+  const explicitStarts = fixes && new Set<number>();
+  if (explicitStarts) markdownLinkTargets(source, () => undefined, explicitStarts);
+  const bareLinkSource = source.replace(/(?:[A-Za-z][A-Za-z0-9+.-]*:|\/\/|www\.)[^\s<>"'`[\]{}|^]+/g, (token: string, offset: number) => {
     // GFM bare autolinks omit trailing punctuation and unmatched closing parentheses.
     let target = token.replace(/[.,;:!?*_~]+$/, "");
     let excess = (target.match(/\)/g)?.length ?? 0) - (target.match(/\(/g)?.length ?? 0);
@@ -168,6 +183,8 @@ export function assertGuideLinks(guideRoot: string, file: string, label: string,
       excess--;
     }
     candidates.add(target);
+    // A bare scan at an explicit destination can trim bytes that belong to that link.
+    if (!explicitStarts?.has(offset)) authoredLinks?.add(target);
     return target;
   });
   for (const target of candidates) {
@@ -209,7 +226,8 @@ export function assertGuideLinks(guideRoot: string, file: string, label: string,
       violations.push(`${label}: repository link ${url} must pin ${tag}; run docs:check -- --write`);
       if (fixes && kind === "blob") {
         const suffix = /^[?#][^\s)>"'`]*/u.exec(candidateSource.slice(match.index + url.length));
-        fixes.add({ unpinnedBlob: url + (suffix?.[0] ?? ""), template: canonical.replace("<path>", "<repository-relative-path>") });
+        const unpinnedBlob = url + (suffix?.[0] ?? "");
+        if (authoredLinks?.has(unpinnedBlob)) fixes.add({ unpinnedBlob, template: canonical.replace("<path>", "<repository-relative-path>") });
       }
       continue;
     }

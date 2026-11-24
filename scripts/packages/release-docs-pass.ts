@@ -480,8 +480,8 @@ function upgradePageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, prepar
   return [...new Set([...fixes].map((fix) => typeof fix === "string"
     ? messages[fix]
     : `in ${path}, replace \`${fix.unpinnedBlob}\`. `
-      + `If the intended destination is an existing file outside the guide, use \`${fix.template}\` and keep any section anchor. `
-      + `If the intended destination is in the guide, ${guideForm}. Then rerun \`npm run preflight -- --fast\`.`))];
+      + `If the intended destination is an existing file other than a guide Markdown page, including non-Markdown assets inside the guide, use \`${fix.template}\` and keep any section anchor. `
+      + `If the intended destination is a guide Markdown page, ${guideForm}. Then rerun \`npm run preflight -- --fast\`.`))];
 }
 
 /**

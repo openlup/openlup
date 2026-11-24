@@ -432,7 +432,8 @@ describe("shift-left simulated upgrade-page audit", () => {
   const fixturePage = "docs/guide/upgrade/v0-5-0.md";
   const fixtureTag = "openlup-core-v0.5.0";
   const guideReadme = "packages/core/docs/guide/README.md";
-  const packedFixtureFiles = [fixturePage, "docs/guide/how-to/change.md", "docs/guide/README.md", "AGENTS.md"];
+  const guideAsset = "docs/guide/how-to/extend/catalogue.json";
+  const packedFixtureFiles = [fixturePage, "docs/guide/how-to/change.md", "docs/guide/README.md", guideAsset, "AGENTS.md"];
 
   function checkRenderedFixture(f: ReturnType<typeof fixture>, contents: string): string {
     const sample = "export const example = true;\n";
@@ -514,15 +515,22 @@ describe("shift-left simulated upgrade-page audit", () => {
   function linkFixture(contents: string, rootReadme = false) {
     const f = parityFixture(contents);
     f.write(guideReadme, "# Reader guide\n\nGuide-specific instructions.\n");
+    f.write(`packages/core/${guideAsset}`, "{}\n");
+    f.write("docs/platform/API.md", "# API reference\n\n## API\n\n## API_\n");
     if (rootReadme) f.write("README.md", "# Repository home\n\nRepository overview.\n");
     return f;
   }
 
-  function emittedFix(f: ReturnType<typeof fixture>): string {
+  function emittedFixes(f: ReturnType<typeof fixture>): string[] {
     let message = "";
     try { assertSimulatedUpgradePage(f.root); } catch (error) { message = (error as Error).message; }
-    const fixes = message.match(/^Fix: .+$/gm) ?? [];
-    expect(fixes, message).toHaveLength(1);
+    expect(message).toContain("Observed:");
+    return message.match(/^Fix: .+$/gm) ?? [];
+  }
+
+  function emittedFix(f: ReturnType<typeof fixture>): string {
+    const fixes = emittedFixes(f);
+    expect(fixes).toHaveLength(1);
     return fixes[0]!;
   }
 
@@ -549,8 +557,8 @@ describe("shift-left simulated upgrade-page audit", () => {
   function expectUnpinnedFix(fix: string, url: string): void {
     expect(fix).toContain(fixtureFragment);
     expect(fix).toContain(`\`${url}\``);
-    expect(fix).toContain("If the intended destination is an existing file outside the guide");
-    expect(fix).toContain("If the intended destination is in the guide, use the guide page title in plain text, without a link");
+    expect(fix).toContain("If the intended destination is an existing file other than a guide Markdown page");
+    expect(fix).toContain("If the intended destination is a guide Markdown page, use the guide page title in plain text, without a link");
     expect(fix).toMatch(/Then rerun `npm run preflight -- --fast`\.?$/);
   }
 
@@ -600,6 +608,44 @@ describe("shift-left simulated upgrade-page audit", () => {
     expect(() => checkRenderedFixture(linkFixture(pathOnly), pathOnly)).toThrow(`must pin ${fixtureTag}; run docs:check -- --write`);
     const linked = original.replace(url, linkFromAdvice(fix, target));
     expect(checkLinkOutcome(linked)).toContain(`[Guide](https://github.com/openlup/openlup/blob/${fixtureTag}/${target})`);
+  });
+
+  it("pins a guide asset at the destination offered by the audit", () => {
+    const target = `packages/core/${guideAsset}`;
+    const url = `https://github.com/openlup/openlup/blob/main/${target}`;
+    const contents = `- See [catalogue](${url}).\n`;
+    const fix = emittedFix(linkFixture(contents));
+    expectUnpinnedFix(fix, url);
+    expect(fix).toContain("including non-Markdown assets inside the guide");
+    const edited = contents.replace(url, linkFromAdvice(fix, target));
+    expect(checkLinkOutcome(edited)).toContain(`[catalogue](https://github.com/openlup/openlup/blob/${fixtureTag}/${target})`);
+  });
+
+  it("quotes an explicit URL once and keeps its full anchor when applying the Fix", () => {
+    const target = "docs/platform/API.md#api_";
+    const url = `https://github.com/openlup/openlup/blob/main/${target}`;
+    const contents = `- See [API](${url}).\n`;
+    const fix = emittedFix(linkFixture(contents));
+    expectUnpinnedFix(fix, url);
+    const edited = contents.replace(url, linkFromAdvice(fix, target));
+    expect(checkLinkOutcome(edited)).toContain(`[API](https://github.com/openlup/openlup/blob/${fixtureTag}/${target})`);
+  });
+
+  it("keeps distinct bare and explicit URL fixes even when their anchors differ only by a trailing underscore", () => {
+    const bare = "https://github.com/openlup/openlup/blob/main/docs/platform/API.md#api";
+    const explicit = bare + "_";
+    const contents = `- See ${bare}.\n- See [API](${explicit}).\n`;
+    const fixes = emittedFixes(linkFixture(contents));
+    expect(fixes).toHaveLength(2);
+    let edited = contents;
+    for (const [url, anchor] of [[bare, "#api"], [explicit, "#api_"]] as const) {
+      const fix = fixes.find((fix) => fix.includes(`\`${url}\``))!;
+      expect(fix).toBeDefined();
+      edited = edited.replace(url, linkFromAdvice(fix, `docs/platform/API.md${anchor}`));
+    }
+    const rendered = checkLinkOutcome(edited);
+    expect(rendered).toContain(`/blob/${fixtureTag}/docs/platform/API.md#api.\n`);
+    expect(rendered).toContain(`[API](https://github.com/openlup/openlup/blob/${fixtureTag}/docs/platform/API.md#api_)`);
   });
 
   it("directs a fragment's already-pinned guide link to a plain-text title", () => {
