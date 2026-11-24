@@ -1,13 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { once } from 'node:events';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createPostgresContactClientRegistrar } from '@openlup/platform/identity';
 import { env as processEnvironment } from 'node:process';
 import { Pool } from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } from '@openlup/platform/migrations';
 import { configurations } from '../../examples/neutral-store/owned/store.config.ts';
 import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
@@ -16,8 +15,8 @@ import type { ActionResult, Operation } from '../../examples/neutral-store/share
 import { isRecord } from '../../examples/neutral-store/shared/offer.ts';
 import { choices, set, type SubscriptionOffers } from '../../examples/neutral-store/shared/subscription-offer.ts';
 import {
-  closePostgres, dockerAvailable, postgresTeardownTimeoutMs,
-  runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer,
+  closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
+  runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer, type PostgresContainerSpec,
 } from '../helpers/postgresContainer.js';
 
 const ledgerSignature = 'public.commerce_record_checkout_attempt(text,text,text,bigint,bigint,bigint,bigint,bigint)';
@@ -32,13 +31,364 @@ const spellings = {
   },
 };
 
-// Setup replays the complete current PostgreSQL installation before starting the
-// host and seeding orders. Give it separate headroom under hosted shard load.
-describe.each(Object.values(configurations))('$id host UUID identity', config => {
+const scenarioSetupTimeoutMs = 30_000;
+const setupJoinTimeoutMs = 2_000;
+const hostTerminateTimeoutMs = 10_000;
+const hostKilledCloseTimeoutMs = 2_000;
+const uuidTeardownTimeoutMs = postgresTeardownTimeoutMs + 10_000;
+
+function uuidFixture(profile: string) {
+  const controller = new AbortController();
+  const { signal } = controller;
+  const pools: Pool[] = [];
   let container: PostgresContainer | undefined;
-  let owner: Pool | undefined;
-  let migration: Pool | undefined;
-  let host: ChildProcess | undefined;
+  let state: string | undefined;
+  let child: { process: ChildProcess; closed: Promise<void>; closing?: Promise<void> } | undefined;
+  let teardown: Promise<void> | undefined;
+  let phase = 'initial';
+  let setupFailed = false;
+  let setupWork: Promise<void> | undefined;
+
+  async function stopHost() {
+    if (!child) return;
+    const active = child;
+    return active.closing ??= (async () => {
+      const kill = setTimeout(() => active.process.kill('SIGKILL'), hostTerminateTimeoutMs);
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      try {
+        active.process.kill('SIGTERM');
+        await Promise.race([
+          active.closed,
+          new Promise<never>((_, reject) => {
+            deadline = setTimeout(() => reject(new Error('uuid_host_close_deadline')),
+              hostTerminateTimeoutMs + hostKilledCloseTimeoutMs);
+          }),
+        ]);
+      } finally {
+        clearTimeout(kill);
+        clearTimeout(deadline);
+      }
+    })();
+  }
+
+  function report(label: string, outcome: string, started: number) {
+    console.info(`uuid-host profile=${profile} phase=${label} outcome=${outcome} ms=${Math.round(performance.now() - started)}`);
+  }
+
+  async function cleanDatabaseAndScratch(started: number) {
+    const failures: unknown[] = [];
+    // Give an in-flight setup a bounded chance to hand back resources. Docker
+    // and SQL may still be blocked, so late acquisition retains the removal
+    // branch and every subsequent acquisition checks the same abort signal.
+    if (setupWork) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          setupWork.catch(() => undefined),
+          new Promise<void>(resolve => {
+            timer = setTimeout(() => {
+              report(phase, 'teardown_join_deadline', started);
+              resolve();
+            }, setupJoinTimeoutMs);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    await closePostgres(container, pools).catch(error => failures.push(error));
+    if (state) await rm(state, { recursive: true, force: true }).catch(error => failures.push(error));
+    if (failures.length) {
+      if (!setupFailed) throw new Error('uuid_fixture_cleanup_failed');
+      report('cleanup', 'failed_after_setup_error', started);
+    }
+  }
+
+  return {
+    signal,
+    async phase<T>(label: string, action: () => Promise<T>) {
+      signal.throwIfAborted();
+      phase = label;
+      const started = performance.now();
+      report(label, 'start', started);
+      try {
+        const result = await action();
+        signal.throwIfAborted();
+        report(label, 'ok', started);
+        return result;
+      } catch (error) {
+        const code = (error as { code?: unknown } | undefined)?.code;
+        const name = (error as { name?: unknown } | undefined)?.name;
+        const outcome = signal.aborted ? 'cancelled' : name === 'AssertionError' ? 'assertion'
+          : typeof code === 'string' && /^[A-Z0-9_]{1,30}$/.test(code) ? code : 'failed';
+        report(label, outcome, started);
+        throw error;
+      }
+    },
+    async setup(action: () => Promise<void>, timeoutMs: number) {
+      const started = performance.now();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        setupWork = action();
+        await Promise.race([
+          setupWork,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              report(phase, 'deadline', started);
+              reject(new Error(`uuid_setup_deadline profile=${profile} phase=${phase} limitMs=${timeoutMs}`));
+            }, timeoutMs);
+          }),
+        ]);
+      } catch (error) {
+        setupFailed = true;
+        controller.abort(error);
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    async scratch() {
+      signal.throwIfAborted();
+      const scratch = resolve('.context/scratch');
+      await mkdir(scratch, { recursive: true });
+      signal.throwIfAborted();
+      const directory = await mkdtemp(resolve(scratch, `starter-uuid-${profile}-`));
+      if (signal.aborted) {
+        await rm(directory, { recursive: true, force: true }).catch(() => report('scratch', 'late_cleanup_failed', performance.now()));
+        signal.throwIfAborted();
+      }
+      state = directory;
+      return directory;
+    },
+    async start(spec: PostgresContainerSpec, start = runPostgresContainer) {
+      signal.throwIfAborted();
+      const acquired = await start(spec);
+      if (signal.aborted) {
+        const started = performance.now();
+        await acquired.remove().catch(() => report('container', 'late_cleanup_failed', started));
+        signal.throwIfAborted();
+      }
+      container = acquired;
+      return acquired;
+    },
+    pool(options: ConstructorParameters<typeof Pool>[0]) {
+      signal.throwIfAborted();
+      const pool = new Pool(options);
+      pools.push(pool);
+      return pool;
+    },
+    child: () => child?.process,
+    ownHost(start: () => ChildProcess) {
+      signal.throwIfAborted();
+      const process = start();
+      const closed = new Promise<void>(resolve => process.once('close', () => {
+        if (child?.process === process) child = undefined;
+        resolve();
+      }));
+      // Keep the error observed even between readiness or IPC waits.
+      process.on('error', () => {});
+      child = { process, closed };
+      return process;
+    },
+    stopHost,
+    teardown: () => teardown ??= (async () => {
+      const started = performance.now();
+      controller.abort();
+      try {
+        await stopHost();
+      } catch (error) {
+        // SIGKILL has been sent. If close is still unobserved at the deadline,
+        // leave the DB owned until close rather than tearing it down underneath the child.
+        void child?.closed.then(() => cleanDatabaseAndScratch(started))
+          .catch(() => report('cleanup', 'late_cleanup_failed', started));
+        report('host-close', 'deadline', started);
+        if (!setupFailed) throw error;
+        return;
+      }
+      await cleanDatabaseAndScratch(started);
+    })(),
+  };
+}
+
+function waitForHost<T>(
+  host: ChildProcess,
+  signal: AbortSignal,
+  timeoutMs: number,
+  timeoutCode: string,
+  subscribe: (finish: (error: Error | undefined, value?: T) => void) => () => void,
+  closeCode: () => string,
+): Promise<T> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const onAbort = () => finish(signal.reason);
+    const onError = () => finish(new Error(closeCode()));
+    const timer = setTimeout(() => finish(new Error(timeoutCode)), timeoutMs);
+    const unsubscribe = subscribe(finish);
+    function finish(error: unknown, value?: T) {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      host.off('close', onError).off('error', onError);
+      unsubscribe();
+      if (error) reject(error);
+      else resolve(value as T);
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+    host.once('close', onError).once('error', onError);
+  });
+}
+
+function controlledContainer(remove: PostgresContainer['remove']): PostgresContainer {
+  const connectionString = 'postgres://127.0.0.1/neutral_store';
+  return { port: 5432, connectionString, connectionStringFor: () => connectionString, remove };
+}
+
+const controlledSpec = { name: 'uuid-controlled', password: 'synthetic-conformance' };
+
+it('admits delayed UUID provisioning without spending the scenario deadline', async () => {
+  vi.useFakeTimers();
+  const fixture = uuidFixture('controlled-slow');
+  try {
+    const provision = (owner: ReturnType<typeof uuidFixture>) => () => owner.phase('container', async () => {
+      await new Promise<void>(resolve => setTimeout(resolve, 31_000));
+    });
+    const legacyFixture = uuidFixture('controlled-legacy-budget');
+    const baseline = expect(legacyFixture.setup(provision(legacyFixture), scenarioSetupTimeoutMs))
+      .rejects.toThrow('uuid_setup_deadline');
+    const split = fixture.setup(provision(fixture), postgresSetupTimeoutMs);
+    await vi.advanceTimersByTimeAsync(31_000);
+    await baseline;
+    await split;
+    const scenario = vi.fn(async () => {});
+    await fixture.setup(scenario, scenarioSetupTimeoutMs);
+    expect(scenario).toHaveBeenCalledOnce();
+    await legacyFixture.teardown();
+  } finally {
+    await fixture.teardown();
+    vi.useRealTimers();
+  }
+});
+
+it.each([false, true])('removes a UUID container returned after cancellation (after teardown join deadline: %s)', async afterDeadline => {
+  vi.useFakeTimers();
+  const fixture = uuidFixture('controlled-docker');
+  const directory = await fixture.scratch();
+  let acquire!: (container: PostgresContainer) => void;
+  const late = new Promise<PostgresContainer>(resolve => { acquire = resolve; });
+  const remove = vi.fn(async () => {});
+  const ready = vi.fn(async () => {});
+  const setup = fixture.setup(() => fixture.start(controlledSpec, () => late).then(ready), postgresSetupTimeoutMs);
+  const aborted = expect(setup).rejects.toMatchObject({ name: 'AbortError' });
+  let cleaned = false;
+  const cleanup = fixture.teardown().then(() => { cleaned = true; });
+  try {
+    await vi.advanceTimersByTimeAsync(afterDeadline ? setupJoinTimeoutMs : setupJoinTimeoutMs - 1);
+    if (afterDeadline) {
+      await cleanup;
+      await expect(access(directory)).rejects.toMatchObject({ code: 'ENOENT' });
+    } else {
+      expect(cleaned).toBe(false);
+    }
+    acquire(controlledContainer(remove));
+    await aborted;
+    await cleanup;
+    await expect(access(directory)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(remove).toHaveBeenCalledOnce();
+    expect(ready).not.toHaveBeenCalled();
+  } finally {
+    acquire(controlledContainer(remove));
+    await cleanup;
+    vi.useRealTimers();
+  }
+});
+
+it('closes acquired UUID pools while a query is stalled and preserves the setup deadline', async () => {
+  vi.useFakeTimers();
+  const fixture = uuidFixture('controlled-query');
+  const directory = await fixture.scratch();
+  let release!: () => void;
+  const query = new Promise<void>(resolve => { release = resolve; });
+  const wouldStartHost = vi.fn(async () => {});
+  const pool = fixture.pool({});
+  const end = vi.spyOn(pool, 'end');
+  const remove = vi.fn(async () => {
+    expect(pool.ended).toBe(true);
+    throw new Error('synthetic cleanup failure');
+  });
+  await fixture.start(controlledSpec, async () => controlledContainer(remove));
+  const setup = fixture.setup(() => fixture.phase('roles-migrate-status', () => query)
+    .then(() => fixture.phase('host-ready', wouldStartHost)), 1_000);
+  const failed = expect(setup).rejects.toThrow('uuid_setup_deadline profile=controlled-query phase=roles-migrate-status');
+  try {
+    await vi.advanceTimersByTimeAsync(1_000);
+    await failed;
+    const cleanup = fixture.teardown();
+    await vi.advanceTimersByTimeAsync(setupJoinTimeoutMs);
+    await expect(cleanup).resolves.toBeUndefined();
+    expect(end).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledOnce();
+    await expect(access(directory)).rejects.toMatchObject({ code: 'ENOENT' });
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wouldStartHost).not.toHaveBeenCalled();
+  } finally {
+    release();
+    await fixture.teardown();
+    vi.useRealTimers();
+  }
+});
+
+it('joins a cancelled UUID host startup before closing its database and scratch', async () => {
+  const fixture = uuidFixture('controlled-host');
+  const directory = await fixture.scratch();
+  let closed = false;
+  const pool = fixture.pool({});
+  const end = vi.spyOn(pool, 'end');
+  const remove = vi.fn(async () => {
+    expect(closed).toBe(true);
+    expect(pool.ended).toBe(true);
+  });
+  await fixture.start(controlledSpec, async () => controlledContainer(remove));
+  const child = fixture.ownHost(() => spawn(process.execPath, ['--eval', 'setTimeout(() => {}, 1000)']));
+  child.once('close', () => { closed = true; });
+  const ready = waitForHost(child, fixture.signal, 10_000, 'uuid_host_start_timeout', () => () => {}, () => 'uuid_host_start_failed');
+  const aborted = expect(ready).rejects.toMatchObject({ name: 'AbortError' });
+  try {
+    await fixture.teardown();
+    await aborted;
+    expect(end).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledOnce();
+    await expect(access(directory)).rejects.toMatchObject({ code: 'ENOENT' });
+  } finally {
+    await fixture.teardown();
+  }
+});
+
+it('force-closes a UUID host that ignores graceful shutdown', async () => {
+  const fixture = uuidFixture('controlled-kill');
+  const child = fixture.ownHost(() => spawn(process.execPath, ['--eval',
+    'process.on("SIGTERM", () => {}); setTimeout(() => {}, 30000); process.send("ready");',
+  ], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] }));
+  const ready = waitForHost(child, fixture.signal, 5_000, 'uuid_child_controlled_timeout', finish => {
+    const onMessage = () => finish(undefined);
+    child.once('message', onMessage);
+    return () => child.off('message', onMessage);
+  }, () => 'uuid_host_start_failed');
+  try {
+    await ready;
+    vi.useFakeTimers();
+    const cleanup = fixture.teardown();
+    await vi.advanceTimersByTimeAsync(hostTerminateTimeoutMs);
+    await cleanup;
+    expect(child.signalCode).toBe('SIGKILL');
+  } finally {
+    vi.useRealTimers();
+    await fixture.teardown();
+  }
+});
+
+describe.each(Object.values(configurations))('$id host UUID identity', config => {
+  const fixture = uuidFixture(config.id);
+  let owner: Pool;
   let base: string;
   let state: string;
   let cookie: string | undefined;
@@ -53,7 +403,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       method: 'POST', headers: {
         Origin: base, 'Content-Type': 'application/json', 'X-Starter-Request': '1',
         'Idempotency-Key': key, ...(signedIn && cookie ? { Cookie: cookie } : {}),
-      }, body: JSON.stringify(payload),
+      }, body: JSON.stringify(payload), signal: fixture.signal,
     });
     const issuedCookie = response.headers.get('set-cookie');
     if (issuedCookie) cookie = issuedCookie.split(';')[0];
@@ -73,14 +423,15 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
   }
 
   async function control(permissive: boolean | null, emailLimit?: number, subscriptionOffers?: SubscriptionOffers) {
-    return new Promise<{ registrations: number }>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('host_control_timeout')), 5_000);
-      host!.once('message', message => {
-        clearTimeout(timer);
-        resolve(message as { registrations: number });
+    const host = fixture.child()!;
+    return waitForHost<{ registrations: number }>(host, fixture.signal, 5_000, 'host_control_timeout', finish => {
+      const onMessage = (message: unknown) => finish(undefined, message as { registrations: number });
+      host.once('message', onMessage);
+      host.send({ permissive, emailLimit, subscriptionOffers }, error => {
+        if (error) finish(new Error('host_control_failed'));
       });
-      host!.send({ permissive, emailLimit, subscriptionOffers });
-    });
+      return () => host.off('message', onMessage);
+    }, () => 'host_control_failed');
   }
 
   const checkout = (address: string) => ({
@@ -166,102 +517,102 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
         process.disconnect();
       }));
     `;
-    host = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', bootstrap,
+    const host = fixture.ownHost(() => spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', bootstrap,
       'starter-host-proof', '--configuration', config.id, '--database-url', runtimeConnection],
     { cwd: resolve('.'), env: { ...processEnvironment, PGPASSWORD: 'synthetic-conformance' },
-      stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('uuid_host_start_timeout')), 10_000);
-      const fail = () => { clearTimeout(timer); reject(new Error('uuid_host_start_failed')); };
-      host!.once('error', fail);
-      let startupRefusal: string | undefined;
-      host!.once('close', () => {
-        clearTimeout(timer);
-        reject(new Error(startupRefusal ?? 'uuid_host_start_failed'));
-      });
-      host!.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
-        startupRefusal ??= /Error: (starter_checkout_attempt_ledger_(?:missing|execute_required|check_failed))\b/.exec(chunk)?.[1];
-      });
-      let output = '';
-      host!.stdout?.on('data', (chunk: Buffer) => {
-        output += chunk.toString();
-        const origin = /Neutral store local candidate: (http:\/\/127\.0\.0\.1:\d+)\n/.exec(output)?.[1];
-        if (origin) {
-          base = origin;
-          clearTimeout(timer);
-          host!.removeListener('error', fail);
-          resolve();
-        }
-      });
-    });
-  }
-
-  async function stopHost() {
-    if (host && host.exitCode === null && host.signalCode === null) {
-      const child = host;
-      const exited = once(child, 'exit');
-      const timer = setTimeout(() => child.kill('SIGKILL'), 10_000);
-      child.kill('SIGTERM');
-      try { await exited; } finally { clearTimeout(timer); }
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'] }));
+    let startupRefusal: string | undefined;
+    try {
+      base = await waitForHost<string>(host, fixture.signal, 10_000, 'uuid_host_start_timeout', finish => {
+        const onError = (chunk: string) => {
+          startupRefusal ??= /Error: (starter_checkout_attempt_ledger_(?:missing|execute_required|check_failed))\b/.exec(chunk)?.[1];
+        };
+        let output = '';
+        const onOutput = (chunk: Buffer) => {
+          output = (output + chunk.toString()).slice(-2048);
+          const origin = /Neutral store local candidate: (http:\/\/127\.0\.0\.1:\d+)\n/.exec(output)?.[1];
+          if (origin) finish(undefined, origin);
+        };
+        host.stderr?.setEncoding('utf8').on('data', onError);
+        host.stdout?.on('data', onOutput);
+        return () => {
+          host.stderr?.off('data', onError).resume();
+          host.stdout?.off('data', onOutput).resume();
+        };
+      }, () => startupRefusal ?? 'uuid_host_start_failed');
+    } catch (error) {
+      await fixture.stopHost().catch(() => console.info(`uuid-host profile=${config.id} phase=host-ready outcome=cleanup_failed`));
+      throw error;
     }
   }
 
-  beforeAll(async () => {
-    if (!await dockerAvailable()) throw new Error('UUID host proof requires Docker PostgreSQL');
-    const scratch = resolve('.context/scratch');
-    await mkdir(scratch, { recursive: true });
-    state = await mkdtemp(resolve(scratch, `starter-uuid-${config.id}-`));
-    container = await runPostgresContainer({
-      name: `starter-uuid-${config.id}-${process.pid}`, database: 'neutral_store', password: 'synthetic-conformance',
+  const { stopHost } = fixture;
+
+  beforeAll(() => fixture.setup(async () => {
+    state = await fixture.phase('scratch', () => fixture.scratch());
+    const container = await fixture.phase('container', async () => {
+      if (!await dockerAvailable()) throw new Error('UUID host proof requires Docker PostgreSQL');
+      return fixture.start({
+        name: `starter-uuid-${config.id}-${process.pid}`, database: 'neutral_store', password: 'synthetic-conformance',
+      });
     });
-    if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('UUID PostgreSQL unavailable');
-    owner = new Pool({ connectionString: container.connectionString });
-    for (const role of ['starter_runtime', 'starter_restore']) {
-      await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-        NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
-    }
-    const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres',
-      migrationLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' } as const;
-    migration = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(selection) });
-    const runner = createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, {
-      installation: selection, poolFactory: () => migration!,
+    await fixture.phase('tcp-ready', async () => {
+      if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('UUID PostgreSQL unavailable');
     });
-    await runner.apply();
-    expect((await runner.status()).pending).toEqual([]);
-    await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
-    await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime',
-      stock: createPostgresFulfillmentStockSyncPort(owner, { sourceKey: `starter-demo:${config.id}`, readLocalInventoryStock: async () => [] }),
-      close: async () => {} });
+    await fixture.phase('roles-migrate-status', async () => {
+      owner = fixture.pool({ connectionString: container.connectionString });
+      for (const role of ['starter_runtime', 'starter_restore']) {
+        fixture.signal.throwIfAborted();
+        await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+          NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
+      }
+      const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres',
+        migrationLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' } as const;
+      const migration = fixture.pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(selection) });
+      const runner = createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, {
+        installation: selection, poolFactory: () => {
+          fixture.signal.throwIfAborted();
+          return migration;
+        },
+      });
+      await runner.apply();
+      fixture.signal.throwIfAborted();
+      expect((await runner.status()).pending).toEqual([]);
+    });
+    await fixture.phase('seed', async () => {
+      await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
+      fixture.signal.throwIfAborted();
+      await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime',
+        stock: createPostgresFulfillmentStockSyncPort(owner, { sourceKey: `starter-demo:${config.id}`, readLocalInventoryStock: async () => [] }),
+        close: async () => {} });
+    });
     const runtimeUrl = new URL(container.connectionString);
     runtimeUrl.username = 'starter_runtime';
     runtimeUrl.protocol = 'postgresql:';
     runtimeUrl.password = '';
     runtimeConnection = runtimeUrl.toString();
-    await startHost();
-    pending = await createOrder();
-    expect((await call('auth.request', { email })).ok).toBe(true);
-    const messages = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8'))
-      .trim().split('\n').map(line => JSON.parse(line) as { email: string; token: string });
-    const challenge = messages.filter(message => message.email === email).at(-1);
-    if (!challenge) throw new Error('uuid_native_challenge_required');
-    expect((await call('auth.verify', { token: challenge.token })).ok).toBe(true);
-    expect(cookie).toBeDefined();
-    for (const signedIn of [false, true]) {
-      const order = await createOrder(signedIn);
-      const result = await call('payment.simulate', { ...order, outcome: 'captured' }, signedIn);
-      if (!result.ok || !isRecord(result.value)) throw new Error('uuid_lowercase_payment_required');
-      paid.set(String(signedIn), result.value);
-    }
-  }, 90_000);
+  }, postgresSetupTimeoutMs), postgresSetupTimeoutMs + 1_000);
 
-  afterAll(async () => {
-    try {
-      await stopHost();
-    } finally {
-      await closePostgres(container, [owner, migration].filter((pool): pool is Pool => pool !== undefined));
-      if (state) await rm(state, { recursive: true, force: true });
-    }
-  }, postgresTeardownTimeoutMs);
+  beforeAll(() => fixture.setup(() => fixture.phase('host-ready', () => startHost()), 10_000), 11_000);
+
+  beforeAll(() => fixture.setup(() => fixture.phase('checkout-auth-payment', async () => {
+      pending = await createOrder();
+      expect((await call('auth.request', { email })).ok).toBe(true);
+      const messages = (await readFile(resolve(state, '.context/captured-messages/identity.jsonl'), 'utf8'))
+        .trim().split('\n').map(line => JSON.parse(line) as { email: string; token: string });
+      const challenge = messages.filter(message => message.email === email).at(-1);
+      if (!challenge) throw new Error('uuid_native_challenge_required');
+      expect((await call('auth.verify', { token: challenge.token })).ok).toBe(true);
+      expect(cookie).toBeDefined();
+      for (const signedIn of [false, true]) {
+        const order = await createOrder(signedIn);
+        const result = await call('payment.simulate', { ...order, outcome: 'captured' }, signedIn);
+        if (!result.ok || !isRecord(result.value)) throw new Error('uuid_lowercase_payment_required');
+        paid.set(String(signedIn), result.value);
+      }
+  }), scenarioSetupTimeoutMs), scenarioSetupTimeoutMs + 1_000);
+
+  afterAll(fixture.teardown, uuidTeardownTimeoutMs);
 
   for (const signedIn of [false, true]) {
     const actor = signedIn ? 'signed-in' : 'guest';

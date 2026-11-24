@@ -176,17 +176,33 @@ describe("source preview workflow preparation", () => {
     expect(() => assertNoOverdueRemovals(Number(major) > 0 ? Number.MAX_SAFE_INTEGER : Number(minor), "HEAD", process.cwd())).not.toThrow();
   });
 
-  it("runs the removal scan in prepare, after the ordinal check and before any previous-release read", async () => {
-    const fetcher: GithubFetch = async (url) => url.includes("/releases?")
-      ? Response.json([{ tag_name: "openlup-source-preview/6", immutable: true, prerelease: true, draft: false }])
-      : new Response(null, { status: 404 });
-    for (const [preview, expected] of [[7, /^openlup-source-preview\/7 refuses files marked for removal by it: src\/shim\.ts$/u], [8, /source preview API refused \/releases\/tags\//u]] as const) {
-      const sample = markerRepository({ "src/shim.ts": marker(preview) }), out = mkdtempSync(join(tmpdir(), "openlup-prepare-out-"));
-      try {
-        await expect(preparePreview(previewInputs(sample.head, "7", "note"), sample.repo, out, undefined, fetcher)).rejects.toThrow(expected);
-        expect(existsSync(join(out, "notes.md"))).toBe(false);
-      } finally { sample.cleanup(); rmSync(out, { recursive: true, force: true }); }
-    }
+  const releaseInventory = `${root}/releases?per_page=100&page=1`;
+  const nextPreviewRef = `${root}/git/ref/tags/openlup-source-preview%2F7`;
+  const previousPreviewRelease = `${root}/releases/tags/openlup-source-preview%2F6`;
+
+  it.each([
+    { scenario: "refuses a stale ordinal before the removal scan", number: "8", removal: 7,
+      expected: /preview_number must immediately follow the newest immutable preview/u, reads: [releaseInventory] },
+    { scenario: "refuses an overdue removal before the previous-release read", number: "7", removal: 7,
+      expected: /^openlup-source-preview\/7 refuses files marked for removal by it: src\/shim\.ts$/u, reads: [releaseInventory, nextPreviewRef] },
+    { scenario: "reads the previous release after accepting a future removal", number: "7", removal: 8,
+      expected: /source preview API refused \/releases\/tags\//u, reads: [releaseInventory, nextPreviewRef, previousPreviewRelease] },
+  ])("$scenario", async ({ number, removal, expected, reads }) => {
+    const requests: string[] = [];
+    const fetcher: GithubFetch = async (url) => {
+      requests.push(url);
+      if (url === releaseInventory) {
+        return Response.json([{ tag_name: "openlup-source-preview/6", immutable: true, prerelease: true, draft: false }]);
+      }
+      return new Response(null, { status: 404 });
+    };
+    const sample = markerRepository({ "src/shim.ts": marker(removal) });
+    const out = mkdtempSync(join(tmpdir(), "openlup-prepare-out-"));
+    try {
+      await expect(preparePreview(previewInputs(sample.head, number, "note"), sample.repo, out, undefined, fetcher)).rejects.toThrow(expected);
+      expect(requests).toEqual(reads);
+      expect(existsSync(join(out, "notes.md"))).toBe(false);
+    } finally { sample.cleanup(); rmSync(out, { recursive: true, force: true }); }
   });
 
   it("checks the exact draft note and refuses any release asset before publication", () => {
