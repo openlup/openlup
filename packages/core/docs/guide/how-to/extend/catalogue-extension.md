@@ -329,17 +329,23 @@ const { release, activation } = buildCatalogReleaseDraftV3({
   namespace: "example",
   type: { key: "example:article", version: 1 },
   slug: "two-finishes", name: "Example article", presentation: { title: "Example article" },
-  skus: [{ ...finishSku("FINISH-MATTE", "matte", 203), primary: true }, finishSku("FINISH-GLOSS", "gloss", 204)],
+  skus: [{ ...finishSku("FINISH-MATTE", "matte", 203), primary: true, minQuantity: 2 }, finishSku("FINISH-GLOSS", "gloss", 204)],
 });
 ```
 
 1. Save `release.payload`, prepare it, approve it, then publish it. The
    product and both SKUs are in draft status. Save the publication head.
-2. Set a positive gross base price for each SKU in the effective price list.
-   Verify store offer readiness and subscription price coverage for each SKU,
-   including one-time-only SKUs. Use a positive price derived from the
-   effective D2C policy or, for a list with no policy history, a valid legacy
-   `subscription` entry. Prices and policies live outside both payloads.
+2. After publishing the release, verify store offer readiness. In the effective
+   price list, set exactly one effective `one_time` entry with a positive gross
+   price at minimum quantity 1 for every SKU you will activate, including
+   one-time-only SKUs. This price-entry quantity is independent of the SKU's
+   `minQuantity`. Use only gross `one_time` or `subscription` entries at minimum
+   quantity 1. If the list has any D2C policy history for its region and currency,
+   it needs exactly one valid effective D2C revision, a positive derived
+   subscription price and no effective `subscription` entry for the SKU. If it
+   has no such history, set exactly one effective `subscription` entry with a
+   positive gross price at minimum quantity 1. Prices and policies live outside
+   both payloads.
 3. Save `activation.payload` as the next revision of the same draft. Prepare
    it against the release head, approve it, and publish it. This example admits
    both SKU IDs to `classic`, each with its own logistics reference.

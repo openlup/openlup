@@ -17,7 +17,7 @@ import { authoredPublicationDocument, createCharacterizationQuote, hash, transac
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
-let pool: Pool, quotePool: Pool, authorPool: Pool, container: PostgresContainer;
+let pool: Pool, quotePool: Pool, authorPool: Pool, legacyPool: Pool, container: PostgresContainer;
 const actor = randomUUID(), otherActor = randomUUID();
 function latch() {
   let resolve!: () => void;
@@ -83,8 +83,10 @@ beforeAll(async () => {
   // Membership discovery certifies all publication heads in its database.
   await pool.query("CREATE DATABASE catalog_publication_author TEMPLATE postgres");
   authorPool = new Pool({ connectionString: container.connectionStringFor("catalog_publication_author") });
+  await pool.query("CREATE DATABASE catalog_publication_legacy TEMPLATE postgres");
+  legacyPool = new Pool({ connectionString: container.connectionStringFor("catalog_publication_legacy") });
 }, postgresSetupTimeoutMs);
-afterAll(() => closePostgres(container, [pool, quotePool, authorPool]), postgresTeardownTimeoutMs);
+afterAll(() => closePostgres(container, [pool, quotePool, authorPool, legacyPool]), postgresTeardownTimeoutMs);
 
 function native(query?: (db: PgQueryExecutor, sql: string, args?: unknown[]) => ReturnType<PgQueryExecutor["query"]>, connection = pool) {
   let allowed = true;
@@ -609,17 +611,19 @@ describe("publication activation prices", () => {
   const listId = randomUUID();
   const quoteListId = randomUUID();
   const authorListId = randomUUID();
+  const legacyListId = randomUUID();
   beforeAll(async () => {
     await installActivationPrices(pool, listId);
     await installActivationPrices(quotePool, quoteListId);
     await installActivationPrices(authorPool, authorListId);
+    await installActivationPrices(legacyPool, legacyListId, "legacy");
   });
 
-  async function installActivationPrices(db: Pool, listId: string) {
+  async function installActivationPrices(db: Pool, listId: string, pricing: "d2c" | "legacy" = "d2c") {
     await db.query("UPDATE public.price_lists SET status='draft' WHERE status='active'");
     await db.query(`INSERT INTO public.price_lists(id,name,region_code,currency,valid_from)
       VALUES($1,'Effective list','ZZ','XXX',statement_timestamp()-interval '1 hour')`, [listId]);
-    await db.query(`INSERT INTO public.subscription_price_policy_revisions
+    if (pricing === "d2c") await db.query(`INSERT INTO public.subscription_price_policy_revisions
       (id,revision_no,price_list_id,region_code,currency,channel,effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest)
       SELECT id,1,$1,'ZZ','XXX','D2C',at,1000,10,'FLOOR_TO_QUANTUM',
         public.catalog_price_setup_policy_digest(id,1,$1,'ZZ','XXX','D2C',at,NULL,1000,10,'FLOOR_TO_QUANTUM')
@@ -629,6 +633,7 @@ describe("publication activation prices", () => {
     await db.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,status,sellable_standalone)
       VALUES($1,$1,'PRICED-CORE','Core item','active',true)`, [base]);
     await seedBasePrice(base, db, listId);
+    if (pricing === "legacy") await seedSubscriptionEntry(base, db, listId);
     const promotion = {
       status: "active", trigger_type: "automatic", code: null, discount_type: "percentage", applies_to_kind: "order_total",
       valid_from: "2020-01-01T00:00:00Z", valid_to: null, redemption_limit_global: null,
@@ -660,8 +665,15 @@ describe("publication activation prices", () => {
 
   async function seedBasePrice(skuId: string, db = pool, priceListId: string = listId) {
     const id = randomUUID();
-    await db.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from)
-      VALUES($1,$2,$3,'one_time',1000,statement_timestamp()-interval '1 minute')`, [id, priceListId, skuId]);
+    await db.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,min_qty,amount_kind,unit_price_minor,valid_from)
+      VALUES($1,$2,$3,'one_time',1,'gross',1000,statement_timestamp()-interval '1 minute')`, [id, priceListId, skuId]);
+    return id;
+  }
+
+  async function seedSubscriptionEntry(skuId: string, db: Pool, priceListId: string) {
+    const id = randomUUID();
+    await db.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,min_qty,amount_kind,unit_price_minor,valid_from)
+      VALUES($1,$2,$3,'subscription',1,'gross',900,statement_timestamp()-interval '1 minute')`, [id, priceListId, skuId]);
     return id;
   }
 
@@ -673,29 +685,44 @@ describe("publication activation prices", () => {
     sell: { oneTime: true, subscription: false }, facts: { derived: 12 }, logisticsRef: `example:fulfillment/${code}`,
   });
 
-  async function publishBuiltProduct(input: CatalogProductInput, checkUnpriced: boolean) {
+  async function publishBuiltProduct(input: CatalogProductInput, pricing: "d2c" | "d2c-recovery" | "legacy") {
+    const db = pricing === "legacy" ? legacyPool : authorPool;
+    const priceListId = pricing === "legacy" ? legacyListId : authorListId;
     const { release, activation } = buildCatalogReleaseDraftV3(input);
     const data = { productId: release.payload.product.id, draftId: randomUUID(), payload: release.payload };
-    const api = native(undefined, authorPool), who = (await api.authorize(actor))!;
-    const states = async () => (await authorPool.query(`SELECT p.status AS product_status, s.status, h.publication_id
+    const api = native(undefined, db), who = (await api.authorize(actor))!;
+    const states = async () => (await db.query(`SELECT p.status AS product_status, s.status, h.publication_id
       FROM public.catalog_products p JOIN public.catalog_skus s ON s.product_id=p.id
       JOIN public.catalog_publication_heads h ON h.product_id=p.id WHERE p.id=$1`, [data.productId])).rows;
-    await save(data, 1, release.payload, authorPool);
-    const first = await prepare(data, 1, null, authorPool);
+    await save(data, 1, release.payload, db);
+    const first = await prepare(data, 1, null, db);
     expect(await api.execute(first.approve, who)).toMatchObject({ outcome: "committed" });
     const initial = await api.execute(first.publish, who);
     if (!("receipt" in initial) || !("head" in initial.receipt)) throw new Error(JSON.stringify(initial));
     const releaseHead = initial.receipt.head;
     const draftStates = input.skus.map(() => ({ product_status: "draft", status: "draft", publication_id: releaseHead.publicationId }));
     expect(await states()).toEqual(draftStates);
-    if (!checkUnpriced) for (const sku of release.payload.skus) await seedBasePrice(sku.id, authorPool, authorListId);
-    await save(data, 2, activation.payload, authorPool);
-    const next = await prepare(data, 2, releaseHead, authorPool);
+    async function seedBasePrices() {
+      for (const sku of release.payload.skus) await seedBasePrice(sku.id, db, priceListId);
+    }
+    if (pricing !== "d2c-recovery") await seedBasePrices();
+    await save(data, 2, activation.payload, db);
+    const next = await prepare(data, 2, releaseHead, db);
     expect(await api.execute(next.approve, who)).toMatchObject({ outcome: "committed" });
-    if (checkUnpriced) {
+    async function expectPriceRefusal() {
       expect(await api.execute(next.publish, who)).toMatchObject({ outcome: "validation_issue", reason: "publication_sku_price_not_ready" });
       expect(await states()).toEqual(draftStates);
-      for (const sku of release.payload.skus) await seedBasePrice(sku.id, authorPool, authorListId);
+    }
+    if (pricing === "d2c-recovery") {
+      await expectPriceRefusal();
+      await seedBasePrices();
+      const conflicting = await seedSubscriptionEntry(release.payload.skus[0]!.id, db, priceListId);
+      await expectPriceRefusal();
+      await db.query("UPDATE public.price_entries SET active=false WHERE id=$1", [conflicting]);
+    }
+    if (pricing === "legacy") {
+      await expectPriceRefusal();
+      for (const sku of release.payload.skus) await seedSubscriptionEntry(sku.id, db, priceListId);
     }
     const result = await api.execute(next.publish, who);
     if (!("receipt" in result) || !("head" in result.receipt)) throw new Error(JSON.stringify(result));
@@ -706,9 +733,9 @@ describe("publication activation prices", () => {
   it("two_skus_build_release_price_then_activate", async () => {
     const { head, skus } = await publishBuiltProduct({ namespace: "example", type: { key: installed.key, version: installed.version },
       slug: "two-finishes", name: "Example article", presentation: { title: "Example article" }, skus: [
-        { ...builderSku("FINISH-MATTE", 203, "100"), primary: true, options: { finish: { kind: "choice", value: "matte" } }, attributes: { finish: "matte" } },
+        { ...builderSku("FINISH-MATTE", 203, "100"), primary: true, minQuantity: 2, options: { finish: { kind: "choice", value: "matte" } }, attributes: { finish: "matte" } },
         { ...builderSku("FINISH-GLOSS", 204, "100"), options: { finish: { kind: "choice", value: "gloss" } }, attributes: { finish: "gloss" } },
-      ] }, true);
+      ] }, "d2c-recovery");
     const membership = await readPostgresCatalogMembershipPage(authorPool, { offerVersion: "classic", limit: 100, mode: "one_time" });
     if (!("protocol" in membership) || membership.protocol !== "governed") throw new Error(JSON.stringify(membership));
     expect(membership.items.map(({ skuId, logisticsRef, head }) => ({ skuId, logisticsRef, head })))
@@ -721,9 +748,18 @@ describe("publication activation prices", () => {
       slug: "labelled-volume", name: "Labelled volume", presentation: { title: "Labelled volume" }, skus: [
         { ...builderSku("VOLUME-50ML", 205, "52"), grossMass: { dimension: "mass", unit: "openlup:g", unscaled: "60", scale: 0 },
           options: { volume: { kind: "quantity", value: volume } }, attributes: { volume } },
-      ] }, false);
+      ] }, "d2c");
     expect((await authorPool.query("SELECT net_weight_g, option_values->'volume'->'value' AS volume FROM public.catalog_skus WHERE id=$1",
       [skus[0]!.id])).rows).toEqual([{ net_weight_g: 52, volume }]);
+  });
+
+  it("activates with a stored subscription price when the list has no D2C policy history", async () => {
+    const { head } = await publishBuiltProduct({ namespace: "example", type: { key: installed.key, version: installed.version },
+      slug: "legacy-priced-item", name: "Legacy priced item", presentation: { title: "Legacy priced item" }, skus: [
+        { ...builderSku("LEGACY-PRICE", 206, "100"), options: { finish: { kind: "choice", value: "matte" } },
+          attributes: { finish: "matte" } },
+      ] }, "legacy");
+    expect(head.revision).toBe(2);
   });
 
   async function approvedActivation(sequence: number, isAddon: boolean, missing?: "logistics" | "purchase mode",

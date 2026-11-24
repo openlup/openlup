@@ -724,10 +724,13 @@ UUID for each new request unless retrying a command.
 3. Send `{action: "publish", productId, candidateRef, candidateDigest, expectedHead, changes: []}`
    to the same operation with a distinct publication key. Keep the request body
    and its key until you have the publication receipt. **Load draft example**
-   uses `buildCatalogReleaseDraftV3` with the installed rules version and
-   returns its release payload. Publishing that payload issues a draft SKU.
-   The [product authoring recipe](../extend/catalogue-extension.md#author-a-product)
-   shows how to price and activate SKUs in a follow-up publication.
+   returns the release payload, which publishes a draft SKU. The example omits
+   `grossMass` and `logisticsRef`, so its description needs both before you build
+   a product for activation. For a product you intend to activate, supply a valid
+   `grossMass` and a nonempty `logisticsRef` on each SKU in the original description
+   before building both artifacts. The [product authoring recipe](../extend/catalogue-extension.md#author-a-product)
+   shows how to publish the release, set prices, then prepare, approve and publish
+   the activation.
 4. If the response is lost, sign in and send
    `{action: "receipt", productId, commandKey}` with the original publication
    key in the body. Use a fresh transport header for the lookup. The authorized

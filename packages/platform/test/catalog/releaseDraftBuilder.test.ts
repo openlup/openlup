@@ -94,6 +94,9 @@ const fix = {
   depth: "Reduce nesting in the named content until the generated draft fits the depth limit of 48.",
   json: "Use plain JSON data in the named field and remove unsupported keys or values.",
   shape: "Correct the field named by path to match catalogProductInputSchema.",
+  dimensions: "Use at most 16 distinct option keys across the product's SKUs.",
+  optionKey: "Rename this option to a valid key, such as pack_size, or remove it.",
+  omittedKey: "Review the keys and values in the named object. Remove or rename an unsupported key, or correct its value to match catalogProductInputSchema.",
 };
 
 it.each([
@@ -119,7 +122,13 @@ it.each([
   ["oversized artifact", { ...input, presentation: { title: "a".repeat(600_000) } }, "$", fix.bytes, input],
   ["deep document", { ...input, document: { nested: nested(50) } }, "document", fix.depth, input],
   ["deep artifact", { ...input, presentation: { nested: nested(46) } }, "$", fix.depth, input],
-  ["invalid JSON", { ...input, document: { privateValue: "PRIVATE-VALUE\u0000" } }, "document", fix.json, input],
+  ["invalid JSON", { ...input, document: { privateValue: "PRIVATE-VALUE\u0000" } }, "document.privateValue", fix.json, input],
+  ["invalid option key", withSku({ options: { "pack.size": { kind: "boolean", value: true } } }),
+    'skus.0.options["pack.size"]', fix.optionKey, withSku({ options: { pack_size: { kind: "boolean", value: true } } })],
+  ["invalid display title", { ...input, presentation: { "display title": "PRIVATE-VALUE\u0000" } },
+    'presentation["display title"]', fix.json, { ...input, presentation: { "display title": "Display title" } }],
+  ["literal host-path marker", { ...input, presentation: { "<host path>": "PRIVATE-VALUE\u0000" } },
+    'presentation["<host path>"]', fix.json, { ...input, presentation: { "<host path>": "Title" } }],
   ["invalid SKU shape", withSku({ logisticsRef: "" }), "skus.0.logisticsRef", fix.shape, input],
 ] as const)("refuses %s and accepts the correction", (_case, bad, path, remedy, repaired) => {
   expect.assertions(8);
@@ -140,6 +149,60 @@ it.each([
     expect((error as Error).message).not.toContain("PRIVATE-VALUE");
   }
   expect(() => buildCatalogReleaseDraftV3(repaired as CatalogProductInput)).not.toThrow();
+});
+
+it("limits the union of option keys across SKUs to 16", () => {
+  const flag = { kind: "boolean", value: true } as const;
+  const options = Object.fromEntries(Array.from({ length: 16 }, (_, index) => [`option_${index}`, flag]));
+  const first = { ...two.skus[0]!, options: Object.fromEntries(Object.entries(options).slice(0, 8)) };
+  const second = { ...secondSku, options: { option_0: flag, ...Object.fromEntries(Object.entries(options).slice(8)) } };
+  const admitted = { ...two, skus: [first, second] };
+  const assertBothArtifacts = (description: CatalogProductInput) => {
+    expect(catalogProductInputSchema.safeParse(description).success).toBe(true);
+    const { release, activation } = buildCatalogReleaseDraftV3(description);
+    expect(release.payload.product.dimensions).toHaveLength(16);
+    expect(activation.payload.product.dimensions).toEqual(release.payload.product.dimensions);
+  };
+  assertBothArtifacts(admitted);
+  const optionsWithExtra = { ...second.options, extra: flag };
+  const refused = { ...two, skus: [first, { ...second, options: optionsWithExtra }] };
+  expect(catalogProductInputSchema.safeParse(refused)).toMatchObject({
+    success: false, error: { issues: [{ path: ["skus", 1, "options"], message: fix.dimensions }] },
+  });
+  expect(() => buildCatalogReleaseDraftV3(refused)).toThrowError(expect.objectContaining({
+    code: "release_draft_invalid", path: "skus.1.options", message: expect.stringContaining(`Fix: ${fix.dimensions}\n`),
+  }));
+  Reflect.deleteProperty(optionsWithExtra, "extra");
+  assertBothArtifacts(refused);
+});
+
+it.each([
+  ["slash", "fixture/private", "<host path>"],
+  ["backslash", "fixture\\private", "<host path>"],
+  ["file scheme", "file:private", "<host path>"],
+  ["overlong key", "😀".repeat(81), "<long key>"],
+])("omits an unsupported key containing %s", (_case, key, marker) => {
+  const refused = { ...input, presentation: { grouping: { [key]: { "private descendant": "PRIVATE-VALUE\u0000" } } } };
+  expect.assertions(6);
+  try {
+    buildCatalogReleaseDraftV3(refused);
+  } catch (error) {
+    expect(error).toMatchObject({ code: "release_draft_invalid", path: "presentation.grouping" });
+    const message = (error as Error).message;
+    expect(message.split("\n")[0]).toMatch(new RegExp(`^Observed: presentation\\.grouping .* ${marker}\\)\\.$`, "u"));
+    expect(message).toContain(`Fix: ${fix.omittedKey}\n`);
+    expect(message).not.toContain(key);
+    expect(message).not.toMatch(/private descendant|PRIVATE-VALUE/u);
+  }
+  expect(() => buildCatalogReleaseDraftV3({ ...input, presentation: { grouping: { retained: "Display title" } } })).not.toThrow();
+});
+
+it("uses the root when a key is omitted and keeps keys of exactly 80 code points", () => {
+  expect(() => buildCatalogReleaseDraftV3({ ...input, ["file:private"]: true } as CatalogProductInput))
+    .toThrowError(expect.objectContaining({ path: "$", message: expect.stringContaining(fix.omittedKey) }));
+  const key = "😀".repeat(80);
+  expect(() => buildCatalogReleaseDraftV3({ ...input, presentation: { [key]: "PRIVATE-VALUE\u0000" } }))
+    .toThrowError(expect.objectContaining({ path: `presentation[${JSON.stringify(key)}]`, message: expect.stringContaining(fix.json) }));
 });
 
 it.each([0, 1, 10_000, 10_001])("checks the SKU count at %i", count => {

@@ -70,6 +70,14 @@ export const catalogProductInputSchema: z.ZodType<CatalogProductInput> = z.stric
   slug: z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/u), name: text,
   presentation: facts, skus: z.array(skuInput).min(1).max(10_000),
   document: facts.optional(), attributes: catalogDraftProductV2Schema.shape.attributes,
+}).superRefine(({ skus }, context) => {
+  const dimensions = new Set<string>();
+  for (const [index, sku] of skus.entries()) {
+    for (const key of Object.keys(sku.options)) dimensions.add(key);
+    if (dimensions.size <= 16) continue;
+    context.addIssue({ code: "custom", path: ["skus", index, "options"], message: fixes.dimensions });
+    return;
+  }
 });
 
 const fixes = {
@@ -88,6 +96,9 @@ const fixes = {
   depth: "Reduce nesting in the named content until the generated draft fits the depth limit of 48.",
   json: "Use plain JSON data in the named field and remove unsupported keys or values.",
   shape: "Correct the field named by path to match catalogProductInputSchema.",
+  dimensions: "Use at most 16 distinct option keys across the product's SKUs.",
+  optionKey: "Rename this option to a valid key, such as pack_size, or remove it.",
+  omittedKey: "Review the keys and values in the named object. Remove or rename an unsupported key, or correct its value to match catalogProductInputSchema.",
 };
 
 /** Refusal with an input path and fix.
@@ -101,18 +112,34 @@ export class CatalogReleaseDraftError extends Error {
   }
 }
 
-function refuse(path: string, fix: keyof typeof fixes, value: unknown): never {
+type OmittedKey = "<host path>" | "<long key>";
+
+function refuse(path: string, fix: keyof typeof fixes, value: unknown, omittedKey?: OmittedKey): never {
   const kind = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
   throw new CatalogReleaseDraftError(path, [
-    `Observed: ${path} (${kind} [redacted]).`,
+    `Observed: ${path} (${kind} [redacted]${omittedKey ? `, omitted key: ${omittedKey}` : ""}).`,
     "Cause: The product description does not produce a valid schema version 3 draft.",
     `Fix: ${fixes[fix]}`,
     "Recheck: Call buildCatalogReleaseDraftV3 again with the corrected description.",
   ].join("\n"));
 }
 
-const inputPath = (path: readonly PropertyKey[]) =>
-  path.map(key => /^[A-Za-z0-9_:-]{1,64}$/u.test(String(key)) ? String(key) : "[key]").join(".") || "$";
+function inputPath(fields: readonly PropertyKey[]): { path: string; omittedKey?: OmittedKey } {
+  let path = "";
+  for (const field of fields) {
+    const key = String(field);
+    if (key.includes("/") || key.includes("\\") || /file:/iu.test(key)) return { path: path || "$", omittedKey: "<host path>" };
+    if (key.length > 80 && [...key].length > 80) return { path: path || "$", omittedKey: "<long key>" };
+    path += /^[A-Za-z0-9_:-]{1,64}$/u.test(key) ? (path ? "." : "") + key : `[${JSON.stringify(key)}]`;
+  }
+  return { path: path || "$" };
+}
+
+function refuseInput(fields: readonly PropertyKey[], fix: keyof typeof fixes, value: unknown, aggregatePath?: string): never {
+  const { path, omittedKey } = inputPath(fields);
+  if (omittedKey) refuse(path, "omittedKey", value, omittedKey);
+  refuse(aggregatePath ?? path, fix, value);
+}
 
 function sourceValue(value: unknown, path: readonly PropertyKey[]): unknown {
   for (const key of path) value = value && typeof value === "object" ? Object.getOwnPropertyDescriptor(value, key)?.value : undefined;
@@ -124,8 +151,8 @@ const invalidText = (value: string) => value.includes("\u0000") || /[\uD800-\uDF
 // Catch data that a recursive schema could lose or fail to traverse before copying it.
 function checkPlainData(value: unknown, path: string[] = [], ancestors = new Set<object>()): void {
   const document = path[0] === "document";
-  if (path.length > (document ? 49 : 48)) refuse(document ? "document" : "$", "depth", value);
-  const invalid = () => refuse(document ? "document" : inputPath(path), "json", value);
+  if (path.length > (document ? 49 : 48)) refuseInput(path, "depth", value, document ? "document" : "$");
+  const invalid = () => refuseInput(path, "json", value);
   if (typeof value === "string" && invalidText(value)) invalid();
   if (typeof value === "number" && (!Number.isFinite(value) || Object.is(value, -0))) invalid();
   if (typeof value === "bigint" || typeof value === "function" || typeof value === "symbol") invalid();
@@ -139,12 +166,14 @@ function checkPlainData(value: unknown, path: string[] = [], ancestors = new Set
   ancestors.add(value);
   for (const key of keys) {
     if (array && key === "length") continue;
-    if (typeof key !== "string" || invalidText(key) || ["__proto__", "constructor", "prototype"].includes(key))
-      invalid();
+    if (typeof key !== "string") return invalid();
+    const fieldPath = [...path, key];
+    if (invalidText(key) || ["__proto__", "constructor", "prototype"].includes(key))
+      refuseInput(fieldPath, "json", value);
     const property = Object.getOwnPropertyDescriptor(value, key)!;
-    if (!property.enumerable || !("value" in property) || array && (!/^(?:0|[1-9][0-9]*)$/u.test(String(key)) || Number(key) >= value.length))
-      invalid();
-    checkPlainData(property.value, [...path, String(key)], ancestors);
+    if (!property.enumerable || !("value" in property) || array && (!/^(?:0|[1-9][0-9]*)$/u.test(key) || Number(key) >= value.length))
+      refuseInput(fieldPath, "json", property.value);
+    checkPlainData(property.value, fieldPath, ancestors);
   }
   ancestors.delete(value);
 }
@@ -156,7 +185,12 @@ function parseProduct(input: unknown): CatalogProductInput {
     if (!(error instanceof z.ZodError)) throw error;
     const issue = error.issues[0]!;
     const fields = issue.code === "unrecognized_keys" ? [...issue.path, issue.keys[0]!] : issue.path;
-    const path = inputPath(fields), value = sourceValue(input, fields);
+    const { path, omittedKey } = inputPath(fields);
+    const value = sourceValue(input, fields);
+    if (omittedKey) refuse(path, "omittedKey", value, omittedKey);
+    if (issue.code === "custom" && issue.message === fixes.dimensions) refuse(path, "dimensions", value);
+    if (issue.code === "invalid_key" && fields.length === 4 && fields[0] === "skus" && fields[2] === "options")
+      refuse(path, "optionKey", value);
     if (path === "type.version" && value === undefined) refuse(path, "version", value);
     if (/^skus\.\d+\.identifiers\.\d+\.quantity$/u.test(path)) refuse(path, "quantity", value);
     if (/^skus\.\d+\.identifiers\.\d+\.value$/u.test(path) && sourceValue(input, [...issue.path.slice(0, -1), "scheme"]) === "gs1:gtin"
@@ -252,7 +286,6 @@ export function buildCatalogReleaseDraftV3(input: CatalogProductInput): {
       primarySku = index;
     }
     for (const key of Object.keys(options)) dimensions.add(key);
-    if (dimensions.size > 16) refuse(`${path}.options`, "shape", options);
     const { identifiers, primary } = buildIdentifiers(sku, `${path}.identifiers`, gtins);
     if (!sell.oneTime && !sell.subscription) refuse(`${path}.sell`, "mode", sell);
 
