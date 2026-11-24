@@ -9175,7 +9175,7 @@
         "dataStatements": []
       },
       {
-        "path": "db/platform/migrations/20991231249999_identity_privacy_erasure_reconciliations.sql",
+        "path": "db/platform/migrations/20261126610000_identity_privacy_erasure_reconciliations.sql",
         "row": "privacy-erasure-reconciliations",
         "replacedFunctions": [],
         "createdFunctions": [
@@ -13095,7 +13095,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20991231249999_identity_privacy_erasure_reconciliations.sql",
+      "path": "db/platform/migrations/20261126610000_identity_privacy_erasure_reconciliations.sql",
       "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa",
       "functions": [
         {

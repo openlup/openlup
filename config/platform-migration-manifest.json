@@ -822,7 +822,7 @@
       "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
     },
     {
-      "file": "db/platform/migrations/20991231249999_identity_privacy_erasure_reconciliations.sql",
+      "file": "db/platform/migrations/20261126610000_identity_privacy_erasure_reconciliations.sql",
       "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
     }
   ],
@@ -1674,7 +1674,7 @@
         "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
       },
       {
-        "file": "db/platform/migrations/20991231249999_identity_privacy_erasure_reconciliations.sql",
+        "file": "db/platform/migrations/20261126610000_identity_privacy_erasure_reconciliations.sql",
         "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
       }
     ],
@@ -2526,7 +2526,7 @@
         "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
       },
       {
-        "file": "db/platform/migrations/20991231249999_identity_privacy_erasure_reconciliations.sql",
+        "file": "db/platform/migrations/20261126610000_identity_privacy_erasure_reconciliations.sql",
         "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
       }
     ],
