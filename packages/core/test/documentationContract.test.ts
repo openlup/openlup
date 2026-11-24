@@ -481,6 +481,32 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     expect(() => checkGuide(roots)).not.toThrow();
   });
 
+  const reportSummary = "Added declarations: 14; see `packages/core/api/catalog.api.md`.";
+
+  it("accepts exact generated Core report summaries on a versioned upgrade page", () => {
+    const roots = guideFixture("# Guide\n", {
+      "upgrade/v1-2-3.md": [
+        "# Upgrade",
+        reportSummary,
+        "Added declarations: 2; see `packages/core/api/pricing.api.md`.",
+        "Added declarations: 1; see `packages/core/api/subscription.api.md`.",
+        "",
+      ].join("\n\n"),
+    });
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each([
+    ["upgrade/v1-2-3.md", "See `packages/core/api/catalog.api.md`."],
+    ["upgrade/v1-2-3.md", reportSummary + " More details."],
+    ["upgrade/v1-2-3.md", "```text\n" + reportSummary + "\n```"],
+    ["upgrade/version-notes.md", reportSummary],
+    ["reference/report.md", reportSummary],
+  ])("rejects a non-exempt Core report path in %s (%s)", (path, source) => {
+    const roots = guideFixture("# Guide\n", { [path]: "# Guide page\n\n" + source + "\n" });
+    expect(() => checkGuide(roots)).toThrow(`docs/guide/${path}: monorepo package path`);
+  });
+
   it.each([
     ["inside a fence", "```text\n### `packages/core/api/example-contracts.api.md`\n```"],
     ["after a Unicode line separator", "Literal text\u2028### `packages/core/api/example-contracts.api.md`"],

@@ -429,8 +429,9 @@ determines the publishable set. Source snapshots are separate. The sequence is:
    preparation can read the Git inventory. It stages no other changes;
    historical sections stay byte-identical. The bump assembles
    `packages/core/docs/guide/upgrade/v<major>-<minor>-<patch>.md` from the consumed
-   fragments and API diff, listing added, removed and changed declarations;
-   the maintainer's agent edits that page and the listed guide pages in
+   fragments and API diff. Each API report section gives the count of added
+   declarations with the report path and lists removed and changed declarations
+   individually. The maintainer's agent edits that page and the listed guide pages in
    the same PR. The bump also re-pins the guide's repository links and refreshes
    its generated regions, and re-pins released repository links in each publishable
    package's `AGENTS.md` and `README.md`. If no core release tag is an ancestor of HEAD, the listing

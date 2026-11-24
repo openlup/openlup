@@ -88,9 +88,10 @@ export function assertDocumentationContract(
     const label = relative(packageRoot, file).split(sep).join("/");
     // A pinned repository URL in the guide is the published link form, not an extracted-root path.
     const scanned = guideFiles.includes(file) ? source.replace(releaseUrlPattern(), "") : source;
-    // Keep the report headings recognized by openlup-context in versioned upgrade pages.
+    // Generated release notes carry report headings and addition summaries as inline paths.
+    const versionedUpgradePage = /^docs\/guide\/upgrade\/v\d+-\d+-\d+(?:-[A-Za-z0-9-]+)?\.md$/u.test(label);
     const pathSource = /^docs\/guide\/upgrade\/v[^/]*\.md$/.test(label)
-      ? withoutGeneratedCoreReportHeadings(source).replace(releaseUrlPattern(), "")
+      ? withoutGeneratedReportReferences(source, versionedUpgradePage).replace(releaseUrlPattern(), "")
       : scanned;
     if (monorepoPackagePath.test(pathSource)) violations.push(`${label}: monorepo package path`);
     for (const [pattern, description] of forbiddenExtractedRootReferences) {
@@ -152,7 +153,7 @@ export function assertDocumentationContract(
 }
 
 // Match the physical lines and fence boundaries used by openlup-context's Markdown reader.
-function withoutGeneratedCoreReportHeadings(source: string): string {
+function withoutGeneratedReportReferences(source: string, allowSummaries: boolean): string {
   let fence: string | undefined;
   return source.split("\n").map((line) => {
     const marker = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
@@ -161,7 +162,9 @@ function withoutGeneratedCoreReportHeadings(source: string): string {
       return line;
     }
     if (marker) fence = marker;
-    return /^### `packages\/core\/api\/[a-z0-9-]+\.api\.md`$/u.test(line) ? "" : line;
+    const reportHeading = /^### `packages\/core\/api\/[a-z0-9-]+\.api\.md`$/u.test(line);
+    const reportSummary = allowSummaries && /^Added declarations: [1-9][0-9]*; see `packages\/[a-z0-9-]+\/api\/[a-z0-9-]+\.api\.md`\.$/u.test(line);
+    return reportHeading || reportSummary ? "" : line;
   }).join("\n");
 }
 
