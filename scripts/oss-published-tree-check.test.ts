@@ -98,11 +98,13 @@ const gitFixtureEnvironment = { ...process.env, GIT_CONFIG_GLOBAL: "", GIT_CONFI
 
 describe("queue completion trust boundary", () => {
   const source = readFileSync(join(ROOT, ".github/workflows/queue-handoff.yml"), "utf8");
+  const admissionLock = "    concurrency:\n      group: openlup-main-queue-admission\n      cancel-in-progress: false\n      queue: max\n";
   const assertControls = (value: string) => {
     expect(value).toContain("  workflow_run:\n    workflows: [Published Tree CI]\n    types: [completed]");
     expect(value).not.toMatch(/^ {2}(?:schedule|workflow_dispatch|pull_request|pull_request_target|push):/mu);
     expect(value).toContain("permissions: {}\n");
     const job = workflowJob("enqueue", value);
+    expect(job).toContain(admissionLock);
     for (const guard of ["github.repository == 'openlup/openlup'", "github.ref == 'refs/heads/main'",
       "github.event.workflow_run.event == 'pull_request'", "vars.OPENLUP_NATIVE_QUEUE == 'enabled'",
       "vars.OPENLUP_QUEUE_APP_CLIENT_ID != ''", "environment: openlup-merge-queue",
@@ -116,6 +118,11 @@ describe("queue completion trust boundary", () => {
   };
   it("uses trusted main code and an isolated queue identity without another required check", () => assertControls(source));
   it.each([
+    [admissionLock, ""],
+    ["group: openlup-main-queue-admission", "group: openlup-main-queue-admission-${{ github.event.workflow_run.head_sha }}"],
+    ["group: openlup-main-queue-admission", "group: openlup-main-queue-admission-${{ github.run_id }}"],
+    ["cancel-in-progress: false", "cancel-in-progress: true"],
+    ["      queue: max\n", ""],
     ["  workflow_run:\n", "  pull_request_target:\n"],
     ["github.ref == 'refs/heads/main'", "true"],
     ["environment: openlup-merge-queue", "environment: npm-stage"],

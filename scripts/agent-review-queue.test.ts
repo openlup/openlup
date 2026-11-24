@@ -74,19 +74,19 @@ const observed = { ...receipt, baseValid: true, changedPaths: ['source.txt'] };
 const body = (value = receipt) => `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
 const comment = (patch = {}) => ({ id: 1, body: body(), author_association: 'OWNER', user: { login: 'review-owner', type: 'User' }, created_at: '2026-10-19T00:00:00Z', ...patch });
 
-function handoffFixture() {
+function handoffFixture(candidate = receipt) {
   const repository = { id: 1376035358, full_name: 'openlup/openlup', private: false, owner: { login: 'openlup' } };
-  const run = { id: 100, workflow_id: 42, run_attempt: 1, event: 'pull_request', path: '.github/workflows/published-tree-ci.yml', repository,
-    head_repository: structuredClone(repository), head_sha: receipt.head, head_branch: 'task/queue', status: 'completed', conclusion: 'success', pull_requests: [] };
-  const pr = { number: receipt.pr, state: 'open', draft: false, merged: false, base: { ref: 'main', repo: repository },
-    head: { sha: receipt.head, ref: run.head_branch, repo: structuredClone(repository) } };
-  const queuePr = { id: 'PR_12', number: receipt.pr, state: 'OPEN', isDraft: false, merged: false, baseRefName: 'main', headRefOid: receipt.head,
+  const run = { id: 88 + candidate.pr, workflow_id: 42, run_attempt: 1, event: 'pull_request', path: '.github/workflows/published-tree-ci.yml', repository,
+    head_repository: structuredClone(repository), head_sha: candidate.head, head_branch: candidate.pr === receipt.pr ? 'task/queue' : `task/queue-${candidate.pr}`, status: 'completed', conclusion: 'success', pull_requests: [] };
+  const pr = { number: candidate.pr, state: 'open', draft: false, merged: false, base: { ref: 'main', repo: repository },
+    head: { sha: candidate.head, ref: run.head_branch, repo: structuredClone(repository) } };
+  const queuePr = { id: `PR_${candidate.pr}`, number: candidate.pr, state: 'OPEN', isDraft: false, merged: false, baseRefName: 'main', headRefOid: candidate.head,
     mergeable: 'MERGEABLE', autoMergeRequest: { enabledAt: '2026-10-24T12:00:00Z', enabledBy: { login: 'merge-owner' } }, mergeQueueEntry: null as null | { id: string },
     timelineItems: { nodes: [] as { createdAt: string }[] } };
-  const jobs = [...REQUIRED_CONTEXTS, 'native-review'].map((name, index) => ({ id: index + 1, name, run_id: run.id, run_attempt: 1, head_sha: receipt.head, status: 'completed', conclusion: 'success' }));
+  const jobs = [...REQUIRED_CONTEXTS, 'native-review'].map((name, index) => ({ id: index + 1, name, run_id: run.id, run_attempt: 1, head_sha: candidate.head, status: 'completed', conclusion: 'success' }));
   const f = { event: { action: 'completed', repository, workflow_run: structuredClone(run) },
     env: { GITHUB_EVENT_NAME: 'workflow_run', GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_REF: 'refs/heads/main' }, run, pr, queuePr,
-    pulls: [pr], listing: { total_count: 1, workflow_runs: [run] }, result: { total_count: jobs.length, jobs }, comments: [comment()],
+    pulls: [pr], listing: { total_count: 1, workflow_runs: [run] }, result: { total_count: jobs.length, jobs }, comments: [comment({ body: body(candidate) })],
     permission: 'write', clock: time, getHook: (_path: string) => {} };
   const api = { get: vi.fn(async (path: string) => {
     f.getHook(path);
@@ -101,12 +101,12 @@ function handoffFixture() {
     if (path.includes('/pulls?')) return structuredClone(f.pulls);
     if (path.includes('/pulls/')) return structuredClone(f.pr);
     if (path.includes('/issues/')) return structuredClone(f.comments);
-    if (path.includes('/git/ref/')) return { object: { sha: receipt.base } };
+    if (path.includes('/git/ref/')) return { object: { sha: candidate.base } };
     throw new Error(`unexpected read ${path}`);
   }) };
   const runGit = vi.fn(async (_cwd: string, ...args: string[]) => {
-    if (args[0] === 'rev-parse') return receipt.tree;
-    if (args[0] === 'merge-base' && args[1] === '--all') return receipt.base;
+    if (args[0] === 'rev-parse') return candidate.tree;
+    if (args[0] === 'merge-base' && args[1] === '--all') return candidate.base;
     if (args[0] === 'diff') return `:100644 100644 ${'a'.repeat(40)} ${'b'.repeat(40)} M\0source.txt\0`;
     return '';
   });
@@ -865,6 +865,7 @@ describe('carry-over adapter', () => {
 
 describe('migration merge-queue serialization', () => {
   function migrationHandoffFixture({
+    candidate = receipt,
     changedPath = 'tests/postgres/current-installation-inventory.json',
     queueNodes = [] as { state: string; pullRequest: { number: number } }[],
     hasNextPage = false,
@@ -872,9 +873,9 @@ describe('migration merge-queue serialization', () => {
     mergeQueueNull = false,
     peerFiles = {} as Record<number, unknown>,
   } = {}) {
-    const f = handoffFixture();
+    const f = handoffFixture(candidate);
     f.comments.splice(0, f.comments.length, comment({
-      body: body({ ...receipt, risk: 'behavior', reviewers: ['reviewer-a', 'reviewer-b'] }),
+      body: body({ ...candidate, risk: 'behavior', reviewers: ['reviewer-a', 'reviewer-b'] }),
     }));
     f.runGit.mockImplementation(async (_cwd: string, ...args: string[]) => {
       if (args[0] === 'rev-parse') return receipt.tree;
@@ -902,6 +903,65 @@ describe('migration merge-queue serialization', () => {
     });
     return f;
   }
+
+  function simultaneousCompletions({ interleave = false, disjoint = false } = {}) {
+    const queueNodes: { state: string; pullRequest: { number: number } }[] = [];
+    const firstPaths = 'tests/postgres/current-installation-inventory.json';
+    const secondPaths = 'config/platform-migration-manifest.json';
+    const secondReceipt = { ...receipt, pr: 13, head: 'e'.repeat(40) };
+    const peerFiles = { 12: [{ filename: firstPaths }], 13: [{ filename: secondPaths }] };
+    const first = migrationHandoffFixture({ queueNodes, peerFiles, changedPath: firstPaths });
+    const second = disjoint
+      ? handoffFixture(secondReceipt)
+      : migrationHandoffFixture({ queueNodes, peerFiles, changedPath: secondPaths, candidate: secondReceipt });
+    let releaseBoth!: () => void;
+    const bothReady = new Promise<void>(resolve => { releaseBoth = resolve; });
+    let ready = 0;
+    for (const candidate of [first, second]) {
+      candidate.enqueue.mockImplementation(async () => {
+        if (interleave) {
+          ready += 1;
+          if (ready === 2) releaseBoth();
+          await bothReady;
+        }
+        const number = candidate.pr.number;
+        const id = `QUEUE_${number}`;
+        queueNodes.push({ state: 'QUEUED', pullRequest: { number } });
+        candidate.queuePr.mergeQueueEntry = { id };
+        return { id };
+      });
+    }
+    return { first, second, queueNodes };
+  }
+
+  it('exposes two enqueue attempts when both completions read an empty queue', async () => {
+    const { first, second } = simultaneousCompletions({ interleave: true });
+    const results = await Promise.all([first.execute(), second.execute()]);
+    expect(results.map(result => result.status)).toEqual(['enqueued', 'enqueued']);
+    expect(first.enqueue).toHaveBeenCalledTimes(1);
+    expect(second.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('defers the second serialized completion and preserves its intent until the lane clears', async () => {
+    const { first, second, queueNodes } = simultaneousCompletions();
+    await expect(first.execute()).resolves.toMatchObject({ status: 'enqueued', pr: 12 });
+    await expect(second.execute()).resolves.toMatchObject({
+      status: 'deferred', pr: 13, head: second.pr.head.sha, blockingPrs: [12],
+    });
+    expect(first.enqueue).toHaveBeenCalledTimes(1);
+    expect(second.enqueue).not.toHaveBeenCalled();
+    queueNodes.length = 0;
+    first.queuePr.mergeQueueEntry = null;
+    await expect(second.execute()).resolves.toMatchObject({ status: 'enqueued', pr: 13, head: second.pr.head.sha });
+    expect(second.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('admits a disjoint non-migration completion while the first migration is active', async () => {
+    const { first, second, queueNodes } = simultaneousCompletions({ disjoint: true });
+    await expect(first.execute()).resolves.toMatchObject({ status: 'enqueued', pr: 12 });
+    await expect(second.execute()).resolves.toMatchObject({ status: 'enqueued', pr: 13 });
+    expect(queueNodes.map(entry => entry.pullRequest.number)).toEqual([12, 13]);
+  });
 
   it('classifies migration-serialized paths narrowly', () => {
     for (const serialized of [
