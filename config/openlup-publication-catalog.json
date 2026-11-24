@@ -1842,6 +1842,14 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/migrations/compatible-data-transfer.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/migrations/module-catalogues-and-histories.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/agent-context-adaptive-routing.md",
       "class": "public-output"
     },

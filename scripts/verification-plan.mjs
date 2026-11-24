@@ -1,6 +1,7 @@
 // One local obligation catalogue. Package discovery and tooling scope keep their owners.
 import { join } from 'node:path';
 import { env as processEnvironment } from 'node:process';
+import { findAffectedTests } from './affected-tests.mjs';
 
 const npm = (...args) => ['npm', ...args];
 const node = (...args) => [process.execPath, ...args];
@@ -107,22 +108,35 @@ export function validateVerificationSteps(steps, pgtap = false) {
   }
 }
 
-export function verificationSteps(candidate, build, packs, pgtap = false) {
+export function verificationSteps(candidate, build, packs, pgtap = false, { layered = false, rootDir = process.cwd() } = {}) {
   const inputs = { candidate, build, packs };
+  const affectedPaths = layered ? findAffectedTests({ changedFiles: candidate.changedPaths ?? [], rootDir })
+    .affectedTests.map(({ path }) => path) : [];
   const steps = Object.entries(definitions).filter(([name]) => name !== 'pgtap' || pgtap)
     .map(([name, { command, env, ...definition }]) => ({ name, ...definition,
       requires: [...definition.requires], command: command(inputs), env: env ? env(inputs) : {} }));
+  if (layered) {
+    const tests = steps.find(step => step.name === 'tests');
+    tests.command = affectedPaths.length ? ['env', '-u', 'OPENLUP_STACK_BASE', ...npm('test', '--', ...affectedPaths)] : [];
+    tests.reason = affectedPaths.length ? 'Affected Vitest files selected from the candidate diff and contract pins.'
+      : '0 affected Vitest files (full suite runs in hosted CI)';
+    if (!affectedPaths.length) tests.skipMessage = tests.reason;
+  }
   validateVerificationSteps(steps, pgtap);
   return steps;
 }
 
-export function verificationPlan(candidate, build, packs, pgtap = false) {
+export function verificationPlan(candidate, build, packs, pgtap = false, options = {}) {
+  const layered = options.layered === true;
   return {
-    phases: verificationSteps(candidate, build, packs, pgtap),
-    selection: 'All thirteen mandatory local phases; no path-based narrowing or result reuse.',
+    mode: layered ? 'layered' : 'full',
+    phases: verificationSteps(candidate, build, packs, pgtap, options),
+    selection: layered ? 'All fast local phases; affected Vitest files selected from the candidate diff.'
+      : 'All thirteen mandatory local phases; no path-based narrowing or result reuse.',
     pgtap: pgtap ? 'selected' : 'not selected; use --pgtap for database inputs or an explicit diagnostic request',
     hostedOnly: [
-      { context: 'test', reason: 'Eight independent hosted shards and their complete success aggregation; local selection does not prove hosted execution.' },
+      { context: 'test', reason: layered ? 'Full eight Vitest shards run in hosted CI and Merge Queue; local affected tests do not prove hosted execution.'
+        : 'Eight independent hosted shards and their complete success aggregation; local selection does not prove hosted execution.' },
       { context: 'install-proof', reason: 'Event-bound dependency comparison and hosted installation environment.' },
       { context: 'native-review', reason: 'Live source/group receipt admission; local review is an execution prerequisite.' },
     ],
