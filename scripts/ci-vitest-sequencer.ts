@@ -6,6 +6,13 @@ import { pinnedDurationMs, type DurationSections } from "./ci-vitest-duration-ke
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const DEFAULT_WEIGHTS_PATH = "config/vitest-shard-weights.json";
+export const DEFAULT_POSTGRES_DURATION_MS = 45_000;
+
+export function fallbackSequencerDurationMs(relativePath: string, defaultDurationMs: number): number {
+  return relativePath.startsWith("tests/postgres/")
+    ? Math.max(defaultDurationMs, DEFAULT_POSTGRES_DURATION_MS)
+    : defaultDurationMs;
+}
 
 const FALLBACK_MANIFEST: DurationSections = {
   defaultDurationMs: 1,
@@ -64,7 +71,9 @@ export function sortTestSpecificationsByWeight<T extends Pick<TestSpecification,
 ): T[] {
   const weighted = files.map((spec) => {
     const relativePath = toPosixRelativePath(rootDir, spec.moduleId);
-    const weightMs = pinnedDurationMs(manifest.durationsMs, relativePath) ?? manifest.defaultDurationMs;
+    const weightMs =
+      pinnedDurationMs(manifest.durationsMs, relativePath)
+      ?? fallbackSequencerDurationMs(relativePath, manifest.defaultDurationMs);
     return { spec, relativePath, weightMs };
   });
 

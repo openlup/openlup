@@ -5,11 +5,13 @@ import { env as processEnvironment } from "node:process";
 import { describe, expect, it } from "vitest";
 import { digestKeyForPath } from "./ci-vitest-duration-keys.ts";
 import {
+  DEFAULT_POSTGRES_DURATION_MS,
   DEFAULT_QUARANTINE_PATH,
   DEFAULT_WEIGHTS_PATH,
   buildQuarantineRetryArgs,
   buildShardCommand,
   buildShardExecutionPlan,
+  fallbackDurationMs,
   formatQuarantineBanner,
   listVitestFiles,
   loadShardWeights,
@@ -89,6 +91,23 @@ describe("ci-vitest-shard", () => {
       estimatedDurationMs: 1500,
       files: ["b.test.ts", "c.test.ts", "e.test.ts"],
     });
+  });
+
+  it("assigns the PostgreSQL fallback weight to unpinned tests/postgres files across shards", () => {
+    expect(fallbackDurationMs("tests/postgres/newSuite.test.ts", 11)).toBe(DEFAULT_POSTGRES_DURATION_MS);
+    expect(fallbackDurationMs("tests/postgres/newSuite.test.ts", 60_000)).toBe(60_000);
+    expect(fallbackDurationMs("src/newUnit.test.ts", 11)).toBe(11);
+
+    const manifest = { defaultDurationMs: 11, durationsMs: {} };
+    const shards = partitionShards(
+      ["tests/postgres/unpinnedA.test.ts", "tests/postgres/unpinnedB.test.ts", "src/fast.test.ts"],
+      2,
+      manifest,
+    );
+    expect(shards[0]!.files).toEqual(["src/fast.test.ts", "tests/postgres/unpinnedA.test.ts"]);
+    expect(shards[0]!.estimatedDurationMs).toBe(DEFAULT_POSTGRES_DURATION_MS + 11);
+    expect(shards[1]!.files).toEqual(["tests/postgres/unpinnedB.test.ts"]);
+    expect(shards[1]!.estimatedDurationMs).toBe(DEFAULT_POSTGRES_DURATION_MS);
   });
 
   it("keeps config/vitest-shard-weights.json sorted with positive weights", () => {

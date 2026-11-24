@@ -5,8 +5,10 @@ import { describe, expect, it } from "vitest";
 import type { TestSpecification, Vitest } from "vitest/node";
 import { digestKeyForPath, type DurationSections } from "./ci-vitest-duration-keys.ts";
 import {
+  DEFAULT_POSTGRES_DURATION_MS,
   DEFAULT_WEIGHTS_PATH,
   WeightedSequencer,
+  fallbackSequencerDurationMs,
   loadSequencerWeights,
   sortTestSpecificationsByWeight,
 } from "./ci-vitest-sequencer.ts";
@@ -73,6 +75,33 @@ describe("ci-vitest-sequencer", () => {
       resolve(rootDir, "src/Unweighed-A.test.ts"),
       resolve(rootDir, "src/unweighed-b.test.ts"),
       resolve(rootDir, "z/lighter-than-default.test.ts"),
+    ]);
+  });
+
+  it("schedules unpinned tests/postgres files ahead of fast unit tests using the PostgreSQL fallback weight", () => {
+    const rootDir = "/repo";
+    expect(fallbackSequencerDurationMs("tests/postgres/unpinned.test.ts", 11)).toBe(DEFAULT_POSTGRES_DURATION_MS);
+    expect(fallbackSequencerDurationMs("src/unpinned.test.ts", 11)).toBe(11);
+    const manifest: DurationSections = {
+      defaultDurationMs: 11,
+      durationsMs: {
+        "src/medium.test.ts": 5_000,
+        "tests/postgres/pinned-heavy.test.ts": 90_000,
+      },
+    };
+    const sorted = sortTestSpecificationsByWeight(
+      [
+        makeSpec(rootDir, "src/medium.test.ts"),
+        makeSpec(rootDir, "tests/postgres/unpinned-new.test.ts"),
+        makeSpec(rootDir, "tests/postgres/pinned-heavy.test.ts"),
+      ],
+      manifest,
+      rootDir,
+    );
+    expect(sorted.map((spec) => spec.moduleId)).toEqual([
+      resolve(rootDir, "tests/postgres/pinned-heavy.test.ts"),
+      resolve(rootDir, "tests/postgres/unpinned-new.test.ts"),
+      resolve(rootDir, "src/medium.test.ts"),
     ]);
   });
 
