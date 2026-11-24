@@ -964,6 +964,7 @@ async function prove() {
   if (input.discriminators) await proveObservationRuntime(bootstrap);
   assert.deepEqual(await runner.status(), healthy);
   assert.deepEqual(await ledger(), installed);
+  let finalRunner = runner;
   if (input.discriminators) {
     beginPhase("inventory-comment-refusal");
     const originalComment = (await bootstrap.query("SELECT pg_catalog.col_description('public.clients'::pg_catalog.regclass,attnum) AS comment FROM pg_catalog.pg_attribute WHERE attrelid='public.clients'::pg_catalog.regclass AND attname='email'")).rows[0].comment;
@@ -1034,14 +1035,11 @@ async function prove() {
       await bootstrap.query(`ALTER ROLE ${identifier(selection.migrationLogin)} IN DATABASE postgres RESET search_path`);
       await bootstrap.query("DROP SCHEMA q2_shadow CASCADE");
     }
-    const recovered = createPostgresMigrationRunner({ connectionString }, { installation: selection });
-    assert.deepEqual(await recovered.status(), healthy);
-    assert.deepEqual(await recovered.apply(), { applied: [] });
-    assert.deepEqual(await ledger(), installed);
+    finalRunner = createPostgresMigrationRunner({ connectionString }, { installation: selection });
   }
   beginPhase("final-replay");
-  assert.deepEqual(await runner.status(), healthy);
-  assert.deepEqual(await runner.apply(), { applied: [] });
+  assert.deepEqual(await finalRunner.status(), healthy);
+  assert.deepEqual(await finalRunner.apply(), { applied: [] });
   assert.deepEqual(await ledger(), installed);
   return { inventorySha256, issuedInventorySha256, issuedLedgerRows: issuedExpected.length, ledgerRows: installed.length, pendingBefore: before.pending.length, appliedNow: appliedNow.applied.length,
     pendingAfter: after.pending.length, replayApplied: replay.applied.length, retainedRuntime: true, runtimeLockPrivilegesProved: true,

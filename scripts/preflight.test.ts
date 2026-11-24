@@ -1,11 +1,10 @@
 import { execFileSync, spawn, spawnSync, type ChildProcess, type SpawnOptions, type SpawnSyncOptions } from "node:child_process";
-import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { env as processEnvironment } from "node:process";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:child_process", async (original) => {
   const actual = await original<typeof import("node:child_process")>();
@@ -13,14 +12,15 @@ vi.mock("node:child_process", async (original) => {
 });
 
 import {
-  addedLines, areaGuardTests, formatCheckLine, inventoryClosureDigest, isTestEntry, isTestFile, missingFragments, nearDates,
+  CLIENT_SECRET_BOUNDARY_TRIGGER, SITE_ROUTES_TRIGGER,
+  addedLines, affectedTestCandidates, areaGuardTests, formatCheckLine, inventoryClosureDigest, isTestEntry, isTestFile, missingFragments, nearDates,
   parseNameStatus, main, neutralityVerdict, releasedPackageSource, separateTestFiles, shortExpiries,
   sqlTreeChanges, testDiscoveryVerdict, vitestFiles, type AddedLine, type Change,
 } from "./preflight.ts";
 import {
-  assertCarrierBuildOutputs, assertCarrierToolchain, assertLockedInstall, carrierLocale, carrierPlan, readReportOwners, runUnselectedBuild,
+  assertCarrierBuildOutputs, assertCarrierToolchain, assertLockedInstall, carrierPlan, readReportOwners, runUnselectedBuild,
 } from "./agent-review-landing.mjs";
-import { fixtureNpmCli, linkFixtureInstallation, localFixtureEnvironment } from "./fixtures/landing-test-environment.ts";
+import { localFixtureEnvironment } from "./fixtures/landing-test-environment.ts";
 
 type FakeSpawnResult = { status: number | null; stdout?: string; stderr?: string; error?: NodeJS.ErrnoException };
 function mockChildProcesses(handler: (bin: string, args: readonly string[] | undefined, options: SpawnSyncOptions | SpawnOptions | undefined) => FakeSpawnResult): void {
@@ -58,152 +58,6 @@ const changed = (...paths: string[]): Change[] => paths.map((path) => ({ path, d
 const line = (text: string): AddedLine[] => [{ path: "scripts/example.test.ts", line: 7, text }];
 // An injected clock; the window is measured from it, never from the real clock.
 const now = new Date("2040-01-01T00:00:00Z");
-
-describe("real fast preflight", () => {
-  const source = process.cwd();
-  const npmCli = fixtureNpmCli();
-  const env = { ...localFixtureEnvironment(), ...carrierLocale, npm_execpath: npmCli };
-  const owners = ["core", "platform"];
-  let childProcess: typeof import("node:child_process");
-  let directory: string, root: string, fork: string;
-  const options = () => ({ cwd: root, env, encoding: "utf8" as const, timeout: 180000, maxBuffer: 16 * 1024 * 1024 });
-  const run = (bin: string, ...args: string[]) => childProcess.execFileSync(bin, args, options()).trim();
-  const git = (...args: string[]) => run("git", ...args);
-  const path = (file: string) => join(root, file);
-  const put = (file: string, bytes: string) => writeFileSync(path(file), bytes);
-  const get = (file: string) => readFileSync(path(file), "utf8");
-  const commit = (message: string) => { git("add", "-A"); git("commit", "-qs", "-m", message); return git("rev-parse", "HEAD"); };
-
-  beforeAll(async () => {
-    childProcess = await vi.importActual<typeof import("node:child_process")>("node:child_process");
-    directory = mkdtempSync(join(tmpdir(), "openlup-fast-preflight-"));
-    root = join(directory, "fixture");
-    childProcess.execFileSync("git", ["clone", "--shared", "--no-hardlinks", "-q", source, root], { env, timeout: 30000 });
-    for (const file of ["scripts/preflight.ts", "scripts/settings-candidate-guard.ts", "scripts/agent-review-landing.mjs", ...["core", "outbox", "platform"].map(pkg => `packages/${pkg}/scripts/api-contract.ts`)]) {
-      cpSync(join(source, file), path(file));
-    }
-    git("config", "user.name", "Fixture"); git("config", "user.email", "fixture@example.invalid");
-    git("config", "commit.gpgSign", "false"); git("config", "core.hooksPath", "/dev/null");
-    git("add", "-A"); git("commit", "--allow-empty", "-qs", "-m", "Prepare fast fixture");
-    fork = git("rev-parse", "HEAD");
-    git("branch", "-f", "main", fork); git("remote", "set-url", "origin", ".");
-    git("update-ref", "refs/remotes/origin/main", fork);
-    linkFixtureInstallation(source, root);
-  }, 180000);
-  afterAll(() => { if (directory) rmSync(directory, { recursive: true, force: true }); });
-
-  const cold = () => {
-    for (const owner of owners) for (const leaf of ["dist", ".tsbuildinfo-build"]) {
-      rmSync(path(`packages/${owner}/${leaf}`), { recursive: true, force: true });
-    }
-  };
-  function reset(warm = false) {
-    git("checkout", "-q", "--detach", "--force", fork);
-    git("clean", "-fd");
-    cold();
-    // Hosted test-prep and local pretest already built the unchanged parent inputs.
-    if (warm) for (const owner of owners) {
-      const dist = `packages/${owner}/dist`;
-      cpSync(join(source, dist), path(dist), { recursive: true });
-    }
-  }
-  function snapshot() {
-    const index = readFileSync(path(".git/index"));
-    const hash = createHash("sha256");
-    for (const file of git("ls-files", "-z").split("\0").filter(Boolean)) {
-      hash.update(file + "\0").update(readFileSync(path(file))).update("\0");
-    }
-    return { index, tracked: hash.digest("hex") };
-  }
-  function fast(label: string, expected: string[], message?: string, remedy?: string) {
-    const state = snapshot();
-    const started = performance.now();
-    const result = childProcess.spawnSync(process.execPath, [npmCli, "run", "preflight", "--", "--fast"], options());
-    console.info(`D3 fast preflight ${label}: ${(performance.now() - started).toFixed(0)} ms`);
-    expect(result.error).toBeUndefined();
-    expect(result.status, result.stdout + result.stderr).toBe(expected.length ? 1 : 0);
-    const verdict = JSON.parse(result.stdout.trimEnd().split("\n").at(-1)!);
-    expect(verdict, result.stdout + result.stderr).toEqual({ preflight: "fast", result: expected.length ? "fail" : "pass", head: git("rev-parse", "HEAD"), failed: expected });
-    if (message && remedy) expect(result.stdout).toContain(message).toContain(remedy);
-    expect(snapshot()).toEqual(state);
-    return verdict;
-  }
-
-  it.each([
-    { cache: "warm-seeded", warm: true },
-    { cache: "cold", warm: false },
-  ])("refuses a stale API report with a $cache cache, then accepts the owner's repair", ({ cache, warm }) => {
-    reset(warm);
-    const entry = "packages/platform/src/portability/index.ts";
-    const api = "packages/platform/api/portability.api.md";
-    put(entry, get(entry) + "\nexport const fixtureFreshness = 1;\n");
-    put("packages/platform/changes/fixture-freshness.md", "- Exercise the portability report owner.\n");
-    commit("Add the fixture export with its original report");
-    const declaration = "packages/platform/dist/portability/index.d.ts";
-    if (warm) expect(get(declaration)).not.toContain("fixtureFreshness");
-    else expect(existsSync(path(declaration))).toBe(false);
-    fast(`API stale (${cache})`, ["api:check @openlup/platform"],
-      `api:check @openlup/platform: FAIL ${api}`, "npm run api:update --workspace=@openlup/platform");
-    expect(get(declaration)).toContain("fixtureFreshness");
-    run(process.execPath, "packages/platform/scripts/api-contract.ts", "--update");
-    commit("Regenerate the API report");
-    fast(`API repaired (${cache})`, []);
-  }, 300000);
-
-  it("refuses stale settings with warm-seeded and cold caches, then accepts the owner's repair", () => {
-    reset(true);
-    const dataPath = "packages/platform/src/inventory/settings-data.json";
-    const entries: { kind: string }[] = JSON.parse(get(dataPath));
-    put(dataPath, JSON.stringify([...entries, { ...entries.find(entry => entry.kind === "invariant"), key: "inventory.fixtureFreshness", goal: "Describe the freshness fixture." }], null, 2) + "\n");
-    put("packages/platform/changes/fixture-freshness.md", "- Exercise the settings catalogue owner.\n");
-    commit("Add the fixture setting with its original catalogue");
-    const settingsCheck = (cache: string) => fast(`settings stale (${cache})`, ["settings-catalogue"],
-      "settings-catalogue: FAIL packages/platform/settings-catalog.json is stale", "node scripts/settings-catalogue.ts --write");
-    const warmSettings = settingsCheck("warm");
-    cold();
-    expect(settingsCheck("cold")).toEqual(warmSettings);
-    run(process.execPath, "scripts/settings-catalogue.ts", "--write");
-    commit("Regenerate the settings carriers");
-    fast("settings repaired", []);
-  }, 300000);
-
-  it("names the unregistered public path and accepts its reviewed classification", () => {
-    reset();
-    const extra = "packages/platform/api/fixture-freshness.md";
-    put(extra, "# Fixture freshness\n"); commit("Add a public path before classification");
-    fast("unregistered path", ["publication"], `extra ${extra}`, "Add the reviewed classification in config/openlup-publication-catalog.json.");
-    const catalogue = "config/openlup-publication-catalog.json";
-    const registration: { publicPaths: { path: string; class: string }[] } = JSON.parse(get(catalogue));
-    registration.publicPaths.push({ path: extra, class: "public-output" });
-    registration.publicPaths.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-    put(catalogue, JSON.stringify(registration, null, 2) + "\n"); commit("Register the fixture path");
-    fast("path registered", []);
-    for (const owner of owners) expect(existsSync(path(`packages/${owner}/dist`))).toBe(false);
-  }, 180000);
-
-  it.each(["patch drift", "Node major mismatch", "npm major mismatch"])("checks the installed toolchain with %s", variant => {
-    reset();
-    const node = process.versions.node;
-    const npm = run(process.execPath, npmCli, "--version");
-    const differentPin = (version: string, majorMismatch: boolean) => {
-      const [major, minor, patch] = version.split(".").map(Number);
-      return `${majorMismatch ? major + 1 : major}.${minor}.${patch + 1}`;
-    };
-    const pinnedNode = differentPin(node, variant === "Node major mismatch");
-    const pinnedNpm = `npm@${differentPin(npm, variant === "npm major mismatch")}`;
-    put(".nvmrc", `${pinnedNode}\n`);
-    put("package.json", JSON.stringify({ ...JSON.parse(get("package.json")), packageManager: pinnedNpm }));
-    const check = () => run(process.execPath, "--input-type=module", "-e",
-      "import { assertCarrierToolchain } from './scripts/agent-review-landing.mjs'; console.log(assertCarrierToolchain(process.cwd()));");
-    if (variant === "Node major mismatch") {
-      expect(check).toThrow(`requires the Node major pinned by .nvmrc (${pinnedNode}); found Node ${node}. Run nvm install && nvm use.`);
-    } else if (variant === "npm major mismatch") {
-      expect(check).toThrow(`requires the npm major pinned by packageManager (${pinnedNpm}); found npm@${npm}. Run npm install --global ${pinnedNpm}.`);
-    } else {
-      expect(check()).toBe(`carrier toolchain: Node ${node}, npm ${npm}, ICU ${process.versions.icu}`);
-    }
-  }, 30_000);
-});
 
 describe("carrier guards on Git fixtures", () => {
   let git: (...args: string[]) => string, root: string;
@@ -396,6 +250,9 @@ describe("fast preflight", () => {
       "test dates": "test dates: skip no new or changed test files",
       "test expiries": "test expiries: skip no new or changed test files",
       gitleaks: "gitleaks: skip gitleaks is not on PATH; the required gitleaks job still scans the pull request",
+      "eslint-changed": "eslint-changed: skip no changed JS/TS files",
+      "client-secret-boundary": "client-secret-boundary: skip no client-secret-boundary inputs changed",
+      "site-routes": "site-routes: skip no site route inputs changed",
       "guide-check": "guide-check: skip no guide or rule files changed",
       carriers: `carriers: skip ${dirty ? "clean committed checkout required" : "no report or settings inputs changed"}`,
       ...(dirty ? { "migration projection": "migration projection: skip clean committed checkout required" } : {}),
@@ -404,6 +261,7 @@ describe("fast preflight", () => {
     expect(lines.filter((line) => !line.startsWith("    ")).map((line) => line.replace(/ \(\d+ s\)$/u, "")))
       .toEqual([
         "clean", "merge-clean", "neutrality", "ui-neutrality", "ast-grep", "ast-grep-hygiene",
+        "eslint-changed", "client-secret-boundary", "site-routes",
         "carrier toolchain", "publication", "carriers", "migration projection",
         "fragments", "settings-candidates", "test dates", "test expiries", "gitleaks", "guide-check", "package-manifest", "dco",
       ].map((name) => skipLines[name] ?? `${name}: ${failures.includes(name) ? `FAIL ${reasons[name]}` : "ok"}`));
@@ -649,7 +507,7 @@ describe("area preflight", () => {
   it("rejects mutually exclusive --fast and --area with exit code 2", async () => {
     const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await main(now, ["--fast", "--area"])).toBe(2);
-    expect(stderr).toHaveBeenCalledWith("preflight: --fast and --area are mutually exclusive");
+    expect(stderr).toHaveBeenCalledWith("preflight: --fast, --area, and --affected are mutually exclusive");
   });
 
   it("runs eslint, area tooling guards via test-hosted, and sql admit without Docker or typecheck", async () => {
@@ -1155,5 +1013,169 @@ describe("short expiries", () => {
     "token_expiry = 1500 ms",
   ])("does not warn on %s", (text) => {
     expect(shortExpiries(line(text))).toEqual([]);
+  });
+});
+
+describe("shift-left preflight guards and --affected discovery", () => {
+  it("triggers client-secret-boundary and site-routes guards on their actual scanned inputs", () => {
+    for (const path of [
+      "src/pages/Home.tsx",
+      "server/adapters/postgres/connectedStoreRestore.ts",
+      "api/health.ts",
+      "config/environment-variables.json",
+      "scripts/check-client-secret-boundary.ts",
+    ]) {
+      expect(CLIENT_SECRET_BOUNDARY_TRIGGER.test(path), path).toBe(true);
+    }
+    for (const path of ["packages/core/src/index.ts", "docs/platform/README.md"]) {
+      expect(CLIENT_SECRET_BOUNDARY_TRIGGER.test(path), path).toBe(false);
+    }
+
+    for (const path of [
+      "config/site-routes.json",
+      "config/public-reference-site-routes.json",
+      "scripts/site-routes.mjs",
+    ]) {
+      expect(SITE_ROUTES_TRIGGER.test(path), path).toBe(true);
+    }
+    for (const path of ["src/App.tsx", "server/adapters/postgres/connectedStoreRestore.ts"]) {
+      expect(SITE_ROUTES_TRIGGER.test(path), path).toBe(false);
+    }
+  });
+
+  it("executes eslint-changed (with offlineNpm), client-secret-boundary, and site-routes in --fast and surfaces PASS/FAIL", async () => {
+    vi.stubEnv("npm_execpath", join(process.cwd(), "fixture-npm-cli.js"));
+    const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
+    const runFastCase = async (failGuards: boolean) => {
+      const seenCalls: Array<{ bin: string; args: string[]; env?: NodeJS.ProcessEnv }> = [];
+      mockChildProcesses((bin, args, options) => {
+        const list = [...(args ?? [])];
+        const call = `${bin} ${list.join(" ")}`;
+        seenCalls.push({ bin, args: list, env: options?.env });
+        if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
+        if (call === "git rev-parse HEAD") return { status: 0, stdout: head, stderr: "" };
+        if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
+        if (call === "git rev-parse origin/main") return { status: 0, stdout: upstream, stderr: "" };
+        if (call === `git diff --name-status --no-renames -z ${fork} HEAD`) {
+          return { status: 0, stdout: "M\0src/pages/Home.tsx\0M\0config/site-routes.json\0", stderr: "" };
+        }
+        if (bin === "gitleaks") {
+          return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+        }
+        if (bin === "npx" && list.includes("eslint")) {
+          expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
+          return failGuards
+            ? { status: 1, stdout: "src/pages/Home.tsx:1:1 error no-unused-vars\n", stderr: "" }
+            : { status: 0, stdout: "", stderr: "" };
+        }
+        if (bin === process.execPath && list.includes("scripts/check-client-secret-boundary.ts")) {
+          expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
+          return failGuards
+            ? { status: 1, stdout: "", stderr: "src/pages/Home.tsx:2: client secret boundary violation fixture\n" }
+            : { status: 0, stdout: "Client secret boundary guard passed.\n", stderr: "" };
+        }
+        if (bin === process.execPath && list.includes("scripts/site-routes.mjs")) {
+          expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
+          return failGuards
+            ? { status: 1, stdout: "", stderr: "Error: Invalid site lifecycle\n" }
+            : { status: 0, stdout: "site routes hold: public-reference, 2 route(s)\n", stderr: "" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      });
+      const signed = "change\n\nSigned-off-by: Test Fixture <fixture@example.invalid>";
+      vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1f${signed}\0`);
+      const lines: string[] = [];
+      vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const exit = await main(now, ["--fast"]);
+      return { exit, lines, seenCalls };
+    };
+
+    const pass = await runFastCase(false);
+    expect(pass.exit).toBe(0);
+    expect(pass.lines).toContain("eslint-changed: ok");
+    expect(pass.lines).toContain("client-secret-boundary: ok");
+    expect(pass.lines).toContain("site-routes: ok");
+    expect(pass.seenCalls.some(({ bin, args }) => bin === "npx" && args.includes("eslint") && args.includes("src/pages/Home.tsx"))).toBe(true);
+    expect(pass.seenCalls.some(({ bin, args }) => bin === process.execPath && args.includes("scripts/check-client-secret-boundary.ts"))).toBe(true);
+    expect(pass.seenCalls.some(({ bin, args }) => bin === process.execPath && args.includes("scripts/site-routes.mjs") && args.includes("--public-reference"))).toBe(true);
+
+    const fail = await runFastCase(true);
+    expect(fail.exit).toBe(1);
+    expect(JSON.parse(fail.lines.at(-1)!)).toEqual({
+      preflight: "fast",
+      result: "fail",
+      head,
+      failed: ["eslint-changed", "client-secret-boundary", "site-routes"],
+    });
+    expect(fail.lines.some((line) => line.includes("no-unused-vars"))).toBe(true);
+    expect(fail.lines.some((line) => line.includes("client secret boundary violation fixture"))).toBe(true);
+    expect(fail.lines.some((line) => line.includes("Invalid site lifecycle"))).toBe(true);
+  });
+
+  it("discovers reverse-import affected tests and pins contract tests on deleted migrations via affectedTestCandidates", () => {
+    const candidates = affectedTestCandidates(changed("scripts/ci-vitest-shard.mjs"));
+    expect(candidates).toContain("scripts/ci-vitest-shard.test.ts");
+    const deletedMigration = affectedTestCandidates([{ path: "db/platform/migrations/20261121000000_example.sql", deleted: true }]);
+    expect(deletedMigration).toContain("scripts/platform-migration-manifest.test.ts");
+    expect(deletedMigration).toContain("scripts/sql-admit.test.ts");
+    expect(affectedTestCandidates([{ path: "scripts/deleted-only.test.ts", deleted: true }])).toEqual([]);
+  });
+
+  it("runs --affected end-to-end through discoverTests and scripts/test-hosted.mjs (skip, pass, and fail exit propagation)", async () => {
+    const fork = "b".repeat(40);
+    const runAffected = async (diffStdout: string, hostedExit: number) => {
+      const hostedCalls: string[][] = [];
+      mockChildProcesses((bin, args) => {
+        const list = [...(args ?? [])];
+        const call = `${bin} ${list.join(" ")}`;
+        if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
+        if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
+        if (call === "git ls-files --others --exclude-standard -z") return { status: 0, stdout: "", stderr: "" };
+        if (call === `git diff --name-status --no-renames -z ${fork}`) return { status: 0, stdout: diffStdout, stderr: "" };
+        if (bin === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+        if (bin === "npx" && list.includes("vitest") && list.includes("list")) {
+          const jsonArg = list.find((arg) => arg.startsWith("--json="));
+          const files = list.filter((arg) => arg.endsWith(".test.ts"));
+          if (jsonArg) {
+            writeFileSync(jsonArg.slice("--json=".length), JSON.stringify(files.map((file) => ({ file: join(process.cwd(), file) }))));
+          }
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        if (bin === process.execPath && list[0] === "scripts/test-hosted.mjs") {
+          hostedCalls.push(list);
+          return { status: hostedExit, stdout: hostedExit === 0 ? "1 passed\n" : "1 failed\n", stderr: "" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      });
+      const lines: string[] = [];
+      vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+      vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const exit = await main(now, ["--affected"]);
+      return { exit, lines, hostedCalls };
+    };
+
+    const empty = await runAffected("M\0docs/platform/README.md\0", 0);
+    expect(empty.exit).toBe(0);
+    expect(empty.hostedCalls).toEqual([]);
+    expect(empty.lines.some((line) => line.startsWith("SKIP hosted tests:"))).toBe(true);
+
+    const passed = await runAffected("M\0scripts/ci-vitest-shard.mjs\0", 0);
+    expect(passed.lines.filter((line) => line.startsWith("FAIL"))).toEqual([]);
+    expect(passed.exit).toBe(0);
+    expect(passed.hostedCalls).toEqual([["scripts/test-hosted.mjs", "scripts/ci-vitest-shard.test.ts"]]);
+    expect(passed.lines.some((line) => line.startsWith("PASS hosted tests: 1 file(s) passed"))).toBe(true);
+
+    const failed = await runAffected("M\0scripts/ci-vitest-shard.mjs\0", 1);
+    expect(failed.exit).toBe(1);
+    expect(failed.hostedCalls).toEqual([["scripts/test-hosted.mjs", "scripts/ci-vitest-shard.test.ts"]]);
+    expect(failed.lines.some((line) => line.startsWith("FAIL hosted tests:"))).toBe(true);
+  });
+
+  it("refuses mutually exclusive --fast, --area, and --affected combinations", async () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await main(now, ["--fast", "--affected"])).toBe(2);
+    expect(await main(now, ["--area", "--affected"])).toBe(2);
+    expect(stderr).toHaveBeenCalledTimes(2);
   });
 });

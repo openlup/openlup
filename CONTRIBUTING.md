@@ -776,10 +776,13 @@ For the managed pgTAP runner, prerequisites and proof limits, follow
 [Test scope and diagnostics](#separate-db-package-and-coverage-proof).
 
 The four `oss:published-tree` modes are distinct checks. `--policy` verifies
-the public policy, catalogue, documentation ownership, generated navigation and
-source-map freshness; `--inventory` verifies the selected tree; `--self-check`
-runs both `--policy` and `--inventory` in a single pass over the tracked tree
-and source-release snapshot; and `--typecheck` compares the preview's
+the public policy, catalogue, documentation ownership, generated navigation,
+source-map freshness, and (when comparing committed `HEAD` against a distinct
+PR, merge-group, explicit `--docs-base`, or local merge-base commit) append-only
+migration history plus package API `Migration:` blocks; `--inventory` verifies
+the selected tree; `--self-check` runs both `--policy` and `--inventory` in a
+single pass over the tracked tree and source-release snapshot; and `--typecheck`
+compares the preview's
 diagnostics with its tracked compatibility debt. The source repository's
 aggregate typechecker is not part of the projected command inventory and is not
 a substitute for `--typecheck`.
@@ -1010,8 +1013,10 @@ removed; other local environment variables pass through unchanged.
 
 Run `npm run preflight -- --fast` before reporting a change ready and before starting reviewers.
 It checks worktree cleanliness, mergeability against `origin/main` (skipped when `OPENLUP_STACK_BASE`
-points to an unlanded stack base), both neutrality gates, ast-grep scan and hygiene, the
-published-tree self-check (`oss:published-tree -- --self-check`), changelog fragments, added
+points to an unlanded stack base), both neutrality gates, ast-grep scan and hygiene, `eslint-changed`
+on changed non-deleted JS/TS files, conditional `client-secret-boundary` and `site-routes` guards, the
+published-tree self-check (`oss:published-tree -- --self-check`, including committed-tree append-only
+migration history and package API `Migration:` blocks when `HEAD` differs from its base), changelog fragments, added
 test-line date/expiry warnings, `gitleaks`, conditional guide-contract and package-manifest checks,
 and DCO sign-off across all commits (merge commits included). `WARN` and `SKIP` statuses surface
 without failing `--fast`. If fetch fails, it uses the local `origin/main`.
@@ -1021,8 +1026,12 @@ Run `npm run preflight -- --area` for a Docker-free, area-scoped check over chan
 `git merge-base HEAD origin/main` plus uncommitted and untracked files: it runs `eslint changed`,
 triggered Docker-free, consumer-pack-free tooling guard tests from `scripts/ci-test-scope.mjs` (plus
 `scripts/catalog-document-boundary.test.ts` on catalog, script or doc edits) through `test:hosted`,
-and `sql admit` when SQL under `db/` or `packages/*/sql/` changed. `--fast` and `--area` are
-mutually exclusive.
+and `sql admit` when SQL under `db/` or `packages/*/sql/` changed.
+
+Run `npm run preflight -- --affected` to run default preflight with test discovery expanded via
+`scripts/affected-tests.mjs` (reverse-import graph and contract-pin rules) so source-only edits
+also run their affected root Vitest suites through `test:hosted`. `--fast`, `--area`, and `--affected`
+are mutually exclusive.
 
 Without flags, `npm run preflight` is advisory and exits non-zero
 only when a check reports `FAIL`. It reads the change since
@@ -1034,6 +1043,10 @@ one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
 - `ast-grep hygiene`: the first-line file-wide `ast-grep-ignore` check and
   `ast-grep` rule tests (`ast-grep test --skip-snapshot-tests`);
 - `eslint changed`: ESLint on changed non-deleted JS/TS files before package builds;
+- `client-secret-boundary`: `node --experimental-strip-types scripts/check-client-secret-boundary.ts`
+  when `src/`, `server/`, `api/`, `config/environment-variables.json`, or the guard script changed;
+- `site-routes`: `node scripts/site-routes.mjs --public-reference` when `config/site-routes.json`,
+  `config/public-reference-site-routes.json`, or `scripts/site-routes*` changed;
 - `sql admit`: `npm run sql:admit` when SQL under `db/` or `packages/*/sql/`
   changed; reports `WARN` when the working tree has uncommitted or untracked
   changes;
@@ -1994,7 +2007,8 @@ and floor using trusted main's tooling.
 
 ```sh
 node scripts/agent-review-session.mjs receipt "$PR" | gh pr comment "$PR" --body-file -
-gh pr merge "$PR" --auto --match-head-commit "$REVIEWED_HEAD" --author-email "$AUTHOR_EMAIL"
+node scripts/merge-queue-check-arm.mjs "$PR" "$REVIEWED_HEAD" &&
+  gh pr merge "$PR" --auto --match-head-commit "$REVIEWED_HEAD" --author-email "$AUTHOR_EMAIL"
 ```
 
 Set `PR` to the PR number, `REVIEWED_HEAD` to the reviewed head SHA and
@@ -2028,6 +2042,15 @@ manually, take one fresh read, then diagnose. Leave `BEHIND` to the queue. Never
 use `--admin` for this route.
 A non-null `autoMergeRequest` means armed; only `mergeQueueEntry` confirms queue
 entry. Observe an existing request instead of repeatedly arming it.
+
+Run the read-only `merge-queue-check-arm.mjs` preflight before the manual
+exact-head merge command. It checks GitHub's live PR title and description for
+the DCO sign-off that will appear in the synthetic queue merge commit. Add a
+`Signed-off-by: Your Name <your.email@example.com>` line to the PR description
+and keep the sign-offs on the source commits. A migration PR waits while
+another migration PR is active in the queue. The preflight reports `ready`
+only with complete evidence. Keep the head match and recheck authority,
+required checks and the receipt before the separate write.
 
 Where activated, trusted `Queue Handoff` can insert a still-armed exact head once
 after the required source successes and current native proof. At each of its two
@@ -2067,9 +2090,11 @@ queue: whether Queue Handoff fires for an attempt requested with the built-in to
 is unwitnessed until the first hosted rerun. In any other state, after a PR
 `native-review` failure or receipt timeout, submit or check the receipt and rerun
 the failed `native-review` job within rerun authority. A group timeout needs a
-requeue under merge authority. Queue recovery is bounded at two retries; a second
-timeout or removal of the same head stops for diagnosis. A flake requires a
-passing rerun on the same tree; missing or late receipts are not flakes. A timely
+requeue under merge authority. After a same-head failed-check or timeout removal,
+the preflight requires a passing rerun of the removed merge-group commit with
+all required checks successful. A second removal of the same head stops routine
+re-arming. Diagnose any hold before considering further action. Missing or late
+receipts require a receipt fix. A timely
 valid receipt rejected without a conflict is a defect to diagnose.
 
 The admission script comes from trusted main, but the job YAML comes from the
