@@ -780,7 +780,7 @@ CREATE FUNCTION public.zz_body() RETURNS text LANGUAGE sql SET search_path=pg_ca
       const contents = [exact[0]! + "\n" + addition, exact[1]!];
       const sample = creationFixture(contents, true);
       try {
-        sample.append(); const head = sample.commit("Repinned unsupported creation");
+        sample.append(); const head = sample.commit("Repinned unsupported creation", { regenerate: false });
         for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed portable creation|reviewed replacement|control characters/u);
       } finally { sample.cleanup(); }
     });
