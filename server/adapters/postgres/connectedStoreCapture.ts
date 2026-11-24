@@ -248,12 +248,21 @@ export async function captureConnectedNativeStore(input: {
       }
       let count = packet.tables.reduce((sum, table) => sum + table.rows.length, 0);
       let bytes = packet.tables.reduce((sum, table) => sum + table.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);
+      const columnsByTable = new Map<string, Column[]>();
+      const { rows: attributeRows } = await db.query<{ table: string; name: string; type: string }>(`SELECT c.relname AS table,a.attname AS name,pg_catalog.format_type(a.atttypid,a.atttypmod) AS type
+        FROM pg_catalog.pg_attribute a
+        JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='public' AND c.relname=ANY($1::pg_catalog.text[]) AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
+        ORDER BY c.relname,a.attnum`, [owned]);
+      for (const row of attributeRows) {
+        const list = columnsByTable.get(row.table);
+        if (list) list.push({ name: row.name, type: row.type });
+        else columnsByTable.set(row.table, [{ name: row.name, type: row.type }]);
+      }
       const tables: ConnectedStoreOwnedRows[] = [];
       for (const table of owned) {
-        const columns = (await db.query<Column>(`SELECT a.attname AS name,pg_catalog.format_type(a.atttypid,a.atttypmod) AS type
-          FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
-          WHERE a.attrelid=$1::pg_catalog.regclass AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
-          ORDER BY a.attnum`, [`public.${table}`])).rows;
+        const columns = columnsByTable.get(table) ?? [];
         if (!columns.length || columns.some(column => !/^[a-z][a-z0-9_]{0,62}$/.test(column.name))) {
           throw new PostgresTransferError("schema_conflict", table);
         }
