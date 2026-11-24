@@ -445,10 +445,12 @@ it('all three operation limits preserve the complete effect snapshot over replay
   expect(removed.body.code).toBe('starter_operation_unknown');
   for (const host of hosts) {
     const status = (await action('application.status', {}, operatorCookie, randomUUID(), host.baseURL)).body.value.bindings;
-    expect(status.length).toBe(74);
+    expect(status.length).toBe(75);
     expect(status.find((item: { operation: string }) => item.operation === 'operator.catalogPublication'))
       .toMatchObject({ declared: true, bound: false });
-    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(69);
+    expect(status.find((item: { operation: string }) => item.operation === 'storefront.catalogue'))
+      .toMatchObject({ declared: true, bound: true });
+    expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(70);
     for (const operation of Object.keys(operationLimits)) {
       expect(status.find((item: { operation: string }) => item.operation === operation).bound).toBe(false);
     }
