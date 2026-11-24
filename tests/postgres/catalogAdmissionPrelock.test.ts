@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createConnection, createServer, type Socket } from "node:net";
 import { setImmediate as yieldTurn, setTimeout as delay } from "node:timers/promises";
-import { Client, Pool, type PoolClient, type QueryConfig } from "pg";
+import { Client, Pool, type PoolClient, type QueryConfig, type QueryResult } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { catalogDefinitionDigest, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV4,
   createPostgresCatalogPublicationCommands, withCatalogPublicationRules } from "@openlup/platform/catalog";
@@ -82,7 +82,7 @@ type ObservedQuery = string | (QueryConfig & { query_timeout?: number });
 type QueryObserver = (index: number, text: string, request: ObservedQuery, values?: unknown[]) => Promise<void> | void;
 function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObserver = () => {},
   pool: { connect(): Promise<PoolClient> } = installation.owner, observeError?: (error: unknown) => void,
-  observeResult?: (text: string, index: number) => Promise<void> | void,
+  observeResult?: (text: string, index: number, result: QueryResult) => Promise<void> | void,
   observeSettlement?: (text: string, index: number) => void) {
   let index = 0;
   return { async connect() {
@@ -95,7 +95,7 @@ function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObser
         await observeQuery(number, text, request, values);
         try {
           const result = await (typeof request === "string" ? db.query(request, values) : db.query(request));
-          await observeResult?.(text, number);
+          await observeResult?.(text, number, result);
           return result;
         }
         catch (error) { observeError?.(error); throw error; }
@@ -1699,7 +1699,18 @@ it("holds compatible selected guards through two concurrent order inserts and re
 it("bounds the shared client wait and retries the original key", async () => {
   const { request, guards } = await selectedFixture();
   const ready = latch(), release = latch();
-  const first = withSelectedCatalogAdmissionFence(installation.runtime, request, guards, async () => {
+  const writerXids: string[] = [];
+  const observeWriterXid = (sql: string, index: number, { rows }: QueryResult) => {
+    if (index !== 0 || !sql.startsWith("SELECT pg_current_xact_id()")) return;
+    const xid: unknown = rows[0]?.xid;
+    if (typeof xid === "string") writerXids.push(xid);
+  };
+  const holderPool = pair(undefined, undefined, installation.runtime, undefined, observeWriterXid);
+  let contenderPid: number | undefined;
+  const contenderPool = pair(async (index, db) => {
+    if (index === 0) contenderPid = await pid(db);
+  }, undefined, installation.runtime, undefined, observeWriterXid);
+  const first = withSelectedCatalogAdmissionFence(holderPool, request, guards, async () => {
     ready.resolve();
     await release.wait();
   }, noAuthorizationRefusal);
@@ -1707,10 +1718,19 @@ it("bounds the shared client wait and retries the original key", async () => {
   try {
     await ready.wait(first);
     const started = performance.now();
-    await expect(withSelectedCatalogAdmissionFence(installation.runtime, second, guards, async () => "unexpected", noAuthorizationRefusal))
+    await expect(withSelectedCatalogAdmissionFence(contenderPool, second, guards, async () => "unexpected", noAuthorizationRefusal))
       .rejects.toMatchObject({ message: unavailable, hint: sameKey });
     expect(performance.now() - started).toBeLessThan(800);
   } finally { release.resolve(); await first; }
+  // A wall timeout can discard the contender's connection before PostgreSQL finishes rolling it back.
+  await expect.poll(async () => {
+    const { rows: [result] } = await installation.owner.query<{ settled: boolean }>(`SELECT
+      NOT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND state IS DISTINCT FROM 'idle')
+      AND NOT EXISTS (SELECT 1 FROM unnest($2::xid8[]) AS writer(xid)
+        WHERE NOT pg_visible_in_snapshot(writer.xid, pg_current_snapshot())) AS settled`,
+    [contenderPid ?? null, writerXids]);
+    return result?.settled;
+  }, { timeout: barrierTimeout }).toBe(true);
   await expect(withSelectedCatalogAdmissionFence(installation.runtime, second, guards, async () => "retried", noAuthorizationRefusal))
     .resolves.toBe("retried");
 });
