@@ -869,7 +869,8 @@ describe('migration merge-queue serialization', () => {
     queueNodes = [] as { state: string; pullRequest: { number: number } }[],
     hasNextPage = false,
     queueErrors = undefined as unknown,
-    peerFiles = {} as Record<number, { filename: string }[]>,
+    mergeQueueNull = false,
+    peerFiles = {} as Record<number, unknown>,
   } = {}) {
     const f = handoffFixture();
     f.comments.splice(0, f.comments.length, comment({
@@ -885,6 +886,7 @@ describe('migration merge-queue serialization', () => {
     f.api.get.mockImplementation(async (path: string) => {
       if (path.startsWith('/graphql?') && decodeURIComponent(path).includes('mergeQueue(')) {
         if (queueErrors) return { errors: queueErrors };
+        if (mergeQueueNull) return { data: { repository: { mergeQueue: null } } };
         return { data: { repository: { mergeQueue: { entries: { pageInfo: { hasNextPage }, nodes: structuredClone(queueNodes) } } } } };
       }
       const filesMatch = /^\/repos\/openlup\/openlup\/pulls\/(\d+)\/files\?per_page=100&page=(\d+)$/u.exec(path);
@@ -892,6 +894,8 @@ describe('migration merge-queue serialization', () => {
         const peer = Number(filesMatch[1]);
         const page = Number(filesMatch[2]);
         const all = peerFiles[peer] ?? [];
+        if (!Array.isArray(all)) return structuredClone(all);
+        if (all.length === 101 && page === 1 && (all[0] as { __oversized?: boolean })?.__oversized) return structuredClone(all);
         return structuredClone(all.slice((page - 1) * 100, page * 100));
       }
       return baseGet(path);
@@ -984,6 +988,61 @@ describe('migration merge-queue serialization', () => {
       peerFiles: { 99: huge },
     });
     await expect(f.execute()).rejects.toThrow('bounded pagination limit');
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('defers when a queued peer renames a migration-serialized path to a non-migration filename', async () => {
+    const f = migrationHandoffFixture({
+      queueNodes: [{ state: 'QUEUED', pullRequest: { number: 77 } }],
+      peerFiles: {
+        77: [{ status: 'renamed', filename: 'docs/archived-helper.sql', previous_filename: 'packages/platform/sql/old_helper.sql' }],
+      },
+    });
+    await expect(f.execute()).resolves.toEqual({
+      status: 'deferred',
+      pr: 12,
+      head: receipt.head,
+      blockingPrs: [77],
+      reason: 'another migration PR is already active in the merge queue',
+    });
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('skips self entries and deduplicates repeated active peer PRs without redundant fetches', async () => {
+    const f = migrationHandoffFixture({
+      queueNodes: [
+        { state: 'QUEUED', pullRequest: { number: 12 } },
+        { state: 'AWAITING_CHECKS', pullRequest: { number: 77 } },
+        { state: 'MERGEABLE', pullRequest: { number: 77 } },
+      ],
+      peerFiles: { 77: [{ filename: 'src/lib/example.ts' }] },
+    });
+    await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued', pr: 12 });
+    expect(f.api.get.mock.calls.filter(([path]) => path.includes('/pulls/12/files'))).toHaveLength(0);
+    expect(f.api.get.mock.calls.filter(([path]) => path.includes('/pulls/77/files'))).toHaveLength(1);
+    expect(f.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when repository.mergeQueue is null', async () => {
+    const f = migrationHandoffFixture({ mergeQueueNull: true });
+    await expect(f.execute()).rejects.toThrow('merge queue inspection response is invalid');
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['non-array batch', { message: 'not an array' }],
+    ['oversized batch (>100)', Array.from({ length: 101 }, (_, index) => ({ filename: `src/f-${index}.ts`, __oversized: true }))],
+    ['missing filename', [{ status: 'modified' }]],
+    ['empty filename', [{ filename: '' }]],
+    ['empty previous_filename', [{ status: 'renamed', filename: 'docs/a.ts', previous_filename: '' }]],
+    ['non-string previous_filename', [{ status: 'renamed', filename: 'docs/a.ts', previous_filename: 42 }]],
+    ['renamed entry missing previous_filename', [{ status: 'renamed', filename: 'docs/a.ts' }]],
+  ])('fails closed on malformed peer files response: %s', async (_label, payload) => {
+    const f = migrationHandoffFixture({
+      queueNodes: [{ state: 'QUEUED', pullRequest: { number: 77 } }],
+      peerFiles: { 77: payload },
+    });
+    await expect(f.execute()).rejects.toThrow('queued PR files response is invalid');
     expect(f.enqueue).not.toHaveBeenCalled();
   });
 });

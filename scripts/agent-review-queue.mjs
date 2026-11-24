@@ -43,9 +43,14 @@ async function readPullRequestChangedPaths(api, root, prNumber) {
   for (let page = 1; page <= PR_FILES_MAX_PAGES; page += 1) {
     const batch = await api.get(`${root}/pulls/${prNumber}/files?per_page=100&page=${page}`);
     demand(Array.isArray(batch) && batch.length <= 100
-      && batch.every(entry => typeof entry?.filename === 'string' && entry.filename.length > 0),
+      && batch.every(entry => typeof entry?.filename === 'string' && entry.filename.length > 0
+        && (entry.previous_filename === undefined || (typeof entry.previous_filename === 'string' && entry.previous_filename.length > 0))
+        && (entry.status !== 'renamed' || typeof entry.previous_filename === 'string')),
       'queued PR files response is invalid');
-    for (const entry of batch) paths.push(entry.filename);
+    for (const entry of batch) {
+      paths.push(entry.filename);
+      if (entry.previous_filename !== undefined) paths.push(entry.previous_filename);
+    }
     if (batch.length < 100) return paths;
   }
   throw new Error('queued PR files listing exceeded the bounded pagination limit');
@@ -361,7 +366,8 @@ async function main() {
   const env = process.env;
   const api = { get: async path => {
     const args = path.startsWith('/graphql?query=') ? ['api', 'graphql', '-f', `query=${decodeURIComponent(path.slice('/graphql?query='.length))}`] : ['api', path];
-    return JSON.parse((await execute('gh', args, { encoding: 'utf8', timeout: 30000, maxBuffer: 2 * 1024 * 1024 })).stdout);
+    const maxBuffer = path.includes('/files?') ? 32 * 1024 * 1024 : 2 * 1024 * 1024;
+    return JSON.parse((await execute('gh', args, { encoding: 'utf8', timeout: 30000, maxBuffer })).stdout);
   } };
   const event = JSON.parse(await readFile(env.GITHUB_EVENT_PATH, 'utf8'));
   if (process.argv[2] === 'wait') await waitNativeAdmission({ event, env, api });
