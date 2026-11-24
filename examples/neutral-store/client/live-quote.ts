@@ -41,8 +41,9 @@ export async function refreshLiveQuote(context: PageContext, cart: Cart, target:
 }
 export function nativeUnitPrice(context: PageContext, product: Product): HTMLElement {
   const target = el('div', { class: 'price', 'aria-live': 'polite' });
-  const mode = product.permittedPurchaseModes.includes(context.getCart().mode) ? context.getCart().mode : product.permittedPurchaseModes[0]!;
   const published = context.catalogueProducts.find(item => item.sku === product.sku && item.minQuantity !== undefined);
+  const cartMode = context.getCart().mode;
+  const mode = published && !product.permittedPurchaseModes.includes(cartMode) ? product.permittedPurchaseModes[0]! : cartMode;
   if (published && ['home', 'catalog'].includes(context.route.key)) {
     target.textContent = context.money(published.unitPrice.amountMinor);
     return target;

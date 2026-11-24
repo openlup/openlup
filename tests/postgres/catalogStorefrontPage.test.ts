@@ -488,7 +488,7 @@ it("installed_storefront_follows_the_twenty_fifth_sibling_and_projects_certified
   const config = structuredClone(configurations.coffee!);
   config.market.currency = input.currency;
   const values = Array.from({ length: 25 }, (_, index) => `finish-${index + 1}`);
-  const type = { key: typeRef.key, version: 2 }, offer = "test:occupied";
+  const type = { key: typeRef.key, version: 2 }, offer = "test:occupied", slug = "occupied-article";
   const publicFinish = definition.attributes![0]!;
   const pack = withCatalogPublicationRules({ id: "test:storefront-proof", version: 1, namespace: "test", openlupRange: "1.x",
     capabilities: {}, taxClasses: [], types: [{
@@ -507,7 +507,7 @@ it("installed_storefront_follows_the_twenty_fifth_sibling_and_projects_certified
   expect(example?.[1]).toBeDefined();
   const display = JSON.parse(example![1]!);
   const { release, activation } = buildCatalogReleaseDraftV3({
-    namespace: "test", type, slug: "occupied-article", name: "Occupied fixture", attributes: { private_sample: "fixture-only" },
+    namespace: "test", type, slug, name: "Occupied fixture", attributes: { private_sample: "fixture-only" },
     presentation: display,
     skus: values.map((value, index) => ({
       code: `OCCUPIED-${index + 1}`, title: value, minQuantity: 1, primary: index === 0, options: options(value),
@@ -567,7 +567,7 @@ it("installed_storefront_follows_the_twenty_fifth_sibling_and_projects_certified
   const updatedCopy = { ...display, shortName: { en: "Article with revised copy" } };
   copyRevision.product.sharedContent.presentation = updatedCopy;
   copyRevision.publication = { kind: "release", evidence: {}, operations: [
-    { op: "set_product_presentation", productSlug: copyRevision.product.slug, presentation: updatedCopy },
+    { op: "set_product_presentation", productSlug: slug, presentation: updatedCopy },
   ] };
   const copied = await saveAndPublish(key, copyRevision, 3, active, [], typeRegistry);
   expect(copied.revision).toBe(3);

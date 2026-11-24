@@ -8,8 +8,9 @@ import { validateCart } from '../shared/offer.ts';
 import type { Product } from '../shared/config.ts';
 
 type Page = Extract<CatalogStorefrontPageResult, { protocol: 'governed' }>;
-const config = configurations.coffee!;
-const presentation = { title: 'Article', shortName: { en: 'Short article' },
+const config = Object.values(configurations)[0]!;
+const shortName: Record<string, string> = { en: 'Short article' };
+const presentation = { title: 'Article', shortName,
   mediaRef: '/media/article-1.svg', routePath: { en: '/articles/sample' }, accent: '#bca321' };
 const typeRef = { key: 'starter:item', version: 2 };
 const digest = 'a'.repeat(64);
@@ -63,11 +64,12 @@ test('localized presentation and gross price map to exact eligible sibling selec
   assert.equal(mapStarterPresentation(presentation)?.contents, '');
   assert.deepEqual(mapStarterPresentation(presentation)?.details, Object.fromEntries(config.market.locales.map(locale => [locale, ''])));
   assert.equal('accent' in mapStarterPresentation(presentation)!, false);
-  assert.deepEqual(mapStarterPresentation(presentation)?.name, { en: 'Short article', pl: 'Article' });
-  assert.deepEqual(mapStarterPresentation(presentation)?.mediaAlt, { en: 'Short article', pl: 'Article' });
-  assert.deepEqual(mapStarterPresentation(presentation)?.description, { en: '', pl: '' });
+  const names = Object.fromEntries(config.market.locales.map(locale => [locale, shortName[locale] ?? 'Article']));
+  assert.deepEqual(mapStarterPresentation(presentation)?.name, names);
+  assert.deepEqual(mapStarterPresentation(presentation)?.mediaAlt, names);
+  assert.deepEqual(mapStarterPresentation(presentation)?.description, Object.fromEntries(config.market.locales.map(locale => [locale, ''])));
   const fallback = mapStarterPresentation({ title: 'Fallback', routePath: { en: '/articles/fallback' } });
-  assert.deepEqual(fallback?.name, { en: 'Fallback', pl: 'Fallback' });
+  assert.deepEqual(fallback?.name, Object.fromEntries(config.market.locales.map(locale => [locale, 'Fallback'])));
   assert.equal(fallback?.media, '');
   assert.equal(mapStarterPresentation(null), undefined);
   assert.equal(mapStarterPresentation({ shortName: { en: 'Missing title' } }), undefined);

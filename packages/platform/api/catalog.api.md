@@ -4433,8 +4433,6 @@ export declare function readInstalledCatalogSubscriptionProfile(readExecutor: Pg
  * @experimental
  */
 export declare function catalogInternalGtin(sequence: number): string;
-/** @internal The company and regional prefixes for 13-digit restricted-circulation numbers. */
-export declare function isRestrictedCirculationNumber(value: string): boolean;
 /** @internal Classifies a validated GTIN padded to fourteen digits. */
 export declare function isInternalGtin14(value: string): boolean;
 ```
