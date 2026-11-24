@@ -24,9 +24,9 @@ const unavailable = (field: string) => refused("destination_evidence_unavailable
 const stale = (field: string) => refused("destination_version_changed", field);
 
 it.each([
-  ["prohibited key", { constructor: "out-of-domain" }, "23514"],
-  ["excess depth", { city: JSON.parse("[".repeat(49) + "null" + "]".repeat(49)) }, "22023"],
-] as const)("withholds hash-matching stored evidence with %s on the typed paths", async (_kind, address, sqlstate) => {
+  ["prohibited key", { constructor: "out-of-domain" }],
+  ["excess depth", { city: JSON.parse("[".repeat(49) + "null" + "]".repeat(49)) }],
+] as const)("withholds hash-matching stored evidence with %s on the typed paths", async (_kind, address) => {
   const { owner, runtime } = store;
   const ctx = await destinationContext(owner), issued = await snapshot(runtime, ctx);
   const order = await bindDestinationOrder(owner, ctx, issued);
@@ -53,7 +53,7 @@ it.each([
   await expect.soft(registerDestination(runtime, ctx, order, issued)).resolves.toEqual(invalid);
   await expect.soft(read()).resolves.toEqual(invalid);
   await expect(readSnapshot(runtime, ctx, issued.binding))
-    .rejects.toMatchObject({ code: sqlstate, message: "catalog_publication_wire_invalid" });
+    .resolves.toEqual(invalid);
   await expect(exportDocuments()).resolves.toEqual(expect.objectContaining({
     coverage: expect.objectContaining({ complete: false }),
     data: [{ snapshotRef: issued.binding.snapshotRef, evidenceDisposition: "available", issuedAt: expect.any(String),

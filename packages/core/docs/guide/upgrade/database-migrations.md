@@ -262,3 +262,17 @@ pair, selected PostgreSQL profile and retained reads, fresh writes, replay and
 subscription assertions on the unchanged upgraded schema. It does not undo SQL
 or durable effects, prove adjacent-pair backfill or contraction, or establish a
 general rollback guarantee.
+
+### Handle refusals from native destination SQL
+
+Before applying the destination refusal forward, update callers of
+`commerce_snapshot_destination_v2` and `commerce_read_destination_v2`.
+The routines return expected refusals as a JSON result with
+`outcome: "refused"`. Check that discriminator before reading success fields.
+Use `code` and `field` to handle the case, and `fix` and `recheck` to guide
+the next action. When your application owns a snapshot transaction, roll it
+back before returning the refusal to the caller.
+
+Handle `{ "evidenceDisposition": "erased" }` separately on an authorized
+snapshot replay. Direct receipt routines still raise their existing SQL errors.
+Unexpected database failures still raise an error.
