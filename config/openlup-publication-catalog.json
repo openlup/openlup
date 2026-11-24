@@ -1678,6 +1678,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261126520000_catalog_admission_issue_reader.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5491,6 +5495,10 @@
     },
     {
       "path": "packages/platform/sql/20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261126520000_catalog_admission_issue_reader.sql",
       "class": "public-output"
     },
     {
@@ -31819,6 +31827,10 @@
     },
     {
       "path": "tests/postgres/catalogAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionIssueReader.test.ts",
       "class": "public-output"
     },
     {

@@ -30,6 +30,63 @@ across governed products. See the installed
 [catalogue entry](../../../packages/platform/README.md#read-governed-offer-memberships)
 for paging and refusal behavior.
 
+**Admission issue mode**
+
+The [admission issue reader forward](../../../db/platform/migrations/20261126520000_catalog_admission_issue_reader.sql)
+adds a private `admission_issue` mode to the same reader. Only these exact
+lowercase bytes select it, whatever the caller's collation. The other modes and
+the function's header, owner and grants are unchanged. The same owner boundary
+serves `service_role` and, on qualified-v2, `openlup_catalog_publication`.
+
+Page one passes `{"selectedSkuId": "<SKU UUID>"}` as the cursor, with a page size
+from 1 to 100. Each later page passes the same `selectedSkuId` and the previous
+page's `nextCursor` as `continuation`. A page returns `issues`, `consultedHeads`,
+`rosterCount` and `nextCursor`, which is `null` after the last member.
+
+- `issues` lists every explicitly admitted or denied member of the offer in SKU
+  UUID order, inactive members included. Each entry has `kind`, `productId`,
+  `skuRevisionId` and the publication that issued that revision:
+  `publicationId`, `revision` and `documentDigest`. The selected SKU is
+  `declaring` and the others are `compared`.
+- `consultedHeads` gives the current head of each product on the page, sorted by
+  product ID.
+- The continuation carries the selection, offer, mode, page size, offset, a
+  digest of the current heads of the offer's products and a `binding`: the
+  SHA-256 of the canonical JSON array of the offer, selection, mode, page size,
+  offset and that digest. The binding guards against accidental or consistent
+  rewriting by a trusted caller; it is not a secret. A publication of another
+  product leaves the continuation valid.
+
+Each call authenticates the current heads once, through the catalogue's head
+check. The page evidence reuses that check: it confirms that the global head
+digest is unchanged, parses each page product's head and verifies the head's
+product-bound document against the head manifest. It reads only the page
+members' sealed revisions, and authenticates each earlier issuing publication
+once through its manifest, the member's exact revision reference and its
+product-bound document.
+
+An offer can have at most 500 members and at most 20 pages at the chosen page
+size. Read the complete chain in one `REPEATABLE READ READ ONLY` transaction. The
+mode only reads and takes no row or advisory lock. Refusals follow this order:
+input shape, catalogue integrity and offer existence, the member cap, the page
+cap, the head digest, the continuation binding, the offset, the selection, then
+page evidence in SKU order. The input-shape step accepts any continuation offset
+from 1 to 499; alignment to the page size and the roster position are checked at
+the offset step.
+
+| Refusal | Observed | Cause | Fix | Recheck |
+| --- | --- | --- | --- | --- |
+| `invalid_request` | The request is refused. | An offer, page size or cursor is malformed, or a continuation field has the wrong type or range. | Correct the inputs and restart at page one. | Read page one and confirm it returns a page. |
+| `invalid_request` | The continuation is refused after the head digest. | The continuation's selection, offer or page size differs from the request, or its binding does not match the request and its offset. | Pass the `nextCursor` unchanged with the request that produced it, or restart at page one. | Follow the returned chain and confirm each page is served. |
+| `invalid_request` | The continuation offset is refused. | The offset is not a multiple of the page size or is not inside the roster. | Restart at page one and follow the returned chain. | Confirm each offset grows by the page size and stays below `rosterCount`. |
+| `invalid_request` with `catalog_admission_selection_ineligible` | The selection is refused. | The selected SKU is not an admitted, active and subscription-sellable member of the offer. | Select an eligible SKU of the same offer. | Follow the complete chain and confirm exactly one `declaring` issue across all pages. |
+| `unknown_offer` | The offer is refused. | No governed product lists the offer, including on a legacy-only catalogue. | Use a published offer. | Read its first page. |
+| `head_moved` | The continuation or page is refused. | A product of the offer was published after the chain started, or the current heads changed between the head check and the page evidence. | Discard the pages. | Restart at page one in a new `REPEATABLE READ READ ONLY` transaction. |
+| `inconsistent_evidence` with `catalog_admission_membership_cap_exceeded` | The collection is refused. | The offer has more than 500 members. | Use a smaller offer. | Read its first page. |
+| `inconsistent_evidence` with `catalog_admission_page_cap_exceeded` | The collection is refused. | The offer needs more than 20 pages at this page size. | Increase the page size. | Confirm the chain ends within 20 pages. |
+| `inconsistent_evidence` with `catalog_publication_live_drift` | The collection is refused. | Sealed and live state disagree for an offer member: its membership, product or SKU status, lifecycle state, or standalone or subscription sellability. | Have the catalogue owner identify which invariant fails, then reconcile the live projection or the sealed publication that is wrong. | Read page one after the owner verifies the catalogue. |
+| `inconsistent_evidence` | The collection or evidence is refused. | An authentication failed: the catalogue head check, a sealed revision or its projection, a head's product-bound document, or a page member's revision, earlier issuing manifest, exact revision reference or issuing document. | Have the catalogue owner identify which authentication failed before choosing a recovery, such as repairing a live pointer or recovering a sealed publication from a verified copy. | Retry after the owner verifies the catalogue. |
+
 The [readiness forward](../../../db/platform/migrations/20261124140000_catalog_publication_readiness.sql)
 adds a batch read executable by the service role. The snapshot and price
 helpers are owner-only.
