@@ -565,7 +565,7 @@ describe("complete public CI", () => {
     expect(manifest.scripts).not.toHaveProperty("test:required");
     expect(manifest.scripts).not.toHaveProperty("pretest:required");
     expect(workflowCommands(workflowJob("install-pack"))).toEqual([
-      "npm ci --prefer-offline --no-audit --fund=false",
+      "npm ci --ignore-scripts --prefer-offline --no-audit --fund=false",
       'npm run packages:check -- --cold --out "$RUNNER_TEMP/package-gates"',
     ]);
     expect(workflowCommands(workflowJob("install-packages"))).toEqual([
