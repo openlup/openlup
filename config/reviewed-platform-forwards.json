@@ -7156,6 +7156,34 @@
         "dataStatements": []
       },
       {
+        "row": "FulfillmentStockOutcome",
+        "path": "db/platform/migrations/20261125140000_fulfillment_stock_seed_outcome.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_record_stock_current(text,text,text,text,integer,integer,integer,text,timestamptz,timestamptz,text)",
+            "searchPath": "pg_catalog, public",
+            "beforeSha256": "9a5edd65ab43e0ed147456e5b22a574fbac33f2d39795ffb435b29e788471e8f"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "CheckoutRecoveryReminderOutcome",
+        "path": "db/platform/migrations/20261125150000_checkout_recovery_reminder_install_outcome.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp",
+            "beforeSha256": "f471686335b9edc107d2e992ae022912c30f66889482935cffd60c94b7dc1506"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "subscription-renewal-registration-units",
         "path": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
         "replacedFunctions": [
@@ -10705,6 +10733,28 @@
           "signature": "public.commerce_destination_v2_read_retained(jsonb,text,uuid,jsonb)",
           "beforeSha256": null,
           "afterSha256": "85f21c7afdc1fd1de2fcfde95722f5523ade656f2a89294499ee66f465f734d1"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125140000_fulfillment_stock_seed_outcome.sql",
+      "sha256": "b1a7209ec3537efb879a0b4fcf17e36a2c3108f5d89910d48f39acae0549bd7d",
+      "functions": [
+        {
+          "signature": "public.fulfillment_record_stock_current(text,text,text,text,integer,integer,integer,text,timestamptz,timestamptz,text)",
+          "beforeSha256": "9a5edd65ab43e0ed147456e5b22a574fbac33f2d39795ffb435b29e788471e8f",
+          "afterSha256": "01674a672f38eb144467b03016e76f43fef96c0401999891702695d6c138791a"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125150000_checkout_recovery_reminder_install_outcome.sql",
+      "sha256": "359e77a6192d8451a8d344ee4ff8108674f25ba1932f8ddf883d151c2d1dbfd2",
+      "functions": [
+        {
+          "signature": "public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb)",
+          "beforeSha256": "f471686335b9edc107d2e992ae022912c30f66889482935cffd60c94b7dc1506",
+          "afterSha256": "8ba01ca150081fb5e6e08d0569dbb318a7289aa39c0ae85367c8eeabda537c61"
         }
       ]
     },

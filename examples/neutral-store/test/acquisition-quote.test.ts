@@ -303,6 +303,7 @@ test('expired stamped checkout replays the saved pending and completed purchase'
   const resumable = ['commerce_register_order_destination','fulfillment_record_stock_current','fulfillment_reserve_purchase_order_items',
     'subscription_declare_provisional_activation','commerce_open_settlement_intent'];
   const effects: string[] = [], unexpected: string[] = [], receiptCalls: unknown[][] = [];
+  let stockFailure: unknown;
   let savedQuoteChecks = 0;
   const query = async (sql: string, args: unknown[] = []) => {
     if (sql.includes('SELECT email')) return { rows: [{ email: payload.email }] };
@@ -319,6 +320,7 @@ test('expired stamped checkout replays the saved pending and completed purchase'
     const step = resumable.find(name => sql.includes(name));
     if (!step) { unexpected.push(sql); throw new Error('Live quote or unexpected effect'); }
     effects.push(step);
+    if (step === 'fulfillment_record_stock_current' && stockFailure) throw stockFailure;
     return { rows: [{ result: {}, response: {} }] };
   };
   const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
@@ -345,7 +347,95 @@ test('expired stamped checkout replays the saved pending and completed purchase'
   assert.deepEqual(effects,resumable);
   assert.deepEqual(receiptCalls.slice(-2),Array.from({ length: 2 }, () => [key, actor.customerRef, scope.lane, submit.submitDigest]));
   assert.equal(savedQuoteChecks,1);
+  stored.completed = false;
+  const message = 'fulfillment_stock_current_idempotency_conflict';
+  const outcomes = [];
+  const expected = [];
+  for (const [failure, code] of [
+    [Object.assign(new Error(message), { code: '23505', detail: 'openlup:stock_current:replay_conflict' }), 'starter_command_conflict'],
+    [Object.assign(new Error(message), { code: '23505' }), 'starter_purchase_unavailable'],
+    [{ name: 'FulfillmentStockReplayConflictError', message, code: '23505' }, 'starter_purchase_unavailable'],
+  ] as const) {
+    stockFailure = failure;
+    effects.length = 0;
+    outcomes.push(await replay(input));
+    expected.push({ ok: false, code });
+    assert.deepEqual(effects, resumable.slice(0, 2));
+  }
+  assert.deepEqual(outcomes, expected);
   assert.deepEqual(unexpected,[]);
+});
+
+test('fresh checkout compensates a rejected stock write before reading or reserving order items', async () => {
+  const sku = cart.lines[0]!.sku;
+  const item = editorDocuments(config).find(entry => entry.document.variants.some(variant => variant.sku === sku))!;
+  const variant = item.document.variants.find(entry => entry.sku === sku)!;
+  const clientId = '00000000-0000-4000-8000-000000000002', orderId = '00000000-0000-4000-8000-000000000003';
+  const listId = '00000000-0000-4000-8000-000000000004', priceId = '00000000-0000-4000-8000-000000000005';
+  const actor = { ...context.actor, customerRef: clientId, principalRef: '00000000-0000-4000-8000-000000000001', requesterKey: 'b'.repeat(64) };
+  const effects: string[] = [];
+  const compensation: unknown[][] = [];
+  const never: string[] = [];
+  const validFrom = '2000-01-01T00:00:00Z';
+  const driver = Object.assign(new Error('fulfillment_stock_current_idempotency_conflict'),
+    { code: '23505', detail: 'openlup:stock_current:replay_conflict' });
+  const query = async (sql: string, values: unknown[] = []) => {
+    if (sql.includes('SELECT email')) return { rows: [{ email: payload.email }] };
+    if (/pg_advisory|commerce_order_draft_receipts|catalog_admission_requires_quote_authority/u.test(sql)) return { rows: [] };
+    if (sql.includes('FROM public.catalog_skus AS sku')) return { rows: [{
+      product_id: item.productId, product_slug: item.document.productSlug, primary_sku_id: variant.skuId, current_document_revision_id: item.id,
+      sku_id: variant.skuId, sku_product_id: item.productId, sku_code: sku, net_content_unscaled: variant.physical.netWeightG,
+      sku_status: 'active', sellable_one_time: true, sellable_subscription: true, is_addon: false, asset_ref: null,
+      document_revision_id: item.id, document_product_id: item.productId, document_revision_no: item.document.revisionNo,
+      document_schema_id: item.document.schemaVersion, document_ref: item.id, document_source_ref: item.document.sourceRef, document_digest: item.digest,
+    }] };
+    if (sql.includes('FROM public.catalog_sku_identifiers')) return { rows: [{
+      catalog_sku_id: variant.skuId, issuer: variant.physical.issuer, identifier_kind: 'gtin',
+      normalized_value: variant.physical.unitGtin, pack_kind: 'unit', quantity: 1, is_primary: true,
+    }] };
+    if (sql.includes('revision_document_payload')) return { rows: [{
+      product_id: item.productId, product_slug: item.document.productSlug, product_status: 'active', current_document_revision_id: item.id,
+      revision_id: item.id, revision_product_id: item.productId, revision_no: item.document.revisionNo,
+      revision_schema_id: item.document.schemaVersion, revision_document_payload: item.document, revision_digest: item.digest,
+    }] };
+    if (sql.includes('FROM public.price_lists')) return { rows: [{ id: listId, valid_from: validFrom, valid_to: null }] };
+    if (sql.includes('FROM public.price_entries')) return { rows: [{
+      id: priceId, price_list_id: listId, variant_id: variant.skuId, mode: 'one_time', min_qty: 1,
+      unit_price_minor: 1000, amount_kind: 'gross', valid_from: validFrom, valid_to: null,
+    }] };
+    if (sql.includes('commerce_promotion_active_definitions')) return { rows: [{ result: [] }] };
+    if (sql.includes('commerce_promotion_paid_order_counts')) return { rows: [{ result: { oneTime: 0, subscription: 0 } }] };
+    if (sql.includes('commerce_promotion_redemption_counts')) return { rows: [] };
+    if (sql.includes('initial_checkout')) return { rows: [{ initial_checkout: true }] };
+    if (sql.includes('FROM public.commerce_orders WHERE id=$1')) return { rows: [{
+      id: orderId, client_id: clientId, status: 'pending_payment', created_at: validFrom,
+    }] };
+    if (sql.includes('commerce_register_order_destination')) { effects.push('destination'); return { rows: [{ result: {} }] }; }
+    if (sql.includes('fulfillment_record_stock_current')) { effects.push('stock'); throw driver; }
+    if (sql.includes('commerce_cancel_abandoned_purchase_checkout')) {
+      effects.push('compensation');
+      compensation.push(values);
+      return { rows: [{ result: { cancelled: true } }] };
+    }
+    never.push(sql);
+    throw new Error('unexpected checkout query');
+  };
+  const db = { query, async connect() { return { query, release() {} }; } } as unknown as Pool;
+  const checkout: AcquisitionPredecessors['checkout'] = () => ({ async createOrderDraft({ idempotencyKey, quoteSnapshot }) {
+    effects.push('create');
+    return { contractVersion: quoteSnapshot.contractVersion, orderDraft: {
+      orderId: `order_${orderId}`, status: 'draft', paymentStatus: 'not_started', idempotencyKey, quoteSnapshot, replayed: false,
+    } };
+  } });
+  const actions = composePurchaseCapabilities(db, {} as never, async () => ({ allowed: true }), {} as never,
+    { predecessors: { ...unavailable, checkout } });
+  const oneTimeCart = { ...cart, mode: 'one_time', cadenceDays: null };
+  const result = await actions['checkout.create']!({ ...payload, cart: oneTimeCart }, { ...context, actor });
+  assert.deepEqual(never, []);
+  assert.deepEqual(result, { ok: false, code: 'starter_command_conflict' });
+  assert.deepEqual(effects, ['create', 'destination', 'stock', 'compensation']);
+  assert.equal(compensation.length, 1);
+  assert.deepEqual(compensation[0]?.slice(1, 3), [orderId, 'checkout_failed_before_dispatch']);
 });
 
 test('full-result admission covers exact/frozen unchanged base and add-ons, identity and installed-minimum drift', async () => {
