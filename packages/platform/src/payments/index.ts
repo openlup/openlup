@@ -116,4 +116,14 @@ export {
   readPaymentMethodExpiryWarningDaysPolicy,
 } from "./methodExpiryWarningPolicy.js";
 export type { PaymentMethodExpiryWarningDaysPolicy } from "./methodExpiryWarningPolicy.js";
+export {
+  DEFAULT_PAYMENT_DECLINE_NOTICE_DELAY_MINUTES,
+  DEFAULT_PAYMENT_DECLINE_LINK_LIFETIME_HOURS,
+  validatePaymentDeclineNoticeTiming,
+  installPaymentDeclineNoticeTimingPolicy,
+  readPaymentDeclineNoticeTimingOverride,
+  readPaymentDeclineNoticeTimingPolicy,
+} from "./declineNoticeTimingPolicy.js";
+export type { PaymentDeclineNoticeTimingPolicy } from "./declineNoticeTimingPolicy.js";
+
 

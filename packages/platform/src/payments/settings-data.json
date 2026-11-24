@@ -33,11 +33,33 @@
   {
     "key": "payments.declineNoticeTiming",
     "domain": "payments",
-    "goal": "Choose the delay and link lifetime for a payment decline notice.",
+    "kind": "installed",
+    "goal": "Set the delay in minutes and recovery link lifetime in hours for recoverable one-time payment decline notices (decline notice timing, recovery link lifetime, failed payment delay).",
     "schemaVersion": 1,
-    "kind": "cap",
-    "runtime": {"level": "read-only", "reason": "Native decline notices wait three minutes and issue links for 24 hours."},
-    "change": {"reference": "docs/guide/concepts/payments.md#dispatch-and-settlement"}
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": {"revision": {"type": "string", "pattern": "\\S"}, "delayMinutes": {"type": "integer", "minimum": 0, "maximum": 1440}, "linkLifetimeHours": {"type": "integer", "minimum": 1, "maximum": 168}}, "required": ["revision", "delayMinutes", "linkLifetimeHours"], "additionalProperties": false},
+    "previewSchema": null,
+    "examples": [
+      {"value": {"revision": "store-1", "delayMinutes": 5, "linkLifetimeHours": 48}},
+      {"value": {"revision": " ", "delayMinutes": 3, "linkLifetimeHours": 24}, "code": "payment_decline_notice_timing_policy_invalid"},
+      {"value": {"revision": "store-1", "delayMinutes": 3, "linkLifetimeHours": 0}, "code": "payment_decline_notice_timing_policy_invalid"}
+    ],
+    "fallback": {"revision": "default", "delayMinutes": 3, "linkLifetimeHours": 24},
+    "defaultBasis": {"kind": "reference-code"},
+    "whyThisDefault": "Three minutes of delay avoids sending premature failure notices during rapid retries or synchronous recovery, and 24 hours preserves the established checkout recovery token lifetime.",
+    "effect": {
+      "appliesTo": "Subsequent first recoverable-decline transitions on non-subscription orders in payment_provider_result_apply read key='payment_decline_notice_timing' from public.commerce_settings via payment_decline_notice_timing_read(), setting commerce_checkout_recovery_tokens.expires_at (and payload.expiresAt) to now() + make_interval(hours => linkLifetimeHours) and outbox_events.available_at for commerce.payment.failed to now() + make_interval(mins => delayMinutes). When no row exists in public.commerce_settings, the SQL reader defaults to delayMinutes 3 and linkLifetimeHours 24; malformed rows refuse fail-closed with SQLSTATE 22023 payment_decline_notice_timing_policy_invalid.",
+      "frozenOn": ["Already issued commerce_checkout_recovery_tokens, already enqueued commerce.payment.failed outbox_events, and idempotent payment_provider_receipts replays keep their recorded expiry and availability timestamps."],
+      "impact": "customer-promise"
+    },
+    "runtime": {"level": "read-only", "reason": "Install or update the public.commerce_settings row through installPaymentDeclineNoticeTimingPolicy or your store deployment step; runtime edits require a write-capable host connection."},
+    "change": {"operation": "installPaymentDeclineNoticeTimingPolicy"},
+    "rules": [
+      {
+        "code": "payment_decline_notice_timing_policy_invalid",
+        "path": [],
+        "description": "Supply exactly revision, delayMinutes, and linkLifetimeHours. Revision must be a nonblank string, delayMinutes an integer from 0 through 1440, and linkLifetimeHours an integer from 1 through 168."
+      }
+    ]
   },
   {
     "key": "payments.deferredCapture",

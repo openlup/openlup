@@ -11,9 +11,13 @@ const SUPABASE_ANON_KEY = resolveSupabasePublishableKey({
 
 export const ADMIN_AUTH_CALLBACK_PATH = '/admin/auth/callback';
 
-export function shouldDetectAdminSessionInUrl(url: URL): boolean {
-  return url.pathname === ADMIN_AUTH_CALLBACK_PATH;
+export function createAdminSessionUrlDetector(
+  callbackPath: string = ADMIN_AUTH_CALLBACK_PATH,
+): (url: URL) => boolean {
+  return (url: URL) => url.pathname === callbackPath;
 }
+
+export const shouldDetectAdminSessionInUrl = createAdminSessionUrlDetector(ADMIN_AUTH_CALLBACK_PATH);
 
 /** Read the auth-callback `type` (magiclink / recovery / invite) from a URL. */
 export function readAuthCallbackTypeFrom(search: string, hash: string): string | null {
@@ -43,3 +47,8 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
     detectSessionInUrl: shouldDetectAdminSessionInUrl,
   }
 });
+
+/** Function accessor preferred by new callers so host composition can replace the client lazily. */
+export function getAdminSupabase() {
+  return supabase;
+}

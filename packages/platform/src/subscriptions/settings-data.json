@@ -176,11 +176,33 @@
   {
     "key": "subscriptions.retrySchedule",
     "domain": "subscriptions",
-    "goal": "Use one retry schedule for host and provider-recorded payment failures.",
+    "kind": "installed",
+    "goal": "Set the 3-rung retry backoff schedule in hours for subscription payment failures (subscription retry schedule, renewal retry policy, dunning schedule, backoff hours).",
     "schemaVersion": 1,
-    "kind": "cap",
-    "runtime": {"level": "read-only", "reason": "Provider-recorded failures still use the fixed 24, 72 and 168 hour schedule."},
-    "change": {"reference": "docs/guide/concepts/subscriptions.md#durable-retry-timing"}
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": {"revision": {"type": "string", "pattern": "\\S"}, "backoffHours": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 2147483647}, "minItems": 3, "maxItems": 3}}, "required": ["revision", "backoffHours"], "additionalProperties": false},
+    "previewSchema": null,
+    "examples": [
+      {"value": {"revision": "store-1", "backoffHours": [24, 48, 96]}},
+      {"value": {"revision": " ", "backoffHours": [24, 72, 168]}, "code": "subscription_retry_schedule_policy_invalid"},
+      {"value": {"revision": "store-1", "backoffHours": [24, 72]}, "code": "subscription_retry_schedule_policy_invalid"}
+    ],
+    "fallback": {"revision": "default", "backoffHours": [24, 72, 168]},
+    "defaultBasis": {"kind": "reference-code"},
+    "whyThisDefault": "Twenty-four, 72, and 168 hours preserve the historical 3-rung retry cadence (retries on days 1, 4, and 11 after the initial decline) across both 3-argument subscription_retry_apply_failure and provider-recorded failures applied through payment_provider_result_apply without explicit p_cadence.",
+    "effect": {
+      "appliesTo": "Subsequent failure recordings via 3-argument subscription_retry_apply_failure and provider-recorded renewal failures via payment_provider_result_apply when p_cadence is omitted or NULL read key='subscription_retry_schedule' from public.commerce_settings via subscription_retry_schedule_read(). Explicit p_cadence passed to 4-argument subscription_retry_apply_failure or 12-argument payment_provider_result_apply takes precedence. When no row exists in public.commerce_settings, the SQL reader defaults to [24, 72, 168]; malformed rows refuse fail-closed with SQLSTATE 22023 subscription_retry_schedule_policy_invalid.",
+      "frozenOn": ["Already recorded subscription_retry_obligations next_retry_at schedules, completed subscription_retry_receipts (including idempotent replays), and already opened subscription_dunning_cases keep their recorded retry timestamps."],
+      "impact": "operations"
+    },
+    "runtime": {"level": "read-only", "reason": "Install or update the public.commerce_settings row through installSubscriptionRetrySchedulePolicy or your store deployment step; runtime edits require a write-capable host connection."},
+    "change": {"operation": "installSubscriptionRetrySchedulePolicy"},
+    "rules": [
+      {
+        "code": "subscription_retry_schedule_policy_invalid",
+        "path": [],
+        "description": "Supply exactly revision and backoffHours. Revision must be a nonblank string and backoffHours an array of exactly three integers from 1 through 2147483647."
+      }
+    ]
   },
   {
     "key": "subscriptions.sharedDeliveryControls",
