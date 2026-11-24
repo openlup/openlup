@@ -1,3 +1,4 @@
+import { starterDiagnostic } from '../shared/refusals.ts';
 import { CheckoutRecoveryScheduleChangeBlockedError, installCheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/server';
 import { FulfillmentStockReplayConflictError } from '@openlup/platform/fulfillment';
 import { installRenewalStockProtectionPolicy } from '@openlup/platform/inventory';
@@ -13,7 +14,7 @@ import { link, lstat, mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promis
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readQuoteAcceptanceKeyring } from '../host/quote-secret.ts';
-import { installationFailure, refusal, up } from './refusals.ts';
+import { buildRefusal, installationFailure, isInstallationRefusal, packBuildFilename, refusal, rulesRecheck, up } from './refusals.ts';
 
 export const demonstrationMarker = 'openlup-neutral-store-demo-v1';
 
@@ -85,7 +86,7 @@ export interface DemonstrationInstallation {
   close(): Promise<void>;
 }
 
-export type InstallationBootstrap = (config: StoreConfig) => Promise<DemonstrationInstallation>;
+export type InstallationBootstrap = (config: StoreConfig, progress?: NodeJS.WritableStream) => Promise<DemonstrationInstallation>;
 
 const rulesFile = 'owned/catalogue-rules.cjs';
 function installerRoleRequired() {
@@ -134,7 +135,7 @@ function installRefusal(error: unknown, path?: string) {
     error.observed, error.causeText, legacy
       ? 'Restore the original starter fixture and rules inputs. For a disposable demo, follow “Reset an interrupted first install” in the installed starter guide.'
       : error.fix,
-    rules ? 'Run `node --test owned/catalogue-rules.test.cjs`, then `./lifecycle up`.' : up);
+    rules ? rulesRecheck : up);
 }
 
 function plainRecord(input: unknown): input is Record<string, unknown> {
@@ -186,6 +187,8 @@ function admitPacks(rulesFor: () => Uint8Array | undefined) {
       const [finding] = catalogPackIssues(pack);
       if (finding) throw packInvalid(path + finding.path, finding.code);
       const declaration = pack as CatalogPackInput;
+      if (!packBuildFilename(declaration.id, declaration.version)) throw buildRefusal('starter_catalogue_pack_invalid',
+        `${path}/id`, 'The adopter pack ID cannot form the required build filename.');
       declaration.types.forEach((type, index) => {
         types.push(type);
         typePaths.push(`${path}/types/${index}`);
@@ -222,11 +225,11 @@ async function withInstallationCleanup<T>(work: () => Promise<T>, cleanup: () =>
 }
 
 /** Called only by lifecycle up, once per installation invocation, before the HTTP host starts. */
-export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap) {
+export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap, progress?: NodeJS.WritableStream) {
   let installation;
-  try { installation = await bootstrap(config); }
+  try { installation = await bootstrap(config, progress); }
   catch (error) { throw installationFailure(error); }
-  await withInstallationCleanup(
+  return withInstallationCleanup(
     () => applyDemoSeed(config, installation, bootstrap === bootstrapDemonstration ? readRules : undefined),
     () => installation.close());
 }
@@ -240,7 +243,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     throw installationFailure(error);
   }
   const { artifact, fixtures, packs } = admitted;
-  const [{ editorProducts, stageStarterCatalogueBuild, starterCataloguePack, starterCatalogueType }, { buildDemoSeed }, { seedQuoteAuthority }] =
+  const [{ editorProducts, stagePackBuild, stageStarterCatalogueBuild, starterCataloguePack, starterCatalogueType }, { buildDemoSeed }, { seedQuoteAuthority }] =
     await Promise.all([import('../host/editor-catalogue.ts'), import('../owned/demo-seed.ts'), import('./quote-seed.ts')])
       .catch(error => { throw installationFailure(error); });
   const { installRole, runtimeRole } = installation;
@@ -252,6 +255,18 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
   const seed = buildDemoSeed(config);
   await connection.query('BEGIN ISOLATION LEVEL READ COMMITTED');
   let stagedBuild: ReturnType<typeof stageStarterCatalogueBuild>;
+  const adopterBuilds: { stage: NonNullable<typeof stagedBuild>; path: string }[] = [];
+  const outcomes: { id: string; version: number; outcome: 'installed' | 'unchanged';
+    types: { key: string; version: number }[]; taxClasses: string[] }[] = [];
+  const atPack = (error: unknown, path: string) => isInstallationRefusal(error)
+    ? refusal(error.code, path, error.observed, error.causeText, error.fix, error.recheck) : error;
+  function discardAdopterBuilds() {
+    let failure: { error: unknown } | undefined;
+    for (const { stage } of adopterBuilds) {
+      try { stage.discard(); } catch (error) { failure ??= { error }; }
+    }
+    if (failure) throw failure.error;
+  }
   try {
     const { rows } = await connection.query(`SELECT session_user AS login, current_user AS role,
       pg_catalog.shobj_description(oid, 'pg_database') AS marker
@@ -277,8 +292,18 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     }
     const catalogueReceipt = legacyPack
       ? await installCatalogDefinitions(installation.connection, legacyPack).catch(error => { throw installRefusal(error); }) : undefined;
-    for (const { pack, path } of packs)
-      await installCatalogDefinitions(installation.connection, pack).catch(error => { throw installRefusal(error, path); });
+    for (const { pack, path } of packs) {
+      const { id, version, types, taxClasses } = pack;
+      // The legacy install holds the owner's transaction lock before this read.
+      const retained = await connection.query('SELECT 1 FROM public.catalog_definition_installs WHERE pack_id=$1 AND pack_version=$2', [id, version]);
+      const receipt = await installCatalogDefinitions(installation.connection, pack).catch(error => { throw installRefusal(error, path); });
+      try {
+        const stage = stagePackBuild(pack, receipt, artifact!, installation.catalogueBuildDirectory);
+        if (stage) adopterBuilds.push({ stage, path });
+      } catch (error) { throw installationFailure(atPack(error, path), path); }
+      outcomes.push({ id, version, outcome: retained.rows.length ? 'unchanged' : 'installed',
+        types: types.map(({ key, version }) => ({ key, version })), taxClasses: taxClasses.map(({ key }) => key) });
+    }
     for (const row of seed.products) await connection.query(`INSERT INTO public.catalog_products
       (id, slug, status, name, description) VALUES ($1,$2,$3,$4,$5)
       ON CONFLICT (id) DO UPDATE SET slug=EXCLUDED.slug, status=EXCLUDED.status,
@@ -340,7 +365,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         unit_price_minor, amount_kind, active, valid_from FROM public.price_entries WHERE id=$1 FOR SHARE`, [row.id])).rows[0];
       if (!existing || Object.entries(row).some(([key, value]) => key === 'valid_from'
         ? new Date(String(existing[key])).getTime() !== Date.parse(value as string)
-        : existing[key] !== value)) throw new Error('starter_price_seed_conflict');
+        : existing[key] !== value)) throw starterDiagnostic('starter_price_seed_conflict');
     }
     await seedQuoteAuthority(config, seed, connection);
     // The demonstration can attest the empty installed cohort for native price checks.
@@ -359,14 +384,14 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         WHERE source=$1 AND reference=$2 AND revision=$3 FOR SHARE`,
       [row.source, row.reference, row.revision]);
       if (existing.rows.length !== 1 || existing.rows[0]?.provenance !== row.provenance
-        || existing.rows[0]?.active !== true) throw new Error('starter_acquisition_seed_conflict');
+        || existing.rows[0]?.active !== true) throw starterDiagnostic('starter_acquisition_seed_conflict');
     }
     if (catalogueReceipt && artifact && legacyPack)
       stagedBuild = stageStarterCatalogueBuild(artifact, catalogueReceipt, installation.catalogueBuildDirectory, legacyPack.types[0]!);
     await connection.query('COMMIT');
   } catch (error) {
     try {
-      try { stagedBuild?.discard(); }
+      try { try { discardAdopterBuilds(); } finally { stagedBuild?.discard(); } }
       finally { await connection.query('ROLLBACK'); }
     } catch { /* Cleanup cannot replace the installation failure. */ }
     throw error;
@@ -378,10 +403,20 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     // The definition is committed. Replaying this install can finish publishing its build.
     process.stderr.write('Catalogue rules committed. Run ./lifecycle up again to make the build available.\n');
   }
+  return withInstallationCleanup(async () => {
+    for (const { stage, path } of adopterBuilds) {
+      try { stage.publish(); }
+      catch (error) { throw installationFailure(atPack(error, path), '/packs', 'publish'); }
+    }
+    return outcomes;
+  }, async () => {
+    try { discardAdopterBuilds(); }
+    catch (error) { throw installationFailure(error, '/packs', 'publish'); }
+  });
 }
 
 /** Local demo only. Socket access is the install capability; the application never mounts it. */
-export async function bootstrapDemonstration(config: StoreConfig): Promise<DemonstrationInstallation> {
+export async function bootstrapDemonstration(config: StoreConfig, progress: NodeJS.WritableStream = process.stdout): Promise<DemonstrationInstallation> {
   const migrations = await import('@openlup/platform/migrations');
   if (typeof migrations.createPlatformPostgresMigrationRunner !== 'function')
     throw refusal('starter_installation_binding_required', 'installation/install.ts',
@@ -425,7 +460,7 @@ export async function bootstrapDemonstration(config: StoreConfig): Promise<Demon
     if (status.pending.length) throw new Error('starter_installation_incomplete');
     await provisionDemonstrationPublicationPassword(bootstrap,
       fileURLToPath(new URL('../.context/catalogue-builds/.publication-password', import.meta.url)));
-    process.stdout.write(JSON.stringify({ migrations: status.applied.length, newlyApplied: applied.applied.length }) + '\n');
+    progress.write(JSON.stringify({ migrations: status.applied.length, newlyApplied: applied.applied.length }) + '\n');
   }, () => bootstrap.end());
   const connection = new pg.Client({ host: socket, database, user: installRole });
   try {

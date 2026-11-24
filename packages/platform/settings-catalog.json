@@ -925,6 +925,85 @@
       "rules": []
     },
     {
+      "key": "payment_method_expiry_warning_days",
+      "domain": "payments",
+      "kind": "installed",
+      "goal": "Set how many days before a subscription payment method expires health reads flag it as method_expiring (method expiry warning window, card expiration threshold, expiring card alert).",
+      "schemaVersion": 1,
+      "examples": [
+        {
+          "value": {
+            "revision": "store-1",
+            "warningDays": 14
+          }
+        },
+        {
+          "value": {
+            "revision": " ",
+            "warningDays": 30
+          },
+          "code": "payment_method_expiry_warning_days_policy_invalid"
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "warningDays": 0
+          },
+          "code": "payment_method_expiry_warning_days_policy_invalid"
+        }
+      ],
+      "fallback": {
+        "revision": "default",
+        "warningDays": 30
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "Thirty days preserves the historical method expiry warning window in subscription_method_health_read while giving subscribers one monthly billing cycle to update an expiring payment method.",
+      "effect": {
+        "appliesTo": "Subsequent calls to subscription_method_health_read evaluate active payment method expires_at <= now() + make_interval(days => payment_method_expiry_warning_days_read()) and classify matching expiring methods as method_expiring. When no row exists in public.commerce_settings, the SQL reader defaults to 30 days; malformed rows refuse fail-closed with SQLSTATE 22023 payment_method_expiry_warning_days_policy_invalid.",
+        "frozenOn": [
+          "Already recorded renewal attempts, retry obligations, dunning notifications, and billing cycles retain their recorded state."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Install or update the public.commerce_settings row through installPaymentMethodExpiryWarningDaysPolicy or your store deployment step; runtime edits require a write-capable host connection."
+      },
+      "change": {
+        "operation": "installPaymentMethodExpiryWarningDaysPolicy"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string",
+            "pattern": "\\S"
+          },
+          "warningDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          }
+        },
+        "required": [
+          "revision",
+          "warningDays"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": [
+        {
+          "code": "payment_method_expiry_warning_days_policy_invalid",
+          "path": [],
+          "description": "Supply exactly revision and warningDays. Revision must be a nonblank string and warningDays an integer from 1 through 365."
+        }
+      ]
+    },
+    {
       "key": "payments.declineNoticeTiming",
       "domain": "payments",
       "goal": "Choose the delay and link lifetime for a payment decline notice.",
@@ -1142,6 +1221,85 @@
       "change": {
         "reference": "docs/guide/reference/limits.md#subscription-mode-price"
       }
+    },
+    {
+      "key": "promotion_claim_hold_hours",
+      "domain": "promotions",
+      "kind": "installed",
+      "goal": "Set how many hours newly reserved promotion claims are held before stale claim expiration sweeps release unpaid order claims (promotion claim hold window, promo reservation TTL, claim expiry).",
+      "schemaVersion": 1,
+      "examples": [
+        {
+          "value": {
+            "revision": "store-1",
+            "holdHours": 12
+          }
+        },
+        {
+          "value": {
+            "revision": " ",
+            "holdHours": 24
+          },
+          "code": "promotion_claim_hold_hours_policy_invalid"
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "holdHours": 0
+          },
+          "code": "promotion_claim_hold_hours_policy_invalid"
+        }
+      ],
+      "fallback": {
+        "revision": "default",
+        "holdHours": 24
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "Twenty-four hours preserves the historical reservation hold in commerce_create_promoted_order_draft_with_outbox and matches the default checkout payment and recovery horizon. Interaction: keep promotion_claim_hold_hours aligned with or at least as long as the active checkout.initialPaymentWindow if unpaid checkout recovery should retain reserved promotion capacity until that window closes; shorter holds release abandoned promotion capacity sooner.",
+      "effect": {
+        "appliesTo": "New promoted order drafts created via commerce_create_promoted_order_draft_with_outbox record expires_at = now() + make_interval(hours => promotion_claim_hold_hours_read()) on reserved commerce_promotion_claims rows. When no row exists in public.commerce_settings, the SQL reader defaults to 24 hours; malformed rows refuse fail-closed with SQLSTATE 22023 promotion_claim_hold_hours_policy_invalid. Interacts with checkout.initialPaymentWindow: setting holdHours shorter than checkout.initialPaymentWindow can allow stale promotion claim sweeps to cancel unpaid drafts and release claims before checkout recovery completes.",
+        "frozenOn": [
+          "Already reserved, redeemed, or released commerce_promotion_claims rows (including idempotent draft replays) keep their recorded expires_at timestamps."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Install or update the public.commerce_settings row through installPromotionClaimHoldHoursPolicy or your store deployment step; runtime edits require a write-capable host connection."
+      },
+      "change": {
+        "operation": "installPromotionClaimHoldHoursPolicy"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string",
+            "pattern": "\\S"
+          },
+          "holdHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720
+          }
+        },
+        "required": [
+          "revision",
+          "holdHours"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": [
+        {
+          "code": "promotion_claim_hold_hours_policy_invalid",
+          "path": [],
+          "description": "Supply exactly revision and holdHours. Revision must be a nonblank string and holdHours an integer from 1 through 720."
+        }
+      ]
     },
     {
       "key": "promotions.freeShippingBasis",
@@ -2115,6 +2273,8 @@
     "subscription_minimum_base_units": "classic subscription minimum, base units, package edit floor, repricing",
     "subscription_sized_intro_phase": "sized editing, intro phase, fixed cycle, graduation cycle, starter pack",
     "shipping_flat_minor": "flat shipping, legacy delivery rate, shipping cost, minor units",
+    "payment_method_expiry_warning_days": "payment method expiry, method_expiring, card expiration warning, renewal method health",
+    "promotion_claim_hold_hours": "promotion claim hold, promo reservation expiry, initialPaymentWindow, stale promotion claims",
     "savedAddressValidation": "postal format, phone normalization, delivery address checks",
     "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
     "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",
@@ -2408,7 +2568,9 @@
                   "commerce_setting_preview_unexpected",
                   "inventory_renewal_protection_policy_invalid",
                   "tax_invalid_input",
-                  "checkout_recovery_policy_invalid"
+                  "checkout_recovery_policy_invalid",
+                  "payment_method_expiry_warning_days_policy_invalid",
+                  "promotion_claim_hold_hours_policy_invalid"
                 ]
               },
               "path": {

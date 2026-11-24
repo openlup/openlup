@@ -1,20 +1,36 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildCatalogReleaseDraftV3 } from '@openlup/platform/catalog';
+import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogPackManifest, withCatalogPublicationRules,
+  type CatalogDefinitionInstallReceipt, type CatalogPackInput } from '@openlup/platform/catalog';
 import { configurations } from '../owned/store.config.ts';
+import { starterDiagnosticCode } from '../shared/refusals.ts';
+import { catalogueConformance } from '../owned/catalogue.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
-import { editorProducts, readStarterCatalogueRules, starterCatalogue } from '../host/editor-catalogue.ts';
+import { editorProducts, readStarterCatalogueRules, stagePackBuild, starterCatalogue, starterCataloguePack } from '../host/editor-catalogue.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { applyDemoSeed, demonstrationMarker, installDemonstration, provisionDemonstrationPublicationPassword,
   type DemonstrationInstallation } from '../installation/install.ts';
 import { installationReport } from '../installation/refusals.ts';
+
+const buildPacks = catalogueConformance.packs as { pack: CatalogPackInput; drafts: unknown[] }[];
+test.beforeEach(context => {
+  // Synthetic seeds add their own adopter packs. Keep the app's actual packs for the installed recipe.
+  const declared = [...buildPacks];
+  const starter = declared.filter(({ pack }) => pack.id === 'starter');
+  if (starter.length === declared.length) return;
+  buildPacks.splice(0, buildPacks.length, ...starter);
+  assert.ok('after' in context);
+  context.after(() => { buildPacks.splice(0, buildPacks.length, ...declared); });
+});
 
 test('publication provisioning sends a verifier and keeps the password in the private file', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'starter-publication-'));
@@ -37,7 +53,7 @@ test('container demo startup privately creates a key once, reuses it, and refuse
   await mkdir(resolve(root, '.context'), { recursive: true });
   const directory = await mkdtemp(resolve(root, '.context/demo-start-'));
   try {
-    for (const path of ['lifecycle.mjs', 'browser-groups.mjs', 'host', 'shared', 'owned', 'installation']) {
+    for (const path of ['lifecycle.mjs', 'lifecycle-refusals.mjs', 'browser-groups.mjs', 'host', 'shared', 'owned', 'installation']) {
       await cp(resolve(root, path), resolve(directory, path), { recursive: true });
     }
     await writeFile(resolve(directory, 'package.json'), '{"type":"module"}');
@@ -121,8 +137,12 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
       calls.push({ text, values });
       if (text.startsWith('SELECT public.catalog_definition_install')) {
         const { manifest } = JSON.parse(String(values?.[2]));
-        return { rows: [{ receipt: { manifestDigest: createHash('sha256').update(manifest).digest('hex'), types: JSON.parse(manifest).types } }] };
+        const { id: packId, version: packVersion, types, subscriptionProfileDefinitions } = JSON.parse(manifest);
+        return { rows: [{ receipt: { packId, packVersion, installedAt: '2000-01-01T00:00:00.000Z',
+          manifestDigest: createHash('sha256').update(manifest).digest('hex'), types,
+          ...(subscriptionProfileDefinitions === undefined ? {} : { canonicalManifest: manifest, subscriptionProfileDefinitions }) } }] };
       }
+      if (text.startsWith('SELECT 1 FROM public.catalog_definition_installs')) return { rows: [] };
       if (text.startsWith('SELECT public.fulfillment_record_stock_current')) return { rows: [{ response: { status: 'recorded' } }] };
       if (text.startsWith('INSERT INTO public.subscription_price_policy_revisions') && values) { digests.set(String(values[0]), values[11]); policies.set(String(values[2]), { id: values[0],digest: values[11] }); }
       if (text.startsWith('SELECT id,digest')) return { rows: policies.has(String(values?.[0])) ? [policies.get(String(values?.[0]))!] : [] };
@@ -160,7 +180,11 @@ test('local rules run before installation and derive an immutable product type o
       await installDemonstration(Object.values(configurations)[0]!, async () => fixture.binding);
       const install = fixture.calls.find(entry => entry.text.startsWith('SELECT public.catalog_definition_install'));
       assert.ok(install);
-      const build = JSON.parse(await readFile(resolve(directory, `${install.values?.[1]}.json`), 'utf8'));
+      const serialized = await readFile(resolve(directory, `${install.values?.[1]}.json`), 'utf8');
+      const build = JSON.parse(serialized);
+      const { validateContent: _validate, ...type } = starterCataloguePack(bytes).types[0]!;
+      const installed = JSON.parse(JSON.parse(String(install.values?.[2])).manifest).types[0];
+      assert.equal(serialized, canonicalCatalogDraftJson({ type, asset: bytes.toString('base64'), installed }));
       assert.equal(build.installed.version, install.values?.[1]);
       assert.equal(build.asset, bytes.toString('base64'));
     } finally { await rm(directory, { recursive: true, force: true }); }
@@ -233,7 +257,11 @@ test('a retained build conflict rolls back definition installation before commit
     const retry = installation();
     retry.binding.catalogueRules = bytes;
     retry.binding.catalogueBuildDirectory = directory;
-    await assert.rejects(installDemonstration(config, async () => retry.binding), { code: 'EEXIST' });
+    await assert.rejects(installDemonstration(config, async () => retry.binding), (error: Error & { code?: string }) => {
+      assert.equal(error.code, 'EEXIST');
+      assert.equal(error.message, 'starter_catalogue_build_conflict');
+      return starterDiagnosticCode(error) === 'starter_catalogue_build_conflict';
+    });
     assert.equal(retry.calls.at(-1)?.text, 'ROLLBACK');
     assert.ok(!retry.calls.some(row => row.text === 'COMMIT'));
     assert.equal(await readFile(conflictingBuild, 'utf8'), 'conflicting build');
@@ -468,7 +496,10 @@ test('conflicting configured price is refused and rolls back instead of overwrit
     if (text.startsWith('SELECT id, price_list_id')) result.rows[0]!.unit_price_minor = 1;
     return result;
   };
-  await assert.rejects(applyDemoSeed(Object.values(configurations)[0]!, fixture.binding), { message: 'starter_price_seed_conflict' });
+  await assert.rejects(applyDemoSeed(Object.values(configurations)[0]!, fixture.binding), (error: Error) => {
+    assert.equal(error.message, 'starter_price_seed_conflict');
+    return starterDiagnosticCode(error) === 'starter_price_seed_conflict';
+  });
   assert.equal(fixture.calls.at(-1)!.text, 'ROLLBACK');
 });
 
@@ -603,7 +634,7 @@ test('lifecycle up, serve-demo, checkout-recovery and CLI delegation preserve na
   await mkdir(resolve(root, '.context'), { recursive: true });
   const directory = await mkdtemp(resolve(root, '.context/lifecycle-diagnostics-'));
   try {
-    for (const path of ['lifecycle.mjs', 'browser-groups.mjs', 'host', 'shared', 'owned', 'installation']) {
+    for (const path of ['lifecycle.mjs', 'lifecycle-refusals.mjs', 'browser-groups.mjs', 'host', 'shared', 'owned', 'installation']) {
       await cp(resolve(root, path), resolve(directory, path), { recursive: true });
     }
     await writeFile(resolve(directory, 'package.json'), '{"type":"module"}');
@@ -638,7 +669,9 @@ test('lifecycle up, serve-demo, checkout-recovery and CLI delegation preserve na
       await writeFile(resolve(directory, 'host/server.ts'), `import { assertConfig } from '../shared/config.ts'; assertConfig();`);
       const up = await invoke(['up']);
       assert.equal(up.code, 2);
-      assert.equal(up.stderr.trim(), code);
+      const [first, fix] = up.stderr.trim().split('\n');
+      assert.equal(first, code);
+      assert.match(fix!, /^Fix: .+/u);
       const serve = await invoke(['serve-demo', '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store']);
       assert.equal(serve.code, 2);
       assert.equal(serve.stderr.trim(), code);
@@ -659,4 +692,195 @@ test('lifecycle up, serve-demo, checkout-recovery and CLI delegation preserve na
       assert.deepEqual(JSON.parse(delegated.stdout), { formatVersion: 1, command: subcommand, exitCode: expectedCode });
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+const maxVersion = 2_147_483_647;
+const packFixture = (id: string, version = 1, keys = ['item']): CatalogPackInput => ({
+  id, namespace: 'example', version, openlupRange: '1.x', capabilities: {},
+  types: keys.map(key => ({ key: `example:${key}`, version, dimensions: [], validateContent: () => [],
+    units: [{ code: 'openlup:piece', dimension: 'count', integral: true }], netContentUnits: ['openlup:piece'] })),
+  taxClasses: [{ key: 'example:z' }, { key: 'example:a' }],
+});
+function buildReceipt(pack: CatalogPackInput): CatalogDefinitionInstallReceipt {
+  const { digest, ...manifest } = catalogPackManifest(pack);
+  return { packId: pack.id, packVersion: pack.version, manifestDigest: digest, types: manifest.types, installedAt: '2000-01-01T00:00:00.000Z',
+    ...(manifest.subscriptionProfileDefinitions === undefined ? {} : {
+      canonicalManifest: canonicalCatalogDraftJson(manifest), subscriptionProfileDefinitions: manifest.subscriptionProfileDefinitions,
+    }) };
+}
+const missingBuild = { code: 'starter_catalogue_build_missing', path: '/type' };
+
+test('host_resolves_pack_type_exact_pair and verifies the complete immutable build', async context => {
+  const rules = readStarterCatalogueRules();
+  if (!rules) return context.skip('The upgraded application kept its inline legacy validator.');
+  const directory = await mkdtemp(resolve(tmpdir(), 'starter-pack-build-'));
+  const originalLength = buildPacks.length;
+  const artifact = Buffer.concat([rules, Buffer.from('// Règles ' + 'a'.repeat(840_001))]);
+  const profile = { key: 'example:repeat', version: 1, allowedCadences: [{ schemaVersion: 1, kind: 'fixed_days' as const, days: 28 }],
+    policyRef: { key: 'example:policy', version: 1 }, policyDigest: createHash('sha256').update('fixture').digest('hex') } as const;
+  const first = { ...packFixture('example:é+_.-'), subscriptionProfiles: [{ key: profile.key, version: profile.version }],
+    subscriptionProfileDefinitions: [profile] };
+  const second = packFixture('example:other', maxVersion, ['item', 'sibling']);
+  buildPacks.push(...[first, second].map(pack => ({ pack, drafts: [] })));
+  try {
+    const reader = starterCatalogue(directory);
+    const [ref, newRef, sibling] = [first.types[0]!, second.types[0]!, second.types[1]!].map(({ key, version }) => ({ key, version }));
+    for (const version of [0, maxVersion + 1, 1.5, '1']) {
+      assert.throws(() => reader.registry.resolve({ key: ref!.key, version: version as number }), missingBuild);
+    }
+    assert.throws(() => reader.readInstalled(ref!), missingBuild);
+    for (const pack of [first, second]) {
+      const bound = withCatalogPublicationRules(pack, () => artifact), receipt = buildReceipt(bound);
+      const stage = stagePackBuild(bound, receipt, artifact, directory)!;
+      const target = resolve(directory, 'packs', `${pack.id}@${pack.version}.json`);
+      await assert.rejects(stat(target), { code: 'ENOENT' });
+      const identical = stagePackBuild(bound, receipt, artifact, directory)!;
+      stage.publish(); stage.discard(); identical.publish(); identical.discard();
+      const raw = await readFile(target);
+      const build = JSON.parse(raw.toString('utf8'));
+      assert.ok(raw.length > 1_048_576);
+      assert.equal(build.asset, artifact.toString('base64'));
+      assert.deepEqual(build.receipt, receipt);
+      assert.deepEqual(build.pack.taxClasses, pack.taxClasses);
+      assert.equal(build.pack.types.some((type: object) => Object.hasOwn(type, 'validateContent')), false);
+      assert.equal(stagePackBuild(bound, receipt, artifact, directory), undefined);
+      assert.deepEqual(await readFile(target), raw);
+    }
+    for (const pair of [ref!, newRef!, sibling!]) {
+      const installed = reader.readInstalled(pair)!;
+      assert.equal(installed.type, reader.registry.resolve(pair));
+      assert.deepEqual(installed.type.validateContent({ title: 'Règles' }), []);
+      assert.equal(installed.type.validateContent({})[0]?.code, 'title_required');
+    }
+    const read = context.mock.method(fs, 'readFileSync');
+    syncBuiltinESMExports();
+    try {
+      const invalidRefs = [0, maxVersion + 1, 1.5, '1'].map(version => ({ key: ref!.key, version: version as number }));
+      const fresh = starterCatalogue(directory);
+      for (const invalid of invalidRefs) assert.throws(() => fresh.readInstalled(invalid), missingBuild);
+      assert.ok(read.mock.calls.every(({ arguments: [path] }) => typeof path !== 'string' || !path.startsWith(directory)));
+    } finally { read.mock.restore(); syncBuiltinESMExports(); }
+    assert.throws(() => reader.registry.resolve({ key: sibling!.key, version: ref!.version }), missingBuild);
+    const target = resolve(directory, 'packs', `${second.id}@${second.version}.json`);
+    const raw = await readFile(target);
+    type Build = { asset: string; receipt: { packId: string; types: object[] }; pack: { types: { netContentUnits: string[]; publicationRules?: boolean }[] } };
+    const corruptions: ((build: Build) => void | string)[] = [
+      () => '{',
+      build => { build.asset += '='; },
+      build => { build.asset = Buffer.from('forged rules').toString('base64'); },
+      build => { build.receipt.packId = 'example:wrong'; },
+      build => { build.receipt.types[1] = build.receipt.types[0]!; },
+      build => { build.pack.types[1]!.netContentUnits = []; },
+      build => { build.pack.types[1]!.publicationRules = false; },
+      build => { delete build.pack.types[1]!.publicationRules; },
+    ];
+    for (const corrupt of corruptions) {
+      const build = JSON.parse(raw.toString());
+      await writeFile(target, corrupt(build) ?? JSON.stringify(build));
+      assert.throws(() => starterCatalogue(directory).registry.resolve(newRef!), missingBuild);
+    }
+    await rm(target);
+    const fresh = starterCatalogue(directory);
+    assert.throws(() => fresh.registry.resolve(newRef!), missingBuild);
+    await writeFile(target, raw);
+    assert.equal(fresh.registry.resolve(newRef!)?.version, maxVersion);
+    const profilePath = resolve(directory, 'packs', `${first.id}@1.json`);
+    const profileBuild = JSON.parse(await readFile(profilePath, 'utf8'));
+    profileBuild.receipt.subscriptionProfileDefinitions[0].profileDigest = '0'.repeat(64);
+    await writeFile(profilePath, JSON.stringify(profileBuild));
+    assert.throws(() => starterCatalogue(directory).registry.resolve(ref!), missingBuild);
+  } finally { buildPacks.length = originalLength; await rm(directory, { recursive: true, force: true }); }
+});
+
+test('lost_build_refuses_build_missing_and_never_falls_back_inline across installer rollback and replay', async context => {
+  const bytes = readStarterCatalogueRules();
+  if (!bytes) return context.skip('The upgraded application kept its inline legacy validator.');
+  const directory = await mkdtemp(resolve(tmpdir(), 'starter-pack-commit-'));
+  const originalLength = buildPacks.length;
+  const config = Object.values(configurations)[0]!;
+  const pack = packFixture('example:commit');
+  const target = resolve(directory, 'packs', `${pack.id}@1.json`), ref = { key: 'example:item', version: 1 };
+  buildPacks.push({ pack, drafts: [] });
+  function run(hook: (text: string, values: unknown[] | undefined, result: Awaited<ReturnType<DemonstrationInstallation['connection']['query']>>) => Promise<void>) {
+    const fixture = installation(), query = fixture.binding.connection.query;
+    Object.assign(fixture.binding, { catalogueRules: bytes, catalogueBuildDirectory: directory });
+    fixture.binding.connection.query = async (text, values) => {
+      const result = await query(text, values);
+      await hook(text, values, result);
+      return result;
+    };
+    return { result: applyDemoSeed(config, fixture.binding), calls: fixture.calls };
+  }
+  try {
+    const reader = starterCatalogue(directory);
+    const invalidReceipt = run(async (sql, values, result) => {
+      if (sql.startsWith('SELECT public.catalog_definition_install') && values?.[0] === pack.id)
+        (result.rows[0]!.receipt as { types: unknown[] }).types = [];
+    });
+    await assert.rejects(invalidReceipt.result, error => {
+      assert.equal(Object.getPrototypeOf(error), Error.prototype);
+      assert.deepEqual(Reflect.ownKeys(error as object).filter(key => key !== 'stack').sort(),
+        ['causeText', 'code', 'fix', 'message', 'observed', 'path', 'recheck']);
+      assert.match(String(error), /starter_catalogue_install_receipt_invalid/u);
+      assert.equal((error as { path: string }).path, '/packs/1/pack');
+      return true;
+    });
+    assert.equal(invalidReceipt.calls.at(-1)?.text, 'ROLLBACK');
+    const failed = run(async sql => {
+      if (sql !== 'COMMIT') return;
+      assert.throws(() => reader.registry.resolve(ref), missingBuild);
+      throw new Error('synthetic commit failure');
+    });
+    await assert.rejects(failed.result, { code: 'starter_installation_failed' });
+    assert.equal(failed.calls.at(-1)?.text, 'ROLLBACK');
+    await assert.rejects(stat(target), { code: 'ENOENT' });
+
+    const ioFailure = run(async sql => {
+      if (sql === 'COMMIT') {
+        for (const entry of await readdir(resolve(directory, 'packs')))
+          if (entry.startsWith('.pending-')) await rm(resolve(directory, 'packs', entry), { recursive: true });
+      }
+    });
+    await assert.rejects(ioFailure.result, { code: 'starter_installation_failed', path: '/packs' });
+    assert.equal(ioFailure.calls.at(-1)?.text, 'COMMIT');
+    const replay = run(async (sql, _values, result) => {
+      if (sql.startsWith('SELECT 1 FROM public.catalog_definition_installs')) result.rows.push({});
+    });
+    assert.equal((await replay.result)[0]?.outcome, 'unchanged');
+    const statements = replay.calls.map(({ text }) => text);
+    const ledger = statements.findIndex(text => text.startsWith('SELECT 1 FROM public.catalog_definition_installs'));
+    assert.ok(statements[ledger - 1]?.startsWith('SELECT public.catalog_definition_install'));
+    assert.ok(statements[ledger + 1]?.startsWith('SELECT public.catalog_definition_install'));
+    assert.ok(reader.registry.resolve(ref));
+
+    await rm(target);
+    let ready!: () => void, commit!: () => void;
+    const held = new Promise<void>(done => { ready = done; });
+    const resume = new Promise<void>(done => { commit = done; });
+    const losing = run(async sql => { if (sql === 'COMMIT') { ready(); await resume; } });
+    const lost = assert.rejects(losing.result, { code: 'starter_catalogue_build_conflict', path: '/packs/1/pack' });
+    await held;
+    buildPacks[originalLength] = { pack: { ...pack, types: pack.types.map(type => ({ ...type, labels: { en: 'New label' } })) }, drafts: [] };
+    try { assert.equal((await run(async () => {}).result)[0]?.outcome, 'installed'); }
+    finally { commit(); }
+    const winningBytes = await readFile(target);
+    await lost;
+    assert.equal(losing.calls.at(-1)?.text, 'COMMIT');
+    buildPacks[originalLength] = { pack, drafts: [] };
+    await assert.rejects(run(async () => {}).result, { code: 'starter_catalogue_build_conflict', path: '/packs/1/pack' });
+    assert.deepEqual(await readFile(target), winningBytes);
+
+    for (const id of ['outside/pack', 'outside\\pack', 'outside\0pack', 'é'.repeat(124) + 'a']) {
+      buildPacks[originalLength] = { pack: { ...pack, id }, drafts: [] };
+      const invalidName = run(async () => {});
+      await assert.rejects(invalidName.result, { code: 'starter_catalogue_pack_invalid', path: '/packs/1/pack/id' });
+      assert.deepEqual(invalidName.calls, []);
+      assert.throws(() => starterCatalogue(directory).registry.resolve(ref), missingBuild);
+    }
+    const exact = 'é'.repeat(124);
+    buildPacks[originalLength] = { pack: { ...pack, id: exact }, drafts: [] };
+    await run(async () => {}).result;
+    assert.equal(Buffer.byteLength(`${exact}@1.json`), 255);
+    assert.ok((await stat(resolve(directory, 'packs', `${exact}@1.json`))).isFile());
+  } finally { buildPacks.length = originalLength; await rm(directory, { recursive: true, force: true }); }
 });

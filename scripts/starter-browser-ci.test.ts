@@ -7,7 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 import { createHash } from 'node:crypto';
 import pg from 'pg';
-import { assertCanaryImage, acquireStarterPostgres, browserArguments, canaryPurchasePattern, capturePrivateValues, parseArguments, resolveBrowserImage, runStarterImageCanary, runBrowserGroups, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
+import { assertCanaryImage, acquireStarterPostgres, browserArguments, browserContainerArguments, canaryPurchasePattern, capturePrivateValues, catalogueUpgradeGroupIndex, parseArguments, resolveBrowserImage, runStarterImageCanary, runBrowserGroups, runCatalogueUpgrade, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
 import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
 
@@ -114,6 +114,25 @@ describe('installed starter browser CI', () => {
     } finally { report.mockRestore(); }
     const source = readFileSync('scripts/starter-browser-ci.mjs', 'utf8');
     expect(source).toContain("phase, options.groups)");
+  });
+  it.each(['mirror', 'local'] as const)('replays once with the resolved %s image for the owning group', async source => {
+    vi.stubEnv('CI', source === 'mirror' ? 'true' : '');
+    const image = readCiImage('starter-browser');
+    const localImage = source === 'local' ? imageReference(image, 'mcr.microsoft.com/playwright') : undefined;
+    const reference = localImage ?? imageReference(image);
+    const options = parseArguments([...args, ...(localImage ? ['--local-image', localImage] : [])]);
+    const io = { exec: async () => JSON.stringify([reference.replace(/:[^/@]+@/u, '@')]), sleep: async () => {}, now: () => 0 };
+    const resolved = await resolveBrowserImage(io, options.localImage);
+    expect(resolved).toBe(reference);
+    const prove = vi.fn();
+    await runCatalogueUpgrade({ ...options, groups: [0, 6] }, resolved, prove);
+    expect(prove).not.toHaveBeenCalled();
+    await runCatalogueUpgrade({ ...options, groups: [1, 6] }, resolved, prove);
+    const expected = [[args[1], args[3], { reference, localImage, containerArguments: browserContainerArguments }]];
+    expect(prove.mock.calls).toEqual(expected);
+    prove.mockClear();
+    await runCatalogueUpgrade(options, resolved, prove);
+    expect(prove.mock.calls).toEqual(expected);
   });
   it.each(['', '0,0', '-1', '7', '1,7', '1.5', '01', '0,', ',0', '0, 1', '1e0', 'NaN'])('refuses an invalid group subset: %s', groups => {
     expect(() => parseArguments([...args, '--groups', groups])).toThrow('starter_browser_arguments_invalid');
@@ -266,6 +285,7 @@ describe('installed starter browser CI', () => {
     expect(install).toContain('needs: [install-packages]');
     expect(workflow).toContain('needs: [install-packages, install-browser]');
     const groups = install.match(/groups: \[(.*)\]/u)![1]!.replaceAll("'", '').split(', ').flatMap(shard => shard.split(',').map(Number));
+    expect(groups.filter(index => index === catalogueUpgradeGroupIndex)).toHaveLength(1);
     expect(groups.sort((left, right) => left - right)).toEqual(browserJourneyGroups.map((_, index) => index));
     expect(workflow).toContain('needs: [dco, typecheck, install-proof, test, self-check, gitleaks]');
   });

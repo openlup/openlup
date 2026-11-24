@@ -1,3 +1,4 @@
+import { starterDiagnostic } from './refusals.ts';
 import { assertLocalized, configuredLocales, type Locale, type Localized } from './locales.ts';
 
 export type RecoveryState = 'login_required' | 'unavailable' | 'method_unavailable'
@@ -30,14 +31,14 @@ export const demoRecoveryConfiguration: RecoveryConfiguration = {
 export function assertRecoveryConfiguration(config: RecoveryConfiguration | undefined, locales: readonly Locale[] = configuredLocales): void {
   // The default recovery copy is validated against the same inventory.
   const value = config ?? demoRecoveryConfiguration;
-  if (!value?.states || !value.message) throw new Error('starter_recovery_configuration_invalid');
+  if (!value?.states || !value.message) throw starterDiagnostic('starter_recovery_configuration_invalid');
   const inventory = { states: RECOVERY_STATES, message: RECOVERY_MESSAGE_KEYS } as const;
   for (const section of ['states', 'message'] as const) {
     for (const key of inventory[section]) {
       assertLocalized((value[section] as Record<string, Localized>)[key], locales, `recovery.${section}.${key}`);
     }
     if (Object.keys(value[section]).sort().join() !== [...inventory[section]].sort().join()) {
-      throw new Error('starter_recovery_configuration_invalid');
+      throw starterDiagnostic('starter_recovery_configuration_invalid');
     }
   }
 }

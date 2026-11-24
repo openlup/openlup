@@ -1,18 +1,20 @@
-import { afterEach, expect, it } from "vitest";
-import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { afterEach, expect, it, vi } from "vitest";
+import { execFileSync, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
+import { cpSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { env } from "node:process";
+import { imageReference, readCiImage } from "../ci-image-pull.mjs";
+import { browserContainerArguments, starterBrowserFailure } from "../starter-browser-ci.mjs";
 import { proveInstalledCareUpgrade, qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
   includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers, retiresStarterCatalogue, proveStarterCatalogue130,
   reminderInstallationTest, starterLifecycle, starterOptionalOwnedFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization, starterEditorPorts, starterDocumentFiles,
-  reconcileDocumentCustomization, proveDistributionCliConsumer, starterCheckoutFiles, mergeStarterCareFile, needsStarterCareUpgrade } from "./distribution-cli-proof.ts";
+  reconcileDocumentCustomization, proveDistributionCliConsumer, proveInstalledCatalogueUpgrade, starterCheckoutFiles, mergeStarterCareFile, needsStarterCareUpgrade } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -26,14 +28,119 @@ function fixture() {
   return { directory, write };
 }
 
+const browserStartupFailed = "starter_catalogue_browser_startup_failed";
+it.each([
+  ["mirror", undefined], ["local", undefined], ["release", undefined],
+  ["container-failure", browserStartupFailed],
+  ["probe-failure", browserStartupFailed],
+  ["probe-deadline", "starter_catalogue_browser_server_not_ready"],
+  ["server-failure", browserStartupFailed],
+  ["module-load-failure", browserStartupFailed],
+  ["invalid-endpoint", browserStartupFailed],
+  ["recipe-failure", "starter_browser_catalogue_upgrade_failed"],
+] as const)("runs the catalogue recipe with %s browser setup", (mode, expectedCode) => {
+  const { directory, write } = fixture();
+  write("package-lock.json", { packages: Object.fromEntries(
+    ["core", "outbox", "platform"].map(name => ["node_modules/@openlup/" + name, { resolved: "https://example.test/" + name }]),
+  ) });
+  write("node_modules/.bin/playwright", "");
+  const image = readCiImage("starter-browser");
+  const localImage = mode === "local" ? imageReference(image, "mcr.microsoft.com/playwright") : undefined;
+  const reference = localImage ?? imageReference(image);
+  const endpoint = "ws://127.0.0.1:43189/test";
+  const sentinel = "private-browser-detail";
+  const dockerError = Object.assign(new Error("docker failed"), { stderr: sentinel });
+  const probeError = Object.assign(new Error("docker unreachable"), { stderr: sentinel, stdout: '"deadline"' });
+  if (mode === "module-load-failure") {
+    write("node_modules/playwright/index.js", `require(${JSON.stringify(sentinel)});`);
+  }
+  let readinessMount: string | undefined, readinessDirectory: string | undefined;
+  const runMountedScript = (script: string, setup = "") => {
+    const resultPath = JSON.stringify(join(readinessDirectory!, "result.json")).slice(1, -1);
+    return execFileSync(process.execPath, ["-e", setup + "\n" + script.replaceAll("/catalogue-browser-readiness/result.json", () => resultPath)],
+      { cwd: directory, stdio: "pipe", encoding: "utf8" });
+  };
+  const run = vi.fn((_file: string, args: readonly string[], _options: ExecFileSyncOptionsWithStringEncoding) => {
+    if (args[0] === "run") {
+      readinessMount = args.find(arg => arg.endsWith(",dst=/catalogue-browser-readiness"));
+      const mount = /^type=bind,src=(.+),dst=\/catalogue-browser-readiness$/u.exec(readinessMount ?? "");
+      expect(mount).not.toBeNull();
+      readinessDirectory = mount![1]!;
+      expect(statSync(readinessDirectory).mode & 0o777).toBe(0o700);
+      if (mode === "container-failure") throw dockerError;
+      if (mode === "module-load-failure") {
+        expect(runMountedScript(args.at(-1)!, "globalThis.setTimeout = () => 0;")).toBe("");
+      }
+    }
+    if (args[0] === "rm" && mode === "container-failure") throw new Error("cleanup failed");
+    if (args[0] === "exec") {
+      if (mode === "probe-failure") throw probeError;
+      if (mode === "probe-deadline") {
+        return runMountedScript(args.at(-1)!, "let now = 0; Date.now = () => (now += 20_001);");
+      }
+      if (mode === "module-load-failure") return runMountedScript(args.at(-1)!);
+      return JSON.stringify(mode === "server-failure" ? { error: sentinel }
+        : { endpoint: mode === "invalid-endpoint" ? sentinel : endpoint });
+    }
+    if (args[0] === "--test" && mode === "recipe-failure") throw new Error("starter_recipe_compose_failed");
+    return args[0] === "--test" ? "✔ up_json_installed_starter_recipe" : "";
+  });
+  const browser = { reference, localImage, containerArguments: browserContainerArguments };
+  try {
+    vi.stubEnv("CI", mode === "local" ? "" : "true");
+    const prove = () => proveInstalledCatalogueUpgrade(directory, {}, mode === "release" ? undefined : browser, run);
+    if (expectedCode) {
+      let failure: unknown;
+      try { prove(); } catch (error) { failure = error; }
+      expect(failure).toBeInstanceOf(Error);
+      const error = starterBrowserFailure(failure, "catalogue_upgrade");
+      if (expectedCode === browserStartupFailed) {
+        expect(error.message).toBe(expectedCode + "\nFix: Check that the pinned browser image is present or pullable as configured, that its Playwright and browser versions match the app's installed Playwright, and that the Playwright module loads and the browser launches inside the container.");
+        const cause = Object.getOwnPropertyDescriptor(error, "cause");
+        expect(cause).toMatchObject({ enumerable: false, value: expect.any(Error) });
+        if (mode === "container-failure") expect(cause?.value).toBe(dockerError);
+        if (mode === "probe-failure") expect(cause?.value).toBe(probeError);
+        if (mode === "server-failure" || mode === "module-load-failure") {
+          expect(cause?.value.message).toContain(sentinel);
+        }
+      } else expect(error.message).toBe(expectedCode);
+      expect(error.message).not.toContain(sentinel);
+      expect(JSON.stringify(error)).not.toContain(sentinel);
+    } else prove();
+    const recipe = run.mock.calls.find(([file, args]) => file === process.execPath && args[0] === "--test");
+    const installs = run.mock.calls.filter(([, args]) => args.includes("install"));
+    if (mode === "release") {
+      expect(run.mock.calls.every(([file]) => file === process.execPath)).toBe(true);
+      expect(installs.map(([, args]) => args)).toEqual([[join(directory, "node_modules/.bin/playwright"), "install", "chromium"]]);
+      expect(recipe?.[2].env?.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT).toBeUndefined();
+      return;
+    }
+    const [file, args] = run.mock.calls[0]!;
+    expect(file).toBe("docker");
+    const name = args[args.indexOf("--name") + 1]!;
+    expect(args).toEqual(["run", "--detach", ...browserContainerArguments(directory, reference, name, localImage, ["--mount", readinessMount!]).slice(1),
+      "node", "-e", expect.stringContaining("chromium.launchServer")]);
+    expect(args).toEqual(expect.arrayContaining(["--pull=never", "--read-only", "--network=host", "--tmpfs", "/tmp:rw,nosuid,nodev",
+      `${process.getuid!()}:${process.getgid!()}`, `type=bind,src=${directory},dst=/app,readonly`, reference]));
+    expect(args.filter(arg => arg === "--mount")).toHaveLength(2);
+    expect(existsSync(readinessDirectory!)).toBe(false);
+    expect(run.mock.calls.at(-1)?.slice(0, 2)).toEqual(["docker", ["rm", "-f", name]]);
+    expect(installs).toHaveLength(0);
+    if (expectedCode && mode !== "recipe-failure") expect(recipe).toBeUndefined();
+    else expect(recipe?.[2].env?.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT).toBe(endpoint);
+  } finally { vi.unstubAllEnvs(); }
+});
+
 it("prints a bounded installation hint after the existing refusal and preserves unhinted stderr bytes", () => {
   const { directory, write } = fixture();
   write("package.json", { type: "module" });
   write(starterLifecycle, readFileSync(resolve("examples/neutral-store", starterLifecycle), "utf8"));
+  write("lifecycle-refusals.mjs", readFileSync(resolve("examples/neutral-store/lifecycle-refusals.mjs"), "utf8"));
   write("browser-groups.mjs", "export const browserJourneyGroups = [];");
   write("host/healthcheck.ts", "export const applicationHealthcheck = () => undefined;");
   write("owned/store.config.ts", "export const selectConfiguration = () => ({});");
   write("installation/refusals.ts", readFileSync(resolve("examples/neutral-store/installation/refusals.ts"), "utf8"));
+  write("shared/refusals.ts", readFileSync(resolve("examples/neutral-store/shared/refusals.ts"), "utf8"));
   const message = "checkout_recovery_schedule_change_blocked_open_episodes (2 blocking orders)";
   for (const [fields, expected] of [
     [{ hint: "  Retry after\n those orders\tclose.  " }, "Retry after those orders close.\n"],
@@ -964,6 +1071,8 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
   const run = (command: string, args: string[], cwd = source) => execFileSync(command, args, { cwd, encoding: "utf8", stdio: "pipe" });
   cpSync(resolve("scripts"), join(source, "scripts"), { recursive: true }); mkdirSync(packs); write("source/package.json", { type: "module" }); write("source/config/ci-images.json", readFileSync(resolve("config/ci-images.json"), "utf8"));
   write("source/examples/neutral-store/extract.mjs", readFileSync(resolve("examples/neutral-store/extract.mjs"), "utf8"));
+  const catalogueFixture = "examples/neutral-store/test/catalogue-upgrade-fixture.ts";
+  write("source/" + catalogueFixture, readFileSync(resolve(catalogueFixture), "utf8"));
   const names = ["core", "outbox", "platform"], dependencies = Object.fromEntries(names.map(name => ["@openlup/" + name, version]));
   write("source/config/openlup-packages.json", { schemaVersion: 2, packages: names.map(name => ({ name: "@openlup/" + name, directory: "packages/" + name, publish: true })), unreleased: [] });
   const packages = names.map(name => {

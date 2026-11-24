@@ -1666,6 +1666,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
       "class": "public-output"
     },
@@ -1888,6 +1892,10 @@
     {
       "path": "docs/platform/migrations/module-catalogues-and-histories.md",
       "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/WAVE_3_RECIPES_SPLIT_SPEC.md",
+      "class": "public-output"
     },
     {
       "path": "docs/platform/plans/agent-context-adaptive-routing.md",
@@ -2806,6 +2814,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/lifecycle-refusals.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/lifecycle.mjs",
       "class": "public-output"
     },
@@ -2998,6 +3010,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/refusals.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/renewal-config.ts",
       "class": "public-output"
     },
@@ -3031,6 +3047,10 @@
     },
     {
       "path": "examples/neutral-store/test/browser-groups.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-upgrade-fixture.ts",
       "class": "public-output"
     },
     {
@@ -3083,6 +3103,10 @@
     },
     {
       "path": "examples/neutral-store/test/interim-pricing.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/lifecycle.test.ts",
       "class": "public-output"
     },
     {
@@ -5427,6 +5451,10 @@
     },
     {
       "path": "packages/platform/sql/20261125310000_function_search_path_pg_temp.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
       "class": "public-output"
     },
     {
@@ -9250,6 +9278,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/methodExpiryWarningPolicy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/nativeInstant.ts",
       "class": "public-output"
     },
@@ -9839,6 +9871,10 @@
     },
     {
       "path": "packages/platform/src/promotions/adminPromotionsHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/claimHoldHoursPolicy.ts",
       "class": "public-output"
     },
     {
@@ -12354,7 +12390,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/methodExpiryWarningPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/nativeInstant.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/payment_method_expiry_warning_days.json",
       "class": "public-output"
     },
     {
@@ -12770,6 +12814,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/promotions/claimHoldHoursPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/promotions/parityFixtures.ts",
       "class": "public-output"
     },
@@ -12803,6 +12851,10 @@
     },
     {
       "path": "packages/platform/test/promotions/promotionQuoteBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/promotion_claim_hold_hours.json",
       "class": "public-output"
     },
     {
@@ -32711,6 +32763,10 @@
     },
     {
       "path": "tests/postgres/settingsOwnerWindow.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/settingsWave1Policies.test.ts",
       "class": "public-output"
     },
     {

@@ -800,11 +800,15 @@
         "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
       },
       {
+        "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+        "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+      },
+      {
         "file": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
         "sha256": "07002998bda04ae17aa81725a292e172a3e79c69b4215435714f3e786678691d"
       }
     ],
-    "objectInventorySha256": "c74f9e085edb64438213fcc93e8ba9e3046620371f1446ffc530c8d597348bdc",
+    "objectInventorySha256": "1c2b37133bb9aaf8ff62f2b59e011bb67732ff9c56a5c2b3e97086a7439a83b4",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1628,16 +1632,20 @@
           "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
         },
         {
+          "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+          "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+        },
+        {
           "file": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
           "sha256": "07002998bda04ae17aa81725a292e172a3e79c69b4215435714f3e786678691d"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "9b1f8d5af81366c6714f9dd953ee637f35e5f76a753596597dcb2d7bc28e8ddd"
+          "withRestore": "6de3dab2f2f94af439a7de9ac5b2716aeb19438b7ad82ff3d92f639e276a3425"
         },
         "separateMigrator": {
-          "withRestore": "92a3740f5bf43f373a6865aba99c1198120d548179e6ee9519f3b57c0bb960b7"
+          "withRestore": "98e2e8178393c3a215e54310d0fa68135f800491bf4832e6c7a873335a458bf8"
         }
       }
     },
@@ -2456,13 +2464,17 @@
           "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
         },
         {
+          "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+          "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+        },
+        {
           "file": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
           "sha256": "07002998bda04ae17aa81725a292e172a3e79c69b4215435714f3e786678691d"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "9957fc67a87ddfcb4140e0047c9bb217ad95b335faf7d033c9fc08eaa812df10",
-        "operatorProvisioned": "c69fd8dde23556e73f1eaae9475aa01d77fa52838fb94dcdb28cf63901a68012"
+        "installerManaged": "6cadb09696c0866b32520b46f155a94a31d9db4be30c1c4fd55ee9cacd29a5f0",
+        "operatorProvisioned": "0e630718bc1e5e00a1a4abd365bc9d0c2dc1ef8c8cda89e8342327752a28af93"
       }
     }
   },
@@ -3461,6 +3473,11 @@
       "file": "20261125310000_function_search_path_pg_temp.sql",
       "source": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
       "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
+    },
+    {
+      "file": "20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+      "source": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
+      "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
     },
     {
       "file": "20261126023000_catalog_admission_issue_reader.sql",

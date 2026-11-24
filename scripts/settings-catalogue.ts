@@ -70,6 +70,8 @@ const searchTerms: Record<string, string> = {
   subscription_minimum_base_units: "classic subscription minimum, base units, package edit floor, repricing",
   subscription_sized_intro_phase: "sized editing, intro phase, fixed cycle, graduation cycle, starter pack",
   shipping_flat_minor: "flat shipping, legacy delivery rate, shipping cost, minor units",
+  payment_method_expiry_warning_days: "payment method expiry, method_expiring, card expiration warning, renewal method health",
+  promotion_claim_hold_hours: "promotion claim hold, promo reservation expiry, initialPaymentWindow, stale promotion claims",
   savedAddressValidation: "postal format, phone normalization, delivery address checks",
   "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
   "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",

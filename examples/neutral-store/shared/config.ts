@@ -1,3 +1,4 @@
+import { starterDiagnostic } from './refusals.ts';
 import type { CheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/contracts';
 import type { RenewalStockProtectionPolicy } from '@openlup/platform/inventory/contracts';
 import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
@@ -116,36 +117,40 @@ export interface StoreConfig {
   };
 }
 
+export function isConfigurationId(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 80 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}
+
 export function assertConfig(config: StoreConfig): void {
   assertLocaleMarket(config.market);
   const schedule = config.checkoutRecoveryReminders;
   const scheduleCode = 'checkout_recovery_reminder_schedule_invalid';
   if (!schedule || Object.keys(schedule).sort().join(',') !== 'abandonedCart,checkoutRecovery,revision'
-    || typeof schedule.revision !== 'string' || !schedule.revision.trim()) throw new Error(scheduleCode);
+    || typeof schedule.revision !== 'string' || !schedule.revision.trim()) throw starterDiagnostic(scheduleCode);
   for (const key of ['abandonedCart', 'checkoutRecovery'] as const) {
     const waves = schedule[key];
-    if (!Array.isArray(waves) || !waves.length) throw new Error(scheduleCode);
+    if (!Array.isArray(waves) || !waves.length) throw starterDiagnostic(scheduleCode);
     let previous = 0;
     const seen = new Set<string>();
     for (const wave of waves) {
       if (!wave || Object.keys(wave).sort().join(',') !== 'afterHours,stage'
         || !['first', 'last', ...(key === 'abandonedCart' ? ['gentle'] : [])].includes(wave.stage)
         || seen.has(wave.stage) || !Number.isInteger(wave.afterHours)
-        || wave.afterHours <= previous || wave.afterHours > 2147483647) throw new Error(scheduleCode);
+        || wave.afterHours <= previous || wave.afterHours > 2147483647) throw starterDiagnostic(scheduleCode);
       previous = wave.afterHours; seen.add(wave.stage);
     }
-    if (waves.at(-1)?.stage !== 'last') throw new Error(scheduleCode);
+    if (waves.at(-1)?.stage !== 'last') throw starterDiagnostic(scheduleCode);
   }
   const protection = config.inventory?.renewalProtection;
   if (!protection || Object.keys(protection).sort().join(',') !== 'renewalProtectionDays,revision'
     || typeof protection.revision !== 'string' || !protection.revision.trim()
     || !Number.isInteger(protection.renewalProtectionDays)
     || protection.renewalProtectionDays < 1 || protection.renewalProtectionDays > 3660) {
-    throw new Error('inventory_renewal_protection_policy_invalid');
+    throw starterDiagnostic('inventory_renewal_protection_policy_invalid');
   }
   if (!Number.isInteger(config.subscriptionCreation?.editWindowHours)
     || config.subscriptionCreation.editWindowHours < 1 || config.subscriptionCreation.editWindowHours > 720) {
-    throw new Error('starter_subscription_creation_invalid');
+    throw starterDiagnostic('starter_subscription_creation_invalid');
   }
   assertRenewalConfig(config.renewal, config.market.locales);
   assertRetention(config.renewal.subscriptionCare);
@@ -160,33 +165,32 @@ export function assertConfig(config: StoreConfig): void {
   if (typeof config.market.country !== 'string' || !/^[A-Z]{2}$/.test(config.market.country)
     || typeof config.market.currency !== 'string' || !/^[A-Z]{3}$/.test(config.market.currency)
     || typeof config.market.timezone !== 'string' || !config.market.timezone.trim()) {
-    throw new Error('starter_market_invalid');
+    throw starterDiagnostic('starter_market_invalid');
   }
   try { new Intl.DateTimeFormat(config.market.defaultLocale, { timeZone: config.market.timezone }); }
-  catch { throw new Error('starter_market_invalid'); }
-  if (typeof config.id !== 'string' || config.id.length > 80
-    || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(config.id)) throw new Error('starter_configuration_invalid');
+  catch { throw starterDiagnostic('starter_market_invalid'); }
+  if (!isConfigurationId(config.id)) throw starterDiagnostic('starter_configuration_invalid');
   if (typeof config.legal.revision !== 'string' || config.legal.revision !== config.legal.revision.trim()
-    || config.legal.revision.length < 1 || config.legal.revision.length > 64) throw new Error('starter_configuration_invalid');
+    || config.legal.revision.length < 1 || config.legal.revision.length > 64) throw starterDiagnostic('starter_configuration_invalid');
   if (!config.brand.name.trim() || !config.legal.demoOnly || config.features.risk !== false) {
-    throw new Error('starter_configuration_invalid');
+    throw starterDiagnostic('starter_configuration_invalid');
   }
   for (const token of Object.values(config.theme)) {
-    if (!/^#[0-9a-f]{6}$/i.test(token)) throw new Error('starter_theme_invalid');
+    if (!/^#[0-9a-f]{6}$/i.test(token)) throw starterDiagnostic('starter_theme_invalid');
   }
   for (const amount of [offer.minUnits, offer.maxUnits, offer.shippingMinor,
     offer.freeShippingFromMinor, offer.subscriptionDiscountBps,
     offer.subscriptionRoundingQuantumMinor]) {
-    if (!Number.isSafeInteger(amount) || amount < 0) throw new Error('starter_offer_invalid');
+    if (!Number.isSafeInteger(amount) || amount < 0) throw starterDiagnostic('starter_offer_invalid');
   }
-  if (offer.maxUnits > MAX_STARTER_OFFER_UNITS) throw new Error('starter_units_above_representation');
+  if (offer.maxUnits > MAX_STARTER_OFFER_UNITS) throw starterDiagnostic('starter_units_above_representation');
   if (offer.shippingMinor > 2147483647 || offer.freeShippingFromMinor > 2147483647
     || offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits
     || offer.subscriptionDiscountBps > 10000 || offer.cadenceDays.length === 0
     || !offer.cadenceDays.includes(offer.defaultCadenceDays)
     || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > MAX_CADENCE_DAYS
     || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > MAX_CADENCE_DAYS)) {
-    throw new Error('starter_offer_invalid');
+    throw starterDiagnostic('starter_offer_invalid');
   }
   const purchase = config.purchase;
   if (!purchase
@@ -208,19 +212,19 @@ export function assertConfig(config: StoreConfig): void {
     || !/^[a-z0-9-]+$/.test(purchase.sandbox.recoveryTemplateSlug)
     || !/^\/[a-zA-Z0-9/_-]+$/.test(purchase.sandbox.recoveryUrlPath)
     || !Number.isFinite(Date.parse(purchase.stock.collectedAt)) || !Number.isFinite(Date.parse(purchase.stock.staleAfter))
-    || Date.parse(purchase.stock.staleAfter) <= Date.parse(purchase.stock.collectedAt)) throw new Error('starter_purchase_configuration_invalid');
+    || Date.parse(purchase.stock.staleAfter) <= Date.parse(purchase.stock.collectedAt)) throw starterDiagnostic('starter_purchase_configuration_invalid');
   if (!config.documents || typeof config.documents.sandbox.enabled !== 'boolean'
     || !config.documents.sandbox.providerRef.trim() || !config.returns?.reasons.length
-    || !config.orderControls?.holdReasons.length) throw new Error('starter_order_controls_configuration_invalid');
+    || !config.orderControls?.holdReasons.length) throw starterDiagnostic('starter_order_controls_configuration_invalid');
   for (const choices of [config.returns.reasons, config.orderControls.holdReasons]) {
     if (new Set(choices.map(choice => choice.code)).size !== choices.length || choices.some(choice =>
       !choice.code.trim())) {
-      throw new Error('starter_order_controls_configuration_invalid');
+      throw starterDiagnostic('starter_order_controls_configuration_invalid');
     }
   }
   const seen = new Set<string>();
   const slugs = new Set<string>();
-  if (offer.products.length === 0) throw new Error('starter_catalog_empty');
+  if (offer.products.length === 0) throw starterDiagnostic('starter_catalog_empty');
   for (const product of offer.products) {
     if (!product.physical || !Number.isSafeInteger(product.physical.netWeightG) || product.physical.netWeightG < 1
       || !isValidGtin(product.physical.unitGtin) || !product.physical.issuer.trim() || seen.has(product.sku) || slugs.has(product.slug)
@@ -232,19 +236,19 @@ export function assertConfig(config: StoreConfig): void {
       || product.permittedPurchaseModes.length === 0
       || product.permittedPurchaseModes.some(mode => mode !== 'one_time' && mode !== 'subscription')
       || !product.media.startsWith('/media/')) {
-      throw new Error('starter_product_invalid');
+      throw starterDiagnostic('starter_product_invalid');
     }
     if (!Number.isSafeInteger(purchase.stock.quantities[product.sku]) || purchase.stock.quantities[product.sku]! < 0 || purchase.stock.quantities[product.sku]! > 2147483647) {
-      throw new Error('starter_purchase_configuration_invalid');
+      throw starterDiagnostic('starter_purchase_configuration_invalid');
     }
     for (const mode of product.permittedPurchaseModes) {
       const amount = estimateOffer(config, mode, [{ sku: product.sku, quantity: 1 }]).lines[0]!.unitMinor;
-      if (amount < 1 || amount > 2147483647) throw new Error('starter_product_invalid');
+      if (amount < 1 || amount > 2147483647) throw starterDiagnostic('starter_product_invalid');
     }
     seen.add(product.sku);
     slugs.add(product.slug);
   }
-  if (Object.keys(purchase.stock.quantities).some(sku => !seen.has(sku))) throw new Error('starter_purchase_configuration_invalid');
+  if (Object.keys(purchase.stock.quantities).some(sku => !seen.has(sku))) throw starterDiagnostic('starter_purchase_configuration_invalid');
 }
 
 /** One validator for the optional public contact; no URL or HTML is accepted. */
@@ -252,27 +256,27 @@ export function assertSupportEmail(config: Pick<StoreConfig, 'supportEmail'>): v
   if (config.supportEmail === undefined) return;
   if (typeof config.supportEmail !== 'string' || config.supportEmail.length > 254 || /\s/.test(config.supportEmail)
     || !/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/.test(config.supportEmail)) {
-    throw new Error('starter_support_email_invalid');
+    throw starterDiagnostic('starter_support_email_invalid');
   }
 }
 
 /** The only origin validator. Store the URL parser's canonical origin in the input. */
 export function assertPublicOrigin(config: Pick<StoreConfig, 'publicOrigin' | 'allowInsecurePublicOrigin'>): void {
   if (config.allowInsecurePublicOrigin !== undefined && typeof config.allowInsecurePublicOrigin !== 'boolean') {
-    throw new Error('starter_public_origin_flag_invalid');
+    throw starterDiagnostic('starter_public_origin_flag_invalid');
   }
   if (config.publicOrigin === undefined) return;
   const value = config.publicOrigin;
   if (typeof value !== 'string' || !value || value.length > 256 || /\s/.test(value)
     || [...value].some(character => character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127)) {
-    throw new Error('starter_public_origin_invalid');
+    throw starterDiagnostic('starter_public_origin_invalid');
   }
   let parsed: URL;
   try { parsed = new URL(value); }
-  catch { throw new Error('starter_public_origin_invalid'); }
+  catch { throw starterDiagnostic('starter_public_origin_invalid'); }
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password
     || parsed.pathname !== '/' || parsed.search || parsed.hash || value.includes('*')
-    || parsed.hostname.endsWith('.')) throw new Error('starter_public_origin_invalid');
+    || parsed.hostname.endsWith('.')) throw starterDiagnostic('starter_public_origin_invalid');
   // Reject parser repairs (case, IDN, escaped hosts, dot paths, backslashes, empty
   // query/fragment/userinfo). Only a root slash and the default port may normalize.
   const defaultPort = parsed.protocol === 'https:' ? '443' : '80';
@@ -281,10 +285,10 @@ export function assertPublicOrigin(config: Pick<StoreConfig, 'publicOrigin' | 'a
     accepted.push(`${parsed.protocol}//${parsed.hostname}:${defaultPort}`,
       `${parsed.protocol}//${parsed.hostname}:${defaultPort}/`);
   }
-  if (!accepted.includes(value)) throw new Error('starter_public_origin_not_canonical');
+  if (!accepted.includes(value)) throw starterDiagnostic('starter_public_origin_not_canonical');
   const loopback = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]';
   if (parsed.protocol === 'http:' && !loopback && config.allowInsecurePublicOrigin !== true) {
-    throw new Error('starter_public_origin_tls_required');
+    throw starterDiagnostic('starter_public_origin_tls_required');
   }
   config.publicOrigin = parsed.origin;
 }
@@ -304,28 +308,28 @@ export function parseHostArguments(args: readonly string[]): {
   const seen = new Set<string>();
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index]!;
-    if (!['--configuration', '--port', '--listen', '--database-url', '--quote-acceptance-key-file', '--catalogue-publication-password-file'].includes(flag)) throw new Error('starter_argument_unknown');
-    if (seen.has(flag)) throw new Error('starter_argument_duplicate');
+    if (!['--configuration', '--port', '--listen', '--database-url', '--quote-acceptance-key-file', '--catalogue-publication-password-file'].includes(flag)) throw starterDiagnostic('starter_argument_unknown');
+    if (seen.has(flag)) throw starterDiagnostic('starter_argument_duplicate');
     seen.add(flag);
     const value = args[index + 1];
-    if (!value || value.startsWith('--')) throw new Error('starter_argument_value_required');
+    if (!value || value.startsWith('--')) throw starterDiagnostic('starter_argument_value_required');
     if (flag === '--quote-acceptance-key-file') {
       quoteAcceptanceKeyFile = value;
     } else if (flag === '--catalogue-publication-password-file') {
       cataloguePublicationPasswordFile = value;
     } else if (flag === '--database-url') {
       let url: URL;
-      try { url = new URL(value); } catch { throw new Error('starter_runtime_connection_required'); }
+      try { url = new URL(value); } catch { throw starterDiagnostic('starter_runtime_connection_required'); }
       if (url.protocol !== 'postgresql:' || url.username !== 'starter_runtime' || url.password
-        || url.search || url.hash || url.pathname !== '/neutral_store') throw new Error('starter_runtime_connection_required');
+        || url.search || url.hash || url.pathname !== '/neutral_store') throw starterDiagnostic('starter_runtime_connection_required');
       databaseUrl = value;
     } else if (flag === '--configuration') configuration = value;
     else if (flag === '--port') {
       if (!/^[0-9]+$/.test(value) || !Number.isSafeInteger(Number(value))
-        || Number(value) < 1024 || Number(value) > 65535) throw new Error('starter_port_invalid');
+        || Number(value) < 1024 || Number(value) > 65535) throw starterDiagnostic('starter_port_invalid');
       port = Number(value);
     } else {
-      if (value !== '127.0.0.1' && value !== '0.0.0.0') throw new Error('starter_listen_invalid');
+      if (value !== '127.0.0.1' && value !== '0.0.0.0') throw starterDiagnostic('starter_listen_invalid');
       listen = value;
     }
   }
