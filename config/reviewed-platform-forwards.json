@@ -9173,6 +9173,19 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "path": "db/platform/migrations/20991231249999_identity_privacy_erasure_reconciliations.sql",
+        "row": "privacy-erasure-reconciliations",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.identity_privacy_reconciled_contributor_ids(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -13078,6 +13091,17 @@
           "signature": "public.tax_calculation_complete_v1(jsonb)",
           "beforeSha256": null,
           "afterSha256": "ed2705af4b71a473b5d91625b04d33363391153dc21874bc0a2b949c4a1f6bbc"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20991231249999_identity_privacy_erasure_reconciliations.sql",
+      "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa",
+      "functions": [
+        {
+          "signature": "public.identity_privacy_reconciled_contributor_ids(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "80358032219301e920febd271dd8ed14e884cd845be8d2250b5d8b916d9b9115"
         }
       ]
     }

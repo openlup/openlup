@@ -380,7 +380,7 @@ it.each([
     code: 'UPSTREAM_UNAVAILABLE',
     message: 'Privacy operation refused',
     details: { privacyCode: 'PRIVACY_ASSESSMENT_UNAVAILABLE', observed: 'Native privacy prerequisites could not be verified.',
-      cause: 'The native store or its installed declaration is unavailable or invalid.', fix: expect.stringContaining('CONNECT'),
+      cause: 'The native store or its installed declaration or receipt evidence is unavailable or invalid.', fix: expect.stringContaining('CONNECT'),
       recheck: 'Retry the original request.' },
   }) }));
   expect(JSON.stringify(res.json.mock.calls)).not.toContain('synthetic private driver context');

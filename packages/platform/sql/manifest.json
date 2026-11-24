@@ -822,9 +822,13 @@
       {
         "file": "db/platform/migrations/20261126540000_tax_calculation_claim_seal.sql",
         "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
+      },
+      {
+        "file": "db/platform/migrations/20991231249999_identity_privacy_erasure_reconciliations.sql",
+        "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
       }
     ],
-    "objectInventorySha256": "9b0e371a8a3c0bfd2f8651fd1ed8a79316e7a7f218b4de25f6e4f529e477e9e8",
+    "objectInventorySha256": "dff658a0073d8d25efedaa1aaf6a80a747a1d6825aac9be5c19134ccb3bd3a67",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1670,14 +1674,18 @@
         {
           "file": "db/platform/migrations/20261126540000_tax_calculation_claim_seal.sql",
           "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
+        },
+        {
+          "file": "db/platform/migrations/20991231249999_identity_privacy_erasure_reconciliations.sql",
+          "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "59ee2ff5ae3514181faa7151a6b1bed2c58f144c7c324f6cf19f53179f037399"
+          "withRestore": "c2b54738dc77bef45f633e34bccdcf88415bcb7e1e1b52b63dfa5e14a45b9c05"
         },
         "separateMigrator": {
-          "withRestore": "4a15328592946a0fec26723409a190b60cb8c9b64592ff4fd328e6e8ddf9a3f1"
+          "withRestore": "c9eb92eabf17cb679134b6df2a16a726d8e845ae05305f8944fb6bca94265944"
         }
       }
     },
@@ -2518,11 +2526,15 @@
         {
           "file": "db/platform/migrations/20261126540000_tax_calculation_claim_seal.sql",
           "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
+        },
+        {
+          "file": "db/platform/migrations/20991231249999_identity_privacy_erasure_reconciliations.sql",
+          "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "1d338a2aedc0fd5d47bff8456d62418247f7a40a5202a37e9a1e1d2fccae32df",
-        "operatorProvisioned": "8e0ed83602668b8129b985cf5b9c108ea2929e9092fbd617e10c456d1cd49d38"
+        "installerManaged": "b5468bf3c8b568e4f9e5f41794dc1e6d53033883da2fa2de485fea957b571c89",
+        "operatorProvisioned": "a7b1c3009d3e65d6c1f183a76652165087377490ada7a8b610e483943c7b1c25"
       }
     }
   },
@@ -3551,6 +3563,11 @@
       "file": "20261126540000_tax_calculation_claim_seal.sql",
       "source": "db/platform/migrations/20261126540000_tax_calculation_claim_seal.sql",
       "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
+    },
+    {
+      "file": "20991231249999_identity_privacy_erasure_reconciliations.sql",
+      "source": "db/platform/migrations/20991231249999_identity_privacy_erasure_reconciliations.sql",
+      "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",
