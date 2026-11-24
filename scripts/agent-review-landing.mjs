@@ -610,13 +610,13 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
   const reslotsCatalogue = slotChanges.some(({ path }) => path.startsWith('supabase/migrations/'));
   const reslottedHead = new Map();
   for (const path of [...MIGRATION_REGISTRIES, ...(reslotsCatalogue ? [PUBLICATION_CATALOGUE] : [])]) {
-    let source = await read(head, path);
-    if (finalization && path === MIGRATION_REGISTRIES[0]) {
-      source = fillDraftManifest(source, finalization.moves, finalization.sourceBytes);
-    }
-    if (slotChanges.length || (finalization && path === MIGRATION_REGISTRIES[0])) {
-      reslottedHead.set(path, reslotRegistryContents(cwd, path, source, slotChanges, true, !finalization));
-    }
+    const fillsDraftManifest = finalization && path === MIGRATION_REGISTRIES[0];
+    if (!slotChanges.length && !fillsDraftManifest) continue;
+    const source = await read(head, path);
+    const contents = fillsDraftManifest
+      ? fillDraftManifest(source, finalization.moves, finalization.sourceBytes)
+      : source;
+    reslottedHead.set(path, reslotRegistryContents(cwd, path, contents, slotChanges, true, !finalization));
   }
   const registryConflicts = conflicts.filter(path => REGISTRY_PATHS.includes(path));
   if (registryConflicts.length && (await git(cwd, 'merge-base', '--all', head, main)).trim() !== base) {
