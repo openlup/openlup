@@ -7,7 +7,7 @@
         "objectInventorySha256": "21d14b1bc3ae6c7c6148cd888d4591082d59a4c8b91aa2a3103e6ee7590a6e59",
         "tail": [
           {
-            "file": "db/platform/migrations/20261127070000_fulfillment_destination_contact_v2.sql",
+            "file": "db/platform/migrations/20261127050000_fulfillment_destination_contact_v2.sql",
             "sha256": "6edc9138cf0f8603b9581dcc69dd1a23bec4dab5dd9eb8e46963679ae3d486b2"
           },
           {
@@ -838,7 +838,7 @@
         "objectInventorySha256": "8c81c4f9395ab59a8f0e65e64bfd599ed1cf90188d426ba554befe9ef753a81c",
         "tail": [
           {
-            "file": "db/platform/migrations/20261127070000_fulfillment_destination_contact_v2.sql",
+            "file": "db/platform/migrations/20261127050000_fulfillment_destination_contact_v2.sql",
             "sha256": "6edc9138cf0f8603b9581dcc69dd1a23bec4dab5dd9eb8e46963679ae3d486b2"
           },
           {
@@ -1693,7 +1693,7 @@
         "objectInventorySha256": "dc3e3b8deefc14398d3bb75b9f11caa240045e6c7659910bc6a182784f3b3e2d",
         "tail": [
           {
-            "file": "db/platform/migrations/20261127070000_fulfillment_destination_contact_v2.sql",
+            "file": "db/platform/migrations/20261127050000_fulfillment_destination_contact_v2.sql",
             "sha256": "6edc9138cf0f8603b9581dcc69dd1a23bec4dab5dd9eb8e46963679ae3d486b2"
           },
           {
@@ -2548,7 +2548,7 @@
         "objectInventorySha256": "17921adc4e6b4373ca140d8ce14e3de02df451c34ceede1b9518646b0ac53c10",
         "tail": [
           {
-            "file": "db/platform/migrations/20261127070000_fulfillment_destination_contact_v2.sql",
+            "file": "db/platform/migrations/20261127050000_fulfillment_destination_contact_v2.sql",
             "sha256": "6edc9138cf0f8603b9581dcc69dd1a23bec4dab5dd9eb8e46963679ae3d486b2"
           },
           {
@@ -3395,7 +3395,7 @@
         "objectInventorySha256": "88197867771e124f19d212b6d269cbc77a1481dfb5840a97fc909075cae5467f",
         "tail": [
           {
-            "file": "db/platform/migrations/20261127070000_fulfillment_destination_contact_v2.sql",
+            "file": "db/platform/migrations/20261127050000_fulfillment_destination_contact_v2.sql",
             "sha256": "6edc9138cf0f8603b9581dcc69dd1a23bec4dab5dd9eb8e46963679ae3d486b2"
           },
           {
