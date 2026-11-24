@@ -1626,7 +1626,15 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261125140000_subscription_renewal_registration_units.sql",
+      "path": "db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125140000_fulfillment_stock_seed_outcome.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125150000_checkout_recovery_reminder_install_outcome.sql",
       "class": "public-output"
     },
     {
@@ -1635,6 +1643,10 @@
     },
     {
       "path": "db/platform/migrations/20261125160000_subscription_activation_units.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
       "class": "public-output"
     },
     {
@@ -5358,7 +5370,15 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261125140000_subscription_renewal_registration_units.sql",
+      "path": "packages/platform/sql/20261125130000_commerce_destination_v2_order_bindings.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125140000_fulfillment_stock_seed_outcome.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125150000_checkout_recovery_reminder_install_outcome.sql",
       "class": "public-output"
     },
     {
@@ -5367,6 +5387,10 @@
     },
     {
       "path": "packages/platform/sql/20261125160000_subscription_activation_units.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125200000_subscription_renewal_registration_units.sql",
       "class": "public-output"
     },
     {
@@ -5855,6 +5879,10 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogSkuEnvelopeMapper.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogStorefrontPage.ts",
       "class": "public-output"
     },
     {
@@ -6863,6 +6891,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/customerCheckoutLinks.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/destinations/destinationV2Prelock.ts",
       "class": "public-output"
     },
     {
@@ -31658,6 +31690,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogStorefrontPage.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogSubscriptionProfiles.test.ts",
       "class": "public-output"
     },
@@ -31891,6 +31927,10 @@
     },
     {
       "path": "tests/postgres/destinationV2Checkout.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/destinationV2OrderBinding.test.ts",
       "class": "public-output"
     },
     {

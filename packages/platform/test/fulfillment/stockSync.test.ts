@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import type { FulfillmentStockSyncPort, StockSnapshot, SyncCursor } from "../../src/fulfillment/contracts/index.js";
 import { runFulfillmentStockSyncWorker as run } from "../../src/fulfillment/index.js";
+import * as fulfillment from "../../src/fulfillment/index.js";
 import { stockMovementWindow } from "../../src/fulfillment/providerStockAvailability.js";
 import { at } from "./fixtures.js";
 
@@ -172,6 +173,18 @@ it("contains pre-terminal port failures as safe failed results, preserving termi
     if (value.status !== "running") throw Error("terminal-cursor-unavailable");
   };
   await expect(run(f.input)).rejects.toThrow("terminal-cursor-unavailable");
+});
+
+it("retains the stock conflict diagnostic when the current writer rejects with the nominal class", async () => {
+  const f = fixture();
+  const ErrorClass = Reflect.get(fulfillment, "FulfillmentStockReplayConflictError");
+  const driver = new Error("private driver context");
+  const error = ErrorClass ? new ErrorClass(driver) : new Error("fulfillment_stock_current_idempotency_conflict");
+  f.input.port.recordProviderStockCurrent = async () => { throw error; };
+  const reason = "stock_current_write_failed:23505";
+  expect(await run(f.input)).toMatchObject({ ok: false, failures: 1, reason, items: [{ status: "failed", reason }] });
+  expect(f.cursor()).toMatchObject({ error: { reason } });
+  expect(f.snapshots).toEqual([]);
 });
 
 it("resolves stale recovery only after the terminal cursor and preserves completion if cleanup fails", async () => {

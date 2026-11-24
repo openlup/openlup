@@ -5,6 +5,7 @@
 // are deliberately side-effect free: idempotency-key derivation and the
 // sanitized provider proof we persist as evidence. No port, no I/O.
 
+import { FulfillmentStockReplayConflictError } from "@openlup/platform/fulfillment";
 import { normalizeOmnipackReconciliationTimestamp } from "./omnipackReconciliationTimestamp.js";
 import type {
   OmnipackReconciliationFulfilment,
@@ -76,6 +77,7 @@ export function uniqueTrackingReferences(
 }
 
 export function safeReason(error: unknown): string {
+  if (error instanceof FulfillmentStockReplayConflictError) return "fulfillment_stock_current_idempotency_conflict";
   return (error instanceof Error ? error.message : String(error)).slice(0, 180);
 }
 
