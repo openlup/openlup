@@ -394,7 +394,9 @@ it("withholds separately corrupted historical bindings and refusal fields", asyn
 
 async function proveRollback(db: JourneyInstallation, sameLogin: boolean) {
   const value = await seed("terminal", db), red = await seed("terminal", db), actor = await operator(db.owner);
-  const { store: privacyStore, unitOfWork } = privacy(db);
+  const { store, unitOfWork } = privacy(db);
+  // Model a writer from before the declaration hook to exercise the SQL backstop.
+  const { privacyRail: _rail, readRequiredContributorIds: _declaration, ...privacyStore } = store;
   // The landed ownership assessment precedes the ledger insert. Declare the same retained contact facts as the reference host.
   const retainedContactFields = Object.fromEntries(["lifecycle_stage", "acquisition_source"].map(field => [field, {
     owner: "clients", resource: `clients.${field}`, disposition: "retain" as const, reasonCode: "CONTACT_LIFECYCLE_RETENTION", remote: false,
