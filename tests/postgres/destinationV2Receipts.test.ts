@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { draftStoreJourney, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
+import { draftStoreJourney, journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
 import { awaitReceiptWait, backendPid, idempotencyConflict, markReceiptClientErased, ownerUnlinked, receiptArgs, receiptCall, receiptClient, receiptOutcome,
   receiptTable, type ReceiptArgs } from "./destinationReceiptFixture.js";
 
@@ -172,12 +172,15 @@ it("preserves exact direct receipt diagnostics and access", async () => {
     ["lock(jsonb,text,text,text)", false, "v"],
     ["commit(jsonb,text,text,text,jsonb)", false, "v"],
   ] as const) {
+    const routine = `public.commerce_destination_v2_receipt_${signature}`;
+    expect((await runtime.query("SELECT session_user AS login, has_function_privilege($1, 'EXECUTE') AS allowed", [routine])).rows, routine)
+      .toEqual([{ login: journeySelection.runtimeLogin, allowed: service }]);
     const { rows } = await owner.query(`SELECT prosecdef, provolatile, proconfig,
       NOT EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f',p.proowner))) WHERE grantee=0) AS private,
       ARRAY(SELECT r.rolname::text FROM pg_roles r WHERE r.rolname::text=ANY($2::text[]) AND has_function_privilege(r.oid,p.oid,'EXECUTE')
         ORDER BY r.rolname) AS roles
       FROM pg_proc p WHERE p.oid=$1::regprocedure`,
-    [`public.commerce_destination_v2_receipt_${signature}`, roles.map(role => role.rolname)]);
+    [routine, roles.map(role => role.rolname)]);
     expect(rows).toEqual([{ prosecdef: service, provolatile: volatility, proconfig: ["search_path=pg_catalog, pg_temp"], private: true,
       roles: roles.filter(role => service && role.rolname === "service_role").map(role => role.rolname) }]);
   }

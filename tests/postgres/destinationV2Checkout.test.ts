@@ -3,7 +3,7 @@ import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
+import { journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
 import { awaitReceiptWait, backendPid, idempotencyConflict, markReceiptClientErased, receiptCall, receiptOutcome, receiptTable } from "./destinationReceiptFixture.js";
 import { bindDestinationOrder, deferred, destinationFence, insertDestinationOrder, registerDestination, snapshotCommand,
   destinationContext, destinationHash, documentTable, readSnapshot, reachDestinationCutoff,
@@ -14,27 +14,39 @@ let store: JourneyInstallation;
 beforeAll(async () => { store = await resources.installation("destination-documents"); }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
 
-const refusal = (code: string, field: string, fix: string, recheck: string) => ({
-  outcome: "refused", code, field, observed: expect.stringMatching(/\S/u), cause: expect.stringMatching(/\S/u), fix, recheck,
+const refusal = (code: string, field: string, observed: string, cause: string, fix: string, recheck: string) => ({
+  outcome: "refused", code, field, observed, cause, fix, recheck,
 });
 const stale = (field = "destination.snapshotRef") => refusal("destination_version_changed", field,
+  "The sealed checkout evidence changed or reached cutoff.", "Fresh checkout requires current selected evidence before its cutoff.",
   "Re-obtain current evidence. Checkout requires a fresh final quote and acceptance.", "Reselect, re-quote and reaccept before submitting.");
 const unavailable = refusal("destination_evidence_unavailable", "destination.snapshotRef",
+  "Owned evidence could not be established.", "The operation requires evidence in the authenticated owner scope.",
   "Re-obtain evidence through the authenticated owner.", "Use the authorized checkout or order workflow to obtain evidence.");
 const digestMismatch = (field: string, stored = false) => refusal("destination_digest_mismatch", field,
+  stored ? "A stored document or address digest failed verification." : "The supplied digest differs from the verified digest.",
+  stored ? "Retained digests must match the original stored evidence." : "The supplied digest must identify the original document.",
   "Replay the original document and its digest.", stored
     ? "Use authorized review to recover the pair, or start a fresh selection where issuance is available." : "Replay the authentic pair.");
 const invalidBinding = refusal("destination_binding_invalid", "destination",
+  "The supplied tuple is malformed.", "A snapshot read requires the exact binding for the requested snapshot.",
   "Re-obtain authoritative evidence.", "Obtain the original owned tuple.");
 const storedBinding = refusal("destination_binding_invalid", "destination",
+  "Stored evidence failed verification.", "The stored snapshot document and binding must match the issued evidence and scope.",
   "Send the retained evidence to the destination owner for review.",
   "After authorized resolution recheck retained evidence, or start a fresh selection where available.");
 const conflict = refusal("destination_idempotency_conflict", "idempotencyKey",
+  "The supplied request digest disagrees with the original command.", "A scoped issuance key must identify one consistent original command and receipt.",
   "Replay the original command or begin a distinct action.", "Use original inputs or a distinct action key.");
 const unlinkedOwner = refusal("destination_owner_unlinked", "owner",
+  "Authorized linkage or scope is missing.", "The operation requires a linked customer and authorized scope.",
   "Establish authorized linkage or use authorized support.", "Sign in to the linked account and restart selection.");
-const invalidInput = (field: string) => refusal("address_invalid_input", field, "Correct the indicated input.", "Resubmit valid authored input.");
-const invalidKind = refusal("destination_dialect_invalid", "version", "Use the supported entry.", "Invoke the supported checkout or retained-read entry.");
+const invalidInput = (field: string) => refusal("address_invalid_input", field,
+  "A required input is missing or malformed.", "The destination operation requires valid authored input.",
+  "Correct the indicated input.", "Resubmit valid authored input.");
+const invalidKind = refusal("destination_dialect_invalid", "version",
+  "The entry kind is unsupported.", "This operation requires a supported destination kind.",
+  "Use the supported entry.", "Invoke the supported checkout or retained-read entry.");
 const row = (db: Pool, id: string) => db.query(`SELECT * FROM ${documentTable} WHERE snapshot_ref=$1`, [id]).then(r => r.rows[0]);
 const selection = (db: Pool, scope: string) => db.query(`SELECT snapshot_ref, selection_revision FROM ${selectionTable} WHERE scope_ref=$1`, [scope]).then(r => r.rows);
 const expire = (pool: Pool, limit: number | null) => pool.query("SELECT public.commerce_destination_v2_expire(clock_timestamp() + interval '30 days',$1) AS count", [limit]).then(r => r.rows[0].count);
@@ -128,6 +140,27 @@ const issuanceState = async (owner: Pool, ctx: Awaited<ReturnType<typeof destina
     (SELECT coalesce(jsonb_agg(r ORDER BY scoped_key), '[]') FROM ${receiptTable} r WHERE client_id=$1) AS receipts`,
   [ctx.clientId, ctx.scopeRef])).rows[0];
 
+it("checks the supplied digest on replay with unchanged original input", async () => {
+  const { owner, runtime } = store;
+  const ctx = await destinationContext(owner), { command } = snapshotCommand(ctx);
+  const issued = await snapshot(runtime, ctx, command);
+  const before = await issuanceState(owner, ctx);
+  await expect(snapshot(runtime, ctx, { ...command, requestDigest: "0".repeat(64), validated: false })).resolves.toEqual(conflict);
+  expect(await issuanceState(owner, ctx)).toEqual(before);
+  await expect(snapshot(runtime, ctx, { ...command, validated: false })).resolves.toEqual({ ...issued, replayed: true });
+});
+
+it.each(["short", "é".repeat(91), "\u00a0edge-space"])(
+  "names requestKey for a malformed snapshot string key with the correct digest (%s)", async key => {
+    const { owner, runtime } = store;
+    const ctx = await destinationContext(owner), { command } = snapshotCommand(ctx, key);
+    await expect(snapshot(runtime, ctx, command)).resolves.toEqual(invalidInput("requestKey"));
+    await expect(receiptCall(runtime, "read", [{ owner: ctx.owner, clientId: ctx.clientId }, command.dialect, key, command.requestDigest]))
+      .rejects.toMatchObject({ code: "22023", message: "address_invalid_input", detail: "idempotencyKey",
+        hint: "Correct caller-authored input or re-obtain authoritative evidence as applicable." });
+  },
+);
+
 it("refuses an inconsistent digest on a fresh key before effects and preserves exact erased replay", async () => {
   const { owner, runtime } = store;
   const ctx = await destinationContext(owner), { command } = snapshotCommand(ctx);
@@ -137,9 +170,7 @@ it("refuses an inconsistent digest on a fresh key before effects and preserves e
     CREATE TRIGGER destination_fixture_count_write BEFORE INSERT ON ${documentTable}
       FOR EACH ROW EXECUTE FUNCTION public.destination_fixture_count_write()`);
   try {
-    await expect.soft(snapshot(runtime, ctx, { ...command, requestDigest: "0".repeat(64) })).resolves.toEqual({
-      ...conflict, observed: "The supplied request digest disagrees with the original command.",
-    });
+    await expect.soft(snapshot(runtime, ctx, { ...command, requestDigest: "0".repeat(64), validated: false })).resolves.toEqual(conflict);
     expect((await owner.query("SELECT is_called FROM public.destination_fixture_writes")).rows).toEqual([{ is_called: false }]);
     expect(await issuanceState(owner, ctx)).toEqual({ documents: [], selections: [], receipts: [] });
     const issued = await snapshot(runtime, ctx, command);
@@ -150,6 +181,7 @@ it("refuses an inconsistent digest on a fresh key before effects and preserves e
     await expect(readSnapshot(runtime, ctx, issued.binding)).resolves.toEqual(unavailable);
     const erased = await issuanceState(owner, ctx);
     await expect(snapshot(runtime, ctx)).resolves.toEqual(refusal("destination_evidence_erased", "owner",
+      "The privacy ledger records erasure.", "The receipt owner cannot issue evidence for an erased owner.",
       "Review the privacy disposition.", "Verify the authorized privacy receipt and begin a fresh selection where available."));
     expect(await issuanceState(owner, ctx)).toEqual(erased);
   } finally {
@@ -237,6 +269,7 @@ it("rolls back the application-owned transaction before delivering a snapshot re
     await expect(db.query("SELECT 1")).resolves.toMatchObject({ rowCount: 1 });
     await db.query("ROLLBACK");
     expect(result).toEqual(refusal("destination_isolation_unsupported", "isolation",
+      "The transaction mode is unsupported.", "Destination issuance requires read committed.",
       "Roll back and restart in the required transaction mode.", "Use a read committed writer."));
   } finally {
     await db.query("ROLLBACK");
@@ -291,6 +324,20 @@ it("preserves fresh snapshot byte limits, closed fields and text rules", async (
   await expect(snapshot(runtime, ctx, { ...large, requestDigest: digest })).resolves.toMatchObject({ replayed: false });
 });
 
+it.each(["1e400", "1e131072"])("returns stored corruption for a matching document hash with address number %s", async number => {
+  const { owner, runtime } = store;
+  const ctx = await destinationContext(owner);
+  const { binding } = await snapshot(runtime, ctx);
+  const { document } = await readSnapshot(runtime, ctx, binding);
+  const bytes = JSON.stringify(["commerce.destination.document.v2", {
+    ...document, address: { ...document.address, line1: "number-fixture" },
+  }]).replace('"number-fixture"', number);
+  await owner.query(`UPDATE ${documentTable} SET document_text=$2,document_digest=$3 WHERE snapshot_ref=$1`,
+    [binding.snapshotRef, bytes, destinationHash(bytes)]);
+  await expect.soft(readSnapshot(runtime, ctx, binding), "valid expected binding").resolves.toEqual(storedBinding);
+  await expect.soft(readSnapshot(runtime, ctx, { ...binding, policyRevision: "" }), "invalid expected binding").resolves.toEqual(storedBinding);
+});
+
 it("verifies the owned document's stored bytes and exact binding without returning repair values", async () => {
   const { owner, runtime } = store;
   const ctx = await destinationContext(owner), other = await destinationContext(owner);
@@ -307,7 +354,7 @@ it("verifies the owned document's stored bytes and exact binding without returni
     await expect(readSnapshot(runtime, context, binding, ref)).resolves.toEqual(unavailable);
   }
   await expect(readSnapshot(runtime, ctx, binding, id, "subscription")).resolves.toEqual(invalidKind);
-  await expect(readSnapshot(runtime, ctx, { ...binding, snapshotRef: randomUUID() }, id))
+  await expect.soft(readSnapshot(runtime, ctx, { ...binding, snapshotRef: randomUUID() }, id))
     .resolves.toEqual(invalidBinding);
   await expect(readSnapshot(runtime, ctx, { ...binding, destinationDigest: "0".repeat(64) })).resolves.toEqual(digestMismatch("destinationDigest"));
 
@@ -441,6 +488,9 @@ it("preserves destination runtime grants and denies effective access to decision
     ["commerce_destination_v2_canonical(jsonb)", false, "s"],
     ["commerce_destination_v2_verified_document(public.commerce_destination_v2_documents)", false, "s"],
     ["commerce_destination_v2_expire(timestamptz,integer)", false, "v"],
+    ["commerce_destination_v2_refusal(text,text)", false, "i"],
+    ["commerce_destination_v2_check_document(public.commerce_destination_v2_documents,text)", false, "s"],
+    ["commerce_destination_v2_read_retained(jsonb,text,uuid,jsonb)", false, "s"],
     ["commerce_destination_v2_issuance_refusal(text)", false, "i"],
     ["commerce_destination_v2_receipt_legacy(jsonb)", false, "i"],
     ["commerce_destination_v2_receipt_scoped_key_decision(jsonb,text,text,text)", false, "s"],
@@ -448,14 +498,17 @@ it("preserves destination runtime grants and denies effective access to decision
     ["commerce_destination_v2_receipt_lock_decision(jsonb,text,text,text)", false, "v"],
     ["commerce_destination_v2_receipt_commit_decision(jsonb,text,text,text,jsonb)", false, "v"],
   ] as const;
-  for (const [name, runtime, volatility] of routines) {
+  for (const [name, allowed, volatility] of routines) {
+    const signature = `public.${name}`;
+    expect((await store.runtime.query("SELECT session_user AS login, has_function_privilege($1, 'EXECUTE') AS allowed", [signature])).rows, signature)
+      .toEqual([{ login: journeySelection.runtimeLogin, allowed }]);
     expect((await store.owner.query(`SELECT prosecdef, provolatile, proconfig,
       NOT EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f',p.proowner))) WHERE grantee=0) AS private,
       ARRAY(SELECT r.rolname::text FROM pg_roles r WHERE r.rolname::text=ANY($2::text[]) AND has_function_privilege(r.oid,p.oid,'EXECUTE')
         ORDER BY r.rolname) AS roles
-      FROM pg_proc p WHERE p.oid=$1::regprocedure`, [`public.${name}`, roles])).rows)
-      .toEqual([{ prosecdef: runtime, provolatile: volatility, proconfig: ["search_path=pg_catalog, pg_temp"], private: true,
-        roles: roles.filter(role => runtime && role === "service_role") }]);
+      FROM pg_proc p WHERE p.oid=$1::regprocedure`, [signature, roles])).rows)
+      .toEqual([{ prosecdef: allowed, provolatile: volatility, proconfig: ["search_path=pg_catalog, pg_temp"], private: true,
+        roles: roles.filter(role => allowed && role === "service_role") }]);
   }
 });
 

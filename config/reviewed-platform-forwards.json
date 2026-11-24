@@ -10776,7 +10776,7 @@
     },
     {
       "path": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
-      "sha256": "41b7c9abd1ab5c7a8c3cf720e7b3b25da494dfb82286d548ab27f29f549da8bf",
+      "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3",
       "functions": [
         {
           "signature": "public.commerce_destination_v2_receipt_scoped_key(jsonb,text,text,text)",
@@ -10806,7 +10806,7 @@
         {
           "signature": "public.commerce_read_destination_v2(jsonb,text,uuid,jsonb)",
           "beforeSha256": "7cc62f5d80b67b8019e8e8f961c3519b84bc1eb8543348c8a1724abe944c25cb",
-          "afterSha256": "f64a2d2a4cf7de798b8ee4bc8e6d1a9f4857f9644c43ff2f3153834d0f29d3dc"
+          "afterSha256": "7cc9214ea7f37f99e73d8f868787edd2419f6a47f63bc7871dfd34a838ec7362"
         },
         {
           "signature": "public.commerce_destination_v2_issuance_refusal(text)",
@@ -10816,12 +10816,12 @@
         {
           "signature": "public.commerce_destination_v2_receipt_legacy(jsonb)",
           "beforeSha256": null,
-          "afterSha256": "54a01b523a534065d260b1523dda0f291ae28e86d4b24889446eaa9cd8396bf2"
+          "afterSha256": "734d536a5f2488f5f0f2b13775667449242cc2c84c5d15d939ab3b9f0c819dba"
         },
         {
           "signature": "public.commerce_destination_v2_receipt_scoped_key_decision(jsonb,text,text,text)",
           "beforeSha256": null,
-          "afterSha256": "053493fe586fd3548cf697003300edc735dc3d97c1c85da19b3cf96cf1fd3802"
+          "afterSha256": "5e6cd33f3b3e84b65aa25c31782ad21cb77d6415d67b747864705298586f9f92"
         },
         {
           "signature": "public.commerce_destination_v2_receipt_read_decision(jsonb,text,text,text)",

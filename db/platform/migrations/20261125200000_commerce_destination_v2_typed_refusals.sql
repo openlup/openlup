@@ -29,7 +29,9 @@ BEGIN
   IF v_code = 'destination_isolation_unsupported' THEN
     RAISE EXCEPTION 'destination_isolation_unsupported' USING ERRCODE = '22023';
   END IF;
-  RAISE EXCEPTION USING MESSAGE = v_code, DETAIL = p_result->>'field',
+  RAISE EXCEPTION USING MESSAGE = v_code,
+    DETAIL = CASE WHEN v_code = 'address_invalid_input' AND p_result->>'field' = 'requestKey'
+      THEN 'idempotencyKey' ELSE p_result->>'field' END,
     ERRCODE = CASE v_code WHEN 'destination_idempotency_conflict' THEN '23505'
       WHEN 'destination_evidence_erased' THEN '55000' ELSE '22023' END,
     HINT = CASE WHEN v_code IN ('address_invalid_input', 'destination_binding_invalid')
@@ -75,7 +77,7 @@ BEGIN
 
   IF p_request_key IS NULL OR octet_length(convert_to(p_request_key, 'UTF8')) NOT BETWEEN 8 AND 180
     OR p_request_key COLLATE "C" ~ v_controls OR btrim(p_request_key, v_whitespace) <> p_request_key THEN
-    RETURN public.commerce_destination_v2_refusal('input', 'idempotencyKey');
+    RETURN public.commerce_destination_v2_refusal('input', 'requestKey');
   END IF;
   IF p_request_digest IS NULL OR p_request_digest COLLATE "C" !~ '^[0-9a-f]{64}$' THEN
     RETURN public.commerce_destination_v2_refusal('input', 'requestDigest');
@@ -446,6 +448,7 @@ DECLARE
   v_row public.commerce_destination_v2_documents%ROWTYPE;
   v_verification jsonb;
   v_binding_fields constant text[] := ARRAY['snapshotRef','schemaVersion','destinationDigest','policyRevision'];
+  v_binding_cause constant jsonb := '{"cause":"A snapshot read requires the exact binding for the requested snapshot."}';
 BEGIN
   IF p_kind IN ('order', 'shipment') THEN
     RETURN public.commerce_destination_v2_read_retained(p_ctx, p_kind, p_id, p_expected_binding);
@@ -457,7 +460,15 @@ BEGIN
     WHERE snapshot_ref = p_id AND to_jsonb(client_id) = p_ctx->'clientId'
       AND to_jsonb(scope_ref) = p_ctx->'scopeRef' AND owner_scope = p_ctx->'owner' AND evidence_disposition <> 'erased'
       AND NOT EXISTS (SELECT 1 FROM public.identity_privacy_erasures e WHERE e.client_id = commerce_destination_v2_documents.client_id);
-  v_verification := public.commerce_destination_v2_check_document(v_row, 'destination.snapshotRef');
+  BEGIN
+    v_verification := public.commerce_destination_v2_check_document(v_row, 'destination.snapshotRef');
+  EXCEPTION WHEN numeric_value_out_of_range THEN
+    -- Stored JSON can exceed PostgreSQL's numeric range before address canonicalization.
+    v_verification := public.commerce_destination_v2_refusal('stored_binding', 'destination');
+  END;
+  IF v_verification->>'code' = 'destination_binding_invalid' THEN
+    RETURN v_verification || '{"cause":"The stored snapshot document and binding must match the issued evidence and scope."}'::jsonb;
+  END IF;
   IF v_verification->>'outcome' = 'refused' THEN RETURN v_verification; END IF;
   IF jsonb_typeof(p_expected_binding) IS DISTINCT FROM 'object'
     OR NOT p_expected_binding ?& v_binding_fields OR p_expected_binding - v_binding_fields <> '{}'::jsonb
@@ -468,7 +479,7 @@ BEGIN
     OR jsonb_typeof(p_expected_binding->'destinationDigest') IS DISTINCT FROM 'string'
     OR jsonb_typeof(p_expected_binding->'policyRevision') IS DISTINCT FROM 'string'
     OR btrim(p_expected_binding->>'policyRevision') = '' OR octet_length(p_expected_binding->>'policyRevision') > 720 THEN
-    RETURN public.commerce_destination_v2_refusal('binding', 'destination');
+    RETURN public.commerce_destination_v2_refusal('binding', 'destination') || v_binding_cause;
   END IF;
   IF p_expected_binding->'destinationDigest' IS DISTINCT FROM v_row.binding->'destinationDigest' THEN
     RETURN public.commerce_destination_v2_refusal('digest', 'destinationDigest');
@@ -477,7 +488,7 @@ BEGIN
     RETURN public.commerce_destination_v2_refusal('stale', 'destination.policyRevision');
   END IF;
   IF p_expected_binding IS DISTINCT FROM v_row.binding THEN
-    RETURN public.commerce_destination_v2_refusal('binding', 'destination');
+    RETURN public.commerce_destination_v2_refusal('binding', 'destination') || v_binding_cause;
   END IF;
   IF v_row.evidence_disposition = 'expired' OR clock_timestamp() >= v_row.evidence_expires_at THEN
     RETURN public.commerce_destination_v2_refusal('stale', 'destination.snapshotRef');
