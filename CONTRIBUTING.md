@@ -1993,6 +1993,9 @@ The summary table is a convenience; admission verifies only the machine block.
 
 ### Merge queue
 
+Queue Handoff serializes its admission jobs from the occupancy check through
+exact-head readback. GitHub's UI and CLI retain their existing entry behavior.
+
 The queue builds and tests the integration tree. A source review carries over
 when its base is on main and the group tree is the reviewed tree or the clean
 `git merge-tree` result on the queue base. A clean registry-carrier union or verified derived landing also
