@@ -5,6 +5,8 @@ import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { UPGRADE_PAGE_MAX_BYTES, assembleUpgradePage, assertReleaseNotePackagedContent, assertSimulatedUpgradePage, formatReleaseDocumentation, listReleaseDocumentation, previousCoreTag, renderUpgradePage, summarizeApiDiff, upgradePagePath } from "./release-docs-pass.ts";
 import { isGuidePage, validateGuidePage } from "../oss-publication-policy.ts";
+// eslint-disable-next-line no-restricted-imports -- witness Core's installed docs:check path on the same rendered fixture
+import { assertDocumentationContract } from "../../packages/core/scripts/documentation-contract.ts";
 
 const report = (source: string) => `# API report\n\n\`\`\`ts\n${source}\`\`\`\n`;
 const declarationFile = (name: string, source: string) => `## dist/${name}.d.ts\n\n${report(source)}`;
@@ -20,6 +22,7 @@ function fixture(reports = { [api]: report("// API\nexport declare const oldName
   const git = (...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: root, encoding: "utf8" }).trim();
   const commit = () => { git("add", "."); git("commit", "-qm", "fixture"); };
   write("config/openlup-packages.json", JSON.stringify({ schemaVersion: 2, packages: ["core", "outbox"].map((name) => ({ name: `@openlup/${name}`, directory: `packages/${name}`, publish: true })), unreleased: [] }));
+  write("packages/core/package.json", JSON.stringify({ name: "@openlup/core", version: "0.4.0" }));
   write("config/documentation-guide-allowlist.json", JSON.stringify({ schemaVersion: 1, terms: ["B2B"] }));
   write("config/doc-routing.json", JSON.stringify({ version: 2, surfaces: [
     { id: "api", when: "API declarations", paths: ["packages/*/api/*.api.md", routed], doc: "docs/platform/API.md", anchor: "#api" },
@@ -424,6 +427,107 @@ describe("shift-left simulated upgrade-page audit", () => {
     );
   });
 
+  const fixtureFragment = "packages/outbox/changes/guide.md";
+  const fixturePage = "docs/guide/upgrade/v0-5-0.md";
+
+  function checkRenderedFixture(f: ReturnType<typeof fixture>, contents: string): void {
+    const sample = "export const example = true;\n";
+    f.write("packages/core/package.json", JSON.stringify({
+      name: "@openlup/core", version: "0.5.0", files: [fixturePage, "docs/guide/how-to/change.md", "AGENTS.md"],
+    }));
+    f.write(guide, "# Change\n");
+    f.write("packages/core/release-gates.json", '{"kind":"kernel"}');
+    f.write("packages/core/.gitignore", "/coverage/\n/dist/\n/node_modules/\n/release/\n");
+    f.write("packages/core/CHANGELOG.md", "## Unreleased\n");
+    f.write("packages/core/README.md", "# Core\n\n```ts\n" + sample + "```\n\n## Package Surface Maturity\n\n");
+    f.write("packages/core/AGENTS.md", [
+      "# Agents", "## Purpose and kind", "Kind: `kernel`.", "## Subpath maturity", " ",
+      "## Wiring example", "```ts", sample + "```", "## Sources and declarations", "Sources.",
+      "## Readiness codes", "None.", "## Using this package in an application", "See the guide.", "",
+    ].join("\n"));
+    f.write("packages/core/smoke/readmeExample.ts", sample);
+    f.write("packages/core/smoke/agentsWiringExample.ts", sample);
+    f.write(`packages/core/${fixturePage}`, renderUpgradePage({
+      root: f.root, version: "0.5.0", since: "openlup-core-v0.4.0",
+      fragments: [{ path: fixtureFragment, contents }],
+    }));
+    assertDocumentationContract(join(f.root, "packages/core"));
+  }
+
+  function parityFixture(contents: string) {
+    const f = fixture();
+    f.write("packages/core/package.json", JSON.stringify({
+      name: "@openlup/core", version: "0.4.0", files: [fixturePage, "docs/guide/how-to/change.md", "AGENTS.md"],
+    }));
+    mkdirSync(join(f.root, "packages/core/docs/guide/upgrade"), { recursive: true });
+    f.write("packages/core/docs/guide/how-to/checkout-only.md", "# Checkout only\n");
+    f.write(fixtureFragment, contents);
+    return f;
+  }
+
+  it.each([
+    { source: "../how-to/checkout-only.md" },
+    { source: "../how-to/" },
+    { source: "./" },
+  ])("rejects an unpacked local target $source on both paths", ({ source }) => {
+    const contents = `- See the [guide](${source}).\n`;
+    const f = parityFixture(contents);
+    const diagnostic = `local link ${source} targets a file missing from npm pack`;
+    // Run the audit before writing the page and bumping the fixture manifest.
+    expect(() => assertSimulatedUpgradePage(f.root)).toThrow(`${fixtureFragment}: ${diagnostic}`);
+    expect(() => checkRenderedFixture(f, contents)).toThrow(`${fixturePage}: ${diagnostic}`);
+  });
+
+  it.each([
+    { contents: "<!-- generated:not-a-region -->\n<!-- /generated:not-a-region -->\n", docs: "unknown generated region not-a-region", audit: "generated regions are forbidden in upgrade pages" },
+    { contents: "- Run `npm run ug143-reviewer-missing-script`.\n", docs: "unknown npm script ug143-reviewer-missing-script" },
+    { contents: "```ts nocheck\nconst value = 1;\n```\n", docs: "a ts nocheck fence must open with a // reason line" },
+  ])("shares the page diagnostic for $docs", ({ contents, docs, audit = docs }) => {
+    const f = parityFixture(contents);
+    const auditError = () => assertSimulatedUpgradePage(f.root);
+    expect(auditError).toThrow(fixtureFragment);
+    expect(auditError).toThrow(audit);
+    if (audit !== docs) expect(auditError).toThrow(`Fix: remove the generated-region marker and its matching closer from ${fixtureFragment}`);
+    const docsError = () => checkRenderedFixture(f, contents);
+    expect(docsError).toThrow(fixturePage);
+    expect(docsError).toThrow(docs);
+  });
+
+  it("refuses a known generated-region marker without rendering it", () => {
+    const f = parityFixture("<!-- generated:maturity:core -->\n<!-- /generated:maturity:core -->\n");
+    expect(() => assertSimulatedUpgradePage(f.root)).toThrow(`${fixtureFragment}: generated regions are forbidden in upgrade pages`);
+  });
+
+  it("accepts a guide link to a packed file on both paths", () => {
+    const contents = "- See the [guide](../how-to/change.md).\n";
+    const f = parityFixture(contents);
+    expect(() => assertSimulatedUpgradePage(f.root)).not.toThrow();
+    expect(() => checkRenderedFixture(f, contents)).not.toThrow();
+  });
+
+  it.each(["main", "release-preview", "openlup-core-vpreview"])("tells the fragment author how to replace branch ref %s", (branch) => {
+    const contents = `- See [API](https://github.com/openlup/openlup/blob/${branch}/docs/platform/API.md).\n`;
+    const f = parityFixture(contents);
+    const audit = () => assertSimulatedUpgradePage(f.root);
+    expect(audit).toThrow(`Fix: replace the branch reference in ${fixtureFragment} with the canonical Core release pin for the releasing version, then rerun \`npm run preflight -- --fast\``);
+    expect(audit).not.toThrow("docs:check -- --write");
+    expect(() => checkRenderedFixture(f, contents)).toThrow("docs:check -- --write");
+  });
+
+  it.each([
+    {
+      target: "packages/core/docs/guide/how-to/change.md",
+      fix: `replace the pinned link into the guide with a relative guide link in ${fixtureFragment}`,
+    },
+    {
+      target: "docs/platform/absent.md",
+      fix: `correct the repository link's target path in ${fixtureFragment}`,
+    },
+  ])("gives a source edit for a bad pinned target $target", ({ target, fix }) => {
+    const contents = `- See [API](https://github.com/openlup/openlup/blob/openlup-core-v0.5.0/${target}).\n`;
+    expect(() => assertSimulatedUpgradePage(parityFixture(contents).root)).toThrow(`Fix: ${fix}`);
+  });
+
   it("exposes a 128 KiB default byte cap and accepts a valid simulated upgrade page without writing files", () => {
     expect(UPGRADE_PAGE_MAX_BYTES).toBe(128 * 1024);
     const f = fixture();
@@ -544,7 +648,7 @@ describe("shift-left simulated upgrade-page audit", () => {
 
     f.write(preparedPath, cleanPrepared.replace("v1.4.0", "v1.3.0"));
     expect(() => assertSimulatedUpgradePage(f.root)).toThrow(
-      /packages\/core\/docs\/guide\/upgrade\/v1-4-0\.md: repository link .* must pin openlup-core-v1\.4\.0/u,
+      /docs\/guide\/upgrade\/v1-4-0\.md: repository link .* must pin openlup-core-v1\.4\.0/u,
     );
 
     // Refuses prepared upgrade page exceeding byte cap.

@@ -69,8 +69,9 @@ const readerLanguagePatterns: ReadonlyArray<readonly [RegExp, string]> = [
   [absoluteFilesystemPath, "absolute filesystem path"],
 ];
 
-export function pinGuideReleaseLinks(source: string, version: string): string {
-  return source.replace(/(https:\/\/github\.com\/openlup\/openlup\/blob\/)openlup-core-v[0-9A-Za-z.+-]+\//g, `$1openlup-core-v${version}/`);
+export function pinGuideReleaseLinks(source: string, version: string, acceptRef?: (ref: string) => boolean): string {
+  return source.replace(/(https:\/\/github\.com\/openlup\/openlup\/blob\/openlup-core-v)([0-9A-Za-z.+-]+)\//g,
+    (link: string, prefix: string, ref: string) => acceptRef && !acceptRef(ref) ? link : `${prefix}${version}/`);
 }
 
 export function assertGuideTitle(label: string, source: string, violations: string[]): void {
@@ -130,7 +131,7 @@ function decodeCharacterReferences(source: string): string {
   });
 }
 
-export function assertGuideLinks(guideRoot: string, file: string, label: string, raw: string, repositoryRoot: string, tag: string, violations: string[]): void {
+export function assertGuideLinks(guideRoot: string, file: string, label: string, raw: string, repositoryRoot: string, tag: string, violations: string[], fixes?: Set<GuidePageFix>): void {
   for (const target of markdownLinkTargets(raw, () => undefined)) {
     if (/&(?!amp;)/.test(target)) {
       violations.push(`${label}: link destination ${target} uses a character reference or a bare &; write the characters literally and an ampersand as &amp;`);
@@ -203,17 +204,23 @@ export function assertGuideLinks(guideRoot: string, file: string, label: string,
     }
   }
   for (const match of candidateSource.matchAll(/https:\/\/github\.com\/openlup\/openlup\/(blob|tree)\/([^/\s)>"'`]+)\/?([^\s)>"'`#?]*)/g)) {
-    const [url, , ref, path] = match;
+    const [url, kind, ref, path] = match;
     if (ref !== tag) {
       violations.push(`${label}: repository link ${url} must pin ${tag}; run docs:check -- --write`);
-      continue;
+      if (!fixes || kind !== "blob") continue;
     }
     const decoded = safeDecode(path ?? "");
     const resolved = resolve(repositoryRoot, decoded);
-    if (!decoded || !resolved.startsWith(`${repositoryRoot}${sep}`) || !existsSync(resolved)) {
+    const targetExists = decoded && resolved.startsWith(`${repositoryRoot}${sep}`) && existsSync(resolved);
+    const guidePage = (resolved === guideRoot || resolved.startsWith(`${guideRoot}${sep}`)) && decoded.endsWith(".md");
+    if (ref !== tag) {
+      if (targetExists && !guidePage) fixes?.add("release-pin");
+    } else if (!targetExists) {
       violations.push(`${label}: repository link ${url} targets a path missing from the repository`);
-    } else if ((resolved === guideRoot || resolved.startsWith(`${guideRoot}${sep}`)) && decoded.endsWith(".md")) {
+      fixes?.add("repository-target");
+    } else if (guidePage) {
       violations.push(`${label}: repository link ${url} points into the guide; use a relative link`);
+      fixes?.add("relative-link");
     }
   }
 }
@@ -222,16 +229,17 @@ function safeDecode(value: string): string {
   try { return decodeURIComponent(value); } catch { return value; }
 }
 
-export function assertLocalMarkdownLinks(
-  { packageRoot, file, label, source, packed }: { packageRoot: string; file: string; label: string; source: string; packed?: ReadonlySet<string> },
+function assertLocalMarkdownLinks(
+  { packageRoot, file, label, source, packed }: { packageRoot: string; file: string; label: string; source: string; packed: ReadonlySet<string> },
   violations: string[],
+  diagnosticLabel: string,
 ): void {
-  for (const target of markdownLinkTargets(source, (reason) => violations.push(`${label}: ${reason}`))) {
+  for (const target of markdownLinkTargets(source, (reason) => violations.push(`${diagnosticLabel}: ${reason}`))) {
     if (isExternalOrAnchor(target)) continue;
     // Do not interpret an entity or Unicode separator as a different packed
     // destination. Authors can use literal punctuation or percent encoding.
     if (/[&<>]|[^\S \t\r\n]/u.test(target)) {
-      violations.push(`${label}: unsupported local link destination ${target}; use literal punctuation or percent encoding, and ASCII title separators`);
+      violations.push(`${diagnosticLabel}: unsupported local link destination ${target}; use literal punctuation or percent encoding, and ASCII title separators`);
       continue;
     }
     const unescaped = target.replace(/\\([!-/:-@[-`{-~])/g, "$1");
@@ -239,18 +247,135 @@ export function assertLocalMarkdownLinks(
     try {
       cleanTarget = decodeURIComponent(unescaped.split(/[?#]/, 1)[0] ?? "");
     } catch {
-      violations.push(`${label}: malformed percent encoding in local link ${target}`);
+      violations.push(`${diagnosticLabel}: malformed percent encoding in local link ${target}`);
       continue;
     }
     const resolvedTarget = resolve(dirname(file), cleanTarget);
     const insidePackage = resolvedTarget === packageRoot || resolvedTarget.startsWith(`${packageRoot}${sep}`);
     // The caller supplied this page's contents, even when it has yet to be written.
     if (!insidePackage) {
-      violations.push(`${label}: local link escapes package ${target}`);
+      violations.push(`${diagnosticLabel}: local link escapes package ${target}`);
     } else if (!cleanTarget || (resolvedTarget !== file && !existsSync(resolvedTarget))) {
-      violations.push(`${label}: dangling local link ${target}`);
-    } else if (packed?.has(label) && !packed.has(relative(packageRoot, resolvedTarget).split(sep).join("/"))) {
-      violations.push(`${label}: local link ${target} targets a file missing from npm pack`);
+      violations.push(`${diagnosticLabel}: dangling local link ${target}`);
+    } else if (packed.has(label) && !packed.has(relative(packageRoot, resolvedTarget).split(sep).join("/"))) {
+      violations.push(`${diagnosticLabel}: local link ${target} targets a file missing from npm pack`);
     }
   }
+}
+
+const downstreamRepositoryCommand = "veli";
+const monorepoPackagePath = /(^|\W)packages\/core(?:\/|\b)/;
+const forbiddenExtractedRootReferences = [
+  [/\bnpm\s+--workspace\b/, "monorepo workspace command"],
+  [
+    new RegExp(`(^|[^A-Za-z0-9_])\\./${downstreamRepositoryCommand}(?=$|[^A-Za-z0-9_/-])`),
+    "downstream repository command",
+  ],
+  [/\bdocs\/OSS_READINESS\.md\b/, "downstream readiness document"],
+  [/\bpackages\/(?:ui|create-[a-z0-9-]+)\b/, "sibling monorepo package"],
+];
+const releaseUrlPattern = () => /https:\/\/github\.com\/openlup\/openlup\/(?:blob|tree)\/openlup-core-v[0-9A-Za-z.+-]+\/[^\s)>"'`]*/g;
+
+// Match the physical lines and fence boundaries used by openlup-context's Markdown reader.
+function withoutGeneratedReportReferences(source: string, allowSummaries: boolean): string {
+  let fence: string | undefined;
+  return source.split("\n").map((line) => {
+    const marker = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
+    if (fence) {
+      if (marker?.[0] === fence[0] && marker.length >= fence.length && /^ {0,3}(?:`+|~+)[ \t]*\r?$/u.test(line)) fence = undefined;
+      return line;
+    }
+    if (marker) fence = marker;
+    const reportHeading = /^### `packages\/core\/api\/[a-z0-9-]+\.api\.md`$/u.test(line);
+    const reportSummary = allowSummaries && /^Added declarations: [1-9][0-9]*; see `packages\/[a-z0-9-]+\/api\/[a-z0-9-]+\.api\.md`\.$/u.test(line);
+    return reportHeading || reportSummary ? "" : line;
+  }).join("\n");
+}
+
+export type Fence = { code: string; line: number; nocheck: boolean; extension: string };
+
+export function typeScriptFences(source: string): Fence[] {
+  const fences: Fence[] = [];
+  const lines = source.split("\n");
+  for (let index = 0; index < lines.length; index++) {
+    const open = /^ {0,3}(`{3,}|~{3,})\s*([^\s`]*)(.*)$/.exec(lines[index] ?? "");
+    if (!open) continue;
+    const [, marker, language, rest] = open;
+    let end = index + 1;
+    while (end < lines.length && !new RegExp(`^ {0,3}${marker![0]}{${marker!.length},}\\s*$`).test(lines[end] ?? "")) end++;
+    if (/^(?:ts|typescript|tsx|mts|cts)$/i.test(language ?? "")) {
+      fences.push({ code: `${lines.slice(index + 1, end).join("\n")}\n`, line: index + 2, nocheck: /^\s+nocheck(?:\s|$)/.test(rest ?? ""), extension: ["tsx", "mts", "cts"].includes(language!.toLowerCase()) ? language!.toLowerCase() : "ts" });
+    }
+    index = end;
+  }
+  return fences;
+}
+
+export function checkedTypeScriptFences(label: string, source: string, violations: string[]): Fence[] {
+  return typeScriptFences(source).filter((fence) => {
+    if (!fence.nocheck) return true;
+    if (!/^\/\/\s*\S/.test(fence.code)) violations.push(`${label}:${fence.line}: a ts nocheck fence must open with a // reason line`);
+    return false;
+  });
+}
+
+type PackageMarkdown = {
+  packageRoot: string;
+  file: string;
+  label: string;
+  source: string;
+  packed: ReadonlySet<string>;
+  scripts?: Readonly<Record<string, string>>;
+};
+
+export function assertPackageMarkdown(
+  { packageRoot, file, label, source, packed, scripts }: PackageMarkdown,
+  guide: boolean,
+  violations: string[],
+  diagnosticLabel = label,
+): void {
+  // A pinned repository URL in the guide is the published link form, not an extracted-root path.
+  const scanned = guide ? source.replace(releaseUrlPattern(), "") : source;
+  // Generated release notes carry report headings and addition summaries as inline paths.
+  const versionedUpgradePage = /^docs\/guide\/upgrade\/v\d+-\d+-\d+(?:-[A-Za-z0-9-]+)?\.md$/u.test(label);
+  const pathSource = /^docs\/guide\/upgrade\/v[^/]*\.md$/.test(label)
+    ? withoutGeneratedReportReferences(source, versionedUpgradePage).replace(releaseUrlPattern(), "")
+    : scanned;
+  if (monorepoPackagePath.test(pathSource)) violations.push(`${diagnosticLabel}: monorepo package path`);
+  for (const [pattern, description] of forbiddenExtractedRootReferences) {
+    if ((pattern as RegExp).test(scanned)) violations.push(`${diagnosticLabel}: ${description}`);
+  }
+  assertLocalMarkdownLinks({ packageRoot, file, label, source, packed }, violations, diagnosticLabel);
+  for (const match of source.matchAll(/\bnpm run (?:--silent )?([A-Za-z0-9:_-]+)/g)) {
+    const script = match[1];
+    if (!scripts?.[script]) violations.push(`${diagnosticLabel}: unknown npm script ${script}`);
+  }
+}
+
+type GuidePage = PackageMarkdown & {
+  repositoryRoot: string;
+  guideRoot: string;
+  tag: string;
+  allowed: ReadonlySet<string>;
+  syncRegions?: (source: string) => string;
+  fragmentPath?: string;
+  fixes?: Set<GuidePageFix>;
+};
+
+export type GuidePageFix = "release-pin" | "relative-link" | "repository-target" | "generated-region";
+
+/** Apply the installed contract's page rules to Markdown before compiling its checked fences. */
+export function assertGuidePage(page: GuidePage, violations: string[]): Fence[] {
+  const { source, label, file, repositoryRoot, guideRoot, allowed, tag, syncRegions, fragmentPath, fixes } = page;
+  const diagnosticLabel = fragmentPath ?? label;
+  if (!syncRegions && source.includes("<!-- generated:")) {
+    violations.push(`${diagnosticLabel}: generated regions are forbidden in upgrade pages`);
+    fixes?.add("generated-region");
+  }
+  const guideSource = syncRegions ? syncRegions(source) : source;
+  if (!fragmentPath) assertGuideTitle(diagnosticLabel, guideSource, violations);
+  assertGuideLinks(guideRoot, file, diagnosticLabel, guideSource, repositoryRoot, tag, violations, fixes);
+  assertReaderLanguage(diagnosticLabel, guideSource, allowed, violations);
+  assertPackageMarkdown(page, true, violations, diagnosticLabel);
+  return checkedTypeScriptFences(diagnosticLabel, source, violations);
 }

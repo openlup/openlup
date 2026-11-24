@@ -5,13 +5,15 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
-import { join, posix, resolve } from "node:path";
+import { join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { documentationGit, documentationLinkTargets, parseDocumentationRouting, resolveDocumentationOwner, type DocumentationOwner } from "../documentation-routing.ts";
 // eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check runs before workspace install and reuses core's owning release-note audit
 import { assertReleaseNotePackagedContent, documentedAdapters, findReleaseNotePackagedContentViolations } from "../../packages/core/scripts/core-package-consumer-audit.ts";
 // eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check reuses Core's reader-guide Markdown rules in-process
-import { assertGuideLinks, assertGuideTitle, assertLocalMarkdownLinks, assertReaderLanguage, pinGuideReleaseLinks, readGuideAllowList } from "../../packages/core/scripts/documentation-guide-content.ts";
+import { assertGuidePage, pinGuideReleaseLinks, readGuideAllowList, type GuidePageFix } from "../../packages/core/scripts/documentation-guide-content.ts";
+// eslint-disable-next-line no-restricted-imports -- match the Core contract's npm pack inventory without loading its compiler
+import { packDryRun } from "../../packages/core/scripts/release-npm-checks.ts";
 import { isChangelogFragment, readChangelogFragments, validateChangelogFragment, type ChangelogFragment } from "./changelog-fragments.ts";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, parsePackagesConfig, releaseVersionAbove } from "./package-manifest-policy.ts";
 export { assertReleaseNotePackagedContent, documentedAdapters, findReleaseNotePackagedContentViolations };
@@ -332,9 +334,13 @@ export const RELEASE_NOTE_PACKAGED_CONTENT_REMEDY =
   + "or remove downstream/provider terms from the offending changelog fragment or API declaration";
 export type SimulatedUpgradePageAudit = { version: string; since: string; path: string; bytes: number; maxBytes: number; prepared: boolean; text: string };
 
+function isUpgradeVersion(version: string): boolean {
+  return RELEASE_VERSION.test(version) || /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/u.test(version);
+}
+
 /** Render the upgrade page Markdown in memory without spawning the TypeScript guide planner. */
 export function renderUpgradePage({ root, version, since, fragments }: { root: string; version: string; since: string | undefined; fragments: readonly ChangelogFragment[] }): string {
-  if (!RELEASE_VERSION.test(version) && !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/u.test(version)) throw new Error(`${version} is not a MAJOR.MINOR.PATCH release version or prerelease`);
+  if (!isUpgradeVersion(version)) throw new Error(`${version} is not a MAJOR.MINOR.PATCH release version or prerelease`);
   const guideRoot = join(resolve(root), GUIDE);
   const procedure = existsSync(join(guideRoot, "upgrade/README.md")) ? "; see the [upgrade procedure](README.md)" : "";
   const sections = [`# Upgrading to ${version}`, `This page lists what changed since the previous release${procedure}.`];
@@ -412,34 +418,50 @@ function assertUpgradePageDocumentation(
   const packageRoot = join(repositoryRoot, "packages/core");
   const guideRoot = join(repositoryRoot, GUIDE);
   const file = join(repositoryRoot, path);
+  const pageLabel = relative(packageRoot, file).split(sep).join("/");
   const tag = `openlup-core-v${version}`;
   const violations: string[] = [];
   const allowed = readGuideAllowList(repositoryRoot, violations);
+  const packed = new Set((packDryRun(packageRoot).files ?? []).map((entry) => entry.path));
+  if (!prepared) packed.add(pageLabel);
+  const { scripts } = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { scripts?: Record<string, string> };
+  const context = { packageRoot, file, label: pageLabel, packed, scripts, repositoryRoot, guideRoot, tag, allowed };
+
   // Preparation re-pins existing release URLs. A prepared file must already have the right pin.
-  const pageSource = prepared ? text : pinGuideReleaseLinks(text, version);
-  const checkContent = (source: string, sourceLabel: string, results: string[]) => {
-    assertGuideLinks(guideRoot, file, sourceLabel, source, repositoryRoot, tag, results);
-    assertReaderLanguage(sourceLabel, source, allowed, results);
-    assertLocalMarkdownLinks({ packageRoot, file, label: sourceLabel, source }, results);
-  };
-  assertGuideTitle(path, pageSource, violations);
-  checkContent(pageSource, path, violations);
+  const source = prepared ? text : pinGuideReleaseLinks(text, version, isUpgradeVersion);
+  const pageFixes = new Set<GuidePageFix>();
+  assertGuidePage({ ...context, source, fixes: pageFixes }, violations);
   if (violations.length === 0) return;
 
   const fragmentViolations: string[] = [];
+  const instructions: string[] = [];
   for (const fragment of fragments) {
-    checkContent(pinGuideReleaseLinks(fragment.contents.trimEnd(), version), fragment.path, fragmentViolations);
+    const fixes = new Set<GuidePageFix>();
+    const count = fragmentViolations.length;
+    const source = pinGuideReleaseLinks(fragment.contents.trimEnd(), version, isUpgradeVersion);
+    assertGuidePage({ ...context, source, fragmentPath: fragment.path, fixes }, fragmentViolations);
+    if (fragmentViolations.length > count) instructions.push(...upgradePageFixes(fragment.path, fixes));
   }
+  if (instructions.length === 0) instructions.push(...upgradePageFixes(path, pageFixes, prepared));
   throw new Error([
     `Observed: ${label} fails the Core documentation contract.`,
     "Cause:",
-    ...violations,
-    ...fragmentViolations,
-    prepared
-      ? "Fix: Correct the diagnostics in the prepared upgrade page."
-      : "Fix: Correct the diagnostics in the source fragment or the generator that emitted the text.",
+    ...[...violations, ...fragmentViolations].map((diagnostic) => diagnostic.replaceAll("; run docs:check -- --write", "")),
+    ...instructions.map((instruction) => `Fix: ${instruction}`),
     "Recheck: npm run preflight -- --fast",
   ].join("\n"));
+}
+
+function upgradePageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, prepared = false): string[] {
+  const messages: Record<GuidePageFix, string> = {
+    "release-pin": prepared
+      ? `update the link in ${path} to the canonical Core release pin for the releasing version`
+      : `replace the branch reference in ${path} with the canonical Core release pin for the releasing version, then rerun \`npm run preflight -- --fast\``,
+    "relative-link": `replace the pinned link into the guide with a relative guide link in ${path}`,
+    "repository-target": `correct the repository link's target path in ${path}`,
+    "generated-region": `remove the generated-region marker and its matching closer from ${path}`,
+  };
+  return fixes.size > 0 ? [...fixes].map((fix) => messages[fix]) : [`correct the reported guide content in ${path}`];
 }
 
 /**
@@ -447,7 +469,8 @@ function assertUpgradePageDocumentation(
  * when the core manifest is already bumped above the previous core tag and the
  * prepared upgrade page exists on disk, audits that prepared page; otherwise
  * renders the candidate upgrade page in memory from current fragments + API diffs.
- * Enforces the size cap, packed Core release-note neutrality and reader guide Markdown rules.
+ * Enforces the size cap, packed Core release-note neutrality and the Core guide page contract.
+ * The only additional subprocess is Core's npm pack dry run.
  * Returns null when no ancestor core release tag exists to diff against.
  */
 export function assertSimulatedUpgradePage(
