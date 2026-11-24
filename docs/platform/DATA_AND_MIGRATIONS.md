@@ -126,35 +126,16 @@ functions. It grants EXECUTE to `service_role` where present. The
 preserves the four parent signatures and grants while introducing four
 internal functions with owner and `service_role` access.
 
-Use the existing qualified runtime login that inherits `service_role` or the
-existing owner login for an owner-run installation. For a custom activation
-role, keep its existing schema, table and callee privileges. Apply each new
-grant after the forward that introduces the requirement.
+After these forwards, PUBLIC cannot execute the base activation entry or commit
+functions. Run activation with the qualified runtime login (which inherits
+`service_role`) or with the owner login. Other roles receive SQLSTATE `42501`
+when calling either base function. Custom activation roles are unsupported
+because the migration runner pins function ACLs in the installation inventory
+and qualified installations refuse grants to principals outside the installation.
 
-| Custom-role path | After the ACL forward | After the units forward |
-| --- | --- | --- |
-| Base entry | Base entry and base commit | Payment check and base write |
-| Direct base commit or paid activation gap repair | Base commit | Base write |
-| Opt-in entry | Retain opt-in entry and opt-in commit | Payment check, edit-window check and opt-in write |
-| Direct opt-in commit | Retain opt-in commit | Edit-window check and opt-in write |
-
-Use `GRANT EXECUTE ON FUNCTION <signature> TO <custom_role>;` for each
-applicable signature.
-
-| Privilege | Exact signature |
-| --- | --- |
-| Base entry | `public.subscription_activate_from_captured_payment(text,uuid,text)` |
-| Base commit | `public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)` |
-| Payment check | `public.subscription_activation__check_payment(text,uuid,text)` |
-| Edit-window check | `public.subscription_activation__check_edit_window(integer)` |
-| Base write | `public.subscription_activation_commit__write(public.subscription_activations,text,text,timestamptz,boolean)` |
-| Opt-in write | `public.subscription_activation_commit_with_edit_window__write(public.subscription_activations,text,text,timestamptz,boolean,integer)` |
-
-A missing grant raises SQLSTATE `42501` and names the denied function.
-Recheck each path with the same runtime login, including a paid activation
-gap if that login runs repair. These forwards use the reviewed default-ACL
-preimage for the two base functions. An installation with an explicit ACL on
-either base function requires separate review before applying the ACL forward.
+These forwards use the reviewed default-ACL preimage for the two base functions.
+An installation with an explicit ACL on either base function requires separate
+review before applying the ACL forward.
 
 ## Native renewal stock protection
 

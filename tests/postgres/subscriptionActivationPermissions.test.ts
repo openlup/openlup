@@ -13,7 +13,7 @@ import { registerRenewal, registrationParents, seedRegistration } from "./subscr
 import {
   activationEffects, activationUnits, callCommit, callEntry, callRepair, commitNames, commitSignatures,
   entryNames, entrySignatures, expectedActivationEffects, refusal, repairName,
-  seedCapturedActivation, type CapturedActivation,
+  seedCapturedActivation,
 } from "./subscriptionActivationFixture.js";
 
 const manifest: PlatformMigrationManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -434,65 +434,22 @@ async function verifyActivationDefaults(db: PoolClient, owner: number) {
   } finally { await db.query("ROLLBACK"); }
 }
 
-const customRole = "activation_custom";
-const customPaths = [
-  { name: "base entry", call: (db: Connection, p: CapturedActivation) => callEntry(db, 0, p),
-    base: baseParents, units: [activationUnits[0]!, activationUnits[2]!] },
-  { name: "direct base commit", call: (db: Connection, p: CapturedActivation) => callCommit(db, 0, p),
-    base: [baseParents[1]!], units: [activationUnits[2]!] },
-  { name: "open gap repair", call: callRepair, base: [baseParents[1]!], units: [activationUnits[2]!] },
-  { name: "opt-in entry", call: (db: Connection, p: CapturedActivation) => callEntry(db, 1, p),
-    base: [], units: [activationUnits[1]!, activationUnits[0]!, activationUnits[3]!] },
-  { name: "direct opt-in commit", call: (db: Connection, p: CapturedActivation) => callCommit(db, 1, p),
-    base: [], units: [activationUnits[3]!, activationUnits[1]!] },
-];
-
-describe("the activation EXECUTE break and custom-role recovery", () => {
-  let container: Awaited<ReturnType<typeof runPostgresContainer>>, owner: Pool, custom: Pool;
+describe("the activation EXECUTE break", () => {
+  let container: Awaited<ReturnType<typeof runPostgresContainer>>, owner: Pool;
   beforeAll(async () => {
     const password = "synthetic-activation";
-    container = await runPostgresContainer({ name: `activation-custom-${process.pid}`, password });
+    container = await runPostgresContainer({ name: `activation-acl-${process.pid}`, password });
     expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
     owner = new Pool({ connectionString: container.connectionString });
     for (const unit of [manifest.baseline, ...manifest.forward]) {
       if (unit.file === aclSlot?.file) break;
       await owner.query(readFileSync(unit.file, "utf8"));
     }
-    await owner.query(`CREATE ROLE ${plainRole} NOLOGIN; CREATE ROLE ${customRole} LOGIN PASSWORD '${password}';
+    await owner.query(`CREATE ROLE ${plainRole} NOLOGIN;
       GRANT USAGE ON SCHEMA public TO anon, authenticated, ${plainRole};`);
-    await grantIncumbentActivationAccess(owner, customRole);
-    const url = new URL(container.connectionString);
-    url.username = customRole;
-    custom = new Pool({ connectionString: url.toString() });
     if (aclForward) await owner.query(aclForward);
   }, postgresSetupTimeoutMs);
-  afterAll(async () => { await closePostgres(container, [owner, custom].filter(Boolean)); });
-
-  async function recover(path: typeof customPaths[number], initial: string[], needed: string[]) {
-    const p = await seedCapturedActivation(owner);
-    const grant = (signature: string) => owner.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${customRole};`);
-    expect((await custom.query("SELECT current_user,session_user")).rows)
-      .toEqual([{ current_user: customRole, session_user: customRole }]);
-    const applied: string[] = [];
-    try {
-      for (const signature of initial) {
-        await grant(signature);
-        applied.push(signature);
-      }
-      for (const signature of needed) {
-        await expect(path.call(custom, p)).rejects.toMatchObject(permissionDenied(symbol(signature)));
-        await grant(signature);
-        applied.push(signature);
-      }
-      const result = await path.call(custom, p);
-      const repaired = path.call === callRepair;
-      if (repaired) expect(result).toEqual({ repaired: 1, overdue: 0 });
-      else expect(result).toMatchObject({ state: "active" });
-      expect(await activationEffects(owner, p.orderId)).toEqual(expectedActivationEffects(repaired));
-    } finally {
-      for (const signature of applied) await owner.query(`REVOKE EXECUTE ON FUNCTION ${signature} FROM ${customRole};`);
-    }
-  }
+  afterAll(async () => { await closePostgres(container, [owner].filter(Boolean)); });
 
   for (const role of ["anon", "authenticated", plainRole]) {
     it.each([0, 1])(`returns exact 42501 for ${role} on base parent %s`, async index => {
@@ -508,19 +465,20 @@ describe("the activation EXECUTE break and custom-role recovery", () => {
     });
   }
 
-  it.each(customPaths.filter(path => path.base.length))("recovers $name between the ACL and unit slots", async path => {
-    await recover(path, [], path.base);
-  });
-
-  it.each(customPaths.filter(path => !path.base.length))("keeps $name working between the ACL and unit slots", async path => {
-    await recover(path, [], []);
-  });
-
   describe("after unit extraction", () => {
     beforeAll(async () => { if (unitsForward) await owner.query(unitsForward); });
-    it.each(customPaths)("recovers $name through its exact unit grants", async path => {
-      const grants = aclForward ? path.base : [];
-      await recover(path, grants, path.units);
-    });
+    for (const role of ["anon", "authenticated", plainRole]) {
+      it.each(activationUnits)(`returns exact 42501 for ${role} on %s`, async signature => {
+        const name = symbol(signature);
+        const argumentTypes = signature.slice(signature.indexOf("(") + 1, -1).split(",");
+        const args = argumentTypes.map(type => `NULL::${type}`).join(", ");
+        const db = await owner.connect();
+        try {
+          await db.query("BEGIN");
+          await db.query(`SET LOCAL ROLE ${role}`);
+          await expect(db.query(`SELECT public.${name}(${args})`)).rejects.toMatchObject(permissionDenied(name));
+        } finally { await db.query("ROLLBACK"); db.release(); }
+      });
+    }
   });
 });
