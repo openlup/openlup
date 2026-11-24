@@ -193,7 +193,8 @@ it.each(profiles)("qualifies renewal registration ownership, ACLs and caller ide
       witnessed = true;
     };
 
-    const activation = activationCatalogWitness(owner, ownerName, profile !== "legacy");
+    // The migration runner applies the whole plan, including the later forward that appends pg_temp.
+    const activation = activationCatalogWitness(owner, ownerName, profile !== "legacy", !legacy);
 
     if (legacy) {
       for (const unit of [manifest.baseline, ...manifest.forward]) {
@@ -297,7 +298,7 @@ async function assertActivationPrivileges(db: Connection, signatures: string[], 
   }
 }
 
-function activationCatalogWitness(owner: number, ownerName: string, hasService: boolean) {
+function activationCatalogWitness(owner: number, ownerName: string, hasService: boolean, appendsTemp: boolean) {
   const source = async (db: Connection) => (await db.query(`SELECT prosrc FROM unnest($1::text[])
     WITH ORDINALITY AS s(signature, position) JOIN pg_proc p ON p.oid=to_regprocedure(s.signature)
     ORDER BY s.position`, [activationParents])).rows;
@@ -350,7 +351,9 @@ function activationCatalogWitness(owner: number, ownerName: string, hasService: 
       if (!unitsForward) return;
       expect(narrowed).toBeDefined();
       const withoutEffective = ({ effective, ...row }: (typeof narrowed)[number]) => normalizeDefaultLocations(row);
-      expect((await acl(db)).map(withoutEffective)).toEqual(narrowed.map(withoutEffective));
+      const proconfig = [`search_path=public, pg_catalog${appendsTemp ? ", pg_temp" : ""}`];
+      expect((await acl(db)).map(withoutEffective)).toEqual(narrowed.map(row => ({ ...withoutEffective(row), proconfig })));
+      for (const row of await catalog(db, activationUnits)) expect(row.proconfig, row.signature).toEqual(proconfig);
       await assertActivationPrivileges(db, [...baseParents, ...activationUnits], String(owner), hasService);
     },
   };

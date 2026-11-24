@@ -319,9 +319,13 @@ ALTER FUNCTION public.subscriber_retention_record_delivery(text,text,text,text,i
 ALTER FUNCTION public.subscriber_retention_source_refusal(text,text,text,text,uuid) SET search_path = public, pg_catalog, pg_temp;
 ALTER FUNCTION public.subscription_activate_from_captured_payment(text,uuid,text) SET search_path = public, pg_catalog, pg_temp;
 ALTER FUNCTION public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer) SET search_path = public, pg_catalog, pg_temp;
+ALTER FUNCTION public.subscription_activation__check_edit_window(integer) SET search_path = public, pg_catalog, pg_temp;
+ALTER FUNCTION public.subscription_activation__check_payment(text,uuid,text) SET search_path = public, pg_catalog, pg_temp;
 ALTER FUNCTION public.subscription_activation_answer(public.subscription_activations,boolean) SET search_path = public, pg_catalog, pg_temp;
 ALTER FUNCTION public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean) SET search_path = public, pg_catalog, pg_temp;
+ALTER FUNCTION public.subscription_activation_commit__write(public.subscription_activations,text,text,timestamptz,boolean) SET search_path = public, pg_catalog, pg_temp;
 ALTER FUNCTION public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer) SET search_path = public, pg_catalog, pg_temp;
+ALTER FUNCTION public.subscription_activation_commit_with_edit_window__write(public.subscription_activations,text,text,timestamptz,boolean,integer) SET search_path = public, pg_catalog, pg_temp;
 ALTER FUNCTION public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz) SET search_path = public, pg_catalog, pg_temp;
 ALTER FUNCTION public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz,jsonb) SET search_path = pg_catalog, pg_temp;
 ALTER FUNCTION public.subscription_auto_resume_due(integer,timestamptz) SET search_path = public, pg_catalog, pg_temp;

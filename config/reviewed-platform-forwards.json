@@ -8703,6 +8703,14 @@
             "searchPath": "public, pg_catalog, pg_temp"
           },
           {
+            "signature": "public.subscription_activation__check_edit_window(integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_activation__check_payment(text,uuid,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
             "signature": "public.subscription_activation_answer(public.subscription_activations,boolean)",
             "searchPath": "public, pg_catalog, pg_temp"
           },
@@ -8711,7 +8719,15 @@
             "searchPath": "public, pg_catalog, pg_temp"
           },
           {
+            "signature": "public.subscription_activation_commit__write(public.subscription_activations,text,text,timestamptz,boolean)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
             "signature": "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_activation_commit_with_edit_window__write(public.subscription_activations,text,text,timestamptz,boolean,integer)",
             "searchPath": "public, pg_catalog, pg_temp"
           },
           {
@@ -12706,7 +12722,7 @@
     },
     {
       "path": "db/platform/migrations/20261125280000_function_search_path_pg_temp.sql",
-      "sha256": "199e3eb5e217e20a42f0e36a75d11e6cab748b8622f3792d7aa2a7da228cfbf4",
+      "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6",
       "functions": []
     }
   ],

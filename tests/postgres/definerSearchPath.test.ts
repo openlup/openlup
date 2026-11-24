@@ -248,7 +248,7 @@ it.each(profiles)(
 );
 
 // Installed counts that the appended forward changes; the rest already carry their final value.
-const appendedChanges = { legacy: 388, bootstrap: 367, separate: 367, "admin-managed": 386, "admin-operator": 386 } as const;
+const appendedChanges = { legacy: 392, bootstrap: 371, separate: 371, "admin-managed": 390, "admin-operator": 390 } as const;
 
 it.each(profiles)(
   "appends pg_temp to pinned function search paths when upgrading %s",
