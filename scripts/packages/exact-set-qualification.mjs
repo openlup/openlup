@@ -217,7 +217,8 @@ function prepareReleasedStarter(receipt, temporary, run, candidateManifest = und
 }
 
 /** Use the published-tree pack artifacts to qualify the owned catalogue upgrade. */
-export function provePublishedCatalogueUpgrade(manifest, commit) {
+export function provePublishedCatalogueUpgrade(manifest, commit, browser) {
+  assert(browser, 'Published-tree catalogue upgrade requires the resolved browser image');
   const previous = '1.3.0', tag = 'openlup-core-v' + previous;
   const predecessor = 'd25a5c7389c9dda63dada7ca880f18ccbf68dbe3';
   const temporary = mkdtempSync(join(tmpdir(), 'openlup-catalogue-upgrade-'));
@@ -239,7 +240,7 @@ export function provePublishedCatalogueUpgrade(manifest, commit) {
     const from = prepare('from', qualificationReceipt(tag, predecessor));
     const to = prepare('to', qualificationReceipt('openlup-core-v' + pack.version, commit), manifest);
     const evidence = { phases: [] };
-    const finish = proveDistributionCliConsumer(to, { from, to, fromVersion: previous, toVersion: pack.version + '-candidate.' + commit.slice(0, 12), evidence });
+    const finish = proveDistributionCliConsumer(to, { from, to, fromVersion: previous, toVersion: pack.version + '-candidate.' + commit.slice(0, 12), evidence, browser });
     assert.deepEqual(readFileSync(join(from, 'package.json')), readFileSync(join(to, 'package.json')));
     cpSync(join(to, 'package-lock.json'), join(from, 'package-lock.json'));
     install(from);

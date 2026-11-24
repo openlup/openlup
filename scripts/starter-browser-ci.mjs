@@ -214,14 +214,18 @@ export async function writeBrowserFixtures(app, entries) {
     JSON.stringify(entries.map(({ id, baseURL }) => ({ id, baseURL }))), { mode: 0o600 });
 }
 
-export function browserArguments(app, reference, name, localImage) {
+export function browserContainerArguments(app, reference, name, localImage, mounts = []) {
   if (reference !== imageReference(readCiImage('starter-browser')) && (processEnvironment.CI || !localImage || reference !== localBrowserReference())) throw new Error('starter_browser_mirror_required');
   return ['run', '--rm', '--pull=never', '--name', name, '--network=host', '--read-only',
     '--user', `${process.getuid()}:${process.getgid()}`,
     '--tmpfs', '/tmp:rw,nosuid,nodev', '--ipc=host', '-e', 'CI=true', '-e', 'HOME=/tmp',
-    '--mount', `type=bind,src=${app},dst=/app,readonly`,
-    '--mount', `type=bind,src=${join(app, '.context/care-browser')},dst=/app/.context/care-browser`,
-    '--workdir', '/app', reference,
+    '--mount', `type=bind,src=${app},dst=/app,readonly`, ...mounts,
+    '--workdir', '/app', reference];
+}
+
+export function browserArguments(app, reference, name, localImage) {
+  const fixtures = `type=bind,src=${join(app, '.context/care-browser')},dst=/app/.context/care-browser`;
+  return [...browserContainerArguments(app, reference, name, localImage, ['--mount', fixtures]),
     'node', 'node_modules/@playwright/test/cli.js', 'test', '--config', 'playwright.database.config.ts',
     '--workers=1', '--retries=0', '--reporter=dot', '--output=/tmp/test-results'];
 }
@@ -262,14 +266,14 @@ export async function runBrowserGroups(runGroup, currentPhase, groups = browserJ
 
 export const catalogueUpgradeGroupIndex = 1;
 
-export async function runCatalogueUpgrade({ groups, manifest, commit }, prove) {
+export async function runCatalogueUpgrade({ groups, manifest, commit, localImage }, reference, prove) {
   if (groups && !groups.includes(catalogueUpgradeGroupIndex)) return;
-  await prove(manifest, commit);
+  await prove(manifest, commit, { reference, localImage, containerArguments: browserContainerArguments });
 }
 
 export async function runStarterBrowser(options) {
   const started = performance.now(), outputs = [], privateValues = [];
-  let phase = 'inputs';
+  let phase = 'inputs', image;
   const cancellation = new AbortController();
   const interrupt = () => cancellation.abort();
   process.once('SIGINT', interrupt);
@@ -298,7 +302,7 @@ export async function runStarterBrowser(options) {
       if (options.commit !== commit) throw new Error('starter_browser_candidate_mismatch');
       const packs = readCurrentPackManifest(root, options.manifest, options.commit);
       phase = 'image';
-      const image = await resolveBrowserImage(undefined, options.localImage);
+      image = await resolveBrowserImage(undefined, options.localImage);
       console.log(`Starter browser image: ${image}`);
       console.log(`Starter browser image resolution: ${Math.round(performance.now() - started)} ms`);
       phase = 'application';
@@ -437,11 +441,11 @@ export async function runStarterBrowser(options) {
             console.log(`Starter database journeys: ${counts.join(', ')}; group ${groupIndex + 1}`);
           }), () => cancellation.signal.aborted ? 'cancelled' : phase, options.groups);
     });
-    await runCatalogueUpgrade(options, async (manifest, commit) => {
+    await runCatalogueUpgrade(options, image, async (manifest, commit, browser) => {
       cancellation.signal.throwIfAborted();
       phase = 'catalogue_upgrade';
       const { provePublishedCatalogueUpgrade } = await import('./packages/exact-set-qualification.mjs');
-      provePublishedCatalogueUpgrade(manifest, commit);
+      provePublishedCatalogueUpgrade(manifest, commit, browser);
     });
   } catch (error) {
     // Never publish assertion bodies, SQL details, connection strings or child errors.

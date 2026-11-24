@@ -1,18 +1,20 @@
-import { afterEach, expect, it } from "vitest";
-import { execFileSync, spawnSync } from "node:child_process";
+import { afterEach, expect, it, vi } from "vitest";
+import { execFileSync, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { cpSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { env } from "node:process";
+import { imageReference, readCiImage } from "../ci-image-pull.mjs";
+import { browserContainerArguments } from "../starter-browser-ci.mjs";
 import { proveInstalledCareUpgrade, qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
   includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers, retiresStarterCatalogue, proveStarterCatalogue130,
   reminderInstallationTest, starterLifecycle, starterOptionalOwnedFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization, starterEditorPorts, starterDocumentFiles,
-  reconcileDocumentCustomization, proveDistributionCliConsumer, starterCheckoutFiles, mergeStarterCareFile, needsStarterCareUpgrade } from "./distribution-cli-proof.ts";
+  reconcileDocumentCustomization, proveDistributionCliConsumer, proveInstalledCatalogueUpgrade, starterCheckoutFiles, mergeStarterCareFile, needsStarterCareUpgrade } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -25,6 +27,49 @@ function fixture() {
   write("node_modules/@openlup/core/package.json", { version: "0.40.0" });
   return { directory, write };
 }
+
+it.each(["mirror", "local", "release", "server-failure"] as const)("runs the catalogue recipe with %s browser setup", mode => {
+  const { directory, write } = fixture();
+  write("package-lock.json", { packages: Object.fromEntries(
+    ["core", "outbox", "platform"].map(name => ["node_modules/@openlup/" + name, { resolved: "https://example.test/" + name }]),
+  ) });
+  write("node_modules/.bin/playwright", "");
+  const image = readCiImage("starter-browser");
+  const localImage = mode === "local" ? imageReference(image, "mcr.microsoft.com/playwright") : undefined;
+  const reference = localImage ?? imageReference(image);
+  const endpoint = "ws://127.0.0.1:43189/test";
+  const run = vi.fn((_file: string, args: readonly string[], _options: ExecFileSyncOptionsWithStringEncoding) => {
+    if (args[0] === "exec") return JSON.stringify(mode === "server-failure" ? { error: "synthetic browser launch failure" } : { endpoint });
+    return args[0] === "--test" ? "✔ up_json_installed_starter_recipe" : "";
+  });
+  const browser = { reference, localImage, containerArguments: browserContainerArguments };
+  try {
+    vi.stubEnv("CI", mode === "local" ? "" : "true");
+    const prove = () => proveInstalledCatalogueUpgrade(directory, {}, mode === "release" ? undefined : browser, run);
+    if (mode === "server-failure") expect(prove).toThrow("synthetic browser launch failure");
+    else prove();
+  } finally { vi.unstubAllEnvs(); }
+  const recipe = run.mock.calls.find(([file, args]) => file === process.execPath && args[0] === "--test");
+  const installs = run.mock.calls.filter(([, args]) => args.includes("install"));
+  if (mode === "release") {
+    expect(run.mock.calls.every(([file]) => file === process.execPath)).toBe(true);
+    expect(installs.map(([, args]) => args)).toEqual([[join(directory, "node_modules/.bin/playwright"), "install", "chromium"]]);
+    expect(recipe?.[2].env?.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT).toBeUndefined();
+    return;
+  }
+  const [file, args] = run.mock.calls[0]!;
+  expect(file).toBe("docker");
+  const name = args[args.indexOf("--name") + 1]!;
+  expect(args).toEqual(["run", "--detach", ...browserContainerArguments(directory, reference, name, localImage).slice(1),
+    "node", "-e", expect.stringContaining("chromium.launchServer")]);
+  expect(args).toEqual(expect.arrayContaining(["--pull=never", "--read-only", "--network=host", "--tmpfs", "/tmp:rw,nosuid,nodev",
+    `${process.getuid!()}:${process.getgid!()}`, `type=bind,src=${directory},dst=/app,readonly`, reference]));
+  expect(args.filter(arg => arg === "--mount")).toHaveLength(1);
+  expect(run.mock.calls.at(-1)?.slice(0, 2)).toEqual(["docker", ["rm", "-f", name]]);
+  expect(installs).toHaveLength(0);
+  if (mode === "server-failure") expect(recipe).toBeUndefined();
+  else expect(recipe?.[2].env?.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT).toBe(endpoint);
+});
 
 it("prints a bounded installation hint after the existing refusal and preserves unhinted stderr bytes", () => {
   const { directory, write } = fixture();

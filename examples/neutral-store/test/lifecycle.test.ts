@@ -325,9 +325,11 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     const warmMs = Math.round(performance.now() - warmStarted);
     assert.equal(ledger(), '1');
     const playwright = join(scratch, 'st1-recipe.playwright.mjs');
+    const wsEndpoint = processEnv.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT;
     writeFileSync(playwright, `export default {
       testDir: '../../browser', testMatch: 'native-operator.proof.ts', workers: 1,
-      use: { baseURL: 'http://127.0.0.1:4319', composeProject: '${project}', trace: 'off', screenshot: 'off', video: 'off' }
+      use: ${JSON.stringify({ baseURL: 'http://127.0.0.1:4319', composeProject: project, trace: 'off', screenshot: 'off', video: 'off',
+        ...(wsEndpoint ? { connectOptions: { wsEndpoint } } : {}) })}
     };\n`);
     run('./node_modules/.bin/playwright', ['test', '--config', playwright, '--grep', 'installed adopter pack']);
     assertPreserved();
