@@ -209,6 +209,7 @@ export function capturePrivateValues(message) {
 export async function writeBrowserFixtures(app, entries) {
   const directory = join(app, '.context/care-browser');
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  await mkdir(join(app, '.context/catalogue-builds'), { recursive: true, mode: 0o700 });
   await writeFile(join(directory, 'fixtures.json'), JSON.stringify(entries), { mode: 0o600 });
   await writeFile(join(app, '.context/database-ui-hosts.json'),
     JSON.stringify(entries.map(({ id, baseURL }) => ({ id, baseURL }))), { mode: 0o600 });
@@ -225,7 +226,9 @@ export function browserContainerArguments(app, reference, name, localImage, moun
 
 export function browserArguments(app, reference, name, localImage) {
   const fixtures = `type=bind,src=${join(app, '.context/care-browser')},dst=/app/.context/care-browser`;
-  return [...browserContainerArguments(app, reference, name, localImage, ['--mount', fixtures]),
+  // The catalogue proof stages the installed receipt for the host to verify.
+  const builds = `type=bind,src=${join(app, '.context/catalogue-builds')},dst=/app/.context/catalogue-builds`;
+  return [...browserContainerArguments(app, reference, name, localImage, ['--mount', fixtures, '--mount', builds]),
     'node', 'node_modules/@playwright/test/cli.js', 'test', '--config', 'playwright.database.config.ts',
     '--workers=1', '--retries=0', '--reporter=dot', '--output=/tmp/test-results'];
 }
@@ -303,7 +306,7 @@ export async function runStarterBrowser(options) {
       outputs.push(error.stdout ?? '', error.stderr ?? '');
       if (phase === 'journeys') {
         const output = `${error.stdout ?? ''}\n${error.stderr ?? ''}`;
-        const locations = [...new Set(output.match(/\[(?:supplements|coffee)\] › (?:browser\/)?(?:journey|acquisition)\.spec\.ts:\d+:\d+/gu) ?? [])];
+        const locations = [...new Set(output.match(/\[(?:supplements|coffee)\] › (?:browser\/)?(?:journey|acquisition|catalogue-products)\.spec\.ts:\d+:\d+/gu) ?? [])];
         const codes = [...new Set(output.match(/\b(?:starter|acquisition)_[a-z_]+\b/gu) ?? [])];
         const counts = output.match(/\b\d+ (?:passed|skipped|failed|did not run)\b/gu) ?? [];
         console.error(`Starter browser failures: ${locations.join('; ') || 'see selected specs'}; codes: ${codes.join(', ') || 'none'}; counts: ${counts.join(', ') || 'incomplete'}`);

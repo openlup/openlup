@@ -18,4 +18,6 @@ export const browserJourneyGroups = journeySelections([
   'operator operations |returns portal |shipment operations ',
   'payment guidance |account preferences |embedded browser |billing profiles ',
   'payment retry ',
+  // Publication changes price readiness and needs a database without preceding purchases.
+  'catalogue-products\\.spec\\.ts',
 ]);
