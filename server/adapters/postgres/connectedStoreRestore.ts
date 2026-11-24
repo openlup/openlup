@@ -5,12 +5,13 @@ import {
   PostgresTransferError, restoreCompatiblePostgresRows,
   type CompatiblePostgresPacket,
 } from "@openlup/platform/portability";
-import { deriveOidcPrincipalId } from "@openlup/platform/identity";
+import { deriveOidcPrincipalId, validateRequiredPrivacyContributorIds } from "@openlup/platform/identity";
 import { evaluatePlatformMigrationManifest, readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../../scripts/platform-migration-manifest.js";
 import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
   assertQualifiedAdminPostgresSelection, type QualifiedAdminPostgresInstallation, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
 import { assertConnectedCatalogPublications, connectedNativeStoreTables,
-  connectedStoreClusterIdentitySql, connectedStoreRowSource, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
+  connectedStoreClusterIdentitySql, connectedStoreRowSource, readPrivacyDeclarationCensus,
+  requiredPrivacyDeclarationTable, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 
 const { catalogPublicationAdmissionRefusal, decodePublicationPacket, requireDecodedPublication } = nativeCatalogPublication;
 
@@ -371,6 +372,13 @@ export async function restoreConnectedNativeStore(input: {
     // Inspect definitions after table locks, before any retained-data mutation.
     const lockedInventory = inventory ?? await catalogPayload(client, installation);
     if (digest(lockedInventory) !== manifest.objectInventorySha256) fail("schema_conflict");
+    const declared = JSON.stringify(packet.requiredPrivacyContributorIds);
+    const assertPrivacyDeclaration = async () => {
+      const live = await readPrivacyDeclarationCensus({ query: (sql, values) => client.query(sql, values ? [...values] : undefined) });
+      if (declared !== JSON.stringify(live)) fail("target_conflict", requiredPrivacyDeclarationTable);
+    };
+    if (declared !== JSON.stringify(fresh.requiredPrivacyContributorIds)) fail("target_conflict", requiredPrivacyDeclarationTable);
+    await assertPrivacyDeclaration();
     for (const table of connectedNativeStoreTables) {
       const actual = (await client.query<{ name: string; type: string }>(`SELECT a.attname AS name,
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
@@ -523,6 +531,7 @@ export async function restoreConnectedNativeStore(input: {
       if (await catalogPayload(client, installation) !== lockedInventory) fail("schema_conflict");
       if (JSON.stringify((await client.query<{ value: string }>("SELECT pg_catalog.to_jsonb(m)::pg_catalog.text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows) !== JSON.stringify(ledgerBefore)) fail("schema_conflict");
       if ((await client.query("SELECT pg_catalog.pg_current_xact_id()::pg_catalog.text AS xid")).rows[0].xid !== facts.xid) fail("invalid_input");
+      await assertPrivacyDeclaration();
       await client.query("COMMIT");
       result = { captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: neutralized };
     }
@@ -573,6 +582,7 @@ function copyCapture(input: ConnectedNativeStoreCapture, shape: SourceShape = "c
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }
     if (shape === "unsupported") refuseSourceSchema();
+    validateRequiredPrivacyContributorIds(copy.requiredPrivacyContributorIds);
     const all = tables(copy);
     if (all.size !== connectedNativeStoreTables.length || connectedNativeStoreTables.some(table => !all.has(table))) fail("invalid_input");
     let count = 0, bytes = 0;
@@ -630,7 +640,8 @@ async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): 
 }
 async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[]): Promise<void> {
   for (const relation of relations) {
-    if (relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName) || relation.table === "platform_schema_migrations")) continue;
+    if (relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName)
+      || relation.table === "platform_schema_migrations" || relation.table === requiredPrivacyDeclarationTable)) continue;
     if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")) continue;
     if ((await client.query(`SELECT 1 FROM ${quoted(relation.schema)}.${quoted(relation.table)} LIMIT 1`)).rows.length) fail("unsupported_table", `${relation.schema}.${relation.table}`);
   }

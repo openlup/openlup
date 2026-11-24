@@ -152,6 +152,19 @@ continue to ignore nullable values; future V2 readers require publication
 evidence. Publication/digest integration and durable shadow rebuilds remain
 pending, so preparation alone grants no serving or restore-rebuild capability.
 
+### Match the installed privacy declaration
+
+Upgrade the source within its existing installation profile and capture it
+again. Use a pristine target with the same current catalogue and installation
+profile. The capture seals `requiredPrivacyContributorIds` from the installed
+reader in the retained packet. Declaration rows come from the target migration
+chain. Restore compares the source, pristine observation and locked target
+before copying retained rows, including on replay. On a mismatch, have the
+installation owner verify the declared IDs and migration history, then recapture
+and retry on a matching pristine target.
+
+### Catalogue projection
+
 `catalog_attribute_projection` is REBUILDABLE. The closed capture census records
 only its owner and row count with disposition `rebuildable`, even when nonempty;
 no projection row enters an authoritative payload. Restore validates that exact

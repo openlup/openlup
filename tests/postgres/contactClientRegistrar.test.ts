@@ -8,8 +8,9 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresContactClientRegistrar, createPostgresCustomerChallengeStore, createPostgresAccountLinkStore,
   createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createIdentityPersonalDataContributor,
-  createPersonalDataContributorRegistry, createTaxCalculationPrivacyContributor, createPrivacyOperations, type EnsureContactClientResult,
-  type PrivacyStore } from "@openlup/platform/identity";
+  createPersonalDataContributorRegistry, createPrivacyOperations, type EnsureContactClientResult,
+  type NativePrivacyStore } from "@openlup/platform/identity";
+import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } from "@openlup/platform/migrations";
 import { createPostgresCustomerOrderHistoryReadStore, readPostgresCustomerAccountClient } from "@openlup/platform/account-support";
 import { createPostgresNativeCheckoutPersistence } from "@openlup/platform/commerce/server/native-checkout";
@@ -86,11 +87,11 @@ async function draft(clientId: string) {
       discounts: [], context: { mode: "one_time", cadenceDays: null, promoCodes: [] }, subtotalGross: money(200), discountTotalGross: money(0),
       shippingGross: money(0), shippingDiscountGross: money(0), totalGross: money(200), netTotal: money(167), taxTotal: money(33) } } }, { clientId });
 }
-function privacy(store: PrivacyStore<PgQueryExecutor> = createPostgresPrivacyStore(), id = randomUUID()) {
+function privacy(store: NativePrivacyStore<PgQueryExecutor> = createPostgresPrivacyStore(), id = randomUUID()) {
   const unitOfWork = createPostgresPrivacyUnitOfWork({ connectionString: runtimeUrl }); ports.push(unitOfWork);
   const retainedContactFields = Object.fromEntries(["lifecycle_stage", "acquisition_source", "metadata"].map(key => [key,
     { owner: "clients", resource: `clients.${key}`, disposition: "retain" as const, reasonCode: "CHECKOUT_PROVENANCE", remote: false }]));
-  const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields }, () => id), createTaxCalculationPrivacyContributor()], { requiredContributorIds: ["identity", "tax-calculations"] });
+  const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields }, () => id), ...nativePrivacyContributors(store).slice(1)], { requiredContributorIds: ["identity", "tax-calculations"] });
   return createPrivacyOperations({ store, unitOfWork, registry, now: () => new Date(), randomId: () => id });
 }
 
@@ -287,7 +288,7 @@ it("waits for concurrent erasure to commit before deciding shell refusal and fre
   let entered!: () => void, release!: () => void;
   const arrived = new Promise<void>(resolve => { entered = resolve; });
   const proceed = new Promise<void>(resolve => { release = resolve; });
-  const store: PrivacyStore<PgQueryExecutor> = { ...base, async saveReceipt(...args) { await base.saveReceipt(...args); entered(); await proceed; } };
+  const store: NativePrivacyStore<PgQueryExecutor> = { ...base, async saveReceipt(...args) { await base.saveReceipt(...args); entered(); await proceed; } };
   const erasing = privacy(store, id).erase({ principalId: admin }, { subject: { kind: "contact", contactId: old.clientId }, idempotencyKey: randomUUID() });
   await arrived;
   const shell = registrar.ensureContactClient(input(`erased+${id}@identity.invalid`));

@@ -5,7 +5,11 @@ import { withObservedRoute } from "../../_lib/observability/route.js";
 import { MACHINE_ACTOR_WRITE_ROUTES, allowedAdminRolesForBffRoute } from "../../_lib/admin-domain/auth.js";
 import { observeReferencePackages } from "../outbox/candidateAdmission.js";
 import { assessIdentityReadiness, assessOidcReadiness } from "./identityReadiness.js";
-import { identityRequiredSchema, type IdentityBundle } from "./identitySchema.js";
+import { identityRequiredSchema, identitySchemaRecovery, type IdentityBundle } from "./identitySchema.js";
+import { createPrivacyEraseHandler, createPrivacyExportHandler, isNativePrivacyOperations, nativePrivacyUnavailable,
+  readBearerToken } from "@openlup/platform/identity";
+import type { HttpHandler } from "@openlup/platform/http";
+import { readObservedResponseContext } from "../../_lib/observability/requestContext.js";
 
 const dependencies = ["bff", "data", "kernel", "http"] as const;
 const responsibilities = ["customerSession", "customerProfile", "operatorAuthorization", "operatorActions", "delivery", "privacy"] as const;
@@ -23,20 +27,43 @@ const methods = {
   customerSession: ["verifyAccessToken"], customerProfile: ["getCustomerMe"], operatorAuthorization: ["authorize"],
   operatorActions: ["inviteAdminUser", "removeAdminUser"], delivery: ["deliver"], privacy: ["export", "erase"],
 } as const;
+const exportRoute = "/api/bff/admin/identity/privacy/export", eraseRoute = "/api/bff/admin/identity/privacy/erase";
+
+export function isReferencePrivacyRoute(route: string): boolean {
+  return route === exportRoute || route === eraseRoute;
+}
+
+function bindReferencePrivacy(route: string, ports: ReferenceIdentityPorts): HttpHandler {
+  const handler = route === eraseRoute ? createPrivacyEraseHandler : createPrivacyExportHandler;
+  const unavailable = async () => { throw nativePrivacyUnavailable(new Error("native_privacy_operations_required")); };
+  return (req, res) => handler({
+    authorizeAdmin: () => ports.operatorAuthorization.authorize(readBearerToken(req), { allowedRoles: ["admin"] }),
+    responseRequestId: response => readObservedResponseContext(response)?.requestId,
+    operations: isNativePrivacyOperations(ports.privacy) ? ports.privacy : { export: unavailable, erase: unavailable },
+  })(req, res);
+}
 /** Prepare one candidate from its mounted functions and selected adapters; construction does no I/O. */
 export function createReferenceIdentity(input: {
   bundle: IdentityBundle;
   migrationIdentity: string;
   env: Record<string, string | undefined>;
   createRoutes(ports: ReferenceIdentityPorts, env: Record<string, string | undefined>): readonly RouteEntry[];
+  /** Wrap the guarded native handler with the host's request scope and lifecycle. */
+  decoratePrivacyRoute?(route: string, guarded: HttpHandler): HttpHandler;
   ports: ReferenceIdentityPorts;
 }) {
   const env = Object.freeze({ ...input.env });
   const ports = { ...input.ports };
-  const routes = input.createRoutes(ports, env).map(route => ({ ...route,
-    handler: withObservedRoute({ route: route.route, domain: "identity", surface: route.route.startsWith("/api/bff/admin/") ? "admin" : "customer", risk: "mutation" },
-      async (req, res) => { await route.handler(req, res); }),
-  }));
+  const routes = input.createRoutes(ports, env).map(route => {
+    let handle = route.handler;
+    if (input.bundle === "node-postgres" && isReferencePrivacyRoute(route.route)) {
+      const guarded = bindReferencePrivacy(route.route, ports);
+      handle = input.decoratePrivacyRoute?.(route.route, guarded) ?? guarded;
+    }
+    return { ...route, handler: withObservedRoute({ route: route.route, domain: "identity",
+      surface: route.route.startsWith("/api/bff/admin/") ? "admin" : "customer", risk: "mutation" },
+    async (req, res) => { await handle(req, res); }) };
+  });
   const preflight = createAdminBffPreflight({
     allowedRoles: allowedAdminRolesForBffRoute, machineWriteRoutes: MACHINE_ACTOR_WRITE_ROUTES,
     resolveBinding: () => ({ binding: { identity: input.bundle, run: (_token, work) => work(ports.operatorAuthorization) } }),
@@ -67,7 +94,8 @@ export async function admitReferenceIdentity(input: ReferenceIdentityAdmission) 
   const bindings: ReadinessInput["bindings"] = { triggers: {}, env: {},
     ports: { "@openlup/platform/identity:emailTrustPolicy": input.runtime.ports.emailTrustPolicy, ...Object.fromEntries(responsibilities.map(key => {
       const port = input.runtime.ports[key];
-      const available = port && methods[key].every(method => typeof Reflect.get(port, method) === "function");
+      const available = port && methods[key].every(method => typeof Reflect.get(port, method) === "function")
+        && (key !== "privacy" || input.runtime.bundle !== "node-postgres" || isNativePrivacyOperations(port));
       return [`@openlup/platform/identity:${key}`, available ? port : null];
     })) },
     routes: Object.fromEntries(input.runtime.routes.map(route => [`@openlup/platform/identity:${route.route}`, route.handler])),
@@ -78,7 +106,8 @@ export async function admitReferenceIdentity(input: ReferenceIdentityAdmission) 
   const oidc = await assessOidcReadiness(input.runtime.ports.oidcVerifiers ?? []);
   const state = oidc.state === "unknown" || report.state === "unknown" || emailTrust.state === "unknown" ? "unknown"
     : oidc.state === "unsatisfied" || report.state === "unsatisfied" || emailTrust.state === "unsatisfied" ? "unsatisfied" : "ready";
-  const combined = { ...report, state, issues: [...report.issues, ...emailTrust.issues, ...oidc.issues] } as const;
+  const issues = report.issues.map(issue => identitySchemaRecovery(input.runtime.bundle, issue));
+  const combined = { ...report, state, issues: [...issues, ...emailTrust.issues, ...oidc.issues] } as const;
   const assertCurrent = () => {
     const current = input.currentIdentity();
     if (Object.keys(identity).some(key => identity[key as keyof CandidateIdentity] !== current[key as keyof CandidateIdentity])) throw new Error("identity_candidate_admission_stale");
