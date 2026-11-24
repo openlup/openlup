@@ -1,3 +1,4 @@
+import { starterDiagnostic } from './refusals.ts';
 import type { Locale as PlatformLocale } from '@openlup/platform/communications/contracts';
 import { market } from '../owned/market.config.ts';
 
@@ -13,13 +14,13 @@ export const configuredLocales = market.locales;
 
 export function assertLocaleMarket(market: LocaleMarket): void {
   if (!Array.isArray(market.locales) || !market.locales.length
-    || new Set(market.locales).size !== market.locales.length) throw new Error('starter_locales_invalid');
+    || new Set(market.locales).size !== market.locales.length) throw starterDiagnostic('starter_locales_invalid');
   for (const locale of market.locales) {
     if (!supportedLocales.some(supported => supported === locale)) {
-      throw new Error(`starter_locale_unsupported: ${String(locale)}`);
+      throw starterDiagnostic(`starter_locale_unsupported: ${String(locale)}`);
     }
   }
-  if (!market.locales.includes(market.defaultLocale)) throw new Error('starter_default_locale_invalid');
+  if (!market.locales.includes(market.defaultLocale)) throw starterDiagnostic('starter_default_locale_invalid');
 }
 
 export function isConfiguredLocale(value: unknown, market: Pick<LocaleMarket, 'locales'>): value is Locale {
@@ -33,7 +34,7 @@ export function resolveLocale(value: unknown, market: LocaleMarket): Locale {
 export function assertLocalized(value: unknown, locales: readonly Locale[], path: string): void {
   for (const locale of locales) {
     const text = value && typeof value === 'object' ? (value as Record<string, unknown>)[locale] : undefined;
-    if (typeof text !== 'string' || !text.trim()) throw new Error(`starter_locale_copy_missing: ${path} (${locale})`);
+    if (typeof text !== 'string' || !text.trim()) throw starterDiagnostic(`starter_locale_copy_missing: ${path} (${locale})`);
   }
 }
 
@@ -44,7 +45,7 @@ export function assertLocaleCopy(copy: unknown, locales: readonly Locale[], path
   for (const locale of locales) {
     for (const key of requiredKeys) {
       const text = key.split('.').reduce<unknown>((value, part) => record(value)[part], registry[locale]);
-      if (typeof text !== 'string' || !text.trim()) throw new Error(`starter_locale_copy_missing: ${path}.${key} (${locale})`);
+      if (typeof text !== 'string' || !text.trim()) throw starterDiagnostic(`starter_locale_copy_missing: ${path}.${key} (${locale})`);
     }
   }
 }
