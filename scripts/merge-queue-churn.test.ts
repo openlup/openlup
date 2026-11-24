@@ -91,7 +91,7 @@ describe('merge queue churn', () => {
       if (args[0] === 'graphql') {
         const queue = { mergeQueue: { entries: { totalCount: 0, nodes: [], pageInfo: { hasNextPage: false } } } };
         const pull = { pullRequest: { number: 5, baseRefName: 'main',
-          timelineItems: { totalCount: 2, pageInfo: { hasPreviousPage: false }, nodes: [
+          timelineItems: { totalCount: 12, pageInfo: { hasPreviousPage: false }, nodes: [
             { __typename: 'AddedToMergeQueueEvent', id: 'entry', createdAt: time(-10), actor: { __typename: 'User' } },
             { __typename: 'RemovedFromMergeQueueEvent', id: 'remove', createdAt: time(5), reason: 'merged' },
           ] } } };
@@ -112,6 +112,7 @@ describe('merge queue churn', () => {
     expect(report.partial).toEqual(['events', 'attempts', 'migrations', 'latency']);
     expect(report.latency.unknown.entryToMerge).toMatchObject({ medianSeconds: null, missing: 1 });
     expect(report.groups.observedJobSeconds).toBe(4);
+    expect(report.missing.events).not.toContain('PR #5 timeline incomplete page 1');
     mismatched = true;
     const invalid = buildQueueChurnReport(await collectQueueChurn({ since, until }, read));
     expect(invalid.groups.observedJobSeconds).toBe(0);
@@ -162,7 +163,7 @@ it('discovers carry-in from a prior snapshot, follows timeline cursors, and refr
         { id: 'current-q-id', position: 1, enqueuedAt: time(7), state: 'QUEUED', headCommit: { oid: 'c'.repeat(40) },
           pullRequest: { number: 5 }, enqueuer: { __typename: 'User' } },
       ] } } }
-      : { pullRequest: { number: 5, baseRefName: 'main', timelineItems: { totalCount: 2,
+      : { pullRequest: { number: 5, baseRefName: 'main', timelineItems: { totalCount: 12,
         ...(query.includes('before:"older"') ? {
           pageInfo: { hasPreviousPage: false },
           nodes: [{ id: 'old-add', __typename: 'AddedToMergeQueueEvent', createdAt: time(-100), actor: { __typename: 'User' } }],
@@ -179,6 +180,7 @@ it('discovers carry-in from a prior snapshot, follows timeline cursors, and refr
   } }, read);
   const report = buildQueueChurnReport(evidence);
   expect(calls.some(query => query.includes('before:"older"'))).toBe(true);
+  expect(report.missing.events).not.toContain('PR #5 timeline incomplete page 2');
   expect(report.currentQueue).toMatchObject([{ id: 'current-q-id', state: 'QUEUED' }]);
   expect(report.missing.events).toContain(`carry-in queue population at ${since} is unproven`);
   expect(report.latency.unknown.entryToMerge).toMatchObject({ medianSeconds: null, missing: 1 });
@@ -499,4 +501,21 @@ it('downgrades incomplete and duplicate offline queue observations, including th
     expect(report.currentQueue).toHaveLength(queue.length);
     expect(report.snapshot.queueComplete).toBe(false);
   }
+});
+
+it('accepts an empty filtered timeline but still requires the unfiltered queue total', async () => {
+  const read = async (args: string[]) => {
+    const query = args.join(' ');
+    if (query.includes('search/issues')) return [{ items: [{ number: 5, repository_url: 'https://api.github.com/repos/openlup/openlup' }], total_count: 1 }];
+    if (query.includes('/workflows/')) return [{ workflow_runs: [], total_count: 0 }];
+    const fields = query.includes('mergeQueue(')
+      ? { mergeQueue: { entries: { totalCount: 12, nodes: [], pageInfo: { hasNextPage: false } } } }
+      : { pullRequest: { number: 5, baseRefName: 'main',
+        timelineItems: { totalCount: 12, nodes: [], pageInfo: { hasPreviousPage: false } } } };
+    return { data: { repository: { nameWithOwner: 'openlup/openlup', databaseId: 1376035358, ...fields } } };
+  };
+  const evidence = await collectQueueChurn({ since, until }, read);
+  expect(evidence.events).toEqual([]);
+  expect(evidence.missing.events).not.toContain('PR #5 timeline incomplete page 1');
+  expect(evidence.missing.currentQueue).toContain('main queue incomplete page 1');
 });

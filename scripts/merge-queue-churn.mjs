@@ -647,7 +647,7 @@ async function graphRead(read, selection) {
     `query=query{repository(owner:"openlup",name:"openlup"){nameWithOwner databaseId ${selection}}}`]));
 }
 
-async function graphPages({ read, selection, field, limit, report, label, reverse = false }) {
+async function graphPages({ read, selection, field, limit, report, label, reverse = false, filtered = false }) {
   const rows = new Map();
   const cursors = new Set();
   let cursor = '';
@@ -667,7 +667,9 @@ async function graphPages({ read, selection, field, limit, report, label, revers
         rows.set(row.id, row);
       }
       const further = reverse ? info.hasPreviousPage : info.hasNextPage;
-      if (further === false && count === rows.size) return [...rows.values()];
+      // GitHub timeline itemTypes filters the nodes, while totalCount still
+      // describes the outer timeline. Exhaust the filtered cursors within it.
+      if (further === false && (filtered ? rows.size <= count : rows.size === count)) return [...rows.values()];
       const next = reverse ? info.startCursor : info.endCursor;
       if (further !== true || typeof next !== 'string' || !next || cursors.has(next) ||
           rows.size === previous || rows.size >= count) throw new Error('incomplete GraphQL cursor evidence');
@@ -705,7 +707,7 @@ async function observeCurrentQueue(read, report) {
 }
 
 async function observeTimeline(read, pr, report) {
-  const rows = await graphPages({ read, report, label: `PR #${pr} timeline`, limit: 10, reverse: true,
+  const rows = await graphPages({ read, report, label: `PR #${pr} timeline`, limit: 10, reverse: true, filtered: true,
     selection: cursor => `pullRequest(number:${pr}){number baseRefName
       timelineItems(last:100${cursor},itemTypes:[ADDED_TO_MERGE_QUEUE_EVENT,REMOVED_FROM_MERGE_QUEUE_EVENT,MERGED_EVENT]){
       totalCount pageInfo{hasPreviousPage startCursor} nodes{__typename
