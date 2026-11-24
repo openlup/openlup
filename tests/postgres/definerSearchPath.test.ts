@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { Pool, PoolClient } from "pg";
 import { expect, it } from "vitest";
+import migrationManifest from "../../config/platform-migration-manifest.json" with { type: "json" };
 import registry from "../../config/reviewed-platform-forwards.json" with { type: "json" };
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
@@ -477,8 +478,8 @@ it("parses search paths as PostgreSQL does and prints exact SQL only for a concr
 });
 
 it.each(profiles)("preserves the runtime checkout identity and ACLs through the prelock upgrade on %s", async profile => {
-  const prefix = readPlatformMigrationManifest(process.cwd());
-  if (prefix?.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
+  if (migrationManifest.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
+  const prefix: Extract<PlatformMigrationManifest, { schemaVersion: 3 }> = { ...structuredClone(migrationManifest), schemaVersion: 3 };
   for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
     const first = plan.forward.findIndex(unit => unit.file === prelockForward.path);
     expect(first).toBeGreaterThan(0);

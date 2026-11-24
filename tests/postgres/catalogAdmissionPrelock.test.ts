@@ -78,7 +78,8 @@ afterAll(async () => {
 }, postgresTeardownTimeoutMs);
 
 type ClientObserver = (index: number, db: PoolClient) => Promise<void> | void;
-type QueryObserver = (index: number, text: string, request: string | QueryConfig, values?: unknown[]) => Promise<void> | void;
+type ObservedQuery = string | (QueryConfig & { query_timeout?: number });
+type QueryObserver = (index: number, text: string, request: ObservedQuery, values?: unknown[]) => Promise<void> | void;
 function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObserver = () => {},
   pool: { connect(): Promise<PoolClient> } = installation.owner, observeError?: (error: unknown) => void,
   observeResult?: (text: string, index: number) => Promise<void> | void,
@@ -89,7 +90,7 @@ function pair(observeClient: ClientObserver = () => {}, observeQuery: QueryObser
     const db = await pool.connect();
     try { await observeClient(number, db); } catch (error) { db.release(true); throw error; }
     return {
-      query: async (request: string | QueryConfig, values?: unknown[]) => {
+      query: async (request: ObservedQuery, values?: unknown[]) => {
         const text = typeof request === "string" ? request : request.text;
         await observeQuery(number, text, request, values);
         try {
@@ -1747,7 +1748,7 @@ it.each(["promotion roster", "email family"] as const)("refuses a selection requ
   const count = roster
     ? `SELECT count(*)::int AS count FROM jsonb_array_elements(public.commerce_promotion_active_definitions()) p WHERE p->>'id'=ANY($1::text[])`
     : `SELECT count(*)::int AS count FROM public.clients WHERE regexp_replace(lower(btrim(email)), '\\+[^@]*@', '@')=$1`;
-  const parameters = roster ? [names] : [`${emailLocalPart}@example.invalid`];
+  const parameters: [string | string[]] = [roster ? names : `${emailLocalPart}@example.invalid`];
   await withSelectedCatalogAdmissionFence(installation.runtime, request, guards, async db => {
     expect((await db.query(count, parameters)).rows).toEqual([{ count: 1 }]);
     if (roster) await addPromotion(names[1]!);
@@ -1833,7 +1834,7 @@ it("snapshots selected input and handles deadline limits and guarded read transp
     }, (_index, sql, request, values) => {
       if (sql === keySql) expect((request as QueryConfig).values).toEqual([key]);
       if (sql === selectedSql) expect(JSON.parse((request as QueryConfig).values![3])).toEqual(fixture.guards);
-      if (sql === readSql) expect((request as QueryConfig).query_timeout).toBeGreaterThan(0);
+      if (sql === readSql) expect(typeof request === "string" ? undefined : request.query_timeout).toBeGreaterThan(0);
       expect(values).toBeUndefined();
     }, installation.runtime);
     await expect(withSelectedCatalogAdmissionFence(trade, input, guards, async db => (await db.query(readSql)).rows,
