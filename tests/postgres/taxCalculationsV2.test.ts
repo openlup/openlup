@@ -12,7 +12,7 @@ import { applyTaxCoverageRevision, beginTaxCalculation, completeTaxCalculation, 
   makeTaxQuoteRequest, verifyTaxQuoteResult } from "@openlup/platform/tax";
 import type { TaxQuoteInputV1, TaxQuoteRequestV1 } from "@openlup/platform/tax/contracts";
 import { createPlatformPostgresMigrationRunner } from "@openlup/platform/migrations";
-import { composeNativePrivacy } from "../../server/runtime/auth/privacyBinding.js";
+import { composeNativePrivacy, nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { captureStoreJourney, journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
@@ -397,7 +397,9 @@ it("withholds separately corrupted historical bindings and refusal fields", asyn
 
 async function proveRollback(db: JourneyInstallation, sameLogin: boolean) {
   const value = await seed("terminal", db), red = await seed("terminal", db), actor = await operator(db.owner);
-  const { store: privacyStore, unitOfWork } = privacy(db);
+  const { store, unitOfWork } = privacy(db);
+  // Model a writer from before the declaration hook to exercise the SQL backstop.
+  const { privacyRail: _rail, readRequiredContributorIds: _declaration, ...privacyStore } = store;
   // The landed ownership assessment precedes the ledger insert. Declare the same retained contact facts as the reference host.
   const retainedContactFields = Object.fromEntries(["lifecycle_stage", "acquisition_source"].map(field => [field, {
     owner: "clients", resource: `clients.${field}`, disposition: "retain" as const, reasonCode: "CONTACT_LIFECYCLE_RETENTION", remote: false,
@@ -509,12 +511,33 @@ it("retains the provider marker after erasure and exact-current restore", async 
   }
 });
 
+it("refuses a missing installed tax owner before touching live evaluation evidence", async () => {
+  const value = await seed(), actor = await operator(), input = request(value.ctx.clientId);
+  const { store: privacyStore, unitOfWork, current } = privacy();
+  const contributors = nativePrivacyContributors(privacyStore).filter(contributor => contributor.id !== "tax-calculations");
+  const missing = createPrivacyOperations({ store: privacyStore, unitOfWork, now: () => new Date(), randomId: randomUUID,
+    registry: createPersonalDataContributorRegistry(contributors, { requiredContributorIds: [] }) });
+  const before = await storedRow(store.owner, value.calculationId);
+  const refusal = { code: "PRIVACY_CONTRIBUTOR_MISSING", facts: { observed: expect.stringContaining("tax-calculations") } };
+  await expect(missing.export(actor, input.subject)).rejects.toMatchObject(refusal);
+  await expect(missing.erase(actor, input)).rejects.toMatchObject(refusal);
+  expect(await storedRow(store.owner, value.calculationId)).toEqual(before);
+  expect((await store.owner.query("SELECT erasure_id FROM public.identity_privacy_erasures WHERE client_id=$1",
+    [value.ctx.clientId])).rows).toEqual([]);
+  expect((await current.export(actor, input.subject)).documents.find(entry => entry.contributorId === "tax-calculations"))
+    .toMatchObject({ coverage: { complete: true }, data: [{ outcome: value.outcome }] });
+  expect(await current.erase(actor, input)).toMatchObject({ outcome: "ERASED" });
+  expect(await storedRow(store.owner, value.calculationId)).toMatchObject({ state: "erased" });
+});
+
 it("refuses native privacy when its installed RPC privileges are missing", async () => {
   const value = await seed(), actor = await operator(), { current } = privacy();
   await store.owner.query("REVOKE EXECUTE ON FUNCTION public.tax_calculation_export_v1(uuid), public.tax_calculation_erase_v1(uuid) FROM service_role");
   try {
-    await expect(current.export(actor, subject(value.ctx.clientId))).rejects.toMatchObject({ code: "42501" });
-    await expect(current.erase(actor, request(value.ctx.clientId))).rejects.toMatchObject({ code: "42501" });
+    const refused = { code: "PRIVACY_ASSESSMENT_UNAVAILABLE", cause: { code: "42501" },
+      facts: { fix: expect.stringContaining("EXECUTE") } };
+    await expect(current.export(actor, subject(value.ctx.clientId))).rejects.toMatchObject(refused);
+    await expect(current.erase(actor, request(value.ctx.clientId))).rejects.toMatchObject(refused);
   } finally {
     await store.owner.query("GRANT EXECUTE ON FUNCTION public.tax_calculation_export_v1(uuid), public.tax_calculation_erase_v1(uuid) TO service_role");
   }

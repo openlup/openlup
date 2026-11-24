@@ -103,7 +103,8 @@ describe("real PostgreSQL portable dunning forward", () => {
     prefixRows.subscriptions = prefixRows.subscriptions.map(({ row }) => ({ row: { ...row, composition_constraint: null, configured_offer_version: "classic", shipping_saved_address_id: null, billing_saved_address_id: null,
       offer_policy_version: "commerce.offer-policy.v1", promotion_engine_version: "promotion-engine.v1",
       offer_policy_assignment_state: "legacy_frozen", is_test_fixture: false } }));
-    prefixAcl = await privileges(upgrade);
+    // The later search-path forward appends pg_temp to this function's path.
+    prefixAcl = (await privileges(upgrade)).map(row => ({ ...row, proconfig: ["search_path=public, pg_catalog, pg_temp"] }));
     upgradeApplied = (await runner(upgrade).apply()).applied;
     freshApplied = (await runner(fresh).apply()).applied;
   }, postgresSetupTimeoutMs);
@@ -238,7 +239,7 @@ describe("real PostgreSQL portable dunning forward", () => {
   it("preserves invoker/search-path/ACL properties and denies actual browser-role execution", async () => {
     for (const pool of pools) {
       expect(await privileges(pool)).toEqual(prefixAcl);
-      expect(await privileges(pool)).toEqual([{ acl: expect.any(String), prosecdef: false, proconfig: ["search_path=public, pg_catalog"], anon: false, authenticated: false }]);
+      expect(await privileges(pool)).toEqual([{ acl: expect.any(String), prosecdef: false, proconfig: ["search_path=public, pg_catalog, pg_temp"], anon: false, authenticated: false }]);
       const browser = await pool.connect();
       try {
         for (const role of ["anon", "authenticated"]) {

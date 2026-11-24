@@ -70,7 +70,8 @@ describe.each(profiles)("native winback: %s", profile => {
     const db = await owner.connect();
     try {
       await db.query("SELECT pg_advisory_lock(hashtextextended($1,0))", [lock]);
-      const units = [plan.baseline,...plan.forward].filter(u => u.file !== file);
+      // The later search-path forward re-pins these functions, so it stays out of this out-of-order replay.
+      const units = [plan.baseline,...plan.forward].filter(u => u.file !== file && !/_function_search_path_pg_temp\.sql$/u.test(u.file));
       for (const [position,unit] of units.entries()) {
         const bytes = readFileSync(unit.file); expect(hash(bytes)).toBe(unit.sha256);
         await db.query("BEGIN");

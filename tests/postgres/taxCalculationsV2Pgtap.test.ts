@@ -21,8 +21,9 @@ beforeAll(async () => {
   await pool.query("DROP SCHEMA auth CASCADE; DROP OWNED BY anon,authenticated,service_role CASCADE; DROP ROLE anon,authenticated,service_role;     CREATE ROLE service_role; CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions");
   const client = await pool.connect();
   try {
+    // The later search-path forward also pins a routine this forward creates, so it stays out of this replay.
     for (const unit of [manifest.baseline, ...manifest.forward]) {
-      if (unit.file !== forward && unit.file !== claimSeal) await client.query(readFileSync(unit.file, "utf8"));
+      if (unit.file !== forward && unit.file !== claimSeal && !/_function_search_path_pg_temp\.sql$/u.test(unit.file)) await client.query(readFileSync(unit.file, "utf8"));
     }
   } finally { client.release(); }
 }, postgresSetupTimeoutMs);

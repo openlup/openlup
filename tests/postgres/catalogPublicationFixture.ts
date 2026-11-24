@@ -9,10 +9,10 @@ export const catalogueReadGrant = "db/platform/migrations/20261124180000_catalog
 export const cataloguePublicationAuthority = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
 export const catalogueGovernedForward = "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql";
 
-export async function installAfter(pool: Pool, predecessor: string) {
+export async function installAfter(pool: Pool, predecessor: string, skip: (file: string) => boolean = () => false) {
   const index = platformForwards.findIndex(unit => unit.file === predecessor);
   if (index < 0) throw new Error("Native fixture predecessor missing");
-  for (const { file } of platformForwards.slice(index + 1)) await pool.query(readFileSync(file, "utf8"));
+  for (const { file } of platformForwards.slice(index + 1)) if (!skip(file)) await pool.query(readFileSync(file, "utf8"));
 }
 const platformForwards = (JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as {
   forward: { file: string }[];

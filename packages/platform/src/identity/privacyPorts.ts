@@ -2,7 +2,9 @@ import type { PrivacySubjectRef, PrivacyExport, ErasureReceipt, PersonalDataDocu
 
 export class PrivacyRefusal extends Error {
   constructor(readonly code: PrivacyRefusalCode) { super(code); this.name = "PrivacyRefusal"; }
+  declare readonly facts?: PrivacyRefusalFacts;
 }
+export interface PrivacyRefusalFacts { observed: string; cause: string; fix: string; recheck: string }
 export interface AuthorizedHumanAdministrator { principalId: string }
 export interface ResolvedPrivacySubject {
   contactId: string | null;
@@ -35,13 +37,17 @@ export interface PrivacyStore<Context> {
   eraseIdentity(context: Context, subject: ResolvedPrivacySubject, actor: AuthorizedHumanAdministrator, pseudonym: string): Promise<void>;
   saveReceipt(context: Context, subject: ResolvedPrivacySubject, actor: AuthorizedHumanAdministrator, key: string, receipt: ErasureReceipt, dispositions: ContributorDisposition[]): Promise<void>;
 }
-export interface PrivacyUseCaseDependencies<Context> {
+export interface NativePrivacyStore<Context> extends PrivacyStore<Context> {
+  readonly privacyRail: "native";
+  readRequiredContributorIds(context: Context): Promise<readonly string[]>;
+}
+export type PrivacyUseCaseDependencies<Context> = {
   unitOfWork: PrivacyUnitOfWork<Context>;
   registry: PersonalDataContributorRegistry<Context>;
-  store: PrivacyStore<Context>;
+  store: NativePrivacyStore<Context> | (PrivacyStore<Context> & { readonly privacyRail?: never });
   now(): Date;
   randomId(): string;
-}
+};
 export interface PrivacyOperations {
   export(actor: AuthorizedHumanAdministrator, subject: PrivacySubjectRef): Promise<PrivacyExport>;
   erase(actor: AuthorizedHumanAdministrator, input: { subject: PrivacySubjectRef; idempotencyKey: string }): Promise<ErasureReceipt>;

@@ -116,11 +116,11 @@ async function functionCatalog(db: typeof executor, signature: string) {
     pg_get_functiondef(p.oid) definition
     FROM pg_proc p WHERE p.oid=$1::regprocedure`, [signature])).rows[0];
 }
-async function assertOptInSecurity(db: typeof executor) {
+async function assertOptInSecurity(db: typeof executor, searchPath = "public, pg_catalog") {
   const hasServiceRole = (await db.query("SELECT 1 FROM pg_roles WHERE rolname='service_role'")).rows.length > 0;
   for (const [, successor] of activationFunctions) {
     expect(await functionCatalog(db, successor), successor).toMatchObject({
-      prosecdef: false, proconfig: ["search_path=public, pg_catalog"],
+      prosecdef: false, proconfig: [`search_path=${searchPath}`],
     });
     const { owner, acl } = (await db.query(`SELECT pg_get_userbyid(p.proowner) owner,
       (SELECT jsonb_agg(jsonb_build_object('role', pg_get_userbyid(a.grantee),
@@ -135,7 +135,8 @@ async function assertOptInSecurity(db: typeof executor) {
   }
 }
 it("gives new functions only owner and service_role EXECUTE on the qualified installation", async () => {
-  await assertOptInSecurity(admin);
+  // The complete installation also runs the later forward that appends pg_temp.
+  await assertOptInSecurity(admin, "public, pg_catalog, pg_temp");
 });
 
 it("leaves predecessor catalogs identical and new functions owner-only without service_role", async () => {

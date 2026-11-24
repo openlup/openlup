@@ -58,7 +58,9 @@ it.each(profiles)("upgrades a populated %s source before capturing and restores 
     stores.push(source);
     const earlierInventory = source.inventory;
     await seed(source);
-    expect((await source.runner.apply()).applied).toContainEqual(expect.stringMatching(/_acquisition_definer_search_path_pin\.sql$/u));
+    const { applied } = await source.runner.apply();
+    expect(applied).toContainEqual(expect.stringMatching(/_acquisition_definer_search_path_pin\.sql$/u));
+    expect(applied).toContainEqual(expect.stringMatching(/_function_search_path_pg_temp\.sql$/u));
     expect(source.inventory).not.toBe(earlierInventory);
 
     const target = await installAccountMutations(profile, false, "restore-upgrade-target");
