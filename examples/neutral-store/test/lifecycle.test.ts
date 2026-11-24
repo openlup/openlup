@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env as processEnv } from 'node:process';
@@ -230,7 +230,12 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
   } finally { rmSync(app, { recursive: true, force: true }); }
 });
 
-test('physical findings precede Docker, bootstrap, runtime connection and key preparation', () => {
+// Nested extraction checks reuse the checkout's dependencies. The packed consumer installs its own.
+const extractionSharesDependencies = existsSync(join(root, '.starter-origin.json'))
+  && !existsSync(join(root, 'node_modules/@openlup/platform/package.json'));
+test('physical findings precede Docker, bootstrap, runtime connection and key preparation', {
+  skip: extractionSharesDependencies && 'The packed starter suite runs the subprocess witness.',
+}, () => {
   const scratch = join(root, '.context');
   mkdirSync(scratch, { recursive: true });
   const app = mkdtempSync(join(scratch, 'physical-findings-'));
