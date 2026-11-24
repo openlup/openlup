@@ -5,11 +5,15 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
-import { join, posix, resolve } from "node:path";
+import { join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { documentationGit, documentationLinkTargets, parseDocumentationRouting, resolveDocumentationOwner, type DocumentationOwner } from "../documentation-routing.ts";
 // eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check runs before workspace install and reuses core's owning release-note audit
 import { assertReleaseNotePackagedContent, documentedAdapters, findReleaseNotePackagedContentViolations } from "../../packages/core/scripts/core-package-consumer-audit.ts";
+// eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check reuses Core's reader-guide Markdown rules in-process
+import { assertGuidePage, assertPackageMarkdown, guideAllowListPath, pinGuideReleaseLinks, readGuideAllowList, type GuidePageFix } from "../../packages/core/scripts/documentation-guide-content.ts";
+// eslint-disable-next-line no-restricted-imports -- match the Core contract's npm pack inventory without loading its compiler
+import { packDryRun } from "../../packages/core/scripts/release-npm-checks.ts";
 import { isChangelogFragment, readChangelogFragments, validateChangelogFragment, type ChangelogFragment } from "./changelog-fragments.ts";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, parsePackagesConfig, releaseVersionAbove } from "./package-manifest-policy.ts";
 export { assertReleaseNotePackagedContent, documentedAdapters, findReleaseNotePackagedContentViolations };
@@ -330,21 +334,28 @@ export const RELEASE_NOTE_PACKAGED_CONTENT_REMEDY =
   + "or remove downstream/provider terms from the offending changelog fragment or API declaration";
 export type SimulatedUpgradePageAudit = { version: string; since: string; path: string; bytes: number; maxBytes: number; prepared: boolean; text: string };
 
-/** Render the upgrade page Markdown in memory without spawning the TypeScript guide planner. */
-export function renderUpgradePage({ root, version, since, fragments }: { root: string; version: string; since: string | undefined; fragments: readonly ChangelogFragment[] }): string {
-  if (!RELEASE_VERSION.test(version) && !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/u.test(version)) throw new Error(`${version} is not a MAJOR.MINOR.PATCH release version or prerelease`);
+function isUpgradeVersion(version: string): boolean {
+  return RELEASE_VERSION.test(version) || /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/u.test(version);
+}
+
+function renderUpgradePageSections({ root, version, since, fragments }: { root: string; version: string; since: string | undefined; fragments: readonly ChangelogFragment[] }) {
+  if (!isUpgradeVersion(version)) throw new Error(`${version} is not a MAJOR.MINOR.PATCH release version or prerelease`);
   const guideRoot = join(resolve(root), GUIDE);
   const procedure = existsSync(join(guideRoot, "upgrade/README.md")) ? "; see the [upgrade procedure](README.md)" : "";
-  const sections = [`# Upgrading to ${version}`, `This page lists what changed since the previous release${procedure}.`];
+  const intro = [`# Upgrading to ${version}`, `This page lists what changed since the previous release${procedure}.`];
+  const notesSections: string[] = [];
   const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
   for (const entry of config.packages.filter(({ publish }) => publish)) {
     const notes = fragments.filter(({ path }) => path.startsWith(`${entry.directory}/changes/`)).sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
-    if (notes.length) sections.push(`## ${entry.name}`, ...notes.map(({ contents }) => contents.trimEnd()));
+    if (notes.length) notesSections.push(`## ${entry.name}`, ...notes.map(({ contents }) => contents.trimEnd()));
   }
-  sections.push("## API changes");
-  if (since) sections.push(...apiSections(root, since));
-  else sections.push("The previous release could not be determined: no core release tag is an ancestor of HEAD.");
-  return `${sections.join("\n\n")}\n`;
+  const api = ["## API changes", ...(since ? apiSections(root, since) : ["The previous release could not be determined: no core release tag is an ancestor of HEAD."])];
+  return { text: `${[...intro, ...notesSections, ...api].join("\n\n")}\n`, generated: `${[...intro, ...api].join("\n\n")}\n` };
+}
+
+/** Render the upgrade page Markdown in memory without spawning the TypeScript guide planner. */
+export function renderUpgradePage(input: Parameters<typeof renderUpgradePageSections>[0]): string {
+  return renderUpgradePageSections(input).text;
 }
 
 /** Assemble from the caller's exact consumed fragments, without reading or deleting fragment files. */
@@ -400,12 +411,90 @@ function findOffendingUpgradeSections(path: string, text: string): string[] {
     .map(({ heading }) => heading);
 }
 
+function assertUpgradePageDocumentation(
+  root: string,
+  { version, path, text, prepared }: Pick<SimulatedUpgradePageAudit, "version" | "path" | "text" | "prepared">,
+  label: string,
+  fragments: readonly ChangelogFragment[],
+  generated: string,
+): void {
+  const repositoryRoot = resolve(root);
+  const packageRoot = join(repositoryRoot, "packages/core");
+  const guideRoot = join(repositoryRoot, GUIDE);
+  const file = join(repositoryRoot, path);
+  const pageLabel = relative(packageRoot, file).split(sep).join("/");
+  const tag = `openlup-core-v${version}`;
+  const violations: string[] = [];
+  let allowed: Set<string>;
+  try {
+    allowed = readGuideAllowList(repositoryRoot, violations);
+  } catch {
+    refuseUpgradePage(label, [`${guideAllowListPath}: expected readable JSON with schemaVersion 1 and a list of exact terms`], [`correct ${guideAllowListPath}`]);
+  }
+  if (violations.length > 0) refuseUpgradePage(label, violations, [`correct ${guideAllowListPath}`]);
+  const packed = new Set((packDryRun(packageRoot).files ?? []).map((entry) => entry.path));
+  if (!prepared) packed.add(pageLabel);
+  const { scripts } = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { scripts?: Record<string, string> };
+  const context = { packageRoot, file, label: pageLabel, packed, scripts, repositoryRoot, guideRoot, tag, allowed };
+
+  // Preparation re-pins existing release URLs. A prepared file must already have the right pin.
+  const normalize = (source: string) => prepared ? source : pinGuideReleaseLinks(source, version, isUpgradeVersion);
+  const pageFixes = new Set<GuidePageFix>();
+  assertGuidePage({ ...context, source: normalize(text), fixes: prepared ? pageFixes : undefined }, violations);
+  const fragmentViolations: string[] = [];
+  const instructions: string[] = [];
+  const changelog = { packageRoot, file: join(packageRoot, "CHANGELOG.md"), label: "CHANGELOG.md", packed, scripts };
+  for (const fragment of fragments) {
+    const count = fragmentViolations.length;
+    const source = fragment.contents.trimEnd();
+    if (violations.length) assertGuidePage({ ...context, source: normalize(source), fragmentPath: fragment.path }, fragmentViolations);
+    if (fragment.path.startsWith("packages/core/changes/")) {
+      // Release copies the fragment text verbatim and links resolve from the package root.
+      assertPackageMarkdown({ ...changelog, source }, false, fragmentViolations, `${fragment.path} (Core CHANGELOG.md)`);
+    }
+    if (fragmentViolations.length > count) instructions.push(`correct the reported content in ${fragment.path}`);
+  }
+  if (violations.length === 0 && fragmentViolations.length === 0) return;
+  if (prepared) instructions.push(...preparedPageFixes(path, pageFixes, tag));
+  else if (violations.length) {
+    const generatorViolations = instructions.length ? [] : violations;
+    if (instructions.length) assertGuidePage({ ...context, source: normalize(generated) }, generatorViolations);
+    if (generatorViolations.length) instructions.push(generatorViolations.some((diagnostic) => diagnostic.endsWith(" targets a file missing from npm pack"))
+      ? "include the linked file in the Core npm packlist by correcting `files` in packages/core/package.json, or correct the link emitted by scripts/packages/release-docs-pass.ts"
+      : "correct the input used to render the upgrade page or the generator in scripts/packages/release-docs-pass.ts");
+  }
+  refuseUpgradePage(label, [...violations, ...fragmentViolations], instructions);
+}
+
+function refuseUpgradePage(label: string, diagnostics: readonly string[], instructions: readonly string[]): never {
+  throw new Error([
+    `Observed: ${label} fails the Core documentation contract.`,
+    "Cause:",
+    ...diagnostics.map((diagnostic) => diagnostic.replaceAll("; run docs:check -- --write", "")),
+    ...instructions.map((instruction) => `Fix: ${instruction}`),
+    "Recheck: npm run preflight -- --fast",
+  ].join("\n"));
+}
+
+function preparedPageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, tag: string): string[] {
+  const pinForm = `for an existing file other than a guide Markdown page, keep the link, replace only the branch, tag or commit name after \`/blob/\` with \`${tag}\`, and write the canonical repository path without \`.\` or \`..\` segments. Keep the query and anchor exactly as written.`;
+  const messages: Record<GuidePageFix, string> = {
+    "unpinned-blob": `in ${path}, for each repository blob link named in Cause, use a relative guide link for a guide Markdown page. To keep a link, ${pinForm} Correct any other reported guide content in the same file and follow any separate Fix. Then rerun \`npm run preflight -- --fast\`.`,
+    "content": `correct the reported guide content in ${path}`,
+    "relative-link": `replace the pinned link into the guide with a relative guide link in ${path}`,
+    "repository-target": `correct the repository link's target path in ${path}`,
+    "generated-region": `remove the generated-region marker and its matching closer from ${path}`,
+  };
+  return (fixes.size ? [...fixes] : ["content"] as const).map((fix) => messages[fix]);
+}
+
 /**
  * Dry-run upgrade page audit in memory (no writes, bare Node 24 compatible):
  * when the core manifest is already bumped above the previous core tag and the
  * prepared upgrade page exists on disk, audits that prepared page; otherwise
  * renders the candidate upgrade page in memory from current fragments + API diffs.
- * Enforces the size cap and packed core release-note neutrality audit.
+ * Enforces the size cap, packed Core release-note neutrality and the Core Markdown contract for the guide page and Core changelog fragments.
+ * The only additional subprocess is Core's npm pack dry run.
  * Returns null when no ancestor core release tag exists to diff against.
  */
 export function assertSimulatedUpgradePage(
@@ -420,7 +509,7 @@ export function assertSimulatedUpgradePage(
   const path = upgradePagePath(version);
   const prepared = options.version === undefined && options.fragments === undefined && candidate.bumpedAboveTag && existsSync(join(root, path));
   let fragments: readonly ChangelogFragment[] = [];
-  let text: string;
+  let text: string, generated = "";
   if (prepared) {
     text = readFileSync(join(root, path), "utf8");
   } else {
@@ -436,7 +525,7 @@ export function assertSimulatedUpgradePage(
               return { path: entry, contents: validateChangelogFragment(entry, readFileSync(join(root, entry)), stat.mode & 0o111 ? "100755" : "100644") };
             })
         : config.packages.filter(({ publish }) => publish).flatMap(({ directory }) => readChangelogFragments(root, directory)));
-    text = renderUpgradePage({ root, version, since, fragments });
+    ({ text, generated } = renderUpgradePageSections({ root, version, since, fragments }));
   }
   const bytes = Buffer.byteLength(text, "utf8");
   const label = prepared
@@ -469,7 +558,9 @@ export function assertSimulatedUpgradePage(
       + `\nFix: ${RELEASE_NOTE_PACKAGED_CONTENT_REMEDY}.`,
     );
   }
-  return { version, since, path, bytes, maxBytes, prepared, text };
+  const audit = { version, since, path, bytes, maxBytes, prepared, text };
+  assertUpgradePageDocumentation(root, audit, label, fragments, generated);
+  return audit;
 }
 
 export function formatReleaseDocumentation(listing: ReleaseDocumentationListing): string {
