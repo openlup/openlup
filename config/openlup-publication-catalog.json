@@ -3526,6 +3526,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/scripts/documentation-guide-content.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/scripts/documentation-sql-inventory.ts",
       "class": "public-output"
     },
