@@ -973,7 +973,7 @@ function normalWorkerRendezvous(candidateIds: ReadonlySet<string>) {
   };
 }
 
-it("drains normal due renewals concurrently with bounded concurrency, zero duplicate dispatch, and monotonic cycle advance", async () => {
+it("drains normal due renewals concurrently with zero duplicate dispatch and monotonic cycle advance", async () => {
   const subs = [await active(), await active(), await active(), await active()];
   const candidateIds = new Set(subs.map(s => s.subscriptionId));
   const d = await deps(subs[0].subscriptionId, "succeeded");
@@ -1035,6 +1035,7 @@ it("drains normal due renewals concurrently with bounded concurrency, zero dupli
     if (rendezvous) {
       expect(rendezvous.missingPeer, "Normal renewal worker did not reach the rendezvous").toBe(false);
       expect(rendezvous.peak).toBeGreaterThanOrEqual(2);
+      // This counts four fixture candidates. The batch helper test exercises the worker cap with more rows.
       expect(rendezvous.peak).toBeLessThanOrEqual(4);
       rendezvous = undefined;
     }
