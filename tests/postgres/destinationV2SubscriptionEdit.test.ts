@@ -25,7 +25,16 @@ const original = {
   contact: { contactPhone: "+0000000", recipientName: "Fixture" },
 };
 const validated = { ...original, classificationKeys: ["first", "second"], policyRef: "fixture.policy", policyRevision: "r1" };
-type Context = Awaited<ReturnType<typeof destinationContext>>;
+type Context = {
+  clientId: string;
+  scopeRef: string;
+  owner: {
+    installationRef: string;
+    principalKind: string;
+    principalRef: string;
+    customerOrSessionRef: string;
+  };
+};
 type Db = Pool | PoolClient;
 const query = async (db: Db, sql: string, args: unknown[] = []) => (await db.query(sql, args)).rows[0]?.result;
 async function insertSubscription(db: Db, id: string, clientId: string) {
@@ -302,7 +311,7 @@ it("inherits the exact order pin and races real renewal prepare with no parcel, 
   await owner.query(`UPDATE ${orderBindingTable} SET selection=NULL,service=NULL WHERE order_id=$1`, [purchase.orderId]);
   refused(await noSelection(), "destination_evidence_unavailable", "subscriptionId");
   await owner.query(`UPDATE ${orderBindingTable} SET selection=$2,service=$3 WHERE order_id=$1`, [purchase.orderId, origin.selection, testServicePin]);
-  const duplicate = await insertDestinationOrder(owner, ctx);
+  const duplicate = await insertDestinationOrder(owner, originScope);
   await owner.query(`INSERT INTO public.subscription_activations
     (order_id,client_id,subscription_id,cadence_days,state,payment_fingerprint,activation_idempotency_key,declare_idempotency_key,activated_at)
     VALUES($1,$2,$3,28,'active',repeat('a',64),$4,$5,clock_timestamp())`,
