@@ -6,6 +6,7 @@ import { accessSync, constants, readFileSync, realpathSync, statSync, writeFileS
 import { delimiter, join, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import { Pool } from "pg";
 import { createPostgresMigrationRunner } from "../server/adapters/postgres/migrationRunner.ts";
 import { selectPlatformMigrationManifest } from "./platform-migration-manifest.ts";
@@ -15,6 +16,7 @@ import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from 
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../tests/helpers/postgresContainer.ts";
 import { connectedNativeStoreTables } from "../server/adapters/postgres/connectedStoreCapture.ts";
 import { inventoryEnvelope, INVENTORY_PATH } from "./agent-review-derived.mjs";
+import { isolatedInventoryFile } from "./agent-review-landing.mjs";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 export const INVENTORY_PROFILES = ["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const;
 export const DEFAULT_INVENTORY_CONCURRENCY = 3;
@@ -175,7 +177,7 @@ async function measure(profile: typeof profiles[number]) {
     return { count: ledger.length, exactTailCount, objectInventorySha256: measured, tail: ledger.map(unit => ({ file: unit.catalog_path, sha256: unit.sha256 })) };
   } finally { await closePostgres(container, pools); }
 }
-export async function refreshInstallationInventory(env: NodeJS.ProcessEnv = processEnvironment): Promise<void> {
+export async function refreshInstallationInventory(env: NodeJS.ProcessEnv = processEnvironment, isolated = false): Promise<void> {
   const concurrency = parseInventoryConcurrency(env.OPENLUP_INVENTORY_CONCURRENCY);
   const source = readFileSync(INVENTORY_PATH, "utf8"), envelope = inventoryEnvelope(source);
   const measured = await mapWithConcurrency(profiles, concurrency, profile => measure(profile));
@@ -184,11 +186,15 @@ export async function refreshInstallationInventory(env: NodeJS.ProcessEnv = proc
     connectedTableCount: connectedNativeStoreTables.length,
   };
   // Replacing only this value preserves historical bytes, including their formatting.
-  writeFileSync(INVENTORY_PATH, envelope.before + JSON.stringify(current, null, 2).replaceAll("\n", "\n  ") + envelope.after);
+  const contents = envelope.before + JSON.stringify(current, null, 2).replaceAll("\n", "\n  ") + envelope.after;
+  if (isolated) writeFileSync(isolatedInventoryFile(process.cwd()), contents, { flag: "wx", mode: 0o600 });
+  else writeFileSync(INVENTORY_PATH, contents);
   console.log(`Measured all five complete PostgreSQL installation inventories (concurrency=${concurrency})`);
 }
 
 async function main(): Promise<number> {
+  const { values: { isolated } } = parseArgs({ options: { isolated: { type: "boolean" } } });
+  if (isolated) isolatedInventoryFile(process.cwd());
   // Validate concurrency before waiting on the host broker so malformed env fails fast.
   parseInventoryConcurrency(processEnvironment.OPENLUP_INVENTORY_CONCURRENCY);
   const gated = resolveInventoryResourceGate(
@@ -201,7 +207,7 @@ async function main(): Promise<number> {
   if (gated) {
     return runGatedChild(gated, process.cwd(), processEnvironment);
   }
-  await refreshInstallationInventory(processEnvironment);
+  await refreshInstallationInventory(processEnvironment, isolated);
   return 0;
 }
 

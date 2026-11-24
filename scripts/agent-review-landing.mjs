@@ -1,24 +1,62 @@
 // Local landing helper: merge main, stop on authored conflicts, never push.
-import { execFileSync } from 'node:child_process';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { isDeepStrictEqual } from 'node:util';
-import { git } from './agent-review-session.mjs';
+import { isDeepStrictEqual, promisify } from 'node:util';
+import { git as ordinaryGit } from './agent-review-session.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import * as carrierGenerators from './agent-review-generators.mjs';
 import { DEFAULT_INCREMENTAL_PACKAGES, TSBUILDINFO_FILENAME } from './build-packages-incremental.mjs';
+import { MIGRATION_RAILS, migrationIdentity, planMigrationSlots } from './migration-slots.mjs';
+export { nextFreeMigrationSlot } from './migration-slots.mjs';
+import { documentationGit } from './documentation-routing.ts';
 import { isGuidePage } from './oss-publication-policy.ts';
+
+const finalizationEnvironment = new AsyncLocalStorage();
+const execGit = promisify(execFile);
+async function git(cwd, ...args) {
+  const env = finalizationEnvironment.getStore();
+  if (!env) return ordinaryGit(cwd, ...args);
+  const result = await execGit('git', ['--no-replace-objects', '-C', cwd, '-c', 'core.fsmonitor=false',
+    '-c', 'merge.renames=false', '-c', 'merge.directoryRenames=false', '-c', 'merge.conflictStyle=merge', ...args],
+  { encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024, env });
+  return result.stdout;
+}
 
 const { generatedCarrier, ownerOutputCarrier, SQL_REFERENCE } = carrierGenerators;
 const PUBLICATION_CATALOGUE = REGISTRY_PATHS[0];
 const SETTINGS_GUIDE = 'packages/core/docs/guide/how-to/operate/settings-catalogue.md';
 const SETTINGS_OUTPUTS = ['packages/platform/settings-catalog.json', 'packages/platform/settings-refusals.json', SETTINGS_GUIDE];
 const BUILD_SCRIPT = 'scripts/build-packages-incremental.mjs';
+export function landingGitDirectory(cwd) {
+  const root = realpathSync(documentationGit(cwd, ['rev-parse', '--show-toplevel']).toString('utf8').trimEnd());
+  if (root !== realpathSync(cwd)) throw new Error('landing: use the dedicated worktree root');
+  const gitDir = realpathSync(documentationGit(cwd, ['rev-parse', '--absolute-git-dir']).toString('utf8').trimEnd());
+  const directory = lstatSync(gitDir);
+  if (!directory.isDirectory() || (directory.mode & 0o022) !== 0 ||
+      (process.getuid && directory.uid !== process.getuid())) {
+    throw new Error('landing: worktree Git metadata must be owned and writable only by the current user');
+  }
+  return gitDir;
+}
+export const isolatedInventoryDirectory = cwd =>
+  resolve(landingGitDirectory(cwd), 'openlup-finalization-inventory');
+export function isolatedInventoryFile(cwd) {
+  const scratch = isolatedInventoryDirectory(cwd);
+  const directory = lstatSync(scratch, { throwIfNoEntry: false });
+  if (!directory?.isDirectory() || (directory.mode & 0o777) !== 0o700 ||
+      (process.getuid && directory.uid !== process.getuid())) {
+    throw new Error('landing: isolated inventory requires the private worktree scratch directory');
+  }
+  return resolve(scratch, 'inventory.json');
+}
+
 export const carrierLocale = { LC_ALL: 'en_US.UTF-8', LANG: 'en_US.UTF-8' };
 const readJson = (root, path) => JSON.parse(readFileSync(resolve(root, path), 'utf8'));
 const pathsFrom = output => output.split('\0').filter(Boolean);
@@ -90,14 +128,15 @@ function refuseAuthoredConflicts(paths) {
 const commandDiagnostic = error => error?.stderr?.toString().trim() || error?.message || String(error);
 const checkoutStatus = cwd => git(cwd, '--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all');
 
-async function abortLanding(cwd, { head, hasMerge, ignored, diagnostics, writes }, error) {
+async function abortLanding(cwd, { head, hasMerge, ignored, diagnostics, writes, finalizing, bystanders, captureBystanders }, error) {
   const cleanupFailures = [];
   const attempt = async action => {
     try { return await action(); }
     catch (failure) { cleanupFailures.push(failure); }
   };
   const active = await attempt(hasMerge);
-  const owned = path => writes.paths.has(path) ||
+  if (captureBystanders) await attempt(() => captureBystanders(active));
+  const owned = path => bystanders?.get(path)?.owned || writes.paths.has(path) ||
     (writes.generated && generatedCarrier(path) && !ownerOutputCarrier?.(path));
   // Restore landing's writes from the merge index so they cannot obstruct abort.
   const cleanUntracked = async () => {
@@ -120,10 +159,32 @@ async function abortLanding(cwd, { head, hasMerge, ignored, diagnostics, writes 
     await git(cwd, 'merge', '--abort');
     await cleanUntracked();
   });
+  if (finalizing && !active) await attempt(async () => {
+    const modified = pathsFrom(await git(cwd, 'diff', 'HEAD', '--name-only', '--no-renames', '-z')).filter(owned);
+    if (modified.length) await git(cwd, '--literal-pathspecs', 'restore', '--source=HEAD', '--staged', '--worktree', '--', ...modified);
+  });
+  if (bystanders?.size) await attempt(async () => {
+    for (const [path, { entry, bytes, link, mode }] of bystanders) {
+      if (entry) await git(cwd, 'update-index', '--add', '--cacheinfo', `${entry.mode},${entry.blobOid},${path}`);
+      else await git(cwd, 'update-index', '--force-remove', '--', path);
+      const file = resolve(cwd, path);
+      if (bytes) {
+        mkdirSync(dirname(file), { recursive: true });
+        writeFileSync(file, bytes, { mode });
+        if (bystanders.get(path).owned) chmodSync(file, mode & 0o777);
+      } else if (link !== undefined) {
+        if (lstatSync(file, { throwIfNoEntry: false })) unlinkSync(file);
+        symlinkSync(link, file);
+      } else if (mode === undefined && lstatSync(file, { throwIfNoEntry: false })) unlinkSync(file);
+    }
+  });
   await attempt(async () => {
     const actualHead = (await git(cwd, 'rev-parse', 'HEAD')).trim();
     const merging = hasMerge();
-    const status = (await checkoutStatus(cwd)).trimEnd();
+    const status = bystanders?.size
+      ? pathsFrom(await git(cwd, '--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all', '--no-renames', '-z'))
+        .filter(row => !bystanders.has(row.slice(3))).join('\n')
+      : (await checkoutStatus(cwd)).trimEnd();
     if (actualHead === head && !merging && !status) return;
     throw new Error(`landing: expected clean HEAD ${head}, found HEAD ${actualHead}, MERGE_HEAD ${merging ? 'present' : 'absent'}, porcelain status ${JSON.stringify(status)}`);
   });
@@ -155,18 +216,25 @@ async function landingPreflight(cwd) {
 }
 
 async function mergeWithRollback(cwd, { hasMerge, requireNoMerge, ...context }) {
-  const { head, main, diagnostics } = context;
+  const { head, main, base, diagnostics, finalization } = context;
   const ignored = new Set(pathsFrom(await git(cwd, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z')));
   requireNoMerge();
   const writes = { paths: new Set(), generated: false };
   let inventoryRefreshed;
   try {
-    try { await git(cwd, '-c', 'core.hooksPath=/dev/null', 'merge', '--no-ff', '--no-commit', '--no-overwrite-ignore', main); }
-    catch (error) { if (error.code !== 1 || !hasMerge()) throw error; }
+    const merge = async () => {
+      try { await git(cwd, '-c', 'core.hooksPath=/dev/null', 'merge', '--no-ff', '--no-commit', '--no-overwrite-ignore', main); }
+      catch (error) { if (error.code !== 1 || !hasMerge()) throw error; }
+    };
+    if (!finalization) await merge();
+    else if (base !== main) await finalization.guard({ files: finalization.mergePaths, index: finalization.mergePaths }, merge);
     inventoryRefreshed = await landMergedCheckout(cwd, { ...context, writes });
   } catch (error) {
-    if (error instanceof LandingConflict) throw error;
-    return abortLanding(cwd, { head, hasMerge, ignored, diagnostics, writes }, error);
+    if (finalization?.committedHead) {
+      throw new Error(`landing: finalized ${finalization.committedHead}, but merge-state cleanup failed; run git merge --quit on the finalized checkout`, { cause: error });
+    }
+    if (error instanceof LandingConflict && !finalization) throw error;
+    return abortLanding(cwd, { head, hasMerge, ignored, diagnostics, writes, finalizing: Boolean(finalization), bystanders: finalization?.bystanders, captureBystanders: finalization?.captureBystanders }, error);
   }
   return { head: (await git(cwd, 'rev-parse', 'HEAD')).trim(), main, inventoryRefreshed };
 }
@@ -323,45 +391,11 @@ export function isInventoryInputPath(path) {
     /^packages\/platform\/src\/migrations\//u.test(path);
 }
 
-const MIGRATION_FORWARD = /^(?:db\/platform|supabase)\/migrations\/(?:(?:q2|qa|qb)_)?(\d{14})_[A-Za-z0-9_-]+\.sql$/u;
-const MIGRATION_RAILS = ['db/platform/migrations/', 'supabase/migrations/'];
-
-export function nextFreeMigrationSlot(slot) {
-  const year = Number(slot.slice(0, 4)), month = Number(slot.slice(4, 6)) - 1, day = Number(slot.slice(6, 8));
-  const hour = Number(slot.slice(8, 10)), minute = Number(slot.slice(10, 12)), second = Number(slot.slice(12, 14));
-  const date = new Date(Date.UTC(year, month, day, hour, minute + 1, second));
-  if (Number.isNaN(date.valueOf())) throw new Error(`landing: invalid migration slot ${slot}`);
-  return date.toISOString().replace(/[-:T]/gu, '').slice(0, 14);
-}
-
 export function landingSlotPlan(prAddedPaths, mainMigrationPaths) {
-  const mainSlots = mainMigrationPaths.map(path => MIGRATION_FORWARD.exec(path)?.[1]).filter(Boolean);
-  const maxMainSlot = mainSlots.sort().at(-1) ?? '00000000000000';
-  let next = maxMainSlot === '00000000000000' ? '19700101000000' : nextFreeMigrationSlot(maxMainSlot);
-  const occupied = new Set(mainMigrationPaths);
-  const usedSlots = new Set(mainSlots);
-  const additions = prAddedPaths.filter(path => MIGRATION_FORWARD.test(path)).sort();
-  for (const path of additions) {
-    const slot = MIGRATION_FORWARD.exec(path)[1];
-    if (slot > maxMainSlot) usedSlots.add(slot);
-  }
-  while (usedSlots.has(next)) next = nextFreeMigrationSlot(next);
-  const nextFreeSlot = next;
-  const changes = [];
-  const seen = new Set();
-  for (const path of additions) {
-    const slot = MIGRATION_FORWARD.exec(path)[1];
-    if (slot > maxMainSlot && !occupied.has(path) && !seen.has(slot)) { seen.add(slot); continue; }
-    let target;
-    do {
-      target = path.replace(slot, next);
-      next = nextFreeMigrationSlot(next);
-    } while (occupied.has(target) || prAddedPaths.includes(target) || usedSlots.has(MIGRATION_FORWARD.exec(target)[1]));
-    changes.push({ path, target });
-    occupied.add(target);
-    usedSlots.add(MIGRATION_FORWARD.exec(target)[1]);
-  }
-  return { maxMainSlot, nextFreeSlot, changes };
+  const { floor, moves, next } = planMigrationSlots(prAddedPaths, mainMigrationPaths);
+  const changes = moves.filter(move => move.sourcePath !== move.targetPath)
+    .map(move => ({ path: move.sourcePath, target: move.targetPath }));
+  return { maxMainSlot: floor, nextFreeSlot: changes.length ? migrationIdentity(changes[0].target).version : moves.length ? moves.at(-1).targetVersion : next(), changes };
 }
 
 export function assertAppendOnlyLandingSlots(prAddedPaths, mainMigrationPaths) {
@@ -371,21 +405,32 @@ export function assertAppendOnlyLandingSlots(prAddedPaths, mainMigrationPaths) {
 
 const RESLOT_REGISTRIES = new Set([...REGISTRY_PATHS, ...MIGRATION_REGISTRIES, INVENTORY_PATH]);
 export async function assertNoAuthoredSlotReferences(cwd, base, head, changes) {
-  const paths = pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z', base, head));
+  if (!changes.length) return;
+  const read = path => documentationGit(cwd, ['show', `${head}:${path}`]).toString('utf8');
+  const paths = pathsFrom(documentationGit(cwd, ['diff', '--name-only', '--diff-filter=AMT', '--no-renames', '-z', base, head]).toString('utf8'));
+  const packageManifest = 'packages/platform/sql/manifest.json';
+  const projected = new Set(JSON.parse(read(packageManifest)).migrations.map(({ file }) => `packages/platform/sql/${file}`));
   const hits = [];
+  const references = changes.map(({ path }) => {
+    const version = migrationIdentity(path)?.version;
+    return { basename: path.split('/').at(-1), version, bare: new RegExp(`(?<![0-9])${version}(?![0-9])`, 'u') };
+  });
   for (const path of paths) {
-    if (RESLOT_REGISTRIES.has(path) || generatedCarrier(path)) continue;
-    let content;
-    try { content = await git(cwd, 'show', `${head}:${path}`); }
-    catch (error) { if (error.code === 128) continue; throw error; }
+    if (RESLOT_REGISTRIES.has(path) || (path !== SQL_REFERENCE && generatedCarrier(path) &&
+        (!path.endsWith('.sql') || projected.has(path)))) continue;
+    let content = read(path);
+    if (path === SQL_REFERENCE) {
+      content = content.replace(/<!-- generated:(sql:[a-z]+) -->\n[\s\S]*?<!-- \/generated:\1 -->/gu, region => region.replace(/[^\n]/gu, ''));
+    }
     for (const [index, line] of content.split('\n').entries()) {
-      if (changes.some(({ path: oldPath }) => oldPath !== path && line.includes(oldPath.split('/').at(-1)))) hits.push(`${path}:${index + 1}`);
+      const match = references.find(({ basename, bare }) => line.includes(basename) || bare.test(line));
+      if (match) hits.push(`${path}:${index + 1} (${match.version})`);
     }
   }
   if (hits.length) throw new Error(`landing: --re-slot refuses authored migration references: ${hits.join(', ')}`);
 }
 
-function reslotRegistryContents(cwd, path, source, changes, remapPaths = true) {
+export function reslotRegistryContents(cwd, path, source, changes, remapPaths = true, refreshManagedPrefix = true) {
   const targets = new Set(changes.map(({ target }) => target));
   const replace = (value, reorderRows = true) => {
     if (typeof value === 'string') return changes.reduce((text, { path, target }) => text === path ? target : text, value);
@@ -393,7 +438,7 @@ function reslotRegistryContents(cwd, path, source, changes, remapPaths = true) {
       const items = value.map(item => replace(item, reorderRows));
       if (!reorderRows) return items;
       const key = entry => entry && typeof entry === 'object' ? entry.file ?? entry.path : undefined;
-      const order = entry => MIGRATION_FORWARD.exec(key(entry) ?? '')?.[1] ?? key(entry);
+      const order = entry => migrationIdentity(key(entry) ?? '')?.version ?? key(entry);
       const moved = items.filter(entry => targets.has(key(entry)));
       if (!moved.length) return items;
       const ordered = items.filter(entry => !targets.has(key(entry)));
@@ -408,7 +453,7 @@ function reslotRegistryContents(cwd, path, source, changes, remapPaths = true) {
   };
     const updated = remapPaths ? replace(JSON.parse(source), path !== PUBLICATION_CATALOGUE) : JSON.parse(source);
     if (path === PUBLICATION_CATALOGUE) updated.publicPaths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
-    if (path === 'config/reviewed-platform-forwards.json') {
+    if (refreshManagedPrefix && path === 'config/reviewed-platform-forwards.json') {
       const directory = 'supabase/migrations/';
       const sql = readdirSync(resolve(cwd, directory)).filter(name => name.endsWith('.sql'))
         .map(name => `${directory}${name}`).sort();
@@ -420,6 +465,19 @@ function reslotRegistryContents(cwd, path, source, changes, remapPaths = true) {
       }
     }
     return `${JSON.stringify(updated, null, 2)}\n`;
+}
+
+export function fillDraftManifest(source, moves, sourceBytes) {
+  const draft = JSON.parse(source);
+  for (const plan of [draft, draft.qualified, draft.qualifiedAdmin]) {
+    for (const move of moves) {
+      if (!move.sourcePath.startsWith(MIGRATION_RAILS[0]) || plan.forward.some(({ file }) => file === move.sourcePath)) continue;
+      const sha256 = createHash('sha256').update(sourceBytes(move)).digest('hex');
+      const index = plan.forward.findIndex(({ file }) => file > move.sourcePath && moves.some(({ sourcePath }) => sourcePath === file));
+      plan.forward.splice(index < 0 ? plan.forward.length : index, 0, { file: move.sourcePath, sha256 });
+    }
+  }
+  return JSON.stringify(draft);
 }
 
 export function applyMigrationReslot(cwd, changes, moveFiles = true, remapPaths = true) {
@@ -438,6 +496,25 @@ export function applyMigrationReslot(cwd, changes, moveFiles = true, remapPaths 
 
 export async function landingMerge(cwd = process.cwd(), { runCommand, reSlot = false } = {}) {
   return runLanding(cwd, runCommand, {}, reSlot);
+}
+
+export async function finalizeLanding(cwd, { head, main, base, ref, moves, checkpoint, guard, trackOwned, mergePaths, verifyIndex, sourceBytes, runCommand, bystanders, captureBystanders }) {
+  const attribution = /^(?:GIT_(?:AUTHOR|COMMITTER)_(?:NAME|EMAIL|DATE)|GIT_(?:ASKPASS|TERMINAL_PROMPT))$/u;
+  const env = Object.fromEntries(Object.entries(processEnvironment).filter(([key]) => !key.startsWith('GIT_') || attribution.test(key)));
+  const carrierEnv = { ...env, ...carrierLocale };
+  return finalizationEnvironment.run(carrierEnv, async () => {
+    const mergeState = await landingPreflight(cwd);
+    const run = runCommand ?? ((command, args, options) => execFileSync(command, args, {
+      cwd, stdio: 'inherit', timeout: 900000, env: carrierEnv, ...options,
+    }));
+    const slotChanges = moves.filter(({ sourcePath, targetPath }) => sourcePath !== targetPath)
+      .map(({ sourcePath, targetPath }) => ({ path: sourcePath, target: targetPath }));
+    const mainMigrations = pathsFrom(await git(cwd, 'ls-tree', '-r', '--name-only', '-z', main, '--', ...MIGRATION_RAILS));
+    await guard({}, () => checkLandingToolchain(run, carrierEnv));
+    await checkpoint();
+    return mergeWithRollback(cwd, { head, main, base, run, carrierEnv, diagnostics: {}, slotChanges,
+      mainMigrations, finalization: { ref, moves, checkpoint, guard, trackOwned, mergePaths, verifyIndex, sourceBytes, bystanders, captureBystanders }, ...mergeState });
+  });
 }
 
 async function runLanding(cwd, runCommand, diagnostics, reSlot) {
@@ -489,39 +566,57 @@ async function reconcileReslotMirror(cwd, { mirror, targetMirror, head, main, co
   if (!(collision && onMain) && !(onHead && !onMain)) return;
   writes.paths.add(mirror);
   stagedReslot.add(mirror);
-  if (onMain) writeFileSync(resolve(cwd, mirror), await git(cwd, 'show', `${main}:${mirror}`));
+  if (onMain) writeFileSync(resolve(cwd, mirror), documentationGit(cwd, ['show', `${main}:${mirror}`]));
   else if (existsSync(resolve(cwd, mirror))) unlinkSync(resolve(cwd, mirror));
 }
 
-async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diagnostics, writes, slotChanges, mainMigrations }) {
-  if ((await git(cwd, 'rev-parse', '--verify', 'MERGE_HEAD')).trim() !== main) throw new Error('landing: exact main merge required');
+async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diagnostics, writes, slotChanges, mainMigrations, finalization }) {
+  if ((!finalization || base !== main) && (await git(cwd, 'rev-parse', '--verify', 'MERGE_HEAD')).trim() !== main) throw new Error('landing: exact main merge required');
+  await finalization?.checkpoint();
+  const guarded = (changes, action) => finalization ? finalization.guard(changes, action) : action();
+  if (finalization) {
+    const conflicts = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=U', '-z'));
+    const sql = slotChanges.flatMap(({ path }) => [path, `packages/platform/sql/${path.split('/').at(-1)}`]);
+    refuseAuthoredConflicts(conflicts.filter(path => !sql.includes(path) &&
+      ![...MIGRATION_REGISTRIES, ...REGISTRY_PATHS, INVENTORY_PATH, SQL_REFERENCE, 'packages/platform/sql/manifest.json'].includes(path)));
+  }
   if (slotChanges.length) {
-    const unresolved = new Set(pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=U', '-z')));
-    const stagedReslot = new Set();
-    for (const { path, target } of slotChanges) {
-      if (lstatSync(resolve(cwd, target), { throwIfNoEntry: false })) throw new Error(`landing: re-slot destination already exists: ${target}`);
-      const collision = mainMigrations.includes(path);
-      if (collision && unresolved.has(path)) await git(cwd, 'checkout', '--ours', '--', path);
-      writes.paths.add(path);
-      writes.paths.add(target);
-      stagedReslot.add(path);
-      stagedReslot.add(target);
-      renameSync(resolve(cwd, path), resolve(cwd, target));
-      if (collision) await git(cwd, 'checkout', '--theirs', '--', path);
-      if (path.startsWith('db/platform/migrations/')) {
-        const mirror = `packages/platform/sql/${path.split('/').at(-1)}`;
-        const targetMirror = `packages/platform/sql/${target.split('/').at(-1)}`;
-        await reconcileReslotMirror(cwd, { mirror, targetMirror, head, main, collision, writes, stagedReslot });
+    const affected = slotChanges.flatMap(({ path, target }) => [path, target,
+      ...(path.startsWith(MIGRATION_RAILS[0]) ? [path, target].map(sql => `packages/platform/sql/${sql.split('/').at(-1)}`) : [])]);
+    await guarded({ files: affected, index: affected }, async () => {
+      const unresolved = new Set(pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=U', '-z')));
+      const stagedReslot = new Set();
+      for (const { path, target } of slotChanges) {
+        if (lstatSync(resolve(cwd, target), { throwIfNoEntry: false })) throw new Error(`landing: re-slot destination already exists: ${target}`);
+        const collision = mainMigrations.includes(path);
+        if (collision && unresolved.has(path)) await git(cwd, 'checkout', '--ours', '--', path);
+        writes.paths.add(path);
+        writes.paths.add(target);
+        stagedReslot.add(path);
+        stagedReslot.add(target);
+        renameSync(resolve(cwd, path), resolve(cwd, target));
+        if (collision) await git(cwd, 'checkout', '--theirs', '--', path);
+        if (path.startsWith('db/platform/migrations/')) {
+          const mirror = `packages/platform/sql/${path.split('/').at(-1)}`;
+          const targetMirror = `packages/platform/sql/${target.split('/').at(-1)}`;
+          await reconcileReslotMirror(cwd, { mirror, targetMirror, head, main, collision, writes, stagedReslot });
+        }
       }
-    }
-    await git(cwd, '--literal-pathspecs', 'add', '-A', '--', ...stagedReslot);
+      await git(cwd, '--literal-pathspecs', 'add', '-A', '--', ...stagedReslot);
+    });
   }
   const conflicts = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=U', '-z'));
   const read = (revision, path) => git(cwd, 'show', `${revision}:${path}`);
   const reslotsCatalogue = slotChanges.some(({ path }) => path.startsWith('supabase/migrations/'));
   const reslottedHead = new Map();
   for (const path of [...MIGRATION_REGISTRIES, ...(reslotsCatalogue ? [PUBLICATION_CATALOGUE] : [])]) {
-    if (slotChanges.length) reslottedHead.set(path, reslotRegistryContents(cwd, path, await read(head, path), slotChanges));
+    const fillsDraftManifest = finalization && path === MIGRATION_REGISTRIES[0];
+    if (!slotChanges.length && !fillsDraftManifest) continue;
+    const source = await read(head, path);
+    const contents = fillsDraftManifest
+      ? fillDraftManifest(source, finalization.moves, finalization.sourceBytes)
+      : source;
+    reslottedHead.set(path, reslotRegistryContents(cwd, path, contents, slotChanges, true, !finalization));
   }
   const registryConflicts = conflicts.filter(path => REGISTRY_PATHS.includes(path));
   if (registryConflicts.length && (await git(cwd, 'merge-base', '--all', head, main)).trim() !== base) {
@@ -537,6 +632,7 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
   const catalogue = catalogueUnion === undefined ? readJson(cwd, PUBLICATION_CATALOGUE) : JSON.parse(catalogueUnion);
   const owners = readReportOwners(cwd);
   const { admitted, replaceable } = ownerOutputs(owners, catalogue.publicPaths);
+  finalization?.trackOwned(replaceable);
   const other = conflicts.filter(path => !legacyConflict(path) && !(replaceable.has(path) && safeOutput(cwd, path, index)));
   refuseAuthoredConflicts(other);
   const mergedModule = path => JSON.stringify(pathToFileURL(resolve(cwd, path)).href);
@@ -551,59 +647,102 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
     } catch (error) { throw new Error(error.stderr?.trim() || error.message, { cause: error }); }
   };
   const prPaths = pathsFrom(await git(cwd, 'diff', '--name-only', '--no-renames', '-z', base, head));
-  const needsInventoryRefresh = prPaths.some(isInventoryInputPath) || conflicts.some(isInventoryInputPath);
+  const needsInventoryRefresh = Boolean(finalization) || prPaths.some(isInventoryInputPath) || conflicts.some(isInventoryInputPath);
   const inputs = [...prPaths, ...conflicts];
   // Resolve envelopes before any generator or database work; historical conflict stops.
   const inventories = await Promise.all([base, head, main].map(revision => read(revision, INVENTORY_PATH)));
   const envelopes = inventories.map(inventoryEnvelope);
   if (needsInventoryRefresh && !envelopes.every(value => value.before === envelopes[0].before && value.after === envelopes[0].after)) throw new Error('landing: historical inventory conflict');
   // Main can change the requirements after the initial checkout passes validation.
-  await checkMergedLandingToolchain(cwd, head, run, carrierEnv, diagnostics);
+  await guarded({}, () => checkMergedLandingToolchain(cwd, head, run, carrierEnv, diagnostics));
   if (needsInventoryRefresh) await assertCarrierBuildOutputs(cwd, DEFAULT_INCREMENTAL_PACKAGES, true);
   const preliminary = carrierPlan(owners, inputs);
   if (preliminary.builds.length) {
     await assertCarrierBuildOutputs(cwd, preliminary.builds.map(({ directory }) => directory));
   }
-  if (conflicts.includes(SQL_REFERENCE)) checkLandingSqlReference(runGenerators);
+  await finalization?.checkpoint();
+  if (conflicts.includes(SQL_REFERENCE)) await guarded({}, () => checkLandingSqlReference(runGenerators));
   for (const path of new Set([...registryConflicts, ...(reslotsCatalogue ? [PUBLICATION_CATALOGUE] : [])])) {
     writes.paths.add(path);
-    writeFileSync(resolve(cwd, path), path === PUBLICATION_CATALOGUE ? catalogueUnion : await readUnion(path));
-    await git(cwd, 'add', '--', path);
+    const contents = path === PUBLICATION_CATALOGUE ? catalogueUnion : await readUnion(path);
+    await guarded({ files: [path], index: [path] }, async () => {
+      writeFileSync(resolve(cwd, path), contents);
+      await git(cwd, 'add', '--', path);
+    });
   }
   // Keep Git's merged prose in the SQL reference; discard conflicts in other generated carriers.
   for (const path of conflicts.filter(path => generatedCarrier(path) && (legacyConflict(path) || (replaceable.has(path) && safeOutput(cwd, path, index))))) {
-    if (path !== SQL_REFERENCE && !REGISTRY_PATHS.includes(path)) await git(cwd, 'checkout', '--ours', '--', path);
+    if (path !== SQL_REFERENCE && !REGISTRY_PATHS.includes(path)) {
+      await guarded({ files: [path] }, () => git(cwd, 'checkout', '--ours', '--', path));
+    }
   }
   writes.paths.add(INVENTORY_PATH);
+  let measuredInventory;
   if (needsInventoryRefresh) {
-    writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[1]);
+    await guarded({ files: [INVENTORY_PATH] }, () => writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[1]));
     for (const path of MIGRATION_REGISTRIES) {
       const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
       if (reslottedHead.has(path)) inputs[1] = reslottedHead.get(path);
       writes.paths.add(path);
-      writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventories[1]));
-      await git(cwd, 'add', '--', path);
+      await guarded({ files: [path], index: [path] }, async () => {
+        writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventories[1]));
+        await git(cwd, 'add', '--', path);
+      });
     }
     // Owners load from the merged tree; this process still holds pre-merge modules.
-    run(process.execPath, [resolve(cwd, BUILD_SCRIPT)], { env: carrierEnv });
-    run(process.execPath, ['--import', 'tsx', resolve(cwd, 'scripts/installation-inventory-refresh.ts')]);
-    const inventory = readFileSync(resolve(cwd, INVENTORY_PATH), 'utf8');
+    await finalization?.checkpoint();
+    await guarded({}, () => run(process.execPath, [resolve(cwd, BUILD_SCRIPT)], { env: carrierEnv }));
+    const inventoryArgs = ['--import', 'tsx', resolve(cwd, 'scripts/installation-inventory-refresh.ts')];
+    const inventoryPath = resolve(cwd, INVENTORY_PATH);
+    if (finalization) {
+      const scratch = isolatedInventoryDirectory(cwd);
+      try { mkdirSync(scratch, { mode: 0o700 }); }
+      catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        throw new Error('landing: inventory scratch already exists; inspect it before retrying');
+      }
+      const identity = lstatSync(scratch);
+      const ownsScratch = () => {
+        const current = lstatSync(scratch, { throwIfNoEntry: false });
+        return current?.isDirectory() && current.dev === identity.dev && current.ino === identity.ino;
+      };
+      try {
+        await guarded({}, () => run(process.execPath, [...inventoryArgs, '--isolated']));
+        if (!ownsScratch()) throw new Error('landing: isolated inventory scratch changed during measurement');
+        const output = isolatedInventoryFile(cwd);
+        const file = lstatSync(output, { throwIfNoEntry: false });
+        if (!file?.isFile() || file.nlink !== 1) throw new Error('landing: inventory refresh did not produce an isolated measurement');
+        measuredInventory = readFileSync(output);
+        await guarded({ files: [INVENTORY_PATH] }, () => writeFileSync(inventoryPath, measuredInventory));
+      } finally {
+        if (ownsScratch()) {
+          rmSync(resolve(scratch, 'inventory.json'), { force: true });
+          rmdirSync(scratch);
+        }
+      }
+    } else {
+      run(process.execPath, inventoryArgs);
+    }
+    const inventory = readFileSync(inventoryPath, 'utf8');
     for (const path of MIGRATION_REGISTRIES) {
       const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
       if (reslottedHead.has(path)) inputs[1] = reslottedHead.get(path);
-      writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventory));
+      await guarded({ files: [path] }, () => writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventory)));
     }
-    if (slotChanges.length) applyMigrationReslot(cwd, slotChanges, false, false);
+    if (slotChanges.length && !finalization) applyMigrationReslot(cwd, slotChanges, false, false);
   } else {
     writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[2]);
   }
+  await finalization?.checkpoint();
   const projection = 'packages/platform/src/migrations/catalog.ts';
   const projectionBefore = readFileSync(resolve(cwd, projection), 'utf8');
   // Only the migration projection feeds compilation. Validate selectors after the reports exist.
   writes.generated = true;
-  runGenerators(`const { checkPlatformMigrationProjection } = await import(${mergedModule('scripts/packages/platform-migration-projection.ts')});
+  const packageOutputs = [projection, 'packages/platform/sql/manifest.json',
+    ...(finalization?.moves ?? []).map(({ targetPath }) => `packages/platform/sql/${targetPath.split('/').at(-1)}`)];
+  await guarded({ files: packageOutputs }, () => runGenerators(`const { checkPlatformMigrationProjection } = await import(${mergedModule('scripts/packages/platform-migration-projection.ts')});
     const errors = checkPlatformMigrationProjection(process.cwd(), true);
-    if (errors.length) throw new Error(errors.join('; '));`);
+    if (errors.length) throw new Error(errors.join('; '));`));
   if (readFileSync(resolve(cwd, projection), 'utf8') !== projectionBefore) inputs.push(projection);
   const { reports, builds, settings } = carrierPlan(owners, inputs);
   const outputs = [...new Set([...reports.flatMap(owner => owner.reports), ...(settings ? SETTINGS_OUTPUTS : [])])];
@@ -619,24 +758,43 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
     for (const path of selectedOutputs) writes.paths.add(path);
     for (const owner of builds) {
       const build = () => run(process.execPath, [npmCli, 'run', 'build', `--workspace=${owner.name}`], { env: carrierEnv });
-      if (reports.includes(owner)) build();
-      else await runUnselectedBuild(cwd, owner.name, selectedOutputs, build);
+      await guarded({ files: owner.reports }, () => reports.includes(owner) ? build() :
+        runUnselectedBuild(cwd, owner.name, selectedOutputs, build));
     }
-    for (const { directory, name } of reports) {
+    for (const { directory, name, reports: reportPaths } of reports) {
       const mergeContext = name === '@openlup/platform' ? [] : [`--landing=${head},${main}`];
-      run(process.execPath, [resolve(cwd, directory, 'scripts/api-contract.ts'), '--update', ...mergeContext], { env: carrierEnv });
+      await guarded({ files: reportPaths }, () =>
+        run(process.execPath, [resolve(cwd, directory, 'scripts/api-contract.ts'), '--update', ...mergeContext], { env: carrierEnv }));
     }
-    if (settings) run(process.execPath, [resolve(cwd, 'scripts/settings-catalogue.ts'), '--write'], { env: carrierEnv });
+    if (settings) await guarded({ files: SETTINGS_OUTPUTS }, () =>
+      run(process.execPath, [resolve(cwd, 'scripts/settings-catalogue.ts'), '--write'], { env: carrierEnv }));
   }
   const tracked = pathsFrom(await git(cwd, 'ls-files', '-z'));
   const generated = pathsFrom(await git(cwd, 'ls-files', '--others', '--exclude-standard', '-z'))
     .filter(path => generatedCarrier(path) || outputs.includes(path));
   const paths = [...new Set([...tracked, ...generated])];
-  runGenerators("owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));", paths.join('\0'));
+  await guarded({ files: [...packageOutputs, PUBLICATION_CATALOGUE, 'docs/platform/SOURCE_MAP.md', SQL_REFERENCE] }, () =>
+    runGenerators("owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));", paths.join('\0')));
   const staged = [...new Set([...MIGRATION_REGISTRIES, INVENTORY_PATH, ...paths.filter(generatedCarrier), ...outputs])];
-  await git(cwd, '--literal-pathspecs', 'add', '--', ...staged);
+  await guarded({ index: staged }, () => git(cwd, '--literal-pathspecs', 'add', '--', ...staged));
   if ((await git(cwd, 'diff', '--name-only', '--diff-filter=U')).trim()) throw new LandingConflict('landing: unresolved conflicts remain');
-  await git(cwd, 'commit', '-s', '-m', 'Merge origin/main and refresh derived carriers');
+  if (finalization) {
+    const tree = await guarded({}, () => finalization.verifyIndex(measuredInventory));
+    await finalization.checkpoint();
+    if (tree !== (await git(cwd, 'write-tree')).trim()) throw new Error('landing: Git index changed during finalization proof');
+    if (tree === (await guarded({}, () => git(cwd, 'rev-parse', `${head}^{tree}`))).trim() && base === main) return needsInventoryRefresh;
+    const identity = (await git(cwd, 'var', 'GIT_COMMITTER_IDENT')).trim().replace(/ [0-9]+ [+-][0-9]{4}$/u, '');
+    const message = `Finalize migration versions\n\nSigned-off-by: ${identity}`;
+    const parents = base === main ? ['-p', head] : ['-p', head, '-p', main];
+    await finalization.checkpoint();
+    const next = (await guarded({}, () => git(cwd, 'commit-tree', tree, ...parents, '-m', message))).trim();
+    await finalization.checkpoint();
+    await git(cwd, '-c', 'core.hooksPath=/dev/null', 'update-ref', '-m', 'finalize migration versions', finalization.ref, next, head);
+    finalization.committedHead = next;
+    if (base !== main) await git(cwd, 'merge', '--quit');
+  } else {
+    await git(cwd, 'commit', '-s', '-m', 'Merge origin/main and refresh derived carriers');
+  }
   return needsInventoryRefresh;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) runLandingCli();
