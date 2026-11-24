@@ -20,7 +20,9 @@ describe('conservative tooling scope', () => {
       expect(excluded).not.toContain(`scripts/${file}.test.ts`);
     }
     expect(excludedToolingTests(['server/runtime/outbox/candidateAdmission.ts']))
-      .toEqual(all.filter(test => !test.endsWith('outbox-consumer-proof.test.ts') && !test.endsWith('eslint-import-map.test.ts')));
+      .toEqual(Object.entries(TOOLING_INPUTS)
+        .filter(([, inputs]) => !inputs.some(input => input === 'server/' || input === 'server/runtime/outbox/'))
+        .map(([test]) => test).sort());
     expect(excludedToolingTests(['packages/core/src/index.ts']))
       .toEqual(Object.entries(TOOLING_INPUTS)
         .filter(([, inputs]) => !inputs.includes('packages/') && !inputs.includes('packages/core/src/'))
@@ -75,7 +77,14 @@ describe('conservative tooling scope', () => {
   });
   it('retains distribution-cli-proof, distribution-cli-settings, guide-tutorial and pgtap-parity for their actual dependency closures', () => {
     expect(excludedToolingTests(['examples/neutral-store/extract.mjs']))
-      .toEqual(all.filter(test => !['scripts/packages/distribution-cli-proof.test.ts', 'scripts/packages/distribution-cli-settings.test.ts'].includes(test)));
+      .toEqual(all.filter(test => ![
+        'scripts/packages/distribution-cli-proof.test.ts',
+        'scripts/packages/distribution-cli-settings.test.ts',
+        'tests/postgres/neutralStarterE4.test.ts',
+        'tests/postgres/neutralStoreQuote.test.ts',
+        'tests/postgres/neutralStoreRecovery.test.ts',
+        'tests/postgres/neutralStoreUuid.test.ts',
+      ].includes(test)));
     expect(excludedToolingTests(['examples/neutral-store/owned/catalogue.ts']))
       .not.toContain('scripts/packages/distribution-cli-proof.test.ts');
     expect(excludedToolingTests(['examples/neutral-store/owned/settings-host.ts']))
@@ -218,6 +227,61 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['src/domains/commerce/offerAvailability.ts'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['tests/postgres/managed-compat/supabase.sql'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['config/ci-postgres-packages.json'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
+  });
+  it('excludes pure PostgreSQL suites on src/mcp/unrelated-doc edits and retains them on backend/migration/starter/doc triggers', () => {
+    const purePgSuites = [
+      'tests/postgres/catalogPublication.test.ts',
+      'tests/postgres/connectedStoreCatalogRevisions.test.ts',
+      'tests/postgres/connectedStorePromotionClaims.test.ts',
+      'tests/postgres/connectedStoreStarterRelations.test.ts',
+      'tests/postgres/customerAccountConsents.test.ts',
+      'tests/postgres/customerAccountMutations.test.ts',
+      'tests/postgres/customerBillingProfiles.test.ts',
+      'tests/postgres/customerCheckoutLinks.test.ts',
+      'tests/postgres/customerNewsletterWithdrawal.test.ts',
+      'tests/postgres/customerSavedAddresses.test.ts',
+      'tests/postgres/fulfillmentOperatorJourneys.test.ts',
+      'tests/postgres/fulfillmentProviderIntake.test.ts',
+      'tests/postgres/m14QualifiedAdminComposition.test.ts',
+      'tests/postgres/m14QualifiedComposition.test.ts',
+      'tests/postgres/m14RestrictedConnectedRestore.test.ts',
+      'tests/postgres/subscriptionNoticeProducers.test.ts',
+      'tests/postgres/subscriptionRetainedRenewal.test.ts',
+    ];
+    const starterPgSuites = [
+      'tests/postgres/neutralStarterE4.test.ts',
+      'tests/postgres/neutralStoreQuote.test.ts',
+      'tests/postgres/neutralStoreRecovery.test.ts',
+      'tests/postgres/neutralStoreUuid.test.ts',
+    ];
+    for (const unrelated of ['src/pages/Home.tsx', 'mcp/server.ts', 'docs/platform/README.md']) {
+      const excluded = excludedToolingTests([unrelated]);
+      for (const suite of [...purePgSuites, ...starterPgSuites]) expect(excluded).toContain(suite);
+      expect(excluded).not.toContain('tests/postgres/connectedStoreTransfer.test.ts');
+      expect(excluded).not.toContain('tests/postgres/subscriptionPublicRenewal.test.ts');
+      expect(excluded).not.toContain('tests/postgres/policyCloseDigest.test.ts');
+    }
+    for (const trigger of [
+      'db/platform/migrations/20261124000000_example.sql',
+      'config/ci-images.json',
+      'config/platform-migration-manifest.json',
+      'config/reviewed-platform-forwards.json',
+      'packages/platform/src/index.ts',
+      'server/adapters/postgres/connectedStoreRestore.ts',
+      'tests/helpers/pgTemplateBroker.ts',
+      'tests/postgres/storeJourney.ts',
+    ]) {
+      const excluded = excludedToolingTests([trigger]);
+      for (const suite of [...purePgSuites, ...starterPgSuites]) expect(excluded).not.toContain(suite);
+    }
+    const starterTrigger = excludedToolingTests(['examples/neutral-store/host/server.ts']);
+    for (const suite of starterPgSuites) expect(starterTrigger).not.toContain(suite);
+    for (const suite of purePgSuites) expect(starterTrigger).toContain(suite);
+
+    const dataDocTrigger = excludedToolingTests(['docs/platform/DATA_AND_MIGRATIONS.md']);
+    expect(dataDocTrigger).not.toContain('tests/postgres/customerNewsletterWithdrawal.test.ts');
+    expect(dataDocTrigger).not.toContain('tests/postgres/customerAccountConsents.test.ts');
+    expect(dataDocTrigger).toContain('tests/postgres/catalogPublication.test.ts');
   });
   it.each(Object.entries(TOOLING_INPUTS).flatMap(([test, inputs]) => inputs.map(input => [test, input] as const)))(
     'runs %s when its declared input %s changes', (test, input) => {
