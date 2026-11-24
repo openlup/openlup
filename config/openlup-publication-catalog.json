@@ -1638,6 +1638,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125170000_tax_calculations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5386,6 +5390,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125170000_tax_calculations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5863,6 +5871,10 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogPublicationRules.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogSchemaDescription.ts",
       "class": "public-output"
     },
     {
@@ -8406,6 +8418,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/taxCalculationPrivacy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/adminInventory.ts",
       "class": "public-output"
     },
@@ -8711,6 +8727,10 @@
     },
     {
       "path": "packages/platform/src/lifecycle/catalogueProject.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/catalogueSchema.mjs",
       "class": "public-output"
     },
     {
@@ -12023,6 +12043,14 @@
     },
     {
       "path": "packages/platform/test/lifecycle/appVerification.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/catalogue-schema.snapshot.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/catalogueSchema.test.ts",
       "class": "public-output"
     },
     {
@@ -32042,6 +32070,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/taxCalculationsV2/replayed.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/taxCoverage/corpus.ts",
       "class": "public-output"
     },
@@ -32831,6 +32863,14 @@
     },
     {
       "path": "tests/postgres/subscriptionWinback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCalculationsV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCalculationsV2Pgtap.test.ts",
       "class": "public-output"
     },
     {

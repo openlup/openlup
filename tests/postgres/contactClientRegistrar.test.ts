@@ -8,7 +8,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresContactClientRegistrar, createPostgresCustomerChallengeStore, createPostgresAccountLinkStore,
   createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createIdentityPersonalDataContributor,
-  createPersonalDataContributorRegistry, createPrivacyOperations, type EnsureContactClientResult,
+  createPersonalDataContributorRegistry, createTaxCalculationPrivacyContributor, createPrivacyOperations, type EnsureContactClientResult,
   type PrivacyStore } from "@openlup/platform/identity";
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } from "@openlup/platform/migrations";
 import { createPostgresCustomerOrderHistoryReadStore, readPostgresCustomerAccountClient } from "@openlup/platform/account-support";
@@ -90,7 +90,7 @@ function privacy(store: PrivacyStore<PgQueryExecutor> = createPostgresPrivacySto
   const unitOfWork = createPostgresPrivacyUnitOfWork({ connectionString: runtimeUrl }); ports.push(unitOfWork);
   const retainedContactFields = Object.fromEntries(["lifecycle_stage", "acquisition_source", "metadata"].map(key => [key,
     { owner: "clients", resource: `clients.${key}`, disposition: "retain" as const, reasonCode: "CHECKOUT_PROVENANCE", remote: false }]));
-  const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields }, () => id)], { requiredContributorIds: ["identity"] });
+  const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields }, () => id), createTaxCalculationPrivacyContributor()], { requiredContributorIds: ["identity", "tax-calculations"] });
   return createPrivacyOperations({ store, unitOfWork, registry, now: () => new Date(), randomId: () => id });
 }
 

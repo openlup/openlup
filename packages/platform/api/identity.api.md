@@ -951,6 +951,7 @@ export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPriv
 export { createCustomerPreferencePrivacyContributor } from './customerPreferencePrivacy.js';
 export { createCustomerBillingPrivacyContributor } from './billingProfilePrivacy.js';
 export { createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor } from "./destinationPrivacy.js";
+export { createTaxCalculationPrivacyContributor } from "./taxCalculationPrivacy.js";
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 
@@ -2197,4 +2198,12 @@ export declare const IDENTITY_MIGRATIONS: readonly [{
     readonly sha256: "f39b691cb14c0e9ec1a7460d77dc46e16bca4d2448838e4882f78885a6d92351";
     readonly url: URL;
 }];
+```
+## dist/identity/taxCalculationPrivacy.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+import type { PersonalDataContributor } from "./privacyPorts.js";
+/** @experimental Native tax evaluation privacy. */
+export declare function createTaxCalculationPrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
 ```
