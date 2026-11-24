@@ -13,17 +13,17 @@ import { closePostgres, postgresSetupTimeoutMs } from "../helpers/postgresContai
 import { createAccountMutationsTemplate } from "./customerAccountMutations.fixture.js";
 
 const forward = "db/platform/migrations/20261125200000_identity_privacy_required_contributors.sql";
-const predecessor = "db/platform/migrations/20261125130000_commerce_destination_v2_order_bindings.sql";
+const predecessor = "db/platform/migrations/20261125150000_checkout_recovery_reminder_install_outcome.sql";
 const table = "public.identity_privacy_required_contributors";
 const reader = "public.identity_privacy_required_contributor_ids()";
 const owners = ["communication-events", "customer-billing", "customer-preferences", "customer-saved-addresses",
   "destination-documents", "destination-receipts", "fulfillment-parcel-contacts", "identity", "subscriptions"];
 const before = {
-  legacy: "ca696d64005b2677a15b5455bb712a02549bd05bb9328a318aad51258f159418",
-  bootstrap: "d48147ca30581b5e0643ea71682ba1e5d6e89c3adfa75b559698e0181348a027",
-  separate: "c3acf6951151760568bec2d1347920b6a58004deadc8c3696afc55a71773f73a",
-  "admin-managed": "30d00712c3144f984f58f183a3b0208251a56c5f349c1560c1a63b5ab5ce4143",
-  "admin-operator": "84631c4a0bdacd47563dd39e3bbea4363e5ee59bca21622239a9ecf4b4734bda",
+  legacy: "94b743e3ee72fd1b8e51971bcaf491826d4bca0d8fbcd433da71f4ad888a75aa",
+  bootstrap: "85a2457cc36e33dc295538bfc5500ecf7ccb59b26e9f21450bd9252233b50e63",
+  separate: "ed809bbddd2486eef73f0d6bafbb1a69f4ffe55cc0055b4e6c356a66fdaec940",
+  "admin-managed": "9eeeaff5839b60d74f3ac9a0afc0ad4b8644d8086353ff32441bcac2dcc88d6a",
+  "admin-operator": "30de28f900f7e0d8d0c06cfe3b021e122bb18dba8ff3dedd47276fa9b063c2a4",
 };
 const ledger = (db: Pool) => db.query("SELECT * FROM public.platform_schema_migrations ORDER BY position").then(result => result.rows);
 const required = (db: Pool | PoolClient) => db.query<{ ids: string[] }>(`SELECT ${reader} AS ids`).then(result => result.rows[0].ids);

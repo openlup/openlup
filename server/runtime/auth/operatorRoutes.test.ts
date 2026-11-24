@@ -381,6 +381,28 @@ it.each([
   expect(retry.status).toHaveBeenCalledWith(200);
 });
 
+it.each(['export', 'erase'] as const)('projects native %s binding failure after policy and accepts the repaired binding', async operation => {
+  f.adopterPolicy = true;
+  vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator');
+  vi.stubEnv('DATABASE_URL', 'postgresql://unused.invalid/test');
+  authorize.mockResolvedValue({ ok: true, principalId: privacyContact, role: 'admin', isMachineActor: false });
+  privacy.createUnitOfWork.mockImplementationOnce(() => { throw new Error('synthetic private binding diagnostic'); });
+  const { routes, req } = mountedPrivacyRequest(operation), refused = response();
+  await dispatch(routes, req, refused as unknown as HttpResponse);
+  expect(refused.status).toHaveBeenCalledWith(503);
+  expect(refused.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+  expect(refused.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({ details: {
+    privacyCode: 'PRIVACY_ASSESSMENT_UNAVAILABLE', observed: expect.any(String), cause: expect.any(String),
+    fix: expect.stringContaining('binding'), recheck: expect.any(String),
+  } }) }));
+  expect(JSON.stringify(refused.json.mock.calls)).not.toContain('synthetic private binding diagnostic');
+  expect(privacy.query).not.toHaveBeenCalled();
+  privacy.query.mockImplementation(mountedPrivacyQuery);
+  const retry = response();
+  await dispatch(routes, req, retry as unknown as HttpResponse);
+  expect(retry.status).toHaveBeenCalledWith(200);
+});
+
 it('native export succeeds with the withheld-document notice instead of the checklist', async () => {
   f.adopterPolicy = true;
   vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator');

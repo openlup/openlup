@@ -553,7 +553,7 @@ try {
     const journal = join(scratch, "later-privacy-obligation.json");
     const obligation: RecoveryPrivacyObligation = JSON.parse(readFileSync(journal, "utf8"));
     assert.deepEqual(obligation.subject, privacySeed.later);
-    const databaseTime = async () => (await target.owner.query<{ now: Date }>("SELECT clock_timestamp() AS now")).rows[0]!.now.getTime();
+    const databaseTime = async () => Date.parse((await target.owner.query<{ now: string }>("SELECT clock_timestamp()::text AS now")).rows[0]!.now);
     const recoveryStarted = await databaseTime();
     await applyRecoveryPrivacy(target.runtimeUrl, obligation);
     const recoveryEnded = await databaseTime();
