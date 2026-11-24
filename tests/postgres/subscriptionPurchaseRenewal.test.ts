@@ -537,6 +537,9 @@ for (const parent of registrationParents) {
     const { payerAccountRef, ...missingPayer } = valid;
     expect(payerAccountRef).toBeNull();
     const invalidFacts: [string, unknown][] = [
+      ["SQL NULL facts", undefined],
+      ["JSON null facts", null],
+      ["facts shape", []],
       ["unknown fact field", { ...valid, unexpected: true }],
       ["unknown field outranks timestamp cast", { ...valid, unexpected: true, unattendedChargeAuthorizedAt: "bad-authorization-instant" }],
       ["required text", { ...valid, methodRef: "" }],
@@ -549,6 +552,7 @@ for (const parent of registrationParents) {
       ["required nullable field", missingPayer],
       ["empty lines", { ...valid, lines: [] }],
       ["too many lines", { ...valid, lines: Array.from({ length: 101 }, (_, i) => ({ ...line, lineOrdinal: i + 1, sku: `item-${i}` })) }],
+      ["line unit amount bound", { ...valid, lines: [{ ...line, unitAmountMinor: amountLimit + 1 }] }],
       ["line unit amount JSON type", { ...valid, lines: [{ ...line, unitAmountMinor: String(line.unitAmountMinor) }] }],
       ["line quantity bound", { ...valid, lines: [{ ...line, quantity: 2147483648 }] }],
       ["duplicate SKU", { ...valid, lines: [line, { ...line, lineOrdinal: 2 }] }],
