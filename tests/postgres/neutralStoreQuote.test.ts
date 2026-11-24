@@ -166,7 +166,7 @@ const shippingScript = String.raw`
 async function provisionQuoteCase(configuration: string, multiSize: boolean, containers: PostgresContainer[], pools: Pool[]) {
   const setupStarted = performance.now();
   // Opt-in reproduction of provisioning overrunning the existing 95 s case budget.
-  if (configuration === 'supplements' && process.env.OPENLUP_TEST_SLOW_QUOTE_SETUP === '1') {
+  if (configuration === 'supplements' && existsSync(resolve('.context/scratch/slow-quote-setup'))) {
     await setTimeout(96_000);
   }
   const bootStarted = performance.now();
