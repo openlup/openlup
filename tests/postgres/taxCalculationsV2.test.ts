@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { Pool } from "pg";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
@@ -212,6 +213,7 @@ it("keeps terminal bytes immutable at the same generation and makes the contradi
 });
 
 const storedFrames = { identity: "evaluation-key", pin: "evaluation-pin", outcome_text: "evaluation-outcome" } as const;
+const frameDigests = { identity: "locator", pin: "pin_digest", outcome_text: "outcome_digest" } as const;
 type StoredFrame = keyof typeof storedFrames;
 const withFrame = (row: Record<string, unknown>, column: StoredFrame, dimension: "bytes" | "depth", extra: 0 | 1) => {
   const body = column === "outcome_text" ? JSON.parse(String(row[column]))[1] : row[column] as Record<string, unknown>;
@@ -223,12 +225,17 @@ const withFrame = (row: Record<string, unknown>, column: StoredFrame, dimension:
   const encoded = template.replace('"fixture-padding-token"', value);
   if (dimension === "bytes") expect(Buffer.byteLength(encoded)).toBe(1048576 + extra);
   if (column === "outcome_text") return { ...row, outcome_text: encoded, outcome_digest: destinationHash(encoded) };
-  return { ...row, [column]: JSON.parse(encoded)[1], [column === "pin" ? "pin_digest" : "locator"]: destinationHash(encoded) };
+  return { ...row, [column]: JSON.parse(encoded)[1], [frameDigests[column]]: destinationHash(encoded) };
+};
+const withCoordinate = (row: Record<string, unknown>, field: "invocationDigest" | "requestDigest", value: unknown) => {
+  const pin: Record<string, unknown> = { ...row.pin as Record<string, unknown>, [field]: value };
+  if (value === undefined) delete pin[field];
+  return { ...row, pin, pin_digest: digest("evaluation-pin", pin) };
 };
 
-it("admits every exact frame boundary on owner insert and exact-current restore", async () => {
+it("admits every exact frame boundary and refuses each breach through the guard on owner insert and exact-current restore", async () => {
   const db = await resources.installation("frame-source");
-  const edgeRows: { id: string; column: StoredFrame; dimension: "bytes" | "depth" }[] = [];
+  const breaches: { id: string; label: string; fields: string[]; change: (row: Record<string, unknown>) => Record<string, unknown> }[] = [];
   for (const column of Object.keys(storedFrames) as StoredFrame[]) for (const dimension of ["bytes", "depth"] as const) {
     const atEdge = await seed("terminal", db, { editRow: row => Object.assign(row, withFrame(row, column, dimension, 0)) });
     const edge = withFrame(atEdge.row, column, dimension, 1);
@@ -238,33 +245,63 @@ it("admits every exact frame boundary on owner insert and exact-current restore"
       await db.owner.query("DELETE FROM public.tax_calculations WHERE calculation_id=$1", [id]);
     }, db.owner);
     await expect(insertStored(db.owner, { ...edge, calculation_id: randomUUID() })).rejects.toMatchObject(frameRefusal);
-    edgeRows.push({ id: atEdge.calculationId, column, dimension });
+    breaches.push({ id: atEdge.calculationId, label: `${column} ${dimension}`, fields: [column, frameDigests[column]],
+      change: row => withFrame(row, column, dimension, 1) });
   }
   for (const field of ["invocationDigest", "requestDigest"] as const) for (const bad of [undefined, "A".repeat(64), "a".repeat(63), "a".repeat(65), 1]) {
-    await expect(seed("pending", db, { editRow: row => { row.pin = { ...(row.pin as object), [field]: bad }; } })).rejects.toMatchObject(frameRefusal);
+    await expect(seed("pending", db, { editRow: row => Object.assign(row, withCoordinate(row, field, bad)) })).rejects.toMatchObject(frameRefusal);
   }
   await expect(seed("terminal", db, { editRow: row => {
     const [, body] = JSON.parse(String(row.outcome_text));
     delete body.submissionDigest;
     row.outcome_text = frame("evaluation-outcome", body);
   } })).rejects.toMatchObject(frameRefusal);
+  // A pending row isolates the coordinate refusal from the outcome body comparison.
+  const pending = await seed("pending", db);
+  for (const field of ["invocationDigest", "requestDigest"] as const) for (const [defect, bad] of [["missing", undefined], ["malformed", "A".repeat(64)]] as const) {
+    breaches.push({ id: pending.calculationId, label: `${field} ${defect}`, fields: ["pin", "pin_digest"], change: row => withCoordinate(row, field, bad) });
+  }
   const packet = await captureStoreJourney(db.owner, "tax-frame-source");
   const { clone } = await resources.targetTemplate("frame-target");
   const target = await clone("frame-edges");
   const freshTarget = await captureStoreJourney(target.owner, "frame-target");
-  const restore = (copy: typeof packet) => restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet: copy, freshTarget });
-  for (const { id, column, dimension } of edgeRows) {
+  // Record every PostgreSQL error raised during restore. A census mismatch raises none.
+  const raised: { sql: string; code?: string; message?: string; detail?: string }[] = [];
+  const connect = target.owner.connect.bind(target.owner);
+  const observed = { async connect() {
+    const client = await connect();
+    return { async query(sql: string, values?: unknown[]) {
+      try { return await client.query(sql, values); } catch (error) {
+        const { code, message, detail } = error as { code?: string; message?: string; detail?: string };
+        raised.push({ sql, code, message, detail });
+        throw error;
+      }
+    }, release: (destroy?: boolean) => client.release(destroy) };
+  } } as unknown as Pool;
+  const restore = (copy: typeof packet) => restoreConnectedNativeStore({ owner: observed, installation: journeySelection, packet: copy, freshTarget });
+  // The restore census compares this PostgreSQL row text, so a breach differs from its valid row only in its own fields.
+  const render = async (row: Record<string, unknown>) => (await db.owner.query<{ value: string }>(`SELECT
+    pg_catalog.set_config('TimeZone','UTC',true) AS zone,pg_catalog.to_jsonb(r)::pg_catalog.text AS value
+    FROM pg_catalog.jsonb_populate_record(NULL::public.tax_calculations,$1::jsonb) r`, [JSON.stringify(row)])).rows[0]!.value;
+  for (const { id, label, fields, change } of breaches) {
     const { sha256: _old, ...payload } = structuredClone(packet);
     const relation = payload.owned.find(entry => entry.table === "tax_calculations")!;
-    relation.rows = relation.rows.map(bytes => {
-      const row = JSON.parse(bytes);
-      return row.calculation_id === id ? JSON.stringify(withFrame(row, column, dimension, 1)) : bytes;
-    });
-    await expect(restore({ ...payload, sha256: destinationHash(JSON.stringify(payload)) })).rejects.toMatchObject({ code: "target_conflict" });
+    const index = relation.rows.findIndex(bytes => JSON.parse(bytes).calculation_id === id);
+    const valid = JSON.parse(relation.rows[index]!) as Record<string, unknown>;
+    expect(await render(valid), label).toBe(relation.rows[index]);
+    relation.rows[index] = await render(change(valid));
+    const breach = JSON.parse(relation.rows[index]!) as Record<string, unknown>;
+    expect(Object.keys(breach).filter(key => !isDeepStrictEqual(breach[key], valid[key])).sort(), label).toEqual([...fields].sort());
+    raised.length = 0;
+    await expect(restore({ ...payload, sha256: destinationHash(JSON.stringify(payload)) }), label)
+      .rejects.toMatchObject({ code: "target_conflict", message: "postgres_transfer_target_conflict" });
+    expect(raised, label).toEqual([{ sql: expect.stringMatching(/^INSERT INTO public\."tax_calculations" /u), ...frameRefusal }]);
     expect((await target.owner.query("SELECT count(*)::int AS n FROM public.tax_calculations")).rows).toEqual([{ n: 0 }]);
   }
+  raised.length = 0;
   expect(await restore(packet)).toMatchObject({ replayed: false });
-  for (const { id } of edgeRows) expect(await storedRow(target.owner, id)).toEqual(await storedRow(db.owner, id));
+  expect(raised).toEqual([]);
+  for (const id of new Set(breaches.map(breach => breach.id))) expect(await storedRow(target.owner, id)).toEqual(await storedRow(db.owner, id));
 }, 180_000);
 
 it("executes the native privacy recipe, verifies historical quote bytes and scrubs terminal and pending data", async () => {
