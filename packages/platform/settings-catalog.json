@@ -1006,16 +1006,91 @@
     {
       "key": "payments.declineNoticeTiming",
       "domain": "payments",
-      "goal": "Choose the delay and link lifetime for a payment decline notice.",
+      "kind": "installed",
+      "goal": "Set the delay in minutes and recovery link lifetime in hours for recoverable one-time payment decline notices (decline notice timing, recovery link lifetime, failed payment delay).",
       "schemaVersion": 1,
-      "kind": "cap",
+      "examples": [
+        {
+          "value": {
+            "revision": "store-1",
+            "delayMinutes": 5,
+            "linkLifetimeHours": 48
+          }
+        },
+        {
+          "value": {
+            "revision": " ",
+            "delayMinutes": 3,
+            "linkLifetimeHours": 24
+          },
+          "code": "payment_decline_notice_timing_policy_invalid"
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "delayMinutes": 3,
+            "linkLifetimeHours": 0
+          },
+          "code": "payment_decline_notice_timing_policy_invalid"
+        }
+      ],
+      "fallback": {
+        "revision": "default",
+        "delayMinutes": 3,
+        "linkLifetimeHours": 24
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "Three minutes of delay avoids sending premature failure notices during rapid retries or synchronous recovery, and 24 hours preserves the established checkout recovery token lifetime.",
+      "effect": {
+        "appliesTo": "Subsequent first recoverable-decline transitions on non-subscription orders in payment_provider_result_apply read key='payment_decline_notice_timing' from public.commerce_settings via payment_decline_notice_timing_read(), setting commerce_checkout_recovery_tokens.expires_at (and payload.expiresAt) to now() + make_interval(hours => linkLifetimeHours) and outbox_events.available_at for commerce.payment.failed to now() + make_interval(mins => delayMinutes). When no row exists in public.commerce_settings, the SQL reader defaults to delayMinutes 3 and linkLifetimeHours 24; malformed rows refuse fail-closed with SQLSTATE 22023 payment_decline_notice_timing_policy_invalid.",
+        "frozenOn": [
+          "Already issued commerce_checkout_recovery_tokens, already enqueued commerce.payment.failed outbox_events, and idempotent payment_provider_receipts replays keep their recorded expiry and availability timestamps."
+        ],
+        "impact": "customer-promise"
+      },
       "runtime": {
         "level": "read-only",
-        "reason": "Native decline notices wait three minutes and issue links for 24 hours."
+        "reason": "Install or update the public.commerce_settings row through installPaymentDeclineNoticeTimingPolicy or your store deployment step; runtime edits require a write-capable host connection."
       },
       "change": {
-        "reference": "docs/guide/concepts/payments.md#dispatch-and-settlement"
-      }
+        "operation": "installPaymentDeclineNoticeTimingPolicy"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string",
+            "pattern": "\\S"
+          },
+          "delayMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440
+          },
+          "linkLifetimeHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 168
+          }
+        },
+        "required": [
+          "revision",
+          "delayMinutes",
+          "linkLifetimeHours"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": [
+        {
+          "code": "payment_decline_notice_timing_policy_invalid",
+          "path": [],
+          "description": "Supply exactly revision, delayMinutes, and linkLifetimeHours. Revision must be a nonblank string, delayMinutes an integer from 0 through 1440, and linkLifetimeHours an integer from 1 through 168."
+        }
+      ]
     },
     {
       "key": "payments.deferredCapture",
@@ -1841,16 +1916,101 @@
     {
       "key": "subscriptions.retrySchedule",
       "domain": "subscriptions",
-      "goal": "Use one retry schedule for host and provider-recorded payment failures.",
+      "kind": "installed",
+      "goal": "Set the 3-rung retry backoff schedule in hours for subscription payment failures (subscription retry schedule, renewal retry policy, dunning schedule, backoff hours).",
       "schemaVersion": 1,
-      "kind": "cap",
+      "examples": [
+        {
+          "value": {
+            "revision": "store-1",
+            "backoffHours": [
+              24,
+              48,
+              96
+            ]
+          }
+        },
+        {
+          "value": {
+            "revision": " ",
+            "backoffHours": [
+              24,
+              72,
+              168
+            ]
+          },
+          "code": "subscription_retry_schedule_policy_invalid"
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "backoffHours": [
+              24,
+              72
+            ]
+          },
+          "code": "subscription_retry_schedule_policy_invalid"
+        }
+      ],
+      "fallback": {
+        "revision": "default",
+        "backoffHours": [
+          24,
+          72,
+          168
+        ]
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "Twenty-four, 72, and 168 hours preserve the historical 3-rung retry cadence (retries on days 1, 4, and 11 after the initial decline) across both 3-argument subscription_retry_apply_failure and provider-recorded failures applied through payment_provider_result_apply without explicit p_cadence.",
+      "effect": {
+        "appliesTo": "Subsequent failure recordings via 3-argument subscription_retry_apply_failure and provider-recorded renewal failures via payment_provider_result_apply when p_cadence is omitted or NULL read key='subscription_retry_schedule' from public.commerce_settings via subscription_retry_schedule_read(). Explicit p_cadence passed to 4-argument subscription_retry_apply_failure or 12-argument payment_provider_result_apply takes precedence. When no row exists in public.commerce_settings, the SQL reader defaults to [24, 72, 168]; malformed rows refuse fail-closed with SQLSTATE 22023 subscription_retry_schedule_policy_invalid.",
+        "frozenOn": [
+          "Already recorded subscription_retry_obligations next_retry_at schedules, completed subscription_retry_receipts (including idempotent replays), and already opened subscription_dunning_cases keep their recorded retry timestamps."
+        ],
+        "impact": "operations"
+      },
       "runtime": {
         "level": "read-only",
-        "reason": "Provider-recorded failures still use the fixed 24, 72 and 168 hour schedule."
+        "reason": "Install or update the public.commerce_settings row through installSubscriptionRetrySchedulePolicy or your store deployment step; runtime edits require a write-capable host connection."
       },
       "change": {
-        "reference": "docs/guide/concepts/subscriptions.md#durable-retry-timing"
-      }
+        "operation": "installSubscriptionRetrySchedulePolicy"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string",
+            "pattern": "\\S"
+          },
+          "backoffHours": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "required": [
+          "revision",
+          "backoffHours"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": [
+        {
+          "code": "subscription_retry_schedule_policy_invalid",
+          "path": [],
+          "description": "Supply exactly revision and backoffHours. Revision must be a nonblank string and backoffHours an array of exactly three integers from 1 through 2147483647."
+        }
+      ]
     },
     {
       "key": "subscriptions.sharedDeliveryControls",
@@ -2275,6 +2435,8 @@
     "shipping_flat_minor": "flat shipping, legacy delivery rate, shipping cost, minor units",
     "payment_method_expiry_warning_days": "payment method expiry, method_expiring, card expiration warning, renewal method health",
     "promotion_claim_hold_hours": "promotion claim hold, promo reservation expiry, initialPaymentWindow, stale promotion claims",
+    "payments.declineNoticeTiming": "decline notice delay, recovery token expiry, failed payment notice, checkout recovery link lifetime",
+    "subscriptions.retrySchedule": "renewal retry policy, payment failure backoff, 3-rung retry ladder, dunning schedule",
     "savedAddressValidation": "postal format, phone normalization, delivery address checks",
     "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
     "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",
@@ -2570,7 +2732,9 @@
                   "tax_invalid_input",
                   "checkout_recovery_policy_invalid",
                   "payment_method_expiry_warning_days_policy_invalid",
-                  "promotion_claim_hold_hours_policy_invalid"
+                  "payment_decline_notice_timing_policy_invalid",
+                  "promotion_claim_hold_hours_policy_invalid",
+                  "subscription_retry_schedule_policy_invalid"
                 ]
               },
               "path": {
