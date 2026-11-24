@@ -7,7 +7,12 @@ import { parsePackagesConfig } from "./package-manifest-policy.ts";
 import { preparePackages } from "./package-build.ts";
 import { isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 
-export function runRequiredPackageGates(root: string, output: string, commit: string): void {
+export function runRequiredPackageGates(
+  root: string,
+  output: string,
+  commit: string,
+  options: { prepacked?: boolean } = {},
+): void {
   if (!/^[a-f0-9]{40}$/u.test(commit) || execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8", env: isolatedConsumerEnv() }).trim() !== commit) throw new Error("package-gates: expected commit differs from the actual checkout");
   const catalog = parsePackagesConfig(readFileSync(join(root, "config/openlup-packages.json"), "utf8"));
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -23,13 +28,18 @@ export function runRequiredPackageGates(root: string, output: string, commit: st
   }
   const directory = resolve(root, output), started = performance.now();
   const run = (args: string[], env = isolatedConsumerEnv()) => execFileSync("npm", args, { cwd: root, env, stdio: "inherit" });
-  // Existing cold preparation still owns dependency order, cleanup and package budgets.
-  run(["run", "packages:check", "--", "--cold", "--out", directory]);
   const input = join(directory, "packages-manifest.json");
-  readCurrentPackManifest(root, input, commit);
-  console.log(`Cold package set ${Math.round(performance.now() - started)} ms (${packages.length} publishable packages)`);
-  // Cold preparation clears every workspace per target. Restore built
-  // declarations once in topological dependency order without touching the
+  if (options.prepacked) {
+    readCurrentPackManifest(root, input, commit);
+    console.log(`Verified prepacked package set ${Math.round(performance.now() - started)} ms (${packages.length} publishable packages)`);
+  } else {
+    // Existing cold preparation still owns dependency order, cleanup and package budgets.
+    run(["run", "packages:check", "--", "--cold", "--out", directory]);
+    readCurrentPackManifest(root, input, commit);
+    console.log(`Cold package set ${Math.round(performance.now() - started)} ms (${packages.length} publishable packages)`);
+  }
+  // Cold preparation clears every workspace per target (and a fresh runner starts without dist/).
+  // Restore built declarations once in topological dependency order without touching the
   // retained tarballs so shared prerequisites are not rebuilt per package.
   preparePackages(root, packages, catalog.packages, false);
   // Reject every package's cheap API drift before any package's expensive proof.
@@ -48,6 +58,8 @@ export function runRequiredPackageGates(root: string, output: string, commit: st
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   const args = process.argv.slice(2);
-  if (args.length !== 4 || args[0] !== "--out" || args[2] !== "--expected-commit") throw new Error("Use --out <empty-output> --expected-commit <full-sha>");
-  runRequiredPackageGates(process.cwd(), args[1]!, args[3]!);
+  if (args.length !== 4 || (args[0] !== "--out" && args[0] !== "--packages") || args[2] !== "--expected-commit") {
+    throw new Error("Use (--out <empty-output> | --packages <packed-dir>) --expected-commit <full-sha>");
+  }
+  runRequiredPackageGates(process.cwd(), args[1]!, args[3]!, { prepacked: args[0] === "--packages" });
 }
