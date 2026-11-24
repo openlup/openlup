@@ -2012,6 +2012,15 @@ The summary table is a convenience; admission verifies only the machine block.
 
 ### Merge queue
 
+For read-only queue diagnostics, run
+`node scripts/merge-queue-churn.mjs --github <since-UTC> <until-UTC> markdown`.
+It reports elapsed job time and exits with status 2 for partial evidence.
+Use `--offline [json|markdown] < evidence.json` for a saved sanitized
+evidence object. Add `--stdin < envelope.json` to the live command to supply
+an object with optional `priorSnapshot`, `subjects` and `attestations`.
+Both modes read at most 8 MiB from standard input. The report labels
+independently attested links and leaves unsupported historical links unknown.
+
 The queue builds and tests the integration tree. A source review carries over
 when its base is on main and the group tree is the reviewed tree or the clean
 `git merge-tree` result on the queue base. A clean registry-carrier union or verified derived landing also
