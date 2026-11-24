@@ -545,7 +545,7 @@ describe("complete public CI", () => {
     expect(workflowJob("test").split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
     expect(shard).toContain("    strategy:\n      fail-fast: false\n      max-parallel: 8\n      matrix:\n        shard: [1, 2, 3, 4, 5, 6, 7, 8]\n");
     expect(shard).not.toMatch(/include:|exclude:|continue-on-error|--(?:maxWorkers|pool|retry|testTimeout|hookTimeout|bail)/u);
-    expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
+    expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 25\n");
     expect(shard).toContain("          fetch-depth: 0\n");
     expect(shard).toContain("          cache: npm\n");
     expect(shard).toContain("uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c");
@@ -615,7 +615,7 @@ describe("complete public CI", () => {
   it("runs package proof, root shards and database diagnostics independently", () => {
     for (const name of ["install-packages", "test-prep", "pgtap"]) expect(workflowJob(name)).toContain("    needs: [reuse-gate]\n");
     expect(workflowJob("test-full-shard")).toContain("    needs: [reuse-gate, test-prep]\n");
-    for (const [name, timeoutMinutes] of [["install-packages", 12], ["install-browser", 8], ["test-prep", 10], ["test-full-shard", 20]] as const) {
+    for (const [name, timeoutMinutes] of [["install-packages", 12], ["install-browser", 8], ["test-prep", 10], ["test-full-shard", 25]] as const) {
       const job = workflowJob(name);
       expect(job).toContain(`    runs-on: ubuntu-latest\n    timeout-minutes: ${timeoutMinutes}\n`);
       expect(job).toContain("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n");
