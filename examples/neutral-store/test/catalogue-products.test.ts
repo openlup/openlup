@@ -47,6 +47,14 @@ test('only exact receipt-backed public attributes reach the offer, and presentat
     assert.equal('options' in offer.products[0]!.skus[0]!, false);
     assert.equal('definitionDigest' in offer.products[0]!, false);
   }
+  const withReaderDetails = { ...row, netContent: { ...row.netContent, privateDetail: true },
+    sell: { ...row.sell, privateDetail: true },
+    price: { ...row.price, oneTime: { ...row.price.oneTime!, privateDetail: true } } };
+  const { skus: [projected] } = projectPublishedCatalogOfferPage({ ...raw,
+    products: [{ ...raw.products[0]!, skus: [withReaderDetails] }] }, [receipt]).products[0]!;
+  assert.deepEqual(projected!.netContent, row.netContent);
+  assert.deepEqual(projected!.sell, row.sell);
+  assert.deepEqual(projected!.price, row.price);
   const conflict = { ...receipt, digest: 'b'.repeat(64) };
   const conflictingScope = { ...receipt, type: { ...typeRef, attributes: [attribute('product', 'variant')] } };
   for (const [definitions, seal] of [

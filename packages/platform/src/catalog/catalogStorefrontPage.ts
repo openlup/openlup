@@ -107,6 +107,12 @@ function publicAttributes(values: CatalogStorefrontProduct["attributes"], defini
     .map(({ key }) => [key, structuredClone(values[key])]));
 }
 
+function publicPrice(price: CatalogStorefrontPrice | null): CatalogStorefrontPrice | null {
+  if (!price) return null;
+  const { amountMinor, currency, amountBasis } = price;
+  return { amountMinor, currency, amountBasis };
+}
+
 /** Projects receipt-verified attributes and authored public presentation for outward use.
  * @experimental
  */
@@ -120,8 +126,11 @@ export function projectPublishedCatalogOfferPage(page: Extract<CatalogStorefront
     return { slug, name, presentation: structuredClone(presentation), attributes: publicAttributes(attributes, definitions, "product"),
       skus: skus.map(({ skuCode, title, minQuantity, netContent, primaryUnitIdentifier, sell, price, attributes }): PublishedSku => {
         const identifier = primaryUnitIdentifier;
-        return { skuCode, title, minQuantity, netContent: { ...netContent }, sell: { ...sell },
-          price: structuredClone(price), attributes: publicAttributes(attributes, definitions, "variant"),
+        const { dimension, unit, unscaled, scale } = netContent;
+        return { skuCode, title, minQuantity, netContent: { dimension, unit, unscaled, scale },
+          sell: { oneTime: sell.oneTime, subscription: sell.subscription },
+          price: { oneTime: publicPrice(price.oneTime), subscription: publicPrice(price.subscription) },
+          attributes: publicAttributes(attributes, definitions, "variant"),
           primaryUnitIdentifier: identifier && { scheme: identifier.scheme, issuer: identifier.issuer, value: identifier.value,
             internal: identifier.scheme !== "gs1:gtin" || !isValidGtin(identifier.value) || isInternalGtin14(identifier.value.padStart(14, "0")) },
         };
