@@ -691,9 +691,11 @@ describe("grant-only PUBLIC revoke", () => {
     slot.grantOnlyFunctions = signatures.map(signature => ({ signature, revokePublic: true, grantTo: ["service_role"], revokeFrom: [] }));
     value.nativeStoreForwardClass!.slots = [slot];
     value.baselineSha256 = sqlSha256(prefix);
-    const pin = bind(value, 0, text);
+    const bytes = Buffer.from(text);
+    value.nativeStoreForwards = [{ path, sha256: sqlSha256(bytes), functions: [] }];
+    const pin = value.nativeStoreForwards[0]!;
     const preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.from(prefix) }];
-    return { value, slot, pin, preceding, admit: () => assertNativeStoreForward(readReviewedForwardRegistry(encode(value)), path, Buffer.from(text), preceding) };
+    return { value, slot, pin, preceding, admit: () => assertNativeStoreForward(readReviewedForwardRegistry(encode(value)), path, bytes, preceding) };
   }
 
   const messages = {
@@ -704,8 +706,6 @@ describe("grant-only PUBLIC revoke", () => {
     missing: "native_store_revoke_public_missing: A listed target lacks its direct PUBLIC revoke. Add it before the guarded grant.",
     order: "native_store_revoke_public_order: The ACL statements are out of order. Put the PUBLIC revokes in registry order before the guarded grant.",
     grant: "native_store_revoke_public_grant: The slot requires one guarded service_role EXECUTE grant. Use the documented block without grant option.",
-    security: "native_store_revoke_public_security: The target is a SECURITY DEFINER. Use an existing SECURITY INVOKER target.",
-    history: "native_store_revoke_public_history: Earlier SQL changes or may change the target's ACL. Remove this target from the slot and use a separate reviewed ACL change if needed.",
     aclOnly: "native_store_revoke_public_acl_only: The slot contains a change outside its ACL statements. Move that change to a separate reviewed forward.",
     ordinary: "reviewed native store grant-only privilege must use its closed conditional role/verb",
   };
@@ -738,16 +738,6 @@ describe("grant-only PUBLIC revoke", () => {
       .filter(unit => unit.file < slot.path)
       .map(unit => ({ path: unit.file, bytes: readFileSync(unit.file) }));
     expect(() => assertNativeStoreForward(readReviewedForwardRegistry(encode(value)), slot.path, Buffer.from(text), preceding)).not.toThrow();
-  });
-  it("uses the latest definition and ignores security text in its literals and body", () => {
-    const latest = definition(implicit!, "SECURITY INVOKER").replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION");
-    const prefix = sql(baseline.replace(definition(implicit!), () => definition(implicit!, "SECURITY DEFINER")), latest);
-    expect(() => fixture(positive, prefix).admit()).not.toThrow();
-  });
-  it("admits untouched overloads after direct and guarded writes to a different overload", () => {
-    const other = "public.fixture_narrow(uuid)";
-    const prefix = sql(baseline, definition(other), `REVOKE ALL ON ROUTINE ${other} FROM PUBLIC;`, block("service_role", "GRANT EXECUTE", other));
-    expect(() => fixture(positive, prefix).admit()).not.toThrow();
   });
 
   it.each<[string, (candidate: ReturnType<typeof fixture>) => unknown]>([
@@ -787,33 +777,23 @@ describe("grant-only PUBLIC revoke", () => {
     candidate.preceding.push({ path: earlier.path, bytes: Buffer.from(text) });
     refuses(candidate.admit, messages.base);
   });
-  it("refuses a base target whose latest definition is a definer", () => {
-    const latest = definition(explicit!, "SECURITY DEFINER").replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION");
-    refuses(fixture(positive, sql(baseline, latest)).admit, messages.security);
+  it("leaves SECURITY mode to the catalog even for a DEFINER definition", () => {
+    expect(fixture(positive, baseline.replace("SECURITY INVOKER", "SECURITY DEFINER")).admit).not.toThrow();
   });
   it.each([
     ["direct routine ACL", `GRANT EXECUTE ON ROUTINE ${explicit} TO service_role;`],
     ["guarded ACL", block("anon", "REVOKE ALL", implicit)],
     ["schema-wide ACL", "REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA other, public FROM PUBLIC;"],
-    ["ACL without a resolvable overload", "GRANT EXECUTE ON FUNCTION public.fixture_narrow TO service_role;"],
-  ])("refuses an earlier %s", (_label, statement) => {
-    refuses(fixture(positive, sql(baseline, statement)).admit, messages.history);
-  });
-
-  const other = "public.fixture_other(text)";
-  const dynamicRevokePrefix = (target: string) => sql(baseline, definition(other),
-    `DO $$ BEGIN EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I', '${target}', 'anon'); END; $$;`);
-  it("refuses an earlier dynamic routine revoke that names the target", () => {
-    const prefix = dynamicRevokePrefix("public.FIXTURE_NARROW(text)");
-    refuses(fixture(positive, prefix).admit, messages.history);
-  });
-  it("admits a slot after a dynamic routine revoke that does not name the target", () => {
-    expect(() => fixture(positive, dynamicRevokePrefix(other)).admit()).not.toThrow();
+    ["dynamic ACL", `DO $$ BEGIN EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I', '${explicit}', 'anon'); END; $$;`],
+  ])("leaves the preimage to the catalog after an earlier %s", (_label, statement) => {
+    expect(fixture(positive, sql(baseline, statement)).admit).not.toThrow();
   });
 
   it.each([
     ["an unlisted revoke target", positive.replace(explicit!, "public.fixture_other(text)"), messages.target],
     ["an unlisted guarded target", sql(first!, second!, grant.replace(implicit!, "public.fixture_other(integer)")), messages.target],
+    ["a revoke targeting a different overload", positive.replace(explicit!, "public.fixture_narrow(date)"), messages.target],
+    ["a guarded grant targeting an unlisted quoted type", sql(first!, second!, grant.replace(implicit!, 'public.fixture_narrow("int8")')), messages.target],
     ["the first PUBLIC revoke missing", sql(second!, grant), messages.missing],
     ["the second PUBLIC revoke missing", sql(first!, grant), messages.missing],
     ["swapped PUBLIC revokes", sql(second!, first!, grant), messages.order],
@@ -828,6 +808,7 @@ describe("grant-only PUBLIC revoke", () => {
     ["malformed guarded block", positive.replace("IF EXISTS", "IF NOT EXISTS"), messages.grant],
     ["an extra guarded block", sql(positive, grant), messages.aclOnly],
     ["extra SQL", sql(positive, "SELECT 1;"), messages.aclOnly],
+    ["a trailing unterminated statement", sql(positive, "SELECT 1"), messages.aclOnly],
   ])("refuses SQL with %s", (_label, text, message) => {
     refuses(fixture(text).admit, message);
   });

@@ -2647,10 +2647,11 @@ PUBLIC revoke. A block naming created functions still requires their revokes;
 a block naming only grant-only functions does not.
 A dedicated grant-only slot may flag every entry with `revokePublic: true`,
 `grantTo: ["service_role"]` and `revokeFrom: []`, with no other capabilities or
-bound function definitions. For existing invokers with untouched ACLs, put one
-direct `REVOKE ALL ON FUNCTION … FROM PUBLIC` per signature in registry order,
-then one constant `service_role` existence block granting EXECUTE to the same
-ordered list without grant option.
+bound function definitions. For signatures in the pre-class native prefix, put
+one direct `REVOKE ALL ON FUNCTION … FROM PUBLIC` per signature in registry
+order, then one constant `service_role` existence block granting EXECUTE to the
+same ordered list without grant option. PostgreSQL verifies SECURITY INVOKER
+and a raw NULL ACL before replay.
 The ordinary conditional DO shell requires an exact `pg_roles` existence guard around
 one constant privilege EXECUTE, on admitted targets, for the same role. Function
 privileges and table revokes retain one block per role, verb and object kind
