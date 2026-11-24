@@ -7,4 +7,5 @@ and `test/policy.test.ts`. The 1.1.0→1.2.0 upgrade created `owned/market.confi
 `test/checkout-recovery-stage.test.ts`, `test/locales.test.ts`, and
 `test/subscription-creation.test.ts`. The 1.2.0→1.3.0 upgrade created
 `owned/settings-host.ts` when absent. Run `chmod a+r` on those files or rebuild
-from a fresh checkout. Committed files already check out with mode `0644`.
+from a fresh checkout with the default umask `022`. Git applies the process
+umask on checkout.
