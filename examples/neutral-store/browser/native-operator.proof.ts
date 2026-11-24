@@ -296,7 +296,8 @@ import { env } from 'node:process';
 
 test('installed adopter pack refuses missing builds and resumes exact-pair authoring', async ({ page, baseURL, composeProject }) => {
   test.setTimeout(180_000);
-  if (!baseURL || !/^st1-pr2-recipe-[a-z0-9-]+$/u.test(composeProject)) throw new Error('starter_pack_recipe_fixture_required');
+  test.skip(!/^st1-pr2-recipe-[a-z0-9-]+$/u.test(composeProject), 'Requires the installed adopter-pack fixture.');
+  if (!baseURL) throw new Error('starter_pack_recipe_fixture_required');
   const compose = (...args: string[]) => execFileSync('docker', ['compose', '--project-name', composeProject, ...args],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 8 * 1024 * 1024 });
   const sql = (statement: string) => compose('exec', '-T', 'database', 'psql', '-XAt', '-v', 'ON_ERROR_STOP=1',
@@ -369,6 +370,13 @@ test('installed adopter pack refuses missing builds and resumes exact-pair autho
   const originalKey = (await posted).headers()['idempotency-key']!;
   const missingId = randomUUID(), missingPayload = draft();
   const target = `/application/.context/catalogue-builds/packs/stationery@${pair.version}.json`;
+  const buildDigest = () => compose('exec', '-T', 'application', 'node', '-e',
+    'const fs=require("node:fs"), crypto=require("node:crypto"); console.log(crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))', target).trim();
+  const ledgerReceipt = () => sql(`SELECT receipt::text FROM public.catalog_definition_installs
+    WHERE pack_id='stationery' AND pack_version=${pair.version}`).trim();
+  const beforeBuild = buildDigest(), beforeReceipt = ledgerReceipt();
+  expect(beforeBuild).toMatch(/^[a-f0-9]{64}$/u);
+  expect(JSON.parse(beforeReceipt)).toMatchObject({ packId: 'stationery', packVersion: pair.version });
   compose('run', '--rm', '--no-deps', '-T', 'installation', 'node', '-e', 'require("node:fs").unlinkSync(process.argv[1])', target);
   compose('restart', 'application');
   await expect.poll(async () => (await page.request.get(baseURL + '/api/config').catch(() => null))?.status()).toBe(200);
@@ -386,6 +394,8 @@ test('installed adopter pack refuses missing builds and resumes exact-pair autho
   const report = JSON.parse(execFileSync('./lifecycle', ['up', '--configuration', 'coffee', '--json'],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...env, COMPOSE_PROJECT_NAME: composeProject } }));
   expect(report.packs).toContainEqual({ id: 'stationery', version: 1, outcome: 'unchanged', types: [pair], taxClasses: ['standard'] });
+  expect(buildDigest()).toBe(beforeBuild);
+  expect(ledgerReceipt()).toBe(beforeReceipt);
   await login();
   expect(await prepare(savedId)).toMatchObject({ ok: true });
   expect(await save(missingId, missingPayload)).toMatchObject({ ok: true, value: { record: { payload: { product: { type: pair } } } } });

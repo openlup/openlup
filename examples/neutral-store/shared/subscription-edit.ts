@@ -1,3 +1,4 @@
+import { starterDiagnostic } from './refusals.ts';
 import type { PackageEditMoney, SizedEditPolicy } from '@openlup/platform/subscriptions/contracts';
 import type { SubscriptionOffer } from './subscription-offer.ts';
 import type { Localized, Product } from './config.ts';
@@ -49,7 +50,7 @@ export function assertEditorConfig(config: SubscriptionEditorConfig): void {
     || !config.planDays.length || config.planDays.some(days => days > 2_147_483_647) || config.maximumQuantity > 99
     || !config.subject || !positive(config.subject.dailyNeed) || !positive(config.subject.revision)
     || ![config.subject.currentExclusions, config.subject.inheritedExclusions].every(list => Array.isArray(list) && list.every(key => typeof key === 'string' && key.length > 0))) {
-    throw new Error('starter_subscription_configuration_invalid');
+    throw starterDiagnostic('starter_subscription_configuration_invalid');
   }
   const policy = config.sized;
   if (![policy.minimumCoreUnits, policy.maximumCoreLines, policy.maximumAddonLines, policy.maximumQuantity,
@@ -63,6 +64,6 @@ export function assertEditorConfig(config: SubscriptionEditorConfig): void {
     || config.catalogue.some(product => !product.groupKey || !positive(product.physicalSize) || !positive(product.demandPerUnit)
       || !Number.isSafeInteger(product.stockQuantity) || product.stockQuantity < 0 || product.stockQuantity > 2147483647
       || !Array.isArray(product.exclusions) || product.exclusions.some(key => typeof key !== 'string' || !key))) {
-    throw new Error('starter_subscription_configuration_invalid');
+    throw starterDiagnostic('starter_subscription_configuration_invalid');
   }
 }

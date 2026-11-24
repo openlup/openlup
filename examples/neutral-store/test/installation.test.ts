@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogPackManifest, withCatalogPublicationRules,
   type CatalogDefinitionInstallReceipt, type CatalogPackInput } from '@openlup/platform/catalog';
 import { configurations } from '../owned/store.config.ts';
+import { starterDiagnosticCode } from '../shared/refusals.ts';
 import { catalogueConformance } from '../owned/catalogue.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { editorProducts, readStarterCatalogueRules, stagePackBuild, starterCatalogue, starterCataloguePack } from '../host/editor-catalogue.ts';
@@ -244,7 +245,11 @@ test('a retained build conflict rolls back definition installation before commit
     const retry = installation();
     retry.binding.catalogueRules = bytes;
     retry.binding.catalogueBuildDirectory = directory;
-    await assert.rejects(installDemonstration(config, async () => retry.binding), { code: 'EEXIST' });
+    await assert.rejects(installDemonstration(config, async () => retry.binding), (error: Error & { code?: string }) => {
+      assert.equal(error.code, 'EEXIST');
+      assert.equal(error.message, 'starter_catalogue_build_conflict');
+      return starterDiagnosticCode(error) === 'starter_catalogue_build_conflict';
+    });
     assert.equal(retry.calls.at(-1)?.text, 'ROLLBACK');
     assert.ok(!retry.calls.some(row => row.text === 'COMMIT'));
     assert.equal(await readFile(conflictingBuild, 'utf8'), 'conflicting build');
@@ -479,7 +484,10 @@ test('conflicting configured price is refused and rolls back instead of overwrit
     if (text.startsWith('SELECT id, price_list_id')) result.rows[0]!.unit_price_minor = 1;
     return result;
   };
-  await assert.rejects(applyDemoSeed(Object.values(configurations)[0]!, fixture.binding), { message: 'starter_price_seed_conflict' });
+  await assert.rejects(applyDemoSeed(Object.values(configurations)[0]!, fixture.binding), (error: Error) => {
+    assert.equal(error.message, 'starter_price_seed_conflict');
+    return starterDiagnosticCode(error) === 'starter_price_seed_conflict';
+  });
   assert.equal(fixture.calls.at(-1)!.text, 'ROLLBACK');
 });
 
@@ -687,7 +695,7 @@ test('host_resolves_pack_type_exact_pair and verifies the complete immutable bui
     assert.throws(() => reader.registry.resolve({ key: sibling!.key, version: ref!.version }), missingBuild);
     const target = resolve(directory, 'packs', `${second.id}@${second.version}.json`);
     const raw = await readFile(target);
-    type Build = { asset: string; receipt: { packId: string; types: object[] }; pack: { types: { netContentUnits: string[] }[] } };
+    type Build = { asset: string; receipt: { packId: string; types: object[] }; pack: { types: { netContentUnits: string[]; publicationRules?: boolean }[] } };
     const corruptions: ((build: Build) => void | string)[] = [
       () => '{',
       build => { build.asset += '='; },
@@ -695,6 +703,8 @@ test('host_resolves_pack_type_exact_pair and verifies the complete immutable bui
       build => { build.receipt.packId = 'example:wrong'; },
       build => { build.receipt.types[1] = build.receipt.types[0]!; },
       build => { build.pack.types[1]!.netContentUnits = []; },
+      build => { build.pack.types[1]!.publicationRules = false; },
+      build => { delete build.pack.types[1]!.publicationRules; },
     ];
     for (const corrupt of corruptions) {
       const build = JSON.parse(raw.toString());

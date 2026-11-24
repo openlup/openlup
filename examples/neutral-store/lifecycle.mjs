@@ -4,6 +4,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { starterDiagnostic, starterDiagnosticCode } from './shared/refusals.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
 import { starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
@@ -32,17 +33,24 @@ function lifecycleOptions(argv, allowConfiguration = true) {
   let jsonSeen = false;
   for (let index = 0; index < argv.length; index++) {
     if (argv[index] === '--json') {
-      if (jsonSeen) throw new Error('starter_argument_duplicate');
+      if (jsonSeen) throw starterDiagnostic('starter_argument_duplicate');
       jsonSeen = true;
       continue;
     }
-    if (!allowConfiguration || argv[index] !== '--configuration') throw new Error('starter_argument_unknown');
-    if (configuration !== undefined) throw new Error('starter_argument_duplicate');
+    if (!allowConfiguration || argv[index] !== '--configuration') throw starterDiagnostic('starter_argument_unknown');
+    if (configuration !== undefined) throw starterDiagnostic('starter_argument_duplicate');
     const value = argv[++index];
-    if (!value || value.startsWith('--')) throw new Error('starter_argument_value_required');
+    if (!value || value.startsWith('--')) throw starterDiagnostic('starter_argument_value_required');
     configuration = value;
   }
   return configuration;
+}
+
+function ownedConfiguration(owner, selected) {
+  const key = selected ?? owner.defaultConfigurationId;
+  if (json && owner.configurations && !Object.hasOwn(owner.configurations, key))
+    throw starterDiagnostic('starter_configuration_unknown');
+  return owner.selectConfiguration(selected);
 }
 
 const argumentObserved = {
@@ -53,11 +61,12 @@ const argumentObserved = {
 function commandRefusal(error, stage, allowLegacy = false) {
   const known = installationFinding(error);
   if (known) return known;
-  const code = error instanceof Error && error.message;
-  const guidance = allowLegacy && code && starterGuidance(code);
+  const code = json ? starterDiagnosticCode(error) : (allowLegacy && error instanceof Error ? error.message : undefined);
+  const guidance = code && starterGuidance(code);
   if (!guidance) return installationFinding(installationFailure(error, stage, 'launch'));
-  const { cause = 'The selected configuration failed a starter prerequisite.', fix, recheck } = guidance;
-  const observed = Object.hasOwn(argumentObserved, code) ? argumentObserved[code] : 'The starter refused the selected configuration.';
+  const prerequisite = stage === '/installation' ? 'demonstration installation' : 'selected configuration';
+  const { cause = `The ${prerequisite} failed a starter prerequisite.`, fix, recheck } = guidance;
+  const observed = Object.hasOwn(argumentObserved, code) ? argumentObserved[code] : `The starter refused the ${prerequisite}.`;
   return installationFinding(refusal(code, stage, observed, cause,
     command === 'refusals' ? 'Use `./lifecycle refusals` with at most one `--json` option.' : fix,
     command === 'refusals' ? 'Repeat the refusals command with the corrected options.' : recheck));
@@ -146,9 +155,10 @@ if (command === 'refusals') {
   try {
     const selected = lifecycleOptions(args);
     stage = '/configuration';
-    const { selectConfiguration } = await import('./owned/store.config.ts');
-    const { assertConfig } = await import('./shared/config.ts');
-    const config = selectConfiguration(selected);
+    const owner = await import('./owned/store.config.ts');
+    const { assertConfig, isConfigurationId } = await import('./shared/config.ts');
+    const config = ownedConfiguration(owner, selected);
+    if (json && !isConfigurationId(config.id)) throw starterDiagnostic('starter_configuration_invalid');
     configuration = config.id;
     assertConfig(config);
     stage = '/installation';
@@ -221,11 +231,19 @@ if (command === 'refusals') {
   try {
     const selected = lifecycleOptions(args);
     stage = '/configuration';
-    const [installation, { selectConfiguration }] = await Promise.all([
+    const [installation, owner] = await Promise.all([
       import('./installation/install.ts'), import('./owned/store.config.ts'),
-    ]).catch(error => { throw installationFailure(error); });
-    const config = selectConfiguration(selected);
-    configuration = config.id;
+    ]).catch(error => {
+      if (json && starterDiagnosticCode(error)) throw error;
+      throw installationFailure(error);
+    });
+    const config = ownedConfiguration(owner, selected);
+    if (json) {
+      const { assertConfig, isConfigurationId } = await import('./shared/config.ts');
+      if (!isConfigurationId(config.id)) throw starterDiagnostic('starter_configuration_invalid');
+      configuration = config.id;
+      assertConfig(config);
+    }
     stage = '/installation';
     const packs = await installation.installDemonstration(config, installation.bootstrapDemonstration, json ? process.stderr : process.stdout);
     if (json) final = installReport(configuration, packs);

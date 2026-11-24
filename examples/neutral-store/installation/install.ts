@@ -1,3 +1,4 @@
+import { starterDiagnostic } from '../shared/refusals.ts';
 import { installCheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/server';
 import { installRenewalStockProtectionPolicy } from '@openlup/platform/inventory';
 import type { StoreConfig } from '../shared/config.ts';
@@ -344,7 +345,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         unit_price_minor, amount_kind, active, valid_from FROM public.price_entries WHERE id=$1 FOR SHARE`, [row.id])).rows[0];
       if (!existing || Object.entries(row).some(([key, value]) => key === 'valid_from'
         ? new Date(String(existing[key])).getTime() !== Date.parse(value as string)
-        : existing[key] !== value)) throw new Error('starter_price_seed_conflict');
+        : existing[key] !== value)) throw starterDiagnostic('starter_price_seed_conflict');
     }
     await seedQuoteAuthority(config, seed, connection);
     // The demonstration can attest the empty installed cohort for native price checks.
@@ -363,7 +364,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         WHERE source=$1 AND reference=$2 AND revision=$3 FOR SHARE`,
       [row.source, row.reference, row.revision]);
       if (existing.rows.length !== 1 || existing.rows[0]?.provenance !== row.provenance
-        || existing.rows[0]?.active !== true) throw new Error('starter_acquisition_seed_conflict');
+        || existing.rows[0]?.active !== true) throw starterDiagnostic('starter_acquisition_seed_conflict');
     }
     if (catalogueReceipt && artifact && legacyPack)
       stagedBuild = stageStarterCatalogueBuild(artifact, catalogueReceipt, installation.catalogueBuildDirectory, legacyPack.types[0]!);

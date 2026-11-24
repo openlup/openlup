@@ -1,3 +1,5 @@
+import { starterDiagnostic } from './refusals.ts';
+
 /** Application-owned commercial domains. Defaults and preferred choices never widen admission. */
 export type Numbers = { kind: 'set'; values: readonly number[] }
   | { kind: 'range'; min: number; max: number; step: number };
@@ -16,6 +18,6 @@ export function assertChoice<T extends string>(value: Choice<T>, vocabulary: rea
   if (!value || !Array.isArray(value.allowed) || !value.allowed.length
     || new Set(value.allowed).size !== value.allowed.length
     || value.allowed.some(item => !vocabulary.includes(item)) || !value.allowed.includes(value.default)) {
-    throw new Error(code);
+    throw starterDiagnostic(code);
   }
 }

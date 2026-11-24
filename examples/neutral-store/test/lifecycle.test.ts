@@ -15,7 +15,7 @@ const oneLine = (stdout: string) => {
 const findingKeys = ['cause', 'code', 'fix', 'observed', 'path', 'recheck'];
 const reportKeys = ['command', 'configuration', 'exitCode', 'findings', 'formatVersion', 'packs', 'state'];
 
-test('up_json_reports_four_fields_for_installer_refusal and verifies the real one-shot emitter', () => {
+test('up_json_reports_four_fields_for_installer_refusal and verifies the real one-shot emitter', async () => {
   const scratch = join(root, '.context');
   mkdirSync(scratch, { recursive: true });
   const app = mkdtempSync(join(scratch, 'lifecycle-transport-'));
@@ -34,13 +34,18 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     const config = "export const selectConfiguration = (id = 'coffee') => ({ id });";
     const configFile = join(app, 'owned/store.config.ts');
     writeFileSync(configFile, config);
-    writeFileSync(join(app, 'shared/config.ts'), 'export const assertConfig = () => {};');
+    writeFileSync(join(app, 'shared/config.ts'), "export const assertConfig = () => {}; export const isConfigurationId = id => typeof id === 'string';");
     writeFileSync(join(app, 'installation/install.ts'), `
       import { refusal } from './refusals.ts';
+      import { starterDiagnostic } from '../shared/refusals.ts';
       import { env } from 'node:process';
       export const bootstrapDemonstration = () => {};
       export function installDemonstration(config, bootstrap, progress) {
         progress.write('installer progress\\n');
+        if (env.ST1_CARRIER_CASE === 'legacy-conflict') throw Object.assign(
+          starterDiagnostic('starter_catalogue_build_conflict'), { code: 'EEXIST' });
+        if (env.ST1_CARRIER_CASE === 'price-conflict') throw starterDiagnostic('starter_price_seed_conflict');
+        if (env.ST1_CARRIER_CASE === 'driver') throw new Error('starter_price_seed_conflict');
         if (env.ST1_CARRIER_CASE === 'success') return [${JSON.stringify(summary)}];
         if (env.ST1_CARRIER_CASE === 'large') return Array.from({ length: 9000 }, (_, i) => ({
           ...${JSON.stringify(summary)}, id: 'example:' + i, types: [{ key: 'example:item-' + i, version: 1 }]
@@ -106,6 +111,21 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     assert.match(text.run.stderr, /starter_catalogue_rules_required\nObserved: .*é\\n\\r\\t[^\n]+\nCause: /u);
     assert.equal(text.calls.length, 3);
     assert.deepEqual(up('success', ['--configuration', 'coffee', '--json']).report.packs, [summary]);
+    for (const [mode, code, fix] of [
+      ['legacy-conflict', 'starter_catalogue_build_conflict', /Restore the original declaration and rules.*new pack version/u],
+      ['price-conflict', 'starter_price_seed_conflict', /Restore the original demonstration inputs/u],
+      ['driver', 'starter_installation_failed', /Compose availability/u],
+    ] as const) {
+      const { report, calls } = up(mode);
+      assert.equal(report.findings[0].code, code);
+      assert.match(report.findings[0].fix, fix);
+      assert.deepEqual(report.packs, []);
+      assert.equal(calls.length, 3);
+      const privateText = spawnSync(process.execPath, ['lifecycle.mjs', 'install', '--configuration', 'coffee'],
+        { cwd: app, encoding: 'utf8', env: { ...env, ST1_CARRIER_CASE: mode } });
+      assert.equal(privateText.status, 2);
+      assert.equal(privateText.stderr, (mode === 'driver' ? 'starter_price_seed_conflict' : code) + '\n');
+    }
     const large = up('large');
     assert.ok(Buffer.byteLength(large.run.stdout) > 1_048_576);
     assert.equal(large.report.packs.length, 9000);
@@ -157,6 +177,38 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
     const missing = spawnSync(process.execPath, ['lifecycle.mjs', 'up', '--json'], { cwd: app, encoding: 'utf8', env: { PATH: app } });
     assert.equal(missing.status, 2);
     assert.equal(oneLine(missing.stdout).findings[0].code, 'starter_installation_failed');
+    // Keep the production configuration validator and change only the owned fixture.
+    for (const directory of ['shared', 'owned']) cpSync(join(root, directory), join(app, directory), { recursive: true });
+    const realConfig = readFileSync(configFile, 'utf8').replace('export function selectConfiguration', 'function fixtureConfiguration');
+    const { defaultConfigurationId } = await import('../owned/store.config.ts');
+    for (const route of ['up', 'install']) {
+      const result = spawnSync(process.execPath, ['lifecycle.mjs', route, '--json', '--configuration', 'unknown-configuration'],
+        { cwd: app, encoding: 'utf8', env });
+      assert.equal(result.status, 2);
+      const report = oneLine(result.stdout);
+      assert.equal(report.configuration, '');
+      assert.equal(report.findings[0].code, 'starter_configuration_unknown');
+    }
+    for (const [overrides, expectedId, code] of [
+      ['id: 42', '', 'starter_configuration_invalid'],
+      ['id: 123', '', 'starter_configuration_invalid'],
+      ['recovery: {}', defaultConfigurationId, 'starter_recovery_configuration_invalid'],
+    ]) {
+      writeFileSync(configFile, realConfig + `\nexport function selectConfiguration() {
+        return { ...fixtureConfiguration(), ${overrides} };
+      }\n`);
+      for (const route of ['up', 'install']) {
+        const result = spawnSync(process.execPath, ['lifecycle.mjs', route, '--json'], { cwd: app, encoding: 'utf8', env });
+        const report = oneLine(result.stdout);
+        assert.equal(result.status, 2, result.stderr);
+        assert.equal(report.configuration, expectedId);
+        assert.equal(report.findings[0].code, code);
+        assert.equal(report.findings[0].path, '/configuration');
+        if (expectedId) assert.match(report.findings[0].fix, /required recovery states/u);
+        assert.deepEqual(report.packs, []);
+        assert.equal(result.stderr, '');
+      }
+    }
   } finally { rmSync(app, { recursive: true, force: true }); }
 });
 
@@ -175,12 +227,18 @@ test('every_thrown_starter_code_is_in_the_refusal_table and discovery needs no c
     return [code, cause ?? '', fix, recheck];
   }));
   const source = ['lifecycle.mjs', 'installation/install.ts', 'installation/refusals.ts', 'shared/refusals.ts', 'installation/quote-seed.ts',
-    'host/editor-catalogue.ts', 'owned/store.config.ts', 'shared/config.ts', 'shared/locales.ts'];
+    'host/editor-catalogue.ts', 'owned/store.config.ts', 'shared/config.ts', 'shared/locales.ts',
+    'shared/recovery-config.ts', 'shared/policy.ts', 'shared/quote-config.ts', 'shared/renewal-config.ts',
+    'shared/subscription-edit.ts', 'shared/subscription-offer.ts', 'host/server.ts', 'host/native-composition.ts'];
   const mapped = /catalog_[a-z_]+: '(starter_[a-z_]+)'|definition_unknown_profile_ref: '(starter_[a-z_]+)'/gu;
   for (const path of source) {
-    const bytes = readFileSync(join(root, path), 'utf8');
-    const matches = [...bytes.matchAll(/(?:Error|refusal|buildRefusal)\(['`"(](starter_[a-z_]+)|\bthrow (?:[a-zA-Z]+)\(['"](starter_[a-z_]+)/gu),
-      ...bytes.matchAll(mapped)];
+    const body = readFileSync(join(root, path), 'utf8');
+    const bytes = path === 'host/server.ts' ? body.slice(body.indexOf('const publicationPasswordFile ='))
+      : path === 'host/native-composition.ts' ? body.slice(body.indexOf('export async function composeNativeBindings'), body.indexOf('const customer = resolved.binding'))
+      : path === 'shared/renewal-config.ts' ? body.replace(/export function admitCareCommand[\s\S]+?(?=\nexport )/u, '') : body;
+    const matches = [...bytes.matchAll(/(?:Error|refusal|buildRefusal|starterDiagnostic)\(['`"(](starter_[a-z_]+)|\bthrow (?:[a-zA-Z]+)\(['"](starter_[a-z_]+)/gu),
+      ...bytes.matchAll(mapped),
+      ...bytes.matchAll(/assertChoice\([^;]*, '(starter_[a-z_]+)'\);/gu)];
     for (const [, first, second] of matches) assert.ok(Object.hasOwn(table, (first ?? second)!), path + ' ' + (first ?? second));
   }
   const assertLocale = spawnSync(process.execPath, ['--input-type=module', '-e', `
@@ -202,7 +260,7 @@ const recipeApp = processEnv.OPENLUP_STARTER_CATALOGUE_RECIPE_APP;
 test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 }, () => {
   const app = recipeApp!;
   const origin = JSON.parse(readFileSync(join(app, '.starter-origin.json'), 'utf8'));
-  assert.ok(['candidate', 'local-candidate'].includes(origin.kind));
+  assert.ok(['candidate', 'local-candidate', 'released', 'reconstructed'].includes(origin.mode ?? origin.kind));
   const project = 'st1-pr2-recipe-' + randomUUID().slice(0, 8);
   const env = { ...processEnv, COMPOSE_PROJECT_NAME: project };
   const run = (command: string, args: string[], exit = 0) => {
@@ -219,15 +277,17 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
   mkdirSync(context, { recursive: true });
   const skeleton = join(app, 'node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-pack-skeleton');
   const packDirectory = join(app, 'owned/catalogue');
-  const initial = readFileSync(catalogue, 'utf8');
+  const initial = readFileSync(catalogue, 'utf8'), initialRules = readFileSync(rules);
   const declared = initial.replace('const pack = {', 'const starterPack = {')
     .replace('packs: [{ pack, drafts:', 'packs: [{ pack: starterPack, drafts:')
     .replace('}, skus: [] }] }],', '}, skus: [] }] }, { pack, drafts: fixtures.drafts }],')
     .replace('packs.flatMap(', 'packs.flatMap<CatalogProductTypeInput>(');
   assert.notEqual(declared, initial);
+  let created = false;
   try {
     run('git', ['add', '-A']);
     mkdirSync(packDirectory);
+    created = true;
     for (const path of ['pack.ts', 'fixtures.ts']) cpSync(join(skeleton, path), join(packDirectory, path));
     writeFileSync(catalogue, "import { pack } from './catalogue/pack.ts';\nimport { fixtures } from './catalogue/fixtures.ts';\n" + declared);
 
@@ -289,6 +349,13 @@ test('up_json_installed_starter_recipe', { skip: !recipeApp, timeout: 600_000 },
     run('./lifecycle', ['up']);
     assert.equal(ledger(), '2');
   } finally {
-    docker('down', '--volumes');
+    try { docker('down', '--volumes'); }
+    finally {
+      if (created) {
+        writeFileSync(catalogue, initial);
+        writeFileSync(rules, initialRules);
+        rmSync(packDirectory, { recursive: true });
+      }
+    }
   }
 });

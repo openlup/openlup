@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { AppUpgradePlan, AppVerificationFinding } from "@openlup/platform/lifecycle";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 
@@ -417,6 +417,41 @@ export function mergeStarterCareFile(directory: string, previous: Buffer, local:
   } finally { rmSync(merge, { recursive: true, force: true }); }
 }
 
+/** Exercise the installed recipe on the upgraded app with its target package bytes. */
+export function proveInstalledCatalogueUpgrade(app: string) {
+  const lockfile = join(app, "package-lock.json");
+  const retained = readFileSync(lockfile);
+  const lock = JSON.parse(retained.toString("utf8"));
+  const artifacts: string[] = [];
+  let lockRemapped = false;
+  const options = { cwd: app, env: { ...isolatedConsumerEnv(), OPENLUP_STARTER_CATALOGUE_RECIPE_APP: app },
+    stdio: "pipe" as const, encoding: "utf8" as const,
+    timeout: 600_000, maxBuffer: 8 * 1024 * 1024 };
+  try {
+    for (const name of ["core", "outbox", "platform"]) {
+      const entry = lock.packages["node_modules/@openlup/" + name];
+      assert(typeof entry?.resolved === "string", "Catalogue recipe is missing an installed dependency");
+      if (!entry.resolved.startsWith("file:")) continue;
+      const bytes = readFileSync(resolve(app, entry.resolved.slice(5)));
+      assert.equal("sha512-" + createHash("sha512").update(bytes).digest("base64"), entry.integrity);
+      const local = `artifacts/openlup-${name}.tgz`, path = join(app, local);
+      if (existsSync(path)) assert.deepEqual(readFileSync(path), bytes, "Catalogue recipe artifact differs from the target lock");
+      else { writeFileSync(path, bytes, { flag: "wx" }); artifacts.push(path); }
+      if (entry.resolved !== "file:" + local) {
+        entry.resolved = "file:" + local;
+        lockRemapped = true;
+      }
+    }
+    if (lockRemapped) writeFileSync(lockfile, JSON.stringify(lock) + "\n");
+    execFileSync("npx", ["--no", "--", "playwright", "install", "chromium"], options);
+    const result = execFileSync(process.execPath, ["--test", "--test-reporter=spec", "--test-name-pattern=^up_json_installed_starter_recipe$", "test/lifecycle.test.ts"], options);
+    assert.match(result, /✔ up_json_installed_starter_recipe/u);
+  } finally {
+    if (lockRemapped) writeFileSync(lockfile, retained);
+    for (const path of artifacts) rmSync(path);
+  }
+}
+
 type UpgradePair = { from: string; to: string; fromVersion: string; toVersion: string; pristine?: boolean;
   evidence: { planSha256?: string; customizations?: Record<string, string>;
     managedConflict?: { path: string; action: "create" | "replace" }; phases: { name: string; result: string }[] } };
@@ -425,6 +460,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const app = pair.from, from = starterUpgradeSnapshot(app, pair.fromVersion), to = starterUpgradeSnapshot(pair.to, pair.toVersion);
   const ownership = JSON.parse(readFileSync(join(app, "ownership.json"), "utf8"));
   const careUpgrade = needsStarterCareUpgrade(app, pair.to);
+  const catalogueUpgrade = !pair.pristine && !Object.hasOwn(from.files, "lifecycle-refusals.mjs")
+    && Object.hasOwn(to.files, "lifecycle-refusals.mjs");
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
@@ -638,6 +675,10 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     changed = plan.files.filter((file: { action: string }) => ["replace", "create"].includes(file.action));
     pair.evidence.planSha256 = hash(JSON.stringify(plan));
   });
+  const catalogueOwned = () => Object.fromEntries((ownership.owned as string[])
+    .filter(path => !Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path) && existsSync(join(app, path)))
+    .map(path => [path, hash(readFileSync(join(app, path)))]));
+  const beforeCatalogueApply = catalogueUpgrade ? catalogueOwned() : undefined;
   phase("interrupt-and-refuse", () => {
     const preload = join(workspace, "interrupt.mjs");
     writeFileSync(preload, 'import { promises as fs } from "node:fs"; const rename = fs.rename.bind(fs); fs.rename = async (...args) => { await rename(...args); process.kill(process.pid, "SIGKILL"); await new Promise(() => {}); };');
@@ -670,7 +711,10 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     if (careUpgrade) assert(resumed.applied.length > 0, "care upgrade resume must write remaining files");
     checkUpgradeFiles();
   });
-  phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
+  phase("replay", () => {
+    assert.deepEqual(run("apply").applied, []); checkUpgradeFiles();
+    if (beforeCatalogueApply) assert.deepEqual(catalogueOwned(), beforeCatalogueApply, "Managed apply changed owned bytes");
+  });
   if (!pair.pristine && previousEffect && nextEffect && previousEffect !== nextEffect) phase("checkout-attempt-effect-reconciliation", () => {
     const current = readFileSync(settingsHost, "utf8");
     assert.equal(attemptLimitEffect.exec(current)?.[2], previousEffect);
@@ -736,6 +780,11 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       else rmSync(join(app, retiredCatalogueFile));
       assert(!existsSync(join(app, retiredCatalogueFile)));
       if (!pair.pristine) assert.deepEqual(readFileSync(join(app, "owned/catalogue-archive.json")), owned[retiredCatalogueFile]);
+    });
+    if (catalogueUpgrade) phase("installed-catalogue-build-replay", () => {
+      const before = catalogueOwned();
+      proveInstalledCatalogueUpgrade(app);
+      assert.deepEqual(catalogueOwned(), before, "Catalogue replay changed upgraded owned bytes");
     });
   });
 }

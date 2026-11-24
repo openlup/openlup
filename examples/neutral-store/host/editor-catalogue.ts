@@ -9,7 +9,7 @@ import { canonicalCatalogDraftJson, catalogDefinitionDigest, catalogPackInstallI
   catalogProductTypeRefSchema, createCatalogProductTypeRegistry, withCatalogPublicationRules,
   type CatalogDefinitionInstallReceipt, type CatalogPackInput, type CatalogProductTypeInput, type CatalogProductTypeRef,
   type CatalogPublicationRulesPack, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
-import { buildRefusal, packBuildFilename } from '../shared/refusals.ts';
+import { buildRefusal, packBuildFilename, starterDiagnostic } from '../shared/refusals.ts';
 import { catalogDraftRegistry, catalogueConformance } from '../owned/catalogue.ts';
 import { isRecord } from '../shared/offer.ts';
 import type { StoreConfig } from '../shared/config.ts';
@@ -64,7 +64,7 @@ export function stageStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDef
   if (!installed || installed.definitionDigest !== catalogDefinitionDigest(definition)) throw new Error('starter_catalogue_install_receipt_invalid');
   const bytes = Buffer.from(canonicalCatalogDraftJson({ type, asset: artifact.toString('base64'), installed }));
   return stageBuild(directory, `${type.version}.json`, bytes,
-    () => Object.assign(new Error('starter_catalogue_build_conflict'), { code: 'EEXIST' }));
+    () => Object.assign(starterDiagnostic('starter_catalogue_build_conflict'), { code: 'EEXIST' }));
 }
 
 type StagedBuild = { publish(): void; discard(): void };
@@ -175,7 +175,7 @@ export function starterCatalogue(directory = buildDirectory) {
       const bytes = Buffer.from(asset, 'base64');
       const validator = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
       if (asset !== bytes.toString('base64') || stored.types.length !== pack.pairs.size
-        || stored.types.some(type => Object.hasOwn(type, 'validateContent') || type.validatorRef !== validator
+        || stored.types.some(type => Object.hasOwn(type, 'validateContent') || type.publicationRules !== true || type.validatorRef !== validator
           || !pack.pairs.has(`${type.key}@${type.version}`))) return;
       const bound = withCatalogPublicationRules(stored, () => bytes);
       if (catalogPackInstallIssues(bound).length || !verifiesPack(bound, receipt)) return;

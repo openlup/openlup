@@ -2,6 +2,18 @@ export const up = 'Run `./lifecycle up`.';
 export const rulesRecheck = 'Run `node --test owned/catalogue-rules.test.cjs`, then `./lifecycle up`.';
 const upJson = 'Run `./lifecycle up --json`';
 const reports = new WeakSet<Error>();
+const diagnosticCodes = new WeakMap<Error, string>();
+
+// Keep legacy message and error properties while recording the local emitter's code.
+export function starterDiagnostic(code: string, error = new Error(code)) {
+  diagnosticCodes.set(error, code);
+  return error;
+}
+
+export function starterDiagnosticCode(error: unknown) {
+  return error instanceof Error ? diagnosticCodes.get(error) : undefined;
+}
+
 export function refusal(code: string, path: string, observed: string, causeText: string, fix: string, recheck = up, cause?: unknown) {
   const error = Object.assign(code === 'starter_installation_failed' ? new Error(code, { cause }) : new Error(code),
     { code, path, observed, causeText, fix, recheck });
