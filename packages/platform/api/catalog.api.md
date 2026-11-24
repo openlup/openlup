@@ -4241,6 +4241,7 @@ export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
 export { CatalogDefinitionInstallError, catalogPackInstallIssues, installCatalogDefinitions } from "./installCatalogDefinitions.js";
+export { catalogInternalGtin } from "./internalGtin.js";
 export { readInstalledCatalogSubscriptionProfile } from "./installedSubscriptionProfiles.js";
 export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } from "./catalogDefinitionReadiness.js";
 export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
@@ -4307,6 +4308,16 @@ import type { PgQueryExecutor } from "../data/index.js";
  * @experimental
  */
 export declare function readInstalledCatalogSubscriptionProfile(readExecutor: PgQueryExecutor, ref: CatalogSubscriptionProfileRef): Promise<InstalledCatalogSubscriptionProfile | null>;
+```
+## dist/catalog/internalGtin.d.ts
+
+```ts
+/**
+ * Assigns a restricted-circulation number for use within one store. Choose a
+ * sequence unused in that store and keep the result out of external GTIN fields.
+ * @experimental
+ */
+export declare function catalogInternalGtin(sequence: number): string;
 ```
 ## dist/catalog/lifecycleDraftSchemas.d.ts
 

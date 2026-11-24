@@ -237,6 +237,32 @@ describe("affected-tests", () => {
     ]);
   });
 
+  it("pins canonical SQL and migration documentation to their contract tests", () => {
+    const dir = createTempRepo(Object.fromEntries([
+      "scripts/platform-migration-manifest.test.ts",
+      "scripts/packages/platform-migration-projection.test.ts",
+      "scripts/pgtap-parity.test.ts",
+      "scripts/sql-admit.test.ts",
+      "scripts/documentation-links.test.ts",
+      "scripts/reviewed-native-store-forward.test.ts",
+    ].map(path => [path, "// exists\n"])));
+    const sql = [
+      "scripts/packages/platform-migration-projection.test.ts",
+      "scripts/pgtap-parity.test.ts",
+      "scripts/platform-migration-manifest.test.ts",
+      "scripts/sql-admit.test.ts",
+    ].sort();
+    for (const path of ["db/platform/migrations/20261123000000_change.sql", "packages/platform/sql/20261123000000_change.sql"]) {
+      expect(findAffectedTests({ changedFiles: [path], rootDir: dir }).affectedTests)
+        .toEqual(sql.map(test => ({ path: test, reasons: ["contract-pin"] })));
+    }
+    const docs = ["scripts/documentation-links.test.ts", "scripts/reviewed-native-store-forward.test.ts"];
+    for (const path of ["docs/platform/DATA_AND_MIGRATIONS.md", "docs/platform/migrations/compatible-data-transfer.md"]) {
+      expect(findAffectedTests({ changedFiles: [path], rootDir: dir }).affectedTests)
+        .toEqual(docs.map(test => ({ path: test, reasons: ["contract-pin"] })));
+    }
+  });
+
   it("formats text output with a ready-to-run vitest command", () => {
     const text = formatAffectedTestsText({
       base: "origin/main",

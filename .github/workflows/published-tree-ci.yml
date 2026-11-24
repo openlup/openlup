@@ -563,7 +563,7 @@ jobs:
     if: ${{ always() && vars.OPENLUP_NATIVE_QUEUE == 'enabled' && github.event.repository.private == false && (github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [dco, typecheck, install-proof, test, self-check, gitleaks]
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 15
     permissions:
       issues: read
       contents: read
@@ -593,6 +593,8 @@ jobs:
         with:
           node-version: 24.21.0
           package-manager-cache: false
+      - name: Install trusted review toolchain
+        run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
       - name: Await exact-candidate native review
         env:
           GH_TOKEN: ${{ github.token }}

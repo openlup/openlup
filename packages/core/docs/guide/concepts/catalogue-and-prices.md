@@ -11,6 +11,31 @@ code, net content, identifiers and purchase-mode sellability. The quote reader
 uses the SKU's identifier as `variantId`; a storefront item is a projection
 with display and purchase facts, rather than another product identity.
 
+For a SKU without a globally assigned GTIN, choose an unused integer from `0` to
+`9_999_999_999` in your store and call the experimental
+`catalogInternalGtin(sequence)` from `@openlup/platform/catalog`. Use the result
+as `value` in the SKU's identifier record with `scheme: "gs1:gtin"`,
+`issuer: "<namespace>:internal"` using your namespace, and
+`packagingLevel: "unit"`.
+Add its matching `create_identifier` publication operation with
+`isPrimary: true`. A SKU has one primary unit identifier, so set
+`isPrimary: false` on the operation of a previous primary identifier you keep.
+If the SKU already has 32 identifiers, replace a draft identifier record and
+its matching `create_identifier` operation with the new record and operation.
+Save and prepare the draft again.
+
+If Publish returns `reason: "publication_gtin_conflict"`, a GTIN in the
+publication is already assigned in the store. If the conflict is on the
+internal number, call `catalogInternalGtin` with a sequence unused in the
+store. Update the value in both the identifier record and its matching
+`create_identifier` operation. Save a new draft revision, prepare it, approve
+the resulting candidate and publish it.
+
+The number is for internal use within one store. Keep it out of external
+channels that require a global GTIN. Product JSON-LD omits `gtin13` for the
+internal number. The version 1 SKU envelope carries it as `kind: "gtin"` with the
+`<namespace>:internal` issuer.
+
 The neutral SKU envelope carries product-scoped document references, not the
 document payload. Looking up a product slug follows its declared primary SKU;
 it does not infer a default from row order. An invalid primary relationship

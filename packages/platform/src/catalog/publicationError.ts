@@ -372,7 +372,7 @@ const publicationRefusals = {
   trade_identifier_quantity_invalid: { fix: "Use quantity one for a unit or at least two for a case." },
   trade_identifier_scheme_unsupported: { fix: "Use a supported trade identifier scheme." },
   type_not_installed: { fix: "Install the product type and version selected by the draft." },
-  unit_trade_identifier_missing: { fix: "Add a valid unit trade identifier to the SKU, then prepare the draft again." },
+  unit_trade_identifier_missing: { fix: "Add a valid unit trade identifier to the SKU, then prepare the draft again. For a product without a GS1 barcode, mint one with catalogInternalGtin." },
 } as const satisfies Record<PlatformCode, Remedy>;
 
 export type AdmissionDiagnostic = PlatformCode;
