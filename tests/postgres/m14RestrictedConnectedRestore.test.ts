@@ -101,23 +101,26 @@ async function installPair(shape: Shape, mode: Mode, sourceLabel: string, target
   if (sourceResult.status === "fulfilled" && targetResult.status === "fulfilled") {
     return [sourceResult.value, targetResult.value];
   }
+  const errors: unknown[] = [];
   const containers: PostgresContainer[] = [];
   const pools: Pool[] = [];
   for (const result of [sourceResult, targetResult]) {
     if (result.status === "fulfilled") {
       containers.push(result.value.container);
       pools.push(...result.value.pools);
+    } else {
+      errors.push(result.reason);
     }
   }
-  const setupError = sourceResult.status === "rejected" ? sourceResult.reason : (targetResult as PromiseRejectedResult).reason;
   if (containers.length > 0) {
     try {
       await closePostgres(containers, pools);
     } catch (cleanupError) {
-      throw new AggregateError([setupError, cleanupError], "Restricted restore pair setup and cleanup failed");
+      errors.push(cleanupError);
     }
   }
-  throw setupError;
+  if (errors.length === 1) throw errors[0];
+  throw new AggregateError(errors, "Restricted restore pair setup/cleanup failed");
 }
 
 async function withAcquisitionOwnerWindow<T>(installed: Installed, work: (client: PoolClient) => Promise<T>): Promise<T> {
