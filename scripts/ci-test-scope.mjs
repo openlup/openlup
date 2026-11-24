@@ -81,6 +81,17 @@ export const TOOLING_INPUTS = {
   'scripts/public-ci-reuse.test.ts': [], // Recorded workflow/job responses.
   'scripts/documentation-cli.test.ts': ['examples/neutral-store/package.json', ...PACKAGE_MANIFESTS, 'packages/core/scripts/', ...ROOT_DOC_FILES], // Copies CLI closure, package execution surfaces and validates root docs.
   'scripts/pgtap-parity.test.ts': [], // Pure TAP/row-diff/sabotage/executable unit fixtures.
+  'scripts/preflight-integration.test.ts': [
+    'packages/',
+    'config/openlup-publication-catalog.json',
+    'config/openlup-packages.json',
+    'config/platform-migration-manifest.json',
+    'config/reviewed-platform-forwards.json',
+    'config/doc-routing.json',
+    'docs/platform/SOURCE_MAP.md',
+    'src/lib/coreDomains.ts',
+    'db/platform/migrations/',
+  ], // Full-repo fast preflight carrier/catalogue/toolchain integration witnesses.
   'scripts/qualified-migration-admission.test.ts': ['config/reviewed-platform-forwards.json', 'db/platform/migrations/'], // Qualified installation admission pins and issued SQL preimages.
   'scripts/reviewed-batch-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'supabase/migrations/', 'packages/platform/sql/'], // Historical batch/M09-M12 forward pinning and co-located admission checks.
   'scripts/reviewed-native-store-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'docs/platform/DATA_AND_MIGRATIONS.md', 'tests/helpers/issuedPlatformCatalog.ts'], // Native-store forward classifier, issued prefix pins and control/guard-catalog doc checks.
