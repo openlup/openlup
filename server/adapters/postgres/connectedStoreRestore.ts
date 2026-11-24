@@ -368,7 +368,10 @@ export async function restoreConnectedNativeStore(input: {
       FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
       WHERE pg_catalog.left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema'
       AND c.relkind IN ('r','p') ORDER BY n.nspname,c.relname`)).rows;
-    for (const relation of relations) await client.query(`LOCK TABLE ${quoted(relation.schema)}.${quoted(relation.table)} IN SHARE ROW EXCLUSIVE MODE`);
+    if (relations.length > 0) {
+      const lockedRelations = relations.map(relation => `${quoted(relation.schema)}.${quoted(relation.table)}`).join(",");
+      await client.query(`LOCK TABLE ${lockedRelations} IN SHARE ROW EXCLUSIVE MODE`);
+    }
     // Inspect definitions after table locks, before any retained-data mutation.
     const lockedInventory = inventory ?? await catalogPayload(client, installation);
     if (digest(lockedInventory) !== manifest.objectInventorySha256) fail("schema_conflict");
@@ -379,11 +382,22 @@ export async function restoreConnectedNativeStore(input: {
     };
     if (declared !== JSON.stringify(fresh.requiredPrivacyContributorIds)) fail("target_conflict", requiredPrivacyDeclarationTable);
     await assertPrivacyDeclaration();
+    const actualColumnsByTable = new Map<string, { name: string; type: string }[]>();
+    const { rows: attributeRows } = await client.query<{ table: string; name: string; type: string }>(`SELECT c.relname AS table,
+      a.attname AS name,pg_catalog.format_type(a.atttypid,a.atttypmod) AS type
+      FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='public' AND c.relname=ANY($1::pg_catalog.text[]) AND c.relkind='r'
+      AND a.attnum>0 AND NOT a.attisdropped AND a.attgenerated='' AND a.attidentity=''
+      ORDER BY c.relname,a.attnum`, [[...connectedNativeStoreTables]]);
+    for (const row of attributeRows) {
+      const list = actualColumnsByTable.get(row.table);
+      if (list) list.push({ name: row.name, type: row.type });
+      else actualColumnsByTable.set(row.table, [{ name: row.name, type: row.type }]);
+    }
     for (const table of connectedNativeStoreTables) {
-      const actual = (await client.query<{ name: string; type: string }>(`SELECT a.attname AS name,
-        pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
-        WHERE a.attrelid=$1::pg_catalog.regclass AND a.attnum>0 AND NOT a.attisdropped
-        AND a.attgenerated='' AND a.attidentity='' ORDER BY a.attnum`, [`public.${table}`])).rows;
+      const actual = actualColumnsByTable.get(table) ?? [];
       const columns = source.get(table)!.columns.map(({ name, type }) => ({ name, type }));
       if (JSON.stringify(actual) !== JSON.stringify(columns)) refuseSourceSchema(table);
     }
@@ -631,19 +645,41 @@ async function closeRestrictedOwnerWindow(client: PoolClient, installation: Qual
   await client.query(`REVOKE openlup_retained_import_owner FROM ${migrator} GRANTED BY ${migrator}`);
   await client.query(`REVOKE platform_acquisition_owner FROM ${migrator} GRANTED BY ${migrator}`);
 }
+const existsCheckBatchSize = 25;
+
 async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): Promise<boolean> {
+  const nonEmpty: { sourceSql: string; rows: readonly string[] }[] = [];
+  const emptySources: string[] = [];
   for (const [table, data] of expected) {
-    const actual = (await client.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM ${connectedStoreRowSource(table, data.columns)} t`)).rows.map(row => row.value).sort();
-    if (JSON.stringify(actual) !== JSON.stringify([...data.rows].sort())) return false;
+    const sourceSql = connectedStoreRowSource(table, data.columns);
+    if (data.rows.length > 0) nonEmpty.push({ sourceSql, rows: data.rows });
+    else emptySources.push(sourceSql);
+  }
+  for (const entry of nonEmpty) {
+    const actual = (await client.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM ${entry.sourceSql} t`)).rows.map(row => row.value).sort();
+    if (JSON.stringify(actual) !== JSON.stringify([...entry.rows].sort())) return false;
+  }
+  for (let start = 0; start < emptySources.length; start += existsCheckBatchSize) {
+    const batch = emptySources.slice(start, start + existsCheckBatchSize);
+    const probes = batch.map((sourceSql, index) => `EXISTS (SELECT 1 FROM ${sourceSql} t LIMIT 1) AS "e${index}"`).join(",");
+    const row = (await client.query<Record<string, boolean>>(`SELECT ${probes}`)).rows[0]!;
+    if (batch.some((_, index) => row[`e${index}`])) return false;
   }
   return true;
 }
 async function assertOutsideEmpty(client: PoolClient, relations: readonly { schema: string; table: string }[]): Promise<void> {
-  for (const relation of relations) {
-    if (relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName)
-      || relation.table === "platform_schema_migrations" || relation.table === requiredPrivacyDeclarationTable)) continue;
-    if (relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")) continue;
-    if ((await client.query(`SELECT 1 FROM ${quoted(relation.schema)}.${quoted(relation.table)} LIMIT 1`)).rows.length) fail("unsupported_table", `${relation.schema}.${relation.table}`);
+  const outside = relations.filter(relation =>
+    !(relation.schema === "public" && (connectedNativeStoreTables.includes(relation.table as TableName)
+      || relation.table === "platform_schema_migrations" || relation.table === requiredPrivacyDeclarationTable))
+    && !(relation.schema === "acquisition_private" && (relation.table === "installation_key" || relation.table === "address_references")));
+  for (let start = 0; start < outside.length; start += existsCheckBatchSize) {
+    const batch = outside.slice(start, start + existsCheckBatchSize);
+    const probes = batch.map((relation, index) =>
+      `EXISTS (SELECT 1 FROM ${quoted(relation.schema)}.${quoted(relation.table)} LIMIT 1) AS "e${index}"`).join(",");
+    const row = (await client.query<Record<string, boolean>>(`SELECT ${probes}`)).rows[0]!;
+    for (let index = 0; index < batch.length; index++) {
+      if (row[`e${index}`]) fail("unsupported_table", `${batch[index]!.schema}.${batch[index]!.table}`);
+    }
   }
 }
 async function insert(client: PoolClient, table: Rows, row: string): Promise<void> {
