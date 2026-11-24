@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 201,
-        "exactTailCount": 91,
-        "objectInventorySha256": "8ac0c97c71c2736fb18c84d9e383bb104d7208c8d756548d0b5dad7ac2159d0f",
+        "count": 202,
+        "exactTailCount": 92,
+        "objectInventorySha256": "db8e605691227cc9912e8854f86b4d1aa3f8148c3ef49d09e8bc822caa263e3b",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql",
+            "sha256": "e126f9bed823082f9d8f6f943976f211edda9a5ede1380adb5a931b6daca3a00"
+          },
           {
             "file": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
             "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"
@@ -813,10 +817,14 @@
         ]
       },
       "bootstrap": {
-        "count": 207,
-        "exactTailCount": 92,
-        "objectInventorySha256": "9854de64a7f7f3e2af245081fd2c3b19f2b09f43b9b24338151daae162ecfc92",
+        "count": 208,
+        "exactTailCount": 93,
+        "objectInventorySha256": "4518012af06508a7e429babe18b4b59a3b6b66c20a2e0284e4199d512b91ae9b",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql",
+            "sha256": "e126f9bed823082f9d8f6f943976f211edda9a5ede1380adb5a931b6daca3a00"
+          },
           {
             "file": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
             "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"
@@ -1648,10 +1656,14 @@
         ]
       },
       "separate": {
-        "count": 207,
-        "exactTailCount": 92,
-        "objectInventorySha256": "1c046eb5af34e055fcdf9b650f9fefb72bb857a4bf5bcee1461a304f9bce5855",
+        "count": 208,
+        "exactTailCount": 93,
+        "objectInventorySha256": "7cf903385817bfc1290dc817bf09e466604d7ef8415183591b811f412575357b",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql",
+            "sha256": "e126f9bed823082f9d8f6f943976f211edda9a5ede1380adb5a931b6daca3a00"
+          },
           {
             "file": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
             "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"
@@ -2483,10 +2495,14 @@
         ]
       },
       "admin-managed": {
-        "count": 205,
-        "exactTailCount": 91,
-        "objectInventorySha256": "cb2a05fb609693490e51a9c908a85c815caf668219305b77ddaf8ecaed02057a",
+        "count": 206,
+        "exactTailCount": 92,
+        "objectInventorySha256": "764aff4676f4e6f3a43eedea17583c169ec84ab16bfa513cf51c882c2a936e82",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql",
+            "sha256": "e126f9bed823082f9d8f6f943976f211edda9a5ede1380adb5a931b6daca3a00"
+          },
           {
             "file": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
             "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"
@@ -3310,10 +3326,14 @@
         ]
       },
       "admin-operator": {
-        "count": 205,
-        "exactTailCount": 91,
-        "objectInventorySha256": "62f96b4c60166657ee2d66503a8cee3e215766597ecebdcb1a6e685b3c0d0ae1",
+        "count": 206,
+        "exactTailCount": 92,
+        "objectInventorySha256": "4c49c647dc0aedee63ab8bf00f1603119e6439ae3068fb2f61879dfb06a0ee3f",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql",
+            "sha256": "e126f9bed823082f9d8f6f943976f211edda9a5ede1380adb5a931b6daca3a00"
+          },
           {
             "file": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
             "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"

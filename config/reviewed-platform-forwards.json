@@ -9075,6 +9075,47 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "settings-wave3a-operator-slide-and-quote-ttl",
+        "path": "db/platform/migrations/20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.customer_support_apply_subscription_action_v1(uuid,uuid,text,jsonb,integer,text,timestamptz)",
+            "beforeSha256": "3feb7307083d21834e56463e9d5c18f319777b4bb990707565c7cbe2e7fee9f0",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+            "beforeSha256": "b7a39487ea9bbd498b022ec74da0db961c265fe632bd6193e8ea67d023aa3ef4",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "35bcc1e11ebc7ddd2d0b7c7d0e2e2bcf820d2167c9568089273940c830bf1cc6",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.account_support_operator_slide_max_days_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.account_support_operator_slide_max_days_read()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_edit_quote_ttl_minutes_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_edit_quote_ttl_minutes_read()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -12892,6 +12933,47 @@
           "signature": "public.payment_decline_notice_timing_read()",
           "beforeSha256": null,
           "afterSha256": "f524b303f24c3a036930f2cbcf67ae8a41505f05193c82f98a7d6e798a37ad13"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql",
+      "sha256": "e126f9bed823082f9d8f6f943976f211edda9a5ede1380adb5a931b6daca3a00",
+      "functions": [
+        {
+          "signature": "public.customer_support_apply_subscription_action_v1(uuid,uuid,text,jsonb,integer,text,timestamptz)",
+          "beforeSha256": "3feb7307083d21834e56463e9d5c18f319777b4bb990707565c7cbe2e7fee9f0",
+          "afterSha256": "ada7aefb623deaa5b28bae2f545b3fee00adca039da4adc955fac2efff3bf0c3"
+        },
+        {
+          "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+          "beforeSha256": "b7a39487ea9bbd498b022ec74da0db961c265fe632bd6193e8ea67d023aa3ef4",
+          "afterSha256": "7093c0d7209b5134ccfc74e41b46bc585a07024cb1ce2e60a08a0dc3a76997ff"
+        },
+        {
+          "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "35bcc1e11ebc7ddd2d0b7c7d0e2e2bcf820d2167c9568089273940c830bf1cc6",
+          "afterSha256": "21a83ef480b46955bce24590f9cfd10a0262e1fa27332b75c5fa5ec1f6fdcfe8"
+        },
+        {
+          "signature": "public.account_support_operator_slide_max_days_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "4e4e4d69988c88d922741eea3eaeaa532698f2ea0dce1b421bd450d2e0476762"
+        },
+        {
+          "signature": "public.account_support_operator_slide_max_days_read()",
+          "beforeSha256": null,
+          "afterSha256": "e17ec5540399cd7e3026489b035561259ef3c77a3eea3f50fef7c55aacecd1e5"
+        },
+        {
+          "signature": "public.subscription_edit_quote_ttl_minutes_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "bd475c10f6d741b2094dcf4c742449352ed6454bd73b0f0aef75e9ddd256c6aa"
+        },
+        {
+          "signature": "public.subscription_edit_quote_ttl_minutes_read()",
+          "beforeSha256": null,
+          "afterSha256": "b225e4232aefff9b9fe10559bae89710dba160d6fd626a14a4305311194223e2"
         }
       ]
     }
