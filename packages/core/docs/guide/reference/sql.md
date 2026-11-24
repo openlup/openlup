@@ -225,6 +225,8 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261126530000_catalog_price_list_basis.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261126530000_catalog_price_list_basis.sql) |
 | [`20261126540000_tax_calculation_claim_seal.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261126540000_tax_calculation_claim_seal.sql) |
 | [`20261127030000_subscription_destination_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127030000_subscription_destination_v2.sql) |
+| [`20261127040000_catalog_price_list_basis_select.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127040000_catalog_price_list_basis_select.sql) |
+| [`20261127041000_catalog_price_writer_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127041000_catalog_price_writer_v2.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

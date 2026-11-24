@@ -30166,6 +30166,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogPricePublicationV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPricePublicationV2Pgtap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogPublication.test.ts",
       "class": "public-output"
     },
@@ -30475,6 +30483,10 @@
     },
     {
       "path": "tests/postgres/feedbackMediaAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/catalogPricePublicationV2/grants.sql",
       "class": "public-output"
     },
     {
