@@ -3989,7 +3989,15 @@ function routineAclTargets(sql: string, tokens: PlatformSqlToken[]): (string | n
   if (!nativeWord(tokens, 0, "GRANT") && !nativeWord(tokens, 0, "REVOKE")) return [];
   const on = routinePrivilegeOn(tokens), kind = nativeIdentifier(tokens[on + 1]);
   if (on === -1 || !["function", "routine", "procedure"].includes(kind ?? "")) return [];
-  const role = tokens.findIndex((_token, index) => index > on && (nativeWord(tokens, index, "TO") || nativeWord(tokens, index, "FROM")));
+  let depth = 0;
+  const role = tokens.findIndex((_token, index) => {
+    if (index < on + 2) return false;
+    if (nativeSymbol(tokens, index, "(")) depth++;
+    if (nativeSymbol(tokens, index, ")")) depth--;
+    // A role delimiter follows the closing parenthesis of the final signature.
+    return depth === 0 && nativeSymbol(tokens, index - 1, ")")
+      && (nativeWord(tokens, index, "TO") || nativeWord(tokens, index, "FROM"));
+  });
   const start = tokens[on + 2]?.start;
   if (start === undefined || role === -1) return [null];
   let targets: string[];

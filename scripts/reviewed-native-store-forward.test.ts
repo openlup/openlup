@@ -686,9 +686,9 @@ describe("grant-only PUBLIC revoke", () => {
   const sql = (...statements: string[]) => statements.join("\n");
   const positive = sql(first!, second!, grant);
 
-  function fixture(text = positive, prefix = baseline) {
+  function fixture(text = positive, prefix = baseline, targets: readonly string[] = signatures) {
     const value = registry(), slot = emptySlot(path, "PublicRevoke");
-    slot.grantOnlyFunctions = signatures.map(signature => ({ signature, revokePublic: true, grantTo: ["service_role"], revokeFrom: [] }));
+    slot.grantOnlyFunctions = targets.map(signature => ({ signature, revokePublic: true, grantTo: ["service_role"], revokeFrom: [] }));
     value.nativeStoreForwardClass!.slots = [slot];
     value.baselineSha256 = sqlSha256(prefix);
     const bytes = Buffer.from(text);
@@ -720,6 +720,16 @@ describe("grant-only PUBLIC revoke", () => {
 
   it("admits two base invokers, explicit and implicit", () => {
     expect(() => fixture().admit()).not.toThrow();
+  });
+  it.each(["public.to(text)", "public.from(text)"])("admits a listed keyword-named target %s", signature => {
+    const text = positive.replaceAll(explicit!, signature);
+    const prefix = sql(definition(signature, "SECURITY INVOKER"), definition(implicit!));
+    expect(fixture(text, prefix, [signature, implicit!]).admit).not.toThrow();
+  });
+  it("refuses an unlisted keyword-named guarded target", () => {
+    const signature = "public.to(text)";
+    const text = sql(first!, second!, grant.replace(explicit!, signature));
+    refuses(fixture(text, sql(baseline, definition(signature))).admit, messages.target);
   });
   it("admits the activation ACL slot against the issued native prefix", () => {
     const slot = emptySlot("db/platform/migrations/20990101000000_revoke_public_activation_prefix_fixture.sql", "ActivationAclFixture");
