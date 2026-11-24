@@ -1,5 +1,6 @@
 import * as disposableDocker from "../../scripts/disposable-docker.mjs";
 import { env as processEnvironment } from "node:process";
+import { removeRunTarballCache } from "../helpers/packWorkspaceTarball.js";
 import type { TestProject } from "vitest/node";
 import { startPgTemplateBroker, type PgTemplateBroker } from "../helpers/pgTemplateBroker.js";
 
@@ -44,6 +45,7 @@ export default async function setup(project?: TestProject) {
   // skip the teardown Docker CLI call when no test in this run ever labeled a
   // disposable container.
   return async () => {
+    removeRunTarballCache(run);
     const activeEntry = brokers.get(run);
     if (activeEntry) {
       brokers.delete(run);

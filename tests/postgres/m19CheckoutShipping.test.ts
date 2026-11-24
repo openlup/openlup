@@ -12,6 +12,7 @@ import { platformConsumerInstallArgs, assertConsumerIsolation } from "../../scri
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { packWorkspaceTarballs } from "../helpers/packWorkspaceTarball.js";
 
 let container: PostgresContainer | undefined, scratch: string;
 let owner: Pool, runtime: Pool, denied: Pool;
@@ -27,10 +28,11 @@ beforeAll(async () => {
   mkdirSync(".context/scratch", { recursive: true });
   scratch = mkdtempSync(join(tmpdir(), "g8-shipping-packed-"));
   const npm = (args: string[], cwd: string) => execFileSync("npm", args, { cwd, encoding: "utf8", timeout: 120_000 });
-  const tarballs = ["packages/core", "packages/platform", "node_modules/zod"].map(directory => {
-    const [packed] = JSON.parse(npm(["pack", "--offline", "--ignore-scripts", "--json", "--pack-destination", resolve(scratch)], resolve(directory)));
-    return resolve(scratch, packed.filename);
-  });
+  const tarballs = await packWorkspaceTarballs(
+    ["packages/core", "packages/platform", "node_modules/zod"],
+    scratch,
+    { offline: true },
+  );
   const consumer = resolve(scratch, "consumer"); mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), '{"type":"module","private":true}');
   npm(platformConsumerInstallArgs(tarballs), consumer);
