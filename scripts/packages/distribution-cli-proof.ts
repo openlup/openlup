@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { AppUpgradePlan, AppVerificationFinding } from "@openlup/platform/lifecycle";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
@@ -423,10 +424,11 @@ export function mergeStarterCareFile(directory: string, previous: Buffer, local:
 type CatalogueBrowser = {
   reference: string;
   localImage?: string | undefined;
-  containerArguments(app: string, reference: string, name: string, localImage?: string): string[];
+  containerArguments(app: string, reference: string, name: string, localImage?: string, mounts?: string[]): string[];
 };
 
-const catalogueBrowserResult = "/tmp/openlup-catalogue-browser.json";
+const catalogueBrowserReadiness = "/catalogue-browser-readiness";
+const catalogueBrowserResult = catalogueBrowserReadiness + "/result.json";
 const launchCatalogueBrowser = `
   const { chromium } = require("playwright");
   const { renameSync, writeFileSync } = require("node:fs");
@@ -462,6 +464,7 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
   const lock = JSON.parse(retained.toString("utf8"));
   const artifacts: string[] = [];
   let lockRemapped = false, container: string | undefined, failure: { error: unknown } | undefined;
+  let readinessDirectory: string | undefined;
   const options = { cwd: app, env: { ...isolatedConsumerEnv(), OPENLUP_STARTER_CATALOGUE_RECIPE_APP: app,
     OPENLUP_STARTER_CATALOGUE_RECIPE_HASHES: JSON.stringify(preservedHashes) },
     stdio: "pipe" as const, encoding: "utf8" as const,
@@ -486,7 +489,9 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
     const dockerOptions = { ...options, timeout: 30_000 };
     if (browser) {
       const name = "starter-catalogue-browser-" + randomBytes(6).toString("hex");
-      const [action, ...args] = browser.containerArguments(app, browser.reference, name, browser.localImage);
+      readinessDirectory = mkdtempSync(join(tmpdir(), "openlup-catalogue-browser-"));
+      const readinessMount = `type=bind,src=${realpathSync(readinessDirectory)},dst=${catalogueBrowserReadiness}`;
+      const [action, ...args] = browser.containerArguments(app, browser.reference, name, browser.localImage, ["--mount", readinessMount]);
       container = name;
       run("docker", [action!, "--detach", ...args, "node", "-e", launchCatalogueBrowser], dockerOptions);
       const { endpoint, error } = JSON.parse(run("docker", ["exec", name, "node", "-e", readCatalogueBrowser], dockerOptions));
@@ -509,6 +514,7 @@ export function proveInstalledCatalogueUpgrade(app: string, preservedHashes: Rec
     } catch (error) {
       failure ??= { error };
     }
+    if (readinessDirectory) rmSync(readinessDirectory, { recursive: true, force: true });
     if (lockRemapped) writeFileSync(lockfile, retained);
     for (const path of artifacts) rmSync(path);
   }

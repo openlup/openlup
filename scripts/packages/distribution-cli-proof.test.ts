@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { execFileSync, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
-import { cpSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -38,7 +38,15 @@ it.each(["mirror", "local", "release", "server-failure"] as const)("runs the cat
   const localImage = mode === "local" ? imageReference(image, "mcr.microsoft.com/playwright") : undefined;
   const reference = localImage ?? imageReference(image);
   const endpoint = "ws://127.0.0.1:43189/test";
+  let readinessMount: string | undefined, readinessDirectory: string | undefined;
   const run = vi.fn((_file: string, args: readonly string[], _options: ExecFileSyncOptionsWithStringEncoding) => {
+    if (args[0] === "run") {
+      readinessMount = args.find(arg => arg.endsWith(",dst=/catalogue-browser-readiness"));
+      const mount = /^type=bind,src=(.+),dst=\/catalogue-browser-readiness$/u.exec(readinessMount ?? "");
+      expect(mount).not.toBeNull();
+      readinessDirectory = mount![1]!;
+      expect(statSync(readinessDirectory).mode & 0o777).toBe(0o700);
+    }
     if (args[0] === "exec") return JSON.stringify(mode === "server-failure" ? { error: "synthetic browser launch failure" } : { endpoint });
     return args[0] === "--test" ? "✔ up_json_installed_starter_recipe" : "";
   });
@@ -48,27 +56,28 @@ it.each(["mirror", "local", "release", "server-failure"] as const)("runs the cat
     const prove = () => proveInstalledCatalogueUpgrade(directory, {}, mode === "release" ? undefined : browser, run);
     if (mode === "server-failure") expect(prove).toThrow("synthetic browser launch failure");
     else prove();
+    const recipe = run.mock.calls.find(([file, args]) => file === process.execPath && args[0] === "--test");
+    const installs = run.mock.calls.filter(([, args]) => args.includes("install"));
+    if (mode === "release") {
+      expect(run.mock.calls.every(([file]) => file === process.execPath)).toBe(true);
+      expect(installs.map(([, args]) => args)).toEqual([[join(directory, "node_modules/.bin/playwright"), "install", "chromium"]]);
+      expect(recipe?.[2].env?.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT).toBeUndefined();
+      return;
+    }
+    const [file, args] = run.mock.calls[0]!;
+    expect(file).toBe("docker");
+    const name = args[args.indexOf("--name") + 1]!;
+    expect(args).toEqual(["run", "--detach", ...browserContainerArguments(directory, reference, name, localImage, ["--mount", readinessMount!]).slice(1),
+      "node", "-e", expect.stringContaining("chromium.launchServer")]);
+    expect(args).toEqual(expect.arrayContaining(["--pull=never", "--read-only", "--network=host", "--tmpfs", "/tmp:rw,nosuid,nodev",
+      `${process.getuid!()}:${process.getgid!()}`, `type=bind,src=${directory},dst=/app,readonly`, reference]));
+    expect(args.filter(arg => arg === "--mount")).toHaveLength(2);
+    expect(existsSync(readinessDirectory!)).toBe(false);
+    expect(run.mock.calls.at(-1)?.slice(0, 2)).toEqual(["docker", ["rm", "-f", name]]);
+    expect(installs).toHaveLength(0);
+    if (mode === "server-failure") expect(recipe).toBeUndefined();
+    else expect(recipe?.[2].env?.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT).toBe(endpoint);
   } finally { vi.unstubAllEnvs(); }
-  const recipe = run.mock.calls.find(([file, args]) => file === process.execPath && args[0] === "--test");
-  const installs = run.mock.calls.filter(([, args]) => args.includes("install"));
-  if (mode === "release") {
-    expect(run.mock.calls.every(([file]) => file === process.execPath)).toBe(true);
-    expect(installs.map(([, args]) => args)).toEqual([[join(directory, "node_modules/.bin/playwright"), "install", "chromium"]]);
-    expect(recipe?.[2].env?.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT).toBeUndefined();
-    return;
-  }
-  const [file, args] = run.mock.calls[0]!;
-  expect(file).toBe("docker");
-  const name = args[args.indexOf("--name") + 1]!;
-  expect(args).toEqual(["run", "--detach", ...browserContainerArguments(directory, reference, name, localImage).slice(1),
-    "node", "-e", expect.stringContaining("chromium.launchServer")]);
-  expect(args).toEqual(expect.arrayContaining(["--pull=never", "--read-only", "--network=host", "--tmpfs", "/tmp:rw,nosuid,nodev",
-    `${process.getuid!()}:${process.getgid!()}`, `type=bind,src=${directory},dst=/app,readonly`, reference]));
-  expect(args.filter(arg => arg === "--mount")).toHaveLength(1);
-  expect(run.mock.calls.at(-1)?.slice(0, 2)).toEqual(["docker", ["rm", "-f", name]]);
-  expect(installs).toHaveLength(0);
-  if (mode === "server-failure") expect(recipe).toBeUndefined();
-  else expect(recipe?.[2].env?.OPENLUP_STARTER_CATALOGUE_RECIPE_WS_ENDPOINT).toBe(endpoint);
 });
 
 it("prints a bounded installation hint after the existing refusal and preserves unhinted stderr bytes", () => {
