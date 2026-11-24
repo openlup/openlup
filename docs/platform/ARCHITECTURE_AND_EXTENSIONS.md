@@ -288,6 +288,57 @@ In the reference source, application domains under `src/domains` or
 `server/domains` bind through `#application-domains`; `src/lib/coreDomains.ts`
 names the platform's core domains, and the public binding registers none.
 
+## Provider recipe contract
+
+A provider recipe is a self-contained, source-owned provider integration. Adopters copy it into their own `owned/` adapter tree and verify it against their installed `@openlup/platform`. The reader view is [Install or scaffold a provider recipe](../../packages/core/docs/guide/how-to/extend/provider-recipes.md). Recipes build on the Tier 1 enablers: neutral domain ports, the shared `@openlup/platform/adapter-kit` protocol primitives (hardened fetch, OAuth2 token management, cooldown, webhook crypto) and the `@openlup/platform/*/testing` conformance kits, including the accounting and observability ports and their kits.
+
+### Recipe placement
+
+- All new provider integrations are authored as provider recipes under `recipes/<domain>/<provider>/`, or `recipes/multi/<provider>/` for multi-domain providers. No new vendor-specific subpath is added to `@openlup/platform` or `@openlup/core` without a topology trigger under the [package placement decision](#package-placement-decision-canonical); the existing opt-in reference adapters remain contract witnesses.
+- `recipes/` must remain repo-splittable into a standalone repository with `git subtree split --prefix=recipes` and zero code rewrites.
+
+### Recipe dependency and isolation rules
+
+Every file under `recipes/` must obey all of these rules:
+
+1. **Public `@openlup/*` imports only.** Recipes import only declared public exports of `@openlup/core`, `@openlup/platform` and `@openlup/outbox`, plus Node built-ins in `server/` and `tests/` and relative files inside the recipe. Relative imports reaching outside `recipes/` (into `packages/*/src/`, `server/`, `src/` or `examples/`) are forbidden.
+2. **Zero transitive vendor SDK dependencies by default.** `sdkPolicy` is `zero-dep-fetch` (REST/JSON over an injected `fetch` implementation) or `injected-structural-client` (a narrow 3–8 method TypeScript interface supplied by the host). Recipes never pull vendor SDK trees into core or platform and never bundle credentials.
+3. **Zero ambient environment or network access.** Recipe `server/` and `browser/` code never reads ambient runtime environment variables or calls ambient global `fetch`. Configuration, credentials (or per-call credential resolvers), `fetchImpl` or client, and `clock` are injected.
+4. **Inert cold import, default off.** Importing a recipe module performs zero I/O, registers zero HTTP routes, installs zero schedules or workers and mutates zero global state.
+5. **Transport and redirect hardening.** Every outbound mutating HTTP request passes `redirect: "error"`, enforces HTTPS origin pinning, bounds response body size and sanitizes provider errors to allowlisted diagnostic codes (`^[A-Z][A-Z0-9_]{0,63}$`).
+6. **Strict redaction and transient secrets.** Raw provider payloads, headers, credentials, payer personal data and `TransientSecret` handoffs never appear in logs, `diagnostics`, `persistence` or a thrown `Error.message`.
+7. **Strict server and browser split, when UI exists.** Browser code lives only in `browser/`, imports zero Node built-ins and zero `server/` modules, provides explicit degraded and fallback states, loads external scripts lazily and declares its minimal required CSP directives in `<recipe>/browser/csp.json`.
+8. **Multi-domain isolation.** Multi-domain providers share a private `core/` transport and authentication layer while exposing independently selectable domain facets with isolated failure and quarantine boundaries.
+
+### Recipe manifest
+
+- Every recipe contains a `recipe.json` that conforms to `recipes/schema/recipe.schema.json`, and a `<recipe>/browser/csp.json` that conforms to `recipes/schema/csp.schema.json` whenever `browserSurface.kind` is `adapter-component`.
+- `recipe.json` declares `schemaVersion`, `id`, `domain`, `providerKind`, `displayName`, `openlupPlatformRange`, `contractImports`, `conformanceRunner`, `sdkPolicy`, `egressOrigins`, `webhookAuth`, `browserSurface`, `staticCapabilities`, `liveQualification` and `files` (including `allFiles` for deterministic copy-into-app tooling).
+- Recipe tests mechanically assert that `recipe.json#staticCapabilities` matches the adapter's deterministic, serializable static capability projection. The projection omits non-JSON function fields such as `assessMandate` and models host-configured fields through `supportedCurrenciesPolicy`.
+
+### Recipe four-stage proof
+
+No recipe is listed as `verified` in `recipes/index.json` unless its test suite passes offline with:
+
+- **Stage 1:** a cold-import zero-I/O check, and zero-I/O refusals (`providerRequests === 0`) for unsupported currencies, countries and operations and for missing required inputs.
+- **Stage 2:** the official Tier 1 domain conformance runner (`@openlup/platform/*/testing`), including scripted transport faults, replay and idempotency, and webhook safety probes. For payment recipes, fingerprints are 64-character lowercase hex (`/^[0-9a-f]{64}$/`), `providerOccurredAt` is populated from the provider timestamp and never synthesized from receipt time, and async `close()` on a provider with `readback: "unsupported"` returns `pending` or `unknown` and never fabricates a terminal `failed`.
+- **Stage 3:** a real-flow mount proof (`<recipe>/tests/mount-proof.test.ts`) that wires the recipe into real `@openlup/platform` rails through public `@openlup/*` exports only (for payments: `createPaymentProviderRegistry`, `createVerifiedPaymentIngress` and a `createPostgresProviderPaymentRail.execute()` redaction proof), plus a negative control proving that detaching or misconfiguring the binding makes the proof fail.
+- **Canaries and planted defects:** synthetic secret and personal-data canaries scanned across `{ execution, persistence, diagnostics, thrownErrors }` with zero occurrences, raw or URL-encoded, including transient session tokens; and at least two planted-defect mutation checks proving that signature and zero-I/O checks cannot be silently bypassed.
+- **Stage 4, separate:** `LIVE_QUALIFICATION.md` documents test-account activation, webhook signing verification, host HTTP acknowledgement quirks and dashboard readback. An offline pass never claims live readiness.
+
+### Recipe compatibility and ownership
+
+- Merchants adopt recipes through source ownership: they copy a recipe into their repository's `owned/` adapter tree and verify it against their installed `@openlup/platform` version (`openlup recipe verify`).
+- `recipes/index.json` records the exact `@openlup/platform` version each recipe passed conformance against. A recipe that fails against a newer platform release flips to `unverified-for-<version>` instead of silently claiming compatibility.
+
+### Recipe contract enforcement
+
+- **Schema validation:** `recipes/schema/recipe.schema.json` and `recipes/schema/csp.schema.json` are validated in recipe verification tests.
+- **Strict TypeScript:** `npx --no -- tsc -p recipes/tsconfig.json --noEmit` passes with zero errors; Vitest strips types and cannot substitute for it.
+- **Import boundaries:** the root `eslint.config.js` (`packageExports`, `recipeEscapeBoundary`, `recipeServerAllowlist`, `recipeTestAllowlist`, `recipeBrowserAllowlist`) enforces the import parts of rules 1, 2 and 7: public `@openlup/*` exports only, no relative escape outside `recipes/` at any depth (with a catch-all fallback), no third-party vendor SDKs or bare Node built-ins, and no `node:*` or `../server` imports inside `recipes/**/browser/**`.
+- **Static guardrails:** `scripts/ast-grep/rules/domain-no-environment-reads.yml` blocks ambient environment reads and `node:process`; `scripts/ast-grep/rules/recipes-no-ambient-fetch.yml` (`recipes-no-ambient-fetch` and `recipes-no-ambient-fetch-tsx`) blocks ambient global `fetch(` across `recipes/**/server/**`, `recipes/**/core/**` and `recipes/**/browser/**`.
+- **Installed-version verification:** `openlup recipe verify` checks manifest parity, static isolation, the installed platform range and Stages 1–3.
+
 ## Run an adapter conformance check
 
 Moved to [Run an adapter conformance check](../../packages/core/docs/guide/how-to/extend/adapter-conformance.md#run-the-example).

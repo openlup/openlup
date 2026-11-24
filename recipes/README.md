@@ -1,11 +1,11 @@
 # OpenLup Provider Recipes Catalog
 
-Status: active incubation catalog (strictly repo-splittable per [ADR-001](../docs/platform/adr/ADR-001-provider-recipes-architecture.md)).  
-Master plan: [OpenLup Provider Recipes & Adapter Ecosystem — Master Plan](../docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md).
+Status: active incubation catalog (strictly repo-splittable per the [provider recipe contract](../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#provider-recipe-contract)).  
+Reader guide: [Install or scaffold a provider recipe](../packages/core/docs/guide/how-to/extend/provider-recipes.md).
 
 Provider Recipes are lightweight, code-owned, zero-SDK (or structurally injected) integrations that implement OpenLup's neutral Tier 1 domain ports and run directly inside a merchant's store repository — with **0% app tax**, **zero third-party hosting**, and **full offline conformance + real-flow mount proofs**.
 
-## Architecture & Isolation Rules (ADR-001 Summary)
+## Architecture & Isolation Rules (provider recipe contract summary)
 
 Every directory under `recipes/<domain>/<provider>/` MUST be completely self-contained so `recipes/` can be split mechanically into a standalone `openlup/recipes` repository via `git subtree split --prefix=recipes`:
 
@@ -31,7 +31,7 @@ npx --no -- openlup recipe show payments/adyen
 # Install a code-owned recipe into owned/adapters/<domain>/<provider> and verify Stages 1–3 immediately
 npx --no -- openlup recipe add payments/adyen --verify
 
-# Scaffold a brand-new ADR-001-compliant provider recipe and verify offline immediately
+# Scaffold a brand-new recipe-contract-compliant provider recipe and verify offline immediately
 npx --no -- openlup recipe scaffold --domain payments --provider acme-pay --verify
 
 # Re-verify an installed or customized recipe at any time
@@ -50,7 +50,7 @@ npx vitest run recipes/
 # 3. Deterministic index & manifest verification
 node --experimental-strip-types recipes/scripts/generate-index.ts --check   # drop --check to regenerate recipes/index.json from manifests
 
-# 4. Static ADR-001 guardrails (zero ambient env reads, zero ambient fetch, import isolation)
+# 4. Static recipe-contract guardrails (zero ambient env reads, zero ambient fetch, import isolation)
 npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression
 npx --no -- eslint recipes/
 ```

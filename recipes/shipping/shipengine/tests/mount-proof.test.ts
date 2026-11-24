@@ -128,7 +128,7 @@ function createMountedCommerceQuotePort(options: {
 }
 
 /**
- * Stage 3 Real-Flow Mount Proof (ADR-001):
+ * Stage 3 Real-Flow Mount Proof (provider recipe contract):
  * Wires ShipEngine CarrierRateQuotePort into createDbBackedCommerceQuotePort
  * and createQuoteShippingPromotions from @openlup/platform.
  */
@@ -258,7 +258,7 @@ describe("recipes/shipping/shipengine — Stage 3 real-flow mount proof (+ negat
     });
     expect(spyFetch).not.toHaveBeenCalled();
 
-    // Negative control #3 (ADR-001 §5): Detaching/unmounting ShipEngine from the commerce quote port
+    // Negative control #3 (provider recipe contract, four-stage proof): Detaching/unmounting ShipEngine from the commerce quote port
     // fails the live carrier shipping-rate propagation proof (no 1095 minor ShipEngine rate applied).
     const detachedPort = createMountedCommerceQuotePort({
       rateAdapter: null,

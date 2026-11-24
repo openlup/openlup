@@ -1678,6 +1678,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261126520000_catalog_admission_issue_reader.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261126530000_catalog_price_list_basis.sql",
       "class": "public-output"
     },
@@ -1810,10 +1814,6 @@
       "class": "public-output"
     },
     {
-      "path": "docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md",
-      "class": "public-output"
-    },
-    {
       "path": "docs/platform/README.md",
       "class": "platform-documentation"
     },
@@ -1851,10 +1851,6 @@
     },
     {
       "path": "docs/platform/adopter-kit/dependabot.template.yml",
-      "class": "public-output"
-    },
-    {
-      "path": "docs/platform/adr/ADR-001-provider-recipes-architecture.md",
       "class": "public-output"
     },
     {
@@ -1900,10 +1896,6 @@
     {
       "path": "docs/platform/migrations/module-catalogues-and-histories.md",
       "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/plans/WAVE_3_RECIPES_SPLIT_SPEC.md",
-      "class": "public-output"
     },
     {
       "path": "docs/platform/plans/agent-context-adaptive-routing.md",
@@ -5495,6 +5487,10 @@
     },
     {
       "path": "packages/platform/sql/20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261126520000_catalog_admission_issue_reader.sql",
       "class": "public-output"
     },
     {
@@ -31827,6 +31823,10 @@
     },
     {
       "path": "tests/postgres/catalogAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionIssueReader.test.ts",
       "class": "public-output"
     },
     {

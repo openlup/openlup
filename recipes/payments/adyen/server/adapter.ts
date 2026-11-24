@@ -88,7 +88,7 @@ export const adyenPaymentCapabilities: Readonly<PaymentAdapterCapabilities> = Ob
 /**
  * Deterministic serializable projection of static capabilities (omitting the
  * JS function `assessMandate`), cross-checked mechanically against
- * `recipe.json#staticCapabilities` in conformance tests (ADR-001 §4).
+ * `recipe.json#staticCapabilities` in conformance tests (provider recipe contract, manifest rule).
  */
 export function projectAdyenStaticCapabilities(
   capabilities: PaymentAdapterCapabilities = adyenPaymentCapabilities,
