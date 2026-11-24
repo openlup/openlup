@@ -158,7 +158,7 @@ function withoutGeneratedReportReferences(source: string, allowSummaries: boolea
   return source.split("\n").map((line) => {
     const marker = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
     if (fence) {
-      if (marker?.[0] === fence[0] && marker.length >= fence.length && /^ {0,3}(?:`+|~+)\s*$/u.test(line)) fence = undefined;
+      if (marker?.[0] === fence[0] && marker.length >= fence.length && /^ {0,3}(?:`+|~+)[ \t]*\r?$/u.test(line)) fence = undefined;
       return line;
     }
     if (marker) fence = marker;

@@ -500,6 +500,7 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     ["upgrade/v1-2-3.md", "See `packages/core/api/catalog.api.md`."],
     ["upgrade/v1-2-3.md", reportSummary + " More details."],
     ["upgrade/v1-2-3.md", "```text\n" + reportSummary + "\n```"],
+    ["upgrade/v1-2-3.md", "```text\n```\u00A0\n" + reportSummary + "\n```"],
     ["upgrade/version-notes.md", reportSummary],
     ["reference/report.md", reportSummary],
   ])("rejects a non-exempt Core report path in %s (%s)", (path, source) => {
