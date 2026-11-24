@@ -14,8 +14,15 @@ import {
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const DEFAULT_WEIGHTS_PATH = "config/vitest-shard-weights.json";
+export const DEFAULT_POSTGRES_DURATION_MS = 45_000;
 export { DEFAULT_QUARANTINE_PATH };
 const DEFAULT_QUARANTINE_RETRY = 2;
+
+export function fallbackDurationMs(filePath, defaultDurationMs) {
+  return filePath.startsWith("tests/postgres/")
+    ? Math.max(defaultDurationMs, DEFAULT_POSTGRES_DURATION_MS)
+    : defaultDurationMs;
+}
 
 function compareCodeUnits(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -60,7 +67,7 @@ export function partitionShards(files, totalShards, manifest) {
   const uniqueFiles = [...new Set(files)].sort(compareCodeUnits);
   const weighted = uniqueFiles.map((file) => ({
     file,
-    weightMs: pinnedDurationMs(manifest.durationsMs, file) ?? manifest.defaultDurationMs,
+    weightMs: pinnedDurationMs(manifest.durationsMs, file) ?? fallbackDurationMs(file, manifest.defaultDurationMs),
   }));
   weighted.sort((left, right) => (right.weightMs - left.weightMs) || compareCodeUnits(left.file, right.file));
 
