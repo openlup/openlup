@@ -257,10 +257,10 @@ async function installRecipes() {
     await recipe(copy, { REFERENCE_PACK_DIR: example(name) });
     const copied = join(app, target);
     expect(readFileSync(copied)).toEqual(readFileSync(join(example(name), "pack.ts")));
+    await assertInstalledCli();
     const owned = readFileSync(declaration, "utf8");
     expect(owned).toContain(entries.size === 0 ? ownedList : explicitList);
     writeFileSync(declaration, importEntry + "\n" + owned.replace(ownedList, explicitList) + append + "\n");
-    await assertInstalledCli();
     expectSatisfied(await recipe(sourceCheck), true);
 
     const { referenceEntry } = await import(/* @vite-ignore */ pathToFileURL(copied).href) as { referenceEntry: Entry };
