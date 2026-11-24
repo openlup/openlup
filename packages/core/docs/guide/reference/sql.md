@@ -212,6 +212,7 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261125140000_fulfillment_stock_seed_outcome.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125140000_fulfillment_stock_seed_outcome.sql) |
 | [`20261125150000_checkout_recovery_reminder_install_outcome.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125150000_checkout_recovery_reminder_install_outcome.sql) |
 | [`20261125170000_tax_calculations.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125170000_tax_calculations.sql) |
+| [`20261125200000_subscription_renewal_registration_units.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125200000_subscription_renewal_registration_units.sql) |
 | [`20261125240000_tax_calculation_claim_seal.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125240000_tax_calculation_claim_seal.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
