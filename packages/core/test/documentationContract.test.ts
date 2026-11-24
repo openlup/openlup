@@ -1318,3 +1318,38 @@ it("catalogue_codes_link_existing_recipes", () => {
   assertCatalogueRecipeReachability(rendered + "[`unknown`](../how-to/extend/catalogue-extension.md#new-vertical)", repository, stale);
   expect(stale).toContain("catalogue recipe link has no matching owner code: `unknown`");
 });
+
+it("refusal_codes_page_contains_catalog_publication_tax_class_unavailable_with_fix", () => {
+  const repository = resolve(packageRoot, "../..");
+  const read = (path: string) => readFileSync(join(repository, path), "utf8");
+  const rendered = renderGeneratedRegion("refusal-codes", repository)!;
+  const tax = read("packages/platform/src/catalog/publicationError.ts")
+    .match(/catalog_publication_tax_class_unavailable: (\[[^\n]+\]),/u);
+  const [reason, fix, cause] = JSON.parse(tax![1]!);
+  const taxRow = rendered.split("\n").find(line => line.startsWith("| `catalog_publication_tax_class_unavailable` |"));
+  expect(taxRow).toBe(`| \`catalog_publication_tax_class_unavailable\` | \`${reason}\` | ${cause} | ${fix} |`);
+  const violations: string[] = [];
+  assertCatalogueRecipeReachability(rendered, repository, violations);
+  expect(violations).toEqual([]);
+
+  const owner = read("packages/platform/src/catalog/releaseDraftBuilder.ts")
+    .match(/const releaseDraftRefusal = \{\n([\s\S]+?)\n\} as const/u)![1]!;
+  const literal = (pattern: RegExp): string => JSON.parse(owner.match(pattern)![1]!);
+  const code = literal(/code: ("[^"]+"),/u);
+  expect(code).toBe("release_draft_invalid");
+  expect(rendered.match(/`release_draft_invalid`/gu)).toHaveLength(1);
+  const builder = rendered.split("### `release_draft_invalid`\n")[1]!;
+  expect(builder).toContain("**Cause** " + literal(/cause: ("[^"]+"),/u));
+  expect(builder).toContain("**Fix** " + literal(/shape: \{ fix: ("[^"]+") \},/u));
+  const pairs = [...owner.matchAll(/when: ("(?:[^"\\]|\\.)+"), fix: ("(?:[^"\\]|\\.)+")/gu)];
+  expect(pairs).toHaveLength(17);
+  expect(builder.split("\n").filter(line => line.startsWith("| ")).slice(2))
+    .toEqual(pairs.map(([, when, remedy]) => `| ${JSON.parse(when!)} | ${JSON.parse(remedy!)} |`));
+
+  const usage = renderGeneratedRegion("cli:openlup", repository)!;
+  expect(usage).toContain("openlup catalogue schema [--json]\n");
+  for (const page of ["refusal-codes", "cli"]) {
+    syncGeneratedRegions(read(`packages/core/docs/guide/reference/${page}.md`), page, repository, false, violations);
+  }
+  expect(violations).toEqual([]);
+});

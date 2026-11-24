@@ -4646,6 +4646,8 @@ export declare const catalogProductTypeRefSchema: z.ZodObject<{
     key: z.ZodString;
     version: z.ZodNumber;
 }, z.core.$strict>;
+/** @internal */
+export declare const CATALOG_MAX_AXES = 16;
 /** @experimental */
 export declare const catalogDefinitionMetadataSchema: z.ZodObject<{
     key: z.ZodString;
@@ -5048,7 +5050,7 @@ export interface CatalogPublicationReceiptV3 extends Omit<CatalogPublicationRece
 import type { CatalogPublicationFailure } from "./publicationContracts.js";
 import type { CatalogCandidateIssue } from "./contracts/candidate.js";
 import type { CatalogCandidateError } from "./candidate.js";
-import type { CatalogConformanceCode } from "./contracts/catalogConformance.js";
+import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts/catalogConformance.js";
 import { z } from "./validation.js";
 declare const priceRefusalCodes: readonly ["command_fingerprint_invalid", "command_invalid", "command_key_reused", "operator_mismatch", "command_in_progress", "sku_not_found", "sku_archived", "price_list_not_found", "price_list_not_active", "base_price_ambiguous"];
 export declare const publicationPriceRefusalReason: z.ZodEnum<{
@@ -5075,6 +5077,10 @@ export type EvaluationIssue = {
     outcome: CatalogPublicationFailure["outcome"];
     diagnostic: Issue;
 };
+type Remedy = readonly [reason: string, fix: string, cause?: string] | CatalogConformanceRule | {
+    fix: string;
+    cause?: string;
+};
 export declare function publicationIssue(code: PlatformCode, phase: CatalogCandidateIssue["phase"], path: string, subject?: string): Issue & PlatformIssue;
 export declare function adopterIssue(rule: Rule, code: string, path: string): Issue;
 export declare function renderPublicationIssue(issue: Issue): CatalogCandidateIssue & {
@@ -5090,6 +5096,8 @@ export declare class CatalogPublicationError extends Error {
 }
 export declare function publicationDiagnostic(error: CatalogPublicationError, phase: NonNullable<CatalogCandidateIssue["phase"]>, path: string, subject: string): Issue;
 export declare const publicationRefuse: (code: PlatformCode, outcome?: CatalogPublicationError["outcome"]) => never;
+/** @internal Static owner guidance used by the CLI and reader guide. */
+export declare const publicationRefusals: Readonly<Record<PlatformCode, Remedy>>;
 export type AdmissionDiagnostic = PlatformCode;
 export declare const refusePublicationCommand: (code: PlatformCode, outcome?: CatalogPublicationError["outcome"]) => never;
 export declare function publicationRemedy(code: PlatformCode): string;
@@ -5507,6 +5515,16 @@ export interface CatalogProductInput {
  * @experimental
  */
 export declare const catalogProductInputSchema: z.ZodType<CatalogProductInput>;
+/** @internal */
+export declare function describeReleaseDraftRefusal(): {
+    code: CatalogReleaseDraftError["code"];
+    cause: string;
+    fix: string;
+    fixVariants: readonly {
+        when: string;
+        fix: string;
+    }[];
+};
 /** Refusal with an input path and fix.
  * @experimental
  */

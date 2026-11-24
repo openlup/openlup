@@ -9,6 +9,7 @@ import { parseArgs, types } from "node:util";
 
 const help = `openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SNAPSHOT.json --schema-version N [--json]
 openlup verify [--app ./application-observations.mjs] [--json]
+openlup catalogue schema [--json]
 openlup catalogue check --packs ./owned/catalogue.json [--json]
 openlup catalogue project --trusted-packs ./owned/catalogue.ts [--json]
 openlup settings list|show|preview|explain [--help] [--json] (experimental)
@@ -352,6 +353,23 @@ function runSettingsToolProcess(argv, stdin) {
 }
 
 async function main(args) {
+  if (args[0] === "catalogue" && args[1] === "schema") {
+    const [option, ...extra] = args.slice(2);
+    if (option !== undefined && (option !== "--json" || extra.length > 0)) {
+      const rejected = option === "--json" ? extra[0] : option;
+      const flag = rejected.split("=", 1)[0];
+      const syntax = ["--packs", "--trusted-packs", "--app", "--json"].includes(flag) ? `${flag} syntax`
+        : rejected.startsWith("-") ? "an unsupported option" : "an extra positional argument";
+      emitRefusal(64, cliFinding("OPENLUP_E_CLI_INPUT", `Rejected ${syntax} after catalogue schema.`,
+        "catalogue schema takes only --json.", "Run the command without other flags or arguments.", "openlup catalogue schema --json"),
+      { command: "catalogue schema" });
+      return;
+    }
+    validatingInput = false;
+    const { runCatalogueSchema } = await import("./catalogueSchema.mjs");
+    await runCatalogueSchema(emit);
+    return;
+  }
   if (args[0] === "recipe") {
     validatingInput = false;
     const { runRecipeCommand } = await import("./recipeCli.mjs");

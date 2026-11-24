@@ -14,6 +14,8 @@ const tasks = Object.freeze([
   { id: 'upgrade-conflict', query: 'application file upgrade local edits conflict', direct: 'divergent changed files|local edits', target: 'refuses divergent changed files' },
   { id: 'role-proof-boundary', query: 'legacy bootstrap role install readiness', direct: 'rolePrerequisitesMet|install readiness', target: 'rolePrerequisitesMet[\\s\\S]{0,60}does not establish' },
   { id: 'transaction-outbox', query: 'PostgreSQL enqueue transaction', direct: 'enqueue|transaction', target: 'enqueue', packageName: '@openlup/outbox' },
+  { id: 'catalogue-net-content', query: 'publish net content ml', direct: 'Discover the grammar', target: '^## Discover the grammar\\n', guide: 'how-to/extend/catalogue-extension.md' },
+  { id: 'catalogue-refusal-fix', query: 'catalogue refusal code fix', direct: 'Catalogue refusal code fixes', target: '^## Catalogue refusal code fixes\\n', guide: 'reference/refusal-codes.md' },
   { id: 'polish-with-symbol', query: 'Gdzie jest nextRetryAttemptAt i retry?', direct: 'nextRetryAttemptAt|retry', target: 'nextRetryAttemptAt' },
   { id: 'polish-freeform', query: 'Czy opóźniona dostawa przesuwa kolejny cykl wcześniej?', direct: 'opóźniona|dostawa|wcześniej', target: 'monotonic|late.payment|late.delivery', exploratory: true },
   { id: 'no-match-not-absence', query: 'quantumBananaSeam', direct: 'quantumBananaSeam', absent: true },
@@ -37,7 +39,8 @@ for (const task of tasks) {
   for (const hit of output.hits) {
     const lines = readFileSync(hit.file, 'utf8').split('\n');
     readable &&= Number.isInteger(hit.start) && Number.isInteger(hit.end) && hit.start >= 1 && hit.end >= hit.start && hit.end <= lines.length;
-    if ((!task.packageName || task.packageName === hit.packageName) && task.target && new RegExp(task.target, 'iu').test(lines.slice(hit.start - 1, hit.end).join('\n'))) relevant++;
+    if ((!task.packageName || task.packageName === hit.packageName)
+      && (!task.guide || hit.packageName === '@openlup/core' && hit.file.endsWith(`/docs/guide/${task.guide}`)) && task.target && new RegExp(task.target, 'iu').test(lines.slice(hit.start - 1, hit.end).join('\n'))) relevant++;
   }
   const directStart = performance.now();
   // A single manually selected rg expression per task over the same installed bytes.

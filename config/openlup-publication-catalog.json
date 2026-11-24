@@ -5826,6 +5826,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogSchemaDescription.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogSkuEnvelope.ts",
       "class": "public-output"
     },
@@ -8663,6 +8667,10 @@
     },
     {
       "path": "packages/platform/src/lifecycle/catalogueProject.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/catalogueSchema.mjs",
       "class": "public-output"
     },
     {
@@ -11975,6 +11983,14 @@
     },
     {
       "path": "packages/platform/test/lifecycle/appVerification.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/catalogue-schema.snapshot.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/catalogueSchema.test.ts",
       "class": "public-output"
     },
     {
