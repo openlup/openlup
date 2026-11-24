@@ -724,11 +724,15 @@ it("preserves exact frozen recovery JSON and keeps changed bindings refused", as
   } finally { await db.query("ROLLBACK"); db.release(); }
   expect((await runtime.query("SELECT count(*)::integer AS n FROM public.subscription_stock_wait_cases WHERE subscription_id=$1", [f.subscriptionId])).rows).toEqual([{ n: 1 }]);
   const before = await allPublicRows(admin);
+  // Await rollback before the next probe can try the transaction advisory lock.
+  const admitWithRecovery = (recovery: typeof frozen.binding) => transaction(pinned =>
+    api.createPostgresStockWaitStore({ executor: pinned, codec: d.codec, withTransaction: transaction, workerId: "uuid-recovery" })
+      .admit({ ...input, recovery }));
   for (const caseId of [randomUUID(), "invalid-uuid"]) {
-    await expect(store.admit({ ...input, recovery: { ...frozen.binding, caseId } }))
+    await expect(admitWithRecovery({ ...frozen.binding, caseId }))
       .rejects.toMatchObject({ code: "23505", message: "stock_wait_frozen_binding_changed" });
   }
-  await expect(store.admit({ ...input, recovery: { ...frozen.binding, engineIdempotencyKey: frozen.binding.engineIdempotencyKey + ":changed" } }))
+  await expect(admitWithRecovery({ ...frozen.binding, engineIdempotencyKey: frozen.binding.engineIdempotencyKey + ":changed" }))
     .rejects.toMatchObject({ code: "23505", message: "stock_wait_frozen_binding_changed" });
   expect(await allPublicRows(admin)).toEqual(before);
   expect(d.execute).not.toHaveBeenCalled();

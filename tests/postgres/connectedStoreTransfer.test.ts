@@ -1934,7 +1934,7 @@ it("destination_receipt_privacy_round_trip", async () => {
   })));
   expect((await clean.owner.query(`SELECT snapshot_ref FROM ${selectionTable} WHERE scope_ref=$1`, [issuedCtx.scopeRef])).rows).toEqual([]);
   expect(await snapshot(clean.runtime, issuedCtx, issuedCommand)).toEqual({ evidenceDisposition: "erased" });
-  await expect(readSnapshot(clean.runtime, issuedCtx, issuedDocument.binding)).rejects.toMatchObject({ message: "destination_evidence_unavailable" });
+  await expect(readSnapshot(clean.runtime, issuedCtx, issuedDocument.binding)).resolves.toMatchObject({ code: "destination_evidence_unavailable" });
   await unitOfWork().run(async db => {
     await store.prepareErasure(db);
     expect((await db.query("SELECT public.commerce_destination_v2_receipts_erase($1) AS count", [issued])).rows).toEqual([{ count: 0 }]);
@@ -1966,8 +1966,8 @@ it("destination_receipt_privacy_round_trip", async () => {
     await awaitReceiptWait(clean.owner, pid, "relation", "ShareLock");
     release.resolve();
     expect(await erasure).toMatchObject({ outcome: "ERASED" });
-    await expect(fresh).rejects.toMatchObject({ code: "55000", message: "destination_evidence_erased", detail: "owner",
-      hint: "Re-obtain evidence through the authenticated owner or review the privacy disposition." });
+    await expect(fresh).resolves.toMatchObject({ outcome: "refused", code: "destination_evidence_erased", field: "owner",
+      fix: "Review the privacy disposition." });
   } finally {
     release.resolve();
     await Promise.allSettled([erasure, fresh]);
@@ -2001,8 +2001,8 @@ it("destination_receipt_privacy_round_trip", async () => {
   expect((await target.owner.query(`SELECT * FROM ${orderBindingTable} WHERE order_id=$1`, [boundOrder])).rows)
     .toEqual([{ order_id: boundOrder, snapshot_ref: boundDocument.binding.snapshotRef, selection: null, service: null }]);
   expect(await readSnapshot(target.runtime, retainedCtx, live.binding)).toEqual(liveRead);
-  await expect(readSnapshot(target.runtime, retainedCtx, expired.binding)).rejects.toMatchObject({
-    message: "destination_version_changed", detail: "destination.snapshotRef",
+  await expect(readSnapshot(target.runtime, retainedCtx, expired.binding)).resolves.toMatchObject({
+    code: "destination_version_changed", field: "destination.snapshotRef",
   });
   expect(await snapshot(target.runtime, issuedCtx, issuedCommand)).toEqual({ evidenceDisposition: "erased" });
   expect(await receiptCall(target.runtime, "read", retainedArgs)).toEqual(available);
