@@ -1642,6 +1642,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125171000_catalog_price_list_basis.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125172000_catalog_governed_price_operation_v2.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5378,6 +5386,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125171000_catalog_price_list_basis.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125172000_catalog_governed_price_operation_v2.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5967,6 +5983,10 @@
     },
     {
       "path": "packages/platform/src/catalog/contracts/variantAxes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftBasisPrice.ts",
       "class": "public-output"
     },
     {
@@ -11511,6 +11531,10 @@
     },
     {
       "path": "packages/platform/test/data/supabaseGateway.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fixtures/catalogPriceSetupV2.json",
       "class": "public-output"
     },
     {
@@ -31651,6 +31675,10 @@
     },
     {
       "path": "tests/postgres/catalogLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPricePublicationV2.test.ts",
       "class": "public-output"
     },
     {

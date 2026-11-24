@@ -394,6 +394,8 @@ it("projects typed managed obligations and leaves source history in the operator
   const sourceRow = async (table: string, id: string) => (await managed.owner.query(`SELECT * FROM public.${table} WHERE id=$1`, [id])).rows[0];
   const sourceSubscription = await sourceRow("subscriptions", subscriptionId), sourceLine = await sourceRow("subscription_lines", lineId);
   const typed = async (sql: string, ...params: unknown[]) => (await targetOwner!.query(sql, params)).rows;
+  expect(await typed("SELECT amount_basis FROM public.price_lists WHERE id=$1", priceListId))
+    .toEqual([{ amount_basis: null }]);
   expect(await typed("SELECT id,client_id,status,next_cycle_at,cadence_days,price_list_id,currency_code,composition_constraint,configured_offer_version FROM public.subscriptions"))
     .toEqual([{ id: subscriptionId, client_id: clientId, status: "active", next_cycle_at: sourceSubscription.next_cycle_at,
       cadence_days: 28, price_list_id: priceListId, currency_code: "XXX", composition_constraint: null, configured_offer_version: "classic" }]);

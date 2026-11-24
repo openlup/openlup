@@ -5,7 +5,7 @@ import { readStoredLifecycleDraftPayload, type CatalogDraftPayloadV4 } from "./p
 
 /** @experimental */
 export const catalogDraftPayloadV4Schema = z.custom<CatalogDraftPayloadV4>(input => readStoredLifecycleDraftPayload(input) !== null);
-const reference = z.string().min(1).max(240).refine(value => value.trim() === value);
+const reference = z.string().refine(value => value.length >= 1 && value.length <= 240 && value.trim() === value);
 /** @experimental */
 export const catalogDraftCommandV4Schema = z.object({
   schemaVersion: z.literal(4), action: z.enum(["create", "revise", "abandon", "resume"]),

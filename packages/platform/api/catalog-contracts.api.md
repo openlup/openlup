@@ -1034,6 +1034,23 @@ export declare function canonicalCatalogDraftJson(input: unknown): string;
 ```ts
 import type { CatalogDraftPayload, CatalogDraftCommand, CatalogDraftSummary, CatalogDraftRefusal } from "./draft.js";
 import type { CatalogQuantity } from "./productTypes.js";
+/** Basis-aware price operation admitted by a governed v4 draft.
+ * @experimental
+ */
+export type CatalogDraftBasisPriceOperationV2 = Omit<CatalogDraftPriceOperationV2, "schemaVersion" | "amountKind" | "expected"> & {
+    schemaVersion: 2;
+    amountKind: "gross" | "net";
+    expectedListAmountBasis: "tax_inclusive" | "tax_exclusive";
+    expected: {
+        entryId: null;
+        unitPriceMinor: null;
+        amountKind: null;
+    } | {
+        entryId: string;
+        unitPriceMinor: number;
+        amountKind: "gross" | "net";
+    };
+};
 /** One immediate positive gross base replacement. Expectations are wholly null or wholly set.
  * @experimental
  */
@@ -1387,7 +1404,7 @@ export * from "./catalogPack.js";
 export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./productTypes.js";
 export type { CatalogDefinitionInstallReceipt } from "./definitionInstall.js";
 export type { CatalogCombinationIdentityV2, CatalogCombinationCode, CatalogRetainedCombinationV2, CatalogCombinationChangeV2 } from "./variantAxes.js";
-export type { CatalogDraftPriceOperationV2, CatalogAttributeScalarValue, CatalogAttributeValue, CatalogDraftPayloadV2, CatalogDraftCommandV2, CatalogDraftStoredPayload, CatalogDraftStoredCommand, CatalogDraftStoredRecord, CatalogDraftStoredApplyResult } from "./draftV2.js";
+export type { CatalogDraftPriceOperationV2, CatalogDraftBasisPriceOperationV2, CatalogAttributeScalarValue, CatalogAttributeValue, CatalogDraftPayloadV2, CatalogDraftCommandV2, CatalogDraftStoredPayload, CatalogDraftStoredCommand, CatalogDraftStoredRecord, CatalogDraftStoredApplyResult } from "./draftV2.js";
 export type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison, CatalogCandidateIssue } from "./candidate.js";
 export type { CatalogPublicationJson, CatalogPublicationFacts, CatalogDraftProvenanceV3, CatalogDraftClaimV3, CatalogDraftMediaClaimV3, CatalogDraftPublicationSkuV3, CatalogDraftMembershipV3, CatalogDraftSharedContentV3, CatalogDraftPublicationOperationV3, CatalogDraftPublicationInputsV3, CatalogDraftPayloadV3, CatalogDraftCommandV3, CatalogDraftPublicationStoredPayload, CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord, CatalogDraftPublicationStoredApplyResult } from "./draftV3.js";
 ```

@@ -7227,6 +7227,37 @@
             "sha256": "6e59aad23d4da8031cb4d5abb88a8c88544d00873feab42608306e848106639e"
           }
         ]
+      },
+      {
+        "row": "catalog-price-list-basis",
+        "path": "db/platform/migrations/20261125171000_catalog_price_list_basis.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.price_lists ADD COLUMN amount_basis text;",
+          "ALTER TABLE public.price_lists ADD CONSTRAINT price_lists_basis_check CHECK (amount_basis IN ('tax_inclusive', 'tax_exclusive'));"
+        ]
+      },
+      {
+        "row": "catalog-governed-price-operation-v2",
+        "path": "db/platform/migrations/20261125172000_catalog_governed_price_operation_v2.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_draft_apply(text,text,text)",
+            "beforeSha256": "bc58a4851ffe1d024ccf887ba900e1dab2e079d76aa89854d0cb1d4aa4034d6c",
+            "searchPath": "pg_catalog, public, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_price_setup_v2_command_valid(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -10788,6 +10819,27 @@
           "signature": "public.tax_calculation_erase_v1(uuid)",
           "beforeSha256": null,
           "afterSha256": "abae28bc3f7e282657ae32f8c9f6f903206da14f82dc7a7f7c34bbf4ebbb345e"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125171000_catalog_price_list_basis.sql",
+      "sha256": "fb7449ee5ea25e995c4970c68c358792528e4f7e6214c658ee86648dc73a2dfc",
+      "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261125172000_catalog_governed_price_operation_v2.sql",
+      "sha256": "5fc1a73f5f7ec8a414dd0ff0a0c1dda9d4bffa2b00c5929c6612e9c7004be208",
+      "functions": [
+        {
+          "signature": "public.catalog_draft_apply(text,text,text)",
+          "beforeSha256": "bc58a4851ffe1d024ccf887ba900e1dab2e079d76aa89854d0cb1d4aa4034d6c",
+          "afterSha256": "aa4167c36f261b4948572b7cc6e2f594ef6f37730a2724102888e08ef7883de6"
+        },
+        {
+          "signature": "public.catalog_price_setup_v2_command_valid(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "b817bf5c89a9661abd91efd029e0bb2f4f48eb46679d074d66415ed189678b8d"
         }
       ]
     }

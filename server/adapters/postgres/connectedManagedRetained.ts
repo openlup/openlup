@@ -655,7 +655,7 @@ export async function mapManagedRetainedBusiness(input: {
     attribute_values: null, net_content_dimension: null, net_content_unscaled: null, net_content_scale: null, net_content_unit: null,
     gross_mass_dimension: null, gross_mass_unscaled: null, gross_mass_scale: null, gross_mass_unit: null, ...row,
   }));
-  for (const row of priceLists) projected.price_lists!.push(project("price_lists", row));
+  for (const row of priceLists) projected.price_lists!.push(project("price_lists", { amount_basis: null, ...row }));
   for (const row of priceEntries) projected.price_entries!.push(project("price_entries", row));
   const skuById = byId(skus), subscriptionById = byId(subscriptions);
   for (const row of subscriptions) {

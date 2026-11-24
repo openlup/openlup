@@ -12,6 +12,16 @@ export interface CatalogPriceSetupCommand {
   unitPriceMinor: number;
   expected: { entryId: null; unitPriceMinor: null } | { entryId: string; unitPriceMinor: number };
 }
+/** Basis-aware, exact-SKU, one-time base replacement.
+ * @experimental
+ */
+export type CatalogPriceSetupCommandV2 = Omit<CatalogPriceSetupCommand, "schemaVersion" | "amountKind" | "expected"> & {
+  schemaVersion: 2;
+  amountKind: "gross" | "net";
+  expectedListAmountBasis: "tax_inclusive" | "tax_exclusive";
+  expected: { entryId: null; unitPriceMinor: null; amountKind: null }
+    | { entryId: string; unitPriceMinor: number; amountKind: "gross" | "net" };
+};
 /** @experimental */
 export interface CatalogPriceSetupEntry { entryId: string; unitPriceMinor: number; validFrom: string }
 /** @experimental */

@@ -1,6 +1,17 @@
 import type { CatalogDraftPayload, CatalogDraftCommand, CatalogDraftSummary, CatalogDraftRefusal } from "./draft.js";
 import type { CatalogQuantity } from "./productTypes.js";
 
+/** Basis-aware price operation admitted by a governed v4 draft.
+ * @experimental
+ */
+export type CatalogDraftBasisPriceOperationV2 = Omit<CatalogDraftPriceOperationV2, "schemaVersion" | "amountKind" | "expected"> & {
+  schemaVersion: 2;
+  amountKind: "gross" | "net";
+  expectedListAmountBasis: "tax_inclusive" | "tax_exclusive";
+  expected: { entryId: null; unitPriceMinor: null; amountKind: null }
+    | { entryId: string; unitPriceMinor: number; amountKind: "gross" | "net" };
+};
+
 /** One immediate positive gross base replacement. Expectations are wholly null or wholly set.
  * @experimental
  */
