@@ -5866,6 +5866,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogStorefrontPage.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/combinationOptions.ts",
       "class": "public-output"
     },
@@ -31667,6 +31671,10 @@
     },
     {
       "path": "tests/postgres/catalogRuntimeCheckout.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogStorefrontPage.test.ts",
       "class": "public-output"
     },
     {
