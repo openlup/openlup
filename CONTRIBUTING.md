@@ -1994,7 +1994,8 @@ and floor using trusted main's tooling.
 
 ```sh
 node scripts/agent-review-session.mjs receipt "$PR" | gh pr comment "$PR" --body-file -
-gh pr merge "$PR" --auto --match-head-commit "$REVIEWED_HEAD" --author-email "$AUTHOR_EMAIL"
+node scripts/merge-queue-check-arm.mjs "$PR" "$REVIEWED_HEAD" &&
+  gh pr merge "$PR" --auto --match-head-commit "$REVIEWED_HEAD" --author-email "$AUTHOR_EMAIL"
 ```
 
 Set `PR` to the PR number, `REVIEWED_HEAD` to the reviewed head SHA and
@@ -2028,6 +2029,15 @@ manually, take one fresh read, then diagnose. Leave `BEHIND` to the queue. Never
 use `--admin` for this route.
 A non-null `autoMergeRequest` means armed; only `mergeQueueEntry` confirms queue
 entry. Observe an existing request instead of repeatedly arming it.
+
+Run the read-only `merge-queue-check-arm.mjs` preflight before the manual
+exact-head merge command. It checks GitHub's live PR title and description for
+the DCO sign-off that will appear in the synthetic queue merge commit. Add a
+`Signed-off-by: Your Name <your.email@example.com>` line to the PR description
+and keep the sign-offs on the source commits. A migration PR waits while
+another migration PR is active in the queue. The preflight reports `ready`
+only with complete evidence. Keep the head match and recheck authority,
+required checks and the receipt before the separate write.
 
 Where activated, trusted `Queue Handoff` can insert a still-armed exact head once
 after the required source successes and current native proof. At each of its two
@@ -2067,9 +2077,11 @@ queue: whether Queue Handoff fires for an attempt requested with the built-in to
 is unwitnessed until the first hosted rerun. In any other state, after a PR
 `native-review` failure or receipt timeout, submit or check the receipt and rerun
 the failed `native-review` job within rerun authority. A group timeout needs a
-requeue under merge authority. Queue recovery is bounded at two retries; a second
-timeout or removal of the same head stops for diagnosis. A flake requires a
-passing rerun on the same tree; missing or late receipts are not flakes. A timely
+requeue under merge authority. After a same-head failed-check or timeout removal,
+the preflight requires a passing rerun of the removed merge-group commit with
+all required checks successful. A second removal of the same head stops routine
+re-arming. Diagnose any hold before considering further action. Missing or late
+receipts require a receipt fix. A timely
 valid receipt rejected without a conflict is a defect to diagnose.
 
 The admission script comes from trusted main, but the job YAML comes from the
