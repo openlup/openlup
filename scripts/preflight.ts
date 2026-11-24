@@ -602,7 +602,6 @@ const PACKAGE_MANIFEST_TRIGGER = /^(?:packages\/[^/]+\/package\.json|config\/ope
 
 const AREA_EXCLUDED_TESTS = new Set([
   "scripts/agent-review-derived-inventory.test.ts",
-  "scripts/preflight-integration.test.ts",
   "scripts/packages/outbox-consumer-proof.test.ts",
   "scripts/packages/distribution-cli-proof.test.ts",
   "scripts/packages/distribution-cli-settings.test.ts",

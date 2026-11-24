@@ -40,9 +40,9 @@ describe('conservative tooling scope', () => {
   it('excludes bounded tooling tests for docs and unrelated config changes', () => {
     expect(excludedToolingTests(['docs/platform/README.md'])).toEqual(all);
     expect(excludedToolingTests(['config/doc-routing.json'])).toEqual(all.filter(test =>
-      test !== 'scripts/agent-review-derived-inventory.test.ts' && test !== 'scripts/preflight-integration.test.ts'));
+      test !== 'scripts/agent-review-derived-inventory.test.ts'));
     expect(excludedToolingTests(['config/openlup-packages.json'])).toEqual(all.filter(test =>
-      !['agent-review-derived-inventory', 'distribution-cli-proof', 'distribution-cli-settings', 'outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy', 'packages-check', 'preflight-integration'].some(name => test.endsWith(`${name}.test.ts`))));
+      !['agent-review-derived-inventory', 'distribution-cli-proof', 'distribution-cli-settings', 'outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy', 'packages-check'].some(name => test.endsWith(`${name}.test.ts`))));
   });
   it.each(ROOT_DOC_FILES)(
     'does not disable all exclusions for root doc %s while retaining doc and policy checks',
@@ -53,7 +53,7 @@ describe('conservative tooling scope', () => {
       for (const unlisted of ['scripts/oss-published-tree-check.test.ts', 'scripts/dco-signoff-check.test.ts',
         'scripts/check-publishable-gap-enumeration.test.ts', 'scripts/public-ci-neutrality.test.ts',
         'scripts/packages/platform-agent-guide.test.ts', 'scripts/agent-review-derived.test.ts',
-        'scripts/packages/generate-release-bom.test.ts']) {
+        'scripts/preflight-integration.test.ts', 'scripts/packages/generate-release-bom.test.ts']) {
         expect(excluded).not.toContain(unlisted);
       }
       expect(excluded).toContain('scripts/packages/outbox-consumer-proof.test.ts');
@@ -92,7 +92,6 @@ describe('conservative tooling scope', () => {
     const excluded = excludedToolingTests(['src/pages/Home.tsx']);
     for (const bounded of [
       'scripts/agent-review-registry.test.ts',
-      'scripts/preflight-integration.test.ts',
       'scripts/qualified-migration-admission.test.ts',
       'scripts/reviewed-batch-forward.test.ts',
       'scripts/reviewed-native-store-forward.test.ts',
@@ -108,6 +107,7 @@ describe('conservative tooling scope', () => {
     }
     expect(excluded).not.toContain('scripts/agent-review-derived.test.ts');
     expect(excluded).not.toContain('scripts/preflight.test.ts');
+    expect(excluded).not.toContain('scripts/preflight-integration.test.ts');
     expect(excluded).not.toContain('scripts/packages/generate-release-bom.test.ts');
   });
   it('retains migration-pinning, registry, package and postgres catalog suites when their declared inputs change', () => {
