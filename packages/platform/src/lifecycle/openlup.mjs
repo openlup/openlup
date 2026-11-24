@@ -183,9 +183,11 @@ async function bindSettings({ database, app, configuration }) {
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { describeRenewalStockProtectionSetting, readRenewalStockProtectionOverride, previewRenewalStockProtection } = await import("@openlup/platform/inventory");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
-    const { readPaymentMethodExpiryWarningDaysOverride } = await import("@openlup/platform/payments");
+    const { readPaymentMethodExpiryWarningDaysOverride, readPaymentDeclineNoticeTimingOverride } = await import("@openlup/platform/payments");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { readPromotionClaimHoldHoursOverride } = await import("@openlup/platform/promotions");
+    // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
+    const { readSubscriptionRetryScheduleOverride } = await import("@openlup/platform/subscriptions");
     const inventory = describeRenewalStockProtectionSetting().key;
     inventorySettingKey = inventory;
     return {
@@ -199,9 +201,17 @@ async function bindSettings({ database, app, configuration }) {
           const policy = await readPaymentMethodExpiryWarningDaysOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
         },
+        "payments.declineNoticeTiming": async () => {
+          const policy = await readPaymentDeclineNoticeTimingOverride(db);
+          return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
+        },
         promotion_claim_hold_hours: async () => {
           const policy = await readPromotionClaimHoldHoursOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
+        },
+        "subscriptions.retrySchedule": async () => {
+          const policy = await readSubscriptionRetryScheduleOverride(db);
+          return policy ? { present: true, value: { ...policy, backoffHours: [...policy.backoffHours] }, revision: policy.revision } : { present: false };
         },
         subscription_minimum_base_units: async () => {
           const { rows } = await db.query("SELECT value_text FROM public.commerce_settings WHERE key = 'subscription_minimum_base_units'");

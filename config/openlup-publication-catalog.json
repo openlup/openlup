@@ -1670,6 +1670,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5478,6 +5482,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -9282,6 +9290,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/declineNoticeTimingPolicy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/eventConformanceRunner.ts",
       "class": "public-output"
     },
@@ -10427,6 +10439,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/renewalIdentity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/retrySchedulePolicy.ts",
       "class": "public-output"
     },
     {
@@ -12406,11 +12422,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/declineNoticeTimingPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/methodExpiryWarningPolicy.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/payments/nativeInstant.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/payment_decline_notice_timing.json",
       "class": "public-output"
     },
     {
@@ -13082,6 +13106,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/retrySchedulePolicy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/retryTiming.test.ts",
       "class": "public-output"
     },
@@ -13099,6 +13127,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/subscriptionSizing.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/subscription_retry_schedule.json",
       "class": "public-output"
     },
     {
@@ -32779,6 +32811,10 @@
     },
     {
       "path": "tests/postgres/settingsWave1Policies.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/settingsWave2Policies.test.ts",
       "class": "public-output"
     },
     {

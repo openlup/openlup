@@ -802,9 +802,13 @@
       {
         "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
         "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+      },
+      {
+        "file": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
+        "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"
       }
     ],
-    "objectInventorySha256": "68fc05832417034002330b67a946ed7a0c6ef607181cbc4731ec59c2e4fb18d1",
+    "objectInventorySha256": "8ac0c97c71c2736fb18c84d9e383bb104d7208c8d756548d0b5dad7ac2159d0f",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1630,14 +1634,18 @@
         {
           "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
           "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+        },
+        {
+          "file": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
+          "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "8de81a17790c3a69ffb30ee01737ba55403b3fbc6e450946f77c9c27aae2333b"
+          "withRestore": "9854de64a7f7f3e2af245081fd2c3b19f2b09f43b9b24338151daae162ecfc92"
         },
         "separateMigrator": {
-          "withRestore": "4a2cc8a6d180a22f67fb1fd252b0beeeb24ccb801d321b73c0e881580f50c868"
+          "withRestore": "1c046eb5af34e055fcdf9b650f9fefb72bb857a4bf5bcee1461a304f9bce5855"
         }
       }
     },
@@ -2458,11 +2466,15 @@
         {
           "file": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
           "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+        },
+        {
+          "file": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
+          "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "4d3cbfce425591e4a8dc189d1799611cf6b0704a165a533c918d9d92c3034ecf",
-        "operatorProvisioned": "167f7bb8af72ce9a763f6b27fc30d305dca4516b97a2f93273a59e9fce58e756"
+        "installerManaged": "cb2a05fb609693490e51a9c908a85c815caf668219305b77ddaf8ecaed02057a",
+        "operatorProvisioned": "62f96b4c60166657ee2d66503a8cee3e215766597ecebdcb1a6e685b3c0d0ae1"
       }
     }
   },
@@ -3466,6 +3478,11 @@
       "file": "20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
       "source": "db/platform/migrations/20261126010000_settings_wave1_method_expiry_and_claim_hold.sql",
       "sha256": "3622b71a76901258411694f828f9b7b6d0410cbbf00ca88a174f9831a6d6f765"
+    },
+    {
+      "file": "20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
+      "source": "db/platform/migrations/20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql",
+      "sha256": "17a7e4c6b31efc393baa1efe29cc362cb8507283fdd1735afcbe3a6170627792"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",
