@@ -16,7 +16,7 @@ openlup recipe verify <path> [--skip-tests] [--json]
 
 Recipes are code-owned, zero-SDK adapters copied or scaffolded into your application (default: owned/adapters/<domain>/<provider>).
 Use a <container>/<domain>/<provider> --dest layout so companion schema/ and index.json files sync cleanly for --verify.
-Offline verify checks manifest parity, ADR-001 static isolation, installed @openlup/platform range, and Stages 1-3 Vitest suites.
+Offline verify checks manifest parity, recipe-contract static isolation, installed @openlup/platform range, and Stages 1-3 Vitest suites.
 Passing Stages 1-3 offline never claims Stage 4 live account readiness; complete LIVE_QUALIFICATION.md before enabling live traffic.
 Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 64 invalid invocation/JSON, 74 unavailable operation. JSON uses formatVersion=1.`;
 
@@ -461,7 +461,7 @@ function validateManifestShape(manifest) {
     errors.push("conformanceRunner must declare valid importPath and exportName.");
   }
   if (!ALLOWED_SDK_POLICIES.has(manifest.sdkPolicy)) {
-    errors.push("sdkPolicy must be a valid ADR-001 sdkPolicy value.");
+    errors.push("sdkPolicy must be a valid recipe-contract sdkPolicy value.");
   }
   if (
     !Array.isArray(manifest.egressOrigins) ||
@@ -935,22 +935,22 @@ async function runStaticIsolationScan(recipeDir, allFiles) {
     const { hasEnvBracket, hasFetchBracket } = hasAmbientBracketAccess(tokens);
 
     if (AMBIENT_ENV_DOT_PATTERN.test(codeWithMaskedLiterals) || hasEnvBracket) {
-      violations.push(`${rel}: ambient runtime environment read is forbidden by ADR-001.`);
+      violations.push(`${rel}: ambient runtime environment read is forbidden by the provider recipe contract.`);
     }
     if (AMBIENT_FETCH_PATTERN.test(codeWithMaskedLiterals) || hasFetchBracket) {
-      violations.push(`${rel}: ambient global fetch() call is forbidden by ADR-001 (inject fetchImpl).`);
+      violations.push(`${rel}: ambient global fetch() call is forbidden by the provider recipe contract (inject fetchImpl).`);
     }
 
     const { specifiers, hasDynamicNonLiteralImport } = extractModuleSpecifiers(tokens);
     if (hasDynamicNonLiteralImport) {
-      violations.push(`${rel}: non-literal dynamic import()/require() is forbidden by ADR-001 static isolation.`);
+      violations.push(`${rel}: non-literal dynamic import()/require() is forbidden by recipe-contract static isolation.`);
     }
 
     for (const spec of specifiers) {
       if (spec.startsWith("./") || spec.startsWith("../")) {
         const resolved = resolve(dirname(absFile), spec);
         if (!isContained(recipeDir, resolved)) {
-          violations.push(`${rel}: relative import "${spec}" escapes recipe directory (ADR-001 isolation violation).`);
+          violations.push(`${rel}: relative import "${spec}" escapes recipe directory (recipe-contract isolation violation).`);
           continue;
         }
         if (isBrowser && isContained(join(recipeDir, "server"), resolved)) {
@@ -965,7 +965,7 @@ async function runStaticIsolationScan(recipeDir, allFiles) {
         if (isBrowser) {
           violations.push(`${rel}: browser/ file must never import Node built-in "${spec}".`);
         } else if (spec === "node:process") {
-          violations.push(`${rel}: importing "node:process" inside recipe runtime code is forbidden by ADR-001.`);
+          violations.push(`${rel}: importing "node:process" inside recipe runtime code is forbidden by the provider recipe contract.`);
         }
         continue;
       }
@@ -1547,10 +1547,10 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
       makeFinding(
         "OPENLUP_E_RECIPE_ISOLATION_VIOLATION",
         staticIsolation.violations.join(" "),
-        "Recipe runtime code violated ADR-001 isolation (disallowed import, ambient env read, or ambient fetch).",
+        "Recipe runtime code violated recipe-contract isolation (disallowed import, ambient env read, or ambient fetch).",
         "Import only public @openlup/* subpaths, node:* built-ins (in server/ only), and local relative files; inject fetchImpl and credentials explicitly.",
         recheck,
-        { checked: `ADR-001 static isolation scan across ${staticIsolation.filesScanned} runtime file(s)` },
+        { checked: `recipe-contract static isolation scan across ${staticIsolation.filesScanned} runtime file(s)` },
       ),
     );
   }
@@ -1602,7 +1602,7 @@ async function verifyRecipeAtPath(targetPath, options, cwd) {
       note:
         manifestErrors.length > 0
           ? "Skipped Vitest execution because recipe.json manifest or inventory validation failed."
-          : "Skipped Vitest execution because ADR-001 static isolation failed (refusing to execute isolated code violations).",
+          : "Skipped Vitest execution because recipe-contract static isolation failed (refusing to execute isolated code violations).",
     };
   } else {
     stages1to3Tests = await runRecipeVitest(recipeDir, manifestObj, workspace);
@@ -1682,7 +1682,7 @@ function renderVerifyText(report, renderFinding) {
     ...(report.stages
       ? [
           `Manifest & inventory: ${report.stages.manifest.passed ? "PASS" : "FAIL"}`,
-          `ADR-001 static isolation: ${report.stages.staticIsolation.passed ? "PASS" : "FAIL"} (${report.stages.staticIsolation.filesScanned} runtime file(s))`,
+          `recipe-contract static isolation: ${report.stages.staticIsolation.passed ? "PASS" : "FAIL"} (${report.stages.staticIsolation.filesScanned} runtime file(s))`,
           `Platform compatibility: ${report.stages.platformCompatibility.state} (${report.stages.platformCompatibility.note})`,
           `Stages 1-3 tests: ${report.stages.stages1to3Tests.state} (${report.stages.stages1to3Tests.numPassedTests}/${report.stages.stages1to3Tests.numTotalTests} passed in ${report.stages.stages1to3Tests.durationMs}ms)`,
         ]
@@ -1739,7 +1739,7 @@ function buildScaffoldFiles({ domain, provider, providerKind, displayName, pasca
     domain,
     providerKind,
     displayName: `${displayName} (${formatTitleCase(domain)})`,
-    summary: `Code-owned ${displayName} ${domain} adapter scaffold (zero-SDK injected fetch, ADR-001 isolated).`,
+    summary: `Code-owned ${displayName} ${domain} adapter scaffold (zero-SDK injected fetch, recipe-contract isolated).`,
     regions: ["global"],
     status: "experimental",
     openlupPlatformRange: domainSpec.openlupPlatformRange,

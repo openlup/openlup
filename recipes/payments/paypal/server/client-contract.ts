@@ -9,7 +9,7 @@ import {
 
 /**
  * Narrow structural client contract and zero-SDK hardened HTTP client for
- * PayPal Orders API v2 (ADR-001: zero vendor SDK, zero ambient environment
+ * PayPal Orders API v2 (recipe contract: zero vendor SDK, zero ambient environment
  * reads, zero ambient fetch, strict HTTPS origin pinning, redirect: "error").
  */
 

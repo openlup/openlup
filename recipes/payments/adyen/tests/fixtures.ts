@@ -17,7 +17,7 @@ import {
   type AdyenCheckoutClient,
 } from "../server/index.js";
 
-/** Synthetic high-visibility canaries used to prove zero secret/PII leakage (ADR-001). */
+/** Synthetic high-visibility canaries used to prove zero secret/PII leakage (provider recipe contract). */
 export const ADYEN_TEST_CANARIES = Object.freeze({
   apiKey: ["fixture", "canary", "adyen", "credential", "0001"].join("_"),
   hmacKeyHex: "00112233".repeat(8),

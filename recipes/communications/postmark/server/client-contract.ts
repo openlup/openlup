@@ -1,6 +1,6 @@
 /**
  * Narrow structural client contract and zero-SDK hardened HTTP client for
- * Postmark Transactional Email REST API (ADR-001: zero vendor SDK, zero ambient
+ * Postmark Transactional Email REST API (recipe contract: zero vendor SDK, zero ambient
  * environment reads, zero ambient fetch, pinned HTTPS origin, redirect: "error").
  */
 

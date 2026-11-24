@@ -1,6 +1,6 @@
 /**
  * Narrow structural client contract and zero-SDK hardened HTTP client for
- * EasyPost REST v2 Shipment Rates (ADR-001: zero vendor SDK, zero ambient
+ * EasyPost REST v2 Shipment Rates (recipe contract: zero vendor SDK, zero ambient
  * environment reads, zero ambient fetch, strict HTTPS origin pinning,
  * redirect: "error").
  */

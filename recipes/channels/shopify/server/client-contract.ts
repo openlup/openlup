@@ -7,7 +7,7 @@ import {
 
 /**
  * Narrow structural client contract and zero-SDK hardened HTTP client for
- * Shopify Admin REST API (2025-01) (ADR-001: zero vendor SDK, zero ambient
+ * Shopify Admin REST API (2025-01) (recipe contract: zero vendor SDK, zero ambient
  * environment reads, zero ambient fetch, strict shopDomain origin pinning,
  * redirect: "error").
  */
