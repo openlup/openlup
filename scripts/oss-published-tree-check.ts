@@ -6,7 +6,7 @@ import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, posix } from "node:path";
 import { pathToFileURL } from "node:url";
 import { PUBLIC_EXECUTION_ENTRYPOINTS, SOURCE_RELEASE_CONTRACT_PATH, isDirectExecutionEntrypoint, validateSourceReleaseContract } from "./oss-publication-contract.ts";
-import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, packageExecutionDigest, parsePublicPolicyRegistry, parsePublicPublicationCatalog, effectivePublicCatalogPaths, createPublicPublicationCatalog, isGuidePageArea, type PublicPackageExecutionSurface } from "./oss-publication-policy.ts";
+import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, packageExecutionDigest, parsePublicPolicyRegistry, parsePublicPublicationCatalog, effectivePublicCatalogPaths, createPublicPublicationCatalog, isGuidePageArea, isManifestPinnedSqlArea, type PublicPackageExecutionSurface } from "./oss-publication-policy.ts";
 import { carriesPrivateOperationalCoordinate } from "./oss-public-coordinate-detector.ts";
 import { runPlatformMigrationManifestCheck } from "./platform-migration-manifest.ts";
 import { comparePublicTypecheck, readPublicTypecheckCompatibility, runPublicTypecheckProjects, summarizePublicDiagnostics } from "./oss-public-typecheck.ts";
@@ -186,7 +186,7 @@ export function syncPublicOutputCatalog(root: string): string[] {
   const withheld = new Set(catalog.guardViability.filter((row) => row.status === "withheld")
     .flatMap((row) => row.withheldPaths));
   for (const path of missing) {
-    if (isChangelogFragmentArea(path) || isGuidePageArea(path) || withheld.has(path) || active.has(path))
+    if (isChangelogFragmentArea(path) || isGuidePageArea(path) || isManifestPinnedSqlArea(path) || withheld.has(path) || active.has(path))
       throw new Error(`sync-catalog: ${path} requires pattern or explicit policy admission`);
     const stat = lstatSync(join(root, path));
     if (!stat.isFile() || (stat.mode & 0o111)) throw new Error(`sync-catalog: ${path} must be a regular non-executable file`);

@@ -518,8 +518,9 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
   }
   const conflicts = pathsFrom(await git(cwd, 'diff', '--name-only', '--diff-filter=U', '-z'));
   const read = (revision, path) => git(cwd, 'show', `${revision}:${path}`);
+  const reslotsCatalogue = slotChanges.some(({ path }) => path.startsWith('supabase/migrations/'));
   const reslottedHead = new Map();
-  for (const path of [...MIGRATION_REGISTRIES, PUBLICATION_CATALOGUE]) {
+  for (const path of [...MIGRATION_REGISTRIES, ...(reslotsCatalogue ? [PUBLICATION_CATALOGUE] : [])]) {
     if (slotChanges.length) reslottedHead.set(path, reslotRegistryContents(cwd, path, await read(head, path), slotChanges));
   }
   const registryConflicts = conflicts.filter(path => REGISTRY_PATHS.includes(path));
@@ -532,7 +533,7 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
     (generatedCarrier(path) && !path.endsWith('.sql') && !/^packages\/[^/]+\/api\/[^/]+\.api\.md$/u.test(path));
   const authoredInputs = conflicts.filter(path => /^(?:config\/openlup-packages\.json|packages\/[^/]+\/(?:package|release-gates)\.json)$/u.test(path));
   refuseAuthoredConflicts(authoredInputs);
-  const catalogueUnion = conflicts.includes(PUBLICATION_CATALOGUE) || slotChanges.length ? await readUnion(PUBLICATION_CATALOGUE) : undefined;
+  const catalogueUnion = conflicts.includes(PUBLICATION_CATALOGUE) || reslotsCatalogue ? await readUnion(PUBLICATION_CATALOGUE) : undefined;
   const catalogue = catalogueUnion === undefined ? readJson(cwd, PUBLICATION_CATALOGUE) : JSON.parse(catalogueUnion);
   const owners = readReportOwners(cwd);
   const { admitted, replaceable } = ownerOutputs(owners, catalogue.publicPaths);
@@ -564,7 +565,7 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
     await assertCarrierBuildOutputs(cwd, preliminary.builds.map(({ directory }) => directory));
   }
   if (conflicts.includes(SQL_REFERENCE)) checkLandingSqlReference(runGenerators);
-  for (const path of new Set([...registryConflicts, ...(slotChanges.length ? [PUBLICATION_CATALOGUE] : [])])) {
+  for (const path of new Set([...registryConflicts, ...(reslotsCatalogue ? [PUBLICATION_CATALOGUE] : [])])) {
     writes.paths.add(path);
     writeFileSync(resolve(cwd, path), path === PUBLICATION_CATALOGUE ? catalogueUnion : await readUnion(path));
     await git(cwd, 'add', '--', path);

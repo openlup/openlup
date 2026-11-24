@@ -32,8 +32,8 @@ const spellings = {
   },
 };
 
-// Setup previously measured below six seconds per configuration. Allow install
-// headroom separately from the sub-second host actions and their 150 ms floor.
+// Setup replays the complete current PostgreSQL installation before starting the
+// host and seeding orders. Give it separate headroom under hosted shard load.
 describe.each(Object.values(configurations))('$id host UUID identity', config => {
   let container: PostgresContainer | undefined;
   let owner: Pool | undefined;
@@ -252,7 +252,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       if (!result.ok || !isRecord(result.value)) throw new Error('uuid_lowercase_payment_required');
       paid.set(String(signedIn), result.value);
     }
-  }, 30_000);
+  }, 90_000);
 
   afterAll(async () => {
     try {

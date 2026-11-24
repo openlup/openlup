@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { cpSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Client, Pool } from "pg";
 import { setTimeout as delay } from "node:timers/promises";
-import { expect, it, vi } from "vitest";
+import { afterAll, aroundEach, beforeAll, expect, it, vi } from "vitest";
 import type { QualifiedAdminPostgresInstallation, QualifiedPostgresInstallation } from "@openlup/platform/migrations";
 import { checkPlatformMigrationProjection } from "../../scripts/packages/platform-migration-projection.js";
 import { checkoutOwnerDefinitionPath, checkoutOwnerLogin, checkoutOwnerRoutines,
@@ -153,7 +153,11 @@ async function install(pkg: InstalledMigrations, label: string, selection: Retur
     finally { await restore.end(); }
     return { template, clone, close };
   } catch (error) {
-    await close();
+    try {
+      await close();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Checkout restore setup and cleanup both failed");
+    }
     throw error;
   }
 }
@@ -319,36 +323,113 @@ async function verifyLaterDefinition(source: Installation, root: string, manifes
     "SELECT pg_get_functiondef(to_regprocedure($1)) AS definition", [routine]);
   const sql = live!.definition.replace("BEGIN", "BEGIN\n  -- Approved replacement fixture.") + ";\n";
   const file = "db/platform/migrations/20990101000200_checkout_definition_fixture.sql";
-  for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
+  const originalManifestText = readFileSync(join(root, "config/platform-migration-manifest.json"), "utf8");
+  const workingManifest = structuredClone(manifest);
+  for (const plan of [workingManifest, workingManifest.qualified, workingManifest.qualifiedAdmin]) {
     plan.forward.push({ file, sha256: sha256(sql) });
   }
   const stageManifest = () => {
-    writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(manifest));
+    writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(workingManifest));
     expect(checkPlatformMigrationProjection(root, true)).toEqual([]);
   };
-  writeFileSync(join(root, file), sql);
-  stageManifest();
-  await expect(source.runner.apply()).rejects.toThrow("object inventory SHA-256 mismatch");
-  const applied = await source.ledger(), acl = await source.acl();
-  await expect(source.grant()).rejects.toThrow("object inventory SHA-256 mismatch");
-  expect(await source.acl()).toEqual(acl);
-  manifest.qualified.objectInventorySha256.bootstrapMigrator.withRestore = sha256(await source.project());
-  stageManifest();
-  expect(await source.grant()).toEqual({ state: "granted" });
-  expect(await source.ledger()).toEqual(applied);
+  try {
+    writeFileSync(join(root, file), sql);
+    stageManifest();
+    await expect(source.runner.apply()).rejects.toThrow("object inventory SHA-256 mismatch");
+    const applied = await source.ledger(), acl = await source.acl();
+    await expect(source.grant()).rejects.toThrow("object inventory SHA-256 mismatch");
+    expect(await source.acl()).toEqual(acl);
+    workingManifest.qualified.objectInventorySha256.bootstrapMigrator.withRestore = sha256(await source.project());
+    stageManifest();
+    expect(await source.grant()).toEqual({ state: "granted" });
+    expect(await source.ledger()).toEqual(applied);
+  } finally {
+    rmSync(join(root, file), { force: true });
+    rmSync(join(root, "packages/platform/sql/20990101000200_checkout_definition_fixture.sql"), { force: true });
+    writeFileSync(join(root, "config/platform-migration-manifest.json"), originalManifestText);
+    expect(checkPlatformMigrationProjection(root, true)).toEqual([]);
+  }
 }
 
-it.each(profiles)("restores the same nonempty checkout graph on %s", async profile => {
-  await withGrantArtifact(async (pkg, root, manifest) => {
-    const selection = select(profile);
-    const expected = selectPlatformMigrationManifest(manifest, selection.generation, selection.generation === "qualified-admin"
-      ? { roleMode: selection.roleMode } : { migrationIsBootstrap: profile === "bootstrap", hasRestore: true });
-    const sourceFixture = await install(pkg, `${profile}-source`, selection);
-    const source = sourceFixture.template;
+type SharedGrantArtifact = {
+  pkg: InstalledMigrations;
+  root: string;
+  manifest: Parameters<typeof withPlatformCatalog>[0];
+  dispose: () => Promise<void>;
+};
+
+let sharedArtifact: Promise<SharedGrantArtifact>;
+let pendingFixtureWork = Promise.resolve();
+
+aroundEach(async (runTest, { signal }) => {
+  // Drain the previous callback before the global beforeEach restores its spies.
+  await pendingFixtureWork;
+  signal.throwIfAborted();
+  await runTest();
+}, postgresSetupTimeoutMs);
+
+function runFixtureWork(work: () => Promise<void>) {
+  const operation = work();
+  pendingFixtureWork = operation.then(() => undefined, () => undefined);
+  return operation;
+}
+
+beforeAll(async () => {
+  sharedArtifact = new Promise<SharedGrantArtifact>((resolveReady, rejectReady) => {
+    let release!: () => void;
+    const done = new Promise<void>(resolveDone => { release = resolveDone; });
+    const lifecycle = withGrantArtifact(async (pkg, root, manifest) => {
+      resolveReady({ pkg, root, manifest, dispose: async () => { release(); await lifecycle; } });
+      await done;
+    });
+    lifecycle.catch(rejectReady);
+  });
+  await sharedArtifact;
+}, postgresSetupTimeoutMs);
+
+afterAll(async () => {
+  await pendingFixtureWork;
+  const artifact = await sharedArtifact?.catch(() => undefined);
+  await artifact?.dispose();
+}, postgresSetupTimeoutMs);
+
+function throwSettledErrors(errors: readonly unknown[], message: string): never {
+  if (errors.length === 1) throw errors[0];
+  throw new AggregateError(errors, message);
+}
+
+async function closeFixtures(fixtures: readonly { close(): Promise<void> }[]) {
+  const results = await Promise.allSettled(fixtures.map(fixture => fixture.close()));
+  const errors = results.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+  if (errors.length > 0) throwSettledErrors(errors, "Checkout restore fixture cleanup failed");
+}
+
+async function installPair(pkg: InstalledMigrations, profile: Profile, selection: ReturnType<typeof select>) {
+  // Bound concurrency to 2 disposable clusters (source + target) so cluster-wide
+  // checkoutOwnerLogin states remain strictly isolated while halving setup wall time.
+  const [sourceResult, targetResult] = await Promise.allSettled([
+    install(pkg, `${profile}-source`, selection),
+    install(pkg, `${profile}-target`, selection),
+  ]);
+  if (sourceResult.status === "fulfilled" && targetResult.status === "fulfilled") {
+    return [sourceResult.value, targetResult.value] as const;
+  }
+  const setupErrors = [sourceResult, targetResult].flatMap(result => result.status === "rejected" ? [result.reason] : []);
+  const fulfilled = [sourceResult, targetResult].flatMap(result => result.status === "fulfilled" ? [result.value] : []);
+  const cleanupResults = await Promise.allSettled(fulfilled.map(fixture => fixture.close()));
+  const cleanupErrors = cleanupResults.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+  throwSettledErrors([...setupErrors, ...cleanupErrors], "Checkout restore pair setup/cleanup failed");
+}
+
+async function verifyRestoreProfile(profile: Profile, pkg: InstalledMigrations, root: string, manifest: Parameters<typeof withPlatformCatalog>[0]) {
+  const selection = select(profile);
+  const expected = selectPlatformMigrationManifest(manifest, selection.generation, selection.generation === "qualified-admin"
+    ? { roleMode: selection.roleMode } : { migrationIsBootstrap: profile === "bootstrap", hasRestore: true });
+  const [sourceFixture, targetFixture] = await installPair(pkg, profile, selection);
+  const source = sourceFixture.template;
+  await withDisposal({ dispose: () => closeFixtures([targetFixture, sourceFixture]) }, async () => {
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(root);
     try {
-      const targetFixture = await install(pkg, `${profile}-target`, selection);
-      const cwd = vi.spyOn(process, "cwd").mockReturnValue(root);
-      try {
         const original = await source.project();
         const catalogueId = createHash("sha256").update(original).digest("hex");
         expect(catalogueId).toBe(expected.objectInventorySha256);
@@ -441,39 +522,59 @@ it.each(profiles)("restores the same nonempty checkout graph on %s", async profi
         if (profile === "bootstrap") await verifyLaterDefinition(source, root, manifest);
       } finally {
         cwd.mockRestore();
-        await targetFixture.close();
       }
-    } finally { await sourceFixture.close(); }
   });
-}, Math.max(245_000, postgresSetupTimeoutMs));
+}
 
-it.each(["absent", "present"] as const)("records the legacy no-op with the cluster login %s", async state => {
-  await withGrantArtifact(async pkg => {
-    const container = await runPostgresContainer({ name: `checkout-legacy-${state}-${process.pid}`, password });
-    const owner = new Pool({ connectionString: container.connectionString });
-    const env = { connectionString: container.connectionString };
-    const options = { installation: { generation: "legacy" as const }, poolFactory: () => owner };
-    try {
-      expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
-      const before = await import("@openlup/platform/migrations");
-      await before.createPlatformPostgresMigrationRunner(env, options).apply();
-      if (state === "present") await owner.query(`CREATE ROLE ${checkoutOwnerLogin} LOGIN NOINHERIT`);
-      const ledger = async () => (await owner.query("SELECT catalog_path,sha256,position,executed_at::text FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
-      const applied = await ledger();
-      const runner = pkg.createPlatformPostgresMigrationRunner(env, options);
-      if (state === "present") {
-        await expect(runner.apply()).rejects.toThrow("object inventory SHA-256 mismatch");
-        expect((await owner.query(`SELECT pg_catalog.count(*)::int AS grants FROM pg_catalog.pg_proc p
-          WHERE p.proname LIKE 'catalog_admission_%' AND pg_catalog.has_function_privilege($1,p.oid,'EXECUTE')
-            AND (p.prosecdef OR p.proacl IS NOT NULL)`, [checkoutOwnerLogin])).rows).toEqual([{ grants: 0 }]);
-        await owner.query(`DROP ROLE ${checkoutOwnerLogin}`);
-      } else expect(await runner.apply()).toEqual({ applied: [grantPath] });
-      const after = await ledger();
-      expect(after.slice(0, -1)).toEqual(applied);
-      expect(after).toHaveLength(applied.length + 1);
-      expect(after.at(-1)?.catalog_path).toBe(grantPath);
-      expect(await runner.apply()).toEqual({ applied: [] });
-      expect(await ledger()).toEqual(after);
-    } finally { await closePostgres(container, [owner]); }
+for (const profile of profiles) {
+  it(`restores the same nonempty checkout graph on ${profile}`, () =>
+    runFixtureWork(async () => {
+      // The later-definition proof mutates the packed manifest in the bootstrap case.
+      if (profile === "bootstrap") {
+        await withGrantArtifact((pkg, root, manifest) => verifyRestoreProfile(profile, pkg, root, manifest));
+        return;
+      }
+      const { pkg, root, manifest } = await sharedArtifact;
+      await verifyRestoreProfile(profile, pkg, root, manifest);
+    }), Math.max(245_000, postgresSetupTimeoutMs));
+}
+
+async function verifyLegacyNoOp(pkg: InstalledMigrations, state: "absent" | "present") {
+  const container = await runPostgresContainer({ name: `checkout-legacy-${state}-${process.pid}`, password });
+  const owner = new Pool({ connectionString: container.connectionString });
+  const env = { connectionString: container.connectionString };
+  const options = { installation: { generation: "legacy" as const }, poolFactory: () => owner };
+  await withDisposal({ dispose: () => closePostgres(container, [owner]) }, async () => {
+    expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+    const before = await import("@openlup/platform/migrations");
+    await before.createPlatformPostgresMigrationRunner(env, options).apply();
+    if (state === "present") await owner.query(`CREATE ROLE ${checkoutOwnerLogin} LOGIN NOINHERIT`);
+    const ledger = async () => (await owner.query("SELECT catalog_path,sha256,position,executed_at::text FROM ONLY public.platform_schema_migrations ORDER BY position")).rows;
+    const applied = await ledger();
+    const runner = pkg.createPlatformPostgresMigrationRunner(env, options);
+    if (state === "present") {
+      await expect(runner.apply()).rejects.toThrow("object inventory SHA-256 mismatch");
+      expect((await owner.query(`SELECT pg_catalog.count(*)::int AS grants FROM pg_catalog.pg_proc p
+        WHERE p.proname LIKE 'catalog_admission_%' AND pg_catalog.has_function_privilege($1,p.oid,'EXECUTE')
+          AND (p.prosecdef OR p.proacl IS NOT NULL)`, [checkoutOwnerLogin])).rows).toEqual([{ grants: 0 }]);
+      await owner.query(`DROP ROLE ${checkoutOwnerLogin}`);
+    } else expect(await runner.apply()).toEqual({ applied: [grantPath] });
+    const after = await ledger();
+    expect(after.slice(0, -1)).toEqual(applied);
+    expect(after).toHaveLength(applied.length + 1);
+    expect(after.at(-1)?.catalog_path).toBe(grantPath);
+    expect(await runner.apply()).toEqual({ applied: [] });
+    expect(await ledger()).toEqual(after);
   });
-}, Math.max(245_000, postgresSetupTimeoutMs));
+}
+
+it("records the legacy no-op with the cluster login absent and present", () =>
+  runFixtureWork(async () => {
+    const { pkg } = await sharedArtifact;
+    const results = await Promise.allSettled([
+      verifyLegacyNoOp(pkg, "absent"),
+      verifyLegacyNoOp(pkg, "present"),
+    ]);
+    const errors = results.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+    if (errors.length > 0) throwSettledErrors(errors, "Legacy no-op verification failed in both states");
+  }), Math.max(245_000, postgresSetupTimeoutMs));
