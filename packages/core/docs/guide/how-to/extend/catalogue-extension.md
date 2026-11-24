@@ -51,6 +51,21 @@ The starter’s catalogue check is `npm run --silent catalogue:check:source`.
 It checks the packs and fixtures declared in `owned/catalogue.ts`.
 For a pack at another path, use the projection command in the recipe.
 
+## Discover the grammar
+
+Read the product type, product input and v3 draft schemas shipped with your
+installed Platform version.
+
+```sh
+openlup catalogue schema --json
+```
+
+Use `decimal` with scale `0` for whole-number attributes. The report also gives
+built-in units, catalogue limits, caps and refusal fixes. Product rules can
+validate additional constraints during Prepare. To publish net content for a
+product labelled in ml, follow [Products labelled in ml or pieces](#products-labelled-in-ml-or-pieces).
+Look up a [catalogue refusal code and its fix](../../reference/refusal-codes.md#catalogue-refusal-code-fixes).
+
 ## New vertical
 
 In the extracted starter, add your pack and its fixtures to
@@ -216,13 +231,8 @@ at the row pointer. Retained JSON never contains identity bytes: identities are
 derived from options internally. No Cartesian product is enumerated. Fixture PASS
 does not validate stored identity bytes or history. With supplied fixtures,
 `requiredChecks: ["variant-combinations"]` checks this owner offline.
-New attribute kinds/dimensions are upstream work. Usual codes:
-`definition_dimension_invalid`, `definition_axis_invalid`, `definition_duplicate_axis`,
-`definition_unknown_axis_attribute`, `definition_axis_scope_invalid`,
-`definition_unknown_axis_dimension`, `definition_duplicate_dimension`,
-`definition_duplicate_choice`, `definition_duplicate_dimension_unit`,
-`definition_dimension_unit_mismatch`, `definition_net_content_unit_mismatch`,
-`definition_multiple_net_content_dimensions`.
+New attribute kinds and dimensions are upstream work. Look up definition codes
+in the [refusal code reference](../../reference/refusal-codes.md#refusal-codes).
 The combination owner also reports `axis_not_installed`, `duplicate_axis`,
 `option_not_selected`, `option_missing`, `option_invalid`,
 `sku_identity_change_requires_new_sku`, `duplicate_combination`,

@@ -140,7 +140,7 @@ it.each([null, "identity_privacy_erasures", "subscription_command_receipts", "su
     await admin.query("INSERT INTO public.clients(id,email,lifecycle_stage) VALUES($1,$2,'customer'),($3,$4,'lead')", [customer, `${customer}@example.invalid`, lead, email]);
     if (table === "identity_privacy_erasures") await admin.query(`INSERT INTO public.identity_privacy_erasures
       (erasure_id,idempotency_key,client_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-      VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','{}','[]',$5)`, [randomUUID(), randomUUID(), lead, operator, at]);
+      VALUES($1,$2,$3,$4,'identity.erasure.v1','{"tax-calculations":"commerce.tax-calculations.v1"}','{}','[]',$5)`, [randomUUID(), randomUUID(), lead, operator, at]);
     if (table === "subscription_command_receipts" || table === "subscription_stock_wait_cases" || table === "subscription_quote_previews") {
       const subscription = randomUUID();
       await admin.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,$3)", [subscription, lead, at]);

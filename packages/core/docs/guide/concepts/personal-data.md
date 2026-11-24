@@ -55,6 +55,14 @@ no retention period or remote-provider operation.
 
 ## Export and erasure
 
+For native tax evaluation, add `createTaxCalculationPrivacyContributor()` from
+`@openlup/platform/identity` to the privacy registry and require
+`tax-calculations` on every handler, including during issuance rollback.
+Enable evaluation writes only after every native privacy handler that serves
+the store includes the tax-calculation contributor.
+Export includes verified evaluation outcomes. Erasure keeps only an evaluation
+identifier and any pseudonymous marker needed to fence provider reference reuse.
+
 The reference host exposes `POST /api/bff/admin/identity/privacy/export` and
 `POST /api/bff/admin/identity/privacy/erase`. Both require the application's
 deployment route policy under `mutation` risk; the public default returns HTTP
@@ -135,3 +143,12 @@ Documents, confirmation and retry keys stay in component memory and clear on
 subject/session change, including late responses. Exports never enter browser
 storage.
 
+### Native coverage gaps
+
+The shipped native export does not yet include personal data from
+`account-support` account events, risk, marketing, or native acquisition evidence.
+The shipped native erasure operation does not yet handle that data.
+
+If you use these modules on native, you must handle access and erasure requests
+for that data outside the shipped operations. As the data controller, you must
+decide the legal basis and retention for that data. Coverage is planned.

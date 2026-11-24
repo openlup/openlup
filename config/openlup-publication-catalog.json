@@ -1638,6 +1638,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125170000_tax_calculations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261125200000_commerce_destination_v2_typed_refusals.sql",
       "class": "public-output"
     },
@@ -5374,6 +5378,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125170000_tax_calculations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261125200000_commerce_destination_v2_typed_refusals.sql",
       "class": "public-output"
     },
@@ -5858,11 +5866,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogSchemaDescription.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogSkuEnvelope.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/catalog/catalogSkuEnvelopeMapper.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogStorefrontPage.ts",
       "class": "public-output"
     },
     {
@@ -8394,6 +8410,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/taxCalculationPrivacy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/adminInventory.ts",
       "class": "public-output"
     },
@@ -8699,6 +8719,10 @@
     },
     {
       "path": "packages/platform/src/lifecycle/catalogueProject.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/catalogueSchema.mjs",
       "class": "public-output"
     },
     {
@@ -12011,6 +12035,14 @@
     },
     {
       "path": "packages/platform/test/lifecycle/appVerification.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/catalogue-schema.snapshot.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/catalogueSchema.test.ts",
       "class": "public-output"
     },
     {
@@ -31670,6 +31702,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogStorefrontPage.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogSubscriptionProfiles.test.ts",
       "class": "public-output"
     },
@@ -32023,6 +32059,10 @@
     },
     {
       "path": "tests/postgres/fixtures/paymentReconciliation/setup.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/taxCalculationsV2/replayed.sql",
       "class": "public-output"
     },
     {
@@ -32815,6 +32855,14 @@
     },
     {
       "path": "tests/postgres/subscriptionWinback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCalculationsV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCalculationsV2Pgtap.test.ts",
       "class": "public-output"
     },
     {

@@ -1426,6 +1426,87 @@ import type { PgQueryExecutor } from "../data/index.js";
  */
 export declare function createPostgresCatalogSkuEnvelopeReadPort(executor: PgQueryExecutor): PublicCatalogSkuEnvelopeReadPort;
 ```
+## dist/catalog/catalogStorefrontPage.d.ts
+
+```ts
+import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from "../data/index.js";
+import type { CatalogAttributeValue } from "./contracts/draftV2.js";
+import type { CatalogPublicationFacts } from "./contracts/draftV3.js";
+import type { CatalogOptionValue, CatalogQuantity } from "./contracts/productTypes.js";
+import { type CatalogDiscoveryRefusal, type CatalogMembershipCursor } from "./postgresPublicationDiscovery.js";
+import type { CatalogSkuRevisionRef } from "./publicationContracts.js";
+/** @experimental */
+export interface CatalogStorefrontPageInput {
+    offerVersion: string;
+    regionCode: string;
+    currency: string;
+    channel: string;
+    limit: number;
+    cursor?: CatalogMembershipCursor | null;
+}
+/** @experimental */
+export interface CatalogStorefrontPrice {
+    amountMinor: number;
+    currency: string;
+    amountBasis: "tax_inclusive" | "tax_exclusive";
+}
+/** @experimental */
+export interface CatalogStorefrontSku {
+    skuId: string;
+    skuCode: string;
+    skuRevision: CatalogSkuRevisionRef;
+    title: string;
+    minQuantity: number;
+    options: Readonly<Record<string, CatalogOptionValue>>;
+    attributes: Readonly<Record<string, CatalogAttributeValue>>;
+    netContent: CatalogQuantity;
+    primaryUnitIdentifier: {
+        scheme: string;
+        issuer: string;
+        value: string;
+    } | null;
+    sell: {
+        oneTime: boolean;
+        subscription: boolean;
+    };
+    price: {
+        oneTime: CatalogStorefrontPrice | null;
+        subscription: CatalogStorefrontPrice | null;
+    };
+}
+/** @experimental */
+export interface CatalogStorefrontProduct {
+    productId: string;
+    slug: string;
+    name: string;
+    typeRef: {
+        key: string;
+        version: number;
+    };
+    definitionDigest: string | null;
+    attributes: Readonly<Record<string, CatalogAttributeValue>>;
+    presentation: CatalogPublicationFacts | null;
+    skus: CatalogStorefrontSku[];
+}
+/** @experimental */
+export type CatalogStorefrontPageResult = {
+    protocol: "legacy";
+    products: [];
+    nextCursor: null;
+} | {
+    protocol: "governed";
+    headDigest: string;
+    products: CatalogStorefrontProduct[];
+    nextCursor: CatalogMembershipCursor | null;
+} | (CatalogDiscoveryRefusal & {
+    message: string;
+});
+/** Reads published catalogue display data and current prices in one snapshot. Checkout resolves its own prices.
+ * Product and SKU attributes are returned unfiltered. Before sending them to a browser, keep only the attributes your installed type definitions mark `public: true`.
+ * @experimental
+ */
+export declare function readPostgresCatalogStorefrontPage(transactions: Pick<PostgresRoleFreeTransactionLane<PgQueryExecutor>, "run">, input: CatalogStorefrontPageInput): Promise<CatalogStorefrontPageResult>;
+```
 ## dist/catalog/commerceQuoteCatalogRead.d.ts
 
 ```ts
@@ -4282,6 +4363,7 @@ export { createPostgresCatalogPublicationCommands } from "./catalogPublicationCo
 export type { CatalogPublicationCommand, CatalogPublicationCommandResult, CatalogPublicationDecisionReceipt, PostgresCatalogPublicationCommandsDeps } from "./catalogPublicationCommands.js";
 export { readPostgresCatalogActivationReadiness, readPostgresCatalogMembershipPage } from "./postgresPublicationDiscovery.js";
 export type { CatalogActivationReadinessInput, CatalogActivationReadinessItem, CatalogActivationReadinessResult, CatalogDiscoveryEvidence, CatalogDiscoveryRefusal, CatalogInstalledReadiness, CatalogMembershipCursor, CatalogMembershipItem, CatalogMembershipPageInput, CatalogMembershipPageResult } from "./postgresPublicationDiscovery.js";
+export { readPostgresCatalogStorefrontPage, type CatalogStorefrontPageInput, type CatalogStorefrontPageResult, type CatalogStorefrontPrice, type CatalogStorefrontProduct, type CatalogStorefrontSku } from "./catalogStorefrontPage.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -4646,6 +4728,8 @@ export declare const catalogProductTypeRefSchema: z.ZodObject<{
     key: z.ZodString;
     version: z.ZodNumber;
 }, z.core.$strict>;
+/** @internal */
+export declare const CATALOG_MAX_AXES = 16;
 /** @experimental */
 export declare const catalogDefinitionMetadataSchema: z.ZodObject<{
     key: z.ZodString;
@@ -5048,7 +5132,7 @@ export interface CatalogPublicationReceiptV3 extends Omit<CatalogPublicationRece
 import type { CatalogPublicationFailure } from "./publicationContracts.js";
 import type { CatalogCandidateIssue } from "./contracts/candidate.js";
 import type { CatalogCandidateError } from "./candidate.js";
-import type { CatalogConformanceCode } from "./contracts/catalogConformance.js";
+import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts/catalogConformance.js";
 import { z } from "./validation.js";
 declare const priceRefusalCodes: readonly ["command_fingerprint_invalid", "command_invalid", "command_key_reused", "operator_mismatch", "command_in_progress", "sku_not_found", "sku_archived", "price_list_not_found", "price_list_not_active", "base_price_ambiguous"];
 export declare const publicationPriceRefusalReason: z.ZodEnum<{
@@ -5090,6 +5174,564 @@ export declare class CatalogPublicationError extends Error {
 }
 export declare function publicationDiagnostic(error: CatalogPublicationError, phase: NonNullable<CatalogCandidateIssue["phase"]>, path: string, subject: string): Issue;
 export declare const publicationRefuse: (code: PlatformCode, outcome?: CatalogPublicationError["outcome"]) => never;
+declare const publicationRefusals: {
+    readonly catalog_publication_cursor_invalid: readonly ["candidate_invalid", "Restart from the first page or reuse the continuation returned for this product."];
+    readonly catalog_publication_query_invalid: readonly ["candidate_invalid", "Reload the product and use the publication identifiers returned for it."];
+    readonly catalog_publication_absent: readonly ["catalog_publication_absent", "The selected publication does not exist. Reload the product and select one of its publications."];
+    readonly head_conflict: readonly ["head_conflict", "The selected publication head does not match the saved publication. Reload the product and select its publication again."];
+    readonly catalog_publication_lineage_unknown: readonly ["catalog_publication_lineage_unknown", "This product has no publication yet. Publish a revision of the product before reading its publication."];
+    readonly catalog_publication_read_invalid: readonly ["catalog_publication_read_invalid", "The saved publication could not be read. Try again, and ask the store operator to check its publication history if this continues."];
+    readonly catalog_publication_envelope_too_large: readonly ["catalog_publication_envelope_too_large", "The response is too large. Read the publication page by page."];
+    readonly catalog_publication_history_item_too_large: readonly ["catalog_publication_history_item_too_large", "A saved publication is too large for a history page. Read that publication with the full page reader."];
+    readonly catalog_publication_readback_item_too_large: readonly ["catalog_publication_readback_item_too_large", "A saved SKU revision is too large for one page. Ask the store operator to check the publication size limits."];
+    readonly catalog_publication_receipt_unsupported: readonly ["catalog_publication_receipt_unsupported", "Receipt lookup needs an authorized publisher. Authorize the reader, then look up the receipt again."];
+    readonly publisher_not_authorized: readonly ["publisher_not_authorized", "Sign in as a store administrator and try again."];
+    readonly retained_read_not_authorized: readonly ["retained_read_not_authorized", "This account cannot read the retained revision. Use the account, order or fulfilment that owns it."];
+    readonly retained_revision_unavailable: readonly ["retained_revision_unavailable", "The retained revision is not available in this store. Check that its source was accepted here, then try again."];
+    readonly retained_source_mismatch: readonly ["retained_source_mismatch", "The retained revision does not match the selected source. Reload the source and select its revision again."];
+    readonly catalog_publication_wire_invalid: readonly ["publication_details_invalid", "Some publication details are invalid. Review the product and its revisions, then try again."];
+    readonly catalog_publication_axes_invalid: readonly ["publication_axes_invalid", "Product axes are invalid. Use unique lowercase dimension keys."];
+    readonly catalog_publication_attributes_invalid: readonly ["publication_attributes_invalid", "An attribute value is invalid. Check the value type in the product or SKU definition."];
+    readonly catalog_publication_content_invalid: readonly ["publication_content_invalid", "Product content is invalid. Review the presentation fields and SKU settings."];
+    readonly catalog_publication_sku_title_invalid: readonly ["publication_sku_title_invalid", "A SKU title is missing or too long. Enter a shorter title."];
+    readonly catalog_publication_gtin_invalid: readonly ["publication_gtin_invalid", "A SKU barcode has an invalid GTIN. Check its digits and try again."];
+    readonly catalog_publication_page_invalid: readonly ["publication_details_too_large", "The product and one SKU exceed the publication size limit. Reduce product or SKU details and prepare it again."];
+    readonly catalog_publication_live_drift: readonly ["publication_changed", "The current product or a SKU differs from the prepared publication. Reload the product and prepare it again."];
+    readonly catalog_publication_manifest_invalid: readonly ["publication_details_invalid", "The publication contains invalid product details. Review the product and prepare it again."];
+    readonly catalog_publication_head_invalid: readonly ["publication_changed", "The current publication changed. Reload the product and try again."];
+    readonly catalog_publication_lineage_invalid: readonly ["publication_version_invalid", "The selected previous publication is unavailable. Reload the product and select its current publication."];
+    readonly catalog_publication_document_invalid: readonly ["publication_content_changed", "The selected product content differs from the approved revision. Review the product and prepare it again."];
+    readonly catalog_publication_record_immutable: readonly ["publication_requires_new_revision", "Saved publication details cannot be changed. Reload the product and prepare a new publication."];
+    readonly catalog_publication_issue_sealed: readonly ["publication_requires_new_revision", "This publication is complete. Create a new publication to add the revision."];
+    readonly catalog_publication_sku_revision_invalid: readonly ["publication_revision_invalid", "The product revisions do not match this publication. Reload the product and prepare it again."];
+    readonly catalog_publication_receipt_invalid: readonly ["publication_incomplete", "The publication is incomplete. Reload the product and check its publication status before you try again."];
+    readonly catalog_publication_approval_missing: readonly ["publication_approval_missing", "This publication needs an active approval. Approve the proposed revision first."];
+    readonly catalog_publication_candidate_already_issued: readonly ["publication_candidate_already_issued", "This candidate is already issued; revoking it has no effect. No action is needed."];
+    readonly catalog_publication_net_weight_unsupported: readonly ["publication_net_weight_unsupported", "Net content must be expressed in whole grams at scale 0 to publish. Other units cannot be published yet."];
+    readonly catalog_publication_approval_wrong: readonly ["publication_approval_wrong", "The approval has changed. Reload the active decision and try again."];
+    readonly catalog_publication_approval_state_valid: readonly ["publication_approval_state_invalid", "The approved product details are invalid. Each SKU may appear once in the approved state. Prepare the publication again."];
+    readonly catalog_publication_post_state_changed: readonly ["publication_post_state_changed", "The product or its SKUs differ from the approval. Prepare the publication again."];
+    readonly catalog_publication_roster_limit: readonly ["publication_roster_limit", "A product can retain up to 10,000 SKUs. Put additional SKUs on another product and prepare the publication again."];
+    readonly catalog_publication_sku_too_large: readonly ["publication_sku_too_large", "Reduce the facts or details for this SKU and prepare the publication again."];
+    readonly catalog_publication_sku_identity_changed: readonly ["publication_sku_identity_changed", "A SKU code differs from its published identity. Restore the saved code or prepare a new SKU."];
+    readonly catalog_publication_document_required: readonly ["publication_document_required", "Select a product document revision and prepare the draft again."];
+    readonly catalog_publication_primary_sku_required: readonly ["publication_primary_sku_required", "Select the primary SKU and prepare the draft again."];
+    readonly catalog_publication_reserved_carrier: readonly ["publication_reserved_carrier", "Keep the authored document in its designated draft field. Remove this reserved key from published details."];
+    readonly catalog_publication_facts_invalid: readonly ["publication_facts_invalid", "Remove reserved document keys from the published product or SKU details. Keep the authored document only in its designated draft field, then prepare the publication again."];
+    readonly catalog_publication_receipt_input_invalid: readonly ["publication_receipt_input_invalid", "The saved command result contains invalid text or structure. Restore the original result from a verified copy or ask the store operator to recover it."];
+    readonly catalog_publication_committed_at_valid: readonly ["publication_time_invalid", "The publication date is out of range. Re-export a result dated between years 0001 and 9999."];
+    readonly catalog_publication_decided_at_valid: readonly ["publication_decision_time_invalid", "The approval date is out of range. Re-export a decision dated between years 0001 and 9999."];
+    readonly catalog_publications_canonical_state_check: readonly ["publication_details_invalid", "The saved product details are too large or empty. Review the product and prepare it again."];
+    readonly catalog_sku_revisions_full_facts_check: readonly ["publication_revision_invalid", "A SKU's saved details are too large or empty. Review the SKU and prepare the product again."];
+    readonly catalog_publication_candidate_invalid: readonly ["publication_approval_invalid", "Approval does not match the selected product revision. Review and approve that revision again."];
+    readonly catalog_publication_pointer_capability_unconsumed: readonly ["publication_content_not_saved", "The selected product content was not saved. Select the content again and retry."];
+    readonly catalog_publication_busy: readonly ["publication_busy", "Another catalogue change is in progress. Retry with the same command key."];
+    readonly catalog_publication_command_key_reused: readonly ["publication_command_key_reused", "This command key belongs to a different request. Retry the original request or use a fresh key."];
+    readonly catalog_publication_gtin_conflict: readonly ["publication_gtin_conflict", "This GTIN is already assigned. Verify the barcode and prepare the draft again.", "This GTIN is already assigned in the store, either to another SKU or to this SKU under a different issuer."];
+    readonly catalog_publication_identifier_conflict: readonly ["publication_identifier_conflict", "This identifier is already assigned. Check its issuer and value."];
+    readonly catalog_publication_identifier_blank: readonly ["publication_identifier_blank", "Enter a nonblank value for this identifier."];
+    readonly catalog_publication_identifier_key_reused: readonly ["publication_identifier_key_reused", "Use a distinct issuer and value pair for this identifier."];
+    readonly catalog_publication_draft_advanced: readonly ["publication_draft_advanced", "The saved draft changed. Prepare its current revision."];
+    readonly catalog_publication_route_conflict: readonly ["publication_route_conflict", "Another product uses this route. Choose a different route and prepare the draft again."];
+    readonly catalog_publication_lifecycle_assertion_changed: readonly ["publication_lifecycle_assertion_changed", "Reload the SKU revisions and prepare the lifecycle changes again."];
+    readonly catalog_publication_tax_class_unavailable: readonly ["publication_tax_class_unavailable", "Install or activate the tax class declared by this product type.", "The selected product type declares a tax class that is absent or inactive."];
+    readonly catalog_publication_price_key_reused: readonly ["publication_price_key_reused", "Use a distinct command key for each price change in the draft.", "More than one price change in the draft uses the same command key."];
+    readonly catalog_publication_price_changed: readonly ["publication_price_changed", "The current base price differs from the draft. Reload it and prepare the draft again.", "The effective base price does not match the price state expected by the command."];
+    readonly catalog_publication_price_unavailable: readonly ["publication_price_unavailable", "The base price could not be verified. Check the price list or retry the command.", "The price read or write did not return the evidence needed to verify the base price."];
+    readonly catalog_publication_price_readiness: readonly ["publication_price_readiness", "The proposed prices or offers do not meet storefront readiness. Check their setup and prepare the draft again.", "The proposed pricing does not meet the readiness requirements of the selected storefront or price list."];
+    readonly catalog_publication_sku_price_not_ready: readonly ["publication_sku_price_not_ready", "Set a positive gross base price and check the subscription price for this SKU in the effective price list.", "The SKU fails the effective price list's readiness checks. There must be exactly one active, effective one-time entry at minimum quantity 1, and its gross amount must be positive. With no D2C subscription pricing policy history, there must be exactly one active, effective subscription entry, with a positive gross amount at minimum quantity 1. With policy history, exactly one valid policy revision must be effective and derive a positive price, and there must be no active, effective explicit subscription entry."];
+    readonly catalog_publication_sku_price_shape_invalid: readonly ["publication_sku_price_shape_invalid", "Use gross one-time or subscription pricing at minimum quantity one for this SKU in the effective price list.", "The effective price entries have an unsupported tax basis, channel or minimum quantity."];
+    readonly price_list_not_active: readonly ["price_list_not_active", "Activate the intended price list or select an effective list for the settlement region and currency.", "The price operation names an ineligible list, or the SKU readiness check found no eligible list. An eligible price list is active, matches the settlement region and currency, and is within its validity window."];
+    readonly price_list_not_found: readonly ["price_list_not_found", "Select an installed, effective price list for the settlement region and currency, then prepare the draft again.", "The price list selected by the base-price command does not exist."];
+    readonly command_key_reused: readonly ["command_key_reused", "Give the changed price operation a fresh command key and prepare the draft again.", "This price command key already belongs to a different fingerprint."];
+    readonly command_fingerprint_invalid: readonly ["command_fingerprint_invalid", "Review the selected draft and prepare it again.", "The price command fingerprint has an invalid format."];
+    readonly command_invalid: readonly ["command_invalid", "Review the selected draft and prepare it again.", "The submitted base-price operation violates the command’s input requirements."];
+    readonly operator_mismatch: readonly ["operator_mismatch", "Have the administrator who completed the child price command replay it.", "A different operator owns the existing price command."];
+    readonly command_in_progress: readonly ["command_in_progress", "Retry the publication with the same command keys after the price change finishes.", "The price command already has an unfinished claim."];
+    readonly sku_not_found: readonly ["sku_not_found", "Select an existing SKU for the price change or create it in this publication.", "The price command refers to a SKU that does not exist."];
+    readonly sku_archived: readonly ["sku_archived", "Restore the SKU before changing its price or remove the price change.", "The price command refers to an archived SKU."];
+    readonly base_price_ambiguous: readonly ["base_price_ambiguous", "Resolve overlapping base price entries for this SKU and price list, then prepare the draft again.", "Multiple base-price entries match the same SKU and price-list context."];
+    readonly catalog_definition_drift: readonly ["catalog_definition_drift", "The product rules and installed definition differ. Rebuild the rules, attach the build to the product type, and install the updated definition before retrying."];
+    readonly publication_preparation_unavailable: readonly ["publication_preparation_unavailable", "Review the selected draft and prepare it again.", "The selected draft version cannot be prepared here or required preparation evidence is unavailable."];
+    readonly catalog_publication_identity_conflict: readonly ["publication_identity_conflict", "A product slug or SKU code is already in use. Choose an available identity and prepare the draft again."];
+    readonly activation_not_assessed: {
+        readonly fix: "Verify purchase readiness for the proposed product and SKUs.";
+    };
+    readonly activation_unknown: {
+        readonly fix: "Verify purchase readiness for the proposed product and SKUs.";
+    };
+    readonly candidate_dependency_unavailable: {
+        readonly fix: "Load the installed definition, draft and current publication before retrying.";
+    };
+    readonly candidate_digest_mismatch: {
+        readonly fix: "Prepare the selected draft and use its returned digest.";
+    };
+    readonly candidate_invalid: {
+        readonly fix: "Correct the candidate input and prepare the draft again.";
+    };
+    readonly catalog_action_conflict: {
+        readonly fix: "Choose create for a new product or revise for an existing publication.";
+    };
+    readonly catalog_archive_barrier_unavailable: readonly ["catalog_archive_barrier_unavailable", "Keep the product or SKU withdrawn until catalogue archive is supported."];
+    readonly catalog_bound_obligations: readonly ["catalog_bound_obligations", "Keep the product or SKU withdrawn while commerce obligations are outstanding."];
+    readonly catalog_obligation_evidence_unknown: readonly ["catalog_obligation_evidence_unknown", "Keep the product or SKU withdrawn and reconcile the commerce owner records."];
+    readonly catalog_obligation_evidence_unavailable: readonly ["catalog_obligation_evidence_unavailable", "Keep the product or SKU withdrawn until the complete commerce census is available."];
+    readonly catalog_lifecycle_child_effects_mismatch: {
+        readonly fix: "Reload the current lifecycle state and prepare a transition permitted for the product and its SKUs.";
+    };
+    readonly catalog_lifecycle_evidence_unavailable: readonly ["catalog_lifecycle_evidence_unavailable", "This product was published without governed lifecycle. Keep revising it with schema-3 drafts until adoption is supported."];
+    readonly catalog_lifecycle_fresh_sale_refused: readonly ["catalog_lifecycle_fresh_sale_refused", "Restore the withdrawn product and SKU before making them sellable."];
+    readonly catalog_lifecycle_last_active_child: {
+        readonly fix: "Keep an active child SKU or withdraw the whole product.";
+    };
+    readonly catalog_lifecycle_raw_status_fenced: readonly ["catalog_lifecycle_raw_status_fenced", "Use a governed lifecycle operation to change status."];
+    readonly catalog_lifecycle_state_conflict: {
+        readonly fix: "Reload the current lifecycle state and prepare a transition permitted for the product and its SKUs.";
+    };
+    readonly catalog_publication_use_readback_v2: {
+        readonly fix: "Read this legacy issue with readbackV2.";
+    };
+    readonly catalog_publication_use_readback_v3: {
+        readonly fix: "Read this governed issue with readbackV3.";
+    };
+    readonly catalog_lifecycle_transition_refused: {
+        readonly fix: "Reload the current lifecycle state and prepare a transition permitted for the product and its SKUs.";
+    };
+    readonly catalog_lifecycle_withdrawal_overlay_refused: {
+        readonly fix: "Keep a withdrawal limited to status and purchase eligibility.";
+    };
+    readonly catalog_publication_activation_effect_missing: {
+        readonly fix: "Match purchase eligibility to the modes in the saved draft.";
+    };
+    readonly catalog_publication_authored_amounts_invalid: {
+        readonly fix: "Use a SKU code and net content accepted by the installed product rules.";
+    };
+    readonly catalog_publication_derived_source_mismatch: {
+        readonly fix: "Match the proposed SKU facts and options to the selected draft and installed derivation rules.";
+    };
+    readonly catalog_publication_document_bytes_unavailable: {
+        readonly fix: "Recover the selected document bytes from the receipted draft or a verified copy.";
+    };
+    readonly catalog_publication_document_revision_sequence: {
+        readonly fix: "Reload the document revisions and select the current revision or register the next one.";
+    };
+    readonly catalog_publication_document_source_mismatch: {
+        readonly fix: "Select a document revision backed by a saved draft for this product.";
+    };
+    readonly catalog_publication_document_source_missing: {
+        readonly fix: "Select a document revision backed by a saved draft for this product.";
+    };
+    readonly catalog_publication_document_text_copied: {
+        readonly fix: "Replace the copied document text with the display value for this field.";
+    };
+    readonly catalog_publication_eligibility_source_mismatch: {
+        readonly fix: "Match purchase eligibility to the modes in the saved draft.";
+    };
+    readonly catalog_publication_gross_below_net: {
+        readonly fix: "Supply a gross mass at least as large as the net content.";
+        readonly cause: "The SKU gross mass is less than its net content.";
+    };
+    readonly catalog_publication_gross_mass_invalid: {
+        readonly fix: "Supply a positive gross mass in an installed mass unit.";
+        readonly cause: "The SKU gross mass is invalid or uses a unit the pinned type cannot convert.";
+    };
+    readonly catalog_publication_gross_mass_required: {
+        readonly fix: "supply the gross mass for this SKU";
+        readonly cause: "The SKU needs a gross mass for the selected publication operation.";
+    };
+    readonly catalog_publication_identifier_effect_missing: {
+        readonly fix: "Match the identifier operation to the identifier saved for this SKU.";
+    };
+    readonly catalog_publication_identifier_primary_invalid: {
+        readonly fix: "Use a valid unit GTIN as the primary trade identifier.";
+    };
+    readonly catalog_publication_identifier_requires_created_sku: {
+        readonly fix: "Create the SKU before adding its identifier.";
+    };
+    readonly catalog_publication_identifier_source_mismatch: {
+        readonly fix: "Match the identifier operation to the identifier saved for this SKU.";
+    };
+    readonly catalog_publication_integral_grams_required: {
+        readonly fix: "Supply net content that converts to a supported positive whole number of grams.";
+        readonly cause: "Net content does not convert to a supported positive whole number of grams.";
+    };
+    readonly catalog_publication_net_content_invalid: {
+        readonly fix: "Supply a positive exact net quantity in an eligible unit of the pinned product type.";
+        readonly cause: "The SKU net content is absent or violates the pinned product type’s quantity rules.";
+    };
+    readonly catalog_publication_quantity_definition_unqualified: {
+        readonly fix: "Select an eligible unit with an exact conversion in the pinned product type, or use an eligible product type.";
+    };
+    readonly catalog_publication_activation_membership_required: {
+        readonly fix: "Admit this SKU to an offer before enabling purchases.";
+    };
+    readonly catalog_publication_logistics_source_mismatch: {
+        readonly fix: "Use the SKU metadata saved in the selected draft.";
+    };
+    readonly catalog_publication_mass_required_until_mc5: {
+        readonly fix: "Publish net content as the net mass in whole grams. Declare a labelled volume or count as a quantity variant option. If the option's dimension has role \"net_content\", remove that role in a new product type version, keep the option, and select the new version on the draft.";
+        readonly cause: "Publication accepts net content only as mass in whole grams.";
+    };
+    readonly catalog_publication_media_evidence_mismatch: {
+        readonly fix: "Bind the selected media reference and asset list to verified evidence for this SKU.";
+    };
+    readonly catalog_publication_media_readiness_unproven: {
+        readonly fix: "Bind the selected media reference and asset list to verified evidence for this SKU.";
+    };
+    readonly catalog_publication_media_validation_unavailable: {
+        readonly fix: "Verify the SKU media and retry once that evidence is available.";
+    };
+    readonly catalog_publication_membership_change_not_allowed: {
+        readonly fix: "Use the offer and admission status accepted by the saved draft and product rules.";
+    };
+    readonly catalog_publication_membership_effect_missing: {
+        readonly fix: "Use the offer and admission status accepted by the saved draft and product rules.";
+    };
+    readonly catalog_publication_membership_source_mismatch: {
+        readonly fix: "Use the offer and admission status accepted by the saved draft and product rules.";
+    };
+    readonly catalog_publication_metadata_effect_missing: {
+        readonly fix: "Use the SKU metadata saved in the selected draft.";
+    };
+    readonly catalog_publication_operation_invalid: {
+        readonly fix: "Use a supported publication operation.";
+    };
+    readonly catalog_publication_operation_source_ambiguous: {
+        readonly fix: "Select one receipted draft that authorizes this operation for the SKU.";
+    };
+    readonly catalog_publication_operation_source_mismatch: {
+        readonly fix: "Select one receipted draft that authorizes this operation for the SKU.";
+    };
+    readonly catalog_publication_operation_source_missing: {
+        readonly fix: "Select one receipted draft that authorizes this operation for the SKU.";
+    };
+    readonly catalog_publication_presentation_effect_missing: {
+        readonly fix: "Match the presentation operation to the saved product presentation.";
+    };
+    readonly catalog_publication_presentation_invalid: {
+        readonly fix: "Use the supported presentation fields and keep the authored document in the draft.";
+    };
+    readonly catalog_publication_presentation_source_mismatch: {
+        readonly fix: "Match the presentation operation to the saved product presentation.";
+    };
+    readonly catalog_publication_presentation_unavailable: {
+        readonly fix: "Verify the storefront presentation and route before retrying.";
+    };
+    readonly catalog_publication_product_identity_conflict: {
+        readonly fix: "Choose an unused product slug or revise the existing product.";
+    };
+    readonly catalog_publication_product_name_source_mismatch: {
+        readonly fix: "Use the product name saved in the selected draft.";
+    };
+    readonly catalog_publication_rule_failed: {
+        readonly fix: "Correct the reported rule hook and rebuild the product rules.";
+    };
+    readonly catalog_publication_rules_binding_mismatch: {
+        readonly fix: "The product rules and installed definition differ. Rebuild the rules, attach the build to the product type, and install the updated definition before retrying.";
+    };
+    readonly catalog_publication_rules_digest_mismatch: {
+        readonly fix: "The product rules and installed definition differ. Rebuild the rules, attach the build to the product type, and install the updated definition before retrying.";
+    };
+    readonly catalog_publication_rules_module_invalid: {
+        readonly fix: "Export all required hooks from the self-contained rules module and rebuild it.";
+    };
+    readonly catalog_publication_scope_expansion: {
+        readonly fix: "Keep changes within the product and SKUs named by the selected draft.";
+    };
+    readonly catalog_publication_sku_effect_missing: {
+        readonly fix: "Match the proposed SKU facts and options to the selected draft and installed derivation rules.";
+    };
+    readonly catalog_publication_source_invalid: {
+        readonly fix: "Select an open, receipted draft revision for this product.";
+    };
+    readonly catalog_publication_source_mismatch: {
+        readonly fix: "Select an open, receipted draft revision for this product.";
+    };
+    readonly catalog_publication_v3_activation_readiness_failed: {
+        readonly fix: "Supply the logistics reference for this SKU.";
+        readonly cause: "The SKU is being made sellable without its required logistics reference.";
+    };
+    readonly catalog_publication_v3_active_primary_required: {
+        readonly fix: "Activate the primary SKU with a purchase mode, or leave the product in draft.";
+        readonly cause: "The primary SKU is not active and sellable.";
+    };
+    readonly catalog_publication_v3_compile_archive_refused: {
+        readonly fix: "Withdraw the SKU through a supported lifecycle transition.";
+    };
+    readonly catalog_publication_v3_compile_change_noop: {
+        readonly fix: "Include a change to the product or one of its SKUs.";
+    };
+    readonly catalog_publication_v3_compile_derived_facts_mismatch: {
+        readonly fix: "Match the proposed SKU facts and options to the selected draft and installed derivation rules.";
+    };
+    readonly catalog_publication_v3_compile_document_absent: {
+        readonly fix: "Select a document revision backed by a saved draft for this product.";
+    };
+    readonly catalog_publication_v3_compile_document_conflict: {
+        readonly fix: "Reload the document revisions and select the current revision or register the next one.";
+    };
+    readonly catalog_publication_v3_compile_document_stale: {
+        readonly fix: "Reload the document revisions and select the current revision or register the next one.";
+    };
+    readonly catalog_publication_v3_compile_identifier_conflict: {
+        readonly fix: "Use a trade identifier that is unique to this SKU.";
+    };
+    readonly catalog_publication_v3_compile_primary_foreign: {
+        readonly fix: "Select a primary SKU belonging to this product.";
+    };
+    readonly catalog_publication_v3_compile_primary_immutable: {
+        readonly fix: "Keep the published primary SKU.";
+    };
+    readonly catalog_publication_v3_compile_product_absent: {
+        readonly fix: "Create the product before applying this operation.";
+    };
+    readonly catalog_publication_v3_compile_product_conflict: {
+        readonly fix: "Choose an unused product slug or revise the existing product.";
+    };
+    readonly catalog_publication_v3_compile_product_incomplete: {
+        readonly fix: "Set the document and the primary SKU before activation. Select a primary SKU or move set_primary_sku before set_product_status.";
+    };
+    readonly catalog_publication_v3_compile_sku_absent: {
+        readonly fix: "Select a SKU in the draft or create it before applying this operation.";
+    };
+    readonly catalog_publication_v3_compile_sku_archived: {
+        readonly fix: "Restore this SKU before making it sellable.";
+    };
+    readonly catalog_publication_v3_compile_sku_conflict: {
+        readonly fix: "Choose an unused SKU code.";
+    };
+    readonly catalog_publication_v3_document_digest_mismatch: {
+        readonly fix: "Use the canonical document bytes and their matching digest.";
+    };
+    readonly catalog_publication_v3_document_invalid: {
+        readonly fix: "Use a complete JSON object for the product document revision.";
+    };
+    readonly catalog_publication_v3_document_not_canonical: {
+        readonly fix: "Use the canonical document bytes and their matching digest.";
+    };
+    readonly catalog_publication_v3_document_reference_stale: {
+        readonly fix: "Reload the document revisions and select the current revision or register the next one.";
+    };
+    readonly catalog_publication_v3_presentation_required: {
+        readonly fix: "Supply the product presentation or its document revision.";
+    };
+    readonly catalog_publication_v3_structural_readiness_failed: {
+        readonly fix: "A new product needs its presentation. Add a set_product_presentation operation that matches the draft presentation.";
+    };
+    readonly channel_identity_not_assessed: {
+        readonly fix: "Verify trade identifiers and commercial readiness before selling this SKU.";
+    };
+    readonly commerce_product_slug_unsupported: {
+        readonly fix: "Use a lowercase product slug with letters, digits, hyphens or underscores.";
+    };
+    readonly commercial_activation_not_assessed: {
+        readonly fix: "Verify trade identifiers and commercial readiness before selling this SKU.";
+    };
+    readonly content_missing: {
+        readonly fix: "Supply the product presentation or its document revision.";
+    };
+    readonly current_primary_mismatch: {
+        readonly fix: "Reload the publication and select the current primary SKU.";
+    };
+    readonly dimension_not_declared: {
+        readonly fix: "Use a dimension installed for the product type and declared by this product.";
+    };
+    readonly dimension_not_installed: {
+        readonly fix: "Use a dimension installed for the product type and declared by this product.";
+    };
+    readonly document_reference_missing: {
+        readonly fix: "Select a document revision backed by a saved draft for this product.";
+    };
+    readonly duplicate_dimension: {
+        readonly fix: "Declare each selected dimension once.";
+    };
+    readonly duplicate_option_combination: {
+        readonly fix: "Use a distinct option combination for each SKU.";
+    };
+    readonly duplicate_sku_code: {
+        readonly fix: "Choose an unused SKU code.";
+    };
+    readonly duplicate_sku_id: {
+        readonly fix: "Use a distinct identifier for each SKU.";
+    };
+    readonly duplicate_trade_identifier: {
+        readonly fix: "Use a trade identifier that is unique to this SKU.";
+    };
+    readonly foreign_product_reference: {
+        readonly fix: "Reference the product that owns this draft.";
+    };
+    readonly gross_mass_invalid: {
+        readonly fix: "Supply a positive gross mass in an installed mass unit.";
+    };
+    readonly gross_mass_missing: {
+        readonly fix: "Supply the gross mass for this SKU.";
+    };
+    readonly intent_sku_absent: {
+        readonly fix: "Select a SKU in the draft or create it before applying this operation.";
+    };
+    readonly logistics_reference_missing: {
+        readonly fix: "Supply the logistics reference for this SKU.";
+    };
+    readonly media_readiness_mismatch: {
+        readonly fix: "Bind the selected media reference and asset list to verified evidence for this SKU.";
+    };
+    readonly media_readiness_unknown: {
+        readonly fix: "Verify the SKU media and retry once that evidence is available.";
+    };
+    readonly media_reference_missing: {
+        readonly fix: "Select the media reference for these assets.";
+    };
+    readonly net_content_invalid: {
+        readonly fix: "Supply net content in a unit admitted for this product type.";
+    };
+    readonly net_content_missing: {
+        readonly fix: "Supply the net content for this SKU.";
+    };
+    readonly net_content_option_mismatch: {
+        readonly fix: "Use the same net content in the SKU and its net-content option.";
+    };
+    readonly option_quantity_invalid: {
+        readonly fix: "Supply an option value that matches the installed dimension and its allowed values or units.";
+    };
+    readonly option_type_invalid: {
+        readonly fix: "Supply an option value that matches the installed dimension and its allowed values or units.";
+    };
+    readonly option_value_invalid: {
+        readonly fix: "Supply an option value that matches the installed dimension and its allowed values or units.";
+    };
+    readonly price_reference_missing: {
+        readonly fix: "Verify the selected price operations in the effective price list.";
+    };
+    readonly price_validation_unavailable: {
+        readonly fix: "Verify the selected price operations in the effective price list.";
+        readonly cause: "The price validator did not return usable validation evidence.";
+    };
+    readonly primary_sku_missing: {
+        readonly fix: "Select the primary SKU.";
+    };
+    readonly primary_sku_not_in_product: {
+        readonly fix: "Select a primary SKU belonging to this product.";
+    };
+    readonly publication_evidence_unavailable: {
+        readonly fix: "Load the current publication and its retained revisions before retrying.";
+    };
+    readonly publication_head_unavailable: {
+        readonly fix: "Load the current publication and its retained revisions before retrying.";
+    };
+    readonly sku_code_missing: {
+        readonly fix: "Supply the SKU code.";
+    };
+    readonly sku_missing: {
+        readonly fix: "Add a SKU for this product.";
+    };
+    readonly slug_missing: {
+        readonly fix: "Use a lowercase product slug with letters, digits, hyphens or underscores.";
+    };
+    readonly trade_identifier_invalid: {
+        readonly fix: "Supply a valid GTIN.";
+    };
+    readonly trade_identifier_quantity_invalid: {
+        readonly fix: "Use quantity one for a unit or at least two for a case.";
+    };
+    readonly trade_identifier_scheme_unsupported: {
+        readonly fix: "Use a supported trade identifier scheme.";
+    };
+    readonly type_not_installed: {
+        readonly fix: "Install the product type and version selected by the draft.";
+        readonly cause: "No installed definition matches the draft product type and version.";
+    };
+    readonly unit_trade_identifier_missing: {
+        readonly fix: "Add a valid unit trade identifier to the SKU, then prepare the draft again. For a product without a GS1 barcode, mint one with catalogInternalGtin.";
+        readonly cause: "The SKU needs a valid unit GTIN for publication.";
+    };
+    readonly definition_invalid_shape: CatalogConformanceRule;
+    readonly definition_unknown_field: CatalogConformanceRule;
+    readonly definition_key_invalid: CatalogConformanceRule;
+    readonly definition_version_invalid: CatalogConformanceRule;
+    readonly definition_unit_invalid: CatalogConformanceRule;
+    readonly definition_dimension_invalid: CatalogConformanceRule;
+    readonly definition_net_content_invalid: CatalogConformanceRule;
+    readonly definition_attribute_invalid: CatalogConformanceRule;
+    readonly definition_axis_invalid: CatalogConformanceRule;
+    readonly definition_validator_ref_invalid: CatalogConformanceRule;
+    readonly definition_profile_ref_invalid: CatalogConformanceRule;
+    readonly definition_tax_class_invalid: CatalogConformanceRule;
+    readonly definition_callback_missing: CatalogConformanceRule;
+    readonly definition_duplicate_identity: CatalogConformanceRule;
+    readonly definition_duplicate_unit: CatalogConformanceRule;
+    readonly definition_duplicate_dimension: CatalogConformanceRule;
+    readonly definition_duplicate_net_content_unit: CatalogConformanceRule;
+    readonly definition_unknown_net_content_unit: CatalogConformanceRule;
+    readonly definition_duplicate_choice: CatalogConformanceRule;
+    readonly definition_duplicate_dimension_unit: CatalogConformanceRule;
+    readonly definition_dimension_unit_mismatch: CatalogConformanceRule;
+    readonly definition_net_content_unit_mismatch: CatalogConformanceRule;
+    readonly definition_multiple_net_content_dimensions: CatalogConformanceRule;
+    readonly definition_unit_factor_invalid: CatalogConformanceRule;
+    readonly definition_duplicate_attribute: CatalogConformanceRule;
+    readonly definition_facetable_not_filterable: CatalogConformanceRule;
+    readonly definition_unknown_attribute_unit: CatalogConformanceRule;
+    readonly definition_duplicate_axis: CatalogConformanceRule;
+    readonly definition_unknown_axis_attribute: CatalogConformanceRule;
+    readonly definition_axis_scope_invalid: CatalogConformanceRule;
+    readonly definition_duplicate_enum_value: CatalogConformanceRule;
+    readonly definition_unknown_axis_dimension: CatalogConformanceRule;
+    readonly definition_axis_mismatch: CatalogConformanceRule;
+    readonly definition_duplicate_axis_attribute: CatalogConformanceRule;
+    readonly definition_unknown_tax_class: CatalogConformanceRule;
+    readonly definition_unknown_profile_ref: CatalogConformanceRule;
+    readonly pack_type_namespace_mismatch: CatalogConformanceRule;
+    readonly attribute_projection_text_too_large: CatalogConformanceRule;
+    readonly attribute_storage_too_large: CatalogConformanceRule;
+    readonly attribute_values_invalid: CatalogConformanceRule;
+    readonly attribute_value_invalid: CatalogConformanceRule;
+    readonly attribute_unknown_key: CatalogConformanceRule;
+    readonly attribute_scope_conflict: CatalogConformanceRule;
+    readonly attribute_cardinality_invalid: CatalogConformanceRule;
+    readonly attribute_required_missing: CatalogConformanceRule;
+    readonly attribute_required_locale_missing: CatalogConformanceRule;
+    readonly attribute_reference_unresolved: CatalogConformanceRule;
+    readonly attribute_publication_revision_invalid: CatalogConformanceRule;
+    readonly conformance_subject_invalid: CatalogConformanceRule;
+    readonly conformance_owner_unavailable: CatalogConformanceRule;
+    readonly conformance_refusal_fixture_missing: CatalogConformanceRule;
+    readonly conformance_refusal_fixture_invalid: CatalogConformanceRule;
+    readonly conformance_refusal_fixture_mismatch: CatalogConformanceRule;
+    readonly draft_input_invalid: CatalogConformanceRule;
+    readonly draft_payload_invalid: CatalogConformanceRule;
+    readonly draft_payload_too_large: CatalogConformanceRule;
+    readonly quantity_invalid: CatalogConformanceRule;
+    readonly quantity_cross_dimension: CatalogConformanceRule;
+    readonly quantity_fractional_count: CatalogConformanceRule;
+    readonly quantity_unknown_unit: CatalogConformanceRule;
+    readonly quantity_overflow: CatalogConformanceRule;
+    readonly quantity_not_exactly_representable: CatalogConformanceRule;
+    readonly axis_not_installed: CatalogConformanceRule;
+    readonly duplicate_axis: CatalogConformanceRule;
+    readonly option_not_selected: CatalogConformanceRule;
+    readonly option_missing: CatalogConformanceRule;
+    readonly option_invalid: CatalogConformanceRule;
+    readonly unit_factor_missing: CatalogConformanceRule;
+    readonly sku_identity_change_requires_new_sku: CatalogConformanceRule;
+    readonly duplicate_combination: CatalogConformanceRule;
+    readonly combination_digest_collision: CatalogConformanceRule;
+    readonly combination_identity_integrity_failed: CatalogConformanceRule;
+    readonly sku_payload_limit: CatalogConformanceRule;
+    readonly product_capacity_exceeded: CatalogConformanceRule;
+    readonly product_capacity_invalid: CatalogConformanceRule;
+    readonly definition_profile_invalid: CatalogConformanceRule;
+    readonly cadence_kind_unsupported: CatalogConformanceRule;
+    readonly advisory_net_content_not_publishable: CatalogConformanceRule;
+    readonly advisory_filter_flags_unused: CatalogConformanceRule;
+    readonly advisory_unit_identifier_missing: CatalogConformanceRule;
+    readonly advisory_draft_version_not_publishable: CatalogConformanceRule;
+    readonly advisory_fixtures_skipped_definition_invalid: CatalogConformanceRule;
+    readonly advisory_variant_attribute_without_axis: CatalogConformanceRule;
+    readonly advisory_openlup_range_unrecognised: CatalogConformanceRule;
+    readonly advisory_openlup_range_unsatisfied: CatalogConformanceRule;
+};
+/** @internal Static owner guidance used by the CLI and reader guide. */
+export { publicationRefusals };
 export type AdmissionDiagnostic = PlatformCode;
 export declare const refusePublicationCommand: (code: PlatformCode, outcome?: CatalogPublicationError["outcome"]) => never;
 export declare function publicationRemedy(code: PlatformCode): string;
@@ -5507,6 +6149,16 @@ export interface CatalogProductInput {
  * @experimental
  */
 export declare const catalogProductInputSchema: z.ZodType<CatalogProductInput>;
+/** @internal */
+export declare function describeReleaseDraftRefusal(): {
+    code: CatalogReleaseDraftError["code"];
+    cause: string;
+    fix: string;
+    fixVariants: readonly {
+        when: string;
+        fix: string;
+    }[];
+};
 /** Refusal with an input path and fix.
  * @experimental
  */
