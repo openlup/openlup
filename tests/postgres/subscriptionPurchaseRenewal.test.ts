@@ -1,3 +1,7 @@
+import {
+  expectedRegistrationRefusal, registerRenewal, registrationAttachments, registrationParents,
+  registrationRefusal, seedRegistration,
+} from "./subscriptionRegistrationFixture.js";
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { installSubscriptionConsumer } from "../helpers/installSubscriptionConsumer.js";
 import { execFile } from "node:child_process";
@@ -483,3 +487,129 @@ it("ambiguous dispatch survives a fresh process, never redispatches, and only ma
   expect((await api.runOneAutomaticSubscriptionRenewal(resumed.input, resumed.due, "2026-09-29T12:15:00.000Z")).status).toBe("succeeded");
   expect(resumed.execute).not.toHaveBeenCalled();
 });
+
+const amountLimit = Number.MAX_SAFE_INTEGER;
+const retainedLine = { sku: "FIXTURE-ITEM", quantity: 1, unitAmountMinor: 100, isAddon: false, quoteLine: {} };
+const graduationLine = { sku: "FIXTURE-ITEM", qty: 1, sortOrder: 0, isAddon: false,
+  quoteLine: { unitPriceGross: { amountMinor: 100 }, lineSubtotalGross: { amountMinor: 100 } } };
+const graduation = { cadenceDays: 30, lines: [graduationLine] };
+const delivery = { discountBps: 2500, discountMinor: 25, basisSubtotalMinor: 100 };
+const starter = { schemaVersion: "1", starterIntervalDays: 28, basisTemplateVersion: 77, delivery2: delivery, graduation };
+const shipping = { version: "shipping-threshold.v1", currency: "XXX", flatMinor: 100, freeThresholdMinor: 200 };
+const retained = { version: "native.renewal-terms.v1", minimumPayableMinor: 75, normalCadenceDays: [30],
+  linePricing: [retainedLine], starterPack: starter, shippingTerms: shipping };
+const retainedInvalid: [string, Record<string, unknown> | null][] = [
+  ["terms shape", null],
+  ["shipping terms currency", { shippingTerms: { ...shipping, currency: "XTS" } }],
+  ["shipping terms amount bound", { shippingTerms: { ...shipping, flatMinor: 2147483648 } }],
+  ["minimum payable bound", { minimumPayableMinor: amountLimit + 1, starterPack: undefined }],
+  ["empty normal cadences", { normalCadenceDays: [], starterPack: undefined }],
+  ["normal cadence bound", { normalCadenceDays: [2147483648], starterPack: undefined }],
+  ["retained line count", { linePricing: Array.from({ length: 101 }, (_, index) => ({ ...retainedLine, sku: `item-${index}` })) }],
+  ["retained line quantity", { linePricing: [{ ...retainedLine, quantity: 0 }] }],
+  ["duplicate retained SKU", { linePricing: [retainedLine, retainedLine] }],
+  ["starter declaration cadence", { starterPack: { ...starter, starterIntervalDays: 29 } }],
+  ["second delivery shape", { starterPack: { ...starter, delivery2: { ...delivery, unexpected: 1 } } }],
+  ["second delivery amount bound", { starterPack: { ...starter, delivery2: { ...delivery, basisSubtotalMinor: amountLimit + 1 } } }],
+  ["second delivery payable amount", { starterPack: { ...starter, delivery2: { ...delivery, discountMinor: 26 } } }],
+  ["graduation cadence membership", { starterPack: { ...starter, graduation: { ...graduation, cadenceDays: 31 } } }],
+  ["graduation line subtotal", { starterPack: { ...starter, graduation: { ...graduation, lines: [{ ...graduationLine, qty: 2 }] } } }],
+];
+
+for (const parent of registrationParents) {
+  const withShipping = parent === registrationParents[1];
+  it(`${parent} preserves exact typed SQL refusals and precedence`, async () => {
+    const { orderId, facts: valid } = await seedRegistration(admin);
+    const invalid = expectedRegistrationRefusal("invalid");
+    const refuse = async (id: string, input: unknown, expected = invalid, label?: string) => {
+      expect(await registrationRefusal(registerRenewal(runtime, parent, id, input)), label).toEqual(expected);
+    };
+    await refuse(randomUUID(), valid, expectedRegistrationRefusal("order_missing"), "missing order");
+    await refuse(randomUUID(), null, expectedRegistrationRefusal("order_missing"), "lock before fact validation");
+    const missing = await seedRegistration(admin);
+    await admin.query("DELETE FROM public.subscription_activations WHERE order_id=$1", [missing.orderId]);
+    await refuse(missing.orderId, valid, expectedRegistrationRefusal("not_declared"), "missing declaration");
+    const compensated = await seedRegistration(admin);
+    await admin.query("UPDATE public.subscription_activations SET state='compensated',compensated_at=clock_timestamp() WHERE order_id=$1", [compensated.orderId]);
+    await refuse(compensated.orderId, valid, expectedRegistrationRefusal("not_declared"), "compensated declaration");
+
+    const line = valid.lines[0]!;
+    const { payerAccountRef, ...missingPayer } = valid;
+    expect(payerAccountRef).toBeNull();
+    const invalidFacts: [string, unknown][] = [
+      ["SQL NULL facts", undefined],
+      ["JSON null facts", null],
+      ["facts shape", []],
+      ["unknown fact field", { ...valid, unexpected: true }],
+      ["unknown field outranks timestamp cast", { ...valid, unexpected: true, unattendedChargeAuthorizedAt: "bad-authorization-instant" }],
+      ["required text", { ...valid, methodRef: "" }],
+      ["method evidence", { ...valid, settlementChannelKey: "fixture-rail" }],
+      ["declaration cadence", { ...valid, cadenceDays: 29 }],
+      ["cadence JSON type", { ...valid, cadenceDays: "28" }],
+      ["finite timestamp", { ...valid, unattendedChargeAuthorizedAt: "infinity" }],
+      ["shipping bound", withShipping ? { ...valid, shippingAmountMinor: amountLimit + 1, renewalTerms: retained }
+        : { ...valid, shippingAmountMinor: 1 }],
+      ["required nullable field", missingPayer],
+      ["empty lines", { ...valid, lines: [] }],
+      ["too many lines", { ...valid, lines: Array.from({ length: 101 }, (_, i) => ({ ...line, lineOrdinal: i + 1, sku: `item-${i}` })) }],
+      ["line unit amount bound", { ...valid, lines: [{ ...line, unitAmountMinor: amountLimit + 1 }] }],
+      ["line unit amount JSON type", { ...valid, lines: [{ ...line, unitAmountMinor: String(line.unitAmountMinor) }] }],
+      ["line quantity bound", { ...valid, lines: [{ ...line, quantity: 2147483648 }] }],
+      ["duplicate SKU", { ...valid, lines: [line, { ...line, lineOrdinal: 2 }] }],
+      ["duplicate ordinal", { ...valid, lines: [line, { ...line, sku: "OTHER" }] }],
+      ["zero line total", { ...valid, lines: [{ ...line, unitAmountMinor: 0 }] }],
+      ["line total bound", { ...valid, lines: [{ ...line, unitAmountMinor: amountLimit, quantity: 2 }] }],
+    ];
+    for (const [label, input] of invalidFacts) await refuse(orderId, input, invalid, label);
+    const badTimestamp = { ...valid, unattendedChargeAuthorizedAt: "bad-authorization-instant" };
+    const timestampError = { code: "22007", message: 'invalid input syntax for type timestamp with time zone: "bad-authorization-instant"', detail: undefined, hint: undefined };
+    await refuse(orderId, badTimestamp, timestampError, "raw timestamp cast");
+    await refuse(orderId, { ...badTimestamp, lines: [] }, timestampError, "timestamp cast outranks line count");
+
+    if (withShipping) {
+      for (const [label, patch] of retainedInvalid) {
+        await refuse(orderId, { ...valid, shippingAmountMinor: 1, renewalTerms: patch === null ? null : { ...retained, ...patch } }, invalid, label);
+      }
+      await refuse(orderId, { ...valid, shippingAmountMinor: 1 }, invalid, "nonzero shipping without terms");
+    }
+    for (const id of [orderId, missing.orderId, compensated.orderId]) {
+      expect(await registrationAttachments(admin, id)).toEqual([]);
+    }
+  });
+
+  it(`${parent} preserves first write, stored facts, replay and conflict`, async () => {
+    const { orderId, facts: valid, utc } = await seedRegistration(admin);
+    const input = withShipping ? { ...valid, shippingAmountMinor: 100, renewalTerms: retained } : valid;
+    const stored = withShipping ? { ...input, unattendedChargeAuthorizedAt: utc,
+      renewalTerms: { ...retained, starterPack: { ...starter, basisTemplateVersion: 1 } } } : input;
+    await expect(registerRenewal(runtime, parent, orderId, input)).resolves.toEqual({ orderId, replayed: false });
+    const firstWrite = await registrationAttachments(admin, orderId);
+    expect(firstWrite).toMatchObject([{ attachment: { order_id: orderId, subscription_id: null, completed_at: null } }]);
+    expect(firstWrite[0]?.attachment.purchase_facts).toEqual(stored);
+    if (withShipping) {
+      await admin.query(`UPDATE public.subscription_renewal_attachments
+        SET purchase_facts=jsonb_set(purchase_facts,'{unattendedChargeAuthorizedAt}',to_jsonb($2::text))
+        WHERE order_id=$1`, [orderId, valid.unattendedChargeAuthorizedAt]);
+    }
+    const [before] = await registrationAttachments(admin, orderId);
+    const replayFacts = withShipping ? { ...stored, unattendedChargeAuthorizedAt: valid.unattendedChargeAuthorizedAt } : stored;
+    const unchanged = [{ ...before, attachment: { ...before.attachment, purchase_facts: replayFacts } }];
+    await expect(registerRenewal(runtime, parent, orderId, withShipping ? { ...input, unattendedChargeAuthorizedAt: utc } : input))
+      .resolves.toEqual({ orderId, replayed: true });
+    expect(await registrationAttachments(admin, orderId)).toEqual(unchanged);
+    expect(await registrationRefusal(registerRenewal(runtime, parent, orderId, { ...input, authorizationRef: "different-authorization" })))
+      .toEqual(expectedRegistrationRefusal("conflict", "23505"));
+    expect(await registrationAttachments(admin, orderId)).toEqual(unchanged);
+  });
+
+  it(`${parent} accepts the upper line and amount boundaries`, async () => {
+    const { orderId, facts: valid } = await seedRegistration(admin);
+    const lines = Array.from({ length: 100 }, (_, i) => ({
+      lineOrdinal: i + 1, sku: `item-${i}`, quantity: 1, unitAmountMinor: i === 0 ? amountLimit : 0,
+    }));
+    const input = { ...valid, lines, ...(withShipping && { shippingAmountMinor: amountLimit,
+      renewalTerms: { ...retained, minimumPayableMinor: undefined, starterPack: undefined,
+        normalCadenceDays: [2147483647], shippingTerms: { ...shipping, flatMinor: 2147483647 } } }) };
+    await expect(registerRenewal(runtime, parent, orderId, input)).resolves.toEqual({ orderId, replayed: false });
+  });
+}

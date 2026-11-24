@@ -7,7 +7,8 @@ import { createSchemaProbe } from "@openlup/core/readiness";
 import { identityRequiredSchema } from "../../server/runtime/auth/identitySchema.js";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createTaxCalculationPrivacyContributor, createPrivacyOperations, createPostgresCustomerChallengeStore, createDirectOperatorInvitationStore, createPostgresOperatorIdentityStore } from "@openlup/platform/identity";
+import { createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPrivacyOperations, createPostgresCustomerChallengeStore, createDirectOperatorInvitationStore, createPostgresOperatorIdentityStore } from "@openlup/platform/identity";
+import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import { createSubscriptionsPrivacyContributor } from "../../server/runtime/auth/subscriptionsPrivacyContributor.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -68,7 +69,7 @@ export function registerIdentityPrivacyConformance(): void {
       const unitOfWork = createPostgresPrivacyUnitOfWork({ connectionString: containers[index].connectionString });
       const store = createPostgresPrivacyStore();
       const retainedContactFields = { lifecycle_stage: { owner: "clients", resource: "clients.lifecycle_stage", disposition: "retain" as const, reasonCode: "LIFECYCLE", remote: false } };
-      const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields }, () => receiptId), createSubscriptionsPrivacyContributor(), createTaxCalculationPrivacyContributor()], { requiredContributorIds: ["identity", "subscriptions", "tax-calculations"] });
+      const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields }, () => receiptId), ...nativePrivacyContributors(store).slice(1)], { requiredContributorIds: ["identity", "subscriptions", "tax-calculations"] });
       return { store, unitOfWork, operations: createPrivacyOperations({ store, unitOfWork, registry, now: () => new Date(), randomId: () => receiptId }) };
     }
     it("probes the direct identity inventory against the complete installed catalogue", async () => {

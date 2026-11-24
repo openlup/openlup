@@ -80,8 +80,10 @@ for(const profile of ["legacy","bootstrap","separate","admin-managed","admin-ope
     const signature="public.oms_control_resolve_operator(uuid)",connection=await db.migrator.connect();
     const facts=async()=>(await connection.query("SELECT prosecdef,provolatile,proconfig,proacl::text,proowner::regrole::text FROM pg_proc WHERE oid=$1::regprocedure",[signature])).rows;
     const original=readFileSync("db/platform/migrations/20260817100000_oms_control_plane_operator_bridge.sql");
-    try{await connection.query("BEGIN");const current=await facts();expect(current[0]).toMatchObject({prosecdef:false,provolatile:"s",proconfig:["search_path=pg_catalog"]});
-      await connection.query(sqlStatements(original.toString()).find(sql=>sql.startsWith("CREATE FUNCTION"))!.replace("CREATE FUNCTION","CREATE OR REPLACE FUNCTION"));expect(await facts()).toEqual(current);
+    try{await connection.query("BEGIN");const current=await facts();expect(current[0]).toMatchObject({prosecdef:false,provolatile:"s",proconfig:["search_path=pg_catalog, pg_temp"]});
+      // The later search-path forward appended pg_temp; the original definition restores only its own path.
+      await connection.query(sqlStatements(original.toString()).find(sql=>sql.startsWith("CREATE FUNCTION"))!.replace("CREATE FUNCTION","CREATE OR REPLACE FUNCTION"));
+      expect(await facts()).toEqual(current.map(row=>({...row,proconfig:["search_path=pg_catalog"]})));
     }finally{await connection.query("ROLLBACK");connection.release();}
     const registry=readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));const slot=registry.nativeStoreForwardClass!.slots.find(slot=>slot.path===forwardPath);
     assert(slot,`Missing native-store slot: ${forwardPath}`);

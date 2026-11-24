@@ -1642,6 +1642,30 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125260000_subscription_activation_execute_grants.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125261000_subscription_activation_units.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5394,6 +5418,30 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125200000_subscription_renewal_registration_units.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125220000_commerce_destination_v2_typed_refusals.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125260000_subscription_activation_execute_grants.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125261000_subscription_activation_units.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125300000_identity_privacy_required_contributors.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125310000_function_search_path_pg_temp.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -8399,6 +8447,10 @@
     },
     {
       "path": "packages/platform/src/identity/removeAdminUserUseCase.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/requiredPrivacyContributors.ts",
       "class": "public-output"
     },
     {
@@ -11887,6 +11939,10 @@
     },
     {
       "path": "packages/platform/test/identity/removeAdminUserUseCase.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/requiredPrivacyContributors.test.ts",
       "class": "public-output"
     },
     {
@@ -32070,6 +32126,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/privacyRequiredContributors.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/taxCalculationsV2/replayed.sql",
       "class": "public-output"
     },
@@ -32590,6 +32650,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/privacyRequiredContributors.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/promotionsNative.test.ts",
       "class": "public-output"
     },
@@ -32702,6 +32766,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionActivationFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionActivationPermissions.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionAlignmentRollbackCases.ts",
       "class": "public-output"
     },
@@ -32799,6 +32871,14 @@
     },
     {
       "path": "tests/postgres/subscriptionRecoveryTruth.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRegistrationActivationLockOrder.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRegistrationFixture.ts",
       "class": "public-output"
     },
     {

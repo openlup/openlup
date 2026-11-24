@@ -35,6 +35,7 @@ import {
   publicInventoryVerdict,
   selfCheckCommand,
   selfCheckVerdict,
+  syncPublicOutputCatalog,
   typecheckVerdict,
 } from "./oss-published-tree-check.ts";
 import { assertSimulatedUpgradePage, previousCoreTag } from "./packages/release-docs-pass.ts";
@@ -45,6 +46,47 @@ import { readManagedMigrationChain } from "./public-ci-pgtap.mjs";
 import { parsePackagesConfig } from "./packages/package-manifest-policy.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+it("syncs only safe tracked public outputs and removes deleted rows", () => {
+  const root = mkdtempSync(join(tmpdir(), "public-catalog-sync-"));
+  const git = (...args: string[]) => execFileSync("/usr/bin/git", ["-C", root, ...args], { encoding: "utf8" });
+  const put = (path: string, contents: string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), contents); };
+  try {
+    git("init", "-q");
+    put(PUBLICATION_CATALOG_PATH, createPublicPublicationCatalog([
+      { path: "config/openlup-policy-registry.json", class: "policy" },
+      { path: PUBLICATION_CATALOG_PATH, class: "policy" },
+      { path: "old.txt", class: "public-output" },
+    ], []).contents);
+    put("config/openlup-policy-registry.json", JSON.stringify({ schemaVersion: 1, activePaths: [], contracts: [] }));
+    put("new.txt", "safe\n");
+    put("packages/core/changes/fixture.md", "- Add a safe public fixture.\n");
+    put("packages/core/docs/guide/how-to/build/fixture.md", "# Fixture\n\nSafe public guide.\n");
+    git("add", "-A");
+    expect(syncPublicOutputCatalog(root)).toEqual(["new.txt"]);
+    const rows = parsePublicPublicationCatalog(readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8")).publicPaths;
+    expect(rows.map(row => row.path)).toEqual(["config/openlup-policy-registry.json", PUBLICATION_CATALOG_PATH, "new.txt"]);
+    expect(rows.at(-1)?.class).toBe("public-output");
+    expect(rows.some(row => row.path.includes("fixture.md"))).toBe(false);
+    git("add", "-A");
+    put("private.txt", ["https://github.com/example", "app"].join("/")); git("add", "-A");
+    expect(() => syncPublicOutputCatalog(root)).toThrow(/private coordinate/);
+    put("private.txt", "Safe worktree content.\n");
+    const before = readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8");
+    expect(() => syncPublicOutputCatalog(root)).toThrow(/stage the current.*private.txt/);
+    expect(readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8")).toBe(before);
+    git("rm", "-fq", "private.txt");
+    const policyPath = "config/openlup-policy-registry.json";
+    const registry = (activePaths: string[]) => JSON.stringify({ schemaVersion: 1, activePaths, contracts: [] });
+    put("staged-policy.txt", "Safe text, active policy.\n");
+    put(policyPath, registry(["staged-policy.txt"])); git("add", "-A");
+    put(policyPath, registry([]));
+    expect(() => syncPublicOutputCatalog(root)).toThrow(/stage the current.*openlup-policy-registry/);
+    git("rm", "-fq", "staged-policy.txt");
+    put("unexpected.mjs", "#!/usr/bin/env node\nconsole.log('hello');\n"); git("add", "-A");
+    expect(() => syncPublicOutputCatalog(root)).toThrow(/unauthorized execution entrypoint/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 const WORKFLOW = ".github/workflows/published-tree-ci.yml";
 const workflow = readFileSync(join(ROOT, WORKFLOW), "utf8");
 const sourcePreviewWorkflow = readFileSync(join(ROOT, ".github/workflows/publish-source-preview.yml"), "utf8");
@@ -545,7 +587,7 @@ describe("complete public CI", () => {
     expect(workflowJob("test").split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
     expect(shard).toContain("    strategy:\n      fail-fast: false\n      max-parallel: 8\n      matrix:\n        shard: [1, 2, 3, 4, 5, 6, 7, 8]\n");
     expect(shard).not.toMatch(/include:|exclude:|continue-on-error|--(?:maxWorkers|pool|retry|testTimeout|hookTimeout|bail)/u);
-    expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
+    expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 25\n");
     expect(shard).toContain("          fetch-depth: 0\n");
     expect(shard).toContain("          cache: npm\n");
     expect(shard).toContain("uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c");
@@ -615,7 +657,7 @@ describe("complete public CI", () => {
   it("runs package proof, root shards and database diagnostics independently", () => {
     for (const name of ["install-packages", "test-prep", "pgtap"]) expect(workflowJob(name)).toContain("    needs: [reuse-gate]\n");
     expect(workflowJob("test-full-shard")).toContain("    needs: [reuse-gate, test-prep]\n");
-    for (const [name, timeoutMinutes] of [["install-packages", 12], ["install-browser", 8], ["test-prep", 10], ["test-full-shard", 20]] as const) {
+    for (const [name, timeoutMinutes] of [["install-packages", 12], ["install-browser", 8], ["test-prep", 10], ["test-full-shard", 25]] as const) {
       const job = workflowJob(name);
       expect(job).toContain(`    runs-on: ubuntu-latest\n    timeout-minutes: ${timeoutMinutes}\n`);
       expect(job).toContain("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n");

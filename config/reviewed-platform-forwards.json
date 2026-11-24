@@ -7227,6 +7227,1782 @@
             "sha256": "6e59aad23d4da8031cb4d5abb88a8c88544d00873feab42608306e848106639e"
           }
         ]
+      },
+      {
+        "row": "subscription-renewal-registration-units",
+        "path": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_register_renewal_purchase(uuid,jsonb)",
+            "beforeSha256": "dc4d85237e2d1cf9b04613467d9e43be9f96dbdde2114e7e58fa9ce9ba4931cf",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_register_renewal_purchase_with_shipping(uuid,jsonb)",
+            "beforeSha256": "cf4fadda3f1ac30c463b69fcc892a4d7ec8f726d461aacbf6f6f640d5f4b0008",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_renewal_registration__lock(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_register_renewal_purchase__validate(jsonb,public.commerce_orders,public.subscription_activations)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_register_renewal_purchase_with_shipping__validate(jsonb,public.commerce_orders,public.subscription_activations)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_renewal_registration__validate_lines(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_register_renewal_purchase_with_shipping__normalize(jsonb,public.subscription_activations)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_register_renewal_purchase__store(uuid,jsonb,public.subscription_activations)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_register_renewal_purchase_with_shipping__store(uuid,jsonb,public.subscription_activations)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "destination-typed-refusals",
+        "path": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_destination_v2_receipt_scoped_key(jsonb,text,text,text)",
+            "beforeSha256": "90bc1b6a7c5b311177b4cd2c41171c4e8755465978c9a8894bc86f38537408eb",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_receipt_read(jsonb,text,text,text)",
+            "beforeSha256": "891e4ea0a1c2b6154843cca0d554af22c694435caf1e8413e4e3d2ba113b3a04",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_receipt_lock(jsonb,text,text,text)",
+            "beforeSha256": "f10fefa4b4f92be6538791de60f00e4b11b8dd39977de39efaca49e11259041a",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_receipt_commit(jsonb,text,text,text,jsonb)",
+            "beforeSha256": "c64bb1859d9d9efba0325e4d93088aa96c6ba7f5a4f2d6d9343caee3410534ae",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz)",
+            "beforeSha256": "dc9147e8ec047e06c9434f461183f80745362b6f368679dba2c74c966ef28832",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_read_destination_v2(jsonb,text,uuid,jsonb)",
+            "beforeSha256": "7cc62f5d80b67b8019e8e8f961c3519b84bc1eb8543348c8a1724abe944c25cb",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_destination_v2_issuance_refusal(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_receipt_legacy(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_receipt_scoped_key_decision(jsonb,text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_receipt_read_decision(jsonb,text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_receipt_lock_decision(jsonb,text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_destination_v2_receipt_commit_decision(jsonb,text,text,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "subscription-activation-execute-grants",
+        "path": "db/platform/migrations/20261125260000_subscription_activation_execute_grants.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [
+          {
+            "signature": "public.subscription_activate_from_captured_payment(text,uuid,text)",
+            "revokePublic": true,
+            "grantTo": [
+              "service_role"
+            ],
+            "revokeFrom": []
+          },
+          {
+            "signature": "public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)",
+            "revokePublic": true,
+            "grantTo": [
+              "service_role"
+            ],
+            "revokeFrom": []
+          }
+        ],
+        "dataStatements": []
+      },
+      {
+        "row": "subscription-activation-units",
+        "path": "db/platform/migrations/20261125261000_subscription_activation_units.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_activate_from_captured_payment(text,uuid,text)",
+            "beforeSha256": "9495fd44c1c64d34706ec0a105d667c9a3db2d85b9433782460e1b71001876d0",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)",
+            "beforeSha256": "549bd5701142449bb97e5ec517a10f2909d4fe44400abb140dc15b1615ab740b",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)",
+            "beforeSha256": "b5e7804607aa537887f3c62ff4bee84370d9c250417a9d476c07d4de07c773b4",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)",
+            "beforeSha256": "ee1321f80654bcb7a3f8fa46ee47950127554406bca6b6c803e2c686b52f2e94",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_activation__check_payment(text,uuid,text)",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_activation__check_edit_window(integer)",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_activation_commit__write(public.subscription_activations,text,text,timestamptz,boolean)",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_activation_commit_with_edit_window__write(public.subscription_activations,text,text,timestamptz,boolean,integer)",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "path": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
+        "row": "privacy-required-contributors",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.identity_privacy_required_contributor_ids()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.identity_privacy_required_contributors (contributor_id) VALUES\n  ('communication-events'),\n  ('customer-billing'),\n  ('customer-preferences'),\n  ('customer-saved-addresses'),\n  ('destination-documents'),\n  ('destination-receipts'),\n  ('fulfillment-parcel-contacts'),\n  ('identity'),\n  ('subscriptions'),\n  ('tax-calculations')\nON CONFLICT (contributor_id) DO NOTHING;"
+        ]
+      },
+      {
+        "row": "function-search-path-pg-temp",
+        "path": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "settingsOnlyFunctions": [
+          {
+            "signature": "public.accounting_document_advance(text,uuid,text,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_assert_position_sum()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_delivery_claim(integer,integer,boolean,uuid,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_delivery_fail(uuid,integer,jsonb,integer,boolean,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_delivery_request(uuid,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_delivery_settle(uuid,integer,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_queue_claim(text[],integer,integer,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_queue_fail(uuid,uuid,text,text,integer,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_queue_succeed(uuid,uuid,jsonb)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_record_submission(uuid,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_request_correction(text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_request_from_paid_order(text,uuid,jsonb,bigint,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_request_reversal_from_order(text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_response(public.accounting_documents,text,boolean)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_document_write_positions(uuid,jsonb)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_emit_fulfillment_handed_over_notification()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_payout_assert_batch_totals()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_payout_batch_verdict(uuid)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.accounting_payout_record_item(text,text,text,text,text,text,bigint,bigint,bigint,uuid,uuid,timestamptz,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.admin_activate_bundle(uuid,text,text,text,text,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.admin_archive_bundle(uuid,text,text,text,text,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.admin_deactivate_bundle(uuid,text,text,text,text,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.admin_restore_bundle(uuid,text,text,text,text,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.admin_set_bundle_composition(uuid,text,jsonb,text,text,text,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.admin_set_bundle_target_price(uuid,text,text,integer,text,text,text,text,text,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.admin_upsert_bundle_draft(uuid,text,text,text,jsonb,jsonb,text,text,text,text,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_acceptance_record_admit_v2()",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_attach_edit_acceptance(uuid,jsonb)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_attach_order_acceptance(uuid,jsonb,text,jsonb)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_bind_template_v2(uuid,jsonb,jsonb)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_bound_obligations_v2(uuid)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_bundle_composition_digest(uuid)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_clear_template_acceptance(uuid)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_customer_edit_acceptance_assert(uuid)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_definition_install(text,integer,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_draft_get(uuid,integer,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_draft_list(uuid,integer)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_draft_record(uuid,integer)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_draft_reject_mutation()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_edit_acceptance_final(uuid)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_edit_acceptance_trigger()",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_edit_evidence_v2(public.subscription_events)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_full_graduation_lines_v2(jsonb,jsonb,uuid,boolean)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_net_content_backfill_batch(integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_order_acceptance_final(uuid)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_order_basket_v2(uuid,jsonb,boolean)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_order_evidence_v2(uuid,jsonb,jsonb,boolean)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_order_receipt_acceptance_trigger()",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_product_document_revisions_reject_mutation()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_admit()",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_assert_candidate(public.catalog_publication_decisions,public.catalog_publications,jsonb)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_assert_head(uuid,boolean)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_assert_receipt(uuid,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_attributes_valid(jsonb)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_claim_valid(jsonb)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_content_problem(jsonb)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_head_ref(uuid,uuid)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_live_matches(uuid,jsonb,jsonb)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_max_depth()",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_pointer_fence()",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_presentation_valid(jsonb)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_quantity_valid(jsonb)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_receipt_input(text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_sku_admit()",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_text_valid(jsonb,integer,boolean)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_quoted_edit_evidence_v2(jsonb,boolean)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_retained_basket_codes_v2(jsonb)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_type_version_immutable()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.channel_control_actor(uuid,boolean)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.channel_control_keys(jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.channel_control_ref(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.channel_control_scope(uuid)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.channel_ingest_advance(uuid,text,uuid,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.channel_ingest_ledger_payload(public.channel_order_ingests,text,boolean,boolean)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.channel_ingest_quarantine(uuid,uuid,text,text,text,text,jsonb)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.channel_purchase_guard()",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.channel_purchase_json(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.channel_purchase_packet(text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.channel_retained_bundle_guard()",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.channel_retained_fact_guard()",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.channel_retained_listing_guard()",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.commerce_acknowledge_subscription_renewal_attempt(uuid,text,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_checkout_recovery_try_timestamptz(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_checkout_reminder_delivery_authorize(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_checkout_resume_read(text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_checkout_resume_upsert(text,text,text,jsonb,timestamptz,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_compensate_abandoned_checkout(text,uuid,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_emit_return_outbox()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_enqueue_abandoned_cart_reminders(integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_enqueue_checkout_recovery_reminders(integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_apply_command_write_outcome(uuid,uuid,bigint,bigint,text,text,text,timestamptz,text,uuid,text,text,timestamptz,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_claim_provider_commands(text,text,integer,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_confirm_provider_command(uuid,uuid,bigint,bigint,text,uuid,text,text,timestamptz,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_enqueue_provider_command(uuid,text,text,text,text,text,text,text,text,text,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_mark_command_submitting(uuid,uuid,bigint,bigint,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_provider_command_fence(uuid,uuid,bigint,bigint)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_provider_command_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_provider_command_result(public.commerce_fulfillment_provider_commands)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_provider_command_transition_allowed(text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_reconcile_provider_command(uuid,bigint,text,text,text,timestamptz,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_recover_expired_provider_commands(integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_release_or_cancel_command(uuid,uuid,bigint,bigint,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_resolve_uncertain_command(uuid,bigint,text,text,text,text,text,timestamptz,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_offer_continuation_reentry(text,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_offer_readiness(text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_open_settlement_intent(text,uuid,text,bigint,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_adjustments_append_only()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_assert_line_sum()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_emit_cancelled_notification()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_emit_paid_notification()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_emit_refunded_notification()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_money_summary(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_outbox_compact_terminal(integer,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_promotion_active_definitions()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_promotion_claim_money_freeze()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_promotion_claim_readback(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_promotion_definition_fingerprint()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_promotion_device_first_order_redeemed(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_promotion_paid_order_counts(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_promotion_redemption_counts(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_record_offer_continuation(text,text,text,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_record_settlement(text,uuid,text,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_record_subscription_renewal_outcome(uuid,text,text,text,text,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_return_approve(text,uuid,uuid,text,bigint,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_return_reject(text,uuid,uuid,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_return_request_create(text,uuid,jsonb,text,text,uuid)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_settlement_emit_settled_notification()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_settlement_response(public.commerce_settlement_intents,uuid,text,boolean)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_sweep_stale_promotion_claims(timestamptz,integer,integer,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_transition_order_promotion_claims()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_delivery_health(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_delivery_readiness(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_list_delivery_controls(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_list_delivery_events(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_list_delivery_operations(uuid,integer,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_list_delivery_templates(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_notification_control_enabled(text[])",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_operator_is_active(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_prepare_delivery_command(uuid,text,text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_recipient_consent_state(text,text[])",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_record_delivery_accepted(uuid,text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_record_delivery_failed(uuid,text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_record_recipient_consent(text,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_refuse_delivery_event_mutation()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_require_active_operator(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_set_delivery_control(uuid,text,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.communications_set_delivery_template(uuid,text,text,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_checkout_recovery_order(uuid)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_checkout_recovery_settle(text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_checkout_recovery_token_inspect(text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_diagnostic_ingest_v1(text,text,uuid,uuid,uuid,uuid,text,text,text,integer,text,text,text,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_diagnostic_ingest_v2(text,text,uuid,uuid,uuid,uuid,text,text,text,integer,text,text,text,text,integer,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_diagnostic_overview_v2(uuid,timestamptz,timestamptz,integer,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_diagnostic_prune_v1(integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_diagnostic_search_v1(uuid,timestamptz,timestamptz,uuid,text,text,text,integer,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_diagnostic_search_v2(uuid,timestamptz,timestamptz,uuid,text,text,text,integer,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_diagnostic_segment_v1(uuid,uuid,integer,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_diagnostic_segment_v2(uuid,uuid,integer,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_identity_challenge_issue(text,text,timestamptz,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_identity_challenge_redeem(text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_subject_capture_lifecycle()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_absorb_lead_v1(uuid,uuid,uuid,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_apply_subscription_action_v1(uuid,uuid,text,jsonb,integer,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_detail(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_issue_recovery(uuid,uuid,uuid,text,text,text,timestamptz,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_journey(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_refuse_ledger_mutation()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_search(uuid,text,integer,integer,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_search_digits(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_search_normalize(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_support_summary(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_issue_recovery_token(uuid,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_open_case(text,uuid,uuid,uuid,integer,timestamptz,text,text,timestamptz,bigint,text,text,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_pause_reminder_dispatch(integer,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_queue_notice(uuid,text,text,integer,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_recipient(uuid)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_reconcile_delivery(integer,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_record_recovery(uuid,timestamptz,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_renewal_reminder_enqueue(integer,integer,integer,integer,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_renewal_reminder_scan(integer,integer,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_scan_at_risk(integer,integer,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.dunning_lifecycle_scan_recovered(integer,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_ack_paid_handoff(text,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_cancel_shipment(text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_create_shipment(text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_dispatch_begin(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_dispatch_finish(uuid,jsonb,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_dispatch_outcome(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_dispatch_read(public.fulfillment_dispatch_refs,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_emit_shipment_exception_notification()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_emit_shipment_reference_notice()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_emit_shipment_status_notice()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_ensure_paid_handoff(text,uuid,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_expire_subscription_renewals(timestamptz,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_mark_observation_processed(text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_open_shipment(text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_order_mode_proven(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_parcel_reservations_covered(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_raise_shipment_exception(text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_record_alignment_arrival(text,uuid,timestamptz,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_record_evidence(text,uuid,text,text,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_record_label_atomic(text,uuid,text,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_record_observation(text,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_record_provider_attempt(text,uuid,jsonb,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_record_status_evidence(text,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_record_stock_current(text,text,text,text,integer,integer,integer,text,timestamptz,timestamptz,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_record_stock_evidence(text,text,text,text,text,text,integer,integer)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_record_stock_movement(text,text,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_record_stock_snapshot(text,text,text,text,integer,integer,integer,integer,integer,integer,integer,text,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_release_subscription_renewal(uuid,uuid,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_resolve_stock_evidence(text,text,text[],text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_route_order(text,uuid,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_shipment_response(public.fulfillment_shipments,text,boolean)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_supersede_no_effect_commands(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.inventory_available_to_promise(text,text,timestamptz,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.inventory_channel_exposure_quantity(text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.inventory_new_purchase_stock_preview(text,jsonb,timestamptz,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.inventory_new_purchase_stock_read(text,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.inventory_renewal_protection_validate(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_capture_duty(text,text,uuid,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_claim_deliveries(integer,integer,boolean,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_claim_duties(integer,integer,text,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_claim_with_seller(integer,integer,text,jsonb,text,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_duty_readback(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_fail_duty(uuid,uuid,integer,text,jsonb,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_finish_correction(uuid,uuid,integer,text,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_finish_facts(uuid,uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_finish_issue(uuid,uuid,integer,text,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_install_facts(uuid,jsonb,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_preflight_duty(uuid,uuid,integer,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_prepare_facts(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_record_observation(text,uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_request_reversal(text,uuid,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_request_with_seller_policy(text,text,uuid,uuid,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_settle_delivery(uuid,uuid,integer,text,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.invoicing_sweep_duties(integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.oms_cancel_unpaid_order(text,uuid,text,uuid,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.oms_close_holds_on_closed_order()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.oms_control_resolve_operator(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.oms_create_hold(text,uuid,text,text,uuid,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.oms_create_system_hold(text,uuid,text,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.oms_hold_response(public.commerce_order_holds,uuid,boolean)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.oms_mark_refunded(text,uuid,text,uuid,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.oms_release_hold(text,uuid,text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_abort_media_upload(text,text,bigint,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_admin_complete_media_delete(text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_admin_list(text,text,integer,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_admin_prepare_media_delete(text,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_admin_read(text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_admin_read_media(text,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_admit_media_upload(text,text,integer,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_claim_media_reconcile(integer,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_complete_media_reconcile(text,text,text,integer,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_confirm_media(text,text,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_create_media_intent(text,text,integer,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_json(public.commerce_order_reviews,boolean)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_lock_media_finalize(text,text,bigint,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_media_json(public.commerce_order_review_media)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_moderate(text,text,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_read(text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_read_media(text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_record_media_stored(text,text,bigint,text,integer,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_refuse_audit_mutation()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_resolve_order(text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_revoke_access(text,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.order_review_submit(text,integer,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.outbox_claim_batch(text[],text[],integer,integer,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.outbox_mark_failed(uuid,text,text,text,integer,integer,integer,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.outbox_mark_processed(uuid,text,jsonb)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.outbox_release_unprocessed(uuid[],text[],integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.outbox_requeue_discarded(uuid[],text,integer,text,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_truth_ingest_event(text,text,text,uuid,text,bigint,text,timestamptz,text,text,jsonb,text,text,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_truth_readback(uuid,boolean)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_truth_record_reconciliation(uuid,text,text,text,text,timestamptz,text,text,jsonb,text,text,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_truth_sweep_open_events(timestamptz,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_claim_job_run(text,text,integer,jsonb)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_claim_job_run_v3(text,text,text,integer,jsonb)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_control_list_alerts(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_control_list_controls(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_control_list_jobs(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_control_operator_is_active(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_control_record_heartbeat(uuid,text,text,text,integer,text,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_control_require_operator(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_control_set_control(uuid,text,text,text,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_finish_job_run_v2(text,uuid,text,integer,integer,text,text,jsonb)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_finish_job_run_v3(text,uuid,text,integer,integer,text,text,jsonb)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_human_membership_is_active(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.platform_human_membership_is_administrator(uuid)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.platform_human_memberships_guard()",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.platform_revoke_human_membership(uuid,uuid,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.risk_assess_paid_order(text,uuid,uuid,uuid,text,jsonb,jsonb,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.risk_check_exact_blocklist(jsonb)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.risk_resolve_manual_review_case(text,uuid,text,uuid,text,jsonb)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_profile_read(text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_profile_upsert(text,text,text,integer,jsonb,text[],text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_retention_claim_intent(text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_retention_contract_refusal(text,text,text,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_retention_create_intent(text,text,uuid,text,text,text,text,integer,text,text,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_retention_eligibility_refusal(text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_retention_idempotency_refusal(text,text,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_retention_intent_result(uuid,boolean)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_retention_list_pending(text,integer,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_retention_plan_due(text,integer,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_retention_read_intent(uuid)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_retention_record_delivery(text,text,text,text,integer,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscriber_retention_source_refusal(text,text,text,text,uuid)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_activate_from_captured_payment(text,uuid,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_activation__check_edit_window(integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_activation__check_payment(text,uuid,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_activation_answer(public.subscription_activations,boolean)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_activation_commit__write(public.subscription_activations,text,text,timestamptz,boolean)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_activation_commit_with_edit_window__write(public.subscription_activations,text,text,timestamptz,boolean,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_auto_resume_due(integer,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_bundle_edit_fingerprint(uuid,jsonb,jsonb,jsonb,integer,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_catalog_basis_transition(uuid,integer)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.subscription_catalog_purchase_handoff(uuid,integer,jsonb)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_declare_provisional_activation(text,uuid,integer,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_delivery_alignment_admit_renewal(uuid,timestamptz,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_delivery_alignment_confirm_replacement(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_delivery_alignment_get_mode()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_delivery_alignment_guard_cycle_insert()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_delivery_alignment_on_delivery()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_delivery_alignment_open_exception_case()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_delivery_alignment_record_allowed_receipt(uuid,timestamptz,timestamptz,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_delivery_alignment_resolve_case(uuid,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_delivery_alignment_set_mode(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_delivery_alignment_upsert_case(uuid,uuid,uuid,uuid,integer,text,text,timestamptz,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_dunning_claim_batch(integer,integer,integer)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_dunning_mark_result(uuid,uuid,text,text,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_dunning_mark_sent(uuid,uuid,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_lifecycle_assert_unlocked_cycle(uuid,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_list_due_renewals(timestamptz,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_paid_activation_gap_open(uuid)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_pause_close_recovery(uuid,text,uuid,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_price_policy_revisions_guard_insert()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_price_policy_revisions_guard_mutation()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_price_policy_revisions_prevent_overlap()",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_read_renewal(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_reconcile_paid_activation_gaps(integer,timestamptz)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_refuse_renewal_preflight(uuid,uuid,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_renewal_identity(uuid,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_renewal_operation_response(public.subscription_renewal_operations,boolean,boolean,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_retry_apply_failure(uuid,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_retry_apply_failure(uuid,text,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_retry_authorize_recovery(uuid,uuid,text,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_retry_candidates(integer,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_retry_note_row_outcome(uuid,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_retry_open_case(uuid,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_retry_prepare(uuid,text,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_retry_read(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_retry_record_recovery(uuid,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_retry_schedule_recovery(uuid,text,uuid,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_bind_notice(uuid,uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_candidates(integer,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_frozen(uuid,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_mark_resumed(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_normal_due(integer,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_projection(public.subscription_stock_wait_cases)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_read(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_stock_wait_summary(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_terminalize_unpaid_artifacts(uuid,timestamptz,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_calculation_guard_v1()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_coverage_revision_immutable()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.transactional_delivery_read_receipt(text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.transactional_delivery_record_accepted(text,text,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.transactional_delivery_record_failed(text,text,text)",
+            "searchPath": "public, pg_catalog, pg_temp"
+          }
+        ],
+        "dataStatements": []
       }
     ]
   },
@@ -10790,6 +12566,190 @@
           "afterSha256": "abae28bc3f7e282657ae32f8c9f6f903206da14f82dc7a7f7c34bbf4ebbb345e"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261125200000_subscription_renewal_registration_units.sql",
+      "sha256": "43bdaa0c159ff840783688062494f8559e51eb6bdae50f168291d6accc568e94",
+      "functions": [
+        {
+          "signature": "public.subscription_register_renewal_purchase(uuid,jsonb)",
+          "beforeSha256": "dc4d85237e2d1cf9b04613467d9e43be9f96dbdde2114e7e58fa9ce9ba4931cf",
+          "afterSha256": "913c341b175bdc5ece7706e03f1c332b3ee6eb6d0f6aec4b5455a2dbb372ab96"
+        },
+        {
+          "signature": "public.subscription_register_renewal_purchase_with_shipping(uuid,jsonb)",
+          "beforeSha256": "cf4fadda3f1ac30c463b69fcc892a4d7ec8f726d461aacbf6f6f640d5f4b0008",
+          "afterSha256": "db366a12627a2c0ba7c593dd90795f057804b504670ba149084f887ad8c11111"
+        },
+        {
+          "signature": "public.subscription_renewal_registration__lock(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "d584c9f1209a14def4199b30d13774baaa512894279746f7825c61cc5a37a7dd"
+        },
+        {
+          "signature": "public.subscription_register_renewal_purchase__validate(jsonb,public.commerce_orders,public.subscription_activations)",
+          "beforeSha256": null,
+          "afterSha256": "7622a2a5dd5415832e07a1022cad8a2853748ff5a6642a98e2e88472f07ff475"
+        },
+        {
+          "signature": "public.subscription_register_renewal_purchase_with_shipping__validate(jsonb,public.commerce_orders,public.subscription_activations)",
+          "beforeSha256": null,
+          "afterSha256": "4334ff7090f136f7c18786fd57a97d4094a6e5a73aeaba9bf752422396190eaf"
+        },
+        {
+          "signature": "public.subscription_renewal_registration__validate_lines(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "31d561368dee851b3a6a63b99e73f2fa89d74fe8f08580a6196531c6040b8fd9"
+        },
+        {
+          "signature": "public.subscription_register_renewal_purchase_with_shipping__normalize(jsonb,public.subscription_activations)",
+          "beforeSha256": null,
+          "afterSha256": "e9a6205cfe12ffa1b0b0c409f957c30966c5c2ce77b6b5440c4b0ca4614879dd"
+        },
+        {
+          "signature": "public.subscription_register_renewal_purchase__store(uuid,jsonb,public.subscription_activations)",
+          "beforeSha256": null,
+          "afterSha256": "cc47f246ded01e83e13dc3a1f35096a94ad77776bdcf635250f701b397f92412"
+        },
+        {
+          "signature": "public.subscription_register_renewal_purchase_with_shipping__store(uuid,jsonb,public.subscription_activations)",
+          "beforeSha256": null,
+          "afterSha256": "107eeaf44225aa17efb5db53bc67dd8ddf1097bf65d1f51e7cf7760a463ef99a"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125220000_commerce_destination_v2_typed_refusals.sql",
+      "sha256": "dc6987f10ac2f5cdd7ca0a601028612aa640c4bc84c56222a1db3b19d4cf43c3",
+      "functions": [
+        {
+          "signature": "public.commerce_destination_v2_receipt_scoped_key(jsonb,text,text,text)",
+          "beforeSha256": "90bc1b6a7c5b311177b4cd2c41171c4e8755465978c9a8894bc86f38537408eb",
+          "afterSha256": "4c13ba1a3f1dcb515e4e0db6e0fd7b8b27bb4149ab5d0ae56bd51661a71b7860"
+        },
+        {
+          "signature": "public.commerce_destination_v2_receipt_read(jsonb,text,text,text)",
+          "beforeSha256": "891e4ea0a1c2b6154843cca0d554af22c694435caf1e8413e4e3d2ba113b3a04",
+          "afterSha256": "056ef07b4714d82bce939cdd353e6af8d59a3813a2faffd7eef8f0cf8c0d986e"
+        },
+        {
+          "signature": "public.commerce_destination_v2_receipt_lock(jsonb,text,text,text)",
+          "beforeSha256": "f10fefa4b4f92be6538791de60f00e4b11b8dd39977de39efaca49e11259041a",
+          "afterSha256": "e4255518322f4773472d5c9f5d55e0378acbdf770a4fdc0529cad16455f339bb"
+        },
+        {
+          "signature": "public.commerce_destination_v2_receipt_commit(jsonb,text,text,text,jsonb)",
+          "beforeSha256": "c64bb1859d9d9efba0325e4d93088aa96c6ba7f5a4f2d6d9343caee3410534ae",
+          "afterSha256": "fb1cb647d494b90c4633696b0d5863a525848d82e8aef593e1f7e3c57c0c90f6"
+        },
+        {
+          "signature": "public.commerce_snapshot_destination_v2(jsonb,jsonb,timestamptz)",
+          "beforeSha256": "dc9147e8ec047e06c9434f461183f80745362b6f368679dba2c74c966ef28832",
+          "afterSha256": "d28b61ede6533195bf2399ea3b015a84033d982cb18b6be328edadf138221362"
+        },
+        {
+          "signature": "public.commerce_read_destination_v2(jsonb,text,uuid,jsonb)",
+          "beforeSha256": "7cc62f5d80b67b8019e8e8f961c3519b84bc1eb8543348c8a1724abe944c25cb",
+          "afterSha256": "7cc9214ea7f37f99e73d8f868787edd2419f6a47f63bc7871dfd34a838ec7362"
+        },
+        {
+          "signature": "public.commerce_destination_v2_issuance_refusal(text)",
+          "beforeSha256": null,
+          "afterSha256": "45042cea3808c9f724bb0dfdc1ef5ffd378f1b927eb7f41a8c4049957dbb33a3"
+        },
+        {
+          "signature": "public.commerce_destination_v2_receipt_legacy(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "734d536a5f2488f5f0f2b13775667449242cc2c84c5d15d939ab3b9f0c819dba"
+        },
+        {
+          "signature": "public.commerce_destination_v2_receipt_scoped_key_decision(jsonb,text,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "5e6cd33f3b3e84b65aa25c31782ad21cb77d6415d67b747864705298586f9f92"
+        },
+        {
+          "signature": "public.commerce_destination_v2_receipt_read_decision(jsonb,text,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "07fbbdb5db5eb662c45e1634868cf2a46a4f4aad5bd8616d5624b3ed87980914"
+        },
+        {
+          "signature": "public.commerce_destination_v2_receipt_lock_decision(jsonb,text,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "2bb9e94bcaf74589f4d4e6ec694df8f7b30f6410b6dd77a1f7bd8e6bf1a1d3fb"
+        },
+        {
+          "signature": "public.commerce_destination_v2_receipt_commit_decision(jsonb,text,text,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "d7a6e5dcf124181fd477445804352cc7af0acdeab6374066e2fce2315daac9ce"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125260000_subscription_activation_execute_grants.sql",
+      "sha256": "3a5cceabc95b5727ccae5e5aa1f7b3ee38f28511824bc7a76b4e9b639bb8d065",
+      "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261125261000_subscription_activation_units.sql",
+      "sha256": "c9c30da72445e0fff5f6d00f8bb1de8d51b11f4ee443a8a297b8ac35fac5726d",
+      "functions": [
+        {
+          "signature": "public.subscription_activate_from_captured_payment(text,uuid,text)",
+          "beforeSha256": "9495fd44c1c64d34706ec0a105d667c9a3db2d85b9433782460e1b71001876d0",
+          "afterSha256": "569f63c9c10213ab8b1a0e1e080df4c57821583deeb92aee437f0b3b809bf36f"
+        },
+        {
+          "signature": "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)",
+          "beforeSha256": "549bd5701142449bb97e5ec517a10f2909d4fe44400abb140dc15b1615ab740b",
+          "afterSha256": "2126a522afdf2f592a2847c6e020cf8e2da145f5d70d0a74cd9b1d0e5f1784e7"
+        },
+        {
+          "signature": "public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)",
+          "beforeSha256": "b5e7804607aa537887f3c62ff4bee84370d9c250417a9d476c07d4de07c773b4",
+          "afterSha256": "e1cbdef1038472b48d9776d43bf5f0fdede940fe08c434a84f879a188b86a9ef"
+        },
+        {
+          "signature": "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)",
+          "beforeSha256": "ee1321f80654bcb7a3f8fa46ee47950127554406bca6b6c803e2c686b52f2e94",
+          "afterSha256": "7edd7ab35849597fdb9e954bafdbf8bc48ac27126ecad4573a7fab1bd2954791"
+        },
+        {
+          "signature": "public.subscription_activation__check_payment(text,uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "120a6068f01067c7e76179d1a01f70b05d3bc077783cc8bbf49fac7cfbbd2dfd"
+        },
+        {
+          "signature": "public.subscription_activation__check_edit_window(integer)",
+          "beforeSha256": null,
+          "afterSha256": "143c4e655ee6dddca93a40b37d621bf25d6f2394eccf0b390fef1630688d53b9"
+        },
+        {
+          "signature": "public.subscription_activation_commit__write(public.subscription_activations,text,text,timestamptz,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "9482252cf052c4cd466c1493f34cfa55926781412b3caeed8842179d3228f38c"
+        },
+        {
+          "signature": "public.subscription_activation_commit_with_edit_window__write(public.subscription_activations,text,text,timestamptz,boolean,integer)",
+          "beforeSha256": null,
+          "afterSha256": "a9a956007070ea203d6078305e8e96d015d42c488e2c91e11ef6cf5bb6646690"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
+      "sha256": "d4951f9ac41ea7d560bf171b03084413d9d755d08a3024139ba663949bfbb23a",
+      "functions": [
+        {
+          "signature": "public.identity_privacy_required_contributor_ids()",
+          "beforeSha256": null,
+          "afterSha256": "97d90fab11f4c1b885975c9c4c1215bf727a35c835e52c1a134f706388f302b4"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
+      "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6",
+      "functions": []
     }
   ],
   "managedExactForwards": [

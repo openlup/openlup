@@ -57,7 +57,7 @@ it("preserves all original ACLs and invoker headers without adding a runtime hel
   for (const [name, args] of pairs) {
     expect((await runtime.query("SELECT has_function_privilege(current_user,$1,'EXECUTE') AS allowed", [`public.${name}(${args})`])).rows).toEqual([{ allowed: true }]);
     expect((await owner.query("SELECT prosecdef,proconfig FROM pg_proc WHERE oid=$1::regprocedure", [`public.${name}(${args})`])).rows)
-      .toEqual([{ prosecdef: false, proconfig: ["search_path=pg_catalog"] }]);
+      .toEqual([{ prosecdef: false, proconfig: ["search_path=pg_catalog, pg_temp"] }]);
     expect((await owner.query("SELECT to_regprocedure($1) AS wrapper", [`public.${name}_gated(${args})`])).rows).toEqual([{ wrapper: null }]);
   }
 });

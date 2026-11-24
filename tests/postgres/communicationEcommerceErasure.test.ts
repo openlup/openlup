@@ -3,11 +3,9 @@ import type { PoolClient } from 'pg';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { currencyExponent } from '@openlup/platform/market-packs';
 import type { PgQueryExecutor } from '@openlup/platform/data';
-import { createEcommerceEventPrivacyContributor, createPostgresEcommerceEventProjection } from '@openlup/platform/communications';
-import { createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createIdentityPersonalDataContributor,
-  createPersonalDataContributorRegistry, createFulfillmentParcelContactPrivacyContributor, createCustomerBillingPrivacyContributor,
-  createTaxCalculationPrivacyContributor, erasePersonalData } from '@openlup/platform/identity';
-import { createSubscriptionsPrivacyContributor } from '../../server/runtime/auth/subscriptionsPrivacyContributor.js';
+import { createPostgresEcommerceEventProjection } from '@openlup/platform/communications';
+import { createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createPersonalDataContributorRegistry, erasePersonalData } from '@openlup/platform/identity';
+import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import { ecommercePaid, ecommerceAt } from './communicationEcommerceFixture.js';
 import { lifecycleInstallation, type LifecycleInstallation } from './subscriptionLifecycleClosureFixture.js';
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
@@ -36,13 +34,7 @@ it('erases through the qualified runtime before a waiting projection without a d
     const [db] = args, subject = await originalStore.resolve(...args);
     erasureDb = db; resolveEntered(); await resume; return subject;
   } };
-  const retainedContactFields = Object.fromEntries(['lifecycle_stage', 'acquisition_source'].map(field => [field,
-    { owner: 'clients', resource: `clients.${field}`, disposition: 'retain' as const, reasonCode: 'CONTACT_LIFECYCLE_RETENTION', remote: false }]));
-  const registry = createPersonalDataContributorRegistry([
-    createIdentityPersonalDataContributor(store, { retainedContactFields }, randomUUID), createSubscriptionsPrivacyContributor(),
-    createFulfillmentParcelContactPrivacyContributor(), createCustomerBillingPrivacyContributor(), createEcommerceEventPrivacyContributor(),
-    createTaxCalculationPrivacyContributor(),
-  ], { requiredContributorIds: ['identity', 'subscriptions', 'fulfillment-parcel-contacts', 'customer-billing', 'communication-events', 'tax-calculations'] });
+  const registry = createPersonalDataContributorRegistry(nativePrivacyContributors(store), { requiredContributorIds: ['tax-calculations'] });
   const withTransaction = async <T>(work: (db: PoolClient) => Promise<T>) => {
     try { await projectionDb.query('BEGIN'); const result = await work(projectionDb); await projectionDb.query('COMMIT'); return result; }
     catch (error) { await projectionDb.query('ROLLBACK'); throw error; }

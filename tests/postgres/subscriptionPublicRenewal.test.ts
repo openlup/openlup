@@ -1,6 +1,6 @@
 import { createPostgresCommerceOmsPort } from "@openlup/platform/commerce/server/postgres";
 import { createPostgresRenewalSettlementPort as mainSettlement } from "../../server/adapters/postgres/commerce/renewalSettlement.js";
-import { connectedNativeStoreTables } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { connectedNativeStoreTables, readPrivacyDeclarationCensus, requiredPrivacyDeclarationTable } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { randomUUID } from "node:crypto";
 import { beforeEach, expect, it, vi } from "vitest";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
@@ -459,7 +459,7 @@ it("captures populated retry, token, destination and draft rows, restores cleanl
   const profile = new Set<string>(connectedNativeStoreTables), outside: string[] = [];
   const relations = (await admin.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
   for (const { tablename } of relations) {
-    if (profile.has(tablename) || tablename === "platform_schema_migrations") continue;
+    if (profile.has(tablename) || tablename === "platform_schema_migrations" || tablename === requiredPrivacyDeclarationTable) continue;
     const identifier = String(tablename).replaceAll('"', '""');
     if ((await admin.query(`SELECT 1 FROM public."${identifier}" LIMIT 1`)).rows.length) outside.push(tablename);
   }
@@ -473,6 +473,7 @@ it("captures populated retry, token, destination and draft rows, restores cleanl
   const duty = await api.activateNativePurchaseWithRenewal(fault, { ...pendingPurchase, facts });
   expect(duty.renewalAttachment).toBe("pending");
   const before = await allPublicRows(admin), packet = await captureStore(admin, "public-renewal-source");
+  expect(packet.requiredPrivacyContributorIds).toEqual(await readPrivacyDeclarationCensus(admin));
   expect(await allPublicRows(admin)).toEqual(before);
   for (const table of [...tables, "commerce_destinations", "commerce_destination_bindings", "commerce_order_draft_receipts"]) {
     const index = packet.owned.findIndex(relation => relation.table === table), relation = packet.owned[index]!;
@@ -723,11 +724,15 @@ it("preserves exact frozen recovery JSON and keeps changed bindings refused", as
   } finally { await db.query("ROLLBACK"); db.release(); }
   expect((await runtime.query("SELECT count(*)::integer AS n FROM public.subscription_stock_wait_cases WHERE subscription_id=$1", [f.subscriptionId])).rows).toEqual([{ n: 1 }]);
   const before = await allPublicRows(admin);
+  // Await rollback before the next probe can try the transaction advisory lock.
+  const admitWithRecovery = (recovery: typeof frozen.binding) => transaction(pinned =>
+    api.createPostgresStockWaitStore({ executor: pinned, codec: d.codec, withTransaction: transaction, workerId: "uuid-recovery" })
+      .admit({ ...input, recovery }));
   for (const caseId of [randomUUID(), "invalid-uuid"]) {
-    await expect(store.admit({ ...input, recovery: { ...frozen.binding, caseId } }))
+    await expect(admitWithRecovery({ ...frozen.binding, caseId }))
       .rejects.toMatchObject({ code: "23505", message: "stock_wait_frozen_binding_changed" });
   }
-  await expect(store.admit({ ...input, recovery: { ...frozen.binding, engineIdempotencyKey: frozen.binding.engineIdempotencyKey + ":changed" } }))
+  await expect(admitWithRecovery({ ...frozen.binding, engineIdempotencyKey: frozen.binding.engineIdempotencyKey + ":changed" }))
     .rejects.toMatchObject({ code: "23505", message: "stock_wait_frozen_binding_changed" });
   expect(await allPublicRows(admin)).toEqual(before);
   expect(d.execute).not.toHaveBeenCalled();

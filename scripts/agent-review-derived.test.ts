@@ -8,13 +8,14 @@ import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { runLandingGenerators, syncSqlReference } from './agent-review-generators.mjs';
-import { assertAppendOnlyLandingSlots, carrierLocale, isInventoryInputPath, landingMerge } from './agent-review-landing.mjs';
+import { applyMigrationReslot, assertAppendOnlyLandingSlots, assertNoAuthoredSlotReferences, carrierLocale, isInventoryInputPath, landingMerge, landingSlotPlan, nextFreeMigrationSlot } from './agent-review-landing.mjs';
 import { deltaFloor, prepareCandidate, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, validateEconomySession, proveReviewIntegration, git as sourceGit } from './agent-review-session.mjs';
 import { fixtureNpmCli, linkFixtureInstallation, localFixtureEnvironment } from './fixtures/landing-test-environment.ts';
 import { renderDocumentationSourceMap } from './documentation-navigation.ts';
 import { readDocumentationState } from './documentation-routing.ts';
 import { checkPlatformMigrationProjection } from './packages/platform-migration-projection.ts';
+import { evaluatePlatformMigrationManifestMetadata } from './platform-migration-manifest.ts';
 
 const source = process.cwd();
 const npmCli = fixtureNpmCli();
@@ -636,7 +637,22 @@ it('keeps a package command that main added after the reviewed head forked', () 
   const names = (revision: string) => JSON.parse(git('show', `${revision}:${CATALOGUE}`)).packageCommands.map(({ name }) => name);
   expect(names(reviewed)).not.toContain('fixture:landing');
   expect(names(main)).toContain('fixture:landing');
-  expect(git('show', `${merged}:${CATALOGUE}`)).toBe(git('show', `${main}:${CATALOGUE}`));
+  const landed = JSON.parse(git('show', `${merged}:${CATALOGUE}`));
+  const upstream = JSON.parse(git('show', `${main}:${CATALOGUE}`));
+  expect(landed.packageCommands).toEqual(upstream.packageCommands);
+  expect(landed.publicPaths.map(row => row.path)).toContain('packages/platform/sql/20990101010000_landing_fixture.sql');
+  expect(landed.publicPaths.map(row => row.path)).toContain('packages/platform/sql/20990101020000_landing_fixture.sql');
+});
+it('regenerates stale package command metadata when the trusted owner is unchanged', () => {
+  try {
+    checkout(reviewed);
+    const catalog = JSON.parse(read(CATALOGUE));
+    const expected = catalog.packageCommands;
+    catalog.packageCommands = [];
+    write(CATALOGUE, json(catalog));
+    runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
+    expect(JSON.parse(read(CATALOGUE)).packageCommands).toEqual(expected);
+  } finally { restoreDerivedFixture(); }
 });
 it.each(['user.name', 'user.email'])('refuses landing before merging without configured %s', async key => {
   git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
@@ -889,6 +905,222 @@ it('refuses inverted or duplicate migration slots before starting merge or Docke
     setMain(main);
   }
 }, 60_000);
+
+it('plans shared migration slots across rails and UTC rollover', () => {
+  expect(nextFreeMigrationSlot('20261231235900')).toBe('20270101000000');
+  expect(nextFreeMigrationSlot('20261231235942')).toBe('20270101000042');
+  expect(landingSlotPlan(['db/platform/migrations/20270101000000_pr.sql'], [
+    'supabase/migrations/qa_20270101010000_main.sql',
+  ])).toMatchObject({ maxMainSlot: '20270101010000', nextFreeSlot: '20270101010100',
+    changes: [{ path: 'db/platform/migrations/20270101000000_pr.sql', target: 'db/platform/migrations/20270101010100_pr.sql' }] });
+  expect(landingSlotPlan([
+    'db/platform/migrations/20270101000000_old.sql',
+    'db/platform/migrations/20270101010100_new.sql',
+  ], ['supabase/migrations/20270101010000_main.sql'])).toMatchObject({
+    nextFreeSlot: '20270101010200',
+    changes: [{ target: 'db/platform/migrations/20270101010200_old.sql' }],
+  });
+});
+
+it('refuses authored migration filenames before re-slot changes the tree', async () => {
+  try {
+    checkout(base);
+    append('20990101010000');
+    write('scripts/fixture-reference.test.ts', 'const migration = "20990101010000_landing_fixture.sql";\n');
+    const other = 'db/platform/migrations/20990101020000_other.sql';
+    write(other, "SELECT '20990101010000_landing_fixture.sql';\n");
+    const head = commit();
+    const changes = [{ path: 'db/platform/migrations/20990101010000_landing_fixture.sql',
+      target: 'db/platform/migrations/20990101030100_landing_fixture.sql' },
+    { path: other, target: 'db/platform/migrations/20990101030200_other.sql' }];
+    await expect(assertNoAuthoredSlotReferences(root, base, head, changes))
+      .rejects.toThrow(`${other}:1, scripts/fixture-reference.test.ts:1`);
+    expect(git('status', '--porcelain=v1')).toBe('');
+  } finally { restoreDerivedFixture(); }
+});
+
+it('re-slots migration paths in the manifest, reviewed forwards and publication catalogue', () => {
+  try {
+    checkout(base);
+    append('20990101010000');
+    const oldPath = 'db/platform/migrations/20990101010000_landing_fixture.sql';
+    const newPath = 'db/platform/migrations/20990101030100_landing_fixture.sql';
+    const catalog = JSON.parse(read(CATALOGUE));
+    catalog.publicPaths.push({ path: oldPath, class: 'public-output' });
+    catalog.publicPaths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+    write(CATALOGUE, json(catalog));
+    applyMigrationReslot(root, [{ path: oldPath, target: newPath }]);
+    expect(existsSync(join(root, oldPath))).toBe(false);
+    expect(existsSync(join(root, newPath))).toBe(true);
+    expect(read(MIGRATION_REGISTRIES[0])).toContain(newPath);
+    expect(read(MIGRATION_REGISTRIES[1])).toContain(newPath);
+    expect(read(MIGRATION_REGISTRIES[0])).not.toContain(oldPath);
+    expect(read(MIGRATION_REGISTRIES[1])).not.toContain(oldPath);
+    const rows = JSON.parse(read(CATALOGUE)).publicPaths.map(({ path }) => path);
+    expect(rows).toContain(newPath);
+    expect(rows).not.toContain(oldPath);
+    expect(rows).toEqual([...rows].sort());
+  } finally { restoreDerivedFixture(); }
+});
+
+it('lands an inverted migration only with explicit re-slot', async () => {
+  const ignoredMirror = 'packages/platform/sql/20990101020100_landing_fixture.sql';
+  const exclude = read('.git/info/exclude');
+  try {
+    checkout(base);
+    append('20990101010000');
+    const pr = commit();
+    checkout(base);
+    append('20990101020000');
+    const upstream = commit();
+    setMain(upstream);
+    checkout(pr);
+    const original = 'db/platform/migrations/20990101010000_landing_fixture.sql';
+    const reslotted = 'db/platform/migrations/20990101020100_landing_fixture.sql';
+    const originalSql = read(original);
+    write('.git/info/exclude', exclude + `\n/${ignoredMirror}\n`);
+    write(ignoredMirror, 'Local ignored SQL.\n');
+    await expect(landingMerge(root, { reSlot: true, runCommand: fixtureCommand }))
+      .rejects.toThrow(`landing: re-slot refuses to overwrite untracked mirror: ${ignoredMirror}`);
+    expectRestoredHead(pr);
+    expect(read(ignoredMirror)).toBe('Local ignored SQL.\n');
+    rmSync(join(root, ignoredMirror));
+    await expect(landingMerge(root, { reSlot: true, runCommand: fixtureCommand }))
+      .rejects.toThrow(`landing: re-slot destination mirror is ignored: ${ignoredMirror}`);
+    expectRestoredHead(pr);
+    write('.git/info/exclude', exclude);
+    const failure = new Error('inventory refresh failed after re-slot');
+    await expect(landingMerge(root, { reSlot: true, runCommand: (command, args) => {
+      if (args.includes(join(root, 'scripts/installation-inventory-refresh.ts'))) {
+        expect(read(reslotted)).toBe(originalSql);
+        throw failure;
+      }
+      fixtureCommand(command, args);
+    } })).rejects.toBe(failure);
+    expectRestoredHead(pr);
+    expect(read(original)).toBe(originalSql);
+    expect(existsSync(join(root, reslotted))).toBe(false);
+    const result = await landingMerge(root, { reSlot: true, runCommand: (command, args) => {
+      if (args.includes(join(root, 'scripts/installation-inventory-refresh.ts'))) return;
+      fixtureCommand(command, args);
+    } });
+    expect(result.head).toMatch(/^[a-f0-9]{40}$/u);
+    expect(git('ls-files', 'db/platform/migrations/20990101020100_landing_fixture.sql')).toContain('20990101020100');
+    expect(git('show', `HEAD:${ignoredMirror}`)).toBe(originalSql.trim());
+    expect(git('ls-files', 'db/platform/migrations/20990101010000_landing_fixture.sql')).toBe('');
+    const manifest = JSON.parse(read(MIGRATION_REGISTRIES[0]));
+    const earlier = 'db/platform/migrations/20990101020000_landing_fixture.sql';
+    const later = 'db/platform/migrations/20990101020100_landing_fixture.sql';
+    for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
+      const files = plan.forward.map(({ file }) => file);
+      expect(files.indexOf(later)).toBeGreaterThan(files.indexOf(earlier));
+    }
+    const registry = JSON.parse(read(MIGRATION_REGISTRIES[1]));
+    const slots = registry.nativeStoreForwardClass.slots.map(({ path }) => path);
+    expect(slots.indexOf(later)).toBeGreaterThan(slots.indexOf(earlier));
+    expect(evaluatePlatformMigrationManifestMetadata(manifest)).toEqual([]);
+  } finally {
+    rmSync(join(root, ignoredMirror), { force: true });
+    write('.git/info/exclude', exclude);
+    restoreDerivedFixture();
+  }
+}, 60_000);
+
+it('keeps both SQL forwards when main added the same migration filename', async () => {
+  const oldPath = 'db/platform/migrations/20990101010000_landing_fixture.sql';
+  const target = 'db/platform/migrations/20990101010100_landing_fixture.sql';
+  const mainSql = '-- Distinct main forward\nSELECT 2;\n';
+  try {
+    checkout(base);
+    append('20990101010000');
+    const prSql = read(oldPath);
+    const pr = commit();
+    checkout(base);
+    append('20990101010000');
+    write(oldPath, mainSql);
+    const sha = createHash('sha256').update(mainSql).digest('hex');
+    const manifest = JSON.parse(read(MIGRATION_REGISTRIES[0]));
+    for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
+      plan.forward.find(row => row.file === oldPath).sha256 = sha;
+    }
+    write(MIGRATION_REGISTRIES[0], json(manifest));
+    const forwards = JSON.parse(read(MIGRATION_REGISTRIES[1]));
+    forwards.nativeStoreForwards.find(row => row.path === oldPath).sha256 = sha;
+    write(MIGRATION_REGISTRIES[1], json(forwards));
+    const upstream = commit();
+    setMain(upstream); checkout(pr);
+    const result = await landingMerge(root, { reSlot: true, runCommand: (command, args) => {
+      if (args.includes(join(root, 'scripts/installation-inventory-refresh.ts'))) return;
+      fixtureCommand(command, args);
+    } });
+    expect(result.head).toMatch(/^[a-f0-9]{40}$/u);
+    expect(read(oldPath)).toBe(mainSql);
+    expect(read(target)).toBe(prSql);
+    const landed = JSON.parse(read(MIGRATION_REGISTRIES[0]));
+    expect(landed.forward.map(row => row.file)).toEqual(expect.arrayContaining([oldPath, target]));
+    expect(JSON.parse(read(MIGRATION_REGISTRIES[1])).nativeStoreForwards.map(row => row.path))
+      .toEqual(expect.arrayContaining([oldPath, target]));
+    expect(checkPlatformMigrationProjection(root, false)).toEqual([]);
+    expect(git('status', '--porcelain=v1')).toBe('');
+    expect(git('show', '-s', '--format=%B', result.head)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
+    const integration = await proveReviewIntegration(root,
+      await captureCommittedReviewCandidate(root, base, pr),
+      await captureCommittedReviewCandidate(root, upstream, result.head));
+    expect(integration.kind).toBe('resolution');
+    expect(integration.resolution).toContain(target);
+  } finally { git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged); setMain(main); }
+}, 90_000);
+
+it('does not auto-admit an authored SQL bystander as a generated mirror', () => {
+  const rogue = 'packages/platform/sql/20990101040000_rogue.sql';
+  try {
+    checkout(merged);
+    write(rogue, 'SELECT 1;\n');
+    const prior = JSON.parse(read('packages/platform/sql/manifest.json'));
+    prior.migrations.push({ file: '20260809150001_job_run_ledger_v3.sql', source: 'db/platform/migrations/20990101040000_forged.sql', sha256: '0'.repeat(64) });
+    write('packages/platform/sql/manifest.json', json(prior));
+    runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
+    const paths = JSON.parse(read(CATALOGUE)).publicPaths.map(({ path }) => path);
+    expect(paths).not.toContain(rogue);
+    expect(paths).toContain('packages/platform/sql/20260809150001_job_run_ledger_v3.sql');
+    expect(read('packages/platform/sql/20260809150001_job_run_ledger_v3.sql')).toContain('CREATE OR REPLACE');
+  } finally {
+    rmSync(join(root, rogue), { force: true });
+    restoreDerivedFixture();
+  }
+});
+
+it('removes a catalogue row when a generated SQL mirror was deleted', () => {
+  const stale = 'packages/platform/sql/20990101040000_stale_fixture.sql';
+  try {
+    checkout(merged);
+    const catalog = JSON.parse(read(CATALOGUE));
+    catalog.publicPaths.push({ path: stale, class: 'public-output' });
+    catalog.publicPaths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+    write(CATALOGUE, json(catalog));
+    runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
+    expect(JSON.parse(read(CATALOGUE)).publicPaths.some(({ path }) => path === stale)).toBe(false);
+  } finally { restoreDerivedFixture(); }
+});
+
+it('keeps a platform SQL mirror when only a supabase migration is re-slotted', () => {
+  const oldPath = 'supabase/migrations/20990101040000_shared_fixture.sql';
+  const target = 'supabase/migrations/20990101050000_shared_fixture.sql';
+  const mirror = 'packages/platform/sql/20990101040000_shared_fixture.sql';
+  try {
+    checkout(merged);
+    write(oldPath, 'SELECT 1;\n');
+    write(mirror, 'SELECT 2;\n');
+    applyMigrationReslot(root, [{ path: oldPath, target }]);
+    expect(existsSync(join(root, mirror))).toBe(true);
+    expect(read(mirror)).toBe('SELECT 2;\n');
+  } finally {
+    rmSync(join(root, oldPath), { force: true });
+    rmSync(join(root, target), { force: true });
+    rmSync(join(root, mirror), { force: true });
+    restoreDerivedFixture();
+  }
+});
 
 it('classifies SQL and migration-inventory inputs conservatively', () => {
   for (const path of [
