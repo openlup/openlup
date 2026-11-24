@@ -32,6 +32,34 @@ for (const [file, digest] of files) {
 const noticeHistory = `SELECT id,subscription_id,event_type,payload FROM public.subscription_events
   UNION ALL SELECT id,aggregate_id,event_type,payload FROM public.outbox_events WHERE aggregate_type='subscription_notice'`;
 const password = "synthetic-conformance";
+function deriveRestoreLogin(runtimeName: string): string {
+  if (!/_r$/u.test(runtimeName)) throw new Error(`unexpected broker runtime login for restore derivation: ${runtimeName}`);
+  return runtimeName.replace(/_r$/u, "_s");
+}
+async function closeLeasedPostgres(
+  container: PostgresContainer | undefined,
+  pools: readonly (Pool | undefined)[],
+  lease: PgTemplateLease | null,
+): Promise<void> {
+  const activePools = pools.filter((pool): pool is Pool => Boolean(pool));
+  for (const pool of activePools) pool.on("error", () => {});
+  let closeError: unknown;
+  try {
+    await closePostgres(container, activePools);
+  } catch (error) {
+    closeError = error;
+  }
+  let releaseError: unknown;
+  if (lease) {
+    try {
+      await lease.release();
+    } catch (error) {
+      releaseError = error;
+    }
+  }
+  if (closeError !== undefined) throw closeError;
+  if (releaseError !== undefined) throw releaseError;
+}
 async function install(connectionString: string, installation: PlatformPostgresInstallation) {
   const pool = new Pool({ connectionString, options: installation.generation === "qualified-v2" ? qualifiedPostgresStartupOptions(installation)
     : installation.generation === "qualified-admin" ? qualifiedAdminPostgresStartupOptions(installation) : undefined });
@@ -47,7 +75,7 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
       admin = new Pool({ connectionString: brokerLease.ownerUrl });
       runtimeUrl = generation === "qualified-v2" ? brokerLease.runtimeUrl : brokerLease.ownerUrl;
       const restoreEndpoint = new URL(runtimeUrl);
-      if (generation === "qualified-v2") restoreEndpoint.username = restoreEndpoint.username.replace(/_r$/, "_s");
+      if (generation === "qualified-v2") restoreEndpoint.username = deriveRestoreLogin(restoreEndpoint.username);
       restoreUrl = restoreEndpoint.toString();
     } else {
       container = await runPostgresContainer({ name: `notice-producers-${generation}-${process.pid}`, password });
@@ -73,8 +101,9 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
     if (generation === "qualified-v2") expect((await runtime.query("SELECT rolsuper OR rolbypassrls AS elevated FROM pg_roles WHERE rolname=current_user")).rows[0].elevated).toBe(false);
   }, postgresSetupTimeoutMs);
   afterAll(async () => {
-    await closePostgres(container, [runtime, admin].filter(Boolean));
-    if (brokerLease) { const lease = brokerLease; brokerLease = null; await lease.release(); }
+    const lease = brokerLease;
+    brokerLease = null;
+    await closeLeasedPostgres(container, [runtime, admin], lease);
   }, postgresTeardownTimeoutMs);
   beforeEach(async () => { await admin.query("UPDATE public.subscriptions SET status='cancelled'"); });
 
@@ -179,14 +208,18 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
   ) {
     const lease = await tryLeaseTemplateDatabase("qualified-v2", label);
     if (lease) {
-      const runtimeName = new URL(lease.runtimeUrl).username;
-      const installation: Extract<PlatformPostgresInstallation, { generation: "qualified-v2" }> = {
-        generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres",
-        migrationLogin: "postgres", runtimeLogin: runtimeName, restoreLogin: runtimeName.replace(/_r$/, "_s"),
-      };
-      const owner = new Pool({ connectionString: lease.ownerUrl, options: qualifiedPostgresStartupOptions(installation) });
-      try { await work(owner, installation); }
-      finally { await closePostgres(undefined, owner); await lease.release(); }
+      let owner: Pool | undefined;
+      try {
+        const runtimeName = new URL(lease.runtimeUrl).username;
+        const installation: Extract<PlatformPostgresInstallation, { generation: "qualified-v2" }> = {
+          generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres",
+          migrationLogin: "postgres", runtimeLogin: runtimeName, restoreLogin: deriveRestoreLogin(runtimeName),
+        };
+        owner = new Pool({ connectionString: lease.ownerUrl, options: qualifiedPostgresStartupOptions(installation) });
+        await work(owner, installation);
+      } finally {
+        await closeLeasedPostgres(undefined, [owner], lease);
+      }
       return;
     }
     const target = await runPostgresContainer({ name: `${label}-${process.pid}`, password });
@@ -1135,9 +1168,11 @@ it.concurrent.for(["legacy", "qualified-v2", "qualified-admin"] as const)("uses 
       for (const sample of samples) expect.soft(found.includes(sample.id), `renewal at ${sample.hours} elapsed hours`)
         .toBe(sample.hours >= 48 && sample.hours <= 120);
       expect(found).toEqual(samples.filter(sample => sample.hours >= 48 && sample.hours <= 120).map(sample => sample.id));
-    } finally { await db.query("ROLLBACK"); db.release(); }
+    } finally {
+      try { await db.query("ROLLBACK"); }
+      finally { db.release(); }
+    }
   } finally {
-    await closePostgres(container, pools);
-    if (brokerLease) await brokerLease.release();
+    await closeLeasedPostgres(container, pools, brokerLease);
   }
 });
