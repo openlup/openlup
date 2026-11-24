@@ -12,9 +12,8 @@ const root = new URL('../', import.meta.url).pathname;
 async function fixture(origin?: unknown, insecure?: boolean) {
   await mkdir(resolve(root, '.context'), { recursive: true });
   const directory = await mkdtemp(resolve(root, '.context/origin-'));
-  for (const path of ['host', 'shared', 'owned']) await cp(resolve(root, path), resolve(directory, path), { recursive: true });
-  await cp(resolve(root, 'lifecycle.mjs'), resolve(directory, 'lifecycle.mjs'));
-  await cp(resolve(root, 'browser-groups.mjs'), resolve(directory, 'browser-groups.mjs'));
+  for (const path of ['host', 'shared', 'owned', 'installation', 'lifecycle.mjs', 'lifecycle-refusals.mjs', 'browser-groups.mjs'])
+    await cp(resolve(root, path), resolve(directory, path), { recursive: true });
   await writeFile(resolve(directory, 'package.json'), '{"type":"module"}');
   const config = structuredClone(Object.values(configurations)[0]!);
   if (origin !== undefined) config.publicOrigin = origin as string;

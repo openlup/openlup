@@ -129,6 +129,12 @@ requires replay to make no changes. A harness check refuses incomplete file
 or declared-versus-installed dependency state; this is not an automatic serving
 guard added to the application by the CLI.
 
+For a starter with adopter catalogue packs, follow the applicable owned-module
+migration in the [per-release notes](README.md#per-release-notes), then run
+`./lifecycle up --json` to rebuild the application and restore the verified
+builds. Compare the reported pack and type versions with the saved draft and
+repeat the [operator action](../how-to/extend/catalogue-extension.md#install-a-pack-in-the-starter).
+
 The harness then installs the target's exact dependencies using a regenerated,
 verified lock and checks typechecking, build, application tests and the local
 development loop. Owned customization bytes must survive. The receipt names

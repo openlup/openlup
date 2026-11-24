@@ -1,3 +1,4 @@
+import { starterDiagnostic } from '../shared/refusals.ts';
 import { createHash } from 'node:crypto';
 import { canonicalCatalogDraftJson } from '@openlup/platform/catalog';
 import { digestSubscriptionPricePolicy, ACQUISITION_TERMS_CAPABILITY } from '@openlup/platform/pricing';
@@ -17,14 +18,14 @@ export async function seedQuoteAuthority(config: StoreConfig, seed: ReturnType<t
     roundingRule: 'FLOOR_TO_QUANTUM' as const };
   const digest = await digestSubscriptionPricePolicy(policy);
   const history = (await connection.query('SELECT id,digest FROM public.subscription_price_policy_revisions WHERE price_list_id=$1 FOR SHARE', [policy.priceListId])).rows;
-  if (history.length && (history.length !== 1 || history[0]!.id !== policy.id || history[0]!.digest !== digest)) throw new Error('starter_policy_seed_conflict');
+  if (history.length && (history.length !== 1 || history[0]!.id !== policy.id || history[0]!.digest !== digest)) throw starterDiagnostic('starter_policy_seed_conflict');
   await connection.query(`INSERT INTO public.subscription_price_policy_revisions
     (id,revision_no,price_list_id,region_code,currency,channel,effective_from,effective_to,discount_bps,rounding_quantum_minor,rounding_rule,digest)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (id) DO NOTHING`,
   [policy.id,policy.revisionNo,policy.priceListId,policy.regionCode,policy.currency,policy.channel,policy.effectiveFrom,null,
     policy.discountBps,policy.roundingQuantumMinor,policy.roundingRule,digest]);
   const saved = (await connection.query('SELECT digest FROM public.subscription_price_policy_revisions WHERE id=$1 FOR SHARE', [policy.id])).rows;
-  if (saved.length !== 1 || saved[0]!.digest !== digest) throw new Error('starter_policy_seed_conflict');
+  if (saved.length !== 1 || saved[0]!.digest !== digest) throw starterDiagnostic('starter_policy_seed_conflict');
   for (const row of seed.documents) {
     const document = row.document;
     await connection.query(`INSERT INTO public.catalog_product_document_revisions
@@ -33,13 +34,13 @@ export async function seedQuoteAuthority(config: StoreConfig, seed: ReturnType<t
     [row.id,row.productId,document.revisionNo,document.schemaVersion,
       `demo-document:${config.id}:${row.id}`,document,document.sourceRef,row.digest]);
     const existing = (await connection.query('SELECT digest FROM public.catalog_product_document_revisions WHERE id=$1 FOR SHARE', [row.id])).rows;
-    if (existing.length !== 1 || existing[0]!.digest !== row.digest) throw new Error('starter_document_seed_conflict');
+    if (existing.length !== 1 || existing[0]!.digest !== row.digest) throw starterDiagnostic('starter_document_seed_conflict');
     const primary = document.variants[0]!;
     const facts = (await connection.query(`SELECT p.primary_sku_id,p.current_document_revision_id,s.net_weight_g
       FROM public.catalog_products p JOIN public.catalog_skus s ON s.product_id=p.id WHERE p.id=$1 AND s.id=$2`, [row.productId,primary.skuId])).rows[0];
     if (!facts || (facts.primary_sku_id !== null && facts.primary_sku_id !== primary.skuId)
       || (facts.current_document_revision_id !== null && facts.current_document_revision_id !== row.id)
-      || (facts.current_document_revision_id !== null && facts.net_weight_g !== primary.physical.netWeightG)) throw new Error('starter_document_seed_conflict');
+      || (facts.current_document_revision_id !== null && facts.net_weight_g !== primary.physical.netWeightG)) throw starterDiagnostic('starter_document_seed_conflict');
     await connection.query('UPDATE public.catalog_products SET primary_sku_id=$2,current_document_revision_id=$3 WHERE id=$1', [row.productId,primary.skuId,row.id]);
     for (const variant of document.variants) {
       await connection.query('UPDATE public.catalog_skus SET net_weight_g=$2 WHERE id=$1', [variant.skuId,variant.physical.netWeightG]);
@@ -62,5 +63,5 @@ export async function seedQuoteAuthority(config: StoreConfig, seed: ReturnType<t
     VALUES($1,$2,$3) ON CONFLICT (promotion_id) DO NOTHING`, [promotionId,definition,offer.enabled]);
   const current = (await connection.query('SELECT definition,active FROM public.commerce_promotion_definitions WHERE promotion_id=$1 FOR SHARE', [promotionId])).rows;
   if (current.length !== 1 || current[0]!.active !== offer.enabled
-    || canonicalCatalogDraftJson(current[0]!.definition) !== canonicalCatalogDraftJson(definition)) throw new Error('starter_promotion_seed_conflict');
+    || canonicalCatalogDraftJson(current[0]!.definition) !== canonicalCatalogDraftJson(definition)) throw starterDiagnostic('starter_promotion_seed_conflict');
 }
