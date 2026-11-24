@@ -5,10 +5,10 @@ import { readFileSync } from "node:fs";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
-  waitForPostgresTcpReady, type PostgresContainer,
+  resolvePostgresTmpfsSpec, waitForPostgresTcpReady, type PostgresContainer,
 } from "../helpers/postgresContainer.js";
 
 const exec = promisify(execFile);
@@ -94,11 +94,15 @@ let occupiedSlots = 0;
 let liveContainers = 0;
 let peakContainers = 0;
 
-async function startupLeftNoContainer(name: string): Promise<boolean> {
+function listNamedContainers(name: string) {
+  return exec("docker", [
+    "ps", "--all", "--filter", `name=^/${name}$`, "--format", "{{.Names}}",
+  ], { timeout: 5_000, killSignal: "SIGKILL" });
+}
+
+async function startupLeftNoContainer(name: string, list = listNamedContainers): Promise<boolean> {
   try {
-    const { stdout } = await exec("docker", [
-      "ps", "--all", "--filter", `name=^/${name}$`, "--format", "{{.Names}}",
-    ], { timeout: 5_000, killSignal: "SIGKILL" });
+    const { stdout } = await list(name);
     return stdout.trim() === "";
   } catch {
     // Retain the slot if Docker cannot confirm that its container is absent.
@@ -113,12 +117,20 @@ function registerCase(profile: (typeof profiles)[number], shape: (typeof shapes)
   let ready: [PostgresContainer, PostgresContainer | undefined];
   let proof: Promise<void> | undefined;
 
-  async function startReady(name: string, unavailableMessage: string, tmpfsSizeMb?: number) {
+  async function startReady(name: string, unavailableMessage: string, tmpfsSizeMb?: number, list?: typeof listNamedContainers) {
     // Reserve capacity before Docker starts so a failed cleanup cannot admit extra containers.
     expect(occupiedSlots).toBeLessThan(2);
     occupiedSlots++;
-    const instance = await runPostgresContainer({ name, password: "synthetic-conformance", tmpfsSizeMb }).catch(async error => {
-      if (await startupLeftNoContainer(name)) occupiedSlots--;
+    const spec = { name, password: "synthetic-conformance", tmpfsSizeMb };
+    try {
+      resolvePostgresTmpfsSpec(spec);
+    } catch (error) {
+      // The shared validator rejects before the startup helper can call Docker.
+      occupiedSlots--;
+      throw error;
+    }
+    const instance = await runPostgresContainer(spec).catch(async error => {
+      if (await startupLeftNoContainer(name, list)) occupiedSlots--;
       throw error;
     });
     containers.push({ ...instance, async remove() {
@@ -133,9 +145,11 @@ function registerCase(profile: (typeof profiles)[number], shape: (typeof shapes)
 
   beforeAll(async () => {
     const started = performance.now();
+    const listingTimeout = vi.fn<typeof listNamedContainers>().mockRejectedValue(new Error("Docker listing timed out"));
     if (discriminators) {
       // Refuse before Docker creates anything, then require both real target slots.
-      await expect(startReady(`m14-q2-invalid-${process.pid}`, "Unexpected ready fixture", 0)).rejects.toThrow("PostgreSQL tmpfsSizeMb");
+      await expect(startReady(`m14-q2-invalid-${process.pid}`, "Unexpected ready fixture", 0, listingTimeout))
+        .rejects.toThrow("PostgreSQL tmpfsSizeMb");
     }
     const [primary, fresh] = await Promise.allSettled([
       startReady(`m14-q2-${profile.name}-${shape.name}-${process.pid}`, "Qualified composition PostgreSQL unavailable"),
@@ -143,6 +157,7 @@ function registerCase(profile: (typeof profiles)[number], shape: (typeof shapes)
     ]);
     if (primary.status === "rejected") throw primary.reason;
     if (fresh.status === "rejected") throw fresh.reason;
+    if (discriminators) expect(listingTimeout).not.toHaveBeenCalled();
     ready = [primary.value, fresh.value];
     console.info(`qualified-production ${label} bootMs=${Math.round(performance.now() - started)} peakContainers=${peakContainers}`);
   }, postgresSetupTimeoutMs);
