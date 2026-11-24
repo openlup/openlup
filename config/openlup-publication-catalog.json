@@ -1630,6 +1630,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125150000_subscription_activation_execute_grants.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261125160000_subscription_activation_units.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5351,6 +5359,14 @@
     },
     {
       "path": "packages/platform/sql/20261125140000_subscription_renewal_registration_units.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125150000_subscription_activation_execute_grants.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125160000_subscription_activation_units.sql",
       "class": "public-output"
     },
     {
@@ -32619,6 +32635,10 @@
     },
     {
       "path": "tests/postgres/subscriptionActivationEditWindow.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionActivationFixture.ts",
       "class": "public-output"
     },
     {

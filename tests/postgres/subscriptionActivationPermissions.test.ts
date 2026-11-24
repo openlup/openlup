@@ -48,6 +48,8 @@ type Connection = Pool | PoolClient;
 async function catalog(db: Connection, signatures: string[]) {
   return (await db.query(`SELECT s.signature, p.oid, p.proowner, p.proargtypes::text, p.prorettype,
     p.proretset, p.proargnames, p.proallargtypes, p.proargmodes, p.proargdefaults::text, p.proacl::text, p.prolang, l.lanname,
+    pg_get_function_arguments(p.oid) AS function_arguments,
+    pg_get_expr(p.proargdefaults, 'pg_catalog.pg_proc'::regclass) AS default_expressions,
     p.prosecdef, p.provolatile, p.proisstrict, p.proconfig,
     (SELECT jsonb_agg(jsonb_build_object('grantee',a.grantee,'grantor',a.grantor,
       'privilege',a.privilege_type,'grantable',a.is_grantable) ORDER BY a.grantee,a.grantor,a.privilege_type)
@@ -300,6 +302,11 @@ function activationCatalogWitness(owner: number, ownerName: string, hasService: 
     WITH ORDINALITY AS s(signature, position) JOIN pg_proc p ON p.oid=to_regprocedure(s.signature)
     ORDER BY s.position`, [activationParents])).rows;
   const acl = (db: Connection) => catalog(db, activationParents);
+  // PostgreSQL records byte offsets from the defining CREATE statement in the default trees.
+  const normalizeDefaultLocations = <Row extends { proargdefaults: string | null }>(row: Row): Row => ({
+    ...row,
+    proargdefaults: row.proargdefaults?.replace(/:location -?[0-9]+/gu, ":location -1") ?? null,
+  });
   let preimage: Awaited<ReturnType<typeof acl>>, narrowed: typeof preimage, originalSource: Awaited<ReturnType<typeof source>>;
   return {
     async beforeAcl(db: Connection) {
@@ -331,7 +338,7 @@ function activationCatalogWitness(owner: number, ownerName: string, hasService: 
       expect(await catalog(db, activationUnits)).toEqual([]);
     },
     async afterUnits(db: Connection) {
-      expect(await acl(db)).toEqual(narrowed);
+      expect((await acl(db)).map(normalizeDefaultLocations)).toEqual(narrowed.map(normalizeDefaultLocations));
       for (const row of await catalog(db, activationUnits)) {
         expect(row).toMatchObject({ proowner: owner, lanname: "plpgsql", prosecdef: false, provolatile: "v",
           proisstrict: false, proargdefaults: null, proconfig: ["search_path=public, pg_catalog"] });
@@ -342,7 +349,8 @@ function activationCatalogWitness(owner: number, ownerName: string, hasService: 
       expect(preimage).toBeDefined();
       if (!unitsForward) return;
       expect(narrowed).toBeDefined();
-      expect((await acl(db)).map(({ effective, ...row }) => row)).toEqual(narrowed.map(({ effective, ...row }) => row));
+      const withoutEffective = ({ effective, ...row }: (typeof narrowed)[number]) => normalizeDefaultLocations(row);
+      expect((await acl(db)).map(withoutEffective)).toEqual(narrowed.map(withoutEffective));
       await assertActivationPrivileges(db, [...baseParents, ...activationUnits], String(owner), hasService);
     },
   };

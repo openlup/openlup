@@ -1,0 +1,1 @@
+Migration: Native subscription activation requires explicit EXECUTE. Custom activation roles need grants for the paths they run. Apply the grants and recheck with the same login. See the [operator grant matrix](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#native-activation-execute-grants).
