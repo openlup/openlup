@@ -46,6 +46,22 @@ describe("ci-vitest-duration-keys", () => {
     expect(pinnedDurationMs(undefined, plain)).toBeUndefined();
   });
 
+  it("reads a plain path without asking for the digest fallback", () => {
+    const plain = "tests/plain.test.ts";
+    const section = new Proxy<Record<string, number>>(
+      { [plain]: 4_200 },
+      {
+        get(target, key, receiver) {
+          if (typeof key === "string" && key.startsWith("sha256:")) {
+            throw new Error("plain-path hit must not read the digest key");
+          }
+          return Reflect.get(target, key, receiver);
+        },
+      },
+    );
+    expect(pinnedDurationMs(section, plain)).toBe(4_200);
+  });
+
   it("derives per-test timeouts as max(flat, ceil(pinned * BUDGET_FACTOR))", () => {
     const manifest: DurationSections = {
       defaultDurationMs: 100,
