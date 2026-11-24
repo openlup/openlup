@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Client, Pool } from "pg";
 import { setTimeout as delay } from "node:timers/promises";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, aroundEach, beforeAll, expect, it, vi } from "vitest";
 import type { QualifiedAdminPostgresInstallation, QualifiedPostgresInstallation } from "@openlup/platform/migrations";
 import { checkPlatformMigrationProjection } from "../../scripts/packages/platform-migration-projection.js";
 import { checkoutOwnerDefinitionPath, checkoutOwnerLogin, checkoutOwnerRoutines,
@@ -361,12 +361,15 @@ type SharedGrantArtifact = {
 let sharedArtifact: Promise<SharedGrantArtifact>;
 let pendingFixtureWork = Promise.resolve();
 
-function runFixtureWork(signal: AbortSignal, work: () => Promise<void>) {
-  // Vitest can move on after a timeout while setup or teardown is still running.
-  const operation = pendingFixtureWork.then(() => {
-    signal.throwIfAborted();
-    return work();
-  });
+aroundEach(async (runTest, { signal }) => {
+  // Drain the previous callback before the global beforeEach restores its spies.
+  await pendingFixtureWork;
+  signal.throwIfAborted();
+  await runTest();
+}, postgresSetupTimeoutMs);
+
+function runFixtureWork(work: () => Promise<void>) {
+  const operation = work();
   pendingFixtureWork = operation.then(() => undefined, () => undefined);
   return operation;
 }
@@ -524,8 +527,8 @@ async function verifyRestoreProfile(profile: Profile, pkg: InstalledMigrations, 
 }
 
 for (const profile of profiles) {
-  it(`restores the same nonempty checkout graph on ${profile}`, ({ signal }) =>
-    runFixtureWork(signal, async () => {
+  it(`restores the same nonempty checkout graph on ${profile}`, () =>
+    runFixtureWork(async () => {
       // The later-definition proof mutates the packed manifest in the bootstrap case.
       if (profile === "bootstrap") {
         await withGrantArtifact((pkg, root, manifest) => verifyRestoreProfile(profile, pkg, root, manifest));
@@ -565,8 +568,8 @@ async function verifyLegacyNoOp(pkg: InstalledMigrations, state: "absent" | "pre
   });
 }
 
-it("records the legacy no-op with the cluster login absent and present", ({ signal }) =>
-  runFixtureWork(signal, async () => {
+it("records the legacy no-op with the cluster login absent and present", () =>
+  runFixtureWork(async () => {
     const { pkg } = await sharedArtifact;
     const results = await Promise.allSettled([
       verifyLegacyNoOp(pkg, "absent"),
