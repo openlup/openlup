@@ -140,6 +140,15 @@ BEGIN
     'expirationDate',coalesce(nullif(p_source->'expirationDate','null'::jsonb),p_source->'expiresAt')));
 END; $$;
 REVOKE ALL ON FUNCTION public.fulfillment_destination_line_snapshot_v2(jsonb) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
+  EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_destination_contact_v2(uuid,uuid), public.fulfillment_freeze_destination_contact_v2(uuid,jsonb,text), public.fulfillment_destination_line_snapshot_v2(jsonb) FROM anon;';
+END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+  EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_destination_contact_v2(uuid,uuid), public.fulfillment_freeze_destination_contact_v2(uuid,jsonb,text), public.fulfillment_destination_line_snapshot_v2(jsonb) FROM authenticated;';
+END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
+  EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_destination_contact_v2(uuid,uuid), public.fulfillment_freeze_destination_contact_v2(uuid,jsonb,text), public.fulfillment_destination_line_snapshot_v2(jsonb) FROM service_role;';
+END IF; END; $$;
 
 CREATE OR REPLACE FUNCTION public.fulfillment_capture_parcel_contact(p_shipment_id uuid,p_contact jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
@@ -150,11 +159,11 @@ BEGIN
  IF EXISTS(SELECT 1 FROM public.commerce_destination_v2_order_bindings WHERE order_id=order_ref) THEN
   RETURN public.fulfillment_freeze_destination_contact_v2(p_shipment_id,p_contact,'capture');
  END IF;
+ IF NOT FOUND OR owner_id IS NULL OR jsonb_typeof(p_contact) IS DISTINCT FROM 'object' THEN
+  RAISE EXCEPTION 'fulfillment_parcel_contact_invalid' USING ERRCODE='22023'; END IF;
  IF p_contact->'schemaVersion'='2'::jsonb THEN
   RAISE EXCEPTION 'destination_dialect_invalid' USING ERRCODE='22023', DETAIL='shipmentId', HINT='Use the supported entry.';
  END IF;
- IF NOT FOUND OR owner_id IS NULL OR jsonb_typeof(p_contact) IS DISTINCT FROM 'object' THEN
-  RAISE EXCEPTION 'fulfillment_parcel_contact_invalid' USING ERRCODE='22023'; END IF;
  -- Subject lock precedes the receipt check; erasure cannot race a fresh insert.
  PERFORM id FROM public.clients WHERE id=owner_id FOR KEY SHARE;
  IF EXISTS(SELECT 1 FROM public.identity_privacy_erasures WHERE client_id=owner_id) THEN RETURN jsonb_build_object('erased',true); END IF;

@@ -13135,12 +13135,12 @@
     },
     {
       "path": "db/platform/migrations/20261127050000_fulfillment_destination_contact_v2.sql",
-      "sha256": "6edc9138cf0f8603b9581dcc69dd1a23bec4dab5dd9eb8e46963679ae3d486b2",
+      "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c",
       "functions": [
         {
           "signature": "public.fulfillment_capture_parcel_contact(uuid,jsonb)",
           "beforeSha256": "bb7b73d93d61d1e70c05ea5c9a6c24d561bb54d75bbbf70a7c2d522c2c3e82cf",
-          "afterSha256": "ba12abd278879ceba3d3799372fd27123347b86d17eaf0166023b58239bd17d0"
+          "afterSha256": "c624b9fa277a4142b5e5c330b4b89bd401cafca612044808120c0b87daaddca0"
         },
         {
           "signature": "public.fulfillment_capture_new_parcel_reservations(uuid,text)",

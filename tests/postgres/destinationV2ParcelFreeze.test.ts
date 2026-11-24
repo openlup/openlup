@@ -10,11 +10,12 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { manifest, units } from "../helpers/fulfillmentNative.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { captureStoreJourney, journeyRpc, journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
-import { bindDestinationOrder, destinationContext, documentTable, insertDestinationOrder, reachDestinationCutoff, snapshot, snapshotCommand, testServicePin } from "./destinationDocumentFixture.js";
+import { bindDestinationOrder, destinationContext, documentTable, insertDestinationOrder, reachDestinationCutoff, readSnapshot, snapshot, snapshotCommand, testServicePin } from "./destinationDocumentFixture.js";
 import { awaitReceiptWait, backendPid, markReceiptClientErased } from "./destinationReceiptFixture.js";
 
 const resources = storeJourneyResources();
 let store: JourneyInstallation;
+const forward = units.find(unit => unit.file.endsWith("_fulfillment_destination_contact_v2.sql"))!.file;
 const port = "freeze-fixture";
 const legacyContact = { schemaVersion: 1, source: "contact", revision: 1, recipientName: "Fixture", contactEmail: null,
   contactPhone: "+00001", line1: "Example Lane", line2: "Unit A", city: "Example", postalCode: "00000", country: "XA",
@@ -57,7 +58,8 @@ async function paidV2(input: { subject?: Awaited<ReturnType<typeof destinationCo
   const command = snapshotCommand(ctx).command;
   const { recipientName, ...notes } = command.validated.contact;
   const contact = { ...notes, ...(input.name !== false ? { recipientName } : {}),
-    ...(input.phone !== false ? { contactPhone: "+00001" } : {}), contactEmail: "fixture@example.test", courierInstructions: "Leave with reception" };
+    ...(input.phone !== false ? { contactPhone: "+00001" } : {}), contactEmail: "fixture@example.test", courierInstructions: "Leave with reception",
+    companyName: "Fixture company", label: "Fixture address label", taxId: "fixture-tax-id" };
   const issued = await snapshot(store.runtime, ctx, { ...command, validated: { ...command.validated, contact } });
   const order = await bindDestinationOrder(store.owner, ctx, issued);
   await reachDestinationCutoff(store.owner, issued.binding);
@@ -90,7 +92,7 @@ const effects = async (order: string) => (await store.owner.query(`SELECT
   (SELECT count(*)::int FROM public.subscription_delivery_alignment_cases WHERE predecessor_order_id=$1) AS alignment`, [order])).rows[0];
 const ownPgKeys = ["code", "column", "constraint", "dataType", "detail", "file", "hint", "internalPosition", "internalQuery",
   "length", "line", "name", "position", "routine", "schema", "severity", "table", "where"];
-async function refusal(call: Promise<unknown>, message: string, field: string, hint?: string, code = "22023") {
+async function refusal(call: Promise<unknown>, message: string, field?: string, hint?: string, code = "22023") {
   const error: unknown = await call.catch((reason: unknown) => reason);
   expect(error).toBeInstanceOf(Error);
   expect(Reflect.ownKeys(error as Error).filter(key => key !== "stack" && key !== "message").sort()).toEqual(ownPgKeys);
@@ -100,13 +102,48 @@ const invalid = (call: Promise<unknown>, field: string) => refusal(call, "addres
 const unavailable = (call: Promise<unknown>) => refusal(call, "destination_evidence_unavailable", "shipmentId", "Re-obtain evidence through the authenticated owner.");
 const storedInvalid = (call: Promise<unknown>) => refusal(call, "destination_binding_invalid", "destination", "Send the retained evidence to the destination owner for review.");
 
+it("keeps the private routines owner-only when default privileges grant EXECUTE", async () => {
+  const routines = [
+    ["public.fulfillment_destination_contact_v2(uuid,uuid)", "SELECT public.fulfillment_destination_contact_v2(NULL::uuid,NULL::uuid)"],
+    ["public.fulfillment_freeze_destination_contact_v2(uuid,jsonb,text)", "SELECT public.fulfillment_freeze_destination_contact_v2(NULL::uuid,'{}'::jsonb,'resolve')"],
+    ["public.fulfillment_destination_line_snapshot_v2(jsonb)", "SELECT public.fulfillment_destination_line_snapshot_v2('{}'::jsonb)"],
+  ] as const;
+  const roles = ["anon", "authenticated", "service_role", journeySelection.runtimeLogin];
+  const signatures = routines.map(([signature]) => signature);
+  const owner = await store.owner.connect();
+  try {
+    await owner.query("BEGIN");
+    await owner.query(`DROP FUNCTION ${signatures.join(", ")};
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated;
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO service_role;`);
+    await owner.query(readFileSync(forward, "utf8"));
+    expect((await owner.query(`SELECT role, signature FROM unnest($1::text[]) AS r(role)
+      CROSS JOIN unnest($2::text[]) AS f(signature) WHERE has_function_privilege(role, signature::regprocedure, 'EXECUTE')`,
+    [roles, signatures])).rows).toEqual([]);
+    for (const role of roles) {
+      await owner.query(`SET LOCAL ROLE ${role}`);
+      for (const [, sql] of routines) {
+        await owner.query("SAVEPOINT denied_call");
+        await expect(owner.query(sql)).rejects.toMatchObject({ code: "42501" });
+        await owner.query("ROLLBACK TO SAVEPOINT denied_call; RELEASE SAVEPOINT denied_call");
+      }
+      await owner.query("RESET ROLE");
+    }
+  } finally { try { await owner.query("ROLLBACK"); } finally { owner.release(); } }
+  for (const [, sql] of routines) await expect(store.runtime.query(sql)).rejects.toMatchObject({ code: "42501" });
+});
+
 it("uses the real paid handoff and OMS opener, then preserves same-order replay and exact-current transfer", async () => {
   const paid = await paidV2(), operator = await paidV2();
   const fromHandoff = await handoff(paid.order), fromOms = await oms(operator);
   for (const [f, parcel, metadata, handoffs] of [
     [paid, fromHandoff.fulfillmentRef, {}, 1], [operator, fromOms.fulfillmentOrderId, { actorId: operator.actor }, 0],
   ] as const) {
-    expect(await contactRows(store.owner, f.client)).toEqual([{ shipment_id: parcel, contact: f.expected, captured_at: expect.any(Date), erased_at: null }]);
+    const rows = await contactRows(store.owner, f.client);
+    expect(rows).toEqual([{ shipment_id: parcel, contact: f.expected, captured_at: expect.any(Date), erased_at: null }]);
+    expect(Object.keys(rows[0].contact.recipient).sort()).toEqual([
+      "contactEmail", "contactPhone", "courierInstructions", "deliveryInstructions", "recipientName",
+    ]);
     expect((await store.owner.query(`SELECT s.metadata,op.payload,l.product_snapshot
       FROM public.fulfillment_shipments s JOIN public.fulfillment_shipment_operations op ON op.shipment_id=s.id
       JOIN public.fulfillment_parcel_lines l ON l.shipment_id=s.id WHERE s.id=$1`, [parcel])).rows)
@@ -116,8 +153,6 @@ it("uses the real paid handoff and OMS opener, then preserves same-order replay 
   expect(await handoff(paid.order)).toEqual({ ...fromHandoff, replayed: true });
   expect(await oms({ ...operator, actor: null }, { forbidden: {} })).toEqual({ ...fromOms, replayed: true });
   await refusal(oms(paid, {}, `operator:${operator.order}`), "commerce_fulfillment_destination_replay_conflict", "orderId", undefined, "23505");
-  await expect(store.runtime.query("SELECT public.fulfillment_destination_contact_v2($1,$2)", [paid.order, fromHandoff.fulfillmentRef]))
-    .rejects.toMatchObject({ code: "42501" });
   const target = await resources.installation("destination-parcel-target");
   const packet = await captureStoreJourney(store.owner, "destination-parcel");
   const freshTarget = await captureStoreJourney(target.owner, "destination-parcel-target");
@@ -151,6 +186,23 @@ it("rejects unknown fields and non-scalar classification entries at the runtime 
   await unavailable(journeyRpc(store.runtime, "fulfillment_capture_order_contact_for_shipment", [fulfillmentRef]));
   expect(await contactRows(store.owner, f.client)).toEqual([]);
   expect(await effects(f.order)).toEqual(state);
+});
+
+it("keeps the released capture refusal for an unknown shipment with a v2 payload", async () => {
+  const f = await paidV2();
+  await refusal(directCapture(randomUUID(), f.expected), "fulfillment_parcel_contact_invalid");
+  expect(await contactRows(store.owner, f.client)).toEqual([]);
+});
+
+it("refuses an erased frozen contact while the subject and order binding remain live", async () => {
+  const f = await paidV2(), { fulfillmentRef } = await handoff(f.order);
+  expect(await journeyRpc(store.runtime, "fulfillment_erase_parcel_contacts", [f.client])).toEqual({ erased: 1 });
+  expect(await readSnapshot(store.runtime, f.ctx, f.expected.binding, f.order, "order")).toMatchObject({ binding: f.expected.binding });
+  const erased = await contactRows(store.owner, f.client);
+  expect(erased).toEqual([{ shipment_id: fulfillmentRef, contact: {}, captured_at: expect.any(Date), erased_at: expect.any(Date) }]);
+  await unavailable(directCapture(fulfillmentRef, f.expected));
+  await unavailable(journeyRpc(store.runtime, "fulfillment_capture_order_contact_for_shipment", [fulfillmentRef]));
+  expect(await contactRows(store.owner, f.client)).toEqual(erased);
 });
 
 it("rolls back the complete opener on malformed metadata, line evidence or missing contact", async () => {
@@ -228,8 +280,7 @@ it("rechecks erasure after the waiting subject guard", async () => {
 });
 
 it("frozen_dispatch_v1_bytes_unchanged", async () => {
-  const file = units.find(unit => unit.file.endsWith("_fulfillment_destination_contact_v2.sql"))!.file;
-  const first = manifest.forward.findIndex(unit => unit.file === file);
+  const first = manifest.forward.findIndex(unit => unit.file === forward);
   const root = mkdtempSync(join(tmpdir(), "parcel-contact-prefix-"));
   const container = await runPostgresContainer({ name: `parcel-prefix-${process.pid}`, password: "synthetic-conformance" });
   const db = new Pool({ connectionString: container.connectionString });
@@ -259,7 +310,7 @@ it("frozen_dispatch_v1_bytes_unchanged", async () => {
     const before = await frozen(), attrs = await attributes();
     expect(JSON.parse(before.command)).toMatchObject({ contact: legacyContact, lines: [{ lotRef: draftLine.lotNumber, expirationDate: null }] });
     expect(JSON.parse(before.line)).toEqual(draftLine);
-    expect((await runner().apply()).applied.slice(0, 1)).toEqual([file]);
+    expect((await runner().apply()).applied.slice(0, 1)).toEqual([forward]);
     expect(await frozen()).toEqual(before);
     expect(await attributes()).toEqual(attrs);
     expect(await handoff(order, `handoff:${order}`, db)).toEqual({ fulfillmentRef: parcel, replayed: true });
