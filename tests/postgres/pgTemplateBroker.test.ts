@@ -17,6 +17,11 @@ it.each(["legacy", "qualified-admin", "qualified-v2"] as const)("uses one contro
     const socket = sockets.get(request.socket)!;
     const reused = requests.some(previous => previous.socket === socket);
     requests.push({ path: request.url, socket });
+    if (request.url === "/unauthorized") {
+      request.resume();
+      response.writeHead(401).end("Unauthorized");
+      return;
+    }
     if (reused || responseMode === "reset") {
       request.socket.resetAndDestroy();
       return;
@@ -33,10 +38,16 @@ it.each(["legacy", "qualified-admin", "qualified-v2"] as const)("uses one contro
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Missing broker listener address");
     const endpoint = { url: `http://127.0.0.1:${address.port}`, token: "fixture" };
+    async function leaveIdleSocket() {
+      const unauthorized = await fetch(`${endpoint.url}/unauthorized`, { method: "POST" });
+      expect(unauthorized.status).toBe(401);
+      await unauthorized.text();
+      await setImmediate();
+    }
+    await leaveIdleSocket();
     const lease = await leaseFromEndpoint(endpoint, profile);
     expect(lease.id).toBe("lease");
-    // Let an eligible keep-alive socket return to the client's idle pool.
-    await setImmediate();
+    await leaveIdleSocket();
     await expect(lease.release()).resolves.toBeUndefined();
     responseMode = "refuse";
     await expect(leaseFromEndpoint(endpoint, profile)).rejects.toThrow("pg_template_broker_clone_failed (409): fixture_refused");
@@ -47,9 +58,12 @@ it.each(["legacy", "qualified-admin", "qualified-v2"] as const)("uses one contro
     responseMode = "ok";
     const resetRelease = await leaseFromEndpoint(endpoint, profile);
     responseMode = "reset";
-    await expect(resetRelease.release()).rejects.toMatchObject({ cause: { code: "ECONNRESET" } });
-    expect(requests.map(request => request.path)).toEqual(["/clone", "/release", "/clone", "/clone", "/release", "/clone", "/release"]);
-    expect(new Set(requests.map(request => request.socket)).size).toBe(requests.length);
+    await expect(resetRelease.release()).rejects.toMatchObject({ code: "ECONNRESET" });
+    const idleSockets = new Set(requests.filter(request => request.path === "/unauthorized").map(request => request.socket));
+    const control = requests.filter(request => request.path !== "/unauthorized");
+    expect(control.map(request => request.path)).toEqual(["/clone", "/release", "/clone", "/clone", "/release", "/clone", "/release"]);
+    expect(control.every(request => !idleSockets.has(request.socket))).toBe(true);
+    expect(new Set(control.map(request => request.socket)).size).toBe(control.length);
   } finally {
     const closed = once(server, "close");
     server.close();
