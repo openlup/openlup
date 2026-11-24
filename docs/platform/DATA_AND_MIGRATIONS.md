@@ -117,6 +117,26 @@ proves default and legacy compatibility, zero-write refusal, frozen replay and
 the existing command edit fence. A 72-hour cutoff closes earlier than 24 hours,
 as the installed fence subtracts stored hours from the next cycle instant.
 
+## Native activation EXECUTE grants
+
+The [ACL forward](../../db/platform/migrations/20261125260000_subscription_activation_execute_grants.sql)
+removes default PUBLIC EXECUTE from the base activation entry and commit
+functions. It grants EXECUTE to `service_role` where present. The
+[units forward](../../db/platform/migrations/20261125261000_subscription_activation_units.sql)
+preserves the four parent signatures and grants while introducing four
+internal functions with owner and `service_role` access.
+
+After these forwards, PUBLIC cannot execute the base activation entry or commit
+functions. Run activation with the qualified runtime login (which inherits
+`service_role`) or with the owner login. Other roles receive SQLSTATE `42501`
+when calling either base function. Custom activation roles are unsupported
+because the migration runner pins function ACLs in the installation inventory
+and qualified installations refuse grants to principals outside the installation.
+
+These forwards use the reviewed default-ACL preimage for the two base functions.
+An installation with an explicit ACL on either base function requires separate
+review before applying the ACL forward.
+
 ## Native renewal stock protection
 
 The [renewal credit aggregation forward](../../db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql)
@@ -1102,11 +1122,23 @@ top-level `SET search_path` list of unquoted ASCII identifiers, using `=` or
 `pg_temp_<N>` entry. The rest of the header must match with whitespace between
 tokens normalized and literal and quoted identifier tokens kept byte-exact.
 The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
-requires `pg_temp` last, with no earlier `pg_temp` or `pg_temp_<N>` entry, for every
-installed non-system definer. Preserve the intended trusted schemas when
-moving `pg_temp` to the end. For a missing or empty path, review and set the
-trusted schema list before appending `pg_temp`. Eleven acquisition and partner
+requires `pg_temp` last, with no earlier temporary schema (`pg_temp`, or a name
+starting with `pg_temp_` or `pg_toast_temp_`), for every
+installed non-system, non-extension definer and for every such function that sets its own
+search path. It splits each path as PostgreSQL does. Its `SEARCH_PATH_PENDING` list
+names the five remaining functions outside `public`. The check fails when a listed
+function pins `pg_temp` last on all five profiles, so the list can only shrink.
+Preserve the intended trusted schemas when moving `pg_temp` to the end. The check
+prints an exact `ALTER FUNCTION` statement only when the path parses and every
+remaining schema is a concrete name. For `"$user"`, an unparseable list, or a
+missing or empty path, review and set the trusted schema list before appending
+`pg_temp`. Eleven acquisition and partner
 acquisition definer functions now pin `pg_temp` last on their search path.
+The [function search-path forward](../../db/platform/migrations/20261125310000_function_search_path_pg_temp.sql)
+appends `pg_temp` to the search path of 392 installer-owned `public` functions
+on every plan, keeping their schema order. Where the qualified-v2 plan already
+sets `pg_catalog, public, pg_temp`, every plan takes that value. Only the
+search path changes.
 If a retained-store packet has an unknown or mismatched inventory, the remedy is
 `capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
 If no such target can be provisioned, connected-store restore is unavailable for that pair.

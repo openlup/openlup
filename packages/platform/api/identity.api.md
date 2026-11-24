@@ -937,6 +937,7 @@ export * from "./postgresOperatorIdentity.js";
 export * from "./privacyPorts.js";
 export * from "./personalDataRegistry.js";
 export * from "./privacyUseCases.js";
+export { nativePrivacyUnavailable, privacyRefusalDetails, validateRequiredPrivacyContributorIds } from "./requiredPrivacyContributors.js";
 export * from "./identityPersonalDataContributor.js";
 export * from "./postgresPrivacy.js";
 export * from "./managedPrivacy.js";
@@ -1954,8 +1955,10 @@ export declare function createPostgresOperatorIdentityStore(env: {
 
 ```ts
 import { type PgQueryExecutor, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
-import { type PrivacyStore } from "./privacyPorts.js";
-export declare function createPostgresPrivacyStore(): PrivacyStore<PgQueryExecutor>;
+import { type NativePrivacyStore } from "./privacyPorts.js";
+/** Read the installed declaration through the caller's held connection. */
+export declare function readRequiredPrivacyContributorIds(db: PgQueryExecutor): Promise<readonly string[]>;
+export declare function createPostgresPrivacyStore(): NativePrivacyStore<PgQueryExecutor>;
 export declare function createPostgresPrivacyUnitOfWork(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): {
     run: <T>(work: (context: PgQueryExecutor) => Promise<T>) => Promise<T>;
     close: () => Promise<void>;
@@ -1984,6 +1987,13 @@ import type { PrivacySubjectRef, PrivacyExport, ErasureReceipt, PersonalDataDocu
 export declare class PrivacyRefusal extends Error {
     readonly code: PrivacyRefusalCode;
     constructor(code: PrivacyRefusalCode);
+    readonly facts?: PrivacyRefusalFacts;
+}
+export interface PrivacyRefusalFacts {
+    observed: string;
+    cause: string;
+    fix: string;
+    recheck: string;
 }
 export interface AuthorizedHumanAdministrator {
     principalId: string;
@@ -2029,13 +2039,19 @@ export interface PrivacyStore<Context> {
     eraseIdentity(context: Context, subject: ResolvedPrivacySubject, actor: AuthorizedHumanAdministrator, pseudonym: string): Promise<void>;
     saveReceipt(context: Context, subject: ResolvedPrivacySubject, actor: AuthorizedHumanAdministrator, key: string, receipt: ErasureReceipt, dispositions: ContributorDisposition[]): Promise<void>;
 }
-export interface PrivacyUseCaseDependencies<Context> {
+export interface NativePrivacyStore<Context> extends PrivacyStore<Context> {
+    readonly privacyRail: "native";
+    readRequiredContributorIds(context: Context): Promise<readonly string[]>;
+}
+export type PrivacyUseCaseDependencies<Context> = {
     unitOfWork: PrivacyUnitOfWork<Context>;
     registry: PersonalDataContributorRegistry<Context>;
-    store: PrivacyStore<Context>;
+    store: NativePrivacyStore<Context> | (PrivacyStore<Context> & {
+        readonly privacyRail?: never;
+    });
     now(): Date;
     randomId(): string;
-}
+};
 export interface PrivacyOperations {
     export(actor: AuthorizedHumanAdministrator, subject: PrivacySubjectRef): Promise<PrivacyExport>;
     erase(actor: AuthorizedHumanAdministrator, input: {
@@ -2056,11 +2072,21 @@ export interface ProviderIdentityErasurePort {
 ## dist/identity/privacyUseCases.d.ts
 
 ```ts
-import { type PrivacyUseCaseDependencies, type AuthorizedHumanAdministrator, type PrivacyOperations } from "./privacyPorts.js";
+import { type NativePrivacyStore, type PrivacyUseCaseDependencies, type AuthorizedHumanAdministrator, type PrivacyOperations } from "./privacyPorts.js";
 import type { PrivacySubjectRef, PrivacyEraseRequest, PrivacyExport, ErasureReceipt } from "./contracts/privacy.js";
 export declare function exportPersonalData<C>(deps: PrivacyUseCaseDependencies<C>, actor: AuthorizedHumanAdministrator, input: PrivacySubjectRef): Promise<PrivacyExport>;
 export declare function erasePersonalData<C>(deps: PrivacyUseCaseDependencies<C>, actor: AuthorizedHumanAdministrator, request: PrivacyEraseRequest): Promise<ErasureReceipt>;
+declare const nativePrivacyBrand: unique symbol;
+/** The serving module registers the native operations it constructs. */
+export interface NativePrivacyOperations extends PrivacyOperations {
+    readonly [nativePrivacyBrand]: true;
+}
+export declare function isNativePrivacyOperations(value: unknown): value is NativePrivacyOperations;
+export declare function createPrivacyOperations<C>(deps: PrivacyUseCaseDependencies<C> & {
+    store: NativePrivacyStore<C>;
+}): NativePrivacyOperations;
 export declare function createPrivacyOperations<C>(deps: PrivacyUseCaseDependencies<C>): PrivacyOperations;
+export {};
 ```
 ## dist/identity/reconcileAccountForPrincipal.d.ts
 
@@ -2135,6 +2161,22 @@ export declare function runRemoveAdminUserUseCase(request: {
     status: number;
     body: RemoveAdminUserResponse;
 }>;
+```
+## dist/identity/requiredPrivacyContributors.d.ts
+
+```ts
+import { PrivacyRefusal } from "./privacyPorts.js";
+/** Verify the bounded, unique, C-sorted declaration used in native operations and transfers. */
+export declare function validateRequiredPrivacyContributorIds(value: unknown): readonly string[];
+export declare function privacyRefusalDetails(error: PrivacyRefusal): {
+    observed?: string | undefined;
+    cause?: string | undefined;
+    fix?: string | undefined;
+    recheck?: string | undefined;
+    privacyCode: "PRIVACY_SUBJECT_NOT_FOUND" | "PRIVACY_CONTRIBUTOR_DUPLICATE" | "PRIVACY_CONTRIBUTOR_MISSING" | "PRIVACY_ASSESSMENT_UNAVAILABLE" | "PRIVACY_OWNERSHIP_UNDECLARED" | "PRIVACY_ACTIVE_SUBSCRIPTION" | "PRIVACY_RESUMABLE_SUBSCRIPTION" | "PRIVACY_PROTECTED_OPERATOR" | "PRIVACY_IDEMPOTENCY_CONFLICT" | "PRIVACY_SUBJECT_ERASED" | "PRIVACY_STORE_PRIVILEGES_UNSAFE" | "MANAGED_PRIVACY_ERASURE_UNAVAILABLE";
+};
+export declare function nativePrivacyUnavailable(cause: unknown): PrivacyRefusal;
+export declare function missingPrivacyContributors(ids: readonly string[], installed: boolean): PrivacyRefusal;
 ```
 ## dist/identity/response.d.ts
 

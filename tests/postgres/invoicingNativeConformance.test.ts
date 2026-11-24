@@ -151,7 +151,7 @@ it("fresh complete install and exact pre-M09 prefix upgrade preserve rows/histor
   expect(routines.length).toBe(18);
   for(const routine of routines) {
     const buyerCapture=routine.proname==="invoicing_capture_duty_with_buyer";
-    expect(routine.prosecdef).toBe(buyerCapture);expect(routine.proconfig).toEqual([buyerCapture?"search_path=pg_catalog, pg_temp":"search_path=pg_catalog"]);
+    expect(routine.prosecdef).toBe(buyerCapture);expect(routine.proconfig).toEqual(["search_path=pg_catalog, pg_temp"]);
     expect((await h.pool.query("SELECT has_function_privilege('anon',$1::oid,'EXECUTE') anon,has_function_privilege('authenticated',$1::oid,'EXECUTE') authenticated",[routine.oid])).rows).toEqual([{anon:false,authenticated:false}]);
   }
   const db=await h.pool.connect();try{await db.query("SET ROLE anon");await expect(call(db,"invoicing_sweep_duties",[1])).rejects.toMatchObject({code:"42501"});}finally{await db.query("RESET ROLE");db.release();}
@@ -599,7 +599,9 @@ it("keeps a native duty claimed before the seller upgrade in legacy fallback",as
   try {
     if(!await waitForPostgresTcpReady(container.connectionString))throw Error("Legacy proof TCP unavailable");
     db=new Pool({connectionString:container.connectionString,max:1});
-    for(const unit of units.filter(unit=>!unit.file.includes("20261022195000")))await db.query(readFileSync(unit.file,"utf8"));
+    // The later search-path forward also pins the seller routines, so it follows the seller upgrade below.
+    const searchPathForward=/_function_search_path_pg_temp\.sql$/u;
+    for(const unit of units.filter(unit=>!unit.file.includes("20261022195000")&&!searchPathForward.test(unit.file)))await db.query(readFileSync(unit.file,"utf8"));
     const client=randomUUID(),order=randomUUID(),intent=randomUUID();
     await db.query("INSERT INTO public.clients(id,email) VALUES($1,$2)",[client,`${client}@example.invalid`]);
     await db.query("BEGIN");
@@ -619,6 +621,7 @@ it("keeps a native duty claimed before the seller upgrade in legacy fallback",as
     // First durable claim already happened before 195000, with no seller revision.
     // The monotonic claim counter prevents a late seller freeze.
     await db.query(readFileSync("db/platform/migrations/20261022195000_invoicing_seller_revision.sql","utf8"));
+    for(const unit of units.filter(unit=>searchPathForward.test(unit.file)))await db.query(readFileSync(unit.file,"utf8"));
     const [claim]=await rpc(db,"invoicing_claim_with_seller",[1,300,"fixture",sellerFacts,"after-upgrade",order]);
     expect(claim).toMatchObject({generation:2,sellerMode:"legacy_fallback",sellerRevision:"after-upgrade"});
     expect((await db.query("SELECT * FROM public.invoicing_seller_revisions WHERE duty_id=$1",[captured.dutyId])).rows).toEqual([]);

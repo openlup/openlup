@@ -10,6 +10,19 @@ import { agentsFileCap, assertCatalogueRecipeReachability, catalogueRecipeLinks,
 const roots: string[] = [];
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+it("requires the complete native privacy cutover before reopening ordinary traffic", () => {
+  const guide = readFileSync(join(packageRoot, "docs/guide/concepts/personal-data.md"), "utf8");
+  expect(guide).toContain([
+    "Before reopening ordinary native privacy traffic, verify all three conditions.",
+    "",
+    "1. Both slices are present on every serving revision.",
+    "2. The second slice's catalogue is installed.",
+    "3. The per-store cutover is verified.",
+    "",
+    "Installing the first slice alone leaves the fence in place.",
+  ].join("\n"));
+});
+
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });

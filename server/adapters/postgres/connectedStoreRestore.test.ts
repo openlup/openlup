@@ -113,6 +113,7 @@ function captureFixture(sourceId: string, catalogueId: string, login: string, pr
     // The old adapter required proof that this omitted table was empty.
     outsideProfileCensus: preLedger ? [{ relation, owner: login, disposition: "unsupported-empty", rows: "0" }] : [],
     emptyOutsideProfile: preLedger ? [relation] : [],
+    requiredPrivacyContributorIds: ["identity"],
     owned,
   } satisfies Omit<ConnectedNativeStoreCapture, "sha256">;
   return { ...body, sha256: digest(body) };
@@ -121,6 +122,7 @@ function captureFixture(sourceId: string, catalogueId: string, login: string, pr
 it.each([
   ...profiles.map(profile => ({ profile, version: "1.3.0", catalogueId: released[profile] })),
   { profile: "separate", version: "pre-ledger", catalogueId: deletedInventories.beforeCheckoutAttemptLedger.separate },
+  { profile: "separate", version: "before the privacy declaration", catalogueId: "088f07357b02c404e5f77ae31d24b82a46f2fba3e5a34207fb8564d337780205" },
 ] as const)("refuses the $version $profile inventory before connecting", async ({ profile, version, catalogueId }) => {
   const installation = installations[profile];
   const packet = captureFixture("source", catalogueId, logins.bootstrapLogin, version === "pre-ledger");
@@ -137,3 +139,16 @@ it.each([
   });
   expect(connect).not.toHaveBeenCalled();
 });
+
+it.each([[], ["identity", "identity"], ["identity", "first"], ["other"], ["Bad", "identity"]])(
+  "refuses a malformed current contributor census before connecting (%j)", async (...ids) => {
+    const installation = installations.separate, pin = currentInventory("separate");
+    const { sha256: _hash, ...source } = captureFixture("source", pin, logins.bootstrapLogin);
+    const body = { ...source, requiredPrivacyContributorIds: ids };
+    const freshTarget = captureFixture("target", pin, installation.migrationLogin);
+    const connect = vi.fn().mockRejectedValue(new Error("unexpected database connection"));
+    await expect(restoreConnectedNativeStore({ owner: { connect } as unknown as Pool, installation,
+      packet: { ...body, sha256: digest(body) }, freshTarget })).rejects.toMatchObject({ code: "invalid_input" });
+    expect(connect).not.toHaveBeenCalled();
+  },
+);

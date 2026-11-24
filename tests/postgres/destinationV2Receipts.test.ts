@@ -1,14 +1,16 @@
+import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { draftStoreJourney, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
-import { awaitReceiptWait, backendPid, idempotencyConflict, ownerUnlinked, receiptArgs, receiptCall, receiptClient, receiptOutcome,
+import { draftStoreJourney, journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
+import { awaitReceiptWait, backendPid, idempotencyConflict, markReceiptClientErased, ownerUnlinked, receiptArgs, receiptCall, receiptClient, receiptOutcome,
   receiptTable, type ReceiptArgs } from "./destinationReceiptFixture.js";
 
 const resources = storeJourneyResources();
 let store: JourneyInstallation;
 const absent = { kind: "absent" };
+const inputHint = "Correct caller-authored input or re-obtain authoritative evidence as applicable.";
 
 beforeAll(async () => {
   store = await resources.installation("destination-receipts");
@@ -65,7 +67,9 @@ it("destination_replay_before_validation", async () => {
       for (const action of ["lock", "commit"] as const) {
         await retry.query(`BEGIN ISOLATION LEVEL ${isolation}`);
         await retry.query("SELECT count(*) FROM public.clients");
-        await expect(receiptCall(retry, action, args, outcome)).rejects.toMatchObject({ code: "22023", message: "destination_isolation_unsupported" });
+        await expect(receiptCall(retry, action, args, outcome)).rejects.toMatchObject({
+          code: "22023", message: "destination_isolation_unsupported", detail: undefined, hint: undefined,
+        });
         await retry.query("ROLLBACK");
       }
     }
@@ -117,7 +121,7 @@ it("refuses malformed scope, original bytes, and open or oversized successes", a
   }
   for (const key of ["short", "😀".repeat(46), "key\u0007control", "\u00a0leading-whitespace", "trailing-whitespace\u202f"]) {
     await expect(receiptCall(store.runtime, "read", [ctx, dialect, key, digest])).rejects.toMatchObject({
-      code: "22023", message: "address_invalid_input", detail: "idempotencyKey",
+      code: "22023", message: "address_invalid_input", detail: "idempotencyKey", hint: inputHint,
     });
   }
   for (const invalid of [
@@ -136,8 +140,72 @@ it("refuses malformed scope, original bytes, and open or oversized successes", a
     { ...outcome, binding: { ...outcome.binding, policyRevision: "😀".repeat(1024) } },
   ]) {
     await expect(receiptCall(store.owner, "commit", args, invalid)).rejects.toMatchObject({
-      code: "22023", message: "destination_binding_invalid", detail: "destination",
+      code: "22023", message: "destination_binding_invalid", detail: "destination", hint: inputHint,
     });
   }
   expect(await receiptCall(store.runtime, "read", args)).toEqual(absent);
+});
+
+it("preserves exact direct receipt diagnostics and access", async () => {
+  const { owner, runtime } = store;
+  const client = await receiptClient(owner), args = receiptArgs(client);
+  const [ctx, dialect, key, digest] = args;
+  await expect(runtime.query("SELECT public.commerce_destination_v2_receipt_read($1,$2,$3,$4)", [ctx, "unsupported", key, digest]))
+    .rejects.toMatchObject({
+      code: "22023", message: "destination_dialect_invalid", detail: "version", hint: "Use the supported entry.",
+    });
+  await expect(receiptCall(runtime, "read", [ctx, dialect, key, "z".repeat(64)])).rejects.toMatchObject({
+    code: "22023", message: "address_invalid_input", detail: "requestDigest", hint: inputHint,
+  });
+  await expect(receiptCall(owner, "lock", receiptArgs(randomUUID()))).rejects.toMatchObject(ownerUnlinked);
+  await markReceiptClientErased(owner, client);
+  await expect(receiptCall(owner, "lock", args)).rejects.toMatchObject({
+    code: "55000", message: "destination_evidence_erased", detail: "owner",
+    hint: "Re-obtain evidence through the authenticated owner or review the privacy disposition.",
+  });
+
+  const { rows: roles } = await owner.query<{ rolname: string }>(
+    "SELECT rolname FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role') ORDER BY rolname");
+  for (const [signature, service, volatility] of [
+    ["scoped_key(jsonb,text,text,text)", false, "s"],
+    ["read(jsonb,text,text,text)", true, "s"],
+    ["lock(jsonb,text,text,text)", false, "v"],
+    ["commit(jsonb,text,text,text,jsonb)", false, "v"],
+  ] as const) {
+    const routine = `public.commerce_destination_v2_receipt_${signature}`;
+    expect((await runtime.query("SELECT session_user AS login, has_function_privilege($1, 'EXECUTE') AS allowed", [routine])).rows, routine)
+      .toEqual([{ login: journeySelection.runtimeLogin, allowed: service }]);
+    const { rows } = await owner.query(`SELECT prosecdef, provolatile, proconfig,
+      NOT EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f',p.proowner))) WHERE grantee=0) AS private,
+      ARRAY(SELECT r.rolname::text FROM pg_roles r WHERE r.rolname::text=ANY($2::text[]) AND has_function_privilege(r.oid,p.oid,'EXECUTE')
+        ORDER BY r.rolname) AS roles
+      FROM pg_proc p WHERE p.oid=$1::regprocedure`,
+    [routine, roles.map(role => role.rolname)]);
+    expect(rows).toEqual([{ prosecdef: service, provolatile: volatility, proconfig: ["search_path=pg_catalog, pg_temp"], private: true,
+      roles: roles.filter(role => service && role.rolname === "service_role").map(role => role.rolname) }]);
+  }
+});
+
+it("keeps the receipt request and canonical outcome byte boundaries", async () => {
+  const { owner, runtime } = store;
+  const client = await receiptClient(owner);
+  const [base, dialect, , digest] = receiptArgs(client);
+  const scope = { ...base, owner: { ...base.owner, installationRef: "é".repeat(100) } };
+  for (const key of ["é".repeat(4), "é".repeat(90)]) {
+    await expect(receiptCall(runtime, "read", [scope, dialect, key, digest])).resolves.toEqual(absent);
+  }
+  for (const key of ["X".repeat(7), "é".repeat(90) + "X"]) {
+    await expect(receiptCall(runtime, "read", [scope, dialect, key, digest])).rejects.toMatchObject({
+      code: "22023", message: "address_invalid_input", detail: "idempotencyKey", hint: inputHint,
+    });
+  }
+  const args = receiptArgs(client);
+  const outcome = await receiptOutcome(owner);
+  const empty = { ...outcome, binding: { ...outcome.binding, policyRevision: "" } };
+  const measured = Buffer.byteLength(canonicalCatalogDraftJson(empty), "utf8");
+  const atLimit = { ...empty, binding: { ...empty.binding, policyRevision: "X".repeat(4096 - measured) } };
+  await expect(receiptCall(owner, "commit", args, { ...atLimit, binding: { ...atLimit.binding, policyRevision: atLimit.binding.policyRevision + "X" } }))
+    .rejects.toMatchObject({ code: "22023", message: "destination_binding_invalid", detail: "destination", hint: inputHint });
+  await expect(receiptCall(owner, "commit", args, atLimit))
+    .resolves.toEqual({ kind: "receipt", eventId: expect.any(String), evidenceDisposition: "available", outcome: atLimit });
 });
