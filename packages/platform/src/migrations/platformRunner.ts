@@ -25,22 +25,40 @@ const MIGRATION_LOCK_NAME = "openlup:public-platform-migrations:v1";
 
 export type PlatformPostgresInstallation = { generation: "legacy" } | QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation;
 
-function platformMigrationSource(installation: PlatformPostgresInstallation, reader: Pick<PlatformMigrationSource, "readMigrations" | "readManifest">): PlatformMigrationSource {
+function platformMigrationSource(
+  installation: PlatformPostgresInstallation,
+  reader?: Pick<PlatformMigrationSource, "readMigrations" | "readManifest">,
+): PlatformMigrationSource {
   const generation: PlatformMigrationGeneration = installation.generation;
+  let pendingRead: { root: string; manifest: PlatformMigrationManifest | null } | null = null;
   const read = (root: string) => {
-    const catalog = reader.readMigrations(root);
-    const raw = reader.readManifest(root);
-    const errors = [...catalog.errors, ...(raw === null ? ["platform migration manifest is missing"] : evaluatePlatformMigrationManifest({ manifest: raw, migrations: catalog.migrations }))];
+    const loaded = reader
+      ? { ...reader.readMigrations(root), manifest: reader.readManifest(root) }
+      : readPackagedPlatformCatalog();
+    const errors = [...loaded.errors, ...(loaded.manifest === null ? ["platform migration manifest is missing"] : evaluatePlatformMigrationManifest({ manifest: loaded.manifest, migrations: loaded.migrations }))];
     if (errors.length) return { migrations: [], errors, manifest: null };
-    const manifest = selectPlatformMigrationManifest(raw as PlatformMigrationManifest, generation, installation.generation === "qualified-v2"
+    const manifest = selectPlatformMigrationManifest(loaded.manifest as PlatformMigrationManifest, generation, installation.generation === "qualified-v2"
       ? { migrationIsBootstrap: installation.migrationLogin === installation.bootstrapLogin, hasRestore: installation.restoreLogin !== undefined }
       : installation.generation === "qualified-admin" ? { roleMode: installation.roleMode } : undefined);
     const selected = new Set([manifest.baseline.file, ...manifest.forward.map(({ file }) => file)]);
-    return { migrations: catalog.migrations.filter(({ file }) => selected.has(file)), errors, manifest };
+    return { migrations: loaded.migrations.filter(({ file }) => selected.has(file)), errors, manifest };
   };
   return {
-    readMigrations: root => read(root),
-    readManifest: root => read(root).manifest,
+    readMigrations: root => {
+      pendingRead = null;
+      const loaded = read(root);
+      pendingRead = { root, manifest: loaded.manifest };
+      return { migrations: loaded.migrations, errors: loaded.errors };
+    },
+    readManifest: root => {
+      if (pendingRead && pendingRead.root === root) {
+        const { manifest } = pendingRead;
+        pendingRead = null;
+        return manifest;
+      }
+      pendingRead = null;
+      return read(root).manifest;
+    },
     evaluate: input => evaluateSelectedPlatformMigrationManifest(input, generation),
     assertSession: installation.generation === "qualified-v2"
       ? (client: PoolClient, applied: readonly { file: string; sha256: string; position: number }[]) => assertQualifiedPostgresSession(client, applied, installation, MIGRATION_LOCK_NAME)
@@ -97,10 +115,7 @@ function configuredPlatformMigrationRunner(env: PostgresMigrationRunnerEnv, opti
   if (installation.generation === "qualified-admin") assertQualifiedAdminPostgresSelection(installation);
   return createBoundPostgresMigrationRunner(env, {
     lockName: MIGRATION_LOCK_NAME,
-    source: platformMigrationSource(installation, options.catalog ?? {
-      readMigrations: () => readPackagedPlatformCatalog(),
-      readManifest: () => readPackagedPlatformCatalog().manifest,
-    }),
+    source: platformMigrationSource(installation, options.catalog),
     catalogProjectionPayload: options.catalogProjectionPayload ?? (installation.generation === "legacy"
       ? canonicalCatalogProjectionPayload : installation.generation === "qualified-v2"
         ? client => qualifiedPostgresCatalogPayload(client, installation, MIGRATION_LOCK_NAME)
