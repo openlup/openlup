@@ -14,7 +14,8 @@ INSERT INTO public.identity_privacy_required_contributors (contributor_id) VALUE
   ('destination-receipts'),
   ('fulfillment-parcel-contacts'),
   ('identity'),
-  ('subscriptions')
+  ('subscriptions'),
+  ('tax-calculations')
 ON CONFLICT (contributor_id) DO NOTHING;
 
 CREATE FUNCTION public.identity_privacy_required_contributor_ids()

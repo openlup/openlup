@@ -76,3 +76,4 @@ export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPriv
 export { createCustomerPreferencePrivacyContributor } from './customerPreferencePrivacy.js';
 export { createCustomerBillingPrivacyContributor } from './billingProfilePrivacy.js';
 export { createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor } from "./destinationPrivacy.js";
+export { createTaxCalculationPrivacyContributor } from "./taxCalculationPrivacy.js";

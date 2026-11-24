@@ -34,7 +34,7 @@ it('erases through the qualified runtime before a waiting projection without a d
     const [db] = args, subject = await originalStore.resolve(...args);
     erasureDb = db; resolveEntered(); await resume; return subject;
   } };
-  const registry = createPersonalDataContributorRegistry(nativePrivacyContributors(store), { requiredContributorIds: [] });
+  const registry = createPersonalDataContributorRegistry(nativePrivacyContributors(store), { requiredContributorIds: ['tax-calculations'] });
   const withTransaction = async <T>(work: (db: PoolClient) => Promise<T>) => {
     try { await projectionDb.query('BEGIN'); const result = await work(projectionDb); await projectionDb.query('COMMIT'); return result; }
     catch (error) { await projectionDb.query('ROLLBACK'); throw error; }

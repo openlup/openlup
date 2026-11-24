@@ -192,7 +192,9 @@ it.each(['export', 'erase'] as const)('admitted native %s refuses an absent inst
 async function mountedPrivacyQuery(sql: string) {
   if (sql.includes('identity_privacy_required_contributor_ids()')) return { rows: [{ ids: ['communication-events', 'customer-billing',
     'customer-preferences', 'customer-saved-addresses', 'destination-documents', 'destination-receipts',
-    'fulfillment-parcel-contacts', 'identity', 'subscriptions'] }] };
+    'fulfillment-parcel-contacts', 'identity', 'subscriptions', 'tax-calculations'] }] };
+  if (sql.includes("to_regclass('public.tax_calculations')")) return { rows: [{ installed: true }] };
+  if (sql === 'SELECT public.tax_calculation_export_v1($1::uuid) AS data') return { rows: [{ data: [] }] };
   if (/^SELECT public\.customer_(saved_addresses|preferences)_export/.test(sql)) return { rows: [{ data: [] }] };
   if (sql === 'SELECT public.communication_event_privacy($1::uuid,false) AS value') return { rows: [{ value: [] }] };
   if (sql.startsWith('SELECT public.customer_billing_export')) return { rows: [{ data: { profiles: [{ client_id: privacyContact, full_name: 'Billing Buyer' }], invoiceBuyers: [{ buyer: { name: 'Frozen Buyer' } }] } }] };
@@ -317,7 +319,15 @@ it('keeps native destination issuance dormant with a complete privacy registry',
   expect(composeNativePrivacy(privacyComposition(), issuanceEnabled).destination.destinationAddressV2.available).toBe(true);
   expect(composeNativePrivacy(privacyComposition()).destination.destinationAddressV2.available).toBe(false);
 });
-it.each(['destination-receipts', 'destination-documents'])('native privacy composition requires %s', async missing => {
+it('requires the installed tax evaluation contributor even while issuance is disabled', async () => {
+  f.missingDestinationOwner = 'tax-calculations';
+  const { operations } = composeNativePrivacy(privacyComposition());
+  await expect(operations.erase({ principalId: privacyContact }, {
+    subject: { kind: 'contact', contactId: privacyContact }, idempotencyKey: privacyContact,
+  })).rejects.toMatchObject({ code: 'PRIVACY_CONTRIBUTOR_MISSING' });
+});
+
+it.each(['destination-receipts', 'destination-documents', 'tax-calculations'])('native privacy composition requires %s', async missing => {
   f.adopterPolicy = true;
   f.missingDestinationOwner = missing;
   const composition = composeNativePrivacy(privacyComposition(), issuanceEnabled);
@@ -463,6 +473,7 @@ it.each(['export', 'erase'] as const)('adopter policy admits mounted direct %s b
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.commerce_destination_v2_export($1::uuid) AS data', [privacyContact]);
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.customer_billing_export($1) AS data', [privacyContact]);
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.communication_event_privacy($1::uuid,false) AS value', [privacyContact]);
+    expect(privacy.query).toHaveBeenCalledWith('SELECT public.tax_calculation_export_v1($1::uuid) AS data', [privacyContact]);
   }
   if (operation === 'erase') {
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.commerce_destination_v2_receipts_erase($1::uuid)', [privacyContact]);
@@ -470,6 +481,7 @@ it.each(['export', 'erase'] as const)('adopter policy admits mounted direct %s b
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.customer_billing_prepare_erasure()');
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.customer_billing_erase($1)', [privacyContact]);
     expect(privacy.query).toHaveBeenCalledWith('SELECT public.communication_event_privacy($1::uuid,true)', [privacyContact]);
+    expect(privacy.query).toHaveBeenCalledWith('SELECT public.tax_calculation_erase_v1($1::uuid)', [privacyContact]);
   }
   expect(privacy.close).toHaveBeenCalledOnce(); expect(managed.from).not.toHaveBeenCalled();
   expect(f.policy).toHaveBeenCalledExactlyOnceWith({ route: req.url, domain: 'auth', surface: 'admin', risk: 'mutation' });

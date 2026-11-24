@@ -378,7 +378,7 @@ beforeAll(async () => {
   await source.owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at,membership_revoked_at,membership_revoked_by)
     VALUES($1,'distributor','revoked','legacy','2020-01-01','2021-01-01',$2)`, [revoked, admin]);
   await source.owner.query(`INSERT INTO public.identity_privacy_erasures(erasure_id,idempotency_key,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-    VALUES($1,$2,$3,$4,'identity.erasure.v1','{}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
+    VALUES($1,$2,$3,$4,'identity.erasure.v1','{"tax-calculations":"commerce.tax-calculations.v1"}','[]','[]','2022-01-01T03:04:05.123456Z')`, [randomUUID(), randomUUID(), erased, admin]);
   media = await mediaFixture();
   consent = await consentFixture();
 
@@ -499,7 +499,7 @@ const restore = (capturePacket = packet) => restoreConnectedNativeStore({ owner:
 
 it("compares declaration authority at capture, copy and replay even when the catalogue matches", async () => {
   const initial = ["communication-events", "customer-billing", "customer-preferences", "customer-saved-addresses",
-    "destination-documents", "destination-receipts", "fulfillment-parcel-contacts", "identity", "subscriptions"];
+    "destination-documents", "destination-receipts", "fulfillment-parcel-contacts", "identity", "subscriptions", "tax-calculations"];
   expect(packet).toHaveProperty("requiredPrivacyContributorIds", initial);
   expect(pristine).toHaveProperty("requiredPrivacyContributorIds", initial);
   const declaration = "identity_privacy_required_contributors";
@@ -1815,7 +1815,7 @@ it("destination_receipt_privacy_round_trip", async () => {
   const documents = contributors.find(owner => owner.id === "destination-documents")!;
   const contributor = contributors.find(owner => owner.id === "destination-receipts")!;
   const registry = createPersonalDataContributorRegistry(contributors,
-    { requiredContributorIds: ["identity", "destination-receipts", "destination-documents"] });
+    { requiredContributorIds: ["identity", "destination-receipts", "destination-documents", "tax-calculations"] });
   const unitOfWork = (onStart?: (pid: number) => void) => ({
     async run<T>(work: (db: PgQueryExecutor) => Promise<T>): Promise<T> {
       const db = await clean.runtime.connect();

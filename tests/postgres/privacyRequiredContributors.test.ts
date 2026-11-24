@@ -13,17 +13,17 @@ import { closePostgres, postgresSetupTimeoutMs } from "../helpers/postgresContai
 import { createAccountMutationsTemplate } from "./customerAccountMutations.fixture.js";
 
 const forward = "db/platform/migrations/20261125200000_identity_privacy_required_contributors.sql";
-const predecessor = "db/platform/migrations/20261125150000_checkout_recovery_reminder_install_outcome.sql";
+const predecessor = "db/platform/migrations/20261125170000_tax_calculations.sql";
 const table = "public.identity_privacy_required_contributors";
 const reader = "public.identity_privacy_required_contributor_ids()";
 const owners = ["communication-events", "customer-billing", "customer-preferences", "customer-saved-addresses",
-  "destination-documents", "destination-receipts", "fulfillment-parcel-contacts", "identity", "subscriptions"];
+  "destination-documents", "destination-receipts", "fulfillment-parcel-contacts", "identity", "subscriptions", "tax-calculations"];
 const before = {
-  legacy: "94b743e3ee72fd1b8e51971bcaf491826d4bca0d8fbcd433da71f4ad888a75aa",
-  bootstrap: "85a2457cc36e33dc295538bfc5500ecf7ccb59b26e9f21450bd9252233b50e63",
-  separate: "ed809bbddd2486eef73f0d6bafbb1a69f4ffe55cc0055b4e6c356a66fdaec940",
-  "admin-managed": "9eeeaff5839b60d74f3ac9a0afc0ad4b8644d8086353ff32441bcac2dcc88d6a",
-  "admin-operator": "30de28f900f7e0d8d0c06cfe3b021e122bb18dba8ff3dedd47276fa9b063c2a4",
+  legacy: "e776cb0e373eeff0d9f2759ca2ad0d4f016a00e1eb9c8d9de25db79b1cd70610",
+  bootstrap: "d534813173ca36e891ffaca81ccb62ddc3fd40378117afc671f88ecf1f3244aa",
+  separate: "088f07357b02c404e5f77ae31d24b82a46f2fba3e5a34207fb8564d337780205",
+  "admin-managed": "26d6bf72846775504f7ba3c9ff36a8a1567a1caf96db9735c53d511b59d2e377",
+  "admin-operator": "cb0b731878217ba883d1acedfb6464f252dd4c585dbc9722a1e16b22df12ec9c",
 };
 const ledger = (db: Pool) => db.query("SELECT * FROM public.platform_schema_migrations ORDER BY position").then(result => result.rows);
 const required = (db: Pool | PoolClient) => db.query<{ ids: string[] }>(`SELECT ${reader} AS ids`).then(result => result.rows[0].ids);

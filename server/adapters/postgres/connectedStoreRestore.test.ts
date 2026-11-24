@@ -122,7 +122,7 @@ function captureFixture(sourceId: string, catalogueId: string, login: string, pr
 it.each([
   ...profiles.map(profile => ({ profile, version: "1.3.0", catalogueId: released[profile] })),
   { profile: "separate", version: "pre-ledger", catalogueId: deletedInventories.beforeCheckoutAttemptLedger.separate },
-  { profile: "separate", version: "before the privacy declaration", catalogueId: "ed809bbddd2486eef73f0d6bafbb1a69f4ffe55cc0055b4e6c356a66fdaec940" },
+  { profile: "separate", version: "before the privacy declaration", catalogueId: "088f07357b02c404e5f77ae31d24b82a46f2fba3e5a34207fb8564d337780205" },
 ] as const)("refuses the $version $profile inventory before connecting", async ({ profile, version, catalogueId }) => {
   const installation = installations[profile];
   const packet = captureFixture("source", catalogueId, logins.bootstrapLogin, version === "pre-ledger");

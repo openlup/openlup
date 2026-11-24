@@ -4,8 +4,8 @@ SELECT plan(10);
 
 SELECT is(public.identity_privacy_required_contributor_ids(),
   ARRAY['communication-events','customer-billing','customer-preferences','customer-saved-addresses',
-    'destination-documents','destination-receipts','fulfillment-parcel-contacts','identity','subscriptions'],
-  'owner reads the canonical nine declarations');
+    'destination-documents','destination-receipts','fulfillment-parcel-contacts','identity','subscriptions','tax-calculations'],
+  'owner reads the canonical ten declarations');
 SELECT ok((SELECT relrowsecurity AND NOT relforcerowsecurity FROM pg_catalog.pg_class
   WHERE oid='public.identity_privacy_required_contributors'::regclass), 'RLS enabled');
 SELECT is((SELECT count(*) FROM pg_catalog.pg_policy

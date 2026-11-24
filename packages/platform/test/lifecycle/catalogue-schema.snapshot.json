@@ -1,0 +1,3294 @@
+{
+  "jsonSchemas": {
+    "productType": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "maxLength": 120,
+          "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+        },
+        "version": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "units": {
+          "maxItems": 64,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "maxLength": 120,
+                "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+              },
+              "dimension": {
+                "type": "string",
+                "enum": [
+                  "mass",
+                  "volume",
+                  "count"
+                ]
+              },
+              "integral": {
+                "type": "boolean"
+              },
+              "factor": {
+                "type": "object",
+                "properties": {
+                  "canonicalUnit": {
+                    "type": "string",
+                    "enum": [
+                      "openlup:g",
+                      "openlup:ml",
+                      "openlup:piece"
+                    ]
+                  },
+                  "unscaled": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,39}$"
+                  },
+                  "scale": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 12
+                  }
+                },
+                "required": [
+                  "canonicalUnit",
+                  "unscaled",
+                  "scale"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "code",
+              "dimension",
+              "integral"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "netContentUnits": {
+          "minItems": 1,
+          "maxItems": 64,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 120,
+            "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+          }
+        },
+        "dimensions": {
+          "maxItems": 16,
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "choice"
+                  },
+                  "values": {
+                    "minItems": 1,
+                    "maxItems": 1000,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    }
+                  }
+                },
+                "required": [
+                  "key",
+                  "kind",
+                  "values"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "quantity"
+                  },
+                  "dimension": {
+                    "type": "string",
+                    "enum": [
+                      "mass",
+                      "volume",
+                      "count"
+                    ]
+                  },
+                  "units": {
+                    "minItems": 1,
+                    "maxItems": 32,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 120,
+                      "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                    }
+                  },
+                  "role": {
+                    "type": "string",
+                    "const": "net_content"
+                  }
+                },
+                "required": [
+                  "key",
+                  "kind",
+                  "dimension",
+                  "units"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "boolean"
+                  }
+                },
+                "required": [
+                  "key",
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "attributes": {
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "product",
+                  "variant"
+                ]
+              },
+              "valueType": {
+                "anyOf": [
+                  {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "text"
+                          },
+                          "maxLength": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 1000000
+                          },
+                          "minLength": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 1000000
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "maxLength"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "localized_text"
+                          },
+                          "maxLength": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 1000000
+                          },
+                          "locales": {
+                            "minItems": 1,
+                            "maxItems": 100,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
+                            }
+                          },
+                          "requiredLocales": {
+                            "maxItems": 100,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "maxLength",
+                          "locales"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "decimal"
+                          },
+                          "scale": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 12
+                          },
+                          "min": {
+                            "type": "string",
+                            "maxLength": 66,
+                            "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+                          },
+                          "max": {
+                            "type": "string",
+                            "maxLength": 66,
+                            "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "scale"
+                        ],
+                        "additionalProperties": false,
+                        "description": "Use scale 0 for whole numbers; there is no integer kind."
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "quantity"
+                          },
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "mass",
+                              "volume",
+                              "count"
+                            ]
+                          },
+                          "units": {
+                            "minItems": 1,
+                            "maxItems": 64,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 120,
+                              "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "dimension",
+                          "units"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "boolean"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "enum"
+                          },
+                          "values": {
+                            "minItems": 1,
+                            "maxItems": 1000,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 120
+                                },
+                                "labels": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "maxLength": 1000
+                                  }
+                                }
+                              },
+                              "required": [
+                                "id"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "values"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "reference"
+                          },
+                          "allowlist": {
+                            "minItems": 1,
+                            "maxItems": 64,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 120,
+                              "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "allowlist"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "date"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "list"
+                      },
+                      "item": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "text"
+                              },
+                              "maxLength": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              },
+                              "minLength": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "maxLength"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "localized_text"
+                              },
+                              "maxLength": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              },
+                              "locales": {
+                                "minItems": 1,
+                                "maxItems": 100,
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 64
+                                }
+                              },
+                              "requiredLocales": {
+                                "maxItems": 100,
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 64
+                                }
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "maxLength",
+                              "locales"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "decimal"
+                              },
+                              "scale": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 12
+                              },
+                              "min": {
+                                "type": "string",
+                                "maxLength": 66,
+                                "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+                              },
+                              "max": {
+                                "type": "string",
+                                "maxLength": 66,
+                                "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "scale"
+                            ],
+                            "additionalProperties": false,
+                            "description": "Use scale 0 for whole numbers; there is no integer kind."
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "quantity"
+                              },
+                              "dimension": {
+                                "type": "string",
+                                "enum": [
+                                  "mass",
+                                  "volume",
+                                  "count"
+                                ]
+                              },
+                              "units": {
+                                "minItems": 1,
+                                "maxItems": 64,
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 120,
+                                  "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                                }
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "dimension",
+                              "units"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "boolean"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "enum"
+                              },
+                              "values": {
+                                "minItems": 1,
+                                "maxItems": 1000,
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 120
+                                    },
+                                    "labels": {
+                                      "type": "object",
+                                      "propertyNames": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 64
+                                      },
+                                      "additionalProperties": {
+                                        "type": "string",
+                                        "maxLength": 1000
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "id"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "values"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "reference"
+                              },
+                              "allowlist": {
+                                "minItems": 1,
+                                "maxItems": 64,
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 120,
+                                  "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                                }
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "allowlist"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "date"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "min": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000000
+                      },
+                      "max": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000000
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "item",
+                      "min",
+                      "max"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "cardinality": {
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  },
+                  "max": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  }
+                },
+                "required": [
+                  "min",
+                  "max"
+                ],
+                "additionalProperties": false
+              },
+              "filterable": {
+                "type": "boolean"
+              },
+              "facetable": {
+                "type": "boolean"
+              },
+              "public": {
+                "type": "boolean"
+              },
+              "displayOrder": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "labels": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              }
+            },
+            "required": [
+              "key",
+              "scope",
+              "valueType",
+              "required",
+              "cardinality",
+              "filterable",
+              "facetable",
+              "public",
+              "displayOrder",
+              "labels"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "axes": {
+          "maxItems": 16,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "attributeKey": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "labels": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              }
+            },
+            "required": [
+              "key",
+              "attributeKey"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "validatorRef": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "publicationRules": {
+          "type": "boolean",
+          "const": true
+        },
+        "subscriptionProfileRef": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string",
+              "maxLength": 120,
+              "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+            },
+            "version": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "key",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "taxClass": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "labels": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
+      },
+      "required": [
+        "key",
+        "version",
+        "units",
+        "netContentUnits",
+        "dimensions"
+      ],
+      "additionalProperties": false
+    },
+    "productInput": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "namespace": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9.-]*$"
+        },
+        "type": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string",
+              "maxLength": 120,
+              "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+            },
+            "version": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "key",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "slug": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9][a-z0-9_-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "presentation": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/__schema0"
+          }
+        },
+        "skus": {
+          "minItems": 1,
+          "maxItems": 10000,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "options": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9_-]*$"
+                },
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "choice"
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "quantity"
+                        },
+                        "value": {
+                          "type": "object",
+                          "properties": {
+                            "dimension": {
+                              "type": "string",
+                              "enum": [
+                                "mass",
+                                "volume",
+                                "count"
+                              ]
+                            },
+                            "unscaled": {
+                              "type": "string",
+                              "pattern": "^[1-9][0-9]{0,39}$"
+                            },
+                            "scale": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 12
+                            },
+                            "unit": {
+                              "type": "string",
+                              "maxLength": 120,
+                              "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                            }
+                          },
+                          "required": [
+                            "dimension",
+                            "unscaled",
+                            "scale",
+                            "unit"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "boolean"
+                        },
+                        "value": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "netContent": {
+                "type": "object",
+                "properties": {
+                  "dimension": {
+                    "type": "string",
+                    "enum": [
+                      "mass",
+                      "volume",
+                      "count"
+                    ]
+                  },
+                  "unscaled": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,39}$"
+                  },
+                  "scale": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 12
+                  },
+                  "unit": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                  }
+                },
+                "required": [
+                  "dimension",
+                  "unscaled",
+                  "scale",
+                  "unit"
+                ],
+                "additionalProperties": false
+              },
+              "identifiers": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "scheme": {
+                      "type": "string",
+                      "maxLength": 120,
+                      "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                    },
+                    "issuer": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    "value": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "packagingLevel": {
+                      "type": "string",
+                      "enum": [
+                        "unit",
+                        "case"
+                      ]
+                    },
+                    "quantity": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 999999
+                    },
+                    "isPrimary": {
+                      "type": "boolean"
+                    },
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "scheme",
+                    "issuer",
+                    "value",
+                    "packagingLevel"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "sell": {
+                "type": "object",
+                "properties": {
+                  "oneTime": {
+                    "type": "boolean"
+                  },
+                  "subscription": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "oneTime",
+                  "subscription"
+                ],
+                "additionalProperties": false
+              },
+              "primary": {
+                "type": "boolean"
+              },
+              "grossMass": {
+                "type": "object",
+                "properties": {
+                  "dimension": {
+                    "type": "string",
+                    "enum": [
+                      "mass",
+                      "volume",
+                      "count"
+                    ]
+                  },
+                  "unscaled": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,39}$"
+                  },
+                  "scale": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 12
+                  },
+                  "unit": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                  }
+                },
+                "required": [
+                  "dimension",
+                  "unscaled",
+                  "scale",
+                  "unit"
+                ],
+                "additionalProperties": false
+              },
+              "attributes": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "dimension": {
+                              "type": "string",
+                              "enum": [
+                                "mass",
+                                "volume",
+                                "count"
+                              ]
+                            },
+                            "unscaled": {
+                              "type": "string",
+                              "pattern": "^[1-9][0-9]{0,39}$"
+                            },
+                            "scale": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 12
+                            },
+                            "unit": {
+                              "type": "string",
+                              "maxLength": 120,
+                              "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                            }
+                          },
+                          "required": [
+                            "dimension",
+                            "unscaled",
+                            "scale",
+                            "unit"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "namespace": {
+                              "type": "string",
+                              "maxLength": 120,
+                              "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                            },
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 120
+                            }
+                          },
+                          "required": [
+                            "namespace",
+                            "id"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "dimension": {
+                                "type": "string",
+                                "enum": [
+                                  "mass",
+                                  "volume",
+                                  "count"
+                                ]
+                              },
+                              "unscaled": {
+                                "type": "string",
+                                "pattern": "^[1-9][0-9]{0,39}$"
+                              },
+                              "scale": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 12
+                              },
+                              "unit": {
+                                "type": "string",
+                                "maxLength": 120,
+                                "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                              }
+                            },
+                            "required": [
+                              "dimension",
+                              "unscaled",
+                              "scale",
+                              "unit"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "namespace": {
+                                "type": "string",
+                                "maxLength": 120,
+                                "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                              },
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 120
+                              }
+                            },
+                            "required": [
+                              "namespace",
+                              "id"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "facts": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/definitions/__schema0"
+                }
+              },
+              "minQuantity": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              "isAddon": {
+                "type": "boolean"
+              },
+              "offerVersions": {
+                "minItems": 1,
+                "maxItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                }
+              },
+              "logisticsRef": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "title",
+              "options",
+              "netContent",
+              "identifiers",
+              "sell"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "document": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/__schema0"
+          }
+        },
+        "attributes": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "dimension": {
+                        "type": "string",
+                        "enum": [
+                          "mass",
+                          "volume",
+                          "count"
+                        ]
+                      },
+                      "unscaled": {
+                        "type": "string",
+                        "pattern": "^[1-9][0-9]{0,39}$"
+                      },
+                      "scale": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 12
+                      },
+                      "unit": {
+                        "type": "string",
+                        "maxLength": 120,
+                        "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                      }
+                    },
+                    "required": [
+                      "dimension",
+                      "unscaled",
+                      "scale",
+                      "unit"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "namespace": {
+                        "type": "string",
+                        "maxLength": 120,
+                        "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      }
+                    },
+                    "required": [
+                      "namespace",
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "dimension": {
+                          "type": "string",
+                          "enum": [
+                            "mass",
+                            "volume",
+                            "count"
+                          ]
+                        },
+                        "unscaled": {
+                          "type": "string",
+                          "pattern": "^[1-9][0-9]{0,39}$"
+                        },
+                        "scale": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 12
+                        },
+                        "unit": {
+                          "type": "string",
+                          "maxLength": 120,
+                          "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                        }
+                      },
+                      "required": [
+                        "dimension",
+                        "unscaled",
+                        "scale",
+                        "unit"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "namespace": {
+                          "type": "string",
+                          "maxLength": 120,
+                          "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                        },
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120
+                        }
+                      },
+                      "required": [
+                        "namespace",
+                        "id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "namespace",
+        "type",
+        "slug",
+        "name",
+        "presentation",
+        "skus"
+      ],
+      "additionalProperties": false,
+      "definitions": {
+        "__schema0": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/__schema0"
+              }
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "$ref": "#/definitions/__schema0"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "draftV3": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 3
+        },
+        "product": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+            },
+            "type": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "maxLength": 120,
+                  "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                },
+                "version": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "required": [
+                "key",
+                "version"
+              ],
+              "additionalProperties": false
+            },
+            "slug": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            },
+            "primarySkuId": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+            },
+            "dimensions": {
+              "maxItems": 16,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              }
+            },
+            "sharedContent": {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "number",
+                  "const": 1
+                },
+                "catalogAction": {
+                  "type": "string",
+                  "enum": [
+                    "create",
+                    "revise"
+                  ]
+                },
+                "presentation": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "$ref": "#/definitions/__schema0"
+                  }
+                },
+                "offerMemberships": {
+                  "maxItems": 10000,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "skuCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9._:-]+$"
+                      },
+                      "offerVersion": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 240
+                      },
+                      "admitted": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "skuCode",
+                      "offerVersion",
+                      "admitted"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "requestedModes": {
+                  "maxItems": 10000,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "skuCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9._:-]+$"
+                      },
+                      "modes": {
+                        "maxItems": 2,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "one_time",
+                            "subscription"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "skuCode",
+                      "modes"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "publicationSkus": {
+                  "maxItems": 10000,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "skuCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9._:-]+$"
+                      },
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "minQuantity": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2147483647
+                      },
+                      "isAddon": {
+                        "type": "boolean"
+                      },
+                      "facts": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "$ref": "#/definitions/__schema0"
+                        }
+                      }
+                    },
+                    "required": [
+                      "skuCode",
+                      "title",
+                      "minQuantity",
+                      "isAddon",
+                      "facts"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "document": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "$ref": "#/definitions/__schema0"
+                  }
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "catalogAction",
+                "presentation",
+                "offerMemberships",
+                "requestedModes",
+                "publicationSkus"
+              ],
+              "additionalProperties": false
+            },
+            "documentRevision": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                },
+                "productId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                },
+                "revisionNo": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "schemaId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                "documentRef": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                "sourceRef": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                "digest": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "id",
+                "productId",
+                "revisionNo",
+                "schemaId",
+                "documentRef",
+                "sourceRef",
+                "digest"
+              ],
+              "additionalProperties": false
+            },
+            "attributes": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "mass",
+                              "volume",
+                              "count"
+                            ]
+                          },
+                          "unscaled": {
+                            "type": "string",
+                            "pattern": "^[1-9][0-9]{0,39}$"
+                          },
+                          "scale": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 12
+                          },
+                          "unit": {
+                            "type": "string",
+                            "maxLength": 120,
+                            "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "unscaled",
+                          "scale",
+                          "unit"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "namespace": {
+                            "type": "string",
+                            "maxLength": 120,
+                            "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "namespace",
+                          "id"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "dimension": {
+                              "type": "string",
+                              "enum": [
+                                "mass",
+                                "volume",
+                                "count"
+                              ]
+                            },
+                            "unscaled": {
+                              "type": "string",
+                              "pattern": "^[1-9][0-9]{0,39}$"
+                            },
+                            "scale": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 12
+                            },
+                            "unit": {
+                              "type": "string",
+                              "maxLength": 120,
+                              "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                            }
+                          },
+                          "required": [
+                            "dimension",
+                            "unscaled",
+                            "scale",
+                            "unit"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "namespace": {
+                              "type": "string",
+                              "maxLength": 120,
+                              "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                            },
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 120
+                            }
+                          },
+                          "required": [
+                            "namespace",
+                            "id"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "dimensions",
+            "sharedContent"
+          ],
+          "additionalProperties": false
+        },
+        "skus": {
+          "maxItems": 10000,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+              },
+              "productId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+              },
+              "code": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "options": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9_-]*$"
+                },
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "choice"
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "quantity"
+                        },
+                        "value": {
+                          "type": "object",
+                          "properties": {
+                            "dimension": {
+                              "type": "string",
+                              "enum": [
+                                "mass",
+                                "volume",
+                                "count"
+                              ]
+                            },
+                            "unscaled": {
+                              "type": "string",
+                              "pattern": "^[1-9][0-9]{0,39}$"
+                            },
+                            "scale": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 12
+                            },
+                            "unit": {
+                              "type": "string",
+                              "maxLength": 120,
+                              "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                            }
+                          },
+                          "required": [
+                            "dimension",
+                            "unscaled",
+                            "scale",
+                            "unit"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "boolean"
+                        },
+                        "value": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "netContent": {
+                "type": "object",
+                "properties": {
+                  "dimension": {
+                    "type": "string",
+                    "enum": [
+                      "mass",
+                      "volume",
+                      "count"
+                    ]
+                  },
+                  "unscaled": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,39}$"
+                  },
+                  "scale": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 12
+                  },
+                  "unit": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                  }
+                },
+                "required": [
+                  "dimension",
+                  "unscaled",
+                  "scale",
+                  "unit"
+                ],
+                "additionalProperties": false
+              },
+              "identifiers": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "scheme": {
+                      "type": "string",
+                      "maxLength": 120,
+                      "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                    },
+                    "issuer": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    "value": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "packagingLevel": {
+                      "type": "string",
+                      "enum": [
+                        "unit",
+                        "case"
+                      ]
+                    },
+                    "quantity": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 2147483647
+                    }
+                  },
+                  "required": [
+                    "scheme",
+                    "issuer",
+                    "value",
+                    "packagingLevel"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "assetRefs": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                }
+              },
+              "grossMass": {
+                "type": "object",
+                "properties": {
+                  "dimension": {
+                    "type": "string",
+                    "enum": [
+                      "mass",
+                      "volume",
+                      "count"
+                    ]
+                  },
+                  "unscaled": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,39}$"
+                  },
+                  "scale": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 12
+                  },
+                  "unit": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                  }
+                },
+                "required": [
+                  "dimension",
+                  "unscaled",
+                  "scale",
+                  "unit"
+                ],
+                "additionalProperties": false
+              },
+              "logisticsRef": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "attributes": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "dimension": {
+                              "type": "string",
+                              "enum": [
+                                "mass",
+                                "volume",
+                                "count"
+                              ]
+                            },
+                            "unscaled": {
+                              "type": "string",
+                              "pattern": "^[1-9][0-9]{0,39}$"
+                            },
+                            "scale": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 12
+                            },
+                            "unit": {
+                              "type": "string",
+                              "maxLength": 120,
+                              "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                            }
+                          },
+                          "required": [
+                            "dimension",
+                            "unscaled",
+                            "scale",
+                            "unit"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "namespace": {
+                              "type": "string",
+                              "maxLength": 120,
+                              "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                            },
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 120
+                            }
+                          },
+                          "required": [
+                            "namespace",
+                            "id"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "dimension": {
+                                "type": "string",
+                                "enum": [
+                                  "mass",
+                                  "volume",
+                                  "count"
+                                ]
+                              },
+                              "unscaled": {
+                                "type": "string",
+                                "pattern": "^[1-9][0-9]{0,39}$"
+                              },
+                              "scale": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 12
+                              },
+                              "unit": {
+                                "type": "string",
+                                "maxLength": 120,
+                                "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                              }
+                            },
+                            "required": [
+                              "dimension",
+                              "unscaled",
+                              "scale",
+                              "unit"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "namespace": {
+                                "type": "string",
+                                "maxLength": 120,
+                                "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                              },
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 120
+                              }
+                            },
+                            "required": [
+                              "namespace",
+                              "id"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "priceOperations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "type": "number",
+                      "const": 1
+                    },
+                    "commandKey": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    "variantId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                    },
+                    "priceListId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                    },
+                    "mode": {
+                      "type": "string",
+                      "const": "one_time"
+                    },
+                    "minQty": {
+                      "type": "number",
+                      "const": 1
+                    },
+                    "amountKind": {
+                      "type": "string",
+                      "const": "gross"
+                    },
+                    "unitPriceMinor": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 2147483647
+                    },
+                    "expected": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "entryId": {
+                              "type": "null"
+                            },
+                            "unitPriceMinor": {
+                              "type": "null"
+                            }
+                          },
+                          "required": [
+                            "entryId",
+                            "unitPriceMinor"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "entryId": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                            },
+                            "unitPriceMinor": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 2147483647
+                            }
+                          },
+                          "required": [
+                            "entryId",
+                            "unitPriceMinor"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "commandKey",
+                    "variantId",
+                    "priceListId",
+                    "mode",
+                    "minQty",
+                    "amountKind",
+                    "unitPriceMinor",
+                    "expected"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "productId",
+              "options"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "publication": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "release",
+                "compensation"
+              ]
+            },
+            "operations": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "create_product"
+                      },
+                      "productId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                      },
+                      "productSlug": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64,
+                        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "productId",
+                      "productSlug",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "register_document_revision"
+                      },
+                      "productSlug": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64,
+                        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+                      },
+                      "revisionId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                      },
+                      "revisionNo": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 999999999
+                      },
+                      "documentRef": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 240
+                      },
+                      "sourceRef": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 240
+                      },
+                      "canonicalText": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "digest": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "provenance": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "source": {
+                                "type": "string",
+                                "const": "current_draft"
+                              }
+                            },
+                            "required": [
+                              "source"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "source": {
+                                "type": "string",
+                                "const": "retained_draft"
+                              },
+                              "draftId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                              },
+                              "draftRevision": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 2147483647
+                              },
+                              "draftCommandKey": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 240
+                              },
+                              "draftFingerprint": {
+                                "type": "string",
+                                "pattern": "^[a-f0-9]{64}$"
+                              }
+                            },
+                            "required": [
+                              "source",
+                              "draftId",
+                              "draftRevision",
+                              "draftCommandKey",
+                              "draftFingerprint"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "productSlug",
+                      "revisionId",
+                      "revisionNo",
+                      "documentRef",
+                      "sourceRef",
+                      "canonicalText",
+                      "digest",
+                      "provenance"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "skuCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9._:-]+$"
+                      },
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "minQuantity": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2147483647
+                      },
+                      "isAddon": {
+                        "type": "boolean"
+                      },
+                      "facts": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "$ref": "#/definitions/__schema0"
+                        }
+                      },
+                      "op": {
+                        "type": "string",
+                        "const": "create_sku"
+                      },
+                      "skuId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                      },
+                      "productSlug": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64,
+                        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+                      },
+                      "documentRevisionNo": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 999999999
+                      }
+                    },
+                    "required": [
+                      "skuCode",
+                      "title",
+                      "minQuantity",
+                      "isAddon",
+                      "facts",
+                      "op",
+                      "skuId",
+                      "productSlug",
+                      "documentRevisionNo"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "create_identifier"
+                      },
+                      "skuCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9._:-]+$"
+                      },
+                      "scheme": {
+                        "type": "string",
+                        "maxLength": 120,
+                        "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                      },
+                      "issuer": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 240
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "packagingLevel": {
+                        "type": "string",
+                        "enum": [
+                          "unit",
+                          "case"
+                        ]
+                      },
+                      "quantity": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 999999
+                      },
+                      "isPrimary": {
+                        "type": "boolean"
+                      },
+                      "label": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "sourceRef": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 240
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "skuCode",
+                      "scheme",
+                      "issuer",
+                      "value",
+                      "packagingLevel",
+                      "quantity",
+                      "isPrimary",
+                      "label",
+                      "sourceRef"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "set_eligibility"
+                      },
+                      "skuCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9._:-]+$"
+                      },
+                      "sellableStandalone": {
+                        "type": "boolean"
+                      },
+                      "sellableInSubscription": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "skuCode",
+                      "sellableStandalone",
+                      "sellableInSubscription"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "set_sku_status"
+                      },
+                      "skuCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9._:-]+$"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "archived"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "skuCode",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "move_document_pointer"
+                      },
+                      "productSlug": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64,
+                        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+                      },
+                      "documentRevisionNo": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 999999999
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "productSlug",
+                      "documentRevisionNo"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "set_primary_sku"
+                      },
+                      "productSlug": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64,
+                        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+                      },
+                      "skuCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9._:-]+$"
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "productSlug",
+                      "skuCode"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "set_product_status"
+                      },
+                      "productSlug": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64,
+                        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "archived"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "productSlug",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "skuCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9._:-]+$"
+                      },
+                      "offerVersion": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 240
+                      },
+                      "admitted": {
+                        "type": "boolean"
+                      },
+                      "op": {
+                        "type": "string",
+                        "const": "set_offer_membership"
+                      }
+                    },
+                    "required": [
+                      "skuCode",
+                      "offerVersion",
+                      "admitted",
+                      "op"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "set_product_presentation"
+                      },
+                      "productSlug": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64,
+                        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+                      },
+                      "presentation": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "$ref": "#/definitions/__schema0"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "productSlug",
+                      "presentation"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "set_sku_metadata"
+                      },
+                      "skuCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9._:-]+$"
+                      },
+                      "logisticsRef": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 240
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "skuCode",
+                      "logisticsRef"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "set_derived_sku_facts"
+                      },
+                      "skuCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9._:-]+$"
+                      },
+                      "documentRevisionNo": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 999999999
+                      },
+                      "netContent": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "mass",
+                              "volume",
+                              "count"
+                            ]
+                          },
+                          "unscaled": {
+                            "type": "string",
+                            "pattern": "^[1-9][0-9]{0,39}$"
+                          },
+                          "scale": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 12
+                          },
+                          "unit": {
+                            "type": "string",
+                            "maxLength": 120,
+                            "pattern": "^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$"
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "unscaled",
+                          "scale",
+                          "unit"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "facts": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "$ref": "#/definitions/__schema0"
+                        }
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "skuCode",
+                      "documentRevisionNo",
+                      "netContent",
+                      "facts"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "evidence": {
+              "type": "object",
+              "properties": {
+                "drafts": {
+                  "minItems": 1,
+                  "maxItems": 100,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "draftId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                      },
+                      "revision": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2147483647
+                      },
+                      "commandKey": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 240
+                      },
+                      "fingerprint": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "draftId",
+                      "revision",
+                      "commandKey",
+                      "fingerprint"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "media": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "skuCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[A-Za-z0-9._:-]+$"
+                      },
+                      "mediaRef": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 240
+                      },
+                      "assetRefs": {
+                        "maxItems": 32,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 240
+                        }
+                      },
+                      "revisionDigest": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "skuCode",
+                      "mediaRef",
+                      "assetRefs",
+                      "revisionDigest"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "operations",
+            "evidence"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "product",
+        "skus",
+        "publication"
+      ],
+      "additionalProperties": false,
+      "definitions": {
+        "__schema0": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/__schema0"
+              }
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "$ref": "#/definitions/__schema0"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "builtInUnits": [
+    {
+      "code": "openlup:g",
+      "dimension": "mass",
+      "integral": false,
+      "factor": {
+        "canonicalUnit": "openlup:g",
+        "unscaled": "1",
+        "scale": 0
+      }
+    },
+    {
+      "code": "openlup:kg",
+      "dimension": "mass",
+      "integral": false,
+      "factor": {
+        "canonicalUnit": "openlup:g",
+        "unscaled": "1000",
+        "scale": 0
+      }
+    },
+    {
+      "code": "openlup:ml",
+      "dimension": "volume",
+      "integral": false,
+      "factor": {
+        "canonicalUnit": "openlup:ml",
+        "unscaled": "1",
+        "scale": 0
+      }
+    },
+    {
+      "code": "openlup:l",
+      "dimension": "volume",
+      "integral": false,
+      "factor": {
+        "canonicalUnit": "openlup:ml",
+        "unscaled": "1000",
+        "scale": 0
+      }
+    },
+    {
+      "code": "openlup:piece",
+      "dimension": "count",
+      "integral": true,
+      "factor": {
+        "canonicalUnit": "openlup:piece",
+        "unscaled": "1",
+        "scale": 0
+      }
+    }
+  ]
+}

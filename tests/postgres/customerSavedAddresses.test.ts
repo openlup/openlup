@@ -204,7 +204,7 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
         const value = await work(context); await connection.query('COMMIT'); return value;
       } catch (error) { await connection.query('ROLLBACK'); throw error; } finally { connection.release(); }
     } };
-    const registry = createPersonalDataContributorRegistry([...contributors, createAccountEventPrivacyContributor({ read, assess: async () => 'retain' })], { requiredContributorIds: ['identity','customer-saved-addresses','account-support'] });
+    const registry = createPersonalDataContributorRegistry([...contributors, createAccountEventPrivacyContributor({ read, assess: async () => 'retain' })], { requiredContributorIds: ['identity','customer-saved-addresses','account-support','tax-calculations'] });
     const privacy = createPrivacyOperations({ store, registry, unitOfWork, now: () => new Date(at), randomId: randomUUID });
     const exported = await privacy.export({ principalId: operator }, { kind: 'contact', contactId: f.client });
     expect(exported.documents.find(document => document.contributorId === 'customer-saved-addresses')).toMatchObject({ coverage: { complete: true }, data: [{ tax_id: '1234563218', delivery_notes: 'Private text', canonical_key: expect.stringContaining('example street 1') }] });

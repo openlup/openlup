@@ -91,7 +91,7 @@ function privacy(store: NativePrivacyStore<PgQueryExecutor> = createPostgresPriv
   const unitOfWork = createPostgresPrivacyUnitOfWork({ connectionString: runtimeUrl }); ports.push(unitOfWork);
   const retainedContactFields = Object.fromEntries(["lifecycle_stage", "acquisition_source", "metadata"].map(key => [key,
     { owner: "clients", resource: `clients.${key}`, disposition: "retain" as const, reasonCode: "CHECKOUT_PROVENANCE", remote: false }]));
-  const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields }, () => id), ...nativePrivacyContributors(store).slice(1)], { requiredContributorIds: ["identity"] });
+  const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields }, () => id), ...nativePrivacyContributors(store).slice(1)], { requiredContributorIds: ["identity", "tax-calculations"] });
   return createPrivacyOperations({ store, unitOfWork, registry, now: () => new Date(), randomId: () => id });
 }
 

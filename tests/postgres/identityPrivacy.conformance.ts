@@ -69,7 +69,7 @@ export function registerIdentityPrivacyConformance(): void {
       const unitOfWork = createPostgresPrivacyUnitOfWork({ connectionString: containers[index].connectionString });
       const store = createPostgresPrivacyStore();
       const retainedContactFields = { lifecycle_stage: { owner: "clients", resource: "clients.lifecycle_stage", disposition: "retain" as const, reasonCode: "LIFECYCLE", remote: false } };
-      const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields }, () => receiptId), ...nativePrivacyContributors(store).slice(1)], { requiredContributorIds: ["identity", "subscriptions"] });
+      const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields }, () => receiptId), ...nativePrivacyContributors(store).slice(1)], { requiredContributorIds: ["identity", "subscriptions", "tax-calculations"] });
       return { store, unitOfWork, operations: createPrivacyOperations({ store, unitOfWork, registry, now: () => new Date(), randomId: () => receiptId }) };
     }
     it("probes the direct identity inventory against the complete installed catalogue", async () => {
