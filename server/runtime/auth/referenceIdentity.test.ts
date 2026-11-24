@@ -142,7 +142,7 @@ import { pathToFileURL } from "node:url";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import { buildIdentityReferenceRuntime, createIdentityAcceptanceDatabase, identityReferenceJwks, writeIdentityReferenceEntry } from "../../../tests/identity/acceptance.conformance.js";
+import { buildIdentityReferenceRuntime, createIdentityAcceptanceDatabase, identityReferenceJwks, syntheticNativePrivacy, writeIdentityReferenceEntry } from "../../../tests/identity/acceptance.conformance.js";
 import { EventEmitter } from "node:events";
 import type { Server } from "node:http";
 import type { Pool } from "pg";
@@ -670,12 +670,13 @@ it.each(["node-postgres", "node-supabase"] as const)("disposable profile admits 
     customerSession: { verifyAccessToken: vi.fn() }, customerProfile: { getCustomerMe: vi.fn() },
     operatorAuthorization: { authorize: vi.fn(async () => ({ ok: true, principalId, role: "admin", isMachineActor: false })) },
     operatorActions: { inviteAdminUser: vi.fn(), removeAdminUser: vi.fn() }, delivery: { deliver: vi.fn() },
-    privacy: { export: called, erase: vi.fn() }, emailTrustPolicy: createVerifierResultOnlyEmailTrustPolicy(),
+    privacy: bundle === "node-postgres" ? syntheticNativePrivacy(loaded.createPrivacyOperations, called) : { export: called, erase: vi.fn() },
+    emailTrustPolicy: createVerifierResultOnlyEmailTrustPolicy(),
   };
   const adaptedQuery = vi.fn();
   const runtime = loaded.createReferenceIdentity({ bundle, env: { ...processEnvironment }, migrationIdentity: "complete", ports,
-    createRoutes: (selected: typeof ports) => [{ route: "/api/bff/admin/identity/privacy/export", pattern: /^\/api\/bff\/admin\/identity\/privacy\/export$/, params: [],
-      handler: async (req: HttpRequest, res: HttpResponse) => { adaptedQuery(req.query); await selected.privacy.export(); res.status(200).json({ ok: true }); } }],
+    createRoutes: () => [{ route: "/api/bff/admin/identity/privacy/export", pattern: /^\/api\/bff\/admin\/identity\/privacy\/export$/, params: [],
+      handler: async (req: HttpRequest, res: HttpResponse) => { adaptedQuery(req.query); await called(); res.status(200).json({ ok: true }); } }],
   });
   const candidate = { artifact: "synthetic", configuration: "synthetic", environment: "test", database: runId, schema: "complete" };
   let missing = false;
@@ -726,14 +727,16 @@ it.each(["node-postgres", "node-supabase"] as const)("disposable profile admits 
       expect(end).toHaveBeenCalledWith("Not found\n");
     }
     const { Readable } = await import("node:stream");
-    const request = Object.assign(Readable.from(["{}"]), { url: "/api/bff/admin/identity/privacy/export?returnTo=%252F&literal=%25", method: "POST", headers: req.headers });
+    const body = JSON.stringify({ subject: { kind: "contact", contactId } });
+    const request = Object.assign(Readable.from([Buffer.from(body)]), { url: "/api/bff/admin/identity/privacy/export?returnTo=%252F&literal=%25", method: "POST", headers: req.headers });
     await new Promise<void>((done, reject) => {
       const response = { statusCode: 0, headersSent: false, setHeader: vi.fn(), getHeader: vi.fn(), hasHeader: vi.fn(() => true), end: done, destroy: reject };
       server.emit("request", request, response);
       setTimeout(() => reject(new Error("Identity dispatch did not complete")), 2000).unref();
     });
     expect(called).toHaveBeenCalledOnce();
-    expect(adaptedQuery).toHaveBeenCalledWith({ returnTo: "%2F", literal: "%" });
+    if (bundle === "node-supabase") expect(adaptedQuery).toHaveBeenCalledWith({ returnTo: "%2F", literal: "%" });
+    else expect(adaptedQuery).not.toHaveBeenCalled();
     expect(ports.operatorAuthorization.authorize).toHaveBeenCalled();
   } finally { server.close(); }
 });

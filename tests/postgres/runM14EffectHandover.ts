@@ -553,7 +553,10 @@ try {
     const journal = join(scratch, "later-privacy-obligation.json");
     const obligation: RecoveryPrivacyObligation = JSON.parse(readFileSync(journal, "utf8"));
     assert.deepEqual(obligation.subject, privacySeed.later);
+    const databaseTime = async () => (await target.owner.query<{ now: Date }>("SELECT clock_timestamp() AS now")).rows[0]!.now.getTime();
+    const recoveryStarted = await databaseTime();
     await applyRecoveryPrivacy(target.runtimeUrl, obligation);
+    const recoveryEnded = await databaseTime();
     await assertRecoveryPrivacy(target.owner, target.runtimeUrl, privacySeed);
     recoveredRowsAfterPrivacy = await census(target.owner);
     const retiredRows = recoveryRows(retiredGraph);
@@ -562,14 +565,24 @@ try {
       // Source dispatch outcomes can have become uncertain after the socket
       // failure; target reconciliation below must independently resolve them.
       if (table === "fulfillment_dispatch_refs") continue;
-      const normalize = (rows: string[]) => rows.map(row => {
+      const normalize = (rows: string[], recovered: boolean) => rows.map(row => {
+        if (table === "communication_event_erasures") {
+          const marker = JSON.parse(row);
+          if (marker.client_id !== obligation.subject.contact) return row;
+          // The replay creates this post-snapshot marker at the target's transaction time.
+          const erasedAt = Date.parse(marker.erased_at);
+          assert(Number.isFinite(erasedAt));
+          if (recovered) assert(erasedAt >= recoveryStarted && erasedAt <= recoveryEnded);
+          delete marker.erased_at;
+          return JSON.stringify(marker);
+        }
         if (table !== "clients") return row; // Preserve lossless int8/numeric history text.
         const value = JSON.parse(row);
         // Erasure's actual transaction records its own local mutation time.
         delete value.updated_at;
         return JSON.stringify(value);
       }).sort();
-      assert.deepEqual(normalize(recoveredRowsAfterPrivacy[table]), normalize(retiredRows[table]), `retained history and privacy exact: ${table}`);
+      assert.deepEqual(normalize(recoveredRowsAfterPrivacy[table], true), normalize(retiredRows[table], false), `retained history and privacy exact: ${table}`);
     }
     recoveryFacts.privacy = true;
     mark("laterPrivacyReappliedBeforeServing");

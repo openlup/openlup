@@ -27,6 +27,7 @@ export function identityRequiredSchema(bundle: IdentityBundle, version: string):
     fn("public.customer_identity_challenge_redeem", "text,timestamp with time zone"),
     fn("public.platform_human_membership_is_active", "uuid"), fn("public.platform_human_membership_is_administrator", "uuid"),
     fn("public.platform_revoke_human_membership", "uuid,uuid,text"),
+    fn("public.identity_privacy_required_contributor_ids"),
   ] : [
     ...common, ...table("public.clients", "auth_user_id created_at").slice(1), ...table("public.admin_users", `id email is_machine_actor ${membership}`),
     ...table("public.admin_audit_events", "id actor_admin_id target_admin_id action old_value new_value occurred_at"),

@@ -2,8 +2,9 @@ import { preferencePort, courierPreference } from './customerPreferences.fixture
 import { randomUUID } from 'node:crypto';
 import type { PgQueryExecutor } from '@openlup/platform/data';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
-import { createCustomerSavedAddressPrivacyContributor, createPostgresPrivacyStore, createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPrivacyOperations } from '@openlup/platform/identity';
+import { createPostgresPrivacyStore, createPersonalDataContributorRegistry, createPrivacyOperations } from '@openlup/platform/identity';
 import { createAccountEventPrivacyContributor } from '@openlup/platform/account-support';
+import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import type { PrivacyJson } from '@openlup/platform/identity/contracts';
 import { captureConnectedNativeStore } from '../../server/adapters/postgres/connectedStoreCapture.js';
 import { restoreConnectedNativeStore } from '../../server/adapters/postgres/connectedStoreRestore.js';
@@ -190,7 +191,7 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     await db.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,status,shipping_saved_address_id,billing_saved_address_id) VALUES($1,$2,28,$3,'active',$4,$4)", [randomUUID(),other.client,at,otherAddress]);
     const otherSubscriptions = () => db.owner.query('SELECT to_jsonb(s) AS row,xmin::text FROM public.subscriptions s WHERE client_id=$1 ORDER BY id', [other.client]).then(result => result.rows);
     const otherAddressesBefore = await rows(other.client), otherEventsBefore = await events(other.client), otherSubscriptionsBefore = await otherSubscriptions();
-    const store = createPostgresPrivacyStore(), identity = createIdentityPersonalDataContributor(store, { retainedContactFields: Object.fromEntries(['lifecycle_stage','acquisition_source'].map(field => [field,{ owner: 'clients', resource: `clients.${field}`, disposition: 'retain' as const, reasonCode: 'CONTACT_LIFECYCLE_RETENTION', remote: false }])) }, randomUUID);
+    const store = createPostgresPrivacyStore(), contributors = nativePrivacyContributors(store);
     const read = async (context: PgQueryExecutor, subject: { contactId: string | null }) => ({ available: true, data: (await context.query('SELECT to_jsonb(e) AS value FROM public.customer_account_events e WHERE client_id=$1 ORDER BY id', [subject.contactId])).rows.map(row => row.value) as PrivacyJson });
     let paused = false, erasurePid = 0;
     let signalPrepared: () => void = () => {}, releasePreparation: () => void = () => {};
@@ -203,11 +204,11 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
         const value = await work(context); await connection.query('COMMIT'); return value;
       } catch (error) { await connection.query('ROLLBACK'); throw error; } finally { connection.release(); }
     } };
-    const registry = createPersonalDataContributorRegistry([identity, createCustomerSavedAddressPrivacyContributor(), createAccountEventPrivacyContributor({ read, assess: async () => 'retain' })], { requiredContributorIds: ['identity','customer-saved-addresses','account-support'] });
+    const registry = createPersonalDataContributorRegistry([...contributors, createAccountEventPrivacyContributor({ read, assess: async () => 'retain' })], { requiredContributorIds: ['identity','customer-saved-addresses','account-support'] });
     const privacy = createPrivacyOperations({ store, registry, unitOfWork, now: () => new Date(at), randomId: randomUUID });
     const exported = await privacy.export({ principalId: operator }, { kind: 'contact', contactId: f.client });
     expect(exported.documents.find(document => document.contributorId === 'customer-saved-addresses')).toMatchObject({ coverage: { complete: true }, data: [{ tax_id: '1234563218', delivery_notes: 'Private text', canonical_key: expect.stringContaining('example street 1') }] });
-    const missing = createPrivacyOperations({ store, registry: createPersonalDataContributorRegistry([identity], { requiredContributorIds: ['identity','customer-saved-addresses','account-support'] }), unitOfWork, now: () => new Date(at), randomId: randomUUID });
+    const missing = createPrivacyOperations({ store, registry: createPersonalDataContributorRegistry(contributors.filter(owner => owner.id === "identity"), { requiredContributorIds: ['identity','customer-saved-addresses','account-support'] }), unitOfWork, now: () => new Date(at), randomId: randomUUID });
     await expect(missing.erase({ principalId: operator }, { subject: { kind: 'contact', contactId: f.client }, idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: 'PRIVACY_CONTRIBUTOR_MISSING' });
     const prepared = new Promise<void>(resolve => { signalPrepared = resolve; });
     preparationGate = new Promise<void>(resolve => { releasePreparation = resolve; }); paused = true;

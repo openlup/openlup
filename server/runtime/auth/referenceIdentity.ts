@@ -6,6 +6,10 @@ import { MACHINE_ACTOR_WRITE_ROUTES, allowedAdminRolesForBffRoute } from "../../
 import { observeReferencePackages } from "../outbox/candidateAdmission.js";
 import { assessIdentityReadiness, assessOidcReadiness } from "./identityReadiness.js";
 import { identityRequiredSchema, type IdentityBundle } from "./identitySchema.js";
+import { createPrivacyEraseHandler, createPrivacyExportHandler, isNativePrivacyOperations, nativePrivacyUnavailable,
+  readBearerToken } from "@openlup/platform/identity";
+import type { HttpHandler } from "@openlup/platform/http";
+import { readObservedResponseContext } from "../../_lib/observability/requestContext.js";
 
 const dependencies = ["bff", "data", "kernel", "http"] as const;
 const responsibilities = ["customerSession", "customerProfile", "operatorAuthorization", "operatorActions", "delivery", "privacy"] as const;
@@ -23,6 +27,17 @@ const methods = {
   customerSession: ["verifyAccessToken"], customerProfile: ["getCustomerMe"], operatorAuthorization: ["authorize"],
   operatorActions: ["inviteAdminUser", "removeAdminUser"], delivery: ["deliver"], privacy: ["export", "erase"],
 } as const;
+const exportRoute = "/api/bff/admin/identity/privacy/export", eraseRoute = "/api/bff/admin/identity/privacy/erase";
+
+function bindReferencePrivacy(route: string, ports: ReferenceIdentityPorts): HttpHandler {
+  const handler = route === eraseRoute ? createPrivacyEraseHandler : createPrivacyExportHandler;
+  const unavailable = async () => { throw nativePrivacyUnavailable(new Error("native_privacy_operations_required")); };
+  return (req, res) => handler({
+    authorizeAdmin: () => ports.operatorAuthorization.authorize(readBearerToken(req), { allowedRoles: ["admin"] }),
+    responseRequestId: response => readObservedResponseContext(response)?.requestId,
+    operations: isNativePrivacyOperations(ports.privacy) ? ports.privacy : { export: unavailable, erase: unavailable },
+  })(req, res);
+}
 /** Prepare one candidate from its mounted functions and selected adapters; construction does no I/O. */
 export function createReferenceIdentity(input: {
   bundle: IdentityBundle;
@@ -33,10 +48,13 @@ export function createReferenceIdentity(input: {
 }) {
   const env = Object.freeze({ ...input.env });
   const ports = { ...input.ports };
-  const routes = input.createRoutes(ports, env).map(route => ({ ...route,
-    handler: withObservedRoute({ route: route.route, domain: "identity", surface: route.route.startsWith("/api/bff/admin/") ? "admin" : "customer", risk: "mutation" },
-      async (req, res) => { await route.handler(req, res); }),
-  }));
+  const routes = input.createRoutes(ports, env).map(route => {
+    const handle = input.bundle === "node-postgres" && (route.route === exportRoute || route.route === eraseRoute)
+      ? bindReferencePrivacy(route.route, ports) : route.handler;
+    return { ...route, handler: withObservedRoute({ route: route.route, domain: "identity",
+      surface: route.route.startsWith("/api/bff/admin/") ? "admin" : "customer", risk: "mutation" },
+    async (req, res) => { await handle(req, res); }) };
+  });
   const preflight = createAdminBffPreflight({
     allowedRoles: allowedAdminRolesForBffRoute, machineWriteRoutes: MACHINE_ACTOR_WRITE_ROUTES,
     resolveBinding: () => ({ binding: { identity: input.bundle, run: (_token, work) => work(ports.operatorAuthorization) } }),
@@ -67,7 +85,8 @@ export async function admitReferenceIdentity(input: ReferenceIdentityAdmission) 
   const bindings: ReadinessInput["bindings"] = { triggers: {}, env: {},
     ports: { "@openlup/platform/identity:emailTrustPolicy": input.runtime.ports.emailTrustPolicy, ...Object.fromEntries(responsibilities.map(key => {
       const port = input.runtime.ports[key];
-      const available = port && methods[key].every(method => typeof Reflect.get(port, method) === "function");
+      const available = port && methods[key].every(method => typeof Reflect.get(port, method) === "function")
+        && (key !== "privacy" || input.runtime.bundle !== "node-postgres" || isNativePrivacyOperations(port));
       return [`@openlup/platform/identity:${key}`, available ? port : null];
     })) },
     routes: Object.fromEntries(input.runtime.routes.map(route => [`@openlup/platform/identity:${route.route}`, route.handler])),

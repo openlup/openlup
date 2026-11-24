@@ -172,7 +172,28 @@ it('direct privacy routes precede managed entries and enforce human admin in the
 });
 
 const privacyContact = '22222222-2222-4222-8222-222222222222';
+it.each(['export', 'erase'] as const)('admitted native %s refuses an absent installed owner with safe facts', async operation => {
+  f.adopterPolicy = true;
+  vi.stubEnv('PLATFORM_BUNDLE', 'node-postgres'); vi.stubEnv('OPERATOR_IDENTITY_AUDIENCE', 'operator');
+  vi.stubEnv('DATABASE_URL', 'postgresql://unused.invalid/test');
+  authorize.mockResolvedValue({ ok: true, principalId: privacyContact, role: 'admin', isMachineActor: false });
+  privacy.query.mockImplementation(async (sql: string) => sql.includes('identity_privacy_required_contributor_ids()')
+    ? { rows: [{ ids: ['fixture-owner', 'identity'] }] } : mountedPrivacyQuery(sql));
+  const { routes, req } = mountedPrivacyRequest(operation), res = response();
+  await dispatch(routes, req, res as unknown as HttpResponse);
+  expect(res.status).toHaveBeenCalledWith(503);
+  expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+  expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({ code: 'UPSTREAM_UNAVAILABLE', details: {
+    privacyCode: 'PRIVACY_CONTRIBUTOR_MISSING', observed: expect.stringContaining('fixture-owner'),
+    cause: expect.any(String), fix: expect.any(String), recheck: expect.any(String),
+  } }) }));
+  expect(privacy.query).toHaveBeenCalledTimes(1);
+});
 async function mountedPrivacyQuery(sql: string) {
+  if (sql.includes('identity_privacy_required_contributor_ids()')) return { rows: [{ ids: ['communication-events', 'customer-billing',
+    'customer-preferences', 'customer-saved-addresses', 'destination-documents', 'destination-receipts',
+    'fulfillment-parcel-contacts', 'identity', 'subscriptions'] }] };
+  if (/^SELECT public\.customer_(saved_addresses|preferences)_export/.test(sql)) return { rows: [{ data: [] }] };
   if (sql === 'SELECT public.communication_event_privacy($1::uuid,false) AS value') return { rows: [{ value: [] }] };
   if (sql.startsWith('SELECT public.customer_billing_export')) return { rows: [{ data: { profiles: [{ client_id: privacyContact, full_name: 'Billing Buyer' }], invoiceBuyers: [{ buyer: { name: 'Frozen Buyer' } }] } }] };
   if (sql === 'SELECT public.commerce_destination_v2_receipts_export($1::uuid) AS data') return { rows: [{ data: [{ evidenceDisposition: 'erased' }] }] };
@@ -310,14 +331,19 @@ it.each(['destination-receipts', 'destination-documents'])('native privacy compo
   privacy.query.mockImplementation(mountedPrivacyQuery);
   const read = mountedPrivacyRequest('export'), readResponse = response();
   await dispatch(read.routes, read.req, readResponse as unknown as HttpResponse);
-  expect(readResponse.json).toHaveBeenCalledWith({ ok: true, data: expect.objectContaining({ missingContributors: [missing] }) });
+  expect(readResponse.status).toHaveBeenCalledWith(503);
+  expect(readResponse.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({ details: expect.objectContaining({
+    privacyCode: 'PRIVACY_CONTRIBUTOR_MISSING', observed: `Required installed owners are absent (${missing}).`,
+  }) }) }));
+  expect(privacy.query).toHaveBeenCalledTimes(1);
 
   privacy.query.mockClear();
   const erase = mountedPrivacyRequest('erase'), eraseResponse = response();
   await dispatch(erase.routes, erase.req, eraseResponse as unknown as HttpResponse);
   expect(eraseResponse.status).toHaveBeenCalledWith(503);
   expect(eraseResponse.json).toHaveBeenCalledWith(expect.objectContaining({
-    error: expect.objectContaining({ details: { privacyCode: 'PRIVACY_CONTRIBUTOR_MISSING' } }),
+    error: expect.objectContaining({ details: expect.objectContaining({ privacyCode: 'PRIVACY_CONTRIBUTOR_MISSING',
+      observed: `Required local owners are absent (${missing}).` }) }),
   }));
   expect(privacy.query).not.toHaveBeenCalled();
 });
@@ -332,7 +358,7 @@ it.each([
   vi.stubEnv('DATABASE_URL', 'postgresql://unused.invalid/test');
   authorize.mockResolvedValue({ ok: true, principalId: privacyContact, role: 'admin', isMachineActor: false });
   privacy.query.mockImplementation((sql: string) => {
-    if (sql.includes(`public.commerce_destination_v2_${operation}(`)) {
+    if (sql.includes('identity_privacy_required_contributor_ids()')) {
       throw Object.assign(new Error('synthetic private driver context'), { code });
     }
     return mountedPrivacyQuery(sql);
@@ -342,10 +368,17 @@ it.each([
   expect(res.status).toHaveBeenCalledWith(503);
   expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({
     code: 'UPSTREAM_UNAVAILABLE',
-    message: 'Check the native app binding, database connection and TLS, runtime CONNECT and EXECUTE privileges, and installed migrations. Then retry the same operation.',
-    details: { privacyCode: 'PRIVACY_ASSESSMENT_UNAVAILABLE' },
+    message: 'Privacy operation refused',
+    details: { privacyCode: 'PRIVACY_ASSESSMENT_UNAVAILABLE', observed: 'Native privacy prerequisites could not be verified.',
+      cause: 'The native store or its installed declaration is unavailable or invalid.', fix: expect.stringContaining('CONNECT'),
+      recheck: 'Retry the original request.' },
   }) }));
   expect(JSON.stringify(res.json.mock.calls)).not.toContain('synthetic private driver context');
+  expect(privacy.query).toHaveBeenCalledTimes(1);
+  privacy.query.mockImplementation(mountedPrivacyQuery);
+  const retry = response();
+  await dispatch(routes, req, retry as unknown as HttpResponse);
+  expect(retry.status).toHaveBeenCalledWith(200);
 });
 
 it('native export succeeds with the withheld-document notice instead of the checklist', async () => {
