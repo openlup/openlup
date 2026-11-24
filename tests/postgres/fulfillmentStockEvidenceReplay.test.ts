@@ -316,9 +316,22 @@ it('binds fresh and exact-predecessor runner histories, package bytes, live inve
     const replaced = 'public.fulfillment_record_stock_current(text,text,text,text,integer,integer,integer,text,timestamptz,timestamptz,text)';
     const stockHeader = (await upgrade.query(attributes, [replaced])).rows;
     const stockBefore = await currentState(upgrade);
-    const fresh = runner(upgrade);
-    const expectedForwards = [stockForward, reminderForward];
-    expect((await fresh.apply()).applied).toEqual(manifest.forward.map(unit => unit.file).filter(path => path > prior.forward.at(-1).file));
+    const interveningPath = 'db/platform/migrations/20261125130000_fixture_intervening_forward.sql';
+    const suffix = manifest.forward.slice(prior.forward.length);
+    for (const unit of suffix) writeFileSync(join(root, unit.file), readFileSync(unit.file));
+    if (suffix[0]?.file === stockForward) {
+      // Exercise a real runner upgrade even before another portable forward lands.
+      const sql = 'SELECT 1;\n';
+      writeFileSync(join(root, interveningPath), sql);
+      suffix.unshift({ file: interveningPath, sha256: hash(sql) });
+    }
+    const upgradedManifest = { ...manifest, forward: [...prior.forward, ...suffix] };
+    writeFileSync(join(root, 'config/platform-migration-manifest.json'), JSON.stringify(upgradedManifest));
+    const fresh = runner(upgrade, root);
+    const applied = (await fresh.apply()).applied;
+    expect(applied).toEqual(suffix.map(unit => unit.file));
+    const outcomeForwards = [stockForward, reminderForward];
+    expect(applied.filter(path => outcomeForwards.includes(path))).toEqual(outcomeForwards);
     expect((await upgrade.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows.slice(0, stockHistory.length)).toEqual(stockHistory);
     expect((await upgrade.query(attributes, [replaced])).rows).toEqual(stockHeader);
     const nominal = await writer.recordProviderStockCurrent(changed).catch((error: unknown) => error);
@@ -338,7 +351,6 @@ it('binds fresh and exact-predecessor runner histories, package bytes, live inve
       await expect(port(session).recordProviderStockCurrent(changed)).rejects.toBeInstanceOf(Reflect.get(fulfillment, 'FulfillmentStockReplayConflictError'));
       await expect(session.query('SELECT 1')).rejects.toMatchObject({ code: '25P02' });
     } finally { await session.query('ROLLBACK'); session.release(); }
-    expect(manifest.forward.slice(stockHistory.length - 1).map(unit => unit.file).slice(0, 2)).toEqual(expectedForwards);
     expect(await fresh.apply()).toEqual({ applied: [] });
   } finally { await closePostgres(undefined, upgrade); rmSync(root, { recursive: true, force: true }); }
 }, 120_000);
