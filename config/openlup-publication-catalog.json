@@ -1666,6 +1666,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125330000_catalog_admission_issue_reader.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5423,6 +5427,10 @@
     },
     {
       "path": "packages/platform/sql/20261125310000_function_search_path_pg_temp.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125330000_catalog_admission_issue_reader.sql",
       "class": "public-output"
     },
     {
@@ -31679,6 +31687,10 @@
     },
     {
       "path": "tests/postgres/catalogAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionIssueReader.test.ts",
       "class": "public-output"
     },
     {

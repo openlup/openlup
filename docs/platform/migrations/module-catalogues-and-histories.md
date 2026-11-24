@@ -30,6 +30,46 @@ across governed products. See the installed
 [catalogue entry](../../../packages/platform/README.md#read-governed-offer-memberships)
 for paging and refusal behavior.
 
+**Admission issue mode**
+
+The [admission issue reader forward](../../../db/platform/migrations/20261125330000_catalog_admission_issue_reader.sql)
+adds a private `admission_issue` mode to the same reader. Only these exact
+lowercase bytes select it, whatever the caller's collation. The other modes and
+the function's header, owner and grants are unchanged. The same owner boundary
+serves `service_role` and, on qualified-v2, `openlup_catalog_publication`.
+
+Page one passes `{"selectedSkuId": "<SKU UUID>"}` as the cursor, with a page size
+from 1 to 100. Each later page passes the same `selectedSkuId` and the previous
+page's `nextCursor` as `continuation`. A page returns `issues`, `consultedHeads`,
+`rosterCount` and `nextCursor`, which is `null` after the last member.
+
+- `issues` lists every explicitly admitted or denied member of the offer in SKU
+  UUID order, inactive members included. Each entry has `kind`, `productId`,
+  `skuRevisionId` and the publication that issued that revision:
+  `publicationId`, `revision` and `documentDigest`. The selected SKU is
+  `declaring` and the others are `compared`.
+- `consultedHeads` gives the current head of each product on the page, sorted by
+  product ID.
+- The continuation binds the selection, offer, mode, page size, offset and a
+  digest of the current heads of the offer's products. A publication of another
+  product leaves it valid.
+
+An offer can have at most 500 members and at most 20 pages at the chosen page
+size. Read the complete chain in one `REPEATABLE READ READ ONLY` transaction. The
+mode only reads and takes no row or advisory lock. Refusals follow this order:
+input shape, catalogue integrity and offer existence, the member cap, the page
+cap, the head digest, the offset, the selection, then page evidence in SKU order.
+
+| Refusal | Observed | Cause | Fix | Recheck |
+| --- | --- | --- | --- | --- |
+| `invalid_request` | The request is refused. | An offer, page size or cursor is malformed, a continuation differs from the selection, offer, mode or page size, or the offset is not inside the roster. | Correct the inputs and restart at page one. | Follow the returned chain and confirm each offset grows by the page size. |
+| `invalid_request` with `catalog_admission_selection_ineligible` | The selection is refused. | The selected SKU is not an admitted, active and subscription-sellable member of the offer. | Select an eligible SKU of the same offer. | Follow the complete chain and confirm exactly one `declaring` issue across all pages. |
+| `unknown_offer` | The offer is refused. | No governed product lists the offer, including on a legacy-only catalogue. | Use a published offer. | Read its first page. |
+| `head_moved` | The continuation is refused. | A product of the offer was published after the chain started. | Discard the pages. | Restart at page one in a new `REPEATABLE READ READ ONLY` transaction. |
+| `inconsistent_evidence` with `catalog_admission_membership_cap_exceeded` | The collection is refused. | The offer has more than 500 members. | Use a smaller offer. | Read its first page. |
+| `inconsistent_evidence` with `catalog_admission_page_cap_exceeded` | The collection is refused. | The offer needs more than 20 pages at this page size. | Increase the page size. | Confirm the chain ends within 20 pages. |
+| `inconsistent_evidence`, with or without `catalog_publication_live_drift` | The evidence is refused. | Sealed and live catalogue facts disagree, or a head, revision, issuing publication or document binding is not proven. | Have the catalogue owner reconcile the sealed and live data. | Retry after the owner verifies the catalogue. |
+
 The [readiness forward](../../../db/platform/migrations/20261124140000_catalog_publication_readiness.sql)
 adds a batch read executable by the service role. The snapshot and price
 helpers are owner-only.
