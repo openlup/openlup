@@ -9176,7 +9176,7 @@
       },
       {
         "row": "catalog-runtime-checkout-prelock",
-        "path": "db/platform/migrations/20261126600000_catalog_runtime_checkout_prelock.sql",
+        "path": "db/platform/migrations/20261127000000_catalog_runtime_checkout_prelock.sql",
         "replacedFunctions": [
           {
             "signature": "public.catalog_admission_runtime_checkout(text,text,uuid,jsonb)",
@@ -13096,7 +13096,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261126600000_catalog_runtime_checkout_prelock.sql",
+      "path": "db/platform/migrations/20261127000000_catalog_runtime_checkout_prelock.sql",
       "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143",
       "functions": [
         {
