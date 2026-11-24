@@ -122,6 +122,8 @@ it.each([
   ["oversized artifact", { ...input, presentation: { title: "a".repeat(600_000) } }, "$", fix.bytes, input],
   ["deep document", { ...input, document: { nested: nested(50) } }, "document", fix.depth, input],
   ["deep artifact", { ...input, presentation: { nested: nested(46) } }, "$", fix.depth, input],
+  ["deep artifact under a host-path key", { ...input, presentation: { "section/item": nested(50) } }, "$", fix.depth,
+    { ...input, presentation: { "section/item": nested(1) } }],
   ["invalid JSON", { ...input, document: { privateValue: "PRIVATE-VALUE\u0000" } }, "document.privateValue", fix.json, input],
   ["invalid option key", withSku({ options: { "pack.size": { kind: "boolean", value: true } } }),
     'skus.0.options["pack.size"]', fix.optionKey, withSku({ options: { pack_size: { kind: "boolean", value: true } } })],

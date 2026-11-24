@@ -135,10 +135,10 @@ function inputPath(fields: readonly PropertyKey[]): { path: string; omittedKey?:
   return { path: path || "$" };
 }
 
-function refuseInput(fields: readonly PropertyKey[], fix: keyof typeof fixes, value: unknown, aggregatePath?: string): never {
+function refuseInput(fields: readonly PropertyKey[], fix: keyof typeof fixes, value: unknown): never {
   const { path, omittedKey } = inputPath(fields);
   if (omittedKey) refuse(path, "omittedKey", value, omittedKey);
-  refuse(aggregatePath ?? path, fix, value);
+  refuse(path, fix, value);
 }
 
 function sourceValue(value: unknown, path: readonly PropertyKey[]): unknown {
@@ -151,7 +151,7 @@ const invalidText = (value: string) => value.includes("\u0000") || /[\uD800-\uDF
 // Catch data that a recursive schema could lose or fail to traverse before copying it.
 function checkPlainData(value: unknown, path: string[] = [], ancestors = new Set<object>()): void {
   const document = path[0] === "document";
-  if (path.length > (document ? 49 : 48)) refuseInput(path, "depth", value, document ? "document" : "$");
+  if (path.length > (document ? 49 : 48)) refuse(document ? "document" : "$", "depth", value);
   const invalid = () => refuseInput(path, "json", value);
   if (typeof value === "string" && invalidText(value)) invalid();
   if (typeof value === "number" && (!Number.isFinite(value) || Object.is(value, -0))) invalid();
