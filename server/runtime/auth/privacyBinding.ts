@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { createPostgresPrivacyUnitOfWork, createPostgresPrivacyStore, createManagedPrivacyStore, createIdentityPersonalDataContributor,
   createPersonalDataContributorRegistry, createPrivacyOperations, createPrivacyExportHandler, createPrivacyEraseHandler,
   createDestinationReceiptPrivacyContributor, createDestinationDocumentPrivacyContributor,
+  createTaxCalculationPrivacyContributor,
   readBearerToken, createFulfillmentParcelContactPrivacyContributor, createCustomerBillingPrivacyContributor, type ManagedIdentityClient, type IdentityPrivacyPolicy, type PrivacyUseCaseDependencies } from "@openlup/platform/identity";
 import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
 import { resolveAdminAuthBinding } from "./adminAuthBinding.js";
@@ -25,9 +26,11 @@ export function composeNativePrivacy(
     createIdentityPersonalDataContributor(deps.store, policy, randomUUID), createSubscriptionsPrivacyContributor(),
     createFulfillmentParcelContactPrivacyContributor(), createCustomerBillingPrivacyContributor(),
     createEcommerceEventPrivacyContributor(), createDestinationReceiptPrivacyContributor(), createDestinationDocumentPrivacyContributor(),
+    createTaxCalculationPrivacyContributor(),
   ], { requiredContributorIds: [
     "identity", "subscriptions", "fulfillment-parcel-contacts", "customer-billing", "communication-events",
     "destination-receipts", "destination-documents",
+    "tax-calculations",
   ] });
   return {
     operations: createPrivacyOperations({ ...deps, registry, now: () => new Date(), randomId: randomUUID }),

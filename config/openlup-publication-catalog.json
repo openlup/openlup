@@ -1638,6 +1638,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125170000_tax_calculations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5370,6 +5374,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125170000_tax_calculations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -8387,6 +8395,10 @@
     },
     {
       "path": "packages/platform/src/identity/sql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/taxCalculationPrivacy.ts",
       "class": "public-output"
     },
     {
@@ -32026,6 +32038,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/taxCalculationsV2/replayed.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/taxCoverage/corpus.ts",
       "class": "public-output"
     },
@@ -32815,6 +32831,14 @@
     },
     {
       "path": "tests/postgres/subscriptionWinback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCalculationsV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/taxCalculationsV2Pgtap.test.ts",
       "class": "public-output"
     },
     {
