@@ -45,6 +45,24 @@ it('does not call the executor when stock input cannot be serialized', async () 
  expect(query).not.toHaveBeenCalled();
 });
 
+it('keeps the batch fingerprint and binds non-enumerable stock fields on a single write', async () => {
+ const input = { ...currentInput, snapshot: { ...currentInput.snapshot } };
+ Object.defineProperty(input, 'inventoryClass', { enumerable: false });
+ Object.defineProperty(input.snapshot, 'syncRunId', { enumerable: false });
+ const response = { replayed: false, readBack: true };
+ const query = vi.fn().mockResolvedValueOnce({ rows: [{ ord: 1, response }] }).mockResolvedValueOnce({ rows: [{ response }] });
+ const port = createPostgresFulfillmentStockSyncPort({ query }, { sourceKey: 'native-a', readLocalInventoryStock: async () => [] });
+ expect(await port.recordProviderStockCurrentBatch!([input])).toEqual([response]);
+ expect(await port.recordProviderStockCurrent(input)).toEqual(response);
+ const [, batch] = query.mock.calls[0];
+ const [, single] = query.mock.calls[1];
+ expect(batch[2]).toEqual(['4ffb6cd0fc1d7dfb0a3992eb3f09f546363cb6f0a1d146dedf25935cbc6c7b9e']);
+ expect(single[2]).toBe(batch[2][0]);
+ expect(batch[7]).toEqual(['sellable']);
+ expect(batch[10]).toEqual(['run-a']);
+ expect([single[7], single[10]]).toEqual(['sellable', 'run-a']);
+});
+
 it('forwards durable operations through the injected executor, projects evidence, and preserves timed G16 host input',async()=>{
  const query=vi.fn(async(sql:string)=>({rows:[{response:sql.includes('record_provider_attempt')?{replayed:true}:{status:'confirmed',proofRecorded:true}}]}));
  const db={query};const store=createPostgresFulfillmentDispatchStore(db,{async prepare(){return {disposition:'ready',contactRevision:1};},async readCandidate(){return null;}});

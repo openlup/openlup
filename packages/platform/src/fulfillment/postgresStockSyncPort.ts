@@ -109,10 +109,11 @@ export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: 
       return scatterBatchResponses<{ replayed: boolean; readBack: boolean }>(inputs.length, result.rows);
     },
     recordProviderStockCurrent(v) {
-      const input = structuredClone(v);
-      const { snapshot } = input;
-      const values = [source, input.requestKey, fingerprint(input), snapshot.skuRef, snapshot.totalQuantity, snapshot.forSaleQuantity,
-        snapshot.reservedOrUnavailableQuantity, input.inventoryClass, input.lastSyncedAt, input.staleAfter, snapshot.syncRunId];
+      const { requestKey, snapshot, inventoryClass, lastSyncedAt, staleAfter } = v;
+      // Hash the enumerable snapshot and capture the SQL field values separately.
+      const requestFingerprint = fingerprint(structuredClone(v));
+      const values = [source, requestKey, requestFingerprint, snapshot.skuRef, snapshot.totalQuantity, snapshot.forSaleQuantity,
+        snapshot.reservedOrUnavailableQuantity, inventoryClass, lastSyncedAt, staleAfter, snapshot.syncRunId];
       return nativeCall(currentStockExecutor, 'fulfillment_record_stock_current', values);
     },
     async recordProviderStockCurrentBatch(inputs) {
