@@ -14,6 +14,18 @@ Search terms include operator permissions, administrative access.
 
 Show offline: `show account-support.recoverableAdministration --json`.
 
+## account_support_operator_slide_max_days
+
+Set the maximum number of days ahead an operator slide_next_cycle command may schedule the next subscription cycle (operator slide max days, operator reschedule window, support slide limit).
+Search terms include operator slide max days, support reschedule window, slide_next_cycle limit.
+
+- Owner **account-support** · kind **installed** · runtime **read-only**
+- Default is `{"revision":"default","maxDays":60}`.
+- Basis `reference-code` (matches the reference deployment's code).
+- Sixty days preserves the historical operator slide_next_cycle ceiling in customer_support_apply_subscription_action_v1 while matching customer subscription reschedule bounds.
+
+Show offline: `show account_support_operator_slide_max_days --json`.
+
 ## bundles.compositionRules
 
 Validate and resize bundle core and add-on compositions against opaque CompositionConstraint envelopes (bundle rules, composition constraints, resizing).
@@ -585,6 +597,18 @@ Search terms include cancelled subscriber outreach, retention messaging, reactiv
 - The age window preserves the established outreach timing after cancellation. The platform keeps its neutral default of requiring retention consent at the send gate.
 
 Show offline: `show subscriber_winback_policy --json`.
+
+## subscription_edit_quote_ttl_minutes
+
+Set how many minutes a subscription edit quote remains valid before expiry (subscription edit quote TTL, quote expiry, preview validity window).
+Search terms include subscription edit quote TTL, quote expiry minutes, edit preview validity window.
+
+- Owner **subscriptions** · kind **installed** · runtime **read-only**
+- Default is `{"revision":"default","ttlMinutes":15}`.
+- Basis `reference-code` (matches the reference deployment's code).
+- Fifteen minutes preserves the historical quote expiry window across SQL preview functions (customer_subscription_preview_bundle_as_actor and subscription_command_preview) and TypeScript subscription editors (PackageEditorOptions and SizedEditorOptions).
+
+Show offline: `show subscription_edit_quote_ttl_minutes --json`.
 
 ## subscription_minimum_base_units
 
