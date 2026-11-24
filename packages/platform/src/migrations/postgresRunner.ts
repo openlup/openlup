@@ -243,7 +243,7 @@ export function createBoundPostgresMigrationRunner(env: PostgresMigrationRunnerE
               // LOCK is the first statement: under stronger caller defaults,
               // the catalog snapshot must begin after any competing DDL settles.
               await client.query(`LOCK TABLE ONLY ${LEDGER} IN SHARE ROW EXCLUSIVE MODE`);
-              const beforeSql = await readLockedPrefix(client, plan.units, "SHARE ROW EXCLUSIVE");
+              const beforeSql = await readAlreadyLockedPrefix(client, plan.units);
               if (beforeSql.oid !== expectedOid || beforeSql.applied.length !== unit.position) {
                 throw new Error("platform migration ledger changed before write");
               }
@@ -253,9 +253,13 @@ export function createBoundPostgresMigrationRunner(env: PostgresMigrationRunnerE
               }
             }
             await client.query(unit.sql);
-            // The baseline creates its ledger; later units retain the lock
-            // through this post-SQL recheck, insert and COMMIT.
-            const beforeWrite = await readLockedPrefix(client, plan.units, "SHARE ROW EXCLUSIVE");
+            // The baseline creates its ledger (and must acquire SHARE ROW EXCLUSIVE
+            // now); later units already hold that transaction-scoped lock from above,
+            // so re-verifying LEDGER_IDENTITY and rows confirms neither OID nor shape
+            // nor prefix drifted during unit.sql without re-issuing redundant LOCK/OID passes.
+            const beforeWrite = expectedOid === null
+              ? await readLockedPrefix(client, plan.units, "SHARE ROW EXCLUSIVE")
+              : await readAlreadyLockedPrefix(client, plan.units);
             if (beforeWrite.oid === null || (expectedOid !== null && beforeWrite.oid !== expectedOid)
               || beforeWrite.applied.length !== unit.position) {
               throw new Error("platform migration ledger changed before write");
@@ -429,9 +433,7 @@ async function readAppliedPrefix(
   }
 }
 
-async function readLockedPrefix(client: PoolClient, units: readonly PlannedMigration[], mode: "ACCESS SHARE" | "SHARE ROW EXCLUSIVE"): Promise<AppliedLedger> {
-  const oid = await lockAdmittedLedger(client, mode);
-  if (oid === null) return { oid: null, applied: [] };
+async function readPrefixRows(client: PoolClient, units: readonly PlannedMigration[], oid: string): Promise<AppliedLedger> {
   // ONLY excludes inherited or foreign children, which are not ledger storage.
   const result = await client.query<LedgerRow>(
     `SELECT catalog_path, sha256, position FROM ONLY ${LEDGER} ORDER BY position`,
@@ -445,6 +447,23 @@ async function readLockedPrefix(client: PoolClient, units: readonly PlannedMigra
     }
   }
   return { oid, applied: units.slice(0, result.rows.length) };
+}
+
+async function readLockedPrefix(client: PoolClient, units: readonly PlannedMigration[], mode: "ACCESS SHARE" | "SHARE ROW EXCLUSIVE"): Promise<AppliedLedger> {
+  const oid = await lockAdmittedLedger(client, mode);
+  if (oid === null) return { oid: null, applied: [] };
+  return readPrefixRows(client, units, oid);
+}
+
+/** Verify ledger identity and prefix when the caller already holds SHARE ROW EXCLUSIVE on LEDGER. */
+async function readAlreadyLockedPrefix(client: PoolClient, units: readonly PlannedMigration[]): Promise<AppliedLedger> {
+  const observed = (await client.query<LedgerIdentityRow>(LEDGER_IDENTITY)).rows;
+  if (observed.length === 0) return { oid: null, applied: [] };
+  const identity = observed[0]!;
+  if (observed.length !== 1 || typeof identity.ledger_oid !== "string" || identity.ledger_safe !== true) {
+    throw new Error("platform migration ledger relation is not safe to read");
+  }
+  return readPrefixRows(client, units, identity.ledger_oid);
 }
 
 async function lockAdmittedLedger(client: PoolClient, mode: "ACCESS SHARE" | "SHARE ROW EXCLUSIVE"): Promise<string | null> {

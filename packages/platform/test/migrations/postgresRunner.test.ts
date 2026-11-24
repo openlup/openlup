@@ -9,6 +9,7 @@ import {
   type PlatformMigrationSource,
   type PostgresMigrationRunnerOptions,
 } from "../../src/migrations/postgresRunner.js";
+import { createPlatformPostgresMigrationRunner } from "../../src/migrations/platformRunner.js";
 
 const lockName = "synthetic-schema-update";
 const acquireSql = "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8))";
@@ -195,8 +196,9 @@ describe("PostgreSQL migration runner", () => {
       [acquireSql, [lockName]], ...readQueries(false),
       ...bodies.flatMap((sql, index) => [
         [writeBeginSql],
-        ...(index === 0 ? [] : [[writeLockSql], [identitySql], [writeLockSql], [identitySql], [ledgerSql]]),
-        [sql], [identitySql], [writeLockSql], [identitySql], [ledgerSql],
+        ...(index === 0 ? [] : [[writeLockSql], [identitySql], [ledgerSql]]),
+        [sql],
+        ...(index === 0 ? [[identitySql], [writeLockSql], [identitySql], [ledgerSql]] : [[identitySql], [ledgerSql]]),
         [insertSql, [files[index], entries[index]!.sha256, index]], ["COMMIT"],
       ]),
       ...readQueries(), [releaseSql, [lockName]],
@@ -490,5 +492,71 @@ describe("PostgreSQL migration runner", () => {
     );
     await expect(runner.status()).rejects.toThrow("platform migration catalog rejected");
     expect(end).not.toHaveBeenCalled();
+  });
+
+  it("reads the platform catalog once per status() call and re-reads fresh disk state on subsequent calls", async () => {
+    const canonicalMigrations = [
+      { file: "db/platform/migrations/00000000000000_platform_baseline.sql", content: "CREATE TABLE a(id int);" },
+      { file: "db/platform/migrations/20260401000001_first.sql", content: "CREATE TABLE b(id int);" },
+    ];
+    const canonicalEntries = canonicalMigrations.map(({ file, content }) => ({
+      file,
+      sha256: createHash("sha256").update(content).digest("hex"),
+    }));
+    const canonicalRows = canonicalEntries.map((entry, position) => ({
+      catalog_path: entry.file,
+      sha256: entry.sha256,
+      position,
+    }));
+    const s = scenario({ rows: canonicalRows });
+    const manifestV1 = {
+      schemaVersion: 1 as const,
+      baseline: canonicalEntries[0]!,
+      forward: canonicalEntries.slice(1),
+      objectInventorySha256: createHash("sha256").update(inventory).digest("hex"),
+    };
+    const readMigrations = vi.fn(() => ({ migrations: canonicalMigrations, errors: [] as string[] }));
+    const readManifest = vi.fn(() => manifestV1);
+    const runner = createPlatformPostgresMigrationRunner(env, {
+      installation: { generation: "legacy" },
+      root: "/fixture/platform-catalog",
+      catalog: { readMigrations, readManifest },
+      catalogProjectionPayload: async () => inventory,
+      poolFactory: s.poolFactory,
+    });
+    await expect(runner.status()).resolves.toEqual({
+      applied: canonicalEntries.map(({ file }) => file),
+      pending: [],
+    });
+    expect(readMigrations).toHaveBeenCalledTimes(1);
+    expect(readManifest).toHaveBeenCalledTimes(1);
+
+    await expect(runner.status()).resolves.toEqual({
+      applied: canonicalEntries.map(({ file }) => file),
+      pending: [],
+    });
+    expect(readMigrations).toHaveBeenCalledTimes(2);
+    expect(readManifest).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["unsafe shape", { ledger_oid: "20001", ledger_safe: false }, "platform migration ledger relation is not safe to read"],
+    ["swapped oid", { ledger_oid: "99999", ledger_safe: true }, "platform migration ledger changed before write"],
+  ] as const)("refuses forward unit ledger tampering (%s) after unit SQL without re-locking", async (_label, tamperedIdentity, expectedMessage) => {
+    const s = scenario({ rows: expectedRows().slice(0, 1) });
+    let unitSqlRan = false;
+    const baseQuery = s.query.getMockImplementation()!;
+    s.query.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql === bodies[1]) {
+        unitSqlRan = true;
+        return baseQuery(sql, params);
+      }
+      if (unitSqlRan && isIdentitySql(sql)) {
+        return { rows: [tamperedIdentity] };
+      }
+      return baseQuery(sql, params);
+    });
+    await expect(s.makeRunner().apply()).rejects.toThrow(`platform migration ${files[1]} failed: ${expectedMessage}`);
+    expect(s.query).toHaveBeenCalledWith("ROLLBACK");
   });
 });
