@@ -77,6 +77,23 @@ for (const parent of registrationParents) {
     }]);
   }, 25_000);
 
+  it(`${parent} locks the attachment before replaying saved facts`, async () => {
+    const { orderId, facts, utc } = await seedRegistration(database.pool);
+    const input = { ...facts, unattendedChargeAuthorizedAt: utc };
+    await database.pool.query(`INSERT INTO public.subscription_renewal_attachments(order_id,purchase_facts)
+      VALUES($1,$2::jsonb)`, [orderId, JSON.stringify(input)]);
+    const before = await registrationAttachments(database.pool, orderId);
+    // The replay returns before the upsert, so the attachment lock must be explicit.
+    await withBarrier(parent, orderId, input, 2, async c => {
+      for (const [name, sql] of rows.slice(0, 2)) {
+        expect(await probe(c, sql, orderId), name).toEqual({ code: "55P03" });
+      }
+    }, async result => {
+      await expect(result).resolves.toEqual({ orderId, replayed: true });
+    });
+    expect(await registrationAttachments(database.pool, orderId)).toEqual(before);
+  }, 25_000);
+
   it(`${parent} sees committed method deactivation after waiting for the declaration`, async () => {
     const { clientId, orderId, facts } = await seedRegistration(database.pool);
     const method = (await database.pool.query(`INSERT INTO public.payment_method_refs

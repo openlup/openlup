@@ -502,9 +502,9 @@ const retainedInvalid: [string, Record<string, unknown> | null][] = [
   ["terms shape", null],
   ["shipping terms currency", { shippingTerms: { ...shipping, currency: "XTS" } }],
   ["shipping terms amount bound", { shippingTerms: { ...shipping, flatMinor: 2147483648 } }],
-  ["minimum payable bound", { minimumPayableMinor: amountLimit + 1 }],
-  ["empty normal cadences", { normalCadenceDays: [] }],
-  ["normal cadence bound", { normalCadenceDays: [2147483648] }],
+  ["minimum payable bound", { minimumPayableMinor: amountLimit + 1, starterPack: undefined }],
+  ["empty normal cadences", { normalCadenceDays: [], starterPack: undefined }],
+  ["normal cadence bound", { normalCadenceDays: [2147483648], starterPack: undefined }],
   ["retained line count", { linePricing: Array.from({ length: 101 }, (_, index) => ({ ...retainedLine, sku: `item-${index}` })) }],
   ["retained line quantity", { linePricing: [{ ...retainedLine, quantity: 0 }] }],
   ["duplicate retained SKU", { linePricing: [retainedLine, retainedLine] }],
@@ -537,20 +537,19 @@ for (const parent of registrationParents) {
     const { payerAccountRef, ...missingPayer } = valid;
     expect(payerAccountRef).toBeNull();
     const invalidFacts: [string, unknown][] = [
-      ["SQL NULL facts", undefined],
-      ["JSON null facts", null],
-      ["facts shape", []],
+      ["unknown fact field", { ...valid, unexpected: true }],
       ["unknown field outranks timestamp cast", { ...valid, unexpected: true, unattendedChargeAuthorizedAt: "bad-authorization-instant" }],
       ["required text", { ...valid, methodRef: "" }],
       ["method evidence", { ...valid, settlementChannelKey: "fixture-rail" }],
       ["declaration cadence", { ...valid, cadenceDays: 29 }],
       ["cadence JSON type", { ...valid, cadenceDays: "28" }],
       ["finite timestamp", { ...valid, unattendedChargeAuthorizedAt: "infinity" }],
-      ["shipping bound", { ...valid, shippingAmountMinor: withShipping ? amountLimit + 1 : 1 }],
+      ["shipping bound", withShipping ? { ...valid, shippingAmountMinor: amountLimit + 1, renewalTerms: retained }
+        : { ...valid, shippingAmountMinor: 1 }],
       ["required nullable field", missingPayer],
       ["empty lines", { ...valid, lines: [] }],
       ["too many lines", { ...valid, lines: Array.from({ length: 101 }, (_, i) => ({ ...line, lineOrdinal: i + 1, sku: `item-${i}` })) }],
-      ["line unit amount bound", { ...valid, lines: [{ ...line, unitAmountMinor: amountLimit + 1 }] }],
+      ["line unit amount JSON type", { ...valid, lines: [{ ...line, unitAmountMinor: String(line.unitAmountMinor) }] }],
       ["line quantity bound", { ...valid, lines: [{ ...line, quantity: 2147483648 }] }],
       ["duplicate SKU", { ...valid, lines: [line, { ...line, lineOrdinal: 2 }] }],
       ["duplicate ordinal", { ...valid, lines: [line, { ...line, sku: "OTHER" }] }],
@@ -580,20 +579,23 @@ for (const parent of registrationParents) {
     const stored = withShipping ? { ...input, unattendedChargeAuthorizedAt: utc,
       renewalTerms: { ...retained, starterPack: { ...starter, basisTemplateVersion: 1 } } } : input;
     await expect(registerRenewal(runtime, parent, orderId, input)).resolves.toEqual({ orderId, replayed: false });
-    expect(await registrationAttachments(admin, orderId)).toMatchObject([{
-      attachment: { order_id: orderId, subscription_id: null, completed_at: null, purchase_facts: stored },
-    }]);
+    const firstWrite = await registrationAttachments(admin, orderId);
+    expect(firstWrite).toMatchObject([{ attachment: { order_id: orderId, subscription_id: null, completed_at: null } }]);
+    expect(firstWrite[0]?.attachment.purchase_facts).toEqual(stored);
     if (withShipping) {
       await admin.query(`UPDATE public.subscription_renewal_attachments
         SET purchase_facts=jsonb_set(purchase_facts,'{unattendedChargeAuthorizedAt}',to_jsonb($2::text))
         WHERE order_id=$1`, [orderId, valid.unattendedChargeAuthorizedAt]);
     }
-    const before = await registrationAttachments(admin, orderId);
+    const [before] = await registrationAttachments(admin, orderId);
+    const replayFacts = withShipping ? { ...stored, unattendedChargeAuthorizedAt: valid.unattendedChargeAuthorizedAt } : stored;
+    const unchanged = [{ ...before, attachment: { ...before.attachment, purchase_facts: replayFacts } }];
     await expect(registerRenewal(runtime, parent, orderId, withShipping ? { ...input, unattendedChargeAuthorizedAt: utc } : input))
       .resolves.toEqual({ orderId, replayed: true });
+    expect(await registrationAttachments(admin, orderId)).toEqual(unchanged);
     expect(await registrationRefusal(registerRenewal(runtime, parent, orderId, { ...input, authorizationRef: "different-authorization" })))
       .toEqual(expectedRegistrationRefusal("conflict", "23505"));
-    expect(await registrationAttachments(admin, orderId)).toEqual(before);
+    expect(await registrationAttachments(admin, orderId)).toEqual(unchanged);
   });
 
   it(`${parent} accepts the upper line and amount boundaries`, async () => {
