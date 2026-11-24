@@ -1558,8 +1558,9 @@ access; see [Package artifact limits](.github/VERSIONING_AND_EOL.md#package-arti
 All packages are validated and planned before writes, and only
 consumed fragments are deleted after successful writes. The set bump also plans
 an `upgrade/v<major>-<minor>-<patch>.md` guide page from those fragments and
-the API diff before any writes, refusing an existing page; it lists added, removed
-and changed declarations. Guide-contract violations
+the API diff before any writes, refusing an existing page. For each API report,
+the page gives the count of added declarations with the report path and lists
+removed and changed declarations individually. Guide-contract violations
 print warnings for correction in the same PR. It also refreshes the guide's
 repository-link pins and generated regions, and re-pins released repository links
 in each publishable package's `AGENTS.md` and `README.md`.
