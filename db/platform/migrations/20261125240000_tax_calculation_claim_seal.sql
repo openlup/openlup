@@ -60,6 +60,36 @@ EXCEPTION WHEN data_exception OR check_violation THEN RETURN NULL;
 END;
 $$;
 
+CREATE FUNCTION public.tax_calculation_check_domain_v1(p_invocation jsonb, p_pin jsonb, p_seal jsonb, p_complete boolean) RETURNS text
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+  SELECT CASE
+    WHEN NOT coalesce(p_pin->>'kind' IN ('fiscal_profile','tax_calculation'), false)
+      OR p_pin - ARRAY['destination','kind','request','coverage','validUntil','recovery','requestDigest','invocationDigest','documentDigest'] <> '{}'::jsonb
+      OR (CASE WHEN fiscal THEN request IS DISTINCT FROM jsonb_build_object('basis','inclusive','taxDate',request->'taxDate')
+        ELSE jsonb_path_exists(request, '$.**.address') OR jsonb_path_exists(request, '$.**.contact') END) THEN '/pin'
+    WHEN char_length(p_pin#>>'{destination,policyRevision}') > 256 THEN '/pin/destination/policyRevision'
+    WHEN jsonb_typeof(p_invocation->'lines') IS DISTINCT FROM 'array' THEN '/invocation/lines'
+    ELSE coalesce(
+      (SELECT path FROM (
+        VALUES ('/invocation/deliverySelector',p_invocation->'deliverySelector'),
+               ('/invocation/paymentSelector',p_invocation->'paymentSelector')
+        UNION ALL SELECT '/invocation/lines/' || (position-1) || '/sku', line->'sku'
+          FROM jsonb_array_elements(p_invocation->'lines') WITH ORDINALITY AS lines(line,position)
+      ) refs(path,value) WHERE (public.catalog_publication_text_valid(value,240,true)
+        AND octet_length(convert_to(value #>> '{}','UTF8')) <= 240) IS DISTINCT FROM true ORDER BY path LIMIT 1),
+      (SELECT path FROM (VALUES
+        ('/taxEvidence/expiresAt',p_pin->>'validUntil',true),
+        ('/taxEvidence/expiresAt',p_seal->>'validUntil',p_complete),
+        ('/pin/request/taxDate',regexp_replace(request->>'taxDate','^0000','2000'),fiscal)
+      ) clocks(path,instant,required) WHERE required AND (CASE
+        WHEN instant COLLATE "C" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$'
+          AND pg_input_is_valid(instant,'timestamp with time zone')
+        THEN to_char(instant::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')=instant END) IS DISTINCT FROM true
+      ORDER BY path LIMIT 1))
+  END
+  FROM (SELECT p_pin->'request' AS request, p_pin->>'kind'='fiscal_profile' AS fiscal) pin;
+$$;
+
 CREATE FUNCTION public.tax_calculation_transition_v1(p_request jsonb, p_complete boolean) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
@@ -88,7 +118,6 @@ DECLARE
   provider_key text;
   constraint_name text;
   cutoff timestamptz;
-  clock_value text;
   now_at timestamptz;
   code text;
   field text;
@@ -175,13 +204,11 @@ BEGIN
   END IF;
   pinned := coalesce(r.pin,p_request->'pin');
   original := pinned->'request';
-  IF NOT coalesce(pinned->>'kind' IN ('fiscal_profile','tax_calculation'), false)
-    OR (CASE WHEN pinned->>'kind'='fiscal_profile' THEN original IS DISTINCT FROM jsonb_build_object('basis','inclusive','taxDate',original->'taxDate')
-      OR (original->>'taxDate' COLLATE "C" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$') IS NOT TRUE
-      OR pinned - ARRAY['destination','kind','request','coverage','validUntil','recovery','requestDigest','invocationDigest','documentDigest'] <> '{}'::jsonb
-    ELSE jsonb_path_exists(original, '$.**.address') OR jsonb_path_exists(original, '$.**.contact') END) THEN
-    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/pin';
+  field := public.tax_calculation_check_domain_v1(p_request->'invocation',pinned,submission,p_complete);
+  IF field = '/pin/destination/policyRevision' THEN
+    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field, HINT='Obtain a supported revision from the destination owner.';
   END IF;
+  IF field IS NOT NULL THEN RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL=field; END IF;
   destination := pinned->'destination';
   pinned_coverage := pinned->'coverage';
   IF (pinned->>'kind' = 'tax_calculation') IS DISTINCT FROM (jsonb_typeof(pinned_coverage) = 'object')
@@ -190,16 +217,6 @@ BEGIN
       pinned->>'kind' <> 'tax_calculation' OR NOT coalesce(pinned->>'recovery' COLLATE "C" ~ '^[0-9a-f]{64}$',false))) THEN
     RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/pin';
   END IF;
-  BEGIN
-    FOREACH clock_value IN ARRAY ARRAY[pinned->>'validUntil',CASE WHEN p_complete THEN submission->>'validUntil' ELSE pinned->>'validUntil' END] LOOP
-      IF NOT coalesce(clock_value COLLATE "C" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$'
-        AND to_char(clock_value::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')=clock_value,false) THEN
-        RAISE data_exception;
-      END IF;
-    END LOOP;
-  EXCEPTION WHEN data_exception THEN
-    RAISE EXCEPTION 'tax_invalid_input' USING ERRCODE='22023', DETAIL='/taxEvidence/expiresAt';
-  END;
   cutoff := (pinned->>'validUntil')::timestamptz;
   owned := public.commerce_read_destination_v2(ctx,'snapshot',(destination->>'snapshotRef')::uuid,destination);
   IF owned->>'outcome' = 'refused' THEN
@@ -350,15 +367,15 @@ LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS 
   SELECT public.tax_calculation_transition_v1(p_request,true);
 $$;
 
-REVOKE ALL ON FUNCTION public.tax_calculation_transition_v1(jsonb,boolean), public.tax_calculation_begin_v1(jsonb), public.tax_calculation_complete_v1(jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean), public.tax_calculation_transition_v1(jsonb,boolean), public.tax_calculation_begin_v1(jsonb), public.tax_calculation_complete_v1(jsonb) FROM PUBLIC;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.tax_calculation_transition_v1(jsonb,boolean), public.tax_calculation_begin_v1(jsonb), public.tax_calculation_complete_v1(jsonb) FROM anon;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean), public.tax_calculation_transition_v1(jsonb,boolean), public.tax_calculation_begin_v1(jsonb), public.tax_calculation_complete_v1(jsonb) FROM anon;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.tax_calculation_transition_v1(jsonb,boolean), public.tax_calculation_begin_v1(jsonb), public.tax_calculation_complete_v1(jsonb) FROM authenticated;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean), public.tax_calculation_transition_v1(jsonb,boolean), public.tax_calculation_begin_v1(jsonb), public.tax_calculation_complete_v1(jsonb) FROM authenticated;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.tax_calculation_transition_v1(jsonb,boolean), public.tax_calculation_begin_v1(jsonb), public.tax_calculation_complete_v1(jsonb) FROM service_role;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean), public.tax_calculation_transition_v1(jsonb,boolean), public.tax_calculation_begin_v1(jsonb), public.tax_calculation_complete_v1(jsonb) FROM service_role;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
   EXECUTE 'GRANT EXECUTE ON FUNCTION public.tax_calculation_begin_v1(jsonb), public.tax_calculation_complete_v1(jsonb) TO service_role;';

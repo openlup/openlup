@@ -122,6 +122,8 @@ function fromDatabase(error: unknown): Refusal | undefined {
   if (!(error instanceof Error) || !("code" in error) || !["22023", "55000"].includes(String(error.code))
     || !Object.hasOwn(remedies, error.message) || !("detail" in error) || typeof error.detail !== "string") return;
   if (error.message === "tax_reference_conflict" && error.detail === "/coverage") return refusal(error.message, error.detail, historyRemedy);
+  if (error.message === "tax_invalid_input" && error.detail === "/pin/destination/policyRevision")
+    return refusal(error.message, error.detail, "Obtain a supported revision from the destination owner.");
   if (error.message === "tax_invalid_input" && "hint" in error && error.hint === "tax_coverage_declaration_invalid")
     return refusal(error.message, error.detail, "Have the coverage owner correct the authoritative declaration.");
   const field = { destinationDigest: "/destination/destinationDigest", documentDigest: "/destination/destinationDigest",

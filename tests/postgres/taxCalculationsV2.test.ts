@@ -532,6 +532,7 @@ describe("native evaluation claim and seal", () => {
     deliverySelector: "delivery-a", paymentSelector: "rail-a" } as const;
 
   type ClaimInput = Extract<Parameters<typeof beginTaxCalculation>[1], { operation: "claim" }>;
+  type ClaimWithPin = ClaimInput & { pin: NonNullable<ClaimInput["pin"]> };
   type SealInput = Exclude<Parameters<typeof completeTaxCalculation>[1], Uint8Array>;
   type Claim = Extract<Awaited<ReturnType<typeof beginTaxCalculation>>, { kind: "claimed" }>;
   type Lane = PostgresRoleFreeTransactionLane<PgQueryExecutor>;
@@ -624,7 +625,7 @@ describe("native evaluation claim and seal", () => {
       document: { installationRef, accountRef: original.scope.accountRef, coverage: original.coverage, actorRef: "fixture" } });
     const digest = "coverageDigest" in result ? result.coverageDigest : result.coverage_digest;
     expect(digest).toMatch(/^[0-9a-f]{64}$/u);
-    const claim: ClaimInput = { ...value.claim, recovery, pin: { ...value.claim.pin, kind: "tax_calculation",
+    const claim: ClaimWithPin = { ...value.claim, recovery, pin: { ...value.claim.pin, kind: "tax_calculation",
       request, recovery, coverage: { accountRef: original.scope.accountRef, revision: original.coverage.revision, digest } } };
     return { ...value, claim, request };
   }
@@ -650,6 +651,61 @@ describe("native evaluation claim and seal", () => {
     try { await witness(); }
     finally { await store.owner.query(definition); }
   }
+
+  function rawPin(claim: ClaimWithPin, request = claim.pin.request, fullRequest = request) {
+    return { ...claim.pin, request, requestDigest: evaluationDigest("evaluation-request", fullRequest) };
+  }
+
+  async function expectRawClaim(claim: ClaimInput, pin: object, refusal?: { detail: string; hint?: string }) {
+    const sql = "SELECT public.tax_calculation_begin_v1($1::jsonb) AS result", args = [{ ...claim, pin }];
+    if (refusal) {
+      await expect(store.runtime.query(sql, args)).rejects.toMatchObject({ code: "22023", message: "tax_invalid_input", ...refusal });
+    } else {
+      const runtime = await store.runtime.connect();
+      try {
+        await runtime.query("BEGIN");
+        expect((await runtime.query(sql, args)).rows).toMatchObject([{ result: { kind: "claimed", generation: 1 } }]);
+      } finally {
+        await runtime.query("ROLLBACK");
+        runtime.release();
+      }
+    }
+    expect((await store.owner.query("SELECT state FROM public.tax_calculations WHERE identity=$1::jsonb", [claim.identity])).rows).toEqual([]);
+  }
+
+  it.each(["fiscal_profile", "tax_calculation"] as const)("closes the %s pin at the SQL entry", async kind => {
+    const exclusive = kind === "tax_calculation" ? await exclusiveFixture() : undefined;
+    const { claim } = exclusive ?? await fixture();
+    let pin = rawPin(claim);
+    if (exclusive) {
+      const { request } = exclusive;
+      const { address: _address, ...destination } = request.input.destination;
+      pin = rawPin(claim, { ...request, input: { ...request.input, destination } }, request);
+    }
+    const extra = kind === "fiscal_profile" ? { line1: "1 Example Lane" } : { contactEmail: "synthetic@example.invalid" };
+    await expectRawClaim(claim, pin);
+    await expectRawClaim(claim, { ...pin, ...extra }, { detail: "/pin" });
+  });
+
+  it.each(["deliverySelector", "paymentSelector", "sku"] as const)("bounds %s at the SQL entry in UTF-8 bytes", async key => {
+    const { claim } = await fixture();
+    const edge = "😀".repeat(60);
+    const withValue = (value: string) => ({ ...claim, invocation: key === "sku"
+      ? { ...claim.invocation, lines: [{ sku: value, quantity: 1 }] }
+      : { ...claim.invocation, [key]: value } });
+    await expectRawClaim(withValue(edge), rawPin(claim));
+    await expectRawClaim(withValue(edge + "a"), rawPin(claim), {
+      detail: key === "sku" ? "/invocation/lines/0/sku" : "/invocation/" + key,
+    });
+  });
+
+  it("checks the real fiscal calendar at the SQL entry", async () => {
+    const { claim } = await fixture();
+    await expectRawClaim(claim, rawPin(claim, { basis: "inclusive", taxDate: "0000-02-29T00:00:00.000Z" }));
+    await expectRawClaim(claim, rawPin(claim, { basis: "inclusive", taxDate: "2026-02-30T00:00:00.000Z" }), {
+      detail: "/pin/request/taxDate",
+    });
+  });
 
   it.each(["wrapper", "SQL"] as const)("refuses an address-bearing fiscal request through %s without writing a claim", async entry => {
     const { claim } = await fixture();
@@ -701,7 +757,7 @@ describe("native evaluation claim and seal", () => {
     expect(await completeTaxCalculation(lane(), seal)).toStrictEqual(reply);
   });
 
-  it("admits a shared policy revision at 256 code points and refuses 257 before a claim", async () => {
+  it.each(["wrapper", "SQL entry"] as const)("admits a shared policy revision at 256 code points and refuses 257 through %s", async entry => {
     const { claim, ctx } = await fixture();
     const revision = "😀".repeat(100) + "a".repeat(156);
     const claimWithRevision = async (policyRevision: string) => {
@@ -712,8 +768,16 @@ describe("native evaluation claim and seal", () => {
       return { ...claim, identity: { ...claim.identity, evaluationKey: randomUUID() },
         pin: { ...claim.pin, destination: issued.binding, validUntil: issued.evidenceExpiresAt } };
     };
-    expect(await beginTaxCalculation(lane(), await claimWithRevision(revision))).toMatchObject({ kind: "claimed" });
+    const edge = await claimWithRevision(revision);
     const excess = await claimWithRevision(revision + "a");
+    if (entry === "SQL entry") {
+      await expectRawClaim(edge, rawPin(edge));
+      await expectRawClaim(excess, rawPin(excess), {
+        detail: "/pin/destination/policyRevision", hint: "Obtain a supported revision from the destination owner.",
+      });
+      return;
+    }
+    expect(await beginTaxCalculation(lane(), edge)).toMatchObject({ kind: "claimed" });
     expect(await beginTaxCalculation(lane(), excess)).toStrictEqual({ kind: "refused", code: "tax_invalid_input", field: "/pin/destination/policyRevision",
       remedy: "Obtain a supported revision from the destination owner." });
     expect((await store.owner.query("SELECT state FROM public.tax_calculations WHERE identity=$1::jsonb", [excess.identity])).rows).toEqual([]);

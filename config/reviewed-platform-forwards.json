@@ -7352,6 +7352,10 @@
         ],
         "createdFunctions": [
           {
+            "signature": "public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
             "signature": "public.tax_calculation_transition_v1(jsonb,boolean)",
             "searchPath": "pg_catalog, pg_temp"
           },
@@ -11049,7 +11053,7 @@
     },
     {
       "path": "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql",
-      "sha256": "7fe850ee7cb43a5470da6ce66ea89f2fd8a88ab6754dcf913e844efdb7fa685d",
+      "sha256": "493696a5adf687c3f397cea193b11552e5bd8ab9a83bec18b2b8339129dd1e44",
       "functions": [
         {
           "signature": "public.tax_calculation_terminal_v1(public.tax_calculations)",
@@ -11057,9 +11061,14 @@
           "afterSha256": "056b90df67611981eb6bb88079d0c8293e162ad3b8711a77abcee3d3b0bc87e4"
         },
         {
+          "signature": "public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "8efd6fe37d4e135636611285ac39d49b454e07a6f9e4491eafea07a4a9d918f7"
+        },
+        {
           "signature": "public.tax_calculation_transition_v1(jsonb,boolean)",
           "beforeSha256": null,
-          "afterSha256": "65f14bae7c2fe087705a2fc04000ead9a0203bef5b38ddf2b8028471561216a6"
+          "afterSha256": "824a868428cad49b7e63d2458ea7a04b5df12c413d30ca070ee37ea47cad9fe2"
         },
         {
           "signature": "public.tax_calculation_begin_v1(jsonb)",

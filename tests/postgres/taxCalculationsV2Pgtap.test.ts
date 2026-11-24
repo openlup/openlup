@@ -71,13 +71,14 @@ it.each([true, false])("replays storage constraints and function pins with brows
     };
     if (optionalRoles) for (const [routine, volatility] of [
       ["frame_v1(text,jsonb)", "VOLATILE"], ["hash_v1(text,jsonb)", "VOLATILE"], ["terminal_v1(public.tax_calculations)", "VOLATILE"],
+      ["check_domain_v1(jsonb,jsonb,jsonb,boolean)", "VOLATILE"],
       ["begin_v1(jsonb)", "STABLE"], ["complete_v1(jsonb)", "STABLE"], ["transition_v1(jsonb,boolean)", "STABLE"],
     ]) {
       for (const change of [volatility, "RESET search_path"]) {
         await db.query("SAVEPOINT attributes_mutation");
         await db.query(`ALTER FUNCTION public.tax_calculation_${routine} ${change}`);
         expect((await tap()).filter(line => /^not ok /u.test(line))).toEqual([
-          expect.stringContaining("all nine exact routines have the required attribute tuple"),
+          expect.stringContaining("all ten exact routines have the required attribute tuple"),
         ]);
         await db.query("ROLLBACK TO SAVEPOINT attributes_mutation");
       }
