@@ -45,7 +45,7 @@ describe("migration slots", () => {
 });
 
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { applyMigrationFinalization, parseMigrationGrant, readFinalizationPlan, requiresMigrationGrant } from "./migration-finalize.mjs";
@@ -166,9 +166,16 @@ describe("committed migration finalization plans", () => {
       expect(() => parseMigrationGrant(JSON.stringify({ ...grant, extra: true }))).toThrow("unexpected grant fields");
       expect(() => parseMigrationGrant(JSON.stringify(grant).replace('"schemaVersion":1', '"schemaVersion":1,"schemaVersion":1'))).toThrow(/duplicate/iu);
       expect(() => parseMigrationGrant(JSON.stringify({ ...grant, moves: [...moves, ...moves] }))).toThrow("duplicate grant move");
-      const grantFile = join(root, ".git/witness-grant.json");
-      write(".git/witness-grant.json", grant);
-      const options = { base: main, head, pr: 3, grantFile, repositoryId: 12, prNodeId: "PR_fixture", now: () => Date.parse("2099-11-24T10:30:00.000Z") };
+      const grantPath = ".git/openlup-migration-grant.json";
+      const options = { base: main, head, pr: 3, repositoryId: 12, prNodeId: "PR_fixture", now: () => Date.parse("2099-11-24T10:30:00.000Z") };
+      const invalidPath = "place an owned, regular grant fixture";
+      await expect(applyMigrationFinalization(root, options)).rejects.toThrow(invalidPath);
+      symlinkSync(join(root, "config/platform-migration-manifest.json"), join(root, grantPath));
+      await expect(applyMigrationFinalization(root, options)).rejects.toThrow(invalidPath);
+      rmSync(join(root, grantPath));
+      write(grantPath, "x".repeat(128 * 1024 + 1));
+      await expect(applyMigrationFinalization(root, options)).rejects.toThrow(invalidPath);
+      write(grantPath, grant);
       await expect(applyMigrationFinalization(root, { ...options, pr: 4 })).rejects.toThrow("grant PR");
       await expect(applyMigrationFinalization(root, { ...options, repositoryId: 13 })).rejects.toThrow("grant PR");
       await expect(applyMigrationFinalization(root, { ...options, prNodeId: "PR_substitution" })).rejects.toThrow("grant PR");
@@ -176,7 +183,7 @@ describe("committed migration finalization plans", () => {
       await expect(applyMigrationFinalization(root, { ...options, prNodeId: undefined })).rejects.toThrow("immutable PR node ID");
       await expect(applyMigrationFinalization(root, { ...options, now: () => Date.parse(grant.issuedAt) - 1 })).rejects.toThrow("issue time is in the future");
       await expect(applyMigrationFinalization(root, { ...options, now: () => Date.parse(grant.expiresAt) })).rejects.toThrow("grant expired");
-      write(".git/witness-grant.json", { ...grant, moves: moves.map(move => ({ ...move, blobOid: "f".repeat(40) })) });
+      write(grantPath, { ...grant, moves: moves.map(move => ({ ...move, blobOid: "f".repeat(40) })) });
       await expect(applyMigrationFinalization(root, options)).rejects.toThrow("complete move vector");
       expect(git("rev-parse", "HEAD")).toBe(head);
       expect(git("status", "--porcelain=v1")).toBe("");

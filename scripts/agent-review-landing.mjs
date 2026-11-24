@@ -2,9 +2,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -35,6 +34,29 @@ const PUBLICATION_CATALOGUE = REGISTRY_PATHS[0];
 const SETTINGS_GUIDE = 'packages/core/docs/guide/how-to/operate/settings-catalogue.md';
 const SETTINGS_OUTPUTS = ['packages/platform/settings-catalog.json', 'packages/platform/settings-refusals.json', SETTINGS_GUIDE];
 const BUILD_SCRIPT = 'scripts/build-packages-incremental.mjs';
+export function landingGitDirectory(cwd) {
+  const root = realpathSync(documentationGit(cwd, ['rev-parse', '--show-toplevel']).toString('utf8').trimEnd());
+  if (root !== realpathSync(cwd)) throw new Error('landing: use the dedicated worktree root');
+  const gitDir = realpathSync(documentationGit(cwd, ['rev-parse', '--absolute-git-dir']).toString('utf8').trimEnd());
+  const directory = lstatSync(gitDir);
+  if (!directory.isDirectory() || (directory.mode & 0o022) !== 0 ||
+      (process.getuid && directory.uid !== process.getuid())) {
+    throw new Error('landing: worktree Git metadata must be owned and writable only by the current user');
+  }
+  return gitDir;
+}
+export const isolatedInventoryDirectory = cwd =>
+  resolve(landingGitDirectory(cwd), 'openlup-finalization-inventory');
+export function isolatedInventoryFile(cwd) {
+  const scratch = isolatedInventoryDirectory(cwd);
+  const directory = lstatSync(scratch, { throwIfNoEntry: false });
+  if (!directory?.isDirectory() || (directory.mode & 0o777) !== 0o700 ||
+      (process.getuid && directory.uid !== process.getuid())) {
+    throw new Error('landing: isolated inventory requires the private worktree scratch directory');
+  }
+  return resolve(scratch, 'inventory.json');
+}
+
 export const carrierLocale = { LC_ALL: 'en_US.UTF-8', LANG: 'en_US.UTF-8' };
 const readJson = (root, path) => JSON.parse(readFileSync(resolve(root, path), 'utf8'));
 const pathsFrom = output => output.split('\0').filter(Boolean);
@@ -673,16 +695,30 @@ async function landMergedCheckout(cwd, { head, main, base, run, carrierEnv, diag
     const inventoryArgs = ['--import', 'tsx', resolve(cwd, 'scripts/installation-inventory-refresh.ts')];
     const inventoryPath = resolve(cwd, INVENTORY_PATH);
     if (finalization) {
-      const scratch = mkdtempSync(resolve(tmpdir(), 'openlup-finalization-inventory-'));
+      const scratch = isolatedInventoryDirectory(cwd);
+      try { mkdirSync(scratch, { mode: 0o700 }); }
+      catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        throw new Error('landing: inventory scratch already exists; inspect it before retrying');
+      }
+      const identity = lstatSync(scratch);
+      const ownsScratch = () => {
+        const current = lstatSync(scratch, { throwIfNoEntry: false });
+        return current?.isDirectory() && current.dev === identity.dev && current.ino === identity.ino;
+      };
       try {
-        const output = resolve(scratch, 'inventory.json');
-        await guarded({}, () => run(process.execPath, [...inventoryArgs, '--output', output]));
+        await guarded({}, () => run(process.execPath, [...inventoryArgs, '--isolated']));
+        if (!ownsScratch()) throw new Error('landing: isolated inventory scratch changed during measurement');
+        const output = isolatedInventoryFile(cwd);
         const file = lstatSync(output, { throwIfNoEntry: false });
         if (!file?.isFile() || file.nlink !== 1) throw new Error('landing: inventory refresh did not produce an isolated measurement');
         measuredInventory = readFileSync(output);
         await guarded({ files: [INVENTORY_PATH] }, () => writeFileSync(inventoryPath, measuredInventory));
       } finally {
-        rmSync(scratch, { recursive: true, force: true });
+        if (ownsScratch()) {
+          rmSync(resolve(scratch, 'inventory.json'), { force: true });
+          rmdirSync(scratch);
+        }
       }
     } else {
       run(process.execPath, inventoryArgs);

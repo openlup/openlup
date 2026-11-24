@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { Pool } from "pg";
 import { expect, it, vi } from "vitest";
 import { INVENTORY_PATH, inventoryEnvelope } from "../../scripts/agent-review-derived.mjs";
-import { carrierLocale } from "../../scripts/agent-review-landing.mjs";
+import { carrierLocale, isolatedInventoryFile } from "../../scripts/agent-review-landing.mjs";
 import { fixtureNpmCli, linkFixtureInstallation, localFixtureEnvironment } from "../../scripts/fixtures/landing-test-environment.ts";
 import { applyMigrationFinalization, parseMigrationGrant, readFinalizationPlan, verifyFinalizedMigrationHead } from "../../scripts/migration-finalize.mjs";
 import { checkPlatformMigrationProjection } from "../../scripts/packages/platform-migration-projection.ts";
@@ -103,13 +103,13 @@ it("finalizes dependent portable forwards, measures five PostgreSQL ledgers and 
     const expected = ["20990101010002_finalization_create.sql", "20990101010003_finalization_insert.sql"];
     expect(moves.map(move => move.targetPath)).toEqual(expected.map(path => portable + path));
     const now = new Date("2099-11-24T12:00:00.000Z").valueOf();
-    const grantFile = join(scratch, "grant.json");
+    const grantFile = join(checkout, ".git/openlup-migration-grant.json");
     writeFileSync(grantFile, JSON.stringify({ schemaVersion: 1, repositoryId: 123, baseRef: "refs/heads/main",
       prNodeId: "PR_fixture", prNumber: 17, grantId: "12345678-1234-4123-8123-123456789abc",
       draftHead: draft, observedMain: main, orderingDigest, issuedAt: "2099-11-24T11:00:00.000Z",
       expiresAt: "2099-11-24T13:00:00.000Z", moves,
     }));
-    const options = { base: main, head: draft, pr: 17, grantFile, now: () => now, repositoryId: 123, prNodeId: "PR_fixture" };
+    const options = { base: main, head: draft, pr: 17, now: () => now, repositoryId: 123, prNodeId: "PR_fixture" };
     const run = (command: string, args: string[], runOptions: { env?: NodeJS.ProcessEnv } = {}) => {
       execFileSync(command, args, { cwd: checkout, env: { ...runOptions.env, ...env }, stdio: "inherit", timeout: 540_000 });
     };
@@ -123,8 +123,8 @@ it("finalizes dependent portable forwards, measures five PostgreSQL ledgers and 
             write(bystander, "Preserve this concurrent staging.\n");
             git(checkout, "add", "--", bystander);
             if (failAtInventory) throw injectedFailure;
-            expect(args.at(-2)).toBe("--output");
-            writeFileSync(args.at(-1)!, read(INVENTORY_PATH), { flag: "wx" });
+            expect(args.at(-1)).toBe("--isolated");
+            writeFileSync(isolatedInventoryFile(checkout), read(INVENTORY_PATH), { flag: "wx" });
             return;
           }
           run(command, args, runOptions);
@@ -145,8 +145,8 @@ it("finalizes dependent portable forwards, measures five PostgreSQL ledgers and 
         ...options,
         runCommand: (command: string, args: string[], runOptions?: { env?: NodeJS.ProcessEnv }) => {
           if (args.some(arg => arg.endsWith("scripts/installation-inventory-refresh.ts"))) {
-            expect(args.at(-2)).toBe("--output");
-            writeFileSync(args.at(-1)!, read(INVENTORY_PATH), { flag: "wx" });
+            expect(args.at(-1)).toBe("--isolated");
+            writeFileSync(isolatedInventoryFile(checkout), read(INVENTORY_PATH), { flag: "wx" });
             write(edited, edit);
             if (stageEdit) git(checkout, "add", "--", edited);
             return;

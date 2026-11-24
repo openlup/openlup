@@ -1,6 +1,6 @@
 // Local contributor command. The grant is a fixture envelope until hosted admission is enabled.
 import { createHash } from 'node:crypto';
-import { closeSync, lstatSync, openSync, readFileSync, readlinkSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readSync, readlinkSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -9,7 +9,7 @@ import { inventoryEnvelope, INVENTORY_PATH, migrationRegistryUnion } from './age
 import { registryUnion } from './agent-review-registry.mjs';
 import { runLandingGenerators, SQL_REFERENCE, withPredictedTree } from './agent-review-generators.mjs';
 import { evaluatePlatformMigrationManifest, evaluatePlatformMigrationManifestHistory, selectPlatformMigrationManifest } from './platform-migration-manifest.ts';
-import { assertNoAuthoredSlotReferences, fillDraftManifest, finalizeLanding, reslotRegistryContents } from './agent-review-landing.mjs';
+import { assertNoAuthoredSlotReferences, fillDraftManifest, finalizeLanding, landingGitDirectory, reslotRegistryContents } from './agent-review-landing.mjs';
 import { MIGRATION_RAILS, isUtcMigrationSlot, migrationIdentity, planMigrationSlots } from './migration-slots.mjs';
 import { assertDocumentationPath, documentationGit } from './documentation-routing.ts';
 import { parseStrictJson } from './oss-strict-json.mts';
@@ -300,12 +300,40 @@ function verifySql(actual, draft, main, moves) {
   }
 }
 
-export async function applyMigrationFinalization(cwd, { base, head, pr, grantFile, repositoryId, prNodeId, now = Date.now, runCommand }) {
+function readLocalGrant(cwd) {
+  const path = resolve(landingGitDirectory(cwd), 'openlup-migration-grant.json');
+  const invalid = 'place an owned, regular grant fixture at git rev-parse --git-path openlup-migration-grant.json (128 KiB maximum)';
+  let fd;
+  try { fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
+  catch (error) {
+    if (!['ENOENT', 'ELOOP', 'EACCES'].includes(error.code)) throw error;
+    fail(invalid);
+  }
+  try {
+    const limit = 128 * 1024;
+    const file = fstatSync(fd);
+    if (!file.isFile() || file.nlink !== 1 || (file.mode & 0o022) !== 0 ||
+        (process.getuid && file.uid !== process.getuid()) || file.size > limit) fail(invalid);
+    const bytes = Buffer.alloc(limit + 1);
+    let size = 0;
+    while (size <= limit) {
+      const read = readSync(fd, bytes, size, bytes.length - size, null);
+      if (!read) break;
+      size += read;
+    }
+    if (size > limit) fail(invalid);
+    return parseMigrationGrant(bytes.subarray(0, size).toString('utf8'));
+  } finally {
+    closeSync(fd);
+  }
+}
+
+export async function applyMigrationFinalization(cwd, { base, head, pr, repositoryId, prNodeId, now = Date.now, runCommand }) {
   cwd = realpathSync(cwd);
   if (!Number.isSafeInteger(repositoryId) || repositoryId < 1 || typeof prNodeId !== 'string' || !PR_NODE.test(prNodeId)) {
     fail('apply requires a fixture repository ID and immutable PR node ID');
   }
-  const grant = parseMigrationGrant(readFileSync(grantFile, 'utf8'));
+  const grant = readLocalGrant(cwd);
   const verifyGrant = () => {
     const time = now();
     if (time < Date.parse(grant.issuedAt)) fail('grant issue time is in the future');
@@ -599,25 +627,25 @@ export async function verifyFinalizedMigrationHead(cwd, { grant, base, head, liv
 async function main() {
   const { positionals, values } = parseArgs({
     allowPositionals: true, options: { base: { type: 'string' }, head: { type: 'string' },
-      next: { type: 'string' }, pr: { type: 'string' }, 'grant-file': { type: 'string' },
+      next: { type: 'string' }, pr: { type: 'string' },
       'repository-id': { type: 'string' }, 'pr-node-id': { type: 'string' } },
   });
   const [command] = positionals;
-  const { base, head, next, pr, 'grant-file': grantFile, 'repository-id': repositoryId, 'pr-node-id': prNodeId } = values;
+  const { base, head, next, pr, 'repository-id': repositoryId, 'pr-node-id': prNodeId } = values;
   if (positionals.length !== 1 || !base || !head) fail('use plan or apply with --base and --head');
   const cwd = process.cwd();
-  if (command === 'plan' && !pr && !grantFile && repositoryId === undefined && prNodeId === undefined) {
+  if (command === 'plan' && !pr && repositoryId === undefined && prNodeId === undefined) {
     if (next !== undefined && !['portable', 'managed'].includes(next)) fail('--next requires portable or managed');
     const { next: nextSlot, ...plan } = await readFinalizationPlan(cwd, base, head);
     console.log(JSON.stringify(next ? { base, draftHead: head, rail: next, version: nextSlot() } : plan));
     return;
   }
-  if (command === 'apply' && next === undefined && /^[1-9][0-9]*$/u.test(pr) && grantFile && /^[1-9][0-9]*$/u.test(repositoryId) && prNodeId) {
-    const result = await applyMigrationFinalization(cwd, { base, head, pr: Number(pr), grantFile, repositoryId: Number(repositoryId), prNodeId });
+  if (command === 'apply' && next === undefined && /^[1-9][0-9]*$/u.test(pr) && /^[1-9][0-9]*$/u.test(repositoryId) && prNodeId) {
+    const result = await applyMigrationFinalization(cwd, { base, head, pr: Number(pr), repositoryId: Number(repositoryId), prNodeId });
     console.log(JSON.stringify(result));
     return;
   }
-  fail('use plan [--next portable|managed] or apply --pr NUMBER --repository-id ID --pr-node-id ID --grant-file FILE');
+  fail('use plan [--next portable|managed] or apply --pr NUMBER --repository-id ID --pr-node-id ID');
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

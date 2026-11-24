@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { isolatedInventoryDirectory, isolatedInventoryFile } from "./agent-review-landing.mjs";
 import {
   DEFAULT_INVENTORY_CONCURRENCY,
   MAX_INVENTORY_CONCURRENCY,
@@ -68,6 +73,37 @@ describe("installation-inventory-refresh concurrency and resource gating", () =>
     await expect(mapWithConcurrency(items, 0, async item => item)).rejects.toThrow(
       "concurrency must be a positive integer.",
     );
+  });
+
+  it("accepts only the private inventory scratch in this worktree's Git metadata", () => {
+    const fixture = mkdtempSync(join(tmpdir(), "openlup-inventory-location-"));
+    const root = join(fixture, "root");
+    const linked = join(fixture, "linked");
+    try {
+      execFileSync("git", ["init", "--quiet", root]);
+      execFileSync("git", ["-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+        "-c", "commit.gpgSign=false", "-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "-qm", "Fixture"]);
+      execFileSync("git", ["-C", root, "worktree", "add", "-q", "--detach", linked]);
+      const scratch = isolatedInventoryDirectory(root);
+      const linkedScratch = isolatedInventoryDirectory(linked);
+      expect(linkedScratch).not.toBe(scratch);
+      vi.stubEnv("GIT_DIR", join(root, ".git"));
+      vi.stubEnv("GIT_WORK_TREE", root);
+      expect(isolatedInventoryDirectory(linked)).toBe(linkedScratch);
+      const denied = "requires the private worktree scratch directory";
+      expect(() => isolatedInventoryFile(root)).toThrow(denied);
+      symlinkSync(root, scratch);
+      expect(() => isolatedInventoryFile(root)).toThrow(denied);
+      rmSync(scratch);
+      mkdirSync(scratch, { mode: 0o755 });
+      expect(() => isolatedInventoryFile(root)).toThrow(denied);
+      rmSync(scratch, { recursive: true });
+      mkdirSync(scratch, { mode: 0o700 });
+      expect(isolatedInventoryFile(root)).toBe(join(scratch, "inventory.json"));
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(fixture, { recursive: true, force: true });
+    }
   });
 
   it("gates local runs through ai-resource-gate on docker-heavy and bypasses in CI, nested gate, opt-out, or absence", () => {
