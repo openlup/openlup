@@ -1886,6 +1886,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/WAVE_3_RECIPES_SPLIT_SPEC.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/agent-context-adaptive-routing.md",
       "class": "public-output"
     },
