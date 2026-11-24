@@ -212,8 +212,8 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261125140000_fulfillment_stock_seed_outcome.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125140000_fulfillment_stock_seed_outcome.sql) |
 | [`20261125150000_checkout_recovery_reminder_install_outcome.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125150000_checkout_recovery_reminder_install_outcome.sql) |
 | [`20261125170000_tax_calculations.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125170000_tax_calculations.sql) |
-| [`20261125171000_catalog_price_list_basis.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125171000_catalog_price_list_basis.sql) |
-| [`20261125172000_catalog_governed_price_operation_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125172000_catalog_governed_price_operation_v2.sql) |
+| [`20261125201000_catalog_price_list_basis.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125201000_catalog_price_list_basis.sql) |
+| [`20261125202000_catalog_governed_price_operation_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261125202000_catalog_governed_price_operation_v2.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

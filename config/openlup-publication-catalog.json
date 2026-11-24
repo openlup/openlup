@@ -1642,11 +1642,11 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261125171000_catalog_price_list_basis.sql",
+      "path": "db/platform/migrations/20261125201000_catalog_price_list_basis.sql",
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261125172000_catalog_governed_price_operation_v2.sql",
+      "path": "db/platform/migrations/20261125202000_catalog_governed_price_operation_v2.sql",
       "class": "public-output"
     },
     {
@@ -5386,11 +5386,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261125171000_catalog_price_list_basis.sql",
+      "path": "packages/platform/sql/20261125201000_catalog_price_list_basis.sql",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261125172000_catalog_governed_price_operation_v2.sql",
+      "path": "packages/platform/sql/20261125202000_catalog_governed_price_operation_v2.sql",
       "class": "public-output"
     },
     {
