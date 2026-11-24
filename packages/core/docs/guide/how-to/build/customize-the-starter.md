@@ -137,14 +137,16 @@ sessions, and client and configuration changes do not reload atomically.
 
 ## Set seeded product physical facts
 
-In `owned/store.config.ts`, each seeded product declares its original gram
-weight and primary unit identifier:
+In `owned/store.config.ts`, set each seeded product's `physical` field to its
+original gram weight and primary unit identifier.
 
 ```ts
-physical: {
-  netContent: { dimension: 'mass', unit: 'openlup:g', unscaled: '250', scale: 0 },
+import type { CatalogQuantity } from '@openlup/core/catalog';
+
+const physical = {
+  netContent: { dimension: 'mass', unit: 'openlup:g', unscaled: '250', scale: 0 } satisfies CatalogQuantity,
   primaryUnitIdentifier: { scheme: 'gs1:gtin', issuer: 'demo', value: '0000000000017' },
-}
+};
 ```
 
 Use a decimal digit string for `unscaled`, from `'1'` through `'2147483647'`,
