@@ -613,6 +613,33 @@ export interface StockWaitAdminPage extends StockWaitOperatorSummary {
     pageSize: number;
 }
 ```
+## dist/subscriptions/editQuoteTtlPolicy.d.ts
+
+```ts
+/** @experimental Default edit quote TTL (in minutes) for customer self-service and typed subscription edit previews. */
+export declare const DEFAULT_SUBSCRIPTION_EDIT_QUOTE_TTL_MINUTES = 15;
+/** @experimental Installed policy configuring the edit quote TTL in minutes (1..1440). */
+export interface SubscriptionEditQuoteTtlMinutesPolicy {
+    revision: string;
+    ttlMinutes: number;
+}
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Validate and resolve an optional `quoteTtlMinutes` editor option (1..1440, defaulting to 15). */
+export declare function resolveSubscriptionEditQuoteTtlMinutes(quoteTtlMinutes?: number): number;
+/** @experimental Validate a `subscription_edit_quote_ttl_minutes` policy document using SQL-equivalent rules. */
+export declare function validateSubscriptionEditQuoteTtlMinutes(value: unknown): SubscriptionEditQuoteTtlMinutesPolicy;
+/** @experimental Install the subscription edit quote TTL policy on a host-owned write-capable connection. */
+export declare function installSubscriptionEditQuoteTtlMinutesPolicy(db: Executor, policy: SubscriptionEditQuoteTtlMinutesPolicy): Promise<void>;
+/** @experimental Read an explicit `subscription_edit_quote_ttl_minutes` override, returning `undefined` when absent. */
+export declare function readSubscriptionEditQuoteTtlMinutesOverride(db: Executor): Promise<SubscriptionEditQuoteTtlMinutesPolicy | undefined>;
+/** @experimental Read the installed `subscription_edit_quote_ttl_minutes` policy or the 15-minute absence fallback. */
+export declare function readSubscriptionEditQuoteTtlMinutesPolicy(db: Executor): Promise<SubscriptionEditQuoteTtlMinutesPolicy>;
+export {};
+```
 ## dist/subscriptions/exactEditQuote.d.ts
 
 ```ts
@@ -712,6 +739,8 @@ export { createPostgresNativeCheckoutSubscriptionPort } from "./postgresNativeCh
 export type { PostgresNativeCheckoutSubscriptionPort } from "./postgresNativeCheckoutSubscriptionPort.js";
 export { DEFAULT_SUBSCRIPTION_RETRY_BACKOFF_HOURS, validateSubscriptionRetrySchedule, installSubscriptionRetrySchedulePolicy, readSubscriptionRetryScheduleOverride, readSubscriptionRetrySchedulePolicy, } from "./retrySchedulePolicy.js";
 export type { SubscriptionRetrySchedulePolicy } from "./retrySchedulePolicy.js";
+export { DEFAULT_SUBSCRIPTION_EDIT_QUOTE_TTL_MINUTES, resolveSubscriptionEditQuoteTtlMinutes, validateSubscriptionEditQuoteTtlMinutes, installSubscriptionEditQuoteTtlMinutesPolicy, readSubscriptionEditQuoteTtlMinutesOverride, readSubscriptionEditQuoteTtlMinutesPolicy, } from "./editQuoteTtlPolicy.js";
+export type { SubscriptionEditQuoteTtlMinutesPolicy } from "./editQuoteTtlPolicy.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -1025,6 +1054,8 @@ export interface PackageEditLimits {
 export interface PackageEditorOptions extends PackageEditQuotePorts {
     /** Required only for the exact portion lever. */
     portionModes?: SubscriptionPortionModes;
+    /** @experimental Edit quote TTL in minutes (integer 1..1440, default 15). */
+    quoteTtlMinutes?: number;
     /** One connection through commit/rollback; authorization precedes this factory. */
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     limits: PackageEditLimits;
@@ -2243,6 +2274,8 @@ export interface SizedHostPorts {
 }
 export interface SizedEditorOptions extends SizedHostPorts {
     policy: SizedEditPolicy;
+    /** @experimental Edit quote TTL in minutes (integer 1..1440, default 15). */
+    quoteTtlMinutes?: number;
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     now(): string;
 }

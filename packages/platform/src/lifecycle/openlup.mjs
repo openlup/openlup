@@ -181,18 +181,24 @@ async function bindSettings({ database, app, configuration }) {
     }
     if (!db || "configurationIds" in overrides) return { ...overrides, close };
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
+    const { readAccountSupportOperatorSlideMaxDaysOverride } = await import("@openlup/platform/account-support");
+    // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { describeRenewalStockProtectionSetting, readRenewalStockProtectionOverride, previewRenewalStockProtection } = await import("@openlup/platform/inventory");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { readPaymentMethodExpiryWarningDaysOverride, readPaymentDeclineNoticeTimingOverride } = await import("@openlup/platform/payments");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
     const { readPromotionClaimHoldHoursOverride } = await import("@openlup/platform/promotions");
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
-    const { readSubscriptionRetryScheduleOverride } = await import("@openlup/platform/subscriptions");
+    const { readSubscriptionEditQuoteTtlMinutesOverride, readSubscriptionRetryScheduleOverride } = await import("@openlup/platform/subscriptions");
     const inventory = describeRenewalStockProtectionSetting().key;
     inventorySettingKey = inventory;
     return {
       readers: {
         "tax.coverage": async () => ({ refusal: "tax_coverage_reader_unbound" }),
+        account_support_operator_slide_max_days: async () => {
+          const policy = await readAccountSupportOperatorSlideMaxDaysOverride(db);
+          return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
+        },
         [inventory]: async () => {
           const policy = await readRenewalStockProtectionOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
@@ -207,6 +213,10 @@ async function bindSettings({ database, app, configuration }) {
         },
         promotion_claim_hold_hours: async () => {
           const policy = await readPromotionClaimHoldHoursOverride(db);
+          return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
+        },
+        subscription_edit_quote_ttl_minutes: async () => {
+          const policy = await readSubscriptionEditQuoteTtlMinutesOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
         },
         "subscriptions.retrySchedule": async () => {

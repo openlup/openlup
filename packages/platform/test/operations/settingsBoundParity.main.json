@@ -295,6 +295,30 @@
         "throwing app": 3
       }
     },
+    "show account_support_operator_slide_max_days": {
+      "text": {
+        "no app": 4,
+        "healthy app": 8,
+        "throwing app": 1
+      },
+      "json": {
+        "no app": 6,
+        "healthy app": 9,
+        "throwing app": 3
+      }
+    },
+    "show subscription_edit_quote_ttl_minutes": {
+      "text": {
+        "no app": 4,
+        "healthy app": 8,
+        "throwing app": 1
+      },
+      "json": {
+        "no app": 6,
+        "healthy app": 9,
+        "throwing app": 3
+      }
+    },
     "show subscription_minimum_base_units": {
       "text": {
         "no app": 4,

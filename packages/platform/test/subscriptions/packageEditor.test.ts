@@ -201,3 +201,29 @@ it("rechecks admission on apply after a successful preview even when the quote w
   expect(f.calls.some(call => call.sql.includes("subscription_package_edit_apply("))).toBe(false);
   expect(mapPackageEditError(new Error("subscription_reprice_terms_not_admitted"), "preview")).toMatchObject({ status: 400, reason: "subscription_reprice_terms_not_admitted" });
 });
+
+it("applies default 15-minute and custom quoteTtlMinutes on preview and refuses invalid values", async () => {
+  for (const [quoteTtlMinutes, expectedIso] of [
+    [undefined, "2040-01-01T00:15:00.000Z"],
+    [1, "2040-01-01T00:01:00.000Z"],
+    [45, "2040-01-01T00:45:00.000Z"],
+    [1440, "2040-01-02T00:00:00.000Z"],
+  ] as const) {
+    const f = fixture();
+    f.row.next_cycle_at = "2040-02-01T00:00:00Z";
+    const editor = createPostgresPackageEditor({
+      ...f.options,
+      now: () => "2040-01-01T00:00:00Z",
+      ...(quoteTtlMinutes === undefined ? {} : { quoteTtlMinutes }),
+    });
+    const preview = await editor.preview(actor, request);
+    expect(preview.quoteExpiresAt).toBe(expectedIso);
+    const record = f.calls.find(call => call.sql.includes("subscription_quote_preview_record"))!;
+    expect(record.values?.[5]).toBe(expectedIso);
+  }
+  for (const bad of [0, -1, 1.5, 1441, Infinity, NaN]) {
+    const f = fixture();
+    expect(() => createPostgresPackageEditor({ ...f.options, quoteTtlMinutes: bad }))
+      .toThrow("subscription_edit_quote_ttl_minutes_policy_invalid");
+  }
+});
