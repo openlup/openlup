@@ -12839,12 +12839,12 @@
     },
     {
       "path": "db/platform/migrations/20261126023000_catalog_admission_issue_reader.sql",
-      "sha256": "07002998bda04ae17aa81725a292e172a3e79c69b4215435714f3e786678691d",
+      "sha256": "1ca64162c40c8ef19a6146e0ea703cc427d473ac4d10275b1f50567ffbc8009e",
       "functions": [
         {
           "signature": "public.catalog_offer_memberships_page(text,jsonb,integer,text)",
           "beforeSha256": "e7748ddf876c326549ff255120f7fda765a6fdb4a95cae938a3f7e42f2135ed9",
-          "afterSha256": "07036dd19c3baef3a992e9a01affd46597f3598fd56959f7091558ece18cac70"
+          "afterSha256": "fc81204376fb206eec192d3ce4a6a3ca47cdd55af2c87fba625b4922ba308756"
         }
       ]
     }

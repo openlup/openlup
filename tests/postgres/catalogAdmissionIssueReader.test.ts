@@ -375,6 +375,8 @@ it("validates one closed input before reading and refuses each malformed or mism
     [offer, continued({ binding: token.binding.toUpperCase() }), 1], [offer, continued({ binding: "f".repeat(63) }), 1],
     // Shape refusals precede the digest step.
     [offer, continued({ limit: 101, headDigest: "f".repeat(64) }), 1], [offer, continued({ offset: 500, headDigest: "f".repeat(64) }), 1],
+    [offer, continued({ offerVersion: "", headDigest: "f".repeat(64) }), 1], [offer, continued({ offerVersion: ` ${offer}`, headDigest: "f".repeat(64) }), 1],
+    [offer, continued({ offerVersion: "x".repeat(241), headDigest: "f".repeat(64) }), 1],
     [offer, pageOne, 0], [offer, pageOne, 101], [offer, pageOne, null], ["", pageOne, 1], [" padded", pageOne, 1],
     ["x".repeat(241), pageOne, 1], [`${"x".repeat(239)}\u{1F600}`, pageOne, 1], [null, pageOne, 1],
   ];
@@ -513,6 +515,36 @@ it("reuses the head authentication and resolves only the page's sealed revisions
     expect(await read(db, "test:fresh-head", { selectedSkuId: fixedId(400) }, 1)).toEqual(refusal("inconsistent_evidence"));
     await db.query("ROLLBACK TO SAVEPOINT head_document");
     expect((await read(db, "test:fresh-head", { selectedSkuId: fixedId(400) }, 1)).kind).toBe("page");
+  });
+});
+
+it("returns head_moved without reading page evidence when the heads moved after the head check", async () => {
+  await measuring(async db => {
+    const earlier = await seed(db, { offer: "test:gate", id: fixedId(430), extra: 4 });
+    const moved = await carry(db, earlier, earlier, await references(db, earlier.head), 2);
+    const authority = async () => (await db.query("SELECT public.catalog_publication_read_head() AS value")).rows[0]!.value as unknown;
+    const before = await authority();
+    // A publication of the page's product moves the heads.
+    await carry(db, moved, earlier, await references(db, moved.head), 3);
+    const after = await authority();
+    expect(after).not.toEqual(before);
+    // One call reads one snapshot, so the move cannot land between its statements. The head check is replaced
+    // for this transaction by one that answers as it did before or after the move.
+    const answer = (value: unknown) => db.query(`CREATE OR REPLACE FUNCTION public.catalog_publication_read_head() RETURNS jsonb
+      LANGUAGE sql STABLE AS $$ SELECT '${JSON.stringify(value)}'::jsonb $$`);
+    const args = ["test:gate", { selectedSkuId: fixedId(430) }, 5] as const;
+    await answer(after);
+    const baseline = await rosterOnly(db, "test:gate", 5);
+    expect([baseline.evidence, baseline.manifests]).toEqual([0, 0]);
+    // With agreeing digests the page is read: five sealed revisions and the one earlier issuer.
+    const agreed = await measure(db, ...args);
+    expect(agreed.result.kind).toBe("page");
+    expect([agreed.evidence, agreed.manifests, agreed.revisions - baseline.revisions]).toEqual([0, 1, 5]);
+    await answer(before);
+    expect((await rosterOnly(db, "test:gate", 5)).revisions).toBe(baseline.revisions);
+    const refused = await measure(db, ...args);
+    expect(refused.result).toEqual(refusal("head_moved"));
+    expect([refused.evidence, refused.manifests, refused.revisions - baseline.revisions]).toEqual([0, 0, 0]);
   });
 });
 

@@ -29,7 +29,7 @@ BEGIN
    IF continued IS NOT NULL THEN
     IF NOT continued ?& token_keys OR continued - token_keys <> '{}'::jsonb
      OR (jsonb_typeof(continued->'selectedSkuId')='string' AND continued->>'selectedSkuId' COLLATE pg_catalog."C" ~ uuid_shape) IS DISTINCT FROM true
-     OR jsonb_typeof(continued->'offerVersion') IS DISTINCT FROM 'string'
+     OR public.catalog_publication_text_valid(continued->'offerVersion',240,true) IS DISTINCT FROM true
      OR continued->'mode' IS DISTINCT FROM '"admission_issue"'::jsonb
      OR (jsonb_typeof(continued->'headDigest')='string' AND continued->>'headDigest' COLLATE pg_catalog."C" ~ '^[0-9a-f]{64}$') IS DISTINCT FROM true
      OR (jsonb_typeof(continued->'binding')='string' AND continued->>'binding' COLLATE pg_catalog."C" ~ '^[0-9a-f]{64}$') IS DISTINCT FROM true
@@ -104,15 +104,17 @@ BEGIN
     IF start_at % p_limit <> 0 OR start_at >= roster_size THEN RETURN invalid; END IF;
    END IF;
    IF NOT chosen_eligible THEN RETURN invalid || '{"detail":"catalog_admission_selection_ineligible"}'::jsonb; END IF;
-   -- Resolve only the page. read_head authenticated every current head; after confirming the global head digest,
-   -- each page product's head is parsed and its product-bound document checked against the head manifest.
-   -- Each earlier issuing publication is authenticated once through its manifest, exact reference and document.
+   -- Resolve only the page, and only while the global head digest still equals the one read_head authenticated:
+   -- otherwise the page is empty and no evidence is read. Each page product's head is parsed and its product-bound
+   -- document checked against the head manifest. Each earlier issuing publication is authenticated once through
+   -- its manifest, exact reference and document.
    WITH current_heads AS MATERIALIZED (
     SELECT encode(sha256(convert_to(jsonb_agg(jsonb_build_array(h.product_id,h.publication_id,h.revision,p.digest)
       ORDER BY h.product_id)::text,'UTF8')),'hex') AS digest
     FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON (p.product_id,p.id)=(h.product_id,h.publication_id)
    ), page AS MATERIALIZED (
     SELECT (k->>0)::uuid AS sku_id,(k->>1)::uuid AS product_id FROM jsonb_array_elements(page_keys) AS entry(k)
+    WHERE (SELECT digest FROM current_heads)=authority->>'headDigest'
    ), heads AS MATERIALIZED (
     SELECT c.product_id,c.id AS head_id,c.canonical_state::jsonb AS body,
      jsonb_build_object('publicationId',c.id,'revision',c.revision,'documentDigest',d.digest) AS head,
