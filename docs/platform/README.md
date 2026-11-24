@@ -18,6 +18,8 @@ This index is for maintainers changing OpenLup. For installing, composing, exten
 - [Agent guide](AGENT_GUIDE.md) — a stable pointer to the root [`AGENTS.md`](../../AGENTS.md) and the reader guide shipped in `@openlup/core`.
 - [Architecture and extensions](ARCHITECTURE_AND_EXTENSIONS.md) — module ownership, extension seams, and source-ejection consequences.
 - [Data and migrations](DATA_AND_MIGRATIONS.md) — compatibility-first schema evolution and adopter-owned data.
+- [Compatible data transfer](migrations/compatible-data-transfer.md) — capture, restore and transfer compatibility.
+- [Module catalogues and installed histories](migrations/module-catalogues-and-histories.md) — native catalogue history and package migration projection.
 - [Runtime and self-hosting](RUNTIME_AND_SELF_HOSTING.md) — runtime boundaries and the supported installation and self-hosting limits.
 - [Canonical contracts](CANONICAL_CONTRACTS.md) — status, idempotency, and provider-boundary rules.
 - [Provider recipes master plan](PROVIDER_RECIPES_MASTER_PLAN.md) — agent-first recipe ecosystem architecture, harmonization plan, anti-slop gates, and global provider roadmap ([ADR-001](adr/ADR-001-provider-recipes-architecture.md)).
