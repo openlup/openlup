@@ -1674,6 +1674,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5486,6 +5490,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261126030000_settings_wave3a_operator_slide_and_quote_ttl.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5643,6 +5651,10 @@
     },
     {
       "path": "packages/platform/src/account-support/operatorRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/operatorSlideMaxDaysPolicy.ts",
       "class": "public-output"
     },
     {
@@ -10302,6 +10314,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/editQuoteTtlPolicy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/exactEditQuote.ts",
       "class": "public-output"
     },
@@ -10594,6 +10610,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/account-support/account_support_operator_slide_max_days.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/account-support/bindings.test.ts",
       "class": "public-output"
     },
@@ -10623,6 +10643,10 @@
     },
     {
       "path": "packages/platform/test/account-support/operatorRecovery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/operatorSlideMaxDaysPolicy.test.ts",
       "class": "public-output"
     },
     {
@@ -13042,6 +13066,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/editQuoteTtlPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/exactEditQuote.test.ts",
       "class": "public-output"
     },
@@ -13127,6 +13155,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/subscriptionSizing.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/subscription_edit_quote_ttl_minutes.json",
       "class": "public-output"
     },
     {
@@ -32815,6 +32847,10 @@
     },
     {
       "path": "tests/postgres/settingsWave2Policies.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/settingsWave3aPolicies.test.ts",
       "class": "public-output"
     },
     {

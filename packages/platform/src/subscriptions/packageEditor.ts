@@ -7,6 +7,7 @@ import { createPostgresPackageEditReadPort } from "./packageEditRead.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { PackageEditActor, PackageEditApplyResult, PackageEditBlockedReason, PackageEditPreview,
   PackageEditQuote, PackageEditRequest, PackageEditorOptions } from "./packageEditContracts.js";
+import { resolveSubscriptionEditQuoteTtlMinutes } from "./editQuoteTtlPolicy.js";
 
 type EditAction = "update_package_template" | ExactSubscriptionEditAction;
 const actions = ["update_package_template", "swap_base_line", "add_addon", "remove_addon", "update_addon_quantity", "update_plan_length", "update_base_mix", "update_portion"] as const;
@@ -19,6 +20,7 @@ const resultSchema = z.object({ status: z.enum(["applied", "replayed", "noop"]),
 export function createPostgresPackageEditor(options: PackageEditorOptions) {
   const limits = options.limits;
   if ([limits.maximumPlanDays, limits.maximumBaseLines, limits.maximumAddonLines, limits.maximumQuantity].some(value => !Number.isSafeInteger(value) || value <= 0)) throw new Error("subscription_reprice_limits_unavailable");
+  const quoteTtlMinutes = resolveSubscriptionEditQuoteTtlMinutes(options.quoteTtlMinutes);
   const line = z.object({ variantId: z.uuid(), qty: z.number().int().positive() }).strict();
   const schema = z.object({ subscriptionId: z.uuid(), planDays: z.number().int().positive(),
     base: z.array(line).min(1), addons: z.array(line).default([]),
@@ -84,7 +86,7 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
       if (request.acceptedQuoteHash !== undefined) throw new Error("subscription_reprice_invalid_request");
       return options.withTransaction(async db => {
         const row = await owned(db, actor, request.subscriptionId), next = stamp(row.next_cycle_at);
-        const now = options.now(), expires = new Date(Date.parse(now) + 15 * 60_000).toISOString();
+        const now = options.now(), expires = new Date(Date.parse(now) + quoteTtlMinutes * 60_000).toISOString();
         const cutoff = next ? new Date(Date.parse(next) - Number(row.edit_window_hours) * 3_600_000).toISOString() : null;
         // The shared blocker wins before ordinary edit eligibility; cycle lock precedes method/cutoff.
         const reason: PackageEditBlockedReason | null = row.payment_blocked ? "payment_blocked" : row.status !== "active" ? "not_active"

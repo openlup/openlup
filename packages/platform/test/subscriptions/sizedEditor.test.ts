@@ -266,3 +266,57 @@ it("reads a historical sized context but refuses a fresh edit retaining its cade
   expect(await quoteSizedEdit({db,context:current,request:{subscriptionId:ids.subscription,action:"update_plan_length",planDays:30},policy,host:ports,point:"preview"}))
     .toMatchObject({cadenceDays:30});
 });
+
+it("applies default 15-minute and custom quoteTtlMinutes on sized preview and refuses invalid values", async () => {
+  const actor = { actorId: ids.actor, clientId: ids.client };
+  for (const [quoteTtlMinutes, expectedIso] of [
+    [undefined, "2040-01-01T00:15:00.000Z"],
+    [1, "2040-01-01T00:01:00.000Z"],
+    [45, "2040-01-01T00:45:00.000Z"],
+    [1440, "2040-01-02T00:00:00.000Z"],
+  ] as const) {
+    const calls: { sql: string; values?: unknown[] }[] = [];
+    const editor = createPostgresSizedEditor({
+      ...host(),
+      policy,
+      now: () => "2040-01-01T00:00:00Z",
+      ...(quoteTtlMinutes === undefined ? {} : { quoteTtlMinutes }),
+      async withTransaction(work) {
+        return work({
+          async query(sql, values) {
+            calls.push({ sql, values });
+            if (sql.startsWith("SELECT s.*")) {
+              return { rows: [{
+                configured_offer_version: "sized.v1",
+                status: "active",
+                next_cycle_at: "2040-02-01T00:00:00.000Z",
+                edit_window_hours: 72,
+                template_version: 1,
+                payment_blocked: false,
+                cycle_locked: false,
+                method_healthy: true,
+              }] };
+            }
+            if (sql.includes("subscription_sized_edit_context")) {
+              return { rows: [{ context: { ...context(), nextCycleAt: "2040-02-01T00:00:00.000Z" } }] };
+            }
+            return { rows: [] };
+          },
+        });
+      },
+    });
+    const preview = await editor.preview(actor, parcel());
+    expect(preview.quoteExpiresAt).toBe(expectedIso);
+    const record = calls.find(call => call.sql.includes("subscription_quote_preview_record"))!;
+    expect(record.values?.[6]).toBe(expectedIso);
+  }
+  for (const bad of [0, -1, 1.5, 1441, Infinity, NaN]) {
+    expect(() => createPostgresSizedEditor({
+      ...host(),
+      policy,
+      quoteTtlMinutes: bad,
+      now: () => "2040-01-01T00:00:00Z",
+      withTransaction: work => work(db),
+    })).toThrow("subscription_edit_quote_ttl_minutes_policy_invalid");
+  }
+});

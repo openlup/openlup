@@ -16,6 +16,91 @@
       }
     },
     {
+      "key": "account_support_operator_slide_max_days",
+      "domain": "account-support",
+      "kind": "installed",
+      "goal": "Set the maximum number of days ahead an operator slide_next_cycle command may schedule the next subscription cycle (operator slide max days, operator reschedule window, support slide limit).",
+      "schemaVersion": 1,
+      "examples": [
+        {
+          "value": {
+            "revision": "store-1",
+            "maxDays": 30
+          }
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "maxDays": 120
+          }
+        },
+        {
+          "value": {
+            "revision": " ",
+            "maxDays": 60
+          },
+          "code": "account_support_operator_slide_max_days_policy_invalid"
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "maxDays": 2
+          },
+          "code": "account_support_operator_slide_max_days_policy_invalid"
+        }
+      ],
+      "fallback": {
+        "revision": "default",
+        "maxDays": 60
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "Sixty days preserves the historical operator slide_next_cycle ceiling in customer_support_apply_subscription_action_v1 while matching customer subscription reschedule bounds.",
+      "effect": {
+        "appliesTo": "Subsequent fresh calls to customer_support_apply_subscription_action_v1 read key='account_support_operator_slide_max_days' from public.commerce_settings via account_support_operator_slide_max_days_read(), validating optional payload slideMinDays (1..maxDays) and accepting slide_next_cycle targets through now + make_interval(days => maxDays) before delegating slideMaxDays to eight-argument subscription_command_apply. When no row exists in public.commerce_settings, the SQL reader defaults to 60 days; malformed rows refuse fail-closed with SQLSTATE 22023 account_support_operator_slide_max_days_policy_invalid.",
+        "frozenOn": [
+          "Already scheduled subscription cycles and completed customer_support_subscription_commands receipts (including idempotent replays) retain their recorded dates and outcomes."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Install or update the public.commerce_settings row through installAccountSupportOperatorSlideMaxDaysPolicy or your store deployment step; runtime edits require a write-capable host connection."
+      },
+      "change": {
+        "operation": "installAccountSupportOperatorSlideMaxDaysPolicy"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string",
+            "pattern": "\\S"
+          },
+          "maxDays": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 365
+          }
+        },
+        "required": [
+          "revision",
+          "maxDays"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": [
+        {
+          "code": "account_support_operator_slide_max_days_policy_invalid",
+          "path": [],
+          "description": "Supply exactly revision and maxDays. Revision must be a nonblank string and maxDays an integer from 3 through 365."
+        }
+      ]
+    },
+    {
       "key": "bundles.compositionRules",
       "domain": "catalog",
       "kind": "callback",
@@ -1606,6 +1691,85 @@
       "rules": []
     },
     {
+      "key": "subscription_edit_quote_ttl_minutes",
+      "domain": "subscriptions",
+      "kind": "installed",
+      "goal": "Set how many minutes a subscription edit quote remains valid before expiry (subscription edit quote TTL, quote expiry, preview validity window).",
+      "schemaVersion": 1,
+      "examples": [
+        {
+          "value": {
+            "revision": "store-1",
+            "ttlMinutes": 30
+          }
+        },
+        {
+          "value": {
+            "revision": " ",
+            "ttlMinutes": 15
+          },
+          "code": "subscription_edit_quote_ttl_minutes_policy_invalid"
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "ttlMinutes": 0
+          },
+          "code": "subscription_edit_quote_ttl_minutes_policy_invalid"
+        }
+      ],
+      "fallback": {
+        "revision": "default",
+        "ttlMinutes": 15
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "Fifteen minutes preserves the historical quote expiry window across SQL preview functions (customer_subscription_preview_bundle_as_actor and subscription_command_preview) and TypeScript subscription editors (PackageEditorOptions and SizedEditorOptions).",
+      "effect": {
+        "appliesTo": "Subsequent uncached SQL edit quote creations in customer_subscription_preview_bundle_as_actor and subscription_command_preview read key='subscription_edit_quote_ttl_minutes' from public.commerce_settings via subscription_edit_quote_ttl_minutes_read(), computing expires_at = previewTime + make_interval(mins => ttlMinutes) consistently in both quote_hash and subscription_edit_quotes. TypeScript editors created via createPostgresPackageEditor and createPostgresSizedEditor accept optional quoteTtlMinutes (1..1440, default 15). When no row exists in public.commerce_settings, the SQL reader defaults to 15 minutes; malformed rows refuse fail-closed with SQLSTATE 22023 subscription_edit_quote_ttl_minutes_policy_invalid without persisting a refusal receipt.",
+        "frozenOn": [
+          "Already persisted subscription_edit_quotes rows and completed preview command receipts (including idempotent replays) retain their recorded quoteHash and expires_at timestamps."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Install or update the public.commerce_settings row through installSubscriptionEditQuoteTtlMinutesPolicy or supply quoteTtlMinutes on PackageEditorOptions / SizedEditorOptions; runtime SQL edits require a write-capable host connection."
+      },
+      "change": {
+        "operation": "installSubscriptionEditQuoteTtlMinutesPolicy"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string",
+            "pattern": "\\S"
+          },
+          "ttlMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440
+          }
+        },
+        "required": [
+          "revision",
+          "ttlMinutes"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": [
+        {
+          "code": "subscription_edit_quote_ttl_minutes_policy_invalid",
+          "path": [],
+          "description": "Supply exactly revision and ttlMinutes. Revision must be a nonblank string and ttlMinutes an integer from 1 through 1440."
+        }
+      ]
+    },
+    {
       "key": "subscription_minimum_base_units",
       "domain": "subscriptions",
       "kind": "installed",
@@ -2437,6 +2601,8 @@
     "promotion_claim_hold_hours": "promotion claim hold, promo reservation expiry, initialPaymentWindow, stale promotion claims",
     "payments.declineNoticeTiming": "decline notice delay, recovery token expiry, failed payment notice, checkout recovery link lifetime",
     "subscriptions.retrySchedule": "renewal retry policy, payment failure backoff, 3-rung retry ladder, dunning schedule",
+    "account_support_operator_slide_max_days": "operator slide max days, support reschedule window, slide_next_cycle limit",
+    "subscription_edit_quote_ttl_minutes": "subscription edit quote TTL, quote expiry minutes, edit preview validity window",
     "savedAddressValidation": "postal format, phone normalization, delivery address checks",
     "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
     "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",
@@ -2730,10 +2896,12 @@
                   "commerce_setting_preview_unexpected",
                   "inventory_renewal_protection_policy_invalid",
                   "tax_invalid_input",
+                  "account_support_operator_slide_max_days_policy_invalid",
                   "checkout_recovery_policy_invalid",
                   "payment_method_expiry_warning_days_policy_invalid",
                   "payment_decline_notice_timing_policy_invalid",
                   "promotion_claim_hold_hours_policy_invalid",
+                  "subscription_edit_quote_ttl_minutes_policy_invalid",
                   "subscription_retry_schedule_policy_invalid"
                 ]
               },

@@ -15,6 +15,37 @@
     "rules": []
   },
   {
+    "key": "subscription_edit_quote_ttl_minutes",
+    "domain": "subscriptions",
+    "kind": "installed",
+    "goal": "Set how many minutes a subscription edit quote remains valid before expiry (subscription edit quote TTL, quote expiry, preview validity window).",
+    "schemaVersion": 1,
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": {"revision": {"type": "string", "pattern": "\\S"}, "ttlMinutes": {"type": "integer", "minimum": 1, "maximum": 1440}}, "required": ["revision", "ttlMinutes"], "additionalProperties": false},
+    "previewSchema": null,
+    "examples": [
+      {"value": {"revision": "store-1", "ttlMinutes": 30}},
+      {"value": {"revision": " ", "ttlMinutes": 15}, "code": "subscription_edit_quote_ttl_minutes_policy_invalid"},
+      {"value": {"revision": "store-1", "ttlMinutes": 0}, "code": "subscription_edit_quote_ttl_minutes_policy_invalid"}
+    ],
+    "fallback": {"revision": "default", "ttlMinutes": 15},
+    "defaultBasis": {"kind": "reference-code"},
+    "whyThisDefault": "Fifteen minutes preserves the historical quote expiry window across SQL preview functions (customer_subscription_preview_bundle_as_actor and subscription_command_preview) and TypeScript subscription editors (PackageEditorOptions and SizedEditorOptions).",
+    "effect": {
+      "appliesTo": "Subsequent uncached SQL edit quote creations in customer_subscription_preview_bundle_as_actor and subscription_command_preview read key='subscription_edit_quote_ttl_minutes' from public.commerce_settings via subscription_edit_quote_ttl_minutes_read(), computing expires_at = previewTime + make_interval(mins => ttlMinutes) consistently in both quote_hash and subscription_edit_quotes. TypeScript editors created via createPostgresPackageEditor and createPostgresSizedEditor accept optional quoteTtlMinutes (1..1440, default 15). When no row exists in public.commerce_settings, the SQL reader defaults to 15 minutes; malformed rows refuse fail-closed with SQLSTATE 22023 subscription_edit_quote_ttl_minutes_policy_invalid without persisting a refusal receipt.",
+      "frozenOn": ["Already persisted subscription_edit_quotes rows and completed preview command receipts (including idempotent replays) retain their recorded quoteHash and expires_at timestamps."],
+      "impact": "customer-promise"
+    },
+    "runtime": {"level": "read-only", "reason": "Install or update the public.commerce_settings row through installSubscriptionEditQuoteTtlMinutesPolicy or supply quoteTtlMinutes on PackageEditorOptions / SizedEditorOptions; runtime SQL edits require a write-capable host connection."},
+    "change": {"operation": "installSubscriptionEditQuoteTtlMinutesPolicy"},
+    "rules": [
+      {
+        "code": "subscription_edit_quote_ttl_minutes_policy_invalid",
+        "path": [],
+        "description": "Supply exactly revision and ttlMinutes. Revision must be a nonblank string and ttlMinutes an integer from 1 through 1440."
+      }
+    ]
+  },
+  {
     "key": "subscription_minimum_base_units",
     "domain": "subscriptions",
     "kind": "installed",

@@ -745,6 +745,7 @@ it("checks every packaged schema against its default and valid examples", async 
   const entries = loadSettingsCatalogue().entries.filter(entry => "fallback" in entry).filter(entry =>
     (entry.kind === "code" || entry.kind === "installed") && entry.schema);
   expect(entries.map(entry => entry.key)).toEqual([
+    "account_support_operator_slide_max_days",
     "catalog.bundleAvailabilityPolicy",
     "checkout.resumeWindowMinutes",
     "communications.terminalPayloadRetentionDays",
@@ -756,6 +757,7 @@ it("checks every packaged schema against its default and valid examples", async 
     "payments.declineNoticeTiming",
     "promotion_claim_hold_hours",
     "shipping_flat_minor",
+    "subscription_edit_quote_ttl_minutes",
     "subscription_minimum_base_units",
     "subscription_sized_intro_phase",
     "subscriptions.retrySchedule",
@@ -1094,7 +1096,7 @@ async function settingsParity() {
   }
   // Current package output includes the internal number recipe for catalog.optionalGtin.
   expect(createHash("sha256").update(JSON.stringify(liveBytes)).digest("hex"))
-    .toBe("c5bc4e6f8538cb9aea2e86b8ba1c213386938b5ec4941fec04ff367a8a6cd42b");
+    .toBe("8b1c3fe2d89be1c279bb4510377492661a0bf9c319d477acb32e3301701b9f20");
   const checkKeys = liveData.entries.filter(({ kind }) => kind === "code" || kind === "installed").map(({ key }) => key);
   const representatives = bound.filter(({ args, fixture }) => fixture !== undefined &&
     (args[0] === "check" || args[1] === key || args[1] === "checkout_recovery_reminders" && args[0] === "show" ||
