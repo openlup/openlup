@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Pool, type PoolClient } from "pg";
+import { Pool, type PoolClient, type QueryConfig } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresAcquisitionCheckoutPersistence, createPostgresNativeCheckoutPersistence } from "@openlup/platform/commerce/server/native-checkout";
 import { createPostgresCommercePriceAuthorityReadPort } from "@openlup/platform/commerce/server/postgres";
@@ -323,12 +323,13 @@ it.each(["publication", "unrelated commit"] as const)("rejects an early purchase
     const db = await env.owner.connect();
     if (index !== 0) return db;
     return {
-      async query(text: string, values?: unknown[]) {
+      async query(request: string | QueryConfig, values?: unknown[]) {
+        const text = typeof request === "string" ? request : request.text;
         if (text === "SELECT public.catalog_admission_lock_shared()") {
           buyerReachedFence();
           await publisherFinished;
         }
-        return db.query(text, values);
+        return typeof request === "string" ? db.query(request, values) : db.query(request);
       },
       release: (error?: boolean | Error) => db.release(error),
     } as PoolClient;

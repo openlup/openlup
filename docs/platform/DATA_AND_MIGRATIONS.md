@@ -493,13 +493,13 @@ guards before catalogue locks. Catalogue-only writers take no client locks.
    `price_entries` in `SHARE`. Price apply takes the same advisory lock.
 3. After all locks, run the visibility probe. Start `read` with native
    authenticated replay, then evaluate fresh owner facts under the same locks.
-   `catalogAdmissionFence.ts:223–250`,
+   `catalogAdmissionFence.ts:229–287`,
    `20261125010000_catalog_purchase_admission.sql:2–24,58–94`.
 
-On hook expiry, the fence discards the writer connection and releases the
-probe. The fence key is released within the hook budget plus the wall margin
-plus two round trips of the writer connection. Writer connection latency
-delays delivery of the timeout settings and the lock request to PostgreSQL.
+On fence expiry the writer is discarded. The fence key is released within the
+fence budget plus 50 ms plus two writer round trips. Writer latency delays
+delivery of the timeout settings and the lock request. In the no-injected-latency
+witness the bound is budget plus 50 ms.
 
 - **Erasure.** The privacy store takes the ledger in `SHARE ROW EXCLUSIVE`,
   then the identity challenge relation in `EXCLUSIVE` before its subject locks.
@@ -1466,6 +1466,13 @@ They cannot be redefined or named by a direct privilege statement. Only their
 pinned conditional role/verb capabilities are admitted, without demanding a new
 PUBLIC revoke. A block naming created functions still requires their revokes;
 a block naming only grant-only functions does not.
+A dedicated grant-only slot may flag every entry with `revokePublic: true`,
+`grantTo: ["service_role"]` and `revokeFrom: []`, with no other capabilities or
+bound function definitions. For signatures in the pre-class native prefix, put
+one direct `REVOKE ALL ON FUNCTION … FROM PUBLIC` per signature in registry
+order, then one constant `service_role` existence block granting EXECUTE to the
+same ordered list without grant option. PostgreSQL verifies SECURITY INVOKER
+and a raw NULL ACL before replay.
 The ordinary conditional DO shell requires an exact `pg_roles` existence guard around
 one constant privilege EXECUTE, on admitted targets, for the same role. Function
 privileges and table revokes retain one block per role, verb and object kind
@@ -1679,9 +1686,14 @@ operator a forward creates for another operand type cannot hide what it adds:
   its ACL, so only its body may change — except its single `search_path=` `proconfig`
   entry may strictly append trailing `, pg_temp` when its slot pins that tightened
   `search_path` and the prior entry did not already name `pg_temp` or `pg_temp_<N>`.
-  A grant-only function keeps its attributes and
+  An ordinary grant-only function keeps its attributes and
   body, may gain only EXECUTE for its listed grant roles and may lose privileges only
-  from its listed roles.
+  from its listed roles. A `revokePublic` entry requires a raw NULL ACL and
+  SECURITY INVOKER before replay, preserves function identity, body and
+  attributes including raw argument defaults, and ends with exactly owner
+  EXECUTE plus non-grantable EXECUTE for `service_role` when that role exists
+  and differs from the owner. Neither `anon` nor `authenticated` may retain
+  effective EXECUTE.
 - A created function is owned by the migration role, keeps no PUBLIC execute and
   grants execute only to `authenticated` and `service_role`, never with a grant
   option. A definer carries its pinned `search_path`; a function whose slot pins none
