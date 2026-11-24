@@ -1104,11 +1104,14 @@ tokens normalized and literal and quoted identifier tokens kept byte-exact.
 The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
 requires `pg_temp` last, with no earlier `pg_temp` or `pg_temp_<N>` entry, for every
 installed non-system, non-extension definer and for every such function that sets its own
-search path. Its shrink-only `SEARCH_PATH_PENDING` list names the five remaining
-functions outside `public`. Preserve the intended trusted schemas when
-moving `pg_temp` to the end. When the trusted list is known, the check prints the
-exact `ALTER FUNCTION` statement. For a missing or empty path, review and set the
-trusted schema list before appending `pg_temp`. Eleven acquisition and partner
+search path. It splits each path as PostgreSQL does. Its `SEARCH_PATH_PENDING` list
+names the five remaining functions outside `public`. The check fails when a listed
+function pins `pg_temp` last on all five profiles, so the list can only shrink.
+Preserve the intended trusted schemas when moving `pg_temp` to the end. The check
+prints an exact `ALTER FUNCTION` statement only when the path parses and every
+remaining schema is a concrete name. For `"$user"`, an unparseable list, or a
+missing or empty path, review and set the trusted schema list before appending
+`pg_temp`. Eleven acquisition and partner
 acquisition definer functions now pin `pg_temp` last on their search path.
 The [function search-path forward](../../db/platform/migrations/20261125210000_function_search_path_pg_temp.sql)
 appends `pg_temp` to the search path of 388 installer-owned `public` functions

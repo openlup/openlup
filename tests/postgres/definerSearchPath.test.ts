@@ -19,7 +19,7 @@ const lockName = "openlup:public-platform-migrations:v1";
 const ledger = "public.platform_schema_migrations";
 const profiles = ["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const;
 
-// Functions outside public that still need pg_temp last. Shrink only.
+// Functions outside public that still need pg_temp last. An entry that pins pg_temp last on every profile must be removed.
 const SEARCH_PATH_PENDING = new Set([
   "acquisition_private.case_projection(uuid)",
   "acquisition_private.keyed_digest(text,jsonb)",
@@ -30,24 +30,99 @@ const SEARCH_PATH_PENDING = new Set([
 
 type PinnedFunction = { signature: string; search_path: string | null };
 
+// PostgreSQL 16 keywords that quote_identifier quotes (every category except unreserved).
+const quotedKeywords = new Set(`all analyse analyze and any array as asc asymmetric authorization between bigint binary bit boolean both
+  case cast char character check coalesce collate collation column concurrently constraint create cross current_catalog current_date
+  current_role current_schema current_time current_timestamp current_user dec decimal default deferrable desc distinct do else end
+  except exists extract false fetch float for foreign freeze from full grant greatest group grouping having ilike in initially inner
+  inout int integer intersect interval into is isnull join json_array json_arrayagg json_object json_objectagg lateral leading least
+  left like limit localtime localtimestamp national natural nchar none normalize not notnull null nullif numeric offset on only or order
+  out outer overlaps overlay placing position precision primary real references returning right row select session_user setof similar
+  smallint some substring symmetric system_user table tablesample then time timestamp to trailing treat trim true union unique user
+  using values varchar variadic verbose when where window with xmlattributes xmlconcat xmlelement xmlexists xmlforest xmlnamespaces
+  xmlparse xmlpi xmlroot xmlserialize xmltable`.split(/\s+/u));
+const quoteIdentifier = (name: string) => /^[a-z_][a-z0-9_]*$/u.test(name) && !quotedKeywords.has(name) ? name : `"${name.replaceAll('"', '""')}"`;
+const sqlSpace = new Set([" ", "\t", "\n", "\r", "\v", "\f"]);
+// Identifiers keep at most 63 bytes, cut at a character boundary.
+function truncateIdentifier(name: string): string {
+  const bytes = Buffer.from(name, "utf8");
+  if (bytes.length <= 63) return name;
+  let end = 63;
+  while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--;
+  return bytes.subarray(0, end).toString("utf8");
+}
+
+// Split a search_path value as PostgreSQL does, or return null for a list it would reject.
+function splitSearchPath(value: string): string[] | null {
+  const names: string[] = [];
+  let index = 0;
+  const skipSpace = () => { while (index < value.length && sqlSpace.has(value[index]!)) index++; };
+  skipSpace();
+  if (index === value.length) return names;
+  for (;;) {
+    let name = "";
+    if (value[index] === '"') {
+      index++;
+      for (;;) {
+        const close = value.indexOf('"', index);
+        if (close < 0) return null;
+        name += value.slice(index, close);
+        if (value[close + 1] !== '"') { index = close + 1; break; }
+        name += '"';
+        index = close + 2;
+      }
+    } else {
+      const start = index;
+      while (index < value.length && value[index] !== "," && !sqlSpace.has(value[index]!)) index++;
+      if (index === start) return null;
+      name = value.slice(start, index).replace(/[A-Z]/gu, letter => letter.toLowerCase());
+    }
+    names.push(truncateIdentifier(name));
+    skipSpace();
+    if (index === value.length) return names;
+    if (value[index] !== ",") return null;
+    index++;
+    skipSpace();
+  }
+}
+
 function searchPathFailures(functions: readonly PinnedFunction[]): string[] {
   const failures: string[] = [];
   const temporarySchema = /^pg_temp(?:_\d+)?$/u;
   for (const { signature, search_path: searchPath } of functions) {
-    // Keep commas and case inside quoted schema names.
-    const schemas = (searchPath?.match(/(?:[^",]|"(?:[^"]|"")*")+/g) ?? [])
-      .map(schema => schema.trim())
-      .map(schema => ({ schema, name: schema.startsWith('"')
-        ? schema.slice(1, -1).replaceAll('""', '"') : schema.toLowerCase() }))
-      .filter(({ name }) => name.length > 0);
-    const names = schemas.map(({ name }) => name);
-    if (names.at(-1) === "pg_temp" && !names.slice(0, -1).some(name => temporarySchema.test(name))) continue;
-    const trusted = schemas.filter(({ name }) => !temporarySchema.test(name)).map(({ schema }) => schema);
-    const remedy = trusted.length ? `ALTER FUNCTION ${signature} SET search_path = ${[...trusted, "pg_temp"].join(", ")};`
+    const names = searchPath === null ? null : splitSearchPath(searchPath);
+    if (names && names.at(-1) === "pg_temp" && !names.slice(0, -1).some(name => temporarySchema.test(name))) continue;
+    // Exact SQL needs a valid list whose remaining schemas are concrete names.
+    const trusted = names?.filter(name => !temporarySchema.test(name)) ?? [];
+    const remedy = trusted.length && trusted.every(name => name.length > 0 && name !== "$user")
+      ? `ALTER FUNCTION ${signature} SET search_path = ${[...trusted, "pg_temp"].map(quoteIdentifier).join(", ")};`
       : "review and set an explicit trusted schema list, then append pg_temp";
     failures.push(`function ${signature}: pin pg_temp last: ${remedy}`);
   }
   return failures;
+}
+
+// Every non-system, non-extension definer, and every function that sets its own search path.
+async function pinnedFunctions(owner: Pool) {
+  return (await owner.query<PinnedFunction>(`
+    SELECT pg_catalog.format('%I.%I(%s)', n.nspname, p.proname,
+             pg_catalog.array_to_string(ARRAY(
+               SELECT pg_catalog.format_type(arg, NULL)
+               FROM pg_catalog.unnest(p.proargtypes) WITH ORDINALITY AS args(arg, position)
+               ORDER BY position
+             ), ',')) AS signature,
+           (SELECT pg_catalog.substr(setting, 13)
+            FROM pg_catalog.unnest(p.proconfig) AS setting
+            WHERE pg_catalog.starts_with(setting, 'search_path=')) AS search_path
+    FROM pg_catalog.pg_proc p
+    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+    WHERE (p.prosecdef OR EXISTS (SELECT 1 FROM pg_catalog.unnest(p.proconfig) AS setting
+             WHERE pg_catalog.starts_with(setting, 'search_path=')))
+      AND n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend AS d
+             WHERE d.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass AND d.objid = p.oid AND d.deptype = 'e')
+    ORDER BY 1
+  `)).rows;
 }
 
 type LedgerRow = { catalog_path: string; sha256: string; position: number; executed_at: string };
@@ -187,6 +262,10 @@ it.each(profiles)(
     const { owner, migrator, installation, runner, close } = await withPlatformCatalog(prefix, root =>
       installAccountMutations(profile, true, "function-search-path", root));
     try {
+      // The guard refuses the pre-forward installation once for each function the forward changes.
+      const baseFailures = searchPathFailures((await pinnedFunctions(owner)).filter(row => !SEARCH_PATH_PENDING.has(row.signature)));
+      expect(baseFailures).toHaveLength(appendedChanges[profile]);
+      console.info(`search-path guard base failures ${profile} ${baseFailures.length}`);
       const before = await observe(owner, appendedSignatures);
       const installer = installation.generation === "legacy" ? "postgres" : installation.migrationLogin;
       expect(before.functions.filter(fn => fn.owner !== installer)).toEqual([]);
@@ -230,32 +309,20 @@ it.each(profiles)(
   postgresSetupTimeoutMs,
 );
 
+// Pending entries that still fail on each profile; an entry fixed on every profile must leave the list.
+const pendingStillFailing = new Map<string, Set<string>>();
+
 it.each(profiles)(
   "checks pg_temp last on every pinned function in a current %s installation",
   async profile => {
     const { owner, close } = await installAccountMutations(profile, false, "current-definer-search-path");
     try {
-      // Every non-system, non-extension definer, and every function that sets its own search path.
-      const { rows } = await owner.query<PinnedFunction>(`
-        SELECT pg_catalog.format('%I.%I(%s)', n.nspname, p.proname,
-                 pg_catalog.array_to_string(ARRAY(
-                   SELECT pg_catalog.format_type(arg, NULL)
-                   FROM pg_catalog.unnest(p.proargtypes) WITH ORDINALITY AS args(arg, position)
-                   ORDER BY position
-                 ), ',')) AS signature,
-               (SELECT pg_catalog.substr(setting, 13)
-                FROM pg_catalog.unnest(p.proconfig) AS setting
-                WHERE pg_catalog.starts_with(setting, 'search_path=')) AS search_path
-        FROM pg_catalog.pg_proc p
-        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-        WHERE (p.prosecdef OR EXISTS (SELECT 1 FROM pg_catalog.unnest(p.proconfig) AS setting
-                 WHERE pg_catalog.starts_with(setting, 'search_path=')))
-          AND n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'
-          AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend AS d
-                 WHERE d.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass AND d.objid = p.oid AND d.deptype = 'e')
-        ORDER BY 1
-      `);
+      const rows = await pinnedFunctions(owner);
       expect([...SEARCH_PATH_PENDING].filter(signature => !rows.some(row => row.signature === signature))).toEqual([]);
+      const failures = searchPathFailures(rows.filter(row => !SEARCH_PATH_PENDING.has(row.signature)));
+      expect(failures, `${failures.length} functions need pg_temp last:\n${failures.join("\n")}`).toEqual([]);
+      pendingStillFailing.set(profile, new Set(rows.filter(row => SEARCH_PATH_PENDING.has(row.signature)
+        && searchPathFailures([row]).length > 0).map(row => row.signature)));
       const installed = (await owner.query<{ signature: string; searchPath: string | null }>(`
         SELECT targets.signature, (SELECT pg_catalog.substr(setting, 13) FROM pg_catalog.unnest(p.proconfig) AS setting
                  WHERE pg_catalog.starts_with(setting, 'search_path=')) AS "searchPath"
@@ -264,14 +331,18 @@ it.each(profiles)(
         ORDER BY targets.ordinal
       `, [appendedSignatures])).rows;
       expect(installed).toEqual(appendedSettings);
-      const failures = searchPathFailures(rows.filter(row => !SEARCH_PATH_PENDING.has(row.signature)));
-      expect(failures, `${failures.length} functions need pg_temp last:\n${failures.join("\n")}`).toEqual([]);
     } finally {
       await close();
     }
   },
   postgresSetupTimeoutMs,
 );
+
+it("keeps only pending functions that still need pg_temp last on some profile", () => {
+  expect([...pendingStillFailing.keys()].sort()).toEqual([...profiles].sort());
+  const stale = [...SEARCH_PATH_PENDING].filter(signature => ![...pendingStillFailing.values()].some(failing => failing.has(signature)));
+  expect(stale.map(signature => `remove ${signature} from SEARCH_PATH_PENDING: it now pins pg_temp last`)).toEqual([]);
+});
 
 it("keeps the acquisition pin fixture unchanged when a later forward is appended", () => {
   const current = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
@@ -324,4 +395,34 @@ it("reports how to pin pg_temp last while preserving quoted schema names", () =>
     "function public.temp_numbered(): pin pg_temp last: ALTER FUNCTION public.temp_numbered() SET search_path = pg_catalog, pg_temp;",
     'function public.quoted_upper_last(): pin pg_temp last: ALTER FUNCTION public.quoted_upper_last() SET search_path = pg_catalog, "PG_TEMP", pg_temp;',
   ]);
+});
+
+it("parses search paths as PostgreSQL does and prints exact SQL only for a concrete schema list", () => {
+  const manual = (signature: string) => `function ${signature}: pin pg_temp last: review and set an explicit trusted schema list, then append pg_temp`;
+  expect(searchPathFailures([
+    { signature: "public.trailing_nbsp()", search_path: "pg_catalog, pg_temp " },
+    { signature: "public.tab_separated()", search_path: "pg_catalog,\tpg_temp" },
+    { signature: "public.unquoted_upper()", search_path: "pg_catalog, PG_TEMP" },
+    { signature: "public.quoted_upper()", search_path: 'pg_catalog, "PG_TEMP"' },
+    { signature: "public.quoted_lower()", search_path: 'pg_catalog, "pg_temp"' },
+    { signature: "public.missing_comma()", search_path: "pg_catalog pg_temp" },
+    { signature: "public.user_schema()", search_path: '"$user", public' },
+    { signature: "public.known_list()", search_path: "pg_catalog, public" },
+    { signature: "public.spaced_name()", search_path: 'pg_catalog, "My Schema"' },
+    { signature: "public.unterminated()", search_path: 'pg_catalog, "pg_temp' },
+    { signature: "public.trailing_comma()", search_path: "pg_catalog, pg_temp," },
+    { signature: "public.keyword_name()", search_path: '"select", pg_catalog' },
+    { signature: "public.long_name()", search_path: `${"a".repeat(70)}, pg_temp` },
+  ])).toEqual([
+    'function public.trailing_nbsp(): pin pg_temp last: ALTER FUNCTION public.trailing_nbsp() SET search_path = pg_catalog, "pg_temp ", pg_temp;',
+    'function public.quoted_upper(): pin pg_temp last: ALTER FUNCTION public.quoted_upper() SET search_path = pg_catalog, "PG_TEMP", pg_temp;',
+    manual("public.missing_comma()"),
+    manual("public.user_schema()"),
+    "function public.known_list(): pin pg_temp last: ALTER FUNCTION public.known_list() SET search_path = pg_catalog, public, pg_temp;",
+    'function public.spaced_name(): pin pg_temp last: ALTER FUNCTION public.spaced_name() SET search_path = pg_catalog, "My Schema", pg_temp;',
+    manual("public.unterminated()"),
+    manual("public.trailing_comma()"),
+    'function public.keyword_name(): pin pg_temp last: ALTER FUNCTION public.keyword_name() SET search_path = "select", pg_catalog, pg_temp;',
+  ]);
+  expect(splitSearchPath(`"${"é".repeat(40)}"`)).toEqual(["é".repeat(31)]);
 });

@@ -112,7 +112,7 @@ export async function restoreCompatiblePostgresRows(input: {
             AND t.tgtype=23 AND t.tgnargs=0 AND t.tgqual IS NULL
             AND p.oid=pg_catalog.to_regprocedure('public.catalog_acceptance_record_admit_v2()')
             AND p.prolang=(SELECT oid FROM pg_catalog.pg_language WHERE lanname='plpgsql')
-            AND NOT p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog, public, pg_temp']
+            AND NOT p.prosecdef AND p.proconfig IN (ARRAY['search_path=pg_catalog, public'], ARRAY['search_path=pg_catalog, public, pg_temp'])
             AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex')=$3,
             false)`, [`public.${table.table}`, table.table, RENEWAL_ACCEPTANCE_TRIGGER_SHA256])).rows;
         if (triggers.length) fail("insert_trigger_requires_owner", table.table);
