@@ -130,7 +130,7 @@ export default defineConfig({
             "server/**/*.{test,spec}.ts",
             "packages/outbox/test/**/*.{test,spec}.ts",
             "packages/platform/test/**/*.{test,spec}.ts",
-            // Self-contained Provider Recipes (ADR-001).
+            // Self-contained Provider Recipes (provider recipe contract).
             "recipes/**/tests/**/*.{test,spec}.ts",
             // src logic tests; the dom project owns the excluded trees below.
             "src/**/*.{test,spec}.ts",

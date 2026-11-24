@@ -1083,8 +1083,8 @@
         "packages/platform/test/accounting/**",
         "packages/platform/api/accounting*.api.md"
       ],
-      "doc": "docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md",
-      "anchor": "#7-shared-tier-1-platform-enablers-keeping-recipes-under-250450-loc"
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#provider-recipe-contract"
     },
     {
       "id": "platform-observability",
@@ -1094,8 +1094,8 @@
         "packages/platform/test/observability/**",
         "packages/platform/api/observability*.api.md"
       ],
-      "doc": "docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md",
-      "anchor": "#7-shared-tier-1-platform-enablers-keeping-recipes-under-250450-loc"
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#provider-recipe-contract"
     },
     {
       "id": "platform-adapter-kit",
@@ -1105,8 +1105,8 @@
         "packages/platform/test/adapter-kit/**",
         "packages/platform/api/adapter-kit.api.md"
       ],
-      "doc": "docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md",
-      "anchor": "#7-shared-tier-1-platform-enablers-keeping-recipes-under-250450-loc"
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#provider-recipe-contract"
     },
     {
       "id": "platform-http",
@@ -1448,8 +1448,8 @@
       "paths": [
         "recipes/**"
       ],
-      "doc": "docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md",
-      "anchor": "#4-three-tier-topology--splittable-registry-architecture"
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#provider-recipe-contract"
     }
   ]
 }

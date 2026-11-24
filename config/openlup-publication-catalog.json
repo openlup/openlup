@@ -942,10 +942,6 @@
       "class": "public-output"
     },
     {
-      "path": "docs/platform/PROVIDER_RECIPES_MASTER_PLAN.md",
-      "class": "public-output"
-    },
-    {
       "path": "docs/platform/README.md",
       "class": "platform-documentation"
     },
@@ -983,10 +979,6 @@
     },
     {
       "path": "docs/platform/adopter-kit/dependabot.template.yml",
-      "class": "public-output"
-    },
-    {
-      "path": "docs/platform/adr/ADR-001-provider-recipes-architecture.md",
       "class": "public-output"
     },
     {
@@ -1032,10 +1024,6 @@
     {
       "path": "docs/platform/migrations/module-catalogues-and-histories.md",
       "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/plans/WAVE_3_RECIPES_SPLIT_SPEC.md",
-      "class": "public-output"
     },
     {
       "path": "docs/platform/plans/agent-context-adaptive-routing.md",
@@ -30091,6 +30079,10 @@
     },
     {
       "path": "tests/postgres/catalogAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmissionIssueReader.test.ts",
       "class": "public-output"
     },
     {
