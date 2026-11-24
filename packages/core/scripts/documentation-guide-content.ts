@@ -184,8 +184,10 @@ export function assertGuideLinks(guideRoot: string, file: string, label: string,
     let canonical: string | undefined;
     try { canonical = new URL(target).href; } catch { canonical = undefined; }
     if (canonical !== target || !canonicalRepositoryLink.test(target)) {
-      report(`non-canonical repository link ${target}; use ${repositoryUrl}/blob/${tag}/<path>`,
-        target.startsWith(`${repositoryUrl}/blob/`) ? "unpinned-blob" : "content");
+      const form = canonical && canonicalRepositoryLink.test(canonical)
+        ? `canonical form is ${canonical}` : `use ${repositoryUrl}/blob/${tag}/<path>`;
+      report(`non-canonical repository link ${target}; ${form}`,
+        fixes && target.startsWith(`${repositoryUrl}/blob/`) ? "unpinned-blob" : "content");
     }
   }
   for (const target of targets) {

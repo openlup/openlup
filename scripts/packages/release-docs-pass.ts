@@ -445,21 +445,17 @@ function assertUpgradePageDocumentation(
   const instructions: string[] = [];
   const changelog = { packageRoot, file: join(packageRoot, "CHANGELOG.md"), label: "CHANGELOG.md", packed, scripts };
   for (const fragment of fragments) {
-    const fixes = new Set<GuidePageFix>();
+    const count = fragmentViolations.length;
     const source = fragment.contents.trimEnd();
-    if (violations.length) assertGuidePage({ ...context, source: normalize(source), fragmentPath: fragment.path, fixes }, fragmentViolations);
-    // The link Fix also covers any other guide content. CHANGELOG.md has its own Fix.
-    if (fixes.has("unpinned-blob")) fixes.delete("content");
+    if (violations.length) assertGuidePage({ ...context, source: normalize(source), fragmentPath: fragment.path }, fragmentViolations);
     if (fragment.path.startsWith("packages/core/changes/")) {
-      const count = fragmentViolations.length;
       // Release copies the fragment text verbatim and links resolve from the package root.
       assertPackageMarkdown({ ...changelog, source }, false, fragmentViolations, `${fragment.path} (Core CHANGELOG.md)`);
-      if (fragmentViolations.length > count) fixes.add("content");
     }
-    if (fixes.size) instructions.push(...upgradePageFixes(fragment.path, fixes, tag));
+    if (fragmentViolations.length > count) instructions.push(`correct the reported content in ${fragment.path}`);
   }
   if (violations.length === 0 && fragmentViolations.length === 0) return;
-  if (prepared) instructions.push(...upgradePageFixes(path, pageFixes, tag, true));
+  if (prepared) instructions.push(...preparedPageFixes(path, pageFixes, tag));
   else if (violations.length) {
     const generatorViolations = instructions.length ? [] : violations;
     if (instructions.length) assertGuidePage({ ...context, source: normalize(generated) }, generatorViolations);
@@ -480,14 +476,12 @@ function refuseUpgradePage(label: string, diagnostics: readonly string[], instru
   ].join("\n"));
 }
 
-function upgradePageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, tag: string, prepared = false): string[] {
-  const guideForm = prepared ? "use a relative guide link" : "use the guide page title in plain text, without a link or repository path";
-  const plainForm = "replace the link with its target's title or a short description in plain text, without a link or repository path";
+function preparedPageFixes(path: string, fixes: ReadonlySet<GuidePageFix>, tag: string): string[] {
   const pinForm = `for an existing file other than a guide Markdown page, keep the link, replace only the branch, tag or commit name after \`/blob/\` with \`${tag}\`, and write the canonical repository path without \`.\` or \`..\` segments. Keep the query and anchor exactly as written.`;
   const messages: Record<GuidePageFix, string> = {
-    "unpinned-blob": `in ${path}, for each repository blob link named in Cause, ${prepared ? `${guideForm} for a guide Markdown page` : plainForm}. To keep a link, ${pinForm} Correct any other reported guide content in the same file and follow any separate Fix. Then rerun \`npm run preflight -- --fast\`.`,
-    "content": `correct the reported ${prepared ? "guide " : ""}content in ${path}`,
-    "relative-link": prepared ? `replace the pinned link into the guide with a relative guide link in ${path}` : `in ${path}, ${guideForm}`,
+    "unpinned-blob": `in ${path}, for each repository blob link named in Cause, use a relative guide link for a guide Markdown page. To keep a link, ${pinForm} Correct any other reported guide content in the same file and follow any separate Fix. Then rerun \`npm run preflight -- --fast\`.`,
+    "content": `correct the reported guide content in ${path}`,
+    "relative-link": `replace the pinned link into the guide with a relative guide link in ${path}`,
     "repository-target": `correct the repository link's target path in ${path}`,
     "generated-region": `remove the generated-region marker and its matching closer from ${path}`,
   };
