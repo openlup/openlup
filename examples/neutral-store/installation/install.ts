@@ -1,4 +1,5 @@
-import { installCheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/server';
+import { CheckoutRecoveryScheduleChangeBlockedError, installCheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/server';
+import { FulfillmentStockReplayConflictError } from '@openlup/platform/fulfillment';
 import { installRenewalStockProtectionPolicy } from '@openlup/platform/inventory';
 import type { StoreConfig } from '../shared/config.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
@@ -292,7 +293,15 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     [row.id, row.product_id, row.sku, row.title, row.status, row.min_order_qty,
       row.is_addon, row.sellable_standalone, row.sellable_in_subscription,row.net_weight_g]);
     await installRenewalStockProtectionPolicy(connection, config.inventory.renewalProtection);
-    await installCheckoutRecoveryReminderSchedule(installation.connection, config.checkoutRecoveryReminders);
+    try { await installCheckoutRecoveryReminderSchedule(installation.connection, config.checkoutRecoveryReminders); }
+    catch (error) {
+      if (error instanceof CheckoutRecoveryScheduleChangeBlockedError)
+        throw refusal('checkout_recovery_schedule_change_blocked_open_episodes', 'checkoutRecoveryReminders',
+          `checkoutRecoveryReminders has ${error.blockingOrders} blocking orders.`,
+          'The installed schedule still governs open reminder episodes.',
+          'Keep the current schedule in effect. Retry after the blocking orders are paid or cancelled. For abandoned carts, retry once the blocking draft receipts are invalidated or the orders have a settlement intent.');
+      throw error;
+    }
     const settlement = seed.priceLists[0]!;
     const settings = [...seed.settings, { key: 'settlement_region', value: settlement.region_code },
       { key: 'settlement_currency', value: settlement.currency }];
@@ -301,10 +310,21 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     const stock = installation.stock ?? (await import('@openlup/platform/fulfillment').catch(error => { throw installationFailure(error); }))
       .createPostgresFulfillmentStockSyncPort(installation.connection,
       { sourceKey: `starter-demo:${config.id}`,readLocalInventoryStock: async () => [] });
-    for (const product of editorProducts(config)) await stock.recordProviderStockCurrent({ requestKey: `starter-stock:${product.sku}`,snapshot: {
-      providerRef: config.purchase.stock.providerRef,collectedAt: config.purchase.stock.collectedAt,sourceRevision: null,revisionSource: 'collection',quantityKind: 'snapshot',
-      skuRef: product.sku,totalQuantity: product.stockQuantity,forSaleQuantity: product.stockQuantity,reservedOrUnavailableQuantity: 0,syncRunId: config.purchase.stock.syncRunId },
-      inventoryClass: 'sellable',lastSyncedAt: config.purchase.stock.collectedAt,staleAfter: config.purchase.stock.staleAfter });
+    for (const product of editorProducts(config)) {
+      try {
+        await stock.recordProviderStockCurrent({ requestKey: `starter-stock:${product.sku}`,snapshot: {
+          providerRef: config.purchase.stock.providerRef,collectedAt: config.purchase.stock.collectedAt,sourceRevision: null,revisionSource: 'collection',quantityKind: 'snapshot',
+          skuRef: product.sku,totalQuantity: product.stockQuantity,forSaleQuantity: product.stockQuantity,reservedOrUnavailableQuantity: 0,syncRunId: config.purchase.stock.syncRunId },
+          inventoryClass: 'sellable',lastSyncedAt: config.purchase.stock.collectedAt,staleAfter: config.purchase.stock.staleAfter });
+      } catch (error) {
+        if (error instanceof FulfillmentStockReplayConflictError)
+          throw refusal('fulfillment_stock_current_idempotency_conflict', 'owned/store.config.ts',
+            `The stock inputs for SKU ${product.sku} in owned/store.config.ts conflict with its installed request.`,
+            'An earlier request for this SKU recorded different stock inputs.',
+            'Restore the original stock inputs for this SKU, then rerun the demo installer.');
+        throw error;
+      }
+    }
     for (const row of seed.priceLists) await connection.query(`INSERT INTO public.price_lists
       (id, name, region_code, currency, status, valid_from) VALUES ($1,$2,$3,$4,$5,$6)
       ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, region_code=EXCLUDED.region_code,

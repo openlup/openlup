@@ -1,4 +1,5 @@
 import { aggregateAtpCompatibleStock, emptyLocal, stockMovementWindow } from "./providerStockAvailability.js";
+import { FulfillmentStockReplayConflictError } from "./postgresStockSyncPort.js";
 import type { FulfillmentStockSyncPort, FulfillmentStockSyncProvider, LocalStock, StockSnapshot, StockMovement, SyncCursor } from "./contracts/index.js";
 type Threshold = Parameters<FulfillmentStockSyncPort["resolveLowStockEvidence"]>[0]["activeThresholdKinds"][number];
 interface StockSyncResult {
@@ -449,6 +450,7 @@ function latestOccurredAt(movements: StockMovement[]): string | null {
 
 /** Keep the operation's closed identity and SQLSTATE only, never arbitrary exception prose. */
 function safeReason(error: unknown, operation: string): string {
+  if (operation === "stock_current_write_failed" && error instanceof FulfillmentStockReplayConflictError) return "stock_current_write_failed:23505";
   const code = error && typeof error === "object" && "code" in error ? error.code : null;
   if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return `${operation}:${code}`;
   const known = error instanceof Error ? error.message.match(new RegExp(`^${operation}:([0-9A-Z]{5})$`)) : null;
