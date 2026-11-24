@@ -211,6 +211,17 @@
       }
     },
     {
+      "code": "account_support_operator_slide_max_days_policy_invalid",
+      "path": [],
+      "rule": "Supply exactly revision and maxDays. Revision must be a nonblank string and maxDays an integer from 3 through 365.",
+      "hint": "Check the value schema and examples for account_support_operator_slide_max_days.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm --silent run settings -- show account_support_operator_slide_max_days --json"
+      }
+    },
+    {
       "code": "checkout_recovery_policy_invalid",
       "path": [],
       "rule": "The host checkout recovery policy accepts only firstOffsetSeconds, finalOffsetSeconds, checkoutSeconds, recoverySeconds, activitySeconds and profile. Supply seconds as integers from 1 to 2147483647 and keep firstOffsetSeconds below finalOffsetSeconds, which must be below checkoutSeconds after defaults. A supplied profile starts with a lowercase letter and has up to 48 lowercase letters, digits, underscores or hyphens.",
@@ -252,6 +263,17 @@
         "retry": true,
         "action": "Check the schema and correct the rejected value.",
         "command": "npm --silent run settings -- show promotion_claim_hold_hours --json"
+      }
+    },
+    {
+      "code": "subscription_edit_quote_ttl_minutes_policy_invalid",
+      "path": [],
+      "rule": "Supply exactly revision and ttlMinutes. Revision must be a nonblank string and ttlMinutes an integer from 1 through 1440.",
+      "hint": "Check the value schema and examples for subscription_edit_quote_ttl_minutes.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm --silent run settings -- show subscription_edit_quote_ttl_minutes --json"
       }
     },
     {

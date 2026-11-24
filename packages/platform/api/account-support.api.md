@@ -1896,6 +1896,8 @@ export { createAccountEventPrivacyContributor } from "./customerAccount/accountE
 export type { AccountEventPrivacyJson, AccountEventPrivacyObligation, AccountEventPrivacyDocument, AccountEventPrivacySubject, AccountEventPrivacyAssessment, AccountEventPrivacyContributor, AccountEventPrivacyDependencies } from "./customerAccount/accountEventPrivacy.js";
 export { createPostgresCustomerBillingProfilePort, createCustomerBillingProfileSchemas, createCustomerBillingProfilesHandler } from "./customerAccount/billingProfiles.js";
 export type { BillingProfileTaxPolicy } from "./customerAccount/billingProfiles.js";
+export { DEFAULT_ACCOUNT_SUPPORT_OPERATOR_SLIDE_MAX_DAYS, validateAccountSupportOperatorSlideMaxDays, installAccountSupportOperatorSlideMaxDaysPolicy, readAccountSupportOperatorSlideMaxDaysOverride, readAccountSupportOperatorSlideMaxDaysPolicy, } from "./operatorSlideMaxDaysPolicy.js";
+export type { AccountSupportOperatorSlideMaxDaysPolicy } from "./operatorSlideMaxDaysPolicy.js";
 ```
 ## dist/account-support/invoiceAccess.d.ts
 
@@ -2134,6 +2136,31 @@ export declare function createOperatorRecovery(selection: OperatorRecoverySelect
         refusalCode: import("./contracts/operator.js").OperatorAccountLinkRefusal;
     }>;
 };
+```
+## dist/account-support/operatorSlideMaxDaysPolicy.d.ts
+
+```ts
+/** @experimental Default maximum days ahead an operator slide command can schedule the next subscription cycle. */
+export declare const DEFAULT_ACCOUNT_SUPPORT_OPERATOR_SLIDE_MAX_DAYS = 60;
+/** @experimental Installed policy configuring the upper bound in days for operator `slide_next_cycle` commands. */
+export interface AccountSupportOperatorSlideMaxDaysPolicy {
+    revision: string;
+    maxDays: number;
+}
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Validate an `account_support_operator_slide_max_days` policy document using SQL-equivalent rules. */
+export declare function validateAccountSupportOperatorSlideMaxDays(value: unknown): AccountSupportOperatorSlideMaxDaysPolicy;
+/** @experimental Install the operator slide max days policy on a host-owned write-capable connection. */
+export declare function installAccountSupportOperatorSlideMaxDaysPolicy(db: Executor, policy: AccountSupportOperatorSlideMaxDaysPolicy): Promise<void>;
+/** @experimental Read an explicit `account_support_operator_slide_max_days` override, returning `undefined` when absent. */
+export declare function readAccountSupportOperatorSlideMaxDaysOverride(db: Executor): Promise<AccountSupportOperatorSlideMaxDaysPolicy | undefined>;
+/** @experimental Read the installed `account_support_operator_slide_max_days` policy or the 60-day absence fallback. */
+export declare function readAccountSupportOperatorSlideMaxDaysPolicy(db: Executor): Promise<AccountSupportOperatorSlideMaxDaysPolicy>;
+export {};
 ```
 ## dist/account-support/orderHistory.d.ts
 
