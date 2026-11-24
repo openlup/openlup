@@ -236,7 +236,7 @@ describe("documentation CLI on the bare public runtime", () => {
 
       // 2. Ahead of base with a non-UTC forward slot: logs observation without failing (including under redirected GIT_DIR).
       const forwardPath = "supabase/migrations/20261124000099_local_slot_obs.sql";
-      write(checkout, forwardPath, "select 1;\n");
+      write(checkout, forwardPath, "CREATE TABLE IF NOT EXISTS public.local_slot_obs (id integer primary key);\n");
       git(checkout, ["add", "."]);
       const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: checkout, encoding: "utf8" }).split("\0").filter(Boolean).sort();
       write(checkout, "config/openlup-publication-catalog.json", createPublicPublicationCatalog(tracked.filter((path) => !isGuidePage(path) && !isManifestPinnedSqlArea(path)).map((path) => ({ path, class: "public-output" })), []).contents);

@@ -1281,8 +1281,12 @@ describe("shift-left preflight guards and --affected discovery", () => {
         if (call === `git diff --name-status --no-renames -z ${fork}`) return { status: 0, stdout: diffStdout, stderr: "" };
         if (bin === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
         if (bin === "npx" && list.includes("vitest") && list.includes("list")) {
+          const jsonArg = list.find((arg) => arg.startsWith("--json="));
           const files = list.filter((arg) => arg.endsWith(".test.ts"));
-          return { status: 0, stdout: `${files.join("\n")}\n`, stderr: "" };
+          if (jsonArg) {
+            writeFileSync(jsonArg.slice("--json=".length), JSON.stringify(files.map((file) => ({ file: join(process.cwd(), file) }))));
+          }
+          return { status: 0, stdout: "", stderr: "" };
         }
         if (bin === process.execPath && list[0] === "scripts/test-hosted.mjs") {
           hostedCalls.push(list);
@@ -1303,6 +1307,7 @@ describe("shift-left preflight guards and --affected discovery", () => {
     expect(empty.lines.some((line) => line.startsWith("SKIP hosted tests:"))).toBe(true);
 
     const passed = await runAffected("M\0scripts/ci-vitest-shard.mjs\0", 0);
+    expect(passed.lines.filter((line) => line.startsWith("FAIL"))).toEqual([]);
     expect(passed.exit).toBe(0);
     expect(passed.hostedCalls).toEqual([["scripts/test-hosted.mjs", "scripts/ci-vitest-shard.test.ts"]]);
     expect(passed.lines.some((line) => line.startsWith("PASS hosted tests: 1 file(s) passed"))).toBe(true);
