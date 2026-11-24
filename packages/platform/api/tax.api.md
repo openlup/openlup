@@ -142,6 +142,8 @@ export type { TaxConformanceCaseV1, TaxConformanceSubjectV1 } from "./adapterCon
 export { compareTaxRecalculationProbe } from "./compareProbe.js";
 export { applyTaxCoverageRevision, bindTaxCoverageReader, describeTaxCoverageSetting } from "./installedCoverage.js";
 export type { TaxCoverageExecutor, TaxCoverageRevision } from "./installedCoverage.js";
+export { beginTaxCalculation, completeTaxCalculation, evaluationDigest } from "./taxCalculationStore.js";
+export type { TaxCalculationTransactionLane } from "./taxCalculationStore.js";
 ```
 ## dist/tax/installedCoverage.d.ts
 
@@ -321,5 +323,138 @@ export interface LocalRateTableOptionsV1 {
  * Use the result kind from `readFiscalValidity` because it can report `changed` with the same fiscal digest when an effective fee or rate rule is replaced under the same references.
  */
 export declare function localRateTable(options: LocalRateTableOptionsV1): TaxCalculationPort;
+export {};
+```
+## dist/tax/taxCalculationStore.d.ts
+
+```ts
+import type { TaxRefusal } from "./contracts/types.js";
+interface TaxCalculationExecutor {
+    query(statement: string, parameters?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** A restricted session that resolves only after commit acknowledgment.
+ * @experimental
+ */
+export interface TaxCalculationTransactionLane {
+    run<T>(work: (executor: TaxCalculationExecutor) => Promise<T>): Promise<T>;
+}
+interface EvaluationScope {
+    identity: {
+        installationRef: string;
+        clientId: string;
+        principalRef: string;
+        scopeRef: string;
+        evaluationKey: string;
+    };
+    invocation: {
+        purpose: "final" | "estimate";
+        mode: "one_time" | "subscription";
+        cadence?: {
+            schemaVersion: 1;
+            kind: "fixed_days";
+            days: number;
+        };
+        lines: readonly {
+            sku: string;
+            quantity: number;
+        }[];
+        deliverySelector: string;
+        paymentSelector: string;
+    };
+}
+interface EvaluationEvidence {
+    destination: {
+        snapshotRef: string;
+        destinationDigest: string;
+        schemaVersion: 2;
+        policyRevision: string;
+    };
+    kind: "fiscal_profile" | "tax_calculation";
+    validUntil: string;
+}
+interface EvaluationPin extends EvaluationEvidence {
+    request: unknown;
+    coverage: {
+        accountRef: string;
+        revision: string;
+        digest: string;
+    } | null;
+    recovery: string | null;
+}
+type BeginTaxCalculationInput = Uint8Array | (EvaluationScope & ({
+    operation: "lookup";
+} | {
+    operation: "claim";
+    pin?: EvaluationPin;
+    recovery: string | null;
+}));
+type Refusal = Pick<TaxRefusal, "kind" | "field" | "remedy"> & {
+    code: string;
+};
+type QuoteOutcome = {
+    kind: "estimate" | "final";
+    quote: unknown;
+};
+type UnavailableCode = "tax_coverage_evidence_unavailable" | "tax_adapter_unavailable";
+type CompleteTaxCalculationInput = Uint8Array | (EvaluationScope & {
+    calculationId: string;
+    claimToken: string;
+    generation: number;
+    seal: EvaluationEvidence & {
+        requestDigest: string;
+        contradiction: boolean;
+        evidence: unknown;
+        outcome: Refusal | QuoteOutcome | {
+            kind: "indeterminate";
+        } | {
+            kind: "unavailable";
+            code: UnavailableCode;
+        };
+    };
+    adapter?: {
+        request: unknown;
+        result: unknown;
+    };
+});
+type Terminal = {
+    kind: "terminal";
+    validUntil: string;
+    freshness: "current" | "historical";
+    outcome: Refusal | QuoteOutcome | {
+        kind: "unavailable";
+        code: UnavailableCode;
+        effect: "none";
+        field: string;
+        remedy: string;
+    };
+};
+type CompleteTaxCalculationResult = Terminal | Refusal | {
+    kind: "pending" | "missing";
+};
+type BeginTaxCalculationResult = CompleteTaxCalculationResult | {
+    kind: "claimed";
+    calculationId: string;
+    generation: number;
+    claimToken: string;
+    pin: EvaluationPin & {
+        requestDigest: string;
+        invocationDigest: string;
+        documentDigest: string;
+    };
+};
+/** Computes a canonical digest for the native evaluation store.
+ * @experimental
+ */
+export declare const evaluationDigest: (tag: string, body: unknown) => string;
+/** Looks up an evaluation or returns a claim after the transaction commits.
+ * @experimental
+ */
+export declare function beginTaxCalculation(lane: TaxCalculationTransactionLane, input: BeginTaxCalculationInput): Promise<BeginTaxCalculationResult>;
+/** Seals an owned evaluation or verifies an exact replay.
+ * @experimental
+ */
+export declare function completeTaxCalculation(lane: TaxCalculationTransactionLane, input: CompleteTaxCalculationInput): Promise<CompleteTaxCalculationResult>;
 export {};
 ```

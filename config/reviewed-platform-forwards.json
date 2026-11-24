@@ -9142,6 +9142,37 @@
           "ALTER TABLE public.price_lists ADD COLUMN amount_basis text;",
           "ALTER TABLE public.price_lists ADD CONSTRAINT price_lists_basis_check CHECK (amount_basis IN ('tax_inclusive', 'tax_exclusive'));"
         ]
+      },
+      {
+        "row": "tax-calculation-claim-seal",
+        "path": "db/platform/migrations/20261126540000_tax_calculation_claim_seal.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.tax_calculation_terminal_v1(public.tax_calculations)",
+            "beforeSha256": "72396bcbbb14edeb068a7e77b35b35c34bf3e1504b2071f97898c431a8c6d66e",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_calculation_transition_v1(jsonb,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_calculation_begin_v1(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_calculation_complete_v1(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -13018,6 +13049,37 @@
       "path": "db/platform/migrations/20261126530000_catalog_price_list_basis.sql",
       "sha256": "fb7449ee5ea25e995c4970c68c358792528e4f7e6214c658ee86648dc73a2dfc",
       "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261126540000_tax_calculation_claim_seal.sql",
+      "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22",
+      "functions": [
+        {
+          "signature": "public.tax_calculation_terminal_v1(public.tax_calculations)",
+          "beforeSha256": "72396bcbbb14edeb068a7e77b35b35c34bf3e1504b2071f97898c431a8c6d66e",
+          "afterSha256": "056b90df67611981eb6bb88079d0c8293e162ad3b8711a77abcee3d3b0bc87e4"
+        },
+        {
+          "signature": "public.tax_calculation_check_domain_v1(jsonb,jsonb,jsonb,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "f95c49e87e4a0f5c12a3a1969a3593f0b006bac3c9ad8d9909981de79b003df0"
+        },
+        {
+          "signature": "public.tax_calculation_transition_v1(jsonb,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "f3bc324be2acc08145ab0a9177bc6a026e72849b216dc0b2b28972b6ae34c035"
+        },
+        {
+          "signature": "public.tax_calculation_begin_v1(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "81f66ee59ebf99617c580ad67399793c695d5139e6412d3c9b1fba99f8e98071"
+        },
+        {
+          "signature": "public.tax_calculation_complete_v1(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "ed2705af4b71a473b5d91625b04d33363391153dc21874bc0a2b949c4a1f6bbc"
+        }
+      ]
     }
   ],
   "managedExactForwards": [
