@@ -221,8 +221,7 @@ async function cancellationRows(owner: Pool, subscriptionId: string) {
     FROM public.subscriptions s WHERE s.id=$1`, [subscriptionId])).rows;
 }
 
-// Only two independent single-container cases; Vitest drains them before the next serial test.
-it.concurrent.each(["installer-managed", "operator-provisioned"] as const)("cx1r_feedback_native_admission_and_replay (%s)", async mode => {
+async function verifyFeedbackAdmission(mode: Mode, expectCase: typeof expect) {
   const source = await install("neon", mode, "cancel-feedback");
   try {
     const runtime = feedbackRuntime(source);
@@ -243,39 +242,39 @@ it.concurrent.each(["installer-managed", "operator-provisioned"] as const)("cx1r
       EXISTS (SELECT FROM aclexplode(c.relacl) WHERE grantee=0) AS public_table
       FROM pg_proc p, pg_class c WHERE p.oid=$1::regprocedure AND c.oid=$2::regclass`,
     [feedbackRoutine, `public.${feedbackTable}`, source.selection.runtimeLogin]);
-    expect(acl).toEqual({ rls: true, definer: true, proconfig: ["search_path=pg_catalog, pg_temp"],
+    expectCase(acl).toEqual({ rls: true, definer: true, proconfig: ["search_path=pg_catalog, pg_temp"],
       runtime_execute: true, service_execute: true, runtime_table: false, service_table: false, public_execute: false, public_table: false });
-    expect((await runtime.query("SELECT current_user AS role")).rows).toEqual([{ role: source.selection.runtimeLogin }]);
+    expectCase((await runtime.query("SELECT current_user AS role")).rows).toEqual([{ role: source.selection.runtimeLogin }]);
     for (const statement of [
       "SELECT * FROM public.subscription_cancel_feedback",
       "INSERT INTO public.subscription_cancel_feedback (cancel_event_id,reason_code) VALUES (gen_random_uuid(),'schedule')",
       "UPDATE public.subscription_cancel_feedback SET reason_code='other'",
       "DELETE FROM public.subscription_cancel_feedback",
     ]) {
-      await expect(runtime.query(statement)).rejects.toMatchObject({ code: "42501" });
+      await expectCase(runtime.query(statement)).rejects.toMatchObject({ code: "42501" });
     }
     const browser = await runtime.connect();
     try {
       for (const role of ["anon", "authenticated"]) {
         await browser.query(`SET ROLE ${role}`);
-        await expect(submitFeedback(browser, event, client, reason, true)).rejects.toMatchObject({ code: "42501" });
-        await expect(browser.query("SELECT * FROM public.subscription_cancel_feedback")).rejects.toMatchObject({ code: "42501" });
+        await expectCase(submitFeedback(browser, event, client, reason, true)).rejects.toMatchObject({ code: "42501" });
+        await expectCase(browser.query("SELECT * FROM public.subscription_cancel_feedback")).rejects.toMatchObject({ code: "42501" });
       }
     } finally { await browser.query("RESET ROLE"); browser.release(); }
 
     for (const code of [null, "", "a".repeat(121), "Mixed_case", "a-b", "a\n", "ä"]) {
-      expect(await submitFeedback(runtime, event, client, code, true)).toBe("invalid_reason");
+      expectCase(await submitFeedback(runtime, event, client, code, true)).toBe("invalid_reason");
     }
     const missingEvent = randomUUID();
     for (const [cancelEvent, owner] of [[wrongEvent, client], [missingEvent, client], [event, foreign]] as const) {
-      expect(await submitFeedback(runtime, cancelEvent, owner, reason, true)).toBe("cancel_not_found");
+      expectCase(await submitFeedback(runtime, cancelEvent, owner, reason, true)).toBe("cancel_not_found");
     }
-    expect(await submitFeedback(runtime, event, foreign, "Mixed_case", true)).toBe("invalid_reason");
-    expect(await submitFeedback(runtime, missingEvent, client, "Mixed_case", true)).toBe("invalid_reason");
+    expectCase(await submitFeedback(runtime, event, foreign, "Mixed_case", true)).toBe("invalid_reason");
+    expectCase(await submitFeedback(runtime, missingEvent, client, "Mixed_case", true)).toBe("invalid_reason");
     for (const offered of [false, null]) {
-      expect(await submitFeedback(runtime, event, client, reason, offered)).toBe("reason_not_offered");
+      expectCase(await submitFeedback(runtime, event, client, reason, offered)).toBe("reason_not_offered");
     }
-    expect((await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows).toEqual([]);
+    expectCase((await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows).toEqual([]);
 
     await source.owner.query(`CREATE COLLATION public.feedback_loose
       (provider = icu, locale = 'und-u-ka-shifted-ks-level1', deterministic = false)`);
@@ -284,7 +283,7 @@ it.concurrent.each(["installer-managed", "operator-provisioned"] as const)("cx1r
         $3::text COLLATE public.feedback_loose = $4::text AS equal,
         public.subscription_cancel_feedback_submit($1,$2,$3::text COLLATE public.feedback_loose,$5) AS status`,
       [event, client, "sche_dule", reason, offered]);
-      expect(result!.equal).toBe(true);
+      expectCase(result!.equal).toBe(true);
       return result!.status;
     };
 
@@ -294,7 +293,7 @@ it.concurrent.each(["installer-managed", "operator-provisioned"] as const)("cx1r
     let attempts: Promise<PromiseSettledResult<string>[]> | undefined;
     try {
       await writer.query("BEGIN ISOLATION LEVEL READ COMMITTED");
-      expect(await submitFeedback(writer, event, client, reason, true)).toBe("recorded");
+      expectCase(await submitFeedback(writer, event, client, reason, true)).toBe("recorded");
       const pids = await Promise.all([same, different].map(async db => (await db.query("SELECT pg_backend_pid() AS pid")).rows[0].pid));
       const { pid } = (await writer.query("SELECT pg_backend_pid() AS pid")).rows[0];
       attempts = Promise.allSettled([submitFeedback(same, event, client, reason, true), submitEquivalent(different, true)]);
@@ -302,30 +301,38 @@ it.concurrent.each(["installer-managed", "operator-provisioned"] as const)("cx1r
       const parents = await source.owner.query(`SELECT e.id FROM public.subscriptions s
         JOIN public.subscription_events e ON e.subscription_id=s.id
         WHERE s.id=$1 AND e.id=$2 FOR SHARE OF s,e NOWAIT`, [command.subscriptionId, event]);
-      expect(parents.rows).toEqual([{ id: event }]);
+      expectCase(parents.rows).toEqual([{ id: event }]);
       // The rivals have reached INSERT on the sidecar before waiting for the writer.
-      await expect.poll(async () => (await source.owner.query(`SELECT count(*)::int AS waiting FROM unnest($1::int[]) waiting(pid)
+      await expectCase.poll(async () => (await source.owner.query(`SELECT count(*)::int AS waiting FROM unnest($1::int[]) waiting(pid)
         WHERE $2::int=ANY(pg_blocking_pids(waiting.pid)) AND EXISTS (SELECT 1 FROM pg_locks l
           WHERE l.pid=waiting.pid AND l.relation='public.subscription_cancel_feedback'::regclass
           AND l.mode='RowExclusiveLock' AND l.granted)`, [pids, pid])).rows[0].waiting).toBe(2);
       await writer.query("COMMIT");
-      expect(await attempts).toEqual([{ status: "fulfilled", value: "replayed" }, { status: "fulfilled", value: "reason_conflict" }]);
+      expectCase(await attempts).toEqual([{ status: "fulfilled", value: "replayed" }, { status: "fulfilled", value: "reason_conflict" }]);
     } finally {
       await writer.query("ROLLBACK");
       await attempts;
       for (const db of [writer, same, different]) db.release();
     }
     const stored = (await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows;
-    expect(stored).toEqual([{ cancel_event_id: event, reason_code: reason, recorded_at: expect.any(Date) }]);
-    expect(await submitFeedback(runtime, event, client, reason, false)).toBe("replayed");
-    expect(await submitEquivalent(runtime, false)).toBe("reason_conflict");
-    expect(await submitFeedback(runtime, event, client, alternateReason, false)).toBe("reason_conflict");
-    expect(await submitFeedback(runtime, event, foreign, reason, true)).toBe("cancel_not_found");
-    expect((await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows).toEqual(stored);
-    expect(await commands(runtime).apply(command)).toEqual({ ...receipt, outcome: "replayed" });
-    expect(await cancellationRows(source.owner, command.subscriptionId)).toEqual(retained);
+    expectCase(stored).toEqual([{ cancel_event_id: event, reason_code: reason, recorded_at: expectCase.any(Date) }]);
+    expectCase(await submitFeedback(runtime, event, client, reason, false)).toBe("replayed");
+    expectCase(await submitEquivalent(runtime, false)).toBe("reason_conflict");
+    expectCase(await submitFeedback(runtime, event, client, alternateReason, false)).toBe("reason_conflict");
+    expectCase(await submitFeedback(runtime, event, foreign, reason, true)).toBe("cancel_not_found");
+    expectCase((await source.owner.query("SELECT * FROM public.subscription_cancel_feedback")).rows).toEqual(stored);
+    expectCase(await commands(runtime).apply(command)).toEqual({ ...receipt, outcome: "replayed" });
+    expectCase(await cancellationRows(source.owner, command.subscriptionId)).toEqual(retained);
   } finally { await closePostgres(source.container, source.pools); }
-}, postgresSetupTimeoutMs);
+}
+
+// Use each case's own assertion context and wait for cleanup even after a case times out.
+it.concurrent.for(["installer-managed", "operator-provisioned"] as const)(
+  "cx1r_feedback_native_admission_and_replay (%s)", { timeout: postgresSetupTimeoutMs }, async (mode, { expect, onTestFinished }) => {
+    const work = verifyFeedbackAdmission(mode, expect);
+    onTestFinished(() => work.then(() => undefined, () => undefined), postgresSetupTimeoutMs);
+    await work;
+  });
 
 it("cx1r_feedback_retries_when_winner_is_deleted", async () => {
   const source = await install("neon", "operator-provisioned", "vanished-feedback");
