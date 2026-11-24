@@ -499,7 +499,7 @@ it.each([false, true])("preserves the active read query rejection after asynchro
     }, hooked ? { prelock: guard } : undefined).catch(error => error);
     expect(error).toBe(failure);
     expect(Object.getPrototypeOf(error)).toBe(TypeError.prototype);
-    expect(Reflect.ownKeys(error)).toEqual(keys);
+    expect(Reflect.ownKeys(error as object)).toEqual(keys);
     expect(cleanup).toHaveBeenCalledTimes(1);
     expect(trace).not.toContain("COMMIT");
     expect(release).toHaveBeenCalledWith(true, clients[0]);
