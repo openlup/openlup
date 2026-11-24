@@ -13,7 +13,9 @@ import { createSettingsBindings } from '../owned/settings-host.ts';
 import { configurations } from '../owned/store.config.ts';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
+import { env } from 'node:process';
 import { proveStarterCatalogueWrappers } from '../../../scripts/packages/distribution-cli-proof.ts';
+import { readCurrentPackManifest } from '../../../scripts/packages/pack-manifest-input.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 // Source-release tests keep scratch inside this application.
@@ -859,12 +861,32 @@ test('RP2 source wrapper checks the independent registry from packed dependencie
   try {
     execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, stdio: 'pipe' });
     await mkdir(bin, { recursive: true });
+    const { OPENLUP_PACK_MANIFEST: packManifest, OPENLUP_PACK_COMMIT: commit } = env;
+    assert.equal(packManifest !== undefined, commit !== undefined, 'Expected both candidate pack inputs');
+    if (packManifest !== undefined) {
+      assert.equal(commit, execFileSync('git', ['rev-parse', 'HEAD'], { cwd: checkout, encoding: 'utf8' }).trim(),
+        'Starter candidate packages must match checkout HEAD');
+    }
+    const candidatePacks = packManifest !== undefined && commit !== undefined
+      ? readCurrentPackManifest(checkout, packManifest, commit) : undefined;
     for (const name of ['core', 'platform']) {
-      const [pack] = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', directory],
-        { cwd: resolve(checkout, 'packages', name), encoding: 'utf8', stdio: 'pipe' }));
+      let archive: string;
+      if (candidatePacks) {
+        const pack = candidatePacks.get(`@openlup/${name}`);
+        assert(pack, `Missing candidate pack for @openlup/${name}`);
+        const bytes = await readFile(pack.path);
+        assert.equal(sha256(bytes), pack.sha256, `Candidate pack changed for @openlup/${name}`);
+        archive = resolve(directory, `${name}.tgz`);
+        await writeFile(archive, bytes);
+      } else {
+        // Direct source-suite runs have no pack producer. Build the same local fixture inputs.
+        const [pack] = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', directory],
+          { cwd: resolve(checkout, 'packages', name), encoding: 'utf8', stdio: 'pipe' }));
+        archive = resolve(directory, pack.filename);
+      }
       const installed = resolve(scoped, name);
       await mkdir(installed, { recursive: true });
-      execFileSync('tar', ['-xzf', resolve(directory, pack.filename), '-C', installed, '--strip-components=1']);
+      execFileSync('tar', ['-xzf', archive, '-C', installed, '--strip-components=1']);
     }
     await cp(resolve(checkout, 'node_modules/zod'), resolve(target, 'node_modules/zod'), { recursive: true });
     await symlink('../@openlup/platform/src/lifecycle/openlup.mjs', resolve(bin, 'openlup'));
