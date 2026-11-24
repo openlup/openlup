@@ -20,9 +20,9 @@ and erasure receipts as unavailable.
 `createPersonalDataContributorRegistry` requires explicit contributor IDs,
 versions and owned resources. Each contributor describes its export coverage
 and its erase, retain or unresolved obligations. Duplicate IDs refuse with
-`PRIVACY_CONTRIBUTOR_DUPLICATE`. Export reports missing required contributors;
-erasure refuses with `PRIVACY_CONTRIBUTOR_MISSING`. A successful export is only
-as complete as its reported coverage.
+`PRIVACY_CONTRIBUTOR_DUPLICATE`. Export reports missing host-only contributors.
+Erasure refuses when a required owner or the identity owner is absent. A
+successful export is only as complete as its reported coverage.
 
 Register the owners of the features your application uses. Account-event
 payloads require the `account-support` contributor and an explicit retention
@@ -41,6 +41,38 @@ Compose `createPostgresPrivacyUnitOfWork`, `createPostgresPrivacyStore` and
 `createManagedPrivacyStore` with the application's structural service client.
 Browser request, contributor-document and receipt shapes come from
 `@openlup/platform/identity/contracts`.
+
+### Upgrade native privacy operations
+
+Apply the complete native catalogue for the selected rollout. The installation
+owner declares required contributor IDs in the same ordered forward as the owner
+feature. The runtime can execute the declaration reader. Each admitted operation
+reads the current set once inside its transaction.
+Register working owners for every installed ID, including saved addresses,
+preferences and tax evaluations in the reference composition. Keep an ID declared while its
+scoped evidence remains.
+
+Native store wrappers implement `NativePrivacyStore` and forward
+`readRequiredContributorIds` on the held transaction. Inject the instance
+returned by the serving module's `createPrivacyOperations` into the reference
+host. Use `decoratePrivacyRoute` to wrap each guarded handler with host request
+scope or lifecycle logic. Probe both operations on the exact serving build
+through isolated candidate routing.
+
+Before reopening ordinary native privacy traffic, verify all three conditions.
+
+1. Both slices are present on every serving revision.
+2. The second slice's catalogue is installed.
+3. The per-store cutover is verified.
+
+Installing the first slice alone leaves the fence in place.
+
+Native export and erasure return HTTP 503 when a declared owner is absent or
+the binding or declaration cannot be verified. Update strict clients to accept
+`observed`, `cause`, `fix` and `recheck` alongside `privacyCode` in `error.details`.
+Direct callers receive the same four strings in `PrivacyRefusal.facts`. Follow
+the fix and retry the original request. Keep new owner writers dormant through
+the cutover.
 
 Require `customer-billing` even when no invoice reader is selected: native
 first-duty capture can freeze buyer components, including shipping fallback.

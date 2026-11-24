@@ -14,7 +14,7 @@ import type { RenewalPreparedSettlement, RenewalReservationResult, RenewalSettle
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery, createPostgresDeliveryReconciliationPort } from "@openlup/platform/communications";
 import { refusedNoticeSources, noticeSessionWithRecipientFault } from "./m19NoticeFixture.js";
-import { createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createTaxCalculationPrivacyContributor, createPostgresPrivacyStore, createPrivacyOperations, createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
+import { createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPrivacyOperations, createOidcIdentityVerifier, createPostgresAccountLinkStore, createPostgresCustomerMePort, deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { createPostgresPaymentTruthPort, createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import type { SandboxPaymentAttempt, SandboxPaymentOutcome } from "@openlup/platform/payments/contracts";
 import { createPostgresDataGateway, type PgGatewayClient, type PgQueryExecutor } from "@openlup/platform/data";
@@ -34,7 +34,7 @@ import { fixture, openCase, replacement } from "../helpers/fulfillmentNative.js"
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { captureStoreJourney, storeJourneyResources, type JourneyTargetInstallation, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
 
-import { createDestinationDocumentPrivacyContributor, createDestinationReceiptPrivacyContributor } from "@openlup/platform/identity";
+import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import { bindDestinationOrder, insertDestinationOrder, orderBindingTable, snapshotCommand, destinationContext,
   documentTable, reachDestinationCutoff, readSnapshot, selectionTable, snapshot, testServicePin } from "./destinationDocumentFixture.js";
 import { awaitReceiptWait, backendPid, idempotencyConflict, receiptArgs, receiptCall, receiptClient, receiptOutcome,
@@ -496,6 +496,34 @@ async function census(db: Pool): Promise<Record<string, string[]>> {
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
 }
 const restore = (capturePacket = packet) => restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: capturePacket, freshTarget: pristine });
+
+it("compares declaration authority at capture, copy and replay even when the catalogue matches", async () => {
+  const initial = ["communication-events", "customer-billing", "customer-preferences", "customer-saved-addresses",
+    "destination-documents", "destination-receipts", "fulfillment-parcel-contacts", "identity", "subscriptions", "tax-calculations"];
+  expect(packet).toHaveProperty("requiredPrivacyContributorIds", initial);
+  expect(pristine).toHaveProperty("requiredPrivacyContributorIds", initial);
+  const declaration = "identity_privacy_required_contributors";
+  expect([...packet.owned, ...packet.compatible.tables].some(entry => String(entry.table) === declaration)).toBe(false);
+  expect(packet.outsideProfileCensus.some(entry => entry.relation === `public.${declaration}`)).toBe(false);
+  const read = () => target.owner.query(`SELECT contributor_id,ctid::text,xmin::text FROM public.${declaration} ORDER BY contributor_id`);
+  const original = (await read()).rows;
+  const append = (db: Pool) => db.query(`INSERT INTO public.${declaration}(contributor_id) VALUES ('fixture-owner') ON CONFLICT (contributor_id) DO NOTHING`);
+  await append(source.owner);
+  try {
+    const drifted = await capture(source.owner, "different-privacy-declaration");
+    expect(drifted.compatible.catalogueId).toBe(packet.compatible.catalogueId);
+    expect(drifted.requiredPrivacyContributorIds).toContain("fixture-owner");
+    const before = await census(target.owner);
+    await expect(restore(drifted)).rejects.toMatchObject({ code: "target_conflict" });
+    expect(await census(target.owner)).toEqual(before);
+  } finally { await source.owner.query(`DELETE FROM public.${declaration} WHERE contributor_id='fixture-owner'`); }
+  expect(await restore()).toMatchObject({ replayed: false });
+  expect(await restore()).toMatchObject({ replayed: true });
+  expect((await read()).rows).toEqual(original);
+  await append(target.owner);
+  await expect(restore()).rejects.toMatchObject({ code: "target_conflict" });
+}, 90_000);
+
 function corruptDeclaredTotal(): ConnectedNativeStoreCapture {
   const copy = JSON.parse(JSON.stringify(packet)) as ConnectedNativeStoreCapture;
   const orders = copy.compatible.tables.find(table => table.table === "commerce_orders")!;
@@ -1724,6 +1752,54 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+it("refuses a live declaration append before touching verified destination evidence", async () => {
+  const clean = await sourceTemplates.clone("privacy-owner-append");
+  const operator = randomUUID(), early = await receiptClient(clean.owner), context = await destinationContext(clean.owner);
+  await clean.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [operator, `${operator}@example.invalid`]);
+  await clean.owner.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',now())", [operator]);
+  const document = await snapshot(clean.runtime, context);
+  const order = await bindDestinationOrder(clean.owner, context, document);
+  const store = createPostgresPrivacyStore(), owners = nativePrivacyContributors(store);
+  const statements: string[] = [];
+  const unitOfWork = { async run<T>(work: (db: PgQueryExecutor) => Promise<T>): Promise<T> {
+    const client = await clean.runtime.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await work({ query: (sql, values) => { statements.push(sql); return client.query(sql, values ? [...values] : undefined); } });
+      await client.query("COMMIT");
+      return result;
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
+  } };
+  const operations = (contributors: typeof owners) => createPrivacyOperations({ store, unitOfWork,
+    registry: createPersonalDataContributorRegistry(contributors, { requiredContributorIds: [] }), now: () => new Date(), randomId: randomUUID });
+  const actor = { principalId: operator }, subject = { kind: "contact" as const, contactId: context.clientId };
+  const input = { subject, idempotencyKey: randomUUID() }, missing = operations(owners.filter(owner => owner.id !== "destination-documents"));
+  const qualified = operations(owners);
+  // Disposable predecessor declaration, followed by the owner's ordered literal append.
+  await clean.owner.query("DELETE FROM public.identity_privacy_required_contributors WHERE contributor_id='destination-documents'");
+  expect((await missing.export(actor, subject)).missingContributors).toEqual([]);
+  expect((await missing.erase(actor, { subject: { ...subject, contactId: early }, idempotencyKey: randomUUID() })).outcome).toBe("ERASED");
+  await clean.owner.query("INSERT INTO public.identity_privacy_required_contributors(contributor_id) VALUES ('destination-documents') ON CONFLICT (contributor_id) DO NOTHING");
+  const before = await census(clean.owner);
+  statements.length = 0;
+  for (const call of [() => missing.export(actor, subject), () => missing.erase(actor, input)]) {
+    await expect(call()).rejects.toMatchObject({ code: "PRIVACY_CONTRIBUTOR_MISSING", facts: { observed: expect.stringContaining("destination-documents") } });
+  }
+  expect(statements).toEqual(Array(2).fill("SELECT public.identity_privacy_required_contributor_ids() AS ids"));
+  expect(await census(clean.owner)).toEqual(before);
+  await clean.owner.query("REVOKE EXECUTE ON FUNCTION public.identity_privacy_required_contributor_ids() FROM service_role");
+  try {
+    for (const call of [() => qualified.export(actor, subject), () => qualified.erase(actor, input)]) {
+      await expect(call()).rejects.toMatchObject({ code: "PRIVACY_ASSESSMENT_UNAVAILABLE", facts: { fix: expect.stringContaining("EXECUTE") } });
+    }
+    expect(await census(clean.owner)).toEqual(before);
+  } finally { await clean.owner.query("GRANT EXECUTE ON FUNCTION public.identity_privacy_required_contributor_ids() TO service_role"); }
+  const exported = await qualified.export(actor, subject);
+  expect(JSON.stringify(exported.documents.find(owner => owner.contributorId === "destination-documents")?.data)).toContain(order);
+  expect((await qualified.erase(actor, input)).outcome).toBe("ERASED");
+}, 90_000);
+
 it("destination_receipt_privacy_round_trip", async () => {
   const clean = await sourceTemplates.clone("destination-receipts");
   const operator = randomUUID();
@@ -1735,13 +1811,10 @@ it("destination_receipt_privacy_round_trip", async () => {
   await clean.owner.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',$2)", [operator, now]);
 
   const store = createPostgresPrivacyStore();
-  const identityOwner = createIdentityPersonalDataContributor(store, { retainedContactFields: Object.fromEntries(
-    ["lifecycle_stage", "acquisition_source"].map(field => [field, {
-      owner: "clients", resource: `clients.${field}`, disposition: "retain", reasonCode: "CONTACT_LIFECYCLE_RETENTION", remote: false,
-    }]),
-  ) }, randomUUID);
-  const contributor = createDestinationReceiptPrivacyContributor(), documents = createDestinationDocumentPrivacyContributor();
-  const registry = createPersonalDataContributorRegistry([identityOwner, contributor, documents, createTaxCalculationPrivacyContributor()],
+  const contributors = nativePrivacyContributors(store);
+  const documents = contributors.find(owner => owner.id === "destination-documents")!;
+  const contributor = contributors.find(owner => owner.id === "destination-receipts")!;
+  const registry = createPersonalDataContributorRegistry(contributors,
     { requiredContributorIds: ["identity", "destination-receipts", "destination-documents", "tax-calculations"] });
   const unitOfWork = (onStart?: (pid: number) => void) => ({
     async run<T>(work: (db: PgQueryExecutor) => Promise<T>): Promise<T> {

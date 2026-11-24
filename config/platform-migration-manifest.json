@@ -790,11 +790,15 @@
       "sha256": "c9c30da72445e0fff5f6d00f8bb1de8d51b11f4ee443a8a297b8ac35fac5726d"
     },
     {
+      "file": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
+      "sha256": "d4951f9ac41ea7d560bf171b03084413d9d755d08a3024139ba663949bfbb23a"
+    },
+    {
       "file": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
       "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
     }
   ],
-  "objectInventorySha256": "2a3b912e9b909ae858763e19e1b915fed246122e9069d3f95d1fd7b121ce6ca7",
+  "objectInventorySha256": "adef643a711144b1f82f0f8d1c0a5eb2ccad91263f528ec84d984dc412623ad3",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1610,16 +1614,20 @@
         "sha256": "c9c30da72445e0fff5f6d00f8bb1de8d51b11f4ee443a8a297b8ac35fac5726d"
       },
       {
+        "file": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
+        "sha256": "d4951f9ac41ea7d560bf171b03084413d9d755d08a3024139ba663949bfbb23a"
+      },
+      {
         "file": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
         "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "f5672489d5395cba81082beaf1dd64b6ce252ac5f708ddb55bc7c00c5ccdeed9"
+        "withRestore": "b80fb667e105fd6f3dc84f326e34d5d99f0f4a207e9fa5f02a793c7540f4b035"
       },
       "separateMigrator": {
-        "withRestore": "a2419a91a58c08d3e0e9cde30f9113cafec61e95c9f4ed8e66a5dfde78cbd957"
+        "withRestore": "7b98a86ab18e20ab69763beb04ec5b64eed11a41189f7056b31bbf5c4a2300fc"
       }
     }
   },
@@ -2430,13 +2438,17 @@
         "sha256": "c9c30da72445e0fff5f6d00f8bb1de8d51b11f4ee443a8a297b8ac35fac5726d"
       },
       {
+        "file": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
+        "sha256": "d4951f9ac41ea7d560bf171b03084413d9d755d08a3024139ba663949bfbb23a"
+      },
+      {
         "file": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
         "sha256": "cf0749b2f4fe2efa5bb5dc136851e48400b5692fc49ac29d9e9ee3eb573868e6"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "2cce464a264dd87c17137595652a40835d19325c4e9ff2615931e74080932a7a",
-      "operatorProvisioned": "9f472512c9267d90c19241f1c2b3f275c6e923027a9e43bfa4d2c17399edd61d"
+      "installerManaged": "2f075aa967efad36653657d959b992d003cf5a47852c669af26bb56f00e0dca4",
+      "operatorProvisioned": "0f74204d9dcef4430d6e90db8813ee8e827f5445b8f0d9b7afd635f700877d92"
     }
   }
 }

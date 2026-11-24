@@ -40,6 +40,7 @@ function executor(respond: (sql: string, values: unknown[]) => Record<string, un
 it.each([["active", "PRIVACY_ACTIVE_SUBSCRIPTION"], ["paused", "PRIVACY_RESUMABLE_SUBSCRIPTION"], ["unknown", "PRIVACY_ASSESSMENT_UNAVAILABLE"]])("subscription %s veto precedes every identity mutation and never changes a subscription", async (status, code) => {
   const { db, query } = executor(sql => sql.startsWith("SELECT status") ? [{ status }] : []);
   const subscriptions = createSubscriptionsPrivacyContributor(); const store = createPostgresPrivacyStore();
+  store.readRequiredContributorIds = async () => ["identity", "subscriptions"];
   store.prepareErasure = async () => {}; store.authorizeErasure = async () => {}; store.resolve = async () => structuredClone(subject); store.findReceipt = async () => null;
   const erase = vi.spyOn(store, "eraseIdentity"); const save = vi.spyOn(store, "saveReceipt");
   const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields: {} }, () => K), subscriptions], { requiredContributorIds: ["identity", "subscriptions"] });

@@ -1658,6 +1658,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
       "class": "public-output"
     },
@@ -5414,6 +5418,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261125300000_identity_privacy_required_contributors.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261125310000_function_search_path_pg_temp.sql",
       "class": "public-output"
     },
@@ -8423,6 +8431,10 @@
     },
     {
       "path": "packages/platform/src/identity/removeAdminUserUseCase.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/requiredPrivacyContributors.ts",
       "class": "public-output"
     },
     {
@@ -11911,6 +11923,10 @@
     },
     {
       "path": "packages/platform/test/identity/removeAdminUserUseCase.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/requiredPrivacyContributors.test.ts",
       "class": "public-output"
     },
     {
@@ -32094,6 +32110,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/privacyRequiredContributors.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/taxCalculationsV2/replayed.sql",
       "class": "public-output"
     },
@@ -32611,6 +32631,10 @@
     },
     {
       "path": "tests/postgres/postgresContainerCleanup.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/privacyRequiredContributors.test.ts",
       "class": "public-output"
     },
     {

@@ -19,11 +19,10 @@ import { readManagedMigrationChain } from "../../scripts/public-ci-pgtap.mjs";
 import { createServiceRoleClient as createManagedClient } from "../../server/_lib/admin-domain/auth.js";
 import { createAdminUserInviteHandler, createAdminUserInvitePort, createInviteAdminUserGateway, runInviteAdminUserUseCase, readBearerToken, createAdminUserRemoveHandler, createCustomerMeHandler, customerMeResponseSchema,
   createPrivacyExportHandler, createPrivacyEraseHandler, createPostgresPrivacyUnitOfWork, createPostgresPrivacyStore, createManagedPrivacyStore,
-  createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPrivacyOperations, type ManagedIdentityClient, type PrivacyOperations, type InviteAdminUserClient } from "@openlup/platform/identity";
+  createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPrivacyOperations, type ManagedIdentityClient, type InviteAdminUserClient } from "@openlup/platform/identity";
 import { createSchemaProbe, type LoadedPackage } from "@openlup/core/readiness";
-import type { HttpRequest } from "@openlup/platform/http";
+import type { HttpHandler, HttpRequest } from "@openlup/platform/http";
 import type { ReferenceIdentityPorts } from "../../server/runtime/auth/referenceIdentity.js";
-import { createSubscriptionsPrivacyContributor } from "../../server/runtime/auth/subscriptionsPrivacyContributor.js";
 import { createSupabaseAdminUserRemovePort } from "../../server/adapters/supabase/adminUserActionPort.js";
 import type { ReferenceIdentityRuntime } from "../../server/runtime/public-reference/serve.js";
 import type { createCapturedIdentityMailbox } from "../../server/runtime/auth/capturedIdentityMailbox.js";
@@ -90,6 +89,7 @@ export function writeIdentityReferenceEntry(entry: string) {
       ["createOperatorSessionBinding", "server/runtime/auth/operatorSessionBinding.ts"],
       ["operatorRoutes", "server/runtime/auth/operatorRoutes.ts"],
       ["privacyRoutes", "server/runtime/auth/privacyRoutes.ts"],
+      ["composeNativePrivacy", "server/runtime/auth/privacyBinding.ts"],
       ["bindIdentityEmailTrust", "server/runtime/auth/emailTrustBinding.ts"],
       ["createCustomerMagicLinkRoute", "server/bff/customers/magic-link.ts"],
       ["createCustomerVerifyOtpRoute", "server/bff/customers/verify-otp.ts"],
@@ -105,7 +105,26 @@ export function writeIdentityReferenceEntry(entry: string) {
   writeFileSync(entry, [
       ...exports.map(([name, file]) => `export { ${name} } from ${JSON.stringify(resolve(file))};`),
       ...defaults.map(([name, file]) => `export { default as ${name} } from ${JSON.stringify(resolve(file))};`),
+      'export { createPrivacyOperations } from "@openlup/platform/identity";',
     ].join("\n"), { mode: 0o600 });
+}
+
+export function syntheticNativePrivacy(factory: typeof createPrivacyOperations, observe: (operation: "export" | "erase") => void) {
+  const store = { privacyRail: "native" as const, readRequiredContributorIds: async () => ["identity"], erasureSupported: true,
+    async resolve() { return { contactId: CONTACT, principalId: null, identity: {} }; }, async findReceipt() { return null; },
+    async prepareErasure() {}, async authorizeErasure() {}, async eraseIdentity() {}, async saveReceipt() {} };
+  const contributor = {
+    id: "identity", version: "identity.v1", ownedResources: ["identity"], async prepareErasure() {},
+    async export() {
+      observe("export");
+      return { contributorId: "identity", version: "identity.v1", data: null,
+        coverage: { complete: true, included: [], unavailable: [] }, obligations: [] };
+    },
+    async assessErasure() { return { obligations: [] }; },
+    async eraseOrRetain() { observe("erase"); return { contributorId: "identity", version: "identity.v1", obligations: [] }; },
+  };
+  return factory({ store, registry: createPersonalDataContributorRegistry([contributor], { requiredContributorIds: [] }),
+    unitOfWork: { run: work => work(null) }, now: () => new Date(0), randomId: () => CONTACT });
 }
 /** Keep the disposable host's customer reads on its owned pool, outside the application cache. */
 export function createIdentityAcceptanceDatabase(pool: Pool) {
@@ -140,6 +159,7 @@ export async function runAcceptance(setup: Setup) {
   const { bundle, directory, database, origin, runId, auth } = setup;
   const pool = new Pool({ connectionString: database });
   const ownedDatabase = createIdentityAcceptanceDatabase(pool);
+  const nativePrivacyWork = bundle === "node-postgres" ? createPostgresPrivacyUnitOfWork({ connectionString: database }) : undefined;
   let server: import("node:http").Server | undefined;
   let runtime: ReferenceIdentityRuntime | undefined;
   let managedReplay: { runId: string; chainDigest: string; files: string[]; completedAt: string } | undefined;
@@ -208,30 +228,25 @@ export async function runAcceptance(setup: Setup) {
     });
     const mailbox: Awaited<ReturnType<typeof createCapturedIdentityMailbox>> = await loaded.createCapturedIdentityMailbox(profile);
     const requestScope = new AsyncLocalStorage<{ req: HttpRequest; customer?: ReturnType<typeof loaded.createCustomerIdentityBinding> }>();
+    const inRequestScope = (handler: HttpHandler): HttpHandler => (req, res) => requestScope.run({ req }, () => handler(req, res));
+    const decoratedPrivacyRoutes = new Set<string>();
     const currentRequest = () => { const scope = requestScope.getStore(); assert(scope, "Identity request scope required"); return scope; };
     const authorize: ReferenceIdentityPorts["operatorAuthorization"]["authorize"] = (token, options) => {
       const binding = loaded.resolveAdminAuthBinding(env).binding;
       assert(binding);
       return binding.run(token, (authority: ReferenceIdentityPorts["operatorAuthorization"]) => authority.authorize(token, options));
     };
-    const privacy = async <T>(work: (operations: PrivacyOperations) => Promise<T>): Promise<T> => {
+    const privacy = (() => {
+      if (nativePrivacyWork) return loaded.composeNativePrivacy({ store: createPostgresPrivacyStore(), unitOfWork: nativePrivacyWork }).operations;
       const policy = { retainedContactFields: Object.fromEntries(["lifecycle_stage", "acquisition_source"].map(field => [field, {
         owner: "clients", resource: `clients.${field}`, disposition: "retain" as const, reasonCode: "CONTACT_LIFECYCLE_RETENTION", remote: false,
       }])) };
-      if (bundle === "node-postgres") {
-        const unitOfWork = createPostgresPrivacyUnitOfWork({ connectionString: database });
-        try {
-          const store = createPostgresPrivacyStore();
-          const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, policy, randomUUID), createSubscriptionsPrivacyContributor()], { requiredContributorIds: ["identity", "subscriptions"] });
-          return await work(createPrivacyOperations({ store, unitOfWork, registry, now: () => new Date(), randomId: randomUUID }));
-        } finally { await unitOfWork.close(); }
-      }
       assert(auth);
       const client = createManagedClient({ url: auth.url, serviceRoleKey: auth.serviceKey }) as unknown as ManagedIdentityClient;
       const store = createManagedPrivacyStore();
       const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, policy, randomUUID)], { requiredContributorIds: ["identity", "subscriptions"] });
-      return work(createPrivacyOperations({ store, registry, unitOfWork: { run: work => work(client) }, now: () => new Date(), randomId: randomUUID }));
-    };
+      return createPrivacyOperations({ store, registry, unitOfWork: { run: work => work(client) }, now: () => new Date(), randomId: randomUUID });
+    })();
     const ports: ReferenceIdentityPorts = {
       customerSession: { async verifyAccessToken(token) {
         const scope = currentRequest();
@@ -267,7 +282,7 @@ export async function runAcceptance(setup: Setup) {
         },
       },
       delivery: mailbox.customer,
-      privacy: { export: (actor, subject) => privacy(operations => operations.export(actor, subject)), erase: (actor, input) => privacy(operations => operations.erase(actor, input)) },
+      privacy,
       emailTrustPolicy: loaded.bindIdentityEmailTrust(env, auth ? { url: auth.url, anonKey: auth.anonKey } : undefined),
     };
     const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -279,9 +294,14 @@ export async function runAcceptance(setup: Setup) {
         configuration: createHash("sha256").update(JSON.stringify(Object.fromEntries(Object.keys(env).map(key => [key, processEnvironment[key]])))).digest("hex"),
       }),
       runtime: loaded.createReferenceIdentity({ bundle, migrationIdentity, env, ports,
+        decoratePrivacyRoute: (route: string, guarded: HttpHandler) => inRequestScope((req, res) => ownedDatabase.runRequest(() => {
+          assert.equal(currentRequest().req, req);
+          decoratedPrivacyRoutes.add(route);
+          return guarded(req, res);
+        })),
         createRoutes: (selected: ReferenceIdentityPorts, environment: Record<string, string | undefined>) => {
           const mount = (route: string, handler: import("@openlup/platform/bff").RouteEntry["handler"]) => ({ route, pattern: new RegExp(`^${route}$`), params: [],
-            handler: (req: HttpRequest, res: import("@openlup/platform/http").HttpResponse) => requestScope.run({ req }, () => handler(req, res)) });
+            handler: inRequestScope(handler) });
           const authenticateUser = async (req: HttpRequest) => {
             const token = readBearerToken(req), principal = token ? await selected.customerSession.verifyAccessToken(token) : null;
             return principal ? { ok: true as const, userId: principal.principalId } : { ok: false as const, code: "UNAUTHORIZED" as const, message: "Customer session required" };
@@ -412,6 +432,15 @@ export async function runAcceptance(setup: Setup) {
     assert.equal(JSON.stringify(exported.envelope).includes("token_hash"), false);
     const erase = { subject, idempotencyKey: randomUUID() };
     if (bundle === "node-postgres") {
+      await pool.query("INSERT INTO public.identity_privacy_required_contributors(contributor_id) VALUES ('fixture-owner') ON CONFLICT (contributor_id) DO NOTHING");
+      try {
+        for (const [operation, input] of [["export", { subject }], ["erase", erase]] as const) {
+          const refused = await request(`/api/bff/admin/identity/privacy/${operation}`, admin.token, input);
+          assert.equal(refused.status, 503);
+          assert.equal(refused.envelope.error?.details?.privacyCode, "PRIVACY_CONTRIBUTOR_MISSING");
+          assert.match(refused.envelope.error?.details?.observed, /fixture-owner/);
+        }
+      } finally { await pool.query("DELETE FROM public.identity_privacy_required_contributors WHERE contributor_id='fixture-owner'"); }
       const subscription = randomUUID();
       await pool.query("INSERT INTO public.subscriptions(id,client_id,status,cadence_days) VALUES ($1,$2,'active',28)", [subscription, CONTACT]);
       for (const status of ["active", "paused"]) {
@@ -434,6 +463,7 @@ export async function runAcceptance(setup: Setup) {
     const erased = await request("/api/bff/admin/identity/privacy/erase", admin.token, erase);
     if (bundle === "node-postgres") {
       assert.equal(erased.status, 200);
+      assert.deepEqual([...decoratedPrivacyRoutes].sort(), ["/api/bff/admin/identity/privacy/erase", "/api/bff/admin/identity/privacy/export"]);
       assert.deepEqual((await request("/api/bff/admin/identity/privacy/erase", admin.token, erase)).envelope.data, { ...erased.envelope.data, outcome: "ALREADY_ERASED" });
       assert.equal((await pool.query("SELECT principal_id FROM public.clients WHERE id=$1", [CONTACT])).rows[0].principal_id, null);
       assert.equal((await pool.query("SELECT id FROM public.clients WHERE id=$1", [CONTACT])).rows[0].id, CONTACT);
@@ -445,7 +475,8 @@ export async function runAcceptance(setup: Setup) {
     }
   } catch { throw new Error(`Identity acceptance ${bundle} failed; credential-bearing assertion details suppressed`); }
   finally {
-    await ownedDatabase.close(server);
+    try { await nativePrivacyWork?.close(); }
+    finally { await ownedDatabase.close(server); }
   }
 }
 

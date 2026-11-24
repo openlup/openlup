@@ -7412,6 +7412,21 @@
         "dataStatements": []
       },
       {
+        "path": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
+        "row": "privacy-required-contributors",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.identity_privacy_required_contributor_ids()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.identity_privacy_required_contributors (contributor_id) VALUES\n  ('communication-events'),\n  ('customer-billing'),\n  ('customer-preferences'),\n  ('customer-saved-addresses'),\n  ('destination-documents'),\n  ('destination-receipts'),\n  ('fulfillment-parcel-contacts'),\n  ('identity'),\n  ('subscriptions'),\n  ('tax-calculations')\nON CONFLICT (contributor_id) DO NOTHING;"
+        ]
+      },
+      {
         "row": "function-search-path-pg-temp",
         "path": "db/platform/migrations/20261125310000_function_search_path_pg_temp.sql",
         "replacedFunctions": [],
@@ -12717,6 +12732,17 @@
           "signature": "public.subscription_activation_commit_with_edit_window__write(public.subscription_activations,text,text,timestamptz,boolean,integer)",
           "beforeSha256": null,
           "afterSha256": "a9a956007070ea203d6078305e8e96d015d42c488e2c91e11ef6cf5bb6646690"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261125300000_identity_privacy_required_contributors.sql",
+      "sha256": "d4951f9ac41ea7d560bf171b03084413d9d755d08a3024139ba663949bfbb23a",
+      "functions": [
+        {
+          "signature": "public.identity_privacy_required_contributor_ids()",
+          "beforeSha256": null,
+          "afterSha256": "97d90fab11f4c1b885975c9c4c1215bf727a35c835e52c1a134f706388f302b4"
         }
       ]
     },

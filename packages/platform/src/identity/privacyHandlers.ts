@@ -3,6 +3,7 @@ import type { AdminAuthorizationResult } from "./ports.js";
 import { createIdentityResponder, type IdentityResponseOptions } from "./response.js";
 import { privacyExportRequestSchema, privacyEraseRequestSchema, privacyExportResponseSchema, privacyEraseResponseSchema } from "./contracts/privacy.js";
 import { PrivacyRefusal, type PrivacyOperations } from "./privacyPorts.js";
+import { privacyRefusalDetails } from "./requiredPrivacyContributors.js";
 export interface PrivacyHandlerDependencies extends IdentityResponseOptions {
   authorizeAdmin: () => Promise<AdminAuthorizationResult>;
   operations: PrivacyOperations;
@@ -28,7 +29,7 @@ function handler(deps: PrivacyHandlerDependencies, erase: boolean): HttpHandler 
       if (error instanceof PrivacyRefusal) {
         const code = error.code === "PRIVACY_SUBJECT_NOT_FOUND" ? "NOT_FOUND"
           : ["PRIVACY_ACTIVE_SUBSCRIPTION", "PRIVACY_RESUMABLE_SUBSCRIPTION", "PRIVACY_PROTECTED_OPERATOR", "PRIVACY_IDEMPOTENCY_CONFLICT", "PRIVACY_SUBJECT_ERASED"].includes(error.code) ? "CONFLICT" : "UPSTREAM_UNAVAILABLE";
-        return sendBffError(res, code, "Privacy operation refused", { details: { privacyCode: error.code } });
+        return sendBffError(res, code, "Privacy operation refused", { details: privacyRefusalDetails(error) });
       }
       return sendBffError(res, "UPSTREAM_UNAVAILABLE", deps.unavailableMessage ?? "Privacy operation unavailable", { details: { privacyCode: "PRIVACY_ASSESSMENT_UNAVAILABLE" } });
     }
