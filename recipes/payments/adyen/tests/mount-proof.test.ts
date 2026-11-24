@@ -16,7 +16,7 @@ import {
 } from "./fixtures.js";
 
 /**
- * Stage 3 Real-Flow Mount Proof (ADR-001 §5):
+ * Stage 3 Real-Flow Mount Proof (provider recipe contract, four-stage proof):
  * Uses ONLY public `@openlup/platform/payments` exports so this proof executes
  * identically inside the monorepo, after `git subtree split`, and inside any
  * adopter's standalone store repository.

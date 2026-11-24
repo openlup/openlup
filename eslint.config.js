@@ -81,7 +81,7 @@ const providerIsolation = {
 
 const RECIPE_MAX_DEPTH = 6;
 const recipeEscapeBoundary = (depth) => ({
-  message: "Provider recipes must remain repo-splittable (ADR-001): never import outside recipes/.",
+  message: "Provider recipes must remain repo-splittable (provider recipe contract): never import outside recipes/.",
   regexes: [
     depth === null || depth === 0
       ? "^(?:\\./)?\\.\\.(?:/|$)"
@@ -93,21 +93,21 @@ const recipeEscapeBoundary = (depth) => ({
 });
 
 const recipeServerAllowlist = {
-  message: "Provider recipe server/core modules may import only public @openlup/* exports, node:* built-ins, or recipe-local files (ADR-001).",
+  message: "Provider recipe server/core modules may import only public @openlup/* exports, node:* built-ins, or recipe-local files (provider recipe contract).",
   regexes: [
     "^(?!\\.|@openlup/(?:core|platform|outbox)(?:/|$)|node:).*$",
   ],
 };
 
 const recipeTestAllowlist = {
-  message: "Provider recipe tests may import only public @openlup/* exports, node:* built-ins, vitest, or recipe-local files (ADR-001).",
+  message: "Provider recipe tests may import only public @openlup/* exports, node:* built-ins, vitest, or recipe-local files (provider recipe contract).",
   regexes: [
     "^(?!\\.|@openlup/(?:core|platform|outbox)(?:/|$)|node:|vitest$).*$",
   ],
 };
 
 const recipeBrowserAllowlist = {
-  message: "Recipe browser surfaces must stay Node-free, SDK-free, and separate from server/ modules (ADR-001).",
+  message: "Recipe browser surfaces must stay Node-free, SDK-free, and separate from server/ modules (provider recipe contract).",
   regexes: [
     "^(?!\\.|@openlup/(?:core|platform|outbox)(?:/|$)).*$",
     "^(?:\\./)?(?:\\.\\./)+server(?:/|$)",

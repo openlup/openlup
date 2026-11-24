@@ -19,7 +19,7 @@ import {
 } from "./fixtures.js";
 
 /**
- * Stage 3 Real-Flow Mount Proof (ADR-001):
+ * Stage 3 Real-Flow Mount Proof (provider recipe contract):
  * Uses ONLY public `@openlup/platform/payments` exports.
  */
 describe("recipes/payments/paypal — Stage 3 real-flow mount proof (+ negative controls)", () => {

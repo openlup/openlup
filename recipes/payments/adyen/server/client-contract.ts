@@ -1,6 +1,6 @@
 /**
  * Narrow structural client contract and zero-SDK hardened HTTP client for
- * Adyen Checkout API v71 (ADR-001: zero vendor SDK, zero ambient environment
+ * Adyen Checkout API v71 (recipe contract: zero vendor SDK, zero ambient environment
  * reads, zero ambient fetch, strict HTTPS origin pinning, redirect: "error").
  */
 

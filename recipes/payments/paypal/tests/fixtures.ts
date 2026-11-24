@@ -20,7 +20,7 @@ import {
   type PayPalOrderResource,
 } from "../server/index.js";
 
-/** Synthetic high-visibility canaries used to prove zero secret/PII leakage (ADR-001). */
+/** Synthetic high-visibility canaries used to prove zero secret/PII leakage (provider recipe contract). */
 export const PAYPAL_TEST_CANARIES = Object.freeze({
   marker: "paypal-canary-marker/alpha+01",
   clientId: "paypal_canary_client_id_0001",

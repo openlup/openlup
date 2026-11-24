@@ -20,7 +20,7 @@ import {
   type MolliePaymentResource,
 } from "../server/index.js";
 
-/** Synthetic high-visibility canaries used to prove zero secret/PII leakage (ADR-001). */
+/** Synthetic high-visibility canaries used to prove zero secret/PII leakage (provider recipe contract). */
 export const MOLLIE_TEST_CANARIES = Object.freeze({
   apiKeyTest: ["test", "canary", "mollie", "credential", "0001"].join("_"),
   apiKeyLive: ["live", "canary", "mollie", "credential", "0001"].join("_"),

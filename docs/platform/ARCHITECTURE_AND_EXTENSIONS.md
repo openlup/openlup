@@ -288,6 +288,30 @@ In the reference source, application domains under `src/domains` or
 `server/domains` bind through `#application-domains`; `src/lib/coreDomains.ts`
 names the platform's core domains, and the public binding registers none.
 
+## Provider recipe contract
+
+A provider recipe is a self-contained, source-owned provider integration under `recipes/<domain>/<provider>/` (or `recipes/multi/<provider>/`). An adopter copies it into its own `owned/` adapter tree and verifies it against its installed `@openlup/platform`. Recipes are the default home for new provider integrations; a new vendor subpath in `@openlup/platform` or `@openlup/core` needs a topology trigger under the [package placement decision](#package-placement-decision-canonical). The reader view is [Install or scaffold a provider recipe](../../packages/core/docs/guide/how-to/extend/provider-recipes.md).
+
+**Placement.** `recipes/` stays repo-splittable: `git subtree split --prefix=recipes` must work with zero code rewrites.
+
+**Isolation rules.** Every file under `recipes/` obeys all of these:
+1. **Public imports only.** Declared public exports of `@openlup/core`, `@openlup/platform` and `@openlup/outbox`, Node built-ins in `server/` and `tests/`, and files inside the recipe. No relative import leaves `recipes/`.
+2. **No vendor SDK by default.** `sdkPolicy` is `zero-dep-fetch` (REST/JSON over an injected `fetch`) or `injected-structural-client` (a narrow interface the host supplies). Recipes bundle no credentials.
+3. **No ambient environment or network.** `server/` and `browser/` code never reads ambient environment variables or calls ambient global `fetch`; configuration, credentials or credential resolvers, `fetchImpl` or client, and clock are injected.
+4. **Inert import, default off.** Importing a recipe performs no I/O, registers no routes, installs no schedules or workers and mutates no global state.
+5. **Hardened transport.** Mutating requests use `redirect: "error"`, pin HTTPS origins, bound response size and reduce provider errors to allowlisted codes (`^[A-Z][A-Z0-9_]{0,63}$`).
+6. **Redaction.** Raw provider payloads, headers, credentials, payer personal data and transient secrets never reach logs, diagnostics, persistence or `Error.message`.
+7. **Server and browser split.** Browser code lives in `browser/`, imports no Node built-ins or `server/` modules, offers degraded states, loads external scripts lazily and declares its CSP needs in `browser/csp.json`.
+8. **Multi-domain isolation.** A multi-domain provider shares a private `core/` transport and exposes independently selectable domain facets with isolated failure boundaries.
+
+**Manifest.** Every recipe has a `recipe.json` that conforms to `recipes/schema/recipe.schema.json` (and `browser/csp.json` to `recipes/schema/csp.schema.json` when it ships an adapter component). Recipe tests assert that the manifest's `staticCapabilities` match the adapter's serializable static capability projection.
+
+**Four-stage proof.** A recipe is listed as `verified` in `recipes/index.json` only when, offline: (1) cold import does no I/O and unsupported inputs refuse with zero provider requests; (2) the Tier 1 domain conformance runner (`@openlup/platform/*/testing`) passes, including transport faults, replay and webhook safety; (3) the recipe's mount proof (`mount-proof.test.ts` in its tests directory) wires the recipe into real platform rails through public exports, with a negative control showing that a detached or misconfigured binding fails; and canary and planted-defect checks prove that secrets stay out of every output and that signature and zero-I/O checks cannot be bypassed. Stage 4, live qualification, is documented in `LIVE_QUALIFICATION.md`; an offline pass never claims live readiness.
+
+**Installed-version compatibility.** `recipes/index.json` records the platform version each recipe passed against; `openlup recipe verify` re-checks a recipe against the installed version, and a recipe failing a newer release is not claimed compatible.
+
+**Enforcement.** `recipes/tsconfig.json` type-checks with zero errors; the root `eslint.config.js` recipe boundaries enforce rules 1, 2 and 7; `scripts/ast-grep/rules/domain-no-environment-reads.yml` and `scripts/ast-grep/rules/recipes-no-ambient-fetch.yml` enforce rule 3; `openlup recipe verify` runs the manifest, isolation and staged proofs.
+
 ## Run an adapter conformance check
 
 Moved to [Run an adapter conformance check](../../packages/core/docs/guide/how-to/extend/adapter-conformance.md#run-the-example).

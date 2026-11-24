@@ -13,7 +13,7 @@ import {
   createShipEngineRateAdapter,
 } from "../server/index.js";
 
-/** Synthetic high-visibility canaries used to prove zero secret/PII leakage (ADR-001). */
+/** Synthetic high-visibility canaries used to prove zero secret/PII leakage (provider recipe contract). */
 export const SHIPENGINE_TEST_CANARIES = Object.freeze({
   marker: "shipengine-canary-marker/alpha+01",
   apiKey: "shipengine_canary_api_key_0001",

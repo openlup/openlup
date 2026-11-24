@@ -12,7 +12,7 @@ import {
   type ShopifyOrderResource,
 } from "../server/index.js";
 
-/** Synthetic high-visibility canaries used to prove zero secret/PII leakage (ADR-001). */
+/** Synthetic high-visibility canaries used to prove zero secret/PII leakage (provider recipe contract). */
 export const SHOPIFY_TEST_CANARIES = Object.freeze({
   marker: "shopify-canary-marker/alpha+01",
   accessToken: "shopify_canary_admin_token_0001",

@@ -1,7 +1,7 @@
 /**
  * Inert server entry point for the OpenLup Adyen Checkout v71 Provider Recipe.
  * Importing this file executes zero network I/O, reads zero environment
- * variables, and registers no routes or schedules (ADR-001).
+ * variables, and registers no routes or schedules (provider recipe contract).
  */
 
 export {

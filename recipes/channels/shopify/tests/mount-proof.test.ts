@@ -46,7 +46,7 @@ function createMockHttpResponse() {
 }
 
 /**
- * Stage 3 Real-Flow Mount Proof (ADR-001):
+ * Stage 3 Real-Flow Mount Proof (provider recipe contract):
  * Wires Shopify ChannelOrderSourcePort into createChannelWebhookHandler
  * from @openlup/platform/channels/server.
  */
