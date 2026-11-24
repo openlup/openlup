@@ -958,6 +958,31 @@ export declare function createAdminPromotionsHandlers({ createAdminMutationHandl
     createAdminPromotionUpdateHandler: ({ dataPort, authorizeAdmin, }: AdminPromotionUpdateHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
 };
 ```
+## dist/promotions/claimHoldHoursPolicy.d.ts
+
+```ts
+/** @experimental Default hold duration (in hours) for newly reserved promotion claims on promoted order drafts. */
+export declare const DEFAULT_PROMOTION_CLAIM_HOLD_HOURS = 24;
+/** @experimental Installed policy configuring the reservation hold window for new promotion claims. */
+export interface PromotionClaimHoldHoursPolicy {
+    revision: string;
+    holdHours: number;
+}
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Validate a `promotion_claim_hold_hours` policy document using SQL-equivalent rules. */
+export declare function validatePromotionClaimHoldHours(value: unknown): PromotionClaimHoldHoursPolicy;
+/** @experimental Install the promotion claim hold policy on a host-owned write-capable connection. */
+export declare function installPromotionClaimHoldHoursPolicy(db: Executor, policy: PromotionClaimHoldHoursPolicy): Promise<void>;
+/** @experimental Read an explicit `promotion_claim_hold_hours` override, returning `undefined` when absent. */
+export declare function readPromotionClaimHoldHoursOverride(db: Executor): Promise<PromotionClaimHoldHoursPolicy | undefined>;
+/** @experimental Read the installed `promotion_claim_hold_hours` policy or the 24-hour absence fallback. */
+export declare function readPromotionClaimHoldHoursPolicy(db: Executor): Promise<PromotionClaimHoldHoursPolicy>;
+export {};
+```
 ## dist/promotions/contracts/index.d.ts
 
 ```ts
@@ -1377,6 +1402,8 @@ export type { PromotionStatus, AdminPromotion, AdminPromotionV2Mirror, AdminProm
 export type { QuoteAcquisitionBinding } from "./quoteAcquisitionBinding.js";
 export { createQuoteShippingPromotions } from "./quoteShippingPolicy.js";
 export type { QuoteShippingPromotionsDeps } from "./quoteShippingPolicy.js";
+export { DEFAULT_PROMOTION_CLAIM_HOLD_HOURS, validatePromotionClaimHoldHours, installPromotionClaimHoldHoursPolicy, readPromotionClaimHoldHoursOverride, readPromotionClaimHoldHoursPolicy, } from "./claimHoldHoursPolicy.js";
+export type { PromotionClaimHoldHoursPolicy } from "./claimHoldHoursPolicy.js";
 ```
 ## dist/promotions/promoDataPort.d.ts
 
