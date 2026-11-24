@@ -1642,7 +1642,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261125180000_tax_calculation_claim_seal.sql",
+      "path": "db/platform/migrations/20261125240000_tax_calculation_claim_seal.sql",
       "class": "public-output"
     },
     {
@@ -5382,7 +5382,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261125180000_tax_calculation_claim_seal.sql",
+      "path": "packages/platform/sql/20261125240000_tax_calculation_claim_seal.sql",
       "class": "public-output"
     },
     {
