@@ -12802,6 +12802,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/merge-queue-check-arm.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/merge-queue-churn.mjs",
       "class": "public-output"
     },
