@@ -283,6 +283,8 @@ describe('installed starter browser CI', () => {
     const install = workflow.split('  install-browser:')[1]!.split('  install-proof:')[0]!;
     expect(install).toContain('packages: read');
     expect(install).toContain('timeout-minutes: 12');
+    // The single journeys retry budget is the whole job deadline, so a retry is attempted only when it can still fit.
+    expect(install).toContain("OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS: '720000'");
     expect(install).toContain('docker login ghcr.io');
     expect(install.indexOf('docker login')).toBeLessThan(install.indexOf('scripts/starter-browser-ci.mjs'));
     expect(install).toContain('scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"');
