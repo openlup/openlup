@@ -12,6 +12,7 @@ import { restoreConnectedNativeStore } from "../../server/adapters/postgres/conn
 import { createPostgresLifecycleMessages } from "@openlup/platform/subscriptions";
 import { createPostgresTransactionalDeliveryStore, createTransactionalDelivery } from "@openlup/platform/communications";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { tryLeaseTemplateDatabase, type PgTemplateLease } from "../helpers/pgTemplateBroker.js";
 
 // Install the committed catalogue through the real runner, including this suffix.
 const candidate = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -31,6 +32,34 @@ for (const [file, digest] of files) {
 const noticeHistory = `SELECT id,subscription_id,event_type,payload FROM public.subscription_events
   UNION ALL SELECT id,aggregate_id,event_type,payload FROM public.outbox_events WHERE aggregate_type='subscription_notice'`;
 const password = "synthetic-conformance";
+function deriveRestoreLogin(runtimeName: string): string {
+  if (!/_r$/u.test(runtimeName)) throw new Error(`unexpected broker runtime login for restore derivation: ${runtimeName}`);
+  return runtimeName.replace(/_r$/u, "_s");
+}
+async function closeLeasedPostgres(
+  container: PostgresContainer | undefined,
+  pools: readonly (Pool | undefined)[],
+  lease: PgTemplateLease | null,
+): Promise<void> {
+  const activePools = pools.filter((pool): pool is Pool => Boolean(pool));
+  for (const pool of activePools) pool.on("error", () => {});
+  let closeError: unknown;
+  try {
+    await closePostgres(container, activePools);
+  } catch (error) {
+    closeError = error;
+  }
+  let releaseError: unknown;
+  if (lease) {
+    try {
+      await lease.release();
+    } catch (error) {
+      releaseError = error;
+    }
+  }
+  if (closeError !== undefined) throw closeError;
+  if (releaseError !== undefined) throw releaseError;
+}
 async function install(connectionString: string, installation: PlatformPostgresInstallation) {
   const pool = new Pool({ connectionString, options: installation.generation === "qualified-v2" ? qualifiedPostgresStartupOptions(installation)
     : installation.generation === "qualified-admin" ? qualifiedAdminPostgresStartupOptions(installation) : undefined });
@@ -39,26 +68,43 @@ async function install(connectionString: string, installation: PlatformPostgresI
 }
 
 for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice producers: ${generation}`, () => {
-  let container: PostgresContainer | undefined, admin: Pool, runtime: Pool, runtimeUrl: string;
+  let container: PostgresContainer | undefined, brokerLease: PgTemplateLease | null = null, admin: Pool, runtime: Pool, runtimeUrl: string, restoreUrl: string;
   beforeAll(async () => {
-    container = await runPostgresContainer({ name: `notice-producers-${generation}-${process.pid}`, password });
-    if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Notice producer PostgreSQL unavailable");
-    admin = new Pool({ connectionString: container.connectionString });
-    let installation: PlatformPostgresInstallation = { generation: "legacy" };
-    if (generation === "qualified-v2") {
-      for (const role of ["notice_runtime", "notice_restore"]) await admin.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
-      installation = { generation, roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: "postgres", runtimeLogin: "notice_runtime", restoreLogin: "notice_restore" };
+    brokerLease = await tryLeaseTemplateDatabase(generation, `notice-producers-${generation}`);
+    if (brokerLease) {
+      admin = new Pool({ connectionString: brokerLease.ownerUrl });
+      runtimeUrl = generation === "qualified-v2" ? brokerLease.runtimeUrl : brokerLease.ownerUrl;
+      const restoreEndpoint = new URL(runtimeUrl);
+      if (generation === "qualified-v2") restoreEndpoint.username = deriveRestoreLogin(restoreEndpoint.username);
+      restoreUrl = restoreEndpoint.toString();
+    } else {
+      container = await runPostgresContainer({ name: `notice-producers-${generation}-${process.pid}`, password });
+      if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Notice producer PostgreSQL unavailable");
+      admin = new Pool({ connectionString: container.connectionString });
+      let installation: PlatformPostgresInstallation = { generation: "legacy" };
+      if (generation === "qualified-v2") {
+        for (const role of ["notice_runtime", "notice_restore"]) await admin.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+        installation = { generation, roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: "postgres", runtimeLogin: "notice_runtime", restoreLogin: "notice_restore" };
+      }
+      await install(container.connectionString, installation);
+      const endpoint = new URL(container.connectionString);
+      if (generation === "qualified-v2") { endpoint.username = "notice_runtime"; endpoint.password = password; }
+      runtimeUrl = endpoint.toString();
+      const restoreEndpoint = new URL(container.connectionString);
+      if (generation === "qualified-v2") { restoreEndpoint.username = "notice_restore"; restoreEndpoint.password = password; }
+      restoreUrl = restoreEndpoint.toString();
     }
-    await install(container.connectionString, installation);
     const product = randomUUID();
     await admin.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'notice-refill','Refill')", [product]);
     await admin.query("INSERT INTO public.catalog_skus(product_id,sku,title,sellable_in_subscription) VALUES($1,'NOTICE-REFILL','Refill',true)", [product]);
-    const endpoint = new URL(container.connectionString);
-    if (generation === "qualified-v2") { endpoint.username = "notice_runtime"; endpoint.password = password; }
-    runtimeUrl = endpoint.toString(); runtime = new Pool({ connectionString: runtimeUrl });
+    runtime = new Pool({ connectionString: runtimeUrl });
     if (generation === "qualified-v2") expect((await runtime.query("SELECT rolsuper OR rolbypassrls AS elevated FROM pg_roles WHERE rolname=current_user")).rows[0].elevated).toBe(false);
   }, postgresSetupTimeoutMs);
-  afterAll(async () => { await closePostgres(container, [runtime, admin].filter(Boolean)); }, postgresTeardownTimeoutMs);
+  afterAll(async () => {
+    const lease = brokerLease;
+    brokerLease = null;
+    await closeLeasedPostgres(container, [runtime, admin], lease);
+  }, postgresTeardownTimeoutMs);
   beforeEach(async () => { await admin.query("UPDATE public.subscriptions SET status='cancelled'"); });
 
   async function subscription(health: string | null = "healthy", status = "active", ahead = 4) {
@@ -156,35 +202,54 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
       } } });
   }
 
-  it.skipIf(generation === "legacy")("preserves the marked cycle census through complete native transfer and refuses a non-pristine target", async () => {
-    expect((await admin.query("SELECT count(*) AS n FROM public.communication_delivery_controls")).rows[0].n).toBe("0");
-    expect((await admin.query("SELECT count(*) AS n FROM public.notification_recipients")).rows[0].n).toBe("0");
-    const s = await markedPurchase(), packet = await capture(admin, "notice-marked-source");
-    const target = await runPostgresContainer({ name: `notice-restored-${process.pid}`, password });
+  async function withQualifiedTarget(
+    label: string,
+    work: (owner: Pool, installation: Extract<PlatformPostgresInstallation, { generation: "qualified-v2" }>) => Promise<void>,
+  ) {
+    const lease = await tryLeaseTemplateDatabase("qualified-v2", label);
+    if (lease) {
+      let owner: Pool | undefined;
+      try {
+        const runtimeName = new URL(lease.runtimeUrl).username;
+        const installation: Extract<PlatformPostgresInstallation, { generation: "qualified-v2" }> = {
+          generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres",
+          migrationLogin: "postgres", runtimeLogin: runtimeName, restoreLogin: deriveRestoreLogin(runtimeName),
+        };
+        owner = new Pool({ connectionString: lease.ownerUrl, options: qualifiedPostgresStartupOptions(installation) });
+        await work(owner, installation);
+      } finally {
+        await closeLeasedPostgres(undefined, [owner], lease);
+      }
+      return;
+    }
+    const target = await runPostgresContainer({ name: `${label}-${process.pid}`, password });
     let owner: Pool | undefined;
     try {
       expect(await waitForPostgresTcpReady(target.connectionString)).toBe(true);
       owner = new Pool({ connectionString: target.connectionString });
       for (const role of ["notice_runtime", "notice_restore"]) await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
-      const installation = { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: "postgres", runtimeLogin: "notice_runtime", restoreLogin: "notice_restore" } as const;
+      const installation: Extract<PlatformPostgresInstallation, { generation: "qualified-v2" }> = {
+        generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres",
+        migrationLogin: "postgres", runtimeLogin: "notice_runtime", restoreLogin: "notice_restore",
+      };
       await install(target.connectionString, installation);
       await owner.end();
       owner = new Pool({ connectionString: target.connectionString, options: qualifiedPostgresStartupOptions(installation) });
+      await work(owner, installation);
+    } finally { await closePostgres(target, owner); }
+  }
+
+  it.skipIf(generation === "legacy")("preserves the marked cycle census through complete native transfer and refuses a non-pristine target", async () => {
+    expect((await admin.query("SELECT count(*) AS n FROM public.communication_delivery_controls")).rows[0].n).toBe("0");
+    expect((await admin.query("SELECT count(*) AS n FROM public.notification_recipients")).rows[0].n).toBe("0");
+    const s = await markedPurchase(), packet = await capture(admin, "notice-marked-source");
+    await withQualifiedTarget("notice-restored", async (owner, installation) => {
       const freshTarget = await capture(owner, "notice-pristine-target");
       await owner.query("INSERT INTO public.clients(email) VALUES('nonpristine@example.invalid')");
       await expect(restoreConnectedNativeStore({ owner, installation, packet, freshTarget })).rejects.toMatchObject({ code: "target_conflict" });
       // A fresh second target is necessary; never delete domain rows to manufacture pristine proof.
-    } finally { await closePostgres(target, owner); }
-    const clean = await runPostgresContainer({ name: `notice-restored-clean-${process.pid}`, password });
-    let cleanOwner: Pool | undefined;
-    try {
-      expect(await waitForPostgresTcpReady(clean.connectionString)).toBe(true);
-      cleanOwner = new Pool({ connectionString: clean.connectionString });
-      for (const role of ["notice_runtime", "notice_restore"]) await cleanOwner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
-      const installation = { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: "postgres", runtimeLogin: "notice_runtime", restoreLogin: "notice_restore" } as const;
-      await install(clean.connectionString, installation);
-      await cleanOwner.end();
-      cleanOwner = new Pool({ connectionString: clean.connectionString, options: qualifiedPostgresStartupOptions(installation) });
+    });
+    await withQualifiedTarget("notice-restored-clean", async (cleanOwner, installation) => {
       const freshTarget = await capture(cleanOwner, "notice-clean-target");
       expect(await restoreConnectedNativeStore({ owner: cleanOwner, installation, packet, freshTarget })).toMatchObject({ replayed: false });
       const before = (await admin.query("SELECT id,scheduled_at,status FROM public.subscription_cycles WHERE subscription_id=$1 ORDER BY id", [s.id])).rows;
@@ -194,7 +259,7 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
       expect(after.length + 1).toBe(before.length + 1);
       await cleanOwner.query("SELECT public.dunning_lifecycle_renewal_reminder_enqueue(100)");
       expect(Number((await cleanOwner.query("SELECT count(*) FROM public.subscription_reminder_ledger WHERE subscription_id=$1", [s.id])).rows[0].count)).toBe(1);
-    } finally { await closePostgres(clean, cleanOwner); }
+    });
     await admin.query("INSERT INTO public.notification_recipients(email,notification_type) VALUES('configured@example.invalid','commerce_payment_critical')");
     await expect(capture(admin, "notice-configured-source")).rejects.toThrow("postgres_transfer_unsupported_table:public.notification_recipients");
   }, 120000);
@@ -311,8 +376,7 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
       expect((await admin.query("SELECT to_regprocedure('public.subscription_cycle_import_retained_row(uuid,uuid,timestamp with time zone,text,timestamp with time zone,timestamp with time zone,uuid,text)') AS fn")).rows[0].fn).toBeNull();
       return;
     }
-    const endpoint = new URL(container!.connectionString); endpoint.username = "notice_restore"; endpoint.password = password;
-    const restore = new Pool({ connectionString: endpoint.toString() });
+    const restore = new Pool({ connectionString: restoreUrl });
     try {
       const s = await markedPurchase();
       for (let index = 0; index < 2; index++) {
@@ -886,7 +950,7 @@ for (const generation of ["legacy", "qualified-v2"] as const) describe(`notice p
 
 // The service read is the only new authority. Both restricted-bootstrap role
 // modes keep direct EXECUTE on the replaced implementation unavailable.
-it.each(["installer-managed", "operator-provisioned"] as const)("admits the at-risk service read and refuses the owner-only scan in qualified-admin %s", async roleMode => {
+it.concurrent.for(["installer-managed", "operator-provisioned"] as const)("admits the at-risk service read and refuses the owner-only scan in qualified-admin %s", { timeout: postgresSetupTimeoutMs }, async (roleMode, { expect }) => {
   const container = await runPostgresContainer({ name: `notice-scan-acl-${roleMode}-${process.pid}`, password });
   const pools: Pool[] = [];
   try {
@@ -920,7 +984,7 @@ it.each(["installer-managed", "operator-provisioned"] as const)("admits the at-r
     await expect(runtime.query("SELECT * FROM public.dunning_lifecycle_scan_at_risk(2,5,100)"))
       .rejects.toMatchObject({ code: "42501", message: "permission denied for function dunning_lifecycle_scan_at_risk" });
   } finally { await closePostgres(container, pools); }
-}, postgresSetupTimeoutMs);
+});
 
 // Freeze the actual pre-notice boundary, not a synthetic event representation of its history.
 const beforeNoticeInventories = {
@@ -930,7 +994,7 @@ const beforeNoticeInventories = {
   adminInstaller: "75d7869d54fc5dcc819e40789bd5d4c4fef8b96deb34e54a37708aed10ae2f70",
   adminOperator: "f0a8d2f11798ac7e36a5b8ff6d6a0698fa878f45f0e744d38cd81f0a3ec99028",
 };
-it.each(["legacy", "qualified-v2"] as const)("bridges real base pause and renewal producers through the %s upgrade", async generation => {
+it.concurrent.for(["legacy", "qualified-v2"] as const)("bridges real base pause and renewal producers through the %s upgrade", { timeout: 70_000 }, async (generation, { expect }) => {
   const container = await runPostgresContainer({ name: `notice-base-upgrade-${generation}-${process.pid}`, password });
   const pools: Pool[] = [];
   mkdirSync(".context/scratch/c23", { recursive: true });
@@ -1047,25 +1111,34 @@ it.each(["legacy", "qualified-v2"] as const)("bridges real base pause and renewa
     expect((await owner.query("SELECT id,recipient_kind,status FROM public.subscription_dunning_notifications")).rows).toEqual([{ id: dunning.notificationId, recipient_kind: "customer", status: "sent" }]);
     for (const key of acceptedKeys) expect((await owner.query("SELECT state,attempt_count FROM public.transactional_delivery_receipts WHERE idempotency_key=$1", [key])).rows).toEqual([{ state: "accepted", attempt_count: 1 }]);
   } finally { await closePostgres(container, pools); rmSync(prefixRoot, { recursive: true, force: true }); }
-}, 70_000);
+});
 
-it.each(["legacy", "qualified-v2", "qualified-admin"] as const)("uses elapsed at-risk bounds across a live DST transition on %s", async generation => {
-  const container = await runPostgresContainer({ name: `notice-elapsed-${generation}-${process.pid}`, password });
+it.concurrent.for(["legacy", "qualified-v2", "qualified-admin"] as const)("uses elapsed at-risk bounds across a live DST transition on %s", { timeout: postgresSetupTimeoutMs }, async (generation, { expect }) => {
+  const brokerLease = generation === "qualified-admin" ? null : await tryLeaseTemplateDatabase(generation, `notice-elapsed-${generation}`);
+  const container = brokerLease ? undefined : await runPostgresContainer({ name: `notice-elapsed-${generation}-${process.pid}`, password });
   const pools: Pool[] = [];
   try {
-    expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
-    const owner = new Pool({ connectionString: container.connectionString }); pools.push(owner);
-    const login = (role: string) => { const url = new URL(container.connectionString); url.username = role; return url.toString(); };
-    let installation: PlatformPostgresInstallation = { generation: "legacy" };
-    if (generation !== "legacy") {
-      if (generation === "qualified-admin") await owner.query(`CREATE ROLE elapsed_m LOGIN NOINHERIT NOSUPERUSER CREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}';
-        ALTER DATABASE postgres OWNER TO elapsed_m`);
-      await owner.query(`CREATE ROLE elapsed_r LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}';
-        CREATE ROLE elapsed_s LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
-      installation = { generation, roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: generation === "qualified-v2" ? "postgres" : "elapsed_m", runtimeLogin: "elapsed_r", restoreLogin: "elapsed_s" };
+    let owner: Pool;
+    let runtimeConnection: string;
+    if (brokerLease) {
+      owner = new Pool({ connectionString: brokerLease.ownerUrl }); pools.push(owner);
+      runtimeConnection = generation === "legacy" ? brokerLease.ownerUrl : brokerLease.runtimeUrl;
+    } else {
+      expect(await waitForPostgresTcpReady(container!.connectionString)).toBe(true);
+      owner = new Pool({ connectionString: container!.connectionString }); pools.push(owner);
+      const login = (role: string) => { const url = new URL(container!.connectionString); url.username = role; return url.toString(); };
+      let installation: PlatformPostgresInstallation = { generation: "legacy" };
+      if (generation !== "legacy") {
+        if (generation === "qualified-admin") await owner.query(`CREATE ROLE elapsed_m LOGIN NOINHERIT NOSUPERUSER CREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}';
+          ALTER DATABASE postgres OWNER TO elapsed_m`);
+        await owner.query(`CREATE ROLE elapsed_r LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}';
+          CREATE ROLE elapsed_s LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+        installation = { generation, roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: generation === "qualified-v2" ? "postgres" : "elapsed_m", runtimeLogin: "elapsed_r", restoreLogin: "elapsed_s" };
+      }
+      await install(login(installation.generation === "legacy" ? "postgres" : installation.migrationLogin), installation);
+      runtimeConnection = login(generation === "legacy" ? "postgres" : "elapsed_r");
     }
-    await install(login(installation.generation === "legacy" ? "postgres" : installation.migrationLogin), installation);
-    const runtime = new Pool({ connectionString: login(generation === "legacy" ? "postgres" : "elapsed_r"),
+    const runtime = new Pool({ connectionString: runtimeConnection,
       options: generation === "legacy" ? undefined : "-c role=service_role" }); pools.push(runtime);
     const db = await runtime.connect();
     try {
@@ -1095,6 +1168,11 @@ it.each(["legacy", "qualified-v2", "qualified-admin"] as const)("uses elapsed at
       for (const sample of samples) expect.soft(found.includes(sample.id), `renewal at ${sample.hours} elapsed hours`)
         .toBe(sample.hours >= 48 && sample.hours <= 120);
       expect(found).toEqual(samples.filter(sample => sample.hours >= 48 && sample.hours <= 120).map(sample => sample.id));
-    } finally { await db.query("ROLLBACK"); db.release(); }
-  } finally { await closePostgres(container, pools); }
-}, postgresSetupTimeoutMs);
+    } finally {
+      try { await db.query("ROLLBACK"); }
+      finally { db.release(); }
+    }
+  } finally {
+    await closeLeasedPostgres(container, pools, brokerLease);
+  }
+});

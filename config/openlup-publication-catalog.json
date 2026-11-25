@@ -29858,6 +29858,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/packWorkspaceTarball.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/pgTemplateBroker.ts",
       "class": "public-output"
     },
@@ -30018,6 +30022,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/packWorkspaceTarball.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/partners/partnerAcquisitionParity.test.ts",
       "class": "public-output"
     },
@@ -30155,6 +30163,14 @@
     },
     {
       "path": "tests/postgres/catalogPriceListBasis.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPricePublicationV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPricePublicationV2Pgtap.test.ts",
       "class": "public-output"
     },
     {
@@ -30450,6 +30466,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationV2SubscriptionEdit.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/disposableDockerReap.test.ts",
       "class": "public-output"
     },
@@ -30467,6 +30487,10 @@
     },
     {
       "path": "tests/postgres/feedbackMediaAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/catalogPricePublicationV2/grants.sql",
       "class": "public-output"
     },
     {

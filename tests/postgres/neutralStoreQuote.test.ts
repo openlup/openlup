@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Pool, type PoolConfig } from 'pg';
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
+import { packWorkspaceTarballs } from '../helpers/packWorkspaceTarball.js';
 
 let scratch: string;
 let consumer: string;
@@ -32,10 +33,7 @@ async function prepareQuoteConsumer() {
     }
   }
   for (const path of ['packages/core','packages/outbox','packages/platform','node_modules/pg','node_modules/zod']) visit(resolve(path));
-  const tarballs = [...closure].map(cwd => {
-    const result = JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--json','--pack-destination',scratch], { cwd,encoding: 'utf8',timeout: 30_000 }));
-    return join(scratch,result[0].filename);
-  });
+  const tarballs = await packWorkspaceTarballs([...closure], scratch, { timeoutMs: 30_000 });
   consumer = join(scratch,'consumer'); mkdirSync(consumer);
   writeFileSync(join(consumer,'package.json'),'{"private":true,"type":"module"}');
   cpSync('.npmrc',join(consumer,'.npmrc'));
