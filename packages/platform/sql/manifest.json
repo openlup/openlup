@@ -824,7 +824,7 @@
         "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
       },
       {
-        "file": "db/platform/migrations/20261127050000_fulfillment_destination_contact_v2.sql",
+        "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
         "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
       }
     ],
@@ -1676,7 +1676,7 @@
           "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
         },
         {
-          "file": "db/platform/migrations/20261127050000_fulfillment_destination_contact_v2.sql",
+          "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
           "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
         }
       ],
@@ -2528,7 +2528,7 @@
           "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
         },
         {
-          "file": "db/platform/migrations/20261127050000_fulfillment_destination_contact_v2.sql",
+          "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
           "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
         }
       ],
@@ -3565,8 +3565,8 @@
       "sha256": "688e575949ec952a99a7a4ba7cb6f8b811593959910d30ae33c7085b3bbfab22"
     },
     {
-      "file": "20261127050000_fulfillment_destination_contact_v2.sql",
-      "source": "db/platform/migrations/20261127050000_fulfillment_destination_contact_v2.sql",
+      "file": "20261127120000_fulfillment_destination_contact_v2.sql",
+      "source": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
       "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
     },
     {

@@ -9176,7 +9176,7 @@
       },
       {
         "row": "fulfillment-destination-contact-v2",
-        "path": "db/platform/migrations/20261127050000_fulfillment_destination_contact_v2.sql",
+        "path": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
         "replacedFunctions": [
           {
             "signature": "public.fulfillment_capture_parcel_contact(uuid,jsonb)",
@@ -13134,7 +13134,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261127050000_fulfillment_destination_contact_v2.sql",
+      "path": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
       "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c",
       "functions": [
         {
