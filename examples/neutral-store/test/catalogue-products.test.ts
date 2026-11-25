@@ -107,6 +107,17 @@ test('localized presentation and gross price map to exact eligible sibling selec
   ] });
 });
 
+test('a subscription-only SKU needs one-time sellability before price checks', () => {
+  const offer = project([receipt]);
+  const product = offer.products[0]!;
+  const sku = product.skus[0]!;
+  const subscriptionOnly = { ...sku, sell: { oneTime: false, subscription: true },
+    price: { oneTime: null, subscription: sku.price.oneTime } };
+  assert.deepEqual(readStarterProducts({ ...offer, products: [{ ...product, skus: [subscriptionOnly] }] }, config), {
+    products: [], exclusions: [{ code: 'starter_catalogue_one_time_required', subject: 'ARTICLE-ONE' }],
+  });
+});
+
 test('published subscriptions use checkout cadence, line minimum and plan and store caps', () => {
   const copy = structuredClone(config);
   const set = (value: number) => ({ kind: 'set' as const, values: [value] });
