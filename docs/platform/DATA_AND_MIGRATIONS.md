@@ -220,7 +220,7 @@ Frozen historical record (2026-11-13) archived in [Data and migrations evidence]
 
 `public.subscription_read_frozen_renewal_generation(uuid,uuid)` reads the original UTC anchor
 and frozen agreement by operation and commercial generation. Existing operations use their
-row UUID for both coordinates. The [projection contract](../../tests/postgres/subscriptionFrozenGenerationFixture.ts)
+row UUID for both coordinates. The [projection contract](../../tests/postgres/subscriptionPublicRenewalFixture.ts)
 pins the exact keys, types and optional members. Unavailable scalar fields and singular
 objects are null. A missing required line member makes `lines` null, and missing retained
 line provenance yields an empty array. The roster requires the stored acceptance fingerprint

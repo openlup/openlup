@@ -10,7 +10,6 @@ import type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { fixture, graph, insertGraph, installPublicationActors, json, transaction, type Graph } from "./catalogPublicationFixture.js";
-import { expectFrozenGenerationShape, frozenGenerationSql, plantExcludedFrozenFields } from "./subscriptionFrozenGenerationFixture.js";
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -931,6 +930,16 @@ it("attaches acceptance to a customer quote through the service owner and binds 
     catalog_sku_revision_id: owner.issued.lines[0].skuRevisionId }]);
 });
 
+function plantExcludedCatalogueFields(node: unknown): void {
+  if (Array.isArray(node)) {
+    node.forEach(plantExcludedCatalogueFields);
+  } else if (node && typeof node === "object") {
+    Object.values(node).forEach(plantExcludedCatalogueFields);
+    Object.assign(node, { excluded: { payload: [{ Total: "opaque", subtotal: 18 }] },
+      "tax-net": "18", PayableValue: 19, flatMinor: 301, freeThresholdMinor: 302 });
+  }
+}
+
 it("projects bound catalogue acceptance with all admission branches and rejects a damaged roster", async () => {
   const reference = acceptance.lines[0]!, { publicationHead, typeRef, netContent } = reference;
   const digest = "a".repeat(64), priceEvidenceRef = `price.v1:${digest}`, policyEvidenceRef = `policy.v1:${digest}`;
@@ -950,7 +959,7 @@ it("projects bound catalogue acceptance with all admission branches and rejects 
   const store = createPostgresRenewalStore(runtime, codec);
   const claim = await store.claimDue({ snapshot: await store.buildCycleSnapshots(owner.schedule), workerId: "catalog-reader", now: new Date().toISOString() });
   expect(claim).toMatchObject({ acquired: true, catalogAcceptance: issued });
-  const pair = [claim.operationId, claim.operationId], sql = `${frozenGenerationSql} AS projection`;
+  const pair = [claim.operationId, claim.operationId], sql = "SELECT public.subscription_read_frozen_renewal_generation($1::uuid,$2::uuid) AS projection";
   const positive = (await runtime.query(sql, pair)).rows[0].projection;
   const expectedBinding = { lineKey: binding.lineKey, skuId: binding.skuId, skuCode: binding.skuCode,
     mode: binding.mode, role: binding.role, source: binding.source, skuRevisionId: binding.skuRevisionId };
@@ -964,7 +973,6 @@ it("projects bound catalogue acceptance with all admission branches and rejects 
     admission: { ...admission, consultedHeads: [{ productId: data.productId, publicationId: publicationHead.publicationId, documentDigest: publicationHead.documentDigest }],
       lineBindings: [expectedBinding], graduation: { phaseDigest: digest, lineBindings: [{ ...legacyExpected, source: "legacy" }] } },
   });
-  expect(expectFrozenGenerationShape(positive)).toEqual(["lines[].unitAmountMinor"]);
 
   await rolledBack(async db => {
     await db.query("ALTER TABLE public.subscription_renewal_operations DISABLE TRIGGER subscription_renewal_operations_catalog_acceptance_admit");
@@ -981,7 +989,7 @@ it("projects bound catalogue acceptance with all admission branches and rejects 
     await db.query("RESET ROLE");
     await db.query("UPDATE public.subscription_renewal_operations SET catalog_acceptance_fingerprint=operation_fingerprint WHERE id=$1", [claim.operationId]);
     const planted = structuredClone(issued);
-    plantExcludedFrozenFields(planted);
+    plantExcludedCatalogueFields(planted);
     const replace = "UPDATE public.subscription_renewal_operations SET catalog_acceptance=$2 WHERE id=$1";
     expect(await change(replace, JSON.stringify(planted))).toEqual(positive);
     const optional = structuredClone(planted);

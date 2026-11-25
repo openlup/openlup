@@ -31574,10 +31574,6 @@
       "class": "public-output"
     },
     {
-      "path": "tests/postgres/subscriptionFrozenGenerationFixture.ts",
-      "class": "public-output"
-    },
-    {
       "path": "tests/postgres/subscriptionLifecycleClosure.test.ts",
       "class": "public-output"
     },

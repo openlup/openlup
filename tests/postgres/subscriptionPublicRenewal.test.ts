@@ -3,14 +3,12 @@ import { createPostgresRenewalSettlementPort as mainSettlement } from "../../ser
 import { connectedNativeStoreTables, readPrivacyDeclarationCensus, requiredPrivacyDeclarationTable } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Pool } from "pg";
+import { DatabaseError, Pool } from "pg";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, postgresSetupTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
-import { expectSqlError, rejected } from "./orderMoneyV2Storage.fixture.js";
-import { expectFrozenGenerationShape, frozenGenerationSignature, frozenGenerationSql, generationForward } from "./subscriptionFrozenGenerationFixture.js";
 import { beforeEach, expect, it, vi } from "vitest";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
-import { api, active, purchase, admin, at, composition, payments, destinations, inventory, captureStore, withRestoredStore, days, deps, executor, facts, fulfillment, later, now, retire, requireIsolatedRenewalContainer, restartDatabase, freshRetryReadback, normalRenewalWorkerPopulation, rpc, runtime, settlement, stock, transaction, withNormalRenewalWorker, loginConnection, runtimeLogin, runtimeUrl, withOccupiedRenewalPrefix } from "./subscriptionPublicRenewalFixture.js";
+import { api, active, purchase, admin, at, composition, payments, destinations, inventory, captureStore, withRestoredStore, days, deps, executor, facts, fulfillment, later, now, retire, requireIsolatedRenewalContainer, restartDatabase, freshRetryReadback, normalRenewalWorkerPopulation, rpc, runtime, settlement, stock, transaction, withNormalRenewalWorker, loginConnection, runtimeLogin, runtimeUrl, withOccupiedRenewalPrefix, expectFrozenGenerationShape, frozenGenerationSignature, frozenGenerationSql, generationForward } from "./subscriptionPublicRenewalFixture.js";
 requireIsolatedRenewalContainer();
 import type { NativeRetryDriverOptions, NativeRenewalPurchaseFacts } from "@openlup/platform/subscriptions";
 import type { RenewalReadback } from "@openlup/platform/subscriptions/contracts";
@@ -1076,6 +1074,10 @@ it("drains normal due renewals concurrently with zero duplicate dispatch and mon
   expect([...executedByOrder]).toEqual(dispatches);
 }, 30_000);
 
+const generationErrorKeys = ["length", "name", "message", "severity", "code", "detail", "hint", "position",
+  "internalPosition", "internalQuery", "where", "schema", "table", "column", "dataType",
+  "constraint", "file", "line", "routine"].sort();
+
 const generationText = `${frozenGenerationSql}::text AS projection`;
 const rawClaim = "SELECT public.subscription_claim_due_renewal($1::text,$2::text,$3::jsonb,'renewal-witness',300,$4::timestamptz)::text AS result";
 const rawPrepare = "SELECT public.commerce_prepare_subscription_renewal($1::uuid,$2::uuid,$3::timestamptz)::text AS result";
@@ -1123,9 +1125,11 @@ it.each(["v1", "v2"] as const)("reads the original frozen generation for %s thro
       [[absent, absent], "22023", "commerce_renewal_operation_not_found", "Verify the selected installation and recover the stored operation through its owner. Recheck the original pair."],
       [["malformed", absent], "22P02", 'invalid input syntax for type uuid: "malformed"', undefined],
     ] as const) {
-      const error = await rejected(inherited.query(generationText, [...ids]));
-      expectSqlError(error, code, message);
-      expect(error).toHaveProperty("hint", hint);
+      const error: unknown = await inherited.query(generationText, [...ids]).catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(DatabaseError);
+      expect(Object.getPrototypeOf(error)).toBe(DatabaseError.prototype);
+      expect(Reflect.ownKeys(error as object).filter(key => key !== "stack").sort()).toStrictEqual(generationErrorKeys);
+      expect(error).toMatchObject({ code, message, hint, constraint: undefined });
       expect(await allPublicRows(admin)).toEqual(noWrites);
     }
     const peer = await admin.connect();
