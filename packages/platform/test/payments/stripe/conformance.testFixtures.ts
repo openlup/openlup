@@ -86,6 +86,7 @@ export function createStripeConformanceFixture() {
           ...(outcome === "succeeded" && rawAmount === 0 && configuredAmount !== 0
             ? { configuredAmountMinor: configuredAmount, paidAmountMinor: 0 } : {}),
           ...(outcome === "refunded" ? { stripeRefundSnapshot: { chargeId: `ch_${fixture.remote}`, amountRefundedMinor: 500 } } : {}),
+          ...(sourceType === "payment_intent.succeeded" ? { captureTimeBasis: "signed_event_v1" } : {}),
         },
       };
       return { input, expected };
