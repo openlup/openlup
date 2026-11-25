@@ -31290,6 +31290,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/nativeRenewalV3Legacy.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/nativeRenewalV3Storage.test.ts",
       "class": "public-output"
     },
@@ -31687,6 +31691,10 @@
     },
     {
       "path": "tests/postgres/subscriptionExactInstallation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionJob.fixture.ts",
       "class": "public-output"
     },
     {

@@ -27,7 +27,10 @@ CREATE TABLE public.subscription_cycle_occurrences (
   CONSTRAINT cycle_occurrence_policy_check CHECK (
     (deadline_rule_ref IS NULL AND deadline_rule_revision IS NULL AND lead_seconds IS NULL AND late_cancel_disposition IS NULL)
     OR (deadline_rule_ref IS NOT NULL AND deadline_rule_revision IS NOT NULL AND lead_seconds IS NOT NULL AND late_cancel_disposition IS NOT NULL
-      AND octet_length(deadline_rule_ref) BETWEEN 1 AND 200 AND NOT (btrim(deadline_rule_ref) = '')
+      AND octet_length(deadline_rule_ref) BETWEEN 1 AND 200
+      -- C's POSIX space class covers ASCII whitespace. The literal also covers
+      -- U+0085, U+00A0, U+1680, U+2000–U+200A, U+2028–U+2029, U+202F, U+205F, U+3000 and U+FEFF.
+      AND NOT (deadline_rule_ref COLLATE "C" SIMILAR TO '[[:space:]                 　﻿]*')
       AND deadline_rule_revision BETWEEN 1 AND 9007199254740991 AND lead_seconds BETWEEN 0 AND cadence_seconds - 1
       AND late_cancel_disposition IN ('hold_current', 'allow_current_first_charge_if_authorized')))
 );
