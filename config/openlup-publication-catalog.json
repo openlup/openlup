@@ -1598,6 +1598,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/checkout-expected-total.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/dev-loop.proof.ts",
       "class": "public-output"
     },
@@ -14783,6 +14787,58 @@
     },
     {
       "path": "server/adapters/postgres/connectedStoreCapture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/catalog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/commerce.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/communications.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/fulfillment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/identity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/invoicing.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/payments.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/platformControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/pricingAndPromotions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/subscriptions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/taxAndMoney.ts",
       "class": "public-output"
     },
     {
