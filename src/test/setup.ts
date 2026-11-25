@@ -33,7 +33,7 @@ if (repositoryRelative) {
   const budgetMs = deriveTestTimeoutMs(
     inject("durationManifest"),
     repositoryRelative,
-    flatTestTimeoutMs(inject("coverageRun"), process.env.CI === "true"),
+    flatTestTimeoutMs(inject("coverageRun"), inject("hostedCi")),
   );
   vi.setConfig({
     testTimeout: repositoryRelative.startsWith("tests/postgres/") ? Math.max(budgetMs, 60_000) : budgetMs,

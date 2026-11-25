@@ -22,8 +22,9 @@ delete processEnvironment.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER;
 const isCoverageRun = process.argv.includes("--coverage");
 const isCoverageShard = process.env.VITEST_COVERAGE_SHARD === "1";
 const useSerialCoverage = isCoverageRun && process.env.VITEST_COVERAGE_SERIAL === "1";
-const useCiCoverageWorkers = isCoverageRun && process.env.CI === "true" && !useSerialCoverage;
-const useSummaryCoverageReporter = process.env.VITEST_COVERAGE_SUMMARY_ONLY === "1" || process.env.CI === "true";
+const isHostedCi = process.env.CI === "true";
+const useCiCoverageWorkers = isCoverageRun && isHostedCi && !useSerialCoverage;
+const useSummaryCoverageReporter = process.env.VITEST_COVERAGE_SUMMARY_ONLY === "1" || isHostedCi;
 const coverageReportsDirectory = process.env.VITEST_COVERAGE_DIR ?? "./coverage";
 const buildOutDir = process.env.OPENLUP_BUILD_OUT_DIR ?? "dist";
 
@@ -81,7 +82,7 @@ const exactExclusions = readExactExclusions();
 // untouched so the dedicated coverage-shard worker counts below stay
 // authoritative; see CONTRIBUTING.md#test-scope-and-diagnostics.
 const localWorkerCap =
-  process.env.VITEST_MAX_WORKERS ?? (process.env.CI === "true" ? undefined : "37.5%");
+  process.env.VITEST_MAX_WORKERS ?? (isHostedCi ? undefined : "37.5%");
 
 export default defineConfig({
   plugins: [react()],
@@ -97,15 +98,15 @@ export default defineConfig({
     // own argv (`[node, workers/forks.js]`), so a setup file cannot see `--coverage`
     // for itself — `src/test/setup.ts` reads this to widen the testing-library async
     // budget for the contended coverage lane.
-    provide: { coverageRun: isCoverageRun, durationManifest, repositoryRoot },
+    provide: { coverageRun: isCoverageRun, durationManifest, hostedCi: isHostedCi, repositoryRoot },
     setupFiles: ["./tests/setup/scrub-git-env.ts", "./src/test/setup.ts"],
     // RR-L4: this is the FLOOR, not the ceiling. `src/test/setup.ts` runs once per
     // test file and raises it to `1.5 x` that file's pinned cost in
     // the duration manifest; a file the manifest does not weigh keeps
     // exactly these values. The constants moved to the module both readers share so
     // the floor a budget is computed against cannot drift from the one set here.
-    testTimeout: flatTestTimeoutMs(isCoverageRun, process.env.CI === "true"),
-    hookTimeout: flatTestTimeoutMs(isCoverageRun, process.env.CI === "true"),
+    testTimeout: flatTestTimeoutMs(isCoverageRun, isHostedCi),
+    hookTimeout: flatTestTimeoutMs(isCoverageRun, isHostedCi),
     // Product-test failures are deterministic evidence and are never retried.
     // The public wrapper/workflow adds no automatic infrastructure retry.
     retry: 0,
