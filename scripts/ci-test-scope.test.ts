@@ -3,9 +3,10 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from 'node:os';
 import { env as processEnvironment } from 'node:process';
 import { delimiter, extname, join, posix, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { afterEach, describe, expect, it } from 'vitest';
-import { ALL_WORKFLOW_SCOPES_TRUE, excludedToolingTests, governedDraftSuiteInputs, isGlobalBailoutScript, NON_BAILOUT_SCRIPTS, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ALL_WORKFLOW_SCOPES_TRUE, excludedToolingTests, isGlobalBailoutScript, NON_BAILOUT_SCRIPTS, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
 
 const base = 'a'.repeat(40);
 const all = Object.keys(TOOLING_INPUTS).sort();
@@ -268,43 +269,55 @@ describe('conservative tooling scope', () => {
   });
   const ownerWriteSuite = 'tests/postgres/catalogAdmissionOwnerWrite.test.ts';
   const runtimeCommitSuite = 'tests/postgres/catalogAdmissionRuntimeCommit.test.ts';
-  const unrelatedChange = ['docs/platform/README.md'];
-  const ownerWriteFixture = 'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts';
-  const publicationFixture = 'tests/postgres/catalogPublicationFixture.ts';
+  const draftSuites = [ownerWriteSuite, runtimeCommitSuite];
+  const restoreSuite = 'tests/postgres/m14RestrictedConnectedRestore.test.ts';
+  const restoreFixtures = [
+    'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts',
+    'tests/postgres/catalogPublicationFixture.ts',
+  ];
 
   it.each([
-    { present: [ownerWriteSuite] },
-    { present: [runtimeCommitSuite] },
-    { present: [ownerWriteSuite, runtimeCommitSuite] },
-    { present: [] },
-  ])('registers exactly the governed draft suites present: $present', ({ present }) => {
-    const inputs = governedDraftSuiteInputs(testPath => present.includes(testPath));
-    expect(Object.keys(inputs).sort()).toEqual([...present].sort());
-    expect(excludedToolingTests(unrelatedChange, inputs)).toEqual([...present].sort());
-    for (const input of [
-      ownerWriteFixture,
-      publicationFixture,
-      'tests/postgres/subscriptionLifecycleClosureFixture.ts',
-      'tests/postgres/subscriptionNativeFixture.ts',
-      'examples/neutral-store/host/server.ts',
-    ]) {
-      expect(excludedToolingTests([input], inputs), input).toEqual([]);
-    }
-  });
-
-  it.each(['EACCES', 'ELOOP'])('keeps the unlisted-test default (always runs) when a suite probe throws %s', code => {
-    const inputs = governedDraftSuiteInputs(testPath => {
-      if (testPath === ownerWriteSuite) throw Object.assign(new Error('suite probe failed'), { code });
-      return testPath === runtimeCommitSuite;
+    { scenario: 'owner-write only', present: [ownerWriteSuite] },
+    { scenario: 'runtime-commit only', present: [runtimeCommitSuite] },
+    { scenario: 'both present', present: draftSuites },
+    { scenario: 'neither present', present: [] },
+    { scenario: 'owner-write throws EACCES', present: [runtimeCommitSuite], failure: { suite: ownerWriteSuite, code: 'EACCES' } },
+    { scenario: 'runtime-commit throws ELOOP', present: [ownerWriteSuite], failure: { suite: runtimeCommitSuite, code: 'ELOOP' } },
+  ])('registers present suites at import and keeps unlisted tests running ($scenario)', async ({ present, failure }) => {
+    vi.resetModules();
+    vi.doMock('node:fs', async () => {
+      const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+      const statSync = (...args: Parameters<typeof actual.statSync>) => {
+        const file = args[0] instanceof URL ? fileURLToPath(args[0]) : args[0];
+        const suite = draftSuites.find(testPath => resolve(testPath) === file);
+        if (!suite) return actual.statSync(...args);
+        if (failure?.suite === suite) throw Object.assign(new Error('suite probe failed'), { code: failure.code });
+        return present.includes(suite) ? { isFile: () => true } : undefined;
+      };
+      return { ...actual, default: { ...actual, statSync }, statSync };
     });
-    expect(Object.keys(inputs)).toEqual([runtimeCommitSuite]);
-    expect(excludedToolingTests(unrelatedChange, inputs)).toEqual([runtimeCommitSuite]);
-  });
-
-  it.each([ownerWriteFixture, publicationFixture])('retains restricted restore when only %s changes', fixture => {
-    const restoreSuite = 'tests/postgres/m14RestrictedConnectedRestore.test.ts';
-    expect(excludedToolingTests(unrelatedChange)).toContain(restoreSuite);
-    expect(excludedToolingTests([fixture])).not.toContain(restoreSuite);
+    try {
+      const scope = await import('./ci-test-scope.mjs');
+      const unrelated = scope.excludedToolingTests(['docs/platform/README.md']);
+      for (const suite of draftSuites) {
+        expect(Object.hasOwn(scope.TOOLING_INPUTS, suite), suite).toBe(present.includes(suite));
+        expect(unrelated.includes(suite), suite).toBe(present.includes(suite));
+      }
+      expect(unrelated).toContain(restoreSuite);
+      for (const input of [
+        ...restoreFixtures,
+        'tests/postgres/subscriptionLifecycleClosureFixture.ts',
+        'tests/postgres/subscriptionNativeFixture.ts',
+        'examples/neutral-store/host/server.ts',
+      ]) {
+        const excluded = scope.excludedToolingTests([input]);
+        for (const suite of draftSuites) expect(excluded, `${suite} <- ${input}`).not.toContain(suite);
+        if (restoreFixtures.includes(input)) expect(excluded, input).not.toContain(restoreSuite);
+      }
+    } finally {
+      vi.doUnmock('node:fs');
+      vi.resetModules();
+    }
   });
   it('scopes all tests/postgres suites per-file and per-axis without broad tests/postgres/ prefixes', () => {
     const purePgSuites = [

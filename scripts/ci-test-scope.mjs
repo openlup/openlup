@@ -494,8 +494,8 @@ export const TOOLING_INPUTS = {
   ...Object.fromEntries(
     Object.entries(POSTGRES_SUITE_CLOSURES).map(([testPath, extras]) => [testPath, postgresSuiteInputs(testPath, extras)]),
   ),
-  ...governedDraftSuiteInputs(safeFileProbe(testPath =>
-    statSync(new URL(`../${testPath}`, import.meta.url), { throwIfNoEntry: false })?.isFile() ?? false)),
+  ...governedDraftSuiteInputs(testPath =>
+    statSync(new URL(`../${testPath}`, import.meta.url), { throwIfNoEntry: false })?.isFile() ?? false),
 };
 
 const WORKFLOW_PGTAP_INPUTS = [
@@ -552,10 +552,10 @@ const hasGlobalBailout = changedPaths => changedPaths.some(path => (!path.includ
   || isGlobalBailoutScript(path)
   || SHARED_INPUTS.some(input => coversInput(input, path)));
 
-export function excludedToolingTests(changedPaths, toolingInputs = TOOLING_INPUTS) {
+export function excludedToolingTests(changedPaths) {
   if (hasInvalidPath(changedPaths) || hasGlobalBailout(changedPaths)) return [];
   const touched = inputs => changedPaths.some(path => inputs.some(input => coversInput(input, path)));
-  return Object.entries(toolingInputs)
+  return Object.entries(TOOLING_INPUTS)
     .filter(([test, inputs]) => !touched([test, ...inputs]))
     .map(([test]) => test).sort();
 }
