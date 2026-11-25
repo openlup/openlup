@@ -9473,6 +9473,29 @@
         ]
       },
       {
+        "row": "native-derived-subscription-price",
+        "path": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
+            "beforeSha256": "e2437bfb0e3e2822d6a8a5fb169453f3d7cd5601e6239511be227e6bd42c9c59",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_derive_subscription_unit_price(integer,integer,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "fulfillment-destination-v2-legacy-ledger-fence",
         "path": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
         "replacedFunctions": [
@@ -13668,6 +13691,27 @@
           "signature": "public.commerce_money_limits_v2_guard()",
           "beforeSha256": null,
           "afterSha256": "bc32c98ace7773f53449459fccc3bda40d563ca33a0a5447cc6b6a4dcad20df3"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261128000000_native_derived_subscription_price.sql",
+      "sha256": "5c32d2c07ce1be7753eee381ddced60192936d2dec50505f485285483efad5d0",
+      "functions": [
+        {
+          "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
+          "beforeSha256": "e2437bfb0e3e2822d6a8a5fb169453f3d7cd5601e6239511be227e6bd42c9c59",
+          "afterSha256": "2faf14328ace0d82d09891e7f3e4ec17d67d7267164861a9365eb6acb67192a6"
+        },
+        {
+          "signature": "public.catalog_derive_subscription_unit_price(integer,integer,integer)",
+          "beforeSha256": null,
+          "afterSha256": "9cbaa9fbc486b6ebd6a99faf14d23d6df7ca591915a71f8a05f6772834639f14"
+        },
+        {
+          "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "46951df895d85576f91fc662bf12bdad4d65e0c96d142220404825c6a6154e37"
         }
       ]
     },
