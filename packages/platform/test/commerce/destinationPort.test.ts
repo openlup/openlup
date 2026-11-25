@@ -547,11 +547,11 @@ const unpinnedSubscriptionPaths = {
   recheck: [],
 };
 
-function schemaLeafPaths(schema: z.ZodType, path = ""): string[] {
+function schemaLeafPaths(schema: z.core.$ZodType, path = ""): string[] {
   if (schema instanceof z.ZodOptional) return schemaLeafPaths(schema.unwrap(), path);
   if (schema instanceof z.ZodArray) return schemaLeafPaths(schema.element, `${path}[]`);
   if (schema instanceof z.ZodObject) {
-    return Object.entries<z.ZodType>(schema.shape).flatMap(([key, child]) => schemaLeafPaths(child, path ? `${path}.${key}` : key));
+    return Object.entries<z.core.$ZodType>(schema.shape).flatMap(([key, child]) => schemaLeafPaths(child, path ? `${path}.${key}` : key));
   }
   return [path];
 }
