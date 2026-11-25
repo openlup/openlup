@@ -20,7 +20,7 @@ if (manifest?.schemaVersion !== 3) throw new Error("Expected native catalogue");
 const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2_assert.sql"));
 if (!unit) throw new Error("Expected order money assertion forward");
 const position = manifest.qualified.forward.findIndex(entry => entry.file === unit.file);
-const prefixInventory = "ec6b879883cdf1053a6b8f75afae8525443f1e0525341fae589b6821c6b037f9";
+const prefixInventory = "6ffc2de73b50852f70c99fb1529521d753e2859a7d1f6e8f618a4aae33f967fb";
 const routine = "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)";
 const liveBody = "public.commerce_order_money_v2_live_body";
 const path = "db/platform/migrations/20261125010000_catalog_purchase_admission.sql";
