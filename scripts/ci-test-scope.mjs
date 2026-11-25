@@ -164,7 +164,7 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/catalogPricePublicationV2Pgtap.test.ts': ['@managedCompat', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts', 'tests/postgres/fixtures/catalogPricePublicationV2/grants.sql'],
   'tests/postgres/catalogPublication.test.ts': ['tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/omsHumanAdmission.fixture.ts'],
   'tests/postgres/catalogPublicationCanonical.test.ts': ['tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts'],
-  'tests/postgres/catalogPublicationCommands.test.ts': ['tests/postgres/acquisitionAdmissionFixture.ts', 'tests/postgres/catalogPublicationFixture.ts'],
+  'tests/postgres/catalogPublicationCommands.test.ts': ['tests/postgres/acquisitionAdmissionFixture.ts', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/fixtures/catalogPricePublicationV2/grants.sql'],
   'tests/postgres/catalogPublicationDiscovery.test.ts': ['tests/postgres/catalogPublicationFixture.ts'],
   'tests/postgres/catalogPublicationGovernedRoster.test.ts': ['tests/postgres/catalogPublicationFixture.ts'],
   'tests/postgres/catalogPublicationReadiness.test.ts': ['tests/postgres/catalogPublicationFixture.ts'],
