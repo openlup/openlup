@@ -922,10 +922,14 @@ it. Save + Prepare is a draft write.
 Run `npm run catalogue:apply -- --json` in a terminal. Select the same
 `--configuration` used for the running host if you started a nondefault
 configuration. The command checks the database marker before requesting a
-challenge. Enter the invited administrator's email. Use the
-[private demonstration mailbox](https://github.com/openlup/openlup/blob/main/examples/neutral-store/README.md#read-the-private-demonstration-mailbox)
-in a separate terminal in the same Compose project to read the fresh operator
-token. Enter it at the hidden prompt. Review the saved revision, expected head,
+challenge. Enter the invited administrator's email. Run this command in a
+separate private terminal in the same Compose project to read the fresh token.
+
+```sh
+docker compose exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
+```
+
+Enter the token at the hidden prompt. Review the saved revision, expected head,
 verified currency and SKU prices. Type `approve` when you intend to publish
 Release and again when you intend to publish Activation. The command verifies
 the initial prices between the two publications. Run the command with

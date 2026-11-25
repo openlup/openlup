@@ -499,8 +499,15 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     (SELECT count(*) FROM public.catalog_publication_decisions), (SELECT count(*) FROM public.catalog_publications),
     (SELECT count(*) FROM public.catalog_publication_heads), (SELECT count(*) FROM public.price_entries),
     (SELECT count(*) FROM public.catalog_price_setup_receipts)`);
-  const mailbox = () => compose('exec', '-T', '--user', 'node', 'application', 'cat', '/application/.context/captured-messages/identity.jsonl')
-    .trim().split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(row => row.email === email);
+  function mailbox(address = email) {
+    try {
+      return compose('exec', '-T', '--user', 'node', 'application', 'cat', '/application/.context/captured-messages/identity.jsonl')
+        .trim().split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(row => row.email === address);
+    } catch (error) {
+      if (String((error as { stderr?: string }).stderr).includes('No such file or directory')) return [];
+      throw error;
+    }
+  }
   let cookie: string | undefined;
   const operator = 'operator.catalogPublication', drafts = 'operator.catalogDrafts';
   async function send(operation: string, body: unknown, key?: string) {
@@ -509,9 +516,9 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
   async function askChallenge() {
     assert.deepEqual((await action('auth.operator', { email })).data, { ok: true, value: { accepted: true } });
   }
-  async function newestToken(count: number) {
+  async function newestToken(count: number, address = email) {
     for (let attempt = 0; attempt < 40; attempt++) {
-      const rows = mailbox();
+      const rows = mailbox(address);
       if (rows.length === count) return rows.at(-1).token as string;
       await delay(50);
     }
@@ -523,6 +530,31 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     const registry = (await action('application.status', {})).data.value.bindings as { operation: string; bound: boolean }[];
     assert.deepEqual(registry.map(({ operation }) => operation), (await import('../shared/api.ts')).operations);
     assert.equal(registry.find(({ operation }) => operation === 'catalogue.demoTarget')?.bound, true);
+    const readOnly = JSON.parse(compose('exec', '-T', '--user', 'node', 'application', 'node', '--input-type=module', '-e', `
+      import { readFileSync } from 'node:fs';
+      import { env } from 'node:process';
+      import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
+      import { composeOperatorCapabilities, demonstrationMarkerQuery } from './host/operator-composition.ts';
+      import * as editor from './host/editor-catalogue.ts';
+      const url = new URL(env.DATABASE_URL);
+      url.username = 'openlup_catalog_publication';
+      url.password = readFileSync('.context/catalogue-builds/.publication-password', 'utf8').trim();
+      const lane = createPostgresRoleFreeTransactionLane({connectionString: url.href});
+      let markerSettings;
+      const publication = { run: work => lane.run(db => work({ async query(statement, values) {
+        if (statement === demonstrationMarkerQuery) {
+          markerSettings = (await db.query("SELECT current_setting('transaction_read_only') AS mode,current_setting('statement_timeout') AS deadline")).rows[0];
+          if (values !== undefined) throw Error('Marker query must be parameterless');
+        }
+        return db.query(statement, values);
+      } })), close: () => lane.close() };
+      const composed = composeOperatorCapabilities({executor: {}, publication, editor, connectionString: env.DATABASE_URL});
+      try {
+        const { ok } = await composed.actions['catalogue.demoTarget']({}, {config: {id:'coffee'}});
+        console.log(JSON.stringify({ ok, ...markerSettings }));
+      } finally { await Promise.all([composed.close(), lane.close()]); }
+    `));
+    assert.deepEqual(readOnly, { ok: true, mode: 'on', deadline: '1s' });
     const anonymous = await send(operator, { action: 'price-target' });
     assert.equal(anonymous.code, 'operator_required');
     sql(`INSERT INTO public.platform_human_principals(principal_id,email) VALUES
@@ -600,12 +632,27 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     const planned = { action: 'price-apply', ...prices, policyRevisionId: policy.revisionId, unitPriceMinor: 11 };
     const control = await action(operator, planned);
     assert.equal(control.data.code, 'operator_required');
+    const customer = `customer-${actor.slice(0, 8)}@example.test`;
+    compose('exec', '-T', '--user', 'node', 'application', 'node', '--input-type=module', '-e', `
+      import { randomUUID } from 'node:crypto';
+      import { env } from 'node:process';
+      import { createPostgresAccountLinkStore } from '@openlup/platform/identity';
+      const accounts = createPostgresAccountLinkStore({ connectionString: env.DATABASE_URL });
+      try { await accounts.createAccount({ principalId: randomUUID(), email: ${JSON.stringify(customer)},
+        acquisitionSource: 'direct', lifecycleStage: 'customer' }); }
+      finally { await accounts.close(); }
+    `);
+    assert.equal((await action('auth.request', { email: customer })).data.ok, true);
+    const signedCustomer = await action('auth.verify', { token: await newestToken(1, customer) });
+    assert.ok(signedCustomer.cookie);
+    assert.equal((await action(operator, planned, undefined, signedCustomer.cookie)).data.code, 'operator_required');
     const { value: preview } = await send(operator, { action: 'price-preview', ...prices });
     assert.equal(preview.inGate, true);
     assert.equal(preview.priceSetup.inGate, false);
     assert.equal(preview.priceSetup.current, null);
     assert.equal(preview.priceSetup.subscription.revisionId, policy.revisionId);
     const initial = snapshot();
+    assert.equal((await send(operator, { ...planned, priceListId: randomUUID() })).code, 'price_list_not_active');
     assert.equal((await send(operator, { ...planned, unitPriceMinor: 10 })).code, 'starter_catalogue_derived_price_zero');
     assert.equal((await send(operator, { ...planned, policyRevisionId: randomUUID() })).code, 'starter_catalogue_d2c_policy_required');
     assert.equal(snapshot(), initial);
