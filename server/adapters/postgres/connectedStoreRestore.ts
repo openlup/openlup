@@ -780,7 +780,8 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     identity_privacy_erasures: ["tax_calculation_privacy_guard"],
     tax_calculations: ["tax_calculation_guard"],
     clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
-    commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
+    commerce_orders: ["trg_commerce_orders_line_sum", "commerce_orders_catalog_owner_origin_guard"],
+    commerce_order_items: ["trg_commerce_order_items_line_sum", "commerce_order_items_catalog_owner_origin_guard"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
     fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
     // The guard only refuses fresh v2 commands, which an exact-current source cannot contain.
@@ -794,7 +795,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     subscription_events: ["subscription_events_bind_sized_opt_in", "communication_subscription_subject", "subscription_events_catalog_final"],
     subscription_edit_quotes: ["subscription_edit_quotes_catalog_final"],
     subscription_quote_previews: ["subscription_quote_previews_catalog_final"],
-    commerce_order_draft_receipts: ["commerce_order_draft_receipts_catalog_final"],
+    commerce_order_draft_receipts: ["commerce_order_draft_receipts_catalog_final", "commerce_order_draft_receipts_catalog_owner_origin_guard"],
     subscription_renewal_terms: ["subscription_renewal_terms_catalog_acceptance_admit"],
     subscription_renewal_operations: ["subscription_renewal_operations_catalog_acceptance_admit"],
     commerce_order_operations: ["communication_refund_subject"],
