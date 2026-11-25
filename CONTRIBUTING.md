@@ -829,7 +829,7 @@ The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
-`guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `migration:finalize`, `lint`, `preflight`, `prelint`,
+`guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `migration:finalize`, `migration:sync`, `lint`, `preflight`, `prelint`,
 `oss:published-tree`, `packages:check`, `release:bump`, `release:docs-pass`, `sql:admit`, `pretest`, `test`, `test:affected`, `test:hosted`, and `test:scoped`.
 This reclassifies the complete current root script inventory; all commands are
 public, with `test:affected` as the local targeted wrapper and `test:scoped` as
@@ -2003,6 +2003,17 @@ A clean advance of main follows the review carryover rule in
 remain eligible follows the [landing and review procedure](#derived-landing-carriers).
 
 ### Derived landing carriers
+
+While authoring a new plain forward under `db/platform/migrations/` before
+committing, use `npm run migration:sync -- --next-slot` to allocate the next
+strictly-later 14-digit UTC slot above both `origin/main` and the local working
+tree, and `npm run migration:sync` (with `--no-inventory` for fast local
+iteration or `--check` for a read-only drift check) to synchronize checksums
+across all three plans in `config/platform-migration-manifest.json`, declared
+`nativeStoreForwardClass.slots` function digests in
+`config/reviewed-platform-forwards.json`, the `packages/platform/sql/`
+projection, `packages/core/docs/guide/reference/sql.md`, and measured
+installation inventories.
 
 Use `npm run migration:finalize -- plan --base <main-sha> --head <draft-sha>`
 to preview the ordered mapping for committed, unlanded ordinary forwards.

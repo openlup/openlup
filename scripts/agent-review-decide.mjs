@@ -47,6 +47,7 @@ function currentReports(session) {
 }
 function findingState(session) {
   const open = new Map();
+  const deferred = new Map();
   let openAtPrepare = new Set();
   const closedInCurrentRound = new Set();
   for (const event of session.history) {
@@ -56,15 +57,27 @@ function findingState(session) {
     } else if (event.type === 'report') {
       for (const finding of event.report.findings) if (finding.material) {
         open.set(finding.id, { id: finding.id, summary: finding.summary, material: true });
+        deferred.delete(finding.id);
         closedInCurrentRound.delete(finding.id);
       }
       for (const id of event.report.closes) {
         open.delete(id);
         if (openAtPrepare.has(id)) closedInCurrentRound.add(id);
       }
+    } else if (event.type === 'defer') {
+      const prior = open.get(event.findingId);
+      open.delete(event.findingId);
+      deferred.set(event.findingId, {
+        id: event.findingId,
+        summary: prior?.summary ?? event.findingId,
+        target: event.target,
+        decision: event.decision,
+        reason: event.reason,
+        at: event.at,
+      });
     }
   }
-  return { open, openAtPrepare, closedInCurrentRound };
+  return { open, deferred, openAtPrepare, closedInCurrentRound };
 }
 function openFindings(session) { return findingState(session).open; }
 function computeRegroupAdvisory(session, trailingFloor = 1) {
@@ -80,6 +93,8 @@ function computeRegroupAdvisory(session, trailingFloor = 1) {
       current.reports += 1;
       for (const finding of event.report.findings) if (finding.material) open.add(finding.id);
       for (const id of event.report.closes) open.delete(id);
+    } else if (event.type === 'defer') {
+      open.delete(event.findingId);
     }
   }
   if (current && current.reports >= Math.max(1, trailingFloor)) {
@@ -278,15 +293,30 @@ export function recordReport(session, report, now) {
   demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => !findingIds.has(id) && (open.has(id) || closedInCurrentRound.has(id))), 'closes must name open material findings');
   const next = structuredClone(session); next.history.push({ type: 'report', at: now, report: { ...report, at: now } }); return next;
 }
+export function deferFinding(session, { findingId, target, decision, reason }, now) {
+  stateValid(session);
+  demand(identity(findingId) && identity(target) && identity(decision) && identity(reason), 'defer requires findingId, target, decision, and reason');
+  demand(Number.isFinite(now) && now >= session.preparedAt && session.history.every(event => event.at <= now), 'defer time is invalid');
+  const { open } = findingState(session);
+  demand(open.has(findingId), 'defer must name an open material finding');
+  const next = structuredClone(session);
+  next.history.push({ type: 'defer', at: now, findingId, target, decision, reason });
+  return next;
+}
 function validateHistory(session) {
   let candidate; let enabled = false; const findings = new Map(); const open = new Set();
   let openAtPrepare = new Set(); const closedInCurrentRound = new Set();
   for (const event of session.history) {
-    demand(['prepare', 'report', 'continue', 'rules', 'renew'].includes(event.type), 'unknown history event');
+    demand(['prepare', 'report', 'continue', 'rules', 'renew', 'defer'].includes(event.type), 'unknown history event');
     if (event.type === 'rules') { demand(event.version === 3, 'unknown rules transition'); enabled = true; }
     if (event.type === 'prepare') {
       candidate = event.candidate; candidateValid(candidate); enabled ||= candidate.rules?.version === 3;
       openAtPrepare = new Set(open); closedInCurrentRound.clear();
+    }
+    if (event.type === 'defer') {
+      demand(identity(event.findingId) && identity(event.target) && identity(event.decision) && identity(event.reason) && open.has(event.findingId), 'invalid historical finding deferral');
+      open.delete(event.findingId);
+      continue;
     }
     if (event.type !== 'report') continue;
     const report = event.report;
@@ -466,6 +496,9 @@ function receiptDisplay(summary) {
     return `| ${displayCell(report.reviewer)} | ${displayCell(report.verdict)} | ${report.ordinary === true ? 'delta' : 'full'} | ${closes || 'none'} |`;
   });
   const open = [...openFindings(summary.session).keys()].map(displayCell).join(', ');
+  const deferred = [...findingState(summary.session).deferred.values()]
+    .map(item => `${displayCell(item.id)} to ${displayCell(item.target)} · ${displayCell(item.decision)}`)
+    .join(', ');
   return [
     `PR #${displayCell(summary.pr)} · Head ${displayCell(summary.head.slice(0, 7))} · Tree ${displayCell(summary.tree.slice(0, 7))} · Verdict ${displayCell(summary.verdict)} · Reviewer floor ${displayCell(floor)} · Scope ${displayCell(scope)}`,
     '',
@@ -474,6 +507,7 @@ function receiptDisplay(summary) {
     ...rows,
     '',
     `Open cards: ${open || 'none'}`,
+    ...(deferred ? [`Deferred cards: ${deferred}`] : []),
   ].join('\n');
 }
 export function receiptBody(summary) {

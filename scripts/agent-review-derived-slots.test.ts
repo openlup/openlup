@@ -396,6 +396,22 @@ it('lands an inverted migration only with explicit re-slot', async () => {
     const slots = registry.nativeStoreForwardClass.slots.map(({ path }: { path: string }) => path);
     expect(slots.indexOf(later)).toBeGreaterThan(slots.indexOf(earlier));
     expect(evaluatePlatformMigrationManifestMetadata(manifest)).toEqual([]);
+    // Byte-identical re-slot with owner-regenerated carriers proves as derived (floor 0).
+    const derivedProof = await proveReviewIntegration(f.root,
+      await captureCommittedReviewCandidate(f.root, f.base, pr),
+      await captureCommittedReviewCandidate(f.root, f.git('rev-parse', 'origin/main'), result.head));
+    expect(derivedProof.resolution).toBeUndefined();
+    expect(derivedProof).toMatchObject({ kind: 'derived', derived: true });
+    // Mutating even 1 byte of the reslotted SQL must fall back to reviewed resolution (floor 2).
+    f.write(later, originalSql + '-- altered\n');
+    f.git('add', later);
+    f.git('commit', '--amend', '--no-edit', '-s');
+    const tampered = f.git('rev-parse', 'HEAD');
+    const tamperedProof = await proveReviewIntegration(f.root,
+      await captureCommittedReviewCandidate(f.root, f.base, pr),
+      await captureCommittedReviewCandidate(f.root, f.git('rev-parse', 'origin/main'), tampered));
+    expect(tamperedProof.kind).toBe('resolution');
+    expect(tamperedProof.resolution).toContain(later);
   } finally {
     rmSync(join(f.root, ignoredMirror), { force: true });
     f.write('.git/info/exclude', exclude);

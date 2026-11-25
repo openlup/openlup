@@ -200,4 +200,18 @@ describe("the trailer this accepts is the trailer the contributor was told to wr
     expect(SIGN_OFF.flags).toContain("m");
     expect(SIGN_OFF.global).toBe(false);
   });
+
+  it("checks pull-request bodies via --pr-body and PR_BODY env", () => {
+    const okLines: string[] = [];
+    expect(main(ROOT, ["--pr-body"], (line) => okLines.push(line), {
+      PR_BODY: "Summary\n\nSigned-off-by: A Contributor <contributor@example.com>",
+    })).toBe(0);
+    expect(okLines.join("\n")).toContain("signed off: yes");
+
+    const failLines: string[] = [];
+    expect(main(ROOT, ["--pr-body"], (line) => failLines.push(line), {
+      PR_BODY: "Summary without sign-off",
+    })).toBe(1);
+    expect(failLines.join("\n")).toContain("missing a Signed-off-by trailer");
+  });
 });
