@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 import { createHash } from 'node:crypto';
 import pg from 'pg';
-import { assertCanaryImage, acquireStarterPostgres, browserArguments, browserContainerArguments, canaryPurchasePattern, capturePrivateValues, catalogueUpgradeGroupIndex, parseArguments, resolveBrowserImage, runStarterImageCanary, runBrowserGroups, runCatalogueUpgrade, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
+import { assertCanaryImage, acquireStarterPostgres, browserArguments, browserReportName, classifyTestFailure, failedTestSummaries, formatFailedTests, reportFailedTests, starterBrowserFailure, browserContainerArguments, canaryPurchasePattern, capturePrivateValues, catalogueUpgradeGroupIndex, parseArguments, resolveBrowserImage, runStarterImageCanary, runBrowserGroups, runCatalogueUpgrade, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
 import { decideBrowserGroupRetry, defaultRetryBudgetMs, runBrowserGroups as runBrowserGroupsWithRetry, starterBrowserRetryBudgetMs, withCleanup as withGroupCleanup } from './starter-browser-ci.mjs';
 import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
@@ -406,6 +406,107 @@ describe('starter host process losses', () => {
     })).rejects.toThrow('starter_browser_host_supplements_exited');
     expect(child.signalCode).toBe('SIGTERM');
     expect(cleaned).toBe(true);
+  });
+});
+
+describe('starter browser failure reporting', () => {
+  const escape = String.fromCharCode(27);
+  const report = {
+    suites: [{
+      title: 'journey.spec.ts', file: 'journey.spec.ts', specs: [{
+        title: 'passes', file: 'journey.spec.ts', line: 4,
+        tests: [{ projectName: 'supplements', status: 'expected', results: [{ status: 'passed', duration: 900 }] }],
+      }],
+      suites: [{
+        title: 'database subscription care', file: 'journey.spec.ts', suites: [], specs: [
+          { title: 'renews', file: 'journey.spec.ts', line: 21, tests: [{ projectName: 'coffee', status: 'unexpected',
+            results: [{ status: 'timedOut', duration: 60012.4, errors: [{ message: 'Test timeout of 60000ms exceeded.' }] }] }] },
+          { title: 'shows the receipt', file: 'journey.spec.ts', line: 40, tests: [{ projectName: 'supplements', status: 'unexpected',
+            results: [{ status: 'failed', duration: 10450, errors: [{ message: `Error: expect(${escape}[31mlocator${escape}[39m).toBeVisible() failed\n\nLocator: getByText('customer@example.test')` }] }] }] },
+        ],
+      }],
+    }],
+  };
+
+  it('names each failed test with its location, duration and error class', () => {
+    expect(failedTestSummaries(report)).toEqual([
+      { title: 'database subscription care › renews', project: 'coffee', location: 'journey.spec.ts:21', durationMs: 60012, errorClass: 'Test timeout' },
+      { title: 'database subscription care › shows the receipt', project: 'supplements', location: 'journey.spec.ts:40', durationMs: 10450, errorClass: 'expect.toBeVisible' },
+    ]);
+    const lines = formatFailedTests(failedTestSummaries(report));
+    expect(lines).toEqual([
+      'Starter browser failed test: [coffee] database subscription care › renews (journey.spec.ts:21, 60012 ms): Test timeout',
+      'Starter browser failed test: [supplements] database subscription care › shows the receipt (journey.spec.ts:40, 10450 ms): expect.toBeVisible',
+    ]);
+    // Error bodies, locators and values never reach the printed lines.
+    expect(lines.join('\n')).not.toMatch(/customer@|Locator|60000ms/u);
+  });
+
+  it.each([
+    [{ status: 'failed', errors: [{ message: 'Error: expect(received).toHaveText(expected)\n\nExpected: "secret"' }] }, 'expect.toHaveText'],
+    [{ status: 'failed', errors: [{ message: 'Error: expect(page).not.toHaveURL(expected) failed' }] }, 'expect.toHaveURL'],
+    [{ status: 'failed', errors: [{ message: 'locator.click: Timeout 10000ms exceeded.\nCall log: value' }] }, 'locator.click timeout'],
+    [{ status: 'failed', errors: [{ message: 'Error: starter_care_fixture_missing\nat value' }] }, 'starter_care_fixture_missing'],
+    [{ status: 'failed', errors: [{ message: 'TypeError: Cannot read properties of undefined (reading "secret")' }] }, 'TypeError'],
+    [{ status: 'failed', errors: [{ message: 'something private happened' }] }, 'unclassified'],
+    [{ status: 'interrupted' }, 'Interrupted'],
+    [undefined, 'unclassified'],
+  ])('classifies a failure without its message body', (result, expected) => {
+    expect(classifyTestFailure(result)).toBe(expected);
+  });
+
+  it.each([
+    'password authentication failed for user "starter_runtime"',
+    'Received: {"note":"acquisition_private_customer_note"}',
+    'Error: connect postgres://starter_alice_secret:pw@db failed',
+    'Error: starter_care_fixture_missing for value',
+  ])('never takes a code-like fragment of a value as the class', message => {
+    expect(classifyTestFailure({ status: 'failed', errors: [{ message }] })).not.toMatch(/starter_|acquisition_/u);
+  });
+
+  it.each([
+    ['Error: expected janedoe@example.com expect(value).toJanedoeSecret(', 'Error'],
+    ['Error: x\nexpect(value).toLeak(', 'Error'],
+    ['expect(value).toJanedoeSecret(x)', 'expect.other'],
+    ['JanedoeError: boom', 'unclassified'],
+    ['janedoe.secret: Timeout 10000ms exceeded.', 'action timeout'],
+    ['locator.janedoe: Timeout 10000ms exceeded.', 'action timeout'],
+  ])('reports only known names for %s', (message, expected) => {
+    expect(classifyTestFailure({ status: 'failed', errors: [{ message }] })).toBe(expected);
+  });
+
+  it('withholds details that match private output and reports a missing report', async () => {
+    const privateReport = { suites: [{ specs: [{ title: 'uses token value-123', file: 'journey.spec.ts', line: 1,
+      tests: [{ projectName: 'coffee', status: 'unexpected', results: [{ status: 'failed', duration: 1 }] }] }] }] };
+    expect(formatFailedTests(failedTestSummaries(privateReport), ['value-123']))
+      .toEqual(['Starter browser failed tests: 1; details withheld because they matched private output']);
+    const directory = await mkdtemp(join(tmpdir(), 'starter-browser-report-'));
+    try {
+      const log = vi.fn();
+      await reportFailedTests(join(directory, browserReportName), [], log);
+      expect(log.mock.calls).toEqual([['Starter browser failed tests: report unavailable']]);
+      await writeFile(join(directory, browserReportName), JSON.stringify(report));
+      log.mockClear();
+      await reportFailedTests(join(directory, browserReportName), [], log);
+      expect(log).toHaveBeenCalledTimes(2);
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+
+  it('writes the JSON report into the fixture mount alongside the dot reporter', () => {
+    const reference = imageReference(readCiImage('starter-browser'));
+    const command = browserArguments('/tmp/starter', reference, 'proof');
+    expect(command).toContain('--reporter=dot,json');
+    const variable = command.indexOf(`PLAYWRIGHT_JSON_OUTPUT_FILE=/app/.context/care-browser/${browserReportName}`);
+    expect(command[variable - 1]).toBe('-e');
+    expect(variable).toBeLessThan(command.indexOf(reference));
+  });
+
+  it('keeps Node error codes and SQLSTATE codes in the failure name', () => {
+    const coded = (code: string) => Object.assign(new Error('private detail'), { code });
+    expect(starterBrowserFailure(coded('ENOENT'), 'application').message).toBe('starter_browser_application_failed_node_ENOENT');
+    expect(starterBrowserFailure(coded('EPERM'), 'application').message).toBe('starter_browser_application_failed_node_EPERM');
+    expect(starterBrowserFailure(coded('42501'), 'install_coffee').message).toBe('starter_browser_install_coffee_failed_sqlstate_42501');
+    expect(starterBrowserFailure(coded('ERR_MODULE_NOT_FOUND'), 'application').message).toBe('starter_browser_application_failed');
   });
 });
 

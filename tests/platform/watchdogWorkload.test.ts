@@ -40,6 +40,9 @@ describe("persisting watchdog workload", () => {
     expect(decisions.filter(({ severity, paging }) => severity === "p3" && paging === "never")).toHaveLength(diagnostics);
 
     const harness = workloadPorts(decisions, warm);
+    // Fake timers drive Date.now(), so this budget is the frozen I/O model's
+    // virtual time and is deterministic on any runner.
+    expect(vi.isFakeTimers()).toBe(true);
     const started = Date.now();
     const pending = runPlatformWatchdog({
       ...harness.ports, evidencePort: { collectSnapshot: async () => {
@@ -49,10 +52,10 @@ describe("persisting watchdog workload", () => {
     });
     await vi.runAllTimersAsync();
     const result = await pending;
-    const elapsedMs = Date.now() - started;
+    const virtualElapsedMs = Date.now() - started;
     const p1AdmissionIndex = harness.admitted.indexOf(P1_KEY);
     console.info("watchdog_workload", JSON.stringify({
-      profile: name, count, elapsedMs, ceilingMs, p1AdmissionIndex,
+      profile: name, count, virtualElapsedMs, ceilingMs, p1AdmissionIndex,
       peakChains: harness.metrics.peakChains, peakSink: harness.metrics.peakSink,
       upserts: harness.admitted.length, attempts: harness.attempts.size, resolved: harness.resolved.size,
     }));
@@ -87,7 +90,7 @@ describe("persisting watchdog workload", () => {
       }
     }
     // Soft assertions retain both falsifiers in the first serial-baseline output.
-    expect.soft(elapsedMs).toBeLessThan(ceilingMs);
+    expect.soft(virtualElapsedMs).toBeLessThan(ceilingMs);
     expect.soft(harness.admitted.slice(0, 2)).toEqual([P0_KEY, P1_KEY]);
   });
 

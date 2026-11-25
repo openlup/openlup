@@ -202,6 +202,79 @@ export function scanPrivateOutput(output, privateValues = []) {
   }
 }
 
+// Playwright writes its JSON report into the writable fixture mount; only derived fields are printed.
+export const browserReportName = 'playwright-report.json';
+
+// The class is built only from matched identifiers, never from message text or values.
+// The printed class is always one of these names, never text from a message.
+const knownMatchers = new Set(['toBe', 'toEqual', 'toStrictEqual', 'toMatch', 'toMatchObject', 'toContain', 'toContainText', 'toHaveText',
+  'toHaveValue', 'toHaveURL', 'toHaveAttribute', 'toHaveCount', 'toHaveLength', 'toBeVisible', 'toBeHidden', 'toBeEnabled', 'toBeDisabled',
+  'toBeChecked', 'toBeTruthy', 'toBeFalsy', 'toBeNull', 'toBeDefined', 'toBeUndefined', 'toBeGreaterThan', 'toBeLessThan', 'toThrow']);
+const knownReceivers = new Set(['locator', 'page', 'frame', 'request', 'apiRequestContext']);
+const knownActions = new Set(['click', 'dblclick', 'fill', 'press', 'type', 'check', 'uncheck', 'selectOption', 'hover', 'focus',
+  'setInputFiles', 'goto', 'reload', 'waitFor', 'waitForURL', 'waitForResponse', 'waitForRequest', 'waitForSelector', 'textContent',
+  'innerText', 'inputValue', 'evaluate', 'get', 'post', 'fetch']);
+const knownErrors = new Set(['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'AssertionError', 'TimeoutError']);
+
+export function classifyTestFailure(result) {
+  if (result?.status === 'timedOut') return 'Test timeout';
+  if (result?.status === 'interrupted') return 'Interrupted';
+  // Reporter messages carry terminal colour codes inside matcher names.
+  const message = String(result?.errors?.[0]?.message ?? result?.error?.message ?? '')
+    .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'gu'), '');
+  const firstLine = message.split('\n', 1)[0].trim();
+  const matcher = /^(?:Error: )?expect(?:\.soft|\.poll)?\((?:locator|page|received|value)?\)(?:\.not)?\.(to[A-Za-z]+)\(/u.exec(firstLine)?.[1];
+  if (matcher) return knownMatchers.has(matcher) ? `expect.${matcher}` : 'expect.other';
+  const action = /^(?:Error: )?([a-z][A-Za-z]*)\.([a-z][A-Za-z]*): Timeout\b/u.exec(firstLine);
+  if (action) return knownReceivers.has(action[1]) && knownActions.has(action[2]) ? `${action[1]}.${action[2]} timeout` : 'action timeout';
+  // Only a whole first line that is a code counts; a code-like fragment of a value never does.
+  const code = /^(?:(?:Type|Range|Reference|Syntax)?Error: )?((?:starter|acquisition)_[a-z_]+)$/u.exec(firstLine)?.[1];
+  if (code) return code;
+  const name = /^([A-Z][A-Za-z]*)(?::|$)/u.exec(firstLine)?.[1];
+  return name && knownErrors.has(name) ? name : 'unclassified';
+}
+
+export function failedTestSummaries(report) {
+  const failures = [];
+  const visit = (suite, titles) => {
+    for (const spec of Array.isArray(suite?.specs) ? suite.specs : []) {
+      for (const test of spec.tests ?? []) {
+        if (test.status !== 'unexpected' && test.status !== 'flaky') continue;
+        const result = test.results?.at(-1);
+        failures.push({
+          title: [...titles, spec.title].filter(Boolean).join(' › '),
+          project: test.projectName ?? '',
+          location: `${spec.file ?? suite.file ?? 'unknown'}:${spec.line ?? 0}`,
+          durationMs: Math.round(Number(result?.duration ?? 0)),
+          errorClass: classifyTestFailure(result),
+        });
+      }
+    }
+    // The top-level suite title is the file, which the location already names.
+    for (const child of Array.isArray(suite?.suites) ? suite.suites : []) visit(child, [...titles, child.title]);
+  };
+  for (const suite of Array.isArray(report?.suites) ? report.suites : []) visit(suite, []);
+  return failures;
+}
+
+export function formatFailedTests(failures, privateValues = []) {
+  const lines = failures.map(({ title, project, location, durationMs, errorClass }) =>
+    `Starter browser failed test: ${project ? `[${project}] ` : ''}${title} (${location}, ${durationMs} ms): ${errorClass}`);
+  try { scanPrivateOutput(lines.join('\n'), privateValues); }
+  catch { return [`Starter browser failed tests: ${failures.length}; details withheld because they matched private output`]; }
+  return lines.length ? lines : ['Starter browser failed tests: none recorded in the report'];
+}
+
+export async function reportFailedTests(reportPath, privateValues = [], log = console.error) {
+  let report;
+  try { report = JSON.parse(await readFile(reportPath, 'utf8')); }
+  catch { log('Starter browser failed tests: report unavailable'); return; }
+  let failures;
+  try { failures = failedTestSummaries(report); }
+  catch { log('Starter browser failed tests: report unreadable'); return; }
+  for (const line of formatFailedTests(failures, privateValues)) log(line);
+}
+
 export function capturePrivateValues(message) {
   const record = message.record ?? message;
   const values = ['token', 'rawToken', 'email', 'recipient', 'recoveryUrl', 'completionUrl', 'orderRef']
@@ -237,9 +310,11 @@ export function browserArguments(app, reference, name, localImage) {
   const fixtures = `type=bind,src=${join(app, '.context/care-browser')},dst=/app/.context/care-browser`;
   // The catalogue proof stages the installed receipt for the host to verify.
   const builds = `type=bind,src=${join(app, '.context/catalogue-builds')},dst=/app/.context/catalogue-builds`;
-  return [...browserContainerArguments(app, reference, name, localImage, ['--mount', fixtures, '--mount', builds]),
+  // The JSON report lands in the writable fixture mount so a failed group can name its failed tests.
+  const report = ['-e', `PLAYWRIGHT_JSON_OUTPUT_FILE=/app/.context/care-browser/${browserReportName}`];
+  return [...browserContainerArguments(app, reference, name, localImage, ['--mount', fixtures, '--mount', builds, ...report]),
     'node', 'node_modules/@playwright/test/cli.js', 'test', '--config', 'playwright.database.config.ts',
-    '--workers=1', '--retries=0', '--reporter=dot', '--output=/tmp/test-results'];
+    '--workers=1', '--retries=0', '--reporter=dot,json', '--output=/tmp/test-results'];
 }
 
 export async function acquireStarterPostgres(defer, io = { start: runPostgresContainer, ready: waitForPostgresTcpReady }) {
@@ -327,8 +402,10 @@ export function starterBrowserFailure(error, phase) {
     }
     return new Error('starter_browser_catalogue_upgrade_failed');
   }
+  // A Node system error code (ENOENT, EPERM...) is checked first: no SQLSTATE class starts with E.
+  const code = typeof error?.code === 'string' ? error.code : '';
   const refusal = /qualified PostgreSQL installation refused: ([a-z0-9_]+)/u.exec(error.message)?.[1]
-    ?? (/^[A-Z0-9]{5}$/u.test(error.code ?? '') ? `sqlstate_${error.code}` : undefined);
+    ?? (/^E[A-Z]+$/u.test(code) ? `node_${code}` : /^[A-Z0-9]{5}$/u.test(code) ? `sqlstate_${code}` : undefined);
   return new Error(/^starter_[A-Za-z_]+$/u.test(error.message) ? error.message : `starter_browser_${phase}_failed${refusal ? `_${refusal}` : ''}`);
 }
 
@@ -503,7 +580,11 @@ export async function runStarterBrowser(options) {
               try { await execute('docker', ['rm', '-f', '-v', name], { timeout: 30000 }); }
               catch (error) { if (!/No such container/iu.test(error.stderr ?? '')) throw new Error('starter_browser_container_cleanup_failed'); }
             });
-            const output = await command('docker', [...browserArguments(app, image, name, options.localImage), ...selection]);
+            const report = join(app, '.context/care-browser', browserReportName);
+            await rm(report, { force: true });
+            let output;
+            try { output = await command('docker', [...browserArguments(app, image, name, options.localImage), ...selection]); }
+            catch (error) { await reportFailedTests(report, privateValues); throw error; }
             const counts = output.match(/\b\d+ (?:passed|skipped|failed|did not run)\b/gu) ?? [];
             if (!counts.some(count => count.endsWith(' passed'))) throw new Error('starter_browser_results_missing');
             console.log(`Starter database journeys: ${counts.join(', ')}; group ${groupIndex + 1}`);

@@ -2848,8 +2848,7 @@ before-send create failure or authoritative absence; retryable readback stays
 unknown. Readback selects the latest capture fault per source kind and ID,
 including terminal faults and resolved receipts. Cutover source seeding precedes
 FK-bearing invoicing tables, so its scan does not hold order/accounting FK locks.
-The six-case native conformance witness covers these boundaries within its
-existing whole-file budget.
+The six-case native conformance witness covers these boundaries.
 Native paid fulfillment constructs only the shipment spine: accounting disabled, unavailable or locked cannot delay a renewal parcel.
 Managed wrappers retain their existing behavior.
 
