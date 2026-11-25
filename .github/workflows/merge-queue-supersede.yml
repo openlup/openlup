@@ -1,0 +1,50 @@
+# Cancels Published Tree CI merge-group runs whose queue ref no longer exists.
+#
+# GitHub deletes a gh-readonly-queue ref when it rebuilds or drops that group,
+# but the run started for it keeps its runners. Only those orphaned runs are
+# cancelled: a run whose ref still exists is left alone. Nothing here checks
+# out code, and the job is not a required check.
+
+name: Merge Queue Supersede
+
+on:
+  merge_group:
+    types: [checks_requested]
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: merge-queue-supersede
+  cancel-in-progress: false
+
+jobs:
+  cancel-orphaned:
+    if: ${{ github.repository == 'openlup/openlup' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Cancel runs for removed merge-group refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Runs first, then refs: a ref present when its run was listed is
+          # still listed, so a live group's run is never cancelled.
+          runs=$(for status in queued in_progress waiting; do
+            gh api --paginate "repos/$REPO/actions/workflows/published-tree-ci.yml/runs?event=merge_group&status=$status&per_page=100" \
+              --jq '.workflow_runs[] | "\(.id) \(.head_branch)"' || exit 1
+          done)
+          live=$(gh api --paginate "repos/$REPO/git/matching-refs/heads/gh-readonly-queue/" --jq '.[].ref | sub("^refs/heads/"; "")')
+          while read -r id branch; do
+            [ -n "$id" ] || continue
+            case "$branch" in gh-readonly-queue/*) ;; *) continue ;; esac
+            if ! grep -qxF "$branch" <<<"$live"; then
+              echo "cancel $id ($branch)"
+              gh api -X POST "repos/$REPO/actions/runs/$id/cancel" >/dev/null || echo "::warning::cancel $id failed"
+            fi
+          done <<<"$runs"

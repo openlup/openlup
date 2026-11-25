@@ -352,6 +352,10 @@ Domain inputs include `owned/renewal.config.ts` (account actions, pause presets,
 timing) and `owned/quote.config.ts`, composed in `owned/store.config.ts`. Follow
 [the business-configuration convention](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#keep-business-configuration-owned).
 
+For each seeded product, set `physical.netContent` to a whole-gram mass and
+provide its primary `gs1:gtin` identifier. Keep the issuer and GTIN spelling
+when [migrating owned physical facts](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#set-seeded-product-physical-facts).
+
 After installing dependencies, discover platform and starter settings by goal with
 `npm --silent run settings -- list --goal "<goal>"`, validate owned edits offline
 with `npm --silent run settings -- check --configuration <id>`, or expose the

@@ -227,7 +227,10 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261127030000_subscription_destination_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127030000_subscription_destination_v2.sql) |
 | [`20261127040000_catalog_price_list_basis_select.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127040000_catalog_price_list_basis_select.sql) |
 | [`20261127041000_catalog_price_writer_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127041000_catalog_price_writer_v2.sql) |
-| [`20261127100000_identity_privacy_erasure_reconciliations.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127100000_identity_privacy_erasure_reconciliations.sql) |
+| [`20261127060000_function_search_path_pin_remaining.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127060000_function_search_path_pin_remaining.sql) |
+| [`20261127120000_fulfillment_destination_contact_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127120000_fulfillment_destination_contact_v2.sql) |
+| [`20261127120001_catalog_runtime_checkout_prelock.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127120001_catalog_runtime_checkout_prelock.sql) |
+| [`20261127120002_identity_privacy_erasure_reconciliations.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127120002_identity_privacy_erasure_reconciliations.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

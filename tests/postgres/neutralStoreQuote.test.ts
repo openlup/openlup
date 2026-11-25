@@ -216,6 +216,80 @@ async function provisionQuoteCase(configuration: string, multiSize: boolean, con
   return { configuration, multiSize, ownerUrl: container.connectionString, runtimeUrl: runtime.toString() };
 }
 
+// Product documents and labels captured before replacing the owned physical input.
+const retainedDocuments = { supplements: [
+  [
+    '4bb524d2-0029-5bb0-ad59-2683ffd47809', 'f4030056-e764-555d-a6d0-73447dd6b125', 'demo-supplements-dawn',
+    '5f88dbaf973ba18dc89d7a9b3fc3d9e3e29189c80ebfd4414dda2c1c733ec858', [
+      ['abc28ceb-4456-5701-a746-d504acee557a', 'ASTER-DAWN-60', { netWeightG: 250, unitGtin: '0000000000017', issuer: 'demo' }, 40, []],
+      ['02a436dc-112f-598e-a88b-d917f215229e', 'ASTER-DAWN-60-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '3511105362001' }, 80, []],
+    ],
+  ],
+  [
+    'c3e02131-3aff-5faf-a283-bedd90ff3c1e', '259a54d5-1152-5f5a-a418-57f4e39d6bf4', 'demo-supplements-noon',
+    'a9e29cac35022c09c5fd1a629da4d4900ed6e13d5c9b4e1139b46e67b7b55221', [
+      ['92a4a977-0457-5d65-aeea-a75ef3256a48', 'ASTER-NOON-60', { netWeightG: 250, unitGtin: '0000000000024', issuer: 'demo' }, 40, []],
+      ['6c7a3072-af43-590b-a8b7-d7193536d09b', 'ASTER-NOON-60-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '1441910664033' }, 80, []],
+    ],
+  ],
+  [
+    'f21b01d8-4384-5362-a4ca-404dbf687c8e', 'd5d1c8d6-84e0-529d-ae72-8925b2fddabc', 'demo-supplements-dusk',
+    '0940621d19799179e92bc43da770cb6c7203b17c1b6eb69256a877cdf6a89522', [
+      ['fb38d08c-07fb-5ff7-a133-e359daf206ec', 'ASTER-DUSK-30', { netWeightG: 250, unitGtin: '0000000000031', issuer: 'demo' }, 40, ['demo-restricted']],
+      ['fde3789e-fbba-53da-a25e-8a77646a1a08', 'ASTER-DUSK-30-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '3374757808057' }, 80, ['demo-restricted']],
+    ],
+  ],
+  [
+    '0fdd9fef-88f0-5dee-ad31-2c600debc7dd', '94a58685-d89d-561f-a8f7-beea1054cf3d', 'demo-supplements-dawn-extra',
+    '47917635fe1b088a243de89e0bf66bc597055a92fec9b3f6a03028a5df46c59e', [
+      ['65dd6a34-9d9e-5bc3-aad5-80b2f5735575', 'ASTER-DAWN-60-EXTRA', { netWeightG: 100, issuer: 'starter:demo', unitGtin: '1354016792848' }, 10, []],
+    ],
+  ],
+], coffee: [
+  [
+    '4659d826-df86-58b0-ae0d-eeeab9225950', '4645faf2-aa6b-536a-aeb9-4ad9e69c2e75', 'demo-coffee-light-roast',
+    '840ff13d545f84c6932c43ba5eb2cc57f5a173588811c280d2b840d52bbb2dd1', [
+      ['aa97fa15-f04f-5b88-ab0b-26b2633e7e0a', 'PEBBLE-LIGHT-250', { netWeightG: 250, unitGtin: '0000000000048', issuer: 'demo' }, 40, []],
+      ['33469b16-5554-5ff4-adf8-4015e7db1d85', 'PEBBLE-LIGHT-250-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '6815723410807' }, 80, []],
+    ],
+  ],
+  [
+    'b16da7cd-cc4d-59bd-ae28-acdec0e1137c', '0f09fde0-8e5e-5bbc-a3b1-12fd17ecd9c8', 'demo-coffee-medium-roast',
+    '0eececab9bb3f78f429a7468d7f756a3833f56eaa5f59c7912d68e33447c184a', [
+      ['8e48f4ff-8ac6-5dab-aef7-30c88e488352', 'PEBBLE-MEDIUM-250', { netWeightG: 250, unitGtin: '0000000000055', issuer: 'demo' }, 40, []],
+      ['fc1eb207-f61b-5a9b-ad58-9cf46890d066', 'PEBBLE-MEDIUM-250-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '3351248347431' }, 80, []],
+    ],
+  ],
+  [
+    '5cb40e17-d1af-5df1-a0db-a7334a96effc', '3d136f31-302a-5899-a58d-fb9c66e0236d', 'demo-coffee-dark-roast',
+    '77d1ef008c77a7356e82561246ed63435e3d8d73fd3591bebadf9c01eff65238', [
+      ['eb191375-ad2f-5833-a34c-9d6dab1acc0c', 'PEBBLE-DARK-250', { netWeightG: 250, unitGtin: '0000000000062', issuer: 'demo' }, 40, ['demo-restricted']],
+      ['760bcff5-bfa2-5065-a853-cc69a2f5ca3a', 'PEBBLE-DARK-250-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '1569102366975' }, 80, ['demo-restricted']],
+    ],
+  ],
+  [
+    'ad3461b4-211f-51d1-a209-374a11835880', 'cf7d9945-d0b4-5c2f-a128-a3006aff107b', 'demo-coffee-light-roast-extra',
+    'e90df1599814272e89a419412372397a80e67237cb8f042d6691a2944fae3ff8', [
+      ['90ddb9b6-7913-5b54-a0d1-04e0da2e2061', 'PEBBLE-LIGHT-250-EXTRA', { netWeightG: 100, issuer: 'starter:demo', unitGtin: '1925600957013' }, 10, []],
+    ],
+  ],
+] };
+
+const retainedLabels = {
+  supplements: [
+    ['Dawn', 'A fictional supplement in a simple amber container.'],
+    ['Noon', 'A fictional supplement with a pale green label.'],
+    ['Dusk', 'A fictional supplement with a muted blue label.'],
+    ['Extra container', 'A fictional optional extra.'],
+  ],
+  coffee: [
+    ['Light roast', 'A fictional light roast in a paper bag.'],
+    ['Medium roast', 'A fictional medium roast for your demonstration box.'],
+    ['Dark roast', 'A fictional dark roast with an illustrated label.'],
+    ['Extra container', 'A fictional optional extra.'],
+  ],
+};
+
 function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Awaited<ReturnType<typeof provisionQuoteCase>>) {
   const proofStarted = performance.now();
   const script = String.raw`
@@ -233,7 +307,8 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
     if (fixture.multiSize) {
       const large = structuredClone(config.subscriptionEditing.catalogue.find(row => row.sku === config.offer.products[0].sku + '-L'));
       large.unitPrice.amountMinor = 2998;
-      large.physical = {netWeightG:500,unitGtin:'0000000000109',issuer:'fixture-large'};
+      large.physical = {netContent:{dimension:'mass',unit:'openlup:g',unscaled:'500',scale:0},
+        primaryUnitIdentifier:{scheme:'gs1:gtin',issuer:'fixture-large',value:'0000000000109'}};
       config.offer.products.push(large);
       config.purchase.stock.quantities[large.sku]=1000;
     }
@@ -241,7 +316,46 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
     const runtime = new pg.Pool({connectionString:fixture.runtimeUrl});
     try {
       const install = {connection:owner,installRole:'postgres',runtimeRole:'starter_runtime',stock:(await import('@openlup/platform/fulfillment')).createPostgresFulfillmentStockSyncPort(runtime,{sourceKey:'starter-demo:'+config.id,readLocalInventoryStock:async()=>[]}),close:async()=>{}};
-      await applyDemoSeed(config,install);await applyDemoSeed(config,install);
+      async function retainedRows() {
+        return (await owner.query(\`SELECT p.id AS product_id,p.slug,p.name,p.description,p.primary_sku_id,p.current_document_revision_id,
+          r.schema_id,r.revision_no,r.document_ref,r.source_ref,r.document_payload::text AS payload,r.digest,
+          s.id AS sku_id,s.sku,s.title,s.net_weight_g,i.id AS identifier_id,i.issuer,i.normalized_value,i.identifier_kind,
+          i.pack_kind,i.quantity,i.is_primary FROM public.catalog_products p
+          JOIN public.catalog_product_document_revisions r ON r.id=p.current_document_revision_id
+          JOIN public.catalog_skus s ON s.product_id=p.id JOIN public.catalog_sku_identifiers i ON i.catalog_sku_id=s.id
+          ORDER BY s.id,i.id\`)).rows;
+      }
+      if (fixture.retained) {
+        for (const [index,[revisionId,productId,productSlug,digest,rows]] of fixture.retained.entries()) {
+          const [name,description] = fixture.labels[index];
+          const variants = rows.map(([skuId,sku,physical,demandPerUnit,exclusions]) =>
+            ({skuId,sku,physical,demandPerUnit,exclusions}));
+          const document = {schemaVersion:'neutral-store-product.v1',productId,productSlug,revisionNo:1,
+            sourceRef:'demonstration-catalogue-v1',variants};
+          await owner.query('INSERT INTO public.catalog_products(id,slug,name,description) VALUES($1,$2,$3,$4)',
+            [productId,productSlug,name,description]);
+          for (const variant of variants) {
+            const {skuId,sku,physical:{netWeightG,issuer,unitGtin}} = variant;
+            await owner.query('INSERT INTO public.catalog_skus(id,product_id,sku,title,net_weight_g) VALUES($1,$2,$3,$4,$5)',
+              [skuId,productId,sku,name,netWeightG]);
+            await owner.query(\`INSERT INTO public.catalog_sku_identifiers
+              (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary)
+              VALUES($1,$2,'gtin',$3,'unit',1,true)\`,[skuId,issuer,unitGtin]);
+          }
+          await owner.query(\`INSERT INTO public.catalog_product_document_revisions
+            (id,product_id,revision_no,schema_id,document_ref,document_payload,provenance,source_ref,digest)
+            VALUES($1,$2,1,$3,$4,$5,'{}',$6,$7)\`,[revisionId,productId,document.schemaVersion,
+            'demo-document:'+config.id+':'+revisionId,document,document.sourceRef,digest]);
+          await owner.query('UPDATE public.catalog_products SET primary_sku_id=$2,current_document_revision_id=$3 WHERE id=$1',
+            [productId,variants[0].skuId,revisionId]);
+        }
+      }
+      const predecessor = fixture.retained ? await retainedRows() : undefined;
+      if (predecessor) assert.equal(predecessor.length,7);
+      await applyDemoSeed(config,install);
+      if (predecessor) assert.deepEqual(await retainedRows(),predecessor);
+      await applyDemoSeed(config,install);
+      if (predecessor) assert.deepEqual(await retainedRows(),predecessor);
       assert.equal(Number((await owner.query('SELECT count(*) AS n FROM public.subscription_price_policy_revisions')).rows[0].n),1);
       assert.equal(Number((await owner.query('SELECT count(*) AS n FROM public.commerce_promotion_definitions')).rows[0].n),1);
       const identity = (await runtime.query('SELECT session_user,current_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows[0];
@@ -276,8 +390,13 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
       assert.equal(Number((await owner.query('SELECT count(*) AS n FROM public.subscription_price_policy_revisions')).rows[0].n),1);
       const rotated = structuredClone(config);rotated.quote.policy.revisionNo=2;
       await assert.rejects(applyDemoSeed(rotated,install),/starter_policy_seed_conflict/);
-      const physical = structuredClone(config);physical.offer.products[0].physical.netWeightG++;
+      const physical = structuredClone(config);
+      const content = physical.offer.products[0].physical.netContent;
+      content.unscaled=String(Number(content.unscaled)+1);
+      physical.offer.products[0].title='Rolled back title';
+      const beforeWeightChange = await retainedRows();
       await assert.rejects(applyDemoSeed(physical,install),/starter_document_seed_conflict/);
+      assert.deepEqual(await retainedRows(),beforeWeightChange);
       await owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}',$1::jsonb)",[JSON.stringify(config.quote.acquisition.delivery2DiscountBps)]);
       configurations[fixture.configuration] = config;
       const {server,port,base}=await bindScenarioServer();
@@ -384,7 +503,10 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
       console.log(JSON.stringify({configuration:config.id,unit:1420,subtotal:4260,second:3958,capabilityRefused:true,secondPromiseRefresh:true,retainedCapture:true}));
     } finally {await runtime.end();await owner.end();}
   `;
-  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,ownerUrl,runtimeUrl })};\n${script}`);
+  const demo = configuration as keyof typeof retainedDocuments;
+  const retained = !multiSize ? retainedDocuments[demo] : undefined;
+  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,ownerUrl,runtimeUrl,
+    retained, labels: retainedLabels[demo] })};\n${script.replaceAll('\\`','`')}`);
   const childStarted = performance.now();
   let output: string;
   try { output = execFileSync(process.execPath,['--experimental-strip-types','scenario.mjs','--configuration',configuration], { cwd: consumer,encoding: 'utf8',timeout: 20_000 }); }

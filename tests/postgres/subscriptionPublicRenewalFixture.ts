@@ -12,7 +12,8 @@ import { promisify } from "node:util";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, vi } from "vitest";
 import { selectPlatformMigrationManifest, evaluateSelectedPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { qualifiedPostgresStartupOptions, assertQualifiedPostgresSession, qualifiedPostgresCatalogPayload } from "../../server/adapters/postgres/qualifiedInstall.js";
+import { qualifiedPostgresStartupOptions, assertQualifiedPostgresSession, qualifiedPostgresCatalogPayload, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
+import { tryLeaseTemplateDatabase, type PgTemplateLease } from "../helpers/pgTemplateBroker.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 import type { NativeRenewalPurchaseFacts, SubscriptionQueryExecutor, AutomaticRenewalRunDeps } from "@openlup/platform/subscriptions";
 import type { RenewalSettlementPort } from "@openlup/platform/subscriptions/contracts";
@@ -31,10 +32,17 @@ export let composition: typeof import("@openlup/platform/composition");
 export let fulfillment: typeof import("@openlup/platform/fulfillment");
 let migrationsApi: typeof import("@openlup/platform/migrations");
 let container: PostgresContainer | undefined;
+let brokerLease: PgTemplateLease | null = null;
+let isolatedRenewalContainer = false;
+/** Suites that restart the fixture PostgreSQL container via `restartDatabase()` require an isolated container. */
+export function requireIsolatedRenewalContainer(): void {
+  isolatedRenewalContainer = true;
+}
 export let admin: Pool, migration: Pool, runtime: Pool;
 export let runtimeUrl: string;
-const selection = { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres",
-  migrationLogin: "postgres", runtimeLogin: "g7_runtime", restoreLogin: "g7_restore" } as const;
+let selection: QualifiedPostgresInstallation = { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres",
+  migrationLogin: "postgres", runtimeLogin: "g7_runtime", restoreLogin: "g7_restore" };
+export function runtimeLogin(): string { return selection.runtimeLogin; }
 const lock = "openlup:public-platform-migrations:v1";
 const secret = "synthetic-conformance";
 export const facts: NativeRenewalPurchaseFacts = { settlementChannelKey: "sandbox", authorizationRef: "sandbox:authorization",
@@ -56,28 +64,47 @@ beforeAll(async () => {
   destinations = await load("@openlup/platform/commerce/server/destinations");
   inventory = await load("@openlup/platform/inventory");
   migrationsApi = await load("@openlup/platform/migrations");
-  container = await runPostgresContainer({ name: `g7-renewal-${process.pid}`, password: secret, runOptions: ["-e", "PGDATA=/var/lib/postgresql/g7-data"] });
-  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Renewal PostgreSQL unavailable");
-  admin = new Pool({ connectionString: container.connectionString });
-  for (const role of [selection.runtimeLogin, selection.restoreLogin]) await admin.query(`CREATE ROLE ${role}
-    LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${secret}'`);
-  migration = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(selection) });
-  const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2",
-    { migrationIsBootstrap: true, hasRestore: true });
-  const migrations = [manifest.baseline, ...manifest.forward].map(({ file }) => ({ file, content: readFileSync(file, "utf8") }));
-  const runner = migrationsApi.createPostgresMigrationRunner({ connectionString: container.connectionString }, {
-    lockName: lock, root: process.cwd(), poolFactory: () => migration,
-    source: { readMigrations: () => ({ migrations, errors: [] }), readManifest: () => manifest,
-      evaluate: (input: Parameters<typeof evaluateSelectedPlatformMigrationManifest>[0]) => evaluateSelectedPlatformMigrationManifest(input, "qualified-v2"),
-      assertSession: (client: Parameters<typeof assertQualifiedPostgresSession>[0], applied: Parameters<typeof assertQualifiedPostgresSession>[1]) => assertQualifiedPostgresSession(client, applied, selection, lock) },
-    catalogProjectionPayload: (client: Parameters<typeof qualifiedPostgresCatalogPayload>[0]) => qualifiedPostgresCatalogPayload(client, selection, lock),
-  });
-  await runner.apply();
-  expect((await runner.status()).pending).toEqual([]); expect(await runner.apply()).toEqual({ applied: [] });
-  const url = new URL(container.connectionString); url.username = selection.runtimeLogin; url.password = secret;
-  // The selected installation's existing runtime group, never a migration/owner role.
-  url.searchParams.set("options", "-c role=service_role"); runtimeUrl = url.toString();
-  runtime = new Pool({ connectionString: runtimeUrl });
+  brokerLease = isolatedRenewalContainer ? null : await tryLeaseTemplateDatabase("qualified-v2", "g7-renewal");
+  if (brokerLease) {
+    selection = {
+      generation: "qualified-v2",
+      roleMode: "installer-managed",
+      bootstrapLogin: "postgres",
+      migrationLogin: brokerLease.migrationLogin,
+      runtimeLogin: brokerLease.runtimeLogin,
+      restoreLogin: brokerLease.restoreLogin,
+    };
+    admin = new Pool({ connectionString: brokerLease.ownerUrl });
+    migration = new Pool({ connectionString: brokerLease.migrationUrl, options: qualifiedPostgresStartupOptions(selection) });
+    const url = new URL(brokerLease.runtimeUrl);
+    // The selected installation's existing runtime group, never a migration/owner role.
+    url.searchParams.set("options", "-c role=service_role");
+    runtimeUrl = url.toString();
+    runtime = new Pool({ connectionString: runtimeUrl });
+  } else {
+    container = await runPostgresContainer({ name: `g7-renewal-${process.pid}`, password: secret, runOptions: ["-e", "PGDATA=/var/lib/postgresql/g7-data"] });
+    if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Renewal PostgreSQL unavailable");
+    admin = new Pool({ connectionString: container.connectionString });
+    for (const role of [selection.runtimeLogin, selection.restoreLogin!]) await admin.query(`CREATE ROLE ${role}
+      LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${secret}'`);
+    migration = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(selection) });
+    const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2",
+      { migrationIsBootstrap: true, hasRestore: true });
+    const migrations = [manifest.baseline, ...manifest.forward].map(({ file }) => ({ file, content: readFileSync(file, "utf8") }));
+    const runner = migrationsApi.createPostgresMigrationRunner({ connectionString: container.connectionString }, {
+      lockName: lock, root: process.cwd(), poolFactory: () => migration,
+      source: { readMigrations: () => ({ migrations, errors: [] }), readManifest: () => manifest,
+        evaluate: (input: Parameters<typeof evaluateSelectedPlatformMigrationManifest>[0]) => evaluateSelectedPlatformMigrationManifest(input, "qualified-v2"),
+        assertSession: (client: Parameters<typeof assertQualifiedPostgresSession>[0], applied: Parameters<typeof assertQualifiedPostgresSession>[1]) => assertQualifiedPostgresSession(client, applied, selection, lock) },
+      catalogProjectionPayload: (client: Parameters<typeof qualifiedPostgresCatalogPayload>[0]) => qualifiedPostgresCatalogPayload(client, selection, lock),
+    });
+    await runner.apply();
+    expect((await runner.status()).pending).toEqual([]); expect(await runner.apply()).toEqual({ applied: [] });
+    const url = new URL(container.connectionString); url.username = selection.runtimeLogin; url.password = secret;
+    // The selected installation's existing runtime group, never a migration/owner role.
+    url.searchParams.set("options", "-c role=service_role"); runtimeUrl = url.toString();
+    runtime = new Pool({ connectionString: runtimeUrl });
+  }
   expect((await runtime.query(`SELECT current_user,(SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user) AS elevated`)).rows)
     .toEqual([{ current_user: "service_role", elevated: false }]);
   at = days((await admin.query("SELECT now() AS at")).rows[0].at.toISOString(), -150);
@@ -97,8 +124,19 @@ beforeAll(async () => {
     inventoryClass: "sellable", lastSyncedAt: at, staleAfter: "2027-01-01T00:00:00.000Z" });
 }, postgresSetupTimeoutMs);
 afterAll(async () => {
-  try { await closePostgres(container, [admin, migration, runtime].filter(Boolean)); }
-  finally { if (scratch) await rm(resolve(scratch, ".."), { recursive: true, force: true }); }
+  try {
+    const activePools = [admin, migration, runtime].filter(Boolean);
+    for (const activePool of activePools) activePool.on("error", () => {});
+    try {
+      await closePostgres(container, activePools);
+    } finally {
+      if (brokerLease) {
+        const lease = brokerLease;
+        brokerLease = null;
+        await lease.release();
+      }
+    }
+  } finally { if (scratch) await rm(resolve(scratch, ".."), { recursive: true, force: true }); }
 });
 
 export async function purchase(captured = true, declared = true, paidAt = at) {
@@ -261,25 +299,51 @@ export async function captureStore(db: Pool, sourceId: string, limits = { maximu
 export async function withRestoredStore(packet: ConnectedNativeStoreCapture, work: (target: {
   owner: Pool; runtime: Pool; transaction: typeof transaction;
 }) => Promise<void>) {
-  const target = await runPostgresContainer({ name: `g7-restored-${process.pid}`, password: secret });
+  const leased = await tryLeaseTemplateDatabase("qualified-v2", "g7-restored");
+  const target = leased ? undefined : await runPostgresContainer({ name: `g7-restored-${process.pid}`, password: secret });
   const pools: Pool[] = [];
   try {
-    expect(await waitForPostgresTcpReady(target.connectionString)).toBe(true);
-    const owner = new Pool({ connectionString: target.connectionString }); pools.push(owner);
-    for (const role of [selection.runtimeLogin, selection.restoreLogin]) await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${secret}'`);
-    const migration = new Pool({ connectionString: target.connectionString, options: qualifiedPostgresStartupOptions(selection) }); pools.push(migration);
-    const runner = migrationsApi.createPlatformPostgresMigrationRunner({ connectionString: target.connectionString }, { installation: selection, poolFactory: () => migration });
-    await runner.apply();
+    let owner: Pool;
+    let migration: Pool;
+    let runtime: Pool;
+    let targetSelection: QualifiedPostgresInstallation = selection;
+    if (leased) {
+      targetSelection = {
+        generation: "qualified-v2",
+        roleMode: "installer-managed",
+        bootstrapLogin: "postgres",
+        migrationLogin: leased.migrationLogin,
+        runtimeLogin: leased.runtimeLogin,
+        restoreLogin: leased.restoreLogin,
+      };
+      owner = new Pool({ connectionString: leased.ownerUrl }); pools.push(owner);
+      migration = new Pool({ connectionString: leased.migrationUrl, options: qualifiedPostgresStartupOptions(targetSelection) }); pools.push(migration);
+      runtime = new Pool({ connectionString: leased.runtimeUrl, options: "-c role=service_role" }); pools.push(runtime);
+    } else {
+      expect(await waitForPostgresTcpReady(target!.connectionString)).toBe(true);
+      owner = new Pool({ connectionString: target!.connectionString }); pools.push(owner);
+      for (const role of [targetSelection.runtimeLogin, targetSelection.restoreLogin!]) await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${secret}'`);
+      migration = new Pool({ connectionString: target!.connectionString, options: qualifiedPostgresStartupOptions(targetSelection) }); pools.push(migration);
+      const runner = migrationsApi.createPlatformPostgresMigrationRunner({ connectionString: target!.connectionString }, { installation: targetSelection, poolFactory: () => migration });
+      await runner.apply();
+      const url = new URL(target!.connectionString); url.username = targetSelection.runtimeLogin;
+      runtime = new Pool({ connectionString: url.toString(), options: "-c role=service_role" }); pools.push(runtime);
+    }
     const freshTarget = await captureStore(migration, "public-renewal-pristine");
-    expect(await restoreConnectedNativeStore({ owner: migration, installation: selection, packet, freshTarget })).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
-    expect(await restoreConnectedNativeStore({ owner: migration, installation: selection, packet, freshTarget })).toMatchObject({ replayed: true });
-    const url = new URL(target.connectionString); url.username = selection.runtimeLogin;
-    const runtime = new Pool({ connectionString: url.toString(), options: "-c role=service_role" }); pools.push(runtime);
+    expect(await restoreConnectedNativeStore({ owner: migration, installation: targetSelection, packet, freshTarget })).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
+    expect(await restoreConnectedNativeStore({ owner: migration, installation: targetSelection, packet, freshTarget })).toMatchObject({ replayed: true });
     async function transaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T> {
       const client = await runtime.connect();
       try { await client.query("BEGIN"); const result = await work(client); await client.query("COMMIT"); return result; }
       catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
     }
     await work({ owner, runtime, transaction });
-  } finally { await closePostgres(target, pools); }
+  } finally {
+    for (const activePool of pools) activePool.on("error", () => {});
+    try {
+      await closePostgres(target, pools);
+    } finally {
+      if (leased) await leased.release();
+    }
+  }
 }

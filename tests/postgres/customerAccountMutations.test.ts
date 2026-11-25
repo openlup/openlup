@@ -190,7 +190,7 @@ for (const profile of ["legacy", "bootstrap", "separate", "admin-managed", "admi
 
 describe("account mutations template isolation", () => {
   it("isolates concurrent clones, drops closed clone databases and detects leaked cluster role mutations", async () => {
-    const template = await createAccountMutationsTemplate("bootstrap", "isolation-witness");
+    const template = await createAccountMutationsTemplate("bootstrap", "isolation-witness", undefined, undefined, { isolatedCluster: true });
     let closedByAssertion = false;
     try {
       const [first, second] = await Promise.all([template.clone("Alpha-1"), template.clone("Beta-2")]);
