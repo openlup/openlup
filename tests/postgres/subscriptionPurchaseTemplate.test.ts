@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createPostgresAccountReadSources, createPostgresCustomerOrderHistoryReadStore } from "@openlup/platform/account-support";
 import type { CatalogFactsProvenance } from "@openlup/platform/pricing/contracts";
 import { api, purchase, admin, at, checkout, days, deps, executor, facts, fulfillment, identity, now, payments, destinations, rpc, runtime, runtimeUrl, transaction } from "./subscriptionPublicRenewalFixture.js";
+import { createPostgresCustomerSubscriptionControlPort } from "../../server/adapters/postgres/customerSubscriptionControl.js";
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
 import type { RenewalRetainedTerms } from "@openlup/platform/subscriptions/contracts";
@@ -553,23 +554,43 @@ describe("derived renewal price context in PostgreSQL", () => {
   });
 
   it.each(["derived-only", "legacy stored"] as const)("keeps the saved quote and refuses a deleted %s SKU", async source => {
-    const f = await editFixture(), subject = await editSku(list, source === "derived-only" ? 125 : undefined);
+    const f = await editFixture(), priceList = await editList("ZY", "PLN");
+    const subject = await editSku(priceList, source === "derived-only" ? 125 : undefined);
+    await setContext(f, priceList, "PLN");
     if (source === "legacy stored") {
       await admin.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor)
-        VALUES($1,$2,'subscription',150)`, [list, subject.id]);
+        VALUES($1,$2,'subscription',150)`, [priceList, subject.id]);
     }
-    const edit = request(f, [{ variantId: subject.id, qty: 2 }]);
-    const original = await edit.actorPreview();
-    expect(original).toMatchObject({ canApply: true, newTotal: money(source === "derived-only" ? 220 : 300) });
+    const coreLines = [{ variantId: subject.id, qty: 2, isAddon: false as const }];
+    const edit = request(f, coreLines);
+    const port = createPostgresCustomerSubscriptionControlPort({
+      rpc: (name, args) => asEditActor(f, async db => {
+        expect(name).toBe("customer_subscription_preview_bundle_as_actor");
+        const { rows: [row] } = await db.query(`SELECT
+          public.customer_subscription_preview_bundle_as_actor($1,$2,$3,$4,$5,$6,$7) AS data`,
+        [args?.p_subscription_id, args?.p_idempotency_key, args?.p_core_lines, args?.p_addon_lines,
+          args?.p_composition_constraint, args?.p_cadence_days, args?.p_expected_template_version]);
+        return { data: row.data, error: null };
+      }),
+    });
+    const rePreview = () => port.previewAction(f.principal, { subscriptionAction: {
+      action: "update_bundle", subscriptionId: f.subscriptionId, idempotencyKey: edit.key,
+      coreLines, addonLines: [], compositionConstraint: {}, cadenceDays: 28, expectedTemplateVersion: 1,
+    } });
+    const original = (await rePreview())?.preview;
+    expect(original).toMatchObject({ canApply: true, newTotal: money(source === "derived-only" ? 220 : 300, "PLN"),
+      catalogAvailability: { status: "available", blockedReason: null } });
+    if (!original?.quoteHash) throw new Error("Expected a saved actor quote");
     const before = await editRows(f);
     expect(before.quotes).toHaveLength(1);
     expect(before.template).toMatchObject([{ variant_id: storedId }]);
     expect((await admin.query("DELETE FROM public.catalog_skus WHERE id=$1 RETURNING id", [subject.id])).rows)
       .toEqual([{ id: subject.id }]);
 
-    const preview = await edit.actorPreview();
+    const preview = (await rePreview())?.preview;
     const [apply] = await Promise.allSettled([edit.actorApply(original.quoteHash)]);
-    expect.soft(preview).toEqual({ ...original, canApply: false });
+    expect.soft(preview).toEqual({ ...original, canApply: false,
+      catalogAvailability: { status: "blocked", blockedReason: null } });
     expect.soft(apply).toMatchObject({ status: "rejected", reason: catalogRefusal });
     expect(await editRows(f)).toEqual(before);
   });

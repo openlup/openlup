@@ -13935,7 +13935,7 @@
     },
     {
       "path": "db/platform/migrations/20261129080000_subscription_edit_derived_prices.sql",
-      "sha256": "e4a033aa97abf172417a66c1b345be1c3b60173c95942f2b88ade91630add397",
+      "sha256": "0faff765f0fefbc7e4c3717af4a90f61e23c8f2fc9cdb5eedc9ac835c5188e6e",
       "functions": [
         {
           "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
@@ -13945,7 +13945,7 @@
         {
           "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
           "beforeSha256": "7093c0d7209b5134ccfc74e41b46bc585a07024cb1ce2e60a08a0dc3a76997ff",
-          "afterSha256": "93e963d5d3000b547918fc5d08ef781ce5da00801171e6fcc9b127de85643278"
+          "afterSha256": "11bb4a0c3298145c71decd7b25b0f9e6b9905ea4c33cfa11adf087a5825461fc"
         },
         {
           "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",

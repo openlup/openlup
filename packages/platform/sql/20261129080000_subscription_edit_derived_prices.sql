@@ -171,6 +171,7 @@ DECLARE
   v_expires_at timestamptz;
   v_blocked_reason text;
   v_can_apply boolean := true;
+  v_missing_sku boolean := false;
 BEGIN
   IF p_idempotency_key IS NULL OR p_idempotency_key <> btrim(p_idempotency_key)
     OR char_length(p_idempotency_key) NOT BETWEEN 8 AND 180
@@ -320,6 +321,12 @@ BEGIN
     IF v_quote.request_fingerprint <> v_fingerprint THEN
       RAISE EXCEPTION 'subscription_edit_idempotency_conflict' USING ERRCODE = '23505';
     END IF;
+    IF v_existing.id IS NULL THEN
+      v_missing_sku := EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_quote.proposed_lines) AS line
+        WHERE NOT EXISTS (SELECT 1 FROM public.catalog_skus AS sku WHERE sku.id = (line->>'variantId')::uuid)
+      );
+    END IF;
     -- First acceptance checks the saved terms and SKU identities.
     v_can_apply := CASE WHEN v_existing.id IS NOT NULL THEN v_quote.accepted_event_id IS NOT DISTINCT FROM v_existing.id
       ELSE v_quote.status = 'previewed' AND v_quote.expires_at > statement_timestamp()
@@ -327,10 +334,7 @@ BEGIN
         AND v_quote.new_total_minor > 0 AND EXISTS (
           SELECT 1 FROM public.subscription_renewal_terms
           WHERE subscription_id = v_subscription.id AND currency_code = v_quote.currency_code
-        ) AND NOT EXISTS (
-          SELECT 1 FROM jsonb_array_elements(v_quote.proposed_lines) AS line
-          WHERE NOT EXISTS (SELECT 1 FROM public.catalog_skus AS sku WHERE sku.id = (line->>'variantId')::uuid)
-        ) END;
+        ) AND NOT v_missing_sku END;
   ELSE
     IF NOT EXISTS (
       SELECT 1 FROM public.subscription_renewal_terms
@@ -425,7 +429,10 @@ BEGIN
     'currentTotal', jsonb_build_object('amountMinor', v_quote.current_total_minor, 'currency', v_quote.currency_code),
     'newTotal', jsonb_build_object('amountMinor', v_quote.new_total_minor, 'currency', v_quote.currency_code),
     'delta', jsonb_build_object('amountMinor', v_quote.new_total_minor - v_quote.current_total_minor, 'currency', v_quote.currency_code),
-    'catalogAvailability', jsonb_build_object('status', 'available', 'blockedReason', NULL)
+    'catalogAvailability', jsonb_build_object(
+      'status', CASE WHEN v_missing_sku THEN 'blocked' ELSE 'available' END,
+      'blockedReason', NULL
+    )
   ));
 END;
 $$;

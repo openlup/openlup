@@ -883,7 +883,7 @@
     },
     {
       "file": "db/platform/migrations/20261129080000_subscription_edit_derived_prices.sql",
-      "sha256": "e4a033aa97abf172417a66c1b345be1c3b60173c95942f2b88ade91630add397"
+      "sha256": "0faff765f0fefbc7e4c3717af4a90f61e23c8f2fc9cdb5eedc9ac835c5188e6e"
     }
   ],
   "objectInventorySha256": "0f31392032ee863b8c1971e54e05b65168d2e2f6a2fd023e36e3934607210461",
@@ -1795,7 +1795,7 @@
       },
       {
         "file": "db/platform/migrations/20261129080000_subscription_edit_derived_prices.sql",
-        "sha256": "e4a033aa97abf172417a66c1b345be1c3b60173c95942f2b88ade91630add397"
+        "sha256": "0faff765f0fefbc7e4c3717af4a90f61e23c8f2fc9cdb5eedc9ac835c5188e6e"
       }
     ],
     "objectInventorySha256": {
@@ -2707,7 +2707,7 @@
       },
       {
         "file": "db/platform/migrations/20261129080000_subscription_edit_derived_prices.sql",
-        "sha256": "e4a033aa97abf172417a66c1b345be1c3b60173c95942f2b88ade91630add397"
+        "sha256": "0faff765f0fefbc7e4c3717af4a90f61e23c8f2fc9cdb5eedc9ac835c5188e6e"
       }
     ],
     "objectInventorySha256": {
