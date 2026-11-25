@@ -9347,8 +9347,60 @@
         ]
       },
       {
+        "row": "fulfillment-destination-contact-v2",
+        "path": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_capture_parcel_contact(uuid,jsonb)",
+            "beforeSha256": "bb7b73d93d61d1e70c05ea5c9a6c24d561bb54d75bbbf70a7c2d522c2c3e82cf",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_capture_new_parcel_reservations(uuid,text)",
+            "beforeSha256": "f4899a5f6e86e8d6f48282e9f946406382e0e4e971661ad2f42c7ae6fb1a0dc5",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_capture_order_contact_for_shipment(uuid)",
+            "beforeSha256": "5b3d3eb4893fb08f825c89c12f7638fbba156124d961d24c92ebcce6a76a74c2",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_open_shipment(text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "77b279d81ea933917a5e62944da38412f5060c081983b1ac81acf496e8da23d6",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb)",
+            "beforeSha256": "f5a6c7f8c8ccc723805c0b4ea94ea21304e3f4b8661b2473ef38780b2ef00cd9",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_resolve_parcel_contact(uuid)",
+            "beforeSha256": "d84dfd39eb4f62d0a97442499f725c55032f2c70e4bcba14bbd13373309a59f2",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_destination_contact_v2(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_freeze_destination_contact_v2(uuid,jsonb,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.fulfillment_destination_line_snapshot_v2(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "catalog-runtime-checkout-prelock",
-        "path": "db/platform/migrations/20261127110000_catalog_runtime_checkout_prelock.sql",
+        "path": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
         "replacedFunctions": [
           {
             "signature": "public.catalog_admission_runtime_checkout(text,text,uuid,jsonb)",
@@ -13410,7 +13462,58 @@
       "functions": []
     },
     {
-      "path": "db/platform/migrations/20261127110000_catalog_runtime_checkout_prelock.sql",
+      "path": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
+      "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c",
+      "functions": [
+        {
+          "signature": "public.fulfillment_capture_parcel_contact(uuid,jsonb)",
+          "beforeSha256": "bb7b73d93d61d1e70c05ea5c9a6c24d561bb54d75bbbf70a7c2d522c2c3e82cf",
+          "afterSha256": "c624b9fa277a4142b5e5c330b4b89bd401cafca612044808120c0b87daaddca0"
+        },
+        {
+          "signature": "public.fulfillment_capture_new_parcel_reservations(uuid,text)",
+          "beforeSha256": "f4899a5f6e86e8d6f48282e9f946406382e0e4e971661ad2f42c7ae6fb1a0dc5",
+          "afterSha256": "de099d0ef546c70e698d9e8b65259720a30eb8ec37ea30a9fa8f602378f5d4e9"
+        },
+        {
+          "signature": "public.fulfillment_capture_order_contact_for_shipment(uuid)",
+          "beforeSha256": "5b3d3eb4893fb08f825c89c12f7638fbba156124d961d24c92ebcce6a76a74c2",
+          "afterSha256": "a3b1a581b9be79da7aa8a9cf92786f302b510d82431404df045f10c624c63e33"
+        },
+        {
+          "signature": "public.fulfillment_open_shipment(text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "77b279d81ea933917a5e62944da38412f5060c081983b1ac81acf496e8da23d6",
+          "afterSha256": "447c39de0ac75bf533fb8d8e975facdf5b3e6284d009f4e87556fa7792bb08d2"
+        },
+        {
+          "signature": "public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb)",
+          "beforeSha256": "f5a6c7f8c8ccc723805c0b4ea94ea21304e3f4b8661b2473ef38780b2ef00cd9",
+          "afterSha256": "090b7b1ff38398b32be5b47d6774c344f8a3350348ed088430db3362b009d04f"
+        },
+        {
+          "signature": "public.fulfillment_resolve_parcel_contact(uuid)",
+          "beforeSha256": "d84dfd39eb4f62d0a97442499f725c55032f2c70e4bcba14bbd13373309a59f2",
+          "afterSha256": "e944a0c90c3d49078545266fef38d1e66dc84a647cbca8047349829f5d90d8fb"
+        },
+        {
+          "signature": "public.fulfillment_destination_contact_v2(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "9c47ae2fbcd2cf7e0545c519dabe3c76fc9d394568f4e0a98b61498b4f7ba5d5"
+        },
+        {
+          "signature": "public.fulfillment_freeze_destination_contact_v2(uuid,jsonb,text)",
+          "beforeSha256": null,
+          "afterSha256": "14288a507b3d97a77c6479a222b1610bf28e2b21bee2e2d568feca8ed95be51b"
+        },
+        {
+          "signature": "public.fulfillment_destination_line_snapshot_v2(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "46c7a4447e77e239f7bcc1a0919316ac4e78da08dfdbf21e777964137651a145"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
       "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143",
       "functions": [
         {

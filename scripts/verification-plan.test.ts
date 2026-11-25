@@ -110,7 +110,8 @@ describe('local obligation contract', () => {
     expect(job('install-pack')).toContain('npm run packages:check -- --cold --out "$RUNNER_TEMP/package-gates"');
     expect(job('install-packages')).toContain('scripts/packages/required-package-gates.ts --packages "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
     expect(job('install-proof')).toContain('needs: [install-pack, install-packages, install-browser]');
-    expect(job('test-full-shard')).toContain('node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --skip-pretest');
+    expect(job('test-prep')).toContain('node scripts/ci-vitest-shard.mjs --total 8 --plan-out .context/scratch/ci-vitest-shard-plan.json');
+    expect(job('test-full-shard')).toContain('node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --plan .context/scratch/ci-vitest-shard-plan.json --skip-pretest');
     expect(job('test')).toContain('test "$SHARD_RESULT" = "success"');
     expect(plan().hostedOnly.map(item => item.context)).toEqual(['test', 'install-proof', 'native-review']);
   });
