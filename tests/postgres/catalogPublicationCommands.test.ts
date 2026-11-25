@@ -734,6 +734,23 @@ describe("publication activation prices", () => {
     sell: { oneTime: true, subscription: false }, facts: { derived: 12 }, logisticsRef: `example:fulfillment/${code}`,
   });
 
+  it("requires a released SKU before changing its eligibility", async () => {
+    const { release, activation } = buildCatalogReleaseDraftV3({ namespace: "example",
+      type: { key: installed.key, version: installed.version }, slug: "new-eligibility", name: "New eligibility",
+      presentation: { title: "New eligibility" }, skus: [{ ...builderSku("NEW-ELIGIBILITY", 209, "100"),
+        options: { finish: { kind: "choice", value: "matte" } }, attributes: { finish: "matte" } }] });
+    const payload = structuredClone(release.payload);
+    payload.product.sharedContent.requestedModes = activation.payload.product.sharedContent.requestedModes;
+    payload.publication.operations.push(...activation.payload.publication.operations.filter(operation => operation.op === "set_eligibility"));
+    const draftId = randomUUID();
+    await save({ draftId, payload }, 1, payload, authorPool);
+    const api = native(undefined, authorPool);
+    const result = await api.prepareCandidate({ draftId, draftRevision: 1, expectedHead: null }, (await api.authorize(actor))!);
+    expect(result).toMatchObject({ preparation: { structural: { outcome: "blocked-input", issues: [
+      { code: "catalog_publication_operation_source_mismatch", path: "publication.operations.7", subject: "NEW-ELIGIBILITY" },
+    ] } } });
+  });
+
   async function publishBuiltProduct(input: CatalogProductInput, pricing: "d2c" | "d2c-recovery" | "legacy") {
     const db = pricing === "legacy" ? legacyPool : authorPool;
     const priceListId = pricing === "legacy" ? legacyListId : authorListId;

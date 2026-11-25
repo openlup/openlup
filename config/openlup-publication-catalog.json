@@ -1802,6 +1802,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/catalogue-media.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/catalogue-readiness-jobs.ts",
       "class": "public-output"
     },
@@ -1815,6 +1819,10 @@
     },
     {
       "path": "examples/neutral-store/host/checkout-recovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/demonstration-marker.ts",
       "class": "public-output"
     },
     {
@@ -2227,6 +2235,14 @@
     },
     {
       "path": "examples/neutral-store/test/browser-groups.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-apply.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-media.test.ts",
       "class": "public-output"
     },
     {
@@ -3795,6 +3811,10 @@
     },
     {
       "path": "packages/platform/api/shipping.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/storefront.api.md",
       "class": "public-output"
     },
     {
@@ -8294,6 +8314,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/promotions/quoteAcceptanceTokenV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/promotions/quoteAcquisitionBinding.ts",
       "class": "public-output"
     },
@@ -8571,6 +8595,22 @@
     },
     {
       "path": "packages/platform/src/shipping/thresholdPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/anchor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/bindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/identity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/index.ts",
       "class": "public-output"
     },
     {
@@ -11258,6 +11298,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/promotions/quoteAcceptanceTokenV2.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/promotions/quoteAutomaticPromotions.test.ts",
       "class": "public-output"
     },
@@ -11379,6 +11423,18 @@
     },
     {
       "path": "packages/platform/test/shipping/thresholdPresentation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/browserBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/exports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/types.test.ts",
       "class": "public-output"
     },
     {
@@ -30642,6 +30698,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationV2SubscriptionReads.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/disposableDockerReap.test.ts",
       "class": "public-output"
     },
@@ -30699,6 +30759,10 @@
     },
     {
       "path": "tests/postgres/fixtures/m14SelfhostActor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/orderMoneyV2Storage/replayed.sql",
       "class": "public-output"
     },
     {
@@ -31239,6 +31303,18 @@
     },
     {
       "path": "tests/postgres/operatorOrderCommands.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderMoneyV2Storage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderMoneyV2StoragePgtap.test.ts",
       "class": "public-output"
     },
     {
@@ -31983,7 +32059,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-f13fb832ebc96fc06a087c8932f84194d5f51cf3b629a6a731f5410504611d45"
+      "digest": "sha256-6beae26df400ee4ac52815e4d82b51245a4e9adc5e4dbb850889c62c269afc30"
     },
     {
       "path": "package.json",

@@ -582,12 +582,14 @@ it("upgrades the existing evidence through the real runner", async () => {
     const readOld = await old.publication();
     const qualifying = await startPurchase(old);
     const incomplete = await startPurchase(old,{bound:false});
-    const evidence = await old.effects();
+    // The full suffix also adds nullable order money markers outside this forward.
+    const readEvidence = () => old.effects({ omitOrderMoneyMarkers: true });
+    const evidence = await readEvidence();
     await refuses(readiness(readOld),guardRefusal);
     const forward = (await old.runner.status()).pending.find(file => file.endsWith(suffix));
     expect(forward).toBeDefined();
     expect((await old.runner.apply()).applied.slice(0,1)).toEqual([forward]);
-    expect(await old.effects()).toEqual(evidence);
+    expect(await readEvidence()).toEqual(evidence);
     await refuses(readiness(readOld),guardRefusal);
     await old.owner.query("UPDATE public.commerce_orders SET created_at=now()-interval '25 hours' WHERE id=$1",[incomplete.id]);
     await assertReadyOrder(readOld);

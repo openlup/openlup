@@ -7,8 +7,8 @@ The starter's `client/quote-acceptance.ts` and `shared/offer-estimate.ts` now ta
 `@openlup/platform/pricing` entry. Behaviour is unchanged. In your own
 `client/` or `shared/` code, import runtime values only from a browser entry
 (`…/contracts`, `account-support/read-contracts`, `pricing/browser`, `commerce`,
-`marketing`, `operations`), use `import type` for types, and keep host-only
-modules under `host/`.
+`marketing`, `operations`, `storefront`), use `import type` for types, and keep
+host-only modules under `host/`.
 
 Migration: Upgrade replaces pristine copies of both files. If apply reports that
 a managed file has local edits, keep your edits separately, restore the file

@@ -688,6 +688,12 @@ it("migrates the pristine catalogue after the 1.2.0 starter release", () => {
   expect(readFileSync(join(app, "owned/catalogue-archive.json"), "utf8")).toBe(customizedPack);
   expect(JSON.parse(readFileSync(join(app, "package.json"), "utf8")).scripts).not.toHaveProperty("catalogue:check");
   verifyWrappers();
+  const appliedManifest = readFileSync(join(app, "package.json"), "utf8");
+  const missingApply = JSON.parse(appliedManifest);
+  delete missingApply.scripts["catalogue:apply"];
+  write("package.json", missingApply);
+  expect(verifyWrappers).toThrow();
+  write("package.json", appliedManifest);
 
   write("released-catalogue.ts", previous);
   write(path, previous.replace("title_required", "adopter_title_required"));

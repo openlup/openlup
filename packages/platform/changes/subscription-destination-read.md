@@ -1,0 +1,2 @@
+- The experimental native destination port reads and rechecks an authorized subscription's sealed destination. Read with a null binding for current coordinates, or supply the exact binding for the retained document. Use a writable read-committed transaction.
+- Recovery through direct address selection requires a qualified edit rail.

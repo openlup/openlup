@@ -278,6 +278,7 @@ test('extract creates an independent repository and refuses to overwrite an exis
     const manifest = JSON.parse(await readFile(resolve(target, 'package.json'), 'utf8'));
     assert.equal(manifest.private, true);
     assert.equal(manifest.workspaces, undefined);
+    assert.equal(manifest.scripts['catalogue:apply'], './lifecycle catalogue apply');
     assert.ok((await readFile(resolve(target, 'AGENTS.md'), 'utf8')).includes('owned/store.config.ts'));
     const ownership = JSON.parse(await readFile(resolve(root, 'ownership.json'), 'utf8'));
     assert.equal(ownership.schemaVersion, 1);
@@ -316,7 +317,7 @@ test('extract creates an independent repository and refuses to overwrite an exis
         assert.deepEqual(bytes.subarray(0, annotation.length), annotation, file);
         bytes = Buffer.concat([Buffer.from(prefix), bytes.subarray(annotation.length)]);
       } else assert.ok(!bytes.includes('Managed by OpenLup.'), file);
-      if (file === 'package.json') assert.equal(sha256(bytes), 'e062d0bdf9f553293f8f18627126a68ea9431996bab21e69c6219604fed1cfc5');
+      if (file === 'package.json') assert.equal(sha256(bytes), '53229293322d161f27b783879c9ed31b8e464a7edb0dde89e591f7b0f3985c40');
       else if (file === 'ownership.json') {
         const { providerQualification: _profile, ...projected } = ownership;
         assert.deepEqual(JSON.parse(bytes.toString()), projected);
