@@ -538,6 +538,54 @@ describe("checkout attempt record", () => {
   });
 });
 
+/**
+ * Characterization of a stored record whose key the key reader would not reuse
+ * (here a UUID version the reader replaces). The attempt reader and the bump
+ * accept it; only the key reader mints over it.
+ */
+describe("a stored key the reader would not reuse", () => {
+  const UNREUSABLE_KEY = "checkout:11111111-1111-6111-8111-111111111111";
+  const storedRecord = () => JSON.parse(sessionStorage.getItem(CHECKOUT_ATTEMPT_STORAGE_KEY) ?? "null");
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    localStorage.setItem("openlup_vid", "fixed-test-vid");
+    let counter = 0;
+    vi.spyOn(crypto, "randomUUID").mockImplementation(() => {
+      counter += 1;
+      return `11111111-1111-4111-8111-${String(counter).padStart(12, "0")}`;
+    });
+    sessionStorage.setItem(
+      CHECKOUT_ATTEMPT_STORAGE_KEY,
+      JSON.stringify({ fingerprint: "f", key: UNREUSABLE_KEY, paymentAttempt: 2 }),
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  it("reads and advances a record whose key it would not reuse", () => {
+    expect(readAttempt()).toBe(2);
+
+    bumpAttempt();
+
+    expect(storedRecord()).toEqual({ fingerprint: "f", key: UNREUSABLE_KEY, paymentAttempt: 3 });
+  });
+
+  it("mints over such a record without carrying its attempt", () => {
+    const key = getOrCreateCheckoutAttemptKey(intent());
+
+    expect(key).toBe("checkout:11111111-1111-4111-8111-000000000001");
+    expect(key).not.toBe(UNREUSABLE_KEY);
+    expect(Object.keys(storedRecord())).toEqual(["fingerprint", "key"]);
+    expect(storedRecord().key).toBe(key);
+    expect(readAttempt()).toBe(0);
+  });
+});
+
 function recommendationSnapshot(): CommerceRecommendationSnapshot {
   return {
     version: COMMERCE_RECOMMENDATION_VERSION,

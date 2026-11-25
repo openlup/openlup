@@ -131,6 +131,13 @@ const PG_AXES = {
   '@src': ['src/'],
   '@starter': ['examples/neutral-store/'],
 };
+const GOVERNED_DRAFT_SUITE_INPUTS = [
+  '@starter',
+  'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts',
+  'tests/postgres/catalogPublicationFixture.ts',
+  'tests/postgres/subscriptionLifecycleClosureFixture.ts',
+  'tests/postgres/subscriptionNativeFixture.ts',
+];
 const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/accountSupportComposition.test.ts': ['@src', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/accountSupportOperatorAuthority.test.ts': ['tests/postgres/subscriptionNativeFixture.ts'],
@@ -270,7 +277,7 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/m14QualifiedSession.test.ts': [],
   'tests/postgres/m14RecipeConformance.test.ts': ['@identityTests', '@managedCompat', '@src', 'config/canonical-order-money-legacy-exceptions.json', 'config/public-reference-communications-imports.json', 'config/public-reference-identity-imports.json', 'config/public-reference-subscription-imports.json', 'config/public-reference-subscription-supabase.toml', 'config/site-routes.json', 'tests/postgres/catalogRuntimeCheckout.proof.ts', 'tests/postgres/current-installation-inventory.json', 'tests/postgres/fixtures/m14ApplicationActor.ts', 'tests/postgres/fixtures/m14EffectActor.mjs', 'tests/postgres/fixtures/m14EffectProvider.mjs', 'tests/postgres/fixtures/m14SelfhostActor.ts', 'tests/postgres/m14ApplicationCohort.ts', 'tests/postgres/m14ConnectedCatchup.ts', 'tests/postgres/m14HostedStorage.mjs', 'tests/postgres/m14ManagedCatchup.ts', 'tests/postgres/m14ManagedSourceFixture.ts', 'tests/postgres/m14OlderSnapshotRecovery.ts', 'tests/postgres/m14QualifiedAdminComposition.proof.ts', 'tests/postgres/m14RdsRecipe.mjs', 'tests/postgres/m14RecipeJourneys.mjs', 'tests/postgres/m14ReleasedSchemaUpgrade.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgradeChild.ts', 'tests/postgres/m14SelfhostHost.ts', 'tests/postgres/m14SelfhostStorage.mjs', 'tests/postgres/oidcIdentity.conformance.ts', 'tests/postgres/oidcIssuerFixture.ts', 'tests/postgres/oidcReferenceRp.ts', 'tests/postgres/runM14EffectHandover.ts', 'tests/postgres/runM14RecipeConformance.mjs', 'tests/postgres/runOidcIdentityConformance.mjs'],
   'tests/postgres/m14ReleasedSchemaUpgrade.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14ReleasedSchemaUpgrade.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgradeChild.ts'],
-  'tests/postgres/m14RestrictedConnectedRestore.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
+  'tests/postgres/m14RestrictedConnectedRestore.test.ts': ['tests/postgres/catalogAdmissionOwnerWrite.fixture.ts', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
   'tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts': ['tests/postgres/current-installation-inventory.json', 'tests/postgres/m14RestrictedConnectedRestore.fixture.ts'],
   'tests/postgres/m17ChannelReference.test.ts': ['@managedCompat', '@src'],
   'tests/postgres/m19BundleWriteExport.test.ts': [],
@@ -392,11 +399,28 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/taxCoveragePgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/taxCoverage/revisions.sql', 'tests/postgres/fixtures/taxCoverage/settings.ts'],
   'tests/postgres/taxCoverageRevisions.test.ts': ['tests/postgres/fixtures/taxCoverage/corpus.ts', 'tests/postgres/fixtures/taxCoverage/settings.ts'],
 };
+// These registrations land before the suites. Check each suite's own file.
+const GOVERNED_DRAFT_SUITE_PATHS = [
+  'tests/postgres/catalogAdmissionOwnerWrite.test.ts',
+  'tests/postgres/catalogAdmissionRuntimeCommit.test.ts',
+];
 const postgresSuiteInputs = (testPath, extras = []) => [
   ...PG_BASE_INPUTS,
   testPath,
   ...extras.flatMap(entry => PG_AXES[entry] ?? [entry]),
 ];
+const safeFileProbe = isFile => testPath => {
+  try {
+    return isFile(testPath);
+  } catch {
+    return false;
+  }
+};
+export function governedDraftSuiteInputs(isFile) {
+  return Object.fromEntries(GOVERNED_DRAFT_SUITE_PATHS
+    .filter(safeFileProbe(isFile))
+    .map(testPath => [testPath, postgresSuiteInputs(testPath, GOVERNED_DRAFT_SUITE_INPUTS)]));
+}
 export const TOOLING_INPUTS = {
   'scripts/agent-review-derived-inventory.test.ts': [
     'db/platform/migrations/',
@@ -470,6 +494,8 @@ export const TOOLING_INPUTS = {
   ...Object.fromEntries(
     Object.entries(POSTGRES_SUITE_CLOSURES).map(([testPath, extras]) => [testPath, postgresSuiteInputs(testPath, extras)]),
   ),
+  ...governedDraftSuiteInputs(testPath =>
+    statSync(new URL(`../${testPath}`, import.meta.url), { throwIfNoEntry: false })?.isFile() ?? false),
 };
 
 const WORKFLOW_PGTAP_INPUTS = [
