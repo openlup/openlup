@@ -915,7 +915,8 @@ describe.sequential('installed quote proofs', () => {
             'payment_simulator_attempts','payment_truth_events','outbox_events',
           ].map(async table=>[table,(await owner.query('SELECT count(*)::int AS rows FROM public.'+table)).rows[0].rows])));
           const attemptRows = async () => (await owner.query('SELECT attempt_digest FROM public.commerce_checkout_attempt_ledger ORDER BY attempt_digest')).rows;
-          const digest = key => createHash('sha256').update(key+'\0'+0).digest('hex');
+          // The limiter receives the derived guest key, never the header value.
+          const digest = key => createHash('sha256').update('checkout:'+createHash('sha256').update(JSON.stringify([null,key])).digest('hex')+'\0'+0).digest('hex');
           const stock = async () => (await owner.query('SELECT to_jsonb(s) AS row FROM public.fulfillment_stock_current s ORDER BY to_jsonb(s)::text')).rows;
           const before = await census();
           const beforeStock = await stock();
