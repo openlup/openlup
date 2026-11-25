@@ -40,6 +40,10 @@ export interface PrivacyStore<Context> {
 export interface NativePrivacyStore<Context> extends PrivacyStore<Context> {
   readonly privacyRail: "native";
   readRequiredContributorIds(context: Context): Promise<readonly string[]>;
+  findErasureReplay(context: Context, subject: PrivacySubjectRef, key: string): Promise<{
+    receipt: ErasureReceipt;
+    coveredContributorIds: readonly string[];
+  } | null>;
 }
 export type PrivacyUseCaseDependencies<Context> = {
   unitOfWork: PrivacyUnitOfWork<Context>;
