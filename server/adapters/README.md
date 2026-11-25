@@ -193,7 +193,9 @@ the census with disposition `target-address-references`; no registry rows, refer
 the target installation's own registry without comparing its count to the source.
 `public.payment_capture_time_test_qualification` contributes only relation, owner and row count under
 `target-payment-qualification`. The row attests to an installation's payment configuration and contains no customer data.
-Restore preserves the target's existing qualification or its absence. Each installation's Payments owner qualifies it locally.
+Restore preserves the target's existing qualification or its absence. Each installation's Payments owner qualifies its provider,
+provider account and source path locally. An imported signed capture is eligible for authoritative time only when its bound
+event carries the qualifying account. The reader also requires a matching provider and source path for readback diagnostics.
 Before connecting, restore rejects extra census fields, invalid counts and
 dispositions that do not match the relation; unsupported relations must have a zero count.
 Acquisition cases, history and all other nonempty private relations still refuse.

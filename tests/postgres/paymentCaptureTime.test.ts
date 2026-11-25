@@ -23,6 +23,8 @@ import { AT, call, renewal } from "./subscriptionNativeFixture.js";
 const options = { dunningTemplateSlug: "dunning", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" };
 const primaryProvider = "fixture-card";
 const otherProvider = "fixture-other";
+const primaryAccount = "fixture-account";
+const foreignAccount = "fixture-foreign-account";
 const amount = 200;
 const currency = "XXX";
 const scope = "public.payment_capture_time_test_qualification";
@@ -93,7 +95,7 @@ async function prepared(owner: Db, runtime: Db, provider = primaryProvider): Pro
 }
 
 function signed(f: Subject, livemode: boolean | string | null = false, occurredAt: string | null = f.time.occurred,
-  basis: "signed_event_v1" | "invalid_event_time" | null = "signed_event_v1"): VerifiedPaymentEvidence {
+  basis: "signed_event_v1" | "invalid_event_time" | null = "signed_event_v1", account: string | null = primaryAccount): VerifiedPaymentEvidence {
   const identity = {
     provider: f.provider, providerEventId: `evt_${f.attempt}`, providerPaymentRef: f.remote,
     intentRef: f.intent, attemptRef: null, providerOccurredAt: occurredAt,
@@ -105,6 +107,7 @@ function signed(f: Subject, livemode: boolean | string | null = false, occurredA
     providerAuditPayload: {
       ...(livemode === null ? {} : { livemode }),
       ...(basis === null ? {} : { captureTimeBasis: basis }),
+      ...(account === null ? {} : { providerAccountRef: account }),
     },
   };
 }
@@ -144,8 +147,9 @@ async function read(db: Db, order: string | null, intent: string | null = null) 
   return rows[0].capture;
 }
 
-const qualify = (db: Db, provider = primaryProvider, sourcePath = "signed_webhook") =>
-  db.query(`INSERT INTO ${scope} (singleton,qualified_at,provider_ref,source_path) VALUES (true,now(),$1,$2)`, [provider, sourcePath]);
+const qualify = (db: Db, provider = primaryProvider, sourcePath = "signed_webhook", account = primaryAccount) =>
+  db.query(`INSERT INTO ${scope} (singleton,qualified_at,provider_ref,source_path,provider_account_ref) VALUES (true,now(),$1,$2,$3)`,
+    [provider, sourcePath, account]);
 const timeEq = (db: Db, actual: string, expected: string) =>
   db.query("SELECT $1::timestamptz = $2::timestamptz AS equal", [actual, expected]).then(r => expect(r.rows[0].equal).toBe(true));
 const prepare = (provider?: string) => prepared(env.owner, env.runtime, provider);
@@ -186,7 +190,7 @@ it("reads the signed success instant by either selector in the apply transaction
     JOIN public.payment_truth_events t ON t.source_evidence->>'sourceReference'=e.id::text WHERE e.id=$1`,
   [applied.evidence_id])).rows[0];
   expect(applied).toMatchObject({ truth_id: bound.truth_id, settlement_transition_id: bound.settlement_transition_id });
-  expect(bound.payload).toMatchObject({ livemode: false, captureTimeBasis: "signed_event_v1" });
+  expect(bound.payload).toMatchObject({ livemode: false, captureTimeBasis: "signed_event_v1", providerAccountRef: primaryAccount });
   await timeEq(env.owner, applied.captured_at, f.time.occurred);
   await timeEq(env.owner, applied.provider_occurred_at, f.time.occurred);
   await timeEq(env.owner, applied.truth_occurred_at, bound.truth_time);
@@ -231,7 +235,7 @@ it("holds an applied capture missing the normalized signed time basis", async ()
   expect(await read(env.owner, f.order)).toMatchObject({ ...hold("unqualified"), payment_mode: "unknown" });
 });
 
-it("keeps a mixed installed population unqualified and holds a bound fractional signed clock", async () => {
+it("keeps a mixed installed population unqualified", async () => {
   const test = await prepare(), live = await prepare();
   const db = await env.owner.connect();
   try {
@@ -242,13 +246,22 @@ it("keeps a mixed installed population unqualified and holds a bound fractional 
     expect(await read(db, test.order)).toMatchObject({ ...hold("unqualified"), payment_mode: "test" });
     expect(await read(db, live.order)).toMatchObject({ ...hold("unqualified"), payment_mode: "live" });
   } finally { await db.query("ROLLBACK"); db.release(); }
-  const fractional = await prepare();
+});
+
+it.each(["signed_event_v1", "invalid_event_time"] as const)("holds an agreeing fractional signed instant with basis %s", async basis => {
+  const f = await prepare();
   await qualify(env.migration);
-  expect(await receive(env.runtime, fractional, signed(fractional, false, fractional.time.precise, "invalid_event_time")))
-    .toMatchObject({ status: 200 });
-  expect((await env.owner.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [fractional.intent])).rows)
+  expect(await receive(env.runtime, f, signed(f, false, f.time.precise, basis))).toMatchObject({ status: 200 });
+  expect((await env.owner.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [f.intent])).rows)
     .toEqual([{ status: "settled" }]);
-  expect(await read(env.owner, fractional.order)).toMatchObject(hold("ambiguous"));
+  expect(await read(env.owner, f.order)).toMatchObject(hold("ambiguous"));
+});
+
+it("holds a signed capture whose event has no provider account", async () => {
+  const f = await prepare();
+  await qualify(env.migration);
+  expect(await receive(env.runtime, f, signed(f, false, f.time.occurred, "signed_event_v1", null))).toMatchObject({ status: 200 });
+  expect(await read(env.owner, f.order)).toMatchObject({ ...hold("unqualified"), provider: f.provider, payment_mode: "test" });
 });
 
 it("keeps missing selectors, absent orders, unpaid attempts and recorded-only deliveries on their typed paths", async () => {
@@ -300,6 +313,19 @@ const fallback = {
   kind: "fallback", code: "capture_time_provider_time_unproven",
   route: "reconciliation_read", payment_mode: "unknown", captured_at: null,
 };
+
+it("holds coherent readback from an excluded provider or source path", async () => {
+  const included = await prepare(), excluded = await prepare(otherProvider);
+  for (const f of [included, excluded]) {
+    expect(await recovery().applyTerminalResult(readbackRequest(f))).toMatchObject({ correctionStatus: "corrected" });
+    expect(await read(env.owner, f.order)).toMatchObject({ ...hold("unqualified"), provider: f.provider, route: "reconciliation_read" });
+  }
+  await qualify(env.migration);
+  expect(await read(env.owner, included.order)).toMatchObject(hold("unqualified"));
+  await env.migration.query(`UPDATE ${scope} SET source_path='reconciliation_read'`);
+  expect(await read(env.owner, included.order)).toMatchObject(fallback);
+  expect(await read(env.owner, excluded.order)).toMatchObject({ ...hold("unqualified"), provider: otherProvider, route: "reconciliation_read" });
+});
 const readbackProvider = (f: Subject) => ({
   async readPayment({ providerPaymentId }: { providerPaymentId: string }) {
     expect(providerPaymentId).toBe(f.remote);
@@ -314,7 +340,7 @@ it.each(["worker", "verify-now"] as const)("retains the %s observer clock as a d
     "SELECT provider FROM public.payment_provider_profile(NULL) WHERE claim_stale AND one_time_flow='one_time_payment'");
   const f = await prepare(path === "worker" ? claimable!.provider : primaryProvider);
   const providers = { [f.provider]: readbackProvider(f) };
-  await qualify(env.migration, f.provider);
+  await qualify(env.migration, f.provider, "reconciliation_read");
   if (path === "worker") {
     await env.owner.query(`UPDATE public.payment_provider_attempts
       SET updated_at=$2::timestamptz-interval '1 hour',created_at=$2::timestamptz-interval '1 hour' WHERE id=$1`,
@@ -345,6 +371,7 @@ it.each(["worker", "verify-now"] as const)("retains the %s observer clock as a d
 });
 
 it.each([false, true])("binds the typed renewal carrier with provider time present=%s", async timed => {
+  await qualify(env.migration, primaryProvider, "reconciliation_read");
   const time = await clock(env.owner);
   const source = await renewal(env.owner, 10, 1, undefined, false, primaryProvider);
   const codec = createNativeRenewalCodec();
@@ -466,6 +493,7 @@ it.each(corruptions)("holds a settled capture with a %s", async (label, mutation
 
 it.each(["missing", "foreign"] as const)("holds a readback whose winning run is %s", async change => {
   const f = await prepare();
+  await qualify(env.migration, f.provider, "reconciliation_read");
   const request = readbackRequest(f, true);
   expect(await recovery().applyTerminalResult(request)).toMatchObject({ correctionStatus: "corrected" });
   expect(await read(env.owner, f.order)).toMatchObject(fallback);
@@ -481,7 +509,7 @@ it.each(["missing", "foreign"] as const)("holds a readback whose winning run is 
 
 it.each(["signed_webhook", "reconciliation_read"] as const)("keeps %s as the winning concurrent route", async winner => {
   const f = await prepare();
-  await qualify(env.migration);
+  await qualify(env.migration, f.provider, winner);
   const race = await env.owner.connect();
   let other: Promise<unknown> | undefined;
   try {
@@ -565,6 +593,38 @@ it("retains predecessor captures and classifies excluded evidence identically af
   } finally { await closePostgres(container, db); }
 }, postgresSetupTimeoutMs);
 
+it("preserves a historical execution capture after a late ignored failure enriches the response", async () => {
+  const container = await runPostgresContainer({ name: `capture-execution-predecessor-${process.pid}`, password: "synthetic-conformance" });
+  const { Pool } = await import("pg");
+  const db = new Pool({ connectionString: container.connectionString, options: "-c timezone=UTC" });
+  try {
+    expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+    const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest;
+    const beforeEvidence = manifest.forward.findIndex(unit => unit.file.endsWith("_native_durable_capture_evidence.sql"));
+    expect(beforeEvidence).toBeGreaterThan(0);
+    for (const unit of [manifest.baseline, ...manifest.forward.slice(0, beforeEvidence)]) await db.query(readFileSync(unit.file, "utf8"));
+    const f = await prepared(db, db);
+    const control = createPostgresProviderPaymentControlPort(db, options);
+    expect(await control.applyPaymentResult({ idempotencyKey: `legacy:${f.intent}`, paymentIntentId: f.intent,
+      paymentEventId: null, resultStatus: "succeeded", occurredAt: f.time.occurred, failureReason: null,
+    })).toMatchObject({ kind: "state_changed" });
+    for (const unit of manifest.forward.slice(beforeEvidence)) await db.query(readFileSync(unit.file, "utf8"));
+    const applied = () => db.query(`SELECT t.source_evidence AS truth, a.response_payload AS response
+      FROM public.payment_truth_events t JOIN public.payment_provider_attempts a ON a.settlement_intent_id=t.settlement_intent_id
+      WHERE a.id=$1 AND t.state='settled' AND t.outcome='captured'`, [f.attempt]).then(r => r.rows[0]);
+    const before = await applied();
+    expect(before.truth).toMatchObject({ sourceKind: "execution_response", sourceReference: f.attempt, attemptRef: f.attempt });
+    const expected = { ...hold("unqualified"), provider: f.provider };
+    expect(await read(db, f.order)).toMatchObject(expected);
+    expect(await control.applyPaymentResult({ idempotencyKey: `late:${f.intent}`, paymentIntentId: f.intent,
+      paymentEventId: null, resultStatus: "failed", occurredAt: f.time.observed, failureReason: "fixture",
+      failureClass: "soft_retryable", failureClassDecidedBy: "fixture",
+    })).toMatchObject({ kind: "ignored_failure_after_success_or_terminal" });
+    expect(await applied()).toEqual({ ...before, response: { ...before.response, failureClassDecidedBy: "fixture" } });
+    expect(await read(db, f.order)).toMatchObject(expected);
+  } finally { await closePostgres(container, db); }
+}, postgresSetupTimeoutMs);
+
 it("classifies sandbox co-settlement using the primary observation", async () => {
   const { order } = await draft(env.owner);
   const time = await clock(env.owner);
@@ -584,16 +644,18 @@ it("classifies sandbox co-settlement using the primary observation", async () =>
   expect(await read(env.owner, order)).toMatchObject({ ...hold("unqualified"), provider: "sandbox", route: null, payment_mode: "unknown" });
 });
 
-it("carries signed evidence and preserves the target's independent qualification through restore and replay", async () => {
+it("preserves target qualification and holds a different same-provider account on first restore", async () => {
   const resources = storeJourneyResources();
   try {
     const source = await resources.installation("capture-clock-source");
     const target = await resources.installation("capture-clock-target");
     const f = await prepared(source.owner, source.runtime);
+    const foreign = await prepared(source.owner, source.runtime);
     expect(await receive(source.runtime, f)).toMatchObject({ status: 200 });
-    await qualify(source.owner);
-    const captured = await read(source.owner, f.order);
-    expect(captured).toMatchObject({ kind: "authoritative" });
+    expect(await receive(source.runtime, foreign, signed(foreign, false, foreign.time.occurred, "signed_event_v1", foreignAccount)))
+      .toMatchObject({ status: 200 });
+    await qualify(source.owner, primaryProvider, "signed_webhook", foreignAccount);
+    expect(await read(source.owner, foreign.order)).toMatchObject({ kind: "authoritative" });
     const packet = await captureStoreJourney(source.owner, "capture-clock-source");
     expect(packet.outsideProfileCensus).toContainEqual({
       relation: scope, owner: journeySelection.migrationLogin, rows: "1", disposition: "target-payment-qualification",
@@ -601,7 +663,7 @@ it("carries signed evidence and preserves the target's independent qualification
     expect(packet.emptyOutsideProfile).not.toContain(scope);
     expect([...packet.compatible.tables, ...packet.owned].map(table => String(table.table)))
       .not.toContain("payment_capture_time_test_qualification");
-    await qualify(target.owner, otherProvider);
+    await qualify(target.owner);
     const freshTarget = await captureStoreJourney(target.owner, "capture-clock-target");
     expect(freshTarget.outsideProfileCensus.find(entry => entry.relation === scope)).toMatchObject({
       rows: "1", disposition: "target-payment-qualification",
@@ -609,11 +671,14 @@ it("carries signed evidence and preserves the target's independent qualification
     const targetQualification = async () => (await target.owner.query(`SELECT to_jsonb(q) AS value,
       tableoid::text,ctid::text,xmin::text FROM ${scope} q`)).rows;
     const before = await targetQualification();
-    expect(before).toMatchObject([{ value: { provider_ref: otherProvider, source_path: "signed_webhook" } }]);
+    expect(before).toMatchObject([{ value: { provider_ref: primaryProvider, source_path: "signed_webhook", provider_account_ref: primaryAccount } }]);
     const restore = () => restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget });
     expect(await restore()).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
     expect(await targetQualification()).toEqual(before);
-    expect(await read(target.owner, f.order)).toMatchObject({
+    const captured = await read(target.owner, f.order);
+    expect(captured).toMatchObject({ kind: "authoritative", intent_id: f.intent, provider: primaryProvider });
+    await timeEq(target.owner, captured.captured_at, f.time.occurred);
+    expect(await read(target.owner, foreign.order)).toMatchObject({
       ...hold("unqualified"), provider: primaryProvider, payment_mode: "test", route: "signed_webhook",
     });
     expect(await restore()).toMatchObject({ replayed: true });

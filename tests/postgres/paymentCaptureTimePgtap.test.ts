@@ -12,6 +12,7 @@ import { call } from "./subscriptionNativeFixture.js";
 const reader = "public.payment_read_capture_time(uuid,uuid)";
 const scope = "public.payment_capture_time_test_qualification";
 const provider = "fixture-card";
+const account = "fixture-account";
 const migration = "_payment_capture_time_read.sql";
 const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest;
 const setup = readFileSync("tests/postgres/fixtures/paymentProvider/setup.sql", "utf8");
@@ -91,7 +92,7 @@ describe("capture-time forward replay", () => {
       const lines = (Array.isArray(results) ? results : [results]).flatMap(result =>
         result.rows.flatMap(row => Object.values<string>(row)));
       expect(lines.filter(line => /^(?:not ok|# Looks like)/u.test(line))).toEqual([]);
-      expect(lines.filter(line => /^ok \d+/u.test(line))).toHaveLength(10);
+      expect(lines.filter(line => /^ok \d+/u.test(line))).toHaveLength(11);
       expect((await db.query("SELECT kind FROM public.payment_read_capture_time($1,NULL)", [f.order])).rows)
         .toEqual([{ kind: "pending" }]);
     } finally { await db.query("ROLLBACK"); db.release(); }
@@ -138,7 +139,7 @@ for (const profile of ["qualified-v2", "qualified-admin"] as const) describe(`in
         paymentIntentId: target.intent, paymentAttemptId: target.attempt, eventType: "payment.succeeded",
         amountMinor: 200, currency: "XXX", occurredAt: target.at, capturedAmountBasis: "provider_capture_v1",
         rawPayload: {
-          captureTimeBasis: "signed_event_v1", livemode,
+          captureTimeBasis: "signed_event_v1", livemode, providerAccountRef: account,
           openlupEvidence: { providerOccurredAt: target.at }, openlupReceipt: { receivedAt: target.received },
         },
       });
@@ -152,12 +153,15 @@ for (const profile of ["qualified-v2", "qualified-admin"] as const) describe(`in
       expect(await read()).toMatchObject({
         kind: "unqualified", code: "capture_time_route_unqualified", payment_mode: "test", captured_at: null,
       });
-      for (const sql of [`SELECT * FROM ${scope}`, `INSERT INTO ${scope} VALUES (true,now(),'fixture-card','signed_webhook')`,
-        `UPDATE ${scope} SET provider_ref='another-provider',source_path='reconciliation_read'`, `DELETE FROM ${scope}`]) {
+      for (const sql of [`SELECT * FROM ${scope}`, `INSERT INTO ${scope} VALUES (true,now(),'fixture-card','signed_webhook','fixture-account')`,
+        `UPDATE ${scope} SET provider_ref='another-provider',source_path='reconciliation_read',provider_account_ref='another-account'`,
+        `DELETE FROM ${scope}`]) {
         await expect(runtime.query(sql)).rejects.toMatchObject({ code: "42501" });
       }
-      await migrationOwner.query(`INSERT INTO ${scope} (singleton,qualified_at,provider_ref,source_path)
-        VALUES (true,now(),$1,'signed_webhook')`, [provider]);
+      await migrationOwner.query(`INSERT INTO ${scope} (singleton,qualified_at,provider_ref,source_path,provider_account_ref)
+        VALUES (true,now(),$1,'signed_webhook','another-account')`, [provider]);
+      expect(await read()).toMatchObject({ kind: "unqualified", code: "capture_time_route_unqualified", payment_mode: "test", captured_at: null });
+      await migrationOwner.query(`UPDATE ${scope} SET provider_account_ref=$1`, [account]);
       expect(await read()).toMatchObject({
         kind: "authoritative", code: null, payment_mode: "test", evidence_id: event.paymentEventId,
       });

@@ -3,7 +3,8 @@ CREATE TABLE public.payment_capture_time_test_qualification (
   singleton boolean PRIMARY KEY CHECK (singleton),
   qualified_at timestamptz NOT NULL,
   provider_ref text NOT NULL CHECK (NOT (btrim(provider_ref) = '')),
-  source_path text NOT NULL CHECK (NOT (btrim(source_path) = ''))
+  source_path text NOT NULL CHECK (NOT (btrim(source_path) = '')),
+  provider_account_ref text NOT NULL CHECK (NOT (btrim(provider_account_ref) = ''))
 );
 
 CREATE FUNCTION public.payment_read_capture_time(p_order_id uuid, p_intent_id uuid)
@@ -29,6 +30,7 @@ DECLARE
   attempt_id uuid;
   source_kind text;
   capture_basis jsonb;
+  qualified_route boolean;
   apply_key text;
   money jsonb;
   clock_value jsonb;
@@ -109,8 +111,10 @@ BEGIN
     WHERE a.id = capture_time.attempt_id AND a.settlement_intent_id = intent.id;
     IF NOT FOUND THEN EXIT classify; END IF;
     IF source_kind = 'execution_response' THEN
+      -- Applied truth retains the verified response hash and occurrence.
       IF source_id = attempt.id AND source->>'observedStatus' = 'succeeded'
-        AND source->>'payloadFingerprint' = encode(sha256(convert_to(attempt.response_payload::text, 'UTF8')), 'hex') THEN
+        AND right(truth.ingest_idempotency_key, 6) = ':truth'
+        AND truth.source_event_id = 'provider:' || left(truth.ingest_idempotency_key, -6) THEN
         kind := 'unqualified';
         provider := attempt.provider;
       END IF;
@@ -166,6 +170,14 @@ BEGIN
       kind := 'unqualified';
       EXIT classify;
     END IF;
+    SELECT EXISTS (SELECT 1 FROM public.payment_capture_time_test_qualification q
+      WHERE q.singleton AND q.provider_ref = evidence.provider AND q.source_path = route
+        AND (route = 'reconciliation_read' OR evidence.payload->'providerAccountRef' = to_jsonb(q.provider_account_ref)))
+    INTO qualified_route;
+    IF route = 'reconciliation_read' AND NOT qualified_route THEN
+      kind := 'unqualified';
+      EXIT classify;
+    END IF;
 
     IF NOT isfinite(evidence.created_at) OR (SELECT count(*) FROM public.payment_truth_events t
       WHERE t.settlement_intent_id = intent.id AND t.state = 'settled' AND t.outcome = 'captured') <> 1 THEN
@@ -181,11 +193,11 @@ BEGIN
           OR NOT pg_input_is_valid(clock_value #>> '{}', 'timestamptz') THEN EXIT classify; END IF;
         clocks := array_append(clocks, (clock_value #>> '{}')::timestamptz);
       END LOOP;
-      IF clocks[2] IS DISTINCT FROM evidence.created_at OR clocks[3] IS DISTINCT FROM truth.occurred_at THEN
+      IF clocks[2] IS DISTINCT FROM evidence.created_at OR clocks[3] IS DISTINCT FROM truth.occurred_at
+        OR clocks[3] IS DISTINCT FROM date_trunc('second', clocks[3], 'UTC') THEN
         EXIT classify;
       END IF;
-      IF payment_mode <> 'test' OR NOT EXISTS (SELECT 1 FROM public.payment_capture_time_test_qualification q
-        WHERE q.singleton AND q.provider_ref = evidence.provider AND q.source_path = route) THEN
+      IF payment_mode <> 'test' OR NOT qualified_route THEN
         kind := 'unqualified';
         EXIT classify;
       END IF;

@@ -106,15 +106,18 @@ describe("opt-in payment factory", () => {
     const success = (extra: Record<string, unknown>) => signed(event("payment_intent.succeeded", {}, extra));
     const verify = (extra: Record<string, unknown>) => adapter.verifyPort.verifyAndNormalize(success(extra));
     const instant = new Date(timestamp * 1000).toISOString();
-    const verified = await verify({ livemode: false });
+    const verified = await verify({ livemode: false, account: "acct_capture_fixture" });
     expect(verified).toMatchObject({
       kind: "money", providerOccurredAt: instant, capturedAmountBasis: "provider_capture_v1",
-      providerAuditPayload: { livemode: false, captureTimeBasis: "signed_event_v1" },
+      providerAuditPayload: { livemode: false, captureTimeBasis: "signed_event_v1", providerAccountRef: "acct_capture_fixture" },
     });
     expect(await verify({ livemode: "false" })).toMatchObject({
       fingerprint: "fingerprint" in verified ? verified.fingerprint : undefined,
       providerAuditPayload: { captureTimeBasis: "signed_event_v1" },
     });
+    for (const account of [undefined, false, " "]) {
+      expect(await verify({ livemode: false, account })).not.toMatchObject({ providerAuditPayload: { providerAccountRef: expect.anything() } });
+    }
     for (const created of [timestamp + 0.0001, timestamp + 0.125, instant]) {
       expect(await verify({ livemode: false, created })).toMatchObject({
         kind: "money", capturedAmountBasis: "provider_capture_v1", providerAuditPayload: { captureTimeBasis: "invalid_event_time" },
