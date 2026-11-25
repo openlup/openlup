@@ -13,8 +13,13 @@ const argumentsForUp = {
 };
 const candidate = { fix: 'Supply one matching Core, Outbox and Platform tarball from the same candidate set.', recheck: 'Repeat `./lifecycle candidate` with the three qualified tarballs.' };
 
-export const repriceRecovery = 'Run npm run catalogue:apply in default mode to verify committed prices read-only, then rerun with --reprice to review any remaining change.';
-const repriceReview = 'A fresh review by the reviewing administrator is required. Run catalogue apply with --reprice, review the current amounts and approve again.';
+const reviewCommand = 'npm run catalogue:apply -- --reprice';
+export const repriceRecovery = (verify = 'npm run catalogue:apply', review = reviewCommand) =>
+  `Run ${verify} to verify committed prices read-only, then run ${review} to review any remaining change.`;
+export const repriceReview = (review = reviewCommand) =>
+  `A fresh review by the reviewing administrator is required. Start a fresh --reprice by running ${review}, then review the current amounts and approve again.`;
+export const repriceRequired = (review = reviewCommand) =>
+  `To change the live price, run ${review}. To keep it, set the declared amount to the live price.`;
 const applyAgain = 'Repeat catalogue apply after correcting the prerequisite.';
 const review = 'Reload the current draft and head. Prepare the current revision and obtain its own approval.';
 const original = 'Have the original issuing administrator sign in and resume the original operation.';
@@ -40,11 +45,11 @@ const applyRefusals = {
   catalog_publication_media_validation_unavailable: ['The image verification did not finish.', 'The local media file could not be read.', 'Check the starter’s local media directory and file access, then retry.'],
   starter_catalogue_copy_unchanged: ['The copy matches the issued presentation.', 'A presentation successor needs a change to the saved copy.', 'Edit the intended presentation in copyPresentation.'],
   starter_catalogue_copy_requires_published: ['The original product publication is incomplete.', 'This mode requires both the Release and Activation receipts.', 'Run npm run catalogue:apply without --copy or --reprice first.', 'Check that Activation is published before using --copy or --reprice.'],
-  starter_catalogue_reprice_review_required: ['The signed-in administrator or effective price list changed.', 'The approval belongs to the reviewing administrator and price list.', repriceReview],
-  starter_catalogue_reprice_required: ['The declared amount differs from the live base.', 'This mode requires matching live prices.', 'To change the live price, run catalogue apply with --reprice. To keep it, set the declared amount to the live price.'],
+  starter_catalogue_reprice_review_required: ['The signed-in administrator or effective price list changed.', 'The approval belongs to the reviewing administrator and price list.', repriceReview()],
+  starter_catalogue_reprice_required: ['The declared amount differs from the live base.', 'This mode requires matching live prices.', repriceRequired()],
   starter_catalogue_reprice_base_missing: ['The SKU has no effective base price.', 'The published prices require a live base for every SKU.', 'Set the missing positive gross base through the authorized price action with no prior entry, then rerun.'],
   starter_catalogue_price_scheduled: ['The SKU has a scheduled base price.', 'The price writer cannot replace a scheduled base.', 'Ask the pricing owner to clear the scheduled base price first, then rerun.'],
-  starter_catalogue_reprice_readback_unverified: ['committed; figure not verified', 'The effective price and subscription figure could not be verified.', repriceRecovery],
+  starter_catalogue_reprice_readback_unverified: ['committed; figure not verified', 'The effective price and subscription figure could not be verified.', repriceRecovery()],
   starter_catalogue_reprice_requires_active: ['The SKU is ineligible for reprice.', 'A live replacement requires an active sellable SKU on the effective list.', 'Publish Activation for a draft product. Ask the pricing owner to review other SKU eligibility or list issues.'],
   base_price_ambiguous: ['The SKU has multiple effective base prices.', 'The price writer needs a single effective base.', 'Two effective base prices exist for this SKU. Route the duplicate to the pricing owner, then rerun.'],
   publication_sku_price_not_ready: ['An SKU does not have a ready price.', 'Publish requires a positive gross base and ready subscription pricing.', 'Set the missing positive gross base through the authorized action and verify the derived price. Route existing-base corrections to the pricing owner.', 'Retry the same Publish once the intended price is ready.'],

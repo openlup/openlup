@@ -1010,14 +1010,16 @@ after Release and Activation, including for SKUs sold by subscription.
    marked demo. Use the same `--configuration` as the running host.
 3. Review the live bases, replacement amounts and labelled subscription
    estimates. Type `approve` to authorize the base amounts.
-4. Check the report for the effective subscription figure and policy revision
-   on each price receipt. Run `npm run catalogue:apply` to verify the current
-   figures again.
+4. Check each receipt for its effective subscription figure and policy revision.
+   Verify the current figures with the same flags, omitting only `--reprice`.
 
 The batch stops at the first refusal and retains its confirmed receipts.
-If an apply or its readback fails, run `npm run catalogue:apply` to verify
-committed prices read-only, then rerun with `--reprice` to review any remaining
-change. A receipt marked “committed; figure not verified” needs this readback.
+If an apply or its readback fails, follow the commands in the report to verify
+committed prices read-only, then review any remaining change. For example, if
+you used `--configuration coffee`, run `npm run catalogue:apply -- --configuration coffee`
+to verify, then `npm run catalogue:apply -- --configuration coffee --reprice` to
+start a fresh review. Keep any other flags from the original invocation. A
+receipt marked “committed; figure not verified” needs this readback.
 
 ### Publish a saved catalogue draft
 

@@ -8,7 +8,7 @@ import { readStarterDiagnostic, starterDiagnostic } from './shared/refusals.ts';
 import { seedPhysicalGuidance } from './shared/seed-physical.ts';
 import { applicationHealthcheck } from './host/healthcheck.ts';
 import { browserJourneyGroups } from './browser-groups.mjs';
-import { catalogueApplyRefusal, operatorChallengeGuidance, repriceRecovery, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
+import { catalogueApplyRefusal, operatorChallengeGuidance, repriceRecovery, repriceRequired, repriceReview, starterGuidance, starterRefusals } from './lifecycle-refusals.mjs';
 import { installationFailure, installationFinding, installationReport, refusal } from './installation/refusals.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -166,9 +166,12 @@ if (command === 'refusals') {
   if (json) await emit(report);
   else {
     process.exitCode = report.exitCode;
+    if (report.receipts.length) await new Promise((done, fail) => {
+      const observations = report.receipts.map(receipt => JSON.stringify(receipt) + '\n').join('');
+      process.stdout.write(observations, error => error ? fail(error) : done());
+    });
     for (const finding of report.findings)
       process.stderr.write(`${finding.code}\nObserved: ${safePrompt(finding.observed)}\nCause: ${finding.cause}\nFix: ${finding.fix}\nRecheck: ${finding.recheck}\n`);
-    for (const receipt of report.receipts) process.stdout.write(JSON.stringify(receipt) + '\n');
   }
 } else if (command === 'up') {
   let configuration = '', packs = [], stage = '/arguments';
@@ -344,23 +347,38 @@ function safePrompt(value) {
 }
 
 async function catalogueApply(argv) {
-  const receipts = [];
-  let terminal, repriceStarted;
+  const receipts = [], refusals = [];
+  let terminal, repriceStarted, recovery, freshReprice;
   let path = '/arguments';
   const unavailable = 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE';
   const deny = (code, details = {}, cause, hostCode) => {
     throw Object.assign(catalogueApplyRefusal({ code, path, ...details }, cause), { hostCode });
   };
-  const report = finding => ({ formatVersion: 1, command: 'catalogue apply', state: finding ? 'violated' : 'satisfied',
-    exitCode: finding ? 2 : 0, receipts, findings: finding ? [repriceStarted ? { ...finding,
-      fix: repriceRecovery, recheck: 'Check the default report for the entry and subscription figure.' } : finding] : [] });
+  const refusalFinding = (error, subject) => error.finding ?? catalogueApplyRefusal({
+    code: readStarterDiagnostic(error)?.code ?? unavailable, path, subject }, error).finding;
+  const report = failure => {
+    if (failure) refusals.push(failure);
+    const findings = refusals.map(finding => {
+      if (repriceStarted) return { ...finding, fix: recovery, recheck: 'Check the default report for the entry and subscription figure.' };
+      if (finding.code === 'starter_catalogue_reprice_review_required') return { ...finding, fix: repriceReview(freshReprice) };
+      if (finding.code === 'starter_catalogue_reprice_required') return { ...finding, fix: repriceRequired(freshReprice) };
+      return finding;
+    });
+    return { formatVersion: 1, command: 'catalogue apply', state: findings.length ? 'violated' : 'satisfied',
+      exitCode: findings.length ? 2 : 0, receipts, findings };
+  };
   try {
     const [verb, ...options] = argv;
     const modes = options.filter(option => ['--prepare-only', '--copy', '--reprice'].includes(option));
     if (verb !== 'apply' || modes.length > 1) deny('starter_argument_unknown');
     const [mode] = modes;
-    const config = ownedConfiguration(await import('./owned/store.config.ts'), lifecycleOptions(options.filter(option => option !== mode)));
+    const sharedFlags = options.filter(option => option !== mode);
+    const config = ownedConfiguration(await import('./owned/store.config.ts'), lifecycleOptions(sharedFlags));
     (await import('./shared/config.ts')).assertConfig(config);
+    const applyCommand = flags => ['npm run catalogue:apply', ...(flags.length ? ['--', ...flags.map(flag =>
+      /^[a-z0-9_-]+$/iu.test(flag) ? flag : "'" + flag.replaceAll("'", "'\\''") + "'")] : [])].join(' ');
+    freshReprice = applyCommand(mode === '--reprice' ? options : [...sharedFlags, '--reprice']);
+    recovery = repriceRecovery(applyCommand(sharedFlags), freshReprice);
     const [owned, { buildCatalogReleaseDraftV3 }, { canonicalCatalogDraftJson }, pricing, { mapStarterPresentation }, { digestStarterMedia }] = await Promise.all([
       import('./owned/catalogue.ts'), import('@openlup/platform/catalog'), import('@openlup/platform/catalog/contracts'),
       import('@openlup/platform/pricing'), import('./shared/catalogue-presentation.ts'), import('./host/catalogue-media.ts'),
@@ -482,13 +500,13 @@ async function catalogueApply(argv) {
     const drafts = (body, key) => action('operator.catalogDrafts', body, key);
     await signIn();
     const { currency, priceListId, policy, actorId } = operator;
-    function requirePositivePrices(rows) {
+    const positivePrice = code => pricing.deriveSubscriptionUnitPrice(basePrices[code], policy) > 0;
+    function requirePositivePrices() {
       path = 'basePrices';
-      for (const { code } of rows)
-        if (pricing.deriveSubscriptionUnitPrice(basePrices[code], policy) <= 0)
-          deny('starter_catalogue_derived_price_zero', { subject: code });
+      for (const { code } of skus)
+        if (!positivePrice(code)) deny('starter_catalogue_derived_price_zero', { subject: code });
     }
-    if (mode) requirePositivePrices(skus);
+    if (mode) requirePositivePrices();
     const prices = [];
     const record = (stage, outcome, draftRevision, head, items = prices) => receipts.push({ stage, outcome, productId, draftId,
       draftRevision, head, currency, prices: [...items] });
@@ -568,6 +586,8 @@ async function catalogueApply(argv) {
       path = 'basePrices';
       const result = await publish({ action: 'price-preview', variantId, priceListId,
         ...(unitPriceMinor !== undefined && { unitPriceMinor }) }, undefined, code);
+      if (result.listEffective === false && mode === '--reprice' && !repriceStarted)
+        deny('starter_catalogue_reprice_review_required', { subject: code });
       if (typeof result.priceSetup?.hasPending !== 'boolean') deny(unavailable, { subject: code });
       if (result.priceSetup.hasPending) deny('starter_catalogue_price_scheduled', { subject: code });
       return result;
@@ -597,35 +617,42 @@ async function catalogueApply(argv) {
     }
     async function reviewPublishedPrices(active) {
       const changes = [];
-      for (const sku of skus) {
-        const { id: skuId, code } = sku;
-        const declared = basePrices[code];
-        let reviewed = reviewPreview(await pricePreview(skuId, code), code);
-        if (reviewed.currentCount > 1) deny('base_price_ambiguous', { subject: code });
-        if (mode === '--reprice' && reviewed.current?.unitPriceMinor !== declared) {
-          const proposed = await pricePreview(skuId, code, declared)
-            .catch(error => remapPriceMismatch(error, 'starter_catalogue_price_scheduled', code));
-          reviewed = reviewPreview(proposed, code);
+      for (const { id: skuId, code } of skus) {
+        try {
+          const declared = basePrices[code];
+          let reviewed = reviewPreview(await pricePreview(skuId, code), code);
+          if (reviewed.currentCount > 1) deny('base_price_ambiguous', { subject: code });
+          if (mode === '--reprice' && reviewed.current?.unitPriceMinor !== declared) {
+            const proposed = await pricePreview(skuId, code, declared)
+              .catch(error => remapPriceMismatch(error, 'starter_catalogue_price_scheduled', code));
+            reviewed = reviewPreview(proposed, code);
+          }
+          const { current, subscription } = reviewed;
+          if (reviewed.currentCount > 1) deny('base_price_ambiguous', { subject: code });
+          if (!current) deny('starter_catalogue_reprice_base_missing', { subject: code });
+          const { entryId, unitPriceMinor } = current;
+          if (unitPriceMinor === declared) {
+            const figure = subscriptionFigure(subscription);
+            if (!figure) deny('starter_catalogue_derived_price_zero', { subject: code });
+            const item = { skuId, entryId, unitPriceMinor, currency, ...figure };
+            prices.push(item);
+            if (active) record('price.apply', 'observed', 2, active, [item]);
+            continue;
+          }
+          if (!reviewed.inGate) deny('starter_catalogue_reprice_requires_active', { subject: code });
+          const estimate = amount => pricing.deriveSubscriptionUnitPrice(amount, { ...subscription, roundingRule: 'FLOOR_TO_QUANTUM' });
+          changes.push({ code, skuId, from: { entryId, unitPriceMinor }, to: { unitPriceMinor: declared },
+            subscriptionEstimate: { from: estimate(unitPriceMinor), to: estimate(declared) } });
+        } catch (error) {
+          if (mode) throw error;
+          refusals.push(refusalFinding(error, code));
         }
-        const { current, subscription } = reviewed;
-        if (reviewed.currentCount > 1) deny('base_price_ambiguous', { subject: code });
-        if (!current) deny('starter_catalogue_reprice_base_missing', { subject: code });
-        const { entryId, unitPriceMinor } = current;
-        if (unitPriceMinor === declared) {
-          const figure = subscriptionFigure(subscription);
-          if (!figure) deny('starter_catalogue_derived_price_zero', { subject: code });
-          const item = { skuId, entryId, unitPriceMinor, currency, ...figure };
-          prices.push(item);
-          if (active) record('price.apply', 'observed', 2, active, [item]);
-          continue;
-        }
-        if (!reviewed.inGate) deny('starter_catalogue_reprice_requires_active', { subject: code });
-        const estimate = amount => pricing.deriveSubscriptionUnitPrice(amount, { ...subscription, roundingRule: 'FLOOR_TO_QUANTUM' });
-        changes.push({ code, skuId, from: { entryId, unitPriceMinor }, to: { unitPriceMinor: declared },
-          subscriptionEstimate: { from: estimate(unitPriceMinor), to: estimate(declared) } });
       }
-      if (!mode) requirePositivePrices(changes);
-      if (changes.length && mode !== '--reprice') deny('starter_catalogue_reprice_required', { subject: changes[0].code });
+      if (!mode) {
+        for (const { code } of changes)
+          refusals.push(catalogueApplyRefusal({ path: 'basePrices', subject: code, code: positivePrice(code)
+            ? 'starter_catalogue_reprice_required' : 'starter_catalogue_derived_price_zero' }).finding);
+      } else if (changes.length && mode === '--copy') deny('starter_catalogue_reprice_required', { subject: changes[0].code });
       return changes;
     }
     async function reprice(changes, active) {
@@ -691,7 +718,7 @@ async function catalogueApply(argv) {
       await reviewPublishedPrices();
       await runStage(third, copied);
     } else {
-      if (!mode) requirePositivePrices(skus);
+      if (!mode) requirePositivePrices();
       if (releaseReceipt) { path = 'release.publish'; requireIssuer(releaseReceipt); }
       if (!released) await requireHead(null);
       const head = await runStage(first, released, mode === '--prepare-only');
@@ -724,7 +751,7 @@ async function catalogueApply(argv) {
       const [observed, cause, fix, recheck] = error.message.split('\n').map(line => line.slice(line.indexOf(': ') + 2));
       return report({ code: error.code, path: error.path, observed, cause, fix, recheck });
     }
-    return report(catalogueApplyRefusal({ code: readStarterDiagnostic(error)?.code ?? unavailable, path }, error).finding);
+    return report(refusalFinding(error));
   } finally { terminal?.close(); }
 }
 
