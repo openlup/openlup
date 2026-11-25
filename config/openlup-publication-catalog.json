@@ -30858,11 +30858,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14QualifiedComposition.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14QualifiedComposition.proof.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/m14QualifiedComposition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedCompositionTarget.test.ts",
       "class": "public-output"
     },
     {
@@ -30894,7 +30902,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14RestrictedConnectedRestore.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14RestrictedConnectedRestore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts",
       "class": "public-output"
     },
     {
