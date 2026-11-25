@@ -128,6 +128,7 @@ for package policy definitions and release boundaries.
 | `./shipping` | capability | stable |
 | `./shipping/contracts` | capability | stable |
 | `./shipping/testing` | capability | testing |
+| `./storefront` | capability | experimental |
 | `./subscriptions` | capability | stable |
 | `./subscriptions/contracts` | capability | stable |
 | `./tax` | capability | experimental |

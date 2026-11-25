@@ -226,6 +226,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./tax`, `./tax/contracts` | Experimental tax contracts, local calculation and offline adapter conformance |
 | `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
+| `./storefront` | Experimental, browser-safe purchase-continuation types: identity roles and their constructors, the continuation record, host bindings and declarations, and the markup anchor names; no storage, request or provider |
 
 ## HTTP runtime and security contract
 
@@ -3877,3 +3878,32 @@ verifiers (`verifyHmacSha256`, `verifyHardenedStandardWebhook`,
 - `@openlup/platform/channels/testing`: offline `runChannelAdapterConformance`
   and `createScriptedChannelFake` certifying `ChannelOrderSourcePort` webhook
   auth, `normalizedChannelOrderSchema` fidelity, and cursor pulls.
+
+## Storefront continuation contracts
+
+`@openlup/platform/storefront` is the browser-side home for the logic that keeps
+a buyer's purchase safe across a lost response, a reload and a decline. In this
+release it holds types, three identity constructors and one constant of markup
+anchor names. It reads no storage, sends no request and names no provider.
+
+- **Identity roles.** A continuation identity names one purchase, a command key
+  is the replay identity of one command and an attempt number counts payment
+  attempts within a purchase. They are distinct types, and a plain `string` or
+  `number` is none of them. The constructors return their argument unchanged
+  and never refuse a value; which identities may be reused is decided by the
+  host's identifier binding.
+- **Bindings.** The store's client supplies storage, the submit transport, an
+  identifier generator and a failure classifier as plain objects and functions
+  (see [Binding](../core/docs/guide/glossary.md) in the glossary). The store keeps its storage
+  names, serialization, wire spelling and provider facts.
+- **Markup anchors.** Production markup reads its `data-openlup-*` attribute
+  names and the action, state and field names from the constant instead of
+  string literals. Names are only added; a wrong one is superseded, not renamed.
+- **Maturity.** The whole entry is `experimental`. Names tagged `@experimental`
+  stay outside a later stable promise of this entry until promoted on their own
+  evidence. As with every export, a name is not removed once a release carries
+  it, while its shape may still change in a minor release.
+
+The entry is a leaf: it imports no other platform module and bundles for a
+browser without Node built-ins. The declarations are in the
+[API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/storefront.api.md).

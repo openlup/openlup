@@ -4,6 +4,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -20,7 +21,9 @@ const tsconfigRootDir = path.dirname(fileURLToPath(import.meta.url));
 //   4. portable package production source: additionally no provider SDK;
 //   5. packages/platform/src/<module>/ production source: additionally the
 //      module graph below;
-//   6. the starter's client and shared source: additionally browser-safe platform entries.
+//   6. the starter's client and shared source: additionally browser-safe platform entries;
+//   7. packages/platform/src/storefront/ production source: additionally no Node built-in
+//      (and, through `no-restricted-globals`, no browser or Node global).
 const SOURCE_EXTENSIONS = "{ts,tsx,js,mjs,cjs}";
 const MAX_PACKAGE_DEPTH = 12;
 const PORTABLE_PACKAGE_DIRECTORIES = ["core", "ui", "outbox"];
@@ -228,8 +231,23 @@ export const PLATFORM_MODULE_GRAPH = {
   composition: { values: ["blob", "bff", "data", "http", "job-ledger", "kernel", "migrations", "scheduler"], types: [] },
   inventory: { contracts: true, values: [], types: [] },
   "account-support": { contracts: true, values: ["commerce", "invoicing", "shipping", "data"], types: ["commerce/contracts", "invoicing/contracts"] },
+  storefront: { values: [], types: [] },
 };
 const PLATFORM_SOURCE = "packages/platform/src";
+
+// The storefront module is bundled into a store's browser code and receives
+// storage, time, identifiers and transport only through host bindings
+// (packages/platform/test/storefront/browserBoundary.test.ts proves the bundle).
+// Its production files therefore import no Node built-in and read none of these
+// globals; `globalThis` is listed because it reaches every other one.
+const STOREFRONT_MESSAGE = "packages/platform storefront source runs in a store's browser and receives storage, "
+  + "time, identifiers and transport through host bindings: pass the value in through a binding instead.";
+const storefrontNodeBuiltins = {
+  message: STOREFRONT_MESSAGE,
+  regexes: [`^(?:node:|(?:${builtinModules.filter((name) => !name.startsWith("node:")).map(escapeRegex).join("|")})(?:/|$))`],
+};
+const STOREFRONT_RESTRICTED_GLOBALS = ["window", "document", "sessionStorage", "localStorage", "crypto", "fetch",
+  "performance", "Date", "setTimeout", "process", "globalThis"];
 
 // Specifiers that would reach a module around its entry, at any depth: a relative path not in
 // canonical form (an optional leading `./`, then `../` climbs, then named segments that are not
@@ -288,6 +306,7 @@ export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) 
   if (contracts !== undefined && contracts !== true) throw new Error(`${module}: contracts must be true or omitted`);
   const ignores = testFiles(`${PLATFORM_SOURCE}/`);
   const message = `packages/platform module "${module}" imports other modules only through their entry <module>/index.js.`;
+  const browserOnly = module === "storefront" ? [storefrontNodeBuiltins] : [];
   const contractsRules = (depth) => {
     const segment = "[A-Za-z0-9_-][A-Za-z0-9_.-]*";
     const relative = `(?:\\./(?:\\.\\./){0,${depth}}${depth > 0 ? `|(?:\\.\\./){1,${depth}}` : ""})${segment}(?:/${segment})*\\.js`;
@@ -316,10 +335,10 @@ export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) 
     // Beyond the deepest depth below, a file may not climb out of its directory at all; it still
     // may not reach a module through the package's own name or a URL.
     { files: sourceFiles(`${PLATFORM_SOURCE}/${module}/`), ignores,
-      rules: boundaryRules([packageIsolation(pkg, null), packageExports, platformModuleEscapes(message)]) },
+      rules: boundaryRules([packageIsolation(pkg, null), packageExports, platformModuleEscapes(message), ...browserOnly]) },
     ...Array.from({ length: MAX_PACKAGE_DEPTH - 1 }, (_, depth) => {
       const files = (extensions) => [`${PLATFORM_SOURCE}/${module}/${"*/".repeat(depth)}*.${extensions}`];
-      const base = [packageIsolation(pkg, depth + 2 + nestedDepth), packageExports];
+      const base = [packageIsolation(pkg, depth + 2 + nestedDepth), packageExports, ...browserOnly];
       const { graph: boundary, typeOnly } = platformModuleBoundaries(module, depth, graph);
       return [
         // No type imports in plain JavaScript: a types edge admits nothing there.
@@ -357,14 +376,16 @@ export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) 
 // entry (the contracts boundary rules above), account-support/read-contracts
 // (packages/platform/test/account-support/readContractsBrowserSafety.test.ts),
 // pricing/browser and commerce (packages/platform/test/commerce/browserBoundary.test.ts),
-// marketing (packages/platform/test/marketing/browserBoundary.test.ts) and operations
-// (packages/platform/test/operations/browserSafety.test.ts). An entry without such a
-// test is not listed. Type-only imports are erased and stay allowed.
+// marketing (packages/platform/test/marketing/browserBoundary.test.ts), operations
+// (packages/platform/test/operations/browserSafety.test.ts) and storefront
+// (packages/platform/test/storefront/browserBoundary.test.ts). An entry without such a
+// test is not listed; storefront/testing and every other nested path stay refused.
+// Type-only imports are erased and stay allowed.
 const starterBrowserEntries = {
   message: "Starter client and shared code must import @openlup/platform values only from a browser-safe entry "
-    + "(…/contracts, account-support/read-contracts, pricing/browser, commerce, marketing, operations); "
+    + "(…/contracts, account-support/read-contracts, pricing/browser, commerce, marketing, operations, storefront); "
     + "use `import type` for types, or move a host-only module to host/.",
-  regexes: ["^@openlup/platform(?!/(?:(?:[a-z-]+/)*contracts|account-support/read-contracts|pricing/browser|commerce|marketing|operations)$)"],
+  regexes: ["^@openlup/platform(?!/(?:(?:[a-z-]+/)*contracts|account-support/read-contracts|pricing/browser|commerce|marketing|operations|storefront)$)"],
 };
 
 export const TYPE_AWARE_RULES = {
@@ -469,6 +490,13 @@ export default tseslint.config(
     })),
   ...workspacePackages.filter(({ name }) => name === "@openlup/platform").flatMap((pkg) =>
     Object.keys(PLATFORM_MODULE_GRAPH).flatMap((module) => platformModuleRules(pkg, module))),
+  {
+    files: sourceFiles(`${PLATFORM_SOURCE}/storefront/`),
+    ignores: testFiles(`${PLATFORM_SOURCE}/`),
+    rules: {
+      "no-restricted-globals": ["error", ...STOREFRONT_RESTRICTED_GLOBALS.map((name) => ({ name, message: STOREFRONT_MESSAGE }))],
+    },
+  },
   ...[
     { files: ["packages/outbox/src/**/*.ts"], project: "./packages/outbox/tsconfig.build.json" },
     { files: ["packages/platform/src/**/*.ts"], project: "./packages/platform/tsconfig.build.json" },
