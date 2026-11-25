@@ -161,6 +161,7 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/catalogPublicationDiscovery.test.ts': ['tests/postgres/catalogPublicationFixture.ts'],
   'tests/postgres/catalogPublicationGovernedRoster.test.ts': ['tests/postgres/catalogPublicationFixture.ts'],
   'tests/postgres/catalogPublicationReadiness.test.ts': ['tests/postgres/catalogPublicationFixture.ts'],
+  'tests/postgres/catalogPublicationTaxAssignments.test.ts': ['@starter', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/customerAccountMutations.fixture.ts'],
   'tests/postgres/catalogQuantities.test.ts': [],
   'tests/postgres/catalogRuntimeCheckout.test.ts': ['@src', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/catalogRuntimeCheckout.proof.ts', 'tests/postgres/current-installation-inventory.json', 'tests/postgres/m14QualifiedAdminComposition.proof.ts', 'tests/postgres/m14QualifiedComposition.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgrade.proof.ts', 'tests/postgres/m14ReleasedSchemaUpgradeChild.ts'],
   'tests/postgres/catalogSelectedAdmissionRuntime.test.ts': ['@starter', 'tests/postgres/catalogPublicationFixture.ts', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
