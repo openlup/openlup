@@ -315,6 +315,11 @@ function toReadingAction(action: PaymentStatusResponse["nextAction"]): ReadingAc
   if (action.kind === "provider_embedded") {
     return { kind: "embedded", provider: action.provider, actionToken: action.clientSecret };
   }
+  // A redirect is mapped without a provider, so the storefront rules never take
+  // the open rail from it. No status read reaches this with one: the response is
+  // validated by `paymentStatusResponseSchema`, whose `nextAction` is
+  // `checkoutClientActionSchema`, and that schema's `redirect` variant is strict
+  // with only `kind` and `url`, so a `provider` key fails the read.
   if (action.kind === "redirect") return { kind: "redirect", url: action.url };
   return "provider" in action ? { kind: "other", provider: action.provider } : { kind: "other" };
 }
