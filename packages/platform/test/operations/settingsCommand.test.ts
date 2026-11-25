@@ -748,6 +748,7 @@ it("checks every packaged schema against its default and valid examples", async 
     "account_support_operator_slide_max_days",
     "catalog.bundleAvailabilityPolicy",
     "checkout.resumeWindowMinutes",
+    "commerce.money_limits.v2",
     "communications.terminalPayloadRetentionDays",
     "inventory.offerLowStockThreshold",
     key,
@@ -1094,9 +1095,9 @@ async function settingsParity() {
     const { exit, output } = await run(json ? [...args, "--json"] : args);
     liveBytes.push([exit, output]);
   }
-  // Current package output includes the internal number recipe for catalog.optionalGtin.
+  // Current package output includes the internal number recipe and the installed payment limits entry.
   expect(createHash("sha256").update(JSON.stringify(liveBytes)).digest("hex"))
-    .toBe("8b1c3fe2d89be1c279bb4510377492661a0bf9c319d477acb32e3301701b9f20");
+    .toBe("922f9b61b856e80da7c0190d3a77c4b4ac35c01dba8938cadbe7e0fbbbc0bf5d");
   const checkKeys = liveData.entries.filter(({ kind }) => kind === "code" || kind === "installed").map(({ key }) => key);
   const representatives = bound.filter(({ args, fixture }) => fixture !== undefined &&
     (args[0] === "check" || args[1] === key || args[1] === "checkout_recovery_reminders" && args[0] === "show" ||

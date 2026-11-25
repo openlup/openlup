@@ -3,6 +3,19 @@ import { z } from "zod";
 import { settingDescriptorSchema as descriptor, settingDescriptorSummary, settingRefusalSchema } from "./toolSchema.js";
 
 export const settingsVersion = 1;
+export const moneyLimitsSettingKey = "commerce.money_limits.v2";
+export const moneyLimitsOwnerReaderKey = `${moneyLimitsSettingKey}.owner`;
+export const moneyLimitsUnbound = "money_limits_reader_unbound";
+export const moneyLimitsUnavailable = "money_limits_operation_unavailable";
+const commandFreeCodes = [moneyLimitsUnbound, moneyLimitsUnavailable] as const;
+type CommandFreeCode = (typeof commandFreeCodes)[number];
+function isCommandFreeCode(code: string): code is CommandFreeCode {
+  return code === moneyLimitsUnbound || code === moneyLimitsUnavailable;
+}
+export function commandFreeSettingsRefusalSchema() {
+  const base = settingRefusalSchema(commandFreeCodes);
+  return base.extend({ code: z.enum(commandFreeCodes), remediation: base.shape.remediation.omit({ command: true }) });
+}
 const packageData = (name: string): unknown =>
   JSON.parse(readFileSync(new URL(`../../../${name}`, import.meta.url), "utf8"));
 
@@ -35,12 +48,13 @@ function readSettingsCatalogue() {
     schemaVersion: z.literal(settingsVersion),
     refusals: z.array(z.object({ code: z.string() }).passthrough()),
   }).parse(packageData("settings-refusals.json"));
-  const allRefusals = settingRefusalSchema(refusals.map(({ code }) => code));
-  const byCode = new Map(z.array(allRefusals).parse(refusals).map(refusal => [refusal.code, refusal]));
-  const refusalSchema = settingRefusalSchema(refusals.map(({ code }) => code)
-    .filter(code => !code.startsWith("commerce_setting_preview_")));
+  const commandRefusals = refusals.filter(({ code }) => !isCommandFreeCode(code));
+  const allRefusals = settingRefusalSchema(commandRefusals.map(({ code }) => code));
+  const byCode = new Map(z.array(allRefusals).parse(commandRefusals).map(refusal => [refusal.code, refusal]));
+  const commandFreeByCode = new Map(z.array(commandFreeSettingsRefusalSchema())
+    .parse(refusals.filter(({ code }) => isCommandFreeCode(code))).map(refusal => [refusal.code, refusal]));
 
-  return { entries, searchTerms, previewOutputSchema, byCode, refusalSchema, ...settingsDocuments(entries) };
+  return { entries, searchTerms, previewOutputSchema, byCode, commandFreeByCode, ...settingsDocuments(entries) };
 }
 
 export function settingsDocuments(entries?: readonly z.infer<typeof descriptor>[]) {

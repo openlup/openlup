@@ -119,6 +119,23 @@ it.each([
   expect(result.report.issues).toEqual([expect.objectContaining({ code: "OPENLUP_E_SCHEMA_BEHIND", subject, observation: "object_absent",
     fix: `Apply db/platform/migrations/${forward} for the selected adapter.` })]);
 });
+it.each(["table:public.identity_privacy_erasure_reconciliations", "function:public.identity_privacy_reconciled_contributor_ids(uuid)"])(
+  "uses the reconciliation forward for an absent or unknown %s", async subject => {
+    const input = admission("node-postgres");
+    const observe = input.schemaProbe.observe;
+    for (const present of [false, null] as const) {
+      input.schemaProbe.observe = async requirement => {
+        const result = await observe(requirement);
+        expect(result.objects.some(entry => objectKey(entry.object) === subject)).toBe(true);
+        return { ...result, objects: result.objects.map(entry => objectKey(entry.object) === subject ? { ...entry, present } : entry) };
+      };
+      const result = await admitReferenceIdentity(input);
+      expect(result.admitted).toBe(false);
+      expect(result.report.issues).toContainEqual(expect.objectContaining({ subject, fix: expect.stringMatching(/Apply db\/platform\/migrations\/\d{14}_identity_privacy_erasure_reconciliations\.sql/u) }));
+    }
+  },
+);
+
 it("keeps the inventories disjoint and pins fields used by each bundle", () => {
   const direct = identityRequiredSchema("node-postgres", "complete").objects.map(object => object.name);
   const managed = identityRequiredSchema("node-supabase", "complete").objects.map(object => object.name);

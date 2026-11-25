@@ -207,6 +207,7 @@ describe('installed starter browser CI', () => {
     expect(command).toContain('--read-only');
     expect(command).toContain('type=bind,src=/tmp/starter,dst=/app,readonly');
     expect(command).toContain('type=bind,src=/tmp/starter/.context/care-browser,dst=/app/.context/care-browser');
+    expect(command).toContain('type=bind,src=/tmp/starter/.context/catalogue-builds,dst=/app/.context/catalogue-builds');
     expect(command[command.indexOf('--user') + 1]).toBe(`${process.getuid!()}:${process.getgid!()}`);
     expect(command).toContain('--workers=1');
     expect(command).toContain('--retries=0');
@@ -228,6 +229,7 @@ describe('installed starter browser CI', () => {
       expect(JSON.parse(await readFile(fixture, 'utf8'))).toEqual(entries);
       expect((await stat(fixture)).mode & 0o777).toBe(0o600);
       expect((await stat(join(app, '.context/care-browser'))).mode & 0o777).toBe(0o700);
+      expect((await stat(join(app, '.context/catalogue-builds'))).mode & 0o777).toBe(0o700);
       expect(JSON.parse(await readFile(join(app, '.context/database-ui-hosts.json'), 'utf8')))
         .toEqual(entries.map(({ id, baseURL }) => ({ id, baseURL })));
       throw new Error('journey failed');

@@ -1594,6 +1594,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/catalogue-products.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/dev-loop.proof.ts",
       "class": "public-output"
     },
@@ -1795,6 +1799,10 @@
     },
     {
       "path": "examples/neutral-store/host/bindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/catalogue-storefront.ts",
       "class": "public-output"
     },
     {
@@ -2126,6 +2134,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/catalogue-presentation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/catalogue-products.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/config.ts",
       "class": "public-output"
     },
@@ -2207,6 +2223,10 @@
     },
     {
       "path": "examples/neutral-store/test/browser-groups.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-products.test.ts",
       "class": "public-output"
     },
     {
@@ -5223,6 +5243,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/commerceDiagnostics.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceMoneyLimitsV2.ts",
       "class": "public-output"
     },
     {
@@ -8883,6 +8907,10 @@
     },
     {
       "path": "packages/platform/src/tax/stripe/transactions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/taxCalculationComposition.ts",
       "class": "public-output"
     },
     {
@@ -30342,6 +30370,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/commerceMoneyLimitsV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceMoneyLimitsV2Pgtap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/commercePriceAuthorityRead.test.ts",
       "class": "public-output"
     },
@@ -30351,6 +30387,22 @@
     },
     {
       "path": "tests/postgres/commerceQuoteCatalogRead.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2CompositionWire.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2Storage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2StorageFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2StoragePgtap.test.ts",
       "class": "public-output"
     },
     {
@@ -30522,6 +30574,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/commerceMoneyLimitsV2/replayed.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/commerceQuoteV2Storage/replayed.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/communicationEventErasure.sql",
       "class": "public-output"
     },
@@ -30611,6 +30671,14 @@
     },
     {
       "path": "tests/postgres/fixtures/paymentReconciliation/setup.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/privacyErasureReconciliations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/privacyReplayRecorded.json",
       "class": "public-output"
     },
     {
@@ -31139,6 +31207,14 @@
     },
     {
       "path": "tests/postgres/postgresContainerCleanup.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/privacyErasureReplay.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/privacyReplayFence.test.ts",
       "class": "public-output"
     },
     {

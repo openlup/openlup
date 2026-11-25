@@ -1,5 +1,6 @@
-import { admitsLine, contains } from './subscription-offer.ts';
+import { admitsLine, choices, contains } from './subscription-offer.ts';
 import type { PurchaseMode, StoreConfig } from './config.ts';
+import type { StarterCatalogueItem } from './catalogue-products.ts';
 import { estimateOffer } from './offer-estimate.ts';
 
 export interface CartLine {
@@ -16,6 +17,21 @@ export interface Cart {
 }
 
 export const checkoutSubscriptionOfferVersion = 'classic';
+export const starterQuoteCatalogMaxItems = 500;
+const classic = (config: StoreConfig) => config.subscriptionOffers[checkoutSubscriptionOfferVersion];
+const checkoutDays = (plan: ReturnType<typeof classic>) => plan.checkoutDays ?? plan.days;
+const subscriptionCap = (config: StoreConfig) => Math.min(config.offer.maxUnits, classic(config).maximumUnits);
+
+export function canCheckoutSubscriptionSku(config: StoreConfig, sku: string, minimum: number): boolean {
+  const plan = classic(config), limit = Math.min(99, subscriptionCap(config));
+  if (!Object.hasOwn(plan.bySku, sku) || minimum > limit) return false;
+  for (const day of choices(checkoutDays(plan))) {
+    for (let quantity = minimum; quantity <= limit; quantity++) {
+      if (admitsLine(plan, sku, day, quantity)) return true;
+    }
+  }
+  return false;
+}
 
 export function checkoutOfferContext(mode: PurchaseMode) {
   return mode === 'subscription' ? { offerVersion: checkoutSubscriptionOfferVersion } : {};
@@ -83,23 +99,25 @@ export function parseCart(configuration: string, input: unknown):
 }
 
 /** Current owned admission runs only for fresh work, after structural identity/replay. */
-export function validateCart(config: StoreConfig, input: unknown, phase: 'checkout' | 'graduation' = 'checkout'): ReturnType<typeof parseCart> {
+export function validateCart(config: StoreConfig, input: unknown, phase: 'checkout' | 'graduation' = 'checkout',
+  products: readonly StarterCatalogueItem[] = config.offer.products): ReturnType<typeof parseCart> {
   const parsed = parseCart(config.id,input);
   if (!parsed.ok) return parsed;
-  const { cart } = parsed, issues: OfferIssue[] = [], plan = config.subscriptionOffers[checkoutSubscriptionOfferVersion];
+  const { cart } = parsed, issues: OfferIssue[] = [], plan = classic(config);
   if (cart.mode === 'subscription' && cart.lines.length > plan.maximumBaseLines) return fail('cart_invalid');
-  if (cart.mode === 'subscription' && !contains(phase === 'checkout' ? plan.checkoutDays ?? plan.days : plan.days,cart.cadenceDays!)) return fail('cadence_unavailable');
+  if (cart.mode === 'subscription' && !contains(phase === 'checkout' ? checkoutDays(plan) : plan.days,cart.cadenceDays!)) return fail('cadence_unavailable');
   for (const line of cart.lines) {
-    const product = config.offer.products.find(item => item.sku === line.sku);
+    const product = products.find(item => item.sku === line.sku);
     if (!product) { issues.push({ code: 'unknown_sku',sku: line.sku }); continue; }
     if (!product.permittedPurchaseModes.includes(cart.mode)) issues.push({ code: 'purchase_mode_unavailable',sku: line.sku });
-    if (line.quantity > config.offer.maxUnits || cart.mode === 'subscription' && !admitsLine(plan,line.sku,cart.cadenceDays!,line.quantity)) {
+    if (line.quantity < (product.minQuantity ?? 1) || line.quantity > config.offer.maxUnits
+      || cart.mode === 'subscription' && !admitsLine(plan,line.sku,cart.cadenceDays!,line.quantity)) {
       issues.push({ code: 'quantity_invalid',sku: line.sku });
     }
   }
   const units = cart.lines.reduce((sum,line) => sum+line.quantity,0);
   const minimum = cart.mode === 'subscription' ? Math.max(config.offer.minUnits,plan.checkoutMinimumBaseUnits ?? plan.minimumBaseUnits) : config.offer.minUnits;
-  const maximum = cart.mode === 'subscription' ? Math.min(config.offer.maxUnits,plan.maximumUnits) : config.offer.maxUnits;
+  const maximum = cart.mode === 'subscription' ? subscriptionCap(config) : config.offer.maxUnits;
   if (units < minimum) issues.push({ code: 'minimum_units',limit: minimum });
   if (units > maximum) issues.push({ code: 'maximum_units',limit: maximum });
   return issues.length ? { ok: false,issues,...(issues.every(issue => issue.code === 'minimum_units') ? { selection: cart } : {}) } : parsed;

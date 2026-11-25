@@ -497,6 +497,30 @@ the original proof and historical absence.
 Unbind callers to roll back use; retain committed receipts/history and correct a
 price with a subsequent expected-base command.
 
+### Derived subscription prices in native drafts
+
+The [derived-price forward](../../db/platform/migrations/20261128000000_native_derived_subscription_price.sql)
+verifies fresh subscription lines that carry `catalog_facts_v2`. It matches the
+quote and draft by line position and checks the claimed gross base and D2C
+policy against their shared market and effective windows. Lines without this
+claim keep the existing stored-price selection and tier order.
+
+The writer uses PostgreSQL transaction time. The host quote's `atTime` records
+when it was priced. If the host and database clocks straddle a price or policy
+boundary, the claim can refuse until both clocks have crossed it. An
+equal-amount revision change also returns
+`commerce_order_draft_catalog_price_changed` (`22023`). Generate a fresh server
+quote for the basket and retry checkout.
+
+For a fresh subscription draft with `catalog_facts_v2` on a line in either
+snapshot, the invoker writer calls the service-only resolver after the first
+line's money validation, before any per-line price decision.
+The resolver reads the claimed rows in one statement without taking catalogue
+write locks. Policy arithmetic runs with the function owner's privileges.
+The [PostgreSQL parity witness](../../tests/postgres/catalogAdmission.test.ts)
+compares rounded quote and preview amounts and checks the readiness gates at
+zero and positive results.
+
 ### Admission fence lock order
 
 The native fence runs under `REPEATABLE READ`. Mixed writers take commerce

@@ -42,6 +42,7 @@ const compatible = [
 ] as const satisfies readonly CompatiblePostgresTable[];
 
 const owned = [
+  "commerce_money_limits_v2",
   "tax_calculations",
   "subscription_cancel_feedback",
   // Authoritative installation configuration with operator audit references.
@@ -81,6 +82,7 @@ const owned = [
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations", "communication_native_sync_state",
   "customer_account_consent_events", "customer_account_consent_sync_targets",
   "identity_operator_invitations", "identity_operator_invitation_events", "identity_privacy_erasures",
+  "identity_privacy_erasure_reconciliations",
   "customer_subject_lifecycle_events", "customer_communication_preferences", "customer_communication_preference_events",
   "customer_account_events", "customer_saved_addresses", "customer_payment_preferences", "customer_delivery_preferences", "customer_orderer_profiles", "invoicing_buyer_snapshots",
   "commerce_operators", "commerce_order_holds", "commerce_order_operations",
