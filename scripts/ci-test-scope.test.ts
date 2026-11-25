@@ -415,6 +415,15 @@ describe('conservative tooling scope', () => {
     }
     expect(dataDocTrigger).toContain('tests/postgres/catalogPublication.test.ts');
   });
+  it('keeps the publication assignment suite always eligible and retains quote tests on recipe edits', () => {
+    const assignmentSuite = 'tests/postgres/catalogPublicationTaxAssignments.test.ts';
+    const quoteSuite = 'tests/postgres/commerceQuoteV2.test.ts';
+    const unrelated = excludedToolingTests(['docs/platform/README.md']);
+    expect(unrelated).not.toContain(assignmentSuite);
+    expect(unrelated).toContain(quoteSuite);
+    const recipe = excludedToolingTests(['packages/core/docs/guide/how-to/build/quote-prices.md']);
+    expect(recipe).not.toContain(quoteSuite);
+  });
   it('runs every declared test when any of its declared inputs changes', () => {
     for (const [test, inputs] of Object.entries(TOOLING_INPUTS)) {
       for (const input of inputs) {
