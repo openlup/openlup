@@ -915,6 +915,10 @@ export const catalogueProduct = {
 ```
 
 Give each authored SKU exactly one initial gross one-time price in minor units.
+To include an image, put it in the starter's `public/media` folder and set
+`product.presentation.mediaRef` to its local path, for example
+`/media/field-notebook.png`. Run `./lifecycle up` after adding the file so the
+running demo has the same image when you apply.
 Run `npm run --silent catalogue:check:source` to check the pack fixtures offline.
 `npm run catalogue:apply -- --prepare-only` saves the Release draft and prepares
 it. Save + Prepare is a draft write.

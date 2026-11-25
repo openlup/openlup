@@ -6,8 +6,9 @@ the retained product and SKU identities. Apply requires the marked demo and a
 human administrator who confirms each publication in an interactive terminal.
 
 Upgrade replaces pristine managed lifecycle, operator, installer and action
-files together. If apply reports a conflict, save local modifications, restore
-the predecessor files and run upgrade again. Reconcile your saved changes
+files together and installs the starter's local media verifier. If apply
+reports a conflict, save local modifications, restore the predecessor files
+and run upgrade again. Reconcile your saved changes
 against the new files before startup. Partial upgrades refuse with
 `incomplete_application_upgrade`. Keep your declarations in `owned/catalogue.ts`.
 Upgrading requires no sign-in, price write or installed-policy step.

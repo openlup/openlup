@@ -13,6 +13,7 @@ import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogInternalG
   type CatalogDraftPayloadV4, type CatalogHeadRef } from '@openlup/platform/catalog';
 import { createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore } from '@openlup/platform/pricing';
 import { demoIdentifier, readStarterCatalogueRules, stageStarterCatalogueBuild, starterCataloguePack } from '../host/editor-catalogue.ts';
+import { digestStarterMedia, verifyStarterMedia } from '../host/catalogue-media.ts';
 import { demonstrationMarker, prepareDemonstrationQuoteKey } from '../installation/install.ts';
 import { catalogDraftRegistry } from '../owned/catalogue.ts';
 import { copy } from '../owned/copy.ts';
@@ -103,11 +104,13 @@ async function author(fixture: Fixture) {
       [{ promotionReady: true }]);
     });
     const netContent = { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 } as const;
-    const imageDigest = () => createHash('sha256').update(readFileSync('public' + imageRef)).digest('hex');
+    const digest = await digestStarterMedia(imageRef);
+    assert.ok(typeof digest === 'string');
+    const imageDigest: string = digest;
     const commands = createPostgresCatalogPublicationCommands({ authorizeHuman: async id => id === actor
       ? { ok: true, userId: actor, role: 'admin', isMachineActor: false } : { ok: false },
     catalogPublicationOwner: { run: work => withOwner(owner, work) }, registry: createCatalogProductTypeRegistry(pack.types),
-    verifyMedia: async (_db, claim) => claim.mediaRef === imageRef && claim.revisionDigest === imageDigest() });
+    verifyMedia: (_db, claim) => verifyStarterMedia(claim) });
     const operator = (await commands.authorize(actor))!;
     async function publish(draftId: string, payload: CatalogDraftPayloadV4, revision: number, expectedHead: CatalogHeadRef | null) {
       const canonicalCommand = canonicalCatalogDraftJson({ schemaVersion: 4, action: revision === 1 ? 'create' : 'revise',
@@ -143,7 +146,7 @@ async function author(fixture: Fixture) {
             : operation.op === 'set_sku_status' ? { op: 'set_sku_lifecycle', skuCode: operation.skuCode, expectedState: 'draft', state: 'active' } : operation),
       } };
       if (presentation.mediaRef === imageRef) active.publication.evidence.media = active.skus.map(sku => ({
-        skuCode: sku.code!, mediaRef: imageRef, assetRefs: [], revisionDigest: imageDigest(),
+        skuCode: sku.code!, mediaRef: imageRef, assetRefs: [], revisionDigest: imageDigest,
       }));
       const head = await publish(draftId, { ...release.payload, schemaVersion: 4 }, 1, null);
       const byId = new Map<string, Selection>();
@@ -275,7 +278,10 @@ test('lists and quotes the exact published SKU across browser widths', async ({ 
     const firstLink = page.locator(`a[href="${path}?sku=${encodeURIComponent(first.sku)}"]`);
     await expect(firstLink).toBeVisible();
     await expect(firstLink.locator('xpath=ancestor::article').locator('img')).toHaveCount(0);
-    await expect(page.getByRole('img', { name: imageName })).toBeVisible();
+    const image = page.getByRole('img', { name: imageName });
+    await expect(image).toBeVisible();
+    await expect(image).toHaveAttribute('src', imageRef);
+    await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
     await firstLink.click();
     await page.getByRole('link', { name: wanted.title, exact: true }).click();
     await expect(page).toHaveURL(base + path + '?sku=' + encodeURIComponent(wanted.sku));

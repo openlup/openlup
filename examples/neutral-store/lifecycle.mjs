@@ -358,9 +358,9 @@ async function catalogueApply(argv) {
     const [mode] = modes;
     const config = ownedConfiguration(await import('./owned/store.config.ts'), lifecycleOptions(options.filter(option => option !== mode)));
     (await import('./shared/config.ts')).assertConfig(config);
-    const [owned, { buildCatalogReleaseDraftV3 }, { canonicalCatalogDraftJson }, pricing, { mapStarterPresentation }] = await Promise.all([
+    const [owned, { buildCatalogReleaseDraftV3 }, { canonicalCatalogDraftJson }, pricing, { mapStarterPresentation }, { digestStarterMedia }] = await Promise.all([
       import('./owned/catalogue.ts'), import('@openlup/platform/catalog'), import('@openlup/platform/catalog/contracts'),
-      import('@openlup/platform/pricing'), import('./shared/catalogue-presentation.ts'),
+      import('@openlup/platform/pricing'), import('./shared/catalogue-presentation.ts'), import('./host/catalogue-media.ts'),
     ]);
     const hash = value => createHash('sha256').update(canonicalCatalogDraftJson(value)).digest('hex');
     const same = (left, right) => canonicalCatalogDraftJson(left) === canonicalCatalogDraftJson(right);
@@ -373,8 +373,21 @@ async function catalogueApply(argv) {
     const skus = release.payload.skus;
     const productId = release.payload.product.id;
     const presentation = mapStarterPresentation(release.payload.product.sharedContent.presentation);
-    if (!presentation || (mode === '--copy' && !mapStarterPresentation(copyPresentation)))
+    const copy = mode === '--copy' ? mapStarterPresentation(copyPresentation) : undefined;
+    if (!presentation || (mode === '--copy' && !copy))
       deny('starter_catalogue_presentation_invalid', { path: mode === '--copy' ? 'copyPresentation' : 'product.presentation' });
+    async function bindMedia(payload, mediaRef, path) {
+      if (!mediaRef) { delete payload.publication.evidence.media; return; }
+      const revisionDigest = await digestStarterMedia(mediaRef);
+      if (!revisionDigest) deny(revisionDigest === null ? 'catalog_publication_media_validation_unavailable' : 'starter_catalogue_media_invalid', { path });
+      payload.publication.evidence.media = payload.skus.map(({ code, assetRefs }) => ({
+        skuCode: code, mediaRef, assetRefs: assetRefs ?? [], revisionDigest,
+      }));
+    }
+    if (presentation.media) {
+      await bindMedia(activation.payload, presentation.media, 'product.presentation.mediaRef');
+      activation.digest = hash(activation.payload);
+    }
     path = 'basePrices';
     if (!basePrices || typeof basePrices !== 'object' || Array.isArray(basePrices)
       || Object.keys(basePrices).length !== skus.length || !skus.every(({ code }) => Object.hasOwn(basePrices, code)))
@@ -508,7 +521,7 @@ async function catalogueApply(argv) {
       note('prepare', 'observed');
       if (prepareOnly) return null;
       path = `${stage}.approve`;
-      const display = stage === 'copy' ? mapStarterPresentation(copyPresentation) : presentation;
+      const display = stage === 'copy' ? copy : presentation;
       const shownPrices = prices.length ? prices : skus.map(({ code, id: skuId }) => ({ code, skuId, unitPriceMinor: basePrices[code], currency }));
       const effect = { release: 'Release the product and its draft SKUs', activation: 'Activate the priced product and SKUs', copy: 'Publish presentation only' };
       const context = { product: display.title, productId, draftId, revision, expectedHead: head, currency,
@@ -565,6 +578,7 @@ async function catalogueApply(argv) {
       if (same(payload.product.sharedContent.presentation, copyPresentation)) deny('starter_catalogue_copy_unchanged', { path: 'copyPresentation' });
       Object.assign(payload.product.sharedContent, { catalogAction: 'revise', presentation: copyPresentation });
       payload.publication.operations = [{ op: 'set_product_presentation', productSlug: payload.product.slug, presentation: copyPresentation }];
+      await bindMedia(payload, copy.media, 'copyPresentation.mediaRef');
       const third = makeStage('copy', { payload, digest: hash(payload) }, active);
       const copied = await lookup(third);
       await requireHead(copied ?? active);

@@ -10,6 +10,7 @@ import { CATALOG_PRICE_SETUP_MAX_MINOR, createCatalogPriceSetupHandler, createPo
   deriveSubscriptionUnitPrice } from '@openlup/platform/pricing';
 import { installationFinding } from '../shared/refusals.ts';
 import { isRecord } from '../shared/offer.ts';
+import { verifyStarterMedia } from './catalogue-media.ts';
 import type { ActionBinding, ActionContext, ApplicationBindings } from './bindings.ts';
 import type * as CatalogueEditor from './editor-catalogue.ts';
 
@@ -181,6 +182,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
   const publicationLane = input.publication;
   const commands = publicationLane && createPostgresCatalogPublicationCommands({
     catalogPublicationOwner: publicationLane, authorizeHuman, registry: catalogue.registry,
+    verifyMedia: (_db, claim) => verifyStarterMedia(claim),
   });
   const publication = input.publication && createPostgresCatalogPublicationReads({ transactions: input.publication, authorizeHuman });
   const filterFailedJobs = input.filterFailedJobs ?? (() => []);

@@ -1802,6 +1802,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/catalogue-media.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/catalogue-readiness-jobs.ts",
       "class": "public-output"
     },
@@ -2227,6 +2231,10 @@
     },
     {
       "path": "examples/neutral-store/test/browser-groups.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-media.test.ts",
       "class": "public-output"
     },
     {
