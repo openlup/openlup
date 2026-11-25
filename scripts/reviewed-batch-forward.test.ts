@@ -656,9 +656,9 @@ it("refuses the deleted Z identity and the pre-fold N2 bytes even after file/sta
 
 it.each([
   ["db/platform/migrations", "20261022195000"],
-  ["db/platform/migrations", "20261022194999"],
+  ["db/platform/migrations", "20261022194959"],
   ["supabase/migrations", "20261022195100"],
-  ["supabase/migrations", "20261022195099"],
+  ["supabase/migrations", "20261022195059"],
 ])("refuses a new version at or below the current rail tail: %s %s", (directory, version) => {
   const f = correctionFixture();
   try {

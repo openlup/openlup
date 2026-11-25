@@ -117,6 +117,7 @@ export function checkPrBodySignOff(body: string, log: (line: string) => void): b
   log("");
   log("Merge-queue commits inherit the pull-request body. Add a line of its own reading:");
   log("    Signed-off-by: Your Name <your.email@example.com>");
+  log("After updating the pull-request description, push a commit or close and reopen the PR so CI reads the updated body.");
   return false;
 }
 
