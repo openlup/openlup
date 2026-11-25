@@ -165,7 +165,9 @@ describe("ci-vitest-shard", () => {
 
   it("covers 100% of real repository test files across 8 shards with zero missing/duplicates and <= 1.15x imbalance", () => {
     const manifest = loadShardWeights(DEFAULT_WEIGHTS_PATH);
-    const files = listVitestFiles();
+    const unfilteredEnv = { ...processEnvironment };
+    delete unfilteredEnv.OPENLUP_VITEST_EXCLUDE_FILE;
+    const files = listVitestFiles(process.cwd(), unfilteredEnv);
     expect(files.length).toBeGreaterThan(2000);
 
     const shards = partitionShards(files, 8, manifest);
@@ -402,6 +404,37 @@ describe("ci-vitest-shard", () => {
       );
       expect(result.status).toBe(0);
       expect(result.stdout.trim().split("\n")).toEqual(plan.shards[0]!.files);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("exits 0 cleanly on partial-empty shards when fewer files remain than total shards", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "ci-vitest-shard-empty-"));
+    try {
+      const planPath = join(tempDir, "plan.json");
+      const manifest = loadShardWeights(DEFAULT_WEIGHTS_PATH);
+      const weightsDigest = digestFileContents(DEFAULT_WEIGHTS_PATH);
+      const files = [
+        "scripts/ci-vitest-shard.test.ts",
+        "scripts/ci-vitest-duration-keys.test.ts",
+        "scripts/ci-vitest-sequencer.test.ts",
+      ];
+      const plan = buildShardPlan(files, 8, manifest, { weightsDigest, excludeDigest: "none" });
+      writeShardPlan(planPath, plan);
+
+      const loaded = loadShardPlan(planPath, 8, { weightsPath: DEFAULT_WEIGHTS_PATH, env: {} });
+      expect(loaded).toHaveLength(8);
+      expect(loaded.slice(0, 3).every((entry) => entry.files.length === 1)).toBe(true);
+      expect(loaded.slice(3).every((entry) => entry.files.length === 0)).toBe(true);
+
+      const result = spawnSync(
+        process.execPath,
+        ["scripts/ci-vitest-shard.mjs", "--shard", "4", "--total", "8", "--plan", planPath],
+        { cwd: process.cwd(), encoding: "utf8", env: { PATH: "" } },
+      );
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain("0 files (nothing to run)");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
