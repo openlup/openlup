@@ -331,9 +331,9 @@ if (command === 'refusals') {
 }
 
 /** Disposable installed-PostgreSQL recipe; never a production or customer database. */
-async function databaseBrowserRecipe(argv) {
+async function databaseBrowserRecipe(argv, prepareCatalogueTemplate = true) {
   if (argv.length === 0) {
-    for (const selection of browserJourneyGroups) await databaseBrowserRecipe(selection);
+    for (const selection of browserJourneyGroups) await databaseBrowserRecipe(selection, selection === browserJourneyGroups.at(-1));
     return;
   }
   const { spawn } = await import('node:child_process');
@@ -354,7 +354,7 @@ async function databaseBrowserRecipe(argv) {
   const previous = upgrade && createRequire(resolve(upgrade.predecessor, 'package.json'));
   const previousMigrations = previous && await import(pathToFileURL(previous.resolve('@openlup/platform/migrations')).href);
   const previousSubscriptions = previous && await import(pathToFileURL(previous.resolve('@openlup/platform/subscriptions')).href);
-  const containers = [], hosts = [], pools = [];
+  const containers = [], hosts = [], pools = new Set();
   const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   const delay = (ms) => new Promise(done => setTimeout(done, ms));
   async function child(command, args) {
@@ -403,7 +403,7 @@ async function databaseBrowserRecipe(argv) {
       const endpoint = docker('port', name, '5432/tcp');
       const ownerUrl = `postgresql://postgres@${endpoint}/neutral_store`;
       const owner = new pg.Pool({ connectionString: ownerUrl });
-      pools.push(owner);
+      pools.add(owner);
       let ready = false;
       for (let attempt = 0; attempt < 100; attempt++) {
         try {
@@ -421,7 +421,7 @@ async function databaseBrowserRecipe(argv) {
         await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`);
       const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' };
       const migration = new pg.Pool({ connectionString: ownerUrl, options: qualifiedPostgresStartupOptions(selection) });
-      pools.push(migration);
+      pools.add(migration);
       const runner = createPlatformPostgresMigrationRunner({ connectionString: ownerUrl }, { installation: selection, poolFactory: () => migration });
       const runtimeUrl = ownerUrl.replace('postgres@', 'starter_runtime@');
       let legacy;
@@ -448,6 +448,15 @@ async function databaseBrowserRecipe(argv) {
       await provisionDemonstrationPublicationPassword(owner, publicationPasswordFile);
       const keyring = resolve(state, 'quote-key.json');
       await writeFile(keyring, JSON.stringify({ current: randomBytes(32).toString('base64url') }), { mode: 0o600 });
+      if (prepareCatalogueTemplate) {
+        for (const pool of [migration, owner]) {
+          pools.delete(pool);
+          await pool.end();
+        }
+        const control = new pg.Pool({ connectionString: new URL('/postgres', ownerUrl).href });
+        try { await control.query('CREATE DATABASE catalogue_browser_template TEMPLATE neutral_store'); }
+        finally { await control.end(); }
+      }
       const probe = createServer().listen(0, '127.0.0.1');
       await once(probe, 'listening');
       const address = probe.address();

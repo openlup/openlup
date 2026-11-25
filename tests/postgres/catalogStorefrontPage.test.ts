@@ -1,9 +1,11 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { Pool } from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import {
   buildCatalogReleaseDraftV3, catalogDefinitionDigest, catalogInternalGtin, createCatalogProductTypeRegistry,
-  createPostgresCatalogDraftStoreV4, createPostgresCatalogPublicationCommands, readPostgresCatalogStorefrontPage,
+  createPostgresCatalogDraftStoreV4, createPostgresCatalogPublicationCommands, installCatalogDefinitions,
+  projectPublishedCatalogOfferPage, readPostgresCatalogStorefrontPage,
   withCatalogPublicationRules, type CatalogDraftPayloadV3, type CatalogDraftPayloadV4, type CatalogHeadRef,
   type CatalogPublishCommand, type CatalogStorefrontPageInput,
 } from "@openlup/platform/catalog";
@@ -12,6 +14,9 @@ import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor } from "@op
 import { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "@openlup/platform/migrations";
 import { createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore } from "@openlup/platform/pricing";
 import { hash, transaction } from "./catalogPublicationFixture.js";
+import { composeCatalogueStorefront } from "../../examples/neutral-store/host/catalogue-storefront.js";
+import { configurations } from "../../examples/neutral-store/owned/store.config.js";
+import { readStarterProducts } from "../../examples/neutral-store/shared/catalogue-products.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -32,6 +37,8 @@ const artifact = Buffer.from(`
     deriveSkuFacts: () => ({}), classifySkuChange: () => "compatible",
   };
 `);
+const fixtureMediaRef = "/media/collection.svg";
+const fixtureMediaDigest = () => createHash("sha256").update(readFileSync(`examples/neutral-store/public${fixtureMediaRef}`)).digest("hex");
 const registry = createCatalogProductTypeRegistry(withCatalogPublicationRules({ id: "test:rules", namespace: "test",
   version: 1, openlupRange: "1.x", capabilities: {}, taxClasses: [], types: [{
     ...typeRef, units: [{ code: "openlup:g", dimension: "mass", integral: false }], netContentUnits: ["openlup:g"],
@@ -55,7 +62,7 @@ const draftId = randomUUID();
 let publishedHead: CatalogHeadRef, baseEntry: string;
 
 async function saveAndPublish(draftId: string, payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4, draftRevision: number,
-  expectedHead: CatalogHeadRef | null, changes: CatalogPublishCommand["changes"] = []) {
+  expectedHead: CatalogHeadRef | null, changes: CatalogPublishCommand["changes"] = [], typeRegistry = registry) {
   const canonicalCommand = canonicalCatalogDraftJson({ schemaVersion: payload.schemaVersion, action: draftRevision === 1 ? "create" : "revise",
     draftId, commandKey: randomUUID(), expectedRevision: draftRevision - 1, payload });
   expect(await createPostgresCatalogDraftStoreV4(admin).apply({ canonicalCommand, fingerprint: hash(canonicalCommand), actorId: actor }))
@@ -63,7 +70,8 @@ async function saveAndPublish(draftId: string, payload: CatalogDraftPayloadV3 | 
   const api = createPostgresCatalogPublicationCommands({
     authorizeHuman: async userId => userId === actor
       ? { ok: true, userId, role: "admin", isMachineActor: false } : { ok: false },
-    catalogPublicationOwner: { run: work => transaction(admin, work) }, registry,
+    catalogPublicationOwner: { run: work => transaction(admin, work) }, registry: typeRegistry,
+    verifyMedia: async (_db, claim) => claim.mediaRef === fixtureMediaRef && claim.revisionDigest === fixtureMediaDigest(),
   });
   const operator = (await api.authorize(actor))!;
   const candidate = await api.prepareCandidate({ draftId, draftRevision, expectedHead }, operator);
@@ -126,6 +134,13 @@ beforeAll(async () => {
       public.catalog_price_setup_policy_digest(id,1,$1,'ZZ','XXX','D2C',at,NULL,1000,10,'FLOOR_TO_QUANTUM')
     FROM (SELECT gen_random_uuid() AS id,date_trunc('milliseconds',statement_timestamp()-interval '1 hour') AS at) timing`, [list]);
   const released = await saveAndPublish(draftId, release.payload, 1, null);
+  const { rows: [beforeActivation] } = await runtime.query(
+    "SELECT public.catalog_offer_memberships_page($1,NULL,24,NULL) AS result", [input.offerVersion],
+  );
+  expect(beforeActivation?.result).toEqual({ kind: "refusal", reason: "unknown_offer" });
+  expect(await read({ ...input, limit: 24 })).toMatchObject({
+    outcome: "validation_issue", reason: "catalog_offer_memberships_page_input_invalid", issue: "offer_unpublished",
+  });
   for (const sku of release.payload.skus) {
     const entry = await setBasePrice(sku.id, 1000);
     if (sku.id === skuId) baseEntry = entry;
@@ -467,4 +482,95 @@ it("governed_product_reports_its_sealed_definition_digest", async () => {
     outcome: "conflict", reason: "catalog_publication_head_moved", retryable: true, message: "Read again from the first page.",
   });
   expect((await governed()).headDigest).toBe(page.headDigest);
+});
+
+it("installed_storefront_follows_the_twenty_fifth_sibling_and_projects_certified_attributes", async () => {
+  const config = structuredClone(configurations.coffee!);
+  config.market.currency = input.currency;
+  const values = Array.from({ length: 25 }, (_, index) => `finish-${index + 1}`);
+  const type = { key: typeRef.key, version: 2 }, offer = "test:occupied", slug = "occupied-article";
+  const publicFinish = definition.attributes![0]!;
+  const pack = withCatalogPublicationRules({ id: "test:storefront-proof", version: 1, namespace: "test", openlupRange: "1.x",
+    capabilities: {}, taxClasses: [], types: [{
+      ...definition, ...type, dimensions: [{ key: "finish", kind: "choice", values }],
+      attributes: [
+        { ...publicFinish, valueType: { kind: "enum", values: values.map(id => ({ id })) } },
+        { ...publicFinish, key: "private_sample", scope: "product", public: false, valueType: { kind: "text", maxLength: 40 } },
+      ],
+    }],
+  }, () => artifact);
+  const installed = await transaction(admin, db => installCatalogDefinitions(db, pack));
+  const typeRegistry = createCatalogProductTypeRegistry(pack.types), installedType = typeRegistry.resolve(type)!;
+  const receipt = { type: installedType, digest: installed.types[0]!.definitionDigest };
+  const guide = readFileSync("packages/core/docs/guide/how-to/build/customize-the-starter.md", "utf8");
+  const example = /## Show published products in the starter[\s\S]*?```json\n([\s\S]*?)\n```/u.exec(guide);
+  expect(example?.[1]).toBeDefined();
+  const display = JSON.parse(example![1]!);
+  const { release, activation } = buildCatalogReleaseDraftV3({
+    namespace: "test", type, slug, name: "Occupied fixture", attributes: { private_sample: "fixture-only" },
+    presentation: display,
+    skus: values.map((value, index) => ({
+      code: `OCCUPIED-${index + 1}`, title: value, minQuantity: 1, primary: index === 0, options: options(value),
+      attributes: { finish: value }, netContent, grossMass: { ...netContent, unscaled: "120" },
+      identifiers: [{ scheme: "gs1:gtin", issuer: "test:internal", value: catalogInternalGtin(400 + index), packagingLevel: "unit" }],
+      sell: { oneTime: true, subscription: false }, offerVersions: [offer], logisticsRef: `test:logistics/${value}`,
+    })),
+  });
+  const key = randomUUID(), head = await saveAndPublish(key, release.payload, 1, null, [], typeRegistry);
+  activation.payload.publication.evidence.media = activation.payload.skus.map(sku => ({
+    skuCode: sku.code!, mediaRef: fixtureMediaRef, assetRefs: [], revisionDigest: fixtureMediaDigest(),
+  }));
+  const ordered = release.payload.skus.map((sku, index) => ({ id: sku.id, skuCode: sku.code!, value: values[index]!, amount: 2300 + index }))
+    .sort((a, b) => a.id.localeCompare(b.id, "en"));
+  for (const row of ordered) await setBasePrice(row.id, row.amount);
+  const active = await saveAndPublish(key, activation.payload, 2, head, [], typeRegistry);
+
+  const request = { ...input, offerVersion: offer, limit: 24 };
+  const first = await governed(read(request));
+  expect(first.products[0]!.skus.map(sku => sku.skuId)).toEqual(ordered.slice(0, 24).map(row => row.id));
+  expect(first.nextCursor?.skuId).toBe(ordered[23]!.id);
+  const next = await governed(read({ ...request, cursor: first.nextCursor }));
+  const wanted = ordered[24]!;
+  expect(next.nextCursor).toBeNull();
+  expect(next.products[0]!.skus).toMatchObject([{ skuId: wanted.id, skuCode: wanted.skuCode, price: { oneTime: price(wanted.amount) } }]);
+  const finalPage = projectPublishedCatalogOfferPage(next, [receipt]);
+  expect(finalPage.products[0]).toMatchObject({ attributes: {}, skus: [{ attributes: { finish: wanted.value } }] });
+  expect(readStarterProducts(finalPage, config).products[0]).toMatchObject({ sku: wanted.skuCode, unitPrice: { amountMinor: wanted.amount },
+    name: { en: "Article with image", pl: "Published article" }, media: "/media/collection.svg" });
+  const lane = createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString: runtimeConnectionString }, { pool: runtime });
+  let fault: "presentation" | "price" | undefined;
+  const mounted = composeCatalogueStorefront(lane, async (db, query) => {
+    const result = await readPostgresCatalogStorefrontPage(db, { ...query, offerVersion: offer });
+    if (!fault || !query.cursor || !("protocol" in result) || result.protocol !== "governed") return result;
+    const product = result.products[0]!, row = product.skus[0]!;
+    return { ...result, products: [fault === "presentation" ? { ...product, presentation: null }
+      : { ...product, skus: [{ ...row, price: { oneTime: null, subscription: null } }] }] };
+  });
+  const find = async () => {
+    const listed = await mounted.resolveCatalogue(config);
+    expect(listed.ok).toBe(true);
+    return listed.ok ? listed.value.products.find(item => item.sku === wanted.skuCode) : undefined;
+  };
+  const finding = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    for (const [kind, code] of [["presentation", "starter_catalogue_presentation_invalid"], ["price", "starter_catalogue_price_missing"]] as const) {
+      fault = kind;
+      expect(await find()).toBeUndefined();
+      expect(JSON.parse(finding.mock.lastCall![0])).toMatchObject({ code, subject: wanted.skuCode,
+        observed: expect.any(String), cause: expect.any(String), fix: expect.any(String), recheck: expect.any(String) });
+      fault = undefined;
+      expect(await find()).toMatchObject({ sku: wanted.skuCode, unitPrice: { amountMinor: wanted.amount } });
+    }
+  } finally { finding.mockRestore(); }
+
+  const copyRevision = structuredClone(activation.payload);
+  const updatedCopy = { ...display, shortName: { en: "Article with revised copy" } };
+  copyRevision.product.sharedContent.presentation = updatedCopy;
+  copyRevision.publication = { kind: "release", evidence: {}, operations: [
+    { op: "set_product_presentation", productSlug: slug, presentation: updatedCopy },
+  ] };
+  const copied = await saveAndPublish(key, copyRevision, 3, active, [], typeRegistry);
+  expect(copied.revision).toBe(3);
+  expect(copied.documentDigest).toBe(active.documentDigest);
+  expect(await find()).toMatchObject({ sku: wanted.skuCode, name: { en: "Article with revised copy" }, unitPrice: { amountMinor: wanted.amount } });
 });

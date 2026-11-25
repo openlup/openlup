@@ -1432,7 +1432,7 @@ export declare function createPostgresCatalogSkuEnvelopeReadPort(executor: PgQue
 import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from "../data/index.js";
 import type { CatalogAttributeValue } from "./contracts/draftV2.js";
 import type { CatalogPublicationFacts } from "./contracts/draftV3.js";
-import type { CatalogOptionValue, CatalogQuantity } from "./contracts/productTypes.js";
+import type { CatalogOptionValue, CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/productTypes.js";
 import { type CatalogDiscoveryRefusal, type CatalogMembershipCursor } from "./postgresPublicationDiscovery.js";
 import type { CatalogSkuRevisionRef } from "./publicationContracts.js";
 /** @experimental */
@@ -1500,12 +1500,44 @@ export type CatalogStorefrontPageResult = {
     nextCursor: CatalogMembershipCursor | null;
 } | (CatalogDiscoveryRefusal & {
     message: string;
+    issue?: "offer_unpublished";
 });
+type PublishedSku = Pick<CatalogStorefrontSku, "skuCode" | "title" | "minQuantity" | "netContent" | "sell" | "price" | "attributes"> & {
+    primaryUnitIdentifier: (NonNullable<CatalogStorefrontSku["primaryUnitIdentifier"]> & {
+        internal: boolean;
+    }) | null;
+};
+type PublishedProduct = Pick<CatalogStorefrontProduct, "slug" | "name" | "presentation" | "attributes"> & {
+    skus: PublishedSku[];
+};
+/** A filtered public offer with its server-side continuation.
+ * @experimental
+ */
+export type PublishedCatalogOfferPage = {
+    protocol: "legacy";
+    products: [];
+    nextCursor: null;
+} | {
+    protocol: "governed";
+    products: PublishedProduct[];
+    nextCursor: CatalogMembershipCursor | null;
+};
+type InstalledDefinition = {
+    type: Pick<CatalogProductTypeDefinition, "key" | "version" | "attributes">;
+    digest: string;
+};
+/** Projects receipt-verified attributes and authored public presentation for outward use.
+ * @experimental
+ */
+export declare function projectPublishedCatalogOfferPage(page: Extract<CatalogStorefrontPageResult, {
+    protocol: string;
+}>, installedDefinitions: readonly InstalledDefinition[]): PublishedCatalogOfferPage;
 /** Reads published catalogue display data and current prices in one snapshot. Checkout resolves its own prices.
- * Product and SKU attributes are returned unfiltered. Before sending them to a browser, keep only the attributes your installed type definitions mark `public: true`.
+ * Use projectPublishedCatalogOfferPage before sending offer rows to outward consumers.
  * @experimental
  */
 export declare function readPostgresCatalogStorefrontPage(transactions: Pick<PostgresRoleFreeTransactionLane<PgQueryExecutor>, "run">, input: CatalogStorefrontPageInput): Promise<CatalogStorefrontPageResult>;
+export {};
 ```
 ## dist/catalog/commerceQuoteCatalogRead.d.ts
 
@@ -4363,7 +4395,7 @@ export { createPostgresCatalogPublicationCommands } from "./catalogPublicationCo
 export type { CatalogPublicationCommand, CatalogPublicationCommandResult, CatalogPublicationDecisionReceipt, PostgresCatalogPublicationCommandsDeps } from "./catalogPublicationCommands.js";
 export { readPostgresCatalogActivationReadiness, readPostgresCatalogMembershipPage } from "./postgresPublicationDiscovery.js";
 export type { CatalogActivationReadinessInput, CatalogActivationReadinessItem, CatalogActivationReadinessResult, CatalogDiscoveryEvidence, CatalogDiscoveryRefusal, CatalogInstalledReadiness, CatalogMembershipCursor, CatalogMembershipItem, CatalogMembershipPageInput, CatalogMembershipPageResult } from "./postgresPublicationDiscovery.js";
-export { readPostgresCatalogStorefrontPage, type CatalogStorefrontPageInput, type CatalogStorefrontPageResult, type CatalogStorefrontPrice, type CatalogStorefrontProduct, type CatalogStorefrontSku } from "./catalogStorefrontPage.js";
+export { projectPublishedCatalogOfferPage, readPostgresCatalogStorefrontPage, type PublishedCatalogOfferPage, type CatalogStorefrontPageInput, type CatalogStorefrontPageResult, type CatalogStorefrontPrice, type CatalogStorefrontProduct, type CatalogStorefrontSku } from "./catalogStorefrontPage.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -4401,6 +4433,8 @@ export declare function readInstalledCatalogSubscriptionProfile(readExecutor: Pg
  * @experimental
  */
 export declare function catalogInternalGtin(sequence: number): string;
+/** @internal Classifies a GTIN using its fourteen-digit normalized form. */
+export declare function isInternalGtin(scheme: string, authored: string): boolean;
 ```
 ## dist/catalog/lifecycleDraftSchemas.d.ts
 

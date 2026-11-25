@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import { runSettingsCommand } from "./settingsCommand.js";
 import { admitDatabaseUrl, checkResultSchema, hasNonfiniteNumber } from "./settingsCommandSupport.js";
-import { fileObservationSchema, loadSettingsCatalogue, settingsDocuments } from "./settingsCatalog.js";
+import { commandFreeSettingsRefusalSchema, fileObservationSchema, loadSettingsCatalogue, settingsDocuments } from "./settingsCatalog.js";
 import { settingRefusalSchema, toolInputSchema } from "./toolSchema.js";
 
 const contextOptions = { app: { type: "string" }, configuration: { type: "string" }, "database-url": { type: "string" } } as const;
@@ -25,17 +25,19 @@ type Context = NonNullable<ReturnType<typeof settingsMcpContext>["context"]>;
 type Host = Parameters<typeof runSettingsCommand>[2];
 export function settingsMcpTools(preview: ZodType) {
   const refusal = settingRefusalSchema([...loadSettingsCatalogue().byCode.keys()]);
+  const commandFree = commandFreeSettingsRefusalSchema();
   const version = z.literal(1);
   const { showResult, listResult } = settingsDocuments();
   const key = z.string();
   return Object.entries({
     list: ["Find settings by goal words. Searches platform settings and any settings the application declares for discovery when the server was started with --app. An empty list means no match: retry with fewer or different words, or omit goal to list everything.", z.strictObject({ goal: key.optional() }), listResult],
     show: ["Read one setting by key: its domain, how to change it, and any available value rules, effects, or current value observation.", z.strictObject({ key }), showResult.extend({ observation: fileObservationSchema })],
-    explain: ["Explain a setting key, or a refusal code returned by another tool, including the next step.", z.strictObject({ keyOrCode: key }), z.union([showResult, z.strictObject({ schemaVersion: version, explanation: refusal })])],
+    explain: ["Explain a setting key, or a refusal code returned by another tool, including the next step.", z.strictObject({ keyOrCode: key }), z.union([showResult, z.strictObject({ schemaVersion: version, explanation: z.union([refusal, commandFree]) })])],
     check: ["Run the application's offline settings check. Reported values can be checked against a packaged schema or a schema the application supplies. The application's own validator runs when supplied and its declarations are accepted. The result marks rows whose values were not validated. Run it after editing a value.", z.strictObject({}), checkResultSchema],
     preview: ["Preview the effect of a proposed value without writing anything. Only settings whose runtime level is preview support it, and the server must have been started with --database-url and --app. Pass the proposed JSON value itself in value, not a string containing JSON.", z.strictObject({ key, value: z.json(), skus: z.array(z.string()).optional(), asOf: key.optional() }), preview],
   } satisfies Record<string, [string, ZodType, ZodType]>).map(([command, [description, input, result]]) => {
-    const toolRefusal = command === "show" ? refusal.extend({ remediation: refusal.shape.remediation.partial({ command: true }) }) : refusal;
+    const toolRefusal = command === "show"
+      ? z.union([refusal.extend({ remediation: refusal.shape.remediation.partial({ command: true }) }), commandFree]) : refusal;
     const output = z.union([result, z.strictObject({ schemaVersion: version, refusal: toolRefusal })]);
     return { command, input, output, definition: { name: `settings_${command}`, description,
       inputSchema: toolInputSchema(input), outputSchema: { type: "object", ...toolInputSchema(output, "output") },

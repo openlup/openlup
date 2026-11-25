@@ -373,6 +373,26 @@ function verifyMixedProductDocument(value: unknown, schemaId: string, read: Mixe
 
 export function verifyProductDocument(value: unknown, envelope: NeutralSkuEnvelopeV1, schemaId: string, mixed?: MixedProductRead): void {
   const { product, sku, documentRevision } = envelope;
+  if (documentRevision.schemaId !== schemaId) {
+    const refuse = (digestMismatch: boolean): never => {
+      const code = digestMismatch ? 'catalog_document_digest_mismatch' : 'catalog_document_schema_invalid';
+      throw Object.assign(new CommerceQuoteCatalogReadError(code), {
+        path: digestMismatch ? 'documentRevision.digest' : 'documentRevision',
+        observed: digestMismatch ? 'The canonical document has a different digest.' : 'The published document identity or encoding is invalid.',
+        causeText: 'The stored document does not match the admitted revision.',
+        fix: 'Restore the admitted revision from a verified backup.',
+        recheck: 'Repeat the original quote.',
+      });
+    };
+    if (!isRecord(value) || value.schemaId !== documentRevision.schemaId || value.productSlug !== product.slug
+      || typeof value.revisionNo !== 'number' || !Number.isInteger(value.revisionNo) || value.revisionNo < 1
+      || value.revisionNo > 2_147_483_647 || value.revisionNo !== documentRevision.revisionNo
+      || typeof value.documentRef !== 'string' || value.documentRef !== documentRevision.documentRef) return refuse(false);
+    let canonical: string;
+    try { canonical = canonicalCatalogDraftJson(value); } catch { return refuse(false); }
+    if (createHash('sha256').update(canonical, 'utf8').digest('hex') !== documentRevision.digest) return refuse(true);
+    return;
+  }
   const parsed = mixed ? verifyMixedProductDocument(value, schemaId, mixed, {
     productId: product.id, documentRevisionId: documentRevision.id, documentDigest: documentRevision.digest,
   }) : productDocument(value, schemaId);

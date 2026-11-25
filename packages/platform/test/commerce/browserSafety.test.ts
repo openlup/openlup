@@ -85,6 +85,25 @@ describe("commerce runtime placement", () => {
     expect(bundleExports(result.metafile)).toEqual(Object.keys(runtime).sort());
   });
 
+  it("keeps the emitted commerce server declarations independent of pg and Platform data", () => {
+    const entry = new URL("index.d.ts", serverEntry);
+    const declarations = new Set([entry.href]);
+    const forbidden: string[] = [];
+    for (const declaration of declarations) {
+      const source = readFileSync(new URL(declaration), "utf8");
+      const { importedFiles, typeReferenceDirectives } = ts.preProcessFile(source, true, true);
+      for (const { fileName } of [...importedFiles, ...typeReferenceDirectives]) {
+        if (/^(?:pg|@types\/pg)(?:\/|$)|(?:^|\/)data(?:\/|$)/u.test(fileName)) {
+          forbidden.push(`${declaration} imports ${fileName}`);
+        } else if (fileName.startsWith(".") && fileName.endsWith(".js")) {
+          declarations.add(new URL(fileName.replace(/\.js$/u, ".d.ts"), declaration).href);
+        }
+      }
+    }
+    expect(declarations.has(new URL("commerceMoneyLimitsV2.d.ts", entry).href)).toBe(true);
+    expect(forbidden).toEqual([]);
+  });
+
   it("refuses raw upload in a browser as a live negative control", async () => {
     await expect(bundle(new URL("../../src/commerce/server/orderReviewRawUploadHandler.ts", import.meta.url), "browser"))
       .rejects.toMatchObject({ errors: expect.arrayContaining([
