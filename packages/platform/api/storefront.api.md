@@ -86,6 +86,8 @@ export interface ContinuationRecord {
  *
  * It is synchronous, matching the synchronous browser storage it is bound to
  * and the functions that read it. An asynchronous variant would be a new name.
+ * A read does not filter by identity format: the identifier binding's
+ * `accepts` is applied only when an identity would be reused.
  */
 export interface ContinuationRecordStorageBinding {
     read(): ContinuationRecord | null;
@@ -99,7 +101,9 @@ export interface ContinuationRecordStorageBinding {
  * be reused. Both use a plain `string`: the identifier format belongs to the
  * host, and the package brands a value with `toContinuationId` only once the
  * host accepts it. A host that wants the server's format applies the commerce
- * entry's `checkoutContinuationJourneyIdSchema` in `accepts`.
+ * entry's `checkoutContinuationJourneyIdSchema` in `accepts`. `accepts` is
+ * applied only when a stored identity would be reused; reading or advancing a
+ * stored record does not filter it by identity format.
  */
 export interface IdentifierBinding {
     next(): string;
@@ -143,6 +147,11 @@ export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, 
  *
  * The union is open: members may be added in a minor release. The package reads
  * a member it does not know as `refuse`.
+ *
+ * No function reads this policy yet: `getOrCreateContinuationId` continues
+ * with an identity that was not persisted when its storage binding drops a
+ * write. A later release adds the parameter, with `refuse` as its default, as a
+ * declared behaviour change.
  *
  * @experimental
  */
@@ -281,6 +290,58 @@ export type SubmitOutcomeClass = "settled" | "needs_client_action" | "awaiting_a
  */
 export type SubmitOutcomeClassifier<TResult = unknown> = (result: TResult) => SubmitOutcomeClass;
 ```
+## dist/storefront/continuationRecord.d.ts
+
+```ts
+import type { ContinuationRecord, ContinuationRecordStorageBinding, IdentifierBinding } from "./bindings.js";
+import { type ContinuationId } from "./identity.js";
+/**
+ * Returns the continuation identity of the current purchase.
+ *
+ * It reuses the stored record's identity when `identifier.accepts` accepts it;
+ * reuse writes nothing and does not call `fingerprint`. Otherwise it calls
+ * `identifier.next()`, then `fingerprint()`, writes a new record with that
+ * fingerprint and identity and no attempt, replacing any stored record, and
+ * returns the new identity. One purchase therefore keeps one identity across
+ * payload changes until `clearContinuationRecord` runs.
+ *
+ * It reads no storage-failure policy. A storage binding that cannot reach its
+ * storage returns `null` from `read` and drops `write`, so each call returns a
+ * new identity that is not kept. An error a binding or `fingerprint` raises
+ * propagates unchanged.
+ */
+export declare function getOrCreateContinuationId(bindings: {
+    storage: ContinuationRecordStorageBinding;
+    identifier: IdentifierBinding;
+}, input: {
+    fingerprint: () => string;
+}): ContinuationId;
+/**
+ * Returns the stored continuation record as the storage binding reads it, or
+ * `null`. It applies no acceptance check and writes nothing, so it also returns
+ * a record whose identity `getOrCreateContinuationId` would not reuse. An
+ * absent `attempt` means the first attempt, `0`.
+ */
+export declare function readContinuationRecord(bindings: {
+    storage: ContinuationRecordStorageBinding;
+}): ContinuationRecord | null;
+/**
+ * Moves the stored record to its next payment attempt: it writes the record
+ * with `attempt` one higher, reading an absent `attempt` as `0`, and keeps its
+ * identity and fingerprint whatever the identity's format. With no stored
+ * record it writes nothing. It is the only function that changes `attempt`.
+ */
+export declare function advanceAttempt(bindings: {
+    storage: ContinuationRecordStorageBinding;
+}): void;
+/**
+ * Clears the stored continuation record, so the next `getOrCreateContinuationId`
+ * mints a new identity.
+ */
+export declare function clearContinuationRecord(bindings: {
+    storage: ContinuationRecordStorageBinding;
+}): void;
+```
 ## dist/storefront/identity.d.ts
 
 ```ts
@@ -331,6 +392,7 @@ export {};
 ```ts
 export type { AttemptNumber, CommandKey, ContinuationId } from "./identity.js";
 export { toAttemptNumber, toCommandKey, toContinuationId } from "./identity.js";
+export { advanceAttempt, clearContinuationRecord, getOrCreateContinuationId, readContinuationRecord } from "./continuationRecord.js";
 export type { ChangedPayloadPolicy, ClientEventReporter, ContinuationRecord, ContinuationRecordStorageBinding, IdentifierBinding, PaymentProviderFacts, PendingAction, PendingActionStorageBinding, StatusReading, StatusTransportBinding, StorageFailurePolicy, SubmitFailureClass, SubmitFailureClassifier, SubmitOutcomeClass, SubmitOutcomeClassifier, SubmitTransportBinding, } from "./bindings.js";
 export type { StorefrontAnchor } from "./anchor.js";
 export { storefrontAnchor } from "./anchor.js";

@@ -1,5 +1,16 @@
 import type { ConfiguratorIntent } from "@/domains/commerce/configuratorIntentContracts";
 import type { CheckoutQuoteExpectation } from "@/checkout/composer/configuratorFormStore";
+import {
+  advanceAttempt,
+  clearContinuationRecord,
+  getOrCreateContinuationId,
+  readContinuationRecord,
+  toAttemptNumber,
+  toContinuationId,
+  type ContinuationRecord,
+  type ContinuationRecordStorageBinding,
+  type IdentifierBinding,
+} from "@openlup/platform/storefront";
 
 export const CHECKOUT_ATTEMPT_STORAGE_KEY = "openlup:skomponuj-pakiet:checkout-attempt:v1";
 
@@ -24,14 +35,10 @@ export function getOrCreateCheckoutAttemptKey(
   // The server now treats a same-key / changed-payload submit as an idempotent
   // update-in-place, so a stable key means one journey => exactly one pet + order +
   // subscription.
-  const stored = readStoredAttempt();
-  if (stored && isCheckoutAttemptKey(stored.key)) {
-    return stored.key;
-  }
-
-  const key = `checkout:${crypto.randomUUID()}`;
-  writeStoredAttempt({ fingerprint: fingerprintCheckoutIntent(intent, expectedQuote), key });
-  return key;
+  return getOrCreateContinuationId(
+    { storage: attemptRecordStorage(), identifier: attemptKeyIdentifier() },
+    { fingerprint: () => fingerprintCheckoutIntent(intent, expectedQuote) },
+  );
 }
 
 /**
@@ -42,7 +49,7 @@ export function getOrCreateCheckoutAttemptKey(
  * sequence gives each retry its own provider-attempt identity.
  */
 export function readCheckoutPaymentAttempt(): number {
-  return readStoredAttempt()?.paymentAttempt ?? 0;
+  return readContinuationRecord({ storage: attemptRecordStorage() })?.attempt ?? 0;
 }
 
 /**
@@ -57,13 +64,11 @@ export function readCheckoutPaymentAttempt(): number {
  * key and fails instead of charging.
  */
 export function bumpCheckoutPaymentAttempt(): void {
-  const stored = readStoredAttempt();
-  if (!stored) return;
-  writeStoredAttempt({ ...stored, paymentAttempt: (stored.paymentAttempt ?? 0) + 1 });
+  advanceAttempt({ storage: attemptRecordStorage() });
 }
 
 export function clearCheckoutAttemptKey(): void {
-  getSessionStorage()?.removeItem(CHECKOUT_ATTEMPT_STORAGE_KEY);
+  clearContinuationRecord({ storage: attemptRecordStorage() });
 }
 
 export function fingerprintCheckoutIntent(
@@ -107,6 +112,45 @@ function readStoredAttempt(): StoredCheckoutAttempt | null {
 
 function writeStoredAttempt(attempt: StoredCheckoutAttempt): void {
   getSessionStorage()?.setItem(CHECKOUT_ATTEMPT_STORAGE_KEY, JSON.stringify(attempt));
+}
+
+// The storefront entry's bindings over this module's storage and codec. Built per
+// call so the session storage, the UUID source and the helpers are read when a
+// function runs, never at module load.
+function attemptRecordStorage(): ContinuationRecordStorageBinding {
+  return {
+    read: () => {
+      const stored = readStoredAttempt();
+      return stored ? toContinuationRecord(stored) : null;
+    },
+    write: (record) => writeStoredAttempt(toStoredAttempt(record)),
+    clear: () => getSessionStorage()?.removeItem(CHECKOUT_ATTEMPT_STORAGE_KEY),
+  };
+}
+
+function attemptKeyIdentifier(): IdentifierBinding {
+  return {
+    next: () => `checkout:${crypto.randomUUID()}`,
+    accepts: (value) => isCheckoutAttemptKey(value),
+  };
+}
+
+// Maps the stored field names to the record's, and back in the stored key order:
+// fingerprint, key, then paymentAttempt when present.
+function toContinuationRecord(stored: StoredCheckoutAttempt): ContinuationRecord {
+  return {
+    continuationId: toContinuationId(stored.key),
+    fingerprint: stored.fingerprint,
+    ...(stored.paymentAttempt === undefined ? {} : { attempt: toAttemptNumber(stored.paymentAttempt) }),
+  };
+}
+
+function toStoredAttempt(record: ContinuationRecord): StoredCheckoutAttempt {
+  return {
+    fingerprint: record.fingerprint,
+    key: record.continuationId,
+    ...(record.attempt === undefined ? {} : { paymentAttempt: record.attempt }),
+  };
 }
 
 function isCheckoutAttemptKey(value: string): boolean {
