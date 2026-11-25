@@ -287,13 +287,16 @@ for (const width of [320, 1280]) {
     await page.goto(base + routes.cart[locale]);
     await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku })).toBeVisible();
     await expect(page.getByRole('spinbutton')).toHaveValue(String(item.minQuantity));
+    const summary = page.getByRole('complementary', { name: copy[locale].boxSummary });
+    // Settle the first cart quote before arming the listener for the reload.
+    await expect(summary).toContainText(money);
     const quoted = page.waitForResponse(response => response.url().endsWith('/api/actions/offer.validate')
       && response.request().postDataJSON().cart.lines[0].sku === wanted.sku);
     await page.reload();
     await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku })).toBeVisible();
     const quote = await (await quoted).json();
     assertQuote(quote, wanted);
-    await expect(page.getByRole('complementary', { name: copy[locale].boxSummary })).toContainText(money);
+    await expect(summary).toContainText(money);
 
     if (width === 320) return;
     const quotePath = '**/api/actions/offer.validate';
@@ -307,7 +310,7 @@ for (const width of [320, 1280]) {
     });
     await page.reload();
     await expect(page.getByText(quoteCopy[locale].unavailable, { exact: true })).toBeVisible();
-    await expect(page.getByRole('complementary', { name: copy[locale].boxSummary })).toHaveCount(0);
+    await expect(summary).toHaveCount(0);
     await page.unroute(quotePath);
     const db = new pg.Pool({ connectionString: fixture.runtimeUrl });
     try {
