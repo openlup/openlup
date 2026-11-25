@@ -9494,6 +9494,117 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "catalog-order-checkout-protection",
+        "path": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_price_setup_assert_order_guards(timestamptz)",
+            "beforeSha256": "5801574057da7bae442d92be061156669f575a8ff6c11ecefdfca2c81bf6e720",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_offer_policy_v2_readiness()",
+            "beforeSha256": "b8e3c923efa55b0b45cd1cad76ada853cea29d2272fa306359b8e72a1ed41a59",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_price_setup_frozen_order_money_matches(jsonb,jsonb,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_price_setup_order_protection_verified(uuid,jsonb,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "fulfillment-destination-v2-legacy-ledger-fence",
+        "path": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_fulfillment_enqueue_provider_command(uuid,text,text,text,text,text,text,text,text,text,text,integer)",
+            "beforeSha256": "e0254efe05aaf7cbfcc6a9e65dc592bd82fe298760e8f08db6bdc2fa25e1e270",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_claim_provider_commands(text,text,integer,text,integer)",
+            "beforeSha256": "57ccd76aa3ce81c7b6c0862287d3cabc7dd9849f30f5d852af8fdfdacefeb83f",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_mark_command_submitting(uuid,uuid,bigint,bigint,uuid)",
+            "beforeSha256": "cd9a1b3e73ed04619f8d1b0df1606e1f9735b2ba4d093350c21bf19ce4463f22",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_order_has_destination_v2(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_fulfillment_provider_command_destination_v2_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "commerce_fulfillment_provider_command_destination_v2_guard",
+            "table": "public.commerce_fulfillment_provider_commands",
+            "sha256": "4298e012982fb58cce068c18a3f86494e1281b61f33e819211071ba14ab7417a"
+          }
+        ]
+      },
+      {
+        "row": "order-money-v2-storage",
+        "path": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.commerce_orders ADD COLUMN money_version text;",
+          "ALTER TABLE public.commerce_orders ADD CONSTRAINT commerce_orders_money_snapshot_fkey\n  FOREIGN KEY (id, money_version) REFERENCES public.commerce_order_tax_snapshots(order_id, money_version) DEFERRABLE INITIALLY DEFERRED;",
+          "ALTER TABLE public.commerce_order_items ADD COLUMN line_key text;",
+          "ALTER TABLE public.commerce_order_items ADD CONSTRAINT commerce_order_items_money_source_fkey\n  FOREIGN KEY (order_id, line_key) REFERENCES public.commerce_order_line_sources(order_id, line_key) DEFERRABLE INITIALLY DEFERRED;"
+        ]
+      },
+      {
+        "row": "subscription-destination-read",
+        "path": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_destination_v2_refusal(text,text)",
+            "beforeSha256": "2036af7daf998c57852ff16a3ca60791f843f9f6f4f43636934be1ab26399eb9",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_read_destination_v2(jsonb,text,uuid,jsonb)",
+            "beforeSha256": "7cc9214ea7f37f99e73d8f868787edd2419f6a47f63bc7871dfd34a838ec7362",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_recheck_destination_v2(jsonb,text,uuid,uuid,jsonb,jsonb)",
+            "beforeSha256": "3431010f18a1986397d9f78ccfd01dc8b368016ec5aa7640297f32b0cdb4003b",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_destination_v2_read(jsonb,uuid,jsonb,uuid,jsonb,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -13672,6 +13783,94 @@
           "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "46951df895d85576f91fc662bf12bdad4d65e0c96d142220404825c6a6154e37"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
+      "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c",
+      "functions": [
+        {
+          "signature": "public.catalog_price_setup_assert_order_guards(timestamptz)",
+          "beforeSha256": "5801574057da7bae442d92be061156669f575a8ff6c11ecefdfca2c81bf6e720",
+          "afterSha256": "83696c790072209c04727f1cc3fb9d316416f4d6b83fe564907a1b9820a8e293"
+        },
+        {
+          "signature": "public.commerce_offer_policy_v2_readiness()",
+          "beforeSha256": "b8e3c923efa55b0b45cd1cad76ada853cea29d2272fa306359b8e72a1ed41a59",
+          "afterSha256": "e112514ad47a45e966f94df6241a2aaff110c3f45a07aa4d34071d327ce3eb1c"
+        },
+        {
+          "signature": "public.catalog_price_setup_frozen_order_money_matches(jsonb,jsonb,text)",
+          "beforeSha256": null,
+          "afterSha256": "4cab7018208d296777cc2de7b728c6c1741454f0b8036bede49abe4db3791f08"
+        },
+        {
+          "signature": "public.catalog_price_setup_order_protection_verified(uuid,jsonb,jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "052f26d5fb397049ab48f68fbabe639494824c5144be80a95d8ef5ceab95ef62"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
+      "sha256": "47c1163855d8fc24e3040a3971db4e00f1be9299ff6d968e5abe522567040ddb",
+      "functions": [
+        {
+          "signature": "public.commerce_fulfillment_enqueue_provider_command(uuid,text,text,text,text,text,text,text,text,text,text,integer)",
+          "beforeSha256": "e0254efe05aaf7cbfcc6a9e65dc592bd82fe298760e8f08db6bdc2fa25e1e270",
+          "afterSha256": "8caccff56602024eff7121fbdc00e23466bcbb78e9c70a6f00371f7b0d29091f"
+        },
+        {
+          "signature": "public.commerce_fulfillment_claim_provider_commands(text,text,integer,text,integer)",
+          "beforeSha256": "57ccd76aa3ce81c7b6c0862287d3cabc7dd9849f30f5d852af8fdfdacefeb83f",
+          "afterSha256": "935c588036e58434b56a620157a2f85b6ca46c69875c5e2c7cf942b98d03111d"
+        },
+        {
+          "signature": "public.commerce_fulfillment_mark_command_submitting(uuid,uuid,bigint,bigint,uuid)",
+          "beforeSha256": "cd9a1b3e73ed04619f8d1b0df1606e1f9735b2ba4d093350c21bf19ce4463f22",
+          "afterSha256": "6283f516b5a35130ee13503b9499e75beef37bdf536686c31c1a1b54505995c4"
+        },
+        {
+          "signature": "public.fulfillment_order_has_destination_v2(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "ce6bf3523cc7f220fc97f9241c2125ce1a3054e2095f00755b8f3a732a596fee"
+        },
+        {
+          "signature": "public.commerce_fulfillment_provider_command_destination_v2_guard()",
+          "beforeSha256": null,
+          "afterSha256": "fc7c9ff356e6876ecb995a3ff8517fdee4799587d2b9643e04ca8e041ba42350"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
+      "sha256": "02be68382a7a0e2c62010ef2bca993deaa756f0c860357d6be13d7dd2d5fb45b",
+      "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261128180000_subscription_destination_read.sql",
+      "sha256": "f76078e8a637c6f597d6997ed2d1960f025ce99c474e5f85faf42287ca8a4158",
+      "functions": [
+        {
+          "signature": "public.commerce_destination_v2_refusal(text,text)",
+          "beforeSha256": "2036af7daf998c57852ff16a3ca60791f843f9f6f4f43636934be1ab26399eb9",
+          "afterSha256": "08200c13acce332da264044b17081d26c3819a59cc4f68fc05f420b34ca0f024"
+        },
+        {
+          "signature": "public.commerce_read_destination_v2(jsonb,text,uuid,jsonb)",
+          "beforeSha256": "7cc9214ea7f37f99e73d8f868787edd2419f6a47f63bc7871dfd34a838ec7362",
+          "afterSha256": "d6a7e161fbe9c3af1b82c18e5a57b41713b1c2de02df983dbfa39bf230f78a34"
+        },
+        {
+          "signature": "public.commerce_recheck_destination_v2(jsonb,text,uuid,uuid,jsonb,jsonb)",
+          "beforeSha256": "3431010f18a1986397d9f78ccfd01dc8b368016ec5aa7640297f32b0cdb4003b",
+          "afterSha256": "6808346df08d17069519684aa3ea49c07f8534c5054d9b9be365d1c05c861558"
+        },
+        {
+          "signature": "public.subscription_destination_v2_read(jsonb,uuid,jsonb,uuid,jsonb,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "d90fea71c0138e1fff197a910ed379df53ca3fb1d93d80fcba791eca1d31c99d"
         }
       ]
     }

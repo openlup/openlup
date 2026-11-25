@@ -515,7 +515,7 @@ each of which must fail. It is not a required context of its own; the required
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 
-The required `install-proof` context aggregates `install-packages` and all four
+The required `install-proof` context aggregates `install-packages` and all five
 `install-browser` shards. It requires actual success from both dependencies; failed,
 cancelled or skipped jobs refuse admission. On main pushes, `install-packages`
 checks `scripts/public-ci-reuse.mjs`; browser shards share its decision so a
@@ -547,13 +547,13 @@ for trust, evidence and support limits. The workflow adds no required PR check,
 does not hold publication open and does not delay the next dispatch.
 
 After package proof succeeds, `install-browser` runs the starter's installed
-PostgreSQL browser journeys in four parallel shards through
+PostgreSQL browser journeys in five parallel shards through
 [`starter-browser-ci.mjs`](scripts/starter-browser-ci.mjs). Pinned official artifact
 actions transfer only the verified manifest and public tarballs from the package
 job, retained for one day; private browser output is never uploaded. Each shard
 verifies all manifest hashes, the package inventory and the exact checkout commit
 before installing, then checks installed-package confinement. The zero-based
-`--groups` selections are `0`, `1,6`, `2,4` and `3,5`, covering every group once.
+`--groups` selections are `0`, `6`, `1,2`, `3,5` and `4`, covering every group once.
 Each shard acquires an isolated disposable
 PostgreSQL 16 per configuration through the shared test helper and `test-postgres`
 inventory pin. The package job's PostgreSQL 17 service retains its package proofs. The runner
@@ -575,10 +575,17 @@ runs with the host user identity to preserve private capture permissions.
 The script captures output privately, scans it for credentials, removes its
 hosts, containers, databases, roles and scratch files on success or failure, and
 prints the public image identity, counts, timings and bounded failure diagnostics. It uploads no artifacts.
-Current deadlines are 12 minutes for packages, 8 per browser shard and 2 for
+Current deadlines are 20 minutes for packages, 12 per browser shard and 2 for
 the aggregate. Set each job deadline to at least 1.3 times its slowest observed
 hosted run.
-Browser journeys retain zero retries. See the
+Playwright retries nothing. In hosted CI only, a group whose journeys fail
+reruns once, with fresh databases, hosts and state, in the same shard, after the
+first attempt's cleanup completed. A setup or cleanup failure is never rerun, nor
+is a rerun that would not fit `OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS` (default 300000;
+the workflow sets the job deadline less setup): the time already used, one more attempt
+as long as the failed one, an equal estimate per later group and a reserve for the
+catalogue upgrade or cleanup must fit, otherwise it prints `retry skipped: budget`. A group that passed only on the rerun is reported the same
+way as a flaky Vitest file (`flaky-retry-passed: starter browser group <n>`). See the
 [starter proof recipe](examples/neutral-store/docs/proof.md#database-backed-purchase-acceptance-recipe)
 for the selected journeys and the separate local proofs.
 
@@ -823,9 +830,10 @@ The complete projected root command inventory is `build`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
 `guard:public-reference-site-routes`, `inventory:refresh`, `landing:merge`, `migration:finalize`, `lint`, `preflight`, `prelint`,
-`oss:published-tree`, `packages:check`, `release:bump`, `release:docs-pass`, `sql:admit`, `pretest`, `test`, `test:hosted`, and `test:scoped`.
+`oss:published-tree`, `packages:check`, `release:bump`, `release:docs-pass`, `sql:admit`, `pretest`, `test`, `test:affected`, `test:hosted`, and `test:scoped`.
 This reclassifies the complete current root script inventory; all commands are
-public, with `test:scoped` as the local wrapper around the unchanged `test` command.
+public, with `test:affected` as the local targeted wrapper and `test:scoped` as
+the local wrapper around the unchanged `test` command.
 `npm run build` is the public build truth; its public-reference subcommands and
 guards are internal links in that bounded chain. Published Tree CI invokes the
 build, sharded required root tests, DCO check, and publication checks from this inventory.
@@ -844,7 +852,11 @@ the subpaths its `exports` declare, and domain code under `src/domains` and
 `server/domains` imports no configured provider SDK and no adapter,
 infrastructure, runtime or route code; the config exempts domain tests.
 Non-test production source under `packages/core/src` and `packages/ui/src`
-also imports none of the provider SDKs listed in the config. Package tests
+also imports none of the provider SDKs listed in the config. In the neutral
+starter, `client/` and `shared/` source takes runtime values from
+`@openlup/platform` only through an entry the config lists as browser-safe;
+`import type` declarations and `host/` code are unaffected. An inline
+`import { type A }` is refused; its fix is `import type`. Package tests
 retain their package isolation even when composing with a provider.
 Provider composition exemptions use `*.test.<extension>` and
 `*.testFixtures.ts`, matching the existing test convention.
@@ -967,6 +979,11 @@ After `npm ci`, use:
 ```sh
 # Builds Core, Outbox and Platform, then runs the affected root tests.
 npm test -- server/domains/subscription
+
+# Auto-discover affected root tests (reverse imports, #imports, contract pins) and run them.
+npm run test:affected
+npm run test:affected -- --dry-run
+npm run test:affected -- --hosted --no-postgres
 
 # The same, the way a hosted test shard runs them; at least one file is required.
 npm run test:hosted -- scripts/ci-test-scope.test.ts
@@ -1095,6 +1112,8 @@ package, coverage or full verification gates.
 
 Hosted `test-prep` runs `node scripts/ci-test-scope.mjs` and `node scripts/build-packages-incremental.mjs` once and uploads the exclusion list and built workspace `dist/` outputs as the `test-prep` artifact. Hosted `test-full-shard` jobs download that artifact and run `node scripts/ci-vitest-shard.mjs --shard N --total 8 --skip-pretest` (deterministic weighted LPT sharding over `config/vitest-shard-weights.json`, bypassing redundant per-shard `pretest` builds) in eight independent installations. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
+Vitest keeps `retry: 0`. In hosted CI (`CI=true`) only, each shard reruns its failed test files once in the same job, before the check reports, because a merge-queue entry is ejected on its first failing check. The shard passes only if every file passed on the first run or appears as passed in the rerun's report; a file missing, skipped or not run on the rerun fails it. More than 10 failed files, or any first-run error no test file accounts for (an unhandled error or rejection, an interrupted run, or a non-zero exit whose report shows no failed file), is not treated as transient: the shard fails without a rerun. Local runs never retry. Every file that passed only on the rerun prints `flaky-retry-passed: <file>`, emits a `Flaky test retried` warning annotation and is listed in the job summary; the retry is not acceptance. A file that repeatedly reports `flaky-retry-passed` is a defect to fix, for example a test that depends on order or on shared state.
+
 Channel preservation tests live in `packages/platform/test/channels` and are
 discovered by the existing root Node project. The reference's adjacent guard
 tests cover off/portable selection; `tests/postgres/m17ChannelReference.test.ts`
@@ -1212,7 +1231,7 @@ retry and other startup errors, and preserves a named volume and another
 container. Cross-run reclamation is limited to the labelled dead-owner contract
 above; it never authorizes pruning unlabeled resources or a live owner's stack.
 
-Root test/hook defaults are 10 seconds locally, or 30 with coverage or in hosted CI (`CI=true`), where shared runners slow tooling tests about twofold; externally supplied duration pins may raise them. Tests under `tests/postgres/` have a 60-second test floor, preserving any larger derived or explicit per-test budget; their hook budgets are unchanged. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
+Root test/hook defaults are 10 seconds locally, or 30 with coverage or in hosted CI (`CI=true`), where shared runners slow tooling tests about twofold; externally supplied duration pins may raise them. Tests and hooks under `tests/postgres/` have a 60-second floor, preserving any larger derived or explicit per-test budget. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
 
 To find optimisation targets, read the per-file durations Vitest prints in a hosted shard log (`✓ <file> (<n> tests) <ms>`) or locally with `npm test -- <path>`, and rank by file time. On 2026-10-19 the slowest root files were repository-tooling tests (`scripts/packages/outbox-consumer-proof.test.ts`, `scripts/source-preview-release.test.ts`, `scripts/public-ci-neutrality.test.ts`), each 40–80 s; slim one by moving decisions into table-driven cases and keeping only the real-process witnesses its requirement needs.
 
@@ -1251,7 +1270,7 @@ The Outbox companion reads `config/ci-images.json` through its image helper;
 image-pin-only changes therefore retain its real interruption and refusal
 witnesses even when unrelated bounded tooling fixtures are excluded.
 
-All rows already share `scripts/`, `tests/setup/`, `src/test/` and `src/checkout/machine/commerceRequestCache.ts`. Every root file outside the allowlisted root documentation files (`README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, `GOVERNANCE.md`, `CHANGELOG.md`) and every dot-prefixed segment anywhere also runs everything; root documentation edits still run `scripts/documentation-cli.test.ts` and all unlisted doc/policy checks. Package rows conservatively include `packages/`. Repository-wide inventory/policy/neutrality/removal scans stay unlisted. When a row gains a new read, extend it; when its closure becomes uncertain or tree-wide, remove it.
+All rows already share `tests/setup/`, `src/test/`, `src/checkout/machine/commerceRequestCache.ts`, and every non-allowlisted path under `scripts/` (fail-closed: runners, Docker, builds, fixtures, package scripts, migration helpers, `preflight.ts`, `oss-*.ts`, and any new or unknown script trigger the complete suite; only `scripts/**/*.test.*` / `*.spec.*` and the explicit `NON_BAILOUT_SCRIPTS` allowlist — guarded by the AST exemption-safety test in [ci-test-scope.test.ts](scripts/ci-test-scope.test.ts) — avoid the global bailout, and every listed test always retains itself). Every root file outside the allowlisted root documentation files (`README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, `GOVERNANCE.md`, `CHANGELOG.md`) and every dot-prefixed segment anywhere also runs everything; root documentation edits still run `scripts/documentation-cli.test.ts` and all unlisted doc/policy checks. Package rows conservatively include `packages/`. Repository-wide inventory/policy/neutrality/removal scans stay unlisted. When a row gains a new read, extend it; when its closure becomes uncertain or tree-wide, remove it.
 
 Review input completeness against the actual test/import closure. Extend [scope falsifiers](scripts/ci-test-scope.test.ts) for the new dependency behavior; row-derived tests alone cannot discover an omitted input. Preserve shared triggers, rename/deletion coverage, identical shard selection and errors selecting everything.
 
@@ -1268,6 +1287,8 @@ PR/group scope uses the merge-base with the event's exact base. Local scope uses
 ```
 
 Unknown events, malformed metadata or unavailable Git history exclude nothing. Selection is an optimization, never a failure waiver. Keep the project-level exact-path seam; root `--exclude` cannot replace it.
+
+In hosted CI (`.github/workflows/published-tree-ci.yml`), `scope-gate` runs `node scripts/ci-test-scope.mjs --workflow-outputs` without installing workspace dependencies and emits five fail-closed outputs (`run_pgtap`, `run_reference_build`, `run_package_gates`, `run_install_browser`, `run_install_pack`). Every output defaults to `true` on `push`, missing/malformed base SHAs, Git errors, root non-doc files, dot-segments, shared setup inputs, or non-allowlisted `scripts/` changes; any file deletion or rename also triggers `run_package_gates=true` (and `run_install_pack=true`) so `packages/core` `docs:check` repository-link existence checks run. `pgtap`, `install-pack`, and `install-packages` use step-level pass-through (keeping `public-ci-dependencies.mjs` active on non-reused runs and preserving `success` job conclusions for `public-ci-reuse.mjs`), while `install-browser` skips its 5 matrix runners when `run_browser == 'false'` and `install-proof` requires either `BROWSER_RESULT=success` or the explicit pair `RUN_BROWSER=false` with `BROWSER_RESULT=skipped`.
 
 #### Separate DB, package and coverage proof
 
@@ -1706,37 +1727,15 @@ authority. Review evidence grants no merge, release, settings or credential righ
    `prepare`/`record`/`verify`. The pin must lie between the fork point and HEAD.
    Admission waits until that exact predecessor reaches `main`; its landing
    preserves the unchanged upper candidate's review. An independent PR needs no pin.
-2. **Specify before implementing.** For any change beyond a trivial fix, write
-   the specification first. State the outcome, scope and exclusions. Name the
-   affected contracts and the invariants the change must preserve. Describe
-   refusals and how to resolve them. Identify the witnesses you will use and
-   what each can establish. List the affected files, migrations and carriers.
-   Use those specification sections as the PR task record. For SQL,
-   control-path and money changes, get the specification reviewed before
-   implementation starts. If implementation contradicts the specification,
-   amend the specification before continuing. For a trivial fix, a few lines
-   in the task record can serve as the specification.
-
-   The specification also records simplicity and DX impact. Each record applies
-   whenever its condition holds, even in a short specification.
-
-   Before adding a mechanism (table, trigger, lock, version or dialect, scanner,
-   wrapper, setting, test harness or process step), record the current requirement
-   or reachable failure it serves and the smallest adequate alternative considered.
-   Prefer removing the cause, deleting a rule, using an existing seam or default, or
-   documenting a limit. A new process control needs a concrete failure that required
-   CI and the change's own review would miss. Preserve correctness, required
-   compatibility and proof when simplifying.
-
-   For changes to public APIs, starters or examples, reader docs, errors, CLI,
-   configuration and settings, or extension points, record the DX impact for the
-   affected task, including the concepts, steps and files an adopter or their coding
-   agent must handle. Minimize adopter-visible concepts, keep internal mechanisms
-   private, name the cause and fix in errors, and write adopter docs around tasks.
-   Keep the adopter's local edit-and-test loop fast.
+2. **Specify before implementing.** Use [Write a change specification](#write-a-change-specification)
+   to record the current contract and its acceptance criteria before writing code.
+   For SQL, control-path and money changes, have the specification reviewed before
+   implementation starts. A capability check that decides whether a command can
+   report readiness is a control path, including for a read-only command.
 3. **Implement, test and document in the same PR.** Implement the change, add
-   tests, and update the documentation it makes stale; this is implementation
-   work, and the reviewer checks it. Locally run only the tests being written,
+   or update tests as called for by the [test guide](#test-scope-and-diagnostics),
+   and update the documentation it makes stale. The reviewer checks this work.
+   Locally run only the tests being written,
    root test files with `npm run test:hosted -- <files>`, `npm run lint`, and
    `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`.
    Before `prepare`, run `npm run preflight` and have it green, or explain each
@@ -1748,9 +1747,9 @@ authority. Review evidence grants no merge, release, settings or credential righ
    its test. Describe pristine replacement, customized reconciliation, startup
    refusals and any explicit installed-policy step. Release preparation consumes
    the fragment into the next reader upgrade guide. Leave released sections intact.
-4. **Describe the task in the PR description.** Include the specification as
-   the task record, with its acceptance criteria, the risk, actual delivery
-   authority and evidence. Keep the record current through fixes and handoffs.
+4. **Describe the task in the PR description.** Use the specification as the
+   task record. Include its acceptance criteria, risk, actual delivery authority
+   and observed evidence. Keep the record current through fixes and handoffs.
 5. **Sign, push and open ready for review.** Commit with DCO sign-off, push and
    open the ready pull request within submission authority. End its description
    with the author's `Signed-off-by:` line: the queue uses it as the merge-commit
@@ -1829,6 +1828,179 @@ cd ../openlup-my-change
 
 In a fork, use the remote tracking `https://github.com/openlup/openlup.git` for
 fresh main. The review commands use `origin/main` as the local main reference.
+
+### Write a change specification
+
+Write for a contributor who has the checkout and has never read the author’s
+conversation. The contributor should be able to find the owning entry point,
+name the behavior to change and preserve, and tell what would disprove success.
+For a trivial fix, state the change and expected check in a few lines and append
+the observed result after running it. Omit headings and empty fields, and include
+applicable simplicity and DX decisions. A small diff that changes a supported
+contract needs proof at that contract's boundary.
+
+Use one current specification per PR or independently verifiable delivery step.
+The program plan owns the target and dependency order. The change specification
+owns the approved behavior for this step. The PR task record carries the
+acceptance criteria, actual authority and observed evidence. When the specification
+lives separately, identify the criteria being delivered and link the exact
+revision in a record accessible to the author and reviewer. In a public PR,
+include the reviewable public contract and use shareable references. Keep private
+source references in the authorized program record. Resolve amendments in the
+affected behavior, refusal and acceptance sections before handoff. Update
+the affected witness, including any fixture or expected result that the
+decision changes. Keep superseded wording in the decision history with its
+rationale. Author and reviewer should be able to use the same current criteria
+without interpreting the amendment history.
+
+For a handoff with unresolved prerequisites, put the step's current status,
+approved specification revision and first safe action beside the conditions
+for starting. Distinguish spec approval, readiness to start and authorization
+to act. If a predecessor has to land, identify it by its repository change or
+exact source revision and state what behavior or fixture the step consumes.
+Use the landed reference to check the dependency once it is available. A
+similar title or an earlier partial change cannot establish that it landed.
+Keep an unresolved start condition visible until its evidence is recorded.
+
+1. **Outcome and scope.** Name the actor, normal entry point, observable result,
+   exclusions and what remains unavailable after this change. Name the owning
+   contract and the source revision or installed version used to check assumptions.
+   Compare the requested result to the current behavior. An existing supported
+   operation may already satisfy the request. If the requested behavior conflicts
+   with the baseline or another owner’s contract, record the conflict before
+   designing the change. For each blocking decision, name who decides, the
+   question, and the affected criterion or step. State which material choices the
+   author may make. For each dependency that gates work, name the owner, the
+   contract revision, and the evidence of the state needed to start, verify or
+   activate. In a multi-step change, record readiness for each independently
+   verifiable step. Name its start condition and leave unsettled dependent
+   contracts in draft with an owner and an unblock condition. Prove each
+   capability where it first becomes usable, including in explicit composition
+   if the shipped default stays dormant. Prove that default's refusal or
+   absence of effects with inputs that would work in the enabled composition.
+2. **Behavior and invariants.** Give the relevant starting state, accepted inputs,
+   public result and side effects. Cover affected existing callers and data.
+   Specify inputs at the boundaries that matter, including units, limits or
+   precedence when they affect the result. For refusals give the trigger,
+   public outcome, actionable recovery and effects that must be absent. For
+   compatibility or replay, identify the prior state and request identity,
+   which outcome is retained, and which effects may occur again.
+   Cite exact public names or wire values where consumers rely on them.
+   If an existing entry lacks a fact this change needs, name its supplier,
+   how it binds to the existing input, and the outcome when it is absent or
+   ambiguous. If the author may choose the binding, state its constraints.
+   When two paths must agree, name the decisions, fields or effects being
+   compared, the shared input and state, and any checks reserved for one path.
+   If one result mixes retained values with current eligibility, identify
+   which values come from each and name the checks that can change eligibility.
+3. **Acceptance and evidence.** For each material criterion, name the scenario,
+   normal entry point, expected observation and the witness capable of checking it.
+   Give multiple criteria stable IDs when later work or evidence refers to them.
+   Name the fixture, entry variant, command or procedure and where the witness
+   ends. For a refusal, give the inputs that reach the intended check. A quote
+   response supports a quote claim. An order claim needs an order outcome.
+   For a risky behavior, state a contrasting case or a plausible wrong
+   implementation that the witness must reject. Choose fixtures that distinguish
+   the expected behavior from that alternative. When the outcome includes a
+   remedy, check that following it addresses the same cause. Keep planned
+   checks distinct from observed results. Record command, candidate, relevant
+   profile and result for completed checks. Identify skipped and unexecuted
+   cases that affect an acceptance claim.
+4. **Footprint and tradeoffs.** List affected owners, files, migrations and
+   generated carriers. For each new mechanism, record the current requirement
+   or reachable failure and the smallest adequate alternative considered. A new
+   process control needs a concrete failure that required CI and the change's
+   own review would miss. Prefer removing the cause or reusing an existing seam
+   or default. Preserve correctness, required compatibility and proof. For public
+   APIs, starters or examples, reader docs, errors, CLI, configuration and
+   settings, or extension points, record the change in concepts, steps and files
+   for the adopter or their agent. Minimize that burden and keep internals
+   private. Name the cause and fix in errors, write adopter docs around tasks,
+   and keep the local edit-and-test loop fast.
+
+Match proof to the contract. A database change may need ordinary commit, replay,
+retry under contention, a specific runtime role, historical data, upgrade or
+restore. An installed contract may need a packed consumer, a supported starter
+configuration, or the user or operator journey. Choose the cases the change can
+affect and use their real boundaries. Source, installed artifacts, hosted checks
+and live qualification each establish different facts.
+
+#### Changes that cross a contract boundary
+
+- **Before writing.** At the source or installed-version pin for this step,
+  compare the approved behavior with the actual entry points and their callers.
+  When changing shared data or a shared decision, trace the affected writers
+  and readers through SQL, adapters, starter composition and fixtures as
+  applicable. Record what is preserved, what changes and any gap in the
+  available inputs. Where behavior depends on order, name the owner of the
+  transaction, snapshot,
+  clock, locks and I/O. Record which refusal wins and which effects survive
+  when relevant checks fail together. Refresh affected facts if a dependency
+  moves before implementation.
+- **Between owners.** For a new or changed handoff, agree the contract with
+  the producer and consumer before either relies on the change. Trace the
+  consumer route to the authoritative facts it can read, including the keys,
+  role and point at which the producer commits them. State what the consumer
+  may assume, what replay retains and
+  how older or restored records without the facts behave. Name the producer
+  witness and the first step that may consume the guarantee.
+- **At the wire boundary.** For a change to response validation, cover affected
+  entries and success variants using actual producer output or its owning
+  serialization contract, independently of the consumer's validation list.
+  Record shape rules such as presence and nullability. When success must be
+  bound to the request, map fields and relevant structural conditions to the
+  input or authoritative fact they must match, or state why comparison does
+  not apply. Change one bound value or shape condition at a time with earlier
+  checks satisfied and verify that the intended check decides the outcome.
+- **For stored data.** For a changed persisted lifecycle, use the affected
+  installed paths on the same fixture store. Check retained
+  identities, the facts covered by the change and prohibited writes where they
+  matter. For upgrade, use the supported predecessor and check the relevant
+  migration order. Derive incidental metadata from the applied history.
+  Identify how a supported current or historical path produces the prestate.
+  Label deliberate corruption and the bypass used.
+- **Installed behavior.** When claiming a shipped default works, exercise the
+  mounted entry with its shipped configuration and supported inputs. For
+  changed exports or declarations, identify the affected consumer and verify
+  the installed artifact through its public entry. Record where each witness
+  runs if hosted or nested execution can omit it.
+- **SQL and larger steps.** Record the migration order, prerequisites, shared
+  carriers and any restore registration. Mark this step's new ordinary slots
+  as provisional or selected. Use the slot planner in the landing procedure
+  to check their UTC validity and order.
+  Follow the existing preflight and admission rules. For an approved stack,
+  verify this step's SQL contract and order against its pinned predecessor
+  before counted implementation review. Use
+  [the existing landing procedure](#derived-landing-carriers) for live slot
+  selection, rechecks and rename review. Where a size budget drives the split,
+  show per-PR counts for production changes, full replacement bodies, tests
+  and generated carriers without counting the same lines twice. State the split
+  point and recount affected steps after a material change. Each split must leave a
+  correct, independently verifiable state.
+
+For example, to prove an installed status command respects a capability, keep
+the migrated data and arguments the same in both cases. With the capability
+disabled, expect the existing typed refusal and no writes. With it enabled,
+expect the existing success result and no writes. This catches both an
+unconditional success and an unconditional refusal.
+
+For a required pre-implementation review, give the reviewer the specification,
+the baseline and the owning contracts. Ask them to reconstruct the expected
+behavior and identify a plausible implementation that must fail acceptance.
+Resolve material gaps in the current specification before starting. If a
+material gap returns in specification review, identify the cause and its owner.
+Decide whether to amend the contract, reuse a proven seam, narrow or defer the
+affected step. Record the decision and remaining evidence before requesting a
+focused recheck. During implementation, pause the affected work if a choice,
+discovery or dependency change materially conflicts with the specification.
+Record what changed, resolve it with the accountable owner and update the text.
+Recheck affected dependencies and rerun affected witnesses on the relevant
+candidate. When reusing evidence, record why its inputs and boundary still
+apply. Preserve criterion IDs for unchanged requirements. Changes to review
+criteria or risk follow [native review intent](#native-review-and-accountability).
+A clean advance of main follows the review carryover rule in
+[Deliver a change](#deliver-a-change). An ordinary migration that must move to
+remain eligible follows the [landing and review procedure](#derived-landing-carriers).
 
 ### Derived landing carriers
 

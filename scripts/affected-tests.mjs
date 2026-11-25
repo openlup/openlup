@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, extname, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_MAX_DEPTH = 3;
+export const DEFAULT_MAX_DEPTH = 8;
 
 const IGNORED_DIRS = new Set([
   ".git",
@@ -18,15 +19,29 @@ const IGNORED_DIRS = new Set([
   "test-results",
 ]);
 
-const DIRECT_TEST_PATTERN = /\.(?:test|spec)\.(?:ts|tsx|js|mjs|cjs)$/;
-const PACKAGE_TEST_PATTERN = /\.(?:test|spec)\.(?:ts|tsx|js|mjs)$/;
-const SCRIPT_TEST_PATTERN = /\.(?:test|spec)\.(?:ts|mjs)$/;
-const TS_TEST_PATTERN = /\.(?:test|spec)\.(?:ts|tsx)$/;
+const DIRECT_TEST_PATTERN = /\.(?:test|spec)\.(?:ts|tsx|js|mjs|cjs)$/u;
+const PACKAGE_TEST_PATTERN = /\.(?:test|spec)\.(?:ts|tsx|js|mjs)$/u;
+const SCRIPT_TEST_PATTERN = /\.(?:test|spec)\.(?:ts|mjs)$/u;
+const TS_TEST_PATTERN = /\.(?:test|spec)\.(?:ts|tsx)$/u;
+const SCRIPT_SOURCE_PATTERN = /^scripts\/(.+)\.(?:ts|mts|cts|js|mjs|cjs)$/u;
+const VITEST_MOCK_METHODS = new Set(["mock", "doMock", "importActual", "importMock"]);
+
+const ROOT_VITEST_PATTERNS = [
+  /^(?:api|mcp|scripts|server)\/.+\.(?:test|spec)\.ts$/u,
+  /^packages\/(?:outbox|platform)\/test\/.+\.(?:test|spec)\.ts$/u,
+  /^recipes\/.+\/tests\/.+\.(?:test|spec)\.ts$/u,
+  /^src\/.+\.(?:test|spec)\.tsx?$/u,
+  /^tests\/(?:golden-master|postgres|platform)\/.+\.(?:test|spec)\.ts$/u,
+  /^tests\/preview\/checkout\/helpers\/.+\.test\.ts$/u,
+  /^tests\/(?!preview\/)[^/]+\/.+\.(?:test|spec)\.tsx$/u,
+];
+const CORE_VITEST_PATTERN = /^packages\/core\/test\/.+\.(?:test|spec)\.(?:ts|tsx|js|mjs)$/u;
+const VITEST_MOCK_HINT = /\bvi\.(?:mock|doMock|importActual|importMock)\s*\(/u;
 
 const CONTRACT_PIN_RULES = [
   {
     match: (filePath) =>
-      /^packages\/platform\/src\/[^/]+\/settings-data\.json$/.test(filePath)
+      /^packages\/platform\/src\/[^/]+\/settings-data\.json$/u.test(filePath)
       || filePath === "packages/platform/settings-catalog.json",
     tests: [
       "scripts/settings-catalogue.test.ts",
@@ -35,7 +50,7 @@ const CONTRACT_PIN_RULES = [
     ],
   },
   {
-    match: (filePath) => /^examples\/neutral-store\/owned\/.+$/.test(filePath),
+    match: (filePath) => /^examples\/neutral-store\/owned\/.+$/u.test(filePath),
     tests: [
       "packages/platform/test/operations/settingsCommand.test.ts",
       "packages/platform/test/operations/settingsRead.test.ts",
@@ -43,8 +58,15 @@ const CONTRACT_PIN_RULES = [
     ],
   },
   {
+    match: (filePath) => filePath.startsWith("examples/neutral-store/"),
+    tests: [
+      "scripts/packages/distribution-cli-proof.test.ts",
+      "scripts/starter-browser-ci.test.ts",
+    ],
+  },
+  {
     match: (filePath) =>
-      /^packages\/[^/]+\/release-gates\.json$/.test(filePath)
+      /^packages\/[^/]+\/release-gates\.json$/u.test(filePath)
       || filePath.startsWith("packages/core/docs/guide/"),
     tests: [
       "scripts/packages/package-size-policy.test.ts",
@@ -58,7 +80,48 @@ const CONTRACT_PIN_RULES = [
     ],
   },
   {
-    match: (filePath) => /^supabase\/migrations\/[^/]+\.sql$/.test(filePath),
+    match: (filePath) => filePath === "config/openlup-packages.json",
+    tests: [
+      "scripts/oss-published-tree-check.test.ts",
+      "scripts/packages/package-size-policy.test.ts",
+      "scripts/packages/packages-check.test.ts",
+    ],
+  },
+  {
+    match: (filePath) => filePath === "config/vitest-shard-weights.json",
+    tests: [
+      "scripts/ci-vitest-shard.test.ts",
+    ],
+  },
+  {
+    match: (filePath) => filePath === "config/ci-quarantine.json",
+    tests: [
+      "scripts/ci-quarantine.test.ts",
+    ],
+  },
+  {
+    match: (filePath) => filePath === "config/reviewed-platform-forwards.json",
+    tests: [
+      "scripts/platform-migration-manifest.test.ts",
+      "scripts/reviewed-native-store-forward.test.ts",
+    ],
+  },
+  {
+    match: (filePath) => filePath === "config/doc-routing.json",
+    tests: [
+      "scripts/agent-review-derived-carriers.test.ts",
+      "scripts/documentation-cli.test.ts",
+    ],
+  },
+  {
+    match: (filePath) => filePath === "config/environment-variables.json",
+    tests: [
+      "scripts/packages/release-bump.test.ts",
+      "scripts/preflight.test.ts",
+    ],
+  },
+  {
+    match: (filePath) => /^supabase\/migrations\/[^/]+\.sql$/u.test(filePath),
     tests: [
       "scripts/platform-migration-manifest.test.ts",
       "scripts/pgtap-parity.test.ts",
@@ -106,16 +169,59 @@ function toPosixRelative(rawPath, rootDir) {
   return rel;
 }
 
-function isExistingFile(rootDir, relPath) {
-  try {
-    return statSync(resolve(rootDir, relPath)).isFile();
-  } catch {
-    return false;
+function isExistingFile(rootDir, relPath, cache = null) {
+  if (cache) {
+    const cached = cache.get(relPath);
+    if (cached !== undefined) {
+      return cached;
+    }
   }
+  let exists = false;
+  try {
+    exists = statSync(resolve(rootDir, relPath)).isFile();
+  } catch {
+    exists = false;
+  }
+  if (cache) {
+    cache.set(relPath, exists);
+  }
+  return exists;
 }
 
 export function isTestFile(filePath) {
   return DIRECT_TEST_PATTERN.test(filePath);
+}
+
+export function classifyTestRunner(testPath) {
+  const normalized = testPath.split("\\").join("/");
+  if (ROOT_VITEST_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return "root-vitest";
+  }
+  if (CORE_VITEST_PATTERN.test(normalized)) {
+    return "core-vitest";
+  }
+  return "separate";
+}
+
+function partitionByRunner(affectedTests) {
+  const rootVitest = [];
+  const coreVitest = [];
+  const separate = [];
+  for (const item of affectedTests) {
+    const runner = classifyTestRunner(item.path);
+    if (runner === "root-vitest") {
+      rootVitest.push(item.path);
+    } else if (runner === "core-vitest") {
+      coreVitest.push(item.path);
+    } else {
+      separate.push(item.path);
+    }
+  }
+  return {
+    rootVitest: rootVitest.sort(compareCodeUnits),
+    coreVitest: coreVitest.sort(compareCodeUnits),
+    separate: separate.sort(compareCodeUnits),
+  };
 }
 
 export function matchContractPinRules(changedFile, rootDir = REPOSITORY_ROOT) {
@@ -132,96 +238,68 @@ export function matchContractPinRules(changedFile, rootDir = REPOSITORY_ROOT) {
   return [...new Set(matched)].sort(compareCodeUnits);
 }
 
-function stripCommentsForImportScan(sourceText) {
-  let output = "";
-  let index = 0;
-  const length = sourceText.length;
-
-  while (index < length) {
-    const ch = sourceText[index];
-    const next = sourceText[index + 1];
-
-    // Preserve string and template literals so specifiers containing // or /* are untouched.
-    if (ch === "\"" || ch === "'" || ch === "`") {
-      const quote = ch;
-      output += ch;
-      index += 1;
-      while (index < length) {
-        const cur = sourceText[index];
-        output += cur;
-        index += 1;
-        if (cur === "\\") {
-          if (index < length) {
-            output += sourceText[index];
-            index += 1;
-          }
-          continue;
-        }
-        if (cur === quote) {
-          break;
-        }
-      }
-      continue;
-    }
-
-    if (ch === "/" && next === "/") {
-      index += 2;
-      while (index < length && sourceText[index] !== "\n") {
-        index += 1;
-      }
-      continue;
-    }
-
-    if (ch === "/" && next === "*") {
-      index += 2;
-      while (index < length && !(sourceText[index] === "*" && sourceText[index + 1] === "/")) {
-        if (sourceText[index] === "\n") {
-          output += "\n";
-        }
-        index += 1;
-      }
-      index += 2;
-      continue;
-    }
-
-    output += ch;
-    index += 1;
+export function matchSiblingScriptTests(changedFile, rootDir = REPOSITORY_ROOT) {
+  if (isTestFile(changedFile)) {
+    return [];
   }
-
-  return output;
+  const match = SCRIPT_SOURCE_PATTERN.exec(changedFile);
+  if (!match) {
+    return [];
+  }
+  const stem = match[1];
+  const candidates = [
+    `scripts/${stem}.test.ts`,
+    `scripts/${stem}.test.mjs`,
+    `scripts/${stem}.spec.ts`,
+    `scripts/${stem}.spec.mjs`,
+  ];
+  return candidates.filter((candidate) => isExistingFile(rootDir, candidate)).sort(compareCodeUnits);
 }
 
-export function extractStaticImports(sourceText) {
-  const cleaned = stripCommentsForImportScan(sourceText);
+function scriptKindForPath(filePath) {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith(".tsx") || lower.endsWith(".jsx")) {
+    return ts.ScriptKind.TSX;
+  }
+  return ts.ScriptKind.TS;
+}
+
+export function extractStaticImports(sourceText, filePath = "module.ts") {
   const specifiers = new Set();
+  const preprocessed = ts.preProcessFile(sourceText, true, true);
+  for (const entry of preprocessed.importedFiles) {
+    const value = entry.fileName.trim();
+    if (value) {
+      specifiers.add(value);
+    }
+  }
 
-  // Linear scan over statement starts (no overlapping whitespace/newline quantifiers).
-  const statementStart = /(?:^|;|\n)[ \t]*(import|export)(?=[ \t{*'"])/g;
-  const fromClause = /\bfrom[ \t]*["']([^"'\r\n]+)["']/;
-  const sideEffectClause = /^import[ \t]*["']([^"'\r\n]+)["']/;
-
-  let match;
-  while ((match = statementStart.exec(cleaned)) !== null) {
-    const keyword = match[1];
-    const keywordPos = match.index + match[0].length - keyword.length;
-    const semiPos = cleaned.indexOf(";", keywordPos);
-    const endPos = semiPos === -1 ? Math.min(cleaned.length, keywordPos + 1024) : Math.min(semiPos, keywordPos + 1024);
-    const statement = cleaned.slice(keywordPos, endPos);
-
-    if (keyword === "import") {
-      const sideEffect = sideEffectClause.exec(statement);
-      if (sideEffect) {
-        const specifier = sideEffect[1].trim();
-        if (specifier) specifiers.add(specifier);
-        continue;
+  if (VITEST_MOCK_HINT.test(sourceText)) {
+    const sourceFile = ts.createSourceFile(
+      filePath,
+      sourceText,
+      ts.ScriptTarget.Latest,
+      false,
+      scriptKindForPath(filePath),
+    );
+    const visit = (node) => {
+      if (
+        ts.isCallExpression(node)
+        && node.arguments.length >= 1
+        && ts.isPropertyAccessExpression(node.expression)
+        && ts.isIdentifier(node.expression.expression)
+        && node.expression.expression.text === "vi"
+        && VITEST_MOCK_METHODS.has(node.expression.name.text)
+        && ts.isStringLiteralLike(node.arguments[0])
+      ) {
+        const value = node.arguments[0].text.trim();
+        if (value) {
+          specifiers.add(value);
+        }
       }
-    }
-
-    const fromMatch = fromClause.exec(statement);
-    if (fromMatch) {
-      const specifier = fromMatch[1].trim();
-      if (specifier) specifiers.add(specifier);
-    }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
   }
 
   return [...specifiers].sort(compareCodeUnits);
@@ -253,6 +331,29 @@ function pickExportTarget(target) {
       const picked = pickExportTarget(value);
       if (picked) {
         return picked;
+      }
+    }
+  }
+  return null;
+}
+
+function matchSubpathMapEntry(specifier, mapping) {
+  if (!mapping || typeof mapping !== "object") {
+    return null;
+  }
+  if (specifier in mapping) {
+    return pickExportTarget(mapping[specifier]);
+  }
+  for (const [patternKey, patternValue] of Object.entries(mapping)) {
+    if (!patternKey.includes("*")) {
+      continue;
+    }
+    const [prefix, suffix] = patternKey.split("*");
+    if (specifier.startsWith(prefix) && specifier.endsWith(suffix)) {
+      const captured = specifier.slice(prefix.length, specifier.length - suffix.length);
+      const rawTarget = pickExportTarget(patternValue);
+      if (rawTarget) {
+        return rawTarget.replace("*", captured);
       }
     }
   }
@@ -292,7 +393,40 @@ export function loadWorkspacePackageExports(rootDir = REPOSITORY_ROOT) {
   return packages;
 }
 
-function resolveCandidateFile(candidatePosix, rootDir) {
+export function loadSubpathImportsMaps(rootDir = REPOSITORY_ROOT) {
+  const maps = new Map();
+
+  const readImports = (manifestRelDir) => {
+    const manifestPath = manifestRelDir
+      ? resolve(rootDir, manifestRelDir, "package.json")
+      : resolve(rootDir, "package.json");
+    if (!existsSync(manifestPath)) {
+      return;
+    }
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      if (manifest.imports && typeof manifest.imports === "object") {
+        maps.set(manifestRelDir, manifest.imports);
+      }
+    } catch {
+      // Ignore malformed manifests during discovery.
+    }
+  };
+
+  readImports("");
+  const packagesDir = resolve(rootDir, "packages");
+  if (existsSync(packagesDir)) {
+    for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        readImports(`packages/${entry.name}`);
+      }
+    }
+  }
+
+  return maps;
+}
+
+function resolveCandidateFile(candidatePosix, rootDir, existingFileCache = null) {
   const normalized = posix.normalize(candidatePosix);
   if (!normalized || normalized.startsWith("..") || normalized.startsWith("/")) {
     return null;
@@ -333,63 +467,63 @@ function resolveCandidateFile(candidatePosix, rootDir) {
   }
 
   for (const candidate of candidates) {
-    if (isExistingFile(rootDir, candidate)) {
+    if (isExistingFile(rootDir, candidate, existingFileCache)) {
       return candidate;
     }
   }
   return null;
 }
 
-function resolveWorkspacePackageImport(specifier, rootDir, packageExportsMap) {
+function resolveMappedTarget(baseDir, rawTarget, rootDir, existingFileCache = null) {
+  const cleanedTarget = rawTarget.replace(/^\.\//u, "");
+  const sourceTarget = cleanedTarget.startsWith("dist/")
+    ? `src/${cleanedTarget.slice("dist/".length)}`
+    : cleanedTarget;
+  const fromSrc = resolveCandidateFile(
+    baseDir ? posix.join(baseDir, sourceTarget) : sourceTarget,
+    rootDir,
+    existingFileCache,
+  );
+  if (fromSrc) {
+    return fromSrc;
+  }
+  return resolveCandidateFile(
+    baseDir ? posix.join(baseDir, cleanedTarget) : cleanedTarget,
+    rootDir,
+    existingFileCache,
+  );
+}
+
+function resolveWorkspacePackageImport(specifier, rootDir, packageExportsMap, existingFileCache = null) {
   for (const [pkgName, pkgInfo] of packageExportsMap.entries()) {
     if (specifier !== pkgName && !specifier.startsWith(`${pkgName}/`)) {
       continue;
     }
     const subpath = specifier === pkgName ? "." : `./${specifier.slice(pkgName.length + 1)}`;
-
-    let target = null;
-    if (subpath in pkgInfo.exports) {
-      target = pickExportTarget(pkgInfo.exports[subpath]);
-    } else {
-      for (const [exportKey, exportValue] of Object.entries(pkgInfo.exports)) {
-        if (!exportKey.includes("*")) {
-          continue;
-        }
-        const [prefix, suffix] = exportKey.split("*");
-        if (subpath.startsWith(prefix) && subpath.endsWith(suffix)) {
-          const captured = subpath.slice(prefix.length, subpath.length - suffix.length);
-          const rawTarget = pickExportTarget(exportValue);
-          if (rawTarget) {
-            target = rawTarget.replace("*", captured);
-            break;
-          }
-        }
-      }
-    }
-
+    const target = matchSubpathMapEntry(subpath, pkgInfo.exports);
     if (target) {
-      const cleanedTarget = target.replace(/^\.\//, "");
-      const sourceTarget = cleanedTarget.startsWith("dist/")
-        ? `src/${cleanedTarget.slice("dist/".length)}`
-        : cleanedTarget;
-      const fromSrc = resolveCandidateFile(posix.join(pkgInfo.dir, sourceTarget), rootDir);
-      if (fromSrc) {
-        return fromSrc;
-      }
-      const fromRaw = resolveCandidateFile(posix.join(pkgInfo.dir, cleanedTarget), rootDir);
-      if (fromRaw) {
-        return fromRaw;
+      const resolved = resolveMappedTarget(pkgInfo.dir, target, rootDir, existingFileCache);
+      if (resolved) {
+        return resolved;
       }
     }
 
     if (subpath !== ".") {
       const fallbackRel = subpath.slice(2);
-      const fromSrcFallback = resolveCandidateFile(posix.join(pkgInfo.dir, "src", fallbackRel), rootDir);
+      const fromSrcFallback = resolveCandidateFile(
+        posix.join(pkgInfo.dir, "src", fallbackRel),
+        rootDir,
+        existingFileCache,
+      );
       if (fromSrcFallback) {
         return fromSrcFallback;
       }
     } else {
-      const fromIndexFallback = resolveCandidateFile(posix.join(pkgInfo.dir, "src", "index"), rootDir);
+      const fromIndexFallback = resolveCandidateFile(
+        posix.join(pkgInfo.dir, "src", "index"),
+        rootDir,
+        existingFileCache,
+      );
       if (fromIndexFallback) {
         return fromIndexFallback;
       }
@@ -399,7 +533,39 @@ function resolveWorkspacePackageImport(specifier, rootDir, packageExportsMap) {
   return null;
 }
 
-export function resolveImportPath(specifier, fromFile, rootDir = REPOSITORY_ROOT, packageExportsMap = null) {
+function resolveSubpathImport(specifier, fromFile, rootDir, subpathImportsMaps, existingFileCache = null) {
+  const normalizedFrom = fromFile.split("\\").join("/");
+  const candidateDirs = [];
+  const packageMatch = /^(packages\/[^/]+)\//u.exec(normalizedFrom);
+  if (packageMatch) {
+    candidateDirs.push(packageMatch[1]);
+  }
+  candidateDirs.push("");
+
+  for (const manifestDir of candidateDirs) {
+    const mapping = subpathImportsMaps.get(manifestDir);
+    if (!mapping) {
+      continue;
+    }
+    const target = matchSubpathMapEntry(specifier, mapping);
+    if (target) {
+      const resolved = resolveMappedTarget(manifestDir, target, rootDir, existingFileCache);
+      if (resolved) {
+        return resolved;
+      }
+    }
+  }
+  return null;
+}
+
+export function resolveImportPath(
+  specifier,
+  fromFile,
+  rootDir = REPOSITORY_ROOT,
+  packageExportsMap = null,
+  subpathImportsMaps = null,
+  existingFileCache = null,
+) {
   if (!specifier || specifier.startsWith("node:")) {
     return null;
   }
@@ -407,16 +573,21 @@ export function resolveImportPath(specifier, fromFile, rootDir = REPOSITORY_ROOT
   if (specifier.startsWith("./") || specifier.startsWith("../")) {
     const fromDir = posix.dirname(fromFile.split("\\").join("/"));
     const joined = posix.join(fromDir, specifier);
-    return resolveCandidateFile(joined, rootDir);
+    return resolveCandidateFile(joined, rootDir, existingFileCache);
   }
 
   if (specifier.startsWith("@/")) {
-    return resolveCandidateFile(`src/${specifier.slice(2)}`, rootDir);
+    return resolveCandidateFile(`src/${specifier.slice(2)}`, rootDir, existingFileCache);
+  }
+
+  if (specifier.startsWith("#")) {
+    const importsMaps = subpathImportsMaps ?? loadSubpathImportsMaps(rootDir);
+    return resolveSubpathImport(specifier, fromFile, rootDir, importsMaps, existingFileCache);
   }
 
   const exportsMap = packageExportsMap ?? loadWorkspacePackageExports(rootDir);
   if (specifier.startsWith("@openlup/")) {
-    return resolveWorkspacePackageImport(specifier, rootDir, exportsMap);
+    return resolveWorkspacePackageImport(specifier, rootDir, exportsMap, existingFileCache);
   }
 
   return null;
@@ -488,7 +659,7 @@ export function collectTestFiles(rootDir = REPOSITORY_ROOT) {
   walkMatchingFiles(
     rootDir,
     "recipes",
-    (fileRel) => /(?:^|\/)tests\/.+\.(?:test|spec)\.(?:ts|tsx)$/.test(fileRel),
+    (fileRel) => /(?:^|\/)tests\/.+\.(?:test|spec)\.(?:ts|tsx)$/u.test(fileRel),
     found,
   );
 
@@ -499,6 +670,7 @@ export function findAffectedTests({
   changedFiles = [],
   rootDir = REPOSITORY_ROOT,
   maxDepth = DEFAULT_MAX_DEPTH,
+  includePostgres = true,
 } = {}) {
   const normalizedChanged = [...new Set(
     changedFiles
@@ -508,6 +680,9 @@ export function findAffectedTests({
 
   const reasonsByTest = new Map();
   const addReason = (testPath, reason) => {
+    if (!includePostgres && testPath.startsWith("tests/postgres/")) {
+      return;
+    }
     let reasons = reasonsByTest.get(testPath);
     if (!reasons) {
       reasons = new Set();
@@ -530,11 +705,20 @@ export function findAffectedTests({
     }
   }
 
-  // 3. Reverse import graph (transitive reverse closure up to maxDepth)
+  // 3. Sibling CLI tests for scripts/ entrypoints invoked as subprocesses
+  for (const changedFile of normalizedChanged) {
+    for (const siblingTest of matchSiblingScriptTests(changedFile, rootDir)) {
+      addReason(siblingTest, "sibling-test");
+    }
+  }
+
+  // 4. Reverse import graph (transitive reverse closure up to maxDepth)
   if (normalizedChanged.length > 0 && maxDepth > 0) {
     const testFiles = collectTestFiles(rootDir);
     const testFileSet = new Set(testFiles);
     const packageExportsMap = loadWorkspacePackageExports(rootDir);
+    const subpathImportsMaps = loadSubpathImportsMaps(rootDir);
+    const existingFileCache = new Map();
     const directImportsCache = new Map();
 
     const getDirectImports = (filePath) => {
@@ -549,10 +733,17 @@ export function findAffectedTests({
         directImportsCache.set(filePath, []);
         return [];
       }
-      const specifiers = extractStaticImports(source);
+      const specifiers = extractStaticImports(source, filePath);
       const resolved = [];
       for (const specifier of specifiers) {
-        const target = resolveImportPath(specifier, filePath, rootDir, packageExportsMap);
+        const target = resolveImportPath(
+          specifier,
+          filePath,
+          rootDir,
+          packageExportsMap,
+          subpathImportsMaps,
+          existingFileCache,
+        );
         if (target && target !== filePath) {
           resolved.push(target);
         }
@@ -632,16 +823,36 @@ export function findAffectedTests({
   return {
     changedFiles: normalizedChanged,
     affectedTests,
+    runners: partitionByRunner(affectedTests),
   };
+}
+
+const USAGE = "Usage: node scripts/affected-tests.mjs [--base <ref>] [--files <p1,p2,...>] [--max-depth <n>] [--json] [--run] [--dry-run] [--hosted] [--no-postgres] [-- <vitest-args>]";
+
+function parseNonNegativeInt(raw, flagName) {
+  if (!/^\d+$/u.test(raw)) {
+    throw new Error(`${flagName} requires a non-negative integer`);
+  }
+  return Number.parseInt(raw, 10);
 }
 
 export function parseAffectedArgs(argv) {
   let base = null;
   let files = null;
   let json = false;
+  let run = false;
+  let dryRun = false;
+  let hosted = false;
+  let noPostgres = false;
+  let maxDepth = DEFAULT_MAX_DEPTH;
+  const vitestArgs = [];
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+    if (arg === "--") {
+      vitestArgs.push(...argv.slice(index + 1));
+      break;
+    }
     if (arg === "--base") {
       base = argv[++index] ?? "";
       if (!base) {
@@ -664,20 +875,27 @@ export function parseAffectedArgs(argv) {
         throw new Error("--files requires a comma-separated list of file paths");
       }
       files = [...(files ?? []), ...raw.split(",").map((item) => item.trim()).filter(Boolean)];
+    } else if (arg === "--max-depth") {
+      const raw = argv[++index] ?? "";
+      maxDepth = parseNonNegativeInt(raw, "--max-depth");
+    } else if (arg.startsWith("--max-depth=")) {
+      maxDepth = parseNonNegativeInt(arg.slice("--max-depth=".length), "--max-depth");
     } else if (arg === "--json") {
       json = true;
+    } else if (arg === "--run") {
+      run = true;
+    } else if (arg === "--dry-run") {
+      dryRun = true;
+    } else if (arg === "--hosted") {
+      hosted = true;
+    } else if (arg === "--no-postgres") {
+      noPostgres = true;
     } else {
-      throw new Error(
-        `Unknown option: ${arg}\nUsage: node scripts/affected-tests.mjs [--base <ref>] [--files <p1,p2,...>] [--json]`,
-      );
+      throw new Error(`Unknown option: ${arg}\n${USAGE}`);
     }
   }
 
-  if (files === null && base === null) {
-    base = "HEAD";
-  }
-
-  return { base, files, json };
+  return { base, files, json, run, dryRun, hosted, noPostgres, maxDepth, vitestArgs };
 }
 
 const FIXED_GIT_PATHS = [
@@ -695,6 +913,21 @@ function resolveFixedGitBinary() {
   throw new Error("Unable to locate git binary in fixed system directories.");
 }
 
+export function resolveDefaultBaseRef(rootDir = REPOSITORY_ROOT) {
+  const gitBin = resolveFixedGitBinary();
+  const mergeBase = spawnSync(gitBin, ["merge-base", "HEAD", "origin/main"], {
+    cwd: rootDir,
+    encoding: "utf8",
+  });
+  if (mergeBase.status === 0) {
+    const sha = mergeBase.stdout.trim();
+    if (/^[0-9a-f]{40}$/u.test(sha)) {
+      return sha;
+    }
+  }
+  return "HEAD";
+}
+
 export function collectChangedFilesFromGit(baseRef, rootDir = REPOSITORY_ROOT) {
   const gitBin = resolveFixedGitBinary();
   const diffOutput = execFileSync(gitBin, ["diff", "--name-only", baseRef], {
@@ -708,12 +941,19 @@ export function collectChangedFilesFromGit(baseRef, rootDir = REPOSITORY_ROOT) {
     maxBuffer: 16 * 1024 * 1024,
   });
   return [...new Set([
-    ...diffOutput.split(/\r?\n/),
-    ...untrackedOutput.split(/\r?\n/),
+    ...diffOutput.split(/\r?\n/u),
+    ...untrackedOutput.split(/\r?\n/u),
   ].map((line) => line.trim()).filter(Boolean))].sort(compareCodeUnits);
 }
 
-export function formatAffectedTestsText({ base, changedFiles, affectedTests }) {
+export function formatAffectedTestsText({
+  base,
+  changedFiles,
+  affectedTests,
+  runners = partitionByRunner(affectedTests),
+  hosted = false,
+  vitestArgs = [],
+}) {
   const lines = [];
   if (base) {
     lines.push(`Base ref: ${base}`);
@@ -726,30 +966,117 @@ export function formatAffectedTestsText({ base, changedFiles, affectedTests }) {
   for (const item of affectedTests) {
     lines.push(`  - ${item.path} [${item.reasons.join(", ")}]`);
   }
-  if (affectedTests.length > 0) {
+  if (runners.rootVitest.length > 0) {
+    const suffix = vitestArgs.length > 0 ? ` ${vitestArgs.join(" ")}` : "";
     lines.push("");
-    lines.push(`Run command:`);
-    lines.push(`npx --no -- vitest run ${affectedTests.map((item) => item.path).join(" ")}`);
+    lines.push("Run command:");
+    lines.push(
+      hosted
+        ? `npm run test:hosted -- ${runners.rootVitest.join(" ")}${suffix}`
+        : `npx --no -- vitest run ${runners.rootVitest.join(" ")}${suffix}`,
+    );
+  }
+  if (runners.coreVitest.length > 0) {
+    lines.push("");
+    lines.push(`Core package tests (${runners.coreVitest.length}, separate runner):`);
+    for (const filePath of runners.coreVitest) {
+      lines.push(`  - ${filePath}`);
+    }
+    lines.push("npm --workspace @openlup/core run ci");
+  }
+  if (runners.separate.length > 0) {
+    lines.push("");
+    lines.push(`Separate-runner tests (${runners.separate.length}, not passed to root Vitest):`);
+    for (const filePath of runners.separate) {
+      lines.push(`  - ${filePath}`);
+    }
   }
   return `${lines.join("\n")}\n`;
 }
 
+export function executeAffectedRootVitest({
+  rootVitest,
+  hosted = false,
+  vitestArgs = [],
+  rootDir = REPOSITORY_ROOT,
+  spawnImpl = spawnSync,
+}) {
+  if (rootVitest.length === 0) {
+    return 0;
+  }
+  if (hosted) {
+    const result = spawnImpl(
+      process.execPath,
+      [resolve(rootDir, "scripts/test-hosted.mjs"), ...rootVitest, ...vitestArgs],
+      { cwd: rootDir, stdio: "inherit" },
+    );
+    return result.status ?? 1;
+  }
+  const buildResult = spawnImpl(
+    process.execPath,
+    [resolve(rootDir, "scripts/build-packages-incremental.mjs")],
+    { cwd: rootDir, stdio: "inherit" },
+  );
+  if ((buildResult.status ?? 1) !== 0) {
+    return buildResult.status ?? 1;
+  }
+  const testResult = spawnImpl(
+    process.execPath,
+    [resolve(rootDir, "scripts/run-vitest.mjs"), "run", ...rootVitest, ...vitestArgs],
+    { cwd: rootDir, stdio: "inherit" },
+  );
+  return testResult.status ?? 1;
+}
+
 function main(argv = process.argv.slice(2)) {
-  const { base, files, json } = parseAffectedArgs(argv);
+  const {
+    base: requestedBase,
+    files,
+    json,
+    run,
+    dryRun,
+    hosted,
+    noPostgres,
+    maxDepth,
+    vitestArgs,
+  } = parseAffectedArgs(argv);
+  const base = files !== null ? null : (requestedBase ?? resolveDefaultBaseRef(REPOSITORY_ROOT));
   const changedFiles = files !== null ? files : collectChangedFilesFromGit(base, REPOSITORY_ROOT);
-  const result = findAffectedTests({ changedFiles, rootDir: REPOSITORY_ROOT });
+  const result = findAffectedTests({
+    changedFiles,
+    rootDir: REPOSITORY_ROOT,
+    maxDepth,
+    includePostgres: !noPostgres,
+  });
   const payload = {
     base,
     changedFiles: result.changedFiles,
     affectedTests: result.affectedTests,
+    runners: result.runners,
   };
 
   if (json) {
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
-  } else {
-    process.stdout.write(formatAffectedTestsText(payload));
+    return 0;
   }
-  return 0;
+
+  process.stdout.write(formatAffectedTestsText({ ...payload, hosted, vitestArgs }));
+
+  if (!run || dryRun) {
+    return 0;
+  }
+
+  if (result.runners.rootVitest.length === 0) {
+    process.stdout.write("No affected root Vitest files to run.\n");
+    return 0;
+  }
+
+  return executeAffectedRootVitest({
+    rootVitest: result.runners.rootVitest,
+    hosted,
+    vitestArgs,
+    rootDir: REPOSITORY_ROOT,
+  });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

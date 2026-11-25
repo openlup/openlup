@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
+
+import { describe, expect, it, vi } from "vitest";
 import {
   BUDGET_FACTOR,
   FLAT_COVERAGE_TEST_TIMEOUT_MS,
@@ -13,6 +15,8 @@ import {
   pinnedFileDurationMs,
   type DurationSections,
 } from "./ci-vitest-duration-keys.ts";
+
+vi.mock("node:crypto", { spy: true });
 
 describe("ci-vitest-duration-keys", () => {
   it("returns flat timeout floors for plain and coverage runs", () => {
@@ -47,6 +51,14 @@ describe("ci-vitest-duration-keys", () => {
     expect(pinnedDurationMs(section, "tests/neg.test.ts")).toBeUndefined();
     expect(pinnedDurationMs(section, "tests/nan.test.ts")).toBeUndefined();
     expect(pinnedDurationMs(undefined, plain)).toBeUndefined();
+  });
+
+  it("does not hash a path with a valid direct pin", () => {
+    const path = "tests/plain.test.ts";
+    vi.mocked(createHash).mockClear();
+
+    expect(pinnedDurationMs({ [path]: 4_200 }, path)).toBe(4_200);
+    expect(createHash).not.toHaveBeenCalled();
   });
 
   it("derives per-test timeouts as max(flat, ceil(pinned * BUDGET_FACTOR))", () => {

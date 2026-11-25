@@ -59,9 +59,18 @@ export async function seedQuoteAuthority(config: StoreConfig, seed: ReturnType<t
     valid_from: offer.effectiveFrom, valid_to: offer.effectiveTo, redemption_limit_global: null, redemption_limit_per_customer: 1,
     promotion_engine_version: 'promotion-engine.v2', benefit_lane: 'product', benefit_kind: 'target_percentage',
     benefit_value_bps: offer.initialDiscountBps, benefit_value_minor: null, v2_mirror_of: null };
-  await connection.query(`INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active)
-    VALUES($1,$2,$3) ON CONFLICT (promotion_id) DO NOTHING`, [promotionId,definition,offer.enabled]);
-  const current = (await connection.query('SELECT definition,active FROM public.commerce_promotion_definitions WHERE promotion_id=$1 FOR SHARE', [promotionId])).rows;
-  if (current.length !== 1 || current[0]!.active !== offer.enabled
-    || canonicalCatalogDraftJson(current[0]!.definition) !== canonicalCatalogDraftJson(definition)) throw starterDiagnostic('starter_promotion_seed_conflict');
+  const bundle = { id: `demo-bundle:${config.id}`, name: 'Demo one-time bundle', status: 'active',
+    trigger_type: 'automatic', code: null, discount_type: 'percentage', discount_value: 5,
+    applies_to_kind: 'order_total', applies_to_payload: { cart_mode: 'one_time' },
+    stacking_rule: 'stackable_with_any', eligibility: { min_cart_minor: 12000 }, region_availability: [config.market.country],
+    valid_from: seed.priceLists[0]!.valid_from, valid_to: null, promotion_engine_version: 'promotion-engine.v1',
+    benefit_lane: 'product', benefit_kind: 'percentage', benefit_value_bps: 500, benefit_value_minor: null,
+    v2_mirror_of: null, redemption_limit_global: null, redemption_limit_per_customer: null };
+  for (const [expected, active] of [[definition, offer.enabled], [bundle, true]] as const) {
+    await connection.query(`INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active)
+      VALUES($1,$2,$3) ON CONFLICT (promotion_id) DO NOTHING`, [expected.id,expected,active]);
+    const { rows } = await connection.query('SELECT definition,active FROM public.commerce_promotion_definitions WHERE promotion_id=$1 FOR SHARE', [expected.id]);
+    if (rows.length !== 1 || rows[0]!.active !== active
+      || canonicalCatalogDraftJson(rows[0]!.definition) !== canonicalCatalogDraftJson(expected)) throw starterDiagnostic('starter_promotion_seed_conflict');
+  }
 }

@@ -615,7 +615,14 @@ for (const locale of market.locales) {
       await expect(card.locator('[data-care-state]')).toHaveAttribute('data-care-state', 'cancelled');
       await careRefused(page, 'subscription.acceptSaveOffer', accept, 409, 'starter_save_offer_unavailable', baseURL);
       await resetCareFixture(page, f, baseURL);
+      // The reactivated subscription offers the save question only once its generation is presented again.
+      await expect.poll(async () => (await request('account.read', {})).value.renewal.subscriptions
+        .find((value: { subscriptionId: string }) => value.subscriptionId === subscriptionRef)?.saveOfferGeneration).toMatch(/^[a-f0-9]{64}$/u);
+      // A reload renders the card only from a read that already carries the generation.
+      await page.reload();
+      await expect(card.locator('[data-care-state]')).toHaveAttribute('data-care-state', 'active');
       await control(t.cancelSubscription).click();
+      await expect(control(t.careOfferNo)).toBeVisible();
       await control(t.careOfferNo).click();
       const newNextCycleAt = new Date(Date.parse(f.nextCycleAt) + 4 * 86400000).toISOString();
       expect((await request('subscription.command', { action: 'slide', subscriptionRef, newNextCycleAt })).ok).toBe(true);

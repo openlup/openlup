@@ -503,9 +503,9 @@ it("installed_storefront_follows_the_twenty_fifth_sibling_and_projects_certified
   const typeRegistry = createCatalogProductTypeRegistry(pack.types), installedType = typeRegistry.resolve(type)!;
   const receipt = { type: installedType, digest: installed.types[0]!.definitionDigest };
   const guide = readFileSync("packages/core/docs/guide/how-to/build/customize-the-starter.md", "utf8");
-  const example = /## Show published products in the starter[\s\S]*?```json\n([\s\S]*?)\n```/u.exec(guide);
-  expect(example?.[1]).toBeDefined();
-  const display = JSON.parse(example![1]!);
+  const example = /## Show published products in the starter([\s\S]*?)```json\n([\s\S]*?)\n```/u.exec(guide);
+  expect(example?.[1]).toMatch(/`presentation\.title` in the builder input or `product\.sharedContent\.presentation\.title`\s+in a saved draft/u);
+  const display = JSON.parse(example![2]!);
   const { release, activation } = buildCatalogReleaseDraftV3({
     namespace: "test", type, slug, name: "Occupied fixture", attributes: { private_sample: "fixture-only" },
     presentation: display,
@@ -516,6 +516,7 @@ it("installed_storefront_follows_the_twenty_fifth_sibling_and_projects_certified
       sell: { oneTime: true, subscription: false }, offerVersions: [offer], logisticsRef: `test:logistics/${value}`,
     })),
   });
+  expect(release.payload.product.sharedContent.presentation?.title).toBe(display.title);
   const key = randomUUID(), head = await saveAndPublish(key, release.payload, 1, null, [], typeRegistry);
   activation.payload.publication.evidence.media = activation.payload.skus.map(sku => ({
     skuCode: sku.code!, mediaRef: fixtureMediaRef, assetRefs: [], revisionDigest: fixtureMediaDigest(),

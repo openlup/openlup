@@ -55,6 +55,24 @@ The sample's pins are independent of the surrounding checkout. Keep the
 generated lockfile in your application; use public imports rather than source
 directory links or private build paths.
 
+## Mount a published storefront read
+
+Check that your installed `@openlup/platform/catalog` exports the experimental
+`readPostgresCatalogStorefrontPage` and `projectPublishedCatalogOfferPage` before
+adding the route. The draft example has its own dependency pins.
+
+1. Bind the runtime pool to a `createPostgresRoleFreeTransactionLane<PgQueryExecutor>`
+   from `@openlup/platform/data`. Follow the
+   [runtime reader composition and qualified-v2 role setup](../operate/connect-postgresql.md#read-published-offers-with-the-runtime-login).
+2. In your server route, call `readPostgresCatalogStorefrontPage` with that lane
+   and the offer version, region, currency, channel, page size and optional
+   cursor. Handle an `outcome` refusal before projecting the result.
+3. Pass the successful page and the
+   [verified definition entries](../extend/catalogue-extension.md#verify-definition-receipts-in-your-host)
+   to `projectPublishedCatalogOfferPage`. Build the response from the projected
+   fields. For the next request, pass the returned `nextCursor` back as
+   `cursor` unchanged.
+
 ## Configure and run locally
 
 Create the gitignored `app.local.json` in the copied application with owner-only

@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -12,14 +13,16 @@ import { createNoticeArtifacts, noticeKinds, type NoticeArtifactV1 } from '../ho
 
 const application = fileURLToPath(new URL('../', import.meta.url));
 async function fixture(work: (directory: string) => Promise<void>) {
-  const scratch = join(application, '.context');
-  await mkdir(scratch, { recursive: true, mode: 0o700 });
-  const directory = await mkdtemp(join(scratch, 'notice-artifact-'));
+  const scratch = await mkdtemp(join(tmpdir(), 'notice-artifact-'));
   try {
-    const ignored = spawnSync('git', ['check-ignore', directory], { cwd: application, encoding: 'utf8' });
+    assert.equal(spawnSync('git', ['init', '-q'], { cwd: scratch }).status, 0);
+    await copyFile(join(application, '.gitignore'), join(scratch, '.gitignore'));
+    const directory = join(scratch, '.context', 'notice');
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const ignored = spawnSync('git', ['check-ignore', '.context/notice'], { cwd: scratch, encoding: 'utf8' });
     assert.equal(ignored.status, 0, 'the developer mailbox must be git ignored');
     await work(directory);
-  } finally { await rm(directory, { recursive: true, force: true }); }
+  } finally { await rm(scratch, { recursive: true, force: true }); }
 }
 function message(kind: NoticeArtifactV1['kind']): NoticeArtifactV1 {
   const token = ['payment_failed', 'payment_expired', 'payment_recovery'].includes(kind)

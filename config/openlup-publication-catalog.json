@@ -1802,6 +1802,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/catalogue-media.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/catalogue-readiness-jobs.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/catalogue-storefront.ts",
       "class": "public-output"
     },
@@ -1811,6 +1819,10 @@
     },
     {
       "path": "examples/neutral-store/host/checkout-recovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/demonstration-marker.ts",
       "class": "public-output"
     },
     {
@@ -2223,6 +2235,14 @@
     },
     {
       "path": "examples/neutral-store/test/browser-groups.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-apply.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-media.test.ts",
       "class": "public-output"
     },
     {
@@ -3794,6 +3814,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/storefront.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/subscriptions-contracts.api.md",
       "class": "public-output"
     },
@@ -4218,6 +4242,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogAdmissionIssueRead.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogAdmissionSchema.ts",
       "class": "public-output"
     },
@@ -4271,6 +4299,18 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogSchemaDescription.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogSelectedAdmissionOwner.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogSelectedAdmissionRuntime.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogSelectedAdmissionWrite.ts",
       "class": "public-output"
     },
     {
@@ -5262,6 +5302,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/commerceQuoteV2Refusals.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/commerceReturnsHandlers.ts",
       "class": "public-output"
     },
@@ -5295,6 +5339,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/customerCheckoutLinks.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/dbBackedCommerceQuotePortV2.ts",
       "class": "public-output"
     },
     {
@@ -8266,6 +8314,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/promotions/quoteAcceptanceTokenV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/promotions/quoteAcquisitionBinding.ts",
       "class": "public-output"
     },
@@ -8543,6 +8595,22 @@
     },
     {
       "path": "packages/platform/src/shipping/thresholdPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/anchor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/bindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/identity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/index.ts",
       "class": "public-output"
     },
     {
@@ -11062,6 +11130,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/pricing/commerceQuoteCompositionParity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/pricing/commerceQuoteHandler.test.ts",
       "class": "public-output"
     },
@@ -11226,6 +11298,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/promotions/quoteAcceptanceTokenV2.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/promotions/quoteAutomaticPromotions.test.ts",
       "class": "public-output"
     },
@@ -11350,6 +11426,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/storefront/browserBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/exports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/types.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/activationEditWindow.test.ts",
       "class": "public-output"
     },
@@ -11379,6 +11467,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/facades.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/nativePurchasePriceList.test.ts",
       "class": "public-output"
     },
     {
@@ -12174,7 +12266,19 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/agent-review-derived-carriers.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/agent-review-derived-inventory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-review-derived-notes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-review-derived-slots.test.ts",
       "class": "public-output"
     },
     {
@@ -12358,6 +12462,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ci-flaky-retry.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-flaky-retry.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ci-image-mirror.d.mts",
       "class": "public-output"
     },
@@ -12411,6 +12523,10 @@
     },
     {
       "path": "scripts/ci-vitest-duration-keys.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-vitest-run-errors-reporter.mjs",
       "class": "public-output"
     },
     {
@@ -12566,7 +12682,15 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/agent-review-derived-fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fixtures/landing-test-environment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/preflight-integration-fixture.ts",
       "class": "public-output"
     },
     {
@@ -13267,6 +13391,14 @@
     },
     {
       "path": "scripts/post-order-control-schema.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/preflight-integration-cold-api.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/preflight-integration-settings.test.ts",
       "class": "public-output"
     },
     {
@@ -22654,6 +22786,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/machine/checkoutAmbiguousSubmit.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/machine/checkoutAmbiguousSubmit.ts",
       "class": "public-output"
     },
@@ -22691,6 +22827,10 @@
     },
     {
       "path": "src/checkout/machine/checkoutNavigation.accountReturn.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/machine/checkoutNavigation.continuation.test.ts",
       "class": "public-output"
     },
     {
@@ -30198,6 +30338,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogOrderProtection.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogPriceListBasis.test.ts",
       "class": "public-output"
     },
@@ -30250,6 +30394,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogSelectedAdmissionRuntime.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogStorefrontPage.test.ts",
       "class": "public-output"
     },
@@ -30290,7 +30438,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutOwnerRestoreStates.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutOwnerRestoreStates.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapAbsent.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutOwnerRestoreStatesBootstrapDormant.test.ts",
       "class": "public-output"
     },
     {
@@ -30367,6 +30527,10 @@
     },
     {
       "path": "tests/postgres/commerceQuoteCatalogRead.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2.test.ts",
       "class": "public-output"
     },
     {
@@ -30514,6 +30678,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationV2DispatchLedger.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/destinationV2OrderBinding.test.ts",
       "class": "public-output"
     },
@@ -30527,6 +30695,10 @@
     },
     {
       "path": "tests/postgres/destinationV2SubscriptionEdit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/destinationV2SubscriptionReads.test.ts",
       "class": "public-output"
     },
     {
@@ -30587,6 +30759,10 @@
     },
     {
       "path": "tests/postgres/fixtures/m14SelfhostActor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/orderMoneyV2Storage/replayed.sql",
       "class": "public-output"
     },
     {
@@ -30858,11 +31034,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14QualifiedComposition.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14QualifiedComposition.proof.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/m14QualifiedComposition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedCompositionTarget.test.ts",
       "class": "public-output"
     },
     {
@@ -30894,7 +31078,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14RestrictedConnectedRestore.fixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14RestrictedConnectedRestore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts",
       "class": "public-output"
     },
     {
@@ -31114,6 +31306,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderMoneyV2Storage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderMoneyV2StoragePgtap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/partnerAcquisition.test.ts",
       "class": "public-output"
     },
@@ -31199,6 +31403,10 @@
     },
     {
       "path": "tests/postgres/privacyRequiredContributors.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/privacyRequiredContributorsMounted.test.ts",
       "class": "public-output"
     },
     {
@@ -31719,7 +31927,7 @@
     },
     {
       "name": "lint",
-      "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint .",
+      "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint --concurrency auto .",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -31818,6 +32026,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "test:affected",
+      "command": "node scripts/affected-tests.mjs --run",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "test:hosted",
       "command": "node scripts/test-hosted.mjs",
       "publicDocs": [
@@ -31841,11 +32059,11 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-f13fb832ebc96fc06a087c8932f84194d5f51cf3b629a6a731f5410504611d45"
+      "digest": "sha256-6beae26df400ee4ac52815e4d82b51245a4e9adc5e4dbb850889c62c269afc30"
     },
     {
       "path": "package.json",
-      "digest": "sha256-a1261ab69f3cc09b8fb4ab34cdc3b553d88756a682e8a5b4d568160cfb54e7fe"
+      "digest": "sha256-85f22d834d55ab426c59fb240b5ae13bc169419d59d42e2834814ef8199c8ff6"
     },
     {
       "path": "packages/core/package.json",

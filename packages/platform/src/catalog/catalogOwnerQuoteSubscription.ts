@@ -103,6 +103,8 @@ const selected = z.object({
 
 export type SelectedSubscriptionOwnerInput = z.input<typeof selected>;
 type Selection = z.output<typeof selected>;
+export type SelectedSubscriptionQuote = Selection["quote"];
+export const selectedSubscriptionQuoteSchema = selected.shape.quote;
 const order = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 const json = canonicalCatalogDraftJson;
 const equal = (a: unknown, b: unknown) => json(a) === json(b);

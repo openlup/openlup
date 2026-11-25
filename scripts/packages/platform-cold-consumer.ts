@@ -11,7 +11,7 @@ import { REFERENCE_DELEGATION_CONSUMER_PROOF, REFERENCE_DELEGATION_TYPES } from 
 import { createRequire, stripTypeScriptTypes } from "node:module";
 import assert from "node:assert/strict";
 import { env as processEnvironment } from "node:process";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -92,6 +92,7 @@ export const NON_ADAPTER_ENTRIES = [
   "scheduler",
   "shipping",
   "shipping/contracts",
+  "storefront",
 ] as const;
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
@@ -874,7 +875,24 @@ assert.throws(()=>{throw new commerce.CommerceOrderDraftUnsupportedMoneyError("z
 export function proveCommerceServerConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import * as server from "@openlup/platform/commerce/server";
+import { registerHooks } from "node:module";
+const quoteModules = new Set();
+registerHooks({ load(url, context, nextLoad) {
+  if (url.includes("/@openlup/platform/dist/tax/") ||
+    url.endsWith("/dbBackedCommerceQuotePortV2.js") || url.endsWith("/commerceQuoteV2Refusals.js")) quoteModules.add(url);
+  return nextLoad(url, context);
+} });
+const server = await import("@openlup/platform/commerce/server");
+assert.deepEqual([...quoteModules], [], "the server entry must leave native quote composition unloaded");
+const quotePort = server.createDbBackedCommerceQuotePortV2({ clockToleranceMs: 0, privacyRegistry: {
+  contributors: ["destination-receipts", "destination-documents", "tax-calculations"].map(id => ({ id })), missingContributors: [],
+} });
+assert.deepEqual([...quoteModules], [], "constructing the quote port must leave composition unloaded");
+const request = { mode: "one_time" };
+const quote = quotePort.createQuote({}, request);
+request.mode = "subscription";
+assert.deepEqual(await quote, { kind: "refused", code: "tax_invalid_input", field: "/", remedy: "Supply the documented input." });
+assert([...quoteModules].some(url => url.endsWith("/tax/index.js")), "first quote must load the tax owner");
 for (const name of ["tryCompensate", "createCommerceRuntimeService", "createPaidOrderOrchestration", "createCommerceCheckoutHandler", "createCheckoutQuoteGuard", "createStarterOfferGuard", "resolveCheckoutOffer"]) assert.equal(typeof server[name], "function");
 for (const name of ["createOrderDraftRpcPayload", "createCommerceOrderDraftRpcPort", "createManagedCommerceRuntimeOrderPort", "createConfiguratorIntentPersistenceRpcPort", "createCommerceCheckoutResumeQueryPort", "createManagedReservationSweepPort", "createCheckoutCompensationRpcAdapter", "createExpiredCheckoutRecoveryPolicy", "quotesMatchForRecovery", "hashCheckoutRecoveryToken", "generateCheckoutRecoveryToken"]) assert.equal(typeof server[name], "function");
 const stockQueries=[];
@@ -1191,10 +1209,13 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'captureCompatiblePostgresRows({source,sourceId:"source",catalogueId:"catalogue",tables:["platform_schema_migrations"],maximumRows:10,maximumBytes:1024});',
   ].join("\n"));
   if (entries.includes("commerce/server")) surfaces.push([
-    'import { tryCompensate } from "@openlup/platform/commerce/server";',
-    'import type { CheckoutCompensationPort } from "@openlup/platform/commerce/server";',
+    'import { tryCompensate, createDbBackedCommerceQuotePortV2 } from "@openlup/platform/commerce/server";',
+    'import type { CheckoutCompensationPort, CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext, QuoteOutcome } from "@openlup/platform/commerce/server";',
     'declare const compensationPort: CheckoutCompensationPort;',
     'export const compensationResult: Promise<void> = tryCompensate(compensationPort, "intent-key", "order-1");',
+    'declare const deps: DbBackedCommerceQuotePortV2Deps, owner: QuoteOwnerContext, request: CommerceQuoteV2Request;',
+    'const quotes: CommerceQuotePortV2 = createDbBackedCommerceQuotePortV2(deps);',
+    'export const nativeQuote: Promise<QuoteOutcome> = quotes.createQuote(owner, request);',
   ].join("\n"));
   if (entries.includes("commerce/server/destinations")) surfaces.push([
     'import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";',
@@ -2597,10 +2618,92 @@ export function platformConsumerInstallArgs(packages: string[], sdkPresent = fal
   return ["install", ...(sdkPresent ? ["--prefer-offline", "--min-release-age=3"] : ["--offline"]), "--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages];
 }
 
-export function runPlatformColdConsumer(checkout = root, environment = processEnvironment): void {
+function killProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (process.platform !== "win32" && child.pid) {
+    try { process.kill(-child.pid, signal); return; } catch { /* process group may already have exited */ }
+  }
+  child.kill(signal);
+}
+
+function spawnNeutralStarterConsumer(
+  checkout: string,
+  manifestPath: string,
+  commit: string,
+  starterTmp: string,
+): { child: ChildProcess; done: Promise<{ stdout: string; stderr: string }> } {
+  const qualificationUrl = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), "exact-set-qualification.mjs")).href;
+  const packInputUrl = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), "pack-manifest-input.ts")).href;
+  const script = `
+import { execFileSync } from "node:child_process";
+import { lstatSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { proveNeutralStarterConsumer } from ${JSON.stringify(qualificationUrl)};
+import { isolatedConsumerEnv, readCurrentPackManifest } from ${JSON.stringify(packInputUrl)};
+const [checkout, manifestPath, commit] = process.argv.slice(1);
+const packs = readCurrentPackManifest(checkout, manifestPath, commit);
+const lock = JSON.parse(readFileSync(join(checkout, "package-lock.json"), "utf8"));
+const locked = (name) => {
+  const version = lock.packages?.["node_modules/" + name]?.version;
+  if (typeof version !== "string") throw new Error("Missing locked consumer input: " + name);
+  return name + "@" + version;
+};
+const artifacts = mkdtempSync(join(tmpdir(), "openlup-starter-packs-"));
+const packEnv = { ...isolatedConsumerEnv(), npm_config_cache: join(artifacts, ".npm-cache") };
+try {
+  const packInstalled = (name) => {
+    const directory = join(checkout, "node_modules", name);
+    if (!lstatSync(directory).isDirectory() || lstatSync(directory).isSymbolicLink()) throw new Error("Consumer input " + name + " must be an ordinary installed directory");
+    const version = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")).version;
+    if (name + "@" + version !== locked(name)) throw new Error("Consumer input " + name + " differs from the lockfile");
+    const [info] = JSON.parse(execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", artifacts], {
+      cwd: directory, env: packEnv, encoding: "utf8", timeout: 120_000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"],
+    }));
+    return join(artifacts, info.filename);
+  };
+  proveNeutralStarterConsumer(checkout, packs, packInstalled);
+} finally {
+  rmSync(artifacts, { recursive: true, force: true });
+}
+`;
+  const child = spawn(
+    process.execPath,
+    ["--experimental-strip-types", "--input-type=module", "-e", script, checkout, manifestPath, commit],
+    {
+      cwd: checkout,
+      env: { ...isolatedConsumerEnv(), TMPDIR: starterTmp, TMP: starterTmp, TEMP: starterTmp },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    },
+  );
+  const done = new Promise<{ stdout: string; stderr: string }>((resolvePromise, rejectPromise) => {
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr?.on("data", (chunk: string) => { stderr += chunk; });
+    let settled = false;
+    child.once("error", error => {
+      if (settled) return;
+      settled = true;
+      rejectPromise(Object.assign(error, { stdout, stderr }));
+    });
+    child.once("close", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      if (code === 0) resolvePromise({ stdout, stderr });
+      else rejectPromise(Object.assign(new Error(`Neutral starter consumer proof exited with ${signal ?? code}`), { status: code, signal, stdout, stderr }));
+    });
+  });
+  return { child, done };
+}
+
+export function runPlatformColdConsumer(checkout = root, environment = processEnvironment): Promise<void> {
   const manifest = environment.OPENLUP_PACK_MANIFEST, commit = environment.OPENLUP_PACK_COMMIT;
   if (!manifest || !commit || !/^[a-f0-9]{40}$/u.test(commit)) throw new Error("Missing or malformed OPENLUP_PACK_MANIFEST / OPENLUP_PACK_COMMIT");
-  const packs = readCurrentPackManifest(checkout, resolve(manifest), commit); // Refuse before install or service startup.
+  const resolvedManifest = resolve(manifest);
+  const packs = readCurrentPackManifest(checkout, resolvedManifest, commit); // Refuse before install or service startup.
   command(process.execPath, ["scripts/settings-catalogue.ts"], checkout, isolatedConsumerEnv());
   const projectionErrors = checkPlatformMigrationProjection(checkout);
   if (projectionErrors.length) throw new Error(projectionErrors.join("\n"));
@@ -2609,37 +2712,72 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
     if (!pack) throw new Error(`Verified manifest has no ${name} tarball (platform must be publishable in the package inventory)`);
     return pack;
   });
-  const consumer = mkdtempSync(join(tmpdir(), "openlup-platform-consumer-"));
-  try {
-    const lock = JSON.parse(readFileSync(join(checkout, "package-lock.json"), "utf8"));
-    const locked = (name: string): string => {
-      const version = lock.packages?.[`node_modules/${name}`]?.version;
-      if (typeof version !== "string") throw new Error(`Missing locked consumer input: ${name}`);
-      return `${name}@${version}`;
+  return (async () => {
+    const consumer = mkdtempSync(join(tmpdir(), "openlup-platform-consumer-"));
+    const starterTmp = mkdtempSync(join(tmpdir(), "openlup-starter-tmp-"));
+    // Run the independent neutral starter cold-consumer proof in parallel in its own parent-owned temp root.
+    const starter = spawnNeutralStarterConsumer(checkout, resolvedManifest, commit, starterTmp);
+    let starterSettled = false;
+    const starterDone = starter.done.then(
+      output => ({ ok: true as const, ...output }),
+      error => ({ ok: false as const, error }),
+    ).finally(() => { starterSettled = true; });
+    let shuttingDownBySignal = false;
+    const stopStarter = async (signal: NodeJS.Signals) => {
+      if (!starterSettled) {
+        killProcessGroup(starter.child, signal);
+        const killTimer = setTimeout(() => { killProcessGroup(starter.child, "SIGKILL"); }, 5_000);
+        killTimer.unref();
+        try { await starterDone; } finally { clearTimeout(killTimer); }
+      }
     };
-    const artifacts = join(consumer, "packs"); mkdirSync(artifacts);
-    const tarballs = inputs.map(pack => {
-      const bytes = readFileSync(pack.path);
-      if (createHash("sha256").update(bytes).digest("hex") !== pack.sha256 || `sha512-${createHash("sha512").update(bytes).digest("base64")}` !== pack.integrity) throw new Error(`Verified artifact changed before use: ${pack.name}`);
-      const target = join(artifacts, `${pack.name.split("/")[1]}.tgz`); writeFileSync(target, bytes); return target;
-    });
-    writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "platform-cold-consumer", private: true, type: "module" }));
-    // The SDK-absent phase uses only npm's default cache. Legacy peer mode prevents automatic peer installs;
-    // physical and independent resolution checks below prove what omission flags cannot.
-    const install = (packages: string[], sdkPresent = false) => process.stdout.write(command("npm", platformConsumerInstallArgs(packages, sdkPresent), consumer, isolatedConsumerEnv()));
-    // The offline phase installs only local tarballs: npm ci caches the lockfile's tarballs but not their
-    // registry metadata, so a cold runner cannot resolve version specs offline. Pack the locked runtime and
-    // type inputs from the root's installed directories, as the Outbox proof does.
-    const packInstalled = (name: string): string => {
-      const directory = join(checkout, "node_modules", name);
-      if (!lstatSync(directory).isDirectory() || lstatSync(directory).isSymbolicLink()) throw new Error(`Consumer input ${name} must be an ordinary installed directory`);
-      const version = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")).version;
-      if (`${name}@${version}` !== locked(name)) throw new Error(`Consumer input ${name} differs from the lockfile`);
-      const [info] = JSON.parse(command("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", artifacts], directory, isolatedConsumerEnv()));
-      return join(artifacts, info.filename);
+    const removeTempRoots = () => {
+      rmSync(consumer, { recursive: true, force: true, maxRetries: 3 });
+      rmSync(starterTmp, { recursive: true, force: true, maxRetries: 3 });
     };
-    proveNeutralStarterConsumer(checkout, packs, packInstalled);
-    install([...tarballs, ...["zod", "@types/node", "undici-types"].map(packInstalled)]);
+    const onSignal = (signal: NodeJS.Signals) => {
+      if (shuttingDownBySignal) return;
+      shuttingDownBySignal = true;
+      process.removeListener("SIGTERM", onSigterm);
+      process.removeListener("SIGINT", onSigint);
+      void stopStarter(signal).finally(() => {
+        removeTempRoots();
+        process.exit(signal === "SIGINT" ? 130 : 143);
+      });
+    };
+    const onSigterm = () => onSignal("SIGTERM");
+    const onSigint = () => onSignal("SIGINT");
+    process.once("SIGTERM", onSigterm);
+    process.once("SIGINT", onSigint);
+    try {
+      const lock = JSON.parse(readFileSync(join(checkout, "package-lock.json"), "utf8"));
+      const locked = (name: string): string => {
+        const version = lock.packages?.[`node_modules/${name}`]?.version;
+        if (typeof version !== "string") throw new Error(`Missing locked consumer input: ${name}`);
+        return `${name}@${version}`;
+      };
+      const artifacts = join(consumer, "packs"); mkdirSync(artifacts);
+      const tarballs = inputs.map(pack => {
+        const bytes = readFileSync(pack.path);
+        if (createHash("sha256").update(bytes).digest("hex") !== pack.sha256 || `sha512-${createHash("sha512").update(bytes).digest("base64")}` !== pack.integrity) throw new Error(`Verified artifact changed before use: ${pack.name}`);
+        const target = join(artifacts, `${pack.name.split("/")[1]}.tgz`); writeFileSync(target, bytes); return target;
+      });
+      writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "platform-cold-consumer", private: true, type: "module" }));
+      // The SDK-absent phase uses only npm's default cache. Legacy peer mode prevents automatic peer installs;
+      // physical and independent resolution checks below prove what omission flags cannot.
+      const install = (packages: string[], sdkPresent = false) => process.stdout.write(command("npm", platformConsumerInstallArgs(packages, sdkPresent), consumer, isolatedConsumerEnv()));
+      // The offline phase installs only local tarballs: npm ci caches the lockfile's tarballs but not their
+      // registry metadata, so a cold runner cannot resolve version specs offline. Pack the locked runtime and
+      // type inputs from the root's installed directories, as the Outbox proof does.
+      const packInstalled = (name: string): string => {
+        const directory = join(checkout, "node_modules", name);
+        if (!lstatSync(directory).isDirectory() || lstatSync(directory).isSymbolicLink()) throw new Error(`Consumer input ${name} must be an ordinary installed directory`);
+        const version = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")).version;
+        if (`${name}@${version}` !== locked(name)) throw new Error(`Consumer input ${name} differs from the lockfile`);
+        const [info] = JSON.parse(command("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", artifacts], directory, isolatedConsumerEnv()));
+        return join(artifacts, info.filename);
+      };
+      install([...tarballs, ...["zod", "@types/node", "undici-types"].map(packInstalled)]);
     assertConsumerIsolation(consumer, checkout);
     const entries = assertExportInventory(consumer);
     for (const entry of entries) consumerNode(consumer, `await import("@openlup/platform/${entry}");`);
@@ -2884,8 +3022,27 @@ assert.equal(typeof (await import("@openlup/platform/tax")).compareTaxRecalculat
     compileOperationsConsumer(consumer, compiler);
     proveInstalledAdapters(consumer);
     proveDockerPostgres(consumer, environment);
+    const starterOutcome = await starterDone;
+    if (shuttingDownBySignal) return;
+    if (starterOutcome.ok) {
+      if (starterOutcome.stdout) process.stdout.write(starterOutcome.stdout);
+      if (starterOutcome.stderr) process.stderr.write(starterOutcome.stderr);
+    } else {
+      const failure = starterOutcome.error as Error & { stdout?: string; stderr?: string };
+      if (failure.stdout) process.stdout.write(failure.stdout);
+      if (failure.stderr) process.stderr.write(failure.stderr);
+      throw failure;
+    }
     console.log("Platform cold consumer PASS; verified tarballs, isolated optional peers, no live provider");
-  } finally { rmSync(consumer, { recursive: true, force: true }); }
+    } finally {
+      process.removeListener("SIGTERM", onSigterm);
+      process.removeListener("SIGINT", onSigint);
+      if (!shuttingDownBySignal) {
+        await stopStarter("SIGTERM");
+        removeTempRoots();
+      }
+    }
+  })();
 }
 
 
@@ -2977,7 +3134,7 @@ console.log("R2_SCENARIOS="+JSON.stringify(results));
   return results;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) runPlatformColdConsumer();
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) await runPlatformColdConsumer();
 
 /** M15 preliminary packed paid-order trial: useful assessment, refusal and no pg runtime peer. */
 export function proveRiskConsumer(consumer: string): void {

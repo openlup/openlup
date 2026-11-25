@@ -97,13 +97,6 @@ async function author(fixture: Fixture) {
       const list = demoIdentifier(config, 'price-list', config.market.currency);
       await db.query(`UPDATE public.price_entries SET active=false,valid_to=statement_timestamp()
         WHERE price_list_id=$1 AND mode='subscription' AND active`, [list]);
-      const bundle = { id: 'fixture:bundle', status: 'active', trigger_type: 'automatic', code: null,
-        discount_type: 'percentage', discount_value: 5, applies_to_kind: 'order_total', applies_to_payload: { cart_mode: 'one_time' },
-        stacking_rule: 'stackable_with_any', eligibility: { min_cart_minor: 12000 }, region_availability: [config.market.country],
-        valid_from: '2000-01-01T00:00:00.000Z', valid_to: null, redemption_limit_global: null, redemption_limit_per_customer: null,
-        promotion_engine_version: 'promotion-engine.v1', benefit_lane: 'product', benefit_kind: 'percentage', benefit_value_bps: 500,
-        benefit_value_minor: null, v2_mirror_of: null };
-      await db.query('INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES($1,$2,true)', [bundle.id, bundle]);
       await db.query(`INSERT INTO public.platform_job_controls(job_name,active_driver,enabled,last_status,last_success_at,metadata)
         VALUES ('platform-watchdog','worker',true,'success',clock_timestamp(),$1),('promotion-claim-sweep','worker',true,'success',clock_timestamp(),'{}')
         ON CONFLICT(job_name) DO UPDATE SET enabled=excluded.enabled,last_status=excluded.last_status,last_success_at=excluded.last_success_at,metadata=excluded.metadata`,
@@ -194,6 +187,9 @@ async function stopHost(child: ChildProcess | undefined) {
 
 let fixture: Fixture, wanted: Selection, first: Selection;
 let closeFixture: (() => Promise<void>) | undefined;
+// Give each test an empty cart even if the project supplies saved browser state.
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.beforeAll(async ({ request, baseURL }, info) => {
   test.setTimeout(60_000);
   const entries = JSON.parse(readFileSync('.context/care-browser/fixtures.json', 'utf8')) as Fixture[];
@@ -262,6 +258,11 @@ test.beforeAll(async ({ request, baseURL }, info) => {
 });
 test.afterAll(async () => { await closeFixture?.(); });
 
+const step = (label: string) => `starter_catalogue_step_${label}`;
+function labelled(label: string, check: () => void) {
+  try { check(); } catch (error) { throw new Error(step(label), { cause: error }); }
+}
+
 for (const width of [320, 1280]) {
   test(`lists and quotes the exact published SKU at ${width}px`, async ({ page, request }) => {
     const config = configurations[fixture.id]!, base = fixture.baseURL, locale = config.market.defaultLocale;
@@ -278,29 +279,30 @@ for (const width of [320, 1280]) {
     await page.goto(base + routes.catalog[locale]);
     const path = productPath(slug, locale);
     const firstLink = page.locator(`a[href="${path}?sku=${encodeURIComponent(first.sku)}"]`);
-    await expect(firstLink).toBeVisible();
-    await expect(firstLink.locator('xpath=ancestor::article').locator('img')).toHaveCount(0);
-    await expect(page.getByRole('img', { name: imageName })).toBeVisible();
+    await expect(firstLink, step('catalog_link')).toBeVisible();
+    await expect(firstLink.locator('xpath=ancestor::article').locator('img'), step('catalog_link_imageless')).toHaveCount(0);
+    await expect(page.getByRole('img', { name: imageName }), step('catalog_image')).toBeVisible();
     await firstLink.click();
     await page.getByRole('link', { name: wanted.title, exact: true }).click();
-    await expect(page).toHaveURL(base + path + '?sku=' + encodeURIComponent(wanted.sku));
+    await expect(page, step('product_url')).toHaveURL(base + path + '?sku=' + encodeURIComponent(wanted.sku));
     await page.reload();
-    await expect(page.getByText(wanted.title + ' · ' + wanted.sku, { exact: true })).toBeVisible();
-    await expect(page.locator('.product-detail img')).toHaveCount(0);
+    await expect(page.getByText(wanted.title + ' · ' + wanted.sku, { exact: true }), step('product_title')).toBeVisible();
+    await expect(page.locator('.product-detail img'), step('product_imageless')).toHaveCount(0);
     const money = new Intl.NumberFormat(locale, { style: 'currency', currency }).format(wanted.price / 100);
-    await expect(page.locator('.product-detail .price')).toHaveText(money);
-    await page.getByRole('spinbutton').fill(String(item.minQuantity));
+    await expect(page.locator('.product-detail .price'), step('product_price')).toHaveText(money);
+    await expect(page.getByRole('spinbutton'), step('product_quantity')).toHaveValue(String(item.minQuantity));
     await page.locator('.product-detail button').click();
-    await page.goto(base + routes.cart[locale]);
-    await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku })).toBeVisible();
-    await expect(page.getByRole('spinbutton')).toHaveValue(String(item.minQuantity));
-    const quoted = page.waitForResponse(response => response.url().endsWith('/api/actions/offer.validate')
-      && response.request().postDataJSON().cart.lines[0].sku === wanted.sku);
-    await page.reload();
-    await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku })).toBeVisible();
-    const quote = await (await quoted).json();
-    assertQuote(quote, wanted);
-    await expect(page.getByRole('complementary', { name: copy[locale].boxSummary })).toContainText(money);
+    // A fresh cart document reads the saved selection and requests its native quote.
+    const [quoted] = await Promise.all([
+      page.waitForResponse(response => response.url().endsWith('/api/actions/offer.validate')
+        && response.request().postDataJSON()?.cart?.lines?.[0]?.sku === wanted.sku),
+      page.goto(base + routes.cart[locale]),
+    ]);
+    const quote = await quoted.json();
+    await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku }), step('cart_heading')).toBeVisible();
+    await expect(page.getByRole('spinbutton'), step('cart_quantity')).toHaveValue(String(item.minQuantity));
+    labelled('cart_quote', () => assertQuote(quote, wanted));
+    await expect(page.getByRole('complementary', { name: copy[locale].boxSummary }), step('cart_summary')).toContainText(money);
 
     if (width === 320) return;
     const quotePath = '**/api/actions/offer.validate';
@@ -313,8 +315,8 @@ for (const width of [320, 1280]) {
       await route.fulfill({ response, json: quote });
     });
     await page.reload();
-    await expect(page.getByText(quoteCopy[locale].unavailable, { exact: true })).toBeVisible();
-    await expect(page.getByRole('complementary', { name: copy[locale].boxSummary })).toHaveCount(0);
+    await expect(page.getByText(quoteCopy[locale].unavailable, { exact: true }), step('refusal_unavailable')).toBeVisible();
+    await expect(page.getByRole('complementary', { name: copy[locale].boxSummary }), step('refusal_summary_hidden')).toHaveCount(0);
     await page.unroute(quotePath);
     const db = new pg.Pool({ connectionString: fixture.runtimeUrl });
     try {
@@ -325,8 +327,8 @@ for (const width of [320, 1280]) {
         firstName: 'Example', lastName: 'Buyer', phone: '00000', line1: '1 Example Lane', city: 'Example', postalCode: '00000',
         cart: { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null, lines: [{ sku: wanted.sku, quantity: 1 }] },
       });
-      expect(await result.json()).toMatchObject({ ok: false, code: 'catalog_admission_quote_authority_required' });
-      expect(await count()).toBe(before);
+      expect(await result.json(), step('checkout_refusal')).toMatchObject({ ok: false, code: 'catalog_admission_quote_authority_required' });
+      expect(await count(), step('order_count')).toBe(before);
     } finally { await db.end(); }
   });
 }

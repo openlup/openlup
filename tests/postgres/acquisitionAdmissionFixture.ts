@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,6 +9,7 @@ import { Pool } from "pg";
 import type { PromotionRow } from "@openlup/core/promo";
 import type { AcquisitionFinancialPolicy } from "@openlup/platform/pricing";
 import type { NativeCheckoutDraftRequest } from "@openlup/platform/commerce/server/native-checkout";
+import { readPlatformMigrations, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { platformConsumerInstallArgs, assertConsumerIsolation } from "../../scripts/packages/platform-cold-consumer.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { packWorkspaceTarballs } from "../helpers/packWorkspaceTarball.js";
@@ -26,14 +27,14 @@ export const policy: AcquisitionFinancialPolicy<PromotionRow> = {
   validateMetadata: () => {}, pairMatches: () => false, initialDiscountBps: row => row.discount_value * 100,
   unconfiguredTerms: () => { throw new Error("No unconfigured offer selected in this fixture"); },
 };
-export const configured = (id: string): PromotionRow => ({ id, name: "Configured acquisition", code: null,
+export const configured = (id: string) => ({ id, name: "Configured acquisition", code: null,
   status: "active", trigger_type: "automatic", discount_type: "percentage", discount_value: 24,
   applies_to_kind: "order_total", applies_to_payload: { cart_mode: "subscription", acquisitionTerms: {
     schemaVersion: "subscription-acquisition.v1", revision: "demo-acquisition-v1", delivery2DiscountBps: 1200 } },
   eligibility: { first_subscription_purchase: true }, stacking_rule: "exclusive", valid_from: "2020-01-01T00:00:00.000Z",
-  valid_to: null, region_availability: ["ZZ"], redemption_limit_global: null, redemption_limit_per_customer: 1 });
+  valid_to: null, region_availability: ["ZZ"], redemption_limit_global: null, redemption_limit_per_customer: 1 } satisfies PromotionRow);
 
-export async function acquisitionFixture() {
+export async function acquisitionFixture(beforeSuffix?: string, runtimeLogin: "acquisition_runtime" | "starter_runtime" = "acquisition_runtime") {
   mkdirSync(".context/scratch", { recursive: true });
   const scratch = mkdtempSync(resolve(".context/scratch/acquisition-packed-"));
   // The installed-consumer guard requires a disposable directory outside the
@@ -62,18 +63,46 @@ export async function acquisitionFixture() {
     const promotions: typeof import("@openlup/platform/promotions") = await import(pathToFileURL(installed("@openlup/platform/promotions")).href);
     const pricing: typeof import("@openlup/platform/pricing") = await import(pathToFileURL(installed("@openlup/platform/pricing")).href);
     const migrations: typeof import("@openlup/platform/migrations") = await import(pathToFileURL(installed("@openlup/platform/migrations")).href);
-    container = await runPostgresContainer({ name: `acquisition-admission-${process.pid}`, password: "synthetic-conformance" });
+    container = await runPostgresContainer({ name: `acquisition-admission-${process.pid}-${randomUUID().slice(0, 8)}`, password: "synthetic-conformance" });
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Acquisition proof requires host TCP PostgreSQL");
     const owner = pool(container.connectionString);
-    await owner.query(`CREATE ROLE acquisition_runtime LOGIN PASSWORD 'synthetic-only' NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    await owner.query(`CREATE ROLE ${runtimeLogin} LOGIN PASSWORD 'synthetic-only' NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
       CREATE ROLE acquisition_restore LOGIN PASSWORD 'synthetic-only' NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`);
     const installation = { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: "postgres",
-      runtimeLogin: "acquisition_runtime", restoreLogin: "acquisition_restore" } as const;
+      runtimeLogin, restoreLogin: "acquisition_restore" } as const;
     const migration = pool(container.connectionString, migrations.qualifiedPostgresStartupOptions(installation));
-    const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, { installation, poolFactory: () => migration });
-    await runner.apply();
-    if ((await runner.status()).pending.length) throw new Error("Packaged acquisition migrations remain pending");
-    const runtimeUrl = new URL(container.connectionString); runtimeUrl.username = "acquisition_runtime"; runtimeUrl.password = "synthetic-only";
+    const connectionString = container.connectionString;
+    const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString }, { installation, poolFactory: () => migration });
+    if (beforeSuffix) {
+      const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
+      if (manifest.schemaVersion !== 3) throw new Error("Upgrade fixture needs a complete manifest");
+      const paths = new Set<string>();
+      for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
+        const cut = plan.forward.findIndex(unit => unit.file.endsWith(beforeSuffix));
+        if (cut < 0) throw new Error("Upgrade fixture forward is missing");
+        plan.forward = plan.forward.slice(0, cut);
+        for (const { file } of [plan.baseline, ...plan.forward]) paths.add(file);
+      }
+      const prefix = migrations.createPlatformPostgresMigrationRunner({ connectionString }, {
+        installation, poolFactory: () => migration, catalog: {
+          readManifest: () => manifest,
+          readMigrations: root => {
+            const loaded = readPlatformMigrations(root);
+            return { ...loaded, migrations: loaded.migrations.filter(unit => paths.has(unit.file)) };
+          },
+        },
+      });
+      try { await prefix.apply(); } catch (error) {
+        // The prefix has its own object inventory. The production runner
+        // commits each prefix unit before comparing the final inventory.
+        if (!(error instanceof Error) || error.message !==
+          "platform migration inventory rejected: platform migration manifest: object inventory SHA-256 mismatch") throw error;
+      }
+    } else {
+      await runner.apply();
+      if ((await runner.status()).pending.length) throw new Error("Packaged acquisition migrations remain pending");
+    }
+    const runtimeUrl = new URL(container.connectionString); runtimeUrl.username = runtimeLogin; runtimeUrl.password = "synthetic-only";
     const runtime = pool(runtimeUrl.toString());
     const list = randomUUID(), product = randomUUID(), sku = `ACQUISITION-${product}`;
     await owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Fictional item')", [product, sku.toLowerCase()]);
@@ -142,13 +171,70 @@ export async function acquisitionFixture() {
       }
       return result;
     }
-    async function effects() {
+    async function effects({ omitOrderMoneyMarkers = false } = {}) {
       const result: Record<string, unknown> = {};
       for (const table of ["clients", "commerce_orders", "commerce_order_items", "commerce_order_adjustments", "commerce_promotion_claims",
-        "commerce_promotion_claim_events", "commerce_order_draft_receipts", "outbox_events", "commerce_settlement_intents", "payment_truth_events"])
-        result[table] = (await owner.query(`SELECT to_jsonb(t) AS value,xmin::text AS version FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
+        "commerce_promotion_claim_events", "commerce_order_draft_receipts", "outbox_events", "commerce_settlement_intents", "payment_truth_events"]) {
+        const marker = table === "commerce_orders" ? "money_version" : table === "commerce_order_items" ? "line_key" : null;
+        const value = omitOrderMoneyMarkers && marker ? `to_jsonb(t) - '${marker}'` : "to_jsonb(t)";
+        result[table] = (await owner.query(`SELECT ${value} AS value,xmin::text AS version FROM public.${table} t ORDER BY (${value})::text`)).rows;
+      }
       return result;
     }
-    return { owner, runtime, runtimeUrl: runtimeUrl.toString(), consumer, sku, product, checkout, promotions, pricing, client, promotion, request, port, eligibility, legacyPair, publicTableDigests, effects, close };
+    async function publication() {
+      const password = randomUUID();
+      await owner.query(`ALTER ROLE openlup_catalog_publication PASSWORD '${password}'`);
+      const url = new URL(connectionString);
+      url.username = "openlup_catalog_publication";
+      url.password = password;
+      return pool(url.toString());
+    }
+    return { owner, runtime, publication, runner, list, database: new URL(connectionString).pathname.slice(1), runtimeUrl: runtimeUrl.toString(), consumer, sku, product, checkout, promotions, pricing, client, promotion, request, port, eligibility, legacyPair, publicTableDigests, effects, close };
   } catch (error) { await close(); throw error; }
+}
+
+export async function boundOneTimePurchase(
+  db: Pool | import("pg").PoolClient, sku: string, price: number, currency = "XXX", productSlug = sku.toLowerCase(),
+) {
+  const { createPostgresNativeCheckoutPersistence } = await import("@openlup/platform/commerce/server/native-checkout");
+  const { createPostgresSandboxPaymentSimulator } = await import("@openlup/platform/payments");
+  const { captureSandboxPurchase } = await import("../helpers/captureSandboxPurchase.js");
+  const key = `purchase:${randomUUID()}`;
+  const client = (await db.query("INSERT INTO public.clients(email) VALUES($1) RETURNING id", [`${randomUUID()}@example.invalid`])).rows[0].id;
+  const money = (amountMinor: number) => ({ amountMinor, currency });
+  const gross = money(price), zero = money(0);
+  const context = { mode:"one_time" as const,promoCodes:[],
+    pricingPolicy:{offerPolicyVersion:"commerce.offer-policy.v2",promotionEngineVersion:"promotion-engine.v2"} };
+  const input: NativeCheckoutDraftRequest = { idempotencyKey: key, quoteSnapshot: {
+    contractVersion:"commerce.v0", quote: { currency, taxIncluded:true,
+      context,
+      lines:[{sku,productSlug,quantity:1,unitPriceGross:gross,lineSubtotalGross:gross,
+        tax:{ included:true,country:"ZZ",category:"standard",legalBasis:"Example",vatRateBps:0,netAmount:gross,vatAmount:zero,grossAmount:gross }}],
+      discounts:[],subtotalGross:gross,discountTotalGross:zero,shippingGross:zero,shippingDiscountGross:zero,totalGross:gross,netTotal:gross,taxTotal:zero,
+    },
+  } };
+  const executor = "release" in db ? db : await db.connect();
+  let id: string;
+  try {
+    if (executor !== db) await executor.query("BEGIN");
+    const result = await createPostgresNativeCheckoutPersistence(executor).createOrderDraft(input,{clientId:client});
+    id = result.orderDraft.orderId.slice(6);
+    await executor.query("SELECT public.catalog_admission_attach_legacy_submit($1,$2,$3)", [key,client,{
+      schemaVersion:1,ownerNamespace:"example:checkout",clientId:client,lane:"example-checkout",requestKey:key,
+      submitDigest:createHash("sha256").update(key).digest("hex"),acceptanceTokenDigest:null,
+    }]);
+    if (executor !== db) await executor.query("COMMIT");
+  } catch (error) {
+    if (executor !== db) await executor.query("ROLLBACK");
+    throw error;
+  } finally { if (executor !== db) executor.release(); }
+  const at = (await db.query(`SELECT to_char(statement_timestamp() AT TIME ZONE 'UTC',
+    'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at`)).rows[0].at;
+  const { settlement } = (await db.query("SELECT public.commerce_open_settlement_intent($1,$2,'sandbox',$3,$4,'{}',$5) AS value",
+    [`open:${id}`,id,price,currency,at])).rows[0].value;
+  const capture = await captureSandboxPurchase(createPostgresSandboxPaymentSimulator(db, {
+    dunningTemplateSlug:"example-failed",recoveryUrlPath:"/recover",recoveryTemplateSlug:"example-recovered",
+  }),{settlementIntentId:settlement.id,key,at});
+  if (capture.status !== 200) throw new Error("The sandbox purchase was not captured");
+  return id;
 }

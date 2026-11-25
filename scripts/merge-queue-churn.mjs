@@ -13,7 +13,7 @@ const workflowId = 361484090;
 const execute = promisify(execFile);
 const observedGaps = new WeakMap();
 const queueStates = new Set(['QUEUED', 'AWAITING_CHECKS', 'MERGEABLE', 'LOCKED', 'UNMERGEABLE']);
-const workflowJobs = new Set(['dco', 'reuse-gate', 'typecheck', 'install-pack', 'install-packages', 'install-proof', 'test-prep',
+const workflowJobs = new Set(['dco', 'reuse-gate', 'scope-gate', 'typecheck', 'install-pack', 'install-packages', 'install-proof', 'test-prep',
   'test', 'self-check', 'gitleaks', 'pgtap', 'native-review']);
 const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/u.test(value) ? value : null;
 const outcomeByReason = new Map([
@@ -30,7 +30,7 @@ const aggregateGuards = new Map([
 const numericId = value => Number.isSafeInteger(value) && value > 0;
 const numericIdText = value => typeof value === 'string' && /^[1-9][0-9]{0,15}$/u.test(value) && numericId(Number(value));
 const jobLabel = value => typeof value === 'string' && (workflowJobs.has(value) ||
-  /^test-full-shard \([1-8]\/8\)$/u.test(value) || /^install-browser \((?:0|1,6|2,4|3,5)\)$/u.test(value)) ? value : 'unknown';
+  /^test-full-shard \([1-8]\/8\)$/u.test(value) || /^install-browser \((?:0|6|1,2|3,5|4|1,6|2,4)\)$/u.test(value)) ? value : 'unknown';
 
 export function timestamp(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/u.test(value)) return null;

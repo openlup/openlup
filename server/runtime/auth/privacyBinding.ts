@@ -38,7 +38,7 @@ export function composeNativePrivacy(
   const operations = createPrivacyOperations({ ...deps, registry, now: () => new Date(), randomId: randomUUID });
   if (!isNativePrivacyOperations(operations)) throw nativePrivacyUnavailable(new Error("native_privacy_operations_required"));
   return {
-    operations,
+    operations, registry,
     destination: destinationV2Capabilities({ ...destination, rail: "native", privacyRegistry: registry }),
   };
 }

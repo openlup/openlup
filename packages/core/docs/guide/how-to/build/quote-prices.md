@@ -130,6 +130,61 @@ the same server-bound re-quote. Standard checkout skips generic cross-order
 matching for an offer that requires review. Use the accepted order's own
 journey for payment continuation.
 
+## Accept a final v2 quote
+
+Use the experimental server helpers in `@openlup/platform/promotions` to bind
+a final quote to the all-in payable and every fee shown to the customer.
+At presentation and submit, build `QuoteAcceptanceScopeV2` from the
+authenticated customer and the final quote loaded through the owner-scoped
+evaluation. Derive `requestDigest` consistently from the owner, checkout scope
+reference and quote ID. Keep the signing keyring on the server and supply an
+integer Unix-millisecond clock. Before issuing, the host presentation path
+qualifies current payment limits and supplies the recurring acceptance
+reference when required.
+
+Pass the values shown to the customer as `presentation`, including the quote
+digest, all fee keys and the payable amount and currency. Mint an opaque
+`acceptanceRef` on the server. Return the issued token and `presentationRef`
+for the browser to echo at submit.
+
+```ts
+import {
+  issueQuoteAcceptanceTokenV2,
+  verifyQuoteAcceptanceTokenV2,
+  type QuoteAcceptancePresentationV2,
+  type QuoteAcceptanceScopeV2,
+} from "@openlup/platform/promotions";
+
+export function issuePresentedQuote(
+  scope: QuoteAcceptanceScopeV2,
+  acceptanceRef: string,
+  presentation: QuoteAcceptancePresentationV2,
+) {
+  return issueQuoteAcceptanceTokenV2({ ...scope, acceptanceRef, presentation });
+}
+
+export function verifyPresentedQuote(
+  scope: QuoteAcceptanceScopeV2,
+  token: unknown,
+  presentationRef: unknown,
+) {
+  return verifyQuoteAcceptanceTokenV2({ ...scope, token, presentationRef });
+}
+```
+
+On success, use the authenticated `acceptanceRef` and other signed claims from
+verification. The echoed `presentationRef` checks that the browser is
+submitting the same presentation. Token authentication and quote binding
+provide the integrity check. The host owns what its UI displays. The token
+contains readable signed data. Keep it transient and out of logs, and use
+opaque references for customer and acceptance identities.
+
+| Code | Remedy |
+| --- | --- |
+| `quote_acceptance_mismatch` | Re-obtain valid acceptance from the authorized presentation path. |
+| `mandatory_fee_requires_all_in_display` | Present the full payable and applicable fees and obtain fresh acceptance. |
+| `quote_acceptance_expired` | Obtain a fresh final presentation and acceptance. |
+
 ## Handle refusals
 
 Catch `CommercePriceAuthorityError` from `@openlup/platform/pricing` and use its
@@ -181,6 +236,38 @@ The native device routine returns `false` because it has no persisted visitor
 identity. Redemption counts group by promotion identifier and do not combine
 related promotion families. Treat these reads as advisory; a false device
 result does not establish first-order eligibility.
+
+## Compose native quotes on the server
+
+Bind the experimental quote port in a native app after installing and
+inspecting the qualified payment rail. Use the same privacy contributor registry
+as the app's privacy handlers, including during issuance rollback. Bind the
+destination port and a restricted tax transaction lane. The host supplies a
+basis-aware plan for the ordered basket, its delivery and catalogue evidence,
+the selected rail and bounds, and the applicable fiscal profile or tax adapter.
+
+```js
+import { bindCommerceMoneyLimitsV2Reader, createDbBackedCommerceQuotePortV2 } from "@openlup/platform/commerce/server";
+
+export function bindNativeQuotes({ runtime, ...bindings }) {
+  return createDbBackedCommerceQuotePortV2({
+    ...bindings,
+    readLimits: rail => bindCommerceMoneyLimitsV2Reader(runtime, rail)(),
+  });
+}
+```
+
+Call `createQuote` with the trusted linked customer and checkout scope. Reuse the
+same key and invocation to read the original evaluation. A pending result directs
+you to read that evaluation again. Only a qualified adapter can recover an
+interrupted exclusive calculation. A historical quote retains its sealed terms.
+
+For `destination_contact_incomplete` at `/destination/contact`, collect the
+recipient name and phone, then issue a new destination snapshot. This applies to
+physical delivery even when shipping is free. If the destination has expired,
+issue a fresh snapshot and use a new quote key. If verified payment limits
+exclude the payable, choose a supported amount within the returned range and
+request a fresh quote.
 
 ## Install and inspect payment limits
 

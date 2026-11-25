@@ -40,6 +40,7 @@ import { portalResponder, composePortalCapabilities, composeE4Capabilities } fro
 import { composeExistingCapabilities } from './e-composition.ts';
 import { composeSubscriptionEditors, readEditorSubscriptions } from './subscription-editors.ts';
 import { composeCatalogueStorefront } from './catalogue-storefront.ts';
+import { catalogueWatchdogPrincipalId, startCatalogueReadinessJobs } from './catalogue-readiness-jobs.ts';
 
 const nobody = (): VerifiedActor => ({ customerRef: null, operatorRef: null });
 const refused = (code: string) => ({ ok: false as const, code });
@@ -60,7 +61,9 @@ export function createStarterPersonalDataRegistry(additional: readonly PersonalD
 }
 
 /** Local demonstration only. Publication uses a private credential on the same database. */
-export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, config: StoreConfig, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring, publicationPassword?: string): Promise<ApplicationBindings> {
+export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, config: StoreConfig, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring,
+  publicationPassword?: string, options?: { readinessJobs?: boolean }): Promise<ApplicationBindings> {
+  const readinessPrincipal = options?.readinessJobs === true && isRecord(config) ? catalogueWatchdogPrincipalId(config) : undefined;
   if (!isRecord(config) || !isRecord(config.inventory) || !isRecord(config.inventory.renewalProtection) || !isRecord(config.checkoutRecoveryReminders)) {
     throw new Error('OPENLUP_E_STARTER_STORE_CONFIG_REQUIRED\n'
       + 'Observed: The third argument is missing a starter StoreConfig.\n'
@@ -145,7 +148,10 @@ export async function composeNativeBindings(connectionString: string, origin: Or
         ? { principalId: found.session.principalId, email: null, emailVerified: false } : null;
     },
   } });
-  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication });
+  const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
+    gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
+  const watchdogEvidence = publication && createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool });
+  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication, watchdogEvidence, asOperator: asCustomer });
   const contacts = createPostgresContactClientRegistrar({ connectionString });
   const checkoutRecoveryTokenLane = createPostgresRoleFreeTransactionLane({ connectionString });
   const storefront = composeCatalogueStorefront(createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool }));
@@ -182,8 +188,6 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     const auth = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });
     return auth.ok && auth.principalId.toLowerCase() === context.actor.operatorRef?.toLowerCase();
   }, quoteAcceptanceKeyring));
-  const asCustomer = <T>(principalId: string, work: (db: PgGatewayClient) => Promise<T>) =>
-    gateway.asActor({ role: 'authenticated', sub: principalId }, db => work(db as PgGatewayClient));
   Object.assign(actions, composeExpiredRecovery(pool, checkoutRecoveryTokenLane, recovery.tokens, quoteAcceptanceKeyring));
   Object.assign(actions, composeSandboxRecoveryPayments(pool, checkoutRecoveryTokenLane, recovery.tokens, quoteAcceptanceKeyring));
   actions['checkout.recoveryStart'] = async (payload, context) => {
@@ -311,8 +315,10 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     const value = await oms.getOrderDetail({ view: 'control_plane_v1', orderId });
     return value ? success(value) : refused('starter_order_not_found');
   };
+  const personalData = createStarterPersonalDataRegistry();
+  const closeReadiness = readinessPrincipal && startCatalogueReadinessJobs(connectionString, readinessPrincipal);
   return {
-    personalData: createStarterPersonalDataRegistry(),
+    personalData,
     resolveCatalogue: storefront.resolveCatalogue,
     actions,
     async authenticate(request) {
@@ -335,7 +341,8 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       const profile = await asCustomer(session.principalId, db => createPostgresCustomerMePort(db).getCustomerMe(session.principalId));
       return profile ? { ...requester, customerRef: profile.clientId, operatorRef: null, principalRef: session.principalId, sessionToken: token } : { ...nobody(), ...requester };
     },
-    async close() { sessions.close(); await Promise.all([capabilities.close(), checkoutRecoveryTokenLane.close(), contacts.close(), operators.close(), publication?.close(), pool.end()]); },
+    async close() { sessions.close(); await Promise.all([closeReadiness && closeReadiness(), capabilities.close(),
+      checkoutRecoveryTokenLane.close(), contacts.close(), operators.close(), publication?.close(), pool.end()]); },
   };
 }
 

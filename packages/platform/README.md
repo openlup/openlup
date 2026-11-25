@@ -219,13 +219,14 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
 | `./pricing` | Price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
-| `./pricing/browser` | Existing quote primitives, acquisition validators and shipping-terms validator, browser-safe |
+| `./pricing/browser` | Existing quote primitives, acquisition validators, shipping-terms validator and the `deriveSubscriptionUnitPrice` display estimate, browser-safe |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 | `./promotions` | Promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
 | `./tax`, `./tax/contracts` | Experimental tax contracts, local calculation and offline adapter conformance |
 | `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
+| `./storefront` | Experimental, browser-safe purchase-continuation types: identity roles and their constructors, the continuation record, host bindings and declarations, and the markup anchor names; no storage, request or provider |
 
 ## HTTP runtime and security contract
 
@@ -1219,9 +1220,16 @@ base reads using the selected list ID, with base-refusal precedence.
 `./pricing/contracts` contains dependency-free authority observations, policy
 DTOs and version constants; its only external type comes from the exact
 `@openlup/core/pricing` entry. `./pricing/browser` directly re-exports exactly
-`createCommerceQuotePrimitives`, `acquisitionCapabilitySchema` and
-`acquisitionTermsExpectationSchema`, `resolvedAcquisitionTermsSchema` and
-`shippingTermsSchema`. Acquisition schemas come from their defining file; shipping
+`createCommerceQuotePrimitives`, `acquisitionCapabilitySchema`,
+`acquisitionTermsExpectationSchema`, `acquisitionTermsSchema`,
+`resolvedAcquisitionTermsSchema`, `shippingTermsSchema` and
+`deriveSubscriptionUnitPrice`, the same objects as on `./pricing`.
+`deriveSubscriptionUnitPrice` is a display estimate; the quote is the amount
+charged. Its defining module sets zod to `jitless`, as the server entry does.
+Tree-shaken production bundles that import only the entry's earlier symbols do
+not contain that call. Evaluating the whole entry applies the setting, which
+changes no parse result; that covers dev pre-bundling, unbundled ESM and Node.
+Acquisition schemas come from their defining file; shipping
 re-exports its pure validator owner through an exact linted edge, preserving identity
 without handlers or Node HTTP declarations. The reference
 quote context admits both terms as optional fields and retains its existing strict
@@ -3870,3 +3878,34 @@ verifiers (`verifyHmacSha256`, `verifyHardenedStandardWebhook`,
 - `@openlup/platform/channels/testing`: offline `runChannelAdapterConformance`
   and `createScriptedChannelFake` certifying `ChannelOrderSourcePort` webhook
   auth, `normalizedChannelOrderSchema` fidelity, and cursor pulls.
+
+## Storefront continuation contracts
+
+Status: current contract (experimental).
+
+`@openlup/platform/storefront` is the browser-side home for the logic that keeps
+a buyer's purchase safe across a lost response, a reload and a decline. It holds
+types, three identity constructors and one constant of markup anchor names. It
+reads no storage, sends no request and names no provider.
+
+- **Identity roles.** A continuation identity names one purchase, a command key
+  is the replay identity of one command and an attempt number counts payment
+  attempts within a purchase. They are distinct types, and a plain `string` or
+  `number` is none of them. The constructors return their argument unchanged
+  and never refuse a value; which identities may be reused is decided by the
+  host's identifier binding.
+- **Bindings.** The store's client supplies storage, the submit transport, an
+  identifier generator and a failure classifier as plain objects and functions
+  (see [Binding](../core/docs/guide/glossary.md) in the glossary). The store keeps its storage
+  names, serialization, wire spelling and provider facts.
+- **Markup anchors.** Production markup reads its `data-openlup-*` attribute
+  names and the action, state and field names from the constant instead of
+  string literals. Names are only added; a wrong one is superseded, not renamed.
+- **Maturity.** The whole entry is `experimental`. Names tagged `@experimental`
+  stay outside a later stable promise of this entry until promoted on their own
+  evidence. As with every export, a name is not removed once a release carries
+  it, while its shape may still change in a minor release.
+
+The entry is a leaf: it imports no other platform module and bundles for a
+browser without Node built-ins. The declarations are in the
+[API report](https://github.com/openlup/openlup/blob/main/packages/platform/api/storefront.api.md).

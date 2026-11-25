@@ -234,6 +234,10 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261127120003_tax_calculation_composition.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127120003_tax_calculation_composition.sql) |
 | [`20261127120004_commerce_money_limits_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261127120004_commerce_money_limits_v2.sql) |
 | [`20261128000000_native_derived_subscription_price.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128000000_native_derived_subscription_price.sql) |
+| [`20261128010000_catalog_order_checkout_protection.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128010000_catalog_order_checkout_protection.sql) |
+| [`20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql) |
+| [`20261128120000_order_money_v2_storage.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128120000_order_money_v2_storage.sql) |
+| [`20261128180000_subscription_destination_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128180000_subscription_destination_read.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |
