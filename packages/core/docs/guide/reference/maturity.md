@@ -211,6 +211,7 @@ No symbol of this package differs from its subpath's maturity or is deprecated.
 | `./shipping` | capability | stable |
 | `./shipping/contracts` | capability | stable |
 | `./shipping/testing` | capability | testing |
+| `./storefront` | capability | experimental |
 | `./subscriptions` | capability | stable |
 | `./subscriptions/contracts` | capability | stable |
 | `./tax` | capability | experimental |

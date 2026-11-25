@@ -19,7 +19,7 @@ const roots: string[] = [];
 const root = process.cwd();
 const publishedPackages = parsePackagesConfig(readFileSync(join(root, "config/openlup-packages.json"), "utf8")).packages.filter(({ publish }) => publish);
 // Contracts rules forbid Zod; exact browser entries own pricing schemas and operational validation/views.
-const platformBrowserRuntimeAllowlist = ["./pricing/browser", "./operations"];
+const platformBrowserRuntimeAllowlist = ["./pricing/browser", "./operations", "./storefront"];
 function browserEntryKeysMatch(packageName: string, browserEntries: PackBudget["browserEntries"]): boolean {
   const declared = packageName === "@openlup/platform" ? [
     ...Object.entries(PLATFORM_MODULE_GRAPH).filter(([, module]) => "contracts" in module && module.contracts).map(([name]) => `./${name}/contracts`),
