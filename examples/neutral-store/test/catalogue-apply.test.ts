@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import { registerHooks, stripTypeScriptTypes, syncBuiltinESMExports } from 'node:module';
 import { env } from 'node:process';
+import { join } from 'node:path';
 import readline from 'node:readline/promises';
 import { text } from 'node:stream/consumers';
 import { test } from 'node:test';
@@ -13,6 +14,10 @@ import { selectConfiguration } from '../owned/store.config.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const workerFlag = 'OPENLUP_CATALOGUE_APPLY_TEST_CHILD';
+// Nested extraction checks reuse the checkout's dependencies. The packed consumer installs its own and runs these CLI witnesses.
+const extractionSharesDependencies = existsSync(join(root, '.starter-origin.json'))
+  && !existsSync(join(root, 'node_modules/@openlup/platform/package.json'));
+const nestedSkip = extractionSharesDependencies && 'The packed starter suite runs the CLI witness.';
 const currency = selectConfiguration().market.currency;
 const actorId = '11111111-1111-4111-8111-111111111111';
 const priceListId = '22222222-2222-4222-8222-222222222222';
@@ -211,7 +216,7 @@ const ordered = ['marker', 'email', 'challenge', 'token', 'redeem', 'price-targe
   'price-apply:SECOND', 'price-preview:SECOND', 'save:2', 'prepare:2', 'approval', 'approve:2', 'publish:2', 'exact:2'];
 
 if (!env[workerFlag]) {
-  test('catalogue apply validates authored input and resumes after each local refusal', async context => {
+  test('catalogue apply validates authored input and resumes after each local refusal', { skip: nestedSkip }, async context => {
     const media = (mediaRef: string) => ({ ...authored, product: { ...authored.product, presentation: { title: 'Notebook', mediaRef } } });
     const cases: [Options, string, RegExp, string[]][] = [
       [{ missingProduct: true }, 'OPENLUP_E_CATALOGUE_PRODUCT_REQUIRED', /Add the documented product/u, []],
@@ -245,7 +250,7 @@ if (!env[workerFlag]) {
     });
   });
 
-  test('catalogue apply orders no-amount previews before prices, issues two revisions and exactly replays', () => {
+  test('catalogue apply orders no-amount previews before prices, issues two revisions and exactly replays', { skip: nestedSkip }, () => {
     const first = invoke();
     complete(first);
     assert.deepEqual(first.trace, ordered);
@@ -260,7 +265,7 @@ if (!env[workerFlag]) {
     assert.ok(replay.trace.every(step => !/^(?:approve|publish|prepare):/u.test(step)));
   });
 
-  test('catalogue apply stops and resumes at each refused host stage', async context => {
+  test('catalogue apply stops and resumes at each refused host stage', { skip: nestedSkip }, async context => {
     const owners: [string, string, RegExp, 'last'?][] = [
       ['challenge', 'operator_required', /active human store administrator/u],
       ['redeem', 'starter_auth_invalid', /Request a fresh challenge/u],
@@ -322,7 +327,7 @@ if (!env[workerFlag]) {
     });
   });
 
-  test('catalogue apply retries the identical startup Publish once and retains the final native finding', () => {
+  test('catalogue apply retries the identical startup Publish once and retains the final native finding', { skip: nestedSkip }, () => {
     const failAt = ordered.indexOf('publish:2') + 1;
     const message = 'Observed: Job unready Cause: Startup Fix: Check the promotion job Recheck: Retry the original request';
     const refusal = { code: 'publication_price_readiness', reason: 'promotion_watchdog_not_ready', path: 'pricing.readiness',
@@ -340,7 +345,7 @@ if (!env[workerFlag]) {
     complete(invoke({ failAt, refusal }));
   });
 
-  test('catalogue copy requires Release and Activation, then refuses unchanged presentation with a recoverable remedy', () => {
+  test('catalogue copy requires Release and Activation, then refuses unchanged presentation with a recoverable remedy', { skip: nestedSkip }, () => {
     const args = ['--copy'];
     const beforeRelease = invoke({ args });
     finding(beforeRelease, 'starter_catalogue_copy_requires_published', /npm run catalogue:apply without --copy/u);
@@ -362,7 +367,7 @@ if (!env[workerFlag]) {
     assert.equal(copied.state.head?.revision, 3);
   });
 
-  test('the starter guide declaration runs through the CLI with the installed type version', async () => {
+  test('the starter guide declaration runs through the CLI with the installed type version', { skip: nestedSkip }, async () => {
     const { starterCatalogue } = await import('../host/editor-catalogue.ts');
     const version = starterCatalogue().current!.version;
     const guide = readFileSync(new URL('docs/guide/how-to/build/customize-the-starter.md',
