@@ -906,6 +906,11 @@ to define `product`, with the exact installed type version, the presentation
 title and each SKU's physical and fulfilment facts. Keep the draft UUID stable.
 
 ```ts
+import type { CatalogProductInput } from "@openlup/platform/catalog";
+
+// Use the product defined in the recipe above.
+declare const product: CatalogProductInput;
+
 export const catalogueProduct = {
   draftId: 'd9176a9d-274b-4a4a-90d8-2a0db738f181',
   product,
