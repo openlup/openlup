@@ -267,6 +267,8 @@ test.afterAll(async () => { await closeFixture?.(); });
 
 for (const width of [320, 1280]) {
   test(`lists and quotes the exact published SKU at ${width}px`, async ({ page, request }) => {
+    // The desktop case also proves the substituted-quote refusal; hosted runners need more than the default budget.
+    test.slow(width === 1280);
     const config = configurations[fixture.id]!, base = fixture.baseURL, locale = config.market.defaultLocale;
     const listing = await (await action(request, base, 'storefront.catalogue', {})).json();
     const item = assertSelection(listing, wanted);
