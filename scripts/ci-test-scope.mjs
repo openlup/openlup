@@ -534,14 +534,16 @@ export function excludedToolingTests(changedPaths) {
     .map(([test]) => test).sort();
 }
 
-export function workflowScopeFromPaths(changedPaths) {
+export function workflowScopeFromPaths(changedPaths, { hasDeletion = false } = {}) {
   if (hasInvalidPath(changedPaths) || changedPaths.length === 0 || hasGlobalBailout(changedPaths)) {
     return { ...ALL_WORKFLOW_SCOPES_TRUE };
   }
   const touched = inputs => changedPaths.some(path => inputs.some(input => coversInput(input, path)));
   const run_pgtap = touched(WORKFLOW_PGTAP_INPUTS);
   const run_reference_build = touched(WORKFLOW_REFERENCE_BUILD_INPUTS);
-  const run_package_gates = touched(WORKFLOW_PACKAGE_GATES_INPUTS);
+  // Deleting or renaming any tracked file (reported as D under --no-renames) can
+  // break repository-link existence checks in packages/core docs:check.
+  const run_package_gates = hasDeletion || touched(WORKFLOW_PACKAGE_GATES_INPUTS);
   const run_install_browser = touched(WORKFLOW_INSTALL_BROWSER_INPUTS);
   const run_install_pack = run_package_gates || run_install_browser;
   return { run_pgtap, run_reference_build, run_package_gates, run_install_browser, run_install_pack };
@@ -578,16 +580,46 @@ const runGit = (cwd, args) => {
     timeout: 30_000, maxBuffer: 16 * 1024 * 1024, env: { ...processEnvironment, PATH: path } });
 };
 
-function readEventDiffPaths({ eventName, event, cwd = process.cwd(), git = args => runGit(cwd, args) }) {
+function resolveEventMergeBase({ eventName, event, cwd = process.cwd(), git = args => runGit(cwd, args) }) {
+  const base = eventName === 'pull_request' ? event?.pull_request?.base?.sha
+    : eventName === 'merge_group' ? event?.merge_group?.base_sha : undefined;
+  if (!/^[a-f0-9]{40}$/u.test(base ?? '')) return null;
+  const fork = git(['merge-base', 'HEAD', base]).trim();
+  if (!/^[a-f0-9]{40}$/u.test(fork)) return null;
+  return { fork, git };
+}
+
+function readEventDiffPaths(options) {
   try {
-    const base = eventName === 'pull_request' ? event?.pull_request?.base?.sha
-      : eventName === 'merge_group' ? event?.merge_group?.base_sha : undefined;
-    if (!/^[a-f0-9]{40}$/u.test(base ?? '')) return null;
-    const fork = git(['merge-base', 'HEAD', base]).trim();
-    if (!/^[a-f0-9]{40}$/u.test(fork)) return null;
-    const diff = git(['diff', '--no-renames', '--name-only', '-z', fork, 'HEAD', '--']);
+    const resolved = resolveEventMergeBase(options);
+    if (!resolved) return null;
+    const diff = resolved.git(['diff', '--no-renames', '--name-only', '-z', resolved.fork, 'HEAD', '--']);
     if (diff && !diff.endsWith('\0')) return null;
     return diff.split('\0').filter(Boolean);
+  } catch {
+    return null; // Missing history, malformed metadata and Git errors fail closed.
+  }
+}
+
+function readEventDiffWithStatus(options) {
+  try {
+    const resolved = resolveEventMergeBase(options);
+    if (!resolved) return null;
+    const diff = resolved.git(['diff', '--no-renames', '--name-status', '-z', resolved.fork, 'HEAD', '--']);
+    if (!diff) return { paths: [], hasDeletion: false };
+    if (!diff.endsWith('\0')) return null;
+    const tokens = diff.slice(0, -1).split('\0');
+    if (tokens.length % 2 !== 0) return null;
+    const paths = [];
+    let hasDeletion = false;
+    for (let index = 0; index < tokens.length; index += 2) {
+      const status = tokens[index];
+      const path = tokens[index + 1];
+      if (!/^[AMDT]$/u.test(status) || !path) return null;
+      if (status === 'D') hasDeletion = true;
+      paths.push(path);
+    }
+    return { paths, hasDeletion };
   } catch {
     return null; // Missing history, malformed metadata and Git errors fail closed.
   }
@@ -602,8 +634,8 @@ export function scopeFromEvent(options) {
 }
 
 export function workflowScopeFromEvent(options) {
-  const paths = readEventDiffPaths(options ?? {});
-  return paths ? workflowScopeFromPaths(paths) : { ...ALL_WORKFLOW_SCOPES_TRUE };
+  const diff = readEventDiffWithStatus(options ?? {});
+  return diff ? workflowScopeFromPaths(diff.paths, { hasDeletion: diff.hasDeletion }) : { ...ALL_WORKFLOW_SCOPES_TRUE };
 }
 
 // Include staged and unstaged paths separately: an index change can be undone

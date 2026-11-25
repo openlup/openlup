@@ -1054,16 +1054,40 @@ describe('workflow scope gate (--workflow-outputs)', () => {
     expect(workflowScopeFromEvent({
       eventName: 'pull_request',
       event: { pull_request: { base: { sha: base } } },
-      git: args => args[0] === 'merge-base' ? base : 'docs/platform/README.md',
+      git: args => args[0] === 'merge-base' ? base : 'M\0docs/platform/README.md',
+    })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromEvent({
+      eventName: 'pull_request',
+      event: { pull_request: { base: { sha: base } } },
+      git: args => args[0] === 'merge-base' ? base : 'M\0',
+    })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
+    expect(workflowScopeFromEvent({
+      eventName: 'pull_request',
+      event: { pull_request: { base: { sha: base } } },
+      git: args => args[0] === 'merge-base' ? base : 'R100\0docs/a.md\0docs/b.md\0',
     })).toEqual(ALL_WORKFLOW_SCOPES_TRUE);
     expect(workflowScopeFromEvent({
       eventName: 'merge_group',
       event: { merge_group: { base_sha: base } },
-      git: args => args[0] === 'merge-base' ? base : 'docs/platform/README.md\0',
+      git: args => args[0] === 'merge-base' ? base : 'M\0docs/platform/README.md\0',
     })).toEqual(allFalse);
+    expect(workflowScopeFromEvent({
+      eventName: 'merge_group',
+      event: { merge_group: { base_sha: base } },
+      git: args => args[0] === 'merge-base' ? base : 'D\0docs/platform/DATA_AND_MIGRATIONS.md\0',
+    })).toEqual({
+      ...allFalse,
+      run_package_gates: true,
+      run_install_pack: true,
+    });
+    expect(workflowScopeFromPaths(['docs/platform/README.md'], { hasDeletion: true })).toEqual({
+      ...allFalse,
+      run_package_gates: true,
+      run_install_pack: true,
+    });
   });
 
-  it('writes GITHUB_OUTPUT lines via --workflow-outputs CLI and fails closed on unreadable event metadata', () => {
+  it('writes GITHUB_OUTPUT lines via --workflow-outputs CLI, runs package gates on file deletions/renames, and fails closed on unreadable event metadata', () => {
     const cwd = scratch();
     const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { cwd, encoding: 'utf8' }).trim();
     git('init', '-q');
@@ -1090,6 +1114,27 @@ describe('workflow scope gate (--workflow-outputs)', () => {
       'run_package_gates=false',
       'run_install_browser=false',
       'run_install_pack=false',
+      '',
+    ].join('\n'));
+
+    // Renaming or deleting any tracked file triggers run_package_gates and run_install_pack.
+    const editHead = git('rev-parse', 'HEAD');
+    git('mv', 'docs/platform/README.md', 'docs/platform/MOVED.md');
+    git('commit', '-qm', 'rename doc');
+    const renameEventPath = join(cwd, 'rename-event.json');
+    const renameOutputPath = join(cwd, 'rename-output.txt');
+    writeFileSync(renameEventPath, JSON.stringify({ pull_request: { base: { sha: editHead } } }));
+    execFileSync(process.execPath, [resolve(process.cwd(), 'scripts/ci-test-scope.mjs'), '--workflow-outputs'], {
+      cwd,
+      env: { ...processEnvironment, GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: renameEventPath, GITHUB_OUTPUT: renameOutputPath },
+      encoding: 'utf8',
+    });
+    expect(readFileSync(renameOutputPath, 'utf8')).toBe([
+      'run_pgtap=false',
+      'run_reference_build=false',
+      'run_package_gates=true',
+      'run_install_browser=false',
+      'run_install_pack=true',
       '',
     ].join('\n'));
 

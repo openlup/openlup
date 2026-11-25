@@ -668,6 +668,9 @@ describe("complete public CI", () => {
     ].join("\n"));
     expect(packages).toContain("needs: [install-pack]");
     expect(packages).toContain("if: needs.install-pack.outputs.reuse != 'true'");
+    const depAuditStep = packages.split("      - name: Refuse newly introduced vulnerable dependencies\n")[1]?.split(/(?=^ {6}- )/mu)[0];
+    expect(depAuditStep).toContain("        if: needs.install-pack.outputs.reuse != 'true'\n");
+    expect(depAuditStep).not.toMatch(/run_(?:reference_build|package_gates|pack|browser|pgtap)/u);
     expect(browser).toContain("needs: [install-pack]");
     expect(browser).toContain("if: needs.install-pack.outputs.reuse != 'true'");
     expect(browser).not.toContain("scripts/public-ci-reuse.mjs");
