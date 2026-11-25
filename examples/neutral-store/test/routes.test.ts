@@ -80,7 +80,8 @@ test('the message intake destination opens the operator partner panel; support i
   assert.deepEqual(messageDestinations.find(item => item.id === 'T07-13'),
     { id: 'T07-13', route: 'support' });
   for (const path of ['/inquiry', '/zapytanie']) assert.equal(resolveRoute(path).key, 'notFound');
-  assert.equal(operations.length, 75);
+  assert.equal(operations.length, 76);
+  assert.equal(isOperation('catalogue.demoTarget'), true);
   assert.equal(isOperation(['inquiry', 'submit'].join('.')), false);
 });
 
