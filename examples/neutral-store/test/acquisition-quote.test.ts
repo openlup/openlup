@@ -344,14 +344,17 @@ test('expired stamped checkout replays the saved pending and completed purchase'
   const actions = composePurchaseCapabilities(db,{} as never,limiter,recovery as never,{ predecessors, renewal, keyring });
   const replay = (input: Record<string, unknown>, at = keyed) => actions['checkout.create']!(input,at);
   const input = { ...original, quoteAcceptance: token };
-  for (const changed of [{ termsAccepted: false }, { quoteAcceptance: token + 'a' }, { expectedTotal: { ...money, amountMinor: 1001 } },
+  // A validly signed acceptance for different terms is a changed payload, not a corrupted one.
+  const otherTerms = issuer.issuePromotionQuoteAcceptance({ ...signed, request: { ...request, pricePolicyBasis: [null] },
+    quote: { ...snapshot.quote, totalGross: { ...money, amountMinor: money.amountMinor + 1 } } })!;
+  for (const changed of [{ termsAccepted: false }, { quoteAcceptance: token + 'a' }, { quoteAcceptance: otherTerms }, { expectedTotal: { ...money, amountMinor: 1001 } },
     { cart: { ...cart, cadenceDays: cart.cadenceDays! + 1 } }, { termsRevision: 'different-terms' }]) {
     assert.deepEqual(await replay({ ...input, ...changed }),{ ok: false,code: 'starter_checkout_changed' });
   }
   assert.deepEqual(effects,[]);
   assert.equal(savedQuoteChecks,0);
   assert.equal(receiptCalls.length,0);
-  assert.equal(metered.length,5);
+  assert.equal(metered.length,6);
   assert.ok(metered.every(([, intent]) => (intent as { contact: { email: string } }).contact.email === `replay:${key}`));
   // A key that is not a version 4 UUID has no continuation and keeps the released conflict.
   assert.deepEqual(await replay(input,{ ...keyed, commandKey: 'fictional-command-0001' }),{ ok: false,code: 'starter_command_conflict' });

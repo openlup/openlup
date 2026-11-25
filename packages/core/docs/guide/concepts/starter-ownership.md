@@ -154,7 +154,10 @@ binding refuses even with a replacement quota callback. Denied quota attempts
 add no quota count. Your host owns retention of unpurchased contacts.
 
 For `starter_attempt_limited`, wait for the quota window or retained attempts
-to age out. A limited repeat still returns its order, without a new token. For
+to age out. A limited repeat of a completed order still returns the order,
+without a new token. A repeat that completes an interrupted creation passes the
+same first-attempt limiter and requester binding as a fresh create, so it can
+answer `starter_attempt_limited`. For
 invalid input, use the normal checkout submit path. Correct invalid deployed
 limits and restart. If the database could not admit an attempt, verify the
 [database forward](../upgrade/database-migrations.md#check-application-compatibility)
@@ -202,8 +205,15 @@ Abandon of an unpaid order refuses with `starter_checkout_not_abandonable` once
 a payment attempt was ever made, including one still in flight. A paid order
 answers `starter_checkout_paid`. A cancelled order carries the reason
 `checkout_started_over`. A limited `resume` returns the order without a token; a
-limited `abandon` answers `starter_attempt_limited`. An unknown key is answered
-before metering. Refusals use HTTP 409. A missing or malformed header answers
+limited `abandon` answers `starter_attempt_limited`. An unpaid order older than
+its 24-hour link lifetime gets no new token: `resume` answers
+`starter_checkout_expired`. Abandon it if no payment attempt was made;
+otherwise pay through an earlier recovery link, or wait until the order expires
+and the key answers `starter_checkout_not_payable`, then start a new key. An
+abandon that cancels nothing because the host was busy, or because the platform
+forward `20261128130000_checkout_abandonment_safety_execute_grant.sql` is
+missing, answers `starter_purchase_unavailable`; repeat it, and apply the
+forward if it persists. An unknown key is answered before metering. Refusals use HTTP 409. A missing or malformed header answers
 HTTP 400 with `starter_command_identity_required`.
 
 The token from `resume` authorises the same operations as the creating

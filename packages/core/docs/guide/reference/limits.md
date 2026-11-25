@@ -338,15 +338,16 @@ means an in-flight parcel keeps its current destination.
 | Quote subscription acquisition without a private acceptance key | The host refuses a subscription quote that needs signed acceptance. One-time checkout remains available. | `starter_quote_acceptance_key_required` |
 | Reuse a subscription quote after acceptance-key rotation or changed terms | Refresh the quote and accept its current terms. | `starter_quote_refresh_required` |
 | Reseed a changed price under an existing identity, retain a divergent subscription seed row, or keep another active, open or pending explicit subscription row on the demo list | The installation rolls back. Ask the pricing owner to reconcile changed seed rows with the original demo amounts, identities and validity. Have the owner close other active or open rows or withdraw pending rows while preserving price history. Then rerun the installer. | `starter_price_seed_conflict` |
-| Exceed checkout attempt limits, or reuse a command key that is not a version 4 UUID with a different contact/requester | Admission stops before contact resolution. Default quotas persist in PostgreSQL across restarts. Command-identity bindings remain process-local and reset on restart. | `starter_attempt_limited` |
+| Exceed checkout attempt limits, or reuse a command key that is not a version 4 UUID with a different contact/requester | Admission stops before contact resolution. Default quotas persist in PostgreSQL across restarts. Command-identity bindings remain process-local and reset on restart. A repeat that completes an interrupted creation passes the same first-attempt limiter and requester binding, so it can also answer this code; a limited repeat of a completed order returns the order without a token instead. | `starter_attempt_limited` |
 | Repeat `checkout.create` under a [version 4 UUID key](../concepts/starter-ownership.md#checkout-key-continuation) with changed details or another email | Nothing changes. The repeat is metered; `resume` pays the order as submitted, `abandon` cancels it so a new key can submit the new details. | `starter_checkout_changed` |
 | Repeat changed details under the key of a paid order, or abandon a paid order | Nothing is created or cancelled. A new purchase needs a new key. | `starter_checkout_paid` |
 | Repeat or continue the key of a cancelled, expired or closed order | Check the recovery link for this order before starting a new key. | `starter_checkout_not_payable` |
 | Send a fresh create that obtains its key lock more than 15 seconds after the host received it | No order, contact or attempt is written. Send the same request again under the same key. | `starter_checkout_request_stale` |
 | `resume` a key with no order | Submit the order; start a new key only after the [finality wait](../concepts/starter-ownership.md#checkout-key-continuation). | `starter_checkout_not_found` |
-| `resume` an order whose creation has not finished, or `abandon` it within a minute of its creation | Try again shortly, or abandon it to start over once the creation has been stalled for a minute. | `starter_checkout_in_progress` |
+| `resume` an order whose creation has not finished, or `abandon` it within a minute of its creation | Send `checkout.create` again with the same details under the same key to complete the creation. Otherwise try again shortly, or abandon it to start over once the creation has been stalled for a minute. | `starter_checkout_in_progress` |
 | `abandon` an unpaid order with a payment attempt ever made, an external reference, or a payment in flight | The order is not cancelled. `resume` and follow its status. | `starter_checkout_not_abandonable` |
-| Repeat or `resume` an unpaid order older than its 24-hour recovery link lifetime | No token is issued. | `starter_checkout_expired` |
+| Repeat or `resume` an unpaid order older than its 24-hour recovery link lifetime | Observed: no token is issued and the order stays unpaid. Cause: new continuation links end with the order's 24-hour link lifetime. Fix: `abandon` the order if no payment attempt was made. Otherwise pay through an earlier recovery link, or wait until the order expires, when the key answers `starter_checkout_not_payable`, then start a new key. Recheck: `resume` answers `starter_checkout_not_payable` or `abandon` answers `{ abandoned: true }`. | `starter_checkout_expired` |
+| `abandon` an unpaid order when nothing could be cancelled | Observed: nothing was cancelled. Cause: the inventory admission gate was busy with another release, or the platform forward `20261128130000_checkout_abandonment_safety_execute_grant.sql` is not applied. Fix: repeat the abandon; if it persists, apply that forward and restart the host. Recheck: `abandon` answers `{ abandoned: true }`. | `starter_purchase_unavailable` |
 | Sign in or out between a guest create and its retry | The key is derived from the principal, so the retry finds no order and creates a second one. Resolve the purchase first. | —; key bound to the principal |
 | Submit an invalid or overlong purchase email | The configured input bound is checked before contact resolution. | `starter_email_invalid` |
 | Treat demonstration market inputs as real tax or compliance certification | The starter uses fictional market and test-currency inputs. Subscription quotes use the installed pricing and acquisition rules; demonstration prices are not a real-market certification. | —; demonstration inputs only |
@@ -368,8 +369,10 @@ bucket, so repeats behind one proxy cannot refuse fresh creates, and against
 `maxPerEmail` for that one key, never for the buyer's email. A replaced quota
 callback receives these calls with the idempotency key
 `<derived key>:replay:<uuid>` and the contact `replay:<derived key>`, which is
-not an address. A callback that throws refuses the repeat (fail closed), and
-the order is still returned without a token. Changed identity under a retained
+not an address. A fresh create passes the derived key, `checkout:<64 hex>`,
+never the header value. A callback that throws refuses the repeat (fail closed), and
+the order is still returned without a token. Repeat rows count toward the
+shared ledger capacity (`maxEntries`) like fresh attempts. Changed identity under a retained
 key refuses before contact resolution, even with a replaced quota callback.
 Capacity exhaustion fails closed; denied attempts add no quota count. Default
 quotas persist in PostgreSQL; command-identity bindings reset on process

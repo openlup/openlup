@@ -32,9 +32,12 @@ async function withContainer(name: string, work: (url: (role: string) => string,
   } finally { await closePostgres(container, pools); }
 }
 
-it("registers the abandonment safety grant as an ordered forward", () => {
-  expect(grant).toBeDefined();
-  expect(manifest.forward.at(-1)).toEqual(grant);
+it("registers the abandonment safety grant once, after the predicate's last definition", () => {
+  const files = manifest.forward.map(({ file }) => file);
+  expect(files.filter(file => file.endsWith("_checkout_abandonment_safety_execute_grant.sql"))).toHaveLength(1);
+  const definition = files.indexOf("db/platform/migrations/20261114100000_payment_provider_attempt_store.sql");
+  expect(definition).toBeGreaterThanOrEqual(0);
+  expect(files.indexOf(grant!.file)).toBeGreaterThan(definition);
 });
 
 it.each([false, true])("replays the abandonment safety grant on a legacy chain (service_role present: %s)", async service => {

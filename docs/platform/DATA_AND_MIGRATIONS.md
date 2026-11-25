@@ -142,8 +142,11 @@ review before applying the ACL forward.
 The [grant forward](../../db/platform/migrations/20261128130000_checkout_abandonment_safety_execute_grant.sql)
 re-creates `public.commerce_initial_checkout_abandonment_safe(uuid)` with its
 existing definition and grants EXECUTE to `service_role` where that role
-exists. The native store class admits grants only on its own replaced or created
-functions, so the forward repeats the definition rather than granting alone.
+exists. The predicate was created inside the native store class, by
+`20261110100000_checkout_recovery_waves.sql`, so the grant-only rail, which
+admits only functions from the base chain before that class, does not apply.
+The forward therefore restates the definition and grants on the replaced
+function.
 PUBLIC, `anon` and `authenticated` remain without EXECUTE. A qualified runtime
 login inherits the grant and can evaluate the predicate the expiry sweep uses
 before it asks for a buyer-requested cancellation. Applying the forward again,

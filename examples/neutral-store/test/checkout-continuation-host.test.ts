@@ -97,7 +97,8 @@ test('resume re-checks receipt integrity', async () => {
   assert.ok(!conflict.log.includes('issue'));
   assert.deepEqual(conflict.log.slice(-2), ['unlock', 'release']);
   const expired = continuation(order(), { integrity: Object.assign(new Error('commerce_order_draft_expired'), { code: '40001' }) });
-  assert.deepEqual(await expired.call('resume'), { ok: false, code: 'commerce_order_draft_expired' });
+  // An invalidated draft receipt is a closed order for this operation.
+  assert.deepEqual(await expired.call('resume'), { ok: false, code: 'starter_checkout_not_payable' });
   assert.ok(!expired.log.includes('issue'));
 });
 
@@ -227,7 +228,9 @@ test('an incomplete order can be abandoned to start over', async () => {
 test('a dispatched attempt makes the order not abandonable', async () => {
   for (const [current, code] of [['pending_payment', 'starter_checkout_not_abandonable'], ['paid', 'starter_checkout_paid'],
     ['cancelled', 'starter_checkout_not_payable']] as const) {
-    for (const cancel of [{ cancelled: false }, Object.assign(new Error('commerce_checkout_compensation_aggregate_changed'), { code: '55000' })]) {
+    for (const cancel of [{ cancelled: false }, Object.assign(new Error('commerce_checkout_compensation_aggregate_changed'), { code: '55000' }),
+      Object.assign(new Error('commerce_checkout_compensation_renewal_order_unsupported'), { code: '22023' }),
+      Object.assign(new Error('fulfillment_purchase_reservation_idempotency_conflict'), { code: '23505' })]) {
       const host = continuation(order(), { cancel, current: { status: current } });
       assert.deepEqual(await host.call('abandon'), { ok: false, code });
       assert.deepEqual(host.log.slice(-4), ['cancel', 'reread', 'unlock', 'release']);

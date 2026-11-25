@@ -24,11 +24,16 @@ Each repeat and each continuation of a known key adds one attempt-ledger row.
 It counts in a separate requester bucket and against `maxPerEmail` for that one
 key, never against the buyer's email. A replaced quota callback receives these
 calls with the idempotency key `<derived key>:replay:<uuid>` and the contact
-`replay:<derived key>`, which is not an address. A callback that throws refuses
-the repeat, and the order is returned without a token. The host now stores the
+`replay:<derived key>`, which is not an address. A fresh create now passes the
+derived key, never the `Idempotency-Key` header value, as its idempotency key;
+an attempt recorded before the upgrade is therefore counted once more if its
+create is retried across the upgrade. A callback that throws refuses the
+repeat, and the order is returned without a token. The host now stores the
 derived key, `checkout:<64 hex>`, in `clients.metadata.checkout.lastIntentIdempotencyKey`.
 `composeNativeBindings` accepts an optional `requesterKey` function that
-replaces the socket-peer digest for every quota consumer.
+replaces the socket-peer digest for every quota consumer. It must return a
+lowercase 64-hex SHA-256 digest, or `undefined` when the requester is unknown;
+anything else is refused with `OPENLUP_E_STARTER_REQUESTER_KEY_INVALID`.
 
 Apply the application file upgrade to replace pristine managed files:
 `host/purchase-composition.ts`, `host/checkout-attempts.ts`, `host/server.ts`,

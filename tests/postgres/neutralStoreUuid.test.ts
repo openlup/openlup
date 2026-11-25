@@ -785,7 +785,8 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect((await call('checkout.create', checkout(`native-ledger-${config.id}@example.test`), false, key)).ok).toBe(true);
     const recorded = await ledger();
     expect(recorded.filter(row => !previous.has(row.attempt_digest)).map(row => row.attempt_digest))
-      .toEqual([createHash('sha256').update(`${key}\0${0}`).digest('hex')]);
+      // The limiter receives the derived key, never the header value.
+      .toEqual([createHash('sha256').update(`${derivedKey(key)}\0${0}`).digest('hex')]);
 
     const before = await purchaseCounts();
     // The restricted runtime inherits this grant through service_role.
@@ -806,7 +807,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     const before = await purchaseCounts();
     const input = checkout(`restart-${config.id}@example.test`);
     const key = randomUUID();
-    const digest = createHash('sha256').update(`${key}\0${0}`).digest('hex');
+    const digest = createHash('sha256').update(`${derivedKey(key)}\0${0}`).digest('hex');
     const stopped = { ok: false, code: 'starter_purchase_unavailable' };
     expect(await call('checkout.create', input, false, key)).toEqual(stopped);
     expect((await control(null)).registrations).toBe(1);
@@ -1045,26 +1046,43 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect(await ledger()).toHaveLength(3);
   }, 30_000);
 
+  /** Polls until `minimum` backends wait on a lock held by `holder`, or the bound passes; returns how many did. */
+  async function blockedBy(holder: number, minimum: number, boundMs = 5_000) {
+    const deadline = performance.now() + boundMs;
+    for (;;) {
+      const count = Number((await owner!.query(`SELECT count(*) AS n FROM pg_stat_activity
+        WHERE wait_event_type='Lock' AND $1::integer = ANY(pg_blocking_pids(pid))`, [holder])).rows[0].n);
+      if (count >= minimum || performance.now() > deadline) return count;
+      await new Promise(resolve => setImmediate(resolve));
+    }
+  }
+
   it('checkout.continuation waits for the key lock and many calls complete on the small pool', async () => {
     await control(false, undefined, undefined, repeatLimits);
     await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
     const order = await guestOrder('locked');
     const holder = await owner!.connect();
     try {
+      const { rows: [{ pid }] } = await holder.query('SELECT pg_backend_pid() AS pid');
       await holder.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [derivedKey(order.key)]);
       let settled = false;
       const waiting = call('checkout.continuation', { action: 'resume', locale: 'en' }, false, order.key)
         .finally(() => { settled = true; });
-      await new Promise(resolve => setTimeout(resolve, 1_000));
+      // The continuation's session waits on the advisory key lock held here.
+      expect(await blockedBy(pid, 1)).toBe(1);
       expect(settled).toBe(false);
       await holder.query('SELECT pg_advisory_unlock(hashtextextended($1,0))', [derivedKey(order.key)]);
       const resumed = await waiting;
       expect(resumed.ok && isRecord(resumed.value) && resumed.value.orderRef).toBe(order.orderRef);
     } finally { holder.release(); }
-    // More calls than pooled connections all complete; each holds one session and its key lock.
-    const keys = Array.from({ length: 6 }, () => randomUUID());
-    const answers = await Promise.all(keys.map(key => call('checkout.continuation', { action: 'resume', locale: 'en' }, false, key)));
-    expect(answers).toEqual(keys.map(() => ({ ok: false, code: 'starter_checkout_not_found' })));
+    // More calls than pooled connections all complete, each issuing a token while it holds a session and its key lock.
+    const orders: Awaited<ReturnType<typeof guestOrder>>[] = [];
+    for (let index = 0; index < 6; index++) orders.push(await guestOrder(`pool-${index}`));
+    const answers = await Promise.all(orders.map(known => call('checkout.continuation', { action: 'resume', locale: 'en' }, false, known.key)));
+    for (const [index, answer] of answers.entries()) {
+      expect(answer.ok && isRecord(answer.value) && answer.value.orderRef).toBe(orders[index]!.orderRef);
+      expect(answer.ok && isRecord(answer.value) && typeof answer.value.token).toBe('string');
+    }
   }, 30_000);
 
 
@@ -1109,11 +1127,13 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     const holder = await owner!.connect();
     let outcomes: [ActionResult, ActionResult];
     try {
+      const { rows: [{ pid }] } = await holder.query('SELECT pg_backend_pid() AS pid');
       await holder.query('BEGIN');
       await holder.query('SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE', [order.orderRef]);
       const racing = Promise.all([abandon(order.key),
         call('payment.simulate', { orderRef: order.orderRef, token: order.token, outcome: 'captured' })]);
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Contention is proved, not assumed: at least one racer waits on the held order row.
+      expect(await blockedBy(pid, 2)).toBeGreaterThanOrEqual(1);
       await holder.query('ROLLBACK');
       outcomes = await racing;
     } finally { holder.release(); }

@@ -259,7 +259,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     const attemptLimit = checkRateLimit ?? createPostgresCheckoutRateLimit(draftSession, context.config.purchase.attemptLimits);
     if (!await admitCheckoutAttempt(attemptLimit,
       { headers: {}, ...(context.actor.requesterKey ? { requesterKey: context.actor.requesterKey } : {}) },
-      { idempotencyKey: context.commandKey, contact: { email } }, 0)) return refused('starter_attempt_limited');
+      // The derived key: a replaced quota callback never receives the header value.
+      { idempotencyKey: key, contact: { email } }, 0)) return refused('starter_attempt_limited');
     attemptBindings ??= createCheckoutAttemptBindings(context.config.purchase.attemptLimits);
     const attempt = attemptBindings.bind(context.commandKey, email, context.actor.requesterKey);
     if (!attempt) return refused('starter_attempt_limited');
@@ -389,7 +390,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       await session.query('SELECT public.catalog_admission_replay_order_draft($1,$2,$3,$4)', [key, order.client_id, checkoutLane,
         isRecord(order.submit) && typeof order.submit.submitDigest === 'string' ? order.submit.submitDigest : order.fingerprint]);
     } catch (error) {
-      if (error instanceof Error && error.message === 'commerce_order_draft_expired') return refused(error.message);
+      // An invalidated draft receipt is a closed order for this operation.
+      if (error instanceof Error && error.message === 'commerce_order_draft_expired') return refused('starter_checkout_not_payable');
       if (isRecord(error) && error.code === '23505') return refused('starter_command_conflict');
       throw error;
     }

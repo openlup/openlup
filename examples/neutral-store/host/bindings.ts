@@ -50,7 +50,9 @@ export interface ApplicationBindings {
 /** The default per-requester quota key: a digest of the socket peer address.
  * This local host trusts its socket peer only, never forwarding headers or a
  * contact supplied by the caller, so requests behind one proxy share its quota.
- * A host behind a trusted proxy replaces this function in one place. */
+ * A host behind a trusted proxy replaces this function in one place. A
+ * replacement returns a lowercase 64-hex SHA-256 digest, or `undefined` when it
+ * cannot identify the requester; quotas then fail closed. */
 export function requesterKeyFor(request: IncomingMessage): string | undefined {
   const peer = request.socket.remoteAddress;
   return peer ? createHash('sha256').update(peer.toLowerCase()).digest('hex') : undefined;

@@ -4,6 +4,7 @@ import { configurations } from '../owned/store.config.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import { dispatchAction, pendingBindings, requesterKeyFor, type ActionContext } from '../host/bindings.ts';
 import { createHash } from 'node:crypto';
+import { composeNativeBindings } from '../host/native-composition.ts';
 import type { IncomingMessage } from 'node:http';
 
 const context: ActionContext = {
@@ -103,4 +104,9 @@ test('the requester key is the socket peer digest unless replaced', () => {
   assert.equal(requesterKeyFor(peer('2001:DB8::1')), digest('2001:db8::1'));
   assert.equal(requesterKeyFor(peer(undefined)), undefined);
   // The replacement reaching the limiter is proved against PostgreSQL, where the native host is composed.
+});
+
+test('a requester key replacement that is not a function refuses at composition with a fix', async () => {
+  await assert.rejects(composeNativeBindings('postgresql://unused.invalid/none', {} as never, context.config, undefined, undefined,
+    { requesterKey: 'peer' as never }), /OPENLUP_E_STARTER_REQUESTER_KEY_INVALID[\s\S]*Fix: /);
 });

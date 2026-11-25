@@ -48,6 +48,12 @@ const success = (value: unknown) => ({ ok: true as const, value });
 const uuid = (value: unknown): value is string => typeof value === 'string'
   && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
+const requesterKeyRefusal = () => new Error('OPENLUP_E_STARTER_REQUESTER_KEY_INVALID\n'
+  + 'Observed: The requesterKey option of composeNativeBindings is not a function or returned a value that is not a digest.\n'
+  + 'Cause: Quotas are keyed on a lowercase 64-hex SHA-256 digest of the requester, or on no key at all.\n'
+  + 'Fix: Pass a function that returns such a digest, for example of a verified client address, or undefined.\n'
+  + 'Recheck: Restart the host and repeat the request.');
+
 /** Native data owners are registered even without a browser privacy workflow.
  * Missing identity/subscription owners and unresolved event retention remain explicit. */
 export function createStarterPersonalDataRegistry(additional: readonly PersonalDataContributor<PgQueryExecutor>[] = []) {
@@ -63,7 +69,13 @@ export function createStarterPersonalDataRegistry(additional: readonly PersonalD
 /** Local demonstration only. Publication uses a private credential on the same database. */
 export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, config: StoreConfig, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring,
   publicationPassword?: string, options?: { readinessJobs?: boolean; requesterKey?: (request: IncomingMessage) => string | undefined }): Promise<ApplicationBindings> {
-  const requesterKey = options?.requesterKey ?? requesterKeyFor;
+  if (options?.requesterKey !== undefined && typeof options.requesterKey !== 'function') throw requesterKeyRefusal();
+  const replacedRequesterKey = options?.requesterKey;
+  const requesterKey = replacedRequesterKey === undefined ? requesterKeyFor : (request: IncomingMessage) => {
+    const value = replacedRequesterKey(request);
+    if (value !== undefined && (typeof value !== 'string' || !/^[0-9a-f]{64}$/u.test(value))) throw requesterKeyRefusal();
+    return value;
+  };
   const readinessPrincipal = options?.readinessJobs === true && isRecord(config) ? catalogueWatchdogPrincipalId(config) : undefined;
   if (!isRecord(config) || !isRecord(config.inventory) || !isRecord(config.inventory.renewalProtection) || !isRecord(config.checkoutRecoveryReminders)) {
     throw new Error('OPENLUP_E_STARTER_STORE_CONFIG_REQUIRED\n'
