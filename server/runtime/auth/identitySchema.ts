@@ -1,5 +1,7 @@
 import { schemaObjectKey, type ReadinessIssue, type RequiredSchema, type SchemaObject } from "@openlup/core/readiness";
 
+import catalogue from "../../../config/platform-migration-manifest.json" with { type: "json" };
+
 export type IdentityBundle = "node-postgres" | "node-supabase";
 const table = (name: string, columns: string): SchemaObject[] => [
   { kind: "table", name }, ...columns.split(" ").map(column => ({ kind: "column" as const, name: `${name}.${column}` })),
@@ -14,10 +16,19 @@ const declarationObjects: readonly SchemaObject[] = [
 ];
 const declarationKeys = new Set(declarationObjects.map(entry => schemaObjectKey(entry)));
 
+const reconciliationObjects = [
+  ...table("public.identity_privacy_erasure_reconciliations", "erasure_id contributor_id evidence_ref"),
+  fn("public.identity_privacy_reconciled_contributor_ids", "uuid"),
+];
+const reconciliationKeys = new Set(reconciliationObjects.map(entry => schemaObjectKey(entry)));
+const reconciliationMigration = catalogue.forward.find(entry => entry.file.endsWith("_identity_privacy_erasure_reconciliations.sql"))?.file;
+
 export function identitySchemaRecovery(bundle: IdentityBundle, issue: ReadinessIssue): ReadinessIssue {
   if (bundle === "node-postgres" && issue.module === "identity" && issue.code === "OPENLUP_E_SCHEMA_BEHIND"
-    && (issue.observation === "object_absent" || issue.observation === "object_unknown") && declarationKeys.has(issue.subject)) {
-    return { ...issue, fix: `Apply ${declarationMigration} for the selected adapter.` };
+    && (issue.observation === "object_absent" || issue.observation === "object_unknown")) {
+    const migration = reconciliationKeys.has(issue.subject) ? reconciliationMigration
+      : declarationKeys.has(issue.subject) ? declarationMigration : undefined;
+    if (migration) return { ...issue, fix: `Apply ${migration} for the selected adapter.` };
   }
   return issue;
 }
@@ -42,7 +53,7 @@ export function identityRequiredSchema(bundle: IdentityBundle, version: string):
     fn("public.customer_identity_challenge_redeem", "text,timestamp with time zone"),
     fn("public.platform_human_membership_is_active", "uuid"), fn("public.platform_human_membership_is_administrator", "uuid"),
     fn("public.platform_revoke_human_membership", "uuid,uuid,text"),
-    ...declarationObjects,
+    ...declarationObjects, ...reconciliationObjects,
   ] : [
     ...common, ...table("public.clients", "auth_user_id created_at").slice(1), ...table("public.admin_users", `id email is_machine_actor ${membership}`),
     ...table("public.admin_audit_events", "id actor_admin_id target_admin_id action old_value new_value occurred_at"),

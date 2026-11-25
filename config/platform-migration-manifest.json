@@ -838,11 +838,23 @@
       "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
     },
     {
-      "file": "db/platform/migrations/20261127070000_tax_calculation_composition.sql",
+      "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
+      "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
+    },
+    {
+      "file": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
+      "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
+    },
+    {
+      "file": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
+      "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
+    },
+    {
+      "file": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
       "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150"
     }
   ],
-  "objectInventorySha256": "5cc53ea261f862ebfdd21f4f797d80f80586f827914bf7401d1f93b600b1d6e5",
+  "objectInventorySha256": "68b325c4650b72184a3ca46aee534cfba9ae9d54765aae8adec693ea02f06d91",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1706,16 +1718,28 @@
         "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
       },
       {
-        "file": "db/platform/migrations/20261127070000_tax_calculation_composition.sql",
+        "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
+        "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
+      },
+      {
+        "file": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
+        "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
+      },
+      {
+        "file": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
+        "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
+      },
+      {
+        "file": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
         "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "5ab1db67a5f54022dc181dc9ef4a958c2711b8715fe084f41acd56ecc005134b"
+        "withRestore": "492471ff55ce5ec277d38fbef4c6b5b2b1d989e6e2fe2c95863d57a46bdfa760"
       },
       "separateMigrator": {
-        "withRestore": "e32303f1a11db719dec339ada1237869730b3326639780260487dbadf0d50c2a"
+        "withRestore": "360541dfb1232c31e5ef2fc0f46642b2ea54d79e293ecf324f036f8cd427f77d"
       }
     }
   },
@@ -2574,13 +2598,25 @@
         "sha256": "b24adae92fb5da6d1a69d5bc963a514a1ce71ee2e7e020747b67d56f3722f833"
       },
       {
-        "file": "db/platform/migrations/20261127070000_tax_calculation_composition.sql",
+        "file": "db/platform/migrations/20261127120000_fulfillment_destination_contact_v2.sql",
+        "sha256": "441b5d969071cd7d854412eab9c006130bf262df2e6be233218369eaa3aa883c"
+      },
+      {
+        "file": "db/platform/migrations/20261127120001_catalog_runtime_checkout_prelock.sql",
+        "sha256": "cc2927bfd2dec5f9a1df9da880458eb26d5733858652c12be52c47e7716d9143"
+      },
+      {
+        "file": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
+        "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa"
+      },
+      {
+        "file": "db/platform/migrations/20261127120003_tax_calculation_composition.sql",
         "sha256": "9aaf9b6dba3e05dbdfc85bda6b020079044d2c68ff21259255f221ecf950f150"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "d6acb49b3f6889a9274f3b7f657803561a7c130879a67f6f8da7a3cfeef0a0f1",
-      "operatorProvisioned": "ca0cb90943754566ed086056f9d6253a862345e6223f7a3bac21def9d59c69dd"
+      "installerManaged": "b16a14693aa38dd5fca243479e5a1b6204fe3582638ab986f9decafaec669060",
+      "operatorProvisioned": "50fc56f1b87ea218e045c5496ecc78da635d41088f0d6d10897e4e9fbb63bc21"
     }
   }
 }
