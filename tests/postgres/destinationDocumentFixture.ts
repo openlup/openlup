@@ -85,19 +85,27 @@ export async function insertDestinationOrder(db: Db, ctx: Context, id = randomUU
   return (await db.query(`INSERT INTO public.commerce_orders (id,client_id,status,currency_code,total_amount_minor)
     VALUES ($1,$2,'pending_payment','XXX',0) RETURNING id`, [id, ctx.clientId])).rows[0]!.id as string;
 }
-export function destinationFence<T>(pool: Pick<Pool, "connect">, ctx: Context, issued: Issued, read: (db: PoolClient) => Promise<T>) {
+export function destinationFence<T>(pool: Pick<Pool, "connect">, ctx: Context, issued: Issued, read: (db: PoolClient) => Promise<T>,
+  key = randomUUID()) {
   return withCatalogAdmissionFence(pool, {
-    key: randomUUID(), clientId: ctx.clientId, priceListId: randomUUID(), skuIds: [randomUUID()],
+    key, clientId: ctx.clientId, priceListId: randomUUID(), skuIds: [randomUUID()],
     revisionIds: [], timeoutMs: 6000,
   }, read, { prelock: destinationV2Prelock(ctx, issued.binding.snapshotRef) });
 }
 export async function bindDestinationOrder(pool: Pool, ctx: Context, issued: Issued) {
-  return destinationFence(pool, ctx, issued, async db => {
+  const key = randomUUID();
+  const bind = () => destinationFence(pool, ctx, issued, async db => {
     const decision = await recheckDestination(db, ctx, issued);
     expect(decision).toEqual({ binding: issued.binding, selection: issued.selection, service: testServicePin });
     const order = await insertDestinationOrder(db, ctx);
     expect(await registerDestination(db, ctx, order, issued)).toEqual(issued.binding);
     return order;
+  }, key);
+  // The fence refuses a visibility change before the read runs, and its retry hint asks the caller to repeat the
+  // same key once; this file's own concurrent writers can move the probed snapshot under load.
+  return bind().catch((error: unknown) => {
+    if ((error as { code?: unknown } | null)?.code !== "40001") throw error;
+    return bind();
   });
 }
 export async function proveDocumentEncoderParity(owner: Db) {
