@@ -171,11 +171,14 @@ export async function acquisitionFixture(beforeSuffix?: string, runtimeLogin: "a
       }
       return result;
     }
-    async function effects() {
+    async function effects({ omitOrderMoneyMarkers = false } = {}) {
       const result: Record<string, unknown> = {};
       for (const table of ["clients", "commerce_orders", "commerce_order_items", "commerce_order_adjustments", "commerce_promotion_claims",
-        "commerce_promotion_claim_events", "commerce_order_draft_receipts", "outbox_events", "commerce_settlement_intents", "payment_truth_events"])
-        result[table] = (await owner.query(`SELECT to_jsonb(t) AS value,xmin::text AS version FROM public.${table} t ORDER BY to_jsonb(t)::text`)).rows;
+        "commerce_promotion_claim_events", "commerce_order_draft_receipts", "outbox_events", "commerce_settlement_intents", "payment_truth_events"]) {
+        const marker = table === "commerce_orders" ? "money_version" : table === "commerce_order_items" ? "line_key" : null;
+        const value = omitOrderMoneyMarkers && marker ? `to_jsonb(t) - '${marker}'` : "to_jsonb(t)";
+        result[table] = (await owner.query(`SELECT ${value} AS value,xmin::text AS version FROM public.${table} t ORDER BY (${value})::text`)).rows;
+      }
       return result;
     }
     async function publication() {

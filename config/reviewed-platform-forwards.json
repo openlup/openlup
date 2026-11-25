@@ -9564,6 +9564,20 @@
         ]
       },
       {
+        "row": "order-money-v2-storage",
+        "path": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.commerce_orders ADD COLUMN money_version text;",
+          "ALTER TABLE public.commerce_orders ADD CONSTRAINT commerce_orders_money_snapshot_fkey\n  FOREIGN KEY (id, money_version) REFERENCES public.commerce_order_tax_snapshots(order_id, money_version) DEFERRABLE INITIALLY DEFERRED;",
+          "ALTER TABLE public.commerce_order_items ADD COLUMN line_key text;",
+          "ALTER TABLE public.commerce_order_items ADD CONSTRAINT commerce_order_items_money_source_fkey\n  FOREIGN KEY (order_id, line_key) REFERENCES public.commerce_order_line_sources(order_id, line_key) DEFERRABLE INITIALLY DEFERRED;"
+        ]
+      },
+      {
         "row": "catalog-governed-draft-owner",
         "path": "db/platform/migrations/20261128220000_catalog_governed_draft_owner.sql",
         "replacedFunctions": [
@@ -13843,6 +13857,11 @@
           "afterSha256": "fc7c9ff356e6876ecb995a3ff8517fdee4799587d2b9643e04ca8e041ba42350"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261128120000_order_money_v2_storage.sql",
+      "sha256": "02be68382a7a0e2c62010ef2bca993deaa756f0c860357d6be13d7dd2d5fb45b",
+      "functions": []
     },
     {
       "path": "db/platform/migrations/20261128220000_catalog_governed_draft_owner.sql",

@@ -44,6 +44,12 @@ const compatible = [
 const owned = [
   "commerce_money_limits_v2",
   "tax_calculations",
+  "commerce_order_tax_snapshots",
+  "commerce_order_line_sources",
+  "commerce_order_delivery_buckets",
+  "commerce_order_line_allocations",
+  "commerce_order_tax_positions",
+  "commerce_order_fee_lines",
   "subscription_cancel_feedback",
   // Authoritative installation configuration with operator audit references.
   "tax_coverage_revisions",
