@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { buildLineBreakdown } from "@openlup/core/pricing";
 import { mapPricingComponent } from "../../src/pricing/dbBackedCommerceQuoteHelpers.js";
 import { describe, expect, it, vi } from "vitest";
@@ -16,6 +17,7 @@ import { splitIncludedVat } from "../../src/pricing/quoteSchemas.js";
 import { digestSubscriptionPricePolicy } from "../../src/pricing/subscriptionPricePolicy.js";
 import { createPostgresCatalogAdmission } from "../../src/catalog/catalogAdmission.js";
 import { catalogAdmissionEvidenceSchema } from "../../src/catalog/catalogAdmissionSchema.js";
+import { authenticateSelectedOfferReview, promotionQuoteAcceptanceEnvelope as codec } from "../../src/promotions/promotionQuoteAcceptanceEnvelope.js";
 import { withCatalogAdmissionFence } from "../../src/catalog/catalogAdmissionFence.js";
 
 import { id, moneyGolden, sealQuote } from "./quoteMoneyV2Fixtures.js";
@@ -417,6 +419,87 @@ it("pins the mixed subscription preimage and keeps timed observations, contact a
   expect(Object.keys(wire.quote.context).sort()).toEqual(["acquisitionCapability", "acquisitionTerms", "cadenceDays", "mode",
     "pricingPolicy", "promoCodes", "shippingTerms", "starterRenewalTerms", "starterRequest"]);
   expect(tagged(wire)).not.toMatch(/ownerDecisions|renewalTerms|phaseDigest|destinationDigest|priceEvidenceRef/);
+});
+
+it("pins the selected offer-review codec bytes and the two token hash dialects", async () => {
+  const input = JSON.parse(JSON.stringify(await selectedSubscription()).replaceAll('"XXX"', '"XTS"')) as SelectedSubscriptionOwnerInput;
+  Object.assign(input.request, { purpose: "offer-review" });
+  Object.assign(input.request.checkout, { firstName: "Sample", lastName: "Buyer", phone: "000000", line1: "Example 1",
+    line2: null, city: "Example", postalCode: "000" });
+  const { requestBinding, evidence } = buildSelectedSubscriptionOwnerQuote(input);
+  const quote = input.quote.quote as CreateQuoteResponse["quote"];
+  const { acquisitionTerms, shippingTerms } = input.quote.quote.context;
+  const current = "0123456789abcdef0123456789abcdef";
+  const keyring = { current };
+  const iat = 1_780_653_600_000, exp = iat + codec.maxTtlMs;
+  const value = { v: 1, kid: codec.keyId(current), iat, exp, engine: "promotion-engine.v2",
+    requestBinding: codec.requestBinding(requestBinding, current), codeBinding: codec.codeBinding([], current),
+    quoteBinding: codec.quoteBinding(quote, current, acquisitionTerms, shippingTerms),
+    sectionBindings: codec.sectionBindings(quote, current, acquisitionTerms, shippingTerms),
+    totalMinor: 2534, currency: "XTS", ownerQuoteDigest: evidence.quoteDigest };
+  const encode = (body: Buffer, offerReview = true) => {
+    const segment = body.toString("base64url");
+    return `${segment}.${codec.sign(segment, current, offerReview)}`;
+  };
+  const sha = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
+  const vectors = [value, { ...value, sectionBindings: undefined }, { ...value, ownerQuoteDigest: undefined },
+    { ...value, iat: 8_639_999_000_000_000, exp: 8_639_999_000_000_000 + codec.maxTtlMs, totalMinor: 2_000_000_000 }];
+  expect(vectors.map(payload => {
+    const json = JSON.stringify(payload);
+    const token = encode(Buffer.from(json)), [body, signature] = token.split(".");
+    return { json, bodyLength: body!.length, signature, token, rawHash: sha(token), legacyHash: sha(canonical(token)) };
+  })).toMatchInlineSnapshot(`
+    [
+      {
+        "bodyLength": 1170,
+        "json": "{"v":1,"kid":"3eb1bd439947eb76","iat":1780653600000,"exp":1780912800000,"engine":"promotion-engine.v2","requestBinding":"d14731e38d0ea655d795e316e8105c806bb7f032508e25dfaeb74d3cebc1f283","codeBinding":"ad12fdb13ff0ab86ff6c711867d7134adcf79d33f834a741be12988ff846b7e2","quoteBinding":"a4228ce776bff1be32f6506de42d4837401230722854c525937ab3219fb6689b","sectionBindings":{"lines":"f243031be94b6ef82fc633e7d79a851c01a026bed82626e51601731704cf1253","discounts":"290e00be947f20320ab22d467893839f76a195721abfb52d1027673cef177312","shipping":"709cde6a9399483a7d933762f0f35c1d1b7fbbb9f4cbb3906824e6e4ceaab5f6","totals":"70dc09ef890359fc72ce417cb3273ef84e2aad25018d31e7b69e1d403bd0b6a3","currency":"6260c00643528784db79a5c736503b46c303d5e73d74bc84edbf527b24f83b83"},"totalMinor":2534,"currency":"XTS","ownerQuoteDigest":"ec543690384383929f46a288a7d7550f83802c40752a80c9430311aac18106dd"}",
+        "legacyHash": "655548443d72158b2eec15ef60b45e6d87ce80129aef6939ff73bfe34a2b7ec4",
+        "rawHash": "d753faa72e558b390f5868682c3f7d61a2c3dba78417cb24e51dbb167bbdfc59",
+        "signature": "yBOgRbyknQ1lCjz3bcfYEKsswlUFEhnNYgyaCLOtlMQ",
+        "token": "eyJ2IjoxLCJraWQiOiIzZWIxYmQ0Mzk5NDdlYjc2IiwiaWF0IjoxNzgwNjUzNjAwMDAwLCJleHAiOjE3ODA5MTI4MDAwMDAsImVuZ2luZSI6InByb21vdGlvbi1lbmdpbmUudjIiLCJyZXF1ZXN0QmluZGluZyI6ImQxNDczMWUzOGQwZWE2NTVkNzk1ZTMxNmU4MTA1YzgwNmJiN2YwMzI1MDhlMjVkZmFlYjc0ZDNjZWJjMWYyODMiLCJjb2RlQmluZGluZyI6ImFkMTJmZGIxM2ZmMGFiODZmZjZjNzExODY3ZDcxMzRhZGNmNzlkMzNmODM0YTc0MWJlMTI5ODhmZjg0NmI3ZTIiLCJxdW90ZUJpbmRpbmciOiJhNDIyOGNlNzc2YmZmMWJlMzJmNjUwNmRlNDJkNDgzNzQwMTIzMDcyMjg1NGM1MjU5MzdhYjMyMTlmYjY2ODliIiwic2VjdGlvbkJpbmRpbmdzIjp7ImxpbmVzIjoiZjI0MzAzMWJlOTRiNmVmODJmYzYzM2U3ZDc5YTg1MWMwMWEwMjZiZWQ4MjYyNmU1MTYwMTczMTcwNGNmMTI1MyIsImRpc2NvdW50cyI6IjI5MGUwMGJlOTQ3ZjIwMzIwYWIyMmQ0Njc4OTM4MzlmNzZhMTk1NzIxYWJmYjUyZDEwMjc2NzNjZWYxNzczMTIiLCJzaGlwcGluZyI6IjcwOWNkZTZhOTM5OTQ4M2E3ZDkzMzc2MmYwZjM1YzFkMWI3ZmJiYjlmNGNiYjM5MDY4MjRlNmU0Y2VhYWI1ZjYiLCJ0b3RhbHMiOiI3MGRjMDllZjg5MDM1OWZjNzJjZTQxN2NiMzI3M2VmODRlMmFhZDI1MDE4ZDMxZTdiNjllMWQ0MDNiZDBiNmEzIiwiY3VycmVuY3kiOiI2MjYwYzAwNjQzNTI4Nzg0ZGI3OWE1YzczNjUwM2I0NmMzMDNkNWU3M2Q3NGJjODRlZGJmNTI3YjI0ZjgzYjgzIn0sInRvdGFsTWlub3IiOjI1MzQsImN1cnJlbmN5IjoiWFRTIiwib3duZXJRdW90ZURpZ2VzdCI6ImVjNTQzNjkwMzg0MzgzOTI5ZjQ2YTI4OGE3ZDc1NTBmODM4MDJjNDA3NTJhODBjOTQzMDMxMWFhYzE4MTA2ZGQifQ.yBOgRbyknQ1lCjz3bcfYEKsswlUFEhnNYgyaCLOtlMQ",
+      },
+      {
+        "bodyLength": 628,
+        "json": "{"v":1,"kid":"3eb1bd439947eb76","iat":1780653600000,"exp":1780912800000,"engine":"promotion-engine.v2","requestBinding":"d14731e38d0ea655d795e316e8105c806bb7f032508e25dfaeb74d3cebc1f283","codeBinding":"ad12fdb13ff0ab86ff6c711867d7134adcf79d33f834a741be12988ff846b7e2","quoteBinding":"a4228ce776bff1be32f6506de42d4837401230722854c525937ab3219fb6689b","totalMinor":2534,"currency":"XTS","ownerQuoteDigest":"ec543690384383929f46a288a7d7550f83802c40752a80c9430311aac18106dd"}",
+        "legacyHash": "3b0e409039b7f9001cb309d5cb8a1e963132cbffd062e78b3b858349dadba6be",
+        "rawHash": "9faae2420fb5563e7321d95a90112cf440fabf01524aae8bac1efaeb0ea84622",
+        "signature": "c-XKlv6EbX74w213L6S0gnPrFgQLkUZXVyVKYHhAs0w",
+        "token": "eyJ2IjoxLCJraWQiOiIzZWIxYmQ0Mzk5NDdlYjc2IiwiaWF0IjoxNzgwNjUzNjAwMDAwLCJleHAiOjE3ODA5MTI4MDAwMDAsImVuZ2luZSI6InByb21vdGlvbi1lbmdpbmUudjIiLCJyZXF1ZXN0QmluZGluZyI6ImQxNDczMWUzOGQwZWE2NTVkNzk1ZTMxNmU4MTA1YzgwNmJiN2YwMzI1MDhlMjVkZmFlYjc0ZDNjZWJjMWYyODMiLCJjb2RlQmluZGluZyI6ImFkMTJmZGIxM2ZmMGFiODZmZjZjNzExODY3ZDcxMzRhZGNmNzlkMzNmODM0YTc0MWJlMTI5ODhmZjg0NmI3ZTIiLCJxdW90ZUJpbmRpbmciOiJhNDIyOGNlNzc2YmZmMWJlMzJmNjUwNmRlNDJkNDgzNzQwMTIzMDcyMjg1NGM1MjU5MzdhYjMyMTlmYjY2ODliIiwidG90YWxNaW5vciI6MjUzNCwiY3VycmVuY3kiOiJYVFMiLCJvd25lclF1b3RlRGlnZXN0IjoiZWM1NDM2OTAzODQzODM5MjlmNDZhMjg4YTdkNzU1MGY4MzgwMmM0MDc1MmE4MGM5NDMwMzExYWFjMTgxMDZkZCJ9.c-XKlv6EbX74w213L6S0gnPrFgQLkUZXVyVKYHhAs0w",
+      },
+      {
+        "bodyLength": 1055,
+        "json": "{"v":1,"kid":"3eb1bd439947eb76","iat":1780653600000,"exp":1780912800000,"engine":"promotion-engine.v2","requestBinding":"d14731e38d0ea655d795e316e8105c806bb7f032508e25dfaeb74d3cebc1f283","codeBinding":"ad12fdb13ff0ab86ff6c711867d7134adcf79d33f834a741be12988ff846b7e2","quoteBinding":"a4228ce776bff1be32f6506de42d4837401230722854c525937ab3219fb6689b","sectionBindings":{"lines":"f243031be94b6ef82fc633e7d79a851c01a026bed82626e51601731704cf1253","discounts":"290e00be947f20320ab22d467893839f76a195721abfb52d1027673cef177312","shipping":"709cde6a9399483a7d933762f0f35c1d1b7fbbb9f4cbb3906824e6e4ceaab5f6","totals":"70dc09ef890359fc72ce417cb3273ef84e2aad25018d31e7b69e1d403bd0b6a3","currency":"6260c00643528784db79a5c736503b46c303d5e73d74bc84edbf527b24f83b83"},"totalMinor":2534,"currency":"XTS"}",
+        "legacyHash": "95d07c81859e3006ae8e77d90712c8273edee53f3ed6caf5f9995c023af0b9b2",
+        "rawHash": "b9e904fe12dfe8c8171248835a31b6557478048276d2d23e17b55e4e9b37ef59",
+        "signature": "03l0JVvzz8BDtMvIszJv7_82Xp2PonqREH3gUBTgiBA",
+        "token": "eyJ2IjoxLCJraWQiOiIzZWIxYmQ0Mzk5NDdlYjc2IiwiaWF0IjoxNzgwNjUzNjAwMDAwLCJleHAiOjE3ODA5MTI4MDAwMDAsImVuZ2luZSI6InByb21vdGlvbi1lbmdpbmUudjIiLCJyZXF1ZXN0QmluZGluZyI6ImQxNDczMWUzOGQwZWE2NTVkNzk1ZTMxNmU4MTA1YzgwNmJiN2YwMzI1MDhlMjVkZmFlYjc0ZDNjZWJjMWYyODMiLCJjb2RlQmluZGluZyI6ImFkMTJmZGIxM2ZmMGFiODZmZjZjNzExODY3ZDcxMzRhZGNmNzlkMzNmODM0YTc0MWJlMTI5ODhmZjg0NmI3ZTIiLCJxdW90ZUJpbmRpbmciOiJhNDIyOGNlNzc2YmZmMWJlMzJmNjUwNmRlNDJkNDgzNzQwMTIzMDcyMjg1NGM1MjU5MzdhYjMyMTlmYjY2ODliIiwic2VjdGlvbkJpbmRpbmdzIjp7ImxpbmVzIjoiZjI0MzAzMWJlOTRiNmVmODJmYzYzM2U3ZDc5YTg1MWMwMWEwMjZiZWQ4MjYyNmU1MTYwMTczMTcwNGNmMTI1MyIsImRpc2NvdW50cyI6IjI5MGUwMGJlOTQ3ZjIwMzIwYWIyMmQ0Njc4OTM4MzlmNzZhMTk1NzIxYWJmYjUyZDEwMjc2NzNjZWYxNzczMTIiLCJzaGlwcGluZyI6IjcwOWNkZTZhOTM5OTQ4M2E3ZDkzMzc2MmYwZjM1YzFkMWI3ZmJiYjlmNGNiYjM5MDY4MjRlNmU0Y2VhYWI1ZjYiLCJ0b3RhbHMiOiI3MGRjMDllZjg5MDM1OWZjNzJjZTQxN2NiMzI3M2VmODRlMmFhZDI1MDE4ZDMxZTdiNjllMWQ0MDNiZDBiNmEzIiwiY3VycmVuY3kiOiI2MjYwYzAwNjQzNTI4Nzg0ZGI3OWE1YzczNjUwM2I0NmMzMDNkNWU3M2Q3NGJjODRlZGJmNTI3YjI0ZjgzYjgzIn0sInRvdGFsTWlub3IiOjI1MzQsImN1cnJlbmN5IjoiWFRTIn0.03l0JVvzz8BDtMvIszJv7_82Xp2PonqREH3gUBTgiBA",
+      },
+      {
+        "bodyLength": 1186,
+        "json": "{"v":1,"kid":"3eb1bd439947eb76","iat":8639999000000000,"exp":8639999259200000,"engine":"promotion-engine.v2","requestBinding":"d14731e38d0ea655d795e316e8105c806bb7f032508e25dfaeb74d3cebc1f283","codeBinding":"ad12fdb13ff0ab86ff6c711867d7134adcf79d33f834a741be12988ff846b7e2","quoteBinding":"a4228ce776bff1be32f6506de42d4837401230722854c525937ab3219fb6689b","sectionBindings":{"lines":"f243031be94b6ef82fc633e7d79a851c01a026bed82626e51601731704cf1253","discounts":"290e00be947f20320ab22d467893839f76a195721abfb52d1027673cef177312","shipping":"709cde6a9399483a7d933762f0f35c1d1b7fbbb9f4cbb3906824e6e4ceaab5f6","totals":"70dc09ef890359fc72ce417cb3273ef84e2aad25018d31e7b69e1d403bd0b6a3","currency":"6260c00643528784db79a5c736503b46c303d5e73d74bc84edbf527b24f83b83"},"totalMinor":2000000000,"currency":"XTS","ownerQuoteDigest":"ec543690384383929f46a288a7d7550f83802c40752a80c9430311aac18106dd"}",
+        "legacyHash": "d3833fb50937b258c6d26aa2799c46edc8deb87138b4215b4690882dbc9f7d4d",
+        "rawHash": "1bfcb85ab5f5643d60f2dbebe2aaa361c3d5fb11bb9e142706ed902ddde6f7a9",
+        "signature": "cs-YtujAFt5ZB4bEoa9X5FgcsUyqxlgkXA3eUy-D9Hk",
+        "token": "eyJ2IjoxLCJraWQiOiIzZWIxYmQ0Mzk5NDdlYjc2IiwiaWF0Ijo4NjM5OTk5MDAwMDAwMDAwLCJleHAiOjg2Mzk5OTkyNTkyMDAwMDAsImVuZ2luZSI6InByb21vdGlvbi1lbmdpbmUudjIiLCJyZXF1ZXN0QmluZGluZyI6ImQxNDczMWUzOGQwZWE2NTVkNzk1ZTMxNmU4MTA1YzgwNmJiN2YwMzI1MDhlMjVkZmFlYjc0ZDNjZWJjMWYyODMiLCJjb2RlQmluZGluZyI6ImFkMTJmZGIxM2ZmMGFiODZmZjZjNzExODY3ZDcxMzRhZGNmNzlkMzNmODM0YTc0MWJlMTI5ODhmZjg0NmI3ZTIiLCJxdW90ZUJpbmRpbmciOiJhNDIyOGNlNzc2YmZmMWJlMzJmNjUwNmRlNDJkNDgzNzQwMTIzMDcyMjg1NGM1MjU5MzdhYjMyMTlmYjY2ODliIiwic2VjdGlvbkJpbmRpbmdzIjp7ImxpbmVzIjoiZjI0MzAzMWJlOTRiNmVmODJmYzYzM2U3ZDc5YTg1MWMwMWEwMjZiZWQ4MjYyNmU1MTYwMTczMTcwNGNmMTI1MyIsImRpc2NvdW50cyI6IjI5MGUwMGJlOTQ3ZjIwMzIwYWIyMmQ0Njc4OTM4MzlmNzZhMTk1NzIxYWJmYjUyZDEwMjc2NzNjZWYxNzczMTIiLCJzaGlwcGluZyI6IjcwOWNkZTZhOTM5OTQ4M2E3ZDkzMzc2MmYwZjM1YzFkMWI3ZmJiYjlmNGNiYjM5MDY4MjRlNmU0Y2VhYWI1ZjYiLCJ0b3RhbHMiOiI3MGRjMDllZjg5MDM1OWZjNzJjZTQxN2NiMzI3M2VmODRlMmFhZDI1MDE4ZDMxZTdiNjllMWQ0MDNiZDBiNmEzIiwiY3VycmVuY3kiOiI2MjYwYzAwNjQzNTI4Nzg0ZGI3OWE1YzczNjUwM2I0NmMzMDNkNWU3M2Q3NGJjODRlZGJmNTI3YjI0ZjgzYjgzIn0sInRvdGFsTWlub3IiOjIwMDAwMDAwMDAsImN1cnJlbmN5IjoiWFRTIiwib3duZXJRdW90ZURpZ2VzdCI6ImVjNTQzNjkwMzg0MzgzOTI5ZjQ2YTI4OGE3ZDc1NTBmODM4MDJjNDA3NTJhODBjOTQzMDMxMWFhYzE4MTA2ZGQifQ.cs-YtujAFt5ZB4bEoa9X5FgcsUyqxlgkXA3eUy-D9Hk",
+      },
+    ]
+  `);
+  const token = encode(Buffer.from(JSON.stringify(value)));
+  const authenticate = (token: string) => authenticateSelectedOfferReview(token, keyring, requestBinding);
+  const review = authenticate(token)!;
+  expect(review.tokenDigest).toBe(sha(token));
+  expect(review.timing(new Date(exp - 1)).accepted).toBe(true);
+  expect(review.timing(new Date(exp)).reason).toBe("expired");
+  expect(review.timing(new Date(iat - 60_001)).reason).toBe("not_yet_valid");
+  expect(review.timing(new Date(iat - 60_000)).accepted).toBe(true);
+  expect(authenticate(encode(Buffer.from(JSON.stringify({ ...value, exp: exp + 1 }))))!.timing(new Date(iat)).reason).toBe("ttl_invalid");
+  expect(authenticateSelectedOfferReview(token, { current: "different".repeat(4), previous: current }, requestBinding)).toBeDefined();
+  expect(authenticateSelectedOfferReview(token, keyring, { ...requestBinding, offerSelector: "different" })).toBeUndefined();
+  for (const invalid of [token + ".", token + "=", "=" + token, encode(Buffer.from([0xff])), encode(Buffer.from("{}null")),
+    encode(Buffer.from(JSON.stringify(value)), false), "x".repeat(8193) + "." + "x".repeat(43)]) expect(authenticate(invalid)).toBeUndefined();
+  const json = JSON.stringify(value), maxDecoded = 8192 * 3 / 4;
+  expect(authenticate(encode(Buffer.from(json.padEnd(maxDecoded))))).toBeDefined();
+  expect(authenticate(encode(Buffer.from(json.padEnd(maxDecoded + 1))))).toBeUndefined();
 });
 
 it("binds isolated equal-payable price, catalogue, promotion, acquisition and future decisions", async () => {

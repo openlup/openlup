@@ -4198,6 +4198,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogAdmissionIssueRead.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogAdmissionSchema.ts",
       "class": "public-output"
     },
@@ -4251,6 +4255,18 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogSchemaDescription.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogSelectedAdmissionOwner.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogSelectedAdmissionRuntime.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogSelectedAdmissionWrite.ts",
       "class": "public-output"
     },
     {
@@ -30219,6 +30235,10 @@
     },
     {
       "path": "tests/postgres/catalogRuntimeCheckout.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogSelectedAdmissionRuntime.test.ts",
       "class": "public-output"
     },
     {
