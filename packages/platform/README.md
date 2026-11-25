@@ -1224,8 +1224,10 @@ DTOs and version constants; its only external type comes from the exact
 `resolvedAcquisitionTermsSchema`, `shippingTermsSchema` and
 `deriveSubscriptionUnitPrice`, the same objects as on `./pricing`.
 `deriveSubscriptionUnitPrice` is a display estimate; the quote is the amount
-charged. Its defining module sets zod to `jitless`, as the server entry does;
-bundles that import only the entry's earlier symbols do not contain that call.
+charged. Its defining module sets zod to `jitless`, as the server entry does.
+Tree-shaken production bundles that import only the entry's earlier symbols do
+not contain that call. Evaluating the whole entry applies the setting, which
+changes no parse result; that covers dev pre-bundling, unbundled ESM and Node.
 Acquisition schemas come from their defining file; shipping
 re-exports its pure validator owner through an exact linted edge, preserving identity
 without handlers or Node HTTP declarations. The reference

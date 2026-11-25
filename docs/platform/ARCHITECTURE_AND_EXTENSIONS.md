@@ -243,8 +243,10 @@ primitive factory, acquisition capability/expectation/terms/resolved-terms
 validators, the shipping-terms validator and the `deriveSubscriptionUnitPrice`
 display estimate. Acquisition reuses its pure defining file; the estimate reuses
 its defining file, whose module closure adds the pricing contract constants and
-the zod `jitless` setting, which a bundle contains only when it uses the
-estimate. Shipping uses an exact linted edge from `pricing/browser/index.ts` to
+the zod `jitless` setting. A tree-shaken production bundle contains that call
+only when it uses the estimate; evaluating the whole entry (dev pre-bundling,
+unbundled ESM, Node) applies the setting, which changes no parse result.
+Shipping uses an exact linted edge from `pricing/browser/index.ts` to
 the existing pure `shipping/thresholdPolicy.ts` owner, preserving validator
 identity without the shipping handler/Node HTTP declaration closure. Other internal shipping paths
 remain refused. The complete browser graph imports neither Node

@@ -19,7 +19,8 @@ const tsconfigRootDir = path.dirname(fileURLToPath(import.meta.url));
 //   3. packages/<name>/: package-local; outbox and platform may import exact public core exports;
 //   4. portable package production source: additionally no provider SDK;
 //   5. packages/platform/src/<module>/ production source: additionally the
-//      module graph below.
+//      module graph below;
+//   6. the starter's client and shared source: additionally browser-safe platform entries.
 const SOURCE_EXTENSIONS = "{ts,tsx,js,mjs,cjs}";
 const MAX_PACKAGE_DEPTH = 12;
 const PORTABLE_PACKAGE_DIRECTORIES = ["core", "ui", "outbox"];
@@ -411,7 +412,9 @@ export default tseslint.config(
   },
   {
     // Core rule options replace earlier ones, so this block repeats packageExports.
-    // Under verbatimModuleSyntax `import { type A } from` keeps a runtime import.
+    // Under verbatimModuleSyntax `import { type A } from` keeps a runtime import, and
+    // no-import-type-side-effects refuses it. Known gap: `export { type A } from '…'` also keeps
+    // a runtime re-export, and no rule without type information catches it.
     files: ["examples/neutral-store/client/**/*.ts", "examples/neutral-store/shared/**/*.ts"],
     rules: {
       ...boundaryRules([packageExports], [starterBrowserEntries]),

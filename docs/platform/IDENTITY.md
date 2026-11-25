@@ -10,7 +10,8 @@ profile; the Node-only `@openlup/platform/commerce/server` entry remains refused
 The inventory also admits the thirteen-file `pricing/browser` runtime closure
 under the emitted pricing directory: `browser/index.js`, `quotePrimitives.js`,
 `acquisitionTermsSchemas.js`, `subscriptionPricePolicy.js`, `validation.js`, the
-`contracts` value modules and the shipping terms owner. Both browser
+`contracts` value modules, and `shipping/thresholdPolicy.js` under the emitted
+shipping directory. Both browser
 profile builds explicitly refuse the pricing root and commerce server entry.
 
 ## Responsibility and composition

@@ -113,6 +113,7 @@ it("a consumer of the existing pricing browser symbols bundles no zod configurat
   })).outputFiles[0]!.text;
   const configurationCall = /\.config\(\{\s*jitless:\s*true/;
   expect(await bundleOf("shippingTermsSchema")).not.toMatch(configurationCall);
+  expect(await bundleOf("deriveSubscriptionUnitPrice")).toMatch(configurationCall);
 });
 
 it("bundles the built commerce entry and its complete module graph for browsers", async () => {
