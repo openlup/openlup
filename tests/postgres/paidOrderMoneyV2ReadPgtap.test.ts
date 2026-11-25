@@ -7,7 +7,9 @@ import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { installAccountMutations } from "./customerAccountMutations.fixture.js";
 
-const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest;
+const catalogue = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
+if (catalogue?.schemaVersion !== 3) throw new Error("Expected native catalogue");
+const manifest = catalogue;
 const suffix = "_paid_order_money_v2_read.sql";
 const position = manifest.forward.findIndex(entry => entry.file.endsWith(suffix));
 const fixture = readFileSync("tests/postgres/fixtures/paidOrderMoneyV2Read/replayed.sql", "utf8");
