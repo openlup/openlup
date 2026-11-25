@@ -71,9 +71,8 @@ export interface DerivedFixture {
 export async function createDerivedFixture(options: { runInitialLanding?: boolean } = {}): Promise<DerivedFixture> {
   const source = process.cwd();
   const runInitialLanding = options.runInitialLanding ?? true;
-  vi.stubEnv('npm_execpath', npmCli);
   const state: DerivedFixture = {
-    root: realpathSync(mkdtempSync(join(tmpdir(), 'openlup-derived-live-'))),
+    root: '',
     base: '',
     reviewed: '',
     main: '',
@@ -175,82 +174,89 @@ export async function createDerivedFixture(options: { runInitialLanding?: boolea
     },
   };
 
-  execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, state.root], { env: fixtureEnvironment, timeout: 30000 });
-  // The clone already has HEAD. Overlay only differences during local development.
-  const sourcePaths = (...args: string[]) => execFileSync('/usr/bin/git', args, { cwd: source, env: fixtureEnvironment, encoding: 'utf8' }).split('\0').filter(Boolean);
-  const overlays = new Set([
-    ...sourcePaths('diff', '--name-only', '--no-renames', '-z', 'HEAD'),
-    ...sourcePaths('ls-files', '-z', '--others', '--exclude-standard'),
-  ]);
-  for (const path of overlays) {
-    if (!existsSync(join(source, path))) {
-      rmSync(join(state.root, path), { force: true });
-      continue;
+  try {
+    vi.stubEnv('npm_execpath', npmCli);
+    state.root = realpathSync(mkdtempSync(join(tmpdir(), 'openlup-derived-live-')));
+    execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, state.root], { env: fixtureEnvironment, timeout: 30000 });
+    // The clone already has HEAD. Overlay only differences during local development.
+    const sourcePaths = (...args: string[]) => execFileSync('/usr/bin/git', args, { cwd: source, env: fixtureEnvironment, encoding: 'utf8' }).split('\0').filter(Boolean);
+    const overlays = new Set([
+      ...sourcePaths('diff', '--name-only', '--no-renames', '-z', 'HEAD'),
+      ...sourcePaths('ls-files', '-z', '--others', '--exclude-standard'),
+    ]);
+    for (const path of overlays) {
+      if (!existsSync(join(source, path))) {
+        rmSync(join(state.root, path), { force: true });
+        continue;
+      }
+      mkdirSync(dirname(join(state.root, path)), { recursive: true });
+      cpSync(join(source, path), join(state.root, path));
     }
-    mkdirSync(dirname(join(state.root, path)), { recursive: true });
-    cpSync(join(source, path), join(state.root, path));
-  }
-  linkFixtureInstallation(source, state.root);
-  state.git('config', 'user.name', 'Fixture');
-  state.git('config', 'user.email', 'fixture@example.invalid');
-  state.base = state.commit();
-  state.git('remote', 'set-url', 'origin', '.');
+    linkFixtureInstallation(source, state.root);
+    state.git('config', 'user.name', 'Fixture');
+    state.git('config', 'user.email', 'fixture@example.invalid');
+    state.base = state.commit();
+    state.git('remote', 'set-url', 'origin', '.');
 
-  if (!runInitialLanding) {
-    state.reviewed = state.base;
-    state.main = state.base;
-    state.merged = state.base;
-    state.setMain(state.main);
-    state.git('checkout', '-q', '--detach', state.base);
-    return state;
-  }
+    if (!runInitialLanding) {
+      state.reviewed = state.base;
+      state.main = state.base;
+      state.merged = state.base;
+      state.setMain(state.main);
+      state.git('checkout', '-q', '--detach', state.base);
+      return state;
+    }
 
-  // Main adds a package command after the reviewed head forked; main's own owner
-  // writes its catalogue in a new process, as a contributor's generator run would.
-  const addPackageCommand = () => {
-    const policy = 'scripts/oss-publication-policy.ts';
-    const close = '\n];\nexport const PUBLIC_PACKAGE_EXECUTION_SURFACES';
-    expect(state.read(policy)).toContain(close);
-    state.write(policy, state.read(policy).replace(close, `\n  publicCommand("fixture:landing", "node -e 0"),${close}`));
-    const owner = pathToFileURL(join(state.root, policy)).href;
-    execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync, writeFileSync } from 'node:fs';
+    // Main adds a package command after the reviewed head forked; main's own owner
+    // writes its catalogue in a new process, as a contributor's generator run would.
+    const addPackageCommand = () => {
+      const policy = 'scripts/oss-publication-policy.ts';
+      const close = '\n];\nexport const PUBLIC_PACKAGE_EXECUTION_SURFACES';
+      expect(state.read(policy)).toContain(close);
+      state.write(policy, state.read(policy).replace(close, `\n  publicCommand("fixture:landing", "node -e 0"),${close}`));
+      const owner = pathToFileURL(join(state.root, policy)).href;
+      execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync, writeFileSync } from 'node:fs';
       const { createPublicPublicationCatalog } = await import(${JSON.stringify(owner)});
       const catalog = JSON.parse(readFileSync(${JSON.stringify(CATALOGUE)}, 'utf8'));
       writeFileSync(${JSON.stringify(CATALOGUE)}, createPublicPublicationCatalog(catalog.publicPaths, catalog.guardViability).contents);`], { cwd: state.root, env: fixtureEnvironment, timeout: 30000 });
-  };
+    };
 
-  state.append('20990101020000');
-  state.reviewed = state.commit();
-  state.git('checkout', '-q', '--detach', state.base);
-  state.append('20990101010000');
-  addPackageCommand();
-  state.write(SQL_REFERENCE, state.read(SQL_REFERENCE).replace(SQL_HEADING, MAIN_SQL_HEADING));
-  state.main = state.commit();
-  state.setMain(state.main);
-  state.git('checkout', '-q', '--detach', state.reviewed);
+    state.append('20990101020000');
+    state.reviewed = state.commit();
+    state.git('checkout', '-q', '--detach', state.base);
+    state.append('20990101010000');
+    addPackageCommand();
+    state.write(SQL_REFERENCE, state.read(SQL_REFERENCE).replace(SQL_HEADING, MAIN_SQL_HEADING));
+    state.main = state.commit();
+    state.setMain(state.main);
+    state.git('checkout', '-q', '--detach', state.reviewed);
 
-  state.initialLandingCommands = [];
-  const inventoryScript = join(state.root, 'scripts/installation-inventory-refresh.ts');
-  const landingResult = await runLandingMerge(state.root, {
-    runCommand: (command, args) => {
-      state.initialLandingCommands.push({ command, args });
-      if (args.includes(inventoryScript)) {
-        // Real Docker PostgreSQL measurement is witnessed in scripts/agent-review-derived-inventory.test.ts;
-        // keep this unlisted scanner suite Docker-free while preserving exact current-only envelope semantics.
-        const env = inventoryEnvelope(state.read(INVENTORY_PATH));
-        const nextCurrent = structuredClone(env.value.current) as { profiles: Record<string, { objectInventorySha256: string }> };
-        for (const [profile, entry] of Object.entries(nextCurrent.profiles)) {
-          entry.objectInventorySha256 = createHash('sha256')
-            .update(`derived-fixture:${profile}:${state.read(MIGRATION_REGISTRIES[0])}`)
-            .digest('hex');
+    state.initialLandingCommands = [];
+    const inventoryScript = join(state.root, 'scripts/installation-inventory-refresh.ts');
+    const landingResult = await runLandingMerge(state.root, {
+      runCommand: (command, args) => {
+        state.initialLandingCommands.push({ command, args });
+        if (args.includes(inventoryScript)) {
+          // Real Docker PostgreSQL measurement is witnessed in scripts/agent-review-derived-inventory.test.ts;
+          // keep this unlisted scanner suite Docker-free while preserving exact current-only envelope semantics.
+          const env = inventoryEnvelope(state.read(INVENTORY_PATH));
+          const nextCurrent = structuredClone(env.value.current) as { profiles: Record<string, { objectInventorySha256: string }> };
+          for (const [profile, entry] of Object.entries(nextCurrent.profiles)) {
+            entry.objectInventorySha256 = createHash('sha256')
+              .update(`derived-fixture:${profile}:${state.read(MIGRATION_REGISTRIES[0])}`)
+              .digest('hex');
+          }
+          state.write(INVENTORY_PATH, env.before + JSON.stringify(nextCurrent, null, 2).replaceAll('\n', '\n  ') + env.after);
+          return;
         }
-        state.write(INVENTORY_PATH, env.before + JSON.stringify(nextCurrent, null, 2).replaceAll('\n', '\n  ') + env.after);
-        return;
-      }
-      execFileSync(command, args, { cwd: state.root, env: fixtureEnvironment, stdio: 'inherit', timeout: 900000 });
-    },
-  });
-  state.initialLandingResult = landingResult;
-  state.merged = landingResult.head;
-  return state;
+        execFileSync(command, args, { cwd: state.root, env: fixtureEnvironment, stdio: 'inherit', timeout: 900000 });
+      },
+    });
+    state.initialLandingResult = landingResult;
+    state.merged = landingResult.head;
+    return state;
+  } catch (error) {
+    state.cleanup();
+    throw error;
+  }
 }
