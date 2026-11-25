@@ -15,11 +15,11 @@ it("requires the complete native privacy cutover before reopening ordinary traff
   expect(guide).toContain([
     "Before reopening ordinary native privacy traffic, verify all three conditions.",
     "",
-    "1. Both slices are present on every serving revision.",
-    "2. The second slice's catalogue is installed.",
+    "1. Every serving revision includes the installed-owner gate and both parts of the receipt-coverage release.",
+    "2. The complete selected catalogue includes `20261127120002_identity_privacy_erasure_reconciliations.sql`.",
     "3. The per-store cutover is verified.",
     "",
-    "Installing the first slice alone leaves the fence in place.",
+    "Keep the fence in place whenever a serving revision lacks either receipt-coverage part.",
   ].join("\n"));
 });
 

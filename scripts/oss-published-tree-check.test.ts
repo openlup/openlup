@@ -653,8 +653,8 @@ describe("complete public CI", () => {
     expect(browser).toContain("needs: [install-pack]");
     expect(browser).toContain("if: needs.install-pack.outputs.reuse != 'true'");
     expect(browser).not.toContain("scripts/public-ci-reuse.mjs");
-    expect(browser).toContain("fail-fast: false\n      max-parallel: 4");
-    expect(browser).toContain("groups: ['0', '1,6', '2,4', '3,5']");
+    expect(browser).toContain("fail-fast: false\n      max-parallel: 5");
+    expect(browser).toContain("groups: ['0', '6', '1,2', '3,5', '4']");
     expect(aggregate).toContain("name: install-proof\n");
     expect(aggregate).toContain("needs: [install-pack, install-packages, install-browser]");
     expect(aggregate).toContain("\n    timeout-minutes: 2\n");
@@ -693,7 +693,7 @@ describe("complete public CI", () => {
     for (const name of ["install-pack", "test-prep", "pgtap"]) expect(workflowJob(name)).toContain("    needs: [reuse-gate]\n");
     for (const name of ["install-packages", "install-browser"]) expect(workflowJob(name)).toContain("    needs: [install-pack]\n");
     expect(workflowJob("test-full-shard")).toContain("    needs: [reuse-gate, test-prep]\n");
-    for (const [name, timeoutMinutes] of [["install-pack", 5], ["install-packages", 12], ["install-browser", 8], ["test-prep", 10], ["test-full-shard", 25]] as const) {
+    for (const [name, timeoutMinutes] of [["install-pack", 5], ["install-packages", 12], ["install-browser", 12], ["test-prep", 10], ["test-full-shard", 25]] as const) {
       const job = workflowJob(name);
       expect(job).toContain(`    runs-on: ubuntu-latest\n    timeout-minutes: ${timeoutMinutes}\n`);
       expect(job).toContain("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n");

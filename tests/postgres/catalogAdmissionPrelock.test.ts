@@ -380,7 +380,8 @@ it.each(stageCases)("bounds $stage with prelock=$hooked", async ({ stage, prefix
       const minRemainingProbe = input.timeoutMs - (hit.at - start);
       const { query_timeout: allowance } = hit.request as QueryConfig & { query_timeout: number };
       expect(allowance).toBeGreaterThanOrEqual(minRemainingProbe - 2);
-      expect(allowance).toBeLessThanOrEqual(minRemainingProbe + 3);
+      // hit.at is recorded after withCatalogAdmissionFence computes remaining(), so CI event-loop jitter can shift hit.at later.
+      expect(allowance).toBeLessThanOrEqual(Math.min(input.timeoutMs, minRemainingProbe + 25));
       expect(allowance).toBeLessThanOrEqual(input.timeoutMs - 40);
     }
     if (stage === "rollback") {
@@ -402,7 +403,8 @@ it.each(stageCases)("bounds $stage with prelock=$hooked", async ({ stage, prefix
       expect(Number(statement) - Number(lock)).toBe(wallMarginMs);
       const expectedMs = input.timeoutMs - (setting.at - start);
       expect(Number(lock)).toBeGreaterThanOrEqual(expectedMs - 2);
-      expect(Number(lock)).toBeLessThanOrEqual(expectedMs + 3);
+      // setting.at is recorded after withCatalogAdmissionFence computes remaining(), so CI event-loop jitter can shift setting.at later.
+      expect(Number(lock)).toBeLessThanOrEqual(Math.min(input.timeoutMs, expectedMs + 25));
     }
 
     if (stage === "reservation") expect(releases).toEqual([[0, false], [1, false]]);
@@ -1627,6 +1629,87 @@ it("checks exact selected input, transaction and advisory layout before fresh lo
     expect((await db.query(selectedSql, input)).rows).toEqual([{ result: { kind: "locked" } }]);
   });
   await selectedRaw(db => expect(db.query(selectedSql, ["prelock", request.key, "invalid", guards])).rejects.toMatchObject({ code: "22P02" }));
+});
+
+it("observes the key gate before cleanup with the first guard held by a peer", async () => {
+  const { request, guards } = await selectedFixture();
+  const owner = installation.owner, peer = await owner.connect();
+  const input = ["prelock", request.key, request.clientId, guards];
+  const targets = ["identity_privacy_erasures", "clients", "commerce_orders", "catalog_skus", "catalog_sku_revisions", "catalog_products",
+    "catalog_sku_identifiers", "catalog_product_document_revisions", "catalog_attribute_projection", "catalog_publication_heads",
+    "catalog_publications", "catalog_operator_receipts", "catalog_publication_decisions", "catalog_publication_pointer_capabilities",
+    "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "price_lists", "price_entries", "subscription_price_policy_revisions"];
+  try {
+    await peer.query("BEGIN");
+    await peer.query("LOCK TABLE public.identity_privacy_erasures IN ACCESS EXCLUSIVE MODE");
+    await selectedRaw(async db => {
+      const writerPid = await pid(db);
+      await db.query("SAVEPOINT before_key_gate");
+      await expect(db.query(selectedSql, input)).rejects.toMatchObject(dark);
+      expect((await owner.query("SELECT state FROM pg_stat_activity WHERE pid=$1", [writerPid])).rows)
+        .toEqual([{ state: "idle in transaction (aborted)" }]);
+      expect((await owner.query(`SELECT l.locktype,c.relname FROM pg_locks l JOIN pg_class c ON c.oid=l.relation
+        WHERE l.pid=$1 AND l.locktype IN ('relation','tuple') AND c.relname=ANY($2::text[])`, [writerPid, targets])).rows).toEqual([]);
+      await db.query("ROLLBACK TO SAVEPOINT before_key_gate");
+    });
+    // Calibrate against the same first guard above the key check. The
+    // replacement is visible only to this transaction and is rolled back.
+    const calibration = await owner.connect();
+    try {
+      await calibration.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      await calibration.query("SET LOCAL lock_timeout='2s'; SET LOCAL statement_timeout='3s'");
+      const { rows: [routine] } = await calibration.query<{ definition: string }>(`SELECT
+        pg_get_functiondef('public.catalog_admission_runtime_checkout(text,text,uuid,jsonb)'::regprocedure) AS definition`);
+      const ledger = "LOCK TABLE public.identity_privacy_erasures IN SHARE MODE;";
+      const key = "v_key := pg_catalog.hashtextextended(p_key,0);";
+      expect(routine!.definition).toContain(ledger);
+      expect(routine!.definition).toContain(key);
+      await calibration.query(routine!.definition.replace(ledger, "").replace(key, ledger + "\n    " + key));
+      await calibration.query("SET LOCAL ROLE service_role");
+      const writerPid = await pid(calibration), peerPid = await pid(peer);
+      const dispatched = calibration.query(selectedSql, input).catch((error: unknown) => error);
+      try { await waitForBlock(writerPid, peerPid, "relation", "public.identity_privacy_erasures"); }
+      finally { expect(await dispatched).toMatchObject({ code: "55P03" }); }
+    } finally { await calibration.query("ROLLBACK"); calibration.release(); }
+  } finally { await peer.query("ROLLBACK"); peer.release(); }
+});
+
+it.each([false, true])("preserves the incumbent settlement through cleanup failures with prelock=%s", async hooked => {
+  for (const outcome of ["success", "read", "COMMIT"]) {
+    const failure = new Error("chosen outcome"), release = vi.fn(), remove = vi.fn();
+    const base = pair(undefined, (_index, sql) => { if (sql === "COMMIT" && outcome === "COMMIT") throw failure; });
+    let connected = 0;
+    const pool = { async connect() {
+      const db = await base.connect();
+      if (connected++ !== 0) return db;
+      const releaseClient = db.release, removeListener = db.removeListener;
+      db.release = discard => { release(discard); releaseClient(discard); throw new Error("release failed"); };
+      db.removeListener = (event, listener) => { remove(); removeListener(event, listener); throw new Error("listener removal failed"); };
+      return db;
+    } };
+    const settled = withCatalogAdmissionFence(pool, scope(), async () => {
+      if (outcome === "read") throw failure;
+      return "chosen value";
+    }, hooked ? { prelock: guard } : undefined);
+    if (outcome === "success") await expect(settled).resolves.toBe("chosen value");
+    else await expect(settled).rejects.toBe(failure);
+    expect(release).toHaveBeenCalledExactlyOnceWith(outcome === "COMMIT");
+    expect(remove).toHaveBeenCalledTimes(1);
+  }
+});
+
+it("rejects any authorizer result other than undefined before fresh guards", async () => {
+  const { request, guards } = await selectedFixture();
+  for (const returned of [null, false, {}, () => Promise.resolve(), () => Promise.reject(new Error("async refusal"))]) {
+    const trace: string[] = [];
+    const pool = pair(undefined, (_index, sql) => { trace.push(sql); }, installation.runtime);
+    const read = vi.fn(async () => undefined);
+    const authorize = () => typeof returned === "function" ? returned() : returned;
+    await expect(withSelectedCatalogAdmissionFence(pool, request, guards, read, authorize))
+      .rejects.toThrow("authorizeFresh must return undefined");
+    expect(trace).not.toContain(selectedSql);
+    expect(read).not.toHaveBeenCalled();
+  }
 });
 
 it("checks the guarded owner coordinates and uses the runtime login for the probe", async () => {
