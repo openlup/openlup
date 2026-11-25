@@ -260,7 +260,10 @@ export async function reportFailedTests(reportPath, privateValues = [], log = co
   let report;
   try { report = JSON.parse(await readFile(reportPath, 'utf8')); }
   catch { log('Starter browser failed tests: report unavailable'); return; }
-  for (const line of formatFailedTests(failedTestSummaries(report), privateValues)) log(line);
+  let failures;
+  try { failures = failedTestSummaries(report); }
+  catch { log('Starter browser failed tests: report unreadable'); return; }
+  for (const line of formatFailedTests(failures, privateValues)) log(line);
 }
 
 export function capturePrivateValues(message) {
