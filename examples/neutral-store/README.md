@@ -426,6 +426,15 @@ purchase path and must never be hand-written by this application. After the
 catalogue seed, purchase uses zero hand-written business rows. This data step
 is not a schema installer, price editor, promotion engine or customer import.
 
+## Published storefront products
+
+The native host adds active `classic` publication SKUs after the seeded
+catalogue. Keep the `?sku=` selection in product links to reopen the same
+variant. The cart and the server quote use that exact SKU and quantity.
+The [reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#show-published-products-in-the-starter)
+covers public copy and copied storefront pages. See [starter limits](docs/limits.md#published-catalogue-and-quote)
+for shared capacity, document schemas and governed checkout.
+
 ## Customer subscription editors
 
 The host mounts `subscription.preview`, `subscription.command` and

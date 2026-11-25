@@ -15,7 +15,7 @@ import { verifyProductDocument, type MixedProductRead } from './editor-catalogue
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import { createQuoteShipping } from '../owned/quote-shipping.ts';
 import { isQuoteRefusalCode } from '../owned/quote-copy.ts';
-import { checkoutOfferContext, isRecord, parseCart, validateCart, type OfferQuote } from '../shared/offer.ts';
+import { checkoutOfferContext, isRecord, parseCart, starterQuoteCatalogMaxItems, validateCart, type OfferQuote } from '../shared/offer.ts';
 import type { ActionContext } from './bindings.ts';
 import type { AcquisitionPredecessors } from './acquisition-predecessors.ts';
 
@@ -74,7 +74,7 @@ export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: 
     if (selected.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) {
       throw new AcquisitionTermsError('acquisition_terms_capability_required');
     }
-    const admitted = validateCart(config,payload.cart);
+    const admitted = validateCart(config,payload.cart,'checkout',context.quoteProducts);
     if (!admitted.ok) throw new Error(admitted.issues[0]!.code);
     const eligibility = selected.cart.mode === 'subscription' && email !== null
       ? await predecessors.eligibility(db).resolve(email) : { clientId: context.actor.customerRef };
@@ -91,7 +91,8 @@ export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: 
     const taxProfile = { included: true as const, country: config.market.country, ...config.purchase.tax };
     const port = createDbBackedCommerceQuotePort<Request, import('@openlup/platform/pricing').CommerceQuoteCatalogItem, Record<string, never>,
       ReturnType<typeof checkoutOfferContext> & { mode: Request['mode']; cadenceDays: number | null; promoCodes: string[]; starterRequest: string; acquisitionCapability?: typeof ACQUISITION_TERMS_CAPABILITY; starterRenewalTerms?: RenewalRetainedTerms }>({
-      quoteCatalogReadPort: createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: quoteDocumentVerifier(config.quote.document.schemaId) }),
+      quoteCatalogReadPort: createPostgresCommerceQuoteCatalogReadPort(db, { maxItems: starterQuoteCatalogMaxItems,
+        verifyDocument: quoteDocumentVerifier(config.quote.document.schemaId) }),
       isStrictD1Quote: true, commercePriceAuthorityPort: createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(db)),
       taxProfile, supportedTaxProfiles: [taxProfile], regionCode: config.market.country, currency: config.market.currency,
       now: () => atTime, hasPromotionCodePort: false, lineContext: () => ({}),
@@ -103,7 +104,7 @@ export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: 
     const snapshot = await port.createServerAuthoritativeQuote(request, { clientId: eligibility.clientId, pricingPolicy });
     const terms = snapshot.quote.context.acquisitionTerms;
     if (terms) {
-      const graduation = validateCart(config,{ ...selected.cart,cadenceDays: config.quote.acquisition.graduationCadenceDays },'graduation');
+      const graduation = validateCart(config,{ ...selected.cart,cadenceDays: config.quote.acquisition.graduationCadenceDays },'graduation',context.quoteProducts);
       if (!graduation.ok) throw new Error(graduation.issues[0]!.code);
       const view = projectQuote(snapshot, config.quote.acquisition.minimumProductPayableMinor);
       if (view.secondTotalMinor === undefined) throw new Error('starter_quote_refresh_required');

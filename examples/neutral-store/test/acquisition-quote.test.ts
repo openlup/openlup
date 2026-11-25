@@ -6,7 +6,8 @@ import type { Pool } from 'pg';
 import { ACQUISITION_TERMS_CAPABILITY, selectAcquisitionTerms, AcquisitionTermsError, CommerceQuoteError, CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { createPromotionQuoteAcceptance } from '@openlup/platform/promotions';
 import type { PromotionRow } from '@openlup/core/promo';
-import type { NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
+import { createHash } from 'node:crypto';
+import { canonicalCatalogDraftJson, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
 import { documentDigest, editorDocuments, verifySizedProductDocument, type MixedProductRead } from '../host/editor-catalogue.ts';
 import { configurations } from '../owned/store.config.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
@@ -568,7 +569,7 @@ for (const [name, mutate] of Object.entries(badEvidence)) test(`quote and sized 
   assert.throws(() => sized(document, mixed), refusal);
 });
 
-test('both readers preserve their legacy refusal order and verify the original mixed digest first', async () => {
+test('application_document_path_is_byte_identical', async () => {
   const { gram, gramDocument, sibling, document, documentRevision, envelope, mixed, quote, sized } = documentFixture();
   Object.assign(sibling.physical, { extra: true });
   const digestRefusal = exactCatalogRefusal({ code: 'catalog_document_digest_mismatch', path: 'documentRevision.digest',
@@ -584,4 +585,63 @@ test('both readers preserve their legacy refusal order and verify the original m
   documentRevision.digest = documentDigest(gramDocument);
   await quote(gramDocument, envelope);
   assert.deepEqual(sized(gramDocument), gram);
+});
+
+test('published identity precedes digest and damage can be restored from retained evidence', async () => {
+  const { quote, envelope } = documentFixture();
+  const ref = envelope.documentRevision;
+  ref.schemaId = 'fixture:product@1';
+  const retained = { schemaId: ref.schemaId, documentRef: ref.documentRef, productSlug: envelope.product.slug,
+    revisionNo: ref.revisionNo, authored: { names: ['Léon', '雪'], flags: [true, null] } };
+  const hash = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
+  const saved = canonicalCatalogDraftJson(retained);
+  ref.digest = hash(saved);
+  const refusal = (digest: boolean) => (error: unknown) => {
+    assert.ok(error instanceof CommerceQuoteCatalogReadError);
+    assert.equal(Object.getPrototypeOf(error), CommerceQuoteCatalogReadError.prototype);
+    assert.deepEqual(Reflect.ownKeys(error).filter(key => key !== 'stack'),
+      ['message', 'code', 'name', 'path', 'observed', 'causeText', 'fix', 'recheck']);
+    const code = digest ? 'catalog_document_digest_mismatch' : 'catalog_document_schema_invalid';
+    assert.equal(error.message, code);
+    assert.deepEqual(Object.fromEntries(Object.entries(error)), {
+      code, name: 'CommerceQuoteCatalogReadError', path: digest ? 'documentRevision.digest' : 'documentRevision',
+      observed: digest ? 'The canonical document has a different digest.' : 'The published document identity or encoding is invalid.',
+      causeText: 'The stored document does not match the admitted revision.',
+      fix: 'Restore the admitted revision from a verified backup.', recheck: 'Repeat the original quote.',
+    });
+    return true;
+  };
+  await quote(JSON.parse(saved), envelope);
+  for (const replacement of [
+    { schemaId: 'another' }, { productSlug: 'another' }, { revisionNo: 0 }, { revisionNo: ref.revisionNo + 1 },
+    { revisionNo: 2_147_483_648 }, { documentRef: null }, { documentRef: 'wrong-but-hashed' },
+  ]) {
+    const damaged = { ...retained, ...replacement };
+    ref.digest = hash(canonicalCatalogDraftJson(damaged));
+    await assert.rejects(quote(damaged, envelope), refusal(false));
+    ref.digest = '0'.repeat(64);
+    await assert.rejects(quote(damaged, envelope), refusal(false));
+  }
+  ref.digest = hash(saved);
+  await assert.rejects(quote({ ...retained, authored: { flags: [] } }, envelope), refusal(true));
+  await quote(JSON.parse(saved), envelope);
+
+  const emptyArray = (depth: number) => Array.from({ length: depth - 1 }).reduce<unknown>(inner => [inner], []);
+  const withinDepth = { ...retained, authored: emptyArray(47) };
+  ref.digest = hash(canonicalCatalogDraftJson(withinDepth));
+  await quote(withinDepth, envelope);
+  await assert.rejects(quote({ ...retained, authored: emptyArray(48) }, envelope), refusal(false));
+  for (const authored of [Infinity, -0, { value: '\u0000' }, { value: '\ud800' }])
+    await assert.rejects(quote({ ...retained, authored }, envelope), refusal(false));
+
+  const empty = canonicalCatalogDraftJson({ ...retained, authored: '' });
+  for (const bytes of [1_048_576, 1_048_577]) {
+    const padding = bytes - Buffer.byteLength(empty, 'utf8');
+    const value = 'é'.repeat(Math.floor(padding / 2)) + 'a'.repeat(padding % 2);
+    const exact = canonicalCatalogDraftJson({ ...retained, authored: 'PLACEHOLDER' }).replace('PLACEHOLDER', value);
+    assert.equal(Buffer.byteLength(exact, 'utf8'), bytes);
+    ref.digest = hash(exact);
+    if (bytes === 1_048_576) await quote(JSON.parse(exact), envelope);
+    else await assert.rejects(quote(JSON.parse(exact), envelope), refusal(false));
+  }
 });

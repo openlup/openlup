@@ -60,3 +60,35 @@ for (const original of Object.values(configurations)) {
     assert.equal(called, 1);
   });
 }
+
+test('only a structured published quote request resolves a fresh private catalogue', async () => {
+  const config = context.config;
+  const seedProducts = config.offer.products;
+  const getBindings = () => {
+    const bindings = pendingBindings();
+    bindings.actions['offer.validate'] = async (_input, bound) => ({
+      ok: true, value: bound.quoteProducts?.map(({ sku }) => sku) ?? 'seed-only',
+    });
+    return bindings;
+  };
+  const baseline = getBindings(), bindings = getBindings();
+  let walks = 0;
+  bindings.resolveCatalogue = async () => {
+    walks++;
+    return { ok: true, value: { products: [...seedProducts, { ...seedProducts[0]!, sku: 'ARTICLE-SIBLING' }] } };
+  };
+  const cart = { schemaVersion: 1, configuration: config.id, mode: 'one_time',
+    lines: [{ sku: seedProducts[0]!.sku, quantity: config.offer.minUnits }] };
+  for (const input of [{ cart }, { cart: { ...cart, lines: [{ sku: 'ARTICLE-SIBLING', quantity: 0 }] } }, { cart: null }]) {
+    assert.equal(JSON.stringify(await dispatchAction(bindings, 'offer.validate', input, context)),
+      JSON.stringify(await dispatchAction(baseline, 'offer.validate', input, context)));
+  }
+  assert.equal(walks, 0);
+  const result = await dispatchAction(bindings, 'offer.validate', {
+    cart: { ...cart, lines: [{ sku: 'ARTICLE-SIBLING', quantity: config.offer.minUnits }] },
+  }, context);
+  assert.deepEqual(result, { ok: true, value: [...seedProducts.map(item => item.sku), 'ARTICLE-SIBLING'] });
+  assert.equal(walks, 1);
+  assert.equal(context.quoteProducts, undefined);
+  assert.deepEqual(await dispatchAction(bindings, 'storefront.catalogue', {}, context), { ok: false, code: 'host_binding_required' });
+});
