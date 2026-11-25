@@ -121,6 +121,9 @@ async function cataloguePrice(payload: Record<string, unknown>, context: ActionC
   const query = { variantId: input.variantId, priceListId: input.priceListId };
   if (input.action === 'price-apply' && query.priceListId !== priceListId) return refused('price_list_not_active');
   return asOperator(actorId, async db => {
+    const previewAt = input.action === 'price-preview'
+      ? (await db.query('SELECT statement_timestamp()::text AS instant')).rows[0]?.instant : undefined;
+    if (input.action === 'price-preview' && typeof previewAt !== 'string') return refused('price_setup_dependency_unavailable');
     const handler = createCatalogPriceSetupHandler({ store: createPostgresCatalogPriceSetupStore(db),
       authorizeOperator: async () => ({ actorId }) });
     const priceSetup = await handler.preview(input.action === 'price-preview' && input.unitPriceMinor !== undefined
@@ -138,8 +141,8 @@ async function cataloguePrice(payload: Record<string, unknown>, context: ActionC
           AND currency=(SELECT value_text FROM public.commerce_settings WHERE key='settlement_currency')
         ORDER BY created_at DESC,id DESC LIMIT 1),false) AS "listEffective",
         EXISTS(SELECT 1 FROM public.price_entries WHERE variant_id=$1 AND price_list_id=$2
-          AND mode='one_time' AND min_qty=1 AND active AND valid_from>=statement_timestamp()
-          AND (valid_to IS NULL OR valid_to>statement_timestamp())) AS "hasPending"`, [query.variantId, query.priceListId]);
+          AND mode='one_time' AND min_qty=1 AND active AND valid_from > $3::timestamptz
+          AND (valid_to IS NULL OR valid_to > $3::timestamptz)) AS "hasPending"`, [query.variantId, query.priceListId, previewAt]);
       if (!state) return refused('price_setup_dependency_unavailable');
       return success({ listEffective: state.listEffective, currency, priceSetup: { ...priceSetup, hasPending: state.hasPending } });
     }

@@ -413,7 +413,10 @@ test('catalogue_apply_reports_and_bounds', async () => {
   const config = selectConfiguration();
   const policy = { revisionId, discountBps: 500, roundingQuantumMinor: 10, roundingRule: 'FLOOR_TO_QUANTUM' };
   const validTarget = { priceListId, currency: config.market.currency, basis: null, policies: [policy], valid: true };
-  let target = validTarget, inGate = false, switchListOnPreview = false;
+  let target = validTarget, inGate = false, switchListOnPreview = false, successorStarts: string | undefined;
+  const previewAt = '2026-11-25T10:00:00.000123Z';
+  const pendingReadAt = '2026-11-25T10:00:02.000Z';
+  const predecessor = { entryId: randomUUID(), unitPriceMinor: 11, validFrom: '2026-11-25T09:00:00.000Z' };
   const commands: unknown[][] = [];
   const previews: unknown[][] = [];
   const trace: string[] = [];
@@ -438,20 +441,28 @@ test('catalogue_apply_reports_and_bounds', async () => {
       assert.equal(principal, actorId);
       trace.push('asActor');
       return work({ async query(sql, values) {
+        if (sql === 'SELECT statement_timestamp()::text AS instant') {
+          assert.deepEqual(trace.slice(-1), ['asActor']);
+          trace.push('reference instant');
+          return { rows: [{ instant: previewAt }] };
+        }
         if (sql.includes('catalog_price_setup_preview')) {
           trace.push('preview');
           previews.push(values!);
           if (switchListOnPreview) target = { ...target, priceListId: randomUUID() };
           const readiness = { ready: true, reasons: [] };
-          return { rows: [{ result: { outcome: 'preview', variantId, priceListId, inGate, current: null, currentCount: 0,
+          return { rows: [{ result: { outcome: 'preview', variantId, priceListId, inGate,
+            current: successorStarts ? predecessor : null, currentCount: Number(!!successorStarts),
             subscription: { kind: 'derived', revisionId, discountBps: 500, roundingQuantumMinor: 10, derivedUnitPriceMinor: null },
             readiness, ...(values?.[2] !== null && { proposed: { unitPriceMinor: values?.[2], readiness } }) } }] };
         }
         if (sql === 'RESET ROLE') { trace.push('runtime read'); return { rows: [] }; }
         if (sql.includes('AS "hasPending"')) {
-          assert.deepEqual(values, [variantId, priceListId]);
-          assert.deepEqual(trace.slice(-3), ['asActor', 'preview', 'runtime read']);
-          return { rows: [{ listEffective: target.priceListId === priceListId, hasPending: false }] };
+          assert.deepEqual(values, [variantId, priceListId, previewAt]);
+          assert.deepEqual(trace.slice(-4), ['asActor', 'reference instant', 'preview', 'runtime read']);
+          assert.match(sql, /valid_from > \$3::timestamptz/u);
+          const hasPending = successorStarts !== undefined && Date.parse(successorStarts) > Date.parse(String(values?.[2]));
+          return { rows: [{ listEffective: target.priceListId === priceListId, hasPending }] };
         }
         trace.push('apply');
         commands.push(values!);
@@ -528,6 +539,14 @@ test('catalogue_apply_reports_and_bounds', async () => {
       assert.equal(trace.includes('asActor'), false);
     }
     target = validTarget;
+    successorStarts = '2026-11-25T10:00:01.000Z';
+    assert.ok(Date.parse(previewAt) < Date.parse(successorStarts) && Date.parse(successorStarts) <= Date.parse(pendingReadAt));
+    const crossing = await price(previewInput, context);
+    assert.ok(crossing.ok && 'value' in crossing);
+    const { priceSetup } = crossing.value as { priceSetup: { current: unknown; hasPending: boolean } };
+    assert.deepEqual(priceSetup.current, predecessor);
+    assert.equal(priceSetup.hasPending, true);
+    successorStarts = undefined;
     switchListOnPreview = true;
     const oldList = await price(previewInput, context);
     assert.ok(oldList.ok && 'value' in oldList);
