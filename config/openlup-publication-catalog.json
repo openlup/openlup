@@ -31538,6 +31538,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/orderDraftPaymentEntryFence.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/orderDraftReceiptPrivacy.test.ts",
       "class": "public-output"
     },

@@ -9872,6 +9872,25 @@
             "sha256": "c12b37ade3907a40e9bc7ae84c8a7e08032d5baec379268dc47caef41b035ee0"
           }
         ]
+      },
+      {
+        "path": "db/platform/migrations/20261129120000_order_draft_payment_entry_fence.sql",
+        "row": "order-draft-payment-entry-fence",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_open_settlement_intent(text,uuid,text,bigint,text,jsonb,timestamptz)",
+            "beforeSha256": "9e4cea8ecd6acf411a0a7f473799ce3ce3801ef92e4daa36ee1c1788cd1a2b74",
+            "searchPath": "public, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz)",
+            "beforeSha256": "caa3d272344921102a17373406a3812d3df390e0c28d4d3c9a3bd55d6017b75a",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -14281,6 +14300,22 @@
           "signature": "public.commerce_read_order_draft_receipt_v2(jsonb)",
           "beforeSha256": null,
           "afterSha256": "3267924f242d80e0e0d79280ada8cbd1e65923f90f5d36df3f16276a1eebcb8f"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129120000_order_draft_payment_entry_fence.sql",
+      "sha256": "1f11757213628148547e2d2b500f0e85feced698252e4afdf7dba030b245a174",
+      "functions": [
+        {
+          "signature": "public.commerce_open_settlement_intent(text,uuid,text,bigint,text,jsonb,timestamptz)",
+          "beforeSha256": "9e4cea8ecd6acf411a0a7f473799ce3ce3801ef92e4daa36ee1c1788cd1a2b74",
+          "afterSha256": "8a386210597595fb6cb4a845b6a2aae7970f044b81e58f75880fbbea472447bb"
+        },
+        {
+          "signature": "public.payment_provider_intent_create(text,text,uuid,uuid,uuid,bigint,text,jsonb,text,timestamptz)",
+          "beforeSha256": "caa3d272344921102a17373406a3812d3df390e0c28d4d3c9a3bd55d6017b75a",
+          "afterSha256": "fe9942272b5b1f2c50eef8315c7f49cc0e0c2b5f05d5238d92c64315410f21db"
         }
       ]
     }
