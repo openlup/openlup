@@ -3,13 +3,11 @@ import { z } from "zod";
 import { canonicalCatalogDraftJson, CATALOG_DRAFT_MAX_BYTES } from "../catalog/contracts/index.js";
 import { verifyTaxQuoteRequest, verifyTaxQuoteResult } from "./digest.js";
 import type { TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal } from "./contracts/types.js";
+import { currency, digest, exclusiveComposition, fiscalComposition, fiscalSuccessEvidence, instant, uuid,
+  type CheckoutComposition, type FiscalCheckoutComposition, type FiscalSuccessEvidence } from "./taxCalculationComposition.js";
 
 const text = z.string().refine(value => value.length > 0 && value.length <= 256);
 const bytes = (max: number) => z.string().refine(value => value.length > 0 && Buffer.byteLength(value) <= max);
-const uuid = z.string().length(36).regex(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u);
-const digest = z.string().length(64).regex(/^[0-9a-f]+$/u);
-const currency = z.string().length(3).regex(/^[A-Z]{3}$/u);
-const instant = z.string().length(24).refine(value => value >= "0001" && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value);
 const destination = z.strictObject({ snapshotRef: uuid, destinationDigest: digest, schemaVersion: z.literal(2),
   policyRevision: bytes(720).refine(value => !/\p{Cc}/u.test(value) && /[^ ]/u.test(value)) });
 const arm = z.enum(["fiscal_profile", "tax_calculation"]);
@@ -23,7 +21,11 @@ const invocation = z.strictObject({ purpose, mode: z.enum(["one_time", "subscrip
 const common = { identity: scope, invocation };
 const coverage = z.strictObject({ accountRef: text, revision: text, digest });
 const fiscalRequest = z.strictObject({ basis: z.literal("inclusive"), taxDate: z.iso.datetime({ precision: 3 }) });
-const pin = z.strictObject({ destination, kind: arm, request: z.unknown(), coverage: coverage.nullable(), validUntil: instant, recovery: digest.nullable() });
+const pinFields = { destination, request: z.unknown(), coverage: coverage.nullable(), validUntil: instant, recovery: digest.nullable() };
+const pin = z.discriminatedUnion("kind", [
+  z.strictObject({ ...pinFields, kind: z.literal("fiscal_profile"), composition: fiscalComposition.optional() }),
+  z.strictObject({ ...pinFields, kind: z.literal("tax_calculation"), composition: exclusiveComposition.optional() }),
+]);
 const begin = z.discriminatedUnion("operation", [z.strictObject({ ...common, operation: z.literal("lookup") }),
   z.strictObject({ ...common, operation: z.literal("claim"), pin: pin.optional(), recovery: digest.nullable() })]);
 const outcomes = z.discriminatedUnion("kind", [
@@ -35,7 +37,8 @@ const outcomes = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("estimate"), quote: z.unknown() }),
 ]);
 const complete = z.strictObject({ ...common, calculationId: uuid, claimToken: uuid, generation: z.number().int().min(1).max(2147483647),
-  seal: z.strictObject({ destination, kind: arm, requestDigest: digest, validUntil: instant, contradiction: z.boolean(), outcome: outcomes, evidence: z.unknown() }),
+  seal: z.strictObject({ destination, kind: arm, requestDigest: digest, validUntil: instant, contradiction: z.boolean(),
+    outcome: outcomes, evidence: z.unknown(), compositionDigest: digest.optional() }),
   adapter: z.strictObject({ request: z.unknown(), result: z.unknown() }).optional() });
 
 interface TaxCalculationExecutor {
@@ -65,23 +68,31 @@ interface EvaluationEvidence {
   kind: "fiscal_profile" | "tax_calculation";
   validUntil: string;
 }
-interface EvaluationPin extends EvaluationEvidence {
+type EvaluationPin = Omit<EvaluationEvidence, "kind"> & {
   request: unknown;
   coverage: { accountRef: string; revision: string; digest: string } | null;
   recovery: string | null;
-}
+} & (
+  | { kind: "fiscal_profile"; composition?: FiscalCheckoutComposition }
+  | { kind: "tax_calculation"; composition?: CheckoutComposition & { fiscal?: never } }
+);
 type BeginTaxCalculationInput = Uint8Array | (EvaluationScope & (
   { operation: "lookup" } | { operation: "claim"; pin?: EvaluationPin; recovery: string | null }
 ));
 type Refusal = Pick<TaxRefusal, "kind" | "field" | "remedy"> & { code: string };
 type QuoteOutcome = { kind: "estimate" | "final"; quote: unknown };
 type UnavailableCode = "tax_coverage_evidence_unavailable" | "tax_adapter_unavailable";
+type CompletionOutcome = Refusal | QuoteOutcome | { kind: "indeterminate" } | { kind: "unavailable"; code: UnavailableCode };
+type EvaluationSeal = EvaluationEvidence & { requestDigest: string; contradiction: boolean } & (
+  | { evidence: unknown; outcome: CompletionOutcome; compositionDigest?: never }
+  | { kind: "fiscal_profile"; evidence: FiscalSuccessEvidence; outcome: QuoteOutcome; compositionDigest: string }
+  | { kind: "tax_calculation"; evidence: unknown; outcome: QuoteOutcome; compositionDigest: string }
+);
 type CompleteTaxCalculationInput = Uint8Array | (EvaluationScope & {
   calculationId: string;
   claimToken: string;
   generation: number;
-  seal: EvaluationEvidence & { requestDigest: string; contradiction: boolean; evidence: unknown;
-    outcome: Refusal | QuoteOutcome | { kind: "indeterminate" } | { kind: "unavailable"; code: UnavailableCode } };
+  seal: EvaluationSeal;
   adapter?: { request: unknown; result: unknown };
 });
 type Terminal = { kind: "terminal"; validUntil: string; freshness: "current" | "historical";
@@ -117,6 +128,7 @@ const remedies: Record<string, string> = {
 };
 const definitiveRemedy = "Request a new quote when the tax service is available.";
 const historyRemedy = "Recover the verified original history through its owner.";
+const invalidClaimComposition = new Error("Invalid stored quote composition");
 const refusal = (code: string, field: string, remedy = remedies[code]!): Refusal => ({ kind: "refused", code, field, remedy });
 function fromDatabase(error: unknown): Refusal | undefined {
   if (!(error instanceof Error) || !("code" in error) || !["22023", "55000"].includes(String(error.code))
@@ -158,6 +170,10 @@ async function execute(lane: TaxCalculationTransactionLane, input: EvaluationSco
       const sentAt = performance.now();
       const { sampledAtMs, ...reply } = ((await db.query(statement, [wire])).rows[0]?.result ?? {}) as BeginTaxCalculationResult & { sampledAtMs?: number };
       if (!reply?.kind) throw new Error("Missing evaluation result");
+      if (reply.kind === "claimed" && Object.hasOwn(reply.pin, "composition")) {
+        const schema = reply.pin.kind === "fiscal_profile" ? fiscalComposition : exclusiveComposition;
+        if (!schema.safeParse(reply.pin.composition).success) throw invalidClaimComposition;
+      }
       awaitingCommit = true;
       return { reply, sampledAtMs, sentAt };
     });
@@ -165,6 +181,7 @@ async function execute(lane: TaxCalculationTransactionLane, input: EvaluationSco
       return refusal("tax_calculation_expired", "/taxEvidence/expiresAt");
     return result.kind === "terminal" ? { ...result, freshness: new Date().toISOString() >= result.validUntil ? "historical" : "current" } : result;
   } catch (error) {
+    if (error === invalidClaimComposition) return refusal("tax_evaluation_integrity_invalid", "/taxEvidence");
     if (awaitingCommit && input.operation !== "lookup") return execute(lane, { operation: "lookup", identity: input.identity, invocation: input.invocation });
     const known = awaitingCommit ? undefined : fromDatabase(error);
     if (known) return known;
@@ -193,7 +210,12 @@ export async function beginTaxCalculation(lane: TaxCalculationTransactionLane, i
       const { address: _address, ...destination } = request.input.destination;
       pin.request = { ...request, input: { ...request.input, destination } };
     } else if (pin.coverage !== null || pin.recovery !== null) return refusal("tax_invalid_input", "/pin");
-    else if (!fiscalRequest.safeParse(pin.request).success) return refusal("tax_invalid_input", "/pin/request");
+    else {
+      const fiscal = fiscalRequest.safeParse(pin.request);
+      if (!fiscal.success) return refusal("tax_invalid_input", "/pin/request");
+      if (pin.composition && !instant.safeParse(fiscal.data.taxDate).success)
+        return refusal("tax_invalid_input", "/pin/request/taxDate");
+    }
     Object.assign(pin, { requestDigest });
   } catch { return refusal("tax_invalid_input", "/pin/request"); }
   return execute(lane, parsed);
@@ -205,20 +227,32 @@ export async function beginTaxCalculation(lane: TaxCalculationTransactionLane, i
 export async function completeTaxCalculation(lane: TaxCalculationTransactionLane, input: CompleteTaxCalculationInput): Promise<CompleteTaxCalculationResult> {
   const parsed = prepare(complete, input);
   if ("kind" in parsed) return parsed;
-  const { seal, adapter, invocation } = parsed;
+  const { seal: { compositionDigest, ...seal }, adapter, invocation } = parsed;
+  const success = "quote" in seal.outcome;
+  if (compositionDigest !== undefined && !success) return refusal("tax_invalid_input", "/seal");
   let evidence = seal.evidence, disposition: string = seal.outcome.kind;
   try {
-    if ("quote" in seal.outcome) {
+    if (success) {
       if (seal.outcome.kind !== invocation.purpose) return refusal("tax_reference_conflict", "/taxEvidence");
       if (seal.kind === "tax_calculation") {
         const request = adapter?.request as TaxQuoteRequestV1, result = adapter?.result as TaxQuoteResultV1;
         if (result?.kind !== seal.outcome.kind || evaluationDigest("evaluation-request", request) !== seal.requestDigest) return refusal("tax_reference_conflict", "/taxEvidence");
         const invalid = verifyTaxQuoteResult(request, result);
         if (invalid) return invalid;
-        evidence = { adapterEvidence: result.evidence, adapterDigest: result.evidenceDigest };
+        evidence = { adapterEvidence: result.evidence, adapterDigest: result.evidenceDigest,
+          ...(compositionDigest !== undefined ? { compositionDigest } : {}) };
         disposition = result.evidence.coverage.vector.every(row => row.decision === "out_of_scope") ? "skip" : "required";
         if (seal.validUntil > result.evidence.expiresAt) return refusal("tax_reference_conflict", "/taxEvidence/expiresAt");
-      } else disposition = "no_provider_posting";
+      } else {
+        disposition = "no_provider_posting";
+        if (compositionDigest !== undefined) {
+          const fiscal = fiscalSuccessEvidence.safeParse(evidence);
+          if (!fiscal.success) return refusal("tax_invalid_input", "/seal");
+          evidence = { ...fiscal.data, compositionDigest };
+        } else if (evidence !== null && typeof evidence === "object" && Object.hasOwn(evidence, "compositionDigest")) {
+          return refusal("tax_invalid_input", "/seal");
+        }
+      }
     } else evidence = null;
     const outcome = seal.outcome.kind === "unavailable" ? { ...seal.outcome, field: "/taxEvidence", effect: "none",
       remedy: definitiveRemedy } : seal.outcome;

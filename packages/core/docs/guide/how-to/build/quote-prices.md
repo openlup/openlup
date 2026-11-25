@@ -181,3 +181,75 @@ The native device routine returns `false` because it has no persisted visitor
 identity. Redemption counts group by promotion identifier and do not combine
 related promotion families. Treat these reads as advisory; a false device
 result does not establish first-order eligibility.
+
+## Install and inspect payment limits
+
+This experimental setting is available on native PostgreSQL after applying the
+selected migration plan. Use opaque installation and merchant references.
+Use 1–200 UTF-8 bytes for each opaque reference, including the profile.
+The rail mode is `test` or `live` and the currency is three uppercase ASCII
+letters. The seven rail coordinates total at most 1,007 UTF-8 bytes. Bounds
+are safe integers in currency minor units with `0 ≤ minMinor ≤ maxMinor` and
+`maxMinor ≥ 1`. A supplied revision is a positive 32-bit integer.
+The default checkout needs no setup.
+
+In `payment-rail.mjs`, define the rail and its starting terms.
+
+```js
+export const scope = {
+  installationRef: "store-a", channelKey: "online", methodKey: "card",
+  providerKey: "processor-a", accountRef: "merchant-a", mode: "test", currency: "EUR",
+};
+export const terms = { ...scope, schemaVersion: 2, profileRef: "standard",
+  minMinor: 1, maxMinor: 10000, active: true };
+```
+
+Run the installer from your server-side owner task using the migration-owner
+executor at READ COMMITTED. Pass an inspected revision to update the terms.
+Use the same tuple and profile. Rollback writes a new revision, either with
+previous terms or with `active: false` to withdraw the rail.
+
+```js
+import { inspectCommerceMoneyLimitsV2, installCommerceMoneyLimitsV2 } from "@openlup/platform/commerce/server";
+import { scope, terms } from "./payment-rail.mjs";
+
+export const install = owner => installCommerceMoneyLimitsV2(owner, { value: terms, expectedRevision: null });
+export async function rollback(owner) {
+  const current = await inspectCommerceMoneyLimitsV2(owner, scope);
+  if (!current.present) return current;
+  return installCommerceMoneyLimitsV2(owner, {
+    value: { ...current.value, active: false }, expectedRevision: current.revision,
+  });
+}
+```
+
+For connected show, export the owner reader from your app's `settings.mjs`.
+Use the migration-owner URL for this operator command and a trusted app scope.
+Return `{ present: false, effective: null }` for absence and a canonical decimal
+string in `revision` for a present row.
+
+```js
+import { inspectCommerceMoneyLimitsV2 } from "@openlup/platform/commerce/server";
+import { scope } from "./payment-rail.mjs";
+
+export function createSettingsBindings({ db }) {
+  return { readers: { "commerce.money_limits.v2.owner": async () => {
+    const current = await inspectCommerceMoneyLimitsV2(db, scope);
+    return current.present
+      ? { present: true, value: current.value, revision: String(current.revision) }
+      : { present: false, effective: null };
+  } } };
+}
+```
+
+```sh
+./node_modules/.bin/openlup settings show commerce.money_limits.v2 --app ./settings.mjs \
+  --database-url "$database_url" --json
+```
+
+Connected show reports the revision of inactive terms. A runtime reader returns
+absence while the tuple is inactive. To reactivate, submit active terms with
+the inactive revision as the expectation. On conflict, inspect the owner
+revision and resubmit deliberately. If no tuple exists, retry the initial
+insert. For an exhausted revision, have the installation owner qualify a
+replacement rail. Sealed quotes keep their original terms.

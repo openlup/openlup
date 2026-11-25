@@ -42,6 +42,7 @@ const compatible = [
 ] as const satisfies readonly CompatiblePostgresTable[];
 
 const owned = [
+  "commerce_money_limits_v2",
   "tax_calculations",
   "subscription_cancel_feedback",
   // Authoritative installation configuration with operator audit references.
