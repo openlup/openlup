@@ -5230,6 +5230,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/commerceMoneyLimitsV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/commerceOmsCancelOrderHandler.ts",
       "class": "public-output"
     },
@@ -8887,6 +8891,10 @@
     },
     {
       "path": "packages/platform/src/tax/stripe/transactions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/taxCalculationComposition.ts",
       "class": "public-output"
     },
     {
@@ -30342,6 +30350,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/commerceMoneyLimitsV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceMoneyLimitsV2Pgtap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/commercePriceAuthorityRead.test.ts",
       "class": "public-output"
     },
@@ -30354,7 +30370,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/commerceQuoteV2CompositionWire.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/commerceQuoteV2Storage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2StorageFixture.ts",
       "class": "public-output"
     },
     {
@@ -30527,6 +30551,10 @@
     },
     {
       "path": "tests/postgres/fixtures/catalogPricePublicationV2/grants.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/commerceMoneyLimitsV2/replayed.sql",
       "class": "public-output"
     },
     {

@@ -128,6 +128,21 @@ Search terms include store orders, checkout processing.
 
 Show offline: `show commerce.manualHoldReasons --json`.
 
+## commerce.money_limits.v2
+
+Install and inspect payment amount limits for a qualified rail.
+Search terms include payment limits, rail bounds, payment amount, minor units.
+
+- Owner **pricing** · kind **installed** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The installation owner supplies the allowed interval for an opted-in rail.
+- When absent, no payment limits are installed for the selected rail.
+
+Show offline: `show commerce.money_limits.v2 --json`.
+
+[Install, inspect and roll back payment limits](../build/quote-prices.md#install-and-inspect-payment-limits).
+
 ## commerce.multipleMarkets
 
 Serve several markets from one starter configuration.
