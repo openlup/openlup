@@ -1188,7 +1188,16 @@ describe("native evaluation claim and seal", () => {
     const kind = "tax_calculation";
     const evidence = { adapterEvidence, adapterDigest: result.evidenceDigest };
     const envelope = { calculationId, invocationDigest, requestDigest, generation, destination, kind, evidence, disposition: "required", validUntil };
-    const quote = sealQuote({ ...moneyFixture(), destination,
+    const template = moneyFixture();
+    const metadata = new Map(result.evidence.positions.tax.map(({ cell, ratePercent: _rate, ...row }) => [row.positionRef, {
+      ...row, level: cell.level, taxKind: cell.taxKind,
+    }]));
+    const lines = template.lines.map((line, index) => ({ ...line,
+      taxPositions: result.money.components[index]!.final.taxPositions.map(position => ({
+        ...metadata.get(position.positionRef)!, ...position,
+      })),
+    }));
+    const quote = sealQuote({ ...template, lines, destination,
       amountBasis: "exclusive", promotion: { engine: "promotion-engine.v1", rankingRuleRef: "lowest_pre_tax.v1" },
       taxEvidence: { kind, calculationId, taxDate: request.input.taxDate, expiresAt: validUntil, evidenceDigest: evaluationDigest("evaluation-evidence", envelope) },
     });
@@ -1334,7 +1343,8 @@ describe("native evaluation claim and seal", () => {
       const quote = { ...revised, quoteId, status, schemaVersion, contractVersion,
         moneyDigest: quoteDigest("commerce.quote-money.v2", revised) };
       seal.outcome.quote = { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) };
-      const red = path === "destination" || path === "outcome" || path === quotePrefix + ".destination" ? conflict : "terminal";
+      const otherwiseValid = kind === "fiscal_profile" ? "terminal" : "tax_invalid_input /seal/adapterMoneyResult";
+      const red = path === "destination" || path === "outcome" || path === quotePrefix + ".destination" ? conflict : otherwiseValid;
       witnesses.push({ name: (kind === "fiscal_profile" ? "fiscal " : "") + (path || "seal") + (scalar ? " scalar" : ""),
         input, calculationId, red });
     }
@@ -1376,12 +1386,13 @@ describe("native evaluation claim and seal", () => {
       const { rows } = await db.owner.query("SELECT state,outcome_text,contradiction FROM public.tax_calculations WHERE calculation_id=$1", [calculationId]);
       expect(rows, name).toStrictEqual([{ state: "pending", outcome_text: null, contradiction: false }]);
     }
-    for (const input of [exclusiveWire, fiscalWire]) {
+    for (const input of [exclusiveWire, fiscalWire])
       expect(commerceQuoteV2Schema.parse(input.seal.outcome.quote)).toStrictEqual(input.seal.outcome.quote);
-      await expect(db.runtime.query(witnessSql, [input])).resolves.toMatchObject({
-        rows: [{ result: { kind: "terminal", outcome: input.seal.outcome } }],
-      });
-    }
+    await expect(db.runtime.query(witnessSql, [exclusiveWire])).rejects.toMatchObject({ ...refusal,
+      detail: "/seal/adapterMoneyResult", hint: undefined });
+    await expect(db.runtime.query(witnessSql, [fiscalWire])).resolves.toMatchObject({
+      rows: [{ result: { kind: "terminal", outcome: fiscalWire.seal.outcome } }],
+    });
   });
 
   async function createPrivacy(db = store, unitOfWork = lane(db)) {
@@ -1442,7 +1453,11 @@ describe("native evaluation claim and seal", () => {
       firstGate.release();
       await expect(a).resolves.toMatchObject({ kind: "terminal", outcome: { kind: "final" } });
     }
-    return { reply: await b, lookup: await beginTaxCalculation(lane(), second.lookup) };
+    const reply = await b;
+    const { rows } = await store.owner.query(`SELECT adapter_money_text,adapter_result_digest FROM public.tax_calculations
+      WHERE calculation_id=$1`, [two.calculationId]);
+    expect(rows).toStrictEqual([{ adapter_money_text: null, adapter_result_digest: null }]);
+    return { reply, lookup: await beginTaxCalculation(lane(), second.lookup) };
   }
 
   it("rolls back a seal that crossed cutoff in a provider uniqueness wait", async () => {
@@ -1476,9 +1491,167 @@ describe("native evaluation claim and seal", () => {
       expect(reply).toMatchObject({ kind: "terminal", outcome: { kind: "refused", code: "tax_provider_reference_conflict", field: "/taxEvidence" } });
       expect(JSON.stringify(reply)).not.toContain(claimed.calculationId);
       expect(JSON.stringify(reply)).not.toContain(providerRef);
+      const readLoser = () => installation.owner.query(`SELECT xmin::text, outcome_text, adapter_money_text, adapter_result_digest
+        FROM public.tax_calculations WHERE calculation_id=$1`, [held.calculationId]).then(result => result.rows[0]);
+      const loser = await readLoser();
+      expect(loser).toMatchObject({ adapter_money_text: null, adapter_result_digest: null });
+      expect(JSON.parse(loser.outcome_text)[1].submissionDigest).toMatch(/^[0-9a-f]{64}$/u);
       expect(await completeTaxCalculation(ownLane, seal)).toEqual(reply);
+      expect(await readLoser()).toEqual(loser);
     }
   });
+
+  it.each(["completion", "erasure"] as const)("fences money when %s obtains the receipt lock first", async winner => {
+    const value = await exclusiveFixture();
+    const claim = await claimFresh(value.claim);
+    const ref = randomUUID();
+    const seal = await providerSeal(value.claim, value.request, claim, ref, future(60));
+    const held = holdBeforeCommit(lane());
+    const erase = await createPrivacy(store, winner === "erasure" ? held.held : lane());
+    const readSql = "SELECT public.tax_calculation_read_adapter_money_v1($1) AS result";
+    const hold = { calculationId: claim.calculationId, status: "hold", adapterMoneyText: null, sealDigest: null };
+    if (winner === "completion") {
+      const completion = completeTaxCalculation(held.held, seal);
+      await Promise.race([held.reached, completion.then(() => { throw new Error("Expected completion to reach commit"); })]);
+      const erasure = erase(value.ctx.clientId);
+      try {
+        await expect.poll(async () => (await store.owner.query(`SELECT EXISTS(SELECT FROM pg_locks
+          WHERE relation='public.identity_privacy_erasures'::regclass AND mode='ShareRowExclusiveLock' AND NOT granted) AS waiting`)).rows[0]?.waiting,
+        { interval: 10, timeout: 3500 }).toBe(true);
+      } finally { held.release(); await erasure; }
+      await expect(completion).resolves.toMatchObject({ kind: "terminal", outcome: { kind: "final" } });
+    } else {
+      const erasure = erase(value.ctx.clientId);
+      await Promise.race([held.reached, erasure.then(() => { throw new Error("Expected erasure to reach commit"); })]);
+      const { observed, pid } = observeBackend(lane());
+      const completion = completeTaxCalculation(observed, seal);
+      const reader = await store.runtime.connect();
+      const backend = Number((await reader.query("SELECT pg_backend_pid() AS pid")).rows[0].pid);
+      const reading = reader.query(readSql, [claim.calculationId]);
+      try {
+        await Promise.all([waitForTransactionLock(store.owner, await pid), waitForTransactionLock(store.owner, backend)]);
+      } finally { held.release(); await erasure; reader.release(); }
+      await expect(completion).resolves.toMatchObject({ code: "destination_evidence_erased" });
+      expect((await reading).rows[0].result).toStrictEqual(hold);
+    }
+    const erased = await storedRow(store.owner, claim.calculationId);
+    const { adapter, accountRef, mode } = value.request.input.scope;
+    expect(erased).toStrictEqual({ calculation_id: claim.calculationId, state: "erased", ...(winner === "completion" ? {
+      provider_digest: evaluationDigest("provider-calculation", {
+        installationRef: value.claim.identity.installationRef, adapter, accountRef, mode, providerRef: ref,
+      }),
+    } : {}) });
+    await erase(value.ctx.clientId);
+    expect(await storedRow(store.owner, claim.calculationId)).toStrictEqual(erased);
+    expect((await store.runtime.query(readSql, [claim.calculationId])).rows[0].result).toStrictEqual(hold);
+  });
+
+  it("holds the receipt fence for the duration of a service read", async () => {
+    const value = await exclusiveFixture(), claim = await claimFresh(value.claim);
+    const seal = await providerSeal(value.claim, value.request, claim, randomUUID(), future(60));
+    await expect(completeTaxCalculation(lane(), seal)).resolves.toMatchObject({ kind: "terminal" });
+    const erase = await createPrivacy();
+    const reader = await store.runtime.connect();
+    const sql = "SELECT public.tax_calculation_read_adapter_money_v1($1) AS result";
+    let erasure: ReturnType<typeof erase> | undefined;
+    try {
+      await reader.query("BEGIN");
+      expect((await reader.query(sql, [claim.calculationId])).rows[0].result).toMatchObject({ status: "final" });
+      erasure = erase(value.ctx.clientId);
+      await expect.poll(async () => (await store.owner.query(`SELECT EXISTS(SELECT FROM pg_locks
+        WHERE relation='public.identity_privacy_erasures'::regclass AND mode='ShareRowExclusiveLock' AND NOT granted) AS waiting`)).rows[0]?.waiting,
+      { interval: 10, timeout: 3500 }).toBe(true);
+    } finally {
+      await reader.query("ROLLBACK");
+      reader.release();
+      await erasure;
+    }
+    expect((await store.runtime.query(sql, [claim.calculationId])).rows[0].result).toStrictEqual({
+      calculationId: claim.calculationId, status: "hold", adapterMoneyText: null, sealDigest: null,
+    });
+  });
+
+  it("restores sealed bytes and NULL pairs, and rolls back tampered money", async () => {
+    const source = await resources.installation("sealed-money-source");
+    const value = await exclusiveFixture(source), held = await claimFresh(value.claim, lane(source));
+    const seal = await providerSeal(value.claim, value.request, held, randomUUID(), future(2));
+    await expect(completeTaxCalculation(lane(source), seal)).resolves.toMatchObject({ kind: "terminal", outcome: { kind: "final" } });
+    const legacy = await seed("terminal", source), pending = await seed("pending", source), erased = await seed("terminal", source);
+    await (await createPrivacy(source))(erased.ctx.clientId);
+    const ids = [held.calculationId, legacy.calculationId, pending.calculationId, erased.calculationId];
+    const packet = await captureStoreJourney(source.owner, "tax-money-source");
+    const target = await (await resources.targetTemplate("tax-money-target")).clone("tax-money-target");
+    const freshTarget = await captureStoreJourney(target.owner, "tax-money-target");
+    const restore = (copy: typeof packet) => restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet: copy, freshTarget });
+    const readSql = "SELECT public.tax_calculation_read_adapter_money_v1($1) AS result";
+    const read = (db: Pool, id: string | null) => db.query(readSql, [id]).then(result => result.rows[0].result);
+    const original = await read(source.runtime, held.calculationId);
+    expect(original).toMatchObject({ status: "final", calculationId: held.calculationId });
+    const money = JSON.parse(original.adapterMoneyText);
+    const rows = packet.owned.find(entry => entry.table === "tax_calculations")!.rows;
+    const position = rows.findIndex(bytes => JSON.parse(bytes).calculation_id === held.calculationId);
+    const current = JSON.parse(rows[position]!);
+    const different = structuredClone(money);
+    different.components[0].final.taxPositions[0].taxableMinor--;
+    const firstId = money.components[0].final.taxPositions[0].positionRef;
+    const renamePosition = (text: string) => text.replaceAll(JSON.stringify(firstId), '"alternate-position"');
+    const [, changedBody] = JSON.parse(renamePosition(current.outcome_text));
+    const changedMoney = renamePosition(original.adapterMoneyText);
+    changedBody.evidence.adapterDigest = digest("evidence", changedBody.evidence.adapterEvidence);
+    const { outcome, submissionDigest: _submission, providerDigest: _provider, contradiction: _contradiction, ...envelope } = changedBody;
+    const { quoteId, status, schemaVersion, contractVersion, moneyDigest: _money, quoteDigest: _quote, ...projected } = outcome.quote;
+    const revisedProjection = { ...projected, taxEvidence: { ...projected.taxEvidence, evidenceDigest: digest("evaluation-evidence", envelope) } };
+    const revisedQuote = { ...revisedProjection, quoteId, status, schemaVersion, contractVersion,
+      moneyDigest: quoteDigest("commerce.quote-money.v2", revisedProjection) };
+    changedBody.outcome.quote = { ...revisedQuote, quoteDigest: quoteDigest("commerce.quote.v2", revisedQuote) };
+    const changedOutcome = frame("evaluation-outcome", changedBody);
+    const rebound = (await source.owner.query("SELECT public.tax_calculation_adapter_money_v1($1,$2,$3) AS result",
+      [changedMoney, current.pin, changedBody])).rows[0].result;
+    expect(rebound).toMatchObject({ moneyText: changedMoney, resultDigest: expect.stringMatching(/^[0-9a-f]{64}$/u) });
+    expect(rebound.resultDigest).not.toBe(original.sealDigest);
+    for (const patch of [{ adapter_money_text: "{" }, { adapter_money_text: " " + original.adapterMoneyText },
+      { adapter_money_text: canonicalCatalogDraftJson(different) }, { adapter_result_digest: "0".repeat(64) },
+      { adapter_money_text: changedMoney, outcome_text: changedOutcome, outcome_digest: destinationHash(changedOutcome) }]) {
+      const invalid = { ...current, ...patch };
+      await expect(insertStored(source.owner, invalid)).rejects.toMatchObject(frameRefusal);
+      const { sha256: _hash, ...payload } = structuredClone(packet);
+      const damaged = payload.owned.find(entry => entry.table === "tax_calculations")!;
+      damaged.rows[position] = (await source.owner.query(`SELECT pg_catalog.set_config('TimeZone','UTC',true),
+        pg_catalog.to_jsonb(r)::text AS value FROM pg_catalog.jsonb_populate_record(NULL::public.tax_calculations,$1) r`,
+      [invalid])).rows[0].value;
+      await expect(restore({ ...payload, sha256: destinationHash(JSON.stringify(payload)) })).rejects.toMatchObject({ code: "target_conflict" });
+      expect((await target.owner.query("SELECT count(*)::int AS n FROM public.tax_calculations")).rows).toStrictEqual([{ n: 0 }]);
+    }
+    expect(await restore(packet)).toMatchObject({ replayed: false });
+    expect(await restore(packet)).toMatchObject({ replayed: true });
+    for (const id of ids) expect(await storedRow(target.owner, id)).toStrictEqual(await storedRow(source.owner, id));
+    await source.owner.query("SELECT pg_sleep_until($1::timestamptz)", [seal.seal.validUntil]);
+    expect(await read(target.runtime, held.calculationId)).toStrictEqual(original);
+    for (const id of [legacy.calculationId, pending.calculationId, erased.calculationId, randomUUID()])
+      expect(await read(target.runtime, id)).toStrictEqual({ calculationId: id, status: "hold", adapterMoneyText: null, sealDigest: null });
+    await expect(read(target.runtime, null)).rejects.toMatchObject({ code: "22023", detail: "/calculationId" });
+    const session = await target.runtime.connect();
+    try {
+      await session.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      await expect(session.query(readSql, [held.calculationId])).rejects.toMatchObject({
+        code: "22023", message: "destination_isolation_unsupported", detail: "/transaction", hint: "Use READ COMMITTED.",
+      });
+    } finally { await session.query("ROLLBACK"); session.release(); }
+    await expect(target.runtime.query("UPDATE public.tax_calculations SET adapter_money_text=NULL")).rejects.toMatchObject({ code: "42501" });
+    for (const [text, digest] of [[null, null], [original.adapterMoneyText, "b".repeat(64)]]) {
+      await expect(target.owner.query(`UPDATE public.tax_calculations SET adapter_money_text=$2, adapter_result_digest=$3
+        WHERE calculation_id=$1`, [held.calculationId, text, digest])).rejects.toMatchObject(guardRefusal);
+    }
+    await expect(target.owner.query(`UPDATE public.tax_calculations SET adapter_money_text=$2, adapter_result_digest=$3
+      WHERE calculation_id=$1`, [legacy.calculationId, original.adapterMoneyText, original.sealDigest])).rejects.toMatchObject(guardRefusal);
+    // Simulate damaged evidence while keeping the scalar CHECK satisfied.
+    await disableGuard("tax_calculations", () => target.owner.query(
+      "UPDATE public.tax_calculations SET adapter_result_digest=$2 WHERE calculation_id=$1",
+      [held.calculationId, "0".repeat(64)]), target.owner);
+    expect(await read(target.runtime, held.calculationId)).toStrictEqual({
+      calculationId: held.calculationId, status: "hold", adapterMoneyText: null, sealDigest: null,
+    });
+  }, postgresSetupTimeoutMs);
 
   it("fences writes when privacy owns the ledger first", async () => {
     const value = await fixture();

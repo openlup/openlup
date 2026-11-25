@@ -126,7 +126,7 @@ async function fixture(store: JourneyInstallation) {
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 type Begin = ReturnType<Fixture["begin"]>;
 
-async function verifiedAdapterMoney(value: Fixture, purpose: "final" | "estimate", extended: boolean) {
+async function verifiedAdapterMoney(value: Fixture, purpose: "final" | "estimate", extended: boolean, now = taxDate) {
   const command = value.begin(exclusiveKind, true);
   const composition = command.pin.composition!;
   const [shippingPlan] = composition.planInput.baseline.delivery;
@@ -162,13 +162,13 @@ async function verifiedAdapterMoney(value: Fixture, purpose: "final" | "estimate
     ...row, status: "registered" as const, actorRef: "actor-a", recordedAt: taxDate, effective,
   }));
   const input: TaxQuoteInputV1 = { ...value.fullInput, purpose, required, money: { ...planned.moneyInput, amountBasis: "exclusive" },
-    coverage: { ...value.fullInput.coverage, declarations },
+    coverage: { ...value.fullInput.coverage, revision: "coverage-b", declarations },
     lines: planInput.lines.map(row => ({ ...value.fullInput.lines[0], lineKey: row.lineKey })),
     delivery: candidate.delivery.map(bucket => ({ ...value.fullInput.delivery[0], bucketKey: bucket.bucketKey, cost: bucket.cost })),
   };
   const request = makeTaxQuoteRequest(command.identity.evaluationKey, input);
   const rule = { ruleRef: "rule-a", legalBasisRef: "source-a", effective };
-  const adapter = localRateTable({ scope: input.scope, market: input.market, currency: input.currency, now: () => taxDate,
+  const adapter = localRateTable({ scope: input.scope, market: input.market, currency: input.currency, now: () => now,
     rounding: "half_up_largest_remainder", calculationLifetimeMs: 60_000, validityWindowMs: 10_000,
     registrations: declarations.map(({ jurisdiction, taxKind }) => ({ jurisdiction, taxKind, effective, state: "active", evidenceRef: "registration-a" })),
     rules: [...jurisdictions.map((jurisdiction, i) => ({
@@ -201,6 +201,8 @@ async function verifiedAdapterMoney(value: Fixture, purpose: "final" | "estimate
   const result = checked.result;
   const { address: _address, ...destination } = request.input.destination;
   const pin = { ...command.pin, request: { ...request, input: { ...request.input, destination } },
+    coverage: { accountRef: input.scope.accountRef, revision: input.coverage.revision,
+      digest: evaluationDigest("coverage-revision", request.input.coverage) },
     requestDigest: evaluationDigest("evaluation-request", request),
     ...(extended ? { composition: { ...composition, planInput } } : { composition: undefined }) };
   const { profileRef, revision, channelKey, currency, effective: limits } = composition.limits;
@@ -231,7 +233,9 @@ async function verifiedAdapterMoney(value: Fixture, purpose: "final" | "estimate
     moneyDigest: quoteDigest("commerce.quote-money.v2", quoteMoney) };
   const body = { ...envelope, contradiction: false,
     outcome: { kind: purpose, quote: { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) } } };
-  return { request, result, pin, body };
+  const invocation = { ...command.invocation, purpose,
+    lines: request.input.lines.map(row => ({ sku: row.sku, quantity: 1 })) };
+  return { request, result, pin, body, invocation, identity: command.identity };
 }
 
 const beginSql = "SELECT public.tax_calculation_begin_v1($1::jsonb) AS value";

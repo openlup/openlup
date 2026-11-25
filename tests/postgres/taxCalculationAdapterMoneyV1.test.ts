@@ -1,15 +1,16 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
+import { applyTaxCoverageRevision, evaluationDigest } from "@openlup/platform/tax";
 // eslint-disable-next-line no-restricted-imports -- witness the reporting verifier's private result for a refusal
 import { checkedQuoteResult } from "../../packages/platform/src/tax/digest.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
-import { beginSql, claim, completeSql, exclusiveKind, fixture, invoke, seal, verifiedAdapterMoney,
-  type JsonPath } from "./commerceQuoteV2StorageFixture.js";
+import { beginSql, claim, completeSql, exclusiveKind, fixture, invoke, quoteDigest, seal, verifiedAdapterMoney,
+  type Claim, type JsonPath } from "./commerceQuoteV2StorageFixture.js";
 
 const signature = "public.tax_calculation_adapter_money_v1(jsonb,jsonb,jsonb)";
 const validateSql = "SELECT public.tax_calculation_adapter_money_v1($1::jsonb,$2::jsonb,$3::jsonb) AS result";
@@ -34,6 +35,144 @@ let sample: Awaited<ReturnType<typeof verifiedAdapterMoney>>;
 beforeAll(async () => {
   store = await resources.installation("adapter-money");
   sample = await verifiedAdapterMoney(await fixture(store), "final", true);
+}, postgresSetupTimeoutMs);
+
+it("upgrades the exact dormant prefix while preserving original frames and replay for both pin variants", async () => {
+  const activation = catalog.forward[forwardIndex + 1]!;
+  expect(activation.file).toMatch(/_tax_calculation_adapter_money_activation\.sql$/u);
+  const sql = readFileSync(activation.file, "utf8");
+  let instance: PostgresContainer | undefined, owner: Pool | undefined, runtime: Pool | undefined;
+  const supplementRefusal = { code: "22023", message: "tax_invalid_input", detail: "/seal/adapterMoneyResult" };
+  try {
+    instance = await runPostgresContainer({ name: `adapter-money-upgrade-${process.pid}`, password: "synthetic-adapter-upgrade" });
+    expect(await waitForPostgresTcpReady(instance.connectionString)).toBe(true);
+    owner = new Pool({ connectionString: instance.connectionString });
+    runtime = new Pool({ connectionString: instance.connectionString, options: "-c role=service_role" });
+    await owner.query("CREATE ROLE service_role");
+    for (const migration of [catalog.baseline, ...catalog.forward.slice(0, forwardIndex + 1)])
+      await owner.query(readFileSync(migration.file, "utf8"));
+    const source = { owner, runtime, runtimeUrl: instance.connectionString };
+    const cases = [];
+    for (const extended of [false, true]) {
+      const value = await fixture(source);
+      const { request, result, pin, body, invocation, identity } = await verifiedAdapterMoney(value, "final", extended, new Date().toISOString());
+      expect(await applyTaxCoverageRevision(owner, { expectedHead: "coverage-a", document: {
+        installationRef: identity.installationRef, accountRef: request.input.scope.accountRef, coverage: request.input.coverage, actorRef: "fixture",
+      } })).toHaveProperty("coverageDigest", pin.coverage.digest);
+      const grant = await invoke<Claim>(runtime, beginSql, { identity, invocation, operation: "claim", pin, recovery: pin.recovery });
+      expect(grant.kind).toBe("claimed");
+      const { outcome, contradiction, ...preimage } = body;
+      const { calculationId, generation, claimToken } = grant;
+      const envelope = { ...preimage, calculationId, generation, invocationDigest: grant.pin.invocationDigest };
+      const { quoteId, status, schemaVersion, contractVersion, moneyDigest: _money, quoteDigest: _quote, ...money } = outcome.quote;
+      const projection = { ...money, taxEvidence: { ...money.taxEvidence, calculationId,
+        evidenceDigest: evaluationDigest("evaluation-evidence", envelope) } };
+      const quote = { ...projection, quoteId, status, schemaVersion, contractVersion, moneyDigest: quoteDigest("commerce.quote-money.v2", projection) };
+      const seal = { destination: body.destination, kind: exclusiveKind, requestDigest: pin.requestDigest,
+        disposition: body.disposition, validUntil: body.validUntil, evidence: body.evidence, contradiction,
+        outcome: { kind: "final", quote: { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) } } };
+      const base = { identity, invocation, calculationId, generation, claimToken, operation: "complete", seal };
+      const full = { ...base, seal: { ...seal, adapterMoneyResult: result.money } };
+      await expect(invoke(runtime, completeSql, full)).rejects.toMatchObject({ ...supplementRefusal, detail: "/seal" });
+      cases.push({ base, full, expected: { kind: "terminal", outcome: seal.outcome, validUntil: seal.validUntil } });
+    }
+    const db = await owner.connect();
+    const read = (id: string) => db.query(`SELECT xmin::text, ctid::text, to_jsonb(r) - ARRAY['adapter_money_text','adapter_result_digest'] AS incumbent,
+      to_jsonb(r)->>'adapter_money_text' AS money, to_jsonb(r)->>'adapter_result_digest' AS digest
+      FROM public.tax_calculations r WHERE calculation_id=$1`, [id]).then(result => result.rows[0]);
+    const complete = async (wire: object) => {
+      await db.query("SET LOCAL ROLE service_role");
+      const reply = await invoke(db, completeSql, wire);
+      await db.query("RESET ROLE");
+      return reply;
+    };
+    const attachments = () => db.query(`SELECT tgname, oid::text, tgfoid::text, pg_get_triggerdef(oid) AS definition
+      FROM pg_trigger WHERE tgname IN ('tax_calculation_guard','tax_calculation_privacy_guard') ORDER BY tgname`).then(result => result.rows);
+    const routine = (signature: string) => db.query(`SELECT oid::text, proowner::text, proacl, provolatile, prosecdef, proconfig
+      FROM pg_proc WHERE oid=$1::regprocedure`, [signature]).then(result => result.rows[0]);
+    const reader = "public.tax_calculation_read_adapter_money_v1(uuid)";
+    try {
+      await db.query("BEGIN; SAVEPOINT dormant");
+      const originalTriggers = await attachments();
+      const replaced = ["public.tax_calculation_guard_v1()", "public.tax_calculation_transition_v1(jsonb,boolean)"];
+      const originalRoutines = await Promise.all(replaced.map(routine));
+      const eraseDefinition = () => db.query("SELECT pg_get_functiondef('public.tax_calculation_erase_v1(uuid)'::regprocedure) AS definition")
+        .then(result => result.rows[0].definition);
+      const erase = await eraseDefinition();
+      const incumbent = [];
+      for (const { base, expected } of cases) {
+        expect(await complete(base)).toStrictEqual(expected);
+        incumbent.push(await read(base.calculationId));
+      }
+      await db.query(`ROLLBACK TO SAVEPOINT dormant; SAVEPOINT upgrade_trial;
+        ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role`);
+      await db.query(sql);
+      expect(await attachments()).toStrictEqual(originalTriggers);
+      expect(await Promise.all(replaced.map(routine))).toStrictEqual(originalRoutines);
+      expect(await eraseDefinition()).toBe(erase);
+      expect(await routine(reader)).toMatchObject({ proowner: originalRoutines[0].proowner, provolatile: "v",
+        prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"] });
+      await db.query("CREATE ROLE adapter_money_reader_observer");
+      expect((await db.query(`SELECT rolname, has_function_privilege(oid,$1,'EXECUTE') AS execute
+        FROM pg_roles WHERE rolname=ANY($2) ORDER BY rolname`, [reader, [...roles, "adapter_money_reader_observer"]])).rows).toEqual([
+        { rolname: "adapter_money_reader_observer", execute: false }, { rolname: "anon", execute: false },
+        { rolname: "authenticated", execute: false }, { rolname: "service_role", execute: true },
+      ]);
+      for (const [index, { base, full, expected }] of cases.entries()) {
+        await db.query("SAVEPOINT old_writer");
+        await expect(complete(base)).rejects.toMatchObject(supplementRefusal);
+        await db.query("ROLLBACK TO SAVEPOINT old_writer");
+        expect(await complete(full)).toStrictEqual(expected);
+        const newRow = await read(base.calculationId);
+        expect(newRow.incumbent).toStrictEqual(incumbent[index]!.incumbent);
+        expect(newRow).toMatchObject({ money: canonicalCatalogDraftJson(full.seal.adapterMoneyResult), digest: expect.stringMatching(/^[0-9a-f]{64}$/u) });
+        expect(await complete(full)).toStrictEqual(expected);
+        expect(await read(base.calculationId)).toStrictEqual(newRow);
+      }
+      await db.query("ROLLBACK TO SAVEPOINT upgrade_trial");
+      for (const { base } of cases) await complete(base);
+      await db.query(sql);
+      for (const { base, full, expected } of cases) {
+        const historical = await read(base.calculationId);
+        expect(historical).toMatchObject({ money: null, digest: null });
+        expect(await complete(base)).toStrictEqual(expected);
+        expect(await complete(full)).toStrictEqual(expected);
+        expect(await read(base.calculationId)).toStrictEqual(historical);
+      }
+      // An erased calculation still holds the scoped provider marker on both prefixes.
+      await db.query("ROLLBACK TO SAVEPOINT dormant");
+      for (const { base } of cases) {
+        const evidence = base.seal.evidence.adapterEvidence;
+        const { adapter, accountRef, mode } = evidence.scope;
+        const digest = evaluationDigest("provider-calculation", {
+          installationRef: base.identity.installationRef, adapter, accountRef, mode, providerRef: evidence.calculationRef,
+        });
+        await db.query("INSERT INTO public.tax_calculations(calculation_id,state,provider_digest) VALUES($1,'erased',$2)",
+          [randomUUID(), digest]);
+      }
+      await db.query("SAVEPOINT collision");
+      const losingRows = [];
+      for (const { base } of cases) {
+        expect(await complete(base)).toMatchObject({ kind: "terminal", outcome: { code: "tax_provider_reference_conflict" } });
+        losingRows.push(await read(base.calculationId));
+      }
+      await db.query("ROLLBACK TO SAVEPOINT collision");
+      await db.query(sql);
+      for (const [index, { base, full }] of cases.entries()) {
+        const reply = await complete(full);
+        expect(reply).toMatchObject({ kind: "terminal", outcome: { code: "tax_provider_reference_conflict" } });
+        const stored = await read(base.calculationId);
+        expect(stored.incumbent).toStrictEqual(losingRows[index]!.incumbent);
+        expect(stored).toMatchObject({ money: null, digest: null });
+        expect(await complete(full)).toStrictEqual(reply);
+        expect(await read(base.calculationId)).toStrictEqual(stored);
+      }
+      await db.query("ROLLBACK TO SAVEPOINT dormant; DROP OWNED BY anon,authenticated,service_role; DROP ROLE anon,authenticated,service_role");
+      await db.query(sql);
+      expect((await db.query(`SELECT NOT EXISTS(SELECT FROM aclexplode(proacl) WHERE grantee<>proowner) AS owner_only
+        FROM pg_proc WHERE oid=$1::regprocedure`, [reader])).rows[0]).toStrictEqual({ owner_only: true });
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  } finally { await closePostgres(instance, [owner, runtime].filter((pool): pool is Pool => pool !== undefined)); }
 }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
 

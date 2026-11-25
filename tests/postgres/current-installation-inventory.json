@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 221,
-        "exactTailCount": 111,
-        "objectInventorySha256": "bbffc9b61b7b3bdb9d12e34dd82d56caaae83759342129d117648f36095b7601",
+        "count": 222,
+        "exactTailCount": 112,
+        "objectInventorySha256": "4155370ecfe0f42f2ed8c326a3a316f687f0719e442891ad16be6d373608087f",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+            "sha256": "af14f763fb59032c6036427ec66c2a2ea7c9e00c8eb4e99bb148004982b9297f"
+          },
           {
             "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
             "sha256": "5c49e73ff93e41cb33e6d34ebf8165e1c7c891ae3dddfee2b76841f1cd64afa8"
@@ -893,10 +897,14 @@
         ]
       },
       "bootstrap": {
-        "count": 227,
-        "exactTailCount": 112,
-        "objectInventorySha256": "f4b890b333708e38eb1c4169cb3f80d781b647ae0c6c42c3e3a1ece386b8091c",
+        "count": 228,
+        "exactTailCount": 113,
+        "objectInventorySha256": "0cf2d8bf8769dc7a1806428fcffe9edb1b48a1a753107cd90ef1964959a80496",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+            "sha256": "af14f763fb59032c6036427ec66c2a2ea7c9e00c8eb4e99bb148004982b9297f"
+          },
           {
             "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
             "sha256": "5c49e73ff93e41cb33e6d34ebf8165e1c7c891ae3dddfee2b76841f1cd64afa8"
@@ -1808,10 +1816,14 @@
         ]
       },
       "separate": {
-        "count": 227,
-        "exactTailCount": 112,
-        "objectInventorySha256": "f3312309b3774fc8458d7e282b51a1d01ea550afcdfd47d224087d492e85a6bf",
+        "count": 228,
+        "exactTailCount": 113,
+        "objectInventorySha256": "e0e1c0a28efd22a66397f6bc308517c9b2b14e7a85307fb8cc2802980fb7e5ba",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+            "sha256": "af14f763fb59032c6036427ec66c2a2ea7c9e00c8eb4e99bb148004982b9297f"
+          },
           {
             "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
             "sha256": "5c49e73ff93e41cb33e6d34ebf8165e1c7c891ae3dddfee2b76841f1cd64afa8"
@@ -2723,10 +2735,14 @@
         ]
       },
       "admin-managed": {
-        "count": 225,
-        "exactTailCount": 111,
-        "objectInventorySha256": "aacf29e403ab891e7c6b90ace56bcef950358eab1dfa3584d4c04fadcb9b7c2c",
+        "count": 226,
+        "exactTailCount": 112,
+        "objectInventorySha256": "4854efba1dca8953164f45af5338314336840c48f745d6b79417331e9e2dd91e",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+            "sha256": "af14f763fb59032c6036427ec66c2a2ea7c9e00c8eb4e99bb148004982b9297f"
+          },
           {
             "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
             "sha256": "5c49e73ff93e41cb33e6d34ebf8165e1c7c891ae3dddfee2b76841f1cd64afa8"
@@ -3630,10 +3646,14 @@
         ]
       },
       "admin-operator": {
-        "count": 225,
-        "exactTailCount": 111,
-        "objectInventorySha256": "0ad6fdd868635490579f26bdeadffc403b49585dbd8676db8b4631997ee67a5b",
+        "count": 226,
+        "exactTailCount": 112,
+        "objectInventorySha256": "b2e10a6d3f7d20914d7e996e29e07da4f1ec572080588cdabafe7f6a8c097315",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+            "sha256": "af14f763fb59032c6036427ec66c2a2ea7c9e00c8eb4e99bb148004982b9297f"
+          },
           {
             "file": "db/platform/migrations/20261129160000_tax_calculation_adapter_money_v1.sql",
             "sha256": "5c49e73ff93e41cb33e6d34ebf8165e1c7c891ae3dddfee2b76841f1cd64afa8"

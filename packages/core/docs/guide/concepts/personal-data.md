@@ -171,6 +171,11 @@ Enable evaluation writes only after every native privacy handler that serves
 the store includes the tax-calculation contributor.
 Export includes verified evaluation outcomes. Erasure keeps only an evaluation
 identifier and any pseudonymous marker needed to fence provider reference reuse.
+The sealed adapter money and its result digest are private subject-linked tax
+evidence. The same erasure operation clears both fields. The reporting verifier
+checks request references against the original issued request. The server trusts
+assessment IDs from its qualified adapter binding and admits only bounded ASCII
+tokens without whitespace, control characters, or `@`.
 
 The reference host exposes `POST /api/bff/admin/identity/privacy/export` and
 `POST /api/bff/admin/identity/privacy/erase`. Both require the application's

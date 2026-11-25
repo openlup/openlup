@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
 import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor } from "@openlup/platform/data";
+import { composeCommerceQuoteMoneyV2, quoteDigest } from "@openlup/platform/pricing";
 import { beginTaxCalculation, completeTaxCalculation, evaluationDigest, localRateTable, makeTaxQuoteRequest,
   type TaxCalculationTransactionLane } from "@openlup/platform/tax";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
@@ -12,7 +14,9 @@ import { beginSql, bindEditedSeal, completeSql, contaminate, exclusiveKind, expe
 type ClaimInput = Extract<Parameters<typeof beginTaxCalculation>[1], { operation: "claim" }>;
 type CompleteInput = Exclude<Parameters<typeof completeTaxCalculation>[1], Uint8Array>;
 type Adapter = CompleteInput["adapter"];
-type SqlCompletion = Omit<Completion, "seal"> & { seal: Omit<Completion["seal"], "evidence"> & { evidence: object } };
+type SqlCompletion = Omit<Completion, "seal"> & {
+  seal: Omit<Completion["seal"], "evidence" | "outcome"> & { evidence: object; outcome: { kind: string; quote: unknown } };
+};
 const bytes = (input: unknown) => new TextEncoder().encode(JSON.stringify(input));
 const documented = "Supply the documented input.";
 
@@ -77,6 +81,11 @@ describe("native composition wrapper wire", () => {
   it.each([fiscalKind, exclusiveKind] as const)("forwards the exact %s pin and rebuilds the exact seal before replay", async kind => {
     const value = await fixture(store);
     const input = value.begin(kind, true);
+    if (kind === exclusiveKind) {
+      const plan = input.pin.composition!.planInput;
+      input.pin.composition!.planInput = { ...plan, baseline: { ...plan.baseline, feeLines: [] },
+        selected: { ...plan.selected!, feeLines: [] } };
+    }
     const lane = runtimeLane();
     const wrapper = wrappedClaim(value, input);
     const capturedClaim = capture();
@@ -90,6 +99,7 @@ describe("native composition wrapper wire", () => {
     const original = seal(value, input, grant);
     let sql: SqlCompletion = original;
     let adapter: Adapter;
+    let supplement: object | undefined;
     if (kind === exclusiveKind) {
       const request = makeTaxQuoteRequest(input.identity.evaluationKey, value.fullInput);
       const { scope, market, currency, taxDate } = request.input;
@@ -103,25 +113,64 @@ describe("native composition wrapper wire", () => {
       }).quote(request);
       if (result.kind !== "final") throw new Error("Expected a verified final adapter result: " + JSON.stringify(result));
       adapter = { request, result };
+      supplement = result.money;
       const validUntil = result.evidence.expiresAt;
-      const withValidity = { ...original, seal: { ...original.seal, validUntil,
-        outcome: { ...original.seal.outcome, quote: { ...original.seal.outcome.quote,
-        taxEvidence: { ...original.seal.outcome.quote.taxEvidence, expiresAt: validUntil },
-      } } } };
-      sql = bindEditedSeal(withValidity, grant, { ...original.seal.evidence, adapterEvidence: result.evidence, adapterDigest: result.evidenceDigest });
+      const evidence = { ...original.seal.evidence, adapterEvidence: result.evidence, adapterDigest: result.evidenceDigest };
+      const { kind, disposition, destination, requestDigest } = original.seal;
+      const { calculationId, generation } = grant;
+      const envelope = { calculationId, generation, destination, kind, requestDigest, invocationDigest: grant.pin.invocationDigest,
+        evidence, disposition, validUntil };
+      const template = original.seal.outcome.quote;
+      const composed = composeCommerceQuoteMoneyV2({
+        planInput: input.pin.composition!.planInput, verifiedMoney: result.money,
+        allocationIds: result.money.components.flatMap(({ ref, allocations }) => allocations.map(({ sequence }) => ({
+          ref, sequence, allocationId: randomUUID(),
+        }))),
+        facts: { catalogueEvidenceRef: template.catalogueEvidenceRef, mode: template.mode, cadence: template.cadence,
+          destination, paymentLimits: template.paymentLimits, coverageDigest: result.evidence.coverage.digest },
+        taxEvidence: { ...template.taxEvidence, kind: exclusiveKind, expiresAt: validUntil,
+          evidenceDigest: evaluationDigest("evaluation-evidence", envelope) },
+        positions: result.evidence.positions.tax.map(({ cell, ratePercent: _rate, ...row }) => ({
+          ...row, jurisdictionRef: cell.jurisdiction, level: cell.level, taxKind: cell.taxKind,
+        })),
+        feeLines: [],
+      });
+      if (composed.kind !== "composed") throw new Error(JSON.stringify(composed));
+      const { status, quoteId, contractVersion, schemaVersion } = template;
+      const quote = { ...composed.money, status, quoteId, contractVersion, schemaVersion, moneyDigest: composed.moneyDigest };
+      sql = { ...original, seal: { ...original.seal, evidence, validUntil,
+        outcome: { kind: status, quote: { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) } },
+      } };
     }
     const command = wrappedSeal(sql, adapter);
     const captured = capture();
     expect(await completeTaxCalculation(captured.lane, command)).toStrictEqual({ kind: "missing" });
-    expect(captured.requests).toStrictEqual([sql]);
+    const wire = supplement ? { ...sql, seal: { ...sql.seal, adapterMoneyResult: supplement } } : sql;
+    expect(captured.requests).toStrictEqual([wire]);
     expect(await fieldFor({ ...input.pin, ...grant.pin }, sql.seal)).toBeNull();
-    expect(sql.seal.outcome.quote.paymentLimits.revision).toBe("42");
+    expect(sql.seal.outcome.quote).toMatchObject({ paymentLimits: { revision: "42" } });
+    if (supplement) {
+      const malformedWire: TaxCalculationTransactionLane = { run: work => lane.run(db => work({
+        query(statement, parameters) {
+          if (!parameters) return db.query(statement);
+          const submitted = JSON.parse(String(parameters[0]));
+          submitted.seal.adapterMoneyResult = null;
+          return db.query(statement, [JSON.stringify(submitted)]);
+        },
+      })) };
+      expectRefusal(await completeTaxCalculation(malformedWire, command), "/seal/adapterMoneyResult", "tax_invalid_input",
+        "Supply the original verified adapter money through the native tax completion adapter.");
+      const oversized = { ...command, seal: { ...command.seal, evidence: "é".repeat(524_288) } };
+      const caller = capture();
+      expectRefusal(await completeTaxCalculation(caller.lane, bytes(oversized)), "/");
+      expect(caller.requests).toEqual([]);
+    }
     expect(await completeTaxCalculation(lane, bytes(command))).toStrictEqual({
       kind: "terminal", outcome: sql.seal.outcome, freshness: "current", validUntil: sql.seal.validUntil,
     });
     const rows = await rowFor(store, input);
     expect(rows).toHaveLength(1);
-    expect(await invoke(store.runtime, completeSql, sql)).toStrictEqual({
+    expect(await invoke(store.runtime, completeSql, wire)).toStrictEqual({
       kind: "terminal", outcome: sql.seal.outcome, validUntil: sql.seal.validUntil,
     });
     expect(await rowFor(store, input)).toStrictEqual(rows);

@@ -9632,6 +9632,35 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "tax-calculation-adapter-money-activation",
+        "path": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.tax_calculation_guard_v1()",
+            "beforeSha256": "fab0fcdb5929c55ae0fcac3b821fe2e52b2c1a02499fe591a17fe3de49d685b9",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.tax_calculation_transition_v1(jsonb,boolean)",
+            "beforeSha256": "f3bc324be2acc08145ab0a9177bc6a026e72849b216dc0b2b28972b6ae34c035",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.tax_calculation_read_adapter_money_v1(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.tax_calculations ADD COLUMN adapter_money_text text;",
+          "ALTER TABLE public.tax_calculations ADD COLUMN adapter_result_digest text;",
+          "ALTER TABLE public.tax_calculations ADD CONSTRAINT tax_calculations_adapter_money_check CHECK (\n  (adapter_money_text IS NULL AND adapter_result_digest IS NULL) OR\n  (adapter_money_text IS NOT NULL AND adapter_result_digest IS NOT NULL AND state = 'terminal'\n    AND provider_digest IS NOT NULL AND octet_length(adapter_money_text) BETWEEN 1 AND 1048576\n    AND octet_length(adapter_result_digest) = 64\n    AND octet_length(translate(adapter_result_digest,'0123456789abcdef','')) = 0));"
+        ]
       }
     ]
   },
@@ -13920,6 +13949,27 @@
           "signature": "public.tax_calculation_adapter_money_v1(jsonb,jsonb,jsonb)",
           "beforeSha256": null,
           "afterSha256": "831e130040a898ea4c84c5ea439a95ef63c15a29f9e618c4b26b4eab050a90c1"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129160001_tax_calculation_adapter_money_activation.sql",
+      "sha256": "af14f763fb59032c6036427ec66c2a2ea7c9e00c8eb4e99bb148004982b9297f",
+      "functions": [
+        {
+          "signature": "public.tax_calculation_guard_v1()",
+          "beforeSha256": "fab0fcdb5929c55ae0fcac3b821fe2e52b2c1a02499fe591a17fe3de49d685b9",
+          "afterSha256": "295cedb15d773acf286b46cc4f975d0adaa52eeeab5114704e485f974cb15bd8"
+        },
+        {
+          "signature": "public.tax_calculation_transition_v1(jsonb,boolean)",
+          "beforeSha256": "f3bc324be2acc08145ab0a9177bc6a026e72849b216dc0b2b28972b6ae34c035",
+          "afterSha256": "4a23265ace60c626676a948ffa61a6a7fc99d78e5563e5a8025cae865d6917f7"
+        },
+        {
+          "signature": "public.tax_calculation_read_adapter_money_v1(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "e53842dddd628cf8d67596ceab172437bd8c55a111340dff9714810be2ce3286"
         }
       ]
     }
