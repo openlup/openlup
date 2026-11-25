@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -7,6 +7,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
+import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { manifest, units } from "../helpers/fulfillmentNative.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { captureStoreJourney, journeyRpc, journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
@@ -281,13 +282,25 @@ it("rechecks erasure after the waiting subject guard", async () => {
 
 it("frozen_dispatch_v1_bytes_unchanged", async () => {
   const first = manifest.forward.findIndex(unit => unit.file === forward);
+  expect(first).toBeGreaterThanOrEqual(0);
+  const prefixForwards = manifest.forward.slice(0, first);
+  const prefixUnits = [manifest.baseline, ...prefixForwards];
   const root = mkdtempSync(join(tmpdir(), "parcel-contact-prefix-"));
   const container = await runPostgresContainer({ name: `parcel-prefix-${process.pid}`, password: "synthetic-conformance" });
   const db = new Pool({ connectionString: container.connectionString });
   try {
     expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
-    const prefix = { ...manifest, forward: manifest.forward.slice(0, first), objectInventorySha256: "9b0e371a8a3c0bfd2f8651fd1ed8a79316e7a7f218b4de25f6e4f529e477e9e8" };
-    for (const { file: path } of [prefix.baseline, ...prefix.forward]) {
+    // Rehearse the committed predecessor SQL so slot moves and main updates select the matching inventory.
+    const measurement = await db.connect();
+    let objectInventorySha256: string;
+    try {
+      await measurement.query("BEGIN");
+      for (const { file } of prefixUnits) await measurement.query(readFileSync(file, "utf8"));
+      const payload = selectedCatalogProjectionPayload(await readSelectedCatalogProjection(measurement));
+      objectInventorySha256 = createHash("sha256").update(payload).digest("hex");
+    } finally { try { await measurement.query("ROLLBACK"); } finally { measurement.release(); } }
+    const prefix = { ...manifest, forward: prefixForwards, objectInventorySha256 };
+    for (const { file: path } of prefixUnits) {
       const target = join(root, path); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, readFileSync(path));
     }
     mkdirSync(join(root, "config"));
