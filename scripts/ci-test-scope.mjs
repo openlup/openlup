@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { accessSync, constants, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, appendFileSync, constants, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { pathToFileURL } from 'node:url';
@@ -472,17 +472,79 @@ export const TOOLING_INPUTS = {
   ),
 };
 
+const WORKFLOW_PGTAP_INPUTS = [
+  'supabase/migrations/',
+  'supabase/tests/',
+  'tests/postgres/managed-compat/',
+  'config/ci-postgres-packages.json',
+  'config/ci-images.json',
+];
+const WORKFLOW_REFERENCE_BUILD_INPUTS = [
+  'src/',
+  'server/',
+  'api/',
+  'packages/',
+  'public/',
+  'config/',
+];
+const WORKFLOW_PACKAGE_GATES_INPUTS = [
+  'packages/',
+  'examples/neutral-store/',
+  'db/platform/migrations/',
+  'server/',
+  'docs/platform/communications-conformance.mjs',
+  'config/openlup-packages.json',
+  'config/ci-images.json',
+  'config/platform-migration-manifest.json',
+  'config/reviewed-platform-forwards.json',
+  'config/environment-variables.json',
+  'config/documentation-guide-allowlist.json',
+  'tests/helpers/postgresContainer.ts',
+  'AGENTS.md',
+];
+const WORKFLOW_INSTALL_BROWSER_INPUTS = [
+  'packages/',
+  'examples/neutral-store/',
+  'config/openlup-packages.json',
+  'config/ci-images.json',
+  'tests/helpers/postgresContainer.ts',
+  'tests/postgres/m14ReleasedSchemaUpgrade.proof.ts',
+  'tests/postgres/m14ReleasedSchemaUpgradeChild.ts',
+];
+export const ALL_WORKFLOW_SCOPES_TRUE = Object.freeze({
+  run_pgtap: true,
+  run_reference_build: true,
+  run_package_gates: true,
+  run_install_browser: true,
+  run_install_pack: true,
+});
+
+const hasInvalidPath = changedPaths => !Array.isArray(changedPaths) || changedPaths.some(path => typeof path !== 'string'
+  || !path || path.startsWith('/') || path.split('/').includes('..') || path.includes('\\'));
+const hasGlobalBailout = changedPaths => changedPaths.some(path => (!path.includes('/') && !ROOT_DOC_SET.has(path))
+  || path.split('/').some(segment => segment.startsWith('.'))
+  || isGlobalBailoutScript(path)
+  || SHARED_INPUTS.some(input => coversInput(input, path)));
+
 export function excludedToolingTests(changedPaths) {
-  if (!Array.isArray(changedPaths) || changedPaths.some(path => typeof path !== 'string'
-    || !path || path.startsWith('/') || path.split('/').includes('..') || path.includes('\\'))) return [];
+  if (hasInvalidPath(changedPaths) || hasGlobalBailout(changedPaths)) return [];
   const touched = inputs => changedPaths.some(path => inputs.some(input => coversInput(input, path)));
-  if (changedPaths.some(path => (!path.includes('/') && !ROOT_DOC_SET.has(path))
-    || path.split('/').some(segment => segment.startsWith('.'))
-    || isGlobalBailoutScript(path))
-    || touched(SHARED_INPUTS)) return [];
   return Object.entries(TOOLING_INPUTS)
     .filter(([test, inputs]) => !touched([test, ...inputs]))
     .map(([test]) => test).sort();
+}
+
+export function workflowScopeFromPaths(changedPaths) {
+  if (hasInvalidPath(changedPaths) || changedPaths.length === 0 || hasGlobalBailout(changedPaths)) {
+    return { ...ALL_WORKFLOW_SCOPES_TRUE };
+  }
+  const touched = inputs => changedPaths.some(path => inputs.some(input => coversInput(input, path)));
+  const run_pgtap = touched(WORKFLOW_PGTAP_INPUTS);
+  const run_reference_build = touched(WORKFLOW_REFERENCE_BUILD_INPUTS);
+  const run_package_gates = touched(WORKFLOW_PACKAGE_GATES_INPUTS);
+  const run_install_browser = touched(WORKFLOW_INSTALL_BROWSER_INPUTS);
+  const run_install_pack = run_package_gates || run_install_browser;
+  return { run_pgtap, run_reference_build, run_package_gates, run_install_browser, run_install_pack };
 }
 
 const isExecutableFile = candidate => {
@@ -516,23 +578,32 @@ const runGit = (cwd, args) => {
     timeout: 30_000, maxBuffer: 16 * 1024 * 1024, env: { ...processEnvironment, PATH: path } });
 };
 
-// HEAD is the checked-out candidate, including GitHub's PR merge commit. Diff
-// against its merge-base with the event's exact base, never a moving branch.
-// --no-renames reports both old and new names, so moving an input triggers it.
-export function scopeFromEvent({ eventName, event, cwd = process.cwd(), git = args =>
-  runGit(cwd, args) }) {
+function readEventDiffPaths({ eventName, event, cwd = process.cwd(), git = args => runGit(cwd, args) }) {
   try {
     const base = eventName === 'pull_request' ? event?.pull_request?.base?.sha
       : eventName === 'merge_group' ? event?.merge_group?.base_sha : undefined;
-    if (!/^[a-f0-9]{40}$/u.test(base ?? '')) return [];
+    if (!/^[a-f0-9]{40}$/u.test(base ?? '')) return null;
     const fork = git(['merge-base', 'HEAD', base]).trim();
-    if (!/^[a-f0-9]{40}$/u.test(fork)) return [];
+    if (!/^[a-f0-9]{40}$/u.test(fork)) return null;
     const diff = git(['diff', '--no-renames', '--name-only', '-z', fork, 'HEAD', '--']);
-    if (diff && !diff.endsWith('\0')) return [];
-    return excludedToolingTests(diff.split('\0').filter(Boolean));
+    if (diff && !diff.endsWith('\0')) return null;
+    return diff.split('\0').filter(Boolean);
   } catch {
-    return []; // Missing history, malformed metadata and Git errors run everything.
+    return null; // Missing history, malformed metadata and Git errors fail closed.
   }
+}
+
+// HEAD is the checked-out candidate, including GitHub's PR merge commit. Diff
+// against its merge-base with the event's exact base, never a moving branch.
+// --no-renames reports both old and new names, so moving an input triggers it.
+export function scopeFromEvent(options) {
+  const paths = readEventDiffPaths(options ?? {});
+  return paths ? excludedToolingTests(paths) : [];
+}
+
+export function workflowScopeFromEvent(options) {
+  const paths = readEventDiffPaths(options ?? {});
+  return paths ? workflowScopeFromPaths(paths) : { ...ALL_WORKFLOW_SCOPES_TRUE };
 }
 
 // Include staged and unstaged paths separately: an index change can be undone
@@ -569,13 +640,42 @@ export function writeTestScope({ output, eventName, eventPath, base, cwd } = {})
   return excluded;
 }
 
+export function writeWorkflowScope({ output, eventName, eventPath, cwd } = {}) {
+  let scope = { ...ALL_WORKFLOW_SCOPES_TRUE };
+  try {
+    if (eventName && eventPath) {
+      scope = workflowScopeFromEvent({ eventName, event: JSON.parse(readFileSync(eventPath, 'utf8')), cwd });
+    }
+  } catch { /* Fail closed to running every workflow lane on any read/selection error. */ }
+  const lines = [
+    `run_pgtap=${scope.run_pgtap}`,
+    `run_reference_build=${scope.run_reference_build}`,
+    `run_package_gates=${scope.run_package_gates}`,
+    `run_install_browser=${scope.run_install_browser}`,
+    `run_install_pack=${scope.run_install_pack}`,
+  ].join('\n');
+  if (output) appendFileSync(output, `${lines}\n`);
+  console.log(`Workflow scope (${eventName ?? 'unknown'}): ${lines.replaceAll('\n', ', ')}`);
+  return scope;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2);
-  const valid = args.length === 0 || (args.length === 2 && args[0] === '--base' && args[1] && !args[1].startsWith('-'));
-  if (!valid) {
-    writeFileSync(processEnvironment.OPENLUP_VITEST_EXCLUDE_FILE, '');
-    throw new Error('Usage: node scripts/ci-test-scope.mjs [--base <ref>]');
+  if (args.length === 1 && args[0] === '--workflow-outputs') {
+    writeWorkflowScope({
+      output: processEnvironment.GITHUB_OUTPUT,
+      eventName: processEnvironment.GITHUB_EVENT_NAME,
+      eventPath: processEnvironment.GITHUB_EVENT_PATH,
+    });
+  } else {
+    const valid = args.length === 0 || (args.length === 2 && args[0] === '--base' && args[1] && !args[1].startsWith('-'));
+    if (!valid) {
+      if (processEnvironment.OPENLUP_VITEST_EXCLUDE_FILE) {
+        writeFileSync(processEnvironment.OPENLUP_VITEST_EXCLUDE_FILE, '');
+      }
+      throw new Error('Usage: node scripts/ci-test-scope.mjs [--base <ref> | --workflow-outputs]');
+    }
+    writeTestScope({ output: processEnvironment.OPENLUP_VITEST_EXCLUDE_FILE, base: args[1],
+      eventName: processEnvironment.GITHUB_EVENT_NAME, eventPath: processEnvironment.GITHUB_EVENT_PATH });
   }
-  writeTestScope({ output: processEnvironment.OPENLUP_VITEST_EXCLUDE_FILE, base: args[1],
-    eventName: processEnvironment.GITHUB_EVENT_NAME, eventPath: processEnvironment.GITHUB_EVENT_PATH });
 }
