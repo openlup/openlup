@@ -265,6 +265,13 @@ test.beforeAll(async ({ request, baseURL }, info) => {
 });
 test.afterAll(async () => { await closeFixture?.(); });
 
+// Server-backed page waits get a bounded budget above the 5 s default; each step names itself in the sanitized hosted summary.
+const waitFor = expect.configure({ timeout: 20_000 });
+const step = (label: string) => `starter_catalogue_step_${label}`;
+function labelled(label: string, check: () => void) {
+  try { check(); } catch (error) { throw new Error(step(label), { cause: error }); }
+}
+
 for (const width of [320, 1280]) {
   test(`lists and quotes the exact published SKU at ${width}px`, async ({ page, request }) => {
     // Each viewport walks the catalogue, product page, reload and cart against an installed host; hosted runners need more than the default budget.
@@ -283,18 +290,18 @@ for (const width of [320, 1280]) {
     await page.goto(base + routes.catalog[locale]);
     const path = productPath(slug, locale);
     const firstLink = page.locator(`a[href="${path}?sku=${encodeURIComponent(first.sku)}"]`);
-    await expect(firstLink).toBeVisible();
-    await expect(firstLink.locator('xpath=ancestor::article').locator('img')).toHaveCount(0);
-    await expect(page.getByRole('img', { name: imageName })).toBeVisible();
+    await waitFor(firstLink, step('catalog_link')).toBeVisible();
+    await waitFor(firstLink.locator('xpath=ancestor::article').locator('img'), step('catalog_link_imageless')).toHaveCount(0);
+    await waitFor(page.getByRole('img', { name: imageName }), step('catalog_image')).toBeVisible();
     await firstLink.click();
     await page.getByRole('link', { name: wanted.title, exact: true }).click();
-    await expect(page).toHaveURL(base + path + '?sku=' + encodeURIComponent(wanted.sku));
+    await waitFor(page, step('product_url')).toHaveURL(base + path + '?sku=' + encodeURIComponent(wanted.sku));
     await page.reload();
-    await expect(page.getByText(wanted.title + ' · ' + wanted.sku, { exact: true })).toBeVisible();
-    await expect(page.locator('.product-detail img')).toHaveCount(0);
+    await waitFor(page.getByText(wanted.title + ' · ' + wanted.sku, { exact: true }), step('product_title')).toBeVisible();
+    await waitFor(page.locator('.product-detail img'), step('product_imageless')).toHaveCount(0);
     const money = new Intl.NumberFormat(locale, { style: 'currency', currency }).format(wanted.price / 100);
-    await expect(page.locator('.product-detail .price')).toHaveText(money);
-    await expect(page.getByRole('spinbutton')).toHaveValue(String(item.minQuantity));
+    await waitFor(page.locator('.product-detail .price'), step('product_price')).toHaveText(money);
+    await waitFor(page.getByRole('spinbutton'), step('product_quantity')).toHaveValue(String(item.minQuantity));
     await page.locator('.product-detail button').click();
     // A fresh cart document reads the saved selection and requests its native quote.
     const [quoted] = await Promise.all([
@@ -302,10 +309,11 @@ for (const width of [320, 1280]) {
         && response.request().postDataJSON()?.cart?.lines?.[0]?.sku === wanted.sku),
       page.goto(base + routes.cart[locale]),
     ]);
-    await expect(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku })).toBeVisible();
-    await expect(page.getByRole('spinbutton')).toHaveValue(String(item.minQuantity));
-    assertQuote(await quoted.json(), wanted);
-    await expect(page.getByRole('complementary', { name: copy[locale].boxSummary })).toContainText(money);
+    const quote = await quoted.json();
+    await waitFor(page.getByRole('heading', { name: wanted.title + ' · ' + wanted.sku }), step('cart_heading')).toBeVisible();
+    await waitFor(page.getByRole('spinbutton'), step('cart_quantity')).toHaveValue(String(item.minQuantity));
+    labelled('cart_quote', () => assertQuote(quote, wanted));
+    await waitFor(page.getByRole('complementary', { name: copy[locale].boxSummary }), step('cart_summary')).toContainText(money);
 
     if (width === 320) return;
     const quotePath = '**/api/actions/offer.validate';
@@ -318,8 +326,8 @@ for (const width of [320, 1280]) {
       await route.fulfill({ response, json: quote });
     });
     await page.reload();
-    await expect(page.getByText(quoteCopy[locale].unavailable, { exact: true })).toBeVisible();
-    await expect(page.getByRole('complementary', { name: copy[locale].boxSummary })).toHaveCount(0);
+    await waitFor(page.getByText(quoteCopy[locale].unavailable, { exact: true }), step('refusal_unavailable')).toBeVisible();
+    await waitFor(page.getByRole('complementary', { name: copy[locale].boxSummary }), step('refusal_summary_hidden')).toHaveCount(0);
     await page.unroute(quotePath);
     const db = new pg.Pool({ connectionString: fixture.runtimeUrl });
     try {
@@ -330,8 +338,8 @@ for (const width of [320, 1280]) {
         firstName: 'Example', lastName: 'Buyer', phone: '00000', line1: '1 Example Lane', city: 'Example', postalCode: '00000',
         cart: { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null, lines: [{ sku: wanted.sku, quantity: 1 }] },
       });
-      expect(await result.json()).toMatchObject({ ok: false, code: 'catalog_admission_quote_authority_required' });
-      expect(await count()).toBe(before);
+      expect(await result.json(), step('checkout_refusal')).toMatchObject({ ok: false, code: 'catalog_admission_quote_authority_required' });
+      expect(await count(), step('order_count')).toBe(before);
     } finally { await db.end(); }
   });
 }
