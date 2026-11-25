@@ -32,6 +32,7 @@ import {
   decideFileRetry,
   jsonReportArgs,
   readFailedFiles,
+  readReportFiles,
   readRunErrors,
   settleFileRetry,
 } from "./ci-vitest-shard.mjs";
@@ -432,14 +433,41 @@ describe("ci-vitest-shard single file retry", () => {
 
   it("passes after the retry only on a clean exit with no failed file or unattributed error, listing every retried file as flaky", () => {
     const passed = { unhandledErrors: 0, reason: "passed" };
-    expect(settleFileRetry(["a.test.ts", "b.test.ts"], { status: 0, failedFiles: [], runErrors: passed }))
+    expect(settleFileRetry(["a.test.ts", "b.test.ts"], { status: 0, failedFiles: [], passedFiles: ["a.test.ts", "b.test.ts"], runErrors: passed }))
       .toEqual({ pass: true, flaky: ["a.test.ts", "b.test.ts"] });
     expect(settleFileRetry(["a.test.ts"], { status: 1, failedFiles: ["a.test.ts"], runErrors: clean })).toEqual({ pass: false, flaky: [] });
     expect(settleFileRetry(["a.test.ts"], { status: 1, failedFiles: [], runErrors: clean })).toEqual({ pass: false, flaky: [] });
     expect(settleFileRetry(["a.test.ts"], { status: 0, failedFiles: null, runErrors: passed })).toEqual({ pass: false, flaky: [] });
-    expect(settleFileRetry(["a.test.ts"], { status: 0, failedFiles: [], runErrors: null })).toEqual({ pass: false, flaky: [] });
-    expect(settleFileRetry(["a.test.ts"], { status: 0, failedFiles: [], runErrors: { unhandledErrors: 1, reason: "passed" } }))
+    expect(settleFileRetry(["a.test.ts"], { status: 0, failedFiles: [], passedFiles: ["a.test.ts"], runErrors: null })).toEqual({ pass: false, flaky: [] });
+    expect(settleFileRetry(["a.test.ts"], { status: 0, failedFiles: [], passedFiles: ["a.test.ts"], runErrors: { unhandledErrors: 1, reason: "passed" } }))
       .toEqual({ pass: false, flaky: [] });
+  });
+
+  it("fails the retry unless every retried file appears in the rerun's report as passed", () => {
+    const passed = { unhandledErrors: 0, reason: "passed" };
+    // Missing from the report.
+    expect(settleFileRetry(["a.test.ts", "b.test.ts"], { status: 0, failedFiles: [], passedFiles: ["a.test.ts"], runErrors: passed }))
+      .toEqual({ pass: false, flaky: [] });
+    expect(settleFileRetry(["a.test.ts"], { status: 0, failedFiles: [], passedFiles: null, runErrors: passed })).toEqual({ pass: false, flaky: [] });
+    const dir = mkdtempSync(join(tmpdir(), "ci-vitest-retry-passed-"));
+    try {
+      const report = join(dir, "report.json");
+      writeFileSync(report, JSON.stringify({ testResults: [
+        { name: join(dir, "a.test.ts"), status: "passed", assertionResults: [{ status: "passed" }, { status: "skipped" }] },
+        { name: join(dir, "skipped.test.ts"), status: "passed", assertionResults: [{ status: "skipped" }] },
+        { name: join(dir, "empty.test.ts"), status: "passed", assertionResults: [] },
+        { name: join(dir, "b.test.ts"), status: "failed", assertionResults: [{ status: "failed" }] },
+      ] }));
+      const files = readReportFiles(report, dir)!;
+      expect(files).toEqual({ failed: ["b.test.ts"], passed: ["a.test.ts"] });
+      // Skipped or not run: the shard fails.
+      for (const file of ["skipped.test.ts", "empty.test.ts"]) {
+        expect(settleFileRetry([file], { status: 0, failedFiles: [], passedFiles: files.passed, runErrors: passed }))
+          .toEqual({ pass: false, flaky: [] });
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("reads failed files and run errors from their reports and refuses unreadable reports", () => {
@@ -504,7 +532,8 @@ describe("ci-vitest-shard single file retry", () => {
       const output = args.find((arg) => arg.startsWith("--outputFile.json="))!.slice("--outputFile.json=".length);
       const files = args.filter((arg) => arg.endsWith(".test.ts"));
       writeFileSync(output, JSON.stringify({ testResults: files.map((file) => ({
-        name: join(cwd, file), status: failed.includes(file) ? "failed" : "passed" })) }));
+        name: join(cwd, file), status: failed.includes(file) ? "failed" : "passed",
+        assertionResults: [{ status: failed.includes(file) ? "failed" : "passed" }] })) }));
       const exit = status ?? (failed.length > 0 || unhandledErrors > 0 ? 1 : 0);
       writeFileSync(options.env[RUN_ERRORS_REPORT_ENV], JSON.stringify({ unhandledErrors, reason: exit === 0 ? "passed" : "failed" }));
       return { status: exit };

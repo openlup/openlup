@@ -434,14 +434,22 @@ export function decideFileRetry(failedFiles, { runErrors = null, maxFiles = MAX_
 }
 
 /** The shard passes only if the retry exited cleanly with no failed file and no unattributed error. */
-export function settleFileRetry(retriedFiles, { status, failedFiles, runErrors }) {
+// Every retried file must appear in the rerun's report as passed; missing, skipped or
+// not-run files fail the shard.
+export function settleFileRetry(retriedFiles, { status, failedFiles, passedFiles, runErrors }) {
+  const passed = new Set(passedFiles ?? []);
   return status === 0 && Array.isArray(failedFiles) && failedFiles.length === 0
     && runErrors?.unhandledErrors === 0 && runErrors.reason !== "interrupted"
+    && retriedFiles.every((file) => passed.has(file))
     ? { pass: true, flaky: [...retriedFiles] }
     : { pass: false, flaky: [] };
 }
 
-export function readFailedFiles(reportPath, rootDir = REPOSITORY_ROOT) {
+/**
+ * Reads a Vitest JSON report into failed files and passed files. A file counts as
+ * passed only when its status is passed and at least one of its tests passed.
+ */
+export function readReportFiles(reportPath, rootDir = REPOSITORY_ROOT) {
   let report;
   try {
     report = JSON.parse(readFileSync(reportPath, "utf8"));
@@ -449,17 +457,29 @@ export function readFailedFiles(reportPath, rootDir = REPOSITORY_ROOT) {
     return null;
   }
   if (!report || !Array.isArray(report.testResults)) return null;
-  const failed = [];
+  const failed = new Set();
+  const passed = new Set();
   for (const result of report.testResults) {
     if (!result || typeof result.name !== "string") return null;
-    if (result.status !== "failed") continue;
+    let file;
     try {
-      failed.push(normalizeRelativePath(rootDir, result.name));
+      file = normalizeRelativePath(rootDir, result.name);
     } catch {
       return null;
     }
+    if (result.status === "failed") {
+      failed.add(file);
+    } else if (result.status === "passed"
+      && Array.isArray(result.assertionResults)
+      && result.assertionResults.some((assertion) => assertion?.status === "passed")) {
+      passed.add(file);
+    }
   }
-  return [...new Set(failed)].sort(compareCodeUnits);
+  return { failed: [...failed].sort(compareCodeUnits), passed: [...passed].sort(compareCodeUnits) };
+}
+
+export function readFailedFiles(reportPath, rootDir = REPOSITORY_ROOT) {
+  return readReportFiles(reportPath, rootDir)?.failed ?? null;
 }
 
 export function readRunErrors(reportPath) {
@@ -506,7 +526,8 @@ function runReported(spawnImpl, command, args, { cwd, env, reportDir, label }) {
   const status = spawnStatus(spawnImpl, command, [...args, ...jsonReportArgs(args, testReport, env)], cwd,
     { ...env, [RUN_ERRORS_REPORT_ENV]: errorReport });
   if (status === null) return { status };
-  return { status, failedFiles: readFailedFiles(testReport, cwd), runErrors: readRunErrors(errorReport) };
+  const files = readReportFiles(testReport, cwd);
+  return { status, failedFiles: files?.failed ?? null, passedFiles: files?.passed ?? null, runErrors: readRunErrors(errorReport) };
 }
 
 function runWithFileRetry(invocation, { cwd, env, spawnImpl, reportDir, reportFlaky, log }) {

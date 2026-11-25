@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import pg from 'pg';
 import { assertCanaryImage, acquireStarterPostgres, browserArguments, browserContainerArguments, canaryPurchasePattern, capturePrivateValues, catalogueUpgradeGroupIndex, parseArguments, resolveBrowserImage, runStarterImageCanary, runBrowserGroups, runCatalogueUpgrade, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
-import { decideBrowserGroupRetry, runBrowserGroups as runBrowserGroupsWithRetry } from './starter-browser-ci.mjs';
+import { decideBrowserGroupRetry, defaultRetryBudgetMs, runBrowserGroups as runBrowserGroupsWithRetry, starterBrowserRetryBudgetMs, withCleanup as withGroupCleanup } from './starter-browser-ci.mjs';
 import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
 
 const args = ['--manifest', '/tmp/packs/packages-manifest.json', '--expected-commit', 'a'.repeat(40)];
@@ -114,7 +114,7 @@ describe('installed starter browser CI', () => {
       expect(report).toHaveBeenCalledWith('Starter browser group 4 failed during seed_coffee');
     } finally { report.mockRestore(); }
     const source = readFileSync('scripts/starter-browser-ci.mjs', 'utf8');
-    expect(source).toContain("phase, options.groups, { retryJourneys: isHostedCi(processEnvironment) })");
+    expect(source).toContain("phase, options.groups, { retryJourneys: isHostedCi(processEnvironment), budgetMs: starterBrowserRetryBudgetMs() })");
   });
   it.each(['mirror', 'local'] as const)('replays once with the resolved %s image for the owning group', async source => {
     vi.stubEnv('CI', source === 'mirror' ? 'true' : '');
@@ -462,6 +462,58 @@ describe('starter browser single journeys retry', () => {
         throw attempt === 1 ? new Error('journeys failed') : setup;
       }, () => phase, [0, 1], { retryJourneys: true })).rejects.toBe(setup);
       expect(retried).toEqual([1, 2]);
+    } finally { report.mockRestore(); }
+  });
+  it('never retries a cleanup failure and starts a retry only after a clean first cleanup', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(decideBrowserGroupRetry('journeys', 1, true, { cleanupFailed: true })).toBe('fail');
+      // Journeys passed but a release failed: the cleanup failure is not rerun.
+      const cleanupOnly: number[] = [];
+      await expect(runBrowserGroupsWithRetry((_index: number, _selection: unknown, attempt: number) => withGroupCleanup(async defer => {
+        cleanupOnly.push(attempt);
+        defer(() => { throw new Error('release failed'); });
+      }), () => 'journeys', [0], { retryJourneys: true, reportFlaky: () => { throw new Error('unexpected'); } }))
+        .rejects.toThrow('starter_browser_cleanup_failed');
+      expect(cleanupOnly).toEqual([1]);
+      // Journeys failed and a release failed too: still no rerun.
+      const journeysFailure = new Error('journeys failed');
+      const both: number[] = [];
+      await expect(runBrowserGroupsWithRetry((_index: number, _selection: unknown, attempt: number) => withGroupCleanup(async defer => {
+        both.push(attempt);
+        defer(() => { throw new Error('release failed'); });
+        throw journeysFailure;
+      }), () => 'journeys', [0], { retryJourneys: true })).rejects.toBe(journeysFailure);
+      expect(both).toEqual([1]);
+      // A clean first cleanup completes before the retry starts.
+      const events: string[] = [];
+      await runBrowserGroupsWithRetry((_index: number, _selection: unknown, attempt: number) => withGroupCleanup(async defer => {
+        events.push(`start ${attempt}`);
+        defer(() => { events.push(`cleaned ${attempt}`); });
+        if (attempt === 1) throw new Error('journeys failed');
+      }), () => 'journeys', [0], { retryJourneys: true, reportFlaky: () => {} });
+      expect(events).toEqual(['start 1', 'cleaned 1', 'start 2', 'cleaned 2']);
+    } finally { report.mockRestore(); }
+  });
+  it('skips the retry when the first attempt used more than 45% of the budget', async () => {
+    expect(defaultRetryBudgetMs).toBe(300000);
+    expect(starterBrowserRetryBudgetMs({})).toBe(300000);
+    expect(starterBrowserRetryBudgetMs({ OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS: '600000' })).toBe(600000);
+    expect(starterBrowserRetryBudgetMs({ OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS: 'soon' })).toBe(300000);
+    expect(decideBrowserGroupRetry('journeys', 1, true, { elapsedMs: 135000, budgetMs: 300000 })).toBe('retry');
+    expect(decideBrowserGroupRetry('journeys', 1, true, { elapsedMs: 135001, budgetMs: 300000 })).toBe('budget');
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      let clock = 0;
+      const attempts: number[] = [];
+      const failure = new Error('journeys failed');
+      await expect(runBrowserGroupsWithRetry(async (_index: number, _selection: unknown, attempt: number) => {
+        attempts.push(attempt);
+        clock += 50;
+        throw failure;
+      }, () => 'journeys', [0], { retryJourneys: true, budgetMs: 100, now: () => clock })).rejects.toBe(failure);
+      expect(attempts).toEqual([1]);
+      expect(report).toHaveBeenCalledWith('Starter browser group 1 retry skipped: budget');
     } finally { report.mockRestore(); }
   });
 });
