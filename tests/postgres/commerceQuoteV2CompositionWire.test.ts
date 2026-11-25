@@ -136,10 +136,11 @@ describe("native composition wrapper wire", () => {
         feeLines: [],
       });
       if (composed.kind !== "composed") throw new Error(JSON.stringify(composed));
-      const { status, quoteId, contractVersion, schemaVersion } = template;
-      const quote = { ...composed.money, status, quoteId, contractVersion, schemaVersion, moneyDigest: composed.moneyDigest };
+      const { quoteId } = template;
+      const quote = { ...composed.money, status: result.kind, quoteId, contractVersion: "commerce.v1", schemaVersion: 2,
+        moneyDigest: composed.moneyDigest } as const;
       sql = { ...original, seal: { ...original.seal, evidence, validUntil,
-        outcome: { kind: status, quote: { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) } },
+        outcome: { kind: quote.status, quote: { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) } },
       } };
     }
     const command = wrappedSeal(sql, adapter);

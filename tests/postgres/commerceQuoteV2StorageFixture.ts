@@ -26,13 +26,13 @@ type Claim = {
 type Refusal = { kind: "refused" | "unavailable"; code: string; field: string; remedy: string; effect?: "none" };
 const fiscalFacts = { country: "XA", category: "standard", vatRateBps: 0, legalBasis: "policy-a" };
 const refs = { taxClassKey: "class-a", assignmentRef: "assignment-a" };
-const cadence = { schemaVersion: 1, kind: "fixed_days", days: 30 };
-const line = { lineKey: "item-a", sku: "item-a", mode: "subscription", sourceOrdinal: 1, quantity: 1, unitBasisMinor: 100, ...refs };
+const cadence = { schemaVersion: 1, kind: "fixed_days", days: 30 } as const;
+const line = { lineKey: "item-a", sku: "item-a", mode: "subscription" as const, sourceOrdinal: 1, quantity: 1, unitBasisMinor: 100, ...refs };
 const cost = { ref: "cost-a", currency: "XXX", amountMinor: 2 };
-const shipping = { ...refs, bucketKey: "shipping-a", kind: "shipping", carrierRef: "carrier-a", serviceRef: "service-a",
+const shipping = { ...refs, bucketKey: "shipping-a", kind: "shipping" as const, carrierRef: "carrier-a", serviceRef: "service-a",
   cost, separatelyStated: true };
 const fee = { feeKey: "fee-a", jurisdictionRef: "district-a", feeKind: "fee-kind", amountMinor: 3,
-  scope: { kind: "delivery", bucketKey: shipping.bucketKey }, refundRule: { ref: "rule-a", revision: "revision-a" },
+  scope: { kind: "delivery" as const, bucketKey: shipping.bucketKey }, refundRule: { ref: "rule-a", revision: "revision-a" },
   providerPositionRef: "provider-position-a" };
 const price = { priceListRef: "list-a", priceContextDigest: digest, priceEvidenceRef: "price-a", classMapRevision: "classes-a" };
 
@@ -76,7 +76,7 @@ async function fixture(store: JourneyInstallation) {
   function compose(kind: Kind) {
     const basis = kind === fiscalKind ? "inclusive" : "exclusive";
     const candidate = { amountBasis: basis, deliverySelectionRef: testServicePin.deliverySelectionRef,
-      delivery: [{ ...shipping, amountMinor: 2, threshold: { flatMinor: 2, freeThresholdMinor: 500 } }], feeLines: [fee] };
+      delivery: [{ ...shipping, amountMinor: 2, threshold: { flatMinor: 2, freeThresholdMinor: 500 } }], feeLines: [fee] } satisfies PlanCommerceQuoteMoneyV2Input["baseline"];
     return { catalogueEvidenceRef: "catalogue-a", evidenceExpiresAt: issued.evidenceExpiresAt, selection: issued.selection,
       service: testServicePin,
       limits: { installationRef, channelKey: "channel-a", methodKey: "method-a", providerKey: "provider-a",
@@ -88,7 +88,7 @@ async function fixture(store: JourneyInstallation) {
           { amountOffMinor: 1, adjustmentRef: "discount-a", evidenceRef: "rule-a", appliesTo: "line", target: { lineKeys: [lineKey] } },
           { amountOffMinor: 1, adjustmentRef: "discount-b", evidenceRef: "rule-b", appliesTo: "shipping",
             target: { bucketKey: shipping.bucketKey } },
-        ] } },
+        ] } } satisfies PlanCommerceQuoteMoneyV2Input,
       ...(kind === fiscalKind ? { fiscal: { facts: fiscalFacts,
         coordinates: { installationRef, marketRef: "market-a", packId: "pack-a", packVersion: "1" } } } : {}) };
   }
@@ -277,7 +277,7 @@ function seal(value: Fixture, input: Begin, grant: Claim, extended = Boolean(inp
     discountAllocations: [{ allocationId: randomUUID(), adjustmentRef: "discount-a", sequence: 1, source: "legacy_promotion",
       basisReductionMinor: 1, netReductionMinor: 1, taxReductionMinor: 0, evidenceRef: "rule-a",
       before: moneyState(base), after: moneyState(base - 1) }] });
-  const unsigned = { catalogueEvidenceRef: pin.catalogueEvidenceRef, mode: "subscription", cadence, currency: "XXX", destination, paymentLimits, price,
+  const unsigned = { catalogueEvidenceRef: pin.catalogueEvidenceRef, mode: "subscription" as const, cadence, currency: "XXX", destination, paymentLimits, price,
     deliverySelectionRef: pin.service.deliverySelectionRef, amountBasis: fiscal ? "inclusive" : "exclusive",
     coverageDigest: fiscal && extended ? evaluationDigest("fiscal-coverage", coverageTag) : digest,
     promotion: { engine: "promotion-engine.v1", rankingRuleRef: fiscal ? "lowest_payable_gross" : "lowest_pre_tax.v1" },

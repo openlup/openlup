@@ -52,14 +52,13 @@ it("upgrades the exact dormant prefix while preserving original frames and repla
     for (const migration of [catalog.baseline, ...catalog.forward.slice(0, forwardIndex + 1)])
       await owner.query(readFileSync(migration.file, "utf8"));
     const source = { owner, runtime, runtimeUrl: instance.connectionString };
-    const cases = [];
-    for (const extended of [false, true]) {
+    const createCase = async (extended: boolean) => {
       const value = await fixture(source);
       const { request, result, pin, body, invocation, identity } = await verifiedAdapterMoney(value, "final", extended, new Date().toISOString());
-      expect(await applyTaxCoverageRevision(owner, { expectedHead: "coverage-a", document: {
+      expect(await applyTaxCoverageRevision(source.owner, { expectedHead: "coverage-a", document: {
         installationRef: identity.installationRef, accountRef: request.input.scope.accountRef, coverage: request.input.coverage, actorRef: "fixture",
       } })).toHaveProperty("coverageDigest", pin.coverage.digest);
-      const grant = await invoke<Claim>(runtime, beginSql, { identity, invocation, operation: "claim", pin, recovery: pin.recovery });
+      const grant = await invoke<Claim>(source.runtime, beginSql, { identity, invocation, operation: "claim", pin, recovery: pin.recovery });
       expect(grant.kind).toBe("claimed");
       const { outcome, contradiction, ...preimage } = body;
       const { calculationId, generation, claimToken } = grant;
@@ -73,11 +72,13 @@ it("upgrades the exact dormant prefix while preserving original frames and repla
         outcome: { kind: "final", quote: { ...quote, quoteDigest: quoteDigest("commerce.quote.v2", quote) } } };
       const base = { identity, invocation, calculationId, generation, claimToken, operation: "complete", seal };
       const full = { ...base, seal: { ...seal, adapterMoneyResult: result.money } };
-      await expect(invoke(runtime, completeSql, full)).rejects.toMatchObject({ ...supplementRefusal, detail: "/seal" });
-      cases.push({ base, full, expected: { kind: "terminal", outcome: seal.outcome, validUntil: seal.validUntil } });
-    }
+      await expect(invoke(source.runtime, completeSql, full)).rejects.toMatchObject({ ...supplementRefusal, detail: "/seal" });
+      return { base, full, expected: { kind: "terminal", outcome: seal.outcome, validUntil: seal.validUntil } };
+    };
+    const cases = [await createCase(false), await createCase(true)];
     const db = await owner.connect();
-    const read = (id: string) => db.query(`SELECT xmin::text, ctid::text, to_jsonb(r) - ARRAY['adapter_money_text','adapter_result_digest'] AS incumbent,
+    type StoredRow = { xmin: string; ctid: string; incumbent: unknown; money: string | null; digest: string | null };
+    const read = (id: string) => db.query<StoredRow>(`SELECT xmin::text, ctid::text, to_jsonb(r) - ARRAY['adapter_money_text','adapter_result_digest'] AS incumbent,
       to_jsonb(r)->>'adapter_money_text' AS money, to_jsonb(r)->>'adapter_result_digest' AS digest
       FROM public.tax_calculations r WHERE calculation_id=$1`, [id]).then(result => result.rows[0]);
     const complete = async (wire: object) => {
@@ -99,7 +100,7 @@ it("upgrades the exact dormant prefix while preserving original frames and repla
       const eraseDefinition = () => db.query("SELECT pg_get_functiondef('public.tax_calculation_erase_v1(uuid)'::regprocedure) AS definition")
         .then(result => result.rows[0].definition);
       const erase = await eraseDefinition();
-      const incumbent = [];
+      const incumbent: StoredRow[] = [];
       for (const { base, expected } of cases) {
         expect(await complete(base)).toStrictEqual(expected);
         incumbent.push(await read(base.calculationId));
@@ -151,7 +152,7 @@ it("upgrades the exact dormant prefix while preserving original frames and repla
           [randomUUID(), digest]);
       }
       await db.query("SAVEPOINT collision");
-      const losingRows = [];
+      const losingRows: StoredRow[] = [];
       for (const { base } of cases) {
         expect(await complete(base)).toMatchObject({ kind: "terminal", outcome: { code: "tax_provider_reference_conflict" } });
         losingRows.push(await read(base.calculationId));
