@@ -721,6 +721,35 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     }
   });
 
+  it("keeps the storefront entry free of browser and Node globals and Node built-ins", async () => {
+    const config = await loadConfig();
+    const storefrontMessage = "packages/platform storefront";
+    const lint = async (source: string, file = "packages/platform/src/storefront/usesGlobal.ts") =>
+      (await linterFor(config).lintText(source, { filePath: resolve(root, file), warnIgnored: true }))[0]!.messages;
+    for (const name of ["window", "document", "sessionStorage", "localStorage", "crypto", "fetch", "performance", "Date", "setTimeout", "process", "globalThis"]) {
+      const messages = await lint(`export const read = () => ${name};\n`);
+      expect(messages.filter(({ fatal, ruleId }) => fatal || ruleId === null)).toEqual([]);
+      expect(messages.filter(({ ruleId }) => ruleId === "no-restricted-globals").map(({ message }) => message), name)
+        .toEqual([expect.stringContaining(storefrontMessage)]);
+    }
+    for (const target of ["node:crypto", "crypto", "node:fs/promises"]) for (const source of loadSources(target, "ts")) {
+      expect(await moduleMessages(config, source, "packages/platform/src/storefront/usesNode.ts"), source)
+        .toContainEqual(expect.stringContaining(storefrontMessage));
+    }
+    // Positive plant: own files, a type-only core import and plain values stay admitted.
+    const admitted = [
+      "import { toCommandKey } from \"./identity.js\";\nexport const key = toCommandKey(\"k\");\n",
+      "import type { PaymentAttemptStatus } from \"@openlup/core/payment\";\nexport const status: PaymentAttemptStatus = \"failed\";\n",
+    ];
+    for (const source of admitted) {
+      const messages = await lint(source, "packages/platform/src/storefront/usesOwn.ts");
+      expect(messages.filter(({ fatal, ruleId }) => fatal || ruleId === null || ["no-restricted-globals", "no-restricted-imports", "no-restricted-syntax"].includes(ruleId)), source).toEqual([]);
+    }
+    // The rule is scoped to the storefront module: another module's source is unaffected.
+    expect((await lint("export const read = () => sessionStorage;\n", "packages/platform/src/kernel/usesGlobal.ts"))
+      .filter(({ ruleId }) => ruleId === "no-restricted-globals")).toEqual([]);
+  });
+
   it("declares exactly the inventoried edges; only the composer may declare more", async () => {
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js") as unknown as {
       PLATFORM_MODULE_GRAPH: Record<string, { values: string[]; types: string[] }>;
@@ -798,7 +827,7 @@ describe("eslint starter browser-bundled source boundary", { timeout: 60_000 }, 
   const admitted = [
     "@openlup/platform/catalog/contracts", "@openlup/platform/subscriptions/contracts", "@openlup/platform/account-support/read-contracts",
     "@openlup/platform/pricing/browser", "@openlup/platform/commerce", "@openlup/platform/marketing", "@openlup/platform/operations",
-    "@openlup/core/subscription", "./dom.ts",
+    "@openlup/platform/storefront", "@openlup/core/subscription", "./dom.ts",
   ];
   // The package root and an undeclared subpath such as pricing/browser/internal are refused by the
   // export boundary even as type imports; the named forms below cover them.
@@ -835,6 +864,7 @@ describe("eslint starter browser-bundled source boundary", { timeout: 60_000 }, 
       ["import platform from '@openlup/platform';", entryMessage],
       ["export { b } from '@openlup/platform/pricing';", entryMessage],
       ["const payments = await import('@openlup/platform/payments');", entryMessage],
+      ["import { scenario } from '@openlup/platform/storefront/testing';", entryMessage],
       ["import { el } from './dom.ts';", ""],
     ];
     for (const filename of [clientFile, sharedFile]) for (const [source, message] of forms) {
