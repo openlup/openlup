@@ -5242,6 +5242,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/commerceMoneyLimitsV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/commerceOmsCancelOrderHandler.ts",
       "class": "public-output"
     },
@@ -8902,6 +8906,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/tax/taxCalculationComposition.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/tax/taxCalculationStore.ts",
       "class": "public-output"
     },
@@ -11383,6 +11391,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/facades.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/nativePurchasePriceList.test.ts",
       "class": "public-output"
     },
     {
@@ -30354,6 +30366,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/commerceMoneyLimitsV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceMoneyLimitsV2Pgtap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/commercePriceAuthorityRead.test.ts",
       "class": "public-output"
     },
@@ -30363,6 +30383,22 @@
     },
     {
       "path": "tests/postgres/commerceQuoteCatalogRead.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2CompositionWire.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2Storage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2StorageFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2StoragePgtap.test.ts",
       "class": "public-output"
     },
     {
@@ -30534,6 +30570,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/commerceMoneyLimitsV2/replayed.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/commerceQuoteV2Storage/replayed.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/communicationEventErasure.sql",
       "class": "public-output"
     },
@@ -30623,6 +30667,14 @@
     },
     {
       "path": "tests/postgres/fixtures/paymentReconciliation/setup.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/privacyErasureReconciliations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/privacyReplayRecorded.json",
       "class": "public-output"
     },
     {
@@ -31151,6 +31203,14 @@
     },
     {
       "path": "tests/postgres/postgresContainerCleanup.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/privacyErasureReplay.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/privacyReplayFence.test.ts",
       "class": "public-output"
     },
     {

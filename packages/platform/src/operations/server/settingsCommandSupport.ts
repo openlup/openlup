@@ -2,7 +2,7 @@ import { isIPv4 } from "node:net";
 import { z } from "zod";
 import type { SettingRefusal } from "../contracts/settings.js";
 import type { runSettingsCommand } from "./settingsCommand.js";
-import { loadSettingsCatalogue } from "./settingsCatalog.js";
+import { loadSettingsCatalogue, moneyLimitsUnbound, moneyLimitsUnavailable } from "./settingsCatalog.js";
 
 export function refuseCoverageRead(cause: unknown, unbound = false): { refusal: SettingRefusal } {
   const base = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;
@@ -18,6 +18,16 @@ export function refuseCoverageRead(cause: unknown, unbound = false): { refusal: 
       action: "The connected coverage read failed. Check the app binding, the database connection and its TLS settings, the role's connect and EXECUTE privileges, and that this release's migrations are installed on a native database; then run the same command again." },
   };
   Object.defineProperty(refusal, "cause", { value: cause, enumerable: false });
+  return { refusal };
+}
+
+export function refuseMoneyLimitsRead(cause?: unknown, unbound = false): { refusal: SettingRefusal } {
+  const refusal = { ...loadSettingsCatalogue().commandFreeByCode.get(unbound ? moneyLimitsUnbound : moneyLimitsUnavailable)! };
+  if (!unbound) {
+    const original = cause instanceof Error && "code" in cause && cause.code === moneyLimitsUnavailable
+      ? cause.cause : cause;
+    Object.defineProperty(refusal, "cause", { value: original, enumerable: false });
+  }
   return { refusal };
 }
 

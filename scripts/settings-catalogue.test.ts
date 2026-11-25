@@ -1,5 +1,6 @@
 import { ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { describeRenewalStockProtectionSetting } from "@openlup/platform/inventory";
+import { describeCommerceMoneyLimitsV2Setting } from "@openlup/platform/commerce/server";
 import { describeTaxCoverageSetting } from "@openlup/platform/tax";
 import { spawnSync } from "node:child_process";
 import { globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -17,13 +18,17 @@ it("represents every domain data key and executable descriptor in the catalogue"
   const { entries } = JSON.parse(readFileSync("packages/platform/settings-catalog.json", "utf8"));
   const dataKeys = globSync("packages/platform/src/*/settings-data.json").flatMap(path =>
     (JSON.parse(readFileSync(path, "utf8")) as Array<{ key: string }>).map(({ key }) => key));
-  const expected = [describeRenewalStockProtectionSetting().key, describeTaxCoverageSetting().key, ...dataKeys].sort();
+  const expected = [describeRenewalStockProtectionSetting().key, describeTaxCoverageSetting().key, describeCommerceMoneyLimitsV2Setting().key, ...dataKeys].sort();
   expect(entries.map(({ key }) => key)).toEqual(expected);
   expect(new Set(expected).size).toBe(expected.length);
   expect(entries.filter(({ kind }) => kind === "installed").map(({ key }) => key)).toEqual(expect.arrayContaining([
     "inventory_renewal_protection", "checkout_recovery_reminders", "subscriber_winback_policy",
-    "pricing.subscriptionPricePolicy", "communications.nativeDeliveryControls", "tax.coverage",
+    "pricing.subscriptionPricePolicy", "communications.nativeDeliveryControls", "tax.coverage", "commerce.money_limits.v2",
   ]));
+  expect(entries.find(({ key }) => key === "commerce.money_limits.v2")).toMatchObject({
+    domain: "pricing", kind: "installed", schemaVersion: 1, runtime: { level: "read-only" },
+    schema: { properties: { schemaVersion: { const: 2 } } }, fallback: null, absentMeans: { value: null },
+  });
   expect(entries.filter(({ kind }) => kind === "cap").length).toBeGreaterThanOrEqual(38);
   expect(entries.filter(({ kind }) => kind === "code").map(({ key }) => key)).toEqual([
     "catalog.bundleAvailabilityPolicy",
@@ -45,6 +50,17 @@ it("represents every domain data key and executable descriptor in the catalogue"
     change: { reference: "docs/guide/how-to/build/customize-the-starter.md#validate-a-checkout-destination" },
   });
   expect(entries.filter(({ kind }) => kind === "invariant").length).toBeGreaterThanOrEqual(7);
+});
+
+it("accounts for payment limits policy and its non-configurable coordinates", () => {
+  const { entries } = JSON.parse(readFileSync("packages/platform/settings-catalog.json", "utf8"));
+  // The rail and profile identify the authority. Revision tracks history and active records owner state.
+  // Integer and encoding bounds are internal validation rules.
+  const pricingLimits = entries.filter(({ key }) => key.startsWith("commerce.money_limits."));
+  expect(pricingLimits.map(({ key }) => key)).toEqual(["commerce.money_limits.v2"]);
+  expect(pricingLimits[0].effect).toEqual({
+    appliesTo: "Fresh opted-in quotes for the selected rail", frozenOn: ["Sealed quotes retain their terms."], impact: "money",
+  });
 });
 
 it("discovers and validates settings data in a new domain directory", () => {

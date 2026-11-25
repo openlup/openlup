@@ -470,6 +470,7 @@ it("completes without any auxiliary function query before the protected work", a
     queries.push(sql);
     if (sql === "SELECT public.subscription_complete_renewal_attachment($1::uuid) AS response"
       || sql === "SAVEPOINT native_purchase_template" || sql.startsWith("SELECT sku.id AS variant_id")
+      || sql.startsWith("SELECT currency_code,created_at::text AS created_at,")
       || sql.startsWith("SELECT list.id,list.currency") || sql.startsWith("WITH locked AS MATERIALIZED")) return executor.query(sql, values);
     throw Object.assign(new Error("synthetic auxiliary function denial"), { code: "42501" });
   } });

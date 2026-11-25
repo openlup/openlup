@@ -1,32 +1,34 @@
 import { privacyExportResponseSchema, erasureReceiptSchema, privacySubjectSchema, privacyEraseRequestSchema } from "./contracts/privacy.js";
 import { PrivacyRefusal, type NativePrivacyStore, type PrivacyStore, type PrivacyUseCaseDependencies, type AuthorizedHumanAdministrator, type PrivacyOperations } from "./privacyPorts.js";
 import type { PrivacySubjectRef, PrivacyEraseRequest, PrivacyExport, ErasureReceipt } from "./contracts/privacy.js";
-import { missingPrivacyContributors, nativePrivacyUnavailable, validateRequiredPrivacyContributorIds } from "./requiredPrivacyContributors.js";
+import { incompletePrivacyReceiptCoverage, missingPrivacyContributors, nativePrivacyUnavailable, validateOrderedPrivacyContributorIds, validateRequiredPrivacyContributorIds } from "./requiredPrivacyContributors.js";
 
 type PrivacyStoreBinding<C> = {
   store: PrivacyStore<C>;
-  readRequiredContributorIds?: NativePrivacyStore<C>["readRequiredContributorIds"];
+  native?: Pick<NativePrivacyStore<C>, "readRequiredContributorIds" | "findErasureReplay">;
 };
 
 function bindPrivacyStore<C>(store: PrivacyUseCaseDependencies<C>["store"]): PrivacyStoreBinding<C> {
   if (store.privacyRail !== "native") return { store };
-  const read = store.readRequiredContributorIds;
-  if (typeof read !== "function") throw nativePrivacyUnavailable(new Error("native_privacy_reader_required"));
-  return { store, readRequiredContributorIds: read.bind(store) };
+  const { readRequiredContributorIds, findErasureReplay } = store;
+  if (typeof readRequiredContributorIds !== "function" || typeof findErasureReplay !== "function") {
+    throw nativePrivacyUnavailable(new Error("native_privacy_replay_and_declaration_required"));
+  }
+  return { store, native: { readRequiredContributorIds: readRequiredContributorIds.bind(store), findErasureReplay: findErasureReplay.bind(store) } };
 }
 
-async function withPrivacyTransaction<C, T>(deps: PrivacyUseCaseDependencies<C>, binding: PrivacyStoreBinding<C>, work: (context: C) => Promise<T>): Promise<T> {
-  const { readRequiredContributorIds } = binding;
-  if (!readRequiredContributorIds) return deps.unitOfWork.run(work);
+async function withPrivacyTransaction<C, T>(deps: PrivacyUseCaseDependencies<C>, binding: PrivacyStoreBinding<C>, work: (context: C, required?: readonly string[]) => Promise<T>): Promise<T> {
+  const { native } = binding;
+  if (!native) return deps.unitOfWork.run(work);
   try {
     return await deps.unitOfWork.run(async context => {
       let required: readonly string[];
-      try { required = validateRequiredPrivacyContributorIds(await readRequiredContributorIds(context)); }
+      try { required = validateRequiredPrivacyContributorIds(await native.readRequiredContributorIds(context)); }
       catch (cause) { throw nativePrivacyUnavailable(cause); }
       const registered = new Set(deps.registry.contributors.map(owner => owner.id));
       const missing = required.filter(id => !registered.has(id));
       if (missing.length) throw missingPrivacyContributors(missing, true);
-      return work(context);
+      return work(context, required);
     });
   } catch (cause) {
     if (cause instanceof PrivacyRefusal) throw cause;
@@ -67,15 +69,17 @@ async function eraseUsingStore<C>(deps: PrivacyUseCaseDependencies<C>, actor: Au
   if (!store.erasureSupported) throw new PrivacyRefusal("MANAGED_PRIVACY_ERASURE_UNAVAILABLE");
   const missing = [...deps.registry.missingContributors];
   if (!deps.registry.contributors.some(c => c.id === "identity")) missing.push("identity");
-  if (missing.length) throw binding.readRequiredContributorIds
+  if (missing.length) throw binding.native
     ? missingPrivacyContributors(missing, false) : new PrivacyRefusal("PRIVACY_CONTRIBUTOR_MISSING");
-  return withPrivacyTransaction(deps, binding, async context => {
+  return withPrivacyTransaction(deps, binding, async (context, required) => {
     await store.prepareErasure(context);
     // Domain relation locks precede subject/member row locks and remain held to commit.
     for (const contributor of deps.registry.contributors) await contributor.prepareErasure(context);
     const resolved = await store.resolve(context, input.subject, actor);
     await store.authorizeErasure(context, actor);
-    const previous = await store.findReceipt(context, input.subject, input.idempotencyKey);
+    const previous = binding.native
+      ? qualifyReplay(await binding.native.findErasureReplay(context, input.subject, input.idempotencyKey), required!)
+      : await store.findReceipt(context, input.subject, input.idempotencyKey);
     if (previous) return erasureReceiptSchema.parse({ ...previous, outcome: "ALREADY_ERASED" });
     if (!resolved) throw new PrivacyRefusal("PRIVACY_SUBJECT_NOT_FOUND");
     const assessments = [];
@@ -91,6 +95,19 @@ async function eraseUsingStore<C>(deps: PrivacyUseCaseDependencies<C>, actor: Au
     return receipt;
   });
 }
+function qualifyReplay(value: Awaited<ReturnType<NativePrivacyStore<unknown>["findErasureReplay"]>>, required: readonly string[]): ErasureReceipt | null {
+  if (value === null) return null;
+  if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype
+    || Reflect.ownKeys(value).length !== 2 || !Object.hasOwn(value, "receipt") || !Object.hasOwn(value, "coveredContributorIds")) {
+    throw new Error("privacy_replay_result_invalid");
+  }
+  const receipt = erasureReceiptSchema.parse(value.receipt);
+  const covered = new Set(validateOrderedPrivacyContributorIds(value.coveredContributorIds, 20_000));
+  const missing = required.filter(id => !covered.has(id));
+  if (missing.length) throw incompletePrivacyReceiptCoverage(missing);
+  return receipt;
+}
+
 declare const nativePrivacyBrand: unique symbol;
 /** The serving module registers the native operations it constructs. */
 export interface NativePrivacyOperations extends PrivacyOperations { readonly [nativePrivacyBrand]: true }

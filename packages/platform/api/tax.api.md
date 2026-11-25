@@ -325,10 +325,168 @@ export interface LocalRateTableOptionsV1 {
 export declare function localRateTable(options: LocalRateTableOptionsV1): TaxCalculationPort;
 export {};
 ```
+## dist/tax/taxCalculationComposition.d.ts
+
+```ts
+import { z } from "zod";
+export declare const uuid: z.ZodString;
+export declare const digest: z.ZodString;
+export declare const currency: z.ZodString;
+export declare const instant: z.ZodString;
+type Basis = "inclusive" | "exclusive";
+type Assignment = {
+    taxClassKey: string;
+    assignmentRef: string;
+};
+type Line = Assignment & {
+    lineKey: string;
+    sourceOrdinal: number;
+    sku: string;
+    mode: "one_time" | "subscription";
+    quantity: number;
+    unitBasisMinor: number;
+    amountKind: "gross" | "net";
+};
+type Delivery = Assignment & {
+    bucketKey: string;
+    kind: "shipping" | "handling";
+    carrierRef: string;
+    serviceRef: string;
+    cost: {
+        ref: string;
+        currency: string;
+        amountMinor: number;
+    };
+    separatelyStated: boolean;
+    amountMinor: number;
+    threshold?: {
+        flatMinor: number;
+        freeThresholdMinor: number;
+    };
+};
+type Fee = {
+    feeKey: string;
+    jurisdictionRef: string;
+    feeKind: string;
+    amountMinor: number;
+    scope: {
+        kind: "order";
+    } | {
+        kind: "delivery";
+        bucketKey: string;
+    };
+    refundRule: {
+        ref: string;
+        revision: string;
+    };
+    providerPositionRef?: string;
+};
+type Adjustment = {
+    amountOffMinor: number;
+    adjustmentRef: string;
+    evidenceRef: string;
+} & ({
+    appliesTo: "line" | "order_total";
+    target: {
+        lineKeys: readonly string[];
+    };
+} | {
+    appliesTo: "shipping";
+    target: {
+        bucketKey: string;
+    };
+});
+type Candidate = {
+    amountBasis: Basis;
+    deliverySelectionRef: string;
+    delivery: readonly Delivery[];
+    feeLines: readonly Fee[];
+};
+type FiscalDetails = {
+    facts: {
+        country: string;
+        category: string;
+        vatRateBps: number;
+        legalBasis: string;
+    };
+    coordinates: {
+        installationRef: string;
+        marketRef: string;
+        packId: string;
+        packVersion: string;
+    };
+};
+export type FiscalSuccessEvidence = FiscalDetails & {
+    policyRevision: string;
+    calculationId: string;
+    coverage: {
+        kind: "not_applicable";
+    };
+    posting: "no_provider_posting";
+};
+export type CheckoutComposition = {
+    planInput: {
+        currency: string;
+        listBasis: Basis | null;
+        engine: "promotion-engine.v1" | "promotion-engine.v2";
+        price: {
+            priceListRef: string;
+            priceContextDigest: string;
+            priceEvidenceRef: string;
+            classMapRevision: string;
+        };
+        lines: readonly Line[];
+        baseline: Candidate;
+        selected?: Candidate & {
+            adjustments: readonly Adjustment[];
+        };
+    };
+    catalogueEvidenceRef: string;
+    evidenceExpiresAt: string;
+    selection: {
+        kind: "checkout";
+        scopeRef: string;
+        selectionRevision: string;
+    };
+    service: {
+        deliverySelectionRef: string;
+        providerRef: string;
+        carrierRef: string;
+        serviceRef: string;
+        servicePolicyRevision: string;
+        adapterRevision: string;
+    };
+    limits: {
+        installationRef: string;
+        channelKey: string;
+        methodKey: string;
+        providerKey: string;
+        accountRef: string;
+        mode: "test" | "live";
+        currency: string;
+        profileRef: string;
+        revision: number;
+        minMinor: number;
+        maxMinor: number;
+        effective: {
+            minMinor: number;
+            maxMinor: number;
+        };
+    };
+};
+export type FiscalCheckoutComposition = CheckoutComposition & {
+    fiscal: FiscalDetails;
+};
+export declare const exclusiveComposition: z.ZodType<CheckoutComposition>;
+export declare const fiscalComposition: z.ZodType<FiscalCheckoutComposition>;
+export declare const fiscalSuccessEvidence: z.ZodType<FiscalSuccessEvidence>;
+export {};
+```
 ## dist/tax/taxCalculationStore.d.ts
 
 ```ts
 import type { TaxRefusal } from "./contracts/types.js";
+import { type CheckoutComposition, type FiscalCheckoutComposition, type FiscalSuccessEvidence } from "./taxCalculationComposition.js";
 interface TaxCalculationExecutor {
     query(statement: string, parameters?: unknown[]): Promise<{
         rows: Record<string, unknown>[];
@@ -374,7 +532,7 @@ interface EvaluationEvidence {
     kind: "fiscal_profile" | "tax_calculation";
     validUntil: string;
 }
-interface EvaluationPin extends EvaluationEvidence {
+type EvaluationPin = Omit<EvaluationEvidence, "kind"> & {
     request: unknown;
     coverage: {
         accountRef: string;
@@ -382,7 +540,15 @@ interface EvaluationPin extends EvaluationEvidence {
         digest: string;
     } | null;
     recovery: string | null;
-}
+} & ({
+    kind: "fiscal_profile";
+    composition?: FiscalCheckoutComposition;
+} | {
+    kind: "tax_calculation";
+    composition?: CheckoutComposition & {
+        fiscal?: never;
+    };
+});
 type BeginTaxCalculationInput = Uint8Array | (EvaluationScope & ({
     operation: "lookup";
 } | {
@@ -398,21 +564,35 @@ type QuoteOutcome = {
     quote: unknown;
 };
 type UnavailableCode = "tax_coverage_evidence_unavailable" | "tax_adapter_unavailable";
+type CompletionOutcome = Refusal | QuoteOutcome | {
+    kind: "indeterminate";
+} | {
+    kind: "unavailable";
+    code: UnavailableCode;
+};
+type EvaluationSeal = EvaluationEvidence & {
+    requestDigest: string;
+    contradiction: boolean;
+} & ({
+    evidence: unknown;
+    outcome: CompletionOutcome;
+    compositionDigest?: never;
+} | {
+    kind: "fiscal_profile";
+    evidence: FiscalSuccessEvidence;
+    outcome: QuoteOutcome;
+    compositionDigest: string;
+} | {
+    kind: "tax_calculation";
+    evidence: unknown;
+    outcome: QuoteOutcome;
+    compositionDigest: string;
+});
 type CompleteTaxCalculationInput = Uint8Array | (EvaluationScope & {
     calculationId: string;
     claimToken: string;
     generation: number;
-    seal: EvaluationEvidence & {
-        requestDigest: string;
-        contradiction: boolean;
-        evidence: unknown;
-        outcome: Refusal | QuoteOutcome | {
-            kind: "indeterminate";
-        } | {
-            kind: "unavailable";
-            code: UnavailableCode;
-        };
-    };
+    seal: EvaluationSeal;
     adapter?: {
         request: unknown;
         result: unknown;

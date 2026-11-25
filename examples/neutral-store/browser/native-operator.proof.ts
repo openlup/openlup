@@ -1,9 +1,12 @@
 import { market } from '../owned/market.config.ts';
 import { test as base, expect } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { findPackageJSON } from 'node:module';
+import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { env } from 'node:process';
 import pg from 'pg';
@@ -13,6 +16,9 @@ import { createPostgresPlatformJobRunLedger } from '@openlup/platform/job-ledger
 import { createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
 import { catalogueWatchdogPrincipalId, startCatalogueReadinessJobs } from '../host/catalogue-readiness-jobs.ts';
 import { starterCatalogue } from '../host/editor-catalogue.ts';
+import { createPrivateCapture } from '../host/private-capture.ts';
+import { runScheduledCare } from '../host/scheduled-renewal.ts';
+import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { selectConfiguration } from '../owned/store.config.ts';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
@@ -307,42 +313,93 @@ import { env } from 'node:process';
   console.log('operation tally', JSON.stringify({ declared: status.length, bound: status.filter((row: { bound: boolean }) => row.bound).length }));
 });
 
+type PublicationFixture = { id: string; baseURL: string; ownerUrl: string; runtimeUrl: string; state: string };
+
+async function isolatePublicationFixture(selected: PublicationFixture) {
+  const admin = new pg.Client({ connectionString: selected.ownerUrl });
+  const database = 'publication_browser_' + randomUUID().replaceAll('-', '');
+  const owner = new URL(selected.ownerUrl), runtime = new URL(selected.runtimeUrl);
+  owner.pathname = runtime.pathname = '/' + database;
+  const state = await mkdtemp(join(selected.state, 'publication-'));
+  let created = false, host: ChildProcess | undefined;
+  async function close() {
+    try {
+      if (host && host.exitCode === null && host.signalCode === null) {
+        const exited = once(host, 'exit');
+        host.kill('SIGTERM');
+        await exited;
+      }
+      if (created) await admin.query(`DROP DATABASE ${database} WITH (FORCE)`);
+    } finally { await Promise.all([admin.end(), rm(state, { recursive: true, force: true })]); }
+  }
+  try {
+    await admin.connect();
+    // Earlier browser journeys create settled orders, and this proof changes demo prices and job controls.
+    await admin.query(`CREATE DATABASE ${database} TEMPLATE catalogue_browser_template`);
+    created = true;
+    const probe = createServer().listen(0, '127.0.0.1');
+    await once(probe, 'listening');
+    const { port } = probe.address() as { port: number };
+    await new Promise<void>(done => probe.close(() => done()));
+    const runtimeUrl = runtime.href;
+    const password = decodeURIComponent(runtime.password);
+    runtime.password = '';
+    host = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-', '--configuration', selected.id, '--port', String(port)],
+      { env: { PGPASSWORD: password }, stdio: ['pipe', 'ignore', 'ignore'] });
+    host.stdin!.end(`
+      import { readFileSync } from 'node:fs';
+      import { createApplication } from './host/server.ts';
+      import { composeNativeBindings } from './host/native-composition.ts';
+      import { createOriginPolicy } from './host/origin-policy.ts';
+      import { selectConfiguration } from './owned/store.config.ts';
+      process.chdir(${JSON.stringify(state)});
+      const config = selectConfiguration(${JSON.stringify(selected.id)});
+      const password = readFileSync(${JSON.stringify(join(selected.state, 'publication-password'))}, 'utf8').trim();
+      const bindings = await composeNativeBindings(${JSON.stringify(runtime.href)}, createOriginPolicy(config, ${port}), config,
+        undefined, password);
+      const server = createApplication(bindings).listen(${port}, '127.0.0.1');
+      process.once('SIGTERM', () => { server.close(() => { void bindings.close(); }); server.closeIdleConnections(); });
+    `);
+    return { baseURL: `http://127.0.0.1:${port}`, ownerUrl: owner.href, runtimeUrl, state, close };
+  } catch (error) { await close(); throw error; }
+}
+
 test('authenticated Publish discloses only owned degraded jobs and supports exact repair', async ({ request, baseURL, composeProject }, info) => {
-  test.skip(!!composeProject || info.project.name !== 'coffee', 'Uses a fresh process-hosted coffee fixture.');
-  if (!baseURL) throw new Error('native_operator_proof_fixture_required');
-  const [fixture] = (JSON.parse(readFileSync('.context/care-browser/fixtures.json', 'utf8')) as {
-    baseURL: string; ownerUrl: string; runtimeUrl: string; state: string;
-  }[]).filter(row => row.baseURL === baseURL);
-  expect(fixture).toBeDefined();
-  const owner = new pg.Pool({ connectionString: fixture!.ownerUrl });
-  const runtime = new pg.Pool({ connectionString: fixture!.runtimeUrl });
-  const identities = createPostgresOperatorIdentityStore({ connectionString: fixture!.runtimeUrl });
-  const config = selectConfiguration('coffee');
-  const ownedJob = 'subscription-care:coffee', unownedJob = 'external:fixture';
+  test.skip(!!composeProject, 'Uses the process-hosted installed price fixture.');
+  const entries = JSON.parse(readFileSync('.context/care-browser/fixtures.json', 'utf8')) as PublicationFixture[];
+  const selected = entries.find(row => row.baseURL === baseURL && row.id === info.project.name);
+  if (!selected) throw new Error('native_operator_proof_fixture_required');
+  const fixture = await isolatePublicationFixture(selected);
+  const owner = new pg.Pool({ connectionString: fixture.ownerUrl });
+  const runtime = new pg.Pool({ connectionString: fixture.runtimeUrl });
+  const identities = createPostgresOperatorIdentityStore({ connectionString: fixture.runtimeUrl });
+  const config = selectConfiguration(selected.id);
+  const ownedJob = `subscription-care:${config.id}`, unownedJob = 'external:fixture';
   const invocation = { triggerKind: 'scheduler' as const, invocationSource: 'operator-proof' };
   const ledger = createPostgresPlatformJobRunLedger(runtime, { releaseCorrelation: () => ({}), defaultFailureReason: 'fixture_failed' });
-  const send = (operation: string, data: object, key = randomUUID()) => request.post(baseURL + '/api/actions/' + operation, {
-    data, headers: { Origin: baseURL, 'X-Starter-Request': '1', 'Idempotency-Key': key },
+  const send = (operation: string, data: object, key = randomUUID()) => request.post(fixture.baseURL + '/api/actions/' + operation, {
+    data, headers: { Origin: fixture.baseURL, 'X-Starter-Request': '1', 'Idempotency-Key': key },
   });
   const control = async () => (await owner.query(`SELECT last_run_id,last_status,metadata FROM public.platform_job_controls
     WHERE job_name='platform-watchdog'`)).rows[0];
   async function tick(ready: boolean) {
     const previous = (await control())?.last_run_id;
-    const close = startCatalogueReadinessJobs(fixture!.runtimeUrl, catalogueWatchdogPrincipalId(config));
+    const close = startCatalogueReadinessJobs(fixture.runtimeUrl, catalogueWatchdogPrincipalId(config));
     try {
       await expect.poll(async () => (await control())?.last_run_id).not.toBe(previous);
       await expect.poll(control).toMatchObject({ last_status: 'success', metadata: { promotionReady: ready } });
     } finally { await close(); }
   }
   try {
-    await expect.poll(control).toMatchObject({ last_status: 'success', metadata: { promotionReady: true } });
+    await expect.poll(async () => (await request.get(fixture.baseURL + '/api/config').catch(() => null))?.status()).toBe(200);
+    await tick(true);
     const email = 'publication-operator@example.test';
     const actor = (await identities.bootstrapFirstAdministrator({ email })).principalId;
     expect((await (await send('auth.operator', { email })).json()).ok).toBe(true);
     let token: string | undefined;
     await expect.poll(() => {
       try {
-        const messages = readFileSync(join(fixture!.state, '.context/captured-messages/identity.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+        const messages = readFileSync(join(fixture.state, '.context/captured-messages/identity.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
         token = messages.find(row => row.email === email)?.token;
       } catch { /* The private mailbox is written after request acceptance. */ }
       return typeof token === 'string' && /^[A-Za-z0-9_-]{43}$/u.test(token);
@@ -395,6 +452,18 @@ test('authenticated Publish discloses only owned degraded jobs and supports exac
           subject: body.reason, message: body.message, ...(body.issues[0].failedJobs ? { failedJobs: body.issues[0].failedJobs } : {}) }] });
       return body;
     };
+    const legacy = buildDemoSeed(config).prices.find(entry => entry.mode === 'subscription')!;
+    await owner.query(`INSERT INTO public.price_entries
+      (id,price_list_id,variant_id,mode,min_qty,unit_price_minor,amount_kind,active,valid_from)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [legacy.id,legacy.price_list_id,legacy.variant_id,legacy.mode,
+      legacy.min_qty,legacy.unit_price_minor,legacy.amount_kind,legacy.active,legacy.valid_from]);
+    expect(await wire()).toMatchObject({ reason: 'catalog_1490_legacy_1340_invalid',
+      message: expect.stringContaining('Restore one effective list and verify each eligible SKU’s base and subscription branch with the pricing owner.') });
+    const repair = await owner.query(`UPDATE public.price_entries
+      SET active=false,valid_to=statement_timestamp(),updated_at=statement_timestamp() WHERE id=$1 AND active`, [legacy.id]);
+    expect(repair.rowCount).toBe(1);
+    expect((await owner.query('SELECT public.commerce_offer_policy_v2_readiness() AS verdict')).rows[0].verdict)
+      .toMatchObject({ reasons: [], evidence: { priceMismatchCount: 0 } });
     for (const name of [ownedJob, unownedJob]) {
       const run = await ledger.claimJobRun(name, invocation, 300);
       expect(run.acquired).toBe(true);
@@ -422,14 +491,18 @@ test('authenticated Publish discloses only owned degraded jobs and supports exac
     const core = findPackageJSON('@openlup/core/catalog', import.meta.url)!;
     const guide = readFileSync(join(dirname(core), 'docs/guide/how-to/build/customize-the-starter.md'), 'utf8');
     expect(guide).toContain('./lifecycle care --configuration <id> --database-url <runtime-url>');
-    expect(JSON.parse(execFileSync('./lifecycle', ['care', '--configuration', config.id, '--database-url', fixture!.runtimeUrl],
-      { encoding: 'utf8' })).messages).toBeDefined();
+    // The CLI pins the demo database name. Run the same care handler against the isolated clone.
+    expect(await runScheduledCare(fixture.runtimeUrl, config, { publicOrigin: fixture.baseURL,
+      capture: createPrivateCapture(join(fixture.state, '.context/captured-messages')) })).toHaveProperty('messages');
     await owner.query('UPDATE public.platform_job_controls SET enabled=false WHERE job_name=$1', [unownedJob]);
     await tick(true);
     const committed = await (await send('operator.catalogPublication', publish, key)).json();
     expect(committed).toMatchObject({ ok: true, value: { outcome: 'committed' } });
     expect(await (await send('operator.catalogPublication', publish, key)).json()).toMatchObject({ ok: true, replayed: true });
-  } finally { await Promise.all([owner.end(), runtime.end(), identities.close()]); }
+  } finally {
+    try { await Promise.all([owner.end(), runtime.end(), identities.close()]); }
+    finally { await fixture.close(); }
+  }
 });
 
 test('installed adopter pack refuses missing builds and resumes exact-pair authoring', async ({ page, baseURL, composeProject }) => {

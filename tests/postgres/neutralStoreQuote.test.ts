@@ -1,4 +1,4 @@
-/** Installed engine and seed witness; subscription admission/activation retain their explicit predecessors. */
+/** Installed engine and seed witness for native quotes and subscription checkout. */
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { env as processEnv } from 'node:process';
@@ -191,12 +191,13 @@ const bundleProof = String.raw`
   let bindings;
   try {
     const db = await owner.connect();
+    const demo = buildDemoSeed(config);
     const seed = async owned => applyDemoSeed(owned,{connection:db,installRole:'postgres',runtimeRole:'starter_runtime',catalogueRules:readStarterCatalogueRules(),close:async()=>{}});
     const id = 'demo-bundle:'+config.id;
     const promotion = async () => (await owner.query('SELECT definition,definition_fingerprint,active FROM public.commerce_promotion_definitions WHERE promotion_id=$1',[id])).rows;
     try {
       await seed(config);
-      const predecessor = buildDemoSeed(config).prices.filter(entry=>entry.mode==='subscription');
+      const predecessor = demo.prices.filter(entry=>entry.mode==='subscription');
       assert.equal(predecessor.length,7);
       const rows = async () => (await owner.query('SELECT to_jsonb(e) AS row FROM public.price_entries e ORDER BY e.id')).rows.map(entry=>entry.row);
       const before = await rows();
@@ -245,7 +246,8 @@ const bundleProof = String.raw`
           regionCode:config.market.country,currency:config.market.currency});
         assert.equal(derived.kind,'subscription_policy');
         assert.equal(derived.unitPriceMinor,entry.unit_price_minor);
-        amounts.push({base:[base.unit_price_minor,unchanged.unit_price_minor],subscription:[entry.unit_price_minor,derived.unitPriceMinor]});
+        const sku = demo.skus.find(sku=>sku.id===entry.variant_id).sku;
+        amounts.push({sku,base:[base.unit_price_minor,unchanged.unit_price_minor],subscription:[entry.unit_price_minor,derived.unitPriceMinor]});
       }
       console.log(JSON.stringify({configuration:config.id,census:[6,0],closures:closed.length,amounts}));
       await seed(config);
@@ -271,7 +273,8 @@ const bundleProof = String.raw`
       assert.deepEqual((await owner.query('SELECT name FROM public.price_lists')).rows,[{name:config.brand.name+' demonstration'}]);
       await owner.query('UPDATE public.commerce_promotion_definitions SET definition=$2 WHERE promotion_id=$1',[id,original]);
     } finally {db.release();}
-    bindings=await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),config);
+    bindings=await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),config,
+      {current:'fixture-only-acceptance-key-00000000000000'});
     server.on('request',createApplication(bindings).listeners('request')[0]);
     const call = async (operation,payload) => {
       const response=await fetch(base+'/api/actions/'+operation,{method:'POST',
@@ -283,6 +286,23 @@ const bundleProof = String.raw`
     const cart = lines => ({schemaVersion:1,configuration:config.id,mode:'one_time',cadenceDays:null,lines});
     const line = (product,quantity) => ({sku:product.sku,quantity});
     const quote = cart => call('offer.validate',{cart});
+    const subscription = {...cart([line(first,3)]),mode:'subscription',cadenceDays:config.offer.defaultCadenceDays};
+    const buyer = {locale:'en',configuration:config.id,country:config.market.country,termsAccepted:true,termsRevision:config.legal.revision,
+      email:'derived-bundle@example.test',firstName:'Example',lastName:'Buyer',phone:'00000',line1:'1 Example Lane',city:'Example',postalCode:'00000',
+      cart:subscription,acquisitionCapability:'subscription-acquisition.v1'};
+    const quoted = await call('offer.validate',buyer);
+    const made = await call('checkout.create',{...buyer,quoteAcceptance:quoted.quoteAcceptance,expectedTotal:quoted.expectedTotal});
+    const {total,metadata} = (await owner.query('SELECT total_amount_minor::int AS total,metadata FROM public.commerce_orders WHERE id=$1',
+      [made.orderRef])).rows[0];
+    const [saved] = metadata.orderDraftSnapshot.lines;
+    const expectedUnit = coffee ? 3990 : 3700;
+    assert.equal(quoted.lines[0].unitMinor,expectedUnit);
+    assert.equal(saved.catalogFacts.version,'catalog_facts_v2');
+    assert.equal(saved.unitPriceGross.amountMinor,expectedUnit);
+    assert.equal(saved.lineSubtotalGross.amountMinor,3*expectedUnit);
+    assert.deepEqual([made.total.amountMinor,total],[quoted.totalMinor,quoted.totalMinor]);
+    console.log(JSON.stringify({configuration:config.id,committedSubscription:{sku:first.sku,quantity:3,unitMinor:expectedUnit,
+      subtotalMinor:saved.lineSubtotalGross.amountMinor,totalMinor:total}}));
     const compare = async (lines,before,discount,restore=false) => {
       const request=cart(lines);
       await owner.query('UPDATE public.commerce_promotion_definitions SET active=false WHERE promotion_id=$1',[id]);
@@ -842,6 +862,82 @@ describe.sequential('installed quote proofs', () => {
       console.log(output.split('\n').find(line => line.includes('firstPairMs')));
     });
   });
+
+  it('checks out and replays the installed derived quote without a stored subscription price', async () => {
+    const database = quoteCaseFixture('coffee', false);
+    try {
+      const { ownerUrl, runtimeUrl } = await database.setup();
+      const script = String.raw`
+        import assert from 'node:assert/strict';
+        import pg from 'pg';
+        import {bindScenarioServer} from ${JSON.stringify(scenarioHelper)};
+        import {configurations} from './application/owned/store.config.ts';
+        import {applyDemoSeed} from './application/installation/install.ts';
+        import {createNativeQuoteService} from './application/host/quote-composition.ts';
+        import {installedAcquisitionPredecessors} from './application/host/acquisition-predecessors.ts';
+        import {composeNativeBindings} from './application/host/native-composition.ts';
+        import {createOriginPolicy} from './application/host/origin-policy.ts';
+        const config = configurations.coffee;
+        config.offer.products[0].unitPrice.amountMinor = 1499;
+        const owner = new pg.Pool({connectionString:fixture.ownerUrl});
+        const runtime = new pg.Pool({connectionString:fixture.runtimeUrl});
+        try {
+          await applyDemoSeed(config,{connection:owner,installRole:'postgres',runtimeRole:'starter_runtime',close:async()=>{}});
+          assert.equal((await owner.query("SELECT id FROM public.price_entries WHERE mode IN ('subscription','any')")).rowCount,0);
+          const sku=config.offer.products[0].sku;
+          const cart={schemaVersion:1,configuration:config.id,mode:'subscription',cadenceDays:config.offer.defaultCadenceDays,lines:[{sku,quantity:3}]};
+          const input={locale:'en',configuration:config.id,country:config.market.country,termsAccepted:true,termsRevision:config.legal.revision,
+            email:'derived-quote@example.test',firstName:'Example',lastName:'Buyer',phone:'00000',line1:'1 Example Lane',city:'Example',postalCode:'00000',
+            cart,acquisitionCapability:'subscription-acquisition.v1'};
+          const keyring={current:'fixture-only-acceptance-key-00000000000000'};
+          const quotes=createNativeQuoteService(runtime,installedAcquisitionPredecessors(),keyring);
+          const observed=await quotes.quote(input,{config,actor:{customerRef:null,operatorRef:null},commandKey:crypto.randomUUID()});
+          const quoted=observed.snapshot.quote.lines[0];
+          const price=(await owner.query("SELECT e.id AS base,p.id AS revision,p.digest FROM public.price_entries e JOIN public.catalog_skus s ON s.id=e.variant_id JOIN public.subscription_price_policy_revisions p ON p.price_list_id=e.price_list_id WHERE s.sku=$1 AND e.mode='one_time' AND e.min_qty=1",[sku])).rows;
+          const evidence=line=>[line.catalogFacts.basePriceEntryId,line.catalogFacts.policyRevisionId,line.catalogFacts.policyDigest,line.unitPriceGross.amountMinor];
+          assert.equal(price.length,1);
+          assert.equal(quoted.catalogFacts.version,'catalog_facts_v2');
+          assert.deepEqual(evidence(quoted),[price[0].base,price[0].revision,price[0].digest,1420]);
+          const {server,port,base}=await bindScenarioServer();
+          const {createApplication}=await import('./application/host/server.ts');
+          const bindings=await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),config,keyring);
+          server.on('request',createApplication(bindings).listeners('request')[0]);
+          try {
+            const call=async(operation,payload,key=crypto.randomUUID())=>(await fetch(base+'/api/actions/'+operation,{
+              method:'POST',headers:{Origin:base,'Content-Type':'application/json','X-Starter-Request':'1','Idempotency-Key':key},body:JSON.stringify(payload)
+            })).json();
+            const checked=await call('offer.validate',input);
+            assert.equal(checked.ok,true,checked.code);
+            const accepted={...input,quoteAcceptance:checked.value.quoteAcceptance,expectedTotal:checked.value.expectedTotal};
+            const key=crypto.randomUUID();
+            const made=await call('checkout.create',accepted,key);
+            assert.equal(made.ok,true,made.code);
+            assert.equal(made.replayed,false);
+            const saved=(await owner.query("SELECT metadata FROM public.commerce_orders WHERE id=$1",[made.value.orderRef])).rows[0].metadata;
+            const retained=saved.quoteSnapshot.quote.lines[0];
+            assert.deepEqual(evidence(retained),evidence(quoted));
+            assert.deepEqual(saved.orderDraftSnapshot.lines[0].catalogFacts,retained.catalogFacts);
+            assert.equal(saved.orderDraftSnapshot.lines[0].lineSubtotalGross.amountMinor,4260);
+            const receipts=async()=>(await owner.query("SELECT response_payload::text FROM public.commerce_order_draft_receipts WHERE order_id=$1",[made.value.orderRef])).rows;
+            const beforeReplay=await receipts();
+            assert.equal(beforeReplay.length,1);
+            const replay=await call('checkout.create',accepted,key);
+            assert.equal(replay.ok,true,replay.code);
+            assert.equal(replay.replayed,true);
+            assert.equal(replay.value.orderRef,made.value.orderRef);
+            assert.deepEqual(await receipts(),beforeReplay);
+          } finally {await new Promise(resolve=>{server.close(resolve);server.closeIdleConnections();});await bindings.close();}
+        } finally {await runtime.end();await owner.end();}
+      `;
+      try {
+        execFileSync(process.execPath, ['--experimental-strip-types', '--input-type=module', '-', '--configuration', 'coffee'], {
+          cwd: consumer, input: `const fixture = ${JSON.stringify({ ownerUrl, runtimeUrl })};\n${script}`, stdio: 'pipe', timeout: 20_000,
+        });
+      } catch (error) {
+        throw new Error((error as { stderr?: Buffer }).stderr?.toString() ?? 'Installed derived price proof failed', { cause: error });
+      }
+    } finally { await database.teardown(); }
+  }, postgresSetupTimeoutMs);
 
   describe('active published catalogue', () => {
     const database = quoteCaseFixture('coffee', false);
