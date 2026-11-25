@@ -28,9 +28,14 @@ Release-evidence retention is owned by [distribution evidence](../docs/platform/
   No further major release ships in 2026. A major release removes only previously
   deprecated contracts, after a compatibility bridge through at least one
   supported minor release.
-- Minor releases ship about every four weeks. A minor release ships earlier only
-  for a security or money defect whose fix requires a database (SQL) or public
-  API change.
+- Minor releases ship when the main branch is ready, not on a fixed date.
+  Small, frequent minors are preferred to large, infrequent ones, so that each
+  upgrade stays small for adopters. Main is ready when all of these hold:
+  - it contains at least one complete capability or fix;
+  - work in progress is inactive by default and its migrations are complete
+    and additive;
+  - hosted CI on that commit is green and the released-API check passes;
+  - an adoption rehearsal with that commit's packed packages has passed.
 - Patch releases contain fixes only.
 
 ## Exceptional cessation
