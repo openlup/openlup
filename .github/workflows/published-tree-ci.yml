@@ -366,12 +366,17 @@ jobs:
         run: mkdir -p .context/scratch && node scripts/ci-test-scope.mjs
       - name: Build workspace packages once for all test shards
         run: node scripts/build-packages-incremental.mjs
+      - name: Precompute deterministic shard plan once for all test shards
+        env:
+          OPENLUP_VITEST_EXCLUDE_FILE: ${{ github.workspace }}/.context/scratch/ci-test-exclude.txt
+        run: node scripts/ci-vitest-shard.mjs --total 8 --plan-out .context/scratch/ci-vitest-shard-plan.json
       - name: Share test scope and built workspace packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-prep
           path: |
             .context/scratch/ci-test-exclude.txt
+            .context/scratch/ci-vitest-shard-plan.json
             packages/core/dist
             packages/outbox/dist
             packages/platform/dist
@@ -430,13 +435,13 @@ jobs:
         with:
           path: .context/scratch/cache/pgtap-debs
           key: pgtap-debs-${{ hashFiles('config/ci-postgres-packages.json') }}
-      # Every shard derives the same included set before deterministic LPT weighted sharding.
+      # Every shard verifies the precomputed deterministic LPT shard plan against weights and excludes.
       - name: Complete published root test shard
         if: needs.reuse-gate.outputs.reuse != 'true'
         env:
           OPENLUP_VITEST_EXCLUDE_FILE: ${{ github.workspace }}/.context/scratch/ci-test-exclude.txt
           OPENLUP_PGTAP_DEB_CACHE: ${{ github.workspace }}/.context/scratch/cache/pgtap-debs
-        run: node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --skip-pretest
+        run: node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --plan .context/scratch/ci-vitest-shard-plan.json --skip-pretest
 
   test:
     name: test

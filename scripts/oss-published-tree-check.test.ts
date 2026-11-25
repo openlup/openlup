@@ -521,8 +521,17 @@ describe("complete public CI", () => {
     const typecheck = workflowJob("typecheck");
     expect(workflowCommands(workflowJob("reuse-gate"))).toEqual(["node scripts/public-ci-reuse.mjs"]);
     expect(workflowCommands(typecheck)).toEqual(["npm ci --prefer-offline --no-audit --fund=false", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
-    expect(workflowCommands(workflowJob("test-prep"))).toEqual(["npm ci --prefer-offline --no-audit --fund=false", "mkdir -p .context/scratch && node scripts/ci-test-scope.mjs", "node scripts/build-packages-incremental.mjs"]);
-    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["npm ci --prefer-offline --no-audit --fund=false", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --skip-pretest"]);
+    expect(workflowCommands(workflowJob("test-prep"))).toEqual([
+      "npm ci --prefer-offline --no-audit --fund=false",
+      "mkdir -p .context/scratch && node scripts/ci-test-scope.mjs",
+      "node scripts/build-packages-incremental.mjs",
+      "node scripts/ci-vitest-shard.mjs --total 8 --plan-out .context/scratch/ci-vitest-shard-plan.json",
+    ]);
+    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual([
+      "npm ci --prefer-offline --no-audit --fund=false",
+      'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin',
+      "node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --plan .context/scratch/ci-vitest-shard-plan.json --skip-pretest",
+    ]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(workflow).not.toMatch(/--exclude|continue-on-error|\|\|\s*true|set \+e/u);
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
@@ -594,7 +603,10 @@ describe("complete public CI", () => {
     expect(prep).toContain("        env:\n          OPENLUP_VITEST_EXCLUDE_FILE: ${{ github.workspace }}/.context/scratch/ci-test-exclude.txt");
     expect(prep).toContain("uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a");
     expect(prep).toContain("name: test-prep\n");
-    expect(prep).toContain("path: |\n            .context/scratch/ci-test-exclude.txt\n            packages/core/dist\n            packages/outbox/dist\n            packages/platform/dist\n");
+    const planStep = prep.split(/(?=^ {6}- )/mu).find(step => /run: node scripts\/ci-vitest-shard\.mjs/u.test(step));
+    expect(planStep).toContain("        env:\n          OPENLUP_VITEST_EXCLUDE_FILE: ${{ github.workspace }}/.context/scratch/ci-test-exclude.txt");
+    expect(prep.indexOf("run: node scripts/ci-vitest-shard.mjs --total 8 --plan-out")).toBeLessThan(prep.indexOf("uses: actions/upload-artifact@"));
+    expect(prep).toContain("path: |\n            .context/scratch/ci-test-exclude.txt\n            .context/scratch/ci-vitest-shard-plan.json\n            packages/core/dist\n            packages/outbox/dist\n            packages/platform/dist\n");
     expect(prep).toContain("include-hidden-files: true\n          if-no-files-found: error\n          retention-days: 1");
     expect(shard).toContain("needs: [reuse-gate, test-prep]");
     expect(shard.split("\n").find(line => line.startsWith("    if:"))).toBe(shardFence);
@@ -1012,7 +1024,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(uses.length).toBeGreaterThan(0);
     expect(uses.every((sha) => /^[a-f0-9]{40}$/u.test(sha))).toBe(true);
     expect(readFileSync(join(ROOT, ".nvmrc"), "utf8").trim()).toBe("24.21.0");
-    for (const name of ["typecheck", "install-packages", "install-browser", "test-prep", "test-full-shard", "pgtap"]) {
+    for (const name of ["typecheck", "install-pack", "install-packages", "install-browser", "test-prep", "test-full-shard", "pgtap"]) {
       const job = workflowJob(name);
       expect(job).toContain('test "$(node -p \'process.versions.node.split(".")[0]\')" = "24"');
       expect(job).toContain('test "$(npm --version)" = "11.19.0"');
@@ -1105,7 +1117,10 @@ describe("the workflow stays in step with what it claims to run", () => {
   it("scopes the test run to directories that still exist", () => {
     const scope = [...PUBLIC_TEST_SCOPE];
     expect(workflow).toContain("run: node scripts/ci-vitest-shard.mjs");
-    expect(workflow.match(/run: node scripts\/ci-vitest-shard\.mjs[^\n]*/gu)).toEqual(["run: node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --skip-pretest"]);
+    expect(workflow.match(/run: node scripts\/ci-vitest-shard\.mjs[^\n]*/gu)).toEqual([
+      "run: node scripts/ci-vitest-shard.mjs --total 8 --plan-out .context/scratch/ci-vitest-shard-plan.json",
+      "run: node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --plan .context/scratch/ci-vitest-shard-plan.json --skip-pretest",
+    ]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(scope).toEqual(["api", "mcp", "scripts", "server", "src", "tests"]);
     const tracked = execFileSync("git", ["ls-files", "-z", ...scope], { cwd: ROOT, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean);
