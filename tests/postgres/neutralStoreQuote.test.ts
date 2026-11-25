@@ -1066,6 +1066,7 @@ describe.sequential('installed quote proofs', () => {
           await reprice(-211);
 
           // (c) A create whose answer was lost, then a reconfirmation under the same key, finds that order.
+          // This is the discriminating case: (a) and (b) leave no order behind, so a new key would also make one order there.
           const lost = 'kept-key-lost@example.test', lostKey = crypto.randomUUID();
           const total = await review(lost);
           const {body:first} = await action('checkout.create',{...input(lost),expectedTotal:total},lostKey);

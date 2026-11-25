@@ -138,7 +138,7 @@ export const checkoutContinuationCopy = Object.freeze({
   heading: { en: 'Earlier order of this purchase', pl: 'Wcześniejsze zamówienie tego zakupu' },
   intro: {
     en: 'An earlier submit of this purchase created, or may have created, an order. Choose what happens to it before you submit different details.',
-    pl: 'Wcześniejsze wysłanie tego zakupu utworzyło lub mogło utworzyć zamówienie. Zanim wyślesz inne dane, wybierz, co ma się z nim stać.',
+    pl: 'Wcześniejsze wysłanie formularza tego zakupu utworzyło lub mogło utworzyć zamówienie. Zanim wyślesz inne dane, wybierz, co ma się z nim stać.',
   },
   resume: { en: 'Complete payment for the earlier order', pl: 'Dokończ płatność za wcześniejsze zamówienie' },
   abandon: { en: 'Cancel the earlier order and start over', pl: 'Anuluj wcześniejsze zamówienie i zacznij od nowa' },
@@ -153,7 +153,7 @@ export const checkoutContinuationCopy = Object.freeze({
   },
   limited: {
     en: 'The store returned the order without a payment link because of its request limit. Try again within {minutes} min.',
-    pl: 'Sklep zwrócił zamówienie bez linku do płatności z powodu limitu żądań. Spróbuj ponownie za maks. {minutes} min.',
+    pl: 'Sklep zwrócił zamówienie bez linku do płatności z powodu limitu żądań. Spróbuj ponownie w ciągu {minutes} min.',
   },
   abandoned: {
     en: 'The earlier order was cancelled and its stock released. Submit the form to place a new order.',
@@ -188,8 +188,8 @@ export const checkoutContinuationCopy = Object.freeze({
     pl: 'Wcześniejszego zamówienia nie można tu anulować, ponieważ rozpoczęto jego płatność. Dokończ płatność albo rozpocznij inny zakup.',
   },
   starter_checkout_expired: {
-    en: 'To buy now, choose Start a different purchase. The earlier order is older than its 24-hour payment link and gets no new link here. If no payment was ever started for it, Cancel the earlier order and start over cancels it instead.',
-    pl: 'Aby kupić teraz, wybierz Rozpocznij inny zakup. Wcześniejsze zamówienie jest starsze niż 24-godzinny link do płatności i nie otrzyma tu nowego linku. Jeśli nigdy nie rozpoczęto jego płatności, możesz zamiast tego wybrać Anuluj wcześniejsze zamówienie i zacznij od nowa.',
+    en: 'To buy now, choose "Start a different purchase". The earlier order is older than its 24-hour payment link and gets no new link here. If no payment was ever started for it, "Cancel the earlier order and start over" cancels it instead.',
+    pl: 'Aby kupić teraz, wybierz „Rozpocznij inny zakup”. Wcześniejsze zamówienie jest starsze niż 24-godzinny link do płatności i nie otrzyma tu nowego linku. Jeśli nigdy nie rozpoczęto jego płatności, możesz zamiast tego wybrać „Anuluj wcześniejsze zamówienie i zacznij od nowa”.',
   },
   starter_command_conflict: {
     en: 'Another request for this purchase was being saved at the same moment; nothing changed. Submit again in a moment. If this repeats after you started a different purchase of a first subscription, the earlier unpaid order still holds it: ask the store to cancel that order.',
@@ -197,7 +197,7 @@ export const checkoutContinuationCopy = Object.freeze({
   },
   starter_attempt_limited: {
     en: 'Too many checkout requests in a short time. Try again within {minutes} min.',
-    pl: 'Zbyt wiele żądań zamówienia w krótkim czasie. Spróbuj ponownie za maks. {minutes} min.',
+    pl: 'Zbyt wiele żądań zamówienia w krótkim czasie. Spróbuj ponownie w ciągu {minutes} min.',
   },
   starter_storage_unavailable: {
     en: 'This browser does not let the page keep your purchase in tab storage. A retry without reloading still reaches the same order, but a reload or changed details may create a second order.',
@@ -205,6 +205,6 @@ export const checkoutContinuationCopy = Object.freeze({
   },
   starter_checkout_session_changed: {
     en: 'The earlier order of this purchase was placed while you were signed in differently, so it cannot be reached now. Sign in or out as you were when you placed it, then choose again.',
-    pl: 'Wcześniejsze zamówienie tego zakupu złożono przy innym stanie logowania, więc teraz nie można do niego dotrzeć. Zaloguj się lub wyloguj tak jak przy jego składaniu, a potem wybierz ponownie.',
+    pl: 'Wcześniejsze zamówienie tego zakupu złożono przy innym stanie logowania, więc teraz nie można do niego dotrzeć. Zaloguj się lub wyloguj się tak, jak przy jego składaniu, a potem wybierz ponownie.',
   },
 } satisfies Record<string, Localized>);
