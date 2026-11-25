@@ -1,8 +1,19 @@
 import { market } from '../owned/market.config.ts';
 import { test as base, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { findPackageJSON } from 'node:module';
+import { dirname, join } from 'node:path';
 import { env } from 'node:process';
+import pg from 'pg';
+import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogInternalGtin,
+  createPostgresCatalogDraftStoreV4, createPostgresCatalogPublicationCommands } from '@openlup/platform/catalog';
+import { createPostgresPlatformJobRunLedger } from '@openlup/platform/job-ledger';
+import { createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
+import { catalogueWatchdogPrincipalId, startCatalogueReadinessJobs } from '../host/catalogue-readiness-jobs.ts';
+import { starterCatalogue } from '../host/editor-catalogue.ts';
+import { selectConfiguration } from '../owned/store.config.ts';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
 import { operations as declaredOperations } from '../shared/api.ts';
@@ -12,6 +23,7 @@ const test = base.extend<{ composeProject: string }>({ composeProject: ['', { op
 
 test('native support roster, catalogue administration, replay and operator admission', async ({ page, context, baseURL, composeProject }) => {
   test.setTimeout(120000);
+  test.skip(!composeProject, 'Uses the demonstration Compose fixture.');
   if (!baseURL || !/^[a-z0-9-]+$/.test(composeProject)) throw new Error('native_operator_proof_fixture_required');
   const compose = (...args: string[]) => execFileSync('docker', ['compose', '--project-name', composeProject, ...args],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -292,6 +304,134 @@ import { env } from 'node:process';
   await action('auth.signOut');
   for (const operation of operations) expect((await action(operation)).code).toBe('operator_required');
   console.log('operation tally', JSON.stringify({ declared: status.length, bound: status.filter((row: { bound: boolean }) => row.bound).length }));
+});
+
+test('authenticated Publish discloses only owned degraded jobs and supports exact repair', async ({ request, baseURL, composeProject }, info) => {
+  test.skip(!!composeProject || info.project.name !== 'coffee', 'Uses a fresh process-hosted coffee fixture.');
+  if (!baseURL) throw new Error('native_operator_proof_fixture_required');
+  const [fixture] = (JSON.parse(readFileSync('.context/care-browser/fixtures.json', 'utf8')) as {
+    baseURL: string; ownerUrl: string; runtimeUrl: string; state: string;
+  }[]).filter(row => row.baseURL === baseURL);
+  expect(fixture).toBeDefined();
+  const owner = new pg.Pool({ connectionString: fixture!.ownerUrl });
+  const runtime = new pg.Pool({ connectionString: fixture!.runtimeUrl });
+  const identities = createPostgresOperatorIdentityStore({ connectionString: fixture!.runtimeUrl });
+  const config = selectConfiguration('coffee');
+  const ownedJob = 'subscription-care:coffee', unownedJob = 'external:fixture';
+  const invocation = { triggerKind: 'scheduler' as const, invocationSource: 'operator-proof' };
+  const ledger = createPostgresPlatformJobRunLedger(runtime, { releaseCorrelation: () => ({}), defaultFailureReason: 'fixture_failed' });
+  const send = (operation: string, data: object, key = randomUUID()) => request.post(baseURL + '/api/actions/' + operation, {
+    data, headers: { Origin: baseURL, 'X-Starter-Request': '1', 'Idempotency-Key': key },
+  });
+  const control = async () => (await owner.query(`SELECT last_run_id,last_status,metadata FROM public.platform_job_controls
+    WHERE job_name='platform-watchdog'`)).rows[0];
+  async function tick(ready: boolean) {
+    const previous = (await control())?.last_run_id;
+    const close = startCatalogueReadinessJobs(fixture!.runtimeUrl, catalogueWatchdogPrincipalId(config));
+    try {
+      await expect.poll(async () => (await control())?.last_run_id).not.toBe(previous);
+      await expect.poll(control).toMatchObject({ last_status: 'success', metadata: { promotionReady: ready } });
+    } finally { await close(); }
+  }
+  try {
+    await expect.poll(control).toMatchObject({ last_status: 'success', metadata: { promotionReady: true } });
+    const email = 'publication-operator@example.test';
+    const actor = (await identities.bootstrapFirstAdministrator({ email })).principalId;
+    expect((await (await send('auth.operator', { email })).json()).ok).toBe(true);
+    let token: string | undefined;
+    await expect.poll(() => {
+      try {
+        const messages = readFileSync(join(fixture!.state, '.context/captured-messages/identity.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+        token = messages.find(row => row.email === email)?.token;
+      } catch { /* The private mailbox is written after request acceptance. */ }
+      return typeof token === 'string' && /^[A-Za-z0-9_-]{43}$/u.test(token);
+    }).toBe(true);
+    expect((await (await send('auth.operator', { token })).json()).ok).toBe(true);
+
+    const catalogue = starterCatalogue(), type = catalogue.current!;
+    const grams = { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 } as const;
+    const { release, activation } = buildCatalogReleaseDraftV3({ namespace: 'fixture', type: { key: type.key, version: type.version },
+      slug: 'readiness-article', name: 'Readiness article', presentation: { title: 'Readiness article' }, skus: [{
+        code: 'READINESS-ARTICLE', title: 'Readiness article', options: {}, netContent: grams,
+        grossMass: { ...grams, unscaled: '110' }, logisticsRef: 'fixture:article',
+        identifiers: [{ scheme: 'gs1:gtin', issuer: 'fixture', value: catalogInternalGtin(119), packagingLevel: 'unit' }],
+        sell: { oneTime: true, subscription: false },
+      }] });
+    const commands = createPostgresCatalogPublicationCommands({ authorizeHuman: async () => ({ ok: true, userId: actor, role: 'admin', isMachineActor: false }),
+      catalogPublicationOwner: { async run(work) {
+        const db = await owner.connect();
+        try { await db.query('BEGIN'); const value = await work(db); await db.query('COMMIT'); return value; }
+        catch (error) { await db.query('ROLLBACK'); throw error; }
+        finally { db.release(); }
+      } }, registry: catalogue.registry });
+    const human = (await commands.authorize(null))!;
+    const draftId = randomUUID(), productId = release.payload.product.id;
+    async function approve(payload: typeof release.payload, revision: number, expectedHead: import('@openlup/platform/catalog').CatalogHeadRef | null) {
+      const canonicalCommand = canonicalCatalogDraftJson({ schemaVersion: payload.schemaVersion, action: revision === 1 ? 'create' : 'revise',
+        draftId, commandKey: randomUUID(), expectedRevision: revision - 1, payload });
+      const fingerprint = createHash('sha256').update(canonicalCommand).digest('hex');
+      expect((await createPostgresCatalogDraftStoreV4(owner).apply({ canonicalCommand, fingerprint, actorId: actor })).outcome).toBe('committed');
+      const candidate = await commands.prepareCandidate({ draftId, draftRevision: revision, expectedHead }, human);
+      if (!('candidateRef' in candidate) || !candidate.preparation?.postStateDigest) throw new Error(JSON.stringify(candidate));
+      const target = { productId, candidateRef: candidate.candidateRef, candidateDigest: candidate.candidateDigest };
+      expect((await commands.execute({ ...target, action: 'approve', commandKey: randomUUID(),
+        postStateDigest: candidate.preparation.postStateDigest }, human)).outcome).toBe('committed');
+      return { ...target, action: 'publish' as const, expectedHead, changes: [] };
+    }
+    const released = await commands.execute({ ...await approve(release.payload, 1, null), commandKey: randomUUID() }, human);
+    if (released.outcome !== 'committed' || !('head' in released.receipt)) throw new Error(JSON.stringify(released));
+    const variantId = release.payload.skus[0]!.id;
+    await owner.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+      SELECT id,$1,'one_time',3400,statement_timestamp() FROM public.price_lists WHERE status='active'`, [variantId]);
+    const publish = await approve(activation.payload, 2, released.receipt.head);
+    const key = randomUUID();
+    const wire = async () => {
+      const response = await send('operator.catalogPublication', publish, key);
+      expect(response.status()).toBe(409);
+      const body = await response.json();
+      expect(body).toEqual({ ok: false, code: 'publication_price_readiness', reason: body.reason, path: 'pricing.readiness',
+        subject: body.reason, message: expect.any(String), issues: [{ code: 'publication_price_readiness', path: 'pricing.readiness',
+          subject: body.reason, message: body.message, ...(body.issues[0].failedJobs ? { failedJobs: body.issues[0].failedJobs } : {}) }] });
+      return body;
+    };
+    expect(await wire()).toMatchObject({ reason: 'catalog_1490_legacy_1340_invalid', message: expect.stringContaining('with the pricing owner') });
+    await owner.query(`UPDATE public.price_entries SET active=false,valid_to=statement_timestamp(),updated_at=statement_timestamp()
+      WHERE mode='subscription' AND active`);
+    for (const name of [ownedJob, unownedJob]) {
+      const run = await ledger.claimJobRun(name, invocation, 300);
+      expect(run.acquired).toBe(true);
+      expect(await ledger.finishJobRun(name, run.runId!, invocation, 'failed',
+        { checked: 0, updated: 0, failures: 1, skipped: false })).toBe(true);
+    }
+    await tick(false);
+    expect(await wire()).toMatchObject({ reason: 'promotion_watchdog_not_ready', issues: [{ failedJobs: [ownedJob] }] });
+    const watchdogRun = (await control()).last_run_id;
+    await owner.query("UPDATE public.platform_job_controls SET last_success_at=statement_timestamp()-interval '7 hours' WHERE job_name='platform-watchdog'");
+    expect((await wire()).issues[0]).not.toHaveProperty('failedJobs');
+    await owner.query(`UPDATE public.platform_job_controls SET last_success_at=(SELECT finished_at FROM public.platform_job_runs WHERE id=$1)
+      WHERE job_name='platform-watchdog'`, [watchdogRun]);
+    const blocker = await owner.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('LOCK TABLE public.platform_job_runs IN ACCESS EXCLUSIVE MODE');
+      const started = performance.now();
+      const same = await wire();
+      expect(Math.round(performance.now() - started)).toBeGreaterThanOrEqual(450);
+      expect(Math.round(performance.now() - started)).toBeLessThan(1200);
+      expect(same.reason).toBe('promotion_watchdog_not_ready');
+      expect(same.issues[0]).not.toHaveProperty('failedJobs');
+    } finally { await blocker.query('ROLLBACK'); blocker.release(); }
+    const core = findPackageJSON('@openlup/core/catalog', import.meta.url)!;
+    const guide = readFileSync(join(dirname(core), 'docs/guide/how-to/build/customize-the-starter.md'), 'utf8');
+    expect(guide).toContain('./lifecycle care --configuration <id> --database-url <runtime-url>');
+    expect(JSON.parse(execFileSync('./lifecycle', ['care', '--configuration', config.id, '--database-url', fixture!.runtimeUrl],
+      { encoding: 'utf8' })).messages).toBeDefined();
+    await owner.query('UPDATE public.platform_job_controls SET enabled=false WHERE job_name=$1', [unownedJob]);
+    await tick(true);
+    const committed = await (await send('operator.catalogPublication', publish, key)).json();
+    expect(committed).toMatchObject({ ok: true, value: { outcome: 'committed' } });
+    expect(await (await send('operator.catalogPublication', publish, key)).json()).toMatchObject({ ok: true, replayed: true });
+  } finally { await Promise.all([owner.end(), runtime.end(), identities.close()]); }
 });
 
 test('installed adopter pack refuses missing builds and resumes exact-pair authoring', async ({ page, baseURL, composeProject }) => {

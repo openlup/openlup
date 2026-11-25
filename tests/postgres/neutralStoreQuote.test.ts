@@ -1,6 +1,7 @@
 /** Installed engine and seed witness; subscription admission/activation retain their explicit predecessors. */
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { env as processEnv } from 'node:process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -171,6 +172,94 @@ const quoteDatabase = {
   },
 };
 
+const bundleProof = String.raw`
+  import assert from 'node:assert/strict';
+  import pg from 'pg';
+  import {bindScenarioServer} from ${JSON.stringify(scenarioHelper)};
+  import {selectConfiguration} from './application/owned/store.config.ts';
+  import {applyDemoSeed} from './application/installation/install.ts';
+  import {composeNativeBindings} from './application/host/native-composition.ts';
+  import {createOriginPolicy} from './application/host/origin-policy.ts';
+  const config = selectConfiguration(fixture.configuration), coffee = config.id === 'coffee';
+  const owner = new pg.Pool({connectionString:fixture.ownerUrl}), runtime = new pg.Pool({connectionString:fixture.runtimeUrl});
+  const {server,base,port}=await bindScenarioServer();
+  const {createApplication}=await import('./application/host/server.ts');
+  let bindings;
+  try {
+    const db = await owner.connect();
+    const seed = async owned => applyDemoSeed(owned,{connection:db,installRole:'postgres',runtimeRole:'starter_runtime',close:async()=>{}});
+    const id = 'demo-bundle:'+config.id;
+    const promotion = async () => (await owner.query('SELECT definition,definition_fingerprint,active FROM public.commerce_promotion_definitions WHERE promotion_id=$1',[id])).rows;
+    try {
+      await seed(config);
+      const installed = await promotion();
+      await seed(config);
+      assert.deepEqual(await promotion(),installed);
+      const original = installed[0].definition;
+      assert.deepEqual(original,{id,name:'Demo one-time bundle',status:'active',trigger_type:'automatic',code:null,
+        discount_type:'percentage',discount_value:5,applies_to_kind:'order_total',applies_to_payload:{cart_mode:'one_time'},
+        stacking_rule:'stackable_with_any',eligibility:{min_cart_minor:12000},region_availability:[config.market.country],
+        valid_from:'2000-01-01T00:00:00.000Z',valid_to:null,promotion_engine_version:'promotion-engine.v1',
+        benefit_lane:'product',benefit_kind:'percentage',benefit_value_bps:500,benefit_value_minor:null,
+        v2_mirror_of:null,redemption_limit_global:null,redemption_limit_per_customer:null});
+      for (const path of [['other'],['applies_to_payload','other'],['eligibility','other'],['region_availability','0']]) {
+        await assert.rejects(runtime.query('UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,$2,$3) WHERE promotion_id=$1',
+          [id,path,{other:true}]),error=>error.code==='42501');
+      }
+      await owner.query("UPDATE public.commerce_promotion_definitions SET definition=definition||'{\"other\":true}'::jsonb WHERE promotion_id=$1",[id]);
+      const changed = structuredClone(config);
+      changed.brand.name += ' altered';
+      await assert.rejects(seed(changed),/starter_promotion_seed_conflict/);
+      assert.deepEqual((await owner.query('SELECT name FROM public.price_lists')).rows,[{name:config.brand.name+' demonstration'}]);
+      await owner.query('UPDATE public.commerce_promotion_definitions SET definition=$2 WHERE promotion_id=$1',[id,original]);
+    } finally {db.release();}
+    bindings=await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),config);
+    server.on('request',createApplication(bindings).listeners('request')[0]);
+    const call = async (operation,payload) => {
+      const response=await fetch(base+'/api/actions/'+operation,{method:'POST',
+        headers:{Origin:base,'Content-Type':'application/json','X-Starter-Request':'1','Idempotency-Key':crypto.randomUUID()},
+        body:JSON.stringify(payload)});
+      const result=await response.json();assert.equal(result.ok,true,result.code);return result.value;
+    };
+    const [first,second] = config.offer.products;
+    const cart = lines => ({schemaVersion:1,configuration:config.id,mode:'one_time',cadenceDays:null,lines});
+    const line = (product,quantity) => ({sku:product.sku,quantity});
+    const quote = cart => call('offer.validate',{cart});
+    const compare = async (lines,before,discount,restore=false) => {
+      const request=cart(lines);
+      await owner.query('UPDATE public.commerce_promotion_definitions SET active=false WHERE promotion_id=$1',[id]);
+      const previous=await quote(request);
+      await owner.query('UPDATE public.commerce_promotion_definitions SET active=true WHERE promotion_id=$1',[id]);
+      const current=await quote(request);
+      assert.deepEqual([previous.totalMinor,current.discountMinor,current.totalMinor],[before,discount,before-discount]);
+      if (restore) {
+        const data={locale:'en',configuration:config.id,country:config.market.country,termsAccepted:true,termsRevision:config.legal.revision,
+          email:'bundle@example.test',firstName:'Example',lastName:'Buyer',phone:'00000',line1:'1 Example Lane',city:'Example',postalCode:'00000',
+          cart:request,expectedTotal:previous.expectedTotal};
+        const made=await call('checkout.create',data);
+        assert.equal(made.total.amountMinor,current.totalMinor);
+        const saved=(await owner.query('SELECT total_amount_minor::int AS total FROM public.commerce_orders WHERE id=$1',[made.orderRef])).rows[0];
+        assert.equal(saved.total,current.totalMinor);
+      }
+      return [previous.totalMinor,current.discountMinor,current.totalMinor];
+    };
+    const observed = [await compare([line(first,coffee?1:3)],coffee?4200:11700,0)];
+    const basePrice = 'UPDATE public.price_entries e SET unit_price_minor=$2 FROM public.catalog_skus s WHERE e.variant_id=s.id AND s.sku=$1 AND e.mode=\'one_time\'';
+    try {
+      for (const amount of [11999,12000,12001]) {
+        await owner.query(basePrice,[first.sku,amount]);
+        observed.push(await compare([line(first,1)],amount,amount===11999?0:600));
+      }
+    } finally { await owner.query(basePrice,[first.sku,first.unitPrice.amountMinor]); }
+    observed.push(coffee ? await compare([line(first,3)],12600,630,true)
+      : await compare([line(first,1),line(second,2)],12900,645,true));
+    console.log(JSON.stringify({configuration:config.id,beforeDiscountAfter:observed}));
+  } finally {
+    server.close();
+    await Promise.all([bindings?.close(),owner.end(),runtime.end()]);
+  }
+`;
+
 async function provisionQuoteCase(configuration: string, multiSize: boolean, containers: PostgresContainer[], pools: Pool[], database: typeof quoteDatabase, signal: AbortSignal) {
   const setupStarted = performance.now();
   // Opt-in reproduction of provisioning overrunning the existing 95 s case budget.
@@ -303,6 +392,7 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
     import {createNativeQuoteService} from './application/host/quote-composition.ts';
     import {installedAcquisitionPredecessors} from './application/host/acquisition-predecessors.ts';
     const config = structuredClone(configurations[fixture.configuration]);
+    const acquisition = 'demo-acquisition:'+config.id;
     config.offer.products[0].unitPrice.amountMinor = 1499;
     if (fixture.multiSize) {
       const large = structuredClone(config.subscriptionEditing.catalogue.find(row => row.sku === config.offer.products[0].sku + '-L'));
@@ -357,7 +447,7 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
       await applyDemoSeed(config,install);
       if (predecessor) assert.deepEqual(await retainedRows(),predecessor);
       assert.equal(Number((await owner.query('SELECT count(*) AS n FROM public.subscription_price_policy_revisions')).rows[0].n),1);
-      assert.equal(Number((await owner.query('SELECT count(*) AS n FROM public.commerce_promotion_definitions')).rows[0].n),1);
+      assert.equal(Number((await owner.query('SELECT count(*) AS n FROM public.commerce_promotion_definitions')).rows[0].n),2);
       const identity = (await runtime.query('SELECT session_user,current_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows[0];
       assert.equal(identity.session_user,'starter_runtime');assert.equal(identity.current_user,'starter_runtime');assert.equal(identity.rolsuper,false);assert.equal(identity.rolbypassrls,false);
       await assert.rejects(runtime.query('UPDATE public.commerce_promotion_definitions SET active=false WHERE false'),e=>e.code==='42501');
@@ -377,7 +467,7 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
       assert.equal(current.terms.initialDiscountBps,2400);assert.equal(current.terms.delivery2DiscountBps,1200);
       assert.equal(current.projection.secondTotalMinor,3958);
       quotes.verify(current,{quoteAcceptance:current.token,expectedTotal:current.snapshot.quote.totalGross});
-      await owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}','1300')");
+      await owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}','1300') WHERE promotion_id=$1",[acquisition]);
       const changed = await quotes.quote(input,context);
       assert.deepEqual(changed.snapshot.quote.totalGross,current.snapshot.quote.totalGross);
       assert.throws(()=>quotes.verify(changed,{quoteAcceptance:current.token,expectedTotal:current.snapshot.quote.totalGross}),/starter_quote_refresh_required/);
@@ -397,7 +487,7 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
       const beforeWeightChange = await retainedRows();
       await assert.rejects(applyDemoSeed(physical,install),/starter_document_seed_conflict/);
       assert.deepEqual(await retainedRows(),beforeWeightChange);
-      await owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}',$1::jsonb)",[JSON.stringify(config.quote.acquisition.delivery2DiscountBps)]);
+      await owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}',$1::jsonb) WHERE promotion_id=$2",[JSON.stringify(config.quote.acquisition.delivery2DiscountBps),acquisition]);
       configurations[fixture.configuration] = config;
       const {server,port,base}=await bindScenarioServer();
       const {createApplication}=await import('./application/host/server.ts');
@@ -425,9 +515,9 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
         await refused('offer.validate',incapable,'acquisition_terms_capability_required');
         await refused('checkout.create',incapable,'acquisition_terms_capability_required');
         await refused('checkout.create',{...accepted,cart:{...cart,lines:[{...cart.lines[0],quantity:4}]}},'starter_quote_refresh_required');
-        await owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}','1300')");
+        await owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}','1300') WHERE promotion_id=$1",[acquisition]);
         await refused('checkout.create',accepted,'starter_quote_refresh_required');
-        await owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}',$1::jsonb)",[JSON.stringify(config.quote.acquisition.delivery2DiscountBps)]);
+        await owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}',$1::jsonb) WHERE promotion_id=$2",[JSON.stringify(config.quote.acquisition.delivery2DiscountBps),acquisition]);
         const minimum=config.quote.acquisition.minimumProductPayableMinor;
         config.quote.acquisition.minimumProductPayableMinor=minimum+1;
         try {await refused('checkout.create',accepted,'starter_quote_refresh_required');} finally {config.quote.acquisition.minimumProductPayableMinor=minimum;}
@@ -659,6 +749,42 @@ describe.sequential('installed quote proofs', () => {
   beforeAll(prepareQuoteConsumer, postgresSetupTimeoutMs);
   afterAll(removeQuoteConsumer, postgresTeardownTimeoutMs);
 
+  for (const configuration of ['coffee', 'supplements']) describe(`${configuration} shipped bundle`, () => {
+    const database = quoteCaseFixture(configuration, false);
+    let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
+    beforeAll(async () => { fixture = await database.setup(); }, postgresSetupTimeoutMs);
+    afterAll(database.teardown, postgresTeardownTimeoutMs);
+    it('replays the bundle, quotes its inclusive threshold and persists the server total', () => {
+      writeFileSync(join(consumer,'bundle.mjs'),`const fixture = ${JSON.stringify(fixture)};\n${bundleProof}`);
+      const output = execFileSync(process.execPath, ['bundle.mjs', '--configuration', configuration],
+        { cwd: consumer, encoding: 'utf8', timeout: 20_000 });
+      console.log(output.trim());
+    });
+  });
+
+  describe('installed catalogue job lifecycle', () => {
+    const database = quoteCaseFixture('coffee', false);
+    let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
+    beforeAll(async () => { fixture = await database.setup(); }, postgresSetupTimeoutMs);
+    afterAll(database.teardown, postgresTeardownTimeoutMs);
+    it('serves without a principal, drains a held claim and records a failed heartbeat', () => {
+      const extracted = join(consumer, 'extracted');
+      execFileSync(process.execPath, ['examples/neutral-store/extract.mjs', extracted], { stdio: 'pipe' });
+      let output: string;
+      try {
+        output = execFileSync(process.execPath, ['--test', '--test-force-exit', '--test-name-pattern=installed catalogue jobs isolate',
+          'test/lifecycle.test.ts'], { cwd: extracted, encoding: 'utf8', timeout: 45_000,
+          env: { ...processEnv, OPENLUP_STARTER_CATALOGUE_RECIPE_APP: extracted,
+            OPENLUP_STARTER_CATALOGUE_TEST_OWNER_URL: fixture.ownerUrl } });
+      } catch (error) {
+        const report = (error as { stdout?: string }).stdout ?? 'Installed lifecycle process failed';
+        throw new Error(report.replaceAll(fixture.ownerUrl, '[fixture owner]').replaceAll(fixture.runtimeUrl, '[fixture runtime]'));
+      }
+      expect(output).toMatch(/installed catalogue job lifecycle/u);
+      console.log(output.split('\n').find(line => line.includes('firstPairMs')));
+    });
+  });
+
   describe('active published catalogue', () => {
     const database = quoteCaseFixture('coffee', false);
     let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
@@ -676,8 +802,9 @@ describe.sequential('installed quote proofs', () => {
         import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
         import { createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore } from '@openlup/platform/pricing';
         import { configurations } from './application/owned/store.config.ts';
-        import { buildDemoSeed } from './application/owned/demo-seed.ts';
         import { applyDemoSeed } from './application/installation/install.ts';
+        import { catalogueWatchdogPrincipalId, startCatalogueReadinessJobs } from './application/host/catalogue-readiness-jobs.ts';
+        import { setTimeout as delay } from 'node:timers/promises';
         import { demoIdentifier, readStarterCatalogueRules, starterCatalogue } from './application/host/editor-catalogue.ts';
         import { createNativeQuoteService } from './application/host/quote-composition.ts';
         import { installedAcquisitionPredecessors } from './application/host/acquisition-predecessors.ts';
@@ -705,20 +832,24 @@ describe.sequential('installed quote proofs', () => {
               catalogueRules:readStarterCatalogueRules(), stock:createPostgresFulfillmentStockSyncPort(runtime,
                 {sourceKey:'starter-demo:coffee',readLocalInventoryStock:async()=>[]}),close:async()=>{} });
           } finally { db.release(); }
-          // Prepare the fixture's derived-price prerequisites without changing the starter installer.
-          const predecessors = buildDemoSeed(config).prices.filter(row => row.mode === 'subscription').map(row => row.id);
-          const closed = await owner.query("UPDATE public.price_entries SET active=false,valid_to=statement_timestamp() WHERE id=ANY($1::uuid[]) AND active", [predecessors]);
-          assert.equal(closed.rowCount,predecessors.length);
-          const bundle = {id:'fixture:bundle',status:'active',trigger_type:'automatic',code:null,discount_type:'percentage',
-            discount_value:5,applies_to_kind:'order_total',applies_to_payload:{cart_mode:'one_time'},stacking_rule:'stackable_with_any',
-            eligibility:{min_cart_minor:12000},region_availability:[config.market.country],valid_from:'2000-01-01T00:00:00.000Z',
-            valid_to:null,redemption_limit_global:null,redemption_limit_per_customer:null,promotion_engine_version:'promotion-engine.v1',
-            benefit_lane:'product',benefit_kind:'percentage',benefit_value_bps:500,benefit_value_minor:null,v2_mirror_of:null};
-          await owner.query("INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES($1,$2,true)", [bundle.id,bundle]);
+          const closeJobs = startCatalogueReadinessJobs(fixture.runtimeUrl,catalogueWatchdogPrincipalId(config));
+          try {
+            let ready = false;
+            for (let attempt=0; attempt<100; attempt++) {
+              const { rows } = await owner.query("SELECT public.commerce_offer_policy_v2_readiness() AS verdict");
+              if (!rows[0].verdict.reasons.some(reason => ['promotion_watchdog_not_ready','promotion_claim_sweep_not_ready'].includes(reason))) {
+                assert.deepEqual(rows[0].verdict.reasons,['catalog_1490_legacy_1340_invalid']);
+                assert.equal(rows[0].verdict.evidence.priceMismatchCount,6);
+                ready = true;
+                break;
+              }
+              await delay(40);
+            }
+            assert.equal(ready,true,'The native readiness jobs must produce current evidence');
+          } finally { await closeJobs(); }
           const actorId = randomUUID();
           await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'quote-operator@example.invalid')",[actorId]);
           await owner.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())",[actorId]);
-          await owner.query("INSERT INTO public.platform_job_controls(job_name,active_driver,enabled,last_status,last_success_at,metadata) VALUES ('platform-watchdog','worker',true,'success',clock_timestamp(),$1),('promotion-claim-sweep','worker',true,'success',clock_timestamp(),'{}') ON CONFLICT(job_name) DO UPDATE SET enabled=excluded.enabled,last_status=excluded.last_status,last_success_at=excluded.last_success_at,metadata=excluded.metadata", [{promotionReady:true}]);
           const installed = starterCatalogue(), type = { key:installed.current.key, version:installed.current.version };
           const mediaRef = '/media/collection.svg';
           const mediaDigest = () => createHash('sha256').update(readFileSync('./application/public'+mediaRef)).digest('hex');
@@ -749,8 +880,19 @@ describe.sequential('installed quote proofs', () => {
             const approved = await commands.execute({...candidate,action:'approve',commandKey:randomUUID(),
               postStateDigest:prepared.preparation.postStateDigest},operator);
             assert.equal(approved.outcome,'committed',JSON.stringify(approved));
-            const published = await commands.execute({...candidate,action:'publish',commandKey:randomUUID(),expectedHead,
-              changes},operator);
+            const request = {...candidate,action:'publish',commandKey:randomUUID(),expectedHead,changes};
+            let published = await commands.execute(request,operator);
+            if (payload.product.slug === 'published-article' && revision === 2) {
+              assert.deepEqual(published,{outcome:'validation_issue',reason:'publication_price_readiness',
+                path:'pricing.readiness',subject:'catalog_1490_legacy_1340_invalid',
+                message:'Observed: Publish could not verify price and offer readiness. Cause: The effective list or the eligible SKU price census could not be verified. Fix: Restore one effective list and verify each eligible SKU’s base and subscription branch with the pricing owner. Recheck: Retry the same approved request only while its draft and head still match.'});
+              // The disposable storefront fixture uses a derived-only list for activation.
+              assert.equal((await owner.query(\`UPDATE public.price_entries
+                SET active=false,valid_to=statement_timestamp(),updated_at=statement_timestamp()
+                WHERE price_list_id=$1 AND mode='subscription' AND active\`,
+              [demoIdentifier(config,'price-list',config.market.currency)])).rowCount,7);
+              published = await commands.execute(request,operator);
+            }
             if (published.outcome !== 'committed') {
               const { rows } = await owner.query("SELECT public.commerce_offer_policy_v2_readiness() AS readiness");
               assert.fail(JSON.stringify({ published, readiness:rows[0].readiness }));
@@ -837,7 +979,7 @@ describe.sequential('installed quote proofs', () => {
           assert.equal(refused.code,'publication_authority_unavailable');
         } finally { await runtime.end(); await owner.end(); }
       `;
-      writeFileSync(join(consumer,'published-quote.mjs'),`const fixture = ${JSON.stringify(fixture)};\n${script}`);
+      writeFileSync(join(consumer,'published-quote.mjs'),`const fixture = ${JSON.stringify(fixture)};\n${script.replaceAll('\\`','`')}`);
       try {
         execFileSync(process.execPath,['--experimental-strip-types','published-quote.mjs','--configuration','coffee'],
           { cwd:consumer,encoding:'utf8',timeout:30_000,stdio:'pipe' });

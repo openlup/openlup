@@ -94,7 +94,7 @@ const publicationCodes = [
   "media_readiness_unknown", "media_reference_missing", "net_content_invalid", "net_content_missing",
   "net_content_option_mismatch", "option_quantity_invalid", "option_type_invalid", "option_value_invalid",
   "price_reference_missing", "price_validation_unavailable", "primary_sku_missing", "primary_sku_not_in_product",
-  "publication_evidence_unavailable", "publication_head_unavailable", "publication_preparation_unavailable",
+  "publication_authority_unavailable", "publication_evidence_unavailable", "publication_head_unavailable", "publication_preparation_unavailable",
   "publisher_not_authorized", "retained_read_not_authorized", "retained_revision_unavailable",
   "retained_source_mismatch", "sku_code_missing", "sku_missing", "slug_missing", "trade_identifier_invalid",
   "trade_identifier_quantity_invalid", "trade_identifier_scheme_unsupported", "type_not_installed",
@@ -118,6 +118,51 @@ const skuSizeFix = "Reduce the facts or details for this SKU and prepare the pub
 
 export function publicationIssue(code: PlatformCode, phase: CatalogCandidateIssue["phase"], path: string, subject?: string): Issue & PlatformIssue {
   return { kind: "platform", code, path, ...(phase === undefined ? {} : { phase }), ...(subject === undefined ? {} : { subject }) };
+}
+
+const promotionRemedy = "Have the promotion owner verify definitions, codes, mirrors and parents.";
+const priceRemedy = "Have the pricing and catalogue owners reconcile retained evidence.";
+const agreementRemedy = "Have the subscription owner verify the governing agreement and retained quote.";
+const orderRemedy = "Have the order owner verify retained order and admission evidence.";
+const readinessRemedies = {
+  effective_price_list_changed: ["The effective settlement list changed after reservation.", "Restore the intended effective settlement list.", "Verify the target and approved head."],
+  first_subscription_pair_invalid: ["The first-subscription acquisition configuration is invalid.", "Restore one effective first-subscription acquisition revision.", "Verify its region, dates and terms."],
+  first_subscription_mirror_not_ready: ["The first-subscription promotion lacks a matching active mirror.", "Restore the corresponding active mirror with matching terms and dates."],
+  bundle_5_policy_invalid: ["The effective one-time bundle count differs from one.", "Run the marked demo installer or have the promotion owner restore one qualifying effective bundle."],
+  catalog_1490_legacy_1340_invalid: ["The effective list or the eligible SKU price census could not be verified.", "Restore one effective list and verify each eligible SKU’s base and subscription branch with the pricing owner."],
+  promotion_claim_sweep_not_ready: ["The promotion claim sweep lacks a current successful run.", "Verify promotion-claim-sweep is enabled with driver scheduler. Wait for a successful tick or restart the database-backed host.", "Verify the sweep has successful evidence from the past 15 minutes."],
+  promotion_watchdog_not_ready: ["The promotion watchdog lacks healthy, enabled and current evidence.", "Verify the starter catalogue watchdog control-plane principal if absent. An enabled failed job blocks readiness. Repair or rerun the named job until its latest status is success.", "Wait for the next tick or restart the database-backed host, then recheck readiness."],
+  legacy_frozen_records_invalid: ["Legacy subscription currency, policy or line money could not be verified.", "Have the subscription and money owners verify the governing records."],
+  automatic_v2_money_invalid: ["Recent order money disagrees with frozen quote or order evidence.", "Have the order-money owner reconcile frozen quote and order evidence."],
+  settlement_context_unverified: ["The settlement context could not be verified.", "Have the settlement owner verify the installed region and currency."],
+  native_promotion_domain_unverified: ["Native promotion evidence failed integrity checks.", promotionRemedy],
+  native_promotion_unverified: ["Retained promotion evidence could not be verified.", promotionRemedy],
+  native_price_domain_unverified: ["Native price evidence failed integrity checks.", priceRemedy],
+  native_catalog_domain_unverified: ["Retained catalogue evidence could not be verified.", priceRemedy],
+  native_policy_domain_unverified: ["The retained policy digest did not match.", "Have the policy owner verify the revision and provenance."],
+  native_cohort_unverified: ["The native cohort marking or audit baseline could not be verified.", "Have the subscription owner verify the cohort and audit baseline."],
+  native_agreement_domain_unverified: ["Native governing agreement evidence failed integrity checks.", agreementRemedy],
+  native_agreement_unverified: ["The retained agreement or line evidence could not be verified.", agreementRemedy],
+  native_order_policy_pair_unverified: ["The retained order policy pair could not be verified.", "Have the order owner verify the retained policy pair."],
+  native_order_admission_unverified: ["Native order admission evidence could not be verified.", "Have the order owner verify native admission evidence."],
+  native_order_claim_guard_unverified: ["The settled-order claim guard failed.", "Have the order and promotions owners verify claim provenance."],
+  native_order_guard_unverified: ["The recent native order guard failed.", orderRemedy],
+  native_order_unverified: ["The retained order evidence could not be verified.", orderRemedy],
+  native_order_domain_unverified: ["The native order-money input is invalid.", "Have the order-money owner verify the authoritative input and retained quote."],
+  native_job_domain_unverified: ["Native job evidence could not be verified.", "Have the operations owner verify native job and heartbeat evidence."],
+  readiness_unverified: ["The authority did not report a recognized readiness cause.", "Recheck the installed authority and have the store owner inspect its evidence if the result remains unavailable."],
+} as const satisfies Record<string, readonly [string, string, string?]>;
+
+export function refusePublicationReadiness(reasons: unknown, hard = false): never {
+  const first = Array.isArray(reasons) && reasons.length <= 32
+    ? reasons.find((reason): reason is keyof typeof readinessRemedies => typeof reason === "string" && Object.hasOwn(readinessRemedies, reason))
+    : undefined;
+  const subject = first ?? "readiness_unverified";
+  const [cause, fix, recheck] = readinessRemedies[subject];
+  const issue = publicationIssue(hard ? "publication_authority_unavailable" : "catalog_publication_price_readiness",
+    "activation", "pricing.readiness", subject);
+  throw new CatalogPublicationError({ ...issue, detail: `Observed: Publish could not verify price and offer readiness. Cause: ${cause} Fix: ${fix} Recheck: ${recheck ? recheck + " " : ""}Retry the same approved request only while its draft and head still match.` },
+    hard ? "dependency_unavailable" : "validation_issue");
 }
 
 export function adopterIssue(rule: Rule, code: string, path: string): Issue {
@@ -225,6 +270,7 @@ const publicationRefusals = {
   catalog_publication_price_changed: ["publication_price_changed", "The current base price differs from the draft. Reload it and prepare the draft again.", "The effective base price does not match the price state expected by the command."],
   catalog_publication_price_unavailable: ["publication_price_unavailable", "The base price could not be verified. Check the price list or retry the command.", "The price read or write did not return the evidence needed to verify the base price."],
   catalog_publication_price_readiness: ["publication_price_readiness", "The proposed prices or offers do not meet storefront readiness. Check their setup and prepare the draft again.", "The proposed pricing does not meet the readiness requirements of the selected storefront or price list."],
+  publication_authority_unavailable: ["publication_authority_unavailable", "The saved publication could not be read. Try again, and ask the store operator to check its publication history if this continues."],
   catalog_publication_sku_price_not_ready: ["publication_sku_price_not_ready", "Set a positive gross base price and check the subscription price for this SKU in the effective price list.", "The SKU fails the effective price list's readiness checks. There must be exactly one active, effective one-time entry at minimum quantity 1, and its gross amount must be positive. With no D2C subscription pricing policy history, there must be exactly one active, effective subscription entry, with a positive gross amount at minimum quantity 1. With policy history, exactly one valid policy revision must be effective and derive a positive price, and there must be no active, effective explicit subscription entry."],
   catalog_publication_sku_price_shape_invalid: ["publication_sku_price_shape_invalid", "Use gross one-time or subscription pricing at minimum quantity one for this SKU in the effective price list.", "The effective price entries have an unsupported tax basis, channel or minimum quantity."],
   price_list_not_active: ["price_list_not_active", "Activate the intended price list or select an effective list for the settlement region and currency.", "The price operation names an ineligible list, or the SKU readiness check found no eligible list. An eligible price list is active, matches the settlement region and currency, and is within its validity window."],

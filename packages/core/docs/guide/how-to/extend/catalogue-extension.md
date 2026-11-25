@@ -146,7 +146,9 @@ attribute. This advisory is informational.
 In `pack.ts`, move the pack's namespace string into a `const namespace`
 declaration above `defineCatalogPack` and use `namespace` for the pack's
 namespace field. Append this entry to the existing `units` array. Keep the
-existing entries, including `openlup:g`, and leave `netContentUnits` as it is.
+existing entries and leave `netContentUnits` as it is. Keep `integral: false`
+on `openlup:g` and use `integral: true` on the count unit. Use the
+[whole-gram publication recipe](#publish-net-content-in-grams) when publishing.
 
 ```ts nocheck
 // This entry goes inside the skeleton's units array.
