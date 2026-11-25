@@ -12358,6 +12358,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ci-flaky-retry.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-flaky-retry.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ci-image-mirror.d.mts",
       "class": "public-output"
     },

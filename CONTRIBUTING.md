@@ -578,7 +578,10 @@ prints the public image identity, counts, timings and bounded failure diagnostic
 Current deadlines are 12 minutes for packages, 8 per browser shard and 2 for
 the aggregate. Set each job deadline to at least 1.3 times its slowest observed
 hosted run.
-Browser journeys retain zero retries. See the
+Playwright retries nothing. In hosted CI only, a group whose journeys fail
+reruns once, with fresh databases, hosts and state, in the same shard; a setup
+failure is never rerun. A group that passed only on the rerun is reported the same
+way as a flaky Vitest file (`flaky-retry-passed: starter browser group <n>`). See the
 [starter proof recipe](examples/neutral-store/docs/proof.md#database-backed-purchase-acceptance-recipe)
 for the selected journeys and the separate local proofs.
 
@@ -1094,6 +1097,8 @@ witness rather than skipping it; this focused run does not replace the required
 package, coverage or full verification gates.
 
 Hosted `test-prep` runs `node scripts/ci-test-scope.mjs` and `node scripts/build-packages-incremental.mjs` once and uploads the exclusion list and built workspace `dist/` outputs as the `test-prep` artifact. Hosted `test-full-shard` jobs download that artifact and run `node scripts/ci-vitest-shard.mjs --shard N --total 8 --skip-pretest` (deterministic weighted LPT sharding over `config/vitest-shard-weights.json`, bypassing redundant per-shard `pretest` builds) in eight independent installations. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
+
+Vitest keeps `retry: 0`. In hosted CI (`CI=true`) only, each shard reruns its failed test files once in the same job, before the check reports, because a merge-queue entry is ejected on its first failing check. The shard passes only if every file passed on the first run or on that rerun. More than 10 failed files, or a failure no file accounts for, is not treated as transient: the shard fails without a rerun. Local runs never retry. Every file that passed only on the rerun prints `flaky-retry-passed: <file>`, emits a `Flaky test retried` warning annotation and is listed in the job summary; investigate it as a flaky test, not as a pass.
 
 Channel preservation tests live in `packages/platform/test/channels` and are
 discovered by the existing root Node project. The reference's adjacent guard

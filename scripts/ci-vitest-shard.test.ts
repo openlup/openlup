@@ -26,6 +26,14 @@ import {
   runShardInvocations,
   writeShardPlan,
 } from "./ci-vitest-shard.mjs";
+import {
+  MAX_FLAKY_RETRY_FILES,
+  argsForFiles,
+  decideFileRetry,
+  jsonReportArgs,
+  readFailedFiles,
+  settleFileRetry,
+} from "./ci-vitest-shard.mjs";
 
 describe("ci-vitest-shard", () => {
   it("parses valid CLI arguments and refuses malformed invocations", () => {
@@ -393,6 +401,117 @@ describe("ci-vitest-shard", () => {
       expect(result.stdout.trim().split("\n")).toEqual(plan.shards[0]!.files);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("ci-vitest-shard single file retry", () => {
+  it("retries only between one and ten failed files", () => {
+    expect(decideFileRetry(["a.test.ts"])).toEqual({ retry: true, files: ["a.test.ts"], reason: null });
+    const ten = Array.from({ length: MAX_FLAKY_RETRY_FILES }, (_, index) => `f${index}.test.ts`);
+    expect(decideFileRetry(ten).retry).toBe(true);
+    expect(decideFileRetry([...ten, "extra.test.ts"])).toMatchObject({ retry: false, files: [] });
+    expect(decideFileRetry([])).toMatchObject({ retry: false, reason: "no failed test file" });
+    expect(decideFileRetry(null)).toMatchObject({ retry: false, reason: "no readable test report" });
+  });
+
+  it("passes after the retry only on a clean exit with no failed file, listing every retried file as flaky", () => {
+    expect(settleFileRetry(["a.test.ts", "b.test.ts"], { status: 0, failedFiles: [] }))
+      .toEqual({ pass: true, flaky: ["a.test.ts", "b.test.ts"] });
+    expect(settleFileRetry(["a.test.ts"], { status: 1, failedFiles: ["a.test.ts"] })).toEqual({ pass: false, flaky: [] });
+    expect(settleFileRetry(["a.test.ts"], { status: 1, failedFiles: [] })).toEqual({ pass: false, flaky: [] });
+    expect(settleFileRetry(["a.test.ts"], { status: 0, failedFiles: null })).toEqual({ pass: false, flaky: [] });
+  });
+
+  it("reads failed files from the JSON report and refuses unreadable reports", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ci-vitest-retry-report-"));
+    try {
+      const report = join(dir, "report.json");
+      writeFileSync(report, JSON.stringify({ testResults: [
+        { name: join(dir, "b.test.ts"), status: "failed" },
+        { name: join(dir, "a.test.ts"), status: "passed" },
+        { name: join(dir, "sub/c.test.ts"), status: "failed" },
+      ] }));
+      expect(readFailedFiles(report, dir)).toEqual(["b.test.ts", "sub/c.test.ts"]);
+      expect(readFailedFiles(join(dir, "missing.json"), dir)).toBeNull();
+      writeFileSync(report, "{");
+      expect(readFailedFiles(report, dir)).toBeNull();
+      writeFileSync(report, JSON.stringify({ testResults: [{ name: join(dir, "..", "x.test.ts"), status: "failed" }] }));
+      expect(readFailedFiles(report, dir)).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the default reporters next to the JSON report and reruns only the failed files", () => {
+    expect(jsonReportArgs([], "/r.json", {})).toEqual(["--reporter=default", "--reporter=json", "--outputFile.json=/r.json"]);
+    expect(jsonReportArgs([], "/r.json", { GITHUB_ACTIONS: "true" }))
+      .toEqual(["--reporter=default", "--reporter=github-actions", "--reporter=json", "--outputFile.json=/r.json"]);
+    expect(jsonReportArgs(["--reporter=dot"], "/r.json", {})).toEqual(["--reporter=json", "--outputFile.json=/r.json"]);
+    const invocation = { kind: "normal", files: ["a.test.ts", "b.test.ts"], command: "node", args: ["run-vitest.mjs", "run", "a.test.ts", "b.test.ts", "--retry=2"] };
+    expect(argsForFiles(invocation, ["b.test.ts"])).toEqual(["run-vitest.mjs", "run", "b.test.ts", "--retry=2"]);
+  });
+
+  // Simulates Vitest: writes the JSON report for the files it was given and fails the listed ones.
+  function fakeVitest(cwd: string, failuresByAttempt: string[][], statusOverride?: (attempt: number) => number) {
+    const calls: string[][] = [];
+    const spawnImpl = (_command: string, args: string[]) => {
+      calls.push(args);
+      const attempt = calls.length - 1;
+      const failed = failuresByAttempt[attempt] ?? [];
+      const output = args.find((arg) => arg.startsWith("--outputFile.json="))!.slice("--outputFile.json=".length);
+      const files = args.filter((arg) => arg.endsWith(".test.ts"));
+      writeFileSync(output, JSON.stringify({ testResults: files.map((file) => ({
+        name: join(cwd, file), status: failed.includes(file) ? "failed" : "passed" })) }));
+      return { status: statusOverride ? statusOverride(attempt) : failed.length > 0 ? 1 : 0 };
+    };
+    return { calls, spawnImpl };
+  }
+
+  const invocation = (files: string[]) => [{ kind: "normal", files, command: "node", args: ["run-vitest.mjs", "run", ...files] }];
+
+  it("reruns failed files once in the same job and reports them as flaky when they pass", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "ci-vitest-retry-cwd-"));
+    try {
+      const { calls, spawnImpl } = fakeVitest(cwd, [["b.test.ts"], []]);
+      const flaky: string[][] = [];
+      const status = runShardInvocations(invocation(["a.test.ts", "b.test.ts"]), {
+        cwd, env: {}, spawnImpl, retryFailedFiles: true, reportFlaky: (names: string[]) => flaky.push(names), log: () => {},
+      });
+      expect(status).toBe(0);
+      expect(calls).toHaveLength(2);
+      expect(calls[1].filter((arg) => arg.endsWith(".test.ts"))).toEqual(["b.test.ts"]);
+      expect(flaky).toEqual([["b.test.ts"]]);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("fails without a further run when the retry fails, too many files fail, failures are unattributed, or retry is off", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "ci-vitest-retry-cwd-"));
+    try {
+      const options = { cwd, env: {}, retryFailedFiles: true, reportFlaky: () => { throw new Error("unexpected"); }, log: () => {} };
+
+      const again = fakeVitest(cwd, [["b.test.ts"], ["b.test.ts"]]);
+      expect(runShardInvocations(invocation(["a.test.ts", "b.test.ts"]), { ...options, spawnImpl: again.spawnImpl })).toBe(1);
+      expect(again.calls).toHaveLength(2);
+
+      const files = Array.from({ length: MAX_FLAKY_RETRY_FILES + 1 }, (_, index) => `f${index}.test.ts`);
+      const many = fakeVitest(cwd, [files]);
+      expect(runShardInvocations(invocation(files), { ...options, spawnImpl: many.spawnImpl })).toBe(1);
+      expect(many.calls).toHaveLength(1);
+
+      const unattributed = fakeVitest(cwd, [[]], () => 1);
+      expect(runShardInvocations(invocation(["a.test.ts"]), { ...options, spawnImpl: unattributed.spawnImpl })).toBe(1);
+      expect(unattributed.calls).toHaveLength(1);
+
+      const local: string[][] = [];
+      expect(runShardInvocations(invocation(["a.test.ts"]), {
+        cwd, env: {}, spawnImpl: (_command: string, args: string[]) => { local.push(args); return { status: 1 }; },
+      })).toBe(1);
+      expect(local).toEqual([["run-vitest.mjs", "run", "a.test.ts"]]);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
     }
   });
 });

@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import pg from 'pg';
 import { assertCanaryImage, acquireStarterPostgres, browserArguments, browserContainerArguments, canaryPurchasePattern, capturePrivateValues, catalogueUpgradeGroupIndex, parseArguments, resolveBrowserImage, runStarterImageCanary, runBrowserGroups, runCatalogueUpgrade, scanPrivateOutput, withCleanup, withConnectionCleanup, writeBrowserFixtures, watchStarterHost } from './starter-browser-ci.mjs';
 import { imageReference, readCiImage } from './ci-image-pull.mjs';
+import { decideBrowserGroupRetry, runBrowserGroups as runBrowserGroupsWithRetry } from './starter-browser-ci.mjs';
 import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
 
 const args = ['--manifest', '/tmp/packs/packages-manifest.json', '--expected-commit', 'a'.repeat(40)];
@@ -101,7 +102,7 @@ describe('installed starter browser CI', () => {
     expect(options.groups).toEqual([3, 0]);
     const run = vi.fn(async () => {});
     await runBrowserGroups(run, () => 'journeys', options.groups);
-    expect(run.mock.calls).toEqual([[3, browserJourneyGroups[3]], [0, browserJourneyGroups[0]]]);
+    expect(run.mock.calls).toEqual([[3, browserJourneyGroups[3], 1], [0, browserJourneyGroups[0], 1]]);
     const released: number[] = [];
     const report = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
@@ -113,7 +114,7 @@ describe('installed starter browser CI', () => {
       expect(report).toHaveBeenCalledWith('Starter browser group 4 failed during seed_coffee');
     } finally { report.mockRestore(); }
     const source = readFileSync('scripts/starter-browser-ci.mjs', 'utf8');
-    expect(source).toContain("phase, options.groups)");
+    expect(source).toContain("phase, options.groups, { retryJourneys: isHostedCi(processEnvironment) })");
   });
   it.each(['mirror', 'local'] as const)('replays once with the resolved %s image for the owning group', async source => {
     vi.stubEnv('CI', source === 'mirror' ? 'true' : '');
@@ -404,5 +405,63 @@ describe('starter host process losses', () => {
     })).rejects.toThrow('starter_browser_host_supplements_exited');
     expect(child.signalCode).toBe('SIGTERM');
     expect(cleaned).toBe(true);
+  });
+});
+
+describe('starter browser single journeys retry', () => {
+  it('decides a retry only for a first journeys failure with retry enabled', () => {
+    expect(decideBrowserGroupRetry('journeys', 1, true)).toBe('retry');
+    expect(decideBrowserGroupRetry('journeys', 2, true)).toBe('fail');
+    expect(decideBrowserGroupRetry('journeys', 1, false)).toBe('fail');
+    for (const phase of ['inputs', 'postgres_coffee', 'install_supplements', 'seed_coffee', 'runtime', 'host_supplements', 'cancelled'])
+      expect(decideBrowserGroupRetry(phase, 1, true)).toBe('abort');
+  });
+  it('reruns a group whose journeys failed once and reports it as flaky', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const attempts: [number, number][] = [], flaky: string[][] = [];
+    try {
+      await runBrowserGroupsWithRetry(async (index: number, _selection: unknown, attempt: number) => {
+        attempts.push([index, attempt]);
+        if (index === 2 && attempt === 1) throw new Error('timed out');
+      }, () => 'journeys', [1, 2, 3], { retryJourneys: true, reportFlaky: (names: string[]) => flaky.push(names) });
+      expect(attempts).toEqual([[1, 1], [2, 1], [2, 2], [3, 1]]);
+      expect(flaky).toEqual([['starter browser group 3']]);
+      expect(report).toHaveBeenCalledWith('Retrying starter browser group 3 once');
+    } finally { report.mockRestore(); }
+  });
+  it('fails a group whose journeys also fail on the retry and still runs later groups', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const attempts: [number, number][] = [], flaky: string[][] = [];
+    const failure = new Error('retry failure');
+    try {
+      await expect(runBrowserGroupsWithRetry(async (index: number, _selection: unknown, attempt: number) => {
+        attempts.push([index, attempt]);
+        if (index === 0) throw attempt === 1 ? new Error('first failure') : failure;
+      }, () => 'journeys', [0, 1], { retryJourneys: true, reportFlaky: (names: string[]) => flaky.push(names) })).rejects.toBe(failure);
+      expect(attempts).toEqual([[0, 1], [0, 2], [1, 1]]);
+      expect(flaky).toEqual([]);
+      expect(report).toHaveBeenCalledWith('Starter browser group 1 failed during journeys on retry');
+    } finally { report.mockRestore(); }
+  });
+  it('never retries a setup failure, nor a setup failure during the retry', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const setup = new Error('starter_browser_arguments_invalid');
+    try {
+      const attempts: number[] = [];
+      await expect(runBrowserGroupsWithRetry(async (_index: number, _selection: unknown, attempt: number) => {
+        attempts.push(attempt);
+        throw setup;
+      }, () => 'install_coffee', [0, 1], { retryJourneys: true, reportFlaky: () => { throw new Error('unexpected'); } })).rejects.toBe(setup);
+      expect(attempts).toEqual([1]);
+
+      let phase = 'journeys';
+      const retried: number[] = [];
+      await expect(runBrowserGroupsWithRetry(async (_index: number, _selection: unknown, attempt: number) => {
+        retried.push(attempt);
+        if (attempt === 2) phase = 'postgres_supplements';
+        throw attempt === 1 ? new Error('journeys failed') : setup;
+      }, () => phase, [0, 1], { retryJourneys: true })).rejects.toBe(setup);
+      expect(retried).toEqual([1, 2]);
+    } finally { report.mockRestore(); }
   });
 });

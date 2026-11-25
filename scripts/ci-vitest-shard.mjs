@@ -2,8 +2,9 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { delimiter, dirname, relative, resolve } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { fileURLToPath } from "node:url";
 import { pinnedDurationMs } from "./ci-vitest-duration-keys.ts";
@@ -12,6 +13,7 @@ import {
   loadCiQuarantine,
   splitQuarantinedFiles,
 } from "./ci-quarantine.mjs";
+import { isHostedCi, reportFlakyRetries } from "./ci-flaky-retry.mjs";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const DEFAULT_WEIGHTS_PATH = "config/vitest-shard-weights.json";
@@ -19,6 +21,8 @@ export const DEFAULT_POSTGRES_DURATION_MS = 45_000;
 export const SHARD_PLAN_SCHEMA_VERSION = 1;
 export { DEFAULT_QUARANTINE_PATH };
 const DEFAULT_QUARANTINE_RETRY = 2;
+// More failed files than this in one run is not a transient runner slowdown.
+export const MAX_FLAKY_RETRY_FILES = 10;
 
 export function fallbackDurationMs(filePath, defaultDurationMs) {
   return filePath.startsWith("tests/postgres/")
@@ -407,30 +411,126 @@ export function buildShardExecutionPlan(
   };
 }
 
-export function runShardInvocations(
-  invocations,
-  { cwd = REPOSITORY_ROOT, env = processEnvironment, spawnImpl = spawnSync } = {},
-) {
-  let exitCode = 0;
-  for (const invocation of invocations) {
-    const result = spawnImpl(invocation.command, invocation.args, {
-      cwd,
-      stdio: "inherit",
-      env,
-    });
-    if (result.error) {
-      throw result.error;
-    }
-    if (result.signal) {
-      process.kill(process.pid, result.signal);
-      return 1;
-    }
-    const status = result.status ?? 1;
-    if (status !== 0 && exitCode === 0) {
-      exitCode = status;
+/**
+ * Decides the single hosted-CI file retry. `failedFiles` is null when the run left
+ * no readable report, so the failure cannot be attributed to files.
+ */
+export function decideFileRetry(failedFiles, { maxFiles = MAX_FLAKY_RETRY_FILES } = {}) {
+  if (failedFiles === null) return { retry: false, files: [], reason: "no readable test report" };
+  if (failedFiles.length === 0) return { retry: false, files: [], reason: "no failed test file" };
+  if (failedFiles.length > maxFiles) {
+    return { retry: false, files: [], reason: `${failedFiles.length} failed test files exceed the retry cap of ${maxFiles}` };
+  }
+  return { retry: true, files: [...failedFiles], reason: null };
+}
+
+/** The shard passes only if the retry exited cleanly and its report shows no failed file. */
+export function settleFileRetry(retriedFiles, { status, failedFiles }) {
+  return status === 0 && Array.isArray(failedFiles) && failedFiles.length === 0
+    ? { pass: true, flaky: [...retriedFiles] }
+    : { pass: false, flaky: [] };
+}
+
+export function readFailedFiles(reportPath, rootDir = REPOSITORY_ROOT) {
+  let report;
+  try {
+    report = JSON.parse(readFileSync(reportPath, "utf8"));
+  } catch {
+    return null;
+  }
+  if (!report || !Array.isArray(report.testResults)) return null;
+  const failed = [];
+  for (const result of report.testResults) {
+    if (!result || typeof result.name !== "string") return null;
+    if (result.status !== "failed") continue;
+    try {
+      failed.push(normalizeRelativePath(rootDir, result.name));
+    } catch {
+      return null;
     }
   }
-  return exitCode;
+  return [...new Set(failed)].sort(compareCodeUnits);
+}
+
+/** Adds a JSON report next to the reporters the run would otherwise use. */
+export function jsonReportArgs(args, reportPath, env = processEnvironment) {
+  const explicitReporter = args.some((arg) => arg === "--reporter" || arg.startsWith("--reporter="));
+  const reporters = explicitReporter
+    ? []
+    : ["--reporter=default", ...(env.GITHUB_ACTIONS === "true" ? ["--reporter=github-actions"] : [])];
+  return [...reporters, "--reporter=json", `--outputFile.json=${reportPath}`];
+}
+
+export function argsForFiles(invocation, files) {
+  const start = invocation.args.indexOf(invocation.files[0]);
+  if (start < 0) throw new Error(`Invocation arguments do not contain its files: ${invocation.kind}`);
+  return [...invocation.args.slice(0, start), ...files, ...invocation.args.slice(start + invocation.files.length)];
+}
+
+function spawnStatus(spawnImpl, command, args, cwd, env) {
+  const result = spawnImpl(command, args, { cwd, stdio: "inherit", env });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.signal) {
+    process.kill(process.pid, result.signal);
+    return null;
+  }
+  return result.status ?? 1;
+}
+
+function runWithFileRetry(invocation, { cwd, env, spawnImpl, reportDir, reportFlaky, log }) {
+  const firstReport = join(reportDir, `${invocation.kind}-first.json`);
+  const first = spawnStatus(spawnImpl, invocation.command, [...invocation.args, ...jsonReportArgs(invocation.args, firstReport, env)], cwd, env);
+  if (first === null || first === 0) return first;
+  const decision = decideFileRetry(readFailedFiles(firstReport, cwd));
+  if (!decision.retry) {
+    log(`[ci-retry] Not retrying: ${decision.reason}.`);
+    return first;
+  }
+  log(`[ci-retry] Retrying ${decision.files.length} failed test file(s) once: ${decision.files.join(", ")}`);
+  const retryReport = join(reportDir, `${invocation.kind}-retry.json`);
+  const retryArgs = argsForFiles(invocation, decision.files);
+  const second = spawnStatus(spawnImpl, invocation.command, [...retryArgs, ...jsonReportArgs(retryArgs, retryReport, env)], cwd, env);
+  if (second === null) return null;
+  const settled = settleFileRetry(decision.files, { status: second, failedFiles: readFailedFiles(retryReport, cwd) });
+  if (settled.pass) {
+    reportFlaky(settled.flaky);
+    return 0;
+  }
+  log("[ci-retry] The retry failed too; the shard fails.");
+  return second !== 0 ? second : first;
+}
+
+export function runShardInvocations(
+  invocations,
+  {
+    cwd = REPOSITORY_ROOT,
+    env = processEnvironment,
+    spawnImpl = spawnSync,
+    retryFailedFiles = false,
+    reportFlaky = reportFlakyRetries,
+    log = (line) => process.stderr.write(`${line}\n`),
+  } = {},
+) {
+  const reportDir = retryFailedFiles ? mkdtempSync(join(tmpdir(), "ci-vitest-shard-")) : null;
+  try {
+    let exitCode = 0;
+    for (const invocation of invocations) {
+      const status = reportDir
+        ? runWithFileRetry(invocation, { cwd, env, spawnImpl, reportDir, reportFlaky, log })
+        : spawnStatus(spawnImpl, invocation.command, invocation.args, cwd, env);
+      if (status === null) {
+        return 1;
+      }
+      if (status !== 0 && exitCode === 0) {
+        exitCode = status;
+      }
+    }
+    return exitCode;
+  } finally {
+    if (reportDir) rmSync(reportDir, { recursive: true, force: true });
+  }
 }
 
 function withLocalBinOnPath(env, rootDir = REPOSITORY_ROOT) {
@@ -497,7 +597,8 @@ function main(argv = process.argv.slice(2)) {
   }
 
   const env = skipPretest ? withLocalBinOnPath(processEnvironment, REPOSITORY_ROOT) : processEnvironment;
-  return runShardInvocations(plan.invocations, { cwd: REPOSITORY_ROOT, env });
+  // Hosted CI reruns failed files once in this job, before the check reports.
+  return runShardInvocations(plan.invocations, { cwd: REPOSITORY_ROOT, env, retryFailedFiles: isHostedCi(processEnvironment) });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

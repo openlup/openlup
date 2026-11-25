@@ -13,6 +13,7 @@ import pg from 'pg';
 import { runPostgresContainer, waitForPostgresTcpReady } from '../tests/helpers/postgresContainer.ts';
 import { imageIo, imageReference, pullWithRetry, readCiImage } from './ci-image-pull.mjs';
 import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
+import { isHostedCi, reportFlakyRetries } from './ci-flaky-retry.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const execute = promisify(execFile);
@@ -251,17 +252,33 @@ async function freePort() {
   return port;
 }
 
+/** Only a journeys failure on the first attempt, with hosted-CI retry enabled, reruns the group. */
+export function decideBrowserGroupRetry(phase, attempt, retryEnabled) {
+  if (phase !== 'journeys') return 'abort';
+  return retryEnabled && attempt === 1 ? 'retry' : 'fail';
+}
+
 // Preserve later test diagnostics, but do not repeat a failed infrastructure setup.
-export async function runBrowserGroups(runGroup, currentPhase, groups = browserJourneyGroups.map((_, index) => index)) {
+// A journeys failure in hosted CI reruns the whole group once on fresh disposable state.
+export async function runBrowserGroups(runGroup, currentPhase, groups = browserJourneyGroups.map((_, index) => index),
+  { retryJourneys = false, reportFlaky = reportFlakyRetries } = {}) {
   let failure;
   for (const index of groups) {
     const selection = browserJourneyGroups[index];
-    try { await runGroup(index, selection); }
-    catch (error) {
-      const phase = currentPhase();
-      console.error(`Starter browser group ${index + 1} failed during ${phase}`);
-      if (phase !== 'journeys') throw error;
-      failure ??= error;
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await runGroup(index, selection, attempt);
+        if (attempt > 1) reportFlaky([`starter browser group ${index + 1}`]);
+        break;
+      } catch (error) {
+        const phase = currentPhase();
+        console.error(`Starter browser group ${index + 1} failed during ${phase}${attempt > 1 ? ' on retry' : ''}`);
+        const decision = decideBrowserGroupRetry(phase, attempt, retryJourneys);
+        if (decision === 'abort') throw error;
+        if (decision === 'retry') { console.error(`Retrying starter browser group ${index + 1} once`); continue; }
+        failure ??= error;
+        break;
+      }
     }
   }
   if (failure) throw failure;
@@ -331,8 +348,8 @@ export async function runStarterBrowser(options) {
       const app = join(scratch, 'app');
       defer(async () => {
         // Scan credentials from failed journeys too, before deleting the private fixture.
-        for (const state of [app, ...browserJourneyGroups.flatMap((_, index) =>
-          ['supplements', 'coffee'].map(id => join(app, '.context/care-browser', String(index), id)))]) {
+        for (const state of [app, ...browserJourneyGroups.flatMap((_, index) => [String(index), `${index}-retry`].flatMap(directory =>
+          ['supplements', 'coffee'].map(id => join(app, '.context/care-browser', directory, id))))]) {
           const capture = join(state, '.context/captured-messages');
           try {
             for (const file of await readdir(capture)) {
@@ -364,9 +381,11 @@ export async function runStarterBrowser(options) {
       const catalogueRules = readStarterCatalogueRules();
       const { selectConfiguration } = await import(pathToFileURL(join(app, 'owned/store.config.ts')).href);
       await mkdir(join(app, '.context'), { mode: 0o700 });
-      await runBrowserGroups((groupIndex, selection) =>
+      await runBrowserGroups((groupIndex, selection, attempt) =>
           withCleanup(async defer => {
             const suffix = randomBytes(6).toString('hex'), hosts = [];
+            // A retry starts from fresh host state so no earlier capture can satisfy it.
+            const stateDirectory = attempt > 1 ? `${groupIndex}-retry` : String(groupIndex);
             for (const configuration of ['supplements', 'coffee']) {
               phase = `postgres_${configuration}`;
               const postgres = await acquireStarterPostgres(defer);
@@ -421,7 +440,7 @@ export async function runStarterBrowser(options) {
               privateValues.push(key);
               const keyFile = join(scratch, `${groupIndex}-${configuration}-key.json`);
               await writeFile(keyFile, JSON.stringify({ current: key }), { mode: 0o600 });
-              const state = join(app, '.context/care-browser', String(groupIndex), configuration);
+              const state = join(app, '.context/care-browser', stateDirectory, configuration);
               await mkdir(state, { recursive: true, mode: 0o700 });
               const port = await freePort(), baseURL = `http://127.0.0.1:${port}`;
               phase = `host_${configuration}`;
@@ -449,7 +468,7 @@ export async function runStarterBrowser(options) {
               const browserRuntime = new URL(runtimeUrl);
               browserRuntime.password = password;
               hosts.push({ id: configuration, baseURL, ownerUrl: installUrl, runtimeUrl: browserRuntime.href,
-                state: `/app/.context/care-browser/${groupIndex}/${configuration}` });
+                state: `/app/.context/care-browser/${stateDirectory}/${configuration}` });
             }
             await writeBrowserFixtures(app, hosts);
             phase = 'journeys';
@@ -463,7 +482,7 @@ export async function runStarterBrowser(options) {
             const counts = output.match(/\b\d+ (?:passed|skipped|failed|did not run)\b/gu) ?? [];
             if (!counts.some(count => count.endsWith(' passed'))) throw new Error('starter_browser_results_missing');
             console.log(`Starter database journeys: ${counts.join(', ')}; group ${groupIndex + 1}`);
-          }), () => cancellation.signal.aborted ? 'cancelled' : phase, options.groups);
+          }), () => cancellation.signal.aborted ? 'cancelled' : phase, options.groups, { retryJourneys: isHostedCi(processEnvironment) });
     });
     await runCatalogueUpgrade(options, image, async (manifest, commit, browser) => {
       cancellation.signal.throwIfAborted();
