@@ -38,3 +38,20 @@ restore the admitted revision from a verified backup and repeat that quote.
 Published products can list and quote before purchase is enabled. The governed
 checkout action returns `catalog_admission_quote_authority_required` while that
 purchase authority is unavailable.
+
+## Reviewed checkout total
+
+Each fresh checkout in either purchase mode must send the reviewed
+`expectedTotal` from `offer.validate`. Use a nonnegative safe integer in
+minor units and its uppercase three-letter currency. For
+`starter_expected_total_required` or `starter_quote_price_changed`, refresh
+the review and confirm the displayed price before placing the order again.
+If refresh fails, submit again to retry the review with your current details,
+then reconfirm once the price renders.
+
+A definitive total refusal retires the command key. After reconfirmation,
+use a new key even if the refreshed amount and currency are unchanged.
+An uncertain retry keeps the exact payload and command key.
+
+Once checkout admits an attempt, a refusal still counts toward the attempt
+limit. This includes a price change detected by the draft writer.

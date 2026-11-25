@@ -39,6 +39,12 @@ const source = (context: ActionContext) => `starter-demo:${context.config.id}`;
 const present = (order: { id: string; status: string; total_amount_minor: number | string; currency_code: string }) => ({ orderRef: order.id, status: order.status,
   total: { amountMinor: Number(order.total_amount_minor), currency: order.currency_code } });
 
+function isExpectedTotal(value: unknown): value is { amountMinor: number; currency: string } {
+  return isRecord(value) && Object.keys(value).length === 2
+    && typeof value.amountMinor === 'number' && Number.isSafeInteger(value.amountMinor) && value.amountMinor >= 0
+    && typeof value.currency === 'string' && /^[A-Z]{3}$/.test(value.currency);
+}
+
 const checkoutLane = 'starter-checkout';
 /** Creation tails run after the key lock is released. An incomplete order younger than
  * this may still be creating, so abandon waits for it to stall. A code constant. */
@@ -198,6 +204,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     const prior = priorOrder?.snapshot;
     const offerContext = checkoutOfferContext(offer.cart.mode);
     let observed;
+    let expectedTotal: { amountMinor: number; currency: string } | undefined;
     try {
       if (priorOrder) {
         // Historical drafts carry the original starter request binding and the
@@ -233,6 +240,8 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
         if (rows[0]?.governed) return governedCheckoutRefusal;
         if (offer.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) return refused('acquisition_terms_capability_required');
         if (payload.termsAccepted !== true) return refused('starter_terms_required');
+        if (!isExpectedTotal(payload.expectedTotal)) return refused('starter_expected_total_required');
+        expectedTotal = payload.expectedTotal;
       }
       // The intent is opened after destination, stock hold and provisional activation.
       // Only a completed checkout can bypass resuming those installation-bound steps.
@@ -247,7 +256,12 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       observed ??= await boundQuotes.quote(payload, context, prior, undefined, offerContext);
       if (!prior && payload.termsRevision !== context.config.legal.revision) return refused('starter_terms_required');
       if (!prior && payload.country !== context.config.market.country) return refused('starter_input_invalid');
-      if (!prior) boundQuotes.verify(observed, payload);
+      if (expectedTotal) {
+        boundQuotes.verify(observed, payload);
+        const total = observed.snapshot.quote.totalGross;
+        if (total.amountMinor !== expectedTotal.amountMinor || total.currency !== expectedTotal.currency)
+          return refused('starter_quote_price_changed');
+      }
       if (observed.terms) renewal.assertAvailable(observed.snapshot);
     } catch (error) {
       const reason = catalogAdmissionRefusal(error);
