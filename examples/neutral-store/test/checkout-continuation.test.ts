@@ -12,7 +12,7 @@ type Outcome = Awaited<ReturnType<Controller['continue']>>;
 const v4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const storageKey = (configuration: string) => `neutral-store:checkout-continuation:v1:${configuration}`;
 const orderA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', orderB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-const total = { amountMinor: 4200, currency: 'PLN' };
+const total = { amountMinor: 4200, currency: 'XTS' };
 let documents = 0, configurations = 0;
 
 /** Each import is a fresh document: its module memory and document start are its own. */
