@@ -516,6 +516,11 @@ capability reads readiness from the registry used by privacy operations.
 Account-event registration remains host composition.
 The native-store transfer carries parcel snapshots and erasure markers.
 
+The `commerce.destination-documents.v1` contributor clears the destination
+copies on order money snapshots and delivery bucket headers before it records
+the privacy receipt. The receipt records that order money and the original
+acceptance digest are retained.
+
 The direct forward `20261018190000_identity_privacy_erasures` adds the retained
 receipt table. Relation locks precede contact/member locks with bounded lock
 and statement timeouts. The package customer challenge adapter holds an

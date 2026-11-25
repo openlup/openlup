@@ -30954,6 +30954,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/orderMoneyV2ChildGuards/replayed.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/orderMoneyV2Guards/replayed.sql",
       "class": "public-output"
     },
@@ -31519,6 +31523,14 @@
     },
     {
       "path": "tests/postgres/operatorOrderCommands.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderMoneyV2ChildGuards.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderMoneyV2ChildGuardsPgtap.test.ts",
       "class": "public-output"
     },
     {

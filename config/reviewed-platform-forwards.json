@@ -9698,6 +9698,109 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "order-money-v2-child-guards",
+        "path": "db/platform/migrations/20261128140000_order_money_v2_child_guards.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_destination_v2_erase(uuid)",
+            "beforeSha256": "32e8d755b56a9cf05e50f888c36eddcd48eca85505ca48ab986bd43a9ada7e7f",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_order_money_v2_child_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "trg_commerce_order_tax_snapshots_money_v2",
+            "relation": "public.commerce_order_tax_snapshots",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.commerce_order_money_v2_child_guard()",
+            "deferred": true,
+            "sha256": "ae1ce730be966a7cddcf799f7fbad8e611e762db5e5947926bca071b5454e50f"
+          },
+          {
+            "name": "trg_commerce_order_line_sources_money_v2",
+            "relation": "public.commerce_order_line_sources",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.commerce_order_money_v2_child_guard()",
+            "deferred": true,
+            "sha256": "dc57009c384ed9c0c3d719c0000eff0210e27ebaf31c7c21b195709acbaad2ff"
+          },
+          {
+            "name": "trg_commerce_order_delivery_buckets_money_v2",
+            "relation": "public.commerce_order_delivery_buckets",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.commerce_order_money_v2_child_guard()",
+            "deferred": true,
+            "sha256": "32eb6600f927b2ebf0dea7549758a733b68603d3ab4a05a4eadaec9918ef7c64"
+          },
+          {
+            "name": "trg_commerce_order_line_allocations_money_v2",
+            "relation": "public.commerce_order_line_allocations",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.commerce_order_money_v2_child_guard()",
+            "deferred": true,
+            "sha256": "a024bd0cd4b8c8502a3eabd695618311e93c43ce394038ff75560942d5e948a2"
+          },
+          {
+            "name": "trg_commerce_order_tax_positions_money_v2",
+            "relation": "public.commerce_order_tax_positions",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.commerce_order_money_v2_child_guard()",
+            "deferred": true,
+            "sha256": "3abc3590735746fd5a218c81dffa2174afc5eb88e96fa7f50d083913b6a24e1e"
+          },
+          {
+            "name": "trg_commerce_order_fee_lines_money_v2",
+            "relation": "public.commerce_order_fee_lines",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.commerce_order_money_v2_child_guard()",
+            "deferred": true,
+            "sha256": "632e894b079b4f8d837519f79f6119ff0482384cb095c5961c2be62bef116e3e"
+          },
+          {
+            "name": "trg_commerce_order_adjustments_money_v2",
+            "relation": "public.commerce_order_adjustments",
+            "events": [
+              "INSERT"
+            ],
+            "function": "public.commerce_order_money_v2_child_guard()",
+            "deferred": true,
+            "sha256": "3079932b610469035b83bdd6a210cb9743c1ef131e44bdd1f18085a76adffc71"
+          }
+        ]
       }
     ]
   },
@@ -14039,6 +14142,22 @@
           "signature": "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)",
           "beforeSha256": null,
           "afterSha256": "1cc9249747fce4b21ae668b88cb444fabadfd4bfd1cdb6e1c2f80c8a418beb8a"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261128140000_order_money_v2_child_guards.sql",
+      "sha256": "421c797907a5c0be41f7219ce7831eedeaf678304f1000ff597a15f8b5a4630e",
+      "functions": [
+        {
+          "signature": "public.commerce_destination_v2_erase(uuid)",
+          "beforeSha256": "32e8d755b56a9cf05e50f888c36eddcd48eca85505ca48ab986bd43a9ada7e7f",
+          "afterSha256": "8155f3d108ba946d7931d6817857522ba596c0b99d3c346f1c2d5add974140ba"
+        },
+        {
+          "signature": "public.commerce_order_money_v2_child_guard()",
+          "beforeSha256": null,
+          "afterSha256": "f23b6a08503be2f2321012113ea9165861199c7b63df2c944ab890a3be99fac2"
         }
       ]
     }

@@ -22,6 +22,7 @@ const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2
 if (!unit) throw new Error("Expected order money assertion forward");
 const position = manifest.qualified.forward.findIndex(entry => entry.file === unit.file);
 const prefixInventory = "a9d0f834ca62b1bf4341a522fdc8dcda2219c2ee97eb80583027610779c27acd";
+const assertionInventory = "ee9666bd5182e91b36498443189a4841e8893054fc629052965ed91f9103b791";
 const routine = "public.commerce_order_money_v2_assert(uuid,boolean,boolean,jsonb,jsonb)";
 const checkState = "public.commerce_order_money_v2_check_state(uuid,boolean,text,text)";
 const evidenceRemedy = "Recover the original accepted evidence through its owner and retry with its original binding.";
@@ -74,14 +75,20 @@ async function defs() {
 let predecessorDefinitions: Awaited<ReturnType<typeof defs>>;
 
 beforeAll(async () => {
-  const prefix = structuredClone(manifest);
+  const boundary = structuredClone(manifest);
+  for (const plan of [boundary, boundary.qualified, boundary.qualifiedAdmin]) {
+    plan.forward = plan.forward.slice(0, plan.forward.findIndex(entry => entry.file === unit.file) + 1);
+  }
+  boundary.qualified.objectInventorySha256.bootstrapMigrator.withRestore = assertionInventory;
+  const prefix = structuredClone(boundary);
   for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
     const index = plan.forward.findIndex(entry => entry.file === unit.file);
     plan.forward = plan.forward.slice(0, index);
   }
   prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = prefixInventory;
-  await withPlatformCatalog(prefix, async root => {
-    store = await installAccountMutations("bootstrap", false, "order-guards-prefix", root);
+  await withPlatformCatalog(boundary, async current => {
+    store = await withPlatformCatalog(prefix, root =>
+      installAccountMutations("bootstrap", false, "order-guards-prefix", root, current));
     predecessorDefinitions = await defs();
     sku = await seedSku(store.owner);
     applied = (await store.runner.apply()).applied;
