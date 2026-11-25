@@ -462,6 +462,17 @@ describe('starter browser failure reporting', () => {
     expect(classifyTestFailure({ status: 'failed', errors: [{ message }] })).not.toMatch(/starter_|acquisition_/u);
   });
 
+  it.each([
+    ['Error: expected janedoe@example.com expect(value).toJanedoeSecret(', 'Error'],
+    ['Error: x\nexpect(value).toLeak(', 'Error'],
+    ['expect(value).toJanedoeSecret(x)', 'expect.other'],
+    ['JanedoeError: boom', 'unclassified'],
+    ['janedoe.secret: Timeout 10000ms exceeded.', 'action timeout'],
+    ['locator.janedoe: Timeout 10000ms exceeded.', 'action timeout'],
+  ])('reports only known names for %s', (message, expected) => {
+    expect(classifyTestFailure({ status: 'failed', errors: [{ message }] })).toBe(expected);
+  });
+
   it('withholds details that match private output and reports a missing report', async () => {
     const privateReport = { suites: [{ specs: [{ title: 'uses token value-123', file: 'journey.spec.ts', line: 1,
       tests: [{ projectName: 'coffee', status: 'unexpected', results: [{ status: 'failed', duration: 1 }] }] }] }] };

@@ -197,20 +197,32 @@ export function scanPrivateOutput(output, privateValues = []) {
 export const browserReportName = 'playwright-report.json';
 
 // The class is built only from matched identifiers, never from message text or values.
+// The printed class is always one of these names, never text from a message.
+const knownMatchers = new Set(['toBe', 'toEqual', 'toStrictEqual', 'toMatch', 'toMatchObject', 'toContain', 'toContainText', 'toHaveText',
+  'toHaveValue', 'toHaveURL', 'toHaveAttribute', 'toHaveCount', 'toHaveLength', 'toBeVisible', 'toBeHidden', 'toBeEnabled', 'toBeDisabled',
+  'toBeChecked', 'toBeTruthy', 'toBeFalsy', 'toBeNull', 'toBeDefined', 'toBeUndefined', 'toBeGreaterThan', 'toBeLessThan', 'toThrow']);
+const knownReceivers = new Set(['locator', 'page', 'frame', 'request', 'apiRequestContext']);
+const knownActions = new Set(['click', 'dblclick', 'fill', 'press', 'type', 'check', 'uncheck', 'selectOption', 'hover', 'focus',
+  'setInputFiles', 'goto', 'reload', 'waitFor', 'waitForURL', 'waitForResponse', 'waitForRequest', 'waitForSelector', 'textContent',
+  'innerText', 'inputValue', 'evaluate', 'get', 'post', 'fetch']);
+const knownErrors = new Set(['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'AssertionError', 'TimeoutError']);
+
 export function classifyTestFailure(result) {
   if (result?.status === 'timedOut') return 'Test timeout';
   if (result?.status === 'interrupted') return 'Interrupted';
   // Reporter messages carry terminal colour codes inside matcher names.
   const message = String(result?.errors?.[0]?.message ?? result?.error?.message ?? '')
     .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'gu'), '');
-  const matcher = /\bexpect(?:\.soft|\.poll)?\((?:locator|page|received|value)?\)(?:\.not)?\.(to[A-Za-z]+)\(/u.exec(message)?.[1];
-  if (matcher) return `expect.${matcher}`;
-  const action = /^(?:Error: )?([a-z][A-Za-z]*\.[a-z][A-Za-z]*): Timeout\b/u.exec(message)?.[1];
-  if (action) return `${action} timeout`;
+  const firstLine = message.split('\n', 1)[0].trim();
+  const matcher = /^(?:Error: )?expect(?:\.soft|\.poll)?\((?:locator|page|received|value)?\)(?:\.not)?\.(to[A-Za-z]+)\(/u.exec(firstLine)?.[1];
+  if (matcher) return knownMatchers.has(matcher) ? `expect.${matcher}` : 'expect.other';
+  const action = /^(?:Error: )?([a-z][A-Za-z]*)\.([a-z][A-Za-z]*): Timeout\b/u.exec(firstLine);
+  if (action) return knownReceivers.has(action[1]) && knownActions.has(action[2]) ? `${action[1]}.${action[2]} timeout` : 'action timeout';
   // Only a whole first line that is a code counts; a code-like fragment of a value never does.
-  const code = /^(?:[A-Za-z]*Error: )?((?:starter|acquisition)_[a-z_]+)$/u.exec(String(message).split('\n', 1)[0].trim())?.[1];
+  const code = /^(?:(?:Type|Range|Reference|Syntax)?Error: )?((?:starter|acquisition)_[a-z_]+)$/u.exec(firstLine)?.[1];
   if (code) return code;
-  return /^([A-Z][A-Za-z]*Error)\b/u.exec(message)?.[1] ?? 'unclassified';
+  const name = /^([A-Z][A-Za-z]*)(?::|$)/u.exec(firstLine)?.[1];
+  return name && knownErrors.has(name) ? name : 'unclassified';
 }
 
 export function failedTestSummaries(report) {
