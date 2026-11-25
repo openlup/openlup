@@ -9,6 +9,7 @@ import { aroundEach, expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { closePostgres, postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
+import { findPlatformMigration } from "../helpers/platformMigrationPath.js";
 import { draftEffectCounts, ownerDraft, seedGovernedDraft } from "./catalogAdmissionOwnerWrite.fixture.js";
 import {
   captureRestrictedStore,
@@ -411,7 +412,7 @@ restoreTest("restores unstamped rows with exactly the installed INSERT triggers"
     const packet = await captureRestrictedStore(source, "unstamped-order");
     const freshTarget = await captureRestrictedStore(target, "unstamped-pristine");
     const tables = [...packet.compatible.tables, ...packet.owned].map(table => table.table);
-    const forward = "db/platform/migrations/20261128220000_catalog_governed_draft_owner.sql";
+    const forward = findPlatformMigration("_catalog_governed_draft_owner.sql");
     // The runner commits each forward and its ledger row in the same transaction.
     const { rows: triggers } = await target.owner.query<{ name: string; carried: boolean; installed: boolean }>(`
       SELECT c.relname || '.' || t.tgname AS name, c.relname=ANY($2::text[]) AS carried, t.xmin=m.xmin AS installed

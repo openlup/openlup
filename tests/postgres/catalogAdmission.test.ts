@@ -14,6 +14,7 @@ import { checkoutOwnerRoutines, selectPlatformMigrationManifest, type PlatformMi
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { proveRuntimeCheckout, watchRuntimeCheckoutAclDelta } from "./catalogRuntimeCheckout.proof.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
+import { findPlatformMigration } from "../helpers/platformMigrationPath.js";
 import { installAccountMutations } from "./customerAccountMutations.fixture.js";
 
 let env: LifecycleInstallation;
@@ -896,7 +897,7 @@ it("keeps rounding parity with quote and preview amounts and readiness signs", a
 });
 
 it("appends governed draft finality in place and preserves the installed runtime boundary", async () => {
-  const forward = "db/platform/migrations/20261128220000_catalog_governed_draft_owner.sql";
+  const forward = findPlatformMigration("_catalog_governed_draft_owner.sql");
   const prefix = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
   if (prefix.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
   for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
