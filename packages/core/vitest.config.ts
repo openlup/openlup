@@ -14,10 +14,10 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["smoke/**/*.test.ts", "test/**/*.test.ts"],
-    // Match root vitest.config.ts hosted CI floor (30 s) so coverage runs on 4-vCPU runners
-    // do not starve exhaustive unit tests at Vitest's 5 s default.
-    testTimeout: process.env.CI === "true" ? 30_000 : 10_000,
-    hookTimeout: process.env.CI === "true" ? 30_000 : 10_000,
+    // Match root vitest.config.ts coverage floor (30 s) without an environment read
+    // so V8 coverage runs on 4-vCPU runners do not starve exhaustive unit tests at 5 s.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
