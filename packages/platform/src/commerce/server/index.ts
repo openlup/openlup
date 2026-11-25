@@ -224,3 +224,7 @@ export type {
   CommerceMoneyLimitsQueryExecutor, CommerceMoneyLimitsV2, InstallLimitsInput, InstallLimitsResult,
   LimitsInspectionResult, LimitsReadResult, LimitsTuple,
 } from "./commerceMoneyLimitsV2.js";
+
+export { createDbBackedCommerceQuotePortV2 } from "./dbBackedCommerceQuotePortV2.js";
+export type { CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext,
+  QuoteOutcome } from "./dbBackedCommerceQuotePortV2.js";

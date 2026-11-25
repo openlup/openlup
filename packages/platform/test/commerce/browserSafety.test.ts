@@ -101,6 +101,8 @@ describe("commerce runtime placement", () => {
       }
     }
     expect(declarations.has(new URL("commerceMoneyLimitsV2.d.ts", entry).href)).toBe(true);
+    expect(declarations.has(new URL("dbBackedCommerceQuotePortV2.d.ts", entry).href)).toBe(true);
+    expect(declarations.has(new URL("../../tax/taxCalculationStore.d.ts", entry).href)).toBe(true);
     expect(forbidden).toEqual([]);
   });
 

@@ -1191,10 +1191,13 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'captureCompatiblePostgresRows({source,sourceId:"source",catalogueId:"catalogue",tables:["platform_schema_migrations"],maximumRows:10,maximumBytes:1024});',
   ].join("\n"));
   if (entries.includes("commerce/server")) surfaces.push([
-    'import { tryCompensate } from "@openlup/platform/commerce/server";',
-    'import type { CheckoutCompensationPort } from "@openlup/platform/commerce/server";',
+    'import { tryCompensate, createDbBackedCommerceQuotePortV2 } from "@openlup/platform/commerce/server";',
+    'import type { CheckoutCompensationPort, CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuotePortV2Deps, QuoteOwnerContext, QuoteOutcome } from "@openlup/platform/commerce/server";',
     'declare const compensationPort: CheckoutCompensationPort;',
     'export const compensationResult: Promise<void> = tryCompensate(compensationPort, "intent-key", "order-1");',
+    'declare const deps: DbBackedCommerceQuotePortV2Deps, owner: QuoteOwnerContext, request: CommerceQuoteV2Request;',
+    'const quotes: CommerceQuotePortV2 = createDbBackedCommerceQuotePortV2(deps);',
+    'export const nativeQuote: Promise<QuoteOutcome> = quotes.createQuote(owner, request);',
   ].join("\n"));
   if (entries.includes("commerce/server/destinations")) surfaces.push([
     'import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";',
