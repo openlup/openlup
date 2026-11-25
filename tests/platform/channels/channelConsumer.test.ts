@@ -12,6 +12,7 @@ import { evaluateSelectedPlatformMigrationManifest, readPlatformMigrationManifes
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../../server/adapters/postgres/selectedCatalogProjection.js";
 import { channelPurchaseFixture } from "../../helpers/channelPurchaseFixture.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../../helpers/postgresContainer.js";
+import { packWorkspaceTarballs } from "../../helpers/packWorkspaceTarball.js";
 
 // This is raw local artifact proof, without a clean-commit cold-runner receipt.
 // The external program imports only installed public exports; the host supplies
@@ -59,10 +60,7 @@ const npm = (args: string[], cwd: string) => execFileSync("npm", args, { cwd, st
 
 beforeAll(async () => {
   scratch = mkdtempSync(join(tmpdir(), "channel-packed-"));
-  const tarballs = ["packages/core", "packages/platform", "node_modules/zod"].map(directory => {
-    const packed = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], resolve(directory)));
-    return join(scratch, packed[0].filename);
-  });
+  const tarballs = await packWorkspaceTarballs(["packages/core", "packages/platform", "node_modules/zod"], scratch);
   consumer = join(scratch, "consumer"); mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), '{"type":"module","private":true}');
   npm(["install", "--offline", "--ignore-scripts", "--legacy-peer-deps", "--omit=optional", "--no-audit", "--no-fund", ...tarballs], consumer);

@@ -1,4 +1,5 @@
 /** Owned catalog configuration and installed-artifact fixture for quote reads. */
+import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -14,6 +15,7 @@ import { applyDemoSeed, demonstrationMarker } from "../../examples/neutral-store
 import { disposableLabelArgs } from "../../scripts/disposable-docker.mjs";
 import { assertConsumerIsolation, platformConsumerInstallArgs } from "../../scripts/packages/platform-cold-consumer.js";
 import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { packWorkspaceTarballs } from "../helpers/packWorkspaceTarball.js";
 
 export const config = structuredClone(configurations.coffee!);
 config.id = "quote-catalog-proof";
@@ -22,7 +24,8 @@ config.quote.document.revisionNo = 1;
 config.offer.products = Array.from({ length: 501 }, (_, index) => ({
   ...config.offer.products[0]!, sku: `QUOTE-${String(index).padStart(4, "0")}`,
   slug: `row-${index}`, title: `Fixture ${index}`, name: { en: `Fixture ${index}`, pl: `Fixture ${index}` },
-  physical: { ...config.offer.products[0]!.physical, netWeightG: index + 1, issuer: "fixture-seed", unitGtin: gtin(index) },
+  physical: { netContent: { dimension: "mass", unit: "openlup:g", unscaled: String(index + 1), scale: 0 },
+    primaryUnitIdentifier: { scheme: "gs1:gtin", issuer: "fixture-seed", value: gtin(index) } },
   permittedPurchaseModes: index % 3 === 0 ? ["one_time"] : index % 3 === 1 ? ["subscription"] : ["one_time", "subscription"],
 }));
 config.purchase.stock.quantities = Object.fromEntries(config.offer.products.map(product => [product.sku, 1]));
@@ -38,6 +41,8 @@ for (const offer of Object.values(config.subscriptionOffers)) {
     .map(product => [product.sku, structuredClone(rules)]));
 }
 export const seed = buildDemoSeed(config);
+assert.equal(new Set(config.offer.products.map(({ physical }) => physical.netContent.unscaled)).size, 501);
+assert.equal(new Set(config.offer.products.map(({ physical }) => physical.primaryUnitIdentifier?.value)).size, 501);
 export const digest = (value: unknown) => createHash("sha256").update(canonicalCatalogDraftJson(value)).digest("hex");
 export function documentFor(index: number, revisionNo = 2) {
   return { schemaVersion: "fixture.document.v1", id: `fixture:row-${index}:${revisionNo}`,
@@ -80,10 +85,7 @@ export async function createQuoteCatalogFixture() {
     };
     visit(resolve("node_modules/pg"));
     visit(resolve("node_modules/@types/pg"));
-    const tarballs = [...directories].map(directory => {
-      const result = JSON.parse(npm(["pack", "--ignore-scripts", "--json", "--pack-destination", scratch], directory));
-      return join(scratch, result[0].filename);
-    });
+    const tarballs = await packWorkspaceTarballs([...directories], scratch);
     const consumer = join(scratch, "consumer"); mkdirSync(consumer);
     writeFileSync(join(consumer, "package.json"), '{"type":"module","private":true}');
     cpSync(".npmrc", join(consumer, ".npmrc"));

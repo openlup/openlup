@@ -39,6 +39,7 @@ import { composePurchaseCapabilities } from './purchase-composition.ts';
 import { portalResponder, composePortalCapabilities, composeE4Capabilities } from './e4-composition.ts';
 import { composeExistingCapabilities } from './e-composition.ts';
 import { composeSubscriptionEditors, readEditorSubscriptions } from './subscription-editors.ts';
+import { composeCatalogueStorefront } from './catalogue-storefront.ts';
 
 const nobody = (): VerifiedActor => ({ customerRef: null, operatorRef: null });
 const refused = (code: string) => ({ ok: false as const, code });
@@ -147,6 +148,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication });
   const contacts = createPostgresContactClientRegistrar({ connectionString });
   const checkoutRecoveryTokenLane = createPostgresRoleFreeTransactionLane({ connectionString });
+  const storefront = composeCatalogueStorefront(createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool }));
   const recovery = {
     tokens: createPostgresCheckoutRecoveryTokenPort(checkoutRecoveryTokenLane),
     deliver: async (input: Parameters<ReturnType<typeof createCheckoutRecoveryDelivery>>[0]) => {
@@ -155,7 +157,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       await createCheckoutRecoveryDelivery(admittedOrigin)(input);
     },
   };
-  const actions: ApplicationBindings['actions'] = { ...capabilities.actions,
+  const actions: ApplicationBindings['actions'] = { ...capabilities.actions, 'storefront.catalogue': storefront.action,
     ...composeE4Capabilities(pool, async context => {
       const authorization = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });
       return authorization.ok && authorization.principalId.toLowerCase() === context.actor.operatorRef?.toLowerCase();
@@ -311,6 +313,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   };
   return {
     personalData: createStarterPersonalDataRegistry(),
+    resolveCatalogue: storefront.resolveCatalogue,
     actions,
     async authenticate(request) {
       // This local host trusts its socket peer only, never forwarding headers or

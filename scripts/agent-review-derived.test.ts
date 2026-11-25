@@ -655,7 +655,7 @@ it('regenerates stale package command metadata when the trusted owner is unchang
     runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
     expect(JSON.parse(read(CATALOGUE)).packageCommands).toEqual(expected);
   } finally { restoreDerivedFixture(); }
-});
+}, 50_000); // Runs the landing generators like its sibling; 10.8 s under hosted contention.
 it.each(['user.name', 'user.email'])('refuses landing before merging without configured %s', async key => {
   git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
   git('config', key, '');

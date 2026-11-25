@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,16 +9,22 @@ import {
   DEFAULT_POSTGRES_DURATION_MS,
   DEFAULT_QUARANTINE_PATH,
   DEFAULT_WEIGHTS_PATH,
+  SHARD_PLAN_SCHEMA_VERSION,
   buildQuarantineRetryArgs,
   buildShardCommand,
   buildShardExecutionPlan,
+  buildShardPlan,
+  digestFileContents,
   fallbackDurationMs,
   formatQuarantineBanner,
   listVitestFiles,
+  loadShardPlan,
   loadShardWeights,
   parseShardArgs,
   partitionShards,
+  resolveExcludeDigest,
   runShardInvocations,
+  writeShardPlan,
 } from "./ci-vitest-shard.mjs";
 
 describe("ci-vitest-shard", () => {
@@ -27,6 +34,8 @@ describe("ci-vitest-shard", () => {
       total: 8,
       weightsPath: DEFAULT_WEIGHTS_PATH,
       quarantinePath: DEFAULT_QUARANTINE_PATH,
+      planPath: null,
+      planOutPath: null,
       printFiles: false,
       skipPretest: false,
       extraArgs: [],
@@ -36,6 +45,7 @@ describe("ci-vitest-shard", () => {
       "--total=8",
       "--weights=custom.json",
       "--quarantine=custom-q.json",
+      "--plan=plan.json",
       "--print-files",
       "--skip-pretest",
       "--",
@@ -45,15 +55,33 @@ describe("ci-vitest-shard", () => {
       total: 8,
       weightsPath: "custom.json",
       quarantinePath: "custom-q.json",
+      planPath: "plan.json",
+      planOutPath: null,
       printFiles: true,
       skipPretest: true,
       extraArgs: ["--reporter=dot"],
+    });
+    expect(parseShardArgs(["--total", "8", "--plan-out", ".context/scratch/plan.json"])).toEqual({
+      shard: undefined,
+      total: 8,
+      weightsPath: DEFAULT_WEIGHTS_PATH,
+      quarantinePath: DEFAULT_QUARANTINE_PATH,
+      planPath: null,
+      planOutPath: ".context/scratch/plan.json",
+      printFiles: false,
+      skipPretest: false,
+      extraArgs: [],
     });
     expect(() => parseShardArgs([])).toThrow(/Usage:/);
     expect(() => parseShardArgs(["--shard", "0", "--total", "8"])).toThrow(/between 1 and 8/);
     expect(() => parseShardArgs(["--shard", "9", "--total", "8"])).toThrow(/between 1 and 8/);
     expect(() => parseShardArgs(["--shard", "1", "--total", "0"])).toThrow(/Usage:/);
     expect(() => parseShardArgs(["--shard", "1", "--total", "8", "--quarantine="])).toThrow(/--quarantine/);
+    expect(() => parseShardArgs(["--shard", "1", "--total", "8", "--plan="])).toThrow(/--plan requires/);
+    expect(() => parseShardArgs(["--total", "8", "--plan-out="])).toThrow(/--plan-out requires/);
+    expect(() => parseShardArgs(["--shard", "1", "--total", "8", "--plan", "a.json", "--plan-out", "b.json"])).toThrow(/mutually exclusive/);
+    expect(() => parseShardArgs(["--shard", "1", "--total", "8", "--plan-out", "b.json"])).toThrow(/cannot be combined with --shard/);
+    expect(() => parseShardArgs(["--total", "8", "--plan-out", "b.json", "--skip-pretest"])).toThrow(/cannot be combined/);
     expect(() => parseShardArgs(["--shard", "1", "--total", "8", "--unknown"])).toThrow(/Unknown option/);
   });
 
@@ -268,5 +296,103 @@ describe("ci-vitest-shard", () => {
       spawnImpl: (_cmd, args) => ({ status: args.includes("--retry=2") ? 2 : 0 }),
     });
     expect(failQuarantined).toBe(2);
+  });
+
+  it("writes, verifies, and fails closed on stale or tampered precomputed shard plans", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "ci-vitest-shard-plan-"));
+    try {
+      const weightsPath = join(tempDir, "weights.json");
+      const excludePath = join(tempDir, "exclude.txt");
+      const planPath = join(tempDir, "nested", "plan.json");
+      const manifest = { defaultDurationMs: 100, durationsMs: { "a.test.ts": 1000, "b.test.ts": 500 } };
+      writeFileSync(weightsPath, `${JSON.stringify(manifest)}\n`, "utf8");
+      writeFileSync(excludePath, "ignored.test.ts\n", "utf8");
+
+      const env = { OPENLUP_VITEST_EXCLUDE_FILE: excludePath };
+      const weightsDigest = digestFileContents(weightsPath);
+      const excludeDigest = resolveExcludeDigest(env, tempDir);
+      expect(resolveExcludeDigest({}, tempDir)).toBe("none");
+
+      expect(() => buildShardPlan([], 2, manifest, { weightsDigest, excludeDigest })).toThrow(/at least one test file/);
+      const plan = buildShardPlan(["a.test.ts", "b.test.ts", "c.test.ts"], 2, manifest, { weightsDigest, excludeDigest });
+      expect(plan.schemaVersion).toBe(SHARD_PLAN_SCHEMA_VERSION);
+      writeShardPlan(planPath, plan, tempDir);
+
+      const loaded = loadShardPlan(planPath, 2, { rootDir: tempDir, weightsPath, env });
+      expect(loaded).toEqual(partitionShards(["a.test.ts", "b.test.ts", "c.test.ts"], 2, manifest));
+
+      // Stale shard count, weights digest, or exclude digest must fail closed.
+      expect(() => loadShardPlan(planPath, 3, { rootDir: tempDir, weightsPath, env })).toThrow(/built for 2 shards/);
+      expect(() => loadShardPlan(planPath, 2, { rootDir: tempDir, weightsPath, env: {} })).toThrow(/excludeDigest/);
+
+      writeFileSync(excludePath, "changed.test.ts\n", "utf8");
+      expect(() => loadShardPlan(planPath, 2, { rootDir: tempDir, weightsPath, env })).toThrow(/excludeDigest/);
+      writeFileSync(excludePath, "ignored.test.ts\n", "utf8");
+
+      writeFileSync(weightsPath, `${JSON.stringify({ ...manifest, defaultDurationMs: 200 })}\n`, "utf8");
+      expect(() => loadShardPlan(planPath, 2, { rootDir: tempDir, weightsPath, env })).toThrow(/weightsDigest/);
+      writeFileSync(weightsPath, `${JSON.stringify(manifest)}\n`, "utf8");
+
+      // Structural tampering: bad schemaVersion, duplicate files, path escape, non-canonical path, empty plan.
+      const writeTampered = (patch: Record<string, unknown>) => {
+        const bad = join(tempDir, "tampered.json");
+        writeFileSync(bad, JSON.stringify({ ...plan, ...patch }), "utf8");
+        return bad;
+      };
+      expect(() => loadShardPlan(writeTampered({ schemaVersion: 99 }), 2, { rootDir: tempDir, weightsPath, env })).toThrow(/schemaVersion/);
+      expect(() => loadShardPlan(writeTampered({
+        shards: [
+          { shard: 1, estimatedDurationMs: 1000, files: ["a.test.ts"] },
+          { shard: 2, estimatedDurationMs: 1000, files: ["a.test.ts"] },
+        ],
+      }), 2, { rootDir: tempDir, weightsPath, env })).toThrow(/duplicate test path/);
+      expect(() => loadShardPlan(writeTampered({
+        shards: [
+          { shard: 1, estimatedDurationMs: 1000, files: ["../outside.test.ts"] },
+          { shard: 2, estimatedDurationMs: 100, files: ["b.test.ts"] },
+        ],
+      }), 2, { rootDir: tempDir, weightsPath, env })).toThrow(/escapes repository root/);
+      expect(() => loadShardPlan(writeTampered({
+        shards: [
+          { shard: 1, estimatedDurationMs: 1000, files: ["./a.test.ts"] },
+          { shard: 2, estimatedDurationMs: 100, files: ["b.test.ts"] },
+        ],
+      }), 2, { rootDir: tempDir, weightsPath, env })).toThrow(/non-canonical test path/);
+      expect(() => loadShardPlan(writeTampered({
+        shards: [
+          { shard: 1, estimatedDurationMs: 0, files: [] },
+          { shard: 2, estimatedDurationMs: 0, files: [] },
+        ],
+      }), 2, { rootDir: tempDir, weightsPath, env })).toThrow(/0 test files/);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("consumes a precomputed --plan in CLI mode without invoking vitest list", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "ci-vitest-shard-cli-"));
+    try {
+      const planPath = join(tempDir, "plan.json");
+      const manifest = loadShardWeights(DEFAULT_WEIGHTS_PATH);
+      const weightsDigest = digestFileContents(DEFAULT_WEIGHTS_PATH);
+      const plan = buildShardPlan(
+        ["scripts/ci-vitest-shard.test.ts", "scripts/ci-vitest-duration-keys.test.ts"],
+        2,
+        manifest,
+        { weightsDigest, excludeDigest: "none" },
+      );
+      writeShardPlan(planPath, plan);
+
+      // Run with an empty PATH so any accidental npx/vitest list invocation would fail immediately.
+      const result = spawnSync(
+        process.execPath,
+        ["scripts/ci-vitest-shard.mjs", "--shard", "1", "--total", "2", "--plan", planPath, "--print-files"],
+        { cwd: process.cwd(), encoding: "utf8", env: { PATH: "" } },
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim().split("\n")).toEqual(plan.shards[0]!.files);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

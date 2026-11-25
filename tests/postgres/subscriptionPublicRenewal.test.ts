@@ -4,7 +4,8 @@ import { connectedNativeStoreTables, readPrivacyDeclarationCensus, requiredPriva
 import { randomUUID } from "node:crypto";
 import { beforeEach, expect, it, vi } from "vitest";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
-import { api, active, purchase, admin, at, composition, payments, destinations, inventory, captureStore, withRestoredStore, days, deps, executor, facts, fulfillment, later, now, retire, restartDatabase, freshRetryReadback, normalRenewalWorkerPopulation, rpc, runtime, settlement, stock, transaction, withNormalRenewalWorker } from "./subscriptionPublicRenewalFixture.js";
+import { api, active, purchase, admin, at, composition, payments, destinations, inventory, captureStore, withRestoredStore, days, deps, executor, facts, fulfillment, later, now, retire, requireIsolatedRenewalContainer, restartDatabase, freshRetryReadback, normalRenewalWorkerPopulation, rpc, runtime, settlement, stock, transaction, withNormalRenewalWorker } from "./subscriptionPublicRenewalFixture.js";
+requireIsolatedRenewalContainer();
 import type { NativeRetryDriverOptions, NativeRenewalPurchaseFacts } from "@openlup/platform/subscriptions";
 import type { RenewalReadback } from "@openlup/platform/subscriptions/contracts";
 

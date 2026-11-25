@@ -5,7 +5,8 @@ import { copy, type CopyKey } from '../owned/copy.ts';
 import { fragments } from '../owned/fragments.ts';
 import { assertConfig } from '../shared/config.ts';
 import { productPath, resolveRoute, routes, type RouteKey } from '../shared/routes.ts';
-import { configuration } from './api.ts';
+import { configuration, storefrontCatalogue } from './api.ts';
+import type { StarterCatalogueItem } from '../shared/catalogue-products.ts';
 import { createBrowserCart } from './cart.ts';
 import { append, el, link } from './dom.ts';
 import type { PageContext } from './context.ts';
@@ -63,10 +64,12 @@ async function start(): Promise<void> {
   assertConfig(config);
   const notices = new Set<'storageUnavailable' | 'cartReset' | 'storageChanged'>();
   let renderReady = false;
+  let products: readonly StarterCatalogueItem[] | undefined;
+  let catalogueError: string | undefined;
   const cart = createBrowserCart(config, kind => {
     notices.add(kind);
     if (renderReady) render(false);
-  });
+  }, () => products);
   function navigate(path: string): void {
     if (!path.startsWith('/') || path.startsWith('//')) throw new Error('starter_navigation_not_local');
     history.pushState(null, '', path);
@@ -79,6 +82,7 @@ async function start(): Promise<void> {
     const locale = route.locale;
     const context: PageContext = {
       config, locale, route, query: new URLSearchParams(location.search), fragments,
+      catalogueProducts: products ?? config.offer.products, ...(catalogueError ? { catalogueError } : {}),
       t: key => copy[locale][key],
       money: amount => new Intl.NumberFormat(locale, {
         style: 'currency', currency: config.market.currency,
@@ -119,6 +123,18 @@ async function start(): Promise<void> {
   window.addEventListener('beforeunload', () => cart.close());
   renderReady = true;
   render(false);
+  void storefrontCatalogue().then(result => {
+    if (result.ok) {
+      products = result.products;
+      cart.reconcile();
+    } else if (result.code !== 'host_binding_required') {
+      catalogueError = result.code;
+    } else {
+      products = config.offer.products;
+      cart.reconcile();
+    }
+    if (['home', 'catalog', 'product', 'cart'].includes(resolveRoute(location.pathname, config.market).key)) render(false);
+  });
 }
 
 function shellHeader(context: PageContext): HTMLElement {

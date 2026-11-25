@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Pool, type PoolConfig } from 'pg';
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
+import { packWorkspaceTarballs } from '../helpers/packWorkspaceTarball.js';
 
 let scratch: string;
 let consumer: string;
@@ -32,10 +33,7 @@ async function prepareQuoteConsumer() {
     }
   }
   for (const path of ['packages/core','packages/outbox','packages/platform','node_modules/pg','node_modules/zod']) visit(resolve(path));
-  const tarballs = [...closure].map(cwd => {
-    const result = JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--json','--pack-destination',scratch], { cwd,encoding: 'utf8',timeout: 30_000 }));
-    return join(scratch,result[0].filename);
-  });
+  const tarballs = await packWorkspaceTarballs([...closure], scratch, { timeoutMs: 30_000 });
   consumer = join(scratch,'consumer'); mkdirSync(consumer);
   writeFileSync(join(consumer,'package.json'),'{"private":true,"type":"module"}');
   cpSync('.npmrc',join(consumer,'.npmrc'));
@@ -218,6 +216,80 @@ async function provisionQuoteCase(configuration: string, multiSize: boolean, con
   return { configuration, multiSize, ownerUrl: container.connectionString, runtimeUrl: runtime.toString() };
 }
 
+// Product documents and labels captured before replacing the owned physical input.
+const retainedDocuments = { supplements: [
+  [
+    '4bb524d2-0029-5bb0-ad59-2683ffd47809', 'f4030056-e764-555d-a6d0-73447dd6b125', 'demo-supplements-dawn',
+    '5f88dbaf973ba18dc89d7a9b3fc3d9e3e29189c80ebfd4414dda2c1c733ec858', [
+      ['abc28ceb-4456-5701-a746-d504acee557a', 'ASTER-DAWN-60', { netWeightG: 250, unitGtin: '0000000000017', issuer: 'demo' }, 40, []],
+      ['02a436dc-112f-598e-a88b-d917f215229e', 'ASTER-DAWN-60-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '3511105362001' }, 80, []],
+    ],
+  ],
+  [
+    'c3e02131-3aff-5faf-a283-bedd90ff3c1e', '259a54d5-1152-5f5a-a418-57f4e39d6bf4', 'demo-supplements-noon',
+    'a9e29cac35022c09c5fd1a629da4d4900ed6e13d5c9b4e1139b46e67b7b55221', [
+      ['92a4a977-0457-5d65-aeea-a75ef3256a48', 'ASTER-NOON-60', { netWeightG: 250, unitGtin: '0000000000024', issuer: 'demo' }, 40, []],
+      ['6c7a3072-af43-590b-a8b7-d7193536d09b', 'ASTER-NOON-60-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '1441910664033' }, 80, []],
+    ],
+  ],
+  [
+    'f21b01d8-4384-5362-a4ca-404dbf687c8e', 'd5d1c8d6-84e0-529d-ae72-8925b2fddabc', 'demo-supplements-dusk',
+    '0940621d19799179e92bc43da770cb6c7203b17c1b6eb69256a877cdf6a89522', [
+      ['fb38d08c-07fb-5ff7-a133-e359daf206ec', 'ASTER-DUSK-30', { netWeightG: 250, unitGtin: '0000000000031', issuer: 'demo' }, 40, ['demo-restricted']],
+      ['fde3789e-fbba-53da-a25e-8a77646a1a08', 'ASTER-DUSK-30-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '3374757808057' }, 80, ['demo-restricted']],
+    ],
+  ],
+  [
+    '0fdd9fef-88f0-5dee-ad31-2c600debc7dd', '94a58685-d89d-561f-a8f7-beea1054cf3d', 'demo-supplements-dawn-extra',
+    '47917635fe1b088a243de89e0bf66bc597055a92fec9b3f6a03028a5df46c59e', [
+      ['65dd6a34-9d9e-5bc3-aad5-80b2f5735575', 'ASTER-DAWN-60-EXTRA', { netWeightG: 100, issuer: 'starter:demo', unitGtin: '1354016792848' }, 10, []],
+    ],
+  ],
+], coffee: [
+  [
+    '4659d826-df86-58b0-ae0d-eeeab9225950', '4645faf2-aa6b-536a-aeb9-4ad9e69c2e75', 'demo-coffee-light-roast',
+    '840ff13d545f84c6932c43ba5eb2cc57f5a173588811c280d2b840d52bbb2dd1', [
+      ['aa97fa15-f04f-5b88-ab0b-26b2633e7e0a', 'PEBBLE-LIGHT-250', { netWeightG: 250, unitGtin: '0000000000048', issuer: 'demo' }, 40, []],
+      ['33469b16-5554-5ff4-adf8-4015e7db1d85', 'PEBBLE-LIGHT-250-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '6815723410807' }, 80, []],
+    ],
+  ],
+  [
+    'b16da7cd-cc4d-59bd-ae28-acdec0e1137c', '0f09fde0-8e5e-5bbc-a3b1-12fd17ecd9c8', 'demo-coffee-medium-roast',
+    '0eececab9bb3f78f429a7468d7f756a3833f56eaa5f59c7912d68e33447c184a', [
+      ['8e48f4ff-8ac6-5dab-aef7-30c88e488352', 'PEBBLE-MEDIUM-250', { netWeightG: 250, unitGtin: '0000000000055', issuer: 'demo' }, 40, []],
+      ['fc1eb207-f61b-5a9b-ad58-9cf46890d066', 'PEBBLE-MEDIUM-250-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '3351248347431' }, 80, []],
+    ],
+  ],
+  [
+    '5cb40e17-d1af-5df1-a0db-a7334a96effc', '3d136f31-302a-5899-a58d-fb9c66e0236d', 'demo-coffee-dark-roast',
+    '77d1ef008c77a7356e82561246ed63435e3d8d73fd3591bebadf9c01eff65238', [
+      ['eb191375-ad2f-5833-a34c-9d6dab1acc0c', 'PEBBLE-DARK-250', { netWeightG: 250, unitGtin: '0000000000062', issuer: 'demo' }, 40, ['demo-restricted']],
+      ['760bcff5-bfa2-5065-a853-cc69a2f5ca3a', 'PEBBLE-DARK-250-L', { netWeightG: 500, issuer: 'starter:demo', unitGtin: '1569102366975' }, 80, ['demo-restricted']],
+    ],
+  ],
+  [
+    'ad3461b4-211f-51d1-a209-374a11835880', 'cf7d9945-d0b4-5c2f-a128-a3006aff107b', 'demo-coffee-light-roast-extra',
+    'e90df1599814272e89a419412372397a80e67237cb8f042d6691a2944fae3ff8', [
+      ['90ddb9b6-7913-5b54-a0d1-04e0da2e2061', 'PEBBLE-LIGHT-250-EXTRA', { netWeightG: 100, issuer: 'starter:demo', unitGtin: '1925600957013' }, 10, []],
+    ],
+  ],
+] };
+
+const retainedLabels = {
+  supplements: [
+    ['Dawn', 'A fictional supplement in a simple amber container.'],
+    ['Noon', 'A fictional supplement with a pale green label.'],
+    ['Dusk', 'A fictional supplement with a muted blue label.'],
+    ['Extra container', 'A fictional optional extra.'],
+  ],
+  coffee: [
+    ['Light roast', 'A fictional light roast in a paper bag.'],
+    ['Medium roast', 'A fictional medium roast for your demonstration box.'],
+    ['Dark roast', 'A fictional dark roast with an illustrated label.'],
+    ['Extra container', 'A fictional optional extra.'],
+  ],
+};
+
 function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Awaited<ReturnType<typeof provisionQuoteCase>>) {
   const proofStarted = performance.now();
   const script = String.raw`
@@ -235,7 +307,8 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
     if (fixture.multiSize) {
       const large = structuredClone(config.subscriptionEditing.catalogue.find(row => row.sku === config.offer.products[0].sku + '-L'));
       large.unitPrice.amountMinor = 2998;
-      large.physical = {netWeightG:500,unitGtin:'0000000000109',issuer:'fixture-large'};
+      large.physical = {netContent:{dimension:'mass',unit:'openlup:g',unscaled:'500',scale:0},
+        primaryUnitIdentifier:{scheme:'gs1:gtin',issuer:'fixture-large',value:'0000000000109'}};
       config.offer.products.push(large);
       config.purchase.stock.quantities[large.sku]=1000;
     }
@@ -243,7 +316,46 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
     const runtime = new pg.Pool({connectionString:fixture.runtimeUrl});
     try {
       const install = {connection:owner,installRole:'postgres',runtimeRole:'starter_runtime',stock:(await import('@openlup/platform/fulfillment')).createPostgresFulfillmentStockSyncPort(runtime,{sourceKey:'starter-demo:'+config.id,readLocalInventoryStock:async()=>[]}),close:async()=>{}};
-      await applyDemoSeed(config,install);await applyDemoSeed(config,install);
+      async function retainedRows() {
+        return (await owner.query(\`SELECT p.id AS product_id,p.slug,p.name,p.description,p.primary_sku_id,p.current_document_revision_id,
+          r.schema_id,r.revision_no,r.document_ref,r.source_ref,r.document_payload::text AS payload,r.digest,
+          s.id AS sku_id,s.sku,s.title,s.net_weight_g,i.id AS identifier_id,i.issuer,i.normalized_value,i.identifier_kind,
+          i.pack_kind,i.quantity,i.is_primary FROM public.catalog_products p
+          JOIN public.catalog_product_document_revisions r ON r.id=p.current_document_revision_id
+          JOIN public.catalog_skus s ON s.product_id=p.id JOIN public.catalog_sku_identifiers i ON i.catalog_sku_id=s.id
+          ORDER BY s.id,i.id\`)).rows;
+      }
+      if (fixture.retained) {
+        for (const [index,[revisionId,productId,productSlug,digest,rows]] of fixture.retained.entries()) {
+          const [name,description] = fixture.labels[index];
+          const variants = rows.map(([skuId,sku,physical,demandPerUnit,exclusions]) =>
+            ({skuId,sku,physical,demandPerUnit,exclusions}));
+          const document = {schemaVersion:'neutral-store-product.v1',productId,productSlug,revisionNo:1,
+            sourceRef:'demonstration-catalogue-v1',variants};
+          await owner.query('INSERT INTO public.catalog_products(id,slug,name,description) VALUES($1,$2,$3,$4)',
+            [productId,productSlug,name,description]);
+          for (const variant of variants) {
+            const {skuId,sku,physical:{netWeightG,issuer,unitGtin}} = variant;
+            await owner.query('INSERT INTO public.catalog_skus(id,product_id,sku,title,net_weight_g) VALUES($1,$2,$3,$4,$5)',
+              [skuId,productId,sku,name,netWeightG]);
+            await owner.query(\`INSERT INTO public.catalog_sku_identifiers
+              (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary)
+              VALUES($1,$2,'gtin',$3,'unit',1,true)\`,[skuId,issuer,unitGtin]);
+          }
+          await owner.query(\`INSERT INTO public.catalog_product_document_revisions
+            (id,product_id,revision_no,schema_id,document_ref,document_payload,provenance,source_ref,digest)
+            VALUES($1,$2,1,$3,$4,$5,'{}',$6,$7)\`,[revisionId,productId,document.schemaVersion,
+            'demo-document:'+config.id+':'+revisionId,document,document.sourceRef,digest]);
+          await owner.query('UPDATE public.catalog_products SET primary_sku_id=$2,current_document_revision_id=$3 WHERE id=$1',
+            [productId,variants[0].skuId,revisionId]);
+        }
+      }
+      const predecessor = fixture.retained ? await retainedRows() : undefined;
+      if (predecessor) assert.equal(predecessor.length,7);
+      await applyDemoSeed(config,install);
+      if (predecessor) assert.deepEqual(await retainedRows(),predecessor);
+      await applyDemoSeed(config,install);
+      if (predecessor) assert.deepEqual(await retainedRows(),predecessor);
       assert.equal(Number((await owner.query('SELECT count(*) AS n FROM public.subscription_price_policy_revisions')).rows[0].n),1);
       assert.equal(Number((await owner.query('SELECT count(*) AS n FROM public.commerce_promotion_definitions')).rows[0].n),1);
       const identity = (await runtime.query('SELECT session_user,current_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows[0];
@@ -278,8 +390,13 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
       assert.equal(Number((await owner.query('SELECT count(*) AS n FROM public.subscription_price_policy_revisions')).rows[0].n),1);
       const rotated = structuredClone(config);rotated.quote.policy.revisionNo=2;
       await assert.rejects(applyDemoSeed(rotated,install),/starter_policy_seed_conflict/);
-      const physical = structuredClone(config);physical.offer.products[0].physical.netWeightG++;
+      const physical = structuredClone(config);
+      const content = physical.offer.products[0].physical.netContent;
+      content.unscaled=String(Number(content.unscaled)+1);
+      physical.offer.products[0].title='Rolled back title';
+      const beforeWeightChange = await retainedRows();
       await assert.rejects(applyDemoSeed(physical,install),/starter_document_seed_conflict/);
+      assert.deepEqual(await retainedRows(),beforeWeightChange);
       await owner.query("UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,acquisitionTerms,delivery2DiscountBps}',$1::jsonb)",[JSON.stringify(config.quote.acquisition.delivery2DiscountBps)]);
       configurations[fixture.configuration] = config;
       const {server,port,base}=await bindScenarioServer();
@@ -386,7 +503,10 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
       console.log(JSON.stringify({configuration:config.id,unit:1420,subtotal:4260,second:3958,capabilityRefused:true,secondPromiseRefresh:true,retainedCapture:true}));
     } finally {await runtime.end();await owner.end();}
   `;
-  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,ownerUrl,runtimeUrl })};\n${script}`);
+  const demo = configuration as keyof typeof retainedDocuments;
+  const retained = !multiSize ? retainedDocuments[demo] : undefined;
+  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,ownerUrl,runtimeUrl,
+    retained, labels: retainedLabels[demo] })};\n${script.replaceAll('\\`','`')}`);
   const childStarted = performance.now();
   let output: string;
   try { output = execFileSync(process.execPath,['--experimental-strip-types','scenario.mjs','--configuration',configuration], { cwd: consumer,encoding: 'utf8',timeout: 20_000 }); }
@@ -538,6 +658,194 @@ it('removes a quote container acquired after teardown completed', async () => {
 describe.sequential('installed quote proofs', () => {
   beforeAll(prepareQuoteConsumer, postgresSetupTimeoutMs);
   afterAll(removeQuoteConsumer, postgresTeardownTimeoutMs);
+
+  describe('active published catalogue', () => {
+    const database = quoteCaseFixture('coffee', false);
+    let fixture: Awaited<ReturnType<typeof provisionQuoteCase>>;
+    beforeAll(async () => { fixture = await database.setup(); }, postgresSetupTimeoutMs);
+    afterAll(database.teardown, postgresTeardownTimeoutMs);
+
+    it('seeded_product_quote_succeeds_with_active_published_product', () => {
+      const script = String.raw`
+        import assert from 'node:assert/strict';
+        import { createHash, randomUUID } from 'node:crypto';
+        import { readFileSync } from 'node:fs';
+        import pg from 'pg';
+        import { buildCatalogReleaseDraftV3, canonicalCatalogDraftJson, catalogInternalGtin, createPostgresCatalogDraftStoreV4,
+          createPostgresCatalogPublicationCommands } from '@openlup/platform/catalog';
+        import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
+        import { createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore } from '@openlup/platform/pricing';
+        import { configurations } from './application/owned/store.config.ts';
+        import { buildDemoSeed } from './application/owned/demo-seed.ts';
+        import { applyDemoSeed } from './application/installation/install.ts';
+        import { demoIdentifier, readStarterCatalogueRules, starterCatalogue } from './application/host/editor-catalogue.ts';
+        import { createNativeQuoteService } from './application/host/quote-composition.ts';
+        import { installedAcquisitionPredecessors } from './application/host/acquisition-predecessors.ts';
+        import { composeCatalogueStorefront } from './application/host/catalogue-storefront.ts';
+        import { dispatchAction, pendingBindings } from './application/host/bindings.ts';
+        import { editorQuotePorts } from './application/host/editor-ports.ts';
+        import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
+        const config = configurations.coffee;
+        const owner = new pg.Pool({connectionString:fixture.ownerUrl});
+        const runtime = new pg.Pool({connectionString:fixture.runtimeUrl});
+        const transaction = async work => {
+          const db = await owner.connect();
+          try {
+            await db.query('BEGIN');
+            const result = await work(db);
+            await db.query('COMMIT');
+            return result;
+          } catch (error) { await db.query('ROLLBACK'); throw error; }
+          finally { db.release(); }
+        };
+        try {
+          const db = await owner.connect();
+          try {
+            await applyDemoSeed(config, { connection: db, installRole:'postgres', runtimeRole:'starter_runtime',
+              catalogueRules:readStarterCatalogueRules(), stock:createPostgresFulfillmentStockSyncPort(runtime,
+                {sourceKey:'starter-demo:coffee',readLocalInventoryStock:async()=>[]}),close:async()=>{} });
+          } finally { db.release(); }
+          // Prepare the fixture's derived-price prerequisites without changing the starter installer.
+          const predecessors = buildDemoSeed(config).prices.filter(row => row.mode === 'subscription').map(row => row.id);
+          const closed = await owner.query("UPDATE public.price_entries SET active=false,valid_to=statement_timestamp() WHERE id=ANY($1::uuid[]) AND active", [predecessors]);
+          assert.equal(closed.rowCount,predecessors.length);
+          const bundle = {id:'fixture:bundle',status:'active',trigger_type:'automatic',code:null,discount_type:'percentage',
+            discount_value:5,applies_to_kind:'order_total',applies_to_payload:{cart_mode:'one_time'},stacking_rule:'stackable_with_any',
+            eligibility:{min_cart_minor:12000},region_availability:[config.market.country],valid_from:'2000-01-01T00:00:00.000Z',
+            valid_to:null,redemption_limit_global:null,redemption_limit_per_customer:null,promotion_engine_version:'promotion-engine.v1',
+            benefit_lane:'product',benefit_kind:'percentage',benefit_value_bps:500,benefit_value_minor:null,v2_mirror_of:null};
+          await owner.query("INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES($1,$2,true)", [bundle.id,bundle]);
+          const actorId = randomUUID();
+          await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'quote-operator@example.invalid')",[actorId]);
+          await owner.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())",[actorId]);
+          await owner.query("INSERT INTO public.platform_job_controls(job_name,active_driver,enabled,last_status,last_success_at,metadata) VALUES ('platform-watchdog','worker',true,'success',clock_timestamp(),$1),('promotion-claim-sweep','worker',true,'success',clock_timestamp(),'{}') ON CONFLICT(job_name) DO UPDATE SET enabled=excluded.enabled,last_status=excluded.last_status,last_success_at=excluded.last_success_at,metadata=excluded.metadata", [{promotionReady:true}]);
+          const installed = starterCatalogue(), type = { key:installed.current.key, version:installed.current.version };
+          const mediaRef = '/media/collection.svg';
+          const mediaDigest = () => createHash('sha256').update(readFileSync('./application/public'+mediaRef)).digest('hex');
+          const commands = createPostgresCatalogPublicationCommands({
+            authorizeHuman:async id => id === actorId ? {ok:true,userId:id,role:'admin',isMachineActor:false} : {ok:false},
+            catalogPublicationOwner:{run:transaction},registry:installed.registry,
+            verifyMedia:async (_db, claim)=>claim.mediaRef===mediaRef && claim.revisionDigest===mediaDigest(),
+          });
+          const operator = await commands.authorize(actorId);
+          assert.ok(operator);
+          const netContent = { dimension:'mass',unit:'openlup:g',scale:0,unscaled:'100' };
+          const build = (slug,sku,sequence,presentation={title:'Published article',routePath:{en:'/products/'+slug}}) =>
+            buildCatalogReleaseDraftV3({ namespace:'fixture', type, slug, name:'Published article', presentation,
+            document:{details:{z:'Zażółć',a:['曲', '🌿']}}, skus:[{
+              code:sku,title:'Published article',options:{},netContent,grossMass:{...netContent,unscaled:'120'},
+              identifiers:[{scheme:'gs1:gtin',issuer:'fixture',value:catalogInternalGtin(sequence),packagingLevel:'unit'}],
+              sell:{oneTime:true,subscription:false},logisticsRef:'fixture:logistics/article',
+            }] });
+          async function publish(draftId,revision,payload,expectedHead,changes=[]) {
+            const canonicalCommand = canonicalCatalogDraftJson({schemaVersion:payload.schemaVersion,action:revision === 1 ? 'create' : 'revise',
+              draftId,commandKey:randomUUID(),expectedRevision:revision-1,payload});
+            const fingerprint = createHash('sha256').update(canonicalCommand).digest('hex');
+            const saved = await createPostgresCatalogDraftStoreV4(owner).apply({canonicalCommand,fingerprint,actorId});
+            assert.equal(saved.outcome,'committed',JSON.stringify(saved));
+            const prepared = await commands.prepareCandidate({draftId,draftRevision:revision,expectedHead},operator);
+            assert.ok(prepared.preparation?.postStateDigest,JSON.stringify(prepared));
+            const candidate = {productId:payload.product.id,candidateRef:prepared.candidateRef,candidateDigest:prepared.candidateDigest};
+            const approved = await commands.execute({...candidate,action:'approve',commandKey:randomUUID(),
+              postStateDigest:prepared.preparation.postStateDigest},operator);
+            assert.equal(approved.outcome,'committed',JSON.stringify(approved));
+            const published = await commands.execute({...candidate,action:'publish',commandKey:randomUUID(),expectedHead,
+              changes},operator);
+            if (published.outcome !== 'committed') {
+              const { rows } = await owner.query("SELECT public.commerce_offer_policy_v2_readiness() AS readiness");
+              assert.fail(JSON.stringify({ published, readiness:rows[0].readiness }));
+            }
+            return published.receipt.head;
+          }
+          const quotes = createNativeQuoteService(runtime,installedAcquisitionPredecessors(),{current:'fixture-only-acceptance-key-00000000000000'});
+          const context = {config,actor:{customerRef:null,operatorRef:null},commandKey:'published-quote-fixture'};
+          const storefront = composeCatalogueStorefront(createPostgresRoleFreeTransactionLane({connectionString:fixture.runtimeUrl},{pool:runtime}));
+          const bindings = { ...pendingBindings(), resolveCatalogue:storefront.resolveCatalogue,
+            actions:{'storefront.catalogue':storefront.action,'offer.validate':async (payload,ctx)=>({ok:true,value:quotes.public(await quotes.quote(payload,ctx))})} };
+          const seedRequest = {cart:{schemaVersion:1,configuration:config.id,mode:'one_time',cadenceDays:null,
+            lines:[{sku:config.offer.products[0].sku,quantity:1}]}};
+          const at = (await runtime.query('SELECT clock_timestamp() AS at')).rows[0].at.toISOString();
+          const seedQuote = async () => (await quotes.quote(seedRequest,context,undefined,at)).snapshot.quote.totalGross;
+          const original = await seedQuote();
+          const draftId = randomUUID(), slug = 'published-article', sku = 'PUBLISHED-ARTICLE';
+          const {release,activation} = build(slug,sku,1020);
+          const released = await publish(draftId,1,release.payload,null);
+          assert.deepEqual(await dispatchAction(bindings,'storefront.catalogue',{},context), {ok:true,value:{products:config.offer.products}});
+          assert.deepEqual(await seedQuote(),original);
+          const price = (variantId,unitPriceMinor) => transaction(async db => {
+            await db.query('SET LOCAL ROLE authenticated');
+            await db.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:actorId,role:'authenticated'})]);
+            const priceListId = demoIdentifier(config,'price-list',config.market.currency);
+            const price = await createCatalogPriceSetupHandler({store:createPostgresCatalogPriceSetupStore(db),
+              authorizeOperator:async()=>({actorId})}).apply({schemaVersion:1,commandKey:randomUUID(),variantId,priceListId,
+                mode:'one_time',minQty:1,amountKind:'gross',unitPriceMinor,expected:{entryId:null,unitPriceMinor:null}},undefined);
+            assert.equal(price.outcome,'committed',JSON.stringify(price));
+          });
+          await price(release.payload.skus[0].id,2700);
+          await publish(draftId,2,activation.payload,released);
+          const listed = await dispatchAction(bindings,'storefront.catalogue',{},context);
+          assert.equal(listed.ok,true);
+          const published = listed.value.products.find(item=>item.sku===sku);
+          assert.equal(published.name.en,'Published article');
+          assert.equal(published.media,'');
+          assert.deepEqual(await seedQuote(),original);
+          const publishedRequest = {cart:{...seedRequest.cart,lines:[{sku,quantity:1}]}};
+          const answer = await dispatchAction(bindings,'offer.validate',publishedRequest,context);
+          assert.equal(answer.ok,true,JSON.stringify(answer));
+          assert.deepEqual(answer.value.lines,[{sku,quantity:1,baseUnitMinor:2700,unitMinor:2700,lineMinor:2700}]);
+          assert.equal(answer.value.currency,config.market.currency);
+          const cart = seedRequest.cart;
+          const servicing = await editorQuotePorts(runtime,config).quotePort.createServerAuthoritativeQuote({
+            mode:'one_time',cadenceDays:null,promoCodes:[],lines:cart.lines,
+          });
+          assert.equal(servicing.quote.lines[0].sku,cart.lines[0].sku);
+          assert.deepEqual(servicing.quote.lines[0].unitPriceGross,config.offer.products[0].unitPrice);
+
+          const collision = build('schema-collision','SCHEMA-COLLISION',1021,
+            {title:'Schema collision',shortName:{en:'Collision example'},mediaRef}), collisionId = randomUUID();
+          const initial = {...collision.release.payload,schemaVersion:4}, active = {...collision.activation.payload,schemaVersion:4};
+          for (const {product} of [initial,active]) {
+            const document = product.sharedContent.document;
+            document.schemaId = config.quote.document.schemaId;
+            product.documentRevision.schemaId = document.schemaId;
+            const bytes = canonicalCatalogDraftJson(document);
+            product.documentRevision.digest = createHash('sha256').update(bytes).digest('hex');
+            Object.assign(initial.publication.operations.find(operation=>operation.op==='register_document_revision'),
+              {canonicalText:bytes,digest:product.documentRevision.digest});
+          }
+          active.publication.operations = active.publication.operations.map(operation =>
+            operation.op === 'set_product_status' ? {op:'set_product_lifecycle',productSlug:operation.productSlug,expectedState:'draft',state:'active',children:[]}
+              : operation.op === 'set_sku_status' ? {op:'set_sku_lifecycle',skuCode:operation.skuCode,expectedState:'draft',state:'active'} : operation);
+          const collisionRelease = await publish(collisionId,1,initial,null);
+          const collisionSku = active.skus[0];
+          active.publication.evidence.media = [{skuCode:collisionSku.code,mediaRef,assetRefs:[],revisionDigest:mediaDigest()}];
+          await price(collisionSku.id,2800);
+          const collisionActive = await publish(collisionId,2,active,collisionRelease,[{variantId:collisionSku.id,expectedRevision:1,state:'active'}]);
+          const items = (await dispatchAction(bindings,'storefront.catalogue',{},context)).value.products;
+          const illustrated = items.find(item=>item.sku===collisionSku.code);
+          assert.equal(illustrated.name.en,'Collision example');
+          assert.equal(illustrated.media,mediaRef);
+          await assert.rejects(seedQuote,{message:'catalog_document_schema_invalid'});
+          active.publication.operations = [{op:'set_product_lifecycle',productSlug:active.product.slug,
+            expectedState:'active',state:'withdrawn',children:[{skuCode:collisionSku.code,expectedState:'active'}]}];
+          delete active.publication.evidence.media;
+          await publish(collisionId,3,active,collisionActive,[{variantId:collisionSku.id,expectedRevision:2,state:'withdrawn'}]);
+          assert.deepEqual(await seedQuote(),original);
+          const offline = composeCatalogueStorefront({run:async()=>{throw new Error('Disconnected reader');}});
+          const refused = await offline.action({},context);
+          assert.equal(refused.ok,false);
+          assert.equal(refused.code,'publication_authority_unavailable');
+        } finally { await runtime.end(); await owner.end(); }
+      `;
+      writeFileSync(join(consumer,'published-quote.mjs'),`const fixture = ${JSON.stringify(fixture)};\n${script}`);
+      try {
+        execFileSync(process.execPath,['--experimental-strip-types','published-quote.mjs','--configuration','coffee'],
+          { cwd:consumer,encoding:'utf8',timeout:30_000,stdio:'pipe' });
+      } catch (error) {
+        throw new Error((error as { stderr?: Buffer }).stderr?.toString() ?? 'Published quote child failed',{ cause: error });
+      }
+    }, 95_000);
+  });
 
   for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) {
     describe.sequential(multiSize ? 'multi-size quote' : `${configuration} quote`, () => {

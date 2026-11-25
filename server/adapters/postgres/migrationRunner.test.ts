@@ -36,7 +36,11 @@ function stubPool(input: { ledger?: AppliedRow[]; bodies: readonly string[] }) {
             return { rows: [{ unlocked: true }] };
           }
           if (text.startsWith("SELECT c.oid::pg_catalog.text AS ledger_oid,")) {
-            return { rows: ledgerExists ? [{ ledger_oid: "20001", ledger_safe: true }] : [] };
+            return {
+              rows: ledgerExists
+                ? [{ ledger_oid: "20001", ledger_safe: true, ...(text.includes("AS ledger_locked") ? { ledger_locked: true } : {}) }]
+                : [],
+            };
           }
           if (text.startsWith("LOCK TABLE ONLY ") || text === "BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY") return { rows: [] };
           if (text.startsWith("SELECT catalog_path")) return { rows: ledger.map((row) => ({ ...row })) };

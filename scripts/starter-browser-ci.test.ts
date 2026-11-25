@@ -207,6 +207,7 @@ describe('installed starter browser CI', () => {
     expect(command).toContain('--read-only');
     expect(command).toContain('type=bind,src=/tmp/starter,dst=/app,readonly');
     expect(command).toContain('type=bind,src=/tmp/starter/.context/care-browser,dst=/app/.context/care-browser');
+    expect(command).toContain('type=bind,src=/tmp/starter/.context/catalogue-builds,dst=/app/.context/catalogue-builds');
     expect(command[command.indexOf('--user') + 1]).toBe(`${process.getuid!()}:${process.getgid!()}`);
     expect(command).toContain('--workers=1');
     expect(command).toContain('--retries=0');
@@ -228,6 +229,7 @@ describe('installed starter browser CI', () => {
       expect(JSON.parse(await readFile(fixture, 'utf8'))).toEqual(entries);
       expect((await stat(fixture)).mode & 0o777).toBe(0o600);
       expect((await stat(join(app, '.context/care-browser'))).mode & 0o777).toBe(0o700);
+      expect((await stat(join(app, '.context/catalogue-builds'))).mode & 0o777).toBe(0o700);
       expect(JSON.parse(await readFile(join(app, '.context/database-ui-hosts.json'), 'utf8')))
         .toEqual(entries.map(({ id, baseURL }) => ({ id, baseURL })));
       throw new Error('journey failed');
@@ -282,8 +284,8 @@ describe('installed starter browser CI', () => {
     expect(install).toContain('docker login ghcr.io');
     expect(install.indexOf('docker login')).toBeLessThan(install.indexOf('scripts/starter-browser-ci.mjs'));
     expect(install).toContain('scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"');
-    expect(install).toContain('needs: [install-packages]');
-    expect(workflow).toContain('needs: [install-packages, install-browser]');
+    expect(install).toContain('needs: [install-pack]');
+    expect(workflow).toContain('needs: [install-pack, install-packages, install-browser]');
     const groups = install.match(/groups: \[(.*)\]/u)![1]!.replaceAll("'", '').split(', ').flatMap(shard => shard.split(',').map(Number));
     expect(groups.filter(index => index === catalogueUpgradeGroupIndex)).toHaveLength(1);
     expect(groups.sort((left, right) => left - right)).toEqual(browserJourneyGroups.map((_, index) => index));

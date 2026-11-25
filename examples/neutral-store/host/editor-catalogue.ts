@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { CATALOG_CANONICAL_UNITS, type CatalogQuantity } from '@openlup/core/catalog';
-import type { CatalogDraftClaimV3 } from '@openlup/platform/catalog/contracts';
+import { isValidGtin, type CatalogDraftClaimV3 } from '@openlup/platform/catalog/contracts';
 import { canonicalCatalogDraftJson, catalogDefinitionDigest, catalogPackInstallIssues, catalogPackManifest,
   catalogProductTypeRefSchema, createCatalogProductTypeRegistry, withCatalogPublicationRules,
   type CatalogDefinitionInstallReceipt, type CatalogPackInput, type CatalogProductTypeInput, type CatalogProductTypeRef,
@@ -14,6 +14,7 @@ import { catalogDraftRegistry, catalogueConformance } from '../owned/catalogue.t
 import { isRecord } from '../shared/offer.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import type { EditorProduct } from '../shared/subscription-edit.ts';
+import { configuredSeedPhysical } from '../shared/seed-physical.ts';
 
 // Admit owned definitions at host import. The one-shot installer uses its admitted snapshot.
 if (!Reflect.has(globalThis, Symbol.for('openlup.neutral-store.install-entry')))
@@ -221,7 +222,9 @@ export function documentDigest(document: unknown): string {
 export function editorProducts(config: StoreConfig): EditorProduct[] {
   return config.subscriptionEditing.catalogue.map(product => {
     const storefront = config.offer.products.find(item => item.sku === product.sku);
-    return storefront ? { ...product, ...storefront,physicalSize: storefront.physical.netWeightG,stockQuantity: config.purchase.stock.quantities[product.sku] ?? product.stockQuantity } : product;
+    return storefront ? { ...product, ...storefront,
+      physicalSize: configuredSeedPhysical(storefront.physical, storefront.sku, isValidGtin).netWeightG,
+      stockQuantity: config.purchase.stock.quantities[product.sku] ?? product.stockQuantity } : product;
   });
 }
 /** One application-owned product document shared by checkout and servicing. */
@@ -237,7 +240,8 @@ export function editorDocuments(config: StoreConfig) {
         const skuId = demoIdentifier(config, 'sku', product.sku);
         const digits = BigInt('0x' + skuId.replaceAll('-', '')).toString().slice(0,12).padStart(12,'0');
         const check = (10 - [...digits].reduce((sum,digit,index) => sum + Number(digit) * (index % 2 ? 3 : 1),0) % 10) % 10;
-        const physical = config.offer.products.some(item => item.sku === product.sku) ? product.physical
+        const physical = config.offer.products.some(item => item.sku === product.sku)
+          ? configuredSeedPhysical(product.physical, product.sku, isValidGtin)
           : { netWeightG: product.physicalSize, issuer: 'starter:demo', unitGtin: digits + check };
         return { skuId, sku: product.sku, physical, demandPerUnit: product.demandPerUnit, exclusions: [...product.exclusions] };
       }) };
@@ -369,6 +373,26 @@ function verifyMixedProductDocument(value: unknown, schemaId: string, read: Mixe
 
 export function verifyProductDocument(value: unknown, envelope: NeutralSkuEnvelopeV1, schemaId: string, mixed?: MixedProductRead): void {
   const { product, sku, documentRevision } = envelope;
+  if (documentRevision.schemaId !== schemaId) {
+    const refuse = (digestMismatch: boolean): never => {
+      const code = digestMismatch ? 'catalog_document_digest_mismatch' : 'catalog_document_schema_invalid';
+      throw Object.assign(new CommerceQuoteCatalogReadError(code), {
+        path: digestMismatch ? 'documentRevision.digest' : 'documentRevision',
+        observed: digestMismatch ? 'The canonical document has a different digest.' : 'The published document identity or encoding is invalid.',
+        causeText: 'The stored document does not match the admitted revision.',
+        fix: 'Restore the admitted revision from a verified backup.',
+        recheck: 'Repeat the original quote.',
+      });
+    };
+    if (!isRecord(value) || value.schemaId !== documentRevision.schemaId || value.productSlug !== product.slug
+      || typeof value.revisionNo !== 'number' || !Number.isInteger(value.revisionNo) || value.revisionNo < 1
+      || value.revisionNo > 2_147_483_647 || value.revisionNo !== documentRevision.revisionNo
+      || typeof value.documentRef !== 'string' || value.documentRef !== documentRevision.documentRef) return refuse(false);
+    let canonical: string;
+    try { canonical = canonicalCatalogDraftJson(value); } catch { return refuse(false); }
+    if (createHash('sha256').update(canonical, 'utf8').digest('hex') !== documentRevision.digest) return refuse(true);
+    return;
+  }
   const parsed = mixed ? verifyMixedProductDocument(value, schemaId, mixed, {
     productId: product.id, documentRevisionId: documentRevision.id, documentDigest: documentRevision.digest,
   }) : productDocument(value, schemaId);

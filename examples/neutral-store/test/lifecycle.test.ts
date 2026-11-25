@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env as processEnv } from 'node:process';
 import { catalogueUpgradeFixture } from './catalogue-upgrade-fixture.ts';
+import { selectConfiguration } from '../owned/store.config.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const oneLine = (stdout: string) => {
@@ -26,7 +27,7 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
   const accepted = { formatVersion: 1, configuration: 'coffee', exitCode: 0, state: 'satisfied', packs: [summary], findings: [] };
   try {
     for (const path of ['lifecycle', 'lifecycle.mjs', 'browser-groups.mjs', 'lifecycle-refusals.mjs',
-      'host/healthcheck.ts', 'installation/refusals.ts', 'shared/refusals.ts', 'shared/config.ts']) {
+      'host/healthcheck.ts', 'installation/refusals.ts', 'shared/refusals.ts', 'shared/seed-physical.ts', 'shared/config.ts']) {
       mkdirSync(join(app, path, '..'), { recursive: true });
       cpSync(join(root, path), join(app, path));
     }
@@ -225,6 +226,104 @@ test('up_json_reports_four_fields_for_installer_refusal and verifies the real on
         assert.deepEqual(report.packs, []);
         assert.equal(result.stderr, '');
       }
+    }
+  } finally { rmSync(app, { recursive: true, force: true }); }
+});
+
+// Nested extraction checks reuse the checkout's dependencies. The packed consumer installs its own.
+const extractionSharesDependencies = existsSync(join(root, '.starter-origin.json'))
+  && !existsSync(join(root, 'node_modules/@openlup/platform/package.json'));
+test('physical findings precede Docker, bootstrap, runtime connection and key preparation', {
+  skip: extractionSharesDependencies && 'The packed starter suite runs the subprocess witness.',
+}, () => {
+  const scratch = join(root, '.context');
+  mkdirSync(scratch, { recursive: true });
+  const app = mkdtempSync(join(scratch, 'physical-findings-'));
+  const env = { ...processEnv, PATH: [app, dirname(process.execPath), '/usr/bin', '/bin', processEnv.PATH ?? ''].join(delimiter) };
+  try {
+    for (const path of ['lifecycle', 'lifecycle.mjs', 'lifecycle-refusals.mjs', 'browser-groups.mjs', 'host', 'shared', 'owned', 'installation'])
+      cpSync(join(root, path), join(app, path), { recursive: true });
+    writeFileSync(join(app, 'package.json'), '{"type":"module"}');
+    writeFileSync(join(app, 'docker'), '#!/bin/sh\nprintf "docker\\n" >> io\nexit 70\n', { mode: 0o755 });
+    const install = join(app, 'installation/install.ts');
+    const instrumented = readFileSync(install, 'utf8').replace(/^(export async function (prepareDemonstrationQuoteKey|bootstrapDemonstration)\(.*\)[: ].* \{)$/gmu,
+      (_, declaration, name) => declaration + '\n  appendFileSync("io", ' + JSON.stringify(name + '\n') + ');');
+    assert.equal([...instrumented.matchAll(/appendFileSync\("io"/gu)].length, 2);
+    writeFileSync(install, "import { appendFileSync } from 'node:fs';\n" + instrumented);
+    mkdirSync(join(app, 'node_modules/pg'), { recursive: true });
+    writeFileSync(join(app, 'node_modules/pg/package.json'), '{"name":"pg","type":"module","exports":"./index.js"}');
+    writeFileSync(join(app, 'node_modules/pg/index.js'), `
+      import { appendFileSync } from 'node:fs';
+      class Connection {
+        async connect() { appendFileSync('io', 'connect\\n'); }
+        async query() { appendFileSync('io', 'sql\\n'); throw new Error('unexpected SQL'); }
+        async end() {}
+      }
+      export default { Client: Connection, Pool: Connection };
+    `);
+    writeFileSync(join(app, 'host/quote-secret.ts'), `
+      import { appendFileSync } from 'node:fs';
+      export async function readQuoteAcceptanceKeyring() { appendFileSync('io', 'runtime key\\n'); throw new Error('unexpected key'); }
+    `);
+    const owner = join(app, 'owned/store.config.ts'), original = readFileSync(owner, 'utf8');
+    const config = selectConfiguration();
+    const recheck = 'Restart the starter and recheck `/api/config`.';
+    for (const [edit, finding] of [
+      ["selectConfiguration().offer.products[0].physical.primaryUnitIdentifier.issuer = ' demo';", {
+        code: 'OPENLUP_E_STARTER_PRODUCT_PHYSICAL_INVALID', path: 'offer.products[].physical', subject: config.offer.products[0]!.sku,
+        observed: 'The configured product physical facts were refused.',
+        cause: 'Seed products require positive whole grams in the signed 32-bit range, a valid primary gs1:gtin and an unchanged issuer.',
+        fix: 'Apply the owned configuration migration where needed and correct the entry from verified facts. If correcting the issuer changes the retained seed digest, use “Reset an interrupted first install” for an owner-approved rebuild of the disposable demonstration in the same Compose project. That procedure removes all data in the demo volume.',
+        recheck,
+      }],
+      ["selectConfiguration().subscriptionEditing.catalogue[1].physicalSize = 2147483648;", {
+        code: 'OPENLUP_E_STARTER_SYNTHETIC_PHYSICAL_SIZE_INVALID', path: 'subscriptionEditing.catalogue[].physicalSize', subject: config.subscriptionEditing.catalogue[1]!.sku,
+        observed: 'The configured editor catalogue size was refused.',
+        cause: 'The size must be a number of whole grams from 1 through 2147483647.',
+        fix: 'Correct the affected `physicalSize` in `owned/subscription-editing.ts` to the verified supported whole-gram size.',
+        recheck,
+      }],
+    ] as const) {
+      writeFileSync(owner, original + '\n' + edit + '\n');
+      const invoke = (...args: string[]) => spawnSync(process.execPath, args, { cwd: app, env, encoding: 'utf8', timeout: 10_000 });
+      const configured = ['--configuration', config.id];
+      const runtime = ['--database-url', 'postgresql://starter_runtime@database/neutral_store'];
+      const { code, path, subject, observed, cause, fix } = finding;
+      const expectedText = [code, 'Observed: ' + observed, 'Cause: ' + cause, 'Fix: ' + fix,
+        'Recheck: ' + recheck, 'Subject: ' + subject, ''].join('\n');
+      for (const command of ['up', 'install', 'serve-demo']) {
+        writeFileSync(join(app, 'io'), '');
+        const text = invoke('lifecycle.mjs', command, ...configured, ...(command === 'serve-demo' ? runtime : []));
+        assert.ifError(text.error);
+        assert.deepEqual([text.status, text.stdout, text.stderr], [2, '', expectedText]);
+        if (command !== 'serve-demo') {
+          const json = invoke('lifecycle.mjs', command, ...configured, '--json');
+          assert.ifError(json.error);
+          assert.deepEqual([json.status, json.stderr], [2, '']);
+          assert.deepEqual(oneLine(json.stdout), {
+            ...(command === 'up' ? { command } : {}), formatVersion: 1, configuration: config.id,
+            exitCode: 2, state: 'violated', packs: [], findings: [finding],
+          });
+        }
+        assert.equal(readFileSync(join(app, 'io'), 'utf8'), '', command);
+      }
+      const host = invoke('--input-type=module', '--eval', `
+        import assert from 'node:assert/strict';
+        import { resolve } from 'node:path';
+        import { readStarterDiagnostic } from './shared/refusals.ts';
+        process.argv = [process.execPath, resolve('host/server.ts'), ...${JSON.stringify([...configured, ...runtime,
+          '--quote-acceptance-key-file', 'never-read.json'])}];
+        await assert.rejects(import('./host/server.ts'), error => {
+          assert.equal(Object.getPrototypeOf(error), Error.prototype);
+          assert.deepEqual(Reflect.ownKeys(error).filter(key => key !== 'stack'), ['message']);
+          assert.equal(error.message, ${JSON.stringify(code)});
+          assert.deepEqual(readStarterDiagnostic(error), ${JSON.stringify({ code, guidance: { path, fix, subject } })});
+          return true;
+        });
+      `);
+      assert.ifError(host.error);
+      assert.deepEqual([host.status, host.stdout, host.stderr], [0, '', '']);
+      assert.equal(readFileSync(join(app, 'io'), 'utf8'), '', 'host');
     }
   } finally { rmSync(app, { recursive: true, force: true }); }
 });

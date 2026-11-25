@@ -17,8 +17,14 @@ import { authoredPublicationDocument, createCharacterizationQuote, hash, transac
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
-let pool: Pool, quotePool: Pool, authorPool: Pool, legacyPool: Pool, container: PostgresContainer;
+let pool: Pool, quotePool: Pool, authorPool: Pool, legacyPool: Pool, upgradePool: Pool, container: PostgresContainer;
 const actor = randomUUID(), otherActor = randomUUID();
+const writerForwards = (file: string) => /_catalog_price_(list_basis_select|writer_v2)\.sql$/u.test(file);
+const candidateWriterMigrations: string[] = [];
+async function installWriterForwards(db: Pool) {
+  expect(candidateWriterMigrations).toHaveLength(2);
+  for (const file of candidateWriterMigrations) await db.query(readFileSync(file, "utf8"));
+}
 function latch() {
   let resolve!: () => void;
   const promise = new Promise<void>(ready => { resolve = ready; });
@@ -63,7 +69,8 @@ beforeAll(async () => {
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as
     { baseline: { file: string }; forward: { file: string }[] };
   for (const unit of [manifest.baseline, ...manifest.forward]) {
-    await pool.query(readFileSync(unit.file, "utf8"));
+    if (writerForwards(unit.file)) candidateWriterMigrations.push(unit.file);
+    else await pool.query(readFileSync(unit.file, "utf8"));
   }
   for (const [index, id] of [actor, otherActor].entries()) {
     await pool.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [id, `operator-${index}@example.invalid`]);
@@ -77,6 +84,9 @@ beforeAll(async () => {
   await pool.query(`INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX')
     ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`);
   await pool.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
+  await pool.query("CREATE DATABASE catalog_publication_upgrade TEMPLATE postgres");
+  upgradePool = new Pool({ connectionString: container.connectionStringFor("catalog_publication_upgrade") });
+  await installWriterForwards(pool);
   // Clone the installation before the command tests introduce other catalogue data.
   await pool.query("CREATE DATABASE catalog_publication_quote TEMPLATE postgres");
   quotePool = new Pool({ connectionString: container.connectionStringFor("catalog_publication_quote") });
@@ -86,7 +96,7 @@ beforeAll(async () => {
   await pool.query("CREATE DATABASE catalog_publication_legacy TEMPLATE postgres");
   legacyPool = new Pool({ connectionString: container.connectionStringFor("catalog_publication_legacy") });
 }, postgresSetupTimeoutMs);
-afterAll(() => closePostgres(container, [pool, quotePool, authorPool, legacyPool]), postgresTeardownTimeoutMs);
+afterAll(() => closePostgres(container, [pool, quotePool, authorPool, legacyPool, upgradePool]), postgresTeardownTimeoutMs);
 
 function native(query?: (db: PgQueryExecutor, sql: string, args?: unknown[]) => ReturnType<PgQueryExecutor["query"]>, connection = pool) {
   let allowed = true;
@@ -186,6 +196,26 @@ it("commits the sealed plan, refuses revocation after issuance and replays witho
   expect(queries.join("\n")).not.toMatch(/catalog_draft_heads|catalog_type_versions|catalog_price_setup_(claim|apply)|\b(INSERT|UPDATE|LOCK TABLE)\b/u);
   expect((await pool.query(`SELECT event_type FROM public.outbox_events WHERE aggregate_id=$1`, [data.productId])).rows)
     .toEqual([{ event_type: "catalog.publication.committed" }]);
+});
+
+it("keeps the issued publication receipt byte-identical after installing the price writer", async () => {
+  const data = authored(199);
+  await save(data, 1, data.payload, upgradePool);
+  const command = await prepare(data, 1, null, upgradePool);
+  const api = native(undefined, upgradePool), who = (await api.authorize(actor))!;
+  expect(await api.execute(command.approve, who)).toMatchObject({ outcome: "committed" });
+  expect(await api.execute(command.publish, who)).toMatchObject({ outcome: "committed" });
+  const receipts = async () => (await upgradePool.query(`SELECT result FROM public.catalog_operator_receipts
+    WHERE scope_id=$1 AND command_key=$2`, [data.productId, command.publish.commandKey])).rows.map(row => Buffer.from(row.result, "utf8"));
+  const original = await receipts();
+  expect(original).toHaveLength(1);
+  await installWriterForwards(upgradePool);
+  await upgradePool.query("UPDATE public.catalog_skus SET title='Live drift' WHERE id=$1", [data.skuId]);
+  api.disableRules();
+  expect(await api.execute(command.publish, who)).toMatchObject({ outcome: "replayed" });
+  expect(await receipts()).toEqual(original);
+  expect((await upgradePool.query("SELECT count(*)::int AS effects FROM public.outbox_events WHERE aggregate_id=$1",
+    [data.productId])).rows).toEqual([{ effects: 1 }]);
 });
 
 it.each([1, 2147483647])("characterizes Prepare, Approve and Publish of factorless %i grams", async grams => {

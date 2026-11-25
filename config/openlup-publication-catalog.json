@@ -70,6 +70,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/merge-queue-supersede.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/mirror-ci-images.yml",
       "class": "public-output"
     },
@@ -1590,6 +1594,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/catalogue-products.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/dev-loop.proof.ts",
       "class": "public-output"
     },
@@ -1791,6 +1799,10 @@
     },
     {
       "path": "examples/neutral-store/host/bindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/catalogue-storefront.ts",
       "class": "public-output"
     },
     {
@@ -2122,6 +2134,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/catalogue-presentation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/catalogue-products.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/config.ts",
       "class": "public-output"
     },
@@ -2174,6 +2194,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/seed-physical.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/subscription-edit.ts",
       "class": "public-output"
     },
@@ -2199,6 +2223,10 @@
     },
     {
       "path": "examples/neutral-store/test/browser-groups.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-products.test.ts",
       "class": "public-output"
     },
     {
@@ -5199,6 +5227,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/commerceDiagnostics.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceMoneyLimitsV2.ts",
       "class": "public-output"
     },
     {
@@ -8859,6 +8891,10 @@
     },
     {
       "path": "packages/platform/src/tax/stripe/transactions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/taxCalculationComposition.ts",
       "class": "public-output"
     },
     {
@@ -29858,6 +29894,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/packWorkspaceTarball.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/pgTemplateBroker.ts",
       "class": "public-output"
     },
@@ -30018,6 +30058,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/packWorkspaceTarball.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/partners/partnerAcquisitionParity.test.ts",
       "class": "public-output"
     },
@@ -30155,6 +30199,14 @@
     },
     {
       "path": "tests/postgres/catalogPriceListBasis.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPricePublicationV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPricePublicationV2Pgtap.test.ts",
       "class": "public-output"
     },
     {
@@ -30298,6 +30350,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/commerceMoneyLimitsV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceMoneyLimitsV2Pgtap.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/commercePriceAuthorityRead.test.ts",
       "class": "public-output"
     },
@@ -30307,6 +30367,22 @@
     },
     {
       "path": "tests/postgres/commerceQuoteCatalogRead.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2CompositionWire.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2Storage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2StorageFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceQuoteV2StoragePgtap.test.ts",
       "class": "public-output"
     },
     {
@@ -30446,6 +30522,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationV2ParcelFreeze.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/destinationV2Receipts.test.ts",
       "class": "public-output"
     },
@@ -30471,6 +30551,18 @@
     },
     {
       "path": "tests/postgres/feedbackMediaAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/catalogPricePublicationV2/grants.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/commerceMoneyLimitsV2/replayed.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/commerceQuoteV2Storage/replayed.sql",
       "class": "public-output"
     },
     {
@@ -30563,6 +30655,14 @@
     },
     {
       "path": "tests/postgres/fixtures/paymentReconciliation/setup.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/privacyErasureReconciliations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fixtures/privacyReplayRecorded.json",
       "class": "public-output"
     },
     {
@@ -31091,6 +31191,14 @@
     },
     {
       "path": "tests/postgres/postgresContainerCleanup.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/privacyErasureReplay.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/privacyReplayFence.test.ts",
       "class": "public-output"
     },
     {

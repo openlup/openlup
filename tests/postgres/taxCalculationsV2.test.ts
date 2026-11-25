@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { isDeepStrictEqual } from "node:util";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Pool } from "pg";
 import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
 import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor, type PostgresRoleFreeTransactionLane } from "@openlup/platform/data";
@@ -18,7 +19,8 @@ import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPo
 import { captureStoreJourney, journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
 import { destinationContext, destinationHash, reachDestinationCutoff, snapshot, snapshotCommand, snapshotPreimage } from "./destinationDocumentFixture.js";
 
-const resources = storeJourneyResources();
+// Isolated cluster: destinationDocumentFixture.snapshot uses withCatalogAdmissionFence (cluster-wide pg_current_snapshot).
+const resources = storeJourneyResources({ isolatedCluster: true });
 let store: JourneyInstallation;
 beforeAll(async () => { store = await resources.installation("tax-calculations"); }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
@@ -556,7 +558,8 @@ describe("native evaluation claim and seal", () => {
 
   type ClaimInput = Extract<Parameters<typeof beginTaxCalculation>[1], { operation: "claim" }>;
   type ClaimWithPin = ClaimInput & { pin: NonNullable<ClaimInput["pin"]> };
-  type SealInput = Exclude<Parameters<typeof completeTaxCalculation>[1], Uint8Array>;
+  type CompleteInput = Exclude<Parameters<typeof completeTaxCalculation>[1], Uint8Array>;
+  type SealInput = Omit<CompleteInput, "seal"> & { seal: Extract<CompleteInput["seal"], { compositionDigest?: never }> };
   type Claim = Extract<Awaited<ReturnType<typeof beginTaxCalculation>>, { kind: "claimed" }>;
   type Lane = PostgresRoleFreeTransactionLane<PgQueryExecutor>;
   const recovery = "ab".repeat(32);
@@ -1533,16 +1536,28 @@ describe("native evaluation claim and seal", () => {
     }
   });
 
-  it("returns historical authority when acknowledgment arrives after a timely seal's cutoff", async () => {
+  it.each([
+    { waitForClient: false, freshness: "current" },
+    { waitForClient: true, freshness: "historical" },
+  ])("returns $freshness authority when acknowledgment waits for the client clock: $waitForClient", async ({ waitForClient, freshness }) => {
     const value = await fixture();
     const claim = await claimFresh(value.claim);
     const seal = fiscalSeal(value.claim, claim, future(2));
     const waiting = holdBeforeCommit(lane());
     const completion = completeTaxCalculation(waiting.held, seal);
     try {
-      await Promise.race([waiting.reached, completion.then(() => { throw new Error("Expected the seal to reach commit"); })]);
-      await store.owner.query("SELECT pg_sleep_until($1::timestamptz)", [seal.seal.validUntil]);
-    } finally { waiting.release(); }
-    await expect(completion).resolves.toMatchObject({ kind: "terminal", freshness: "historical", outcome: seal.seal.outcome });
+      try {
+        await Promise.race([waiting.reached, completion.then(() => { throw new Error("Expected the seal to reach commit"); })]);
+        await store.owner.query("SELECT pg_sleep_until($1::timestamptz)", [seal.seal.validUntil]);
+        const cutoff = Date.parse(seal.seal.validUntil);
+        if (waitForClient) {
+          while (Date.now() < cutoff) await delay(cutoff - Date.now());
+        } else {
+          // Temporarily disabled the client-clock wait and modelled a lagging host clock.
+          vi.setSystemTime(cutoff - 1);
+        }
+      } finally { waiting.release(); }
+      await expect(completion).resolves.toMatchObject({ kind: "terminal", freshness, outcome: seal.seal.outcome });
+    } finally { vi.useRealTimers(); }
   });
 });

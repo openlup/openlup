@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Pool } from "pg";
-import { beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, it } from "vitest";
 import { createPostgresConsentEvaluator } from "@openlup/platform/communications";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresCatalogPayload, qualifiedAdminPostgresCatalogPayload, qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions, type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
@@ -37,12 +37,38 @@ const profiles = [
   ...(["installer-managed", "operator-provisioned"] as const).map(mode => ({ name: `qualified-admin/${mode}`, generation: "qualified-admin", mode, separate: true })),
 ] as const;
 const quote = (name: string) => { if (!/^[a-z_]+$/u.test(name)) throw new Error("invalid_fixture_role"); return `"${name}"`; };
-beforeAll(async () => { if (!await dockerAvailable()) throw new Error("Newsletter withdrawal requires real PostgreSQL"); }, postgresSetupTimeoutMs);
+let sharedPrefixDir: string | undefined;
+let currentManifest: ReturnType<typeof readIssuedPlatformManifest>;
+let previousManifest: ReturnType<typeof readIssuedPlatformManifest>;
 
-it.each(profiles)("account newsletter withdrawal on $name", async profile => {
-  const container = await runPostgresContainer({ name: `newsletter-withdrawal-${profile.generation}-${profile.mode}-${profile.separate}-${process.pid}`, password: "synthetic-conformance" });
+beforeAll(async () => {
+  if (!await dockerAvailable()) throw new Error("Newsletter withdrawal requires real PostgreSQL");
+  currentManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+  // The pre-withdrawal state is the named issued prefix, before any later module suffix.
+  previousManifest = readIssuedPlatformManifest();
+  sharedPrefixDir = mkdtempSync(join(tmpdir(), "newsletter-prefix-"));
+  const entries = [previousManifest, previousManifest.qualified, previousManifest.qualifiedAdmin]
+    .flatMap(plan => [plan.baseline, ...plan.forward]);
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    if (seen.has(entry.file)) continue;
+    seen.add(entry.file);
+    const destination = join(sharedPrefixDir, entry.file);
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, readFileSync(entry.file));
+  }
+  mkdirSync(join(sharedPrefixDir, "config"));
+  writeFileSync(join(sharedPrefixDir, "config/platform-migration-manifest.json"), JSON.stringify(previousManifest));
+}, postgresSetupTimeoutMs);
+
+afterAll(() => {
+  if (sharedPrefixDir) rmSync(sharedPrefixDir, { recursive: true, force: true });
+});
+
+it.concurrent.for(profiles)("account newsletter withdrawal on $name", { timeout: postgresSetupTimeoutMs }, async (profile, { expect }) => {
+  const safeName = profile.name.replace(/[^a-z0-9]+/gi, "-");
+  const container = await runPostgresContainer({ name: `newsletter-withdrawal-${safeName}-${process.pid}`, password: "synthetic-conformance" });
   const pools: Pool[] = [], ports: { close(): Promise<void> }[] = [];
-  let prefix: string | undefined;
   const pool = (connectionString: string, options?: string) => { const value = new Pool({ connectionString, options }); pools.push(value); return value; };
   try {
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Newsletter PostgreSQL unavailable");
@@ -90,9 +116,8 @@ it.each(profiles)("account newsletter withdrawal on $name", async profile => {
         const payload = installation.generation === "qualified-v2" ? await qualifiedPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1") : installation.generation === "qualified-admin" ? await qualifiedAdminPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1") : selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client));
         console.info(`newsletter-inventory ${profile.name} ${hash(payload)}`); return payload;
       } });
-    const current = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
-    // The pre-withdrawal state is the named issued prefix, before any later module suffix.
-    const previous = readIssuedPlatformManifest();
+    const current = currentManifest;
+    const previous = previousManifest;
     expect({ legacy: previous.objectInventorySha256,
       bootstrap: previous.qualified.objectInventorySha256.bootstrapMigrator.withRestore,
       separate: previous.qualified.objectInventorySha256.separateMigrator.withRestore,
@@ -103,11 +128,7 @@ it.each(profiles)("account newsletter withdrawal on $name", async profile => {
       expect(plan.forward.slice(0, prior.forward.length)).toEqual(prior.forward);
       expect(plan.forward[prior.forward.length].file).toBe(file);
     }
-    prefix = mkdtempSync(join(tmpdir(), "newsletter-prefix-"));
-    const entries = [previous, previous.qualified, previous.qualifiedAdmin].flatMap(plan => [plan.baseline, ...plan.forward]);
-    for (const entry of entries) { const destination = join(prefix, entry.file); mkdirSync(dirname(destination), { recursive: true }); writeFileSync(destination, readFileSync(entry.file)); }
-    mkdirSync(join(prefix, "config")); writeFileSync(join(prefix, "config/platform-migration-manifest.json"), JSON.stringify(previous));
-    await makeRunner(prefix).apply();
+    await makeRunner(sharedPrefixDir!).apply();
     const runtime = pool(login(r));
     const evaluator = createPostgresConsentEvaluator({ connectionString: login(r) }); ports.push(evaluator);
     const actor = async (principal: string, value: boolean, now = preferenceAt) => {
@@ -280,5 +301,5 @@ it.each(profiles)("account newsletter withdrawal on $name", async profile => {
       }
     }
     console.info(`newsletter-withdrawal PASS ${profile.name}`);
-  } finally { await closePostgres(container, pools, ports.map(port => () => port.close())); if (prefix) rmSync(prefix, { recursive: true, force: true }); }
-}, postgresSetupTimeoutMs);
+  } finally { await closePostgres(container, pools, ports.map(port => () => port.close())); }
+});

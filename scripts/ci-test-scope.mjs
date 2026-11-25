@@ -60,6 +60,25 @@ const PACKAGE_SRC_DIRS = [
   'packages/platform/src/',
   'packages/ui/src/',
 ];
+// Conservative closure for pure PostgreSQL suites verified to have zero transitive
+// imports or reads under `src/`, `api/`, `mcp/`, or unrelated docs. Any edit to
+// migrations, manifests, image pins, packages, server adapters, or shared Postgres
+// fixtures retains them; frontend (`src/`), API-only, MCP, and unrelated docs PRs
+// skip these heavy Docker suites safely.
+const POSTGRES_SERVER_SUITE_INPUTS = [
+  'config/ci-images.json',
+  'config/platform-migration-manifest.json',
+  'config/reviewed-platform-forwards.json',
+  'db/platform/migrations/',
+  'packages/',
+  'server/',
+  'tests/helpers/',
+  'tests/postgres/',
+];
+const POSTGRES_STARTER_SUITE_INPUTS = [
+  ...POSTGRES_SERVER_SUITE_INPUTS,
+  'examples/neutral-store/',
+];
 export const TOOLING_INPUTS = {
   'scripts/agent-review-derived-inventory.test.ts': [
     'db/platform/migrations/',
@@ -127,6 +146,24 @@ export const TOOLING_INPUTS = {
     'server/adapters/postgres/migrationRunner.ts',
     'src/domains/commerce/offerAvailability.ts',
   ], // Real PostgreSQL native/managed batch catalog gate, compat harness and inventory/offer witnesses.
+  'tests/postgres/catalogPublication.test.ts': POSTGRES_SERVER_SUITE_INPUTS,
+  'tests/postgres/connectedStoreCatalogRevisions.test.ts': POSTGRES_SERVER_SUITE_INPUTS,
+  'tests/postgres/connectedStorePromotionClaims.test.ts': POSTGRES_SERVER_SUITE_INPUTS,
+  'tests/postgres/connectedStoreStarterRelations.test.ts': POSTGRES_SERVER_SUITE_INPUTS,
+  'tests/postgres/customerAccountConsents.test.ts': [...POSTGRES_SERVER_SUITE_INPUTS, 'docs/platform/DATA_AND_MIGRATIONS.md'],
+  'tests/postgres/customerBillingProfiles.test.ts': POSTGRES_SERVER_SUITE_INPUTS,
+  'tests/postgres/customerCheckoutLinks.test.ts': POSTGRES_STARTER_SUITE_INPUTS,
+  'tests/postgres/customerNewsletterWithdrawal.test.ts': [...POSTGRES_SERVER_SUITE_INPUTS, 'docs/platform/DATA_AND_MIGRATIONS.md'],
+  'tests/postgres/fulfillmentOperatorJourneys.test.ts': POSTGRES_STARTER_SUITE_INPUTS,
+  'tests/postgres/fulfillmentProviderIntake.test.ts': POSTGRES_STARTER_SUITE_INPUTS,
+  'tests/postgres/m14QualifiedAdminComposition.test.ts': POSTGRES_SERVER_SUITE_INPUTS,
+  'tests/postgres/m14RestrictedConnectedRestore.test.ts': POSTGRES_SERVER_SUITE_INPUTS,
+  'tests/postgres/neutralStarterE4.test.ts': POSTGRES_STARTER_SUITE_INPUTS,
+  'tests/postgres/neutralStoreQuote.test.ts': POSTGRES_STARTER_SUITE_INPUTS,
+  'tests/postgres/neutralStoreRecovery.test.ts': POSTGRES_STARTER_SUITE_INPUTS,
+  'tests/postgres/neutralStoreUuid.test.ts': POSTGRES_STARTER_SUITE_INPUTS,
+  'tests/postgres/subscriptionNoticeProducers.test.ts': POSTGRES_SERVER_SUITE_INPUTS,
+  'tests/postgres/subscriptionRetainedRenewal.test.ts': POSTGRES_SERVER_SUITE_INPUTS,
 };
 
 export function excludedToolingTests(changedPaths) {

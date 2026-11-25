@@ -209,6 +209,7 @@ export function capturePrivateValues(message) {
 export async function writeBrowserFixtures(app, entries) {
   const directory = join(app, '.context/care-browser');
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  await mkdir(join(app, '.context/catalogue-builds'), { recursive: true, mode: 0o700 });
   await writeFile(join(directory, 'fixtures.json'), JSON.stringify(entries), { mode: 0o600 });
   await writeFile(join(app, '.context/database-ui-hosts.json'),
     JSON.stringify(entries.map(({ id, baseURL }) => ({ id, baseURL }))), { mode: 0o600 });
@@ -225,7 +226,9 @@ export function browserContainerArguments(app, reference, name, localImage, moun
 
 export function browserArguments(app, reference, name, localImage) {
   const fixtures = `type=bind,src=${join(app, '.context/care-browser')},dst=/app/.context/care-browser`;
-  return [...browserContainerArguments(app, reference, name, localImage, ['--mount', fixtures]),
+  // The catalogue proof stages the installed receipt for the host to verify.
+  const builds = `type=bind,src=${join(app, '.context/catalogue-builds')},dst=/app/.context/catalogue-builds`;
+  return [...browserContainerArguments(app, reference, name, localImage, ['--mount', fixtures, '--mount', builds]),
     'node', 'node_modules/@playwright/test/cli.js', 'test', '--config', 'playwright.database.config.ts',
     '--workers=1', '--retries=0', '--reporter=dot', '--output=/tmp/test-results'];
 }
@@ -303,7 +306,7 @@ export async function runStarterBrowser(options) {
       outputs.push(error.stdout ?? '', error.stderr ?? '');
       if (phase === 'journeys') {
         const output = `${error.stdout ?? ''}\n${error.stderr ?? ''}`;
-        const locations = [...new Set(output.match(/\[(?:supplements|coffee)\] › (?:browser\/)?(?:journey|acquisition)\.spec\.ts:\d+:\d+/gu) ?? [])];
+        const locations = [...new Set(output.match(/\[(?:supplements|coffee)\] › (?:browser\/)?(?:journey|acquisition|catalogue-products)\.spec\.ts:\d+:\d+/gu) ?? [])];
         const codes = [...new Set(output.match(/\b(?:starter|acquisition)_[a-z_]+\b/gu) ?? [])];
         const counts = output.match(/\b\d+ (?:passed|skipped|failed|did not run)\b/gu) ?? [];
         console.error(`Starter browser failures: ${locations.join('; ') || 'see selected specs'}; codes: ${codes.join(', ') || 'none'}; counts: ${counts.join(', ') || 'incomplete'}`);
@@ -384,12 +387,15 @@ export async function runStarterBrowser(options) {
               await bootstrap.query(`COMMENT ON DATABASE ${database} IS '${demonstrationMarker}'`);
               const installUrl = `postgresql://${installRole}:${password}@127.0.0.1:${postgres.port}/${database}`;
               const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', bootstrapLogin: 'postgres', migrationLogin: installRole, runtimeLogin: runtimeRole, restoreLogin: restoreRole };
-              const migrationPool = guard(new pg.Pool({ connectionString: installUrl,
-                options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 }));
-              defer(() => migrationPool.end());
-              const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: installUrl }, { installation: selection, poolFactory: () => migrationPool });
-              const first = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
-              if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
+              const { first, repeat } = await withCleanup(async release => {
+                const migrationPool = guard(new pg.Pool({ connectionString: installUrl,
+                  options: migrations.qualifiedPostgresStartupOptions(selection), connectionTimeoutMillis: 5000 }));
+                release(() => migrationPool.end());
+                const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: installUrl }, { installation: selection, poolFactory: () => migrationPool });
+                const first = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
+                if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
+                return { first, repeat };
+              });
               console.log(`Starter ${configuration} migrations: ${first.applied.length}; repeat: ${repeat.applied.length}; elapsed: ${Math.round(performance.now() - started)} ms`);
               const publicationPasswordFile = join(scratch, `${groupIndex}-${configuration}-publication-password`);
               const installer = guard(new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 }));
@@ -401,6 +407,8 @@ export async function runStarterBrowser(options) {
                 await applyDemoSeed(selectConfiguration(configuration), seed);
                 await applyDemoSeed(selectConfiguration(configuration), seed);
               } finally { await installer.end(); }
+              if (groupIndex === browserJourneyGroups.length - 1)
+                await bootstrap.query(`CREATE DATABASE catalogue_browser_template TEMPLATE ${database} OWNER ${installRole}`);
               phase = 'runtime';
               const runtimeUrl = `postgresql://${runtimeRole}@127.0.0.1:${postgres.port}/${database}`;
               const runtime = guard(new pg.Client({ host: '127.0.0.1', port: postgres.port, database, user: runtimeRole, password, connectionTimeoutMillis: 5000 }));
