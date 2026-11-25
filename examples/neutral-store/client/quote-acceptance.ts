@@ -1,5 +1,6 @@
 import { isOfferQuoteView } from './live-quote.ts';
-import { ACQUISITION_TERMS_CAPABILITY, acquisitionTermsSchema } from '@openlup/platform/pricing';
+import { ACQUISITION_TERMS_CAPABILITY } from '@openlup/platform/pricing/contracts';
+import { acquisitionTermsSchema } from '@openlup/platform/pricing/browser';
 import type { ActionInput } from '../shared/api.ts';
 import { isRecord, type OfferQuote } from '../shared/offer.ts';
 import { quoteCopy } from '../owned/quote-copy.ts';

@@ -8,6 +8,8 @@ const marker = JSON.parse(readFileSync(join(directory, "identity-owner.json"), "
 if (marker.runId !== processEnvironment.OPENLUP_IDENTITY_RUN_ID || marker.origin !== processEnvironment.APP_BASE_URL) throw new Error("Identity browser ownership mismatch");
 export default defineConfig({
   testDir: "../preview/account", testMatch: "identity-composition.spec.ts", workers: 1, retries: 0,
+  // Explicit budgets for shared hosted runners instead of the 30 s / 5 s defaults.
+  timeout: 60_000, expect: { timeout: 10_000 },
   reporter: [], outputDir: join(directory, "browser-output"),
   use: { baseURL: marker.origin, trace: "off", screenshot: "off", video: "off" },
 });

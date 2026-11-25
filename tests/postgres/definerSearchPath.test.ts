@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { Pool, PoolClient } from "pg";
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import migrationManifest from "../../config/platform-migration-manifest.json" with { type: "json" };
 import registry from "../../config/reviewed-platform-forwards.json" with { type: "json" };
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -199,10 +199,24 @@ async function rollBackPin(migrator: Pool, prefix: LedgerRow[], path = slot.path
   }
 }
 
-it.each(profiles)(
-  "pins pg_temp last on the acquisition functions in %s",
-  async profile => {
-    const { owner, migrator, installation, runner, close } = await installAtAcquisitionSearchPathBoundary(profile, "definer-search-path", "before-pin");
+// Bound disposable PostgreSQL container concurrency to 2 per file to match hosted runner budgets.
+let activeContainerSlots = 0;
+const waitingContainerSlots: (() => void)[] = [];
+async function withContainerSlot<T>(work: () => Promise<T>): Promise<T> {
+  while (activeContainerSlots >= 2) await new Promise<void>(resolve => { waitingContainerSlots.push(resolve); });
+  activeContainerSlots++;
+  try { return await work(); }
+  finally {
+    activeContainerSlots--;
+    waitingContainerSlots.shift()?.();
+  }
+}
+
+describe("acquisition definer search_path pin", () => {
+  it.concurrent.each(profiles)(
+    "pins pg_temp last on the acquisition functions in %s",
+    async profile => withContainerSlot(async () => {
+      const { owner, migrator, installation, runner, close } = await installAtAcquisitionSearchPathBoundary(profile, "definer-search-path", "before-pin");
     try {
       expect(signatures).toHaveLength(11);
       const before = await observe(owner);
@@ -256,9 +270,10 @@ it.each(profiles)(
     } finally {
       await close();
     }
-  },
-  postgresSetupTimeoutMs,
-);
+    }),
+    postgresSetupTimeoutMs,
+  );
+});
 
 // Installed counts that the appended forward changes; the rest already carry their final value.
 const appendedChanges = { legacy: 392, bootstrap: 371, separate: 371, "admin-managed": 390, "admin-operator": 390 } as const;
@@ -275,10 +290,11 @@ async function installBeforeForward(profile: typeof profiles[number], label: str
   return withPlatformCatalog(current, root => installAccountMutations(profile, true, label, root));
 }
 
-it.each(profiles)(
-  "appends pg_temp to pinned function search paths when upgrading %s",
-  async profile => {
-    const { owner, migrator, installation, runner, close } = await installBeforeForward(profile, "function-search-path", appendedBinding);
+describe("appended function search_path pin", () => {
+  it.concurrent.each(profiles)(
+    "appends pg_temp to pinned function search paths when upgrading %s",
+    async profile => withContainerSlot(async () => {
+      const { owner, migrator, installation, runner, close } = await installBeforeForward(profile, "function-search-path", appendedBinding);
     try {
       // This forward covered installer-owned functions in public.
       const baseFailures = searchPathFailures((await pinnedFunctions(owner)).filter(row => row.signature.startsWith("public.")));
@@ -348,19 +364,21 @@ it.each(profiles)(
     } finally {
       await close();
     }
-  },
-  postgresSetupTimeoutMs,
-);
+    }),
+    postgresSetupTimeoutMs,
+  );
+});
 
 const catalogOnly = "pg_catalog";
 const catalogPinned = "pg_catalog, pg_temp";
 const q2Preimages = [catalogPinned, catalogPinned, catalogOnly, catalogPinned, "pg_catalog, public, pg_temp"];
 const adminPreimages = [catalogPinned, catalogPinned, catalogOnly, catalogPinned, catalogOnly];
 
-it.each(profiles)(
-  "pins the remaining function search paths when upgrading %s",
-  async profile => {
-    const { owner, migrator, installation, runner, close } = await installBeforeForward(profile, "remaining-search-path", remainingBinding);
+describe("remaining function search_path pin", () => {
+  it.concurrent.each(profiles)(
+    "pins the remaining function search paths when upgrading %s",
+    async profile => withContainerSlot(async () => {
+      const { owner, migrator, installation, runner, close } = await installBeforeForward(profile, "remaining-search-path", remainingBinding);
     try {
       expect(remainingSignatures).toEqual([
         "acquisition_private.case_projection(uuid)",
@@ -429,14 +447,16 @@ it.each(profiles)(
     } finally {
       await close();
     }
-  },
-  postgresSetupTimeoutMs,
-);
+    }),
+    postgresSetupTimeoutMs,
+  );
+});
 
-it.each(profiles)(
-  "checks pg_temp last on every pinned function in a current %s installation",
-  async profile => {
-    const { owner, close } = await installAccountMutations(profile, false, "current-definer-search-path");
+describe("current installation definer search_path check", () => {
+  it.concurrent.each(profiles)(
+    "checks pg_temp last on every pinned function in a current %s installation",
+    async profile => withContainerSlot(async () => {
+      const { owner, close } = await installAccountMutations(profile, false, "current-definer-search-path");
     try {
       const failures = searchPathFailures(await pinnedFunctions(owner));
       expect(failures, `${failures.length} functions need pg_temp last:\n${failures.join("\n")}`).toEqual([]);
@@ -452,9 +472,10 @@ it.each(profiles)(
     } finally {
       await close();
     }
-  },
-  postgresSetupTimeoutMs,
-);
+    }),
+    postgresSetupTimeoutMs,
+  );
+});
 
 it("keeps the acquisition pin fixture unchanged when a later forward is appended", () => {
   const current = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
@@ -574,8 +595,9 @@ it("accepts a single normalized final pg_temp and preserves trusted identifier s
   expect(splitSearchPath(`"${"é".repeat(40)}"`)).toEqual(["é".repeat(31)]);
 });
 
-it.each(profiles)("preserves the runtime checkout identity and ACLs through the prelock upgrade on %s", async profile => {
-  if (migrationManifest.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
+describe("runtime checkout prelock upgrade", () => {
+  it.concurrent.each(profiles)("preserves the runtime checkout identity and ACLs through the prelock upgrade on %s", async profile => withContainerSlot(async () => {
+    if (migrationManifest.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
   const prefix: Extract<PlatformMigrationManifest, { schemaVersion: 3 }> = { ...structuredClone(migrationManifest), schemaVersion: 3 };
   for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
     const first = plan.forward.findIndex(unit => unit.file === prelockForward.path);
@@ -637,4 +659,5 @@ it.each(profiles)("preserves the runtime checkout identity and ACLs through the 
       hint: "Governed checkout is unavailable for this selection. Use a supported offer or replay the original request.",
     });
   } finally { await close(); }
-}, postgresSetupTimeoutMs);
+  }), postgresSetupTimeoutMs);
+});

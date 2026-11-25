@@ -8,7 +8,7 @@ import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/po
 
 // P4 acceptance: pinned native store + issue binding (checks 2–5). Each row
 // checks the returned port/job result AND the installed SQL's durable state.
-// Existing six conformance cases and their 28 s budget remain in their own file.
+// Existing six conformance cases remain in their own file.
 const h = invoicingNativeHarness();
 let started: number;
 beforeAll(async () => { await h.start(); started = performance.now(); }, postgresSetupTimeoutMs);

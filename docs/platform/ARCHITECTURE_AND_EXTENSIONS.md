@@ -239,11 +239,16 @@ its `/contracts` entry remains type-only. The `/commerce/server` entry
 is the separate Node-only home for handlers, use cases, stores, adapters and
 engine composition. Browser bundle proof checks the complete commerce runtime
 graph. The additive `pricing/browser` entry directly exposes the existing quote
-primitive factory, acquisition capability/expectation/resolved-terms validators
-and shipping-terms validator. Acquisition reuses its pure defining file; shipping
-uses an exact linted edge from `pricing/browser/index.ts` to the existing pure
-`shipping/thresholdPolicy.ts` owner, preserving validator identity without the
-shipping handler/Node HTTP declaration closure. Other internal shipping paths
+primitive factory, acquisition capability/expectation/terms/resolved-terms
+validators, the shipping-terms validator and the `deriveSubscriptionUnitPrice`
+display estimate. Acquisition reuses its pure defining file; the estimate reuses
+its defining file, whose module closure adds the pricing contract constants and
+the zod `jitless` setting. A tree-shaken production bundle contains that call
+only when it uses the estimate; evaluating the whole entry (dev pre-bundling,
+unbundled ESM, Node) applies the setting, which changes no parse result.
+Shipping uses an exact linted edge from `pricing/browser/index.ts` to
+the existing pure `shipping/thresholdPolicy.ts` owner, preserving validator
+identity without the shipping handler/Node HTTP declaration closure. Other internal shipping paths
 remain refused. The complete browser graph imports neither Node
 built-ins nor the Node-only pricing root. Reference quote context binds optional
 shipping/acquisition terms without changing its other fields or strictness. The customer-default consumption guard reads the package implementation
@@ -563,7 +568,8 @@ compatibility change before a second capability is admitted.
 
 Native OMS and returns PostgreSQL adapters belong to the `commerce/server`
 module; it admits the public `data` entry as types and the pure
-`pricing/contracts` entry as values. The native customer-support journey adapter
+`pricing/contracts` entry as values. Opt-in native quote composition uses the
+public `tax` entry for owned evaluation and adapter verification. The native customer-support journey adapter
 and portable read codecs belong to `account-support`, whose public `data` edge
 is a value dependency. These permissions apply to the enclosing modules, so the
 codec directory has no separate empty-edge graph row. Its browser bundle witness
@@ -2846,8 +2852,7 @@ before-send create failure or authoritative absence; retryable readback stays
 unknown. Readback selects the latest capture fault per source kind and ID,
 including terminal faults and resolved receipts. Cutover source seeding precedes
 FK-bearing invoicing tables, so its scan does not hold order/accounting FK locks.
-The six-case native conformance witness covers these boundaries within its
-existing whole-file budget.
+The six-case native conformance witness covers these boundaries.
 Native paid fulfillment constructs only the shipment spine: accounting disabled, unavailable or locked cannot delay a renewal parcel.
 Managed wrappers retain their existing behavior.
 

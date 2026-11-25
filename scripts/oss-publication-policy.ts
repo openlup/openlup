@@ -63,7 +63,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("inventory:refresh", "node --import tsx scripts/installation-inventory-refresh.ts"),
   publicCommand("landing:merge", "node scripts/agent-review-landing.mjs"),
   publicCommand("migration:finalize", "node scripts/migration-finalize.mjs"),
-  publicCommand("lint", "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint ."),
+  publicCommand("lint", "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint --concurrency auto ."),
   publicCommand("preflight", "node --experimental-strip-types scripts/preflight.ts"),
   publicCommand("prelint", "node scripts/build-packages-incremental.mjs"),
   publicCommand("oss:published-tree", "node --experimental-strip-types scripts/oss-published-tree-check.ts"),
@@ -73,6 +73,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("sql:admit", "node --experimental-strip-types scripts/sql-admit.ts"),
   publicCommand("pretest", "node scripts/build-packages-incremental.mjs"),
   publicCommand("test", PUBLIC_TEST_COMMAND),
+  publicCommand("test:affected", "node scripts/affected-tests.mjs --run"),
   publicCommand("test:hosted", "node scripts/test-hosted.mjs"),
   publicCommand("test:scoped", "scope_file=$(mktemp) && trap 'rm -f \"$scope_file\"' EXIT && export OPENLUP_VITEST_EXCLUDE_FILE=\"$scope_file\" && node scripts/ci-test-scope.mjs && npm test"),
 ];
