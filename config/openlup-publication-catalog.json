@@ -30702,6 +30702,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/orderMoneyV2Storage/replayed.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/paymentMethods/consent_snapshot_merge.sql",
       "class": "public-output"
     },
@@ -31239,6 +31243,18 @@
     },
     {
       "path": "tests/postgres/operatorOrderCommands.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderMoneyV2Storage.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderMoneyV2Storage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderMoneyV2StoragePgtap.test.ts",
       "class": "public-output"
     },
     {
