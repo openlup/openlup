@@ -25,6 +25,7 @@
 // over an empty measurement, which is strictly worse than having no check at all.
 
 import { execFileSync } from "node:child_process";
+import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
 /** One commit, as `git log` reports it: identity, parents, and the raw message. */
@@ -107,10 +108,32 @@ export function report(verdict: Verdict, log: (line: string) => void): boolean {
   return false;
 }
 
-export function main(root: string, argv: string[], log: (line: string) => void): number {
+export function checkPrBodySignOff(body: string, log: (line: string) => void): boolean {
+  if (SIGN_OFF.test(body)) {
+    log("- pull-request body signed off: yes");
+    return true;
+  }
+  log("- ⛔ pull-request body is missing a Signed-off-by trailer");
+  log("");
+  log("Merge-queue commits inherit the pull-request body. Add a line of its own reading:");
+  log("    Signed-off-by: Your Name <your.email@example.com>");
+  log("After updating the pull-request description, push a commit or close and reopen the PR so CI reads the updated body.");
+  return false;
+}
+
+export function main(
+  root: string,
+  argv: string[],
+  log: (line: string) => void,
+  environment: Readonly<Record<string, string | undefined>> = processEnvironment,
+): number {
+  if (argv.length === 1 && argv[0] === "--pr-body") {
+    const body = environment.PR_BODY ?? "";
+    return checkPrBodySignOff(body, log) ? 0 : 1;
+  }
   const [base, head, ...extra] = argv;
   if (!base || !head || extra.length > 0) {
-    process.stderr.write("usage: dco-signoff-check.ts <base-commit> <head-commit>\n  both ends as full 40-character digests\n");
+    process.stderr.write("usage: dco-signoff-check.ts <base-commit> <head-commit> | --pr-body\n  both ends as full 40-character digests (or --pr-body with PR_BODY env)\n");
     return 2;
   }
   let commits: Commit[];

@@ -95,8 +95,10 @@ function handoffFixture(candidate = receipt) {
     if (path.startsWith('/graphql?')) return { data: { repository: { pullRequest: structuredClone(f.queuePr) } } };
     if (path.includes('/collaborators/')) return { permission: f.permission };
     if (path.includes('/jobs?')) {
-      const page = Number(new URL(path, 'https://example.invalid').searchParams.get('page'));
-      return { total_count: f.result.total_count, jobs: structuredClone(f.result.jobs.slice((page - 1) * 100, page * 100)) };
+      const params = new URL(path, 'https://example.invalid').searchParams;
+      const page = Number(params.get('page'));
+      const perPage = Number(params.get('per_page') ?? '50');
+      return { total_count: f.result.total_count, jobs: structuredClone(f.result.jobs.slice((page - 1) * perPage, page * perPage)) };
     }
     if (path.includes('/actions/workflows/')) return structuredClone(f.listing);
     if (path.includes('/actions/runs/')) return structuredClone(f.run);
@@ -563,7 +565,7 @@ describe('CI completion queue handoff', () => {
     f.result.jobs.push({ ...native, id: 88, run_attempt: 2 }); f.result.total_count++;
     native.conclusion = 'failure';
     await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
-    expect(f.api.get).toHaveBeenCalledWith('/repos/openlup/openlup/actions/runs/100/jobs?filter=all&per_page=100&page=1');
+    expect(f.api.get).toHaveBeenCalledWith('/repos/openlup/openlup/actions/runs/100/jobs?filter=all&per_page=50&page=1');
     expect(f.enqueue).toHaveBeenCalledExactlyOnceWith({ pullRequestId: 'PR_12', expectedHeadOid: receipt.head, jump: false });
   });
   it.each(['failure', 'skipped', 'pending', 'ambiguous latest'])('never recovers an earlier success over a later %s required job', async outcome => {
@@ -576,17 +578,17 @@ describe('CI completion queue handoff', () => {
   });
   it.each(['complete', 'count changed', 'duplicate across pages', 'missing page'])('requires complete same-run job history pagination: %s', async scenario => {
     const f = handoffFixture();
-    const filler = Array.from({ length: 100 }, (_, index) => ({ ...f.result.jobs[0]!, id: 100 + index, name: `diagnostic ${index}` }));
+    const filler = Array.from({ length: 50 }, (_, index) => ({ ...f.result.jobs[0]!, id: 100 + index, name: `diagnostic ${index}` }));
     f.result.jobs.push(...filler); f.result.total_count += filler.length;
-    if (scenario === 'duplicate across pages') f.result.jobs[100]!.id = f.result.jobs[0]!.id;
+    if (scenario === 'duplicate across pages') f.result.jobs[50]!.id = f.result.jobs[0]!.id;
     f.state.getHook = path => {
       if (!path.endsWith('page=2')) return;
       if (scenario === 'count changed') f.result.total_count++;
-      if (scenario === 'missing page') f.result.jobs.splice(100);
+      if (scenario === 'missing page') f.result.jobs.splice(50);
     };
     if (scenario === 'complete') await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
     else { await expect(f.execute()).rejects.toThrow(); expect(f.enqueue).not.toHaveBeenCalled(); }
-    expect(f.api.get).toHaveBeenCalledWith('/repos/openlup/openlup/actions/runs/100/jobs?filter=all&per_page=100&page=2');
+    expect(f.api.get).toHaveBeenCalledWith('/repos/openlup/openlup/actions/runs/100/jobs?filter=all&per_page=50&page=2');
   });
   it.each(['before', 'equal', 'after'])('bounds queue attempts to the current merge intent: prior event %s arming', async boundary => {
     const f = handoffFixture();

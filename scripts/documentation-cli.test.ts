@@ -234,19 +234,30 @@ describe("documentation CLI on the bare public runtime", () => {
         expect(same.stdout).not.toContain("append-only migration history:");
       }
 
-      // 2. Ahead of base with a non-UTC forward slot: logs observation without failing (including under redirected GIT_DIR).
-      const forwardPath = "supabase/migrations/20261124000099_local_slot_obs.sql";
-      write(checkout, forwardPath, "CREATE TABLE IF NOT EXISTS public.local_slot_obs (id integer primary key);\n");
+      // 2. Ahead of base with a non-UTC forward slot: refuses by default (enforceUtc=true), then a valid UTC slot passes.
+      const invalidForwardPath = "supabase/migrations/20261124000099_local_slot_obs.sql";
+      write(checkout, invalidForwardPath, "CREATE TABLE IF NOT EXISTS public.local_slot_obs (id integer primary key);\n");
       git(checkout, ["add", "."]);
-      const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: checkout, encoding: "utf8" }).split("\0").filter(Boolean).sort();
+      let tracked = execFileSync("git", ["ls-files", "-z"], { cwd: checkout, encoding: "utf8" }).split("\0").filter(Boolean).sort();
       write(checkout, "config/openlup-publication-catalog.json", createPublicPublicationCatalog(tracked.filter((path) => !isGuidePage(path) && !isManifestPinnedSqlArea(path)).map((path) => ({ path, class: "public-output" })), []).contents);
       commit(checkout);
       for (const [args, extraEnv] of [[["--docs-base", base], redirectedEnv], [[], undefined]] as const) {
-        const obs = execute([...args], extraEnv);
-        expect(obs.stderr).toBe(""); expect(obs.status).toBe(0);
-        expect(obs.stdout).toContain(`migration slot observation: migration history requires an exact UTC second: ${forwardPath}`);
-        expect(obs.stdout).toContain("append-only migration history:");
-        expect(obs.stdout).toContain("package API changes carry Migration blocks:");
+        const refused = execute([...args], extraEnv);
+        expect(refused.status).toBe(1);
+        expect(refused.stderr).toContain(`migration history requires an exact UTC second: ${invalidForwardPath}`);
+      }
+      git(checkout, ["reset", "--hard", "-q", base]);
+      const forwardPath = "supabase/migrations/20261124000059_local_slot_valid.sql";
+      write(checkout, forwardPath, "CREATE TABLE IF NOT EXISTS public.local_slot_obs (id integer primary key);\n");
+      git(checkout, ["add", "."]);
+      tracked = execFileSync("git", ["ls-files", "-z"], { cwd: checkout, encoding: "utf8" }).split("\0").filter(Boolean).sort();
+      write(checkout, "config/openlup-publication-catalog.json", createPublicPublicationCatalog(tracked.filter((path) => !isGuidePage(path) && !isManifestPinnedSqlArea(path)).map((path) => ({ path, class: "public-output" })), []).contents);
+      commit(checkout);
+      for (const [args, extraEnv] of [[["--docs-base", base], redirectedEnv], [[], undefined]] as const) {
+        const ok = execute([...args], extraEnv);
+        expect(ok.stderr).toBe(""); expect(ok.status).toBe(0);
+        expect(ok.stdout).toContain("append-only migration history:");
+        expect(ok.stdout).toContain("package API changes carry Migration blocks:");
       }
 
       // 3. Committed breaking package API snapshot change without a Migration: block refuses locally (including under redirected GIT_DIR).
