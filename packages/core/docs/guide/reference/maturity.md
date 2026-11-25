@@ -485,6 +485,7 @@ Symbols whose maturity differs from their subpath, or that are deprecated:
 | `./commerce/server` | `inspectCommerceMoneyLimitsV2` | experimental | no |
 | `./commerce/server` | `installCommerceMoneyLimitsV2` | experimental | no |
 | `./commerce/server` | `readCheckoutRecoveryReminderObservation` | experimental | no |
+| `./commerce/server` | `readPublishedSkuTaxAssignments` | experimental | no |
 | `./commerce/server/destinations` | `DestinationBindingV2` | experimental | no |
 | `./commerce/server/destinations` | `DestinationContextV2` | experimental | no |
 | `./commerce/server/destinations` | `DestinationIssueResultV2` | experimental | no |
