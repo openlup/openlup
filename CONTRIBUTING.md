@@ -581,8 +581,10 @@ hosted run.
 Playwright retries nothing. In hosted CI only, a group whose journeys fail
 reruns once, with fresh databases, hosts and state, in the same shard, after the
 first attempt's cleanup completed. A setup or cleanup failure is never rerun, nor
-is a first attempt that used more than 45% of `OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS`
-(default 300000), which prints `retry skipped: budget`. A group that passed only on the rerun is reported the same
+is a rerun that would not fit `OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS` (default 300000;
+the workflow sets the job deadline less setup): the time already used, one more attempt
+as long as the failed one, an equal estimate per later group and a reserve for the
+catalogue upgrade or cleanup must fit, otherwise it prints `retry skipped: budget`. A group that passed only on the rerun is reported the same
 way as a flaky Vitest file (`flaky-retry-passed: starter browser group <n>`). See the
 [starter proof recipe](examples/neutral-store/docs/proof.md#database-backed-purchase-acceptance-recipe)
 for the selected journeys and the separate local proofs.

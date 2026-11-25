@@ -260,8 +260,10 @@ async function freePort() {
   return port;
 }
 
-export const retryBudgetShare = 0.45;
 export const defaultRetryBudgetMs = 300_000;
+// The catalogue upgrade runs after the groups (about 143 s hosted); cleanup alone needs far less.
+export const catalogueUpgradeReserveMs = 210_000;
+export const groupCleanupReserveMs = 30_000;
 
 /** The job budget against which a group's first attempt is measured before a rerun. */
 export function starterBrowserRetryBudgetMs(env = processEnvironment) {
@@ -270,22 +272,25 @@ export function starterBrowserRetryBudgetMs(env = processEnvironment) {
 }
 
 /**
- * Only a journeys failure on the first attempt, with hosted-CI retry enabled, whose
- * cleanup completed and which used at most 45% of the budget, reruns the group.
+ * Only a journeys failure on the first attempt, with hosted-CI retry enabled and a
+ * completed cleanup, reruns the group, and only when the rerun still fits: the time
+ * this run has used, one more attempt as long as the failed one, an equal estimate
+ * for every later group and the reserved tail must all fit inside the budget.
  */
 export function decideBrowserGroupRetry(phase, attempt, retryEnabled,
-  { cleanupFailed = false, elapsedMs = 0, budgetMs = defaultRetryBudgetMs } = {}) {
+  { cleanupFailed = false, usedMs = 0, attemptMs = 0, laterGroups = 0, reserveMs = 0, budgetMs = defaultRetryBudgetMs } = {}) {
   if (phase !== 'journeys') return 'abort';
   if (!retryEnabled || attempt !== 1 || cleanupFailed) return 'fail';
-  return elapsedMs > budgetMs * retryBudgetShare ? 'budget' : 'retry';
+  return usedMs + attemptMs * (1 + laterGroups) + reserveMs > budgetMs ? 'budget' : 'retry';
 }
 
 // Preserve later test diagnostics, but do not repeat a failed infrastructure setup.
 // A journeys failure in hosted CI reruns the whole group once on fresh disposable state.
 export async function runBrowserGroups(runGroup, currentPhase, groups = browserJourneyGroups.map((_, index) => index),
-  { retryJourneys = false, reportFlaky = reportFlakyRetries, budgetMs = defaultRetryBudgetMs, now = () => performance.now() } = {}) {
+  { retryJourneys = false, reportFlaky = reportFlakyRetries, budgetMs = defaultRetryBudgetMs, reserveMs = 0, now = () => performance.now() } = {}) {
   let failure;
-  for (const index of groups) {
+  const runStarted = now();
+  for (const [position, index] of groups.entries()) {
     const selection = browserJourneyGroups[index];
     for (let attempt = 1; ; attempt += 1) {
       const started = now();
@@ -297,7 +302,8 @@ export async function runBrowserGroups(runGroup, currentPhase, groups = browserJ
         const phase = currentPhase();
         console.error(`Starter browser group ${index + 1} failed during ${phase}${attempt > 1 ? ' on retry' : ''}`);
         const decision = decideBrowserGroupRetry(phase, attempt, retryJourneys,
-          { cleanupFailed: isCleanupFailure(error), elapsedMs: now() - started, budgetMs });
+          { cleanupFailed: isCleanupFailure(error), usedMs: now() - runStarted, attemptMs: now() - started,
+            laterGroups: groups.length - position - 1, reserveMs, budgetMs });
         if (decision === 'abort') throw error;
         if (decision === 'budget') console.error(`Starter browser group ${index + 1} retry skipped: budget`);
         if (decision === 'retry') { console.error(`Retrying starter browser group ${index + 1} once`); continue; }
@@ -507,7 +513,8 @@ export async function runStarterBrowser(options) {
             const counts = output.match(/\b\d+ (?:passed|skipped|failed|did not run)\b/gu) ?? [];
             if (!counts.some(count => count.endsWith(' passed'))) throw new Error('starter_browser_results_missing');
             console.log(`Starter database journeys: ${counts.join(', ')}; group ${groupIndex + 1}`);
-          }), () => cancellation.signal.aborted ? 'cancelled' : phase, options.groups, { retryJourneys: isHostedCi(processEnvironment), budgetMs: starterBrowserRetryBudgetMs() });
+          }), () => cancellation.signal.aborted ? 'cancelled' : phase, options.groups, { retryJourneys: isHostedCi(processEnvironment), budgetMs: starterBrowserRetryBudgetMs(),
+            reserveMs: !options.groups || options.groups.includes(catalogueUpgradeGroupIndex) ? catalogueUpgradeReserveMs : groupCleanupReserveMs });
     });
     await runCatalogueUpgrade(options, image, async (manifest, commit, browser) => {
       cancellation.signal.throwIfAborted();

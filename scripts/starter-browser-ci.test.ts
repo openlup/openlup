@@ -114,7 +114,7 @@ describe('installed starter browser CI', () => {
       expect(report).toHaveBeenCalledWith('Starter browser group 4 failed during seed_coffee');
     } finally { report.mockRestore(); }
     const source = readFileSync('scripts/starter-browser-ci.mjs', 'utf8');
-    expect(source).toContain("phase, options.groups, { retryJourneys: isHostedCi(processEnvironment), budgetMs: starterBrowserRetryBudgetMs() })");
+    expect(source).toContain("phase, options.groups, { retryJourneys: isHostedCi(processEnvironment), budgetMs: starterBrowserRetryBudgetMs(),");
   });
   it.each(['mirror', 'local'] as const)('replays once with the resolved %s image for the owning group', async source => {
     vi.stubEnv('CI', source === 'mirror' ? 'true' : '');
@@ -283,8 +283,8 @@ describe('installed starter browser CI', () => {
     const install = workflow.split('  install-browser:')[1]!.split('  install-proof:')[0]!;
     expect(install).toContain('packages: read');
     expect(install).toContain('timeout-minutes: 12');
-    // The single journeys retry budget is the whole job deadline, so a retry is attempted only when it can still fit.
-    expect(install).toContain("OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS: '720000'");
+    // The retry budget is the 12-minute job deadline less about a minute for the steps before the groups start.
+    expect(install).toContain("OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS: '660000'");
     expect(install).toContain('docker login ghcr.io');
     expect(install.indexOf('docker login')).toBeLessThan(install.indexOf('scripts/starter-browser-ci.mjs'));
     expect(install).toContain('scripts/starter-browser-ci.mjs --manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"');
@@ -498,13 +498,18 @@ describe('starter browser single journeys retry', () => {
       expect(events).toEqual(['start 1', 'cleaned 1', 'start 2', 'cleaned 2']);
     } finally { report.mockRestore(); }
   });
-  it('skips the retry when the first attempt used more than 45% of the budget', async () => {
+  it('retries only when the rerun, later groups and the reserved tail still fit the budget', async () => {
     expect(defaultRetryBudgetMs).toBe(300000);
     expect(starterBrowserRetryBudgetMs({})).toBe(300000);
     expect(starterBrowserRetryBudgetMs({ OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS: '600000' })).toBe(600000);
     expect(starterBrowserRetryBudgetMs({ OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS: 'soon' })).toBe(300000);
-    expect(decideBrowserGroupRetry('journeys', 1, true, { elapsedMs: 135000, budgetMs: 300000 })).toBe('retry');
-    expect(decideBrowserGroupRetry('journeys', 1, true, { elapsedMs: 135001, budgetMs: 300000 })).toBe('budget');
+    // A single 280 s group with the catalogue reserve fits 660 s; a second later group does not.
+    expect(decideBrowserGroupRetry('journeys', 1, true, { usedMs: 280000, attemptMs: 280000, reserveMs: 100000, budgetMs: 660000 })).toBe('retry');
+    expect(decideBrowserGroupRetry('journeys', 1, true, { usedMs: 280000, attemptMs: 280000, reserveMs: 100001, budgetMs: 660000 })).toBe('budget');
+    expect(decideBrowserGroupRetry('journeys', 1, true, { usedMs: 140000, attemptMs: 140000, laterGroups: 1, reserveMs: 210000, budgetMs: 660000 })).toBe('budget');
+    // Time an earlier group already used counts against the rerun.
+    expect(decideBrowserGroupRetry('journeys', 1, true, { usedMs: 400000, attemptMs: 120000, reserveMs: 30000, budgetMs: 660000 })).toBe('retry');
+    expect(decideBrowserGroupRetry('journeys', 1, true, { usedMs: 520000, attemptMs: 120000, reserveMs: 30000, budgetMs: 660000 })).toBe('budget');
     const report = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       let clock = 0;
@@ -514,7 +519,7 @@ describe('starter browser single journeys retry', () => {
         attempts.push(attempt);
         clock += 50;
         throw failure;
-      }, () => 'journeys', [0], { retryJourneys: true, budgetMs: 100, now: () => clock })).rejects.toBe(failure);
+      }, () => 'journeys', [0], { retryJourneys: true, budgetMs: 99, now: () => clock })).rejects.toBe(failure);
       expect(attempts).toEqual([1]);
       expect(report).toHaveBeenCalledWith('Starter browser group 1 retry skipped: budget');
     } finally { report.mockRestore(); }
