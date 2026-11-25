@@ -33,17 +33,27 @@ async function fixture(t: TestContext, { initial = quote, render = true, integra
     checked = false;
     name = '';
     value = '';
+    hidden = false;
+    parentElement: Element | null = null;
+    attributes = new Map<string, string>();
     children: Element[] = [];
     append() {}
-    appendChild(child: Element) { this.children.push(child); }
+    appendChild(child: Element) { child.parentElement = this; this.children.push(child); }
     replaceChildren() {}
     setAttribute(name: string, value: string) {
       if (name === 'name' || name === 'value') this[name] = value;
+      this.attributes.set(name, value);
     }
-    removeAttribute() {}
+    getAttribute(name: string) { return this.attributes.get(name); }
+    removeAttribute(name: string) { this.attributes.delete(name); }
     reportValidity() { return true; }
     control(name: string) { return this.children.flatMap(child => child.children).find(child => child.name === name); }
-    querySelector() { return this.control('termsAccepted') ?? fallbackConsent; }
+    querySelector(): Element | typeof fallbackConsent;
+    querySelector(selector: string): Element | typeof fallbackConsent | undefined;
+    querySelector(selector?: string) {
+      if (selector === 'button[type="submit"]') return this.children.flatMap(child => child.children).find(child => child.getAttribute('type') === 'submit');
+      return this.control('termsAccepted') ?? fallbackConsent;
+    }
   }
   const fallbackConsent = { checked: false };
   let email = '';
@@ -179,7 +189,7 @@ test('term-less subscriptions submit the displayed payable and null signed accep
 });
 
 test('the database-free checkout displays its estimate without submitting a purchase', async t => {
-  const { consent, displayed, reply, requests, submit } = await fixture(t, { initial: oneTime, render: false, integrated: true });
+  const { form, consent, displayed, reply, requests, editEmail, submit } = await fixture(t, { initial: oneTime, render: false, integrated: true });
   const estimate = await dispatchAction(pendingBindings(), 'offer.validate', {
     cart: { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null,
       lines: [{ sku: config.offer.products[0]!.sku, quantity: config.offer.minUnits }] },
@@ -189,12 +199,15 @@ test('the database-free checkout displays its estimate without submitting a purc
   await setImmediate();
   assert.deepEqual(displayed, [estimate.value]);
   assert.equal(consent.checked, false);
-  consent.checked = true;
-  await submit();
-  assert.ok(requests[1]!.url.endsWith('offer.validate'));
-  reply(1, estimate.value);
+  assert.equal(form.control('termsAccepted')!.parentElement!.hidden, true);
+  for (let click = 0; click < 3; click++) await submit();
+  assert.equal(requests.length, 1);
+  editEmail('other@example.test');
+  reply(1, oneTime);
   await setImmediate();
+  assert.equal(form.control('termsAccepted')!.parentElement!.hidden, false);
   assert.equal(consent.checked, false);
+  await submit();
   assert.equal(requests.length, 2);
 });
 
@@ -202,6 +215,7 @@ test('checkout limits document definitive retirement and exact uncertain retry',
   const limits = (await readFile(new URL('../docs/limits.md', import.meta.url), 'utf8')).replace(/\s+/gu, ' ');
   assert.match(limits, /definitive total refusal retires the command key\. After reconfirmation, use a new key even if the refreshed amount and currency are unchanged/u);
   assert.match(limits, /uncertain retry keeps the exact payload and command key/u);
+  assert.match(limits, /a refusal still counts toward the attempt limit/u);
 });
 
 test('one-time quote refresh refusal clears consent without retiring the command', async t => {

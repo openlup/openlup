@@ -9,7 +9,7 @@ export type CheckoutRateLimit = (request: { headers: Record<string, string | str
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const hex = (value: string) => /^[0-9a-f]{64}$/.test(value);
 
-/** The caller supplies the held READ COMMITTED checkout session. */
+/** The caller supplies the held checkout session before opening the draft transaction. */
 export function createPostgresCheckoutRateLimit(db: NativeCheckoutQuery, settings: Settings): CheckoutRateLimit {
   return async (request, intent, sequence = 0) => {
     try {
@@ -64,7 +64,7 @@ export function createCheckoutAttemptBindings(settings: Settings, now: () => num
       return existing !== undefined && existing.at > now() - settings.retentionMs
         && existing.identity !== identityDigest(email, requesterKey);
     },
-    bind(commandKey: string, email: string, requesterKey: string | undefined, onInsert?: (undo: () => void) => void): Entry | null {
+    bind(commandKey: string, email: string, requesterKey: string | undefined): Entry | null {
       const at = now();
       if (!Number.isFinite(at) || !commandKey || !email.trim() || !requesterKey || !hex(requesterKey)
         || Object.values(settings).some(value => !Number.isSafeInteger(value) || value < 1)
@@ -77,7 +77,6 @@ export function createCheckoutAttemptBindings(settings: Settings, now: () => num
       if (entries.size >= settings.maxEntries) return null;
       const entry: Entry = { identity, at };
       entries.set(key, entry);
-      onInsert?.(() => { if (entries.get(key) === entry) entries.delete(key); });
       return entry;
     },
   };

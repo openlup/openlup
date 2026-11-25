@@ -850,7 +850,7 @@ describe.sequential('installed quote proofs', () => {
   beforeAll(prepareQuoteConsumer, postgresSetupTimeoutMs);
   afterAll(removeQuoteConsumer, postgresTeardownTimeoutMs);
 
-  it('rolls back a writer-side price refusal without charging the reconfirmed checkout', async () => {
+  it('records one writer-side price refusal and allows reconfirmation within quota', async () => {
     const database = quoteCaseFixture('supplements', false);
     try {
       const fixture = await database.setup();
@@ -866,7 +866,7 @@ describe.sequential('installed quote proofs', () => {
         import {composeNativeBindings} from './application/host/native-composition.ts';
         import {createOriginPolicy} from './application/host/origin-policy.ts';
         const config = selectConfiguration(fixture.configuration);
-        config.purchase.attemptLimits = { ...config.purchase.attemptLimits, maxPerEmail: 1, maxPerRequester: 1, maxEntries: 1 };
+        config.purchase.attemptLimits = { ...config.purchase.attemptLimits, maxPerEmail: 2, maxPerRequester: 2, maxEntries: 2 };
         const {server,base,port} = await bindScenarioServer();
         const {createApplication} = await import('./application/host/server.ts');
         const owner = new pg.Pool({connectionString:fixture.ownerUrl});
@@ -902,9 +902,14 @@ describe.sequential('installed quote proofs', () => {
           const census = async () => Object.fromEntries(await Promise.all([
             'clients','commerce_checkout_attempt_ledger','commerce_orders','commerce_order_items',
             'commerce_order_draft_receipts','commerce_settlement_intents','commerce_destination_bindings',
-            'fulfillment_inventory_reservations','commerce_promotion_claims','outbox_events',
+            'fulfillment_inventory_reservations','fulfillment_stock_current','commerce_promotion_claims',
+            'payment_simulator_attempts','payment_truth_events','outbox_events',
           ].map(async table=>[table,(await owner.query('SELECT count(*)::int AS rows FROM public.'+table)).rows[0].rows])));
+          const attemptRows = async () => (await owner.query('SELECT attempt_digest FROM public.commerce_checkout_attempt_ledger ORDER BY attempt_digest')).rows;
+          const digest = key => createHash('sha256').update(key+'\0'+0).digest('hex');
+          const stock = async () => (await owner.query('SELECT to_jsonb(s) AS row FROM public.fulfillment_stock_current s ORDER BY to_jsonb(s)::text')).rows;
           const before = await census();
+          const beforeStock = await stock();
           const expectedTotal = await review();
           let writerCalls = 0;
           pg.Client.prototype.query = function (sql,...args) {
@@ -922,7 +927,10 @@ describe.sequential('installed quote proofs', () => {
           assert.deepEqual(await action('checkout.create',{...input,expectedTotal},refusedKey),
             {status:409,body:{ok:false,code:'starter_quote_price_changed'}});
           assert.equal(writerCalls,1);
-          assert.deepEqual(await census(),before,'writer refusal left purchase effects');
+          assert.deepEqual(await census(), { ...before, commerce_checkout_attempt_ledger: before.commerce_checkout_attempt_ledger+1 },
+            'writer refusal must leave exactly one attempt and no purchase effects');
+          assert.deepEqual(await stock(), beforeStock);
+          assert.deepEqual(await attemptRows(), [{attempt_digest:digest(refusedKey)}]);
           const refreshed = await review();
           assert.notDeepEqual(refreshed,expectedTotal);
           const reconfirmedKey = crypto.randomUUID();
@@ -933,10 +941,12 @@ describe.sequential('installed quote proofs', () => {
           const after = await census();
           assert.equal(after.commerce_orders,before.commerce_orders+1);
           assert.equal(after.commerce_order_draft_receipts,before.commerce_order_draft_receipts+1);
-          assert.equal(after.commerce_checkout_attempt_ledger,before.commerce_checkout_attempt_ledger+1);
-          const attempt = createHash('sha256').update(reconfirmedKey+'\0'+0).digest('hex');
-          assert.deepEqual((await owner.query('SELECT attempt_digest FROM public.commerce_checkout_attempt_ledger')).rows,
-            [{attempt_digest:attempt}]);
+          assert.equal(after.commerce_checkout_attempt_ledger,before.commerce_checkout_attempt_ledger+2);
+          assert.deepEqual(await attemptRows(), [refusedKey,reconfirmedKey].map(digest).sort().map(attempt_digest=>({attempt_digest})));
+          assert.deepEqual(await action('checkout.create',{...input,expectedTotal:refreshed}),
+            {status:409,body:{ok:false,code:'starter_attempt_limited'}});
+          assert.equal(writerCalls,2);
+          assert.deepEqual(await census(),after);
         } finally {
           pg.Client.prototype.query = query;
           server.close();

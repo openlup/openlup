@@ -25,6 +25,7 @@ button, .button-link {
 }
 button:hover, .button-link:hover { filter: brightness(.94); }
 button:disabled { cursor: wait; opacity: .6; }
+button[aria-disabled="true"] { cursor: not-allowed; opacity: .6; }
 .secondary { background: transparent; color: var(--ink, #222b2a); border-color: var(--border, #ccd6cf); }
 :focus-visible { outline: 3px solid #2877b7; outline-offset: 4px; }
 main:focus { outline: none; }

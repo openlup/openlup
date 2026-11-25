@@ -96,7 +96,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
     el('div', { class: 'actions' }, submit, reset), output);
   form.addEventListener('submit', event => {
     event.preventDefault();
-    if (inFlight || !form.isConnected || !form.reportValidity()) return;
+    if (inFlight || submit.getAttribute('aria-disabled') === 'true' || !form.isConnected || !form.reportValidity()) return;
     const requestGeneration = ++generation;
     const current = () => form.isConnected && generation === requestGeneration;
     void (async () => {

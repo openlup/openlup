@@ -2,11 +2,17 @@ import { isOfferQuoteView } from './live-quote.ts';
 import { ACQUISITION_TERMS_CAPABILITY } from '@openlup/platform/pricing/contracts';
 import { acquisitionTermsSchema } from '@openlup/platform/pricing/browser';
 import type { ActionInput } from '../shared/api.ts';
+import type { LocaleCopy } from '../shared/locales.ts';
 import { isRecord, type OfferQuote } from '../shared/offer.ts';
 import { quoteCopy } from '../owned/quote-copy.ts';
 import type { PageContext } from './context.ts';
 import { act } from './api.ts';
 import { el } from './dom.ts';
+
+const installedHostRequired = {
+  en: 'Checkout requires the installed store host.',
+  pl: 'Złożenie zamówienia wymaga uruchomienia zainstalowanego hosta sklepu.',
+} satisfies LocaleCopy<string>;
 
 function observe(quote: OfferQuote & Record<string, unknown>, binding: string) {
   const total = quote.expectedTotal;
@@ -35,6 +41,7 @@ export function createQuoteAcceptance(context: PageContext, summary: HTMLElement
   let current: ReturnType<typeof observe>;
   let rendered = false;
   let reviewPending = false;
+  let previewOnly = false;
   let expiry: ReturnType<typeof setTimeout> | undefined;
   const copy = quoteCopy[context.locale];
   const base = () => ({ cart: context.getCart(), configuration: context.config.id, country: context.config.market.country,
@@ -45,6 +52,13 @@ export function createQuoteAcceptance(context: PageContext, summary: HTMLElement
     .map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]));
   const values = () => ({ ...Object.fromEntries(new FormData(form).entries()), ...base() });
   const consent = () => form.querySelector<HTMLInputElement>('input[name="termsAccepted"]')!;
+  function setPreviewOnly(active: boolean) {
+    if (previewOnly === active) return;
+    previewOnly = active;
+    const consentField = consent().parentElement;
+    if (consentField) consentField.hidden = active;
+    form.querySelector('button[type="submit"]')?.setAttribute('aria-disabled', String(active));
+  }
   function clear() {
     clearTimeout(expiry);
     current = undefined;
@@ -67,18 +81,22 @@ export function createQuoteAcceptance(context: PageContext, summary: HTMLElement
     if (!form.isConnected) { clear(); return false; }
     const quote = result.ok && isOfferQuoteView(result.value) ? result.value : undefined;
     if (!quote || quote.currency !== context.config.market.currency) {
+      setPreviewOnly(false);
       clear();
       summary.replaceChildren(el('p', {},copy.unavailable),el('code', {},result.ok ? 'starter_quote_unavailable' : result.code));
       return false;
     }
     const next = observe(quote, scope);
     if (!next) {
-      clear();
       const estimate = quote.mode === 'one_time' && quote.expectedTotal === undefined
         && quote.quoteAcceptance === undefined && quote.acquisitionTerms === undefined;
-      summary.replaceChildren(estimate ? context.fragments.checkoutSummary(context,quote) : el('p', {},copy.unavailable));
+      if (!previewOnly || !estimate) clear();
+      setPreviewOnly(estimate);
+      if (estimate) summary.replaceChildren(context.fragments.checkoutSummary(context,quote), el('p', {}, installedHostRequired[context.locale]));
+      else summary.replaceChildren(el('p', {},copy.unavailable));
       return false;
     }
+    setPreviewOnly(false);
     if (!reviewed || reviewed !== current || reviewed.terms !== next.terms ||
       reviewed.validUntil <= Date.now() || !consent().checked) {
       clear();
@@ -101,6 +119,7 @@ export function createQuoteAcceptance(context: PageContext, summary: HTMLElement
       if (form) clear();
       ++generation;
       const attached = form = element as HTMLFormElement;
+      previewOnly = false;
       attached.addEventListener('change',event => {
         if (attached === form && (event.target as HTMLInputElement).name !== 'termsAccepted') void refresh(values());
       });
@@ -118,12 +137,13 @@ export function createQuoteAcceptance(context: PageContext, summary: HTMLElement
       }
     },
     async prepare(input: ActionInput): Promise<ActionInput | null> {
+      if (previewOnly) return null;
       const matching = current?.binding === JSON.stringify(binding(input)) ? current : undefined;
       const reviewed = consent().checked ? matching : undefined;
       if (context.getCart().mode === 'one_time') {
         if (rendered && reviewed && form.isConnected) return { ...input, expectedTotal: reviewed.total };
         if (!matching && !reviewPending) await refresh(input);
-        summary.append(el('p', {}, copy.refresh));
+        if (!previewOnly) summary.append(el('p', {}, copy.refresh));
         return null;
       }
       const refreshed = await refresh(input);

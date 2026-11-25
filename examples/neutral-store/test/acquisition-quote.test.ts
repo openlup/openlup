@@ -406,7 +406,6 @@ function freshQuoteFixture(onQuery: (sql: string, values: unknown[]) => unknown 
   const query = async (sql: string, values: unknown[] = []) => {
     if (sql.includes('SELECT email')) return { rows: [{ email: payload.email }] };
     if (/pg_advisory|commerce_order_draft_receipts|catalog_admission_requires_quote_authority/u.test(sql)) return { rows: [] };
-    if (sql === 'BEGIN ISOLATION LEVEL READ COMMITTED' || sql === 'SAVEPOINT checkout_draft') return { rows: [] };
     if (sql.includes('FROM public.catalog_skus AS sku')) {
       catalogueReads++;
       return { rows: [{

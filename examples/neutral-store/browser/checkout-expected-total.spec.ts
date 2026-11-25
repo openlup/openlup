@@ -1,11 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type Response } from '@playwright/test';
 import pg from 'pg';
+import { dispatchAction, pendingBindings } from '../host/bindings.ts';
 import { copy } from '../owned/copy.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { market } from '../owned/market.config.ts';
 import { quoteCopy } from '../owned/quote-copy.ts';
 import { configurations } from '../owned/store.config.ts';
+import type { OfferQuote } from '../shared/offer.ts';
 import { routes } from '../shared/routes.ts';
 
 type Money = { amountMinor: number; currency: string };
@@ -34,7 +36,7 @@ async function checkout(page: Page, quantity: number) {
   await page.getByRole('button', { name: labels.checkout, exact: true }).click();
   const review = await (await checked).json();
   expect(review.ok).toBe(true);
-  return review.value.expectedTotal as Money;
+  return review.value as OfferQuote & { expectedTotal?: Money };
 }
 
 function renderedTotal(page: Page, { amountMinor, currency }: Money) {
@@ -42,6 +44,36 @@ function renderedTotal(page: Page, { amountMinor, currency }: Money) {
   return expect(page.locator('.summary dl > div').filter({ has: page.getByText(labels.total, { exact: true }) }))
     .toHaveText(labels.total + money);
 }
+
+test('one-time checkout preview displays its estimate and gates repeated submits', async ({ page }, info) => {
+  const config = configurations[info.project.name]!;
+  let reviews = 0;
+  let creates = 0;
+  await page.route(reviewPath, async route => {
+    const input = route.request().postDataJSON();
+    if (!input.firstName) return route.continue();
+    reviews++;
+    const estimate = await dispatchAction(pendingBindings(), 'offer.validate', input,
+      { config, actor: { customerRef: null, operatorRef: null }, commandKey: 'preview-fixture' });
+    await route.fulfill({ json: estimate });
+  });
+  await page.route(createPath, route => { creates++; return route.abort(); });
+
+  const estimate = await checkout(page, config.offer.minUnits);
+  const message = page.getByText('Checkout requires the installed store host.', { exact: true });
+  const consent = page.getByText(labels.termsAccept, { exact: true });
+  const submit = page.getByRole('button', { name: labels.placeOrder, exact: true });
+  await renderedTotal(page, { amountMinor: estimate.totalMinor, currency: estimate.currency });
+  await expect(message).toBeVisible();
+  await expect(consent).toBeHidden();
+  await expect(submit).toBeDisabled();
+  for (let click = 0; click < 3; click++) await submit.evaluate((button: HTMLButtonElement) => button.click());
+  await expect(message).toHaveCount(1);
+  await expect(consent).toBeHidden();
+  await expect(page.getByText(quoteCopy[locale].refresh)).toHaveCount(0);
+  expect(reviews).toBe(1);
+  expect(creates).toBe(0);
+});
 
 for (const outcome of ['changed total', 'same total', 'stale refusal', 'uncertain retry', 'failed refresh'] as const) {
   test(`one-time checkout reconfirms after ${outcome}`, async ({ page, baseURL }, info) => {
@@ -73,7 +105,7 @@ for (const outcome of ['changed total', 'same total', 'stale refusal', 'uncertai
     const release = deferred<void>();
     try {
       const before = await effects();
-      const original = await checkout(page, config.offer.minUnits);
+      const original = (await checkout(page, config.offer.minUnits)).expectedTotal!;
       await renderedTotal(page, original);
       const consent = page.getByLabel(labels.termsAccept);
       const submit = page.getByRole('button', { name: labels.placeOrder, exact: true });

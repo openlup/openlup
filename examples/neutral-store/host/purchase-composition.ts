@@ -132,16 +132,12 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     let draftSession: PoolClient | undefined;
     let key: string | undefined;
     let draftTransaction = false;
-    let keepAttempt = false;
     async function releaseDraftSession() {
       const session = draftSession;
       draftSession = undefined;
       if (!session) return;
       try {
-        if (draftTransaction && keepAttempt) {
-          await session.query('ROLLBACK TO SAVEPOINT checkout_draft');
-          await session.query('COMMIT');
-        } else if (draftTransaction) await session.query('ROLLBACK');
+        if (draftTransaction) await session.query('ROLLBACK');
         if (key) await session.query('SELECT pg_advisory_unlock(hashtextextended($1,0))', [key]);
         session.release();
       } catch { session.release(true); }
@@ -221,29 +217,19 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       if (isRecord(error) && (error.code === '23505' || error.message === 'starter_command_conflict')) return refused('starter_command_conflict');
       return refused(quoteFailure(error));
     }
+    const attemptLimit = checkRateLimit ?? createPostgresCheckoutRateLimit(draftSession, context.config.purchase.attemptLimits);
+    if (!await admitCheckoutAttempt(attemptLimit,
+      { headers: {}, ...(context.actor.requesterKey ? { requesterKey: context.actor.requesterKey } : {}) },
+      { idempotencyKey: context.commandKey, contact: { email } }, 0)) return refused('starter_attempt_limited');
+    attemptBindings ??= createCheckoutAttemptBindings(context.config.purchase.attemptLimits);
+    const attempt = attemptBindings.bind(context.commandKey, email, context.actor.requesterKey);
+    if (!attempt) return refused('starter_attempt_limited');
     const session = draftSession;
-    if (!priorOrder) {
+    const authorizedClient = priorOrder?.client_id ?? context.actor.customerRef;
+    if (!priorOrder && quoteOptions.bindContact) {
       await session.query('BEGIN ISOLATION LEVEL READ COMMITTED');
       draftTransaction = true;
     }
-    const attemptLimit = checkRateLimit ?? createPostgresCheckoutRateLimit(session, context.config.purchase.attemptLimits);
-    const attemptInput: Parameters<CheckoutRateLimit> = [
-      { headers: {}, ...(context.actor.requesterKey ? { requesterKey: context.actor.requesterKey } : {}) },
-      { idempotencyKey: context.commandKey, contact: { email } }, 0];
-    if (!await admitCheckoutAttempt(attemptLimit, ...attemptInput)) {
-      if (draftTransaction) await session.query('COMMIT');
-      draftTransaction = false;
-      return refused('starter_attempt_limited');
-    }
-    if (draftTransaction) {
-      await session.query('SAVEPOINT checkout_draft');
-      keepAttempt = true;
-    }
-    attemptBindings ??= createCheckoutAttemptBindings(context.config.purchase.attemptLimits);
-    let undoAttempt: (() => void) | undefined;
-    const attempt = attemptBindings.bind(context.commandKey, email, context.actor.requesterKey, undo => { undoAttempt = undo; });
-    if (!attempt) return refused('starter_attempt_limited');
-    const authorizedClient = priorOrder?.client_id ?? context.actor.customerRef;
     const registrar = quoteOptions.bindContact?.(session) ?? contacts;
     const contact = await (authorizedClient
       ? Promise.resolve({ ok: true as const, clientId: authorizedClient })
@@ -260,13 +246,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     // before its COMMIT on the session holding the request key.
     const drafts = predecessors.checkout({ async connect() {
       return { async query(statement, values) {
-        if (draftTransaction && statement === 'BEGIN ISOLATION LEVEL READ COMMITTED') {
-          // The receipt stamp requires the writer to run under the top-level transaction ID.
-          await session.query('RELEASE SAVEPOINT checkout_draft');
-          keepAttempt = false;
-          return { rows: [] };
-        }
-        if (draftTransaction && statement === 'ROLLBACK') return { rows: [] };
+        if (statement === 'BEGIN ISOLATION LEVEL READ COMMITTED' && draftTransaction) return { rows: [] };
         if (statement === 'COMMIT') {
           await session.query('SELECT public.catalog_admission_attach_legacy_submit($1,$2,$3)',
             [key, contact.clientId, { ...submit, legacyReviewEvidence: legacyReviewEvidence(quoteSnapshot) }]);
@@ -322,17 +302,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
           reason: ['journey_consumed', 'checkout_journey_consumed'].includes(String(reason)) ? 'checkout_journey_consumed' : 'checkout_failed_before_dispatch' });
       }
       if (writingStock) return refused(error instanceof FulfillmentStockReplayConflictError ? 'starter_command_conflict' : 'starter_purchase_unavailable');
-      const result = failure(error);
-      if (draftTransaction && result.code === 'starter_quote_price_changed') {
-        keepAttempt = false;
-        undoAttempt?.();
-      } else if (draftTransaction && !keepAttempt && !checkRateLimit) {
-        await session.query('ROLLBACK');
-        draftTransaction = false;
-        // Preserve the ordinary failed attempt after unwinding the writer.
-        await admitCheckoutAttempt(attemptLimit, ...attemptInput);
-      }
-      return result;
+      return failure(error);
     }
     } catch (error) { return refused(quoteFailure(error)); }
     finally {

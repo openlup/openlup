@@ -52,3 +52,6 @@ then reconfirm once the price renders.
 A definitive total refusal retires the command key. After reconfirmation,
 use a new key even if the refreshed amount and currency are unchanged.
 An uncertain retry keeps the exact payload and command key.
+
+Once checkout admits an attempt, a refusal still counts toward the attempt
+limit. This includes a price change detected by the draft writer.
