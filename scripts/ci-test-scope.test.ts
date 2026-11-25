@@ -266,6 +266,24 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['tests/postgres/managed-compat/supabase.sql'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['config/ci-postgres-packages.json'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
   });
+  it('activates each governed draft suite when its own file exists and retains restore for fixture changes', () => {
+    const fixture = 'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts';
+    const fixtureExclusions = excludedToolingTests([fixture]);
+    expect(TOOLING_INPUTS['tests/postgres/m14RestrictedConnectedRestore.test.ts']).toContain(fixture);
+    expect(fixtureExclusions).not.toContain('tests/postgres/m14RestrictedConnectedRestore.test.ts');
+
+    const unrelatedExclusions = excludedToolingTests(['docs/platform/README.md']);
+    for (const testPath of [
+      'tests/postgres/catalogAdmissionOwnerWrite.test.ts',
+      'tests/postgres/catalogAdmissionRuntimeCommit.test.ts',
+    ]) {
+      const present = existsSync(resolve(testPath));
+      expect(Object.hasOwn(TOOLING_INPUTS, testPath)).toBe(present);
+      expect(unrelatedExclusions.includes(testPath)).toBe(present);
+      if (present) expect(TOOLING_INPUTS[testPath]).toContain(fixture);
+      expect(fixtureExclusions).not.toContain(testPath);
+    }
+  });
   it('scopes all tests/postgres suites per-file and per-axis without broad tests/postgres/ prefixes', () => {
     const purePgSuites = [
       'tests/postgres/catalogPublication.test.ts',
