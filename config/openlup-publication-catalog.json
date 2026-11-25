@@ -2262,6 +2262,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/checkout-continuation-host.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/checkout-recovery-stage.test.ts",
       "class": "public-output"
     },
@@ -13007,6 +13011,30 @@
     },
     {
       "path": "scripts/migration-slots.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/historical-classes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/native-store-admission.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/registry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/security-definer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/sql-tokenizer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/migrations/types.ts",
       "class": "public-output"
     },
     {
@@ -30503,6 +30531,10 @@
     },
     {
       "path": "tests/postgres/channelPurchase.conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutAbandonmentSafetyGrant.test.ts",
       "class": "public-output"
     },
     {
