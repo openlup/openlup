@@ -849,7 +849,11 @@ the subpaths its `exports` declare, and domain code under `src/domains` and
 `server/domains` imports no configured provider SDK and no adapter,
 infrastructure, runtime or route code; the config exempts domain tests.
 Non-test production source under `packages/core/src` and `packages/ui/src`
-also imports none of the provider SDKs listed in the config. Package tests
+also imports none of the provider SDKs listed in the config. In the neutral
+starter, `client/` and `shared/` source takes runtime values from
+`@openlup/platform` only through an entry the config lists as browser-safe;
+`import type` declarations and `host/` code are unaffected. An inline
+`import { type A }` is refused; its fix is `import type`. Package tests
 retain their package isolation even when composing with a provider.
 Provider composition exemptions use `*.test.<extension>` and
 `*.testFixtures.ts`, matching the existing test convention.

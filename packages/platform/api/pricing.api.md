@@ -3729,7 +3729,7 @@ export declare function canonicalSubscriptionPricePolicyTuple(policy: Subscripti
 export declare function digestSubscriptionPricePolicy(policy: SubscriptionPricePolicyCanonicalInput | SubscriptionPricePolicyRevision): Promise<string>;
 /** Parses a persisted revision and refuses a digest outside its canonical UTF-8 tuple. */
 export declare function assertSubscriptionPricePolicyDigest(value: unknown): Promise<SubscriptionPricePolicyRevision>;
-/** Resolves a subscription unit price from a base unit price and a policy revision. */
+/** Resolves a subscription unit price from a base unit price and a policy revision. An estimate for display; the quote is the amount charged. */
 export declare function deriveSubscriptionUnitPrice(baseUnitAmountMinor: number, semantics: SubscriptionPricePolicySemantics | SubscriptionPricePolicyCanonicalInput | SubscriptionPricePolicyRevision): number;
 ```
 ## dist/pricing/taxProfileGuard.d.ts

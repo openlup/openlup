@@ -52,19 +52,22 @@ it("exposes the checkout engine only through the server entry", () => {
   }
 });
 
-it("exposes exactly the five existing pricing browser symbols with their original identity", async () => {
+it("exposes exactly the seven pricing browser symbols with their original identity", async () => {
   const browser = await import("../../src/pricing/browser/index.js");
   const primitives = await import("../../src/pricing/quotePrimitives.js");
   const acquisition = await import("../../src/pricing/acquisitionTermsSchemas.js");
+  const subscription = await import("../../src/pricing/subscriptionPricePolicy.js");
   const shipping = await import("../../src/shipping/thresholdPolicy.js");
   expect(Object.keys(browser).sort()).toEqual([
-    "acquisitionCapabilitySchema", "acquisitionTermsExpectationSchema", "createCommerceQuotePrimitives",
-    "resolvedAcquisitionTermsSchema", "shippingTermsSchema",
+    "acquisitionCapabilitySchema", "acquisitionTermsExpectationSchema", "acquisitionTermsSchema", "createCommerceQuotePrimitives",
+    "deriveSubscriptionUnitPrice", "resolvedAcquisitionTermsSchema", "shippingTermsSchema",
   ]);
   expect(browser.createCommerceQuotePrimitives).toBe(primitives.createCommerceQuotePrimitives);
   expect(browser.acquisitionCapabilitySchema).toBe(acquisition.acquisitionCapabilitySchema);
   expect(browser.acquisitionTermsExpectationSchema).toBe(acquisition.acquisitionTermsExpectationSchema);
+  expect(browser.acquisitionTermsSchema).toBe(acquisition.acquisitionTermsSchema);
   expect(browser.resolvedAcquisitionTermsSchema).toBe(acquisition.resolvedAcquisitionTermsSchema);
+  expect(browser.deriveSubscriptionUnitPrice).toBe(subscription.deriveSubscriptionUnitPrice);
   expect(browser.shippingTermsSchema).toBe(shipping.shippingTermsSchema);
 });
 
@@ -80,7 +83,15 @@ it("admits exactly the built pricing browser closure without its server root", a
     "packages/platform/dist/pricing/acquisitionTermsSchemas.js",
     "packages/platform/dist/pricing/browser/index.js",
     "packages/platform/dist/pricing/contracts/acquisitionTerms.js",
+    "packages/platform/dist/pricing/contracts/index.js",
+    "packages/platform/dist/pricing/contracts/offer.js",
+    "packages/platform/dist/pricing/contracts/offerPolicy.js",
+    "packages/platform/dist/pricing/contracts/policy.js",
+    "packages/platform/dist/pricing/contracts/provenance.js",
+    "packages/platform/dist/pricing/contracts/quote.js",
     "packages/platform/dist/pricing/quotePrimitives.js",
+    "packages/platform/dist/pricing/subscriptionPricePolicy.js",
+    "packages/platform/dist/pricing/validation.js",
     "packages/platform/dist/shipping/thresholdPolicy.js",
   ]);
   for (const profile of ["identity", "subscription"]) {
@@ -89,6 +100,20 @@ it("admits exactly the built pricing browser closure without its server root", a
     expect(files).not.toContain("packages/platform/dist/pricing/index.js");
     expect(files).not.toContain("packages/platform/dist/commerce/server/index.js");
   }
+});
+
+it("a consumer of the existing pricing browser symbols bundles no zod configuration call", async () => {
+  // zod's own source contains the word `jitless`; the witness is the configuration call that
+  // pricing/validation.ts makes. `deriveSubscriptionUnitPrice` reaches that module, so the
+  // negative control below imports it and finds the call.
+  const entry = fileURLToPath(new URL("../../dist/pricing/browser/index.js", import.meta.url));
+  const bundleOf = async (symbol: string) => (await build({
+    stdin: { contents: `import { ${symbol} } from ${JSON.stringify(entry)};\nconsole.log(${symbol});\n`, resolveDir: fileURLToPath(new URL("../..", import.meta.url)), loader: "js" },
+    bundle: true, platform: "browser", format: "esm", write: false, minify: false, logLevel: "silent",
+  })).outputFiles[0]!.text;
+  const configurationCall = /\.config\(\{\s*jitless:\s*true/;
+  expect(await bundleOf("shippingTermsSchema")).not.toMatch(configurationCall);
+  expect(await bundleOf("deriveSubscriptionUnitPrice")).toMatch(configurationCall);
 });
 
 it("bundles the built commerce entry and its complete module graph for browsers", async () => {
