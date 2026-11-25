@@ -30378,6 +30378,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutAbandonmentSafetyGrant.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutAttemptLedger.test.ts",
       "class": "public-output"
     },
