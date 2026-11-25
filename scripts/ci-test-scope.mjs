@@ -317,8 +317,6 @@ const POSTGRES_SUITE_CLOSURES = {
   'tests/postgres/operatorInvitationLifecycle.test.ts': ['tests/postgres/operatorInvitationCatalogue.ts'],
   'tests/postgres/operatorOrderCommands.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/partnerAcquisition.test.ts': [],
-  'tests/postgres/paymentCaptureTime.test.ts': ['@starter', 'tests/helpers/storeJourney.ts', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts', 'server/adapters/postgres/connectedStoreRestore.ts'],
-  'tests/postgres/paymentCaptureTimePgtap.test.ts': ['@starter', '@managedCompat', 'tests/postgres/fixtures/paymentCaptureTime/replayed.sql', 'tests/postgres/fixtures/paymentProvider/setup.sql', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/paymentMethodRefsPgtap.test.ts': ['@managedCompat', 'tests/postgres/fixtures/paymentMethods/', 'tests/postgres/m19NoticeFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/paymentMethodRuntime.test.ts': ['@starter', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
   'tests/postgres/paymentProviderProfiles.test.ts': ['@starter', 'tests/postgres/fixtures/', 'tests/postgres/subscriptionLifecycleClosureFixture.ts', 'tests/postgres/subscriptionNativeFixture.ts'],
