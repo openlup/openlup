@@ -4,6 +4,7 @@ import type { SubscriptionCommand } from "@openlup/platform/subscriptions/contra
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
+import ts from "typescript";
 import { aroundEach, expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -377,6 +378,69 @@ restoreTest("refuses populated outside-profile relations before the dirty-target
       SELECT id,gen_random_uuid(),repeat('a',64),repeat('b',64),clock_timestamp()+interval '1 hour' FROM buyer`);
     await expect(restoreConnectedNativeStore({ owner: target.owner, installation: target.selection, packet, freshTarget }))
       .rejects.toMatchObject({ code: "unsupported_table", table: "public.customer_identity_challenges" });
+  } finally {
+    await Promise.all([source, target].map(store => closePostgres(store.container, store.pools)));
+  }
+}, postgresSetupTimeoutMs);
+
+function restoreInsertAllowlist(): string[] {
+  const path = "server/adapters/postgres/connectedStoreRestore.ts";
+  const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest);
+  const census = source.statements.filter(ts.isFunctionDeclaration).find(statement => statement.name?.text === "assertInsertTriggers");
+  const allowed = census?.body?.statements.filter(ts.isVariableStatement)
+    .flatMap(statement => [...statement.declarationList.declarations])
+    .find(declaration => ts.isIdentifier(declaration.name) && declaration.name.text === "allowed")?.initializer;
+  if (!allowed || !ts.isObjectLiteralExpression(allowed)) throw new Error("Restore INSERT trigger allowlist missing");
+  return allowed.properties.flatMap(property => {
+    if (!ts.isPropertyAssignment(property) || !ts.isArrayLiteralExpression(property.initializer)
+      || !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) throw new Error("Expected literal trigger allowlist entries");
+    const table = property.name.text;
+    return property.initializer.elements.map(name => {
+      if (!ts.isStringLiteral(name)) throw new Error("Expected a literal trigger name");
+      return `${table}.${name.text}`;
+    });
+  }).sort();
+}
+
+restoreTest("restores unstamped rows with exactly the installed INSERT triggers", async () => {
+  const [source, target] = await installRestrictedRestorePair("neon", "installer-managed", "unstamped-source", "unstamped-target");
+  try {
+    await source.owner.query(`INSERT INTO public.commerce_orders(id,status,currency_code,total_amount_minor,created_at,updated_at,metadata)
+      VALUES('10000000-0000-4000-8000-000000000001','pending_payment','XTS',0,
+        '2026-01-02T03:04:05.123456Z','2026-01-02T03:04:05.123456Z','{"source":"fixture"}')`);
+    const packet = await captureRestrictedStore(source, "unstamped-order");
+    const freshTarget = await captureRestrictedStore(target, "unstamped-pristine");
+    const tables = [...packet.compatible.tables, ...packet.owned].map(table => table.table);
+    const forward = "db/platform/migrations/20261128220000_catalog_governed_draft_owner.sql";
+    // The runner commits each forward and its ledger row in the same transaction.
+    const { rows: triggers } = await target.owner.query<{ name: string; carried: boolean; installed: boolean }>(`
+      SELECT c.relname || '.' || t.tgname AS name, c.relname=ANY($2::text[]) AS carried, t.xmin=m.xmin AS installed
+      FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+      CROSS JOIN public.platform_schema_migrations m
+      WHERE m.catalog_path=$1 AND n.nspname='public' AND NOT t.tgisinternal
+        AND (t.tgtype & 4)<>0 AND t.tgenabled IN ('O','A')`, [forward, tables]);
+    const incumbent = triggers.filter(trigger => trigger.carried && !trigger.installed).map(trigger => trigger.name);
+    const installed = triggers.filter(trigger => trigger.installed).map(trigger => trigger.name);
+    // The existing allowlist also covers the optional publication authority rail.
+    const publicationAuthority = [
+      "catalog_price_setup_receipts", "catalog_product_document_revisions", "catalog_products",
+      "catalog_sku_identifiers", "catalog_skus", "price_entries",
+    ].map(table => `${table}.catalog_publication_live_write`);
+    publicationAuthority.push("catalog_publications.catalog_publication_record_write_binding",
+      "catalog_publications.catalog_publications_open_draft");
+    expect(installed).toHaveLength(5);
+    expect(restoreInsertAllowlist()).toStrictEqual([...new Set([...incumbent, ...publicationAuthority]), ...installed].sort());
+
+    await expect(restoreConnectedNativeStore({ owner: target.owner, installation: target.selection, packet, freshTarget }))
+      .resolves.toMatchObject({ captureSha256: packet.sha256, replayed: false });
+    const restored = await captureRestrictedStore(target, packet.compatible.sourceId);
+    expect(restored.owned).toStrictEqual(packet.owned);
+    expect(restored.compatible).toStrictEqual(packet.compatible);
+    const order = restored.compatible.tables.find(table => table.table === "commerce_orders")!;
+    expect(order.rows).toHaveLength(1);
+    // The same unstamped order restored on the predecessor schema yields these bytes.
+    expect(packetDigest(order)).toBe("f2abc69bd9cea521965e6446e4974e44894a8aba2ee5e4b9f55767458cd45c33");
   } finally {
     await Promise.all([source, target].map(store => closePostgres(store.container, store.pools)));
   }
