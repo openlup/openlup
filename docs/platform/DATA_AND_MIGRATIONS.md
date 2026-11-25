@@ -633,6 +633,33 @@ fulfillment-exception holds look system-created and eligible for automatic
 release. This forward preserves that FK; see the [owner step](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#provision-operator-rosters).
 The starter binds hold and release with a fresh human-admin and Commerce-operator check on every command and replay.
 
+### First parcel contact from a retained destination
+
+The native opener uses the order's retained destination binding for the first
+parcel. It keeps the original binding, service pin and classification keys and
+projects the address and shipping recipient into contact revision 1. The order
+lock precedes the new parcel. Existing parcel access takes the native dispatch
+advisory lock, then the parcel, order, client and contact guards. Capture checks
+the frozen contact and caller projection against the verified order evidence.
+An existing parcel with missing or invalid contact cannot be backfilled.
+
+Fresh callers supply empty metadata. Paid handoff stores it empty and OMS records
+the authenticated `actorId`. Creation audit payload stores `portKey` and
+`providerType`. Line snapshots retain only opaque `productRef`, `packRef`,
+`lotRef` and a calendar `expirationDate` when present. Routing remains dormant
+for this destination dialect. A failed freeze aborts the shipment, audit and
+reservation writes together. The first parcel leaves subscription scheduling and
+delivery alignment to their existing owners.
+
+`fulfillment-parcel-contacts` (`fulfillment.parcel-contacts.v3`) joins contacts to
+the subject by `fulfillment_parcel_contacts.client_id`. Native export returns
+`shipmentId`, `contact`, `capturedAt` and `erasedAt` for both contact dialects.
+Erasure clears `contact` and retains the shipment and client links and timestamps
+to prevent recapture. Shipment, audit and reservation identifiers, the OMS actor
+ID, port and provider keys and projected line references remain scoped operational
+records for fulfillment and stock reconciliation. They carry no address or
+recipient fields and the parcel contact export omits those operational records.
+
 ## Additive forward release path
 
 A release may append expand-only platform forwards to either chain:
