@@ -1822,6 +1822,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/demonstration-marker.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/e-composition.ts",
       "class": "public-output"
     },
@@ -2231,6 +2235,10 @@
     },
     {
       "path": "examples/neutral-store/test/browser-groups.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-apply.test.ts",
       "class": "public-output"
     },
     {

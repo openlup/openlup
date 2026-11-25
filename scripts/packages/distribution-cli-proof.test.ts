@@ -1067,13 +1067,12 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     import { catalogDraftRegistry } from "./owned/catalogue.ts";
     import { configurations } from "./owned/store.config.ts";
     import { composeOperatorCapabilities } from "./host/operator-composition.ts";
-    import * as editor from "./host/editor-catalogue.ts";
     import { createApplication } from "./host/server.ts";
 
     const each = catalogDraftRegistry.resolve({ key: "starter:item", version: 1 })?.units.find(unit => unit.code === "starter:each");
     assert.deepEqual(each?.factor, { canonicalUnit: "openlup:piece", unscaled: "1", scale: 0 }, "starter:each must equal one openlup:piece");
 
-    const operator = composeOperatorCapabilities({ editor, connectionString: "postgresql://localhost/unused", executor: {
+    const operator = composeOperatorCapabilities({ connectionString: "postgresql://localhost/unused", executor: {
       async query(text) {
         assert.match(text, /^SELECT public\\.catalog_draft_get/);
         return { rows: [{ result: null }] };

@@ -410,7 +410,7 @@ async function catalogueApply(argv) {
     if (!process.stdin.isTTY || !process.stderr.isTTY) deny('OPENLUP_E_CATALOGUE_TERMINAL_REQUIRED', { path: '/terminal' });
     const origin = config.publicOrigin ?? 'http://127.0.0.1:4319';
     let cookie, expiresAt, operator;
-    async function request(operation, body, key = hash([operation, body]), authenticated = false) {
+    async function request(operation, body, key = hash([operation, body]), authenticated = false, sku) {
       const unavailableCodes = ['host_binding_required', 'starter_dependency_unavailable', 'starter_operation_unknown',
         'price_setup_dependency_unavailable', 'store_unavailable'];
       let response, result;
@@ -419,11 +419,11 @@ async function catalogueApply(argv) {
           headers: { Origin: origin, 'X-Starter-Request': '1', 'Content-Type': 'application/json', 'Idempotency-Key': key,
             ...(authenticated && cookie ? { Cookie: cookie } : {}) }, body: JSON.stringify(body) });
         result = await response.json();
-      } catch (error) { deny(unavailable, {}, error); }
+      } catch (error) { deny(unavailable, { subject: sku }, error); }
       if (result?.ok === true && response.ok) return { value: result.value, cookie: response.headers.get('set-cookie') };
       const code = result?.code;
       const guidance = ['observed', 'cause', 'fix', 'recheck'].every(field => typeof result?.[field] === 'string') ? result : undefined;
-      const details = { ...(result?.path && { path: result.path }), subject: result?.subject, reason: result?.reason,
+      const details = { ...(result?.path && { path: result.path }), subject: sku ?? result?.subject, reason: result?.reason ?? (sku && code),
         issues: result?.issues, message: result?.message, guidance };
       deny(typeof code === 'string' && !unavailableCodes.includes(code) ? code : unavailable, details);
     }
@@ -443,7 +443,7 @@ async function catalogueApply(argv) {
       privateInput = hidden;
       if (hidden) process.stderr.write(prompt);
       try { return await terminal.question(hidden ? '' : prompt, { signal: stopped.signal }); }
-      catch { deny('OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID'); }
+      catch { deny(path === 'auth.operator' ? 'starter_catalogue_sign_in_incomplete' : 'OPENLUP_E_CATALOGUE_CONFIRMATION_INVALID'); }
       finally {
         privateInput = false;
         if (hidden) process.stderr.write('\n');
@@ -468,11 +468,11 @@ async function catalogueApply(argv) {
       operator = value;
       path = priorPath;
     }
-    async function action(operation, body, key) {
+    async function action(operation, body, key, sku) {
       if (Date.now() >= expiresAt) await signIn();
-      return (await request(operation, body, key, true)).value;
+      return (await request(operation, body, key, true, sku)).value;
     }
-    const publish = (body, key) => action('operator.catalogPublication', body, key);
+    const publish = (body, key, sku) => action('operator.catalogPublication', body, key, sku);
     const drafts = (body, key) => action('operator.catalogDrafts', body, key);
     await signIn();
     const { currency, priceListId, policy, actorId } = operator;
@@ -541,6 +541,7 @@ async function catalogueApply(argv) {
       const resultOfPublish = await publish(body, key('publish')).catch(async error => {
         if (error.finding?.code !== 'publication_price_readiness'
           || !['promotion_claim_sweep_not_ready', 'promotion_watchdog_not_ready'].includes(error.finding.reason)) throw error;
+        // Give the first demo job pair one chance to finish, then surface any refusal from the unchanged request.
         await new Promise(resolve => setTimeout(resolve, 1000));
         return publish(body, key('publish'));
       });
@@ -550,8 +551,8 @@ async function catalogueApply(argv) {
     }
     async function preview({ id: variantId, code }) {
       path = 'basePrices';
-      const { inGate, priceSetup } = await publish({ action: 'price-preview', variantId, priceListId });
-      if (!inGate) deny('price_list_not_active', { subject: code });
+      const { listEffective, priceSetup } = await publish({ action: 'price-preview', variantId, priceListId });
+      if (!listEffective) deny('price_list_not_active', { subject: code });
       const subscription = priceSetup.subscription;
       if (subscription.kind !== 'derived' || subscription.revisionId !== policy.revisionId)
         deny('starter_catalogue_d2c_policy_required', { subject: code });
@@ -568,10 +569,10 @@ async function catalogueApply(argv) {
     }
     const released = await lookup(first);
     if (mode === '--copy') {
-      if (!released) deny('catalog_publication_receipt_invalid');
+      if (!released) deny('starter_catalogue_copy_requires_published');
       const second = makeStage('activation', activation, released);
       const active = await lookup(second);
-      if (!active) deny('catalog_publication_receipt_invalid');
+      if (!active) deny('starter_catalogue_copy_requires_published');
       const { record: saved } = await drafts({ action: 'get', draftId, revision: 2 });
       verifyDraft(saved, second);
       const payload = saved.payload;
@@ -597,10 +598,10 @@ async function catalogueApply(argv) {
       await requireHead(active ?? head);
       for (const sku of skus) await preview(sku);
       for (const { id: variantId, code } of skus) {
-        path = 'price.apply';
+        path = 'basePrices';
         const unitPriceMinor = basePrices[code];
         const result = await publish({ action: 'price-apply', variantId, priceListId, policyRevisionId: policy.revisionId, unitPriceMinor },
-          hash(['initial-base', priceListId, variantId, unitPriceMinor, null]));
+          hash(['initial-base', priceListId, variantId, unitPriceMinor, null]), code);
         const current = await preview({ id: variantId, code });
         if (result.currency !== currency || !current || !same(result.receipt?.current, current))
           deny('expected_state_mismatch', { subject: code });

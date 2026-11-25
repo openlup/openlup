@@ -211,8 +211,6 @@ test('operator_example_uses_builder', async context => {
     for (const path of ['host', 'shared', 'owned']) await cp(resolve(root, path), resolve(directory, path), { recursive: true });
     const moduleUrl = pathToFileURL(resolve(directory, 'host/operator-composition.ts')).href;
     const { composeOperatorCapabilities }: typeof import('../host/operator-composition.ts') = await import(moduleUrl);
-    const editor: typeof import('../host/editor-catalogue.ts') =
-      await import(pathToFileURL(resolve(directory, 'host/editor-catalogue.ts')).href);
     const config = Object.values(configurations)[0]!;
     const request = { commandKey: 'example', config, actor: { operatorRef: 'operator', customerRef: null } };
     const fixture = installation();
@@ -223,7 +221,6 @@ test('operator_example_uses_builder', async context => {
       const composed = composeOperatorCapabilities({
         executor: { async query() { throw new Error('The example must not query the database'); } },
         connectionString: 'postgresql://localhost/example',
-        editor,
       });
       try { return await composed.actions['operator.catalogDrafts']!({ action: 'example' }, request); }
       finally { await composed.close?.(); }

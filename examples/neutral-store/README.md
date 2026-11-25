@@ -390,7 +390,7 @@ Use a separate private terminal in the same Compose project to find the newest
 operator sign-in message for the invited administrator.
 
 ```sh
-docker compose exec -T --user node application cat /application/.context/captured-messages/identity.jsonl
+docker compose exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
 ```
 
 Enter only the matching token at the hidden prompt.

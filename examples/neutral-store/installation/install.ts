@@ -14,7 +14,7 @@ import { link, lstat, mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promis
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readQuoteAcceptanceKeyring } from '../host/quote-secret.ts';
-import { demonstrationMarker, demonstrationMarkerQuery, isDemonstrationMarker } from '../host/operator-composition.ts';
+import { demonstrationMarker, demonstrationMarkerQuery, isDemonstrationMarker } from '../host/demonstration-marker.ts';
 import type { buildDemoSeed } from '../owned/demo-seed.ts';
 import { buildRefusal, installationFailure, isInstallationRefusal, packBuildFilename, refusal, rulesRecheck, up } from './refusals.ts';
 

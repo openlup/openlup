@@ -12,7 +12,8 @@ import { installationFinding } from '../shared/refusals.ts';
 import { isRecord } from '../shared/offer.ts';
 import { verifyStarterMedia } from './catalogue-media.ts';
 import type { ActionBinding, ActionContext, ApplicationBindings } from './bindings.ts';
-import type * as CatalogueEditor from './editor-catalogue.ts';
+import { missingPackBuild, starterCatalogue, starterCatalogueType } from './editor-catalogue.ts';
+import { demonstrationMarkerQuery, isDemonstrationMarker } from './demonstration-marker.ts';
 
 const refused = (code: string) => ({ ok: false as const, code });
 const success = (value: unknown) => ({ ok: true as const, value });
@@ -55,11 +56,6 @@ const headPin = z.strictObject({ publicationId: publicationProductId, revision,
   documentDigest: z.string().regex(/^[0-9a-f]{64}$/u) }).nullable();
 const only = (payload: Record<string, unknown>, keys: string[]) =>
   Object.keys(payload).every(key => key === 'locale' || keys.includes(key));
-
-export const demonstrationMarker = 'openlup-neutral-store-demo-v1';
-export const isDemonstrationMarker = (value: unknown) => value === demonstrationMarker;
-export const demonstrationMarkerQuery = `SELECT pg_catalog.shobj_description(oid, 'pg_database') AS marker
-  FROM pg_catalog.pg_database WHERE datname = pg_catalog.current_database()`;
 
 type PublicationLane = PostgresRoleFreeTransactionLane<PgQueryExecutor>;
 type OperatorTransaction = <T>(actorId: string, work: (db: PgQueryExecutor) => Promise<T>) => Promise<T>;
@@ -122,7 +118,7 @@ async function cataloguePrice(payload: Record<string, unknown>, context: ActionC
     if ('reason' in priceSetup) return { ...refused(priceSetup.reason), ...(priceSetup.reasons && {
       issues: priceSetup.reasons.map(code => ({ code, path: 'basePrices' })),
     }) };
-    if (input.action === 'price-preview') return success({ inGate: query.priceListId === priceListId, currency, priceSetup });
+    if (input.action === 'price-preview') return success({ listEffective: query.priceListId === priceListId, currency, priceSetup });
     const subscription = priceSetup.subscription;
     if (subscription.kind !== 'derived' || subscription.revisionId !== input.policyRevisionId)
       return refused('starter_catalogue_d2c_policy_required');
@@ -152,11 +148,9 @@ function publicationExample(type: CatalogProductTypeRef): CatalogDraftPayloadV3 
 export function composeOperatorCapabilities(input: {
   executor: PgQueryExecutor; connectionString: string; publication?: PublicationLane | undefined;
   asOperator?: OperatorTransaction;
-  editor: Pick<typeof CatalogueEditor, 'missingPackBuild' | 'starterCatalogue' | 'starterCatalogueType'>;
   filterFailedJobs?: (jobs: unknown) => string[];
 }):
 Pick<ApplicationBindings, 'actions' | 'close'> {
-  const { missingPackBuild, starterCatalogue, starterCatalogueType } = input.editor;
   const catalogue = starterCatalogue();
   function registerBuildCheck(context: ActionContext, ref: unknown) {
     context.registerCatalogueBuildCheck?.(() => {

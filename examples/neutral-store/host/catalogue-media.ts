@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
-import { basename, dirname, resolve, sep } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRODUCT_MEDIA_LIMITS, type CatalogDraftMediaClaimV3 } from '@openlup/platform/catalog/contracts';
 import { starterMediaReferenceSchema } from '../shared/catalogue-presentation.ts';
@@ -16,8 +16,9 @@ export async function digestStarterMedia(reference: unknown, directory = publicD
     if (await fs.realpath(root) !== root) return false;
     const file = await fs.realpath(resolve(root, '.' + admitted.data));
     if (!file.startsWith(root + sep)) return false;
+    if (!(await fs.readdir(root)).includes('media') || !(await fs.readdir(join(root, 'media'))).includes(basename(admitted.data))) return false;
     const current = await fs.lstat(file);
-    if (!current.isFile() || current.size > PRODUCT_MEDIA_LIMITS.imageBytes) return false;
+    if (!current.isFile() || current.size === 0 || current.size > PRODUCT_MEDIA_LIMITS.imageBytes) return false;
     const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       const info = await handle.stat();
@@ -26,7 +27,7 @@ export async function digestStarterMedia(reference: unknown, directory = publicD
       let offset = 0;
       while (offset < bytes.length) {
         const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, offset);
-        if (bytesRead === 0) return createHash('sha256').update(bytes.subarray(0, offset)).digest('hex');
+        if (bytesRead === 0) return offset > 0 && createHash('sha256').update(bytes.subarray(0, offset)).digest('hex');
         offset += bytesRead;
       }
       return false;

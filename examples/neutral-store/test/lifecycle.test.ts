@@ -407,7 +407,8 @@ test('catalogue_apply_reports_and_bounds', async () => {
   `], { cwd: root, encoding: 'utf8' });
   assert.equal(checked.status, 0, checked.stderr);
 
-  const { composeOperatorCapabilities, demonstrationMarker, demonstrationMarkerQuery } = await import('../host/operator-composition.ts');
+  const { composeOperatorCapabilities } = await import('../host/operator-composition.ts');
+  const { demonstrationMarker, demonstrationMarkerQuery } = await import('../host/demonstration-marker.ts');
   const variantId = randomUUID(), priceListId = randomUUID(), revisionId = randomUUID(), actorId = randomUUID();
   const config = selectConfiguration();
   const policy = { revisionId, discountBps: 500, roundingQuantumMinor: 10, roundingRule: 'FLOOR_TO_QUANTUM' };
@@ -430,7 +431,6 @@ test('catalogue_apply_reports_and_bounds', async () => {
     return { rows: [] };
   }
   const operator = composeOperatorCapabilities({ executor: { query }, connectionString: 'postgresql://localhost/demo', publication,
-    editor: await import('../host/editor-catalogue.ts'),
     asOperator: async (principal, work) => {
       assert.equal(principal, actorId);
       trace.push('asActor');
@@ -534,8 +534,8 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
       import { readFileSync } from 'node:fs';
       import { env } from 'node:process';
       import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
-      import { composeOperatorCapabilities, demonstrationMarkerQuery } from './host/operator-composition.ts';
-      import * as editor from './host/editor-catalogue.ts';
+      import { composeOperatorCapabilities } from './host/operator-composition.ts';
+      import { demonstrationMarkerQuery } from './host/demonstration-marker.ts';
       const url = new URL(env.DATABASE_URL);
       url.username = 'openlup_catalog_publication';
       url.password = readFileSync('.context/catalogue-builds/.publication-password', 'utf8').trim();
@@ -548,7 +548,7 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
         }
         return db.query(statement, values);
       } })), close: () => lane.close() };
-      const composed = composeOperatorCapabilities({executor: {}, publication, editor, connectionString: env.DATABASE_URL});
+      const composed = composeOperatorCapabilities({executor: {}, publication, connectionString: env.DATABASE_URL});
       try {
         const { ok } = await composed.actions['catalogue.demoTarget']({}, {config: {id:'coffee'}});
         console.log(JSON.stringify({ ok, ...markerSettings }));
@@ -647,7 +647,7 @@ test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_0
     assert.ok(signedCustomer.cookie);
     assert.equal((await action(operator, planned, undefined, signedCustomer.cookie)).data.code, 'operator_required');
     const { value: preview } = await send(operator, { action: 'price-preview', ...prices });
-    assert.equal(preview.inGate, true);
+    assert.equal(preview.listEffective, true);
     assert.equal(preview.priceSetup.inGate, false);
     assert.equal(preview.priceSetup.current, null);
     assert.equal(preview.priceSetup.subscription.revisionId, policy.revisionId);

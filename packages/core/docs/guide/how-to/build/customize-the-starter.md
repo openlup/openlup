@@ -907,22 +907,33 @@ revision. Earlier saved drafts keep their installed rule version.
 
 Start the marked demonstration with `./lifecycle up`. In `owned/catalogue.ts`,
 keep the installed pack declaration and export the product you want to publish.
-Use the [product input recipe](../extend/catalogue-extension.md#author-a-product)
-to define `product`, with the exact installed type version, the presentation
-title and each SKU's physical and fulfilment facts. Keep the draft UUID stable.
+Use **Load draft example** under **Catalogue drafts** to read the installed
+`product.type.version`. Add the example below to `owned/catalogue.ts`, then
+export `const catalogueProduct = demoCatalogueProduct(version)` using that
+number. Keep the draft UUID stable and reserve an unused internal GTIN
+sequence. For a product with variants, see [Author a product](../extend/catalogue-extension.md#author-a-product).
 
 ```ts
-import type { CatalogProductInput } from "@openlup/platform/catalog";
+import { catalogInternalGtin, type CatalogProductInput } from "@openlup/platform/catalog";
 
-// Use the product defined in the recipe above.
-declare const product: CatalogProductInput;
-
-export const catalogueProduct = {
-  draftId: 'd9176a9d-274b-4a4a-90d8-2a0db738f181',
-  product,
-  basePrices: { 'NOTEBOOK-MATTE': 1900, 'NOTEBOOK-GLOSS': 2700 },
-  copyPresentation: { title: 'Field notebook, second edition' },
-};
+export function demoCatalogueProduct(version: number) {
+  const grams = (unscaled: string) => ({ dimension: "mass", unit: "openlup:g", unscaled, scale: 0 } as const);
+  const product = {
+    namespace: "starter", type: { key: "starter:item", version },
+    slug: "field-notebook", name: "Field notebook", presentation: { title: "Field notebook" },
+    skus: [{ code: "FIELD-NOTEBOOK", title: "Field notebook", options: {},
+      netContent: grams("100"), grossMass: grams("120"),
+      identifiers: [{ scheme: "gs1:gtin", issuer: "starter:internal",
+        value: catalogInternalGtin(203), packagingLevel: "unit" }],
+      sell: { oneTime: true, subscription: false }, logisticsRef: "starter:fulfilment/notebook" }],
+  } satisfies CatalogProductInput;
+  return {
+    draftId: "d9176a9d-274b-4a4a-90d8-2a0db738f181",
+    product,
+    basePrices: { "FIELD-NOTEBOOK": 1900 },
+    copyPresentation: { title: "Field notebook, second edition" },
+  };
+}
 ```
 
 Give each authored SKU exactly one initial gross one-time price in minor units.
@@ -947,13 +958,19 @@ docker compose exec -T --user node --workdir /application/.context application c
 Enter the token at the hidden prompt. Review the saved revision, expected head,
 verified currency and SKU prices. Type `approve` when you intend to publish
 Release and again when you intend to publish Activation. The command verifies
-the initial prices between the two publications. Run the command with
+the initial prices between the two publications. Each SKU preview checks
+`listEffective` for the selected list. The owner's `priceSetup.inGate`
+reports whether the SKU is already active and sellable on that list.
+Run the command with
 `--copy` to review and publish the first presentation-only successor. Use
 `npm run --silent catalogue:apply -- --json` for a single machine-readable
 report on stdout.
 
 After a readiness refusal, follow its Fix and Recheck and resume as the
-original administrator with the same declaration. A missing initial price can
+original administrator with the same declaration. During demo startup, the
+command gives the first promotion job runs one second and retries the exact
+Publish request once if either job reports that it is still unready.
+A missing initial price can
 be supplied through the authorized price action. Retry the same approved
 Publish body and key once the intended price is ready. Existing-base
 corrections belong to the pricing owner. If a challenge arrives late or has
