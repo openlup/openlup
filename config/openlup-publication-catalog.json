@@ -31202,6 +31202,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/privacyRequiredContributorsMounted.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/promotionsNative.test.ts",
       "class": "public-output"
     },
