@@ -220,11 +220,6 @@ price or promotion owner to reconcile the retained demo data, then rerun the
 installer.
 
 For a Publish refusal at `pricing.readiness`, follow its fix and recheck.
-For `catalog_1490_legacy_1340_invalid`, verify the effective list with the
-pricing owner and review each eligible SKU’s base and subscription prices.
-The shipped legacy subscription checkout uses the explicit subscription
-entries in the marked demo. Keep them in place until the installed checkout
-writer supports derived subscription prices.
 `promotion_watchdog_not_ready` can include failed job names. Use the
 matching owned ID for `<id>` and your authorized runtime connection for
 `<runtime-url>`.

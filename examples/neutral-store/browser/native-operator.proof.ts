@@ -394,9 +394,6 @@ test('authenticated Publish discloses only owned degraded jobs and supports exac
           subject: body.reason, message: body.message, ...(body.issues[0].failedJobs ? { failedJobs: body.issues[0].failedJobs } : {}) }] });
       return body;
     };
-    expect(await wire()).toMatchObject({ reason: 'catalog_1490_legacy_1340_invalid', message: expect.stringContaining('with the pricing owner') });
-    await owner.query(`UPDATE public.price_entries SET active=false,valid_to=statement_timestamp(),updated_at=statement_timestamp()
-      WHERE mode='subscription' AND active`);
     for (const name of [ownedJob, unownedJob]) {
       const run = await ledger.claimJobRun(name, invocation, 300);
       expect(run.acquired).toBe(true);

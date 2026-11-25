@@ -540,7 +540,7 @@ test('installed catalogue jobs isolate requests, fence heartbeat failures and dr
       await until(() => missing.diagnostics().includes('OPENLUP_E_STARTER_CATALOGUE_WATCHDOG_PRINCIPAL_MISSING'));
       assert.equal(await watchdog(), undefined);
       const { rows } = await owner.query('SELECT public.commerce_offer_policy_v2_readiness() AS verdict');
-      assert.deepEqual(rows[0].verdict.reasons, ['catalog_1490_legacy_1340_invalid', 'promotion_watchdog_not_ready']);
+      assert.deepEqual(rows[0].verdict.reasons, ['promotion_watchdog_not_ready']);
       assert.deepEqual((await owner.query(`SELECT o.status,c.status AS claim FROM public.commerce_orders o
         JOIN public.commerce_promotion_claims c ON c.order_id=o.id WHERE o.id=ANY($1::uuid[]) ORDER BY o.status`,
         [[stale, protectedOrder]])).rows, [{ status: 'cancelled', claim: 'released' }, { status: 'pending_payment', claim: 'reserved' }]);

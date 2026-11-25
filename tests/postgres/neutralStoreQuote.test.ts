@@ -178,6 +178,10 @@ const bundleProof = String.raw`
   import {bindScenarioServer} from ${JSON.stringify(scenarioHelper)};
   import {selectConfiguration} from './application/owned/store.config.ts';
   import {applyDemoSeed} from './application/installation/install.ts';
+  import {buildDemoSeed} from './application/owned/demo-seed.ts';
+  import {readStarterCatalogueRules} from './application/host/editor-catalogue.ts';
+  import {createCommercePriceAuthorityPort} from '@openlup/platform/pricing';
+  import {createPostgresCommercePriceAuthorityReadPort} from '@openlup/platform/commerce/server/postgres';
   import {composeNativeBindings} from './application/host/native-composition.ts';
   import {createOriginPolicy} from './application/host/origin-policy.ts';
   const config = selectConfiguration(fixture.configuration), coffee = config.id === 'coffee';
@@ -187,11 +191,65 @@ const bundleProof = String.raw`
   let bindings;
   try {
     const db = await owner.connect();
-    const seed = async owned => applyDemoSeed(owned,{connection:db,installRole:'postgres',runtimeRole:'starter_runtime',close:async()=>{}});
+    const seed = async owned => applyDemoSeed(owned,{connection:db,installRole:'postgres',runtimeRole:'starter_runtime',catalogueRules:readStarterCatalogueRules(),close:async()=>{}});
     const id = 'demo-bundle:'+config.id;
     const promotion = async () => (await owner.query('SELECT definition,definition_fingerprint,active FROM public.commerce_promotion_definitions WHERE promotion_id=$1',[id])).rows;
     try {
       await seed(config);
+      const predecessor = buildDemoSeed(config).prices.filter(entry=>entry.mode==='subscription');
+      assert.equal(predecessor.length,7);
+      const rows = async () => (await owner.query('SELECT to_jsonb(e) AS row FROM public.price_entries e ORDER BY e.id')).rows.map(entry=>entry.row);
+      const before = await rows();
+      const stale = predecessor[0];
+      const put = entry => owner.query(
+        'INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,min_qty,unit_price_minor,amount_kind,active,valid_from) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        [entry.id,entry.price_list_id,entry.variant_id,entry.mode,entry.min_qty,entry.unit_price_minor,entry.amount_kind,entry.active,entry.valid_from]);
+      for (const entry of predecessor) await put(entry);
+      const census = async () => (await owner.query('SELECT public.commerce_offer_policy_v2_readiness() AS result')).rows[0].result.evidence.priceMismatchCount;
+      assert.equal(await census(),6);
+      for (const [change,restore] of [
+        ['unit_price_minor=unit_price_minor+1','unit_price_minor=unit_price_minor-1'],
+        ["valid_from='2001-01-01'","valid_from='2000-01-01'"],
+      ]) {
+        await owner.query('UPDATE public.price_entries SET '+change+' WHERE id=$1',[stale.id]);
+        await assert.rejects(seed(config),/starter_price_seed_conflict/);
+        await owner.query('UPDATE public.price_entries SET '+restore+' WHERE id=$1',[stale.id]);
+      }
+      const unrelated = {...stale,id:crypto.randomUUID(),valid_from:'2999-01-01T00:00:00Z'};
+      await put(unrelated);
+      await assert.rejects(seed(config),/starter_price_seed_conflict/);
+      await owner.query("UPDATE public.price_entries SET active=false,valid_from='1999-01-01',valid_to='2000-01-01' WHERE id=$1",[unrelated.id]);
+      const seeded = await rows();
+      await seed(config);
+      assert.equal(await census(),0);
+      const after = await rows();
+      const closed = after.filter(row=>predecessor.some(entry=>entry.id===row.id));
+      assert.equal(closed.length,7);
+      assert.equal(new Set(closed.map(row=>row.valid_to)).size,1);
+      for (const stored of after) {
+        const original = seeded.find(row=>row.id===stored.id);
+        if (closed.includes(stored)) {
+          assert.ok(Date.parse(stored.valid_to)>Date.parse(stored.valid_from));
+          assert.deepEqual(stored,{...original,active:false,valid_to:stored.updated_at,updated_at:stored.updated_at});
+        } else assert.deepEqual(stored,original);
+      }
+      assert.deepEqual(after.filter(row=>row.mode==='one_time'),before);
+      assert.equal(after.some(row=>row.mode==='subscription' && row.active),false);
+      const prices = createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(runtime));
+      const amounts = [];
+      for (const entry of predecessor) {
+        const base = before.find(row=>row.variant_id===entry.variant_id);
+        const unchanged = after.find(row=>row.id===base?.id);
+        assert.ok(base && unchanged);
+        const derived = await prices.resolvePrice({variantId:entry.variant_id,mode:'subscription',channel:'D2C',quantity:1,
+          regionCode:config.market.country,currency:config.market.currency});
+        assert.equal(derived.kind,'subscription_policy');
+        assert.equal(derived.unitPriceMinor,entry.unit_price_minor);
+        amounts.push({base:[base.unit_price_minor,unchanged.unit_price_minor],subscription:[entry.unit_price_minor,derived.unitPriceMinor]});
+      }
+      console.log(JSON.stringify({configuration:config.id,census:[6,0],closures:closed.length,amounts}));
+      await seed(config);
+      assert.deepEqual(await rows(),after);
       const installed = await promotion();
       await seed(config);
       assert.deepEqual(await promotion(),installed);
@@ -476,7 +534,7 @@ function runQuoteProof({ configuration, multiSize, ownerUrl, runtimeUrl }: Await
       const one = await quotes.quote({cart:{...cart,mode:'one_time',cadenceDays:null}},context);
       assert.equal(one.snapshot.quote.totalGross.amountMinor,4497);assert.equal(one.snapshot.quote.discounts.length,0);
       const altered = structuredClone(config);altered.offer.subscriptionDiscountBps=700;altered.offer.subscriptionRoundingQuantumMinor=25;
-      await assert.rejects(applyDemoSeed(altered,install),/starter_price_seed_conflict/);
+      await assert.rejects(applyDemoSeed(altered,install),/starter_policy_seed_conflict/);
       assert.equal(Number((await owner.query('SELECT count(*) AS n FROM public.subscription_price_policy_revisions')).rows[0].n),1);
       const rotated = structuredClone(config);rotated.quote.policy.revisionNo=2;
       await assert.rejects(applyDemoSeed(rotated,install),/starter_policy_seed_conflict/);
@@ -838,8 +896,8 @@ describe.sequential('installed quote proofs', () => {
             for (let attempt=0; attempt<100; attempt++) {
               const { rows } = await owner.query("SELECT public.commerce_offer_policy_v2_readiness() AS verdict");
               if (!rows[0].verdict.reasons.some(reason => ['promotion_watchdog_not_ready','promotion_claim_sweep_not_ready'].includes(reason))) {
-                assert.deepEqual(rows[0].verdict.reasons,['catalog_1490_legacy_1340_invalid']);
-                assert.equal(rows[0].verdict.evidence.priceMismatchCount,6);
+                assert.deepEqual(rows[0].verdict.reasons,[]);
+                assert.equal(rows[0].verdict.evidence.priceMismatchCount,0);
                 ready = true;
                 break;
               }
@@ -880,19 +938,7 @@ describe.sequential('installed quote proofs', () => {
             const approved = await commands.execute({...candidate,action:'approve',commandKey:randomUUID(),
               postStateDigest:prepared.preparation.postStateDigest},operator);
             assert.equal(approved.outcome,'committed',JSON.stringify(approved));
-            const request = {...candidate,action:'publish',commandKey:randomUUID(),expectedHead,changes};
-            let published = await commands.execute(request,operator);
-            if (payload.product.slug === 'published-article' && revision === 2) {
-              assert.deepEqual(published,{outcome:'validation_issue',reason:'publication_price_readiness',
-                path:'pricing.readiness',subject:'catalog_1490_legacy_1340_invalid',
-                message:'Observed: Publish could not verify price and offer readiness. Cause: The effective list or the eligible SKU price census could not be verified. Fix: Restore one effective list and verify each eligible SKU’s base and subscription branch with the pricing owner. Recheck: Retry the same approved request only while its draft and head still match.'});
-              // The disposable storefront fixture uses a derived-only list for activation.
-              assert.equal((await owner.query(\`UPDATE public.price_entries
-                SET active=false,valid_to=statement_timestamp(),updated_at=statement_timestamp()
-                WHERE price_list_id=$1 AND mode='subscription' AND active\`,
-              [demoIdentifier(config,'price-list',config.market.currency)])).rowCount,7);
-              published = await commands.execute(request,operator);
-            }
+            const published = await commands.execute({...candidate,action:'publish',commandKey:randomUUID(),expectedHead,changes},operator);
             if (published.outcome !== 'committed') {
               const { rows } = await owner.query("SELECT public.commerce_offer_policy_v2_readiness() AS readiness");
               assert.fail(JSON.stringify({ published, readiness:rows[0].readiness }));
