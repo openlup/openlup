@@ -36,6 +36,8 @@ Release-evidence retention is owned by [distribution evidence](../docs/platform/
     and additive;
   - hosted CI on that commit is green and the released-API check passes;
   - an adoption rehearsal with that commit's packed packages has passed.
+- Minor numbers have no upper limit: 1.9.0 is followed by 1.10.0. Only a
+  planned major release changes the major number.
 - Patch releases contain fixes only.
 
 ## Exceptional cessation
