@@ -8,11 +8,48 @@ import { pathToFileURL } from 'node:url';
 // everything below it (dot files included); any other entry is one exact file.
 // Glob matching is deliberately avoided: its '*' and '**' skip dot segments.
 // Broad shared triggers: every non-doc root file, every dot-prefixed segment
-// anywhere (.github, .npmignore, .env...), the tooling/import closure and test
-// setup. That includes both manifests, Vitest, run-vitest, this table and all
-// workflows.
-export const SHARED_INPUTS = ['scripts/', 'tests/setup/', 'src/test/',
+// anywhere (.github, .npmignore, .env...), every non-allowlisted file under
+// scripts/ (fail-closed: runners, Docker, builds, fixtures, package scripts,
+// migration helpers, preflight, oss-* and unknown scripts all bail out), and
+// test setup.
+export const SHARED_INPUTS = ['tests/setup/', 'src/test/',
   'src/checkout/machine/commerceRequestCache.ts'];
+
+// Explicit fail-closed allowlist for files under scripts/ that do NOT trigger
+// the global bailout:
+// - Tier A: scripts/**/*.test.* and scripts/**/*.spec.* (script test files).
+// - Tier B: NON_BAILOUT_SCRIPTS below — leaf/CLI/guard scripts proven by the
+//   AST exemption-safety guard in scripts/ci-test-scope.test.ts to have every
+//   TOOLING_INPUTS consumer declare them explicitly.
+// Any other path under scripts/ (including every new/unknown script) fails
+// closed and runs the complete suite.
+const SCRIPT_TEST_FILE = /^scripts\/.+\.(?:test|spec)\.[cm]?[jt]sx?$/u;
+export const NON_BAILOUT_SCRIPTS = [
+  'scripts/ast-grep/',
+  'scripts/public-ci-reuse.mjs',
+  'scripts/merge-queue-check-arm.mjs',
+  'scripts/ci-receipt-rerun.mjs',
+  'scripts/agent-review-queue.mjs',
+  'scripts/agent-review-queue-planner.mjs',
+  'scripts/merge-queue-churn.mjs',
+  'scripts/public-ci-dependencies.mjs',
+  'scripts/public-ci-neutrality.mjs',
+  'scripts/public-claims.mjs',
+  'scripts/dco-signoff-check.ts',
+  'scripts/affected-tests.mjs',
+  'scripts/verification-plan.mjs',
+  'scripts/verify-local.mjs',
+  'scripts/test-hosted.mjs',
+  'scripts/workflow-jobs.ts',
+  'scripts/agent-ci-queued-diagnose.ts',
+  'scripts/agent-context/evaluate.mjs',
+];
+const coversInput = (input, path) => (input.endsWith('/') ? path === input || path.startsWith(input) : path === input);
+export function isGlobalBailoutScript(path) {
+  if (!path.startsWith('scripts/')) return false;
+  if (SCRIPT_TEST_FILE.test(path)) return false;
+  return !NON_BAILOUT_SCRIPTS.some(entry => coversInput(entry, path));
+}
 
 // Root-level documentation files that do not affect build/test configuration
 // and therefore do not trigger the global root-file bailout. Unlisted doc and
@@ -52,6 +89,10 @@ const NATIVE_STORE_CATALOG_SHARED_INPUTS = [
   'server/adapters/postgres/migrationRunner.ts',
   'server/adapters/postgres/qualifiedInstall.ts',
   'server/adapters/postgres/selectedCatalogProjection.ts',
+];
+const AGENT_REVIEW_QUEUE_SCRIPTS = [
+  'scripts/agent-review-queue.mjs',
+  'scripts/ci-receipt-rerun.mjs',
 ];
 const PACKAGE_MANIFESTS = [
   'packages/core/package.json',
@@ -372,18 +413,18 @@ export const TOOLING_INPUTS = {
     'tests/helpers/postgresContainer.ts',
     'server/adapters/postgres/',
   ], // Real Docker landing:merge + installation-inventory-refresh.ts witness (builds core/outbox/platform, syncs SQL/source-map, refreshes 5 PG inventories).
-  'scripts/agent-review-queue.test.ts': [], // Synthetic Git repositories and recorded transport.
-  'scripts/agent-review-gate.test.ts': [], // Real-Git witnesses of the session CLI and hosted admission.
-  'scripts/agent-review-registry.test.ts': ['config/openlup-publication-catalog.json', 'packages/platform/test/packageBoundary.test.ts'], // Closed-registry union and review-economy fixtures reading REGISTRY_PATHS.
-  'scripts/public-ci-reuse.test.ts': [], // Recorded workflow/job responses.
+  'scripts/agent-review-queue.test.ts': [...AGENT_REVIEW_QUEUE_SCRIPTS, 'scripts/agent-review-queue-planner.mjs', 'scripts/merge-queue-check-arm.mjs', 'scripts/dco-signoff-check.ts', 'scripts/merge-queue-churn.mjs'], // Synthetic Git repositories and recorded transport.
+  'scripts/agent-review-gate.test.ts': [...AGENT_REVIEW_QUEUE_SCRIPTS], // Real-Git witnesses of the session CLI and hosted admission.
+  'scripts/agent-review-registry.test.ts': ['config/openlup-publication-catalog.json', 'packages/platform/test/packageBoundary.test.ts', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Closed-registry union and review-economy fixtures reading REGISTRY_PATHS.
+  'scripts/public-ci-reuse.test.ts': ['scripts/public-ci-reuse.mjs'], // Recorded workflow/job responses.
   'scripts/documentation-cli.test.ts': ['examples/neutral-store/package.json', ...PACKAGE_MANIFESTS, 'packages/core/scripts/', ...ROOT_DOC_FILES], // Copies CLI closure, package execution surfaces and validates root docs.
   'scripts/pgtap-parity.test.ts': [], // Pure TAP/row-diff/sabotage/executable unit fixtures.
-  'scripts/qualified-migration-admission.test.ts': ['config/reviewed-platform-forwards.json', 'db/platform/migrations/'], // Qualified installation admission pins and issued SQL preimages.
-  'scripts/reviewed-batch-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'supabase/migrations/', 'packages/platform/sql/'], // Historical batch/M09-M12 forward pinning and co-located admission checks.
-  'scripts/reviewed-native-store-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'docs/platform/DATA_AND_MIGRATIONS.md', 'tests/helpers/issuedPlatformCatalog.ts'], // Native-store forward classifier, issued prefix pins and control/guard-catalog doc checks.
-  'scripts/sql-admit.test.ts': ['config/reviewed-platform-forwards.json'], // Synthetic Git fixtures reading the committed forward registry and scripts/ admission rules.
-  'scripts/ast-grep/check-filewide-ignore.test.ts': [], // Fixture source; actual rules under scripts/.
-  'scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts': [], // Fixture source and rules.
+  'scripts/qualified-migration-admission.test.ts': ['config/reviewed-platform-forwards.json', 'db/platform/migrations/', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Qualified installation admission pins and issued SQL preimages.
+  'scripts/reviewed-batch-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'supabase/migrations/', 'packages/platform/sql/', ...AGENT_REVIEW_QUEUE_SCRIPTS, 'scripts/source-preview-release.test.ts'], // Historical batch/M09-M12 forward pinning and co-located admission checks.
+  'scripts/reviewed-native-store-forward.test.ts': ['config/reviewed-platform-forwards.json', 'config/platform-migration-manifest.json', 'db/platform/migrations/', 'docs/platform/DATA_AND_MIGRATIONS.md', 'tests/helpers/issuedPlatformCatalog.ts', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Native-store forward classifier, issued prefix pins and control/guard-catalog doc checks.
+  'scripts/sql-admit.test.ts': ['config/reviewed-platform-forwards.json', ...AGENT_REVIEW_QUEUE_SCRIPTS], // Synthetic Git fixtures reading the committed forward registry and scripts/ admission rules.
+  'scripts/ast-grep/check-filewide-ignore.test.ts': ['scripts/ast-grep/'], // Fixture source; actual rules under scripts/ast-grep/.
+  'scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts': ['scripts/ast-grep/'], // Fixture source and rules.
   'scripts/packages/distribution-cli-proof.test.ts': ['packages/', 'examples/neutral-store/', 'config/openlup-packages.json', 'config/ci-images.json'], // Starter upgrade/extraction proof, CLI and candidate packs.
   'scripts/packages/distribution-cli-settings.test.ts': ['packages/', 'examples/neutral-store/', 'config/openlup-packages.json', 'config/ci-images.json'], // Starter settings discovery/upgrade/MCP proofs and packed platform binary.
   'scripts/packages/eslint-import-map.test.ts': [...PACKAGE_MANIFESTS, ...PACKAGE_SRC_DIRS, 'src/', 'server/'], // Config reads workspace exports and domain directories.
@@ -434,13 +475,13 @@ export const TOOLING_INPUTS = {
 export function excludedToolingTests(changedPaths) {
   if (!Array.isArray(changedPaths) || changedPaths.some(path => typeof path !== 'string'
     || !path || path.startsWith('/') || path.split('/').includes('..') || path.includes('\\'))) return [];
-  const covers = (input, path) => input.endsWith('/') ? path.startsWith(input) : path === input;
-  const touched = inputs => changedPaths.some(path => inputs.some(input => covers(input, path)));
+  const touched = inputs => changedPaths.some(path => inputs.some(input => coversInput(input, path)));
   if (changedPaths.some(path => (!path.includes('/') && !ROOT_DOC_SET.has(path))
-    || path.split('/').some(segment => segment.startsWith('.')))
+    || path.split('/').some(segment => segment.startsWith('.'))
+    || isGlobalBailoutScript(path))
     || touched(SHARED_INPUTS)) return [];
   return Object.entries(TOOLING_INPUTS)
-    .filter(([, inputs]) => !touched(inputs))
+    .filter(([test, inputs]) => !touched([test, ...inputs]))
     .map(([test]) => test).sort();
 }
 
