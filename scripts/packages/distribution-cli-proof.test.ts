@@ -143,6 +143,7 @@ it("prints a bounded installation hint after the existing refusal and preserves 
   write("owned/store.config.ts", "export const selectConfiguration = () => ({});");
   write("installation/refusals.ts", readFileSync(resolve("examples/neutral-store/installation/refusals.ts"), "utf8"));
   write("shared/refusals.ts", readFileSync(resolve("examples/neutral-store/shared/refusals.ts"), "utf8"));
+  write("shared/seed-physical.ts", readFileSync(resolve("examples/neutral-store/shared/seed-physical.ts"), "utf8"));
   const message = "checkout_recovery_schedule_change_blocked_open_episodes (2 blocking orders)";
   for (const [fields, expected] of [
     [{ hint: "  Retry after\n those orders\tclose.  " }, "Retry after those orders close.\n"],
@@ -874,6 +875,40 @@ it.each([true, false])("upgrades checkout with a changed quota descriptor, prist
   expect(entry).toBe(2);
   expect(readFileSync(join(app, copyPath))).toEqual(Buffer.from(expectedCopy));
   for (const path of starterCheckoutFiles) expect(readFileSync(join(app, path), "utf8"), path).toBe(next(path));
+});
+
+it.each([true, false])("migrates the owned physical facts and preserves owned bytes, pristine=%s", pristine => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  const store = "owned/store.config.ts", fragments = "owned/fragments.ts", config = "shared/config.ts", helper = "shared/seed-physical.ts";
+  const released = (path: string) => execFileSync("git", ["show", `openlup-core-v1.3.0:examples/neutral-store/${path}`], { encoding: "utf8" });
+  const next = (path: string) => readFileSync(resolve("examples/neutral-store", path), "utf8");
+  const ownership = { managed: ["package.json", config], owned: [store, fragments], generated: [] };
+  write("ownership.json", ownership);
+  candidate("ownership.json", { ...ownership, managed: [...ownership.managed, helper] });
+  for (const save of [write, candidate]) save("package.json", { type: "module", dependencies: {} });
+  const previous = released(store);
+  write(store, previous);
+  candidate(store, next(store));
+  write(fragments, "offer-intro\n// Keep these owned bytes.");
+  candidate(fragments, "Target fragments");
+  write(config, released(config));
+  for (const path of [config, helper]) candidate(path, next(path));
+  mkdirSync(join(target, "node_modules/.bin"));
+  symlinkSync(resolve("packages/platform/src/lifecycle/openlup.mjs"), join(target, "node_modules/.bin/openlup"));
+  const evidence = { phases: [] as { name: string; result: string }[] };
+  const finish = proveDistributionCliConsumer(target, { from: app, to: target, fromVersion: "1.3.0", toVersion: "999999.0.0", evidence, pristine });
+  finish?.();
+  expect(evidence.phases).toContainEqual({ name: "starter-owned-physical-reconciliation", result: "PASS" });
+  const installed = readFileSync(join(app, store), "utf8");
+  const grams = [...installed.matchAll(/unscaled: '([0-9]+)'/gu)].map(match => match[1]);
+  const facts = [...installed.matchAll(/issuer: '([^']+)', value: '([0-9]+)'/gu)].map(match => match.slice(1));
+  expect(grams).toEqual([pristine ? "250" : "275", "250", "250", "250", "250", "250"]);
+  expect(facts).toEqual([pristine ? ["demo", "0000000000017"] : ["example:local", "0000000000109"],
+    ...["0000000000024", "0000000000031", "0000000000048", "0000000000055", "0000000000062"].map(gtin => ["demo", gtin])]);
+  if (pristine) expect(installed).toBe(next(store));
+  else expect(installed).toContain("#663d57");
+  expect(readFileSync(join(app, fragments), "utf8")).toBe(pristine
+    ? "offer-intro\n// Keep these owned bytes." : "adopter-offer-intro\n// Keep these owned bytes.");
 });
 
 it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, customized=%s", customized => {
