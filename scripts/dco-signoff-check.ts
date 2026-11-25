@@ -25,6 +25,7 @@
 // over an empty measurement, which is strictly worse than having no check at all.
 
 import { execFileSync } from "node:child_process";
+import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
 /** One commit, as `git log` reports it: identity, parents, and the raw message. */
@@ -119,9 +120,14 @@ export function checkPrBodySignOff(body: string, log: (line: string) => void): b
   return false;
 }
 
-export function main(root: string, argv: string[], log: (line: string) => void): number {
+export function main(
+  root: string,
+  argv: string[],
+  log: (line: string) => void,
+  environment: Readonly<Record<string, string | undefined>> = processEnvironment,
+): number {
   if (argv.length === 1 && argv[0] === "--pr-body") {
-    const body = process.env.PR_BODY ?? "";
+    const body = environment.PR_BODY ?? "";
     return checkPrBodySignOff(body, log) ? 0 : 1;
   }
   const [base, head, ...extra] = argv;
