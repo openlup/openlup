@@ -290,7 +290,7 @@ export function createDbBackedCommerceQuotePortV2(deps: DbBackedCommerceQuotePor
     // Capture the original invocation before the first asynchronous module load.
     let owner: QuoteOwnerContext, admitted: CommerceQuoteV2Request;
     try { owner = snapshot(context); admitted = snapshot(request); } catch { return invalid("/"); }
-    const { createQuote } = await import("./dbBackedCommerceQuotePortV2.js");
+    const { createQuote } = await dependency("/", () => import("./dbBackedCommerceQuotePortV2.js"));
     return createQuote(deps, owner, admitted, { snapshot, invalid, dependency, infrastructure });
   } };
 }

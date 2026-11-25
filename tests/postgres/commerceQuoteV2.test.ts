@@ -268,23 +268,28 @@ const takeover = (fixture: Installed) => editOwner("tax_calculations",
   "lease_until=clock_timestamp()-interval '1 second' WHERE identity->>'evaluationKey'=$1", [fixture.request.key]);
 const noDispatch = { kind: "unavailable", code: "tax_adapter_unavailable", effect: "unknown" } as const;
 
-async function mutant(f: Installed, before: string, after: string) {
+const detach = (source: string, url: URL) => "data:text/javascript," + encodeURIComponent(
+  source.replace(/(from ["'])([^"']+)/gu, (_match, prefix: string, specifier: string) =>
+    prefix + (specifier.startsWith(".") ? new URL(specifier, url).href : import.meta.resolve(specifier))),
+);
+
+async function detachedQuotePort(f: Installed, implementation: string) {
   const entry = new URL(import.meta.resolve("@openlup/platform/commerce/server"));
-  const module = new URL("dbBackedCommerceQuotePortV2.js", entry);
-  const detach = (source: string, url: URL) => "data:text/javascript," + encodeURIComponent(
-    source.replace(/(from ["'])([^"']+)/gu, (_match, prefix: string, specifier: string) =>
-      prefix + (specifier.startsWith(".") ? new URL(specifier, url).href : import.meta.resolve(specifier))),
-  );
-  const installed = readFileSync(module, "utf8");
-  expect(installed).toContain(before);
   const lazyImport = 'import("./dbBackedCommerceQuotePortV2.js")';
   const source = readFileSync(entry, "utf8");
   expect(source).toContain(lazyImport);
-  const detached = detach(source.replace(lazyImport, `import(${JSON.stringify(detach(installed.replace(before, after), module))})`), entry);
+  const detached = detach(source.replace(lazyImport, `import(${JSON.stringify(implementation)})`), entry);
   const { createDbBackedCommerceQuotePortV2: factory } = await import(
     /* @vite-ignore */ detached,
   ) as { createDbBackedCommerceQuotePortV2: typeof createDbBackedCommerceQuotePortV2 };
   return factory({ ...f.deps, readLimits: rail => bindCommerceMoneyLimitsV2Reader(f.deps.runtime, rail)() });
+}
+
+async function mutant(f: Installed, before: string, after: string) {
+  const module = new URL("dbBackedCommerceQuotePortV2.js", import.meta.resolve("@openlup/platform/commerce/server"));
+  const installed = readFileSync(module, "utf8");
+  expect(installed).toContain(before);
+  return detachedQuotePort(f, detach(installed.replace(before, after), module));
 }
 
 it.each(["final", "estimate"] as const)("executes the installed single-rate one-cent %s recipe", async purpose => {
@@ -654,16 +659,36 @@ it("keeps unqualified refusals fenced even when they carry coverage data", async
   expect(f.commands.map(command => command.operation)).toEqual(["lookup", "claim"]);
 });
 
+function exactInfrastructureError(error: unknown, field: string, cause: unknown) {
+  expect(Object.getPrototypeOf(error)).toBe(Error.prototype);
+  expect(Reflect.ownKeys(error as object).filter(key => key !== "stack").sort()).toEqual(["cause", "code", "field", "message", "remedy"]);
+  expect(error).toMatchObject({ message: "commerce_quote_v2_unavailable", code: "commerce_quote_v2_unavailable", field,
+    remedy: "Check the native app binding, driver setup, database connection and TLS, operation-role privileges, and installed migrations. Then retry the same operation." });
+  const descriptor = Object.getOwnPropertyDescriptor(error, "cause");
+  expect(descriptor?.enumerable).toBe(false);
+  expect(descriptor?.value).toBe(cause);
+}
+
 it("uses the single infrastructure checklist with the original non-enumerable cause", async () => {
   const f = await installed();
   const cause = new Error("Scripted binding failure");
   f.deps.readPlan = async () => { throw cause; };
   const error: unknown = await f.bind().createQuote(f.owner, f.request).catch((failure: unknown) => failure);
-  expect(Object.getPrototypeOf(error)).toBe(Error.prototype);
-  expect(Reflect.ownKeys(error as object).filter(key => key !== "stack").sort()).toEqual(["cause", "code", "field", "message", "remedy"]);
-  expect(error).toMatchObject({ message: "commerce_quote_v2_unavailable", code: "commerce_quote_v2_unavailable", field: "/plan",
-    remedy: "Check the native app binding, driver setup, database connection and TLS, operation-role privileges, and installed migrations. Then retry the same operation." });
-  expect(Object.getOwnPropertyDescriptor(error, "cause")).toMatchObject({ enumerable: false, value: cause });
+  exactInfrastructureError(error, "/plan", cause);
+});
+
+it("classifies a failed quote module load before entering the evaluation lane", async () => {
+  const f = await installed();
+  const run = vi.spyOn(f.deps.lane, "run");
+  const implementation = "data:text/javascript," + encodeURIComponent('throw new Error("Scripted quote module failure");');
+  // The module loader retains the original evaluation error for this URL.
+  const cause: unknown = await import(/* @vite-ignore */ implementation).catch((failure: unknown) => failure);
+  expect(cause).toBeInstanceOf(Error);
+  const port = await detachedQuotePort(f, implementation);
+  const error: unknown = await port.createQuote(f.owner, f.request).catch((failure: unknown) => failure);
+  expect(run).not.toHaveBeenCalled();
+  expect(f.commands).toEqual([]);
+  exactInfrastructureError(error, "/", cause);
 });
 
 it("admits the original invocation at its UTF-16 and UTF-8 limits before live reads", async () => {
