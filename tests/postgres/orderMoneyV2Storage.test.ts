@@ -22,7 +22,7 @@ if (manifest?.schemaVersion !== 3) throw new Error("Complete native catalogue re
 const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2_storage.sql"));
 if (!unit) throw new Error("Order money storage forward missing");
 const position = manifest.qualified.forward.indexOf(manifest.qualified.forward.find(entry => entry.file === unit.file)!);
-const precedingInventory = "a3f52135bc9ac75c8cc5298b846f91fcd9449a61fe0219d136e68fe121306b26";
+const precedingInventory = "11221bfafc1893f507158dc0fe67b16d32d79250277e0e840460bed874beb17f";
 const functions = [
   "public.commerce_order_assert_line_sum()",
   "public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders)",
