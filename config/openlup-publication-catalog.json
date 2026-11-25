@@ -8310,6 +8310,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/promotions/quoteAcceptanceTokenV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/promotions/quoteAcquisitionBinding.ts",
       "class": "public-output"
     },
@@ -11271,6 +11275,10 @@
     },
     {
       "path": "packages/platform/test/promotions/promotion_claim_hold_hours.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/quoteAcceptanceTokenV2.test.ts",
       "class": "public-output"
     },
     {
