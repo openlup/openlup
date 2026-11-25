@@ -2,14 +2,14 @@ import type { PgQueryExecutor } from "../../data/index.js";
 import type { CommerceMoneyLimitsQueryExecutor } from "./commerceMoneyLimitsV2.js";
 
 type SkuPair = Readonly<{ skuId: string; sku: string }>;
-type AssignmentRequest = Readonly<{ expectedHeadDigest: string | null; skus: readonly SkuPair[] }>;
+type AssignmentRequest = Readonly<{ expectedSelectionDigest: string | null; skus: readonly SkuPair[] }>;
 type AssignedSku = SkuPair & Readonly<{ classState: "assigned"; taxClassKey: string; assignmentRef: string }>;
 type PublishedAssignments = Readonly<{ kind: "published"; revision: string; assignments: readonly AssignedSku[] }>;
 type Refusal = Readonly<{ code: string; field: string; remedy: string }>;
 
 const skusField = "/plan/skus";
-const digestField = "/plan/expectedHeadDigest";
-const selectionRemedy = "Supply the documented published SKU selection and its catalogue head digest, then repeat the read.";
+const digestField = "/plan/expectedSelectionDigest";
+const selectionRemedy = "Supply the documented published SKU selection and its selection digest, then repeat the read.";
 const invalidSkus = { code: "tax_invalid_input", field: skusField, remedy: selectionRemedy };
 const invalidDigest = { ...invalidSkus, field: digestField };
 const classMissing = { code: "tax_class_missing", field: skusField,
@@ -92,11 +92,11 @@ function hasKeys(value: Record<string, unknown>, ...keys: string[]): boolean {
 }
 
 function snapshot(input: unknown): AssignmentRequest {
-  if (!isPlainObject(input) || Reflect.ownKeys(input).some(key => key !== "expectedHeadDigest" && key !== "skus")) {
+  if (!isPlainObject(input) || Reflect.ownKeys(input).some(key => key !== "expectedSelectionDigest" && key !== "skus")) {
     throw new PublishedSkuTaxAssignmentRefusal(invalidSkus);
   }
-  const expectedHeadDigest = dataValue(input, "expectedHeadDigest");
-  if (expectedHeadDigest !== null && !isDigest(expectedHeadDigest)) throw new PublishedSkuTaxAssignmentRefusal(invalidDigest);
+  const expectedSelectionDigest = dataValue(input, "expectedSelectionDigest");
+  if (expectedSelectionDigest !== null && !isDigest(expectedSelectionDigest)) throw new PublishedSkuTaxAssignmentRefusal(invalidDigest);
 
   const rows = array(dataValue(input, "skus"), 1, 50);
   if (!rows) throw new PublishedSkuTaxAssignmentRefusal(invalidSkus);
@@ -114,10 +114,10 @@ function snapshot(input: unknown): AssignmentRequest {
     return { skuId, sku };
   });
   skus.sort((left, right) => left.skuId < right.skuId ? -1 : 1);
-  return { expectedHeadDigest, skus };
+  return { expectedSelectionDigest, skus };
 }
 
-function decode(value: unknown, { expectedHeadDigest, skus }: AssignmentRequest): PublishedAssignments | undefined {
+function decode(value: unknown, { expectedSelectionDigest, skus }: AssignmentRequest): PublishedAssignments | undefined {
   const reply = record(value);
   if (!reply) return;
   if (reply.kind === "refused" && hasKeys(reply, "kind", "code", "field", "remedy")) {
@@ -127,7 +127,7 @@ function decode(value: unknown, { expectedHeadDigest, skus }: AssignmentRequest)
   }
   if (reply.kind !== "published" || !hasKeys(reply, "kind", "revision", "assignments")) return;
   const { revision } = reply;
-  if (!isDigest(revision) || (expectedHeadDigest !== null && expectedHeadDigest !== revision)) return;
+  if (!isDigest(revision) || (expectedSelectionDigest !== null && expectedSelectionDigest !== revision)) return;
   const rows = array(reply.assignments, skus.length, skus.length);
   if (!rows) return;
 
@@ -149,7 +149,7 @@ function decode(value: unknown, { expectedHeadDigest, skus }: AssignmentRequest)
   return { kind: "published", revision, assignments };
 }
 
-/** @experimental Resolve selected merchandise tax assignments from one verified catalogue head. */
+/** @experimental Resolve merchandise tax assignments for an exact SKU set and its verified publications. */
 export function readPublishedSkuTaxAssignments(db: Pick<CommerceMoneyLimitsQueryExecutor, "query">, input: AssignmentRequest): Promise<PublishedAssignments>;
 export async function readPublishedSkuTaxAssignments(db: Pick<PgQueryExecutor, "query">, input: AssignmentRequest): Promise<PublishedAssignments> {
   const request = snapshot(input);

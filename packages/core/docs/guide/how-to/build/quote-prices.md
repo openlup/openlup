@@ -263,10 +263,11 @@ export function withPublishedTaxClasses(runtime, readFacts) {
 
     const pairs = new Map();
     for (const { sku } of facts.planInput.lines) {
-      pairs.set(sku, { skuId: skuIdsByCode.get(sku), sku });
+      const skuId = skuIdsByCode.get(sku);
+      pairs.set(JSON.stringify([skuId, sku]), { skuId, sku });
     }
     const { assignments } = await readPublishedSkuTaxAssignments(runtime, {
-      expectedHeadDigest: null, skus: [...pairs.values()],
+      expectedSelectionDigest: null, skus: [...pairs.values()],
     });
     const bySku = new Map(assignments.map(row => [row.sku, row]));
     const lines = facts.planInput.lines.map(line => {
@@ -281,8 +282,21 @@ export function withPublishedTaxClasses(runtime, readFacts) {
 On the exclusive route, pass `withPublishedTaxClasses(runtime, readFacts)` as
 `readPlan`. Return the plan `facts` and a `skuIdsByCode` map from the host's
 trusted selection in `readFacts`. Use the restricted native runtime connection.
-The helper binds the current verified catalogue head in each merchandise
-assignment reference. The host supplies delivery assignments and fiscal facts.
+Each merchandise assignment reference binds the exact SKU set and the verified
+current publications for that selection. Pass a known `expectedSelectionDigest`
+to pin it, or pass `null` to bind the current selection. Corruption in a selected
+product refuses the quote. Unrelated corruption leaves the quote available, and
+`catalog_publication_read_head()` still refuses when the catalogue-wide check
+finds inconsistent evidence. The host supplies delivery assignments and fiscal
+facts.
+
+| Refusal | Field | Next action |
+|---|---|---|
+| `tax_invalid_input` | `/plan/skus` or `/plan/expectedSelectionDigest` | Supply the documented published SKU selection and its selection digest, then repeat the read. |
+| `catalog_tax_assignment_evidence_invalid` | `/plan/skus` | Have the catalogue owner reconcile the original selection and publication evidence, then repeat the read. |
+| `catalog_tax_assignment_head_changed` | `/plan/expectedSelectionDigest` | Read the published selection again and request a fresh quote. |
+| `catalog_tax_assignment_unpublished` | `/plan/skus` | Choose published merchandise or have the catalogue owner publish the intended SKU, then request a fresh quote. |
+| `tax_class_missing` | `/plan/skus` | Choose published merchandise whose product type declares an active tax class, or have the catalogue owner publish replacement merchandise with such a type, then request a fresh quote. |
 
 Call `createQuote` with the trusted linked customer and checkout scope. Reuse the
 same key and invocation to read the original evaluation. A pending result directs

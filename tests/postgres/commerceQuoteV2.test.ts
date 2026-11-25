@@ -50,7 +50,7 @@ const recipe = await import(/* @vite-ignore */ "data:text/javascript," + encodeU
 
 function exact(actual: unknown, expected: object) {
   expect(Object.getPrototypeOf(actual)).toBe(Object.prototype);
-  expect(Reflect.ownKeys(actual as object).filter(key => key !== "stack").sort()).toStrictEqual(Reflect.ownKeys(expected).sort());
+  expect(Reflect.ownKeys(actual as object).sort()).toStrictEqual(Reflect.ownKeys(expected).sort());
   expect((actual as { message?: unknown }).message).toBeUndefined();
   expect(actual).toStrictEqual(expected);
 }
@@ -674,18 +674,18 @@ function exactInfrastructureError(error: unknown, field: string, cause: unknown)
   expect(error).toMatchObject({ message: "commerce_quote_v2_unavailable", code: "commerce_quote_v2_unavailable", field,
     remedy: "Check the native app binding, driver setup, database connection and TLS, operation-role privileges, and installed migrations. Then retry the same operation." });
   const descriptor = Object.getOwnPropertyDescriptor(error, "cause");
-  expect(descriptor?.enumerable).toBe(false);
+  expect(descriptor).toMatchObject({ enumerable: false, configurable: true, writable: true });
   expect(descriptor?.value).toBe(cause);
 }
 
 const publishedClassMissing = refusal("tax_class_missing", "/plan/skus",
   "Choose published merchandise whose product type declares an active tax class, or have the catalogue owner publish replacement merchandise with such a type, then request a fresh quote.");
-const selectionFix = "Supply the documented published SKU selection and its catalogue head digest, then repeat the read.";
+const selectionFix = "Supply the documented published SKU selection and its selection digest, then repeat the read.";
 const catalogueRefusals = [
   refusal("tax_invalid_input", "/plan/skus", selectionFix),
-  refusal("tax_invalid_input", "/plan/expectedHeadDigest", selectionFix),
+  refusal("tax_invalid_input", "/plan/expectedSelectionDigest", selectionFix),
   refusal("catalog_tax_assignment_evidence_invalid", "/plan/skus", "Have the catalogue owner reconcile the original selection and publication evidence, then repeat the read."),
-  refusal("catalog_tax_assignment_head_changed", "/plan/expectedHeadDigest", "Read the published selection again and request a fresh quote."),
+  refusal("catalog_tax_assignment_head_changed", "/plan/expectedSelectionDigest", "Read the published selection again and request a fresh quote."),
   refusal("catalog_tax_assignment_unpublished", "/plan/skus", "Choose published merchandise or have the catalogue owner publish the intended SKU, then request a fresh quote."),
   publishedClassMissing,
 ];
@@ -711,19 +711,19 @@ function noExclusiveWork(f: Installed) {
 
 it("snapshots the closed helper request before I/O and validates its domain in refusal order", async () => {
   expectTypeOf<Parameters<typeof readPublishedSkuTaxAssignments>[0]>().toEqualTypeOf<Pick<PgQueryExecutor, "query">>();
-  const input = { expectedHeadDigest: assignmentRevision, skus: [{ ...pairB }, { ...pairA }] };
+  const input = { expectedSelectionDigest: assignmentRevision, skus: [{ ...pairB }, { ...pairA }] };
   const query = vi.fn(async (_sql: string, args?: unknown[]) => {
-    expect(JSON.parse(String(args?.[0]))).toStrictEqual({ expectedHeadDigest: assignmentRevision, skus: [pairA, pairB] });
-    input.expectedHeadDigest = providerDigest;
+    expect(JSON.parse(String(args?.[0]))).toStrictEqual({ expectedSelectionDigest: assignmentRevision, skus: [pairA, pairB] });
+    input.expectedSelectionDigest = providerDigest;
     input.skus[0]!.sku = "replaced";
     input.skus.pop();
     return { rows: [{ result: { kind: "published", revision: assignmentRevision, assignments: [replyAssignment(pairA), replyAssignment(pairB)] } }] };
   });
   const assigned = await moduleHelper({ query }, input);
   expect(assigned.assignments).toStrictEqual([replyAssignment(pairA), replyAssignment(pairB)]);
-  const unexpected = { expectedHeadDigest: {}, skus: {}, unknown: true };
+  const unexpected = { expectedSelectionDigest: {}, skus: {}, unknown: true };
   for (const [invalid, expected] of [[unexpected, catalogueRefusals[0]], [{ skus: {} }, catalogueRefusals[1]],
-    [{ expectedHeadDigest: null, skus: [{ ...pairA, taxClassKey: "provided" }] }, catalogueRefusals[0]]] as const) {
+    [{ expectedSelectionDigest: null, skus: [{ ...pairA, taxClassKey: "provided" }] }, catalogueRefusals[0]]] as const) {
     const { code, field, remedy } = expected!;
     await expect(moduleHelper({ query }, invalid as never)).rejects.toMatchObject({ code, field, remedy });
   }
@@ -735,9 +735,9 @@ it("reads only exact reply tuples and complete request-bound batches before inte
   const assigned = replyAssignment(pairA), other = replyAssignment(pairB);
   const none = { ...pairA, classState: "none", taxClassKey: null, assignmentRef: null };
   const published = { kind: "published", revision: assignmentRevision };
-  const request = { expectedHeadDigest: assignmentRevision, skus: [pairA, pairB] };
+  const request = { expectedSelectionDigest: assignmentRevision, skus: [pairA, pairB] };
   expect(await moduleHelper(unavailableReply({ ...published, assignments: [assigned, other] }), request)).toStrictEqual({ ...published, assignments: [assigned, other] });
-  expect(await moduleHelper(unavailableReply({ ...published, assignments: [assigned, other] }), { ...request, expectedHeadDigest: null })).toMatchObject(published);
+  expect(await moduleHelper(unavailableReply({ ...published, assignments: [assigned, other] }), { ...request, expectedSelectionDigest: null })).toMatchObject(published);
   const validRefusals = [...catalogueRefusals, { ...published, assignments: [none, other] }];
   const broken = [
     { ...published, assignments: [assigned] }, { ...published, assignments: [assigned, other, other] },
@@ -778,7 +778,7 @@ it("reads only exact reply tuples and complete request-bound batches before inte
 
 it("recognizes the original private refusal only when it propagates through readPlan", async () => {
   const f = await installed();
-  const cause: unknown = await moduleHelper(unavailableReply(publishedClassMissing), { expectedHeadDigest: null, skus: [pairA] }).catch((failure: unknown) => failure);
+  const cause: unknown = await moduleHelper(unavailableReply(publishedClassMissing), { expectedSelectionDigest: null, skus: [pairA] }).catch((failure: unknown) => failure);
   if (!(cause instanceof Error)) throw new Error("Expected a private refusal");
   expect(Object.getPrototypeOf(cause)).not.toBe(Error.prototype);
   expect(Object.getPrototypeOf(Object.getPrototypeOf(cause))).toBe(Error.prototype);
@@ -932,13 +932,17 @@ function guideSelection(f: Installed, selected: readonly PublishedSelection[]) {
   return { request, query, original };
 }
 
-async function expectedTaxLine(selection: PublishedSelection, taxClassKey: string) {
-  const { rows: [data] } = await store.owner.query<{ head: string; publication: string; revision: number; sku: string }>(`
-    SELECT public.catalog_publication_read_head()->>'headDigest' AS head, h.publication_id AS publication, h.revision,
+async function expectedTaxLine(selection: PublishedSelection, taxClassKey: string, basket = [selection]) {
+  const { rows: [data] } = await store.owner.query<{ selection: string; publication: string; revision: number; sku: string }>(`
+    SELECT jsonb_build_array('catalog-tax-assignment-selection',1,ARRAY(SELECT DISTINCT unnest($2::uuid[]) ORDER BY 1),
+      (SELECT jsonb_agg(jsonb_build_array(h2.product_id,p2.id,p2.revision,p2.digest) ORDER BY h2.product_id)
+       FROM public.catalog_publication_heads h2 JOIN public.catalog_publications p2 ON p2.id=h2.publication_id
+       WHERE h2.product_id=ANY($3::uuid[])))::text AS selection, h.publication_id AS publication, h.revision,
       p.canonical_state::jsonb #>> '{skus,0,revisionId}' AS sku
-    FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON p.id=h.publication_id WHERE h.product_id=$1`, [selection.productId]);
+    FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON p.id=h.publication_id WHERE h.product_id=$1`,
+  [selection.productId, basket.map(item => item.skuId), basket.map(item => item.productId)]);
   if (!data) throw new Error("Missing fixture publication");
-  return { sku: selection.sku, taxClassKey, assignmentRef: `catalog-assignment:${data.head}:${data.publication}:${data.revision}:${data.sku}` };
+  return { sku: selection.sku, taxClassKey, assignmentRef: `catalog-assignment:${destinationHash(data.selection)}:${data.publication}:${data.revision}:${data.sku}` };
 }
 
 it("executes the published tax recipe, pins repeated merchandise and replays across publication changes", async () => {
@@ -946,14 +950,20 @@ it("executes the published tax recipe, pins repeated merchandise and replays acr
   const first = await create(1), second = await create(2), classless = await create(3);
   const f = await installed({ basis: "exclusive", units: [120, 150, 170], shipping: 100, cutoff: "long" });
   const { request, query } = guideSelection(f, [first, second, first]);
-  const a = await expectedTaxLine(first, "class-0"), b = await expectedTaxLine(second, "class-1");
+  const basket = [first, second];
+  const a = await expectedTaxLine(first, "class-0", basket), b = await expectedTaxLine(second, "class-1", basket);
+  const reordered = await installed({ basis: "exclusive", units: [150, 120, 170], shipping: 100, cutoff: "long" });
+  const reversed = guideSelection(reordered, [second, first, first]);
+  expect(quote(await reordered.bind().createQuote(reordered.owner, reversed.request)).lines).toMatchObject([b, a, a]);
+  expect(reversed.query).toHaveBeenCalledTimes(1);
   f.now.onAdapter = async () => { expect((await row(f)).state).toBe("pending"); await first.publish(); };
   const original = quote(await f.bind().createQuote(f.owner, request));
   expect(query).toHaveBeenCalledTimes(1);
-  expect(JSON.parse(String(query.mock.calls[0]?.[1]?.[0]))).toMatchObject({ expectedHeadDigest: null, skus: expect.arrayContaining([
+  expect(JSON.parse(String(query.mock.calls[0]?.[1]?.[0]))).toMatchObject({ expectedSelectionDigest: null, skus: expect.arrayContaining([
     { sku: first.sku, skuId: first.skuId }, { sku: second.sku, skuId: second.skuId },
   ]) });
   expect(JSON.parse(String(query.mock.calls[0]?.[1]?.[0])).skus).toHaveLength(2);
+  expect(reversed.query.mock.calls[0]?.[1]).toStrictEqual(query.mock.calls[0]?.[1]);
   const stored = await row(f);
   const pin = stored.pin;
   expect(pin.composition.catalogueEvidenceRef).toBe(f.now.catalogueEvidenceRef);
@@ -969,7 +979,7 @@ it("executes the published tax recipe, pins repeated merchandise and replays acr
   expect(replay).toStrictEqual(original);
   expect((await row(f)).outcome_text).toBe(stored.outcome_text);
   expect(query).toHaveBeenCalledTimes(1);
-  const newA = await expectedTaxLine(first, "class-0"), newB = await expectedTaxLine(second, "class-1");
+  const newA = await expectedTaxLine(first, "class-0", basket), newB = await expectedTaxLine(second, "class-1", basket);
   const fresh = quote(await f.bind().createQuote(f.owner, { ...request, key: randomUUID() }));
   expect(fresh.lines).toMatchObject([newA, newB, newA]);
   expect(newA.assignmentRef).not.toBe(a.assignmentRef);
@@ -980,6 +990,12 @@ it("executes the published tax recipe, pins repeated merchandise and replays acr
     idempotencyKey: randomUUID(), quoteSnapshot: original as unknown as NativeCheckoutDraftRequest["quoteSnapshot"],
   })).rejects.toBeInstanceOf(Error);
   expect(draftIO).not.toHaveBeenCalled();
+
+  const conflict = await installed({ basis: "exclusive", units: [100, 120] });
+  const conflicting = guideSelection(conflict, [first, { ...second, skuId: first.skuId }]);
+  exact(await conflict.bind().createQuote(conflict.owner, conflicting.request), catalogueRefusals[0]!);
+  expect(conflicting.query).not.toHaveBeenCalled();
+  noExclusiveWork(conflict);
 
   const noClass = await installed({ basis: "exclusive", units: [100] });
   const excluded = guideSelection(noClass, [classless]);
@@ -1063,7 +1079,7 @@ it("preserves complete incumbent and fresh fiscal quote bytes across the native 
       if (!stored) throw new Error("Fiscal quote was not retained");
       return { incumbent: incumbent.map(value => JSON.stringify(value)), fiscal: JSON.stringify(fiscal), ...stored };
     };
-    await store.owner.query("DROP FUNCTION public.catalog_publication_tax_assignments(jsonb), public.catalog_publication_read_head_manifests()");
+    await store.owner.query("DROP FUNCTION public.catalog_publication_tax_assignments(jsonb), public.catalog_publication_read_head_manifests(uuid[]), public.catalog_publication_locate_sku_products(uuid[])");
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(time));
     try {

@@ -6590,7 +6590,7 @@ type SkuPair = Readonly<{
     sku: string;
 }>;
 type AssignmentRequest = Readonly<{
-    expectedHeadDigest: string | null;
+    expectedSelectionDigest: string | null;
     skus: readonly SkuPair[];
 }>;
 type AssignedSku = SkuPair & Readonly<{
@@ -6609,7 +6609,7 @@ type Refusal = Readonly<{
     remedy: string;
 }>;
 export declare function lookupPublishedSkuTaxAssignmentRefusal(cause: unknown): Refusal | undefined;
-/** @experimental Resolve selected merchandise tax assignments from one verified catalogue head. */
+/** @experimental Resolve merchandise tax assignments for an exact SKU set and its verified publications. */
 export declare function readPublishedSkuTaxAssignments(db: Pick<CommerceMoneyLimitsQueryExecutor, "query">, input: AssignmentRequest): Promise<PublishedAssignments>;
 export {};
 ```
