@@ -380,7 +380,7 @@ export async function runReleasedSchemaUpgradeProof(input: { database?: PoolConf
       ORDER BY source_kind,source_id`)).rows, sources);
     assert.deepEqual((await pool.query("SELECT * FROM public.commerce_orders WHERE id=$1", [retained.order])).rows,
       priorOrder.map(order => ({ ...order, recovery_root_order_id: null, recreated_from_order_id: null,
-        catalog_acceptance: null, catalog_basket: null, catalog_receipt_key: null })));
+        catalog_acceptance: null, catalog_basket: null, catalog_receipt_key: null, money_version: null })));
 
     // An optional pinned local package supplies actual previous application
     // code. The CI path still proves the complete database upgrade offline.

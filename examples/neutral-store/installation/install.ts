@@ -14,10 +14,11 @@ import { link, lstat, mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promis
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readQuoteAcceptanceKeyring } from '../host/quote-secret.ts';
+import { demonstrationMarker, demonstrationMarkerQuery, isDemonstrationMarker } from '../host/demonstration-marker.ts';
 import type { buildDemoSeed } from '../owned/demo-seed.ts';
 import { buildRefusal, installationFailure, isInstallationRefusal, packBuildFilename, refusal, rulesRecheck, up } from './refusals.ts';
 
-export const demonstrationMarker = 'openlup-neutral-store-demo-v1';
+export { demonstrationMarker };
 
 /** One dedicated install session, never a runtime pool or HTTP binding. */
 export interface InstallConnection {
@@ -26,9 +27,8 @@ export interface InstallConnection {
 
 /** Container-local demo material; never provision a customer installation. */
 export async function prepareDemonstrationQuoteKey(connection: InstallConnection, directory: string): Promise<string> {
-  const { rows } = await connection.query(`SELECT pg_catalog.shobj_description(oid, 'pg_database') AS marker
-    FROM pg_catalog.pg_database WHERE datname = pg_catalog.current_database()`);
-  if (rows[0]?.marker !== demonstrationMarker) throw new Error('starter_seed_demonstration_database_required');
+  const { rows } = await connection.query(demonstrationMarkerQuery);
+  if (!isDemonstrationMarker(rows[0]?.marker)) throw new Error('starter_seed_demonstration_database_required');
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const parent = await lstat(directory);
   if (!parent.isDirectory() || (parent.mode & 0o777) !== 0o700
@@ -326,7 +326,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     if (target?.login !== installRole || target?.role !== installRole) {
       throw installerRoleRequired();
     }
-    if (target.marker !== demonstrationMarker) throw demonstrationDatabaseRequired();
+    if (!isDemonstrationMarker(target.marker)) throw demonstrationDatabaseRequired();
     const legacyDefinition = createCatalogProductTypeRegistry(fixtures.flatMap(({ pack }) =>
       (pack as CatalogPackInput).types)).resolve(starterCatalogueType);
     let legacyPack;
@@ -501,7 +501,7 @@ export async function bootstrapDemonstration(config: StoreConfig, progress: Node
     await bootstrap.query("SELECT pg_advisory_lock(hashtext('neutral-store-bootstrap'))");
     const existing = await bootstrap.query(`SELECT pg_catalog.shobj_description(oid, 'pg_database') AS marker
       FROM pg_catalog.pg_database WHERE datname = $1`, [database]);
-    if (existing.rows.length && existing.rows[0]?.marker !== demonstrationMarker) {
+    if (existing.rows.length && !isDemonstrationMarker(existing.rows[0]?.marker)) {
       throw demonstrationDatabaseRequired();
     }
     if (!existing.rows.length) {

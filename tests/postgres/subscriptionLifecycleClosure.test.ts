@@ -488,7 +488,8 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
       has_table_privilege(to_regrole('service_role'),'public.subscription_retention_outcomes','SELECT') AS service`)).rows[0];
     expect(view).toEqual({ anon: false, authenticated: false, service: profile === "legacy" ? null : false });
     const deferred = (await env.owner.query(`SELECT tgname,tgrelid::regclass::text AS relation,tgdeferrable,tginitdeferred,
-      pg_get_triggerdef(oid) AS definition FROM pg_trigger WHERE tgdeferrable AND tgrelid=ANY($1::regclass[]) ORDER BY tgname`, [[
+      pg_get_triggerdef(oid) AS definition FROM pg_trigger
+      WHERE tgdeferrable AND NOT tgisinternal AND tgrelid=ANY($1::regclass[]) ORDER BY tgname`, [[
       "public.commerce_orders", "public.commerce_settlement_intents", "public.subscription_retry_obligations", "public.subscription_cycles",
       "public.fulfillment_inventory_reservations", "public.subscription_renewal_operations", "public.subscription_dunning_cases",
       "public.commerce_checkout_recovery_tokens", "public.subscription_dunning_notifications"]])).rows;
