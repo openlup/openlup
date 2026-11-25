@@ -132,8 +132,10 @@ describe.each(lifecycleProfiles)("delivered history on %s", profile => {
     expect((await env.owner.query("SELECT state,subscription_id FROM public.subscription_activations WHERE order_id=$1", [pending.order])).rows)
       .toEqual([{ state: "provisional", subscription_id: null }]);
     await skipped(f);
-    await call(env.runtime, "subscription_activate_from_captured_payment", [`activate:${pending.order}`, pending.order, pending.fingerprint]);
-    await env.owner.query("UPDATE public.commerce_orders SET subscription_cycle_id=NULL WHERE id=$1", [pending.order]);
+    // Complete the stored evidence for the existing subscription, keeping the order association.
+    await env.owner.query(`UPDATE public.subscription_activations SET state='active',subscription_id=$2,
+      activated_at=now(),payment_fingerprint=$3,activation_idempotency_key=$4 WHERE order_id=$1`,
+    [pending.order, f.subscription, pending.fingerprint, `activate:${pending.order}`]);
     expect(await run(f.end)).toMatchObject({ ok: true, resumed: 1, skippedRows: 0, failed: 0 });
   });
   it.each(["paid", "fulfillment_pending", "fulfilled"])("keeps a %s order on the next date blocked independently of the paid-cycle guard", async status => {

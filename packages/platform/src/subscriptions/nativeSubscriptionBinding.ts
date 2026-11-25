@@ -93,12 +93,14 @@ export function createNativeSubscriptionBinding(input: {
     async run() {
       return input.withRunLease(input.population, async () => {
         const now = input.now(), limit = input.batchLimit ?? 50;
-        const guard = (await input.executor.query(
-          "SELECT to_regprocedure('public.subscriptions__check_legacy_renewal_write(uuid)') IS NOT NULL AS installed",
-        )).rows[0]?.installed === true
-          ? async (id: string) => { await input.executor.query("SELECT public.subscriptions__check_legacy_renewal_write($1)", [id]); }
-          : undefined;
         await deps.inventory.expireReservations({ now, limit: Math.max(limit, 100) });
+        let guardInstalled: boolean | undefined;
+        const guard = async (id: string) => {
+          guardInstalled ??= (await input.executor.query(
+            "SELECT to_regprocedure('public.subscriptions__check_legacy_renewal_write(uuid)') IS NOT NULL AS installed",
+          )).rows[0]?.installed === true;
+          if (guardInstalled) await input.executor.query("SELECT public.subscriptions__check_legacy_renewal_write($1)", [id]);
+        };
         const retries = await retry.run(now, limit, guard);
         const renewals: AutomaticRenewalRunResult[] = [];
         const seen = new Set<string>();
@@ -106,7 +108,7 @@ export function createNativeSubscriptionBinding(input: {
           seen.add(candidate.subscriptionId);
           const snapshot = candidate.frozenSnapshot;
           renewals.push(...await runRenewalBatchRows([due(snapshot)], async () => {
-            await guard?.(candidate.subscriptionId);
+            await guard(candidate.subscriptionId);
             correlatedLogicalCycle(snapshot);
             const operation = await store.readRenewal(input.codec.identity(snapshot));
             if (!operation) throw new Error("stock_wait_operation_missing");
@@ -147,7 +149,7 @@ export function createNativeSubscriptionBinding(input: {
         }
         const normalDue = (await stock.listNormalDue({ limit, asOf: now })).filter(row => !seen.has(row.subscriptionId));
         renewals.push(...await runRenewalBatchRows(normalDue, async row => {
-          await guard?.(row.subscriptionId);
+          await guard(row.subscriptionId);
           return runOneAutomaticSubscriptionRenewal(deps, row, now);
         }, deps.policy, { concurrency }));
         return { retries, renewals };

@@ -85,15 +85,11 @@ BEGIN
 END;
 $$;
 
--- An incumbent renewal write already exposes rail or absence to a principal that
--- can make that write. Only the installed relation-wide writer learns this
--- classification. A narrower caller gets the same result for every UUID.
-CREATE FUNCTION public.subscriptions__check_legacy_renewal_write(p_subscription uuid)
+CREATE FUNCTION public.subscriptions__lock_renewal_writer_scope(p_subscription uuid)
 RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE writer name:=coalesce(nullif(current_setting('role'),'none'),session_user::text)::name;
 BEGIN
   IF NOT has_column_privilege(writer,'public.subscriptions','id','SELECT')
-     OR NOT has_table_privilege(writer,'public.subscription_renewal_operations','INSERT')
      OR NOT has_column_privilege(writer,'public.subscription_renewal_operations','subscription_id','SELECT')
      OR NOT has_column_privilege(writer,'public.subscription_renewal_operations','claimed_by','UPDATE') THEN
     RAISE EXCEPTION 'renewal_write_scope_unavailable' USING ERRCODE='42501';
@@ -104,6 +100,20 @@ BEGIN
            OR (NOT c.relforcerowsecurity AND pg_has_role(writer,c.relowner,'USAGE')))) THEN
     RAISE EXCEPTION 'renewal_write_scope_unavailable' USING ERRCODE='42501';
   END IF;
+  IF NOT has_table_privilege(writer,'public.subscription_renewal_operations','INSERT')
+     AND NOT EXISTS (SELECT 1 FROM public.subscription_renewal_operations WHERE subscription_id=p_subscription) THEN
+    RAISE EXCEPTION 'renewal_write_scope_unavailable' USING ERRCODE='42501';
+  END IF;
+  PERFORM 1 FROM public.subscriptions WHERE id=p_subscription FOR UPDATE NOWAIT;
+END;
+$$;
+
+-- A permitted incumbent write already exposes rail or absence. UUIDs outside
+-- the writer's scope receive the same result as a nonexistent UUID.
+CREATE FUNCTION public.subscriptions__check_legacy_renewal_write(p_subscription uuid)
+RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  PERFORM public.subscriptions__lock_renewal_writer_scope(p_subscription);
   PERFORM public.subscriptions__assert_legacy_renewal_rail(p_subscription);
 END;
 $$;
@@ -191,9 +201,7 @@ BEGIN
         UNION ALL SELECT op.subscription_id FROM public.subscription_renewal_operations op WHERE op.id IN (operation_id,linked_operation)
         UNION ALL SELECT c.subscription_id FROM public.subscription_cycles c WHERE c.id IN (cycle_id,linked_cycle)
       ) AS links WHERE id IS NOT NULL ORDER BY id);
-      IF cardinality(row_owners)>1 OR (cardinality(row_owners)=1 AND row_data ? 'client_id' AND NOT EXISTS (
-        SELECT 1 FROM public.subscriptions s WHERE s.id=row_owners[1] AND s.client_id=(row_data->>'client_id')::uuid
-      )) THEN
+      IF cardinality(row_owners)>1 THEN
         RAISE EXCEPTION 'renewal_cycle_unavailable' USING ERRCODE='22023', DETAIL='/cycleKey';
       END IF;
       owners:=owners||row_owners;
@@ -201,8 +209,10 @@ BEGIN
     IF pass=1 THEN
       prior_owners:=owners;
       FOR owner_id IN SELECT DISTINCT id FROM unnest(owners) id ORDER BY id LOOP
-        IF cleanup THEN
+        IF cleanup AND migration_owner THEN
           PERFORM 1 FROM public.subscriptions WHERE id=owner_id FOR UPDATE NOWAIT;
+        ELSIF cleanup THEN
+          PERFORM public.subscriptions__lock_renewal_writer_scope(owner_id);
         ELSIF migration_owner THEN
           PERFORM public.subscriptions__assert_legacy_renewal_rail(owner_id);
         ELSE
@@ -258,20 +268,21 @@ REVOKE ALL ON FUNCTION public.subscriptions__export_renewal_occurrences(uuid) FR
 REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscriptions__check_legacy_renewal_write(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.subscriptions__lock_renewal_writer_scope(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscriptions__assert_legacy_renewal_rail(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscriptions__guard_renewal_write() FROM PUBLIC;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__check_legacy_renewal_write(uuid), public.subscriptions__assert_legacy_renewal_rail(uuid), public.subscriptions__guard_renewal_write(), public.subscriptions__eligible_legacy_renewal_write(uuid), public.subscriptions__export_renewal_occurrences(uuid) FROM anon;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__check_legacy_renewal_write(uuid), public.subscriptions__lock_renewal_writer_scope(uuid), public.subscriptions__assert_legacy_renewal_rail(uuid), public.subscriptions__guard_renewal_write(), public.subscriptions__eligible_legacy_renewal_write(uuid), public.subscriptions__export_renewal_occurrences(uuid) FROM anon;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-  EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__check_legacy_renewal_write(uuid), public.subscriptions__assert_legacy_renewal_rail(uuid), public.subscriptions__guard_renewal_write(), public.subscriptions__eligible_legacy_renewal_write(uuid), public.subscriptions__export_renewal_occurrences(uuid) FROM authenticated;';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__check_legacy_renewal_write(uuid), public.subscriptions__lock_renewal_writer_scope(uuid), public.subscriptions__assert_legacy_renewal_rail(uuid), public.subscriptions__guard_renewal_write(), public.subscriptions__eligible_legacy_renewal_write(uuid), public.subscriptions__export_renewal_occurrences(uuid) FROM authenticated;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
   EXECUTE 'REVOKE ALL ON FUNCTION public.subscriptions__read_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__lock_renewal_occurrence(uuid,uuid,uuid), public.subscriptions__assert_legacy_renewal_rail(uuid), public.subscriptions__guard_renewal_write() FROM service_role;';
 END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
-  EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscriptions__check_legacy_renewal_write(uuid), public.subscriptions__eligible_legacy_renewal_write(uuid), public.subscriptions__export_renewal_occurrences(uuid) TO service_role;';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscriptions__check_legacy_renewal_write(uuid), public.subscriptions__lock_renewal_writer_scope(uuid), public.subscriptions__eligible_legacy_renewal_write(uuid), public.subscriptions__export_renewal_occurrences(uuid) TO service_role;';
 END IF; END; $$;
 
 CREATE TRIGGER subscriptions_guard_renewal_operations BEFORE INSERT OR UPDATE OR DELETE ON public.subscription_renewal_operations FOR EACH ROW EXECUTE FUNCTION public.subscriptions__guard_renewal_write();
@@ -317,8 +328,8 @@ BEGIN
   SELECT setting::integer INTO prior_ms FROM pg_catalog.pg_settings WHERE name='lock_timeout';
   PERFORM pg_catalog.set_config('lock_timeout',CASE WHEN prior_ms=0 THEN '50' ELSE least(prior_ms,50)::text END,true);
 END;
-  SELECT id INTO v_parent FROM public.subscriptions WHERE id=(
-    SELECT subscription_id FROM public.subscription_renewal_operations WHERE id=p_operation_id) FOR UPDATE;
+  SELECT subscription_id INTO v_parent FROM public.subscription_renewal_operations WHERE id=p_operation_id;
+  IF FOUND THEN PERFORM public.subscriptions__lock_renewal_writer_scope(v_parent); END IF;
   SELECT * INTO v_operation FROM public.subscription_renewal_operations
    WHERE id = p_operation_id FOR UPDATE;
   IF NOT FOUND THEN

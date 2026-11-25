@@ -9690,6 +9690,10 @@
             "searchPath": "pg_catalog, pg_temp"
           },
           {
+            "signature": "public.subscriptions__lock_renewal_writer_scope(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
             "signature": "public.subscriptions__check_legacy_renewal_write(uuid)",
             "searchPath": "pg_catalog, pg_temp"
           },
@@ -14038,12 +14042,12 @@
     },
     {
       "path": "db/platform/migrations/20261128230100_native_renewal_occurrence_guards.sql",
-      "sha256": "82b0207f16236a1f5df99b7077c3ac234175e76e927ad25346e68975520a36bc",
+      "sha256": "f7cdf1a19d7bbb0ad5bfa72fd4e30e5210f42d011c6b53662e52a61cca8d894c",
       "functions": [
         {
           "signature": "public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)",
           "beforeSha256": "0ba4fa046e10dc1a9b43d0ef994803d983d28d317e786e66ef178fa992e9edbf",
-          "afterSha256": "867ad9fd9e35c79e095a011dad091da20d924274a6d259c14595ef7ce4c1b9f2"
+          "afterSha256": "a1b547b84928cde761d7110b8b8afe74d5b8bfa5842458fb01a4d087775e469e"
         },
         {
           "signature": "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)",
@@ -14081,14 +14085,19 @@
           "afterSha256": "f216b73efab092f3329424525fb7d5fb3987d481d30cdddd0ef2d686ee2054fe"
         },
         {
+          "signature": "public.subscriptions__lock_renewal_writer_scope(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "b134cb7757dcc9b127af421b4af2c6f1438b1eeae34ac97797ab067ca6eeeea8"
+        },
+        {
           "signature": "public.subscriptions__check_legacy_renewal_write(uuid)",
           "beforeSha256": null,
-          "afterSha256": "a530a6e8be684ee4a38457c8256cd508d7189d616b8a8bee316aabbabc252ee9"
+          "afterSha256": "abc43e2237491f727deca094f0d8d110e9e2b611f34cee8e2613f0d505999b20"
         },
         {
           "signature": "public.subscriptions__guard_renewal_write()",
           "beforeSha256": null,
-          "afterSha256": "1fb6cc02f2078ba1064eb9134724966a20a193703fe46823213f91c8a0dec195"
+          "afterSha256": "bb2a91b259a110c58ac5ed579ca40ca7d2317aa5e495a9cebde94c740548ec9c"
         },
         {
           "signature": "public.subscriptions__eligible_legacy_renewal_write(uuid)",
