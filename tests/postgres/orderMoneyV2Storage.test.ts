@@ -8,6 +8,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 import { installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
@@ -23,6 +24,7 @@ const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2
 if (!unit) throw new Error("Order money storage forward missing");
 const position = manifest.qualified.forward.indexOf(manifest.qualified.forward.find(entry => entry.file === unit.file)!);
 const precedingInventory = "f0fb77762e832f9ef629e5c9e4b87f5a07f6794d391150b739577cb836c93755";
+const ownInventory = "4f145336f360df45e2e00cc705582ea4c264f1c4658b8342e94efe2bf04520ab";
 const functions = [
   "public.commerce_order_assert_line_sum()",
   "public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders)",
@@ -37,7 +39,7 @@ const definitions = async (pool: Pool) => (await pool.query<{ definition: string
 
 let store: AccountMutationsStore, sku: Awaited<ReturnType<typeof seedSku>>;
 let live: Awaited<ReturnType<typeof seedPrivateFacts>>, erased: typeof live;
-let beforeDefinitions: Awaited<ReturnType<typeof definitions>>;
+let lineSumAfterOwnForward: string;
 let predecessorOrder: string, predecessorRows: Awaited<ReturnType<typeof priorOrderRows>>;
 let priorSource: ConnectedNativeStoreCapture;
 let applied: string[];
@@ -79,10 +81,23 @@ beforeAll(async () => {
   sku = await seedSku(store.owner);
   predecessorOrder = await nativeDraft(store.runtime);
   predecessorRows = await priorOrderRows();
-  beforeDefinitions = await definitions(store.owner);
+  const beforeDefinitions = await definitions(store.owner);
   const sql = "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1";
   expect((await store.owner.query(sql, [position + 1])).rows).toEqual([]);
-  applied = (await store.runner.apply()).applied;
+
+  const throughOwn = structuredClone(predecessor);
+  for (const plan of [throughOwn, throughOwn.qualified, throughOwn.qualifiedAdmin]) plan.forward.push(unit);
+  throughOwn.qualified.objectInventorySha256.bootstrapMigrator.withRestore = ownInventory;
+  const { applied: ownApplied } = await withPlatformCatalog(throughOwn, root =>
+    createPostgresMigrationRunner({ connectionString: store.migrator.options.connectionString! }, {
+      root, installation: store.installation, poolFactory: () => store.migrator,
+    }).apply());
+  const afterDefinitions = await definitions(store.owner);
+  expect(afterDefinitions).toHaveLength(functions.length);
+  expect(afterDefinitions).toStrictEqual(beforeDefinitions);
+  lineSumAfterOwnForward = afterDefinitions[0]!.source;
+
+  applied = [...ownApplied, ...(await store.runner.apply()).applied];
   priorSource = priorPacket(await capture(store.owner, store.inventory, "prior-order-store"));
   live = await transaction(store.owner, db => seedPrivateFacts(db, sku));
   erased = await transaction(store.owner, db => seedPrivateFacts(db, sku, true));
@@ -98,10 +113,7 @@ it("applies its own prefix, keeps the incumbent definitions, and stores nulls th
   expect((await store.owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1",
     [position + 1])).rows).toEqual([{ catalog_path: unit.file, sha256: unit.sha256, position: position + 1 }]);
   expect(createHash("sha256").update(readFileSync(unit.file)).digest("hex")).toBe(unit.sha256);
-  const afterDefinitions = await definitions(store.owner);
-  expect(afterDefinitions).toHaveLength(functions.length);
-  expect(afterDefinitions).toStrictEqual(beforeDefinitions);
-  const body = afterDefinitions[0]!.source;
+  const body = lineSumAfterOwnForward;
   const legacyBlock = body.slice(body.indexOf("  SELECT total_amount_minor"),
     body.lastIndexOf("\n\n  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);") + 1);
   expect(Buffer.byteLength(legacyBlock)).toBe(939);
