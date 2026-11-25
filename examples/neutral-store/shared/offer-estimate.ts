@@ -1,4 +1,4 @@
-import { deriveSubscriptionUnitPrice } from '@openlup/platform/pricing';
+import { deriveSubscriptionUnitPrice } from '@openlup/platform/pricing/browser';
 import type { PurchaseMode, StoreConfig } from './config.ts';
 import type { CartLine } from './offer.ts';
 

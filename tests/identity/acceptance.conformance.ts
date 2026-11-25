@@ -12,6 +12,7 @@ import { build, type Plugin, type UserConfig } from "vite";
 import { tmpdir } from "node:os";
 import react from "@vitejs/plugin-react";
 import { Pool } from "pg";
+import { canonicalCatalogDraftJson } from "@openlup/platform/catalog";
 import { createPostgresDataGateway } from "@openlup/platform/data";
 import { SignJWT } from "jose";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
@@ -19,10 +20,12 @@ import { readManagedMigrationChain } from "../../scripts/public-ci-pgtap.mjs";
 import { createServiceRoleClient as createManagedClient } from "../../server/_lib/admin-domain/auth.js";
 import { createAdminUserInviteHandler, createAdminUserInvitePort, createInviteAdminUserGateway, runInviteAdminUserUseCase, readBearerToken, createAdminUserRemoveHandler, createCustomerMeHandler, customerMeResponseSchema,
   createPrivacyExportHandler, createPrivacyEraseHandler, createPostgresPrivacyUnitOfWork, createPostgresPrivacyStore, createManagedPrivacyStore,
-  createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPrivacyOperations, type ManagedIdentityClient, type InviteAdminUserClient } from "@openlup/platform/identity";
+  createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPrivacyOperations, reconcilePostgresPrivacyErasure,
+  type ManagedIdentityClient, type InviteAdminUserClient } from "@openlup/platform/identity";
 import { createSchemaProbe, type LoadedPackage } from "@openlup/core/readiness";
 import type { HttpHandler, HttpRequest } from "@openlup/platform/http";
 import type { ReferenceIdentityPorts } from "../../server/runtime/auth/referenceIdentity.js";
+import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import { createSupabaseAdminUserRemovePort } from "../../server/adapters/supabase/adminUserActionPort.js";
 import type { ReferenceIdentityRuntime } from "../../server/runtime/public-reference/serve.js";
 import type { createCapturedIdentityMailbox } from "../../server/runtime/auth/capturedIdentityMailbox.js";
@@ -155,6 +158,135 @@ export function createIdentityAcceptanceDatabase(pool: Pool) {
     },
   };
 }
+type AcceptanceRequest = (path: string, token: string, body: unknown) =>
+  Promise<{ status: number; envelope: { ok: boolean; data?: Record<string, unknown>; error?: { code: string; details?: Record<string, unknown> } }; cache: string | null }>;
+
+function assertGovernedPrivacyRefusal(response: Awaited<ReturnType<AcceptanceRequest>>, code: string) {
+  assert.equal(response.status, 503);
+  assert.equal(response.cache, "no-store");
+  assert.equal(response.envelope.ok, false);
+  assert.equal(response.envelope.data, undefined);
+  assert.equal(response.envelope.error?.code, "UPSTREAM_UNAVAILABLE");
+  const details = response.envelope.error?.details;
+  assert(details);
+  assert.deepEqual(Object.keys(details).sort(), ["cause", "fix", "observed", "privacyCode", "recheck"]);
+  assert.equal(details.privacyCode, code);
+  for (const key of ["observed", "cause", "fix", "recheck"]) {
+    const fact = details[key];
+    assert(typeof fact === "string" && fact.length > 0);
+  }
+}
+
+async function proveNativeCoverageRecovery(pool: Pool, request: AcceptanceRequest, token: string) {
+  const actor = { principalId: ADMIN };
+  const subject = { kind: "contact", contactId: randomUUID() };
+  const input = { subject, idempotencyKey: randomUUID() };
+  const erasureId = randomUUID(), missing = "customer-saved-addresses";
+  const owners = nativePrivacyContributors(createPostgresPrivacyStore());
+  const registry = createPersonalDataContributorRegistry(owners, { requiredContributorIds: [] });
+  const versions = Object.fromEntries(owners.filter(owner => owner.id !== missing).map(owner => [owner.id, owner.version]));
+  await pool.query("INSERT INTO public.clients(id,email) VALUES ($1,'historical@example.invalid')", [subject.contactId]);
+  await pool.query(`INSERT INTO public.customer_saved_addresses(client_id,kind,line1,city,postal_code)
+    VALUES ($1,'shipping','Sample Lane','Sample Town','00000')`, [subject.contactId]);
+  const retained = [{ owner: "identity", resource: "clients", disposition: "retain", reasonCode: "PSEUDONYMOUS_ERASURE_MARKER", remote: false }];
+  const { rows: [original] } = await pool.query(`INSERT INTO public.identity_privacy_erasures
+    (erasure_id,idempotency_key,client_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
+    VALUES ($1,$2,$3,$4,'identity.erasure.v1',$5,'[]',$6,clock_timestamp())
+    RETURNING completed_at`, [erasureId, input.idempotencyKey, subject.contactId, actor.principalId, versions, JSON.stringify(retained)]);
+  const receiptRow = async () => (await pool.query("SELECT to_jsonb(r)::text AS bytes FROM public.identity_privacy_erasures r WHERE erasure_id=$1", [erasureId])).rows[0].bytes;
+  const before = await receiptRow();
+  const erase = () => request("/api/bff/admin/identity/privacy/erase", token, input);
+  assertGovernedPrivacyRefusal(await erase(), "PRIVACY_RECEIPT_COVERAGE_INCOMPLETE");
+  const reader = "public.identity_privacy_reconciled_contributor_ids";
+  await pool.query(`ALTER FUNCTION ${reader}(uuid) RENAME TO fixture_privacy_replay_reader`);
+  try { assertGovernedPrivacyRefusal(await erase(), "PRIVACY_ASSESSMENT_UNAVAILABLE"); }
+  finally { await pool.query(`ALTER FUNCTION public.fixture_privacy_replay_reader(uuid) RENAME TO identity_privacy_reconciled_contributor_ids`); }
+  const remainingAddress = async () => (await pool.query("SELECT id FROM public.customer_saved_addresses WHERE client_id=$1", [subject.contactId])).rowCount;
+  assert.equal(await remainingAddress(), 1);
+  assert.equal(await receiptRow(), before);
+  const ownerSession = await pool.connect();
+  try {
+    const disposition = await reconcilePostgresPrivacyErasure({
+      registry, actor, unitOfWork: { async run(work) {
+        await ownerSession.query("BEGIN");
+        try {
+          const result = await work({ query: (sql, values) => ownerSession.query(sql, [...(values ?? [])]) });
+          await ownerSession.query("COMMIT");
+          return result;
+        } catch (error) { await ownerSession.query("ROLLBACK"); throw error; }
+      } },
+    }, { erasure_id: erasureId, contributor_id: missing, evidence_ref: randomUUID() });
+    assert.equal(disposition?.contributorId, missing);
+  } finally { ownerSession.release(); }
+  assert.equal(await remainingAddress(), 0);
+  const replay = await erase();
+  assert.equal(replay.status, 200);
+  assert.equal(replay.envelope.ok, true);
+  assert.deepEqual(replay.envelope.data, { version: "identity.erasure.v1", erasureId, completedAt: original.completed_at.toISOString(),
+    obligations: retained, outcome: "ALREADY_ERASED" });
+  assert.equal(await receiptRow(), before);
+}
+
+async function proveRetainedDestination(pool: Pool, erase: (clientId: string) => Promise<unknown>) {
+  const notify = async () => (await pool.query(`SELECT
+    ARRAY(SELECT to_jsonb(e)::text FROM public.outbox_events e ORDER BY 1) AS outbox,
+    ARRAY(SELECT to_jsonb(s)::text FROM public.fulfillment_shipments s ORDER BY 1) AS shipments`)).rows[0];
+  const noDispatch = await notify();
+  const clientId = randomUUID(), principalRef = randomUUID(), scopeRef = randomUUID(), orderId = randomUUID();
+  await pool.query("INSERT INTO public.clients(id,email,principal_id) VALUES ($1,'destination@example.invalid',$2)", [clientId, principalRef]);
+  const owner = { installationRef: "fixture-installation", principalKind: "customer", principalRef, customerOrSessionRef: clientId };
+  const context = { owner, clientId, scopeRef };
+  const issue = async () => {
+    const address = { city: "Sample Town", line1: "Sample Lane", postalCode: "00000", countryCode: "XA" };
+    const original = { address, contact: { recipientName: "Sample Recipient" } };
+    const dialect = "commerce.destination.snapshot.v2", requestKey = randomUUID();
+    const validated = { ...original, classificationKeys: ["fixture"], policyRef: "fixture.policy", policyRevision: "r1" };
+    const requestDigest = createHash("sha256").update(canonicalCatalogDraftJson([
+      "commerce.destination.request.v2", { dialect, owner, requestKey, purpose: "checkout", scopeRef, original },
+    ])).digest("hex");
+    const command = { dialect, requestKey, purpose: "checkout", scopeRef, original, validated, requestDigest };
+    const { rows: [row] } = await pool.query("SELECT public.commerce_snapshot_destination_v2($1,$2,clock_timestamp()) AS value", [context, command]);
+    assert(row.value.binding);
+    return row.value;
+  };
+  const issued = await issue();
+  const service = { deliverySelectionRef: "selected", providerRef: "fixture", carrierRef: "carrier",
+    serviceRef: "service", servicePolicyRevision: "policy", adapterRevision: " \t𐌀é  " };
+  const register = async (db: Pick<Pool, "query">) => (await db.query(
+    "SELECT public.commerce_register_order_destination_v2($1,$2,'checkout',$3,$4,$5,$6) AS value",
+    [context, orderId, scopeRef, issued.selection.selectionRevision, issued.binding, service],
+  )).rows[0].value;
+  const writer = await pool.connect();
+  try {
+    await writer.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    await writer.query("LOCK TABLE public.identity_privacy_erasures IN SHARE MODE");
+    await writer.query("SELECT id FROM public.clients WHERE id=$1 FOR KEY SHARE", [clientId]);
+    await writer.query("SELECT public.commerce_lock_destination_v2_selection($1,$2)", [context, scopeRef]);
+    await writer.query("SELECT public.commerce_lock_destination_v2_document($1,$2,$3)", [context, scopeRef, issued.binding.snapshotRef]);
+    await writer.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES ($1,$2,'pending_payment','XXX',0)", [orderId, clientId]);
+    assert.deepEqual(await register(writer), issued.binding);
+    await writer.query("COMMIT");
+  } catch (error) { await writer.query("ROLLBACK"); throw error; }
+  finally { writer.release(); }
+  const read = async () => (await pool.query("SELECT public.commerce_read_destination_v2($1,'order',$2,$3) AS value",
+    [context, orderId, issued.binding])).rows[0].value;
+  const retained = await read();
+  assert.deepEqual(retained.binding, issued.binding);
+  await pool.query(`UPDATE public.commerce_destination_v2_documents SET evidence_expires_at=clock_timestamp(),
+    issued_at=clock_timestamp()-interval '24 hours' WHERE snapshot_ref=$1`, [issued.binding.snapshotRef]);
+  assert.notEqual((await issue()).binding.snapshotRef, issued.binding.snapshotRef);
+  assert.deepEqual(await register(pool), issued.binding);
+  assert.deepEqual((await read()).document, retained.document);
+  const pin = async () => (await pool.query("SELECT service,selection FROM public.commerce_destination_v2_order_bindings WHERE order_id=$1", [orderId])).rows[0];
+  assert.deepEqual(await pin(), { service, selection: issued.selection });
+  // The checkout and privacy paths run locally with no dispatch worker selected.
+  assert.deepEqual(await notify(), noDispatch);
+  await erase(clientId);
+  for (const refused of [await read(), await register(pool)]) assert.equal(refused.code, "destination_evidence_unavailable");
+  assert.deepEqual(await pin(), { service: null, selection: null });
+  assert.deepEqual(await notify(), noDispatch);
+}
+
 export async function runAcceptance(setup: Setup) {
   const { bundle, directory, database, origin, runId, auth } = setup;
   const pool = new Pool({ connectionString: database });
@@ -163,6 +295,7 @@ export async function runAcceptance(setup: Setup) {
   let server: import("node:http").Server | undefined;
   let runtime: ReferenceIdentityRuntime | undefined;
   let managedReplay: { runId: string; chainDigest: string; files: string[]; completedAt: string } | undefined;
+  let stage = "setup and mounted routes";
   try {
     await waitFor(async () => { try { await pool.query("SELECT 1"); return true; } catch { return undefined; } }, "database TCP");
     setup.assertContainer();
@@ -342,7 +475,7 @@ export async function runAcceptance(setup: Setup) {
     server = await loaded.startPublicReferenceServer({ env, identity: runtime, distDir: join(directory, "client"), port: Number(new URL(origin).port), host: "127.0.0.1" });
     const request = async (path: string, token?: string, body?: unknown) => {
       const response = await fetch(origin + path, { method: body === undefined ? "GET" : "POST", headers: { origin, "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(10000) });
-      return { status: response.status, envelope: await response.json() };
+      return { status: response.status, envelope: await response.json(), cache: response.headers.get("cache-control") };
     };
     async function assertNonMember(token: string) {
       const me = await request("/api/bff/admin/platform/me", token);
@@ -450,8 +583,18 @@ export async function runAcceptance(setup: Setup) {
         assert.deepEqual((await pool.query("SELECT * FROM public.clients WHERE id=$1", [CONTACT])).rows, before);
       }
       await pool.query("UPDATE public.subscriptions SET status='cancelled' WHERE id=$1", [subscription]);
+      stage = "historical receipt coverage";
+      await proveNativeCoverageRecovery(pool, request, admin.token);
+      stage = "local retained destination replay";
+      await proveRetainedDestination(pool, async clientId => {
+        const erased = await request("/api/bff/admin/identity/privacy/erase", admin.token,
+          { subject: { kind: "contact", contactId: clientId }, idempotencyKey: randomUUID() });
+        assert.equal(erased.status, 200);
+        assert.equal(erased.envelope.data?.outcome, "ERASED");
+      });
     }
     // The browser journey runs before erasing the contact whose account it needs.
+    stage = "browser journey";
     const browserInput = { bundle, customerEmail: "browser-customer@example.com", adminEmail: "browser-administrator@example.com", contactId: BROWSER_CONTACT };
     writeFileSync(join(directory, "browser-input.json"), JSON.stringify(browserInput), { mode: 0o600 });
     const browserExit = await new Promise<number | null>((done, reject) => {
@@ -459,6 +602,7 @@ export async function runAcceptance(setup: Setup) {
       child.once("error", reject); child.once("exit", done);
     });
     assert.equal(browserExit, 0, "Identity browser acceptance failed; credential-bearing output suppressed");
+    stage = "final mounted erasure and retry";
     const before = (await pool.query("SELECT * FROM public.clients WHERE id=$1", [CONTACT])).rows;
     const erased = await request("/api/bff/admin/identity/privacy/erase", admin.token, erase);
     if (bundle === "node-postgres") {
@@ -473,7 +617,7 @@ export async function runAcceptance(setup: Setup) {
       const retained = await createManagedClient({ url: auth!.url, serviceRoleKey: auth!.serviceKey }).auth.admin.getUserById(CUSTOMER);
       assert.equal(retained.data.user?.id, CUSTOMER);
     }
-  } catch { throw new Error(`Identity acceptance ${bundle} failed; credential-bearing assertion details suppressed`); }
+  } catch { throw new Error(`Identity acceptance ${bundle} failed during ${stage}; credential-bearing assertion details suppressed`); }
   finally {
     try { await nativePrivacyWork?.close(); }
     finally { await ownedDatabase.close(server); }

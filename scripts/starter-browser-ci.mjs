@@ -13,6 +13,7 @@ import pg from 'pg';
 import { runPostgresContainer, waitForPostgresTcpReady } from '../tests/helpers/postgresContainer.ts';
 import { imageIo, imageReference, pullWithRetry, readCiImage } from './ci-image-pull.mjs';
 import { browserJourneyGroups } from '../examples/neutral-store/browser-groups.mjs';
+import { isHostedCi, reportFlakyRetries } from './ci-flaky-retry.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const execute = promisify(execFile);
@@ -131,15 +132,23 @@ export async function resolveBrowserImage(io = imageIo, localImage) {
 }
 
 // Reverse acquisition order, attempting every release even after a cleanup error.
+// Errors thrown by a withCleanup whose releases did not all succeed, including a work error.
+const cleanupFailures = new WeakSet();
+export const isCleanupFailure = error => typeof error === 'object' && error !== null && cleanupFailures.has(error);
+
 export async function withCleanup(work) {
   const releases = [];
   let failure;
   let value;
+  let releaseFailed = false;
   try { value = await work(release => releases.push(release)); } catch (error) { failure = error; }
   for (const release of releases.reverse()) {
-    try { await release(); } catch { failure ??= new Error('starter_browser_cleanup_failed'); }
+    try { await release(); } catch { releaseFailed = true; failure ??= new Error('starter_browser_cleanup_failed'); }
   }
-  if (failure) throw failure;
+  if (failure) {
+    if (releaseFailed && typeof failure === 'object' && failure !== null) cleanupFailures.add(failure);
+    throw failure;
+  }
   return value;
 }
 
@@ -326,17 +335,50 @@ async function freePort() {
   return port;
 }
 
+export const retryBudgetShare = 0.45;
+export const defaultRetryBudgetMs = 300_000;
+
+/** The job budget against which a group's first attempt is measured before a rerun. */
+export function starterBrowserRetryBudgetMs(env = processEnvironment) {
+  const value = Number(env.OPENLUP_STARTER_BROWSER_RETRY_BUDGET_MS);
+  return Number.isSafeInteger(value) && value > 0 ? value : defaultRetryBudgetMs;
+}
+
+/**
+ * Only a journeys failure on the first attempt, with hosted-CI retry enabled, whose
+ * cleanup completed and which used at most 45% of the budget, reruns the group.
+ */
+export function decideBrowserGroupRetry(phase, attempt, retryEnabled,
+  { cleanupFailed = false, elapsedMs = 0, budgetMs = defaultRetryBudgetMs } = {}) {
+  if (phase !== 'journeys') return 'abort';
+  if (!retryEnabled || attempt !== 1 || cleanupFailed) return 'fail';
+  return elapsedMs > budgetMs * retryBudgetShare ? 'budget' : 'retry';
+}
+
 // Preserve later test diagnostics, but do not repeat a failed infrastructure setup.
-export async function runBrowserGroups(runGroup, currentPhase, groups = browserJourneyGroups.map((_, index) => index)) {
+// A journeys failure in hosted CI reruns the whole group once on fresh disposable state.
+export async function runBrowserGroups(runGroup, currentPhase, groups = browserJourneyGroups.map((_, index) => index),
+  { retryJourneys = false, reportFlaky = reportFlakyRetries, budgetMs = defaultRetryBudgetMs, now = () => performance.now() } = {}) {
   let failure;
   for (const index of groups) {
     const selection = browserJourneyGroups[index];
-    try { await runGroup(index, selection); }
-    catch (error) {
-      const phase = currentPhase();
-      console.error(`Starter browser group ${index + 1} failed during ${phase}`);
-      if (phase !== 'journeys') throw error;
-      failure ??= error;
+    for (let attempt = 1; ; attempt += 1) {
+      const started = now();
+      try {
+        await runGroup(index, selection, attempt);
+        if (attempt > 1) reportFlaky([`starter browser group ${index + 1}`]);
+        break;
+      } catch (error) {
+        const phase = currentPhase();
+        console.error(`Starter browser group ${index + 1} failed during ${phase}${attempt > 1 ? ' on retry' : ''}`);
+        const decision = decideBrowserGroupRetry(phase, attempt, retryJourneys,
+          { cleanupFailed: isCleanupFailure(error), elapsedMs: now() - started, budgetMs });
+        if (decision === 'abort') throw error;
+        if (decision === 'budget') console.error(`Starter browser group ${index + 1} retry skipped: budget`);
+        if (decision === 'retry') { console.error(`Retrying starter browser group ${index + 1} once`); continue; }
+        failure ??= error;
+        break;
+      }
     }
   }
   if (failure) throw failure;
@@ -408,8 +450,8 @@ export async function runStarterBrowser(options) {
       const app = join(scratch, 'app');
       defer(async () => {
         // Scan credentials from failed journeys too, before deleting the private fixture.
-        for (const state of [app, ...browserJourneyGroups.flatMap((_, index) =>
-          ['supplements', 'coffee'].map(id => join(app, '.context/care-browser', String(index), id)))]) {
+        for (const state of [app, ...browserJourneyGroups.flatMap((_, index) => [String(index), `${index}-retry`].flatMap(directory =>
+          ['supplements', 'coffee'].map(id => join(app, '.context/care-browser', directory, id))))]) {
           const capture = join(state, '.context/captured-messages');
           try {
             for (const file of await readdir(capture)) {
@@ -441,9 +483,11 @@ export async function runStarterBrowser(options) {
       const catalogueRules = readStarterCatalogueRules();
       const { selectConfiguration } = await import(pathToFileURL(join(app, 'owned/store.config.ts')).href);
       await mkdir(join(app, '.context'), { mode: 0o700 });
-      await runBrowserGroups((groupIndex, selection) =>
+      await runBrowserGroups((groupIndex, selection, attempt) =>
           withCleanup(async defer => {
             const suffix = randomBytes(6).toString('hex'), hosts = [];
+            // A retry starts from fresh host state so no earlier capture can satisfy it.
+            const stateDirectory = attempt > 1 ? `${groupIndex}-retry` : String(groupIndex);
             for (const configuration of ['supplements', 'coffee']) {
               phase = `postgres_${configuration}`;
               const postgres = await acquireStarterPostgres(defer);
@@ -498,7 +542,7 @@ export async function runStarterBrowser(options) {
               privateValues.push(key);
               const keyFile = join(scratch, `${groupIndex}-${configuration}-key.json`);
               await writeFile(keyFile, JSON.stringify({ current: key }), { mode: 0o600 });
-              const state = join(app, '.context/care-browser', String(groupIndex), configuration);
+              const state = join(app, '.context/care-browser', stateDirectory, configuration);
               await mkdir(state, { recursive: true, mode: 0o700 });
               const port = await freePort(), baseURL = `http://127.0.0.1:${port}`;
               phase = `host_${configuration}`;
@@ -526,7 +570,7 @@ export async function runStarterBrowser(options) {
               const browserRuntime = new URL(runtimeUrl);
               browserRuntime.password = password;
               hosts.push({ id: configuration, baseURL, ownerUrl: installUrl, runtimeUrl: browserRuntime.href,
-                state: `/app/.context/care-browser/${groupIndex}/${configuration}` });
+                state: `/app/.context/care-browser/${stateDirectory}/${configuration}` });
             }
             await writeBrowserFixtures(app, hosts);
             phase = 'journeys';
@@ -544,7 +588,7 @@ export async function runStarterBrowser(options) {
             const counts = output.match(/\b\d+ (?:passed|skipped|failed|did not run)\b/gu) ?? [];
             if (!counts.some(count => count.endsWith(' passed'))) throw new Error('starter_browser_results_missing');
             console.log(`Starter database journeys: ${counts.join(', ')}; group ${groupIndex + 1}`);
-          }), () => cancellation.signal.aborted ? 'cancelled' : phase, options.groups);
+          }), () => cancellation.signal.aborted ? 'cancelled' : phase, options.groups, { retryJourneys: isHostedCi(processEnvironment), budgetMs: starterBrowserRetryBudgetMs() });
     });
     await runCatalogueUpgrade(options, image, async (manifest, commit, browser) => {
       cancellation.signal.throwIfAborted();

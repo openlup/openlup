@@ -48,6 +48,20 @@ function capture() {
   return { lane, requests };
 }
 
+it("reports the invalid legacy pin kind before the destination version without entering the lane", async () => {
+  const id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const { lane, requests } = capture();
+  const command = {
+    operation: "claim", recovery: null,
+    identity: { installationRef: "shop-a", clientId: id, principalRef: id, scopeRef: id, evaluationKey: "legacy-key" },
+    invocation: { purpose: "estimate", mode: "one_time", lines: [{ sku: "item", quantity: 1 }], deliverySelector: "delivery", paymentSelector: "payment" },
+    pin: { kind: "unknown", destination: { snapshotRef: id, destinationDigest: "a".repeat(64), schemaVersion: 3, policyRevision: "policy-a" },
+      request: { basis: "inclusive", taxDate: "2026-01-01T00:00:00.000Z" }, coverage: null, recovery: null, validUntil: "2099-01-02T00:00:00.000Z" },
+  };
+  expectRefusal(await beginTaxCalculation(lane, bytes(command)), "/pin/kind");
+  expect(requests).toEqual([]);
+});
+
 describe("native composition wrapper wire", () => {
   const resources = storeJourneyResources();
   let store: JourneyInstallation;

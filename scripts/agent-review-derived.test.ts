@@ -1,1119 +1,188 @@
-import childProcess, { execFileSync, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { syncBuiltinESMExports } from 'node:module';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
-import { runLandingGenerators, syncSqlReference } from './agent-review-generators.mjs';
-import { applyMigrationReslot, assertAppendOnlyLandingSlots, assertNoAuthoredSlotReferences, carrierLocale, isInventoryInputPath, landingMerge, landingSlotPlan, nextFreeMigrationSlot } from './agent-review-landing.mjs';
-import { deltaFloor, prepareCandidate, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
-import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, validateEconomySession, proveReviewIntegration, git as sourceGit } from './agent-review-session.mjs';
-import { fixtureNpmCli, linkFixtureInstallation, localFixtureEnvironment } from './fixtures/landing-test-environment.ts';
-import { renderDocumentationSourceMap } from './documentation-navigation.ts';
-import { readDocumentationState } from './documentation-routing.ts';
-import { checkPlatformMigrationProjection } from './packages/platform-migration-projection.ts';
-import { evaluatePlatformMigrationManifestMetadata } from './platform-migration-manifest.ts';
+import { spawnSync } from 'node:child_process';
+import { existsSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterAll, beforeAll, expect, it } from 'vitest';
+import { INVENTORY_PATH, MIGRATION_REGISTRIES, migrationRegistryUnion } from './agent-review-derived.mjs';
+import { runLandingGenerators } from './agent-review-generators.mjs';
+import { applyMigrationReslot, isInventoryInputPath, landingMerge } from './agent-review-landing.mjs';
+import { captureCommittedReviewCandidate, proveReviewIntegration, git as sourceGit } from './agent-review-session.mjs';
+import {
+  CATALOGUE,
+  MAIN_SQL_HEADING,
+  PORTABILITY_REPORT,
+  PROBE_KEY,
+  PROBE_OUTPUTS,
+  SETTING_GUIDE,
+  SETTING_REFUSALS,
+  SQL_HEADING,
+  SQL_REFERENCE,
+  createDerivedFixture,
+  fixtureEnvironment,
+  json,
+  npmCli,
+  type DerivedFixture,
+} from './fixtures/agent-review-derived-fixture.ts';
 
-const source = process.cwd();
-const npmCli = fixtureNpmCli();
-const fixtureEnvironment = { ...localFixtureEnvironment(), ...carrierLocale, npm_execpath: npmCli };
-let root: string, base: string, reviewed: string, main: string, merged: string;
-let initialLandingCommands: { command: string; args: string[] }[] = [];
-let initialLandingResult: { head: string; main: string; inventoryRefreshed: boolean };
-const git = (...args: string[]) => execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', root, '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgSign=false', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { env: fixtureEnvironment, encoding: 'utf8', timeout: 30000, maxBuffer: 128 * 1024 * 1024 }).trim();
-const read = (path: string) => readFileSync(join(root, path), 'utf8');
-const write = (path: string, value: string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), value); };
-const commit = () => { git('add', '-A'); git('commit', '--allow-empty', '-qm', 'Synthetic forward', '-s'); return git('rev-parse', 'HEAD'); };
-const json = value => JSON.stringify(value, null, 2) + '\n';
-function append(slot: string) {
-  const file = `db/platform/migrations/${slot}_landing_fixture.sql`, sql = '-- Synthetic no-op forward\nSELECT 1;\n';
-  write(file, sql); const sha256 = createHash('sha256').update(sql).digest('hex');
-  const manifest = JSON.parse(read(MIGRATION_REGISTRIES[0]));
-  for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) plan.forward.push({ file, sha256 });
-  write(MIGRATION_REGISTRIES[0], json(manifest));
-  const registry = JSON.parse(read(MIGRATION_REGISTRIES[1]));
-  registry.nativeStoreForwardClass.slots.push({ row: `fixture-${slot}`, path: file, replacedFunctions: [], createdFunctions: [] });
-  registry.nativeStoreForwards.push({ path: file, sha256, functions: [] });
-  write(MIGRATION_REGISTRIES[1], json(registry));
-  expect(checkPlatformMigrationProjection(root, true)).toEqual([]);
-  write(SQL_REFERENCE, syncSqlReference(root));
-}
-const CATALOGUE = 'config/openlup-publication-catalog.json';
-const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
-const SQL_HEADING = '# SQL catalogue';
-const MAIN_SQL_HEADING = '# Package SQL catalogue';
-const PORTABILITY = 'packages/platform/src/portability/index.ts';
-const PORTABILITY_REPORT = 'packages/platform/api/portability.api.md';
-const SETTING_DATA = 'packages/platform/src/inventory/settings-data.json';
-const SETTING_CATALOGUE = 'packages/platform/settings-catalog.json';
-const SETTING_REFUSALS = 'packages/platform/settings-refusals.json';
-const SETTING_GUIDE = 'packages/core/docs/guide/how-to/operate/settings-catalogue.md';
-const PROBE_OUTPUTS = [PORTABILITY_REPORT, SETTING_CATALOGUE, SETTING_REFUSALS, SETTING_GUIDE];
-const PROBE_KEY = 'inventory.fixtureReservation';
-const fixtureCommand = (command: string, args: string[]) => execFileSync(command, args, {
-  cwd: root, env: fixtureEnvironment, encoding: 'utf8', timeout: 180000,
-  maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
-});
-const fixtureNpm = (...args: string[]) => fixtureCommand(process.execPath, [npmCli, ...args]);
-const coldBuild = (...owners: string[]) => {
-  for (const owner of owners) fixtureNpm('run', 'build', `--workspace=@openlup/${owner}`);
-};
-const landingCli = () => fixtureNpm('run', 'landing:merge');
-const land = () => landingMerge(root, { runCommand: fixtureCommand });
-const checkout = (rev: string) => { git('reset', '--hard'); git('checkout', '-q', '--detach', rev); };
-const setMain = (rev: string) => { git('branch', '-f', 'main', rev); git('update-ref', 'refs/remotes/origin/main', rev); };
-const installedLock = 'node_modules/.package-lock.json';
-const lockedDependency = 'node_modules/zod';
-const toolchainCheck = ['--input-type=module', '-e', expect.stringContaining('assertCarrierToolchain(process.cwd())')];
-const status = () => git('status', '--porcelain=v1', '--untracked-files=all');
-function expectRestoredHead(head: string) {
-  expect(git('rev-parse', 'HEAD')).toBe(head);
-  expect(existsSync(join(root, '.git/MERGE_HEAD'))).toBe(false);
-  expect(status()).toBe('');
-}
-function startToolchainLanding(input: 'package-lock.json' | '.npmrc') {
-  checkout(base);
-  write('README.md', read('README.md') + '\nFixture branch change.\n');
-  const left = commit();
-  checkout(base);
-  if (input === 'package-lock.json') {
-    const lock = JSON.parse(read(input));
-    lock.packages[lockedDependency].version = '0.0.0-fixture';
-    write(input, json(lock));
-  } else write(input, read(input).replace('legacy-peer-deps=true', 'legacy-peer-deps=false'));
-  const right = commit();
-  setMain(right);
-  checkout(left);
-  return { left, right };
-}
-function probeExport() {
-  write(PORTABILITY, read(PORTABILITY) + '\n/** @experimental A fixture declaration. */\nexport const fixturePortability = 1;\n');
-  write('packages/platform/changes/fixture-portability.md', '- Add an experimental portability fixture and describe reservation policy.\n');
-}
-function probeSetting() {
-  const data = JSON.parse(read(SETTING_DATA));
-  data.push({ ...data.find(entry => entry.kind === 'invariant'), key: PROBE_KEY, goal: 'Describe fixture reservation replay.' });
-  write(SETTING_DATA, json(data));
-}
-function restoreDerivedFixture() {
-  if (existsSync(join(root, '.git/MERGE_HEAD'))) git('merge', '--abort');
-  checkout(merged);
-  setMain(main);
-}
-// Main adds a package command after the reviewed head forked; main's own owner
-// writes its catalogue in a new process, as a contributor's generator run would.
-function addPackageCommand() {
-  const policy = 'scripts/oss-publication-policy.ts', close = '\n];\nexport const PUBLIC_PACKAGE_EXECUTION_SURFACES';
-  expect(read(policy)).toContain(close);
-  write(policy, read(policy).replace(close, `\n  publicCommand("fixture:landing", "node -e 0"),${close}`));
-  const owner = pathToFileURL(join(root, policy)).href;
-  execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync, writeFileSync } from 'node:fs';
-    const { createPublicPublicationCatalog } = await import(${JSON.stringify(owner)});
-    const catalog = JSON.parse(readFileSync(${JSON.stringify(CATALOGUE)}, 'utf8'));
-    writeFileSync(${JSON.stringify(CATALOGUE)}, createPublicPublicationCatalog(catalog.publicPaths, catalog.guardViability).contents);`], { cwd: root, env: fixtureEnvironment, timeout: 30000 });
-}
+let f: DerivedFixture;
+
 beforeAll(async () => {
-  vi.stubEnv('npm_execpath', npmCli);
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'openlup-derived-live-')));
-  execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, root], { env: fixtureEnvironment, timeout: 30000 });
-  // The clone already has HEAD. Overlay only differences during local development.
-  const sourcePaths = (...args: string[]) => execFileSync('/usr/bin/git', args, { cwd: source, env: fixtureEnvironment, encoding: 'utf8' }).split('\0').filter(Boolean);
-  const overlays = new Set([...sourcePaths('diff', '--name-only', '--no-renames', '-z', 'HEAD'),
-    ...sourcePaths('ls-files', '-z', '--others', '--exclude-standard')]);
-  for (const path of overlays) {
-    if (!existsSync(join(source, path))) { rmSync(join(root, path), { force: true }); continue; }
-    mkdirSync(dirname(join(root, path)), { recursive: true }); cpSync(join(source, path), join(root, path));
-  }
-  linkFixtureInstallation(source, root);
-  git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
-  base = commit();
-  append('20990101020000'); reviewed = commit();
-  git('checkout', '-q', '--detach', base); append('20990101010000'); addPackageCommand();
-  write(SQL_REFERENCE, read(SQL_REFERENCE).replace(SQL_HEADING, MAIN_SQL_HEADING));
-  main = commit();
-  git('remote', 'set-url', 'origin', '.'); setMain(main); git('checkout', '-q', '--detach', reviewed);
-  initialLandingCommands = [];
-  const inventoryScript = join(root, 'scripts/installation-inventory-refresh.ts');
-  initialLandingResult = await landingMerge(root, {
-    runCommand: (command, args) => {
-      initialLandingCommands.push({ command, args });
-      if (args.includes(inventoryScript)) {
-        // Real Docker PostgreSQL measurement is witnessed in scripts/agent-review-derived-inventory.test.ts;
-        // keep this unlisted scanner suite Docker-free while preserving exact current-only envelope semantics.
-        const env = inventoryEnvelope(read(INVENTORY_PATH));
-        const nextCurrent = structuredClone(env.value.current);
-        for (const [profile, entry] of Object.entries(nextCurrent.profiles)) {
-          (entry as { objectInventorySha256: string }).objectInventorySha256 = createHash('sha256')
-            .update(`derived-fixture:${profile}:${read(MIGRATION_REGISTRIES[0])}`)
-            .digest('hex');
-        }
-        write(INVENTORY_PATH, env.before + JSON.stringify(nextCurrent, null, 2).replaceAll('\n', '\n  ') + env.after);
-        return;
-      }
-      execFileSync(command, args, { cwd: root, env: fixtureEnvironment, stdio: 'inherit', timeout: 900000 });
-    },
-  });
-  merged = initialLandingResult.head;
+  f = await createDerivedFixture({ runInitialLanding: true });
 }, 180000);
+
 afterAll(() => {
-  vi.unstubAllEnvs();
-  if (root) rmSync(root, { recursive: true, force: true });
+  f?.cleanup();
 });
-async function proof(head = merged) {
-  return proveReviewIntegration(root, await captureCommittedReviewCandidate(root, base, reviewed), await captureCommittedReviewCandidate(root, main, head));
-}
+
 it('lands two independently appended real forwards through the CLI as derived', async () => {
-  await expect(sourceGit(root, 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', reviewed, main))
+  await expect(sourceGit(f.root, 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', f.reviewed, f.main))
     .rejects.toMatchObject({ code: 1, stdout: expect.stringContaining(`${SQL_REFERENCE}\0`) });
-  const page = git('show', `${merged}:${SQL_REFERENCE}`);
-  expect(git('show', `${reviewed}:${SQL_REFERENCE}`)).toContain(SQL_HEADING);
+  const page = f.git('show', `${f.merged}:${SQL_REFERENCE}`);
+  expect(f.git('show', `${f.reviewed}:${SQL_REFERENCE}`)).toContain(SQL_HEADING);
   expect(page).toContain(MAIN_SQL_HEADING);
   expect(page).toContain('/packages/platform/sql/20990101010000_landing_fixture.sql)');
   expect(page).toContain('/packages/platform/sql/20990101020000_landing_fixture.sql)');
-  expect(await proof()).toMatchObject({ kind: 'derived', derived: true });
-  expect(git('show', '-s', '--format=%B', merged)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
-  expect(git('show', '-s', '--format=%an <%ae>%n%cn <%ce>', merged)).toBe('Fixture <fixture@example.invalid>\nFixture <fixture@example.invalid>');
+  expect(await f.proof()).toMatchObject({ kind: 'derived', derived: true });
+  expect(f.git('show', '-s', '--format=%B', f.merged)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
+  expect(f.git('show', '-s', '--format=%an <%ae>%n%cn <%ce>', f.merged)).toBe('Fixture <fixture@example.invalid>\nFixture <fixture@example.invalid>');
 }, 50000);
 
 it('lands owner-exact reports and settings from parents with zero carrier edits', async () => {
   try {
-    checkout(base); probeExport(); probeSetting(); const left = commit();
-    checkout(base); const right = commit(); setMain(right); checkout(left);
-    expect(git('merge-base', left, right)).toBe(base);
+    f.checkout(f.base); f.probeExport(); f.probeSetting(); const left = f.commit();
+    f.checkout(f.base); const right = f.commit(); f.setMain(right); f.checkout(left);
+    expect(f.git('merge-base', left, right)).toBe(f.base);
     for (const parent of [left, right]) {
-      expect(git('diff', '--raw', base, parent, '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api', ...PROBE_OUTPUTS)).toBe('');
+      expect(f.git('diff', '--raw', f.base, parent, '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api', ...PROBE_OUTPUTS)).toBe('');
     }
-    expect(landingCli()).toContain(`carrier toolchain: Node ${process.versions.node}, npm ${fixtureNpm('--version').trim()}, ICU ${process.versions.icu}`);
-    const landed = git('rev-parse', 'HEAD');
-    expect(git('show', '-s', '--format=%P%n%B', landed)).toBe(`${left} ${right}\nMerge origin/main and refresh derived carriers\n\nSigned-off-by: Fixture <fixture@example.invalid>`);
-    expect(git('status', '--porcelain', '--untracked-files=all')).toBe('');
-    const integration = await proveReviewIntegration(root,
-      await captureCommittedReviewCandidate(root, base, left), await captureCommittedReviewCandidate(root, right, landed));
-    expect(git('diff', '--raw', left, landed, '--', 'packages/core/api', 'packages/outbox')).toBe('');
+    expect(f.landingCli()).toContain(`carrier toolchain: Node ${process.versions.node}, npm ${f.fixtureNpm('--version').trim()}, ICU ${process.versions.icu}`);
+    const landed = f.git('rev-parse', 'HEAD');
+    expect(f.git('show', '-s', '--format=%P%n%B', landed)).toBe(`${left} ${right}\nMerge origin/main and refresh derived carriers\n\nSigned-off-by: Fixture <fixture@example.invalid>`);
+    expect(f.git('status', '--porcelain', '--untracked-files=all')).toBe('');
+    const integration = await proveReviewIntegration(f.root,
+      await captureCommittedReviewCandidate(f.root, f.base, left), await captureCommittedReviewCandidate(f.root, right, landed));
+    expect(f.git('diff', '--raw', left, landed, '--', 'packages/core/api', 'packages/outbox')).toBe('');
     const changed = PROBE_OUTPUTS.filter(path => path !== SETTING_REFUSALS).sort();
     expect(integration).toMatchObject({ kind: 'derived', derived: true });
     expect(integration.resolution).toBeUndefined();
-    const historical = await proveReviewIntegration(root,
-      await captureCommittedReviewCandidate(root, base, left), await captureCommittedReviewCandidate(root, right, landed),
+    const historical = await proveReviewIntegration(f.root,
+      await captureCommittedReviewCandidate(f.root, f.base, left), await captureCommittedReviewCandidate(f.root, right, landed),
       false, { resolvedOwnerOutputs: changed });
     expect(historical).toMatchObject({ kind: 'resolution', resolution: changed, modeChanged: false });
-    expect(read(PORTABILITY_REPORT)).toContain('declare const fixturePortability = 1');
-    expect(read(SETTING_GUIDE)).toContain(`## ${PROBE_KEY}`);
-    expect(git('show', `${base}:${SETTING_REFUSALS}`)).toBe(read(SETTING_REFUSALS).trimEnd());
-    const discovery = JSON.parse(fixtureCommand(process.execPath, ['packages/platform/src/lifecycle/openlup.mjs', 'settings', 'show', PROBE_KEY, '--json']));
+    expect(f.read(PORTABILITY_REPORT)).toContain('declare const fixturePortability = 1');
+    expect(f.read(SETTING_GUIDE)).toContain(`## ${PROBE_KEY}`);
+    expect(f.git('show', `${f.base}:${SETTING_REFUSALS}`)).toBe(f.read(SETTING_REFUSALS).trimEnd());
+    const discovery = JSON.parse(f.fixtureCommand(process.execPath, ['packages/platform/src/lifecycle/openlup.mjs', 'settings', 'show', PROBE_KEY, '--json']));
     expect(discovery.setting).toMatchObject({ key: PROBE_KEY, kind: 'invariant' });
     // Landing's cold declarations still match this source tree. Rerun both renderers.
-    fixtureCommand(process.execPath, ['packages/platform/scripts/api-contract.ts', '--update']);
-    fixtureCommand(process.execPath, ['scripts/settings-catalogue.ts', '--write']);
-    expect(git('status', '--porcelain', '--untracked-files=all')).toBe('');
+    f.fixtureCommand(process.execPath, ['packages/platform/scripts/api-contract.ts', '--update']);
+    f.fixtureCommand(process.execPath, ['scripts/settings-catalogue.ts', '--write']);
+    expect(f.git('status', '--porcelain', '--untracked-files=all')).toBe('');
     const fast = spawnSync(process.execPath, [npmCli, 'run', 'preflight', '--', '--fast'], {
-      cwd: root, env: fixtureEnvironment, encoding: 'utf8', timeout: 300000,
+      cwd: f.root, env: fixtureEnvironment, encoding: 'utf8', timeout: 300000,
     });
     expect(fast.status, fast.stdout + fast.stderr).toBe(0);
     expect(JSON.parse(fast.stdout.trimEnd().split('\n').at(-1)!)).toEqual({ preflight: 'fast', result: 'pass', head: landed, failed: [] });
-    console.info(`D3 landing: fork ${base}, parents ${left} ${right}, merge ${landed}; derived ${changed.join(', ')}; settings refusals already match`);
-  } finally { restoreDerivedFixture(); }
+    console.info(`D3 landing: fork ${f.base}, parents ${left} ${right}, merge ${landed}; derived ${changed.join(', ')}; settings refusals already match`);
+  } finally { f.restoreDerivedFixture(); }
 }, 360000);
 
-it('lands cold owner bytes after an added Core export and version bump on a warm incremental cache', () => {
-  try {
-    checkout(base);
-    // Seed the previous package graph and exercise the cache-dependent emission originally used by landing.
-    for (const owner of ['core', 'outbox', 'platform']) for (const leaf of ['dist', '.tsbuildinfo-build']) {
-      rmSync(join(root, 'packages', owner, leaf), { force: true, recursive: true });
-    }
-    fixtureCommand(process.execPath, ['scripts/build-packages-incremental.mjs']);
-    const declaration = 'packages/platform/dist/fulfillment/providerDispatchWorker.d.ts';
-    const cleanDeclaration = read(declaration);
-    const entry = 'packages/core/src/subscription/index.ts';
-    write(entry, read(entry) + '\nexport const fixtureApi = 1;\n');
-    write('packages/core/changes/fixture-cache.md', '- Add a fixture declaration.\n');
-    fixtureCommand(process.execPath, ['scripts/build-packages-incremental.mjs']);
-    const manifestPath = 'packages/core/package.json';
-    const manifest = JSON.parse(read(manifestPath));
-    manifest.version += '-fixture';
-    write(manifestPath, json(manifest));
-    const left = commit();
-    checkout(base); const right = commit(); setMain(right); checkout(left);
-    fixtureCommand(process.execPath, ['scripts/build-packages-incremental.mjs']);
-    const warmDeclaration = read(declaration);
-    expect(warmDeclaration).not.toBe(cleanDeclaration);
-
-    landingCli();
-    expect(git('show', '-s', '--format=%P')).toBe(`${left} ${right}`);
-    expect(git('show', 'HEAD:packages/core/api/subscription.api.md')).toContain('declare const fixtureApi = 1');
-    const landedDeclaration = read(declaration);
-    expect(landedDeclaration).not.toBe(warmDeclaration);
-    coldBuild('core', 'outbox', 'platform');
-    expect(read(declaration)).toBe(landedDeclaration);
-    for (const owner of ['core', 'outbox', 'platform']) fixtureNpm('run', 'api:check', `--workspace=@openlup/${owner}`);
-    expect(git('status', '--porcelain')).toBe('');
-  } finally { restoreDerivedFixture(); }
-}, 240000);
-
-describe('registered output conflicts', () => {
-  beforeAll(() => {
-    checkout(base);
-    coldBuild('core', 'platform');
-  }, 60000);
-
-  it.each([
-    { owner: 'API', paths: [PORTABILITY_REPORT] },
-    { owner: 'settings', paths: [SETTING_CATALOGUE, SETTING_REFUSALS, SETTING_GUIDE] },
-  ])('replaces the exact registered $owner output conflicts', async ({ paths }) => {
-    try {
-      const originals = paths.map(path => [path, git('show', `${base}:${path}`) + '\n'] as const);
-      const parent = (label: string) => {
-        checkout(base);
-        for (const [path, original] of originals) write(path, label + '\n' + original);
-        return commit();
-      };
-      const left = parent('First-parent edit'), right = parent('Main edit');
-      setMain(right); checkout(left);
-      // Only the output differs from the sources built in this group. Keep the real merge and owners.
-      for (const revision of [left, right]) expect(git('diff', '--name-only', base, revision).split('\n')).toEqual([...paths].sort());
-      await landingMerge(root, {
-        runCommand: (command, args) => {
-          if (args[0] === npmCli && args[1] === 'run' && args[2] === 'build') return;
-          fixtureCommand(command, args);
-        },
-      });
-      for (const [path, original] of originals) expect(read(path)).toBe(original);
-      expect(git('status', '--porcelain')).toBe('');
-    } finally { restoreDerivedFixture(); }
-  }, 60000);
-});
-
-it('stages a renamed report and validates its exact selector against the generated file', async () => {
-  try {
-    const newReport = 'packages/platform/api/portability-fixture.api.md';
-    checkout(base); probeExport();
-    const catalogue: { publicPaths: { path: string; class: string }[] } = JSON.parse(read(CATALOGUE));
-    const registration = catalogue.publicPaths.find(({ path }) => path === PORTABILITY_REPORT);
-    if (registration?.class !== 'public-output') throw new Error(`Fixture report is not registered: ${PORTABILITY_REPORT}`);
-    registration.path = newReport;
-    catalogue.publicPaths.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-    write(CATALOGUE, json(catalogue));
-    const routing = 'config/doc-routing.json';
-    expect(read(routing)).toContain(`"${PORTABILITY_REPORT}"`);
-    write(routing, read(routing).replace(`"${PORTABILITY_REPORT}"`, `"${newReport}"`));
-    rmSync(join(root, PORTABILITY_REPORT));
-    const gatesPath = 'packages/platform/release-gates.json';
-    const gates = JSON.parse(read(gatesPath));
-    gates.packageSurface['./portability'].snapshot = 'api/portability-fixture.api.md';
-    write(gatesPath, json(gates)); const left = commit();
-    checkout(base); const right = commit(); setMain(right); checkout(left);
-    expect(git('ls-files', '--', newReport)).toBe('');
-    await land();
-    expect(git('show', `HEAD:${newReport}`)).toContain('declare const fixturePortability = 1');
-    expect(git('ls-files', '--', PORTABILITY_REPORT)).toBe('');
-    expect(read('docs/platform/SOURCE_MAP.md')).toContain(`\`${newReport}\``).not.toContain(`\`${PORTABILITY_REPORT}\``);
-    fixtureCommand(process.execPath, ['packages/platform/scripts/api-contract.ts', '--update']);
-    expect(git('status', '--porcelain')).toBe('');
-  } finally { restoreDerivedFixture(); }
-}, 180000);
-
-it.each(['unregistered', 'executable', 'symlink'])('keeps a %s report conflict unresolved', async mode => {
-  try {
-    const path = mode === 'unregistered' ? 'packages/platform/api/unregistered-fixture.api.md' : PORTABILITY_REPORT;
-    checkout(base);
-    if (mode === 'symlink') {
-      rmSync(join(root, path)); symlinkSync('../release-gates.json', join(root, path));
-    } else write(path, 'First-parent edit\n');
-    const left = commit();
-    checkout(base);
-    if (mode === 'symlink') {
-      rmSync(join(root, path)); symlinkSync('../package.json', join(root, path));
-    } else {
-      write(path, 'Main edit\n');
-      if (mode === 'executable') chmodSync(join(root, path), 0o755);
-    }
-    const right = commit(); setMain(right); checkout(left);
-    await expect(land()).rejects.toThrow(`landing: authored conflicts remain: ${path}`);
-    expect(git('diff', '--name-only', '--diff-filter=U')).toBe(path);
-  } finally { restoreDerivedFixture(); }
-}, 60000);
-
-it.each([
-  ['outbox', 'first parent'],
-  ['outbox', 'missing'],
-  ['outbox', 'removed'],
-  ['outbox', 'main only'],
-  ['core', 'first parent'],
-  ['core', 'missing'],
-])('checks the %s change note through landing (%s)', async (owner, note) => {
-  const directory = `packages/${owner}`;
-  const entry = `${directory}/src/${owner === 'core' ? 'subscription/index.ts' : 'index.ts'}`;
-  const notePath = `${directory}/changes/fixture-api.md`;
-  const report = `${directory}/api/${owner === 'core' ? 'subscription' : 'index'}.api.md`;
-  try {
-    checkout(base);
-    if (note === 'removed') { write(notePath, '- Describe the fixture contract.\n'); commit(); }
-    const fork = git('rev-parse', 'HEAD');
-    write(entry, read(entry) + '\nexport const fixtureApi = 1;\n');
-    if (note === 'first parent') write(notePath, '- Add a fixture API export.\n');
-    if (note === 'removed') rmSync(join(root, notePath));
-    const left = commit();
-    checkout(fork);
-    if (note === 'main only') write(notePath, '- Document a main-side change.\n');
-    const right = commit(); setMain(right); checkout(left);
-    if (note === 'first parent') {
-      landingCli();
-      const landed = git('rev-parse', 'HEAD');
-      expect(git('show', '-s', '--format=%P', 'HEAD')).toBe(`${left} ${right}`);
-      expect(git('show', `HEAD:${report}`)).toContain('declare const fixtureApi = 1');
-      expect(git('status', '--porcelain')).toBe('');
-      const integration = await proveReviewIntegration(root,
-        await captureCommittedReviewCandidate(root, fork, left),
-        await captureCommittedReviewCandidate(root, right, landed));
-      expect(integration).toMatchObject({ kind: 'derived', derived: true });
-    } else {
-      const cli = spawnSync(process.execPath, [npmCli, 'run', 'landing:merge'], { cwd: root, env: fixtureEnvironment, encoding: 'utf8', timeout: 180000 });
-      expect(cli.status).toBe(1);
-      expect(cli.stderr).toContain(`landing: @openlup/${owner} API snapshots changed; add or modify ${directory}/changes/*.md or ${directory}/CHANGELOG.md on the first parent and retain it in the merge`);
-      expect(cli.stderr).toContain('OPENLUP_E_LANDING_ABORTED: merge aborted; the checkout is back at HEAD');
-      expectRestoredHead(left);
-      expect(read(report)).not.toContain('fixtureApi');
-      expect(git('diff', '--cached', '--name-only', '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api')).toBe('');
-    }
-  } finally { restoreDerivedFixture(); }
-}, 180000);
-
-it.each([
-  ['package-lock.json', '1'],
-  ['package-lock.json', undefined],
-  ['.npmrc', '1'],
-] as const)('lands a changed main lock through the selected install route (%s, marker %s)', async (input, marker) => {
-  const previousMarker = localFixtureEnvironment().AI_RESOURCE_GATE_ACTIVE;
-  const lockBytes = read(installedLock);
-  try {
-    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', marker);
-    const { left, right } = startToolchainLanding(input);
-    const mergeHead = () => existsSync(join(root, '.git/MERGE_HEAD')) ? git('rev-parse', 'MERGE_HEAD') : undefined;
-    const calls: [string, string[], string | undefined][] = [];
-    const landed = await landingMerge(root, {
-      runCommand: (command, args) => {
-        calls.push([command, args, mergeHead()]);
-        if (!args.includes('ci')) return fixtureCommand(command, args);
-        expect(git('diff', '--name-only', left, '--', input)).toBe(input);
-        const installed = JSON.parse(lockBytes);
-        installed.packages[lockedDependency] = JSON.parse(read('package-lock.json')).packages[lockedDependency];
-        write(installedLock, json(installed));
-      },
-    });
-    const install = marker === undefined
-      ? ['ai-resource-gate', ['run', '--wait', 'openlup:landing-build', '--', process.execPath, npmCli, 'ci'], right]
-      : [process.execPath, [npmCli, 'ci'], right];
-    expect(calls).toEqual([[process.execPath, toolchainCheck, undefined], install, [process.execPath, toolchainCheck, right]]);
-    expect(git('show', '-s', '--format=%P%n%B', landed.head)).toBe(`${left} ${right}\nMerge origin/main and refresh derived carriers\n\nSigned-off-by: Fixture <fixture@example.invalid>`);
-    expect(status()).toBe('');
-  } finally {
-    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', previousMarker);
-    write(installedLock, lockBytes);
-    restoreDerivedFixture();
-  }
-}, 60000);
-
-it('aborts landing after a carrier failure', async () => {
-  const injected = new TypeError('fixture carrier failed after writing');
-  const keys = Reflect.ownKeys(injected).filter(key => key !== 'stack');
-  const leftover = 'packages/platform/sql/landing-rollback-fixture.sql';
-  const ignored = 'landing-fixture-local.log';
-  try {
-    checkout(base); probeExport(); const left = commit();
-    const inventory = read(INVENTORY_PATH), report = read(PORTABILITY_REPORT);
-    checkout(base); write(PORTABILITY_REPORT, report + '\nMain-only report edit.\n');
-    write('.gitignore', read('.gitignore') + `\n!/${ignored}\n`);
-    const right = commit(); setMain(right); checkout(left);
-    write(ignored, 'Existing ignored output.\n');
-    const runCommand = vi.fn((command: string, args: string[]) => {
-      if (args[0] !== npmCli) return fixtureCommand(command, args);
-      write(INVENTORY_PATH, 'Partial unchanged-by-merge carrier.\n');
-      write(PORTABILITY_REPORT, 'Partial changed-by-merge carrier.\n');
-      write(leftover, 'Partial untracked output.\n');
-      throw injected;
-    });
-    const failure = await landingMerge(root, { runCommand }).catch(error => error);
-    expect(failure).toBe(injected);
-    expect(failure.message).toBe('fixture carrier failed after writing');
-    expect(Object.getPrototypeOf(failure)).toBe(TypeError.prototype);
-    expect(Reflect.ownKeys(failure).filter(key => key !== 'stack')).toEqual(keys);
-    expectRestoredHead(left);
-    expect(read(INVENTORY_PATH)).toBe(inventory);
-    expect(read(PORTABILITY_REPORT)).toBe(report);
-    expect(existsSync(join(root, leftover))).toBe(false);
-    expect(read(ignored)).toBe('Existing ignored output.\n');
-  } finally {
-    rmSync(join(root, leftover), { force: true });
-    rmSync(join(root, ignored), { force: true });
-    restoreDerivedFixture();
-  }
-}, 60000);
-
-it('preserves unrelated work saved during the brokered install', async () => {
-  const injected = new Error('fixture brokered npm ci failed');
-  const previousMarker = localFixtureEnvironment().AI_RESOURCE_GATE_ACTIVE;
-  const untracked = 'landing-concurrent-note.txt';
-  try {
-    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', undefined);
-    const { left } = startToolchainLanding('package-lock.json');
-    const readme = read('README.md') + '\nConcurrent tracked edit.\n';
-    const note = 'Concurrent untracked note.\n';
-    const runCommand = (command: string, args: string[]) => {
-      if (command !== 'ai-resource-gate') return fixtureCommand(command, args);
-      write('README.md', readme);
-      write(untracked, note);
-      throw injected;
-    };
-    const failure = await landingMerge(root, { runCommand }).catch(error => error);
-    expect(failure).toBeInstanceOf(AggregateError);
-    expect(failure.errors[0]).toBe(injected);
-    expect(failure.message).toContain('OPENLUP_E_LANDING_ABORT_FAILED').toContain('README.md').toContain(untracked);
-    expect(failure.message).not.toContain('the checkout is back at HEAD');
-    expect(git('rev-parse', 'HEAD')).toBe(left);
-    expect(existsSync(join(root, '.git/MERGE_HEAD'))).toBe(false);
-    expect(readFileSync(join(root, 'README.md'))).toEqual(Buffer.from(readme));
-    expect(readFileSync(join(root, untracked))).toEqual(Buffer.from(note));
-  } finally {
-    rmSync(join(root, untracked), { force: true });
-    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', previousMarker);
-    restoreDerivedFixture();
-  }
-}, 60000);
-
-it('refuses to take ownership of an existing merge with an empty porcelain status', async () => {
-  try {
-    checkout(base); const right = commit(); setMain(right); checkout(base);
-    git('commit', '--allow-empty', '-qm', 'First-parent fixture');
-    const head = git('rev-parse', 'HEAD');
-    git('merge', '--no-ff', '--no-commit', right);
-    expect(status()).toBe('');
-    const runCommand = vi.fn();
-    await expect(landingMerge(root, { runCommand })).rejects.toThrow('landing: a merge is already in progress');
-    expect(runCommand).not.toHaveBeenCalled();
-    expect(git('rev-parse', 'MERGE_HEAD')).toBe(right);
-    expect(git('rev-parse', 'HEAD')).toBe(head);
-    expect(status()).toBe('');
-  } finally { restoreDerivedFixture(); }
-}, 60000);
-
-it.each(['merged check', 'npm ci'])('aborts when the merged toolchain still fails after npm ci (%s failure)', async step => {
-  const installError = new Error('fixture npm ci failed');
-  const diagnostic = `carrier build: installed npm tree does not match package-lock.json (${lockedDependency}); run npm ci in this checkout`;
-  const previousMarker = localFixtureEnvironment().AI_RESOURCE_GATE_ACTIVE;
-  const npmShim = 'node_modules/.fixture-npm.cjs';
-  const direct = vi.spyOn(childProcess, 'execFileSync');
-  syncBuiltinESMExports();
-  try {
-    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', '1');
-    const { left } = startToolchainLanding('package-lock.json');
-    const runCommand = vi.fn((command: string, args: string[]) => {
-      if (args[0] !== npmCli || args[1] !== 'ci') return fixtureCommand(command, args);
-      if (step === 'npm ci') throw installError;
-      // Simulate a successful install that leaves the local install record mismatched.
-    });
-    direct.mockClear();
-    const failure = await landingMerge(root, { runCommand }).catch(error => error);
-    const expectedCalls = [[process.execPath, toolchainCheck], [process.execPath, [npmCli, 'ci']]];
-    if (step === 'merged check') expectedCalls.push([process.execPath, toolchainCheck]);
-    expect(runCommand.mock.calls.map(([command, args]) => [command, args])).toEqual(expectedCalls);
-    expectRestoredHead(left);
-    if (step === 'npm ci') {
-      // The HEAD check is the only inline Node subprocess. The generator and projection bypass runCommand.
-      const inlineNode = direct.mock.calls.flatMap(([command, args]) =>
-        command === process.execPath && Array.isArray(args) && args[0] === '--input-type=module' ? [args] : []);
-      expect(inlineNode).toEqual([toolchainCheck]);
-      expect(failure).toBe(installError);
-      return;
-    }
-    expect(failure.stderr).toContain(diagnostic);
-
-    write(npmShim, `const { argv, exit } = require('node:process');
-      const command = argv[2];
-      if (command === '--version') console.log(${JSON.stringify(fixtureNpm('--version').trim())});
-      else if (command !== 'ci') exit(1);\n`);
-    const cli = spawnSync(process.execPath, ['scripts/agent-review-landing.mjs'], {
-      cwd: root, env: { ...fixtureEnvironment, AI_RESOURCE_GATE_ACTIVE: '1', npm_execpath: join(root, npmShim) }, encoding: 'utf8', timeout: 180000,
-    });
-    expect(cli.status).toBe(1);
-    expect(cli.stderr).toContain(`OPENLUP_E_LANDING_TOOLCHAIN: ${diagnostic}\nafter npm ci from the merged lock`);
-    expect(cli.stderr).toContain('OPENLUP_E_LANDING_ABORTED: merge aborted; the checkout is back at HEAD');
-    expectRestoredHead(left);
-  } finally {
-    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', previousMarker);
-    direct.mockRestore();
-    syncBuiltinESMExports();
-    rmSync(join(root, npmShim), { force: true });
-    restoreDerivedFixture();
-  }
-}, 60000);
-
-it('retains the original failure when merge abort fails', async () => {
-  const injected = new Error('fixture carrier failure before abort');
-  const indexLock = '.git/index.lock';
-  try {
-    checkout(base); probeExport(); const left = commit();
-    checkout(base); const right = commit(); setMain(right); checkout(left);
-    const failure = await landingMerge(root, {
-      runCommand: (command, args) => {
-        if (args[0] !== npmCli) return fixtureCommand(command, args);
-        write(indexLock, 'Fixture abort obstruction.\n');
-        throw injected;
-      },
-    }).catch(error => error);
-    expect(failure).toBeInstanceOf(AggregateError);
-    expect(failure.cause).toBe(injected);
-    expect(failure.errors[0]).toBe(injected);
-    expect(failure.errors[1].stderr).toContain('index.lock');
-    expect(failure.message).toContain(injected.message).toContain('OPENLUP_E_LANDING_ABORT_FAILED').toContain('MERGE_HEAD present');
-    expect(failure.message).not.toContain('the checkout is back at HEAD');
-    expect(git('rev-parse', 'MERGE_HEAD')).toBe(right);
-  } finally {
-    rmSync(join(root, indexLock), { force: true });
-    restoreDerivedFixture();
-  }
-}, 60000);
-
-it('refuses an inventory-only landing with a mismatched installed dependency before writing', () => {
-  const lockBytes = read(installedLock);
-  const indexBytes = () => readFileSync(join(root, '.git/index'));
-  const trackedDigest = () => {
-    const hash = createHash('sha256');
-    for (const path of git('ls-files', '-z').split('\0').filter(Boolean)) {
-      hash.update(path).update('\0').update(createHash('sha256').update(readFileSync(join(root, path))).digest());
-    }
-    return hash.digest('hex');
-  };
-  try {
-    checkout(base);
-    const manifest = 'scripts/platform-migration-manifest.ts';
-    write(manifest, read(manifest) + '\n// Fixture inventory input.\n');
-    const left = commit();
-    expect(git('diff', '--name-only', base, left)).toBe(manifest);
-    checkout(base);
-    write('README.md', read('README.md') + '\nFixture main change.\n');
-    const right = commit(); setMain(right); checkout(left);
-    const lock = JSON.parse(lockBytes);
-    lock.packages['node_modules/zod'].version = '0.0.0-fixture';
-    write(installedLock, json(lock));
-    const bytes = trackedDigest(), index = indexBytes();
-
-    expect(landingCli).toThrow('carrier build: installed npm tree does not match package-lock.json (node_modules/zod); run npm ci in this checkout');
-    expect(trackedDigest()).toBe(bytes);
-    expect(indexBytes()).toEqual(index);
-    expect(git('rev-parse', 'HEAD')).toBe(left);
-    expect(existsSync(join(root, '.git/MERGE_HEAD'))).toBe(false);
-  } finally {
-    write(installedLock, lockBytes);
-    restoreDerivedFixture();
-  }
-}, 30000);
-
 it('leaves the merge in place when both sides edit the SQL reference prose', async () => {
-  git('reset', '--hard', reviewed); git('checkout', '-q', '--detach', reviewed);
+  f.git('reset', '--hard', f.reviewed); f.git('checkout', '-q', '--detach', f.reviewed);
   try {
-    write(SQL_REFERENCE, read(SQL_REFERENCE).replace(SQL_HEADING, '# Reviewed SQL catalogue'));
-    const left = commit();
-    await expect(landingMerge(root)).rejects.toThrow(`landing: authored conflicts remain: ${SQL_REFERENCE}`);
-    expect(git('rev-parse', 'HEAD')).toBe(left);
-    expect(git('rev-parse', 'MERGE_HEAD')).toBe(main);
-    expect(git('diff', '--name-only', '--diff-filter=U')).toContain(SQL_REFERENCE);
-    expect(read(SQL_REFERENCE)).toContain('# Reviewed SQL catalogue');
-    expect(read(SQL_REFERENCE)).toContain(MAIN_SQL_HEADING);
-  } finally { git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged); }
+    f.write(SQL_REFERENCE, f.read(SQL_REFERENCE).replace(SQL_HEADING, '# Reviewed SQL catalogue'));
+    const left = f.commit();
+    await expect(landingMerge(f.root)).rejects.toThrow(`landing: authored conflicts remain: ${SQL_REFERENCE}`);
+    expect(f.git('rev-parse', 'HEAD')).toBe(left);
+    expect(f.git('rev-parse', 'MERGE_HEAD')).toBe(f.main);
+    expect(f.git('diff', '--name-only', '--diff-filter=U')).toContain(SQL_REFERENCE);
+    expect(f.read(SQL_REFERENCE)).toContain('# Reviewed SQL catalogue');
+    expect(f.read(SQL_REFERENCE)).toContain(MAIN_SQL_HEADING);
+  } finally { f.git('reset', '--hard', f.merged); f.git('checkout', '-q', '--detach', f.merged); }
 }, 50000);
+
 it('refuses a non-SQL generated region on the SQL reference', () => {
-  git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
+  f.git('reset', '--hard', f.merged); f.git('checkout', '-q', '--detach', f.merged);
   try {
-    write(SQL_REFERENCE, read(SQL_REFERENCE).replaceAll('generated:sql:platform', 'generated:exports:platform'));
-    expect(() => runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean)))
+    f.write(SQL_REFERENCE, f.read(SQL_REFERENCE).replaceAll('generated:sql:platform', 'generated:exports:platform'));
+    expect(() => runLandingGenerators(f.root, f.git('ls-files', '-z').split('\0').filter(Boolean)))
       .toThrow(`${SQL_REFERENCE}: unknown generated region exports:platform`);
-  } finally { git('reset', '--hard', merged); }
+  } finally { f.git('reset', '--hard', f.merged); }
 }, 50_000);
+
 it('keeps a package command that main added after the reviewed head forked', () => {
-  const names = (revision: string) => JSON.parse(git('show', `${revision}:${CATALOGUE}`)).packageCommands.map(({ name }) => name);
-  expect(names(reviewed)).not.toContain('fixture:landing');
-  expect(names(main)).toContain('fixture:landing');
-  const landed = JSON.parse(git('show', `${merged}:${CATALOGUE}`));
-  const upstream = JSON.parse(git('show', `${main}:${CATALOGUE}`));
+  const names = (revision: string) => JSON.parse(f.git('show', `${revision}:${CATALOGUE}`)).packageCommands.map(({ name }: { name: string }) => name);
+  expect(names(f.reviewed)).not.toContain('fixture:landing');
+  expect(names(f.main)).toContain('fixture:landing');
+  const landed = JSON.parse(f.git('show', `${f.merged}:${CATALOGUE}`));
+  const upstream = JSON.parse(f.git('show', `${f.main}:${CATALOGUE}`));
   expect(landed.packageCommands).toEqual(upstream.packageCommands);
-  expect(landed.publicPaths.map(row => row.path)).not.toContain('packages/platform/sql/20990101010000_landing_fixture.sql');
-  expect(landed.publicPaths.map(row => row.path)).not.toContain('packages/platform/sql/20990101020000_landing_fixture.sql');
-  expect(git('ls-tree', '-r', '--name-only', merged, '--', 'packages/platform/sql/')).toContain('packages/platform/sql/20990101010000_landing_fixture.sql');
-  expect(git('ls-tree', '-r', '--name-only', merged, '--', 'packages/platform/sql/')).toContain('packages/platform/sql/20990101020000_landing_fixture.sql');
+  expect(landed.publicPaths.map((row: { path: string }) => row.path)).not.toContain('packages/platform/sql/20990101010000_landing_fixture.sql');
+  expect(landed.publicPaths.map((row: { path: string }) => row.path)).not.toContain('packages/platform/sql/20990101020000_landing_fixture.sql');
+  expect(f.git('ls-tree', '-r', '--name-only', f.merged, '--', 'packages/platform/sql/')).toContain('packages/platform/sql/20990101010000_landing_fixture.sql');
+  expect(f.git('ls-tree', '-r', '--name-only', f.merged, '--', 'packages/platform/sql/')).toContain('packages/platform/sql/20990101020000_landing_fixture.sql');
 });
+
 it('regenerates stale package command metadata when the trusted owner is unchanged', () => {
   try {
-    checkout(reviewed);
-    const catalog = JSON.parse(read(CATALOGUE));
+    f.checkout(f.reviewed);
+    const catalog = JSON.parse(f.read(CATALOGUE));
     const expected = catalog.packageCommands;
     catalog.packageCommands = [];
-    write(CATALOGUE, json(catalog));
-    runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
-    expect(JSON.parse(read(CATALOGUE)).packageCommands).toEqual(expected);
-  } finally { restoreDerivedFixture(); }
+    f.write(CATALOGUE, json(catalog));
+    runLandingGenerators(f.root, f.git('ls-files', '-z').split('\0').filter(Boolean));
+    expect(JSON.parse(f.read(CATALOGUE)).packageCommands).toEqual(expected);
+  } finally { f.restoreDerivedFixture(); }
 }, 50_000); // Runs the landing generators like its sibling; 10.8 s under hosted contention.
+
 it.each(['user.name', 'user.email'])('refuses landing before merging without configured %s', async key => {
-  git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
-  git('config', key, '');
+  f.git('reset', '--hard', f.merged); f.git('checkout', '-q', '--detach', f.merged);
+  f.git('config', key, '');
   try {
-    await expect(landingMerge(root)).rejects.toThrow(`landing: configure Git ${key} before making a personal DCO sign-off`);
-    expect(git('rev-parse', 'HEAD')).toBe(merged);
-    await expect(sourceGit(root, 'rev-parse', '--verify', 'MERGE_HEAD')).rejects.toThrow();
-  } finally { git('config', key, key === 'user.name' ? 'Fixture' : 'fixture@example.invalid'); }
-});
-describe('integration proof on a compact Git history', () => {
-  let full: { root: string; base: string; reviewed: string; main: string; merged: string };
-
-  beforeAll(() => {
-    full = { root, base, reviewed, main, merged };
-    root = realpathSync(mkdtempSync(join(tmpdir(), 'openlup-derived-objects-')));
-    execFileSync('/usr/bin/git', ['clone', '--shared', '--no-checkout', '-q', full.root, root], { env: fixtureEnvironment, timeout: 30000 });
-    const retained = [
-      INVENTORY_PATH, ...MIGRATION_REGISTRIES, CATALOGUE, SQL_REFERENCE, PORTABILITY, PORTABILITY_REPORT,
-      'README.md', 'db/platform/migrations', 'packages/platform/sql', 'packages/outbox/sql',
-      'packages/core/package.json', 'packages/platform/src/migrations/catalog.ts',
-      'scripts/platform-migration-manifest.ts', 'scripts/agent-review-decide.mjs', 'scripts/agent-review-session.mjs',
-    ];
-    const sourceMap = 'docs/platform/SOURCE_MAP.md';
-    const route = (id: string, selector: string) => ({ id, when: 'Fixture routing', paths: [selector], doc: 'README.md', anchor: '' });
-    function project(revision: string, ...parents: string[]) {
-      git('rm', '-rf', '--ignore-unmatch', '--', '.');
-      git('restore', `--source=${revision}`, '--staged', '--worktree', '--', ...retained);
-      // Keep the real SQL and registry objects. A small routing inventory is
-      // enough to exercise trusted source-map proofs in every variant.
-      write('src/lib/coreDomains.ts', 'export const CORE_DOMAINS = Object.freeze(["fixture"] as const);\n');
-      write('src/domains/fixture/index.ts', 'export const fixture = 1;\n');
-      write('config/doc-routing.json', json({ version: 2, surfaces: [route('fixture-root', '**'), route('domain-fixture', 'src/domains/fixture/**')] }));
-      write(sourceMap, '');
-      git('add', '-A');
-      const paths = git('ls-files', '-z').split('\0').filter(Boolean);
-      write(sourceMap, renderDocumentationSourceMap(readDocumentationState(root, paths)));
-      git('add', '--', sourceMap);
-      return git('commit-tree', git('write-tree'), ...parents.flatMap(parent => ['-p', parent]), '-m', 'Project fixture proof objects');
-    }
-    git('read-tree', '--empty');
-    base = project(full.base);
-    reviewed = project(full.reviewed, base);
-    main = project(full.main, base);
-    merged = project(full.merged, reviewed, main);
-    checkout(merged);
-    setMain(main);
-  }, 60000);
-
-  afterAll(() => {
-    if (full) {
-      if (root !== full.root) rmSync(root, { recursive: true, force: true });
-      ({ root, base, reviewed, main, merged } = full);
-    }
-  });
-
-  it('preserves derived substitutions around API resolutions and uses the actual report mode for the floor', async () => {
-    try {
-      checkout(reviewed); probeExport(); const left = commit();
-      checkout(merged); probeExport();
-      write(PORTABILITY_REPORT, read(PORTABILITY_REPORT) + '\nFixture API resolution.\n');
-      git('add', '-A');
-      const firstParent = await captureCommittedReviewCandidate(root, base, left);
-      for (const { modeChanged, floor } of [{ modeChanged: false, floor: 0 }, { modeChanged: true, floor: 2 }]) {
-        if (modeChanged) git('update-index', '--chmod=+x', PORTABILITY_REPORT);
-        const head = git('commit-tree', git('write-tree'), '-p', left, '-p', main, '-m', 'Synthetic report resolution');
-        const integration = await proveReviewIntegration(root, firstParent, await captureCommittedReviewCandidate(root, main, head));
-        expect(integration).toMatchObject({ kind: 'resolution', derived: true, resolution: [PORTABILITY_REPORT], modeChanged });
-        expect(git('diff', '--name-only', integration.prediction, head)).toBe(PORTABILITY_REPORT);
-        expect(deltaFloor(integration.resolution, integration.modeChanged)).toBe(floor);
-      }
-    } finally { restoreDerivedFixture(); }
-  }, 180000);
-
-  it('carries reviewed coverage through the derived edge and replays its recorded identity', async () => {
-    const previous = await captureCommittedReviewCandidate(root, base, reviewed);
-    const intent = { risk: 'routine', criteria: 'Preserve independently appended forwards and all reviewed boundaries' };
-    let session = prepareCandidate(null, { ...previous, rules: await captureReviewRules(root, previous), intent, authorSessionId: 'fixture-author' }, 1000);
-    for (const reviewer of ['fixture-reviewer-one', 'fixture-reviewer-two']) session = recordReport(session, {
-      reviewer, cold: true, verdict: 'PASS', tree: previous.tree, findings: [], closes: [], documentation: 'Checked the fixture contract and contributor guidance.',
-    }, 1000);
-    const current = await captureCommittedReviewCandidate(root, main, merged);
-    const observed = { ...current, rules: await captureReviewRules(root, current), intent, authorSessionId: 'fixture-author' };
-    const integration = integrationReviewContext(session, observed, { parents: [reviewed, main], baseAncestor: true }, 1001);
-    const coverage = await captureCoverageEdge(root, session, observed, 1001);
-    expect(coverage?.proof.kind).toBe('portable-derived');
-    session = prepareCandidate(session, { ...observed, integration, coverage }, 1001);
-    expect(verdict(session, current, 1001).ok).toBe(true);
-    await validateEconomySession(root, session);
-  // Two full-tree generator passes plus receipt replay exceeded the 10 s unit default.
-  }, 90000);
-  it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong generator bytes', 'missing SQL reference row', 'other byte', 'SQL byte', 'wrong lineage'])('refuses %s on live Git objects', async scenario => {
-    git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
-    if (scenario === 'historical byte') write(INVENTORY_PATH, read(INVENTORY_PATH).replace('"historical": {}', '"historical": { }'));
-    if (scenario === 'edited existing entry') {
-      const path = MIGRATION_REGISTRIES[1], data = JSON.parse(read(path)); data.nativeStoreForwards[0].sha256 = 'a'.repeat(64); write(path, json(data));
-    }
-    if (scenario === 'duplicate slot') {
-      const path = MIGRATION_REGISTRIES[1], data = JSON.parse(read(path)); data.nativeStoreForwardClass.slots.push(data.nativeStoreForwardClass.slots.at(-1)); write(path, json(data));
-    }
-    if (scenario === 'wrong generator bytes') write('packages/platform/sql/manifest.json', read('packages/platform/sql/manifest.json') + ' ');
-    if (scenario === 'missing SQL reference row') {
-      write(SQL_REFERENCE, read(SQL_REFERENCE).split('\n').filter(line => !line.startsWith('| [`20990101010000_landing_fixture.sql`]')).join('\n'));
-    }
-    if (scenario === 'other byte') write('README.md', read('README.md') + '\nUnexpected edit\n');
-    if (scenario === 'SQL byte') write('db/platform/migrations/20990101010000_landing_fixture.sql', 'SELECT 2;\n');
-    git('add', '-A'); const tree = git('write-tree');
-    const args = scenario === 'wrong lineage' ? ['-p', reviewed] : ['-p', reviewed, '-p', main];
-    const head = git('commit-tree', tree, ...args, '-m', 'Synthetic refusal');
-    if (scenario === 'wrong lineage') await expect(proof(head)).rejects.toThrow('integration parents differ');
-    else {
-      const decision = await proof(head);
-      expect(decision.kind).toBe('resolution');
-      if (scenario === 'missing SQL reference row') {
-        expect(decision.derived).toBeUndefined();
-        expect(decision.resolution).toContain(SQL_REFERENCE);
-      }
-    }
-  }, 50000);
-  it.each(['edited existing entry', 'duplicate slot'])('refuses %s at the registry union boundary', scenario => {
-    const original = git('show', `${base}:${MIGRATION_REGISTRIES[1]}`), side = JSON.parse(original);
-    if (scenario === 'edited existing entry') side.nativeStoreForwards[0].sha256 = 'a'.repeat(64);
-    else side.nativeStoreForwards.push({ ...side.nativeStoreForwards.at(-1), path: side.nativeStoreForwards.at(-1).path.replace(/_[^/]+\.sql$/, '_duplicate.sql') });
-    expect(() => migrationRegistryUnion(MIGRATION_REGISTRIES[1], original, json(side), original)).toThrow();
-  });
-
-  it.each([
-    { path: SQL_REFERENCE, unresolved: true, expected: 'refusal' },
-    { path: 'docs/platform/SOURCE_MAP.md', unresolved: true, expected: 'refusal' },
-    { path: 'packages/platform/sql/manifest.json', unresolved: true, expected: 'refusal' },
-    { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: true, expected: 'refusal' },
-    { path: 'docs/platform/SOURCE_MAP.md', unresolved: false, expected: 'derived' },
-    { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: false, expected: 'resolution' },
-  ])('requires $expected for $path with unresolved=$unresolved despite other derived carriers', async ({ path, unresolved, expected }) => {
-    try {
-      // Use the same generated rows on both sides so the SQL page has only a prose conflict.
-      const original = await sourceGit(root, 'show', `${path === SQL_REFERENCE ? merged : base}:${path}`);
-      git('reset', '--hard', reviewed); git('checkout', '-q', '--detach', reviewed);
-      write(path, 'Reviewed carrier variant\n' + original); const left = commit();
-      git('reset', '--hard', main); git('checkout', '-q', '--detach', main);
-      write(path, 'Main carrier variant\n' + original); const right = commit();
-      git('update-ref', 'refs/remotes/origin/main', right);
-      let prediction: string | undefined;
-      try { await sourceGit(root, 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', left, right); }
-      catch (error) {
-        expect(error.code).toBe(1);
-        const [tree, ...conflicts] = error.stdout.split('\0'); prediction = tree;
-        expect(conflicts).toContain(path);
-      }
-      expect(prediction).toMatch(/^[a-f0-9]{40}$/);
-      const markers = await sourceGit(root, 'show', `${prediction}:${path}`);
-      expect(markers).toContain('<<<<<<<');
-      if (path === SQL_REFERENCE) {
-        expect(markers).toMatch(/^<<<<<<< .+\nReviewed carrier variant\n/mu);
-        const regions = '<!-- generated:sql:outbox -->';
-        expect(markers.slice(markers.indexOf(regions))).toBe(original.slice(original.indexOf(regions)));
-      }
-      // Keep the correct measured inventory and exact registry unions from the
-      // successful landing, changing only the selected carrier to Git's raw blob.
-      git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
-      const inventory = read(INVENTORY_PATH);
-      expect(inventory).not.toBe(await sourceGit(root, 'show', `${left}:${INVENTORY_PATH}`));
-      for (const registry of MIGRATION_REGISTRIES) {
-        const inputs = await Promise.all([base, left, right].map(revision => sourceGit(root, 'show', `${revision}:${registry}`)));
-        expect(read(registry)).toBe(migrationRegistryUnion(registry, ...inputs, inventory));
-      }
-      if (unresolved) write(path, markers);
-      git('add', '-A'); const tree = git('write-tree');
-      const changed = (await captureCommittedReviewCandidate(root, prediction, tree)).changedPaths;
-      if (unresolved) expect(changed).not.toContain(path);
-      else expect(changed).toContain(path);
-      const head = git('commit-tree', tree, '-p', left, '-p', right, '-m', 'Synthetic conflicting carrier');
-      const result = proveReviewIntegration(root, await captureCommittedReviewCandidate(root, base, left), await captureCommittedReviewCandidate(root, right, head));
-      if (expected === 'refusal') await expect(result).rejects.toThrow('integration commits a conflict without resolving it');
-      else {
-        const decision = await result;
-        expect(decision.kind).toBe(expected);
-        if (expected === 'resolution') expect(decision.resolution).toContain(path);
-      }
-    } finally {
-      git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
-      git('update-ref', 'refs/remotes/origin/main', main);
-    }
-  }, 50000);
+    await expect(landingMerge(f.root)).rejects.toThrow(`landing: configure Git ${key} before making a personal DCO sign-off`);
+    expect(f.git('rev-parse', 'HEAD')).toBe(f.merged);
+    await expect(sourceGit(f.root, 'rev-parse', '--verify', 'MERGE_HEAD')).rejects.toThrow();
+  } finally { f.git('config', key, key === 'user.name' ? 'Fixture' : 'fixture@example.invalid'); }
 });
 
 it('runs incremental package build before inventory refresh when PR touches SQL', () => {
-  expect(initialLandingResult.inventoryRefreshed).toBe(true);
-  expect(initialLandingCommands.map(({ args }) => args)).toEqual([
+  expect(f.initialLandingResult?.inventoryRefreshed).toBe(true);
+  expect(f.initialLandingCommands.map(({ args }) => args)).toEqual([
     ['--input-type=module', '-e', expect.stringContaining('assertCarrierToolchain(process.cwd())')],
-    [join(root, 'scripts/build-packages-incremental.mjs')],
-    ['--import', 'tsx', join(root, 'scripts/installation-inventory-refresh.ts')],
+    [join(f.root, 'scripts/build-packages-incremental.mjs')],
+    ['--import', 'tsx', join(f.root, 'scripts/installation-inventory-refresh.ts')],
   ]);
 });
-
-it('refuses inverted or duplicate migration slots before starting merge or Docker', async () => {
-  const mainPaths = [
-    'db/platform/migrations/20990101020000_main.sql',
-    'supabase/migrations/20990101020000_main.sql',
-  ];
-  expect(() => assertAppendOnlyLandingSlots(['db/platform/migrations/20990101030000_pr.sql'], mainPaths)).not.toThrow();
-  expect(() => assertAppendOnlyLandingSlots(['db/platform/migrations/20990101010000_pr.sql'], mainPaths))
-    .toThrow('landing: migration slot is not strictly later than origin/main');
-  expect(() => assertAppendOnlyLandingSlots(['db/platform/migrations/20990101020000_pr.sql'], mainPaths))
-    .toThrow('landing: migration slot is not strictly later than origin/main');
-  expect(() => assertAppendOnlyLandingSlots([
-    'db/platform/migrations/20990101030000_first.sql',
-    'db/platform/migrations/20990101030000_second.sql',
-  ], mainPaths)).toThrow('migration slots: ambiguous draft version');
-  expect(() => assertAppendOnlyLandingSlots(['supabase/migrations/20990101010000_pr.sql'], mainPaths))
-    .toThrow('landing: migration slot is not strictly later than origin/main');
-
-  try {
-    git('checkout', '-q', '--detach', base);
-    append('20990101010000');
-    const invertedPr = commit();
-    git('checkout', '-q', '--detach', base);
-    append('20990101020000');
-    const aheadMain = commit();
-    setMain(aheadMain);
-    git('checkout', '-q', '--detach', invertedPr);
-    const invoked: string[][] = [];
-    await expect(landingMerge(root, {
-      runCommand: (_command, args) => { invoked.push(args); },
-    })).rejects.toThrow('landing: migration slot is not strictly later than origin/main');
-    expect(invoked).toEqual([]);
-    expect(git('status', '--porcelain=v1')).toBe('');
-    expect(existsSync(join(root, '.git/MERGE_HEAD'))).toBe(false);
-
-    // Stacked PR whose predecessor migration squash-merged byte-identically onto origin/main must not be falsely refused.
-    git('checkout', '-q', '--detach', base);
-    append('20990101010000');
-    write('README.md', `${read('README.md')}\n<!-- stacked-child -->\n`);
-    const stackedChild = commit();
-    git('checkout', '-q', '--detach', base);
-    append('20990101010000');
-    const squashMergedMain = commit();
-    setMain(squashMergedMain);
-    git('checkout', '-q', '--detach', stackedChild);
-    const stackedInvoked: string[][] = [];
-    const stackedLanded = await landingMerge(root, {
-      runCommand: (_command, args) => { stackedInvoked.push(args); },
-    });
-    expect(stackedLanded.head).toMatch(/^[0-9a-f]{40}$/u);
-    expect(stackedInvoked.length).toBeGreaterThan(0);
-    expect(git('status', '--porcelain=v1')).toBe('');
-  } finally {
-    git('reset', '--hard', merged);
-    git('checkout', '-q', '--detach', merged);
-    setMain(main);
-  }
-}, 60_000);
-
-it('plans shared migration slots across rails and UTC rollover', () => {
-  expect(nextFreeMigrationSlot('20261231235959')).toBe('20270101000000');
-  expect(nextFreeMigrationSlot('20261231235942')).toBe('20261231235943');
-  expect(landingSlotPlan(['db/platform/migrations/20270101000000_pr.sql'], [
-    'supabase/migrations/qa_20270101010000_main.sql',
-  ])).toMatchObject({ maxMainSlot: '20270101010000', nextFreeSlot: '20270101010001',
-    changes: [{ path: 'db/platform/migrations/20270101000000_pr.sql', target: 'db/platform/migrations/20270101010001_pr.sql' }] });
-  expect(landingSlotPlan([
-    'db/platform/migrations/20270101000000_old.sql',
-    'db/platform/migrations/20270101010100_new.sql',
-  ], ['supabase/migrations/20270101010000_main.sql'])).toMatchObject({
-    nextFreeSlot: '20270101010001',
-    changes: [{ target: 'db/platform/migrations/20270101010001_old.sql' }],
-  });
-});
-
-it('refuses authored migration filenames before re-slot changes the tree', async () => {
-  try {
-    checkout(base);
-    append('20990101010000');
-    write('scripts/fixture-reference.test.ts', 'const migration = "20990101010000_landing_fixture.sql";\n');
-    const other = 'db/platform/migrations/20990101020000_other.sql';
-    write(other, "SELECT '20990101010000_landing_fixture.sql';\n");
-    const head = commit();
-    const changes = [{ path: 'db/platform/migrations/20990101010000_landing_fixture.sql',
-      target: 'db/platform/migrations/20990101030100_landing_fixture.sql' },
-    { path: other, target: 'db/platform/migrations/20990101030200_other.sql' }];
-    await expect(assertNoAuthoredSlotReferences(root, base, head, changes))
-      .rejects.toThrow(`${other}:1 (20990101010000), scripts/fixture-reference.test.ts:1 (20990101010000)`);
-    expect(git('status', '--porcelain=v1')).toBe('');
-  } finally { restoreDerivedFixture(); }
-});
-
-it('re-slots migration paths in the manifest, reviewed forwards and publication catalogue', () => {
-  try {
-    checkout(base);
-    append('20990101010000');
-    const oldPath = 'db/platform/migrations/20990101010000_landing_fixture.sql';
-    const newPath = 'db/platform/migrations/20990101030100_landing_fixture.sql';
-    const oldSupabase = 'supabase/migrations/20990101010000_landing_fixture.sql';
-    const newSupabase = 'supabase/migrations/20990101030200_landing_fixture.sql';
-    write(oldSupabase, 'SELECT 1;\n');
-    const catalog = JSON.parse(read(CATALOGUE));
-    catalog.publicPaths.push({ path: oldSupabase, class: 'public-output' });
-    catalog.publicPaths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
-    write(CATALOGUE, json(catalog));
-    applyMigrationReslot(root, [{ path: oldPath, target: newPath }, { path: oldSupabase, target: newSupabase }]);
-    expect(existsSync(join(root, oldPath))).toBe(false);
-    expect(existsSync(join(root, newPath))).toBe(true);
-    expect(existsSync(join(root, oldSupabase))).toBe(false);
-    expect(existsSync(join(root, newSupabase))).toBe(true);
-    expect(read(MIGRATION_REGISTRIES[0])).toContain(newPath);
-    expect(read(MIGRATION_REGISTRIES[1])).toContain(newPath);
-    expect(read(MIGRATION_REGISTRIES[0])).not.toContain(oldPath);
-    expect(read(MIGRATION_REGISTRIES[1])).not.toContain(oldPath);
-    const rows = JSON.parse(read(CATALOGUE)).publicPaths.map(({ path }) => path);
-    expect(rows).toContain(newSupabase);
-    expect(rows).not.toContain(oldSupabase);
-    expect(rows).not.toContain(newPath);
-    expect(rows).toEqual([...rows].sort());
-  } finally { restoreDerivedFixture(); }
-});
-
-it('lands an inverted migration only with explicit re-slot', async () => {
-  const ignoredMirror = 'packages/platform/sql/20990101020002_landing_fixture.sql';
-  const exclude = read('.git/info/exclude');
-  try {
-    checkout(base);
-    append('20990101010000');
-    append('20990101020001');
-    append('20990101020100');
-    const pr = commit();
-    checkout(base);
-    append('20990101020000');
-    const upstream = commit();
-    setMain(upstream);
-    checkout(pr);
-    const original = 'db/platform/migrations/20990101010000_landing_fixture.sql';
-    const reslotted = 'db/platform/migrations/20990101020002_landing_fixture.sql';
-    const originalSql = read(original);
-    write('.git/info/exclude', exclude + `\n/${ignoredMirror}\n`);
-    write(ignoredMirror, 'Local ignored SQL.\n');
-    await expect(landingMerge(root, { reSlot: true, runCommand: fixtureCommand }))
-      .rejects.toThrow(`landing: re-slot refuses to overwrite untracked mirror: ${ignoredMirror}`);
-    expectRestoredHead(pr);
-    expect(read(ignoredMirror)).toBe('Local ignored SQL.\n');
-    rmSync(join(root, ignoredMirror));
-    await expect(landingMerge(root, { reSlot: true, runCommand: fixtureCommand }))
-      .rejects.toThrow(`landing: re-slot destination mirror is ignored: ${ignoredMirror}`);
-    expectRestoredHead(pr);
-    write('.git/info/exclude', exclude);
-    const failure = new Error('inventory refresh failed after re-slot');
-    await expect(landingMerge(root, { reSlot: true, runCommand: (command, args) => {
-      if (args.includes(join(root, 'scripts/installation-inventory-refresh.ts'))) {
-        expect(read(reslotted)).toBe(originalSql);
-        throw failure;
-      }
-      fixtureCommand(command, args);
-    } })).rejects.toBe(failure);
-    expectRestoredHead(pr);
-    expect(read(original)).toBe(originalSql);
-    expect(existsSync(join(root, reslotted))).toBe(false);
-    const result = await landingMerge(root, { reSlot: true, runCommand: (command, args) => {
-      if (args.includes(join(root, 'scripts/installation-inventory-refresh.ts'))) return;
-      fixtureCommand(command, args);
-    } });
-    expect(result.head).toMatch(/^[a-f0-9]{40}$/u);
-    expect(git('ls-files', 'db/platform/migrations/20990101020002_landing_fixture.sql')).toContain('20990101020002');
-    expect(git('show', `HEAD:${ignoredMirror}`)).toBe(originalSql.trim());
-    expect(git('ls-files', 'db/platform/migrations/20990101010000_landing_fixture.sql')).toBe('');
-    const manifest = JSON.parse(read(MIGRATION_REGISTRIES[0]));
-    const earlier = 'db/platform/migrations/20990101020000_landing_fixture.sql';
-    const later = 'db/platform/migrations/20990101020002_landing_fixture.sql';
-    for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
-      const files = plan.forward.map(({ file }) => file);
-      expect(files.slice(files.indexOf(earlier))).toEqual([
-        earlier, later, 'db/platform/migrations/20990101020003_landing_fixture.sql',
-        'db/platform/migrations/20990101020100_landing_fixture.sql',
-      ]);
-    }
-    const registry = JSON.parse(read(MIGRATION_REGISTRIES[1]));
-    const slots = registry.nativeStoreForwardClass.slots.map(({ path }) => path);
-    expect(slots.indexOf(later)).toBeGreaterThan(slots.indexOf(earlier));
-    expect(evaluatePlatformMigrationManifestMetadata(manifest)).toEqual([]);
-  } finally {
-    rmSync(join(root, ignoredMirror), { force: true });
-    write('.git/info/exclude', exclude);
-    restoreDerivedFixture();
-  }
-}, 60_000);
-
-it('keeps both SQL forwards when main added the same migration filename', async () => {
-  const oldPath = 'db/platform/migrations/20990101010000_landing_fixture.sql';
-  const target = 'db/platform/migrations/20990101010001_landing_fixture.sql';
-  const mainSql = '-- Distinct main forward\nSELECT 2;\n';
-  try {
-    checkout(base);
-    append('20990101010000');
-    const prSql = read(oldPath);
-    const pr = commit();
-    checkout(base);
-    append('20990101010000');
-    write(oldPath, mainSql);
-    const sha = createHash('sha256').update(mainSql).digest('hex');
-    const manifest = JSON.parse(read(MIGRATION_REGISTRIES[0]));
-    for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
-      plan.forward.find(row => row.file === oldPath).sha256 = sha;
-    }
-    write(MIGRATION_REGISTRIES[0], json(manifest));
-    const forwards = JSON.parse(read(MIGRATION_REGISTRIES[1]));
-    forwards.nativeStoreForwards.find(row => row.path === oldPath).sha256 = sha;
-    write(MIGRATION_REGISTRIES[1], json(forwards));
-    const upstream = commit();
-    setMain(upstream); checkout(pr);
-    const result = await landingMerge(root, { reSlot: true, runCommand: (command, args) => {
-      if (args.includes(join(root, 'scripts/installation-inventory-refresh.ts'))) return;
-      fixtureCommand(command, args);
-    } });
-    expect(result.head).toMatch(/^[a-f0-9]{40}$/u);
-    expect(read(oldPath)).toBe(mainSql);
-    expect(read(target)).toBe(prSql);
-    const landed = JSON.parse(read(MIGRATION_REGISTRIES[0]));
-    expect(landed.forward.map(row => row.file)).toEqual(expect.arrayContaining([oldPath, target]));
-    expect(JSON.parse(read(MIGRATION_REGISTRIES[1])).nativeStoreForwards.map(row => row.path))
-      .toEqual(expect.arrayContaining([oldPath, target]));
-    expect(checkPlatformMigrationProjection(root, false)).toEqual([]);
-    expect(git('status', '--porcelain=v1')).toBe('');
-    expect(git('show', '-s', '--format=%B', result.head)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
-    const integration = await proveReviewIntegration(root,
-      await captureCommittedReviewCandidate(root, base, pr),
-      await captureCommittedReviewCandidate(root, upstream, result.head));
-    expect(integration.kind).toBe('resolution');
-    expect(integration.resolution).toContain(target);
-  } finally { git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged); setMain(main); }
-}, 90_000);
 
 it('does not auto-admit an authored SQL bystander as a generated mirror', () => {
   const rogue = 'packages/platform/sql/20990101040000_rogue.sql';
   try {
-    checkout(merged);
-    write(rogue, 'SELECT 1;\n');
-    const prior = JSON.parse(read('packages/platform/sql/manifest.json'));
+    f.checkout(f.merged);
+    f.write(rogue, 'SELECT 1;\n');
+    const prior = JSON.parse(f.read('packages/platform/sql/manifest.json'));
     prior.migrations.push({ file: '20260809150001_job_run_ledger_v3.sql', source: 'db/platform/migrations/20990101040000_forged.sql', sha256: '0'.repeat(64) });
-    write('packages/platform/sql/manifest.json', json(prior));
-    runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
-    const paths = JSON.parse(read(CATALOGUE)).publicPaths.map(({ path }) => path);
+    f.write('packages/platform/sql/manifest.json', json(prior));
+    runLandingGenerators(f.root, f.git('ls-files', '-z').split('\0').filter(Boolean));
+    const paths = JSON.parse(f.read(CATALOGUE)).publicPaths.map(({ path }: { path: string }) => path);
     expect(paths).not.toContain(rogue);
     expect(paths).toContain('packages/platform/sql/20260809150001_job_run_ledger_v3.sql');
-    expect(read('packages/platform/sql/20260809150001_job_run_ledger_v3.sql')).toContain('CREATE OR REPLACE');
+    expect(f.read('packages/platform/sql/20260809150001_job_run_ledger_v3.sql')).toContain('CREATE OR REPLACE');
   } finally {
-    rmSync(join(root, rogue), { force: true });
-    restoreDerivedFixture();
+    rmSync(join(f.root, rogue), { force: true });
+    f.restoreDerivedFixture();
   }
 });
 
 it('removes a catalogue row when a generated SQL mirror was deleted', () => {
   const stale = 'packages/platform/sql/20990101040000_stale_fixture.sql';
   try {
-    checkout(merged);
-    const catalog = JSON.parse(read(CATALOGUE));
+    f.checkout(f.merged);
+    const catalog = JSON.parse(f.read(CATALOGUE));
     catalog.publicPaths.push({ path: stale, class: 'public-output' });
-    catalog.publicPaths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
-    write(CATALOGUE, json(catalog));
-    runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean));
-    expect(JSON.parse(read(CATALOGUE)).publicPaths.some(({ path }) => path === stale)).toBe(false);
-  } finally { restoreDerivedFixture(); }
+    catalog.publicPaths.sort((left: { path: string }, right: { path: string }) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+    f.write(CATALOGUE, json(catalog));
+    runLandingGenerators(f.root, f.git('ls-files', '-z').split('\0').filter(Boolean));
+    expect(JSON.parse(f.read(CATALOGUE)).publicPaths.some(({ path }: { path: string }) => path === stale)).toBe(false);
+  } finally { f.restoreDerivedFixture(); }
 });
 
 it('keeps a platform SQL mirror when only a supabase migration is re-slotted', () => {
@@ -1121,17 +190,17 @@ it('keeps a platform SQL mirror when only a supabase migration is re-slotted', (
   const target = 'supabase/migrations/20990101050000_shared_fixture.sql';
   const mirror = 'packages/platform/sql/20990101040000_shared_fixture.sql';
   try {
-    checkout(merged);
-    write(oldPath, 'SELECT 1;\n');
-    write(mirror, 'SELECT 2;\n');
-    applyMigrationReslot(root, [{ path: oldPath, target }]);
-    expect(existsSync(join(root, mirror))).toBe(true);
-    expect(read(mirror)).toBe('SELECT 2;\n');
+    f.checkout(f.merged);
+    f.write(oldPath, 'SELECT 1;\n');
+    f.write(mirror, 'SELECT 2;\n');
+    applyMigrationReslot(f.root, [{ path: oldPath, target }]);
+    expect(existsSync(join(f.root, mirror))).toBe(true);
+    expect(f.read(mirror)).toBe('SELECT 2;\n');
   } finally {
-    rmSync(join(root, oldPath), { force: true });
-    rmSync(join(root, target), { force: true });
-    rmSync(join(root, mirror), { force: true });
-    restoreDerivedFixture();
+    rmSync(join(f.root, oldPath), { force: true });
+    rmSync(join(f.root, target), { force: true });
+    rmSync(join(f.root, mirror), { force: true });
+    f.restoreDerivedFixture();
   }
 });
 
@@ -1164,85 +233,10 @@ it('classifies SQL and migration-inventory inputs conservatively', () => {
   ]) expect(isInventoryInputPath(path), path).toBe(false);
 });
 
-it.each(['clean', 'derived-carrier'])('skips Docker inventory refresh on non-SQL PR (%s) even when main changed SQL and inventory', async mode => {
-  try {
-    // Build a main commit that changed SQL, registries, publication catalogue, AND measured inventory.
-    git('reset', '--hard', main); git('checkout', '-q', '--detach', main);
-    const baseInvSource = read(INVENTORY_PATH);
-    const invEnvelope = inventoryEnvelope(baseInvSource);
-    const updatedCurrent = structuredClone(invEnvelope.value.current);
-    const digests: Record<string, string> = {
-      legacy: '1'.repeat(64),
-      bootstrap: '2'.repeat(64),
-      separate: '3'.repeat(64),
-      'admin-managed': '4'.repeat(64),
-      'admin-operator': '5'.repeat(64),
-    };
-    for (const [profile, sha] of Object.entries(digests)) updatedCurrent.profiles[profile].objectInventorySha256 = sha;
-    write(INVENTORY_PATH, invEnvelope.before + JSON.stringify(updatedCurrent, null, 2).replaceAll('\n', '\n  ') + invEnvelope.after);
-    const mainManifest = JSON.parse(read(MIGRATION_REGISTRIES[0]));
-    mainManifest.objectInventorySha256 = digests.legacy;
-    mainManifest.qualified.objectInventorySha256 = { bootstrapMigrator: { withRestore: digests.bootstrap }, separateMigrator: { withRestore: digests.separate } };
-    mainManifest.qualifiedAdmin.objectInventorySha256 = { installerManaged: digests['admin-managed'], operatorProvisioned: digests['admin-operator'] };
-    write(MIGRATION_REGISTRIES[0], json(mainManifest));
-    const mergedGenerators = pathToFileURL(join(root, 'scripts/agent-review-generators.mjs')).href;
-    execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync } from 'node:fs';
-      const owners = await import(${JSON.stringify(mergedGenerators)});
-      owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));`],
-    { cwd: root, env: fixtureEnvironment, input: git('ls-files', '-z'), timeout: 30000 });
-    const mainWithInventory = commit();
-    git('update-ref', 'refs/remotes/origin/main', mainWithInventory);
-
-    // Create a non-SQL PR forked from base (stale inventory, no SQL changes).
-    git('reset', '--hard', base); git('checkout', '-q', '--detach', base);
-    if (mode === 'clean') {
-      write('README.md', read('README.md') + '\nNon-SQL PR note\n');
-    } else {
-      // Bumping core version updates generated SQL reference links without touching SQL or inventory inputs,
-      // conflicting with main's appended SQL row in packages/core/docs/guide/reference/sql.md.
-      const corePkg = JSON.parse(read('packages/core/package.json'));
-      corePkg.version = `${corePkg.version}-fixture`;
-      write('packages/core/package.json', json(corePkg));
-      execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync } from 'node:fs';
-        const owners = await import(${JSON.stringify(mergedGenerators)});
-        owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));`],
-      { cwd: root, env: fixtureEnvironment, input: git('ls-files', '-z'), timeout: 30000 });
-    }
-    const nonSqlHead = commit();
-
-    const invoked: { command: string; args: string[] }[] = [];
-    const landed = await landingMerge(root, {
-      runCommand: (command, args) => {
-        invoked.push({ command, args });
-        expect(args).not.toContain(join(root, 'scripts/installation-inventory-refresh.ts'));
-      },
-    });
-    if (mode === 'clean') expect(invoked).toEqual([{
-      command: process.execPath, args: ['--input-type=module', '-e', expect.stringContaining('assertCarrierToolchain(process.cwd())')],
-    }]);
-    else expect(invoked.filter(({ args }) => args[0] === npmCli)).toEqual(['core', 'outbox', 'platform'].map(owner => ({
-      command: process.execPath, args: [npmCli, 'run', 'build', `--workspace=@openlup/${owner}`],
-    })));
-    expect(landed.inventoryRefreshed).toBe(false);
-    expect(git('show', `${landed.head}:${INVENTORY_PATH}`)).toBe(git('show', `${mainWithInventory}:${INVENTORY_PATH}`));
-    expect(git('show', `${landed.head}:${INVENTORY_PATH}`)).not.toBe(git('show', `${nonSqlHead}:${INVENTORY_PATH}`));
-
-    const integration = await proveReviewIntegration(
-      root,
-      await captureCommittedReviewCandidate(root, base, nonSqlHead),
-      await captureCommittedReviewCandidate(root, mainWithInventory, landed.head),
-    );
-    expect(integration, JSON.stringify(integration)).toMatchObject(mode === 'clean' ? { kind: 'git' } : { kind: 'derived', derived: true });
-  } finally {
-    git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
-    git('update-ref', 'refs/remotes/origin/main', main);
-  }
-}, 180000);
-
 it('deduplicates byte-for-byte identical stacked rows in migrationRegistryUnion and still refuses conflicts', () => {
-  const baseManifest = git('show', `${base}:${MIGRATION_REGISTRIES[0]}`);
-  const baseForwards = git('show', `${base}:${MIGRATION_REGISTRIES[1]}`);
-  const inv = git('show', `${base}:${INVENTORY_PATH}`);
+  const baseManifest = f.git('show', `${f.base}:${MIGRATION_REGISTRIES[0]}`);
+  const baseForwards = f.git('show', `${f.base}:${MIGRATION_REGISTRIES[1]}`);
+  const inv = f.git('show', `${f.base}:${INVENTORY_PATH}`);
 
   const pred = { file: 'db/platform/migrations/20990101010000_pred.sql', sha256: 'a'.repeat(64) };
   const leftOnly = { file: 'db/platform/migrations/20990101030000_stack.sql', sha256: 'b'.repeat(64) };
