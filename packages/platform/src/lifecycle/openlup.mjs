@@ -195,6 +195,7 @@ async function bindSettings({ database, app, configuration }) {
     return {
       readers: {
         "tax.coverage": async () => ({ refusal: "tax_coverage_reader_unbound" }),
+        "commerce.money_limits.v2.owner": async () => ({ refusal: "money_limits_reader_unbound" }),
         account_support_operator_slide_max_days: async () => {
           const policy = await readAccountSupportOperatorSlideMaxDaysOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };

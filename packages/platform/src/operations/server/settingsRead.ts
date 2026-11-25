@@ -1,6 +1,6 @@
 import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
-import { listCatalogueSettings, loadSettingsCatalogue, settingsVersion } from "./settingsCatalog.js";
-import { hasNonfiniteNumber, refuseCoverageRead } from "./settingsCommandSupport.js";
+import { listCatalogueSettings, loadSettingsCatalogue, moneyLimitsSettingKey, moneyLimitsUnbound, settingsVersion } from "./settingsCatalog.js";
+import { hasNonfiniteNumber, refuseCoverageRead, refuseMoneyLimitsRead } from "./settingsCommandSupport.js";
 import { z } from "zod";
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
@@ -50,8 +50,14 @@ function absentObservation(setting: ValueEntry, effective?: JsonValue): Observat
 async function observe(setting: ReturnType<typeof loadSettingsCatalogue>["entries"][number], read?: SettingReader): Promise<Observation | { refusal: SettingRefusal }> {
   if (!read || setting.kind !== "installed") return { state: "offline" };
   const observed = await read();
-  if ("refusal" in observed) return setting.key === "tax.coverage"
-    ? refuseCoverageRead(observed.refusal, observed.refusal === "tax_coverage_reader_unbound") : refuse(observed.refusal);
+  if ("refusal" in observed) {
+    if (setting.key === moneyLimitsSettingKey) return refuseMoneyLimitsRead(observed.refusal, observed.refusal === moneyLimitsUnbound);
+    return setting.key === "tax.coverage"
+      ? refuseCoverageRead(observed.refusal, observed.refusal === "tax_coverage_reader_unbound") : refuse(observed.refusal);
+  }
+  if (setting.key === moneyLimitsSettingKey && (observed.present
+    ? typeof observed.revision !== "string" || !/^[1-9][0-9]*$/u.test(observed.revision)
+    : observed.effective !== null)) return refuseMoneyLimitsRead(undefined, true);
   if (!observed.present) return absentObservation(setting, observed.effective);
   return { state: "override", value: observed.value, revision: observed.revision };
 }
@@ -68,14 +74,15 @@ export async function showSetting(input: unknown, readers: Readonly<Record<strin
     if ("refusal" in observation) return observation;
     return showResult.parse({ schemaVersion: settingsVersion, setting, observation });
   } catch (error) {
+    if (setting.key === moneyLimitsSettingKey) return refuseMoneyLimitsRead(error);
     return setting.key === "tax.coverage" ? refuseCoverageRead(error) : refuse("commerce_setting_read_unavailable");
   }
 }
 
 /** @experimental Explain a refusal code or the offline behavior when a key is absent. */
 export function explainSetting(codeOrKey: string): { explanation: SettingRefusal } | ShowResult | { refusal: SettingRefusal } {
-  const { byCode, entries, showResult } = loadSettingsCatalogue();
-  const explanation = byCode.get(codeOrKey);
+  const { byCode, commandFreeByCode, entries, showResult } = loadSettingsCatalogue();
+  const explanation = byCode.get(codeOrKey) ?? [...commandFreeByCode.values()].find(row => row.code === codeOrKey);
   if (explanation) return { explanation };
   const setting = entries.find(entry => entry.key === codeOrKey);
   if (!setting) return refuse("commerce_setting_refusal_unknown");
