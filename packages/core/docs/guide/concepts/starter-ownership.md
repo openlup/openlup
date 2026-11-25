@@ -183,29 +183,33 @@ details are never applied: under a version 4 UUID key the host answers
 `starter_checkout_not_payable`. Other released key formats keep
 `starter_command_conflict`, because they have no continuation.
 
-`checkout.continuation` continues the order under a key without the original
-details. Send the same header with a version 4 UUID value and the body
-`{ "action": "resume", "locale": "<locale>" }`. Any other
+`checkout.continuation` continues or abandons the order under a key without
+the original details. Send the same header with a version 4 UUID value and the
+body `{ "action": "resume" | "abandon", "locale": "<locale>" }`. Any other
 field or key format answers `starter_input_invalid`. A guest is authorised by
 the key value alone, so treat it as a credential: make it random, never log it
 and never reuse it for another operation.
 
-| Order under the key | `resume` |
-| --- | --- |
-| None | `starter_checkout_not_found` |
-| Unpaid, creation complete | `{ orderRef, status, total, token }`, `replayed: true` |
-| Unpaid, creation not complete | `starter_checkout_in_progress` |
-| Paid | `{ orderRef, status, total }`, `replayed: true` |
-| Cancelled, expired or closed | `starter_checkout_not_payable` |
+| Order under the key | `resume` | `abandon` |
+| --- | --- | --- |
+| None | `starter_checkout_not_found` | `{ abandoned: false }` |
+| Unpaid, creation complete | `{ orderRef, status, total, token }`, `replayed: true` | Cancels it: `{ abandoned: true, orderRef }` |
+| Unpaid, creation not complete | `starter_checkout_in_progress` | Cancels it, as above |
+| Paid | `{ orderRef, status, total }`, `replayed: true` | `starter_checkout_paid` |
+| Cancelled, expired or closed | `starter_checkout_not_payable` | `{ abandoned: false, orderRef, status }` |
 
-A limited `resume` returns the order without a token. An unknown key is
-answered before metering. Refusals use HTTP 409. A missing or malformed header answers
+Abandon refuses with `starter_checkout_not_abandonable` once a payment attempt
+was ever made or a payment is recorded. A cancelled order carries the reason
+`checkout_started_over`. A limited `resume` returns the order without a token; a
+limited `abandon` answers `starter_attempt_limited`. An unknown key is answered
+before metering. Refusals use HTTP 409. A missing or malformed header answers
 HTTP 400 with `starter_command_identity_required`.
 
 The token from `resume` authorises the same operations as the creating
 response: `checkout.read`, `checkout.recovery` `inspect` and `pay`,
 `checkout.payment` `inspect` and `simulate`, `checkout.tokenPay` and
-`payment.simulate`. A key holder can therefore also start a payment attempt.
+`payment.simulate`. A key holder can therefore start a payment attempt, which
+makes the order not abandonable.
 
 A client that owns its checkout page follows three rules:
 

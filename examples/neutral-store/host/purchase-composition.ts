@@ -352,7 +352,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       await setTimeout(Math.max(0, context.config.purchase.responseFloorMs - (performance.now() - started)));
     }
   };
-  /** Continue the order under a checkout key without re-sending its details.
+  /** Continue or abandon the order under a checkout key without re-sending its details.
    * A guest is authorised by the key value alone; a signed-in key is derived from the principal. */
   actions['checkout.continuation'] = async (payload, context) => {
     const started = performance.now();
@@ -360,13 +360,13 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     let locked = false;
     const key = command(context, 'checkout');
     try {
-      if (!only(payload, ['action']) || payload.action !== 'resume'
+      if (!only(payload, ['action']) || (payload.action !== 'resume' && payload.action !== 'abandon')
         || !isConfiguredLocale(payload.locale, context.config.market) || !continuable(context.commandKey)) return refused('starter_input_invalid');
       // Every step runs on the session holding the key lock, so the answer agrees with a create holding it.
       session = await db.connect();
       await session.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [key]);
       locked = true;
-      return await resumeCheckout(session, key, context);
+      return await continueCheckout(session, payload.action, key, context);
     } catch (error) { return failure(error); }
     finally {
       if (session) {
@@ -376,11 +376,12 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       await setTimeout(Math.max(0, context.config.purchase.responseFloorMs - (performance.now() - started)));
     }
   };
-  async function resumeCheckout(session: PoolClient, key: string, context: ActionContext) {
+  async function continueCheckout(session: PoolClient, action: 'resume' | 'abandon', key: string, context: ActionContext) {
     const order = await readOwnedDraft(session, key, context.actor.customerRef, '');
     // An unknown key is answered before metering: guessing a key needs no meter, fresh creates need the budget.
-    if (!order || (context.actor.customerRef && !order.owned)) return refused('starter_checkout_not_found');
+    if (!order || (context.actor.customerRef && !order.owned)) return action === 'resume' ? refused('starter_checkout_not_found') : success({ abandoned: false });
     const admitted = await admitRepeat(session, context, key);
+    if (!admitted && action === 'abandon') return refused('starter_attempt_limited');
     try {
       await session.query('SELECT public.catalog_admission_replay_order_draft($1,$2,$3,$4)', [key, order.client_id, checkoutLane,
         isRecord(order.submit) && typeof order.submit.submitDigest === 'string' ? order.submit.submitDigest : order.fingerprint]);
@@ -390,13 +391,31 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       throw error;
     }
     const initial = await isInitialCheckoutOrder(session, order.id);
-    if (initial && order.status === 'paid') return { ...success(present(order)), replayed: true };
-    if (!initial || order.status !== 'pending_payment') return refused('starter_checkout_not_payable');
-    if (!order.completed) return refused('starter_checkout_in_progress');
-    // A limited resume still learns that its order exists, without a new link.
-    if (!admitted) return { ...success(present(order)), replayed: true };
-    const issued = await continuationToken(session, order.id);
-    return issued.refusal ?? { ...success({ ...present(order), token: issued.token }), replayed: true };
+    if (initial && order.status === 'paid') return action === 'resume' ? { ...success(present(order)), replayed: true } : refused('starter_checkout_paid');
+    const payable = initial && order.status === 'pending_payment';
+    if (action === 'resume') {
+      if (!payable) return refused('starter_checkout_not_payable');
+      if (!order.completed) return refused('starter_checkout_in_progress');
+      if (!admitted) return { ...success(present(order)), replayed: true };
+      const issued = await continuationToken(session, order.id);
+      return issued.refusal ?? { ...success({ ...present(order), token: issued.token }), replayed: true };
+    }
+    if (!payable) return success({ abandoned: false, orderRef: order.id, status: order.status });
+    // The expiry sweep's predicate: no provider attempt ever and no external reference.
+    const { rows: [safety] } = await session.query<{ safe: boolean }>('SELECT public.commerce_initial_checkout_abandonment_safe($1::uuid) AS safe', [order.id]);
+    if (safety?.safe !== true) return refused('starter_checkout_not_abandonable');
+    let cancelled = false;
+    try {
+      // An incomplete creation is cancelled too: a later creation tail cannot hold stock on a cancelled order.
+      cancelled = (await createPostgresAbandonedCheckoutCompensationPort(session).cancelAbandonedOrder({
+        idempotencyKey: `${key}:start-over`, orderId: order.id, reason: 'checkout_started_over' })).cancelled;
+    } catch (error) {
+      if (!isRecord(error) || !['55000', '22023', '23505'].includes(String(error.code))) throw error;
+    }
+    if (cancelled) return success({ abandoned: true, orderRef: order.id });
+    const { rows: [current] } = await session.query<{ status: string }>('SELECT status FROM public.commerce_orders WHERE id=$1', [order.id]);
+    return refused(current?.status === 'paid' ? 'starter_checkout_paid'
+      : current?.status === 'pending_payment' ? 'starter_checkout_not_abandonable' : 'starter_checkout_not_payable');
   }
   actions['checkout.read'] = async (payload, context) => {
     if (!only(payload, ['orderRef', 'token'])) return refused('starter_input_invalid');

@@ -33,12 +33,12 @@ const presented = (stored: Stored) => ({ orderRef: stored.id, status: stored.sta
 
 /** A fake held session in the style of the acquisition tests: every statement is named in `log`. */
 function continuation(stored: Stored | undefined, options: { admitted?: boolean; integrity?: unknown; issue?: unknown;
-  current?: { status: string; elapsed?: boolean } } = {}) {
+  current?: { status: string; elapsed?: boolean }; safe?: boolean; cancel?: unknown } = {}) {
   const log: string[] = [];
   const args: Record<string, unknown[]> = {};
   const query = async (sql: string, values: unknown[] = []) => {
     const step = [['pg_advisory_lock', 'lock'], ['pg_advisory_unlock', 'unlock'], ['commerce_order_draft_receipts', 'lookup'],
-      ['catalog_admission_replay_order_draft', 'integrity'], ['initial_checkout', 'initial'],
+      ['catalog_admission_replay_order_draft', 'integrity'], ['abandonment_safe', 'predicate'], ['initial_checkout', 'initial'],
       ['commerce_cancel_abandoned_purchase_checkout', 'cancel'], ['FROM public.commerce_orders WHERE id=$1', 'reread']]
       .find(([text]) => sql.includes(text!))?.[1];
     if (!step) throw new Error(`unexpected statement: ${sql}`);
@@ -47,6 +47,11 @@ function continuation(stored: Stored | undefined, options: { admitted?: boolean;
     if (step === 'lookup') return { rows: stored ? [stored] : [] };
     if (step === 'integrity' && options.integrity) throw options.integrity;
     if (step === 'initial') return { rows: [{ initial_checkout: true }] };
+    if (step === 'predicate') return { rows: [{ safe: options.safe ?? true }] };
+    if (step === 'cancel') {
+      if (options.cancel instanceof Error) throw options.cancel;
+      return { rows: [{ result: options.cancel ?? { cancelled: true } }] };
+    }
     if (step === 'reread') return { rows: [options.current ?? stored] };
     return { rows: [] };
   };
@@ -207,4 +212,41 @@ test('the bound is measured from request receipt', async t => {
     assert.deepEqual(response, { status: 409, value: { ok: false, code: 'starter_checkout_request_stale' } });
     assert.deepEqual(slow.writes, []);
   } finally { server.close(); }
+});
+
+test('an incomplete order can be abandoned to start over', async () => {
+  const host = continuation(order({ completed: false }));
+  assert.deepEqual(await host.call('abandon'), { ok: true, value: { abandoned: true, orderRef: orderId } });
+  assert.deepEqual(host.log, ['connect', 'lock', 'lookup', 'meter', 'integrity', 'initial', 'predicate', 'cancel', 'unlock', 'release']);
+  assert.deepEqual(host.args.cancel!.slice(0, 3), [`${derived(guest)}:start-over`, orderId, 'checkout_started_over']);
+  assert.ok(!host.log.includes('issue'));
+});
+
+test('a dispatched attempt makes the order not abandonable', async () => {
+  for (const [current, code] of [['pending_payment', 'starter_checkout_not_abandonable'], ['paid', 'starter_checkout_paid'],
+    ['cancelled', 'starter_checkout_not_payable']] as const) {
+    for (const cancel of [{ cancelled: false }, Object.assign(new Error('commerce_checkout_compensation_aggregate_changed'), { code: '55000' })]) {
+      const host = continuation(order(), { cancel, current: { status: current } });
+      assert.deepEqual(await host.call('abandon'), { ok: false, code });
+      assert.deepEqual(host.log.slice(-4), ['cancel', 'reread', 'unlock', 'release']);
+    }
+  }
+});
+
+test('the safety predicate refuses before the compensation port', async () => {
+  const host = continuation(order(), { safe: false });
+  assert.deepEqual(await host.call('abandon'), { ok: false, code: 'starter_checkout_not_abandonable' });
+  assert.ok(host.log.includes('predicate') && !host.log.includes('cancel'));
+});
+
+test('abandon answers without a cancel for no, paid, closed or limited orders', async () => {
+  const none = continuation(undefined);
+  assert.deepEqual(await none.call('abandon'), { ok: true, value: { abandoned: false } });
+  assert.ok(!none.log.includes('meter'));
+  assert.deepEqual(await continuation(order({ status: 'paid' })).call('abandon'), { ok: false, code: 'starter_checkout_paid' });
+  assert.deepEqual(await continuation(order({ status: 'cancelled' })).call('abandon'),
+    { ok: true, value: { abandoned: false, orderRef: orderId, status: 'cancelled' } });
+  const limited = continuation(order(), { admitted: false });
+  assert.deepEqual(await limited.call('abandon'), { ok: false, code: 'starter_attempt_limited' });
+  assert.ok(!limited.log.includes('integrity') && !limited.log.includes('cancel'));
 });

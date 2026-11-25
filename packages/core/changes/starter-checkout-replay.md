@@ -10,9 +10,10 @@ Under a version 4 UUID key, changed details answer `starter_checkout_changed`,
 `starter_command_conflict`, and are never applied. Other key formats keep
 `starter_command_conflict`.
 
-The new `checkout.continuation` operation resumes the order under a version 4
-UUID key without its details; the starter now declares 76 operations. A fresh
-create that obtains its key lock more than 15 seconds after the host
+The new `checkout.continuation` operation resumes or abandons the order under
+a version 4 UUID key without its details; the starter now declares 76
+operations. An abandoned order carries the reason `checkout_started_over`. A
+fresh create that obtains its key lock more than 15 seconds after the host
 received it answers `starter_checkout_request_stale` and writes nothing.
 
 Each repeat and each continuation of a known key adds one attempt-ledger row.
@@ -29,7 +30,10 @@ Apply the application file upgrade to replace pristine managed files:
 `host/purchase-composition.ts`, `host/checkout-attempts.ts`, `host/server.ts`,
 `host/bindings.ts`, `host/native-composition.ts`, `host/quote-composition.ts`
 and `shared/api.ts`. If it reports a conflict, reconcile your customised files
-with the target starter before retrying. No database forward is needed.
+with the target starter before retrying. Apply the platform forward
+`20261128130000_checkout_abandonment_safety_execute_grant.sql` before starting
+the updated host: without it, `abandon` of an unpaid order answers
+`starter_purchase_unavailable` and nothing is cancelled.
 
 If you own your checkout client, your idempotency keys are now credentials for
 unpaid guest orders: make them random version 4 UUIDs, never log them and never

@@ -1067,4 +1067,124 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     expect(answers).toEqual(keys.map(() => ({ ok: false, code: 'starter_checkout_not_found' })));
   }, 30_000);
 
+
+  const held = async (orderRef: string) => Number((await owner!.query(`SELECT count(*) AS n FROM public.fulfillment_inventory_reservations
+    WHERE purchase_order_id=$1 AND status='held'`, [orderRef])).rows[0].n);
+  const orderStatus = async (orderRef: string) => (await owner!.query('SELECT status FROM public.commerce_orders WHERE id=$1', [orderRef])).rows[0].status;
+  const abandon = (key: string, signedIn = false) => call('checkout.continuation', { action: 'abandon', locale: 'en' }, signedIn, key);
+
+  it('checkout.continuation abandons by key', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const order = await guestOrder('abandon');
+    expect(await held(order.orderRef)).toBeGreaterThan(0);
+    expect(await abandon(order.key)).toEqual({ ok: true, value: { abandoned: true, orderRef: order.orderRef } });
+    expect(await orderStatus(order.orderRef)).toBe('cancelled');
+    expect(await held(order.orderRef)).toBe(0);
+    expect((await owner!.query('SELECT failure_reason FROM public.commerce_settlement_intents WHERE order_id=$1', [order.orderRef])).rows)
+      .toEqual([{ failure_reason: 'checkout_started_over' }]);
+    expect(await abandon(order.key)).toEqual({ ok: true, value: { abandoned: false, orderRef: order.orderRef, status: 'cancelled' } });
+    expect(await call('checkout.create', checkout(`abandon-${config.id}@example.test`), false, order.key))
+      .toEqual({ ok: false, code: 'starter_checkout_not_payable' });
+    expect(await abandon(randomUUID())).toEqual({ ok: true, value: { abandoned: false } });
+    const paidOrder = await guestOrder('abandon-paid');
+    expect((await call('payment.simulate', { orderRef: paidOrder.orderRef, token: paidOrder.token, outcome: 'captured' })).ok).toBe(true);
+    expect(await abandon(paidOrder.key)).toEqual({ ok: false, code: 'starter_checkout_paid' });
+    // A provider attempt that ever happened keeps the order out of the start-over path.
+    const attempted = await guestOrder('abandon-attempted');
+    expect((await call('payment.simulate', { orderRef: attempted.orderRef, token: attempted.token, outcome: 'refused' })).ok).toBe(true);
+    expect(await abandon(attempted.key)).toEqual({ ok: false, code: 'starter_checkout_not_abandonable' });
+    expect(await orderStatus(attempted.orderRef)).toBe('pending_payment');
+    // The signed-in principal cannot address a guest key.
+    const guestKey = (await guestOrder('abandon-bearer')).key;
+    await signIn(`abandon-bearer-${config.id}@example.test`);
+    expect(await abandon(guestKey, true)).toEqual({ ok: true, value: { abandoned: false } });
+    expect((await abandon(guestKey)).ok).toBe(true);
+  }, 45_000);
+
+  it('abandon racing a capture ends in exactly one of paid or cancelled', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const order = await guestOrder('race');
+    const holder = await owner!.connect();
+    let outcomes: [ActionResult, ActionResult];
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE', [order.orderRef]);
+      const racing = Promise.all([abandon(order.key),
+        call('payment.simulate', { orderRef: order.orderRef, token: order.token, outcome: 'captured' })]);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await holder.query('ROLLBACK');
+      outcomes = await racing;
+    } finally { holder.release(); }
+    const [abandoned, captured] = outcomes;
+    const status = await orderStatus(order.orderRef);
+    expect(['paid', 'cancelled']).toContain(status);
+    if (status === 'cancelled') {
+      expect(abandoned).toEqual({ ok: true, value: { abandoned: true, orderRef: order.orderRef } });
+      expect(captured.ok).toBe(false);
+      expect(await held(order.orderRef)).toBe(0);
+      expect(await call('checkout.create', checkout(`race-${config.id}@example.test`), false, order.key))
+        .toEqual({ ok: false, code: 'starter_checkout_not_payable' });
+    } else {
+      expect(captured.ok).toBe(true);
+      expect(abandoned.ok).toBe(false);
+      expect(['starter_checkout_paid', 'starter_checkout_not_abandonable']).toContain(!abandoned.ok && abandoned.code);
+    }
+    expect((await owner!.query(`SELECT count(*) AS n FROM public.outbox_events WHERE event_type='commerce.checkout.expired'
+      AND idempotency_key=$1`, [`checkout_expired:${order.orderRef}`])).rows[0].n).toBe('0');
+  }, 45_000);
+
+  it('abandon with no order, then the first create, then a changed create leave one order', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const key = randomUUID();
+    expect(await abandon(key)).toEqual({ ok: true, value: { abandoned: false } });
+    const first = await guestOrder('late', key);
+    expect(await call('checkout.create', { ...checkout(`late-${config.id}@example.test`), line1: '2 Example Lane' }, false, key))
+      .toEqual({ ok: false, code: 'starter_checkout_changed' });
+    expect((await owner!.query('SELECT order_id FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1', [derivedKey(key)])).rows)
+      .toEqual([{ order_id: first.orderRef }]);
+  }, 30_000);
+
+  it('an incomplete order is abandoned and its creation tail holds nothing', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const reserve = 'public.fulfillment_reserve_purchase_order_items(text,uuid,text,jsonb,text,timestamptz,jsonb,timestamptz)';
+    const cancel = 'public.commerce_cancel_abandoned_purchase_checkout(text,uuid,text,timestamptz)';
+    const key = randomUUID();
+    const input = checkout(`incomplete-${config.id}@example.test`);
+    // A host that stops after the draft commit: the hold fails and so does its compensation.
+    await owner!.query(`REVOKE EXECUTE ON FUNCTION ${reserve}, ${cancel} FROM service_role`);
+    try { expect((await call('checkout.create', input, false, key)).ok).toBe(false); }
+    finally { await owner!.query(`GRANT EXECUTE ON FUNCTION ${reserve}, ${cancel} TO service_role`); }
+    const { rows: [draft] } = await owner!.query(`SELECT o.id, o.status FROM public.commerce_order_draft_receipts r
+      JOIN public.commerce_orders o ON o.id=r.order_id WHERE r.idempotency_key=$1`, [derivedKey(key)]);
+    expect(draft.status).toBe('pending_payment');
+    expect(await call('checkout.continuation', { action: 'resume', locale: 'en' }, false, key))
+      .toEqual({ ok: false, code: 'starter_checkout_in_progress' });
+    expect(await abandon(key)).toEqual({ ok: true, value: { abandoned: true, orderRef: draft.id } });
+    expect(await call('checkout.create', input, false, key)).toEqual({ ok: false, code: 'starter_checkout_not_payable' });
+    expect(await held(draft.id)).toBe(0);
+    expect((await owner!.query('SELECT count(*) AS n FROM public.commerce_settlement_intents WHERE order_id=$1', [draft.id])).rows[0].n).toBe('0');
+  }, 30_000);
+
+  it('more parallel abandons than pooled connections all complete', async () => {
+    await control(false, undefined, undefined, repeatLimits);
+    await owner!.query('TRUNCATE public.commerce_checkout_attempt_ledger');
+    const orders: Awaited<ReturnType<typeof guestOrder>>[] = [];
+    for (let index = 0; index < 6; index++) orders.push(await guestOrder(`parallel-${index}`));
+    const answers = await Promise.all(orders.map(order => abandon(order.key)));
+    // Releases share the inventory admission gate; a busy release refuses and can be repeated.
+    const abandoned = { ok: true, value: { abandoned: true } };
+    for (const [index, answer] of answers.entries()) {
+      if (!answer.ok) {
+        expect(answer).toEqual({ ok: false, code: 'starter_purchase_unavailable' });
+        expect(await orderStatus(orders[index]!.orderRef)).toBe('pending_payment');
+        expect(await abandon(orders[index]!.key)).toMatchObject(abandoned);
+      } else expect(answer).toMatchObject(abandoned);
+      expect(await orderStatus(orders[index]!.orderRef)).toBe('cancelled');
+    }
+  }, 45_000);
+
 });

@@ -607,8 +607,8 @@ or an expired deadline require fresh review and consent.
 After an uncertain checkout response, an unchanged retry under the same command
 key returns the saved order and, while it is unpaid, a further continuation
 token. A refreshed acceptance for the same stored terms is the same purchase;
-changed details are refused, never applied. `checkout.continuation` resumes
-that order by its key. Changing the input or explicitly starting a new
+changed details are refused, never applied. `checkout.continuation` resumes or
+abandons that order by its key. Changing the input or explicitly starting a new
 action prepares a fresh quote and key; the server still validates acceptance
 before any new draft is admitted.
 
