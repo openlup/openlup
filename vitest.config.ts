@@ -107,8 +107,9 @@ export default defineConfig({
     // the floor a budget is computed against cannot drift from the one set here.
     testTimeout: flatTestTimeoutMs(isCoverageRun, isHostedCi),
     hookTimeout: flatTestTimeoutMs(isCoverageRun, isHostedCi),
-    // Product-test failures are deterministic evidence and are never retried.
-    // The public wrapper/workflow adds no automatic infrastructure retry.
+    // Product-test failures are deterministic evidence and are never retried here.
+    // Hosted CI shards rerun failed files once in scripts/ci-vitest-shard.mjs and
+    // report every pass-on-rerun as flaky; see CONTRIBUTING.md.
     retry: 0,
     // Keep serial coverage available for explicit reproduction. CI uses two
     // workers so V8 coverage does not collapse into the very slow single-worker

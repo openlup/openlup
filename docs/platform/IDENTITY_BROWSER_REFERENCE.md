@@ -10,8 +10,9 @@ commerce runtime is checked with a browser bundle. The Node-only
 `@openlup/platform/commerce/server` entry remains outside the closed inventory;
 the profile build test explicitly proves that it is refused, alongside the
 Node-only pricing root. The additive `pricing/browser` entry contributes exactly
-its built entry, quote primitives, acquisition validators and acquisition
-contract constant, plus the existing pure shipping-terms owner. The latter lets
+its built entry, quote primitives, acquisition validators, the subscription
+unit-price estimate with its validation and pricing contract value modules, plus
+the existing pure shipping-terms owner. The latter lets
 the strict reference quote context carry optional shipping/acquisition promises;
 shipping handlers and Node HTTP declarations remain outside this closure. No
 directory wildcard or other pricing implementation is admitted.

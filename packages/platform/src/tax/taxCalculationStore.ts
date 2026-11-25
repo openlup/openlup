@@ -99,7 +99,8 @@ type Terminal = { kind: "terminal"; validUntil: string; freshness: "current" | "
   outcome: Refusal | QuoteOutcome | { kind: "unavailable"; code: UnavailableCode; effect: "none"; field: string; remedy: string } };
 type CompleteTaxCalculationResult = Terminal | Refusal | { kind: "pending" | "missing" };
 type BeginTaxCalculationResult = CompleteTaxCalculationResult | { kind: "claimed"; calculationId: string; generation: number;
-  claimToken: string; pin: EvaluationPin & { requestDigest: string; invocationDigest: string; documentDigest: string } };
+  claimToken: string; dispatchDeadlineMs: number; cutoffDeadlineMs: number;
+  pin: EvaluationPin & { requestDigest: string; invocationDigest: string; documentDigest: string } };
 
 /** Computes a canonical digest for the native evaluation store.
  * @experimental
@@ -177,8 +178,12 @@ async function execute(lane: TaxCalculationTransactionLane, input: EvaluationSco
       awaitingCommit = true;
       return { reply, sampledAtMs, sentAt };
     });
-    if (result.kind === "claimed" && !(typeof sampledAtMs === "number" && sampledAtMs + (performance.now() - sentAt) < Date.parse(result.pin.validUntil)))
-      return refusal("tax_calculation_expired", "/taxEvidence/expiresAt");
+    if (result.kind === "claimed") {
+      const cutoff = typeof sampledAtMs === "number" ? sentAt + (Date.parse(result.pin.validUntil) - sampledAtMs) : Number.NaN;
+      if (!(performance.now() < cutoff)) return refusal("tax_calculation_expired", "/taxEvidence/expiresAt");
+      // Dispatch also needs a live lease. The lease begins no earlier than the query send.
+      return { ...result, cutoffDeadlineMs: cutoff, dispatchDeadlineMs: Math.min(cutoff, sentAt + 300_000) };
+    }
     return result.kind === "terminal" ? { ...result, freshness: new Date().toISOString() >= result.validUntil ? "historical" : "current" } : result;
   } catch (error) {
     if (error === invalidClaimComposition) return refusal("tax_evaluation_integrity_invalid", "/taxEvidence");
