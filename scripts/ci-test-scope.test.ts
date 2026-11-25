@@ -244,6 +244,7 @@ describe('conservative tooling scope', () => {
       'tests/postgres/customerNewsletterWithdrawal.test.ts',
       'tests/postgres/m14QualifiedAdminComposition.test.ts',
       'tests/postgres/m14RestrictedConnectedRestore.test.ts',
+      'tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts',
       'tests/postgres/subscriptionNoticeProducers.test.ts',
       'tests/postgres/subscriptionRetainedRenewal.test.ts',
     ];
