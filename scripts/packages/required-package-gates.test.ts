@@ -147,9 +147,15 @@ describe("inventory-driven required package gates", () => {
     const result = invoke(input);
     expect(result.status, result.stdout + result.stderr).toBe(0);
     const calls = observations(input.root);
-    expect(calls.map(({ phase, name }) => `${phase}:${name}`)).toEqual([
-      "api:alpha", "api:beta", "api:gamma", "required:alpha", "consumer:alpha", "required:beta", "consumer:beta", "required:gamma", "consumer:gamma",
-    ]);
+    const phases = calls.map(({ phase, name }) => `${phase}:${name}`);
+    expect(phases.slice(0, 3)).toEqual(["api:alpha", "api:beta", "api:gamma"]);
+    for (const name of ["alpha", "beta", "gamma"]) {
+      const reqIdx = phases.indexOf(`required:${name}`);
+      const conIdx = phases.indexOf(`consumer:${name}`);
+      expect(reqIdx).toBeGreaterThanOrEqual(3);
+      expect(conIdx).toBeGreaterThan(reqIdx);
+    }
+    expect(phases).toHaveLength(9);
     const manifestBytes = readFileSync(join(input.output, "packages-manifest.json"));
     const manifest = JSON.parse(manifestBytes.toString());
     expect(manifest.commit).toBe(input.commit);
@@ -261,9 +267,15 @@ describe("inventory-driven required package gates", () => {
       expect(existsSync(join(input.root, "packages", name, "dist/stale.js"))).toBe(false);
     }
     const calls = observations(input.root);
-    expect(calls.map(({ phase, name }) => `${phase}:${name}`)).toEqual([
-      "api:alpha", "api:beta", "api:gamma", "required:alpha", "consumer:alpha", "required:beta", "consumer:beta", "required:gamma", "consumer:gamma",
-    ]);
+    const phases = calls.map(({ phase, name }) => `${phase}:${name}`);
+    expect(phases.slice(0, 3)).toEqual(["api:alpha", "api:beta", "api:gamma"]);
+    for (const name of ["alpha", "beta", "gamma"]) {
+      const reqIdx = phases.indexOf(`required:${name}`);
+      const conIdx = phases.indexOf(`consumer:${name}`);
+      expect(reqIdx).toBeGreaterThanOrEqual(3);
+      expect(conIdx).toBeGreaterThan(reqIdx);
+    }
+    expect(phases).toHaveLength(9);
     const requiredCalls = calls.filter(({ phase }) => phase === "required");
     expect(requiredCalls.map(({ distReady }) => distReady)).toEqual(["1", "1", "1"]);
   }, 60_000);
@@ -285,9 +297,15 @@ describe("inventory-driven required package gates", () => {
     expect(prepacked.status, prepacked.stdout + prepacked.stderr).toBe(0);
     // Only topological preparation builds run (no cold repack).
     expect(builds(input.root).map(({ name }) => name)).toEqual(["alpha", "beta"]);
-    expect(observations(input.root).map(({ phase, name }) => `${phase}:${name}`)).toEqual([
-      "api:alpha", "api:beta", "required:alpha", "consumer:alpha", "required:beta", "consumer:beta",
-    ]);
+    const prepackedPhases = observations(input.root).map(({ phase, name }) => `${phase}:${name}`);
+    expect(prepackedPhases.slice(0, 2)).toEqual(["api:alpha", "api:beta"]);
+    for (const name of ["alpha", "beta"]) {
+      const reqIdx = prepackedPhases.indexOf(`required:${name}`);
+      const conIdx = prepackedPhases.indexOf(`consumer:${name}`);
+      expect(reqIdx).toBeGreaterThanOrEqual(2);
+      expect(conIdx).toBeGreaterThan(reqIdx);
+    }
+    expect(prepackedPhases).toHaveLength(6);
 
     // Fail-closed: tampered manifest digest is rejected before api:check or consumer proofs run.
     const manifestPath = join(input.output, "packages-manifest.json");
