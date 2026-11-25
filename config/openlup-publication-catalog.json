@@ -30782,6 +30782,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/paymentCaptureTime/replayed.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/paymentMethods/health.sql",
       "class": "public-output"
     },
@@ -31331,6 +31335,14 @@
     },
     {
       "path": "tests/postgres/partnerAcquisition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentCaptureTime.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentCaptureTimePgtap.test.ts",
       "class": "public-output"
     },
     {
