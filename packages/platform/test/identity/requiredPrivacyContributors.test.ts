@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { createPersonalDataContributorRegistry, createPostgresPrivacyStore, createPrivacyOperations, isNativePrivacyOperations, PrivacyRefusal,
-  type PersonalDataContributor, type PrivacyStore, type PrivacyUseCaseDependencies } from "../../src/identity/index.js";
+  type PersonalDataContributor, type NativePrivacyStore, type PrivacyUseCaseDependencies } from "../../src/identity/index.js";
 import type { PgQueryExecutor } from "../../src/data/index.js";
 
 const id = "11111111-1111-4111-8111-111111111111";
@@ -23,11 +23,12 @@ function composition(owners = [contributor("identity")], expectations: string[] 
   const store = {
     privacyRail: "native" as const,
     readRequiredContributorIds: vi.fn(async (): Promise<readonly string[]> => ["identity"]),
+    findErasureReplay: vi.fn<NativePrivacyStore<null>["findErasureReplay"]>(async () => null),
     erasureSupported: true, findReceipt: vi.fn(async () => null),
     resolve: vi.fn(async () => ({ contactId: id, principalId: null, identity: {} })),
     prepareErasure: vi.fn(async () => {}), authorizeErasure: vi.fn(async () => {}),
     eraseIdentity: vi.fn(async () => {}), saveReceipt: vi.fn(async () => {}),
-  } satisfies PrivacyStore<null> & { privacyRail: "native"; readRequiredContributorIds(): Promise<readonly string[]> };
+  } satisfies NativePrivacyStore<null>;
   const unitOfWork = { run: vi.fn(<T>(work: (context: null) => Promise<T>) => work(null)) };
   const create = (registered = owners, requiredContributorIds = expectations) => createPrivacyOperations({
     store, unitOfWork, registry: createPersonalDataContributorRegistry(registered, { requiredContributorIds }),
@@ -130,7 +131,7 @@ it("snapshots the subject before the live read and rejects invalid input before 
   });
   await expect(operations.erase(actor, callerInput)).resolves.toMatchObject({ outcome: "ERASED" });
   expect(store.resolve).toHaveBeenCalledWith(null, subject, actor);
-  expect(store.findReceipt).toHaveBeenCalledWith(null, subject, id);
+  expect(store.findErasureReplay).toHaveBeenCalledWith(null, subject, id);
 });
 
 it("only recognizes the native factory result and refuses an omitted reader", () => {
@@ -147,5 +148,58 @@ it.each([{ rows: [] }, { rows: [{ ids: null }] }, { rows: [{ ids: ["identity"] }
   "requires exactly one array row from the native reader", async result => {
     const db = { query: vi.fn(async () => result) } as unknown as PgQueryExecutor;
     await expect(createPostgresPrivacyStore().readRequiredContributorIds(db)).rejects.toThrow("privacy_declaration_invalid");
+  },
+);
+
+it("refuses a missing native replay hook when binding the serving store", () => {
+  const { store, create, unitOfWork } = composition();
+  Reflect.deleteProperty(store, "findErasureReplay");
+  expect(create).toThrow("PRIVACY_ASSESSMENT_UNAVAILABLE");
+  expect(unitOfWork.run).not.toHaveBeenCalled();
+});
+
+it("qualifies replay with the original bound hook and one live declaration read", async () => {
+  const { store, operations } = composition();
+  const receipt = { version: "identity.erasure.v1" as const, erasureId: id, completedAt: new Date(0).toISOString(), outcome: "ERASED" as const, obligations: [] };
+  const replacement = vi.fn<NativePrivacyStore<null>["findErasureReplay"]>(async () => ({ receipt, coveredContributorIds: ["identity"] }));
+  store.findErasureReplay.mockResolvedValue({ receipt, coveredContributorIds: [] });
+  store.findErasureReplay = replacement;
+  const refused = await operations.erase(actor, input).catch(error => error);
+  expect(Object.getPrototypeOf(refused)).toBe(PrivacyRefusal.prototype);
+  expect(Reflect.ownKeys(refused).filter(key => key !== "stack").sort()).toEqual(["code", "facts", "message", "name"]);
+  expect(refused).toMatchObject({ message: "PRIVACY_RECEIPT_COVERAGE_INCOMPLETE", code: "PRIVACY_RECEIPT_COVERAGE_INCOMPLETE", facts: {
+    observed: "A prior erasure is missing recorded coverage for the required owners (identity).",
+    cause: "The original receipt and verified owner approvals do not establish their local disposition.",
+    fix: "Ask the data privacy owner and contributor owners to reconcile the missing coverage against the original receipt.",
+    recheck: "Retry the original erasure request after reconciliation.",
+  } });
+  expect(store.readRequiredContributorIds).toHaveBeenCalledExactlyOnceWith(null);
+  expect(replacement).not.toHaveBeenCalled();
+  expect(store.findReceipt).not.toHaveBeenCalled();
+  expect(store.saveReceipt).not.toHaveBeenCalled();
+});
+
+it.each([
+  { coveredContributorIds: ["identity", "identity"] }, { coveredContributorIds: ["identity", "addresses"] },
+  { coveredContributorIds: ["Bad", "identity"] }, { coveredContributorIds: "identity" },
+  { coveredContributorIds: Array.from({ length: 20_001 }, (_, index) => `fixture-${index}`) },
+  { coveredContributorIds: ["identity"], extra: true }, { coveredContributorIds: ["identity"], receipt: {} },
+])("rejects invalid native replay results as unavailable before effects", async result => {
+  const { store, operations, owners } = composition();
+  const receipt = { version: "identity.erasure.v1" as const, erasureId: id, completedAt: new Date(0).toISOString(), outcome: "ERASED" as const, obligations: [] };
+  store.findErasureReplay.mockResolvedValue({ receipt, ...result } as never);
+  await expect(operations.erase(actor, input)).rejects.toMatchObject({ code: "PRIVACY_ASSESSMENT_UNAVAILABLE",
+    facts: { cause: "The native store or its installed declaration or receipt evidence is unavailable or invalid." } });
+  expect(owners[0].assessErasure).not.toHaveBeenCalled();
+});
+
+it.each([[], [{ ids: null }], [{ ids: ["identity", "identity"] }], [{ ids: ["identity"] }, { ids: [] }]].map(rows => ({ rows })))(
+  "requires a single valid approval array row (%j)", async ({ rows }) => {
+    const receipt = { contract_version: "identity.erasure.v1", erasure_id: id, client_id: id,
+      idempotency_key: id, completed_at: new Date(0), retained_obligations: [], contributor_versions: { identity: "identity.v1" } };
+    const query = vi.fn().mockResolvedValueOnce({ rows: [receipt] }).mockResolvedValueOnce({ rows });
+    const db = { query } as unknown as PgQueryExecutor;
+    await expect(createPostgresPrivacyStore().findErasureReplay(db, subject, id)).rejects.toThrow();
+    expect(query.mock.calls[1]?.[1]).toEqual([id]);
   },
 );

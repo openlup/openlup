@@ -9411,6 +9411,19 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "path": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
+        "row": "privacy-erasure-reconciliations",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.identity_privacy_reconciled_contributor_ids(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -13520,6 +13533,17 @@
           "signature": "public.catalog_admission_runtime_checkout(text,text,uuid,jsonb)",
           "beforeSha256": "dc5ede81e7e66af056f93756823590ee16f9a80674600c95764245be0528ab6a",
           "afterSha256": "f8946f1094ddfbe17217e6f48fa257022b68f462cacca1c19271b0a170587b41"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261127120002_identity_privacy_erasure_reconciliations.sql",
+      "sha256": "c608c9f9ad0b06fde6239c3efad21e9b97c827653aa85855c1b265d691110efa",
+      "functions": [
+        {
+          "signature": "public.identity_privacy_reconciled_contributor_ids(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "80358032219301e920febd271dd8ed14e884cd845be8d2250b5d8b916d9b9115"
         }
       ]
     }
