@@ -30278,6 +30278,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogOrderProtection.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogPriceListBasis.test.ts",
       "class": "public-output"
     },
