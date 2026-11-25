@@ -75,6 +75,77 @@ test('one-time checkout preview displays its estimate and gates repeated submits
   expect(creates).toBe(0);
 });
 
+test('one-time checkout retries a committed command after an unchecked submit', async ({ page, baseURL }, info) => {
+  const fixtures: { id: string; baseURL: string; ownerUrl: string }[] =
+    JSON.parse(await readFile('.context/care-browser/fixtures.json', 'utf8'));
+  const fixture = fixtures.find(row => row.id === info.project.name && row.baseURL === baseURL);
+  if (!fixture) throw new Error('starter_checkout_browser_fixture_required');
+  const config = configurations[fixture.id]!;
+  const seed = buildDemoSeed(config);
+  const sku = seed.skus.find(row => row.sku === config.offer.products[0]!.sku)!;
+  const price = seed.prices.find(row => row.variant_id === sku.id && row.mode === 'one_time')!;
+  const owner = new pg.Pool({ connectionString: fixture.ownerUrl });
+  const reprice = async (amount: number) => {
+    expect((await owner.query('UPDATE public.price_entries SET unit_price_minor=$2 WHERE id=$1', [price.id, amount])).rowCount).toBe(1);
+  };
+  const orders = async () => (await owner.query<{ id: string }>('SELECT id FROM public.commerce_orders ORDER BY id')).rows.map(row => row.id);
+
+  try {
+    const before = await orders();
+    const original = (await checkout(page, config.offer.minUnits)).expectedTotal!;
+    await renderedTotal(page, original);
+    const consent = page.getByLabel(labels.termsAccept);
+    const submit = page.getByRole('button', { name: labels.placeOrder, exact: true });
+    const city = page.getByLabel(labels.city, { exact: true });
+    const originalCity = await city.inputValue();
+    const sent: { body: string; key: string }[] = [];
+    let committedOrderRef: string | undefined;
+    await page.route(createPath, async route => {
+      sent.push({ body: route.request().postData()!, key: route.request().headers()['idempotency-key']! });
+      if (sent.length > 1) return route.continue();
+      const upstream = await route.fetch();
+      const body = await upstream.json();
+      if (body.ok) committedOrderRef = body.value.orderRef;
+      await route.abort();
+    });
+
+    await consent.check();
+    await submit.click();
+    await expect(page.getByText('starter_transport_unavailable')).toBeVisible();
+    expect(JSON.parse(sent[0]!.body).expectedTotal).toEqual(original);
+    expect(committedOrderRef).toEqual(expect.any(String));
+    const committed = await orders();
+    expect(committed.filter(id => !before.includes(id))).toEqual([committedOrderRef]);
+
+    await reprice(price.unit_price_minor + 137);
+    for (const value of [originalCity + ' Edited', originalCity]) {
+      const changed = page.waitForResponse(row => isCheckoutReview(row) && row.request().postDataJSON().city === value);
+      await city.fill(value);
+      await city.blur();
+      const review = await (await changed).json();
+      expect(review.ok).toBe(true);
+      expect(review.value.expectedTotal.amountMinor).not.toBe(original.amountMinor);
+      await renderedTotal(page, review.value.expectedTotal);
+    }
+    await expect(consent).not.toBeChecked();
+    await submit.click();
+    await expect(page.getByText(quoteCopy[locale].refresh)).toBeVisible();
+    expect(sent).toHaveLength(1);
+    expect(await orders()).toEqual(committed);
+
+    await consent.check();
+    const retried = page.waitForResponse(row => row.url().endsWith('/api/actions/checkout.create'));
+    await submit.click();
+    const { ok, replayed, value } = await (await retried).json();
+    expect(await orders()).toEqual(committed);
+    expect(sent).toEqual([sent[0], sent[0]]);
+    expect({ ok, replayed, orderRef: value?.orderRef }).toEqual({ ok: true, replayed: true, orderRef: committedOrderRef });
+  } finally {
+    try { await reprice(price.unit_price_minor); }
+    finally { await owner.end(); }
+  }
+});
+
 for (const outcome of ['changed total', 'same total', 'stale refusal', 'uncertain retry', 'failed refresh'] as const) {
   test(`one-time checkout reconfirms after ${outcome}`, async ({ page, baseURL }, info) => {
     const fixtures: { id: string; baseURL: string; ownerUrl: string }[] =

@@ -116,7 +116,6 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       const input = JSON.stringify(values);
       if (uncertain?.input === input) values = uncertain.prepared;
       else if (options.prepare) {
-        uncertain = undefined;
         inFlight = true; submit.disabled = true; reset.disabled = true;
         try {
           const prepared = await options.prepare(values);
