@@ -238,6 +238,7 @@ in [Upgrade the database](../upgrade/database-migrations.md).
 | [`20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql) |
 | [`20261128120000_order_money_v2_storage.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128120000_order_money_v2_storage.sql) |
 | [`20261128130000_order_money_v2_assert.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261128130000_order_money_v2_assert.sql) |
+| [`20261129060000_paid_order_money_v2_read.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261129060000_paid_order_money_v2_read.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

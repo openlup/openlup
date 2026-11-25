@@ -11,6 +11,7 @@ import { allocations, buckets, fees, insert, itemTable, orderTable, positions, s
 type Sku = { sku: string; id: string };
 type Body = CommerceQuoteMoneyV2;
 type Component = Body["lines"][number];
+type Promotion = { id: string } & ({ lineKey: string } | { bucketKey: string });
 const digest = "a".repeat(64);
 
 function component(basis: number, taxPositions: Component["taxPositions"] = []) {
@@ -29,16 +30,24 @@ export function reseal(body: Body, quoteId = randomUUID()): CommerceQuoteV2 {
 
 export async function issue(store: Pick<AccountMutationsStore, "owner" | "runtime">, sku: Sku, inclusive: boolean,
   edit: (body: Body) => Body = body => body,
-  { pending = false, legacySeal = false, promotions = [] }: {
-    pending?: boolean; legacySeal?: boolean; promotions?: readonly { id: string; lineKey: string }[];
+  { pending = false, legacySeal = false, promotions = [], limitMaxMinor }: {
+    pending?: boolean; legacySeal?: boolean; promotions?: readonly Promotion[]; limitMaxMinor?: number;
   } = {}) {
   const at = (await store.owner.query<{ now: Date }>("SELECT date_trunc('milliseconds',clock_timestamp()) AS now")).rows[0]!.now;
   const value = await fixture(store, at.toISOString());
   const input = value.begin(inclusive ? fiscalKind : exclusiveKind, !legacySeal);
+  if (limitMaxMinor !== undefined) {
+    const limits = input.pin.composition!.limits;
+    limits.maxMinor = limitMaxMinor;
+    limits.effective.maxMinor = limitMaxMinor;
+  }
   if (promotions.length > 0) {
     const plan = input.pin.composition!.planInput;
-    plan.selected.adjustments = promotions.map(({ id, lineKey }) => ({
-      amountOffMinor: 1, adjustmentRef: id, evidenceRef: "b".repeat(64), appliesTo: "line", target: { lineKeys: [lineKey] },
+    plan.selected.adjustments = promotions.map(promotion => ({
+      amountOffMinor: 1, adjustmentRef: promotion.id, evidenceRef: "b".repeat(64),
+      ...("lineKey" in promotion
+        ? { appliesTo: "line", target: { lineKeys: [promotion.lineKey] } }
+        : { appliesTo: "shipping", target: { bucketKey: promotion.bucketKey } }),
     }));
     await store.owner.query(`INSERT INTO public.commerce_promotion_definitions(promotion_id, definition)
       SELECT id, jsonb_build_object('id',id,'status','active','trigger_type','automatic',

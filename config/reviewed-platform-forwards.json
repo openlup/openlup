@@ -9599,6 +9599,19 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "paid-order-money-v2-read",
+        "path": "db/platform/migrations/20261129060000_paid_order_money_v2_read.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_read_paid_order_money_v2(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -13860,6 +13873,17 @@
           "signature": "public.commerce_order_money_v2_live_body(uuid)",
           "beforeSha256": null,
           "afterSha256": "8d9d402e1f1b887b2cdd26f8222b133d3d5a4e680b659a03291ae626e509b854"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261129060000_paid_order_money_v2_read.sql",
+      "sha256": "f042c8ec6fa446d0ad3db3033cbf203e79efb2aa46e25de233939c1fbb6f4178",
+      "functions": [
+        {
+          "signature": "public.commerce_read_paid_order_money_v2(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "4cf99a054ce1c4dad67916ddc33a13ecc989541cac4f3053b14532198a9c3e43"
         }
       ]
     }
