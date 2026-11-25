@@ -224,8 +224,23 @@ async function withInstallationCleanup<T>(work: () => Promise<T>, cleanup: () =>
   return result;
 }
 
+async function provisionCatalogueWatchdog(connection: InstallConnection, principal: string) {
+  try {
+    await connection.query('BEGIN');
+    await connection.query("SET LOCAL lock_timeout = '2s'; SET LOCAL statement_timeout = '4s'");
+    await connection.query('LOCK TABLE public.platform_human_principals IN SHARE MODE');
+    await connection.query(`INSERT INTO public.platform_control_operators(principal_id,active)
+      SELECT $1,true WHERE NOT EXISTS (SELECT 1 FROM public.platform_human_principals WHERE principal_id=$1)
+      ON CONFLICT (principal_id) DO NOTHING`, [principal]);
+    await connection.query('COMMIT');
+  } catch {
+    try { await connection.query('ROLLBACK'); } catch { /* The ordinary seed already committed. */ }
+  }
+}
+
 /** Called only by lifecycle up, once per installation invocation, before the HTTP host starts. */
 export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap, progress?: NodeJS.WritableStream) {
+  config = structuredClone(config);
   assertConfig(config);
   let installation;
   try { installation = await bootstrap(config, progress); }
@@ -238,6 +253,7 @@ export async function installDemonstration(config: StoreConfig, bootstrap: Insta
 /** Idempotent demo composition; stock uses its native writer. No schema, clients or subscription truth. */
 export async function applyDemoSeed(config: StoreConfig, installation: DemonstrationInstallation,
   rulesFor = () => installation.catalogueRules) {
+  config = structuredClone(config);
   assertConfig(config);
   let admitted;
   try { admitted = admitPacks(rulesFor); }
@@ -245,7 +261,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     throw installationFailure(error);
   }
   const { artifact, fixtures, packs } = admitted;
-  const [{ editorProducts, stagePackBuild, stageStarterCatalogueBuild, starterCataloguePack, starterCatalogueType }, { buildDemoSeed }, { seedQuoteAuthority }] =
+  const [{ demoIdentifier, editorProducts, stagePackBuild, stageStarterCatalogueBuild, starterCataloguePack, starterCatalogueType }, { buildDemoSeed }, { seedQuoteAuthority }] =
     await Promise.all([import('../host/editor-catalogue.ts'), import('../owned/demo-seed.ts'), import('./quote-seed.ts')])
       .catch(error => { throw installationFailure(error); });
   const { installRole, runtimeRole } = installation;
@@ -398,6 +414,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     } catch { /* Cleanup cannot replace the installation failure. */ }
     throw error;
   }
+  await provisionCatalogueWatchdog(connection, demoIdentifier(config, 'control-plane-operator', 'platform-watchdog'));
   try {
     try { stagedBuild?.publish(); }
     finally { stagedBuild?.discard(); }

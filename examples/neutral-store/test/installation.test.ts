@@ -121,7 +121,6 @@ const installReminderSchedule = 'SELECT public.commerce_install_checkout_recover
 const inventoryProtectionStatements = [upsertPolicySetting];
 const reminderScheduleStatements = [upsertPolicySetting, installReminderSchedule];
 
-const seedPriceCount = (config: typeof configurations[string]) => editorProducts(config).reduce((sum, product) => sum + product.permittedPurchaseModes.length, 0);
 
 function installation(identity = { login: 'demo_install', role: 'demo_install', marker: demonstrationMarker }) {
   const calls: Array<{ text: string; values: unknown[] | undefined }> = [];
@@ -349,7 +348,11 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.closed(), 1);
     assert.equal(first.calls[0]!.text, 'BEGIN ISOLATION LEVEL READ COMMITTED');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
-    for (const { text } of first.calls.slice(1, -1)) {
+    const seedCommit = first.calls.findIndex(call => call.text === 'COMMIT');
+    assert.equal(first.calls[seedCommit + 1]?.text, 'BEGIN');
+    const principalWrite = first.calls.slice(seedCommit).find(call => call.text.startsWith('INSERT INTO public.platform_control_operators'));
+    assert.ok(principalWrite);
+    for (const { text } of first.calls.slice(1, seedCommit)) {
       assert.doesNotMatch(text, /\b(?:BEGIN|COMMIT|ROLLBACK|START\s+TRANSACTION|END|SAVEPOINT|RELEASE|ABORT|PREPARE\s+TRANSACTION)\b/i);
     }
     const protection = first.calls.filter(call => call.values?.[0] === 'inventory_renewal_protection');
@@ -358,9 +361,10 @@ for (const config of Object.values(configurations)) {
     assert.deepEqual(settlement.map(call => call.values), [
       ['settlement_region', config.market.country], ['settlement_currency', config.market.currency],
     ]);
-    const inserts = first.calls.filter(call => !protection.includes(call) && !reminders.includes(call)
+    const inserts = first.calls.slice(0, seedCommit).filter(call => !protection.includes(call) && !reminders.includes(call)
       && !settlement.includes(call) && call.text.startsWith('INSERT INTO public.'));
-    assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 3);
+    const seed = buildDemoSeed(config);
+    assert.equal(inserts.length, seed.products.length + seed.skus.length * 2 + seed.documents.length + seed.settings.length + seed.prices.length + 4);
     for (const call of inserts) {
       assert.match(call.text, /ON CONFLICT/);
       assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|catalog_product_document_revisions|catalog_sku_identifiers|commerce_settings|subscription_price_policy_revisions|commerce_promotion_definitions)\b/);

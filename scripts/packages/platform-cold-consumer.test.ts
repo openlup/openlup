@@ -2029,7 +2029,8 @@ it("skeleton_pack_projects_clean", () => {
   const appended = call(sourceArgs(join(app, "catalogue.ts")), 0);
   expect(appended.findings.map(({ code }: { code: string }) => code)).toEqual(["advisory_filter_flags_unused"]);
   const [updated] = JSON.parse(readFileSync(appended.transport.subjectPath, "utf8")).packs;
-  expect(updated.pack.types[0].units).toEqual([...pack.types[0].units, expect.objectContaining({ code: `${namespace}:pair` })]);
+  expect(updated.pack.types[0].units).toEqual([...pack.types[0].units, expect.objectContaining({ code: `${namespace}:pair`, integral: true })]);
+  expect(updated.pack.types[0].units).toContainEqual(expect.objectContaining({ code: "openlup:g", integral: false }));
   expect(updated.pack.types[0].netContentUnits).toEqual(["openlup:g"]);
   const finish = { kind: "choice", value: "matte" };
   expect(updated).toMatchObject({

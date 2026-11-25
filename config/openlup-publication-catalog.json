@@ -1802,6 +1802,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/catalogue-readiness-jobs.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/catalogue-storefront.ts",
       "class": "public-output"
     },
