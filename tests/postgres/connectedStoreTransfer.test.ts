@@ -1,4 +1,5 @@
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
+import { disposition as orderDraftReceiptDisposition } from "./orderDraftReceiptsV2.fixture.js";
 import { createPostgresAbandonedCheckoutCompensationPort, createPostgresPurchaseReservationPort, type PurchaseReservationInput } from "@openlup/platform/inventory";
 import { createPostgresDestinationPort, type DestinationDocument } from "@openlup/platform/commerce/server/destinations";
 import { createHash, randomUUID } from "node:crypto";
@@ -385,8 +386,8 @@ beforeAll(async () => {
   const historicalVersions = Object.fromEntries(nativePrivacyContributors(createPostgresPrivacyStore())
     .filter(owner => owner.id !== "customer-saved-addresses").map(owner => [owner.id, owner.version]));
   await source.owner.query(`INSERT INTO public.identity_privacy_erasures(erasure_id,idempotency_key,principal_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-    VALUES($1,$2,$3,$4,'identity.erasure.v1',$5,'[]','[]','2022-01-01T03:04:05.123456Z')`,
-  [retainedErasure.erasureId, retainedErasure.key, erased, admin, historicalVersions]);
+    VALUES($1,$2,$3,$4,'identity.erasure.v1',$5,$6,'[]','2022-01-01T03:04:05.123456Z')`,
+  [retainedErasure.erasureId, retainedErasure.key, erased, admin, historicalVersions, JSON.stringify([orderDraftReceiptDisposition])]);
   await source.owner.query("INSERT INTO public.identity_privacy_erasure_reconciliations(erasure_id,contributor_id,evidence_ref) VALUES($1,'customer-saved-addresses',$2)",
     [retainedErasure.erasureId, randomUUID()]);
   media = await mediaFixture();
@@ -530,7 +531,7 @@ it("validates the exact retained approval shape after the packet digest", async 
 
 it("compares declaration authority at capture, copy and replay even when the catalogue matches", async () => {
   const initial = ["communication-events", "customer-billing", "customer-preferences", "customer-saved-addresses",
-    "destination-documents", "destination-receipts", "fulfillment-parcel-contacts", "identity", "subscriptions", "tax-calculations"];
+    "destination-documents", "destination-receipts", "fulfillment-parcel-contacts", "identity", "order-draft-receipts", "subscriptions", "tax-calculations"];
   expect(packet).toHaveProperty("requiredPrivacyContributorIds", initial);
   expect(pristine).toHaveProperty("requiredPrivacyContributorIds", initial);
   const declaration = "identity_privacy_required_contributors";
@@ -1300,7 +1301,7 @@ it("checks the identity mapper's erased-subject and conflict branches with synth
   await expect(transferredPrivacy().erase({ principalId: deriveOidcPrincipalId(issuer, adminManagedId) }, {
     subject: { kind: "contact", contactId: erasedClient }, idempotencyKey: sourceRows.erasures[0]!.idempotency_key,
   })).rejects.toMatchObject({ code: "PRIVACY_RECEIPT_COVERAGE_INCOMPLETE",
-    facts: { observed: expect.stringMatching(/fulfillment-parcel-contacts, identity, subscriptions/u) } });
+    facts: { observed: expect.stringMatching(/fulfillment-parcel-contacts, identity, order-draft-receipts, subscriptions/u) } });
   expect((await target.owner.query("SELECT email,first_name,last_name,phone,country,metadata,principal_id FROM public.clients WHERE id=$1", [erasedClient])).rows)
     .toEqual([{ email: `erased+${erasedClient}@identity.invalid`, first_name: null, last_name: null,
       phone: null, country: null, metadata: {}, principal_id: null }]);

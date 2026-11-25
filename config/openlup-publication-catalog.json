@@ -6802,6 +6802,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/orderDraftReceiptCoverage.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/parcelContactPrivacy.ts",
       "class": "public-output"
     },
@@ -21870,6 +21874,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/auth/orderDraftReceiptsPrivacyContributor.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/auth/privacyBinding.ts",
       "class": "public-output"
     },
@@ -30954,6 +30962,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/fixtures/orderDraftReceiptsV2/replayed.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/fixtures/orderMoneyV2ChildGuards/replayed.sql",
       "class": "public-output"
     },
@@ -31523,6 +31535,22 @@
     },
     {
       "path": "tests/postgres/operatorOrderCommands.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderDraftReceiptPrivacy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderDraftReceiptsV2.fixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderDraftReceiptsV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/orderDraftReceiptsV2Pgtap.test.ts",
       "class": "public-output"
     },
     {

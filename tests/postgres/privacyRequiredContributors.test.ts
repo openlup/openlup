@@ -23,6 +23,7 @@ const table = "public.identity_privacy_required_contributors";
 const reader = "public.identity_privacy_required_contributor_ids()";
 const owners = ["communication-events", "customer-billing", "customer-preferences", "customer-saved-addresses",
   "destination-documents", "destination-receipts", "fulfillment-parcel-contacts", "identity", "subscriptions", "tax-calculations"];
+const currentOwners = [...owners, "order-draft-receipts"].sort();
 const before = {
   legacy: "688c1dc9d230b0ebf778ccad4cc5b3b607dd6e894d874ba1c5f6b7a2f65c1423",
   bootstrap: "f810f58ff4b75fa1333aad6d7b597aadc75886529e59f76196deba9f81624004",
@@ -62,7 +63,7 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
       template = await createAccountMutationsTemplate(profile, "privacy-fresh");
       const fresh = await template.clone();
       expect((await fresh.runtime.query("SELECT to_regprocedure($1) IS NOT NULL AS installed", [reader])).rows[0].installed).toBe(true);
-      expect(await required(fresh.runtime)).toEqual(owners);
+      expect(await required(fresh.runtime)).toEqual(currentOwners);
       expect((await fresh.runner.apply()).applied).toEqual([]);
       if (profile === "separate") {
         await fresh.migrator.query(`GRANT SELECT (contributor_id) ON TABLE ${table} TO authenticated`);
@@ -101,9 +102,9 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
         expect(applied.slice(0, 2)).toEqual([forward, searchPathForward]);
         expect(applied).toEqual(expectedAppliedFromForward);
         expect((await ledger(upgrade.owner)).slice(0, original.length)).toEqual(original);
-        expect(await required(upgrade.runtime)).toEqual(owners);
+        expect(await required(upgrade.runtime)).toEqual(currentOwners);
         expect((await upgrade.runner.apply()).applied).toEqual([]);
-        if (profile === "separate") await expect(capture()).resolves.toMatchObject({ requiredPrivacyContributorIds: owners });
+        if (profile === "separate") await expect(capture()).resolves.toMatchObject({ requiredPrivacyContributorIds: currentOwners });
         await expect(operations.export(actor, subject)).resolves.toMatchObject({ missingContributors: [] });
         await expect(operations.erase(actor, { subject, idempotencyKey })).resolves.toMatchObject({ outcome: "ERASED" });
       } finally { await unitOfWork.close(); }

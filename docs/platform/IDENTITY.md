@@ -521,6 +521,12 @@ copies on order money snapshots and delivery bucket headers before it records
 the privacy receipt. The receipt records that order money and the original
 acceptance digest are retained.
 
+The native declaration enables the `order-draft-receipts` contributor. Export
+returns verified order references and owner coordinates. Erasure clears both
+owner coordinates while retaining the original draft outcome and opaque replay
+evidence. The installation owner can reconcile an earlier erasure against its
+original receipt.
+
 The direct forward `20261018190000_identity_privacy_erasures` adds the retained
 receipt table. Relation locks precede contact/member locks with bounded lock
 and statement timeouts. The package customer challenge adapter holds an

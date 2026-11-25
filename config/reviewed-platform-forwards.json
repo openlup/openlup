@@ -9801,6 +9801,77 @@
             "sha256": "3079932b610469035b83bdd6a210cb9743c1ef131e44bdd1f18085a76adffc71"
           }
         ]
+      },
+      {
+        "row": "order-draft-receipts-v2",
+        "path": "db/platform/migrations/20261128150000_order_draft_receipts_v2.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_order_draft_storage_key_v2(jsonb,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_draft_receipt_v2_immutable()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_read_order_draft_receipt_history_v2(text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "commerce_order_draft_receipt_v2_immutable",
+            "table": "public.commerce_order_draft_receipts_v2",
+            "sha256": "003f8055bea51ff3a1ae717bfd1277ea82009f8bb60ee69f18e1a6a667e0fe5b"
+          }
+        ]
+      },
+      {
+        "row": "order-draft-receipt-privacy-v2",
+        "path": "db/platform/migrations/20261128150001_order_draft_receipt_privacy_v2.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_order_draft_receipt_v2_erasure_check()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_export_order_draft_receipts_v2(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_erase_order_draft_receipts_v2(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_read_order_draft_receipt_v2(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [
+          "INSERT INTO public.identity_privacy_required_contributors (contributor_id)\nVALUES ('order-draft-receipts') ON CONFLICT (contributor_id) DO NOTHING;"
+        ],
+        "createdTriggers": [
+          {
+            "name": "commerce_order_draft_receipt_v2_erasure_check",
+            "relation": "public.commerce_order_draft_receipts_v2",
+            "events": [
+              "UPDATE"
+            ],
+            "function": "public.commerce_order_draft_receipt_v2_erasure_check()",
+            "deferred": true,
+            "sha256": "c12b37ade3907a40e9bc7ae84c8a7e08032d5baec379268dc47caef41b035ee0"
+          }
+        ]
       }
     ]
   },
@@ -14158,6 +14229,58 @@
           "signature": "public.commerce_order_money_v2_child_guard()",
           "beforeSha256": null,
           "afterSha256": "f23b6a08503be2f2321012113ea9165861199c7b63df2c944ab890a3be99fac2"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261128150000_order_draft_receipts_v2.sql",
+      "sha256": "35a18bef1ee478776914c1800e6e99b9236886a01c7ad639c854e5169fd22edd",
+      "functions": [
+        {
+          "signature": "public.commerce_order_draft_storage_key_v2(jsonb,text)",
+          "beforeSha256": null,
+          "afterSha256": "6d518318ff899d62bb608f1e7a2834022d325b12291d94fc3ed88212c6ba60e2"
+        },
+        {
+          "signature": "public.commerce_order_draft_receipt_v2_immutable()",
+          "beforeSha256": null,
+          "afterSha256": "d601527d4d5f71d916fa912c2744218712b3382e5eadd0e9d3450a33d49644de"
+        },
+        {
+          "signature": "public.commerce_read_order_draft_receipt_history_v2(text)",
+          "beforeSha256": null,
+          "afterSha256": "3237b7fd22b146dbbac0b50eabc1c853d22cc215c77be4f9b0258d68fe906153"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261128150001_order_draft_receipt_privacy_v2.sql",
+      "sha256": "3a76ddcd16a759b50c0a8e31bbad0dcc11f1b5ec6225df79e147e9d237871b1d",
+      "functions": [
+        {
+          "signature": "public.commerce_order_draft_receipt_v2_erasure_check()",
+          "beforeSha256": null,
+          "afterSha256": "bd115ae2d3baf26ed58165afb023683efa84ab626e8b0ddd1d987962c80e39f3"
+        },
+        {
+          "signature": "public.commerce_order_draft_receipt_privacy_matches_v2(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "96cfb4ef262b05f61c4af05790fe2071f843f232c06dd2a4cff30bab428cbb30"
+        },
+        {
+          "signature": "public.commerce_export_order_draft_receipts_v2(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "3dd1a7e6a188aedc39c9808f81ccf71a4463f6ec951486ec423fb74764cde36a"
+        },
+        {
+          "signature": "public.commerce_erase_order_draft_receipts_v2(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "5bd552446a01f8d4b9d0e59759860036af1a42b88ac798d0738211b2c5ae33ea"
+        },
+        {
+          "signature": "public.commerce_read_order_draft_receipt_v2(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "3267924f242d80e0e0d79280ada8cbd1e65923f90f5d36df3f16276a1eebcb8f"
         }
       ]
     }

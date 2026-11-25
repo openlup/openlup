@@ -2,6 +2,7 @@ import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor, type Postg
 import { PrivacyRefusal, type NativePrivacyStore, type ResolvedPrivacySubject, type AuthorizedHumanAdministrator,
   type ContributorDisposition, type PersonalDataContributorRegistry, type PrivacyUnitOfWork } from "./privacyPorts.js";
 import { erasureReceiptSchema, type PrivacySubjectRef, type PrivacyJson } from "./contracts/privacy.js";
+import { hasOrderDraftReceiptDisposition, orderDraftReceiptContributorId, orderDraftReceiptContributorVersion } from "./orderDraftReceiptCoverage.js";
 import { nativePrivacyUnavailable, privacyContributorId, recognizeReceiptContributorIds, unverifiedPrivacyReconciliationApproval,
   validateOrderedPrivacyContributorIds, validateRequiredPrivacyContributorIds } from "./requiredPrivacyContributors.js";
 
@@ -18,6 +19,12 @@ async function lockErasureReceipts(db: PgQueryExecutor): Promise<void> {
   await db.query("SET LOCAL lock_timeout = '5s'");
   await db.query("SET LOCAL statement_timeout = '15s'");
   await db.query("LOCK TABLE public.identity_privacy_erasures IN SHARE ROW EXCLUSIVE MODE");
+}
+
+async function lockOrderDraftReceiptEvidence(db: PgQueryExecutor, kind: "erasure" | "reconciliation", id: string): Promise<void> {
+  // Keep the key in step with the deferred receipt guard.
+  await db.query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended($1 || $2::uuid::text, 0))",
+    [`order-draft-receipt-${kind}:`, id]);
 }
 
 async function assertPrivacyStorePrivileges(db: PgQueryExecutor): Promise<void> {
@@ -66,7 +73,9 @@ export function createPostgresPrivacyStore(): NativePrivacyStore<PgQueryExecutor
       const { rows } = await db.query("SELECT public.identity_privacy_reconciled_contributor_ids($1::uuid) AS ids", [receipt.erasureId]);
       if (rows.length !== 1) throw new Error("privacy_reconciliation_reader_invalid");
       const approvals = validateOrderedPrivacyContributorIds(rows[0]?.ids, 10_000);
-      const coveredContributorIds = [...new Set([...recognizeReceiptContributorIds(row.contributor_versions), ...approvals])].sort();
+      const recorded = recognizeReceiptContributorIds(row.contributor_versions).filter(id => id !== orderDraftReceiptContributorId
+        || ((row.contributor_versions as Row)[id] === orderDraftReceiptContributorVersion && hasOrderDraftReceiptDisposition(row.dispositions)));
+      const coveredContributorIds = [...new Set([...recorded, ...approvals])].sort();
       return { receipt, coveredContributorIds };
     },
     async eraseIdentity(db, subject, actor, pseudonym) {
@@ -78,6 +87,7 @@ export function createPostgresPrivacyStore(): NativePrivacyStore<PgQueryExecutor
         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10::timestamptz)`,
       [receipt.erasureId, key, subject.contactId, subject.principalId, actor.principalId, receipt.version,
         JSON.stringify(Object.fromEntries(dispositions.map(d => [d.contributorId, d.version]))), JSON.stringify(dispositions), JSON.stringify(receipt.obligations), receipt.completedAt]);
+      if (hasOrderDraftReceiptDisposition(dispositions)) await lockOrderDraftReceiptEvidence(db, "erasure", receipt.erasureId);
     },
   };
 }
@@ -230,6 +240,7 @@ export async function reconcilePostgresPrivacyErasure(
       const disposition = await contributor.eraseOrRetain(db, subject, assessment, actor);
       await db.query(`INSERT INTO public.identity_privacy_erasure_reconciliations (erasure_id, contributor_id, evidence_ref)
         VALUES ($1, $2, $3)`, values);
+      if (contributorId === orderDraftReceiptContributorId) await lockOrderDraftReceiptEvidence(db, "reconciliation", evidenceRef);
       return disposition;
     });
   } catch (cause) {

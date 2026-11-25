@@ -12,6 +12,7 @@ export const taxAndMoneyDomain = {
       "commerce_order_line_allocations",
       "commerce_order_tax_positions",
       "commerce_order_fee_lines",
+      "commerce_order_draft_receipts_v2",
     ],
     // Authoritative installation configuration with operator audit references.
     coverageRevisions: [
@@ -33,6 +34,7 @@ export const taxAndMoneyDomain = {
       "commerce_order_line_allocations",
       "commerce_order_tax_positions",
       "commerce_order_fee_lines",
+      "commerce_order_draft_receipts_v2",
     ],
   },
   allowedInsertTriggers: {
