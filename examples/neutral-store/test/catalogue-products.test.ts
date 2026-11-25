@@ -109,6 +109,7 @@ test('localized presentation and gross price map to exact eligible sibling selec
 
 test('a subscription-only SKU needs one-time sellability before price checks', () => {
   const offer = project([receipt]);
+  assert.equal(offer.protocol, 'governed');
   const product = offer.products[0]!;
   const sku = product.skus[0]!;
   const subscriptionOnly = { ...sku, sell: { oneTime: false, subscription: true },
