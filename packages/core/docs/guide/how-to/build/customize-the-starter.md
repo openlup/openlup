@@ -174,10 +174,103 @@ project. The procedure removes all data in the demo volume. For
 `physicalSize` from the verified whole-gram size. Restart and recheck
 `/api/config` after either repair.
 
+## Make the store ready to publish
+
+Run `./lifecycle up` for the marked demo. The installer preserves its base
+prices and price history, installs the one-time bundle and tries to register
+the starter catalogue watchdog control-plane principal. The database-backed
+host starts the promotion claim sweep and watchdog in the background. It
+continues serving requests when either job is unavailable. Allow the initial
+pair to finish before trying Publish.
+
+In this release, a fresh marked demo refuses priced Publish with
+`catalog_1490_legacy_1340_invalid` until a follow-up closes the explicit
+subscription price entries. This refusal can mask
+`promotion_watchdog_not_ready` and `promotion_claim_sweep_not_ready`.
+Keep the explicit entries for the shipped subscription checkout.
+
+For an unmarked installation, the owner can register the non-human watchdog
+principal from the installed starter using the authenticated installer
+`psql` connection. Set `configuration` to the owned configuration ID.
+
+```sh
+configuration=coffee
+if principal_id="$(node --input-type=module -e '
+  import { selectConfiguration } from "./owned/store.config.ts";
+  import { catalogueWatchdogPrincipalId } from "./host/catalogue-readiness-jobs.ts";
+  process.stdout.write(catalogueWatchdogPrincipalId(selectConfiguration(process.argv[1])));
+' "$configuration")"; then
+psql -X -v ON_ERROR_STOP=1 -v principal_id="$principal_id" <<'SQL'
+BEGIN;
+INSERT INTO public.platform_control_operators (principal_id, active)
+SELECT :'principal_id'::uuid, true
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.platform_human_principals WHERE principal_id=:'principal_id'::uuid
+)
+ON CONFLICT (principal_id) DO NOTHING;
+SELECT principal_id AS verified_principal
+FROM public.platform_control_operators
+WHERE principal_id=:'principal_id'::uuid AND active
+  AND NOT EXISTS (
+    SELECT 1 FROM public.platform_human_principals WHERE principal_id=:'principal_id'::uuid
+  )
+\gset
+COMMIT;
+SQL
+else
+  printf '%s\n' 'Could not resolve the watchdog principal. Check the configuration ID.' >&2
+  false
+fi
+```
+
+An inactive principal or a human identity collision stops the recipe. Ask the
+control-plane owner to reconcile that identity before rechecking. For
+`starter_price_seed_conflict` or `starter_promotion_seed_conflict`, ask the
+price or promotion owner to reconcile the retained demo data, then rerun the
+installer.
+
+For a Publish refusal at `pricing.readiness`, follow its fix and recheck.
+Use these steps for the marked demo.
+
+| Reason | Starter step |
+| --- | --- |
+| `bundle_5_policy_invalid` | Run `./lifecycle up` to install the marked demo bundle. Ask the promotion owner to reconcile conflicting retained definitions before rerunning it. |
+| `catalog_1490_legacy_1340_invalid` | Verify the effective list and each eligible SKU’s base and subscription prices with the pricing owner. The fresh demo requires the follow-up price closure above. |
+| `promotion_claim_sweep_not_ready` | Verify `promotion-claim-sweep` is enabled with the `scheduler` driver. Wait for the next scheduled tick on the database-backed host and verify a successful run. |
+| `promotion_watchdog_not_ready` | Verify the starter catalogue watchdog control-plane principal using the recipe above. Repair any failed jobs using the table below and verify a healthy watchdog run. |
+
+For failed job names in `promotion_watchdog_not_ready`, use the matching
+owned ID for `<id>` and your authorized runtime connection for `<runtime-url>`.
+
+| Failed job | Action |
+| --- | --- |
+| `subscription-renewal:<owned-population>` | `./lifecycle renewal --configuration <id> --database-url <runtime-url>` |
+| `subscription-care:<id>` | `./lifecycle care --configuration <id> --database-url <runtime-url>` |
+| `starter-checkout:<id>` | `./lifecycle checkout-recovery --configuration <id> --database-url <runtime-url>` |
+| `promotion-claim-sweep`, `platform-watchdog` | Wait for the next scheduled tick on the database-backed host. A restart starts an initial tick. |
+
+Run an auxiliary job still in use until its latest ledger status is
+`success`. Ask the job owner to identify failures with no reported name or
+an ambiguous renewal population. Only the job owner can disable the exact
+ledger control for a retired job or a job disabled in owned configuration.
+For `job_disabled` or `inactive_driver` on the sweep or watchdog, the job owner
+checks ownership and lease state before restoring enablement or assigning
+`scheduler`.
+
+If a restart interrupted a job, the first tick may skip it while the previous
+lease expires. The lease lasts up to five minutes. Look for fresh evidence
+after the next scheduled run.
+
+After the repair, wait for a successful tick.
+Recheck by sending the same approved Publish body and command key while the
+approval, draft and head still match. Sweep evidence must be successful
+within 15 minutes and watchdog evidence must be healthy within six hours.
+
 ## Show published products in the starter
 
-Set `product.presentation.title` to a nonblank product name. Use the optional
-`shortName` map for localized display names. The starter uses the title when
+Set `presentation.title` in the builder input or `product.sharedContent.presentation.title`
+in a saved draft to a nonblank product name. Use the optional `shortName` map for
+localized display names. The starter uses the title when
 a locale has no short name. Set `mediaRef` to a local `/media/` filename to
 show an image with the display name as its alt text. Start the filename with
 an ASCII letter or digit and use only letters, digits, dots, underscores and

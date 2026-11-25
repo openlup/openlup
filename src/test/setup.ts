@@ -16,7 +16,8 @@ const HAS_DOM = typeof window !== "undefined";
 // that file is collected, and `expect.getState().testPath` names the file it is
 // being executed for -- so this is the one place a PER-FILE ceiling can be set.
 // The derived budget is `max(flat, 1.5 x the file's pinned duration)`. Real
-// PostgreSQL tests have a 60-second floor; hooks keep the derived budget.
+// PostgreSQL tests and their hooks have a 60-second floor; database setup and
+// teardown hooks exceeded the flat budget on hosted runners.
 // A pinned test can still use the larger measured budget. A hung test exceeds
 // any finite budget, so `retry: 0` and every assertion are untouched by this.
 //
@@ -35,10 +36,8 @@ if (repositoryRelative) {
     repositoryRelative,
     flatTestTimeoutMs(inject("coverageRun"), inject("hostedCi")),
   );
-  vi.setConfig({
-    testTimeout: repositoryRelative.startsWith("tests/postgres/") ? Math.max(budgetMs, 60_000) : budgetMs,
-    hookTimeout: budgetMs,
-  });
+  const floorMs = repositoryRelative.startsWith("tests/postgres/") ? Math.max(budgetMs, 60_000) : budgetMs;
+  vi.setConfig({ testTimeout: floorMs, hookTimeout: floorMs });
 }
 
 // A doctor-generated .env.local carries a real local publishable key, which

@@ -9496,6 +9496,34 @@
         "dataStatements": []
       },
       {
+        "row": "catalog-order-checkout-protection",
+        "path": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_price_setup_assert_order_guards(timestamptz)",
+            "beforeSha256": "5801574057da7bae442d92be061156669f575a8ff6c11ecefdfca2c81bf6e720",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_offer_policy_v2_readiness()",
+            "beforeSha256": "b8e3c923efa55b0b45cd1cad76ada853cea29d2272fa306359b8e72a1ed41a59",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_price_setup_frozen_order_money_matches(jsonb,jsonb,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_price_setup_order_protection_verified(uuid,jsonb,jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "fulfillment-destination-v2-legacy-ledger-fence",
         "path": "db/platform/migrations/20261128030000_fulfillment_destination_v2_legacy_ledger_fence.sql",
         "replacedFunctions": [
@@ -13712,6 +13740,32 @@
           "signature": "public.catalog_admission_derived_subscription_prices(text,jsonb,jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "46951df895d85576f91fc662bf12bdad4d65e0c96d142220404825c6a6154e37"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261128010000_catalog_order_checkout_protection.sql",
+      "sha256": "e841077d82c09a11979c552737025a332bd5d351ee7192b6f4cc8e112fc7423c",
+      "functions": [
+        {
+          "signature": "public.catalog_price_setup_assert_order_guards(timestamptz)",
+          "beforeSha256": "5801574057da7bae442d92be061156669f575a8ff6c11ecefdfca2c81bf6e720",
+          "afterSha256": "83696c790072209c04727f1cc3fb9d316416f4d6b83fe564907a1b9820a8e293"
+        },
+        {
+          "signature": "public.commerce_offer_policy_v2_readiness()",
+          "beforeSha256": "b8e3c923efa55b0b45cd1cad76ada853cea29d2272fa306359b8e72a1ed41a59",
+          "afterSha256": "e112514ad47a45e966f94df6241a2aaff110c3f45a07aa4d34071d327ce3eb1c"
+        },
+        {
+          "signature": "public.catalog_price_setup_frozen_order_money_matches(jsonb,jsonb,text)",
+          "beforeSha256": null,
+          "afterSha256": "4cab7018208d296777cc2de7b728c6c1741454f0b8036bede49abe4db3791f08"
+        },
+        {
+          "signature": "public.catalog_price_setup_order_protection_verified(uuid,jsonb,jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "052f26d5fb397049ab48f68fbabe639494824c5144be80a95d8ef5ceab95ef62"
         }
       ]
     },
