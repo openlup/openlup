@@ -1236,8 +1236,9 @@ If no such target can be provisioned, connected-store restore is unavailable for
 
 This version refuses captures containing stamped governed drafts or their
 marked draft-created events before connecting to the target. Keep the capture
-for a version that supports their restore. For outside-profile data, provision
-a pristine target of the same profile.
+for a version that supports their restore.
+If capture refuses outside-profile source data, clean the source or use a supported source.
+If restore refuses outside-profile target data, provision a pristine target of the same profile.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new

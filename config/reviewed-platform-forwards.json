@@ -9642,6 +9642,10 @@
           {
             "signature": "public.catalog_admission_write_governed_draft(text,uuid,jsonb)",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_is_governed(jsonb,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "grantOnlyFunctions": [],
@@ -13967,12 +13971,12 @@
     },
     {
       "path": "db/platform/migrations/20261128230001_catalog_governed_draft_owner.sql",
-      "sha256": "f9c5f6bb7d7fc2a70228d59a33494089352c5bacbe59b1f956f99d7b42aa4731",
+      "sha256": "41ba7bd6b2f3bf64cb99fc221134eb5d59cab4d9fd61f889634228c110725956",
       "functions": [
         {
           "signature": "public.catalog_order_acceptance_final(uuid)",
           "beforeSha256": "c935a9194cb0588d9646606329a9b4653a22b9587cfc3f20bacc760c2c6eb822",
-          "afterSha256": "ca5480477b5d3639df8881d7feb501c9d9201a0f91fe9cba68a88b79f1d0370a"
+          "afterSha256": "9e8452bcdd16a6965192acfdb12a22da6c90775d49102e40758dafa5d29271f9"
         },
         {
           "signature": "public.catalog_admission_governed_companions(jsonb,jsonb)",
@@ -13982,12 +13986,17 @@
         {
           "signature": "public.catalog_admission_owner_origin_guard()",
           "beforeSha256": null,
-          "afterSha256": "6dab7269cb565947ea4b6a9b1e19231a26d95b7a648b54d994555e0b0a505522"
+          "afterSha256": "7ee06e2cdb159a4cecc239557a43fa3f2c7267ea56aa6b058a3f03d3a2782ecc"
         },
         {
           "signature": "public.catalog_admission_write_governed_draft(text,uuid,jsonb)",
           "beforeSha256": null,
           "afterSha256": "055cbcaa53d7374a42ed7a19c2b09f40806ea318ae5a855af63519a9410c4491"
+        },
+        {
+          "signature": "public.catalog_admission_is_governed(jsonb,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "98078fe0b0d23125c0801d7b0900363b88d24688428f977b909475200f8f8fff"
         }
       ]
     }

@@ -41,6 +41,12 @@ LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_governed_companions(jsonb,jsonb) FROM PUBLIC;
 
+CREATE FUNCTION public.catalog_admission_is_governed(p_origin jsonb,p_acceptance jsonb) RETURNS boolean
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+ SELECT p_origin IS NOT NULL AND p_acceptance->'admission' IS NOT NULL
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_is_governed(jsonb,jsonb) FROM PUBLIC;
+
 CREATE FUNCTION public.catalog_admission_owner_origin_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE owned boolean; previous uuid; upcoming uuid;
@@ -49,22 +55,25 @@ BEGIN
  IF TG_TABLE_NAME='commerce_orders' THEN
   IF TG_OP='INSERT' THEN
    IF NEW.metadata->'catalogAdmissionOwnerOrigin' IS NULL OR
-    (owned AND jsonb_typeof(NEW.catalog_acceptance->'admission')='object' AND jsonb_typeof(NEW.metadata->'catalogAdmissionSubmit')='object') THEN RETURN NEW; END IF;
+    (owned AND public.catalog_admission_is_governed(NEW.metadata->'catalogAdmissionOwnerOrigin',NEW.catalog_acceptance)
+     AND jsonb_typeof(NEW.catalog_acceptance->'admission')='object' AND jsonb_typeof(NEW.metadata->'catalogAdmissionSubmit')='object') THEN RETURN NEW; END IF;
   ELSIF TG_OP='UPDATE' THEN
-   IF OLD.metadata->'catalogAdmissionOwnerOrigin' IS NULL AND NEW.metadata->'catalogAdmissionOwnerOrigin' IS NULL THEN RETURN NEW; END IF;
-   IF (OLD.id,OLD.client_id,OLD.currency_code,OLD.total_amount_minor,OLD.created_at,OLD.catalog_acceptance,
+   IF OLD.metadata->'catalogAdmissionOwnerOrigin' IS NOT DISTINCT FROM NEW.metadata->'catalogAdmissionOwnerOrigin' AND (
+    NOT (public.catalog_admission_is_governed(OLD.metadata->'catalogAdmissionOwnerOrigin',OLD.catalog_acceptance)
+      OR public.catalog_admission_is_governed(NEW.metadata->'catalogAdmissionOwnerOrigin',NEW.catalog_acceptance))
+    OR (OLD.id,OLD.client_id,OLD.currency_code,OLD.total_amount_minor,OLD.created_at,OLD.catalog_acceptance,
        OLD.catalog_receipt_key,OLD.catalog_basket,OLD.renewal_operation_id,OLD.renewal_operation_fingerprint,OLD.subscription_cycle_id,
-       OLD.metadata->'catalogAdmissionOwnerOrigin',OLD.metadata->'catalogAdmissionSubmit',OLD.metadata->'quoteSnapshot',OLD.metadata->'orderDraftSnapshot')
+       OLD.metadata->'catalogAdmissionSubmit',OLD.metadata->'quoteSnapshot',OLD.metadata->'orderDraftSnapshot')
       IS NOT DISTINCT FROM
       (NEW.id,NEW.client_id,NEW.currency_code,NEW.total_amount_minor,NEW.created_at,NEW.catalog_acceptance,
        NEW.catalog_receipt_key,NEW.catalog_basket,NEW.renewal_operation_id,NEW.renewal_operation_fingerprint,NEW.subscription_cycle_id,
-       NEW.metadata->'catalogAdmissionOwnerOrigin',NEW.metadata->'catalogAdmissionSubmit',NEW.metadata->'quoteSnapshot',NEW.metadata->'orderDraftSnapshot') THEN RETURN NEW; END IF;
-  ELSIF OLD.metadata->'catalogAdmissionOwnerOrigin' IS NULL THEN RETURN OLD; END IF;
+       NEW.metadata->'catalogAdmissionSubmit',NEW.metadata->'quoteSnapshot',NEW.metadata->'orderDraftSnapshot')) THEN RETURN NEW; END IF;
+  ELSIF NOT public.catalog_admission_is_governed(OLD.metadata->'catalogAdmissionOwnerOrigin',OLD.catalog_acceptance) THEN RETURN OLD; END IF;
  ELSE
   IF TG_OP<>'INSERT' THEN previous:=OLD.order_id; END IF;
   IF TG_OP<>'DELETE' THEN upcoming:=NEW.order_id; END IF;
   IF NOT EXISTS (SELECT 1 FROM public.commerce_orders WHERE id IN (previous,upcoming)
-   AND metadata->'catalogAdmissionOwnerOrigin' IS NOT NULL) OR (TG_OP='INSERT' AND owned) THEN
+   AND public.catalog_admission_is_governed(metadata->'catalogAdmissionOwnerOrigin',catalog_acceptance)) OR (TG_OP='INSERT' AND owned) THEN
    IF TG_OP='DELETE' THEN RETURN OLD; END IF;
    RETURN NEW;
   END IF;
@@ -94,7 +103,7 @@ BEGIN
  SELECT * INTO target FROM public.commerce_orders WHERE id=p_order_id;
  submit := target.metadata->'catalogAdmissionSubmit';
  origin := target.metadata->'catalogAdmissionOwnerOrigin';
- IF origin IS NOT NULL AND target.catalog_acceptance->'admission' IS NOT NULL THEN
+ IF public.catalog_admission_is_governed(origin,target.catalog_acceptance) THEN
   snapshot:=target.metadata->'quoteSnapshot'; draft:=target.metadata->'orderDraftSnapshot';
   fingerprint:=md5(snapshot::text||'|'||draft::text||'|'||target.client_id::text);
   IF target.catalog_receipt_key IS NULL OR target.client_id IS NULL OR target.renewal_operation_id IS NOT NULL
@@ -439,3 +448,6 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_write_governed_draft(text,uuid,jsonb) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
+ EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_is_governed(jsonb,jsonb) TO service_role';
+END IF; END; $$;

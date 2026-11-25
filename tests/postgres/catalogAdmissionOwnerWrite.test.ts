@@ -228,6 +228,21 @@ it("refuses an item insert on a stamped order immediately", async () => {
   }
 });
 
+it.each([
+  ["a frozen field", "runtime", "UPDATE public.commerce_orders SET created_at=created_at-interval '1 second' WHERE id=$1"],
+  ["the subscription cycle", "runtime", "UPDATE public.commerce_orders SET subscription_cycle_id=gen_random_uuid() WHERE id=$1"],
+  ["the order", "owner", "DELETE FROM public.commerce_orders WHERE id=$1"],
+] as const)("refuses a governed change to %s immediately", async (_field, role, sql) => {
+  const db = await store[role].connect();
+  try {
+    await db.query("BEGIN");
+    await expect(db.query(sql, [order.id])).rejects.toMatchObject({ ...immutable, constraint: "catalog_owner_origin" });
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+  }
+});
+
 it("admits a sample in the BEGIN millisecond without accepting an older sample", async () => {
   const db = await store.owner.connect();
   try {
