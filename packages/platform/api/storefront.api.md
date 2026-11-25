@@ -340,16 +340,39 @@ export interface PaymentProviderFacts {
  */
 export type ChangedPayloadPolicy = "update_in_place" | "refuse_changed";
 /**
- * The class of the result of any submit command, not only a purchase.
+ * The class of the result of any submit command, not only a purchase. Each
+ * member states what the server said and what a reader may conclude:
+ *
+ * - `settled`: the purchase is paid; treat it as paid.
+ * - `needs_client_action`: a purchase exists and the buyer must act, for
+ *   example pay, confirm or follow an action; show the action.
+ * - `awaiting_authority`: a purchase exists and only a later status read can
+ *   say how it ends; wait and read again.
+ * - `declined`: a definitive decline of the payment attempt, and the purchase
+ *   stays payable; let the buyer try again under a new attempt.
+ * - `refused`: the command was refused before anything was created, with the
+ *   server's own code; show the code and let the buyer correct the input.
+ * - `closed`: the server stated that the purchase under this key is terminal
+ *   and that no payment under it can still settle; stop using the key, so a
+ *   new purchase needs a new key.
+ * - `unknown`: anything else, including an answer the classifier does not
+ *   recognize; neither settle, decline nor close.
+ *
+ * `closed` is never the class of a purchase that is not payable but may still
+ * settle a payment, for example an unpaid order past its link lifetime that
+ * has a payment attempt: that answer is `awaiting_authority` or `unknown`.
  *
  * The union is open: members may be added in a minor release. The package reads
  * this value and treats a member it does not know as `unknown`.
  *
  * @experimental
  */
-export type SubmitOutcomeClass = "settled" | "needs_client_action" | "awaiting_authority" | "refused" | "unknown";
+export type SubmitOutcomeClass = "settled" | "needs_client_action" | "awaiting_authority" | "declined" | "refused" | "closed" | "unknown";
 /**
  * Maps a submit command's result to one `SubmitOutcomeClass`.
+ *
+ * Return `unknown` for anything not recognized. Read only the fields the class
+ * needs, so a field the server adds later does not change the class.
  *
  * @experimental
  */

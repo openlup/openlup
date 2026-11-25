@@ -11462,6 +11462,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/storefront/outcomeClassifierExamples.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/outcomeClassifiers.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/storefront/types.test.ts",
       "class": "public-output"
     },
