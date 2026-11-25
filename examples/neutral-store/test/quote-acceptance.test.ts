@@ -211,9 +211,10 @@ test('the database-free checkout displays its estimate without submitting a purc
   assert.equal(requests.length, 2);
 });
 
-test('checkout limits document definitive retirement and exact uncertain retry', async () => {
+test('checkout limits document the kept key after a total refusal and exact uncertain retry', async () => {
   const limits = (await readFile(new URL('../docs/limits.md', import.meta.url), 'utf8')).replace(/\s+/gu, ' ');
-  assert.match(limits, /definitive total refusal retires the command key\. After reconfirmation, use a new key even if the refreshed amount and currency are unchanged/u);
+  assert.match(limits, /Keep the command key after a definitive total refusal and reconfirm under it/u);
+  assert.match(limits, /A page that retires the key accepts that an earlier create still in flight under the old key can place a second order/u);
   assert.match(limits, /uncertain retry keeps the exact payload and command key/u);
   assert.match(limits, /a refusal still counts toward the attempt limit/u);
 });
