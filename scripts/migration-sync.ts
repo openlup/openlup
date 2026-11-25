@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { buildPackagesIncremental } from "./build-packages-incremental.mjs";
 import { INVENTORY_PATH, inventoryEnvelope } from "./agent-review-derived.mjs";
 import { SQL_REFERENCE, syncSqlReference } from "./agent-review-generators.mjs";
+import { documentationGit } from "./documentation-routing.ts";
 import { isUtcMigrationSlot, nextFreeMigrationSlot } from "./migration-slots.mjs";
 import { parseStrictJson } from "./oss-strict-json.mts";
 import { checkPlatformMigrationProjection } from "./packages/platform-migration-projection.ts";
@@ -64,11 +65,10 @@ type MutableReviewedForwards = {
 };
 
 function gitLines(root: string, args: readonly string[]): string[] {
-  return execFileSync("git", ["-C", root, ...args], {
-    encoding: "utf8",
-    timeout: 30_000,
-    maxBuffer: 32 * 1024 * 1024,
-  }).split("\0").filter(Boolean);
+  return documentationGit(root, [...args], undefined, 32 * 1024 * 1024)
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean);
 }
 
 function resolveBaseCommit(root: string, baseRef: string): string {
@@ -76,11 +76,9 @@ function resolveBaseCommit(root: string, baseRef: string): string {
     throw new Error("base git ref must not be empty or start with a hyphen");
   }
   try {
-    return execFileSync("git", ["-C", root, "rev-parse", "--verify", "--end-of-options", `${baseRef}^{commit}`], {
-      encoding: "utf8",
-      timeout: 30_000,
-      maxBuffer: 1024 * 1024,
-    }).trim();
+    return documentationGit(root, ["rev-parse", "--verify", "--end-of-options", `${baseRef}^{commit}`], undefined, 1024 * 1024)
+      .toString("utf8")
+      .trim();
   } catch (error) {
     throw new Error("unable to resolve base migration history from the configured git ref", { cause: error });
   }
@@ -123,10 +121,7 @@ export function allocateNextMigrationSlot(root: string, baseRef = "origin/main")
 }
 
 function readGitBlob(root: string, ref: string, path: string): Buffer {
-  return execFileSync("git", ["-C", root, "show", `${ref}:${path}`], {
-    timeout: 30_000,
-    maxBuffer: 32 * 1024 * 1024,
-  });
+  return documentationGit(root, ["show", `${ref}:${path}`], undefined, 32 * 1024 * 1024);
 }
 
 function assertBaseMigrationsUnchanged(root: string, baseCommit: string, basePaths: readonly string[]): void {
