@@ -1387,6 +1387,8 @@ export * from "./promotionCodeQuotePort.js";
 export * from "./promotionCodePreview.js";
 export * from "./promotionQuoteBinding.js";
 export * from "./promotionQuoteAcceptance.js";
+export { issueQuoteAcceptanceTokenV2, verifyQuoteAcceptanceTokenV2 } from "./quoteAcceptanceTokenV2.js";
+export type { QuoteAcceptanceTokenV2, QuoteAcceptanceScopeV2, QuoteAcceptancePresentationV2, QuoteAcceptanceRefusalV2 } from "./quoteAcceptanceTokenV2.js";
 export * from "./promotionAcceptanceTelemetry.js";
 export * from "./adminBindings.js";
 export * from "./adminPromotionsContracts.js";
@@ -1765,6 +1767,95 @@ export declare function projectPromotionQuoteMoney(quote: CommerceQuote, acquisi
 export declare function promotionQuoteMoneySections(quote: CommerceQuote, acquisitionTerms?: ResolvedAcquisitionTerms, shippingTerms?: ShippingTerms): Record<PromotionQuoteMoneySection, unknown>;
 /** Key-sorted, `undefined`-dropping JSON. Every acceptance binding hashes this shape. */
 export declare function stableJson(value: unknown): string;
+```
+## dist/promotions/quoteAcceptanceTokenV2.d.ts
+
+```ts
+import { type CommerceQuoteV2 } from "../pricing/index.js";
+import { type PromotionAcceptanceKeyring } from "./promotionQuoteAcceptance.js";
+declare const acceptanceToken: unique symbol;
+/** @experimental Signed final quote acceptance wire for authenticated server submit. */
+export type QuoteAcceptanceTokenV2 = string & {
+    readonly [acceptanceToken]: true;
+};
+declare const purpose = "commerce.quote-acceptance.v2";
+declare const moneyVersion = "commerce.order-money.v2";
+type Owner = Readonly<{
+    installationRef: string;
+    principalKind: "customer";
+    principalRef: string;
+    customerOrSessionRef: string;
+}>;
+/** @experimental Server-owned inputs for final quote presentation and authenticated submit. */
+export type QuoteAcceptanceScopeV2 = Readonly<{
+    owner: Owner;
+    /** Derived from the owner, checkout scope reference and quote ID. */
+    requestDigest: string;
+    quote: CommerceQuoteV2;
+    recurringAcceptanceRef?: string;
+    keyring: Readonly<PromotionAcceptanceKeyring>;
+    nowMs: number;
+}>;
+/** @experimental The values shown before acceptance and verified at authenticated submit. */
+export type QuoteAcceptancePresentationV2 = Readonly<{
+    quoteDigest: string;
+    mandatoryFeeKeys: readonly string[];
+    payable: Readonly<{
+        currency: string;
+        amountMinor: number;
+    }>;
+}>;
+declare const refusals: {
+    readonly mismatch: {
+        readonly kind: "refused";
+        readonly code: "quote_acceptance_mismatch";
+        readonly field: "/acceptanceToken";
+        readonly remedy: "Re-obtain valid acceptance from the authorized presentation path.";
+    };
+    readonly presentation: {
+        readonly kind: "refused";
+        readonly code: "mandatory_fee_requires_all_in_display";
+        readonly field: "/presentationRef";
+        readonly remedy: "Present the full payable and applicable fees and obtain fresh acceptance.";
+    };
+    readonly expired: {
+        readonly kind: "refused";
+        readonly code: "quote_acceptance_expired";
+        readonly field: "/acceptanceToken";
+        readonly remedy: "Obtain a fresh final presentation and acceptance.";
+    };
+};
+/** @experimental Fixed refusal tuples for final quote presentation and authenticated submit. */
+export type QuoteAcceptanceRefusalV2 = (typeof refusals)[keyof typeof refusals];
+type Claims = Omit<QuoteAcceptanceScopeV2, "quote" | "keyring" | "nowMs"> & Readonly<{
+    purpose: typeof purpose;
+    v: 2;
+    kid: string;
+    exp: number;
+    acceptanceRef: string;
+    quoteId: string;
+    quoteDigest: string;
+    moneyVersion: typeof moneyVersion;
+    moneyDigest: string;
+    presentationRef: string;
+}>;
+/** @experimental Issue a signed token for later authenticated submit from a final server quote. */
+export declare function issueQuoteAcceptanceTokenV2(input: QuoteAcceptanceScopeV2 & {
+    acceptanceRef: string;
+    presentation?: QuoteAcceptancePresentationV2;
+}): {
+    kind: "issued";
+    token: QuoteAcceptanceTokenV2;
+    presentationRef: string;
+} | QuoteAcceptanceRefusalV2;
+/** @experimental Authenticate the browser's acceptance with server-owned scope and quote at submit. */
+export declare function verifyQuoteAcceptanceTokenV2(input: QuoteAcceptanceScopeV2 & {
+    token: unknown;
+    presentationRef?: unknown;
+}): ({
+    kind: "verified";
+} & Claims) | QuoteAcceptanceRefusalV2;
+export {};
 ```
 ## dist/promotions/quoteAcquisitionBinding.d.ts
 

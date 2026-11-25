@@ -9,6 +9,7 @@ import { captureCommittedReviewCandidate, proveReviewIntegration, git as sourceG
 import {
   CATALOGUE,
   MAIN_SQL_HEADING,
+  MATURITY_PAGE,
   PORTABILITY_REPORT,
   PROBE_KEY,
   PROBE_OUTPUTS,
@@ -69,6 +70,9 @@ it('lands owner-exact reports and settings from parents with zero carrier edits'
       false, { resolvedOwnerOutputs: changed });
     expect(historical).toMatchObject({ kind: 'resolution', resolution: changed, modeChanged: false });
     expect(f.read(PORTABILITY_REPORT)).toContain('declare const fixturePortability = 1');
+    // The maturity reference is a derived output of the reports: landing refreshed its symbol region.
+    expect(f.read(MATURITY_PAGE)).toContain('| `./portability` | `fixturePortability` | experimental | yes |');
+    expect(f.git('show', `${f.base}:${MATURITY_PAGE}`)).not.toContain('fixturePortability');
     expect(f.read(SETTING_GUIDE)).toContain(`## ${PROBE_KEY}`);
     expect(f.git('show', `${f.base}:${SETTING_REFUSALS}`)).toBe(f.read(SETTING_REFUSALS).trimEnd());
     const discovery = JSON.parse(f.fixtureCommand(process.execPath, ['packages/platform/src/lifecycle/openlup.mjs', 'settings', 'show', PROBE_KEY, '--json']));
@@ -222,6 +226,7 @@ it('classifies SQL and migration-inventory inputs conservatively', () => {
     'server/adapters/postgres/qualifiedInstall.ts',
     'server/adapters/postgres/selectedCatalogProjection.ts',
     'server/adapters/postgres/connectedStoreCapture.ts',
+    'server/adapters/postgres/connectedStoreDomains/catalog.ts',
   ]) expect(isInventoryInputPath(path), path).toBe(true);
 
   for (const path of [

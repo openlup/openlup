@@ -295,6 +295,7 @@ const INVENTORY_CLOSURE_DIRS = [
   "packages/platform/src/catalog",
   "packages/platform/dist/migrations",
   "packages/platform/dist/catalog",
+  "server/adapters/postgres/connectedStoreDomains",
 ];
 
 function collectFilesRecursive(root: string, dir: string, filter?: (rel: string) => boolean): string[] {

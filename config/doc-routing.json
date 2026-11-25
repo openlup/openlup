@@ -1109,6 +1109,17 @@
       "anchor": "#provider-recipe-contract"
     },
     {
+      "id": "platform-storefront",
+      "when": "Browser-safe storefront purchase-continuation types, recovery functions, host bindings and markup anchor names",
+      "paths": [
+        "packages/platform/src/storefront/**",
+        "packages/platform/test/storefront/**",
+        "packages/platform/api/storefront*.api.md"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#storefront-continuation-contracts"
+    },
+    {
       "id": "platform-http",
       "when": "Node HTTP runtime, request adaptation and deployment-owned security policy contracts",
       "paths": [

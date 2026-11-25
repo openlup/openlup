@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
@@ -378,6 +378,354 @@ test('every_thrown_starter_code_is_in_the_refusal_table and discovery needs no c
 
 const recipeApp = processEnv.OPENLUP_STARTER_CATALOGUE_RECIPE_APP;
 const catalogueProofOwner = processEnv.OPENLUP_STARTER_CATALOGUE_TEST_OWNER_URL;
+
+test('catalogue_apply_reports_and_bounds', async () => {
+  const launch = (...args: string[]) => spawnSync(process.execPath, ['lifecycle.mjs', 'catalogue', 'apply', '--json', ...args],
+    { cwd: root, encoding: 'utf8', input: 'approve\n' });
+  for (const [args, code] of [[[], 'OPENLUP_E_CATALOGUE_PRODUCT_REQUIRED'], [['--approve'], 'starter_argument_unknown']] as const) {
+    const result = launch(...args);
+    assert.equal(result.status, 2);
+    const report = oneLine(result.stdout);
+    assert.deepEqual(Object.keys(report), ['formatVersion', 'command', 'state', 'exitCode', 'receipts', 'findings']);
+    assert.deepEqual(report.receipts, []);
+    assert.equal(report.findings[0].code, code);
+    assert.equal(result.stderr, '');
+  }
+  // Exercise the real error surface and preserve an infrastructure cause out of JSON.
+  const checked = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import { catalogueApplyRefusal } from './lifecycle-refusals.mjs';
+    const cause = new Error('private transport detail');
+    const code = 'OPENLUP_E_CATALOGUE_APPLY_UNAVAILABLE';
+    const refused = catalogueApplyRefusal({code, path: 'catalogue.demoTarget'}, cause);
+    assert.equal(Object.getPrototypeOf(refused), Error.prototype);
+    assert.equal(refused.message, code);
+    assert.deepEqual(Reflect.ownKeys(refused).filter(key => key !== 'stack'), ['message','cause','finding']);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(refused, 'cause'),
+      {value: cause, writable: true, configurable: true, enumerable: false});
+    assert.doesNotMatch(JSON.stringify(refused), /private transport detail/);
+  `], { cwd: root, encoding: 'utf8' });
+  assert.equal(checked.status, 0, checked.stderr);
+
+  const { composeOperatorCapabilities } = await import('../host/operator-composition.ts');
+  const { demonstrationMarker, demonstrationMarkerQuery } = await import('../host/demonstration-marker.ts');
+  const variantId = randomUUID(), priceListId = randomUUID(), revisionId = randomUUID(), actorId = randomUUID();
+  const config = selectConfiguration();
+  const policy = { revisionId, discountBps: 500, roundingQuantumMinor: 10, roundingRule: 'FLOOR_TO_QUANTUM' };
+  let target = { priceListId, currency: config.market.currency, basis: null, policies: [policy], valid: true };
+  const trace: string[] = [];
+  const publication = {
+    async run<T>(work: (db: { query: typeof query }) => Promise<T>) {
+      trace.push('BEGIN');
+      return work({ query });
+    },
+    async close() {},
+  };
+  async function query(sql: string, values?: unknown[]) {
+    trace.push(sql.split('\n')[0]!);
+    if (sql === demonstrationMarkerQuery) {
+      assert.equal(values, undefined);
+      return { rows: [{ marker: demonstrationMarker }] };
+    }
+    if (sql.startsWith('WITH list')) return { rows: [target] };
+    return { rows: [] };
+  }
+  const operator = composeOperatorCapabilities({ executor: { query }, connectionString: 'postgresql://localhost/demo', publication,
+    asOperator: async (principal, work) => {
+      assert.equal(principal, actorId);
+      trace.push('asActor');
+      return work({ async query(sql, values) {
+        if (sql.includes('catalog_price_setup_preview')) {
+          trace.push('preview');
+          assert.deepEqual(values, [variantId, priceListId, null]);
+          return { rows: [{ result: { outcome: 'preview', variantId, priceListId, inGate: false, current: null, currentCount: 0,
+            subscription: { kind: 'derived', revisionId, discountBps: 500, roundingQuantumMinor: 10, derivedUnitPriceMinor: null },
+            readiness: { ready: true, reasons: [] } } }] };
+        }
+        trace.push('apply');
+        return { rows: [{ result: { outcome: 'validation_issue', reason: 'expected_state_mismatch' } }] };
+      } });
+    } });
+  const context = { commandKey: randomUUID(), config,
+    actor: { customerRef: null, operatorRef: actorId, sessionToken: 'verified fixture' } };
+  try {
+    assert.deepEqual(await operator.actions['catalogue.demoTarget']!({}, context),
+      { ok: true, value: { marked: true, configurationId: config.id } });
+    assert.deepEqual(trace, ['BEGIN', 'SET TRANSACTION READ ONLY', "SET LOCAL statement_timeout = '1s'", demonstrationMarkerQuery.split('\n')[0]]);
+    const price = operator.actions['operator.catalogPublication']!;
+    const input = { action: 'price-apply', variantId, priceListId, policyRevisionId: revisionId };
+    for (const [amount, code] of [[0, 'starter_input_invalid'], [10, 'starter_catalogue_derived_price_zero'],
+      [2_147_483_648, 'starter_input_invalid'], [2_147_483_647, 'expected_state_mismatch']] as const) {
+      trace.length = 0;
+      assert.deepEqual(await price({ ...input, unitPriceMinor: amount }, context), { ok: false, code });
+      assert.equal(trace.includes('apply'), amount === 2_147_483_647);
+      if (trace.includes('apply')) assert.deepEqual(trace.slice(-3), ['asActor', 'preview', 'apply']);
+    }
+    trace.length = 0;
+    assert.deepEqual(await price({ ...input, unitPriceMinor: 11, policyRevisionId: randomUUID() }, context),
+      { ok: false, code: 'starter_catalogue_d2c_policy_required' });
+    assert.deepEqual(trace.slice(-2), ['asActor', 'preview']);
+    for (const [change, code] of [
+      [{ currency: config.market.currency === 'XTS' ? 'XXX' : 'XTS' }, 'starter_catalogue_currency_mismatch'],
+      [{ currency: config.market.currency, valid: false }, 'starter_catalogue_d2c_policy_required'],
+    ] as const) {
+      target = { ...target, ...change };
+      assert.deepEqual(await price({ action: 'price-target' }, context), { ok: false, code });
+    }
+  } finally { await operator.close(); }
+});
+
+test('installed_catalogue_operator_workflow', { skip: !recipeApp, timeout: 600_000 }, async context => {
+  const app = recipeApp!;
+  const existing = processEnv.OPENLUP_STARTER_CATALOGUE_OPERATOR_PROJECT;
+  const project = existing ?? 'catalogue-operator-' + randomUUID().slice(0, 12);
+  assert.match(project, /^[a-z0-9-]+$/u);
+  const manifest = JSON.parse(readFileSync(join(app, '.starter-origin.json'), 'utf8'));
+  assert.ok(['candidate', 'local-candidate', 'released', 'reconstructed'].includes(manifest.mode ?? manifest.kind));
+  const run = (file: string, args: string[], input?: string) => execFileSync(file, args,
+    { cwd: app, env: { ...processEnv, COMPOSE_PROJECT_NAME: project }, encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'] });
+  const compose = (...args: string[]) => run('docker', ['compose', ...args]);
+  const sql = (statement: string) => compose('exec', '-T', 'database', 'psql', '-XAtq', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose',
+    '-U', 'postgres', '-d', 'neutral_store', '-c', statement).trim();
+  const base = processEnv.OPENLUP_STARTER_CATALOGUE_OPERATOR_ORIGIN ?? 'http://127.0.0.1:4319';
+  const headers = { Origin: base, 'X-Starter-Request': '1', 'Content-Type': 'application/json' };
+  async function action(operation: string, body: unknown, key: string = randomUUID(), cookie?: string) {
+    const response = await fetch(base + '/api/actions/' + operation, { method: 'POST',
+      headers: { ...headers, 'Idempotency-Key': key, ...(cookie && { Cookie: cookie }) }, body: JSON.stringify(body) });
+    return { data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
+  }
+  const actor = randomUUID(), alternate = randomUUID(), email = `operator-${actor.slice(0, 8)}@example.test`;
+  const snapshot = () => sql(`SELECT (SELECT count(*) FROM public.catalog_draft_revisions),
+    (SELECT count(*) FROM public.catalog_publication_decisions), (SELECT count(*) FROM public.catalog_publications),
+    (SELECT count(*) FROM public.catalog_publication_heads), (SELECT count(*) FROM public.price_entries),
+    (SELECT count(*) FROM public.catalog_price_setup_receipts)`);
+  function mailbox(address = email) {
+    try {
+      return compose('exec', '-T', '--user', 'node', 'application', 'cat', '/application/.context/captured-messages/identity.jsonl')
+        .trim().split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(row => row.email === address);
+    } catch (error) {
+      if (String((error as { stderr?: string }).stderr).includes('No such file or directory')) return [];
+      throw error;
+    }
+  }
+  let cookie: string | undefined;
+  const operator = 'operator.catalogPublication', drafts = 'operator.catalogDrafts';
+  async function send(operation: string, body: unknown, key?: string) {
+    return (await action(operation, body, key, cookie)).data;
+  }
+  async function askChallenge() {
+    assert.deepEqual((await action('auth.operator', { email })).data, { ok: true, value: { accepted: true } });
+  }
+  async function newestToken(count: number, address = email) {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const rows = mailbox(address);
+      if (rows.length === count) return rows.at(-1).token as string;
+      await delay(50);
+    }
+    throw new Error('Expected operator challenge delivery');
+  }
+  try {
+    if (!existing) assert.equal(oneLine(run('./lifecycle', ['up', '--configuration', 'coffee', '--json'])).exitCode, 0);
+    assert.deepEqual((await action('catalogue.demoTarget', {})).data, { ok: true, value: { marked: true, configurationId: 'coffee' } });
+    const registry = (await action('application.status', {})).data.value.bindings as { operation: string; bound: boolean }[];
+    assert.deepEqual(registry.map(({ operation }) => operation), (await import('../shared/api.ts')).operations);
+    assert.equal(registry.find(({ operation }) => operation === 'catalogue.demoTarget')?.bound, true);
+    const readOnly = JSON.parse(compose('exec', '-T', '--user', 'node', 'application', 'node', '--input-type=module', '-e', `
+      import { readFileSync } from 'node:fs';
+      import { env } from 'node:process';
+      import { createPostgresRoleFreeTransactionLane } from '@openlup/platform/data';
+      import { composeOperatorCapabilities } from './host/operator-composition.ts';
+      import { demonstrationMarkerQuery } from './host/demonstration-marker.ts';
+      const url = new URL(env.DATABASE_URL);
+      url.username = 'openlup_catalog_publication';
+      url.password = readFileSync('.context/catalogue-builds/.publication-password', 'utf8').trim();
+      const lane = createPostgresRoleFreeTransactionLane({connectionString: url.href});
+      let markerSettings;
+      const publication = { run: work => lane.run(db => work({ async query(statement, values) {
+        if (statement === demonstrationMarkerQuery) {
+          markerSettings = (await db.query("SELECT current_setting('transaction_read_only') AS mode,current_setting('statement_timeout') AS deadline")).rows[0];
+          if (values !== undefined) throw Error('Marker query must be parameterless');
+        }
+        return db.query(statement, values);
+      } })), close: () => lane.close() };
+      const composed = composeOperatorCapabilities({executor: {}, publication, connectionString: env.DATABASE_URL});
+      try {
+        const { ok } = await composed.actions['catalogue.demoTarget']({}, {config: {id:'coffee'}});
+        console.log(JSON.stringify({ ok, ...markerSettings }));
+      } finally { await Promise.all([composed.close(), lane.close()]); }
+    `));
+    assert.deepEqual(readOnly, { ok: true, mode: 'on', deadline: '1s' });
+    const anonymous = await send(operator, { action: 'price-target' });
+    assert.equal(anonymous.code, 'operator_required');
+    sql(`INSERT INTO public.platform_human_principals(principal_id,email) VALUES
+      ('${actor}','${email}'),('${alternate}','alternate-${actor.slice(0, 8)}@example.test');
+      INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+      VALUES ('${actor}','admin','active','legacy',now()),('${alternate}','admin','active','legacy',now())`);
+    const challenges = () => Number(sql(`SELECT count(*) FROM public.operator_identity_challenges WHERE principal_id='${actor}'`));
+    await askChallenge();
+    const expired = await newestToken(1);
+    await askChallenge();
+    assert.equal(challenges(), 1);
+    assert.equal(mailbox().length, 1);
+    sql(`UPDATE public.operator_identity_challenges SET created_at=statement_timestamp()-interval '10 minutes',
+      expires_at=statement_timestamp() WHERE principal_id='${actor}'`);
+    const invalid = await action('auth.operator', { token: expired });
+    assert.equal(invalid.data.code, 'starter_auth_invalid');
+    assert.equal(invalid.cookie, undefined);
+    assert.equal(sql(`SELECT count(*) FROM public.operator_identity_challenges WHERE principal_id='${actor}' AND used_at IS NOT NULL`), '0');
+    sql(`INSERT INTO public.operator_identity_challenges(principal_id,email_fingerprint,token_hash,created_at,expires_at)
+      SELECT principal_id,email_fingerprint,md5((principal_id||'fixture-hour-'||n)::text)||md5((principal_id||'fixture-hour-more-'||n)::text),
+        statement_timestamp()-interval '20 minutes',statement_timestamp()-interval '10 minutes'
+      FROM public.operator_identity_challenges CROSS JOIN generate_series(1,4) n WHERE principal_id='${actor}' AND used_at IS NULL`);
+    await askChallenge();
+    assert.equal(challenges(), 5);
+    assert.equal(mailbox().length, 1);
+    sql(`UPDATE public.operator_identity_challenges SET created_at=statement_timestamp()-interval '2 hours',
+      expires_at=statement_timestamp()-interval '110 minutes' WHERE principal_id='${actor}'`);
+    await askChallenge();
+    const login = await action('auth.operator', { token: await newestToken(2) });
+    assert.ok(login.cookie && login.data.ok && Number.isFinite(Date.parse(login.data.value.expiresAt)));
+    cookie = login.cookie;
+    const target = (await send(operator, { action: 'price-target' })).value;
+    assert.equal(target.actorId, actor);
+    assert.equal(target.currency, 'XTS');
+    const { priceListId, policy } = target;
+    const { buildCatalogReleaseDraftV3, catalogInternalGtin } = await import('@openlup/platform/catalog');
+    const { canonicalCatalogPriceSetupCommand } = await import('@openlup/platform/pricing');
+    const sequence = 100_000 + parseInt(actor.slice(0, 6), 16) % 800_000;
+    const slug = 'proof-notebook-' + actor.slice(0, 8);
+    const type = (await send(drafts, { action: 'example' })).value.product.type;
+    const mass = { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 } as const;
+    const { release, activation } = buildCatalogReleaseDraftV3({ namespace: 'starter', type, slug, name: 'Proof notebook',
+      presentation: { title: 'Proof notebook' }, skus: [{ code: slug.toUpperCase(), title: 'Notebook', options: {}, netContent: mass,
+        grossMass: { ...mass, unscaled: '120' }, identifiers: [{ scheme: 'gs1:gtin', issuer: 'starter:proof',
+          value: catalogInternalGtin(sequence), packagingLevel: 'unit' }], sell: { oneTime: true, subscription: false },
+        logisticsRef: 'starter:proof/' + slug }] });
+    const draftId = randomUUID(), productId = release.payload.product.id, variantId = release.payload.skus[0]!.id;
+    const prepare = async (expectedRevision: number, expectedHead: unknown) => {
+      const { value } = await send(drafts, { action: 'prepare', draftId, expectedRevision, expectedHead });
+      assert.ok(value?.preparation?.postStateDigest);
+      assert.deepEqual(value.expectedHead, expectedHead);
+      const candidate = { productId, candidateRef: value.candidateRef, candidateDigest: value.candidateDigest };
+      return { approve: { action: 'approve', ...candidate, postStateDigest: value.preparation.postStateDigest },
+        publish: { action: 'publish', ...candidate, expectedHead, changes: [] } };
+    };
+    const save = (payload: typeof release.payload, expectedRevision: number) => ({ action: expectedRevision ? 'revise' : 'create',
+      draftId, expectedRevision, payload });
+    const replay = (result: Record<string, unknown>, initial: Record<string, unknown>) => {
+      assert.equal(result.outcome, 'replayed');
+      assert.deepEqual(result.receipt ?? result.record, initial.receipt ?? initial.record);
+    };
+    const quote = () => send('offer.validate', { cart: { schemaVersion: 1, configuration: 'coffee', mode: 'one_time',
+      cadenceDays: null, lines: [{ sku: selectConfiguration('coffee').offer.products[0]!.sku, quantity: 1 }] } });
+    const legacy = await quote();
+    assert.equal(legacy.value.totalMinor, 4200);
+    const saveKey = randomUUID(), approvalKey = randomUUID(), releaseKey = randomUUID();
+    const saved = (await send(drafts, save(release.payload, 0), saveKey)).value;
+    assert.equal(saved.record.revision, 1);
+    assert.equal((await send(drafts, { action: 'prepare', draftId, expectedRevision: 1 })).value.expectedHead, null);
+    const first = await prepare(1, null);
+    const approval = (await send(operator, first.approve, approvalKey)).value;
+    const released = (await send(operator, first.publish, releaseKey)).value;
+    const { head } = released.receipt;
+    const prices = { variantId, priceListId };
+    const planned = { action: 'price-apply', ...prices, policyRevisionId: policy.revisionId, unitPriceMinor: 11 };
+    const control = await action(operator, planned);
+    assert.equal(control.data.code, 'operator_required');
+    const customer = `customer-${actor.slice(0, 8)}@example.test`;
+    compose('exec', '-T', '--user', 'node', 'application', 'node', '--input-type=module', '-e', `
+      import { randomUUID } from 'node:crypto';
+      import { env } from 'node:process';
+      import { createPostgresAccountLinkStore } from '@openlup/platform/identity';
+      const accounts = createPostgresAccountLinkStore({ connectionString: env.DATABASE_URL });
+      try { await accounts.createAccount({ principalId: randomUUID(), email: ${JSON.stringify(customer)},
+        acquisitionSource: 'direct', lifecycleStage: 'customer' }); }
+      finally { await accounts.close(); }
+    `);
+    assert.equal((await action('auth.request', { email: customer })).data.ok, true);
+    const signedCustomer = await action('auth.verify', { token: await newestToken(1, customer) });
+    assert.ok(signedCustomer.cookie);
+    assert.equal((await action(operator, planned, undefined, signedCustomer.cookie)).data.code, 'operator_required');
+    const { value: preview } = await send(operator, { action: 'price-preview', ...prices });
+    assert.equal(preview.listEffective, true);
+    assert.equal(preview.priceSetup.inGate, false);
+    assert.equal(preview.priceSetup.current, null);
+    assert.equal(preview.priceSetup.subscription.revisionId, policy.revisionId);
+    const initial = snapshot();
+    assert.equal((await send(operator, { ...planned, priceListId: randomUUID() })).code, 'price_list_not_active');
+    assert.equal((await send(operator, { ...planned, unitPriceMinor: 10 })).code, 'starter_catalogue_derived_price_zero');
+    assert.equal((await send(operator, { ...planned, policyRevisionId: randomUUID() })).code, 'starter_catalogue_d2c_policy_required');
+    assert.equal(snapshot(), initial);
+    const activationSave = await send(drafts, save(activation.payload, 1));
+    assert.equal(activationSave.value.record.revision, 2);
+    for (const badHead of [null, { ...head, documentDigest: 'f'.repeat(64) }]) {
+      const stale = await send(drafts, { action: 'prepare', draftId, expectedRevision: 2, expectedHead: badHead });
+      assert(!stale.ok || !stale.value?.preparation?.postStateDigest);
+    }
+    const next = await prepare(2, head), activationKey = randomUUID();
+    assert.equal((await send(operator, next.approve)).value.outcome, 'committed');
+    const before = snapshot();
+    assert.equal((await send(operator, next.publish, activationKey)).code, 'publication_sku_price_not_ready');
+    assert.equal(snapshot(), before);
+    assert.equal((await send(operator, { action: 'receipt', productId, commandKey: activationKey })).value.outcome, 'absent');
+    assert.equal(sql(`SELECT status FROM public.catalog_skus WHERE id='${variantId}'`), 'draft');
+    const priceKey = randomUUID();
+    const priced = (await send(operator, planned, priceKey)).value;
+    assert.equal(priced.receipt.current.unitPriceMinor, 11);
+    const activated = (await send(operator, next.publish, activationKey)).value;
+    assert.deepEqual(activated.receipt.previousHead, head);
+    const completed = snapshot();
+    replay((await send(drafts, save(release.payload, 0), saveKey)).value, saved);
+    replay((await send(operator, first.approve, approvalKey)).value, approval);
+    replay((await send(operator, first.publish, releaseKey)).value, released);
+    replay((await send(operator, next.publish, activationKey)).value, activated);
+    replay((await send(operator, planned, priceKey)).value, priced);
+    assert.equal(snapshot(), completed);
+    await context.test('installed_catalogue_copy_preserves_history', async () => {
+      const { record } = (await send(drafts, { action: 'get', draftId, revision: 2 })).value;
+      const activeHead = activated.receipt.head;
+      const exact = (expectedHead: unknown) => send(operator, { action: 'exact', head: expectedHead }).then(result => result.value);
+      const original = await exact(activeHead);
+      const payload = record.payload;
+      const presentation = { title: 'Proof notebook revised' };
+      Object.assign(payload.product.sharedContent, { catalogAction: 'revise', presentation });
+      payload.publication.operations = [{ op: 'set_product_presentation', productSlug: slug, presentation }];
+      assert.equal((await send(drafts, save(payload, 2))).value.record.revision, 3);
+      const copy = await prepare(3, activeHead);
+      assert.equal((await send(operator, copy.approve)).ok, true);
+      const copied = (await send(operator, copy.publish)).value.receipt;
+      assert.deepEqual(copied.previousHead, activeHead);
+      const amended = await exact(copied.head);
+      assert.equal(amended.product.id, original.product.id);
+      assert.deepEqual(amended.product.document, original.product.document);
+      assert.deepEqual(amended.product.presentation.title, presentation.title);
+      assert.deepEqual(amended.items, original.items);
+      assert.deepEqual(await exact(activeHead), original);
+      assert.deepEqual(await quote(), legacy);
+      assert.deepEqual((await send(operator, { action: 'price-preview', ...prices })).value.priceSetup.current, priced.receipt.current);
+    });
+    const authorized = snapshot();
+    async function denied() {
+      for (const body of [next.approve, next.publish, { action: 'price-preview', ...prices }, planned])
+        assert.equal((await send(operator, body)).code, 'operator_required');
+      assert.equal(snapshot(), authorized);
+    }
+    sql(`INSERT INTO public.platform_control_operators(principal_id) VALUES ('${actor}')`);
+    await denied();
+    const sqlCommand = canonicalCatalogPriceSetupCommand({ schemaVersion: 1, commandKey: randomUUID(), ...prices, unitPriceMinor: 11,
+      mode: 'one_time', minQty: 1, amountKind: 'gross', expected: { entryId: null, unitPriceMinor: null } });
+    const fingerprint = createHash('sha256').update(sqlCommand).digest('hex');
+    assert.throws(() => sql(`BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub":"${actor}","role":"authenticated"}';
+      SELECT public.catalog_price_setup_apply('${sqlCommand}','${fingerprint}')`),
+    (error: unknown) => /42501:.*catalog_price_setup_operator_required/u.test(String((error as { stderr?: string }).stderr)));
+    sql(`DELETE FROM public.platform_control_operators WHERE principal_id='${actor}';
+      SELECT principal_id FROM public.platform_revoke_human_membership('${alternate}','${actor}')`);
+    await denied();
+  } finally {
+    if (!existing) compose('down', '--volumes');
+  }
+});
+
 test('catalogue job remedies admit owned IDs and omit ambiguous renewal populations', async () => {
   const { catalogueFailedJobFilter } = await import('../host/catalogue-readiness-jobs.ts');
   const example = 'store-' + 'x'.repeat(74), tooLong = example + 'x', duplicate = 'other-store';

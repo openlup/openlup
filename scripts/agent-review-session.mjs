@@ -10,7 +10,7 @@ import { env as processEnvironment } from 'node:process';
 import { digest, explainSession, protectedCoveragePath, carryOver, cumulativeRepairPrefix, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordReport, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion } from './agent-review-derived.mjs';
-import { generatedCarrier, ownerOutputCarrier, runDerivedOutputGenerators, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
+import { MATURITY_REFERENCE, generatedCarrier, ownerOutputCarrier, runDerivedOutputGenerators, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
 import { join as joinPath } from 'node:path';
 
 const execute = promisify(execFile);
@@ -198,7 +198,8 @@ export async function proveReviewIntegration(cwd, previous, current, portable = 
         'scripts/build-packages-incremental.mjs', 'scripts/settings-catalogue.ts',
         'config/openlup-packages.json', 'package-lock.json',
         ...ownerPaths.filter(path => /\/api\//u.test(path)).map(path => `packages/${path.split('/')[1]}/scripts/api-contract.ts`),
-        ...(ownerPaths.some(path => path.startsWith('packages/core/api/')) ? ['packages/core/scripts/public-api-config.ts'] : [])];
+        ...(ownerPaths.some(path => path.startsWith('packages/core/api/')) ? ['packages/core/scripts/public-api-config.ts'] : []),
+        ...(ownerPaths.includes(MATURITY_REFERENCE) ? ['packages/core/scripts/documentation-contract.ts', 'packages/ui/smoke/neutrality.ts'] : [])];
       const trustedRows = ownerPaths.length ? await Promise.allSettled(trustedPaths.map(async path =>
         [path, await read(current.base, path)])) : [];
       const trusted = Object.fromEntries(trustedRows.filter(row => row.status === 'fulfilled').map(row => row.value));

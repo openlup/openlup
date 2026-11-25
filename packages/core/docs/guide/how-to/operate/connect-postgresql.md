@@ -42,6 +42,48 @@ or `anon`; service calls select `service_role`. Capability-local role-free lanes
 do not change roles and must remain scoped to their named capability. Do not
 replace missing grants with an owner login in request handling.
 
+## Read published offers with the runtime login
+
+For a `qualified-v2` installation, provision the restricted login and pass its
+name as `installation.runtimeLogin` when
+[installing the complete catalogue](../../upgrade/database-migrations.md#select-the-complete-catalogue).
+The starter's [installer](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/installation/install.ts)
+shows the runtime login DDL and the installer-managed role bindings in
+`bootstrapDemonstration`. Use that login's connection string in the storefront
+host once the migrations have applied the required grants.
+
+Compose the experimental published offer reader once on the server. Pass the
+bounded runtime pool you already own to the role-free transaction lane. Use
+the lane for the storefront read and close the pool at host shutdown.
+
+```ts
+import type { Pool } from "pg";
+import {
+  projectPublishedCatalogOfferPage,
+  readPostgresCatalogStorefrontPage,
+  type CatalogStorefrontPageInput,
+} from "@openlup/platform/catalog";
+import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor } from "@openlup/platform/data";
+
+function composePublishedOfferReader(
+  connectionString: string,
+  pool: Pool,
+  definitions: Parameters<typeof projectPublishedCatalogOfferPage>[1],
+) {
+  const lane = createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString }, { pool });
+  return async (input: CatalogStorefrontPageInput) => {
+    const result = await readPostgresCatalogStorefrontPage(lane, input);
+    if ("outcome" in result) return result;
+    return projectPublishedCatalogOfferPage(result, definitions);
+  };
+}
+```
+
+Supply [verified definitions](../extend/catalogue-extension.md#verify-definition-receipts-in-your-host)
+from the server. At your HTTP boundary, map refusals to your application's
+error response. On success, send the display fields and returned continuation
+to the browser.
+
 ## Recover from a session-affinity refusal
 
 Before admitting a locked callback, the adapter acquires the advisory key, then

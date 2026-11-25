@@ -921,6 +921,81 @@ in the JSON and choose **Save**. Expect `title_required` at that field. Restore
 the title, save, and choose **Prepare saved draft** with the saved draft ID and
 revision. Earlier saved drafts keep their installed rule version.
 
+### Release, price and activate a demo product
+
+Start the marked demonstration with `./lifecycle up`. In `owned/catalogue.ts`,
+keep the installed pack declaration and export the product you want to publish.
+Use **Load draft example** under **Catalogue drafts** to read the installed
+`product.type.version`. Add the example below to `owned/catalogue.ts`, then add
+`export const catalogueProduct = demoCatalogueProduct(version)` using that
+number. Keep the draft UUID stable and reserve an unused internal GTIN
+sequence. For a product with variants, see [Author a product](../extend/catalogue-extension.md#author-a-product).
+
+```ts
+import { catalogInternalGtin, type CatalogProductInput } from "@openlup/platform/catalog";
+
+export function demoCatalogueProduct(version: number) {
+  const grams = (unscaled: string) => ({ dimension: "mass", unit: "openlup:g", unscaled, scale: 0 } as const);
+  const product = {
+    namespace: "starter", type: { key: "starter:item", version },
+    slug: "field-notebook", name: "Field notebook", presentation: { title: "Field notebook" },
+    skus: [{ code: "FIELD-NOTEBOOK", title: "Field notebook", options: {},
+      netContent: grams("100"), grossMass: grams("120"),
+      identifiers: [{ scheme: "gs1:gtin", issuer: "starter:internal",
+        value: catalogInternalGtin(203), packagingLevel: "unit" }],
+      sell: { oneTime: true, subscription: false }, logisticsRef: "starter:fulfilment/notebook" }],
+  } satisfies CatalogProductInput;
+  return {
+    draftId: "d9176a9d-274b-4a4a-90d8-2a0db738f181",
+    product,
+    basePrices: { "FIELD-NOTEBOOK": 1900 },
+    copyPresentation: { title: "Field notebook, second edition" },
+  };
+}
+```
+
+Give each authored SKU exactly one initial gross one-time price in minor units.
+To include an image, put it in the starter's `public/media` folder and set
+`product.presentation.mediaRef` to its local path, for example
+`/media/field-notebook.png`. Run `./lifecycle up` after adding the file so the
+running demo has the same image when you apply.
+Run `npm run --silent catalogue:check:source` to check the pack fixtures offline.
+`npm run catalogue:apply -- --prepare-only` saves the Release draft and prepares
+it. Save + Prepare is a draft write.
+
+Run `npm run catalogue:apply -- --json` in a terminal. Select the same
+`--configuration` used for the running host if you started a nondefault
+configuration. The command checks the database marker before requesting a
+challenge. Enter the invited administrator's email. Run this command in a
+separate private terminal in the same Compose project to read the fresh token.
+
+```sh
+docker compose exec -T --user node --workdir /application/.context application cat captured-messages/identity.jsonl
+```
+
+Enter the token at the hidden prompt. Review the saved revision, expected head,
+verified currency and SKU prices. Type `approve` when you intend to publish
+Release and again when you intend to publish Activation. The command verifies
+the initial prices between the two publications. Each SKU preview checks
+`listEffective` for the selected list. The owner's `priceSetup.inGate`
+reports whether the SKU is already active and sellable on that list.
+Run the command with
+`--copy` to review and publish the first presentation-only successor. Use
+`npm run --silent catalogue:apply -- --json` for a single machine-readable
+report on stdout.
+
+After a readiness refusal, follow its Fix and Recheck and resume as the
+original administrator with the same declaration. To give the first demo job
+runs time to finish, the command waits one second and retries the exact
+Publish request once if either promotion job reports that it is unready.
+The report preserves any refusal from that retry.
+A missing initial price can
+be supplied through the authorized price action. Retry the same approved
+Publish body and key once the intended price is ready. Existing-base
+corrections belong to the pricing owner. If a challenge arrives late or has
+expired, check the invitation and request a fresh token after the minute and
+hourly limits allow it.
+
 ### Publish a saved catalogue draft
 
 If you change an input, follow [Change a product rule](#change-a-product-rule)

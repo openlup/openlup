@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresAcquisitionCheckoutPersistence, createPostgresNativeCheckoutPersistence } from "@openlup/platform/commerce/server/native-checkout";
@@ -528,8 +529,17 @@ const derivedResolver = "public.catalog_admission_derived_subscription_prices(te
 const deriveArithmetic = "public.catalog_derive_subscription_unit_price(integer,integer,integer)";
 const priceChanged = { code: "22023", message: "commerce_order_draft_catalog_price_changed" };
 const roundingRule = "FLOOR_TO_QUANTUM" as const;
+const writerPrivilegesSql = `SELECT named.signature,p.oid,p.proowner,p.prosecdef,p.proconfig,p.provolatile,p.proacl::text,
+  pg_catalog.has_function_privilege(p.proowner,p.oid,'EXECUTE') AS owner,
+  pg_catalog.has_function_privilege('anon',p.oid,'EXECUTE') AS anon,
+  pg_catalog.has_function_privilege('authenticated',p.oid,'EXECUTE') AS authenticated,
+  pg_catalog.has_function_privilege('service_role',p.oid,'EXECUTE') AS service,
+  pg_catalog.has_function_privilege(0::oid,p.oid,'EXECUTE') AS public,
+  CASE WHEN named.signature=ANY($2::text[]) THEN p.prosrc END AS source
+  FROM unnest($1::text[]) WITH ORDINALITY AS named(signature,position)
+  JOIN pg_catalog.pg_proc p ON p.oid=to_regprocedure(named.signature) ORDER BY named.position`;
 
-async function addPrice(db: Pool, subject: { listId: string; skuId: string }, base: number,
+async function addPrice(db: Pool | PoolClient, subject: { listId: string; skuId: string }, base: number,
   mode = "one_time", min = 1, kind = "gross", from: string | null = null, to: string | null = null) {
   return (await db.query<{ id: string }>(`INSERT INTO public.price_entries
     (price_list_id,variant_id,unit_price_minor,mode,min_qty,amount_kind,valid_from,valid_to)
@@ -604,6 +614,154 @@ async function seedDerived(db: Pool, currency: string, base = 125, discount = 50
   const unit = pricing.deriveSubscriptionUnitPrice(base, { discountBps: discount, roundingQuantumMinor: quantum, roundingRule });
   return { subject, baseId, policy, snapshot: derivedSnapshot(subject, baseId, base, policy, await dbInstant(db), unit) };
 }
+
+async function verifyDerived(db: Pool | PoolClient, snapshot: pricing.CreateQuoteResponse, instant: string) {
+  return (await db.query<{ units: (number | null)[] }>(
+    "SELECT public.catalog_admission_derived_subscription_prices($1,$2,$3,$4) AS units",
+    [snapshot.quote.currency, snapshot, writerDraft(snapshot), instant])).rows[0]!.units;
+}
+
+async function closeBase(db: Pool | PoolClient, baseId: string, cutoff: string) {
+  await db.query("UPDATE public.price_entries SET active=false,valid_to=$2,updated_at=$2 WHERE id=$1", [baseId, cutoff]);
+}
+
+async function replaceBase(owner: Pool, subject: PriceSubject, baseId: string, amount: number) {
+  return transaction(owner, async db => {
+    const { cutoff } = (await db.query<{ cutoff: string }>("SELECT clock_timestamp()::text AS cutoff")).rows[0]!;
+    await closeBase(db, baseId, cutoff);
+    const successor = await addPrice(db, subject, amount, "one_time", 1, "gross", cutoff);
+    return { cutoff, successor };
+  });
+}
+
+it("verifies replaced bases only in their historical interval with same-key successor evidence", async () => {
+  const { owner } = env;
+  const pair = await seedDerived(owner, "XBA");
+  const { rows: [edge] } = await owner.query(`SELECT valid_from::text AS start,
+    (valid_from-interval '1 microsecond')::text AS before_start,
+    (now()-interval '1 hour')::text AS cutoff,
+    (now()-interval '1 hour'-interval '1 microsecond')::text AS before_cutoff
+    FROM public.price_entries WHERE id=$1`, [pair.baseId]);
+  await closeBase(owner, pair.baseId, edge.cutoff);
+  const successor = await addPrice(owner, pair.subject, 230, "one_time", 1, "gross", edge.cutoff);
+  const next = derivedSnapshot(pair.subject, successor, 230, pair.policy, edge.cutoff, 210);
+  for (const [instant, oldUnit, nextUnit] of [
+    [edge.before_start, null, null], [edge.start, 110, null],
+    [edge.before_cutoff, 110, null], [edge.cutoff, null, 210],
+  ] as const) {
+    expect(await verifyDerived(owner, pair.snapshot, instant)).toEqual([oldUnit]);
+    expect(await verifyDerived(owner, next, instant)).toEqual([nextUnit]);
+  }
+  const retired = await seedDerived(owner, "XBI");
+  await closeBase(owner, retired.baseId, edge.cutoff);
+  await addPrice(owner, retired.subject, 230, "one_time", 1, "gross", edge.cutoff);
+  const { rows: [overlapEdge] } = await owner.query(`SELECT valid_from::text AS start,
+    (valid_to-interval '1 hour')::text AS overlap FROM public.price_entries WHERE id=$1`, [retired.baseId]);
+  const overlapId = await addPrice(owner, retired.subject, 125, "one_time", 1, "gross", overlapEdge.overlap);
+  const overlap = derivedSnapshot(retired.subject, overlapId, 125, retired.policy, overlapEdge.overlap, 110);
+  expect(await verifyDerived(owner, retired.snapshot, overlapEdge.overlap)).toEqual([null]);
+  expect(await verifyDerived(owner, overlap, overlapEdge.overlap)).toEqual([null]);
+  expect(await verifyDerived(owner, retired.snapshot, overlapEdge.start)).toEqual([110]);
+
+  const disabled = await seedDerived(owner, "XBB");
+  const at = await dbInstant(owner);
+  await owner.query("UPDATE public.price_entries SET active=false WHERE id=$1", [disabled.baseId]);
+  expect(await verifyDerived(owner, disabled.snapshot, at)).toEqual([null]);
+  const active = await addPrice(owner, disabled.subject, 125);
+  expect(await verifyDerived(owner, derivedSnapshot(disabled.subject, active, 125, disabled.policy, at, 110), at)).toEqual([110]);
+});
+
+it("uses only the successor key and boundary for retired-base evidence", async () => {
+  const { owner } = env;
+  const { rows: [finite] } = await owner.query(`SELECT (now()-interval '12 hours')::text AS start,
+    (now()-interval '9 hours')::text AS at,(now()-interval '6 hours')::text AS cutoff,
+    (now()-interval '3 hours')::text AS successor_end`);
+  for (const [currency, competes] of [["XBC", false], ["XBD", true]] as const) {
+    const seeded = await seedDerived(owner, currency);
+    if (!competes) await owner.query("DELETE FROM public.price_entries WHERE id=$1", [seeded.baseId]);
+    const { id } = (await owner.query<{ id: string }>(`INSERT INTO public.price_entries
+      (price_list_id,variant_id,mode,min_qty,unit_price_minor,amount_kind,active,valid_from,valid_to)
+      VALUES($1,$2,'one_time',1,125,'gross',false,$3,$4) RETURNING id`,
+    [seeded.subject.listId, seeded.subject.skuId, finite.start, finite.cutoff])).rows[0]!;
+    const claim = competes ? seeded.snapshot : derivedSnapshot(seeded.subject, id, 125, seeded.policy, finite.at, 110);
+    expect(await verifyDerived(owner, claim, finite.at)).toEqual([competes ? 110 : null]);
+    await owner.query(`INSERT INTO public.price_entries
+      (price_list_id,variant_id,mode,min_qty,unit_price_minor,amount_kind,active,valid_from,valid_to)
+      VALUES($1,$2,'one_time',1,230,'net',false,$3,$4)`,
+    [seeded.subject.listId, seeded.subject.skuId, finite.cutoff, finite.successor_end]);
+    expect(await verifyDerived(owner, claim, finite.at), competes ? "retired competitor" : "retired claim")
+      .toEqual([competes ? null : 110]);
+  }
+});
+
+it("uses the transaction's millisecond floor for a retired base and its competitor", async () => {
+  const { owner } = env;
+  const isolated = await seedDerived(owner, "XBE"), competing = await seedDerived(owner, "XBF");
+  const db = await owner.connect();
+  try {
+    await db.query("BEGIN");
+    const readCutoffs = async () => (await db.query(`WITH clock AS (SELECT date_trunc('milliseconds',now()) AS floor)
+      SELECT now()>floor AS fractional, floor::text AS cutoff,(floor+interval '1 microsecond')::text AS just_after,
+        (floor-interval '1 hour')::text AS at,(floor-interval '1 day')::text AS start FROM clock`)).rows[0];
+    let clock = await readCutoffs();
+    for (let retry = 0; !clock.fractional && retry < 3; retry++) {
+      await db.query("ROLLBACK");
+      await db.query("BEGIN");
+      clock = await readCutoffs();
+    }
+    expect(clock.fractional).toBe(true);
+    for (const [cutoff, eligible] of [[clock.cutoff, true], [clock.just_after, false]] as const) {
+      await db.query("SAVEPOINT verify_cutoff");
+      await db.query("UPDATE public.price_entries SET valid_from=$2 WHERE id=$1", [isolated.baseId, clock.start]);
+      await closeBase(db, isolated.baseId, cutoff);
+      await addPrice(db, isolated.subject, 230, "one_time", 1, "gross", cutoff);
+      const other = await addPrice(db, competing.subject, 125, "one_time", 1, "net", clock.start);
+      await closeBase(db, other, cutoff);
+      await addPrice(db, competing.subject, 230, "one_time", 1, "gross", cutoff);
+      expect(await verifyDerived(db, isolated.snapshot, clock.at)).toEqual([eligible ? 110 : null]);
+      expect(await verifyDerived(db, competing.snapshot, clock.at)).toEqual([eligible ? null : 110]);
+      await db.query("ROLLBACK TO SAVEPOINT verify_cutoff");
+      await db.query("RELEASE SAVEPOINT verify_cutoff");
+    }
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
+it("still refuses an in-flight native draft after another transaction replaces its base", async () => {
+  const { owner, runtime } = env;
+  const { subject, baseId, policy, snapshot } = await seedDerived(owner, "XBG");
+  const db = await runtime.connect();
+  let originalPricingAt: string;
+  let replacement: Awaited<ReturnType<typeof replaceBase>>;
+  try {
+    await db.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+    originalPricingAt = await dbInstant(db);
+    const before = await counts();
+    replacement = await replaceBase(owner, subject, baseId, 230);
+    expect((await db.query(`SELECT old.active,old.valid_to::text AS cutoff,old.valid_to>now() AS after_start,
+      next.active AS successor_active,next.valid_from=old.valid_to AS same_boundary
+      FROM public.price_entries old JOIN public.price_entries next ON next.id=$2 WHERE old.id=$1`,
+    [baseId, replacement.successor])).rows).toEqual([
+      { active: false, cutoff: replacement.cutoff, after_start: true, successor_active: true, same_boundary: true },
+    ]);
+    expect(await verifyDerived(db, snapshot, originalPricingAt)).toEqual([null]);
+    await db.query("SAVEPOINT stale_draft");
+    await expect(writePriceDraft(db, snapshot)).rejects.toMatchObject(priceChanged);
+    await db.query("ROLLBACK TO SAVEPOINT stale_draft");
+    expect(await counts()).toEqual(before);
+  } finally { await db.query("ROLLBACK"); db.release(); }
+  await expect.poll(async () => {
+    const { rows: [clock] } = await owner.query<{ ready: boolean; observed: string }>(`WITH clock AS (SELECT clock_timestamp() AS observed)
+      SELECT date_trunc('milliseconds',observed) >= $1::timestamptz AS ready,observed::text FROM clock`, [replacement.cutoff]);
+    return clock!.ready ? "ready" : `cutoff ${replacement.cutoff}, database clock ${clock!.observed}`;
+  }, { interval: 5, timeout: 1000 }).toBe("ready");
+  await transaction(runtime, async current => {
+    const successor = derivedSnapshot(subject, replacement.successor, 230, policy, await dbInstant(current), 210);
+    await expect(writePriceDraft(current, successor)).resolves.toMatchObject({ orderDraft: { replayed: false } });
+    expect((await current.query("SELECT date_trunc('milliseconds',now()) >= $1::timestamptz AS ready",
+      [replacement.cutoff])).rows).toEqual([{ ready: true }]);
+    expect(await verifyDerived(current, snapshot, originalPricingAt), "original price after the cutoff").toEqual([110]);
+  });
+});
 
 it("accepts derived units at a half-open base and policy boundary with exactly one set of effects", async () => {
   const { owner, runtime } = env;
@@ -811,15 +969,7 @@ it("upgrades writer authority in place and replays a completed pre-upgrade draft
   }
   const store = await withPlatformCatalog(prefix, root => installAccountMutations("bootstrap", true, "derived-price", root));
   const { owner, runtime } = store;
-  const privilegesSql = `SELECT named.signature,p.oid,p.proowner,p.prosecdef,p.proconfig,p.provolatile,p.proacl::text,
-    pg_catalog.has_function_privilege(p.proowner,p.oid,'EXECUTE') AS owner,
-    pg_catalog.has_function_privilege('anon',p.oid,'EXECUTE') AS anon,
-    pg_catalog.has_function_privilege('authenticated',p.oid,'EXECUTE') AS authenticated,
-    pg_catalog.has_function_privilege('service_role',p.oid,'EXECUTE') AS service,
-    pg_catalog.has_function_privilege(0::oid,p.oid,'EXECUTE') AS public
-    FROM unnest($1::text[]) WITH ORDINALITY AS named(signature,position)
-    JOIN pg_catalog.pg_proc p ON p.oid=to_regprocedure(named.signature) ORDER BY named.position`;
-  const facts = async (names: string[]) => (await owner.query(privilegesSql, [names])).rows;
+  const facts = async (names: string[]) => (await owner.query(writerPrivilegesSql, [names, []])).rows;
   const effects = async () => (await owner.query(`SELECT (SELECT count(*) FROM public.commerce_orders) AS orders,
     (SELECT count(*) FROM public.commerce_order_items) AS items,
     (SELECT count(*) FROM public.commerce_order_draft_receipts) AS receipts,
@@ -855,6 +1005,55 @@ it("upgrades writer authority in place and replays a completed pre-upgrade draft
   } finally {
     await store.close();
   }
+}, postgresSetupTimeoutMs);
+
+it("upgrades only the retired-base resolver and recovers the original draft price", async () => {
+  const manifestPath = "config/platform-migration-manifest.json";
+  const through = JSON.parse(readFileSync(manifestPath, "utf8")) as PlatformMigrationManifest;
+  if (through.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
+  const prefix = structuredClone(through);
+  const forwards = [through, through.qualified, through.qualifiedAdmin].map((plan, index) => {
+    const units = plan.forward.filter(unit => unit.file.endsWith("_derived_subscription_price_retired_base.sql"));
+    expect(units).toHaveLength(1);
+    const cut = plan.forward.indexOf(units[0]!);
+    expect(cut).toBeGreaterThan(0);
+    [prefix, prefix.qualified, prefix.qualifiedAdmin][index]!.forward = plan.forward.slice(0, cut);
+    plan.forward = plan.forward.slice(0, cut + 1);
+    return units[0]!.file;
+  });
+  const [forward] = forwards;
+  expect(forwards).toEqual([forward, forward, forward]);
+  await withPlatformCatalog(through, async upgradeRoot => {
+    const measured = await installAccountMutations("bootstrap", true, "retired-base-through", upgradeRoot);
+    try { through.qualified.objectInventorySha256.bootstrapMigrator.withRestore = measured.inventory; }
+    finally { await measured.close(); }
+    writeFileSync(join(upgradeRoot, manifestPath), JSON.stringify(through));
+    await withPlatformCatalog(prefix, async prefixRoot => {
+      const store = await installAccountMutations("bootstrap", true, "retired-base-upgrade", prefixRoot, upgradeRoot);
+      const { owner, runtime } = store;
+      try {
+        expect((await store.runner.status()).pending).toEqual([forward]);
+        const { subject, baseId, snapshot } = await seedDerived(owner, "XBH");
+        const drafted = await writePriceDraft(runtime, snapshot);
+        const orderId = drafted.orderDraft.orderId.slice(6);
+        const { rows: [order] } = await owner.query(`SELECT created_at::text,metadata->'quoteSnapshot' AS quote,
+          metadata->'orderDraftSnapshot' AS draft FROM public.commerce_orders WHERE id=$1`, [orderId]);
+        await replaceBase(owner, subject, baseId, 230);
+        const resolveOrder = async () => (await runtime.query(`SELECT public.catalog_admission_derived_subscription_prices($1,$2,$3,$4) AS units`,
+          [subject.currency, order.quote, order.draft, order.created_at])).rows[0].units;
+        expect(await resolveOrder()).toEqual([null]);
+        const attributes = async () => (await owner.query(writerPrivilegesSql,
+          [[derivedResolver, draftWriter, promotedWriter], [draftWriter, promotedWriter]])).rows;
+        const resolverSource = async () => (await owner.query("SELECT prosrc FROM pg_catalog.pg_proc WHERE oid=$1::regprocedure", [derivedResolver])).rows[0].prosrc;
+        const before = await attributes(), source = await resolverSource();
+        expect(before).toHaveLength(3);
+        expect((await store.runner.apply()).applied.slice(0, 1)).toEqual([forward]);
+        expect(await attributes()).toEqual(before);
+        expect(await resolverSource()).not.toBe(source);
+        expect(await resolveOrder()).toEqual([110]);
+      } finally { await store.close(); }
+    });
+  });
 }, postgresSetupTimeoutMs);
 
 it("keeps rounding parity with quote and preview amounts and readiness signs", async () => {

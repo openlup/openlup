@@ -168,9 +168,12 @@ async function purchase(paid: boolean, cookie = customerCookie) {
   const config = configurations.supplements!;
   const cart = { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null,
     lines: [{ sku: config.offer.products[0]!.sku, quantity: config.offer.minUnits }] };
-  const created = await action('checkout.create', { cart, email: `guest-${randomUUID()}@example.test`,
+  const input = { cart, email: `guest-${randomUUID()}@example.test`,
     configuration: config.id, country: config.market.country, termsAccepted: true, termsRevision: config.legal.revision,
-    locale: 'en', firstName: 'Example', lastName: 'Customer', phone: '123456789', line1: '1 Example Street', city: 'Example', postalCode: '12345' }, cookie);
+    locale: 'en', firstName: 'Example', lastName: 'Customer', phone: '123456789', line1: '1 Example Street', city: 'Example', postalCode: '12345' };
+  const reviewed = await action('offer.validate', input, cookie);
+  if (!reviewed.body.ok) throw new Error('starter_fixture_quote_' + reviewed.body.code);
+  const created = await action('checkout.create', { ...input, expectedTotal: reviewed.body.value.expectedTotal }, cookie);
   if (!created.body.ok) throw new Error('starter_fixture_checkout_' + created.body.code);
   const orderRef = created.body.value.orderRef as string;
   if (paid) {
@@ -447,11 +450,13 @@ it('all three operation limits preserve the complete effect snapshot over replay
   expect(removed.body.code).toBe('starter_operation_unknown');
   for (const host of hosts) {
     const status = (await action('application.status', {}, operatorCookie, randomUUID(), host.baseURL)).body.value.bindings;
-    expect(status.length).toBe(75);
+    expect(status.length).toBe(76);
     expect(status.find((item: { operation: string }) => item.operation === 'operator.catalogPublication'))
       .toMatchObject({ declared: true, bound: false });
     expect(status.find((item: { operation: string }) => item.operation === 'storefront.catalogue'))
       .toMatchObject({ declared: true, bound: true });
+    expect(status.find((item: { operation: string }) => item.operation === 'catalogue.demoTarget'))
+      .toMatchObject({ declared: true, bound: false });
     expect(status.filter((item: { bound: boolean }) => item.bound)).toHaveLength(70);
     for (const operation of Object.keys(operationLimits)) {
       expect(status.find((item: { operation: string }) => item.operation === operation).bound).toBe(false);

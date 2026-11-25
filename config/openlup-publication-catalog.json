@@ -1598,6 +1598,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/checkout-expected-total.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/dev-loop.proof.ts",
       "class": "public-output"
     },
@@ -1802,6 +1806,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/catalogue-media.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/catalogue-readiness-jobs.ts",
       "class": "public-output"
     },
@@ -1815,6 +1823,10 @@
     },
     {
       "path": "examples/neutral-store/host/checkout-recovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/demonstration-marker.ts",
       "class": "public-output"
     },
     {
@@ -2227,6 +2239,14 @@
     },
     {
       "path": "examples/neutral-store/test/browser-groups.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-apply.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-media.test.ts",
       "class": "public-output"
     },
     {
@@ -3795,6 +3815,10 @@
     },
     {
       "path": "packages/platform/api/shipping.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/storefront.api.md",
       "class": "public-output"
     },
     {
@@ -8294,6 +8318,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/promotions/quoteAcceptanceTokenV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/promotions/quoteAcquisitionBinding.ts",
       "class": "public-output"
     },
@@ -8571,6 +8599,26 @@
     },
     {
       "path": "packages/platform/src/shipping/thresholdPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/anchor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/bindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/continuationRecord.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/identity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/storefront/index.ts",
       "class": "public-output"
     },
     {
@@ -11258,6 +11306,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/promotions/quoteAcceptanceTokenV2.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/promotions/quoteAutomaticPromotions.test.ts",
       "class": "public-output"
     },
@@ -11379,6 +11431,26 @@
     },
     {
       "path": "packages/platform/test/shipping/thresholdPresentation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/browserBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/continuationRecord.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/exports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/neutralSource.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/storefront/types.test.ts",
       "class": "public-output"
     },
     {
@@ -14715,6 +14787,58 @@
     },
     {
       "path": "server/adapters/postgres/connectedStoreCapture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/catalog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/commerce.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/communications.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/fulfillment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/identity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/invoicing.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/payments.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/platformControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/pricingAndPromotions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/subscriptions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/connectedStoreDomains/taxAndMoney.ts",
       "class": "public-output"
     },
     {
@@ -30642,6 +30766,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/destinationV2SubscriptionReads.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/disposableDockerReap.test.ts",
       "class": "public-output"
     },
@@ -32015,7 +32143,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-f13fb832ebc96fc06a087c8932f84194d5f51cf3b629a6a731f5410504611d45"
+      "digest": "sha256-6beae26df400ee4ac52815e4d82b51245a4e9adc5e4dbb850889c62c269afc30"
     },
     {
       "path": "package.json",

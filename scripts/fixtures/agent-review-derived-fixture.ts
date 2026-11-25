@@ -22,7 +22,8 @@ export const SETTING_DATA = 'packages/platform/src/inventory/settings-data.json'
 export const SETTING_CATALOGUE = 'packages/platform/settings-catalog.json';
 export const SETTING_REFUSALS = 'packages/platform/settings-refusals.json';
 export const SETTING_GUIDE = 'packages/core/docs/guide/how-to/operate/settings-catalogue.md';
-export const PROBE_OUTPUTS = [PORTABILITY_REPORT, SETTING_CATALOGUE, SETTING_REFUSALS, SETTING_GUIDE];
+export const MATURITY_PAGE = 'packages/core/docs/guide/reference/maturity.md';
+export const PROBE_OUTPUTS = [PORTABILITY_REPORT, SETTING_CATALOGUE, SETTING_REFUSALS, SETTING_GUIDE, MATURITY_PAGE];
 export const PROBE_KEY = 'inventory.fixtureReservation';
 export const installedLock = 'node_modules/.package-lock.json';
 export const lockedDependency = 'node_modules/zod';
@@ -150,7 +151,7 @@ export async function createDerivedFixture(options: { runInitialLanding?: boolea
       return { left, right };
     },
     probeExport: () => {
-      state.write(PORTABILITY, state.read(PORTABILITY) + '\n/** @experimental A fixture declaration. */\nexport const fixturePortability = 1;\n');
+      state.write(PORTABILITY, state.read(PORTABILITY) + '\n/**\n * @experimental A fixture declaration.\n * @deprecated Fixture only.\n */\nexport const fixturePortability = 1;\n');
       state.write('packages/platform/changes/fixture-portability.md', '- Add an experimental portability fixture and describe reservation policy.\n');
     },
     probeSetting: () => {
